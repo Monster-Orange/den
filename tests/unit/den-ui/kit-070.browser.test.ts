@@ -105,6 +105,14 @@ if (!q.has("bare")) {
         { label: "Garden", href: "#garden", current: true },
         { label: "Orchard", href: "#orchard" },
       ];
+  // ?ja: Japanese project names on a dark page (issue 898's cases).
+  if (q.has("ja")) {
+    projects.splice(0, projects.length,
+      { label: "庭づくりの四半期計画プロジェクト", href: "#garden", current: true },
+      { label: "果樹園", href: "#orchard" });
+    document.documentElement.lang = "ja";
+    document.documentElement.dataset.mode = "dark";
+  }
   // ?long: a host's long names (issue 303): 54+ characters each.
   const long = q.has("long");
   const crumbs = [
@@ -1654,6 +1662,62 @@ for (const engine of ["chromium", "webkit"]) {
       const mouseShot = await m.locator(".den-top").screenshot();
       await m.context().close();
       expect(touchShot.equals(mouseShot)).toBe(true);
+    });
+
+    // Issue 898: on a touch screen the bar's 44px tap target is drawn with
+    // ::after on its links and buttons. A crumb menu's row is a link in the
+    // bar, and its ✓ is its own ::after: the tap target must not take it.
+    it("on touch, a crumb menu's ✓ stays at the end of its row's line (issue 898)", async () => {
+      const b = browsers[engine];
+      if (!b || engine !== "webkit") return;
+      // The touch target that moved the ✓ applies at any width on a coarse
+      // pointer. Below 944 px, Search still covers the crumb (issue 981),
+      // so a click can't reach it: 981's fix adds 768 and 820 here.
+      for (const [query, width] of [
+        ["", 1024],
+        ["?ja", 1024],
+        ["?long", 1024],
+      ] as const) {
+        const t = await open(b, query, width, true);
+        expect(
+          await t.evaluate(() => matchMedia("(pointer: coarse)").matches),
+        ).toBe(true);
+        await t.click('[data-scope="ws"]');
+        await t.waitForSelector('[role="menuitem"][aria-current="true"]');
+        const row = await t.$eval(
+          '[role="menuitem"][aria-current="true"]',
+          (r) => {
+            const label = r.firstElementChild!.getBoundingClientRect();
+            const box = r.getBoundingClientRect();
+            const after = getComputedStyle(r, "::after");
+            const cs = getComputedStyle(r);
+            return {
+              mark: after.content,
+              position: after.position,
+              transform: after.transform,
+              rowH: box.height,
+              labelH: label.height,
+              padY: parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom),
+              labelRight: label.right,
+              rowRight: box.right,
+            };
+          },
+        );
+        const at = `${query || "plain"} at ${width}`;
+        expect([at, row.mark]).toEqual([at, expect.stringMatching(/✓/)]);
+        // In the row's own line: not lifted out by the tap target's
+        // absolute, centred box.
+        expect([at, row.position, row.transform]).toEqual([
+          at,
+          "static",
+          "none",
+        ]);
+        // One line: the row is its label plus padding (a 44px row on
+        // touch keeps the label's line; the ✓ adds no second line).
+        expect(row.labelH).toBeLessThan(row.rowH);
+        expect(row.labelRight).toBeLessThan(row.rowRight - 8);
+        await t.context().close();
+      }
     });
   });
 }

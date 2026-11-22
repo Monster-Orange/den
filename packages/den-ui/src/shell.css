@@ -1346,7 +1346,8 @@ body.den-has-shell .den-upd {
    and tabs): a hit area centred on the control, transparent, with no
    change to its look or layout, on a touch screen only. Key hints
    (.den-kbd, and the bar's kbd) hide on a touch screen, wherever they
-   are. */
+   are. A menu row (.den-mi) is left out: its ::after is its ✓, and a
+   row is already a full-width target (issue 898). */
 @media (pointer: coarse) {
   .den-hit,
   .den-top button,
@@ -1354,8 +1355,8 @@ body.den-has-shell .den-upd {
     position: relative;
   }
   .den-hit::after,
-  .den-top button::after,
-  .den-top a[href]::after {
+  .den-top button:not(.den-mi)::after,
+  .den-top a[href]:not(.den-mi)::after {
     content: "";
     position: absolute;
     left: 50%;
