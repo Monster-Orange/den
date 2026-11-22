@@ -162,8 +162,6 @@ async function stays(p: Page): Promise<void> {
   expect(new URL(p.url()).pathname).toBe("/services");
 }
 
-const esc = (u: string) => u.replace(/[?]/g, "\\?");
-
 /**
  * Issue 187: the cursor at every part of every row that opens on a click
  * (the row itself, its dot, its text, its time), as "<part> <cursor>" for
