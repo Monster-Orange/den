@@ -4383,6 +4383,59 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
+    // Issue 1129: the restart queue (user.yml agents.resume.*).
+    id: "agents.resume_batch",
+    category: "agents",
+    label: "Agents restarted at a time",
+    description:
+      "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
+    keywords: ["restart", "resume", "agents", "batch", "load", "stagger"],
+    scope: "user",
+    keys: ["agents_resume.batch"],
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_resume?.batch ?? 4,
+    write: (v, ctx) => ctx.post({ agents_resume: { batch: v } }),
+  },
+  {
+    id: "agents.resume_gap",
+    category: "agents",
+    label: "Wait between restart batches",
+    description:
+      "How long the next batch of agent restarts waits after one starts. __DEN_CLI__ config agents.resume.gap_seconds=30",
+    keywords: ["restart", "resume", "gap", "wait", "stagger"],
+    scope: "user",
+    keys: ["agents_resume.gap_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_resume?.gap_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ agents_resume: { gap_seconds: v } }),
+  },
+  {
+    id: "agents.resume_load",
+    category: "agents",
+    label: "Load that holds restarts",
+    description:
+      "While the machine's 1-minute load is over this, the next batch of agent restarts waits. 0: no limit. The default is the number of cores × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+    keywords: ["restart", "resume", "load", "cpu", "ceiling"],
+    scope: "user",
+    keys: ["agents_resume.load_ceiling"],
+    control: { type: "number", min: 0, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.agents_resume?.load_ceiling ?? null,
+    write: (v, ctx) => ctx.post({ agents_resume: { load_ceiling: v } }),
+  },
+  {
+    id: "agents.resume_max_wait",
+    category: "agents",
+    label: "Longest a restart waits for the load",
+    description:
+      "Once an agent has waited this long, its batch restarts even if the load is still high, a few at a time as before. 0: the load may hold restarts as long as it stays high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
+    keywords: ["restart", "resume", "wait", "load", "longest"],
+    scope: "user",
+    keys: ["agents_resume.max_wait_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_resume?.max_wait_seconds ?? 600,
+    write: (v, ctx) => ctx.post({ agents_resume: { max_wait_seconds: v } }),
+  },
+  {
     // Issue 1022: how often a visible page checks health (user.yml
     // health_poll.visible_seconds).
     id: "server.health_poll",

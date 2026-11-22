@@ -29,6 +29,9 @@
  *                                     web.agent_view_minutes (issue 796)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   agents_resume: { batch?, gap_seconds?, load_ceiling?, max_wait_seconds? }
+ *                                     user.yml agents.resume.* (issue 1129:
+ *                                     the restart queue)
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
@@ -78,6 +81,7 @@ import {
 } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
+  AGENTS_RESUME_LIMITS,
   HELD_WAIT_MINUTES,
   SESSIONS_SETTINGS_KEYS,
   SHELL_PATH_TIMEOUT,
@@ -116,6 +120,8 @@ export const PERSON_ONLY_SETTINGS = [
   "reports",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // Issue 1129: how many agents restart at a time, and how far apart.
+  "agents_resume",
   // issue_write: which roles write GitHub issues, and how many an hour.
   "agent_issue_writes",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
@@ -347,6 +353,11 @@ const AGENTS_SHELL: Record<string, Limit> = {
   },
 };
 
+/** Issue 1129: user.yml agents.resume.* (den-config.ts agentsResume). */
+const AGENTS_RESUME: Record<string, Limit> = Object.fromEntries(
+  Object.entries(AGENTS_RESUME_LIMITS).map(([k, l]) => [k, { key: k, ...l }]),
+);
+
 /** issue_write: user.yml agents.issue_writes_per_hour (issue-write.ts). */
 const AGENT_ISSUE_WRITES: Record<string, Limit> = {
   per_hour: {
@@ -472,14 +483,26 @@ function patchBlock(
     if (e) return e;
   }
   apply.push(() => {
-    const b = isObj(user[block]) ? { ...user[block] } : {};
+    // "agents.resume": a block inside another; the outer one stays.
+    const [outer, inner] = block.split(".", 2) as [string, string?];
+    const host: Record<string, unknown> = inner
+      ? isObj(user[outer])
+        ? { ...user[outer] }
+        : {}
+      : user;
+    const name = inner ?? outer;
+    const b = isObj(host[name]) ? { ...host[name] } : {};
     for (const [k, v] of Object.entries(value)) {
       const key = limits[k]!.key;
       if (v === null) delete b[key];
       else b[key] = v;
     }
-    if (Object.keys(b).length) user[block] = b;
-    else delete user[block];
+    if (Object.keys(b).length) host[name] = b;
+    else delete host[name];
+    if (inner) {
+      if (Object.keys(host).length) user[outer] = host;
+      else delete user[outer];
+    }
   });
   return null;
 }
@@ -752,6 +775,14 @@ export function patchCliRows(
       "agents",
       AGENTS_SHELL,
       body.agents_shell,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agents_resume",
+      "agents.resume",
+      AGENTS_RESUME,
+      body.agents_resume,
       apply,
     ) ??
     patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply) ??
