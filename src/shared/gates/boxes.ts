@@ -1035,6 +1035,8 @@ export function defaultPlace(o: {
    * one in its environment): why it stays here, in words.
    */
   ownBrowser?: string;
+  /** Issue 625: the time a box's window is read at (now when unset). */
+  now?: number;
 }): {
   where?: "any";
   why?: string;
@@ -1062,7 +1064,7 @@ export function defaultPlace(o: {
     };
   const skips = o.boxes.map((b) => ({
     name: b.name,
-    reason: defaultSkip(b, o.pwVersion),
+    reason: defaultSkip(b, o.pwVersion, o.now ?? Date.now()),
   }));
   const said = skips
     .filter((x) => x.reason)
@@ -1084,9 +1086,20 @@ export function defaultPlace(o: {
  *   no declared Playwright version (playwright_version or
  *     playwright_endpoints): its server refuses a client of another
  *     version (HTTP 428), and which one it runs can't be said;
- *   a declared version that doesn't serve the run's (clause 11).
+ *   a declared version that doesn't serve the run's (clause 11);
+ *   (issue 625) turned off, or outside its window: no slot comes, so a
+ *     run with only that box stays here, saying when it opens.
  */
-function defaultSkip(b: GateBox, pwVersion: string | undefined): string {
+function defaultSkip(
+  b: GateBox,
+  pwVersion: string | undefined,
+  now: number,
+): string {
+  const off = boxOff(b, now);
+  if (off)
+    return off.why === "off"
+      ? `box ${b.name}: turned off`
+      : `box ${b.name}: outside its window (opens ${off.opens})`;
   if (!b.playwright_version && !b.playwright_endpoints)
     return `box ${b.name} declares no Playwright version`;
   const v = boxSkipReason({ pwVersion }, b);
