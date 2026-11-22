@@ -5041,6 +5041,9 @@
    * so each carries the revision the last answer gave and a page's own
    * quick changes never refuse each other. `post(patch)` sends one and
    * resolves true when it was saved; every save it covers resolves so.
+   * It resolves "stale" when the stored layout changed elsewhere: what
+   * waits was built on the old copy, so it is dropped (each resolves
+   * false), never written over the layout now.
    */
   function shellSaveQueue(post) {
     var inFlight = false;
@@ -5064,6 +5067,12 @@
           return false;
         })
         .then(function (ok) {
+          if (ok === "stale") {
+            ws = ws.concat(waiters);
+            pending = null;
+            waiters = [];
+            ok = false;
+          }
           ws.forEach(function (w) {
             w(ok);
           });
@@ -5103,7 +5112,7 @@
           if (r.status === 409 && j && j.error === "layout_changed") {
             if (j.shell) adoptServerShell(j.shell);
             toast(t("toast.layoutChanged"));
-            return false;
+            return "stale";
           }
           return ok;
         });

@@ -16,7 +16,7 @@ const SRC = fs.readFileSync(
 const START = SRC.indexOf("  // ── shellSaveQueue");
 const END = SRC.indexOf("  // ── end shellSaveQueue ──");
 
-type Post = (patch: Record<string, unknown>) => Promise<boolean>;
+type Post = (patch: Record<string, unknown>) => Promise<boolean | "stale">;
 const queueOf = (post: Post) =>
   (
     new Function(`${SRC.slice(START, END)}; return shellSaveQueue;`)() as (
@@ -68,6 +68,22 @@ describe("layout saves from one page", () => {
       { hidden: ["logs"] },
       { collapsed: true, hidden: ["logs", "tests"] },
     ]);
+  });
+
+  it("a refused save (the layout changed elsewhere) drops what waits behind it", async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const save = queueOf(async (patch) => {
+      sent.push(patch);
+      await new Promise((r) => setTimeout(r, 5));
+      return sent.length === 1 ? "stale" : true;
+    });
+    const a = save({ pins: [] });
+    const b = save({ hidden: ["agents"] });
+    expect(await Promise.all([a, b])).toEqual([false, false]);
+    expect(sent).toEqual([{ pins: [] }]);
+    // A change made after it goes as usual.
+    expect(await save({ collapsed: true })).toBe(true);
+    expect(sent).toEqual([{ pins: [] }, { collapsed: true }]);
   });
 
   it("a save that fails says so, and the next still goes", async () => {
