@@ -2850,6 +2850,9 @@
     "ag.mcp.reloading": "Restarting to load Hub's tools",
     "ag.mcp.reloadingTip":
       "Hub's tools changed. Den restarts this agent at its next idle so it can use them. It keeps its conversation.",
+    "ag.mcp.failed": "Hub's tools didn't load",
+    "ag.mcp.failedTip":
+      "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
@@ -3616,6 +3619,8 @@
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
+    "bell.m.toolsListFailed":
+      "{agent} can't use Hub's tools: listing them failed again after __DEN_TITLE__ restarted it once. Restart it from Agents once Hub is fixed",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":

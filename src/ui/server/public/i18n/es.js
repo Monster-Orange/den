@@ -1936,6 +1936,9 @@
     "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",
     "ag.mcp.dropsTip":
       "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.failed": "Las herramientas de Hub no cargaron",
+    "ag.mcp.failedTip":
+      "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -2720,6 +2723,8 @@
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
+    "bell.m.toolsListFailed":
+      "{agent} no puede usar las herramientas de Hub: no se pudieron listar otra vez después de que __DEN_TITLE__ lo reiniciara una vez. Reinícialo desde Agentes cuando Hub esté arreglado",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":

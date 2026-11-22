@@ -1878,6 +1878,9 @@
     "ag.mcp.drops": "再起動で Hub のツールが外れます",
     "ag.mcp.dropsTip":
       "このエージェントの起動後に Hub が切断されたため、Hub のツールはもう動きません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.failed": "Hub のツールを読み込めませんでした",
+    "ag.mcp.failedTip":
+      "このエージェントは起動時に Hub のツールを読み込めませんでした（{error}）。そのため Hub からは連絡できません。再起動しても会話は続き、ターンの終わりを待ちます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
@@ -2630,6 +2633,8 @@
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
+    "bell.m.toolsListFailed":
+      "{agent} は Hub のツールを使えません。__DEN_TITLE__ が一度再起動した後も、ツールの一覧を取得できませんでした。Hub が直ったら、エージェント画面から再起動してください",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.restartedWhileWorking":

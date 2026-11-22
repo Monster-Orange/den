@@ -69,6 +69,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
+import { mcpLoadFailures } from "../../shared/agents/hub-mcp-connect.js";
 import {
   readCompacting,
   readInstructionCheck,
@@ -446,6 +447,8 @@ export interface ListedSession {
   helpers?: AgentRow["helpers"];
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
+  /** Issue 749: MCP servers whose tools failed to load in its session. */
+  mcpFailed?: AgentRow["mcpFailed"];
   /** Issue 193: Den is restarting it to load Hub's new tools. */
   toolsRestarting?: true;
   /**
@@ -722,6 +725,11 @@ export function listedSessions(
           waiting: hubUrl === null && hubTokenProblem() !== null,
         });
         return st ? { mcpStale: st } : {};
+      })(),
+      ...(() => {
+        if (r.state !== "running") return {};
+        const failed = mcpLoadFailures(d.stateDir(), rec);
+        return failed.length ? { mcpFailed: failed } : {};
       })(),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
