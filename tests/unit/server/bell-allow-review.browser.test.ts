@@ -138,8 +138,24 @@ async function bellAt(width: number): Promise<Page> {
 }
 
 const row = (p: Page) => p.locator(`[data-ap-row="${held}"]`);
-const box = async (p: Page, bell: string) =>
-  (await row(p).locator(`[data-bell="${bell}"]`).boundingBox())!;
+/**
+ * Where `sel` is now, measured in the page in one step. The open bell
+ * repaints on every refresh (its poll, focus), which replaces the row's
+ * buttons; a locator's boundingBox finds the element, then measures it, and
+ * a repaint between the two gives null.
+ */
+async function rect(p: Page, sel: string) {
+  const r = await p.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    return { x: b.x, y: b.y, width: b.width, height: b.height };
+  }, sel);
+  if (!r) throw new Error(`${sel} is not on the page`);
+  return r;
+}
+const inRow = (sel: string) => `[data-ap-row="${held}"] ${sel}`;
+const box = (p: Page, bell: string) => rect(p, inRow(`[data-bell="${bell}"]`));
 
 describe("the bell's Allow row: Review", () => {
   it("a slot in the worker's gate folder never reaches this server's bell", async () => {
@@ -163,7 +179,7 @@ describe("the bell's Allow row: Review", () => {
       };
       // Den Design: a phone's finger needs 44 px to hit Review.
       if (width < 600)
-        expect((await review.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        expect((await box(p, "review")).height).toBeGreaterThanOrEqual(44);
 
       const press = () => (width < 600 ? review.tap() : review.click());
       await press();
@@ -193,8 +209,8 @@ describe("the bell's Allow row: Review", () => {
           expect(Math.round(now[d])).toBe(Math.round(before[k][d]));
       }
       // Nothing runs off the panel's right edge.
-      const pop = (await p.locator("#den-bell-pop").boundingBox())!;
-      const d = (await det.boundingBox())!;
+      const pop = await rect(p, "#den-bell-pop");
+      const d = await rect(p, inRow("[data-ap-det]"));
       expect(d.x + d.width).toBeLessThanOrEqual(pop.x + pop.width + 1);
       if (process.env.DEN_SHOTS_DIR) {
         fs.mkdirSync(process.env.DEN_SHOTS_DIR, { recursive: true });
