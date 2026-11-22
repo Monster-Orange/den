@@ -267,6 +267,21 @@ describe("the per-request rule", () => {
     );
 
     it.each(acts)(
+      "%s %s from a client the edge doesn't attest (edgeLocal false, not beyond): refused",
+      (m, p) => {
+        expect(
+          operatorRefusal({
+            ...edge,
+            method: m,
+            pathname: p,
+            beyond: false,
+            edgeLocal: false,
+          }),
+        ).toBe("not_loopback");
+      },
+    );
+
+    it.each(acts)(
       "%s %s from a client beyond this machine: refused",
       (m, p) => {
         expect(
