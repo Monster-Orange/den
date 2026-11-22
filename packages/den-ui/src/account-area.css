@@ -424,3 +424,34 @@
     align-items: center;
   }
 }
+
+/* The host's next step in place (a GitHub code, a pairing link and QR). */
+.den-aa-flow {
+  padding: 0 0 var(--space-3);
+}
+.den-aa-flow[hidden] {
+  display: none;
+}
+/* A waiting request: type the code its screen shows, then Approve or Deny. */
+.den-aa-typed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+.den-aa-code-l {
+  color: var(--muted);
+  font-size: var(--fs-s);
+}
+.den-aa-code {
+  width: 10ch;
+  font: var(--fs-s) var(--mono);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text);
+  text-transform: uppercase;
+}

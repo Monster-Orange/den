@@ -34,7 +34,13 @@ export interface AccountToken {
 }
 
 export interface AccountAccess {
-  github?: { login?: string; linkedAt?: string; unlink?: boolean } | null;
+  /** link: nothing linked yet, and the host can link one (a Link button). */
+  github?: {
+    login?: string;
+    linkedAt?: string;
+    unlink?: boolean;
+    link?: boolean;
+  } | null;
   /** Another way in: Pair a device. */
   pair?: boolean;
   /** Personal access tokens (none: the section is left out). */
@@ -56,7 +62,13 @@ export interface AccountDevices {
   /** The list can't be read: Can't list your devices, Try again. */
   error?: boolean;
   /** Codes waiting to be approved. */
-  waiting?: { code: string; minutes?: number }[];
+  waiting?: (
+    | { code: string; minutes?: number }
+    /** A request the host names by ref: the person types its code. */
+    | { ref: string; title?: string; detail?: string }
+  )[];
+  /** How long a typed code is (6). */
+  codeLength?: number;
   pair?: boolean;
   signOutAll?: boolean;
 }
@@ -113,6 +125,8 @@ export interface AccountArea {
   current(): AccountSection;
   find(q: string): HTMLElement[];
   update(data: Partial<AccountAreaData>): void;
+  /** Draw the host's next step in a slot ("github", "pair"); "" hides it. */
+  flow(name: string, html: string): void;
   destroy(): void;
 }
 
@@ -128,6 +142,8 @@ export declare function accountSectionOf(
 /** The whole area as markup. Pure. */
 export declare function accountAreaHtml(data?: AccountAreaData): string;
 /** The area in el, wired. */
+/** A typed code as the host gets it: upper case, no spaces or dashes. */
+export declare const typedCode: (v: unknown) => string;
 /** Sign out everywhere's question: tokens named only when passed. */
 export declare function signOutAllBody(data: unknown, lang?: string): string;
 export declare function mountAccountArea(

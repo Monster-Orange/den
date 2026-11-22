@@ -144,6 +144,40 @@ function item(title, small, action, find, extra = "") {
 }
 
 const card = (rows) => `<div class="den-aa-card">${rows}</div>`;
+
+/**
+ * Where the host draws its next step in place (a GitHub code, a pairing
+ * link and QR): empty and hidden until area.flow(name, html) fills it.
+ */
+const flowSlot = (name) =>
+  `<div class="den-aa-flow" data-aa-flow="${esc(name)}" aria-live="polite" hidden></div>`;
+
+/**
+ * A waiting request the host names by ref (the code is never in the page:
+ * the person types the one the other screen shows): its title and detail,
+ * a code field, Approve (enabled once the code is whole) and Deny.
+ */
+function typedItem(lang, w) {
+  const ref = String(w.ref);
+  const id = `den-aa-code-${ref.replace(/[^A-Za-z0-9_-]/g, "")}`;
+  return item(
+    `<b>${esc(w.title ?? "")}</b>`,
+    w.detail ? esc(w.detail) : "",
+    `<span class="den-aa-typed">` +
+      `<label for="${esc(id)}" class="den-aa-code-l">${esc(kitT(lang, "kit.aa.codeLabel"))}</label>` +
+      `<input id="${esc(id)}" class="den-aa-code" data-aa-code-for="${esc(ref)}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12">` +
+      `<button type="button" class="den-btn primary sm" data-aa-act="approve" data-aa-id="${esc(ref)}" disabled>${esc(kitT(lang, "kit.aa.approve"))}</button>` +
+      btn(lang, "kit.aa.deny", "deny", { ghost: true, sm: true, id: ref }) +
+      `</span>`,
+    findOf(kitT(lang, "kit.aa.waiting"), w.title),
+  );
+}
+
+/** A typed code as the host gets it: upper case, no spaces or dashes. */
+export const typedCode = (v) =>
+  String(v ?? "")
+    .toUpperCase()
+    .replace(/[\s-]/g, "");
 const sub = (lang, key) =>
   `<h3 class="den-aa-sub">${esc(kitT(lang, key))}</h3>`;
 
@@ -219,11 +253,14 @@ function accessPane(a, lang, t) {
     rows += item(
       `<b>${esc(kitT(lang, "kit.aa.github"))}</b>`,
       small,
-      g.unlink
+      g.unlink && g.login
         ? btn(lang, "kit.aa.unlink", "unlink", { ghost: true, sm: true })
-        : "",
+        : g.link && !g.login
+          ? btn(lang, "kit.aa.link", "link", { primary: true, sm: true })
+          : "",
       findOf(kitT(lang, "kit.aa.github"), at(g.login)),
     );
+    rows += flowSlot("github");
   }
   if (a.pair)
     rows += item(
@@ -236,6 +273,7 @@ function accessPane(a, lang, t) {
         kitT(lang, "kit.aa.pair"),
       ),
     );
+  if (a.pair) rows += flowSlot("pair");
   let out = rows ? card(rows) : "";
   if (Array.isArray(a.tokens)) {
     out += sub(lang, "kit.aa.tokens");
@@ -331,16 +369,24 @@ function devicesPane(d, lang, t) {
     out += card(
       d.waiting
         .map((w) =>
-          item(
-            `<b>${esc(kitT(lang, "kit.aa.code", { code: w.code }))}</b>`,
-            esc(kitT(lang, "kit.aa.codeHelp", { n: Number(w.minutes) || 10 })),
-            btn(lang, "kit.aa.approve", "approve", { sm: true, id: w.code }),
-            findOf(kitT(lang, "kit.aa.waiting"), w.code),
-          ),
+          w.ref != null
+            ? typedItem(lang, w)
+            : item(
+                `<b>${esc(kitT(lang, "kit.aa.code", { code: w.code }))}</b>`,
+                esc(
+                  kitT(lang, "kit.aa.codeHelp", { n: Number(w.minutes) || 10 }),
+                ),
+                btn(lang, "kit.aa.approve", "approve", {
+                  sm: true,
+                  id: w.code,
+                }),
+                findOf(kitT(lang, "kit.aa.waiting"), w.code),
+              ),
         )
         .join(""),
     );
   }
+  if (d.pair) out += flowSlot("pair");
   let foot = "";
   if (d.pair) foot += btn(lang, "kit.aa.pair", "pair");
   if (d.signOutAll)
@@ -447,9 +493,20 @@ export function mountAccountArea(el, opts = {}) {
   const sections = () => accountAreaSections(data);
   const panes = () => [...root.querySelectorAll(".den-aa-pane")];
 
+  // The host's next steps in place (flow(name, html)), kept across redraws.
+  const flows = new Map();
+  const codeLen = () => Number(data.devices?.codeLength) || 6;
+  function fillFlows() {
+    for (const slot of root?.querySelectorAll?.("[data-aa-flow]") ?? []) {
+      const html = flows.get(slot.dataset.aaFlow) ?? "";
+      slot.innerHTML = html;
+      slot.hidden = !html;
+    }
+  }
   function draw(current) {
     el.innerHTML = accountAreaHtml({ ...data, lang: lang(), current });
     root = el.firstElementChild;
+    fillFlows();
   }
 
   function setAddress(s) {
@@ -557,6 +614,17 @@ export function mountAccountArea(el, opts = {}) {
       }
       return;
     }
+    if (name === "approve" && id != null) {
+      const f = root.querySelector(
+        `.den-aa-code[data-aa-code-for="${CSS.escape(id)}"]`,
+      );
+      if (f) {
+        const code = typedCode(f.value);
+        if (code.length !== codeLen()) return;
+        await opts.onAction?.(name, id, b, { code });
+        return;
+      }
+    }
     await opts.onAction?.(name, id, b, {});
   }
 
@@ -576,8 +644,23 @@ export function mountAccountArea(el, opts = {}) {
   };
   const onInput = (e) => {
     if (e.target.classList?.contains("den-aa-search")) find(e.target.value);
+    if (e.target.classList?.contains("den-aa-code")) {
+      const go = root.querySelector(
+        `[data-aa-act="approve"][data-aa-id="${CSS.escape(e.target.dataset.aaCodeFor)}"]`,
+      );
+      if (go) go.disabled = typedCode(e.target.value).length !== codeLen();
+    }
   };
   const onKey = (e) => {
+    if (e.key === "Enter" && e.target.classList?.contains("den-aa-code")) {
+      e.preventDefault();
+      root
+        .querySelector(
+          `[data-aa-act="approve"][data-aa-id="${CSS.escape(e.target.dataset.aaCodeFor)}"]`,
+        )
+        ?.click();
+      return;
+    }
     const q = root.querySelector(".den-aa-search");
     if (e.target === q) {
       if (e.key === "Escape" && q.value) {
@@ -622,13 +705,36 @@ export function mountAccountArea(el, opts = {}) {
   return {
     root: () => root,
     show: (s) => show(s, { focus: false }),
+    /** Draw the host's next step in a slot ("github", "pair"); "" hides it. */
+    flow(name, html) {
+      if (html) flows.set(name, String(html));
+      else flows.delete(name);
+      fillFlows();
+    },
     current,
     find,
     update(next) {
       const s = current();
       const q = root.querySelector(".den-aa-search")?.value ?? "";
+      // Typed codes (and the field being typed in) survive the redraw.
+      const typed = new Map(
+        [...root.querySelectorAll(".den-aa-code")].map((f) => [
+          f.dataset.aaCodeFor,
+          f.value,
+        ]),
+      );
+      const typing = document.activeElement?.dataset?.aaCodeFor;
       data = { ...data, ...next };
       draw(s);
+      for (const f of root.querySelectorAll(".den-aa-code")) {
+        const v = typed.get(f.dataset.aaCodeFor);
+        if (v) f.value = v;
+        const go = root.querySelector(
+          `[data-aa-act="approve"][data-aa-id="${CSS.escape(f.dataset.aaCodeFor)}"]`,
+        );
+        if (go) go.disabled = typedCode(f.value).length !== codeLen();
+        if (typing && f.dataset.aaCodeFor === typing) f.focus();
+      }
       if (q) {
         root.querySelector(".den-aa-search").value = q;
         find(q);

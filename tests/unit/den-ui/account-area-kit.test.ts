@@ -446,3 +446,58 @@ describe("issue 310 review: the mock's words and frame", () => {
     expect(css).toContain("the kit's --space-5 is 24 px");
   });
 });
+
+describe("issue 310 review: Link, Pair and Waiting inside the area", () => {
+  it("nothing linked: GitHub says Not linked, with Link (mock A2)", () => {
+    const p = pane(
+      accountAreaHtml({
+        ...FULL,
+        access: { github: { link: true }, pair: true },
+      }),
+      "access",
+    );
+    expect(p).toContain("Not linked");
+    expect(p).toMatch(/data-aa-act="link"[^>]*>Link</);
+    expect(p).not.toContain('data-aa-act="unlink"');
+  });
+
+  it("a place for the host's next step under GitHub and Pair a device", () => {
+    const p = pane(accountAreaHtml(FULL), "access");
+    expect(p).toMatch(
+      /data-aa-act="unlink"[\s\S]*<div class="den-aa-flow" data-aa-flow="github" aria-live="polite" hidden><\/div>/,
+    );
+    expect(p).toMatch(
+      /data-aa-act="pair"[\s\S]*<div class="den-aa-flow" data-aa-flow="pair" aria-live="polite" hidden><\/div>/,
+    );
+    const d = pane(accountAreaHtml(FULL), "devices");
+    expect(d).toContain('data-aa-flow="pair"');
+  });
+
+  it("a waiting request the host names by ref: type its code, then Approve or Deny", () => {
+    const d = pane(
+      accountAreaHtml({
+        ...FULL,
+        devices: {
+          ...FULL.devices,
+          waiting: [
+            {
+              ref: "r1",
+              title: "Firefox on Linux",
+              detail: "Asked 2 min ago <b>",
+            },
+          ],
+        },
+      }),
+      "devices",
+    );
+    expect(d).toContain("<b>Firefox on Linux</b>");
+    expect(d).toContain("Asked 2 min ago &lt;b&gt;");
+    expect(d).toMatch(
+      /<label for="den-aa-code-r1"[^>]*>Code on its screen<\/label><input id="den-aa-code-r1" class="den-aa-code" data-aa-code-for="r1"/,
+    );
+    expect(d).toMatch(/data-aa-act="approve" data-aa-id="r1"[^>]*disabled/);
+    expect(d).toMatch(/data-aa-act="deny" data-aa-id="r1"/);
+    // The code is never in the page: the person types it.
+    expect(d).not.toMatch(/K7QX-92MD/);
+  });
+});

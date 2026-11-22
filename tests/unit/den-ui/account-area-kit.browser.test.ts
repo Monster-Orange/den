@@ -57,6 +57,7 @@ const PAGE = `<!doctype html>
 const PAGE_JS = `
 import { openAccountArea } from "/account-area.js";
 window.acts = [];
+window.codes = [];
 window.reject = false;
 const NOW = new Date().toISOString();
 window.openIt = () => {
@@ -70,10 +71,13 @@ window.openIt = () => {
     devices: { list: [
       { id: "d1", name: "Safari on Mac", lastSeen: NOW, current: true },
       { id: "d2", name: "Chrome on Linux", lastSeen: NOW } ],
-      waiting: [{ code: "K7QX-92MD", minutes: 10 }], pair: true, signOutAll: true },
+      waiting: [{ code: "K7QX-92MD", minutes: 10 },
+        { ref: "r1", title: "Safari on iPhone", detail: "Asked just now" }],
+      pair: true, signOutAll: true },
     notifications: [{ id: "rel", label: "New releases", on: false }],
     onAction: (act, id, button, extra) => {
       acts.push([act, id, extra && extra.on !== undefined ? extra.on : null]);
+      if (extra && extra.code) codes.push(extra.code);
       if (act === "notify" && window.reject) return Promise.reject(new Error("no"));
     },
   });
@@ -288,6 +292,68 @@ describe("issue 310: the Account area in a browser", () => {
     expect(box.width).toBeLessThan(1280);
     expect(Math.round(box.y + box.height)).toBeLessThan(860);
     await p.keyboard.press("Escape");
+    await done(p);
+  }, 60_000);
+
+  it("a waiting request: Approve waits for the whole code, sends it cleaned, and a redraw keeps it", async () => {
+    if (skip()) return;
+    const p = await open({ query: "?account=devices" });
+    const f = '.den-aa-code[data-aa-code-for="r1"]';
+    const go = '[data-aa-act="approve"][data-aa-id="r1"]';
+    expect(await p.isDisabled(go)).toBe(true);
+    await p.fill(f, "k7q 4");
+    expect(await p.isDisabled(go)).toBe(true);
+    await p.fill(f, "k7q-42m");
+    expect(await p.isDisabled(go)).toBe(false);
+    await p.evaluate(() =>
+      (
+        window as unknown as { area: { area: { update(d: object): void } } }
+      ).area.area.update({}),
+    );
+    expect(await p.inputValue(f)).toBe("k7q-42m");
+    expect(await p.isDisabled(go)).toBe(false);
+    await p.press(f, "Enter");
+    await p.waitForFunction(
+      () => (window as unknown as { codes: string[] }).codes.length === 1,
+    );
+    expect(
+      await p.evaluate(() => (window as unknown as { codes: string[] }).codes),
+    ).toEqual(["K7Q42M"]);
+    await p.click('[data-aa-act="deny"][data-aa-id="r1"]');
+    expect((await acts(p)).slice(-2)).toEqual([
+      ["approve", "r1", null],
+      ["deny", "r1", null],
+    ]);
+    await done(p);
+  }, 60_000);
+
+  it("flow(): the host's next step shows in place, and stays through a redraw", async () => {
+    if (skip()) return;
+    const p = await open({ query: "?account=access" });
+    const slot = '.den-aa-pane:not([hidden]) [data-aa-flow="pair"]';
+    expect(await p.isVisible(slot)).toBe(false);
+    await p.evaluate(() =>
+      (
+        window as unknown as {
+          area: { area: { flow(n: string, h: string): void } };
+        }
+      ).area.area.flow("pair", '<b id="fx">Scan it</b>'),
+    );
+    expect(await p.textContent(`${slot} #fx`)).toBe("Scan it");
+    await p.evaluate(() =>
+      (
+        window as unknown as { area: { area: { update(d: object): void } } }
+      ).area.area.update({}),
+    );
+    expect(await p.isVisible(`${slot} #fx`)).toBe(true);
+    await p.evaluate(() =>
+      (
+        window as unknown as {
+          area: { area: { flow(n: string, h: string): void } };
+        }
+      ).area.area.flow("pair", ""),
+    );
+    expect(await p.isVisible(slot)).toBe(false);
     await done(p);
   }, 60_000);
 

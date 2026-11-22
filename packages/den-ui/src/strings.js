@@ -286,6 +286,9 @@ export const en = {
     "This signs you out on every device and browser, this one included, and turns off your personal access tokens. You will need to sign in again on each device.",
   "kit.aa.allBodyNoTokens":
     "This signs you out on every device and browser, this one included. You will need to sign in again on each device.",
+  "kit.aa.link": "Link",
+  "kit.aa.codeLabel": "Code on its screen",
+  "kit.aa.deny": "Deny",
   "kit.aa.github": "GitHub",
   "kit.aa.githubLinked":
     "{login} · linked {date}. Den keeps its id, never a token.",
@@ -593,6 +596,9 @@ export const es = {
     "Cierra tu sesión en todos los dispositivos y navegadores, también en este, y desactiva tus tokens de acceso personal. Tendrás que volver a iniciar sesión en cada dispositivo.",
   "kit.aa.allBodyNoTokens":
     "Cierra tu sesión en todos los dispositivos y navegadores, también en este. Tendrás que volver a iniciar sesión en cada dispositivo.",
+  "kit.aa.link": "Vincular",
+  "kit.aa.codeLabel": "Código en su pantalla",
+  "kit.aa.deny": "Rechazar",
   "kit.aa.github": "GitHub",
   "kit.aa.githubLinked":
     "{login} · vinculado el {date}. Den guarda su id, nunca un token.",
@@ -901,6 +907,9 @@ export const ja = {
     "このデバイスを含むすべてのデバイスとブラウザーでサインアウトし、個人用アクセストークンを無効にします。各デバイスでもう一度サインインする必要があります。",
   "kit.aa.allBodyNoTokens":
     "このデバイスを含むすべてのデバイスとブラウザーでサインアウトします。各デバイスでもう一度サインインする必要があります。",
+  "kit.aa.link": "連携",
+  "kit.aa.codeLabel": "その画面のコード",
+  "kit.aa.deny": "拒否",
   "kit.aa.github": "GitHub",
   "kit.aa.githubLinked":
     "{login} · {date} に連携。Den が保存するのは ID だけで、トークンは保存しません。",
