@@ -137,9 +137,11 @@ describe("gate slots over MCP", () => {
     ]);
     expect(status.settings).toEqual({
       cpuSlots: 2,
+      cpuSlotsBesideBrowser: 2,
+      localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       priorityMax: 1,
-      priorityPassLimitMinutes: 60,
+      priorityPassLimitMinutes: 0,
       priorityAgents: true,
       priorityRunners: true,
       claimMinutes: 3,

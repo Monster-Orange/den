@@ -15,6 +15,11 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
+import { githubWatchSettings } from "../../shared/github-watch/settings.js";
+import {
+  handleGithubWatchRoutes,
+  isGithubWatchPath,
+} from "./github-watch-routes.js";
 import {
   alertFeed,
   attentionDetail,
@@ -100,7 +105,10 @@ import type {
 } from "../../shared/types/index.js";
 import { getRunDonePayload } from "./perf-report.js";
 import { oldKindWarning } from "../../shared/run-outcome.js";
-import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  readCatalog,
+  resolveRepoGhSlug,
+} from "../../shared/environment-manager/catalog.js";
 import {
   getActiveWorkspace,
   getActiveWorkspaces,
@@ -1205,6 +1213,7 @@ import {
   type ErrorPageData,
 } from "./http-errors.js";
 import {
+  githubOrgFor,
   readOrgContext,
   resolveAllWorkspaceOrgs,
   withOrgMembership,
@@ -1232,6 +1241,16 @@ import {
   type HeldActions,
 } from "./approval-routes.js";
 import { syncHeldBell } from "./held-bell.js";
+import {
+  ISSUE_WRITE_PATH,
+  handleIssueWriteRoute,
+  type IssueWriteDeps,
+} from "./issue-write-routes.js";
+import {
+  IssueWriteLimit,
+  issueWriteSettings,
+} from "../../shared/issue-write.js";
+import { defaultInstallLabel } from "./hub-connect.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
   approvalsView,
@@ -1332,6 +1351,7 @@ import {
   runPersonaUpdate,
   runProjectMode,
   runAgentImport,
+  personaLookup,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -2254,6 +2274,76 @@ let CLI_PREFIX: string | null = null;
 function printedCli(): string {
   CLI_PREFIX ??= cliPrefix(product().cli, getDistRoot(), getEngineRoot());
   return CLI_PREFIX;
+}
+
+/** issue_write's limit: the install's writes in the last hour, every agent's. */
+const issueWriteLimit = new IssueWriteLimit();
+
+/**
+ * issue_write's wiring: the agent's record and persona role, the
+ * project's GitHub repos (the catalog's gh, else the project's org), the
+ * settings from user.yml, pr_close's gh call path (runGh), and the audit.
+ */
+function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
+  return {
+    agentOf: (id) => {
+      const rec = readAgentRecord(getStateDir(), id);
+      if (!rec) return null;
+      let role: string | undefined;
+      try {
+        role = personaLookup(agentWebDeps())(rec)?.role;
+      } catch {
+        role = undefined;
+      }
+      return {
+        name: rec.displayName || rec.persona || id,
+        ...(role ? { role } : {}),
+      };
+    },
+    projectExists: (p) =>
+      Object.hasOwn(readWorkspacesFile().workspaces ?? {}, p),
+    projectRepos: (p) => {
+      const ws = (readWorkspacesFile().workspaces ?? {})[p];
+      if (!ws) return [];
+      const names = new Set<string>([
+        ...Object.keys(ws.services ?? {}).map((a) => a.split("/")[0]),
+        ...Object.keys(ws.repos ?? {}),
+      ]);
+      const catalog = readCatalog();
+      const out: string[] = [];
+      for (const n of names)
+        try {
+          out.push(resolveRepoGhSlug(n, catalog, () => githubOrgFor(p)));
+        } catch {
+          /* a repo with no GitHub owner: not one issue_write reaches */
+        }
+      return out.sort();
+    },
+    settings: () =>
+      issueWriteSettings(
+        () => readUserConfig(),
+        () => readDenConfig(),
+      ),
+    limit: issueWriteLimit,
+    gh: runGh,
+    installLabel: () => defaultInstallLabel(),
+    audit: (e) => {
+      try {
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "issue_write",
+            detail: `${e.project ? `project ${e.project}: ` : ""}${e.summary}`,
+            ...(e.refused ? { outcome: "refused" as const } : {}),
+            ...(e.reason ? { reason: e.reason } : {}),
+          },
+          principalOf(req),
+        );
+      } catch {
+        /* the audit is best-effort; the write's answer still goes back */
+      }
+    },
+  };
 }
 
 /**
@@ -4689,6 +4779,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         backoff_seconds: c.backoffMs / 1000,
       };
     })(),
+    // The shared GitHub watcher's pace and API budget (github.*).
+    github: (() => {
+      const g = githubWatchSettings(user);
+      return {
+        watch_interval_seconds: g.intervalSeconds,
+        watch_max_interval_seconds: g.maxIntervalSeconds,
+        api_budget_floor: g.budgetFloor,
+        watches_max: g.watchesMax,
+      };
+    })(),
     // den#156: the Agents list's waits (agents_list.*).
     agents_list: (() => {
       try {
@@ -4698,6 +4798,15 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       }
     })(),
     // Issue 456: how long Den waits for the shell's PATH.
+    // issue_write: which roles write GitHub issues, and how many an hour.
+    agent_issue_writes: (() => {
+      try {
+        const c = issueWriteSettings(() => user, readDenConfig);
+        return { roles: c.roles, per_hour: c.perHour };
+      } catch {
+        return null;
+      }
+    })(),
     agents_shell: (() => {
       try {
         return {
@@ -5005,9 +5114,32 @@ async function handleRequest(
     });
     return;
   }
+  // issue_write: an agent writes a GitHub issue in its own project's repos
+  // (direct and audited; the route checks the role, the repo and the limit).
+  if (guard.ok && pathname === ISSUE_WRITE_PATH) {
+    await handleIssueWriteRoute(req, res, pathname, issueWriteDeps(req));
+    return;
+  }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
     await handleNotificationRoutes(req, res, pathname, notificationDeps());
+    return;
+  }
+  // The shared GitHub watcher: an agent's own watches (MCP github_watch).
+  if (guard.ok && isGithubWatchPath(pathname)) {
+    const { githubWatcher } = await import("./github-watch-service.js");
+    const { projectRepos } = await import("../../shared/project-repos.js");
+    await handleGithubWatchRoutes(req, res, pathname, {
+      watcher: githubWatcher,
+      reposOf: projectRepos,
+      allRepos: () => [
+        ...new Set(
+          Object.keys(readWorkspacesFile().workspaces ?? {}).flatMap((ws) =>
+            projectRepos(ws),
+          ),
+        ),
+      ],
+    });
     return;
   }
   // ON-3: an agent's held writes; Allow from the person's browser only.
@@ -8507,12 +8639,14 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
           feedback?: unknown;
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -8562,12 +8696,14 @@ async function handleRequest(
             web_pairing: body.web_pairing,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
             feedback: body.feedback,
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
         }
@@ -9848,6 +9984,17 @@ void CRASH_GATE.then(() =>
           bell: (n) => {
             notificationDeps().store.add(n);
           },
+          log: (l) => serverLog(`  ${l}`, "warn"),
+        }),
+      );
+    // The shared GitHub watcher: one loop for every agent's watches; a
+    // finished one is typed at its agent's prompt (the relayed path).
+    void hubChecked
+      .then(() => import("./github-watch-service.js"))
+      .then((m) =>
+        m.startGithubWatch({
+          relay: async (dv) =>
+            (await import("./hub-delivery-service.js")).relayMessage(dv),
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );

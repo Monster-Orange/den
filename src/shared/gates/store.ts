@@ -6,7 +6,9 @@
  * ~/Library/Application Support/den/gate-slots (macOS), else
  * $XDG_STATE_HOME/den/gate-slots (~/.local/state). In it:
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
- *   settings.json     cpu_slots, overrun_margin_minutes,
+ *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
+ *                     local_browser_slots,
+ *                     overrun_margin_minutes,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
  *                     803: class_order, class_map, class_windows (text)
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
@@ -91,6 +93,10 @@ export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
 
 export type GateSettingsPatch = {
   cpu_slots?: number | null;
+  /** Issue 751: cpu runs beside a browser run here; 0: it runs alone. */
+  cpu_slots_beside_browser?: number | null;
+  /** Browser runs that may hold this machine at once (default 1). */
+  local_browser_slots?: number | null;
   overrun_margin_minutes?: number | null;
   remote_renew_seconds?: number | null;
   remote_lapse_seconds?: number | null;
@@ -131,6 +137,10 @@ export const GATE_LIMITS: Record<
   { min: number; max: number; int: boolean }
 > = {
   cpu_slots: { min: 1, max: 64, int: true },
+  // Issue 751: 0 is "a browser run runs alone".
+  cpu_slots_beside_browser: { min: 0, max: 64, int: true },
+  // Each local browser run is in its own container; 1 is one at a time.
+  local_browser_slots: { min: 1, max: 64, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   remote_renew_seconds: { min: 5, max: 3600, int: true },
   remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
@@ -138,7 +148,8 @@ export const GATE_LIMITS: Record<
   remote_max_asks: { min: 1, max: 256, int: true },
   // Issue 715: release priority. 0 turns it off; agents 1 yes, 0 no.
   priority_max: { min: 0, max: 16, int: true },
-  priority_pass_limit_minutes: { min: 1, max: 24 * 60, int: false },
+  // Issue 751: between marked runs only; 0: a marked run is never passed.
+  priority_pass_limit_minutes: { min: 0, max: 24 * 60, int: false },
   priority_agents: { min: 0, max: 1, int: true },
   // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
   priority_runners: { min: 0, max: 1, int: true },
@@ -362,6 +373,12 @@ export class GateStore {
       };
       return {
         cpuSlots: Math.floor(num("cpu_slots", GATE_DEFAULTS.cpuSlots)),
+        cpuSlotsBesideBrowser: Math.floor(
+          num("cpu_slots_beside_browser", GATE_DEFAULTS.cpuSlotsBesideBrowser),
+        ),
+        localBrowserSlots: Math.floor(
+          num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
