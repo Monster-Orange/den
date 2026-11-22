@@ -333,7 +333,7 @@ describe("switching theme or mode (criterion 5)", () => {
       startedAt: new Date().toISOString(),
       waitSeconds: 30,
       pid: process.pid,
-      by: "issue 748 test",
+      by: "start",
     });
     writeCheckState(stateDir, { everyMinutes: 60, next: null });
     const r = await request("POST", "/api/settings", {
