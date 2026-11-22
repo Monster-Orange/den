@@ -928,7 +928,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       });
     // Issue 302: the mock's frame 2 ("An agent opened"): on a phone an
     // agent open is the whole screen with no runs dock, so the To line is
-    // whole in the window (Den Design 11-18: frame 2 is meant as a rule).
+    // whole in the window (frame 2 is a rule, not one screen).
     const check = async (when: string, on: Page = p) => {
       const m = await look(on);
       const view = await on.evaluate(() => ({

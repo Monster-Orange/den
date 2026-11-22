@@ -599,6 +599,8 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     expect(sizes.map((s) => s[0])).toEqual([
       "Escape",
       "Control-C",
+      "Tab",
+      "Enter",
       "Up arrow",
       "Down arrow",
       "Left arrow",
@@ -629,6 +631,9 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       expect(typed("scout", from)).toContain(want);
     };
     await press("Control-C", "\x03");
+    // A menu's Tab and Enter (the box sends no empty line).
+    await press("Tab", "\t");
+    await press("Enter", "\r");
     await press("Escape", "\x1b");
     await press("Up arrow", "\x1b[A");
     await press("Right arrow", "\x1b[C");
@@ -744,7 +749,11 @@ describe.each(ENGINES)(
     it("an agent open keeps the runs dock", async () => {
       if (!browsers[engine]) return;
       const { p, errors } = await phone(engine, { width: 1180, height: 820 });
-      await openAgent(p, "scout");
+      // A tablet's agent opens as on a desktop: its terminal, no message
+      // box until the person asks for one.
+      const res = await p.goto(`${s.base}/p/north/agents/scout`);
+      expect(res?.status()).toBe(200);
+      await pane(p, "scout").locator(".term").waitFor({ timeout: 20_000 });
       const v = await p.evaluate(() => ({
         phoneAgent: document.body.hasAttribute("data-phone-agent"),
         dock:

@@ -2618,6 +2618,10 @@
     "ag.keys.escKey": "Esc",
     "ag.keys.ctrlc": "Control-C",
     "ag.keys.ctrlcKey": "Ctrl-C",
+    "ag.keys.tab": "Tab",
+    "ag.keys.tabKey": "Tab",
+    "ag.keys.enter": "Enter",
+    "ag.keys.enterKey": "Enter",
     "ag.keys.up": "Up arrow",
     "ag.keys.down": "Down arrow",
     "ag.keys.left": "Left arrow",
@@ -6755,7 +6759,8 @@
   // (the kit's breakpoint) starts so, from the first paint: the mock's
   // frame 1 shows the dock shut, frame 2 (an agent open, by its address)
   // shows none. The Agents page keeps both as panes open and close.
-  var PHONE_MQ = "(pointer: coarse), (max-width: 767.98px)";
+  // By width only: a tablet (a touch screen too) keeps its dock.
+  var PHONE_MQ = "(max-width: 767.98px)";
   var agentsPhone =
     page === "agents" &&
     !!(window.matchMedia && window.matchMedia(PHONE_MQ).matches);
@@ -8654,11 +8659,45 @@
       $("den-ap-review").setAttribute("aria-expanded", "false");
       $("den-ap-err").hidden = true;
     }
+    orderAsk(d, AP_WIDE, AP_NARROW);
     if (!d.open)
       apCss().then(function () {
         if (ap.shown && ap.shown.id === a.id && !d.open) d.showModal();
       });
   }
+  /**
+   * Issue 302: at phone width an ask's buttons stack, Allow first, then
+   * Deny, Review and Later (persona-ui.css). The DOM takes that order too,
+   * so the keyboard and a screen reader go through them as they are drawn;
+   * wider, the row's own order. `wide` and `narrow` are the buttons' ids.
+   */
+  var ASK_PHONE = "(max-width: 767.98px)";
+  function orderAsk(d, wide, narrow) {
+    var foot = d.querySelector(".btns");
+    if (!foot) return;
+    var mq = window.matchMedia && window.matchMedia(ASK_PHONE);
+    var ids = mq && mq.matches ? narrow : wide;
+    ids.forEach(function (id) {
+      var el = id ? foot.querySelector("#" + id) : foot.querySelector(".sp");
+      if (el) foot.appendChild(el);
+    });
+  }
+  var AP_WIDE = [
+    "den-ap-review",
+    "",
+    "den-ap-later",
+    "den-ap-deny",
+    "den-ap-allow",
+  ];
+  var AP_NARROW = [
+    "den-ap-allow",
+    "den-ap-deny",
+    "den-ap-review",
+    "den-ap-later",
+    "",
+  ];
+  var PAIR_WIDE = ["", "den-pair-later", "den-pair-deny", "den-pair-allow"];
+  var PAIR_NARROW = ["den-pair-allow", "den-pair-deny", "den-pair-later", ""];
   function apError(msg) {
     var e = apDialog().querySelector("#den-ap-err");
     e.textContent = msg;
@@ -8997,6 +9036,7 @@
     $("den-pair-deny").hidden = false;
     $("den-pair-allow").hidden = false;
     $("den-pair-allow").disabled = true;
+    orderAsk(d, PAIR_WIDE, PAIR_NARROW);
     if (!d.open) d.showModal();
     $("den-pair-code-in").focus();
   }

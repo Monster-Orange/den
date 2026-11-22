@@ -155,7 +155,8 @@ export function makeComposer({ t, name, send, onClose, draft, holds = false }) {
   el.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (busy) return;
-    const text = ta.value.trim();
+    const raw = ta.value;
+    const text = raw.trim();
     if (!text && !shared.length) {
       say(t("agc.empty"), "warn");
       ta.focus();
@@ -176,9 +177,12 @@ export function makeComposer({ t, name, send, onClose, draft, holds = false }) {
           ? { text, context, button: sendBtn }
           : { text, button: sendBtn },
       );
-      // What was sent, not what was typed since: a draft written while it
-      // went stays.
-      if (ta.value.trim() === text) ta.value = "";
+      // What was sent goes, and only that: words typed while it went stay,
+      // so a second Send never sends the first again. A box changed some
+      // other way meanwhile (not only added to) stays as it is.
+      ta.value = ta.value.startsWith(raw)
+        ? ta.value.slice(raw.length).trimStart()
+        : ta.value;
       keepDraft(draft, ta.value, store);
       shared = [];
       paintChips();

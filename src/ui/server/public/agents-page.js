@@ -1905,8 +1905,12 @@ function paintTabs(strip) {
     .join("");
 }
 
-/** The kit's phone (phone.css): a touch screen, or 767.98px and under. */
-const KIT_PHONE = "(pointer: coarse), (max-width: 767.98px)";
+/**
+ * The kit's phone width (phone.css): 767.98px and under. By width only: a
+ * tablet is a touch screen too, and keeps its runs dock (a coarse pointer
+ * only sizes the 44px targets).
+ */
+const KIT_PHONE = "(max-width: 767.98px)";
 
 /**
  * Issue 302, the mock's frames 1 and 2: on a phone, an agent open has no
@@ -1982,6 +1986,8 @@ function toggleTermKeys(p) {
   const face = {
     esc: t("ag.keys.escKey"),
     ctrlc: t("ag.keys.ctrlcKey"),
+    tab: t("ag.keys.tabKey"),
+    enter: t("ag.keys.enterKey"),
     up: "↑",
     down: "↓",
     left: "←",
@@ -3117,6 +3123,13 @@ function pathAnchor(p, e) {
 }
 
 async function openPane(id, { front = true } = {}) {
+  // Issue 302: a pane coming to the front, however it opens (a row, New
+  // agent, Open it), is the phone's screen: the list screen after Back ends.
+  if (front && st.phoneList) {
+    st.listTop = st.root.querySelector("#agl")?.scrollTop ?? st.listTop;
+    st.phoneList = false;
+    paintPhoneDock();
+  }
   if (st.panes.has(id)) {
     st.panes.get(id).term?.focus();
     return;

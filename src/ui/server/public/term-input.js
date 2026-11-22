@@ -187,7 +187,16 @@ export function imeOnce(el, typeIn) {
 }
 
 /** Issue 302: a phone's Terminal keys row, in the mock's order. */
-export const TERM_KEYS = ["esc", "ctrlc", "up", "down", "left", "right"];
+export const TERM_KEYS = [
+  "esc",
+  "ctrlc",
+  "tab",
+  "enter",
+  "up",
+  "down",
+  "left",
+  "right",
+];
 
 const ARROWS = { up: "A", down: "B", right: "C", left: "D" };
 
@@ -199,6 +208,10 @@ const ARROWS = { up: "A", down: "B", right: "C", left: "D" };
 export function termKeySeq(key, appCursor = false) {
   if (key === "esc") return "\x1b";
   if (key === "ctrlc") return "\x03";
+  // A phone's terminal raises no keyboard and the message box sends no
+  // empty line: a menu's Tab and Enter come from here.
+  if (key === "tab") return "\t";
+  if (key === "enter") return "\r";
   const a = ARROWS[key];
   if (!a) return "";
   return (appCursor ? "\x1bO" : "\x1b[") + a;
