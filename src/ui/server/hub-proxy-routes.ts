@@ -51,7 +51,11 @@ const READ_ONLY_PATHS: readonly string[] = ["/f/*"];
 const SNIFF_BYTES = 64 * 1024;
 /** A JSON-RPC call (or a batch) asking for the tool list. */
 const TOOLS_LIST = /"method"\s*:\s*"tools\/list"/;
-/** A JSON-RPC answer with a result (JSON or an event stream's data line). */
+/**
+ * A JSON-RPC answer with a result (JSON or an event stream's data line).
+ * Limit: in a batch where tools/list fails beside a call that has a result,
+ * the listing reads as ok (ids aren't matched). Runtimes list on their own.
+ */
 const RESULT = /"result"\s*:/;
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "DELETE"]);
