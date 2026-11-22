@@ -9,8 +9,9 @@
  *
  * An override only changes what the base already has: a key (or service)
  * the base lacks is an error (see overrideKeyErrors), so a typo can never
- * add a silent dead key. The one exception is a service's placement (`runs`,
- * `target`), which an override may add to a service the base has.
+ * add a silent dead key. The exceptions are a service's placement (`runs`,
+ * `target`), which an override may add to a service the base has, and a
+ * `review:` section (issue 798), which may only tighten the default.
  */
 
 import type { ValidationError } from "../types/index.js";
@@ -47,6 +48,13 @@ export function mergeOverride(
  */
 const ADDABLE_SERVICE_KEYS = new Set(["runs", "target"]);
 
+/**
+ * Top-level sections an override may add when the base has none. `review`
+ * (issue 798): the base then has the default rule, and an override may
+ * tighten it; validate-layers.ts refuses one that loosens.
+ */
+const ADDABLE_TOP_KEYS = new Set(["review"]);
+
 export function overrideKeyErrors(
   base: ManifestMap,
   override: ManifestMap,
@@ -57,6 +65,8 @@ export function overrideKeyErrors(
   for (const [key, value] of Object.entries(override)) {
     const here = [...at, key];
     if (!(key in base) && inService && ADDABLE_SERVICE_KEYS.has(key)) continue;
+    if (!(key in base) && at.length === 0 && ADDABLE_TOP_KEYS.has(key))
+      continue;
     if (!(key in base)) {
       const isService = at.length === 1 && at[0] === "services";
       errors.push({

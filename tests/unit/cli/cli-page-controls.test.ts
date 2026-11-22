@@ -124,6 +124,8 @@ const LISTING: Record<string, Entry> = {
 
   "notifications list": R,
   "notifications read": page("bell.js", "/api/notifications"),
+  // Issue 1008: an agent withdraws its own question (its token).
+  ask: script("an agent withdraws its own question, settled elsewhere"),
 
   // The shared GitHub watcher's line: doctor shows it too (a read).
   "github status": R,

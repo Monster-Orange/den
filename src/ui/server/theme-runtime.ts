@@ -307,6 +307,38 @@ const BASE_CSS = [
 ];
 
 /**
+ * Issue 168: the eight project colours, per mode, as tokens (--pc-<name>).
+ * None orange or red; each 3:1 against the page in its mode. For edges,
+ * dots and tiles only: text is never coloured by project. Every theme
+ * gets them: they mark projects, not a brand.
+ */
+export const PROJECT_COLOUR_TOKENS: Record<
+  ThemeMode,
+  Record<string, string>
+> = {
+  light: {
+    blue: "hsl(212 70% 42%)",
+    teal: "hsl(176 60% 30%)",
+    green: "hsl(135 50% 30%)",
+    purple: "hsl(272 50% 48%)",
+    pink: "hsl(330 60% 44%)",
+    gold: "hsl(44 80% 36%)",
+    brown: "hsl(25 40% 34%)",
+    slate: "hsl(215 14% 40%)",
+  },
+  dark: {
+    blue: "hsl(212 80% 66%)",
+    teal: "hsl(176 55% 55%)",
+    green: "hsl(135 45% 58%)",
+    purple: "hsl(272 70% 76%)",
+    pink: "hsl(330 70% 70%)",
+    gold: "hsl(44 85% 60%)",
+    brown: "hsl(25 45% 62%)",
+    slate: "hsl(215 18% 68%)",
+  },
+};
+
+/**
  * The theme as CSS: @font-face for its fonts, type and shape on :root, and
  * one block of color tokens per mode, selected by <html data-mode>. The
  * theme's default mode also applies when data-mode is unset. Then Den's
@@ -349,6 +381,8 @@ export function renderThemeCss(id: string, theme: ThemeManifest): string {
     // den-ui UK-1: only when set; else the kit's tokens.css default holds.
     for (const t of OPTIONAL_COLOR_TOKENS)
       if (c[t]) lines.push(`  --${t}: ${c[t]};`);
+    for (const [name, v] of Object.entries(PROJECT_COLOUR_TOKENS[mode]))
+      lines.push(`  --pc-${name}: ${v};`);
     lines.push(
       `  --shadow: ${c.shadow ?? (mode === "dark" ? "0 12px 30px rgb(0 0 0 / 0.5)" : "0 8px 24px rgb(0 0 0 / 0.14)")};`,
       `  --bar: ${c.bar ?? "none"};`,

@@ -21,6 +21,8 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { fixturePersonPath } from "../../shared/fixture-person.js";
+import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
@@ -1254,6 +1256,38 @@ function addressLastAnswered(): string | null {
 }
 
 /**
+ * Issue 1018: doctor's Sign-in row for a test install's fixture person:
+ * how its key was made (the launcher's setup value, Set up test person,
+ * or at creation). Null when there's no key.
+ */
+export function fixtureMadeByLine(
+  hasKey: boolean,
+  how: import("../../shared/fixture-setup-secret.js").FixtureMadeBy | null,
+): string | null {
+  if (!hasKey) return null;
+  const words =
+    how === "setup-secret"
+      ? "made from the setup secret"
+      : how === "settings"
+        ? "made by Settings › Access › Set up test person"
+        : how === "creation"
+          ? "made at creation (a new test install)"
+          : "set up (how isn't recorded)";
+  return `  test person  ✓  ${words}`;
+}
+
+function fixtureLineNow(): string | null {
+  try {
+    return fixtureMadeByLine(
+      fs.existsSync(fixturePersonPath(getStateDir())),
+      readFixtureMadeBy(getStateDir()),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Where the browser sign-in lives. With a working https address (web.url,
  * through the edge) the session cookie lives only there, host-only and
  * Secure. Without one it lives on the host the person uses (localhost
@@ -2019,6 +2053,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       addressLastAnswered(),
     ).lines)
       console.log(l);
+    const fx = fixtureLineNow();
+    if (fx) console.log(fx);
   }
   for (const l of pushContactLines(
     readWebUrl(),
