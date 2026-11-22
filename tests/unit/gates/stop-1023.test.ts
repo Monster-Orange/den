@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { GATE_RUN_SIGNALS } from "../../../src/ui/cli/gate-command.js";
 
 const tmps: string[] = [];
 const kids: ChildProcess[] = [];
@@ -101,7 +102,17 @@ describe("issue 1023: a stopped gate run frees its slot at once", () => {
       ]);
     }, 30_000);
 
-  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP", "SIGQUIT"] as const)
+  // Every signal gate run passes on (gate-command.ts, which run-child.ts runs).
+  it("passes on SIGINT, SIGTERM, SIGHUP and SIGQUIT", () => {
+    expect([...GATE_RUN_SIGNALS].sort()).toEqual([
+      "SIGHUP",
+      "SIGINT",
+      "SIGQUIT",
+      "SIGTERM",
+    ]);
+  });
+
+  for (const sig of GATE_RUN_SIGNALS)
     it(`${sig} to gate run passes to the command and frees the slot within 2 s`, async () => {
       const { store, k, sleeper } = await holding();
       k.kill(sig);
