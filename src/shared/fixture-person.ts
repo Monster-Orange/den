@@ -324,6 +324,9 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/report\/drafts$/],
   ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
+  // Issue 943: a message to the bed's own stub agents (agent-routes.ts
+  // fixtureMaySay refuses any other agent, and any other install).
+  ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/say$/],
 ];
 
 /** Reads never open to a fixture session, whatever their route class. */

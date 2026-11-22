@@ -8158,7 +8158,12 @@ async function handleRequest(
   // ── The server agent (ON-6, server-agent-routes.ts) ──────────────────────
   if (await handleServerAgentRoutes(req, res, pathname)) return;
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
-  if (await handleAgentRoutes(req, res, pathname)) return;
+  if (
+    await handleAgentRoutes(req, res, pathname, {
+      testInstall: () => testInstallNow(),
+    })
+  )
+    return;
   // ── The Agents tab's list (AG-4a-term, session-routes.ts) ────────────────
   // Beyond loopback a terminal needs a signed-in session (or a bearer).
   if (

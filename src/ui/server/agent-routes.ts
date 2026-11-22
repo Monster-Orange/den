@@ -225,6 +225,7 @@ import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  isFixturePrincipal,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -243,7 +244,23 @@ import {
   type HostRefreshState,
 } from "../../shared/sessions/host-refresh-state.js";
 
+/**
+ * Issue 943: whether the fixture person may send `rec` a message: only on
+ * a test install, only to an agent Den marked as the bed's own when it
+ * started it on the test-person path, and never in Den's own server
+ * workspace.
+ */
+export function fixtureMaySay(
+  rec: Pick<AgentRecord, "testBed">,
+  ws: string,
+  testInstall: boolean,
+): boolean {
+  return testInstall && rec.testBed === true && !isServerScope(ws);
+}
+
 export interface AgentRouteDeps {
+  /** Issue 943: whether this install is a test install now (fixture-person.ts). */
+  testInstall?: () => boolean;
   /** The operations' deps (tests: an in-process host, a temp state dir). */
   agents?: AgentsDeps;
   /** When a first instruction counts its session ready (tests: shorter). */
@@ -1018,7 +1035,21 @@ export async function handleAgentRoutes(
       });
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
-    if (verb === "say" && (agent || actor))
+    // Issue 943: the fixture person (a test install's live checks) may
+    // message the bed's own stub agents, and only those (fixtureMaySay).
+    if (
+      verb === "say" &&
+      (agent || actor) &&
+      !(
+        !agent &&
+        isFixturePrincipal(req) &&
+        fixtureMaySay(
+          agentRecord(d, id!, ws),
+          ws,
+          deps.testInstall?.() === true,
+        )
+      )
+    )
       throw new AgentError("only a person can send an agent a message", {
         status: 403,
       });

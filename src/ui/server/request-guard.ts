@@ -1218,6 +1218,12 @@ export function runnerPrincipalOf(
   return p?.kind === "gate-runner" ? p : null;
 }
 
+/** Issue 943: whether the request is the fixture person's browser (issue 810). */
+export function isFixturePrincipal(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person-browser" && p.fixture === true;
+}
+
 /** The agent a request's actor token proves (SEC-1c), if any. */
 export function agentPrincipalOf(
   req: http.IncomingMessage,

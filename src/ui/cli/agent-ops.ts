@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { auditVia } from "../../shared/test-person.js";
 import {
   agentOrderOf,
   inAgentOrder,
@@ -3859,6 +3860,10 @@ export async function startAgent(
               ? { resumeToken: out.resumeToken, launched: true }
               : {}),
             ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
+            // Issue 943: started on the test-person path, never brought in.
+            ...(auditVia() === "test-person" && !more.bringIn
+              ? { testBed: true as const }
+              : {}),
             // D56: started outside its project, brought in by an ask naming
             // that folder.
             ...(more.bringIn?.outside ? { outside: true } : {}),
