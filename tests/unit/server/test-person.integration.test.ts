@@ -113,6 +113,32 @@ function agentToken(den: Den): string {
   return token;
 }
 
+/**
+ * `<cli> <args>` on `den` with the environment a CLI on the test-person
+ * path leaves its children: no agent markers, the path's own tag.
+ */
+function cliAsChild(den: Den, args: string[]) {
+  return spawnSync(
+    TSX,
+    [path.join(ENGINE, "src", "ui", "cli", "index.ts"), ...args],
+    {
+      cwd: den.root,
+      encoding: "utf-8",
+      timeout: 90_000,
+      env: {
+        ...baseEnv(),
+        DEN_ROOT: den.root,
+        DEN_ENGINE_ROOT: ENGINE,
+        DEN_HOME: den.stateDir,
+        HOME: den.home,
+        NO_COLOR: "1",
+        CI: "1",
+        DEN_TEST_PERSON: "1",
+      },
+    },
+  );
+}
+
 /** `<cli> <args>` on `den`, from an agent-like environment. */
 function cliAsAgent(den: Den, args: string[]) {
   const token = agentToken(den);
@@ -300,6 +326,31 @@ describe("2. on a test bed --test-person acts as the person, on the record", () 
       ),
     ).toBe(false);
   });
+});
+
+describe("2b. a child the CLI starts on the test-person path", () => {
+  it("a child the CLI starts on the test-person path is tagged as that path", () => {
+    const before = auditRows(bed).length;
+    const r = cliAsChild(bed, ["notifications", "clear"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Cleared/);
+    const rows = auditRows(bed).slice(before);
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        verb: "test-person",
+        via: "test-person",
+        principal: `person:${os.userInfo().username}`,
+      }),
+    );
+  }, 120_000);
+
+  it("the same tag on an install that isn't a bound test bed: refused, nothing done", () => {
+    const before = doneRows(noflag).length;
+    const r = cliAsChild(noflag, ["notifications", "clear"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/isn't a test bed/);
+    expect(doneRows(noflag).length).toBe(before);
+  }, 120_000);
 });
 
 describe("3. the mark can't be set or cleared through an agent's token", () => {

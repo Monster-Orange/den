@@ -31,12 +31,14 @@ import { auditConfig } from "../../../src/shared/config-audit.js";
 import {
   enterTestPerson,
   testBedLines,
+  testPersonAsked,
 } from "../../../src/ui/cli/test-person.js";
 import {
   parseCreateArgs,
   renderDistribution,
 } from "../../../src/ui/cli/create.js";
 import { parseCliArgs } from "../../../src/ui/cli/flag-parser.js";
+import { isPersonCredentialEnv } from "../../../src/shared/actor-token.js";
 
 let tmp = "";
 beforeEach(() => {
@@ -171,6 +173,25 @@ describe("entering the test-person path", () => {
     );
     expect(t.calls).toEqual(["agents stop"]);
     expect(t.env.DEN_AGENT).toBe("stub");
+  });
+
+  it("a refusal leaves no tag for children", async () => {
+    const t = deps({ mark: false });
+    await expect(enterTestPerson("agents stop", t.d)).rejects.toThrow();
+    expect(t.env.DEN_TEST_PERSON).toBeUndefined();
+  });
+
+  it("allowed: the children it starts inherit the path's tag", async () => {
+    const t = deps({ mark: true });
+    await enterTestPerson("agents stop", t.d);
+    expect(t.env.DEN_TEST_PERSON).toBe("1");
+    expect(testPersonAsked({ testPerson: undefined }, t.env)).toBe(true);
+    expect(testPersonAsked({}, {})).toBe(false);
+    expect(testPersonAsked({ testPerson: true }, {})).toBe(true);
+  });
+
+  it("the tag never reaches an agent's session (a person's credential there)", () => {
+    expect(isPersonCredentialEnv("DEN_TEST_PERSON", "1")).toBe(true);
   });
 
   it("a test bed: the server is told, then the CLI acts as the person", async () => {

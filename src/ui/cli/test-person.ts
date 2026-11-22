@@ -9,6 +9,7 @@ import { getDistRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import {
   dropAgentMarkers,
+  TEST_PERSON_ENV,
   notTestBedRefusal,
   useTestPerson,
 } from "../../shared/test-person.js";
@@ -113,6 +114,17 @@ export async function enterTestPerson(
     throw new Error(r.error);
   }
   dropAgentMarkers(d.env);
+  // The processes it starts are on the path too (a Den CLI among them
+  // enters it with the same checks).
+  d.env[TEST_PERSON_ENV] = "1";
+}
+
+/** Whether this run asks for the path: the flag, or a parent's tag. */
+export function testPersonAsked(
+  flags: { testPerson?: boolean },
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return flags.testPerson === true || env[TEST_PERSON_ENV] === "1";
 }
 
 /** `doctor`'s rows: whether this install is a test bed. */

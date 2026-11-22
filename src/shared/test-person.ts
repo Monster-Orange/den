@@ -18,12 +18,21 @@
  *  - The server refuses the header with any credential but the person's
  *    token, on any install that isn't a test bed, and from beyond this
  *    machine (request-guard.ts).
+ *  - The processes the CLI starts on the path inherit TEST_PERSON_ENV: a
+ *    Den CLI among them enters the path itself (the same checks), so its
+ *    rows say so too. No agent's session gets it (a person's credential).
  *  - Every audit row made on the path carries `via: "test-person"` (auditVia):
  *    the server's, for each request that came with the header, and the
  *    CLI's own.
  */
 import { AsyncLocalStorage } from "async_hooks";
-import { ACTOR_TOKEN_ENV, ACTOR_TOKEN_FILE_ENV } from "./actor-token.js";
+import {
+  ACTOR_TOKEN_ENV,
+  ACTOR_TOKEN_FILE_ENV,
+  TEST_PERSON_ENV,
+} from "./actor-token.js";
+
+export { TEST_PERSON_ENV };
 import { AGENT_ACTOR_ENV } from "./sessions/env.js";
 
 /** The CLI's global flag. */

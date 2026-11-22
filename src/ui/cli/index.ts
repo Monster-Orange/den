@@ -810,11 +810,15 @@ class DenCLI {
         const parsed = parseCliArgs(args);
         telCmd = telemetryCommandName(parsed.command);
         // Issue 636: a test bed's driver acting as the person; refused
-        // (and nothing runs) anywhere else.
-        if (parsed.flags.testPerson) {
-          const { enterTestPerson, testPersonCommand } =
+        // (and nothing runs) anywhere else. A parent on the path leaves
+        // its children its tag.
+        {
+          const { enterTestPerson, testPersonAsked, testPersonCommand } =
             await import("./test-person.js");
-          await enterTestPerson(testPersonCommand(parsed.command, parsed.args));
+          if (testPersonAsked(parsed.flags))
+            await enterTestPerson(
+              testPersonCommand(parsed.command, parsed.args),
+            );
         }
         if (!this.applyGlobalFlags(parsed)) return;
         this.prepareServiceCommand(parsed.command);
