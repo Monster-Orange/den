@@ -4452,74 +4452,35 @@
   function saveShell(patch, at) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
-    var changedAt = typeof at === "number" ? at : Date.now();
-    notePending(patch, changedAt);
-    return DUI.saveShell("/api/settings/shell", patch, {
-      changedAt: changedAt,
-    }).then(function (ok) {
-      if (ok) clearPending(patch, changedAt);
-      return ok;
-    });
+    var opts = { pending: pendingStore() };
+    if (typeof at === "number") opts.changedAt = at;
+    return DUI.saveShell("/api/settings/shell", patch, opts);
   }
   /**
-   * Issue 394: a save not yet confirmed, per key, with when it was made.
-   * The next page may read the server's copy before a save sent as this
-   * page left has landed: it keeps these over that older copy, and sends
-   * them again with the same time (the server stores a repeat once).
+   * Issue 394 (den-ui 0.11.0): where a save no answer came back for is
+   * kept, and whose it is. The next page may read the server's copy
+   * before a save sent as this page left has landed; DUI.pendingOver lays
+   * what is kept over that copy, unless it is too old, someone else's, or
+   * the server has a newer save of the key.
    */
-  var PENDING_LS = LS + "-pending";
-  function readPending() {
+  function pendingStore() {
+    var storage = null;
     try {
-      var v = JSON.parse(localStorage.getItem(PENDING_LS) || "{}");
-      return v && typeof v === "object" ? v : {};
+      storage = window.localStorage;
     } catch (e) {
-      return {};
+      /* no storage: nothing is kept */
     }
+    if (!storage) return undefined;
+    var id = state.identity;
+    var who =
+      id && id.login
+        ? String(id.login)
+        : id && id.owner && id.owner.login
+          ? String(id.owner.login)
+          : null;
+    return { storage: storage, key: LS + "-pending", who: who };
   }
-  function writePending(v) {
-    try {
-      if (Object.keys(v).length)
-        localStorage.setItem(PENDING_LS, JSON.stringify(v));
-      else localStorage.removeItem(PENDING_LS);
-    } catch (e) {
-      /* a convenience only */
-    }
-  }
-  function notePending(patch, at) {
-    var v = readPending();
-    Object.keys(patch || {}).forEach(function (k) {
-      v[k] = { value: patch[k], at: at };
-    });
-    writePending(v);
-  }
-  function clearPending(patch, at) {
-    var v = readPending();
-    Object.keys(patch || {}).forEach(function (k) {
-      if (v[k] && v[k].at === at) delete v[k];
-    });
-    writePending(v);
-  }
-  /** The server's shell block, with this browser's unconfirmed saves over it. */
-  function withPending(shell) {
-    var v = readPending();
-    var out = {};
-    Object.keys(shell).forEach(function (k) {
-      out[k] = shell[k];
-    });
-    Object.keys(v).forEach(function (k) {
-      if (v[k] && typeof v[k].at === "number") out[k] = v[k].value;
-    });
-    return out;
-  }
-  function resendPending() {
-    var v = readPending();
-    Object.keys(v).forEach(function (k) {
-      if (!v[k] || typeof v[k].at !== "number") return;
-      var patch = {};
-      patch[k] = v[k].value;
-      saveShell(patch, v[k].at);
-    });
-  }
+
   /**
    * Issue 402: pins as the server and older copies hold them: { item,
    * project } (project null: none); a bare id (this browser's copy from
@@ -9025,7 +8986,11 @@
       .then(function (s) {
         if (s && s.feedback_enabled === false) setState({ reportOff: true });
         if (!s || !s.shell) return markPrefsApplied();
-        s.shell = withPending(s.shell);
+        var store = pendingStore();
+        var over = store
+          ? DUI.pendingOver(store, s.shell, s.shell_changed_at)
+          : { shell: s.shell, resend: [] };
+        s.shell = over.shell;
         setState({
           pinList: pinTuples(s.shell.pins),
           pinsLoaded: true,
@@ -9038,7 +9003,9 @@
         });
         remember();
         dockFromPrefs();
-        resendPending();
+        over.resend.forEach(function (r) {
+          saveShell(r.patch, r.at);
+        });
         markPrefsApplied();
       })
       .catch(markPrefsApplied);

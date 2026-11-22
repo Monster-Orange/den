@@ -552,6 +552,7 @@ import {
   SHELL_SAVE_SKEW_SECONDS,
   type PinProjects,
   type ShellSaveClock,
+  shellChangedAt,
   shellPrefs,
 } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -8486,6 +8487,8 @@ async function handleRequest(
         graph: graphPrefs(user.graph),
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell, pinProjects()),
+        // Issue 394: when each shell key was saved (a page's unanswered save).
+        shell_changed_at: shellChangedAt(user.shell),
         agents_layout: agentsLayout(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),

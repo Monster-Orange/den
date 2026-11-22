@@ -291,6 +291,8 @@ const KIT_SHELL_NAMES = [
   "setWaiting",
   // den-ui 0.10.0 (issue 394): a rail change saved as the page goes.
   "saveShell",
+  // den-ui 0.11.0: unanswered saves over the server's copy.
+  "pendingOver",
 ];
 
 /**

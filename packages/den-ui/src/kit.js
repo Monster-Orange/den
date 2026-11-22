@@ -48,6 +48,8 @@
  *                               rail change saved so leaving the page
  *                               can't lose it: keepalive, then a beacon if
  *                               the page hides first (save-shell.js)
+ *   DenUI.pendingOver(store, shell, stamps)  (0.11.0) unanswered saves laid
+ *                               over the server's copy, and those to resend
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
@@ -116,7 +118,7 @@ import {
 import { configureReport, openReport } from "./report.js";
 import { showUpdate } from "./update-pill.js";
 import { busyAction, configureBusy, pending, watchForms } from "./busy.js";
-import { saveShell } from "./save-shell.js";
+import { pendingOver, saveShell } from "./save-shell.js";
 import { createSaveState } from "./savestate.js";
 import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
@@ -364,6 +366,7 @@ const DenUI = {
   report,
   busy,
   saveShell,
+  pendingOver,
   saveState,
   filterBar,
   bulkBar,

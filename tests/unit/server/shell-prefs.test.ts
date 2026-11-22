@@ -9,6 +9,7 @@ import {
   MAX_PINS,
   applyShellSave,
   mergeShellPrefs,
+  shellChangedAt,
   shellPrefs,
   storedShell,
 } from "../../../src/ui/server/shell-prefs.js";
@@ -324,5 +325,18 @@ describe("issue 394 review: inherited names and far-future stamps", () => {
     );
     expect(r.ok && r.ignored).toEqual([]);
     expect(r.ok && r.value).toEqual({ changedAt: { collapsed: 2_000_000 } });
+  });
+});
+
+describe("issue 394: the per-key save times a page compares against", () => {
+  it("serves the stored times of known keys only", () => {
+    expect(
+      shellChangedAt({
+        pins: [],
+        changedAt: { pins: 1500, collapsed: 7, bogus: 9, dock: "x", order: -1 },
+      }),
+    ).toEqual({ pins: 1500, collapsed: 7 });
+    expect(shellChangedAt(undefined)).toEqual({});
+    expect(shellChangedAt({ changedAt: "no" })).toEqual({});
   });
 });

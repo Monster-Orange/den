@@ -8,7 +8,7 @@ import type {
   pending,
   watchForms,
 } from "./busy.js";
-import type { saveShell } from "./save-shell.js";
+import type { pendingOver, saveShell } from "./save-shell.js";
 import type {
   AccountHydrateOptions,
   AppearanceHandle,
@@ -255,6 +255,7 @@ export interface DenUIKit {
   report: typeof report;
   busy: typeof busy;
   saveShell: typeof saveShell;
+  pendingOver: typeof pendingOver;
   saveState: typeof saveState;
   filterBar: typeof filterBar;
   bulkBar: typeof bulkBar;

@@ -24,6 +24,82 @@
  */
 export const KEEPALIVE_MAX_BYTES = 64 * 1024;
 
+/**
+ * den-ui 0.11.0 (issue 394): a save no answer came back for. The page
+ * that made it may be gone before the server answers, and the next page
+ * may read the server's copy before the save lands. With
+ * `opts.pending = { storage, key, who }`, saveShell keeps each key's value
+ * and time in `storage` until any answer comes back (saved or refused:
+ * either way the server has decided), and pendingOver lays what is still
+ * kept over the server's copy, so that page doesn't show the old value.
+ *
+ * An entry is dropped, never laid over, when it is older than
+ * PENDING_MAX_AGE_MS, when the server has a newer save of its key (another
+ * device's: `stamps`, the server's per-key times), or when it was made by
+ * someone else (`who`, when both are known).
+ */
+export const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
+
+function readPending(store) {
+  try {
+    const v = JSON.parse(store.storage.getItem(store.key) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+function writePending(store, v) {
+  try {
+    if (Object.keys(v).length)
+      store.storage.setItem(store.key, JSON.stringify(v));
+    else store.storage.removeItem(store.key);
+  } catch {
+    /* a convenience only */
+  }
+}
+function notePending(store, patch, at) {
+  const v = readPending(store);
+  for (const k of Object.keys(patch || {}))
+    v[k] = { value: patch[k], at, who: store.who ?? null };
+  writePending(store, v);
+}
+function settlePending(store, patch, at) {
+  const v = readPending(store);
+  for (const k of Object.keys(patch || {})) if (v[k]?.at === at) delete v[k];
+  writePending(store, v);
+}
+
+/**
+ * The server's shell block with this browser's unanswered saves over it,
+ * and the saves to send again (each with its own time, so the server
+ * stores a repeat once). Entries that may not be laid over are removed.
+ */
+export function pendingOver(store, shell, stamps, now = Date.now()) {
+  const v = readPending(store);
+  const out = { ...(shell || {}) };
+  const resend = [];
+  let changed = false;
+  for (const [k, e] of Object.entries(v)) {
+    const at = e && typeof e.at === "number" ? e.at : NaN;
+    const theirs = stamps && typeof stamps[k] === "number" ? stamps[k] : -1;
+    const stale =
+      !Number.isFinite(at) ||
+      now - at > PENDING_MAX_AGE_MS ||
+      at > now + PENDING_MAX_AGE_MS ||
+      theirs >= at ||
+      (store.who != null && e.who != null && e.who !== store.who);
+    if (stale) {
+      delete v[k];
+      changed = true;
+      continue;
+    }
+    out[k] = e.value;
+    resend.push({ patch: { [k]: e.value }, at });
+  }
+  if (changed) writePending(store, v);
+  return { shell: out, resend };
+}
+
 /** A string's size in UTF-8 bytes (an upper bound without TextEncoder). */
 function byteSize(s) {
   if (typeof TextEncoder === "function")
@@ -37,6 +113,16 @@ export function saveShell(url, patch, opts = {}) {
       ? opts.changedAt
       : Date.now();
   const body = JSON.stringify({ shell: { ...(patch || {}), changedAt } });
+  const store =
+    opts.pending && opts.pending.storage && opts.pending.key
+      ? opts.pending
+      : null;
+  if (store) notePending(store, patch, changedAt);
+  /** The server answered (saved or refused): nothing is left to keep. */
+  const answered = (r) => {
+    if (store && r) settlePending(store, patch, changedAt);
+    return !!r && r.ok !== false;
+  };
   const win = typeof window !== "undefined" ? window : null;
   const doc = typeof document !== "undefined" ? document : null;
   let settled = false;
@@ -88,10 +174,7 @@ export function saveShell(url, patch, opts = {}) {
     } catch (e) {
       plain = Promise.reject(e);
     }
-    return Promise.resolve(plain).then(
-      (r) => !!r && r.ok !== false,
-      () => false,
-    );
+    return Promise.resolve(plain).then(answered, () => false);
   }
   if (typeof fetch !== "function") {
     beacon();
@@ -112,7 +195,7 @@ export function saveShell(url, patch, opts = {}) {
     sent = Promise.reject(e);
   }
   return Promise.resolve(sent).then(
-    (r) => done(!!r && r.ok !== false),
+    (r) => done(answered(r)),
     () => {
       // Cancelled as the page went: the beacon is the save.
       const hidden = doc && doc.visibilityState === "hidden";

@@ -324,6 +324,21 @@ const isStamp = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= 0;
 
 /**
+ * Issue 394: the stored per-key save times, served beside the shell block
+ * (GET /api/settings `shell_changed_at`), so a page can tell whether a
+ * save of its own that no answer came back for is older than the
+ * server's (another device saved the key since). Own known keys only.
+ */
+export function shellChangedAt(stored: unknown): ShellStamps {
+  const out: ShellStamps = {};
+  if (!isObject(stored) || !isObject(stored.changedAt)) return out;
+  for (const [k, v] of Object.entries(stored.changedAt))
+    if (Object.hasOwn(SHELL_DEFAULTS, k) && isStamp(v))
+      out[k as keyof ShellPrefs] = v;
+  return out;
+}
+
+/**
  * POST /api/settings/shell's body cap, in KB (web.shell_save_max_kb). The
  * largest valid shell block (24 pins, 64 page ids twice, 1,000 project
  * names) is under 100 KB.
