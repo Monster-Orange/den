@@ -362,11 +362,12 @@ describe("#80: scope wins", () => {
       );
     await p.keyboard.type("zz-stop-ship");
     // Wait until the typing has reached some PTY (a loaded runner can take
-    // longer than a fixed pause), then hold it to exactly bo's.
-    for (let t = Date.now(); !reached().length && Date.now() - t < 10_000; )
-      await p.waitForTimeout(100);
-    // A moment more, so a second PTY wrongly reached would show too.
-    await p.waitForTimeout(300);
+    // longer than a fixed pause), then hold it to exactly bo's. The keys go
+    // down one connection, so a wrongly reached PTY would get them in the
+    // same writes as bo's, not later.
+    await expect
+      .poll(() => reached().length, { timeout: 10_000, intervals: [100] })
+      .toBeGreaterThan(0);
     expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
