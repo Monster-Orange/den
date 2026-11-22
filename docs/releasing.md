@@ -15,16 +15,21 @@ git tag -s -a v1.2.3-dev.N -m "items: <the issues it carries>"
 git push origin v1.2.3-dev.N
 ```
 
-A lightweight tag, or one GitHub doesn't show as verified, can't be
-promoted. Pushing the tag starts the release's dry run
+Sign it with a key listed in `.github/release-signers` (an SSH
+allowed-signers file). A lightweight tag, an unsigned one, or one signed
+by another key can't be promoted. To let another key sign candidates, add
+its line to that file in a pull request to `main`. Pushing the tag starts the release's dry run
 (`release-dry-run.yml`).
 
 ## 2. Record the bed's verdict
 
 Whoever runs the candidate on a test bed records its verdict as a commit
 status on the dev tag's commit. The context is `release/bed`, or the
-repository variable `RELEASE_BED_CONTEXT` when it is set. Only `success`
-lets the candidate be promoted:
+repository variable `RELEASE_BED_CONTEXT` when it is set. Only the newest
+status in that context counts, only `success` lets the candidate be
+promoted, and only when it was set by a GitHub login listed in the
+repository variable `RELEASE_BED_CREATORS` (comma or space separated).
+With no login listed, nothing can be promoted.
 
 ```sh
 sha=$(git rev-parse v1.2.3-dev.N^{commit})
@@ -34,16 +39,18 @@ gh api --method POST "repos/<owner>/<repo>/statuses/$sha" \
 ```
 
 A failed run records `-f state=failure`. A failure is fixed in a new dev
-tag, never by setting `success` on the old one. The tester needs write
-access to the repository (a token with the `repo:status` scope is enough).
+tag, never by setting `success` on the old one. The tester's token needs
+the right to set commit statuses (`repo:status`, or `statuses: write`),
+and the tester's login must be in `RELEASE_BED_CREATORS`.
 
 ## 3. Promote it
 
 On the release branch, make the release's version commit right on top of
-the dev tag. It changes only Den's version (`package.json`,
-`package-lock.json`, `examples/distribution/package.json`) and the
-changelog entry (`CHANGELOG.md`). Push the branch, then start the release
-with that commit:
+the dev tag. It changes only the version: Den's `version` in
+`package.json`, the root's version in `package-lock.json`, the pin in
+`examples/distribution/package.json`, and new lines in `CHANGELOG.md`
+(its `## [<version>] - unreleased` heading may get its date). Push the
+branch, then start the release from `main` with that commit:
 
 ```sh
 gh workflow run release.yml -f promote=<the version commit's sha>
@@ -51,11 +58,19 @@ gh workflow run release.yml -f promote=<the version commit's sha>
 
 `scripts/release-promote.sh` refuses it unless:
 
+- the run is on `main` (a run on any other branch stops at once);
 - its version is a release (no `-dev.N`), and npm doesn't have it yet;
-- its parent carries the signed dev tag `v<version>-dev.N`;
-- that commit's `release/bed` status is `success`;
-- it changes nothing but the version files;
+- its parent carries the dev tag `v<version>-dev.N`, signed by an allowed
+  key;
+- that commit's newest `release/bed` status is `success`, set by a listed
+  tester;
+- it changes nothing but the version, as above;
 - `v<version>` tags no other commit.
+
+The jobs that publish (Den, and the UI kit) run in the `release`
+environment. That environment allows only `main`, and its required
+reviewers are the people who approve each publish. Both are repository
+settings: set them before the first release that should prove them.
 
 Then the release builds that commit: the gates, the tarball, SHA256SUMS,
 the tag `v<version>`, `npm publish`, and a GitHub release. The tarball

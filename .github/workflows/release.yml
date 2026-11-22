@@ -43,6 +43,13 @@ jobs:
       dev_tag: ${{ steps.promote.outputs.dev_tag }}
       dev_sha: ${{ steps.promote.outputs.dev_sha }}
     steps:
+      # Issue 922: only main's own copy of this file releases. A dispatch from another branch would run that
+      # branch's copy, checks and all, so it refuses before anything builds.
+      - name: Only main releases
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::a release starts from main only (this run is on $GITHUB_REF)"; exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # the dev tags and the history, to find the candidate and diff against it
@@ -61,6 +68,8 @@ jobs:
           PROMOTE: ${{ inputs.promote }}
           NPM_SCOPE: ${{ vars.NPM_SCOPE }}
           RELEASE_BED_CONTEXT: ${{ vars.RELEASE_BED_CONTEXT }}
+          # the testers whose PASS counts; the signers are .github/release-signers, from this checkout of main
+          RELEASE_BED_CREATORS: ${{ vars.RELEASE_BED_CREATORS }}
           GH_TOKEN: ${{ github.token }}
         run: |
           name=$(git show "$PROMOTE:package.json" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).name')
@@ -85,7 +94,7 @@ jobs:
 
   tag:
     needs: [check, gates]
-    if: needs.check.outputs.release == 'true'
+    if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -119,6 +128,9 @@ jobs:
 
   publish:
     needs: [check, gates, tag]
+    if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
+    # Issue 922: its protection (main only, and who approves) is a repository setting: docs/releasing.md.
+    environment: release
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45 # npm can take ~20 min to serve an accepted (202) upload
     permissions:
@@ -158,6 +170,7 @@ jobs:
 
   github-release:
     needs: [check, gates, publish]
+    if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -179,8 +192,10 @@ jobs:
   # since, it skips. The kit changed with its version already on npm fails the job (scripts/kit-version.mjs).
   den-ui:
     # Issue 296: the kit ships only once both test halves pass, as Den does.
-    # Issue 922: from the promoted commit (a dry run: its own, as before).
+    # Issue 922: only in a promoted release, from its commit (the kit's version is decided in the candidate).
     needs: [check, gates]
+    if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
+    environment: release
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:

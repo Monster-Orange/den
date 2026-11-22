@@ -365,7 +365,7 @@ trusted publishing (no token anywhere):
   job otherwise, since npm already has the old version.
 - A release publishes the exact tree of the dev tag that passed its test
   bed, never `main`'s HEAD (issue 922; docs/releasing.md). Start
-  `release.yml` by hand with `promote` set to the release's version commit
+  `release.yml` by hand, from `main`, with `promote` set to the release's version commit
   on its release branch: its parent is the signed dev tag, whose commit has
   the bed's PASS (the `release/bed` commit status). Then the gates, the
   tarball (with `release.json`) and its SHA256SUMS (naming the dev tag and

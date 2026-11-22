@@ -32,6 +32,8 @@ interface Step {
 }
 interface Job {
   needs?: string | string[];
+  environment?: unknown;
+  permissions?: Record<string, string>;
   if?: string;
   uses?: string;
   with?: Record<string, unknown>;
@@ -93,6 +95,52 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
     const tagText = JSON.stringify(w.jobs.tag);
     expect(tagText).not.toContain("GITHUB_SHA");
     expect(tagText).toContain("needs.check.outputs.ref");
+  });
+
+  it("only main releases: the check refuses a dispatch from any other branch before anything builds", () => {
+    const first = w.jobs.check.steps?.[0];
+    expect(first?.run).toContain('"$GITHUB_REF" != refs/heads/main');
+    expect(first?.run).toContain("exit 1");
+    for (const j of ["tag", "publish", "github-release", "den-ui"])
+      expect([j, w.jobs[j].if]).toEqual([
+        j,
+        expect.stringContaining("github.ref == 'refs/heads/main'"),
+      ]);
+  });
+
+  it("every job that can publish (an OIDC token) is a promoted release's, in the release environment", () => {
+    const oidc = Object.entries(w.jobs).filter(
+      ([, j]) => j.permissions?.["id-token"] === "write",
+    );
+    expect(oidc.map(([n]) => n).sort()).toEqual(["den-ui", "publish"]);
+    for (const [n, j] of oidc) {
+      expect([n, j.environment]).toEqual([n, "release"]);
+      expect([n, j.if]).toEqual([
+        n,
+        expect.stringContaining("needs.check.outputs.release == 'true'"),
+      ]);
+    }
+  });
+
+  it("the check passes the signers file, the bed's context and its testers to the script", () => {
+    const step = w.jobs.check.steps?.find((s) => s.id === "promote");
+    expect(step?.env).toMatchObject({
+      RELEASE_BED_CREATORS: "${{ vars.RELEASE_BED_CREATORS }}",
+    });
+    // The signers file is the default one, from main's own checkout.
+    expect(step?.env?.RELEASE_SIGNERS).toBeUndefined();
+  });
+
+  it("the committed allowed-signers file lists keys, one per line, in git's namespace", () => {
+    const lines = fs
+      .readFileSync(path.join(ROOT, ".github", "release-signers"), "utf8")
+      .split("\n")
+      .filter((l) => l.trim() && !l.startsWith("#"));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines)
+      expect(l).toMatch(
+        /^[a-z0-9-]+ namespaces="git" ssh-ed25519 [A-Za-z0-9+/=]+$/,
+      );
   });
 
   it("the GitHub release carries release.json beside the tarball and SHA256SUMS", () => {
