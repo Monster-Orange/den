@@ -11,16 +11,14 @@
  * reads files on this machine, keeps counts only, calls no model and sends
  * nothing anywhere.
  */
-import { listRecords, type AgentRecord } from "../../shared/agents/records.js";
-import {
-  coachBreakdown,
-  type CoachReport,
-} from "../../shared/coach/breakdown.js";
+import type { AgentRecord } from "../../shared/agents/records.js";
+import type { CoachReport } from "../../shared/coach/breakdown.js";
 import {
   COACH_DEFAULTS,
   type CoachSettings,
 } from "../../shared/coach/settings.js";
-import { readCoachReport, writeCoachReport } from "../../shared/coach/store.js";
+import { runCoach } from "../../shared/coach/run.js";
+import { readCoachReport } from "../../shared/coach/store.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
@@ -91,15 +89,6 @@ export function renderCoachReport(r: CoachReport): string[] {
   return lines;
 }
 
-/** agents.rotate.after_compactions, as `usage` reads it; the default on error. */
-function rotateLimit(): number {
-  try {
-    return readAgentsConfig().rotate?.afterCompactions ?? 3;
-  } catch {
-    return 3;
-  }
-}
-
 export async function cmdCoach(
   args: string[],
   deps: CoachDeps = {},
@@ -133,15 +122,14 @@ export async function cmdCoach(
         );
         return 1;
       }
-      const records = (deps.records ?? listRecords)(stateDir);
-      const r = await coachBreakdown(records, {
+      const r = await runCoach({
         stateDir,
+        settings,
         now: (deps.now ?? Date.now)(),
-        days: settings.window_days,
+        ...(deps.records ? { records: deps.records } : {}),
         ...(deps.source ? { source: deps.source } : {}),
-        after: (deps.rotateAfter ?? rotateLimit)(),
+        ...(deps.rotateAfter ? { rotateAfter: deps.rotateAfter } : {}),
       });
-      writeCoachReport(stateDir, r, settings.keep_runs);
       if (json) out(JSON.stringify(r, null, 2));
       else for (const l of renderCoachReport(r)) out(l);
       return 0;
