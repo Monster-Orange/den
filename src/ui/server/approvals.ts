@@ -227,6 +227,8 @@ export interface Approval {
   ownMode?: readonly { agent: string; mode: string }[];
   /** Issue 199: choices the person may turn on as they Allow (off by default). */
   choices?: readonly string[];
+  /** Issue 592: one link the Review offers (a path on this Den, its key). */
+  link?: Readonly<{ href: string; key: string }>;
   /** Issue 199: the ones the person turned on. */
   chosen?: Readonly<Record<string, true>>;
   requestedAt: number;
@@ -688,6 +690,7 @@ export class ApprovalQueue {
     note?: string;
     ownMode?: { agent: string; mode: string }[];
     choices?: string[];
+    link?: { href: string; key: string };
     ticketHash?: string;
     /**
      * SRV-P6 (0.4.48): how long this one waits for the person (default
@@ -771,6 +774,14 @@ export class ApprovalQueue {
         : {}),
       ...(r.choices?.length
         ? { choices: Object.freeze(r.choices.slice(0, 8)) }
+        : {}),
+      ...(r.link &&
+      /^\/[A-Za-z0-9/_.#-]{0,200}$/.test(r.link.href) &&
+      !r.link.href.startsWith("//") &&
+      /^[a-z][a-zA-Z0-9_.]{0,63}$/.test(r.link.key)
+        ? {
+            link: Object.freeze({ href: r.link.href, key: r.link.key }),
+          }
         : {}),
       ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,

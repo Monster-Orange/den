@@ -828,7 +828,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, keep_running, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2880,6 +2880,37 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "keep_running",
+    title: "Keep agents running after logout",
+    description:
+      "Issue 592: offer the person Keep agents running after logout (`on: true`) when doctor or onboard_status says agents stop when they log out and the Setting is not set. Offer it once per install, never when the person turned it off (both are refused). On the person's Allow, Den saves the Setting and re-installs its service in that mode, as Settings › Agents › Apply does: their browser asks for the admin password (you never see it), then Den restarts and running agents come back. `on: false` goes back to stopping agents at logout. macOS only. Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      on: z
+        .boolean()
+        .describe("true: keep agents running after logout; false: stop them"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("keep_running", ctx.scope);
+      if (typeof a.on !== "boolean")
+        throw new Refusal("keep_running: on is true or false");
+      const r = await askPerson(
+        "keep_running",
+        "keep_running",
+        { on: a.on },
+        a,
+        ctx,
+        `Den stopped answering after the ask: if it was allowed, Den is restarting in its new mode. ${RESTART_NEXT}`,
+      );
+      return typeof r === "string"
+        ? r
+        : { ...(r as object), next: RESTART_NEXT };
     },
   },
   {

@@ -105,6 +105,16 @@ itself when it comes back on it.
 A Den run from a checkout (not from npm) is updated with git there: say so,
 and use den_restart_server after.
 
+## Keep agents running after logout
+
+When doctor or onboard_status says Keep agents running after logout is
+not set and agents stop when the person logs out, offer the switch with
+keep_running (`on: true`) and a one-line note. Offer it once per install:
+Den refuses a second offer, and an offer after the person turned it off.
+On their Allow, their browser asks for the admin password (you never see
+it, and never ask for it), Den re-installs its service and restarts, and
+agents come back. End your turn after the call, as for den_restart_server.
+
 ## Your tools
 
 Reads (they change nothing):
@@ -195,6 +205,8 @@ Held (each waits for the person's Allow):
   install moves to another Hub. It waits for the person's Allow. One the
   connected Hub doesn't list is refused, saying why.
 - `den_restart_server`, `den_update`: restart or update Den.
+- `keep_running`: offer Keep agents running after logout (see above). It
+  always waits for the person's Allow.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It
   always waits for their Allow.

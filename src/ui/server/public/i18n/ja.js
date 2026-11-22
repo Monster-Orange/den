@@ -775,14 +775,14 @@
     "keep.clearAsk":
       "シークレットストアから削除されます。「ログアウト後もエージェントを動かす」のエージェントは、新しいトークンを設定するまでサインインできません。",
     "keep.clearOk": "削除",
-    "keep.clearW": "サインイントークンを削除しています…",
+    "keep.clearW": "サインイン用トークンを削除しています…",
     "keep.clearS": "削除しました。",
-    "keep.clearF": "サインイントークンを削除できませんでした。",
+    "keep.clearF": "サインイン用トークンを削除できませんでした。",
     "keep.noTokenNotNeeded":
       "サインイン用トークンはありません。「ログアウト後もエージェントを動かす」のときだけ必要です。",
     "keep.processLocal": "このプロセスのみ: Den が再起動するまで保持されます。",
     "keep.noStore":
-      "このインストールにはシークレットストアがないため、サインイントークンを保存できません。先に secrets.provider を 1password か doppler に設定してください。",
+      "このインストールにはシークレットストアがないため、サインイン用トークンを保存できません。先に secrets.provider を 1password か doppler に設定してください。",
     "keep.tokenSet":
       "エージェントは {date} に保存したトークンでサインインします。",
     "keep.tokenStore": "エージェントは {store} のトークンでサインインします。",
@@ -1976,6 +1976,18 @@
       "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.keep_running": "Den の実行方法を切り替え: {from} → {to}",
+    "ap.det.keep_running.mode": "Den の実行方法: {from} → {to}。",
+    "ap.det.keep_running.restart":
+      "Den は再起動し、実行中のエージェントは元の状態に戻ります。",
+    "ap.det.keep_running.sudo":
+      "許可するときに、このブラウザーで管理者パスワードを一度だけ尋ねます。エージェントには見えません。",
+    "ap.det.keep_running.token":
+      "ログアウト後、エージェントは 設定 › エージェント › サインイン用トークン の長期トークンでサインインします。",
+    "ap.det.keep_running.noToken":
+      "サインイン用トークンが設定されていません: ログアウト後、エージェントはサインインできません。設定 › エージェント › サインイン用トークン で設定してください。",
+    "ap.link.signinToken": "設定 › サインイン用トークン を開く",
+    "ap.sudoNeeded": "何も実行されていません: 管理者パスワードが必要です。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",

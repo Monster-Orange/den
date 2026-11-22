@@ -2032,6 +2032,19 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.keep_running": "Cambiar cómo se ejecuta Den: {from} → {to}",
+    "ap.det.keep_running.mode": "Cómo se ejecuta Den: {from} → {to}.",
+    "ap.det.keep_running.restart":
+      "Den se reinicia; los agentes en marcha vuelven donde estaban.",
+    "ap.det.keep_running.sudo":
+      "La contraseña de administrador se pide una vez, en este navegador, al permitir. El agente nunca la ve.",
+    "ap.det.keep_running.token":
+      "Tras cerrar sesión, los agentes inician sesión con el token de larga duración de Ajustes › Agentes › Token de inicio de sesión.",
+    "ap.det.keep_running.noToken":
+      "No hay token de inicio de sesión: los agentes no podrán iniciar sesión cuando cierres la tuya. Pon uno en Ajustes › Agentes › Token de inicio de sesión.",
+    "ap.link.signinToken": "Abrir Ajustes › Token de inicio de sesión",
+    "ap.sudoNeeded":
+      "No se ejecutó nada: necesita la contraseña de administrador.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":

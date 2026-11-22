@@ -79,6 +79,11 @@ export type HeldCheck =
        * default). Never taken from an ask's args.
        */
       choices?: string[];
+      /**
+       * Issue 592: one link the Review offers (a Settings row), Den's
+       * own: a path on this Den, its words a message key.
+       */
+      link?: { href: string; key: string };
     }
   | { ok: false; error: string };
 
@@ -120,6 +125,12 @@ export interface HeldAction {
   ): Promise<HeldCheck> | HeldCheck;
   /** Runs it from checked args; answers like the CLI's --json ({ ok, … }). */
   run(args: Record<string, unknown>, asked?: AskedBy): Promise<unknown>;
+  /**
+   * Issue 592: its run needs sudo and no password is held (and sudo needs
+   * one): what it runs, for the Allow's browser to ask the admin password
+   * with (topbar.js askSudo) before the Allow is taken. Null: nothing to ask.
+   */
+  needsSudo?(args: Record<string, unknown>): { command: string } | null;
 }
 
 export type HeldActions = Readonly<Record<string, HeldAction>>;
@@ -226,6 +237,7 @@ export function approvalView(
     ...(a.note ? { note: a.note } : {}),
     ...(a.ownMode ? { ownMode: a.ownMode } : {}),
     ...(a.choices ? { choices: a.choices } : {}),
+    ...(a.link ? { link: a.link } : {}),
     ...(a.chosen ? { chosen: a.chosen } : {}),
     state: a.state,
     requestedAt: new Date(a.requestedAt).toISOString(),
@@ -358,6 +370,12 @@ export async function handleApprovalRoutes(
      * link on it, never a guessed one.
      */
     webUrl?: () => string | null;
+    /**
+     * Issue 592: a password is held, or sudo needs none (sudo-store.ts).
+     * An Allow whose run needs sudo waits for it: the decide answers
+     * needs_sudo and the browser asks. Unset: sudo is taken as ready.
+     */
+    sudoReady?: () => boolean;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -479,6 +497,7 @@ export async function handleApprovalRoutes(
           : {}),
         ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
         ...(checked.choices?.length ? { choices: checked.choices } : {}),
+        ...(checked.link ? { link: checked.link } : {}),
         note: typeof body.note === "string" ? body.note : undefined,
       });
     } catch (e) {
@@ -704,6 +723,31 @@ export async function handleApprovalRoutes(
     if (!pick.ok) {
       refuse(res, 400, "bad_choice", pick.error);
       return true;
+    }
+    // Issue 592: a run that needs sudo with no password held: the Allow's
+    // browser asks for it first (needs_sudo), and nothing is decided.
+    if (decision === "allow" && found?.state === "pending") {
+      const need = deps.actions[found.action]?.needsSudo?.({ ...found.args });
+      let ready = true;
+      try {
+        ready = deps.sudoReady ? deps.sudoReady() : true;
+      } catch {
+        ready = false;
+      }
+      if (need && !ready) {
+        sendJson(
+          res,
+          {
+            ok: false,
+            code: "needs_sudo",
+            error:
+              "This needs your Mac's admin password: give it in this browser, then Allow again.",
+            needsSudo: need,
+          },
+          409,
+        );
+        return true;
+      }
     }
     const r = await deps.queue.decide(
       dec[1],
