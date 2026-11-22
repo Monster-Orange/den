@@ -34,6 +34,11 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/test-operator-edge.integration.test.ts": [
+      "src/shared/test-operator.ts",
+      "src/ui/server/index.ts",
+      "src/ui/server/request-guard.ts"
+    ],
     "tests/unit/den-ui/nav-inventory.browser.test.ts": [
       "src/ui/server/public/header.js",
       "src/ui/server/theme-routes.ts",
