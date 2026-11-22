@@ -51,15 +51,14 @@ export function appendJournal(
     } catch {
       /* a new file */
     }
-    if (size + line.length > maxBytes) {
+    const bytes = (t: string) => Buffer.byteLength(t, "utf8");
+    const n = bytes(line);
+    if (size + n > maxBytes) {
       const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
       const kept = lines.slice(Math.ceil(lines.length / 2));
-      let text = kept.join("\n") + (kept.length ? "\n" : "");
-      while (text.length + line.length > maxBytes / 2 && kept.length) {
-        kept.shift();
-        text = kept.join("\n") + (kept.length ? "\n" : "");
-      }
-      fs.writeFileSync(file, text + line, { mode: 0o600 });
+      const text = () => kept.join("\n") + (kept.length ? "\n" : "");
+      while (kept.length && bytes(text()) + n > maxBytes / 2) kept.shift();
+      fs.writeFileSync(file, text() + line, { mode: 0o600 });
     } else fs.appendFileSync(file, line, { mode: 0o600 });
     fs.chmodSync(file, 0o600);
   } catch {

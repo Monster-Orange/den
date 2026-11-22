@@ -184,6 +184,20 @@ describe("P0-D4: the file", () => {
     expect(ids[0]).not.toBe("d0");
   });
 
+  it("the cap counts bytes, not characters", () => {
+    const f = path.join(dir, "wide.jsonl");
+    const wide = (id: string): JournalEntry => ({
+      ...e(id, "typed", "2026-11-12T18:00:00.000Z"),
+      agent: "エージェント".repeat(100),
+    });
+    let most = 0;
+    for (let i = 0; i < 200; i++) {
+      appendJournal(f, wide(`w${i}`), 9_000);
+      most = Math.max(most, fs.statSync(f).size);
+    }
+    expect(most).toBeLessThanOrEqual(9_000);
+  });
+
   it("doctor: the last 24 h by outcome, the last typed, and where the file is", () => {
     const f = path.join(dir, "deliveries.jsonl");
     const now = Date.parse("2026-11-13T12:00:00.000Z");
@@ -191,10 +205,11 @@ describe("P0-D4: the file", () => {
     appendJournal(f, e("d1", "typed", "2026-11-13T11:00:00.000Z"));
     appendJournal(f, e("d2", "held", "2026-11-13T11:10:00.000Z"));
     appendJournal(f, e("d3", "passed", "2026-11-13T11:20:00.000Z"));
+    appendJournal(f, e("d1", "done", "2026-11-13T11:30:00.000Z"));
     fs.appendFileSync(f, "not json\n");
     const s = journalSummary(f, now);
     expect(s).toMatchObject({
-      counts: { typed: 1, held: 1, passed: 1 },
+      counts: { typed: 1, held: 1, passed: 1, done: 1 },
       lastTypedAt: Date.parse("2026-11-13T11:00:00.000Z"),
       file: f,
     });
@@ -209,7 +224,9 @@ describe("P0-D4: the file", () => {
       15,
       s,
     );
-    expect(row.lines[0]).toContain("last 24 h: 1 typed, 1 held, 1 passed over");
+    expect(row.lines[0]).toContain(
+      "last 24 h: 1 typed, 1 done, 1 held, 1 passed over",
+    );
     expect(row.lines[0]).toContain(f);
     expect(journalSummary(path.join(dir, "none.jsonl"), now)).toBeNull();
   });

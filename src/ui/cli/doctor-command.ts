@@ -707,6 +707,7 @@ export function hubDeliveryLines(
   if (journal) {
     const words: [keyof typeof journal.counts, string][] = [
       ["typed", "typed"],
+      ["done", "done"],
       ["held", "held"],
       ["passed", "passed over"],
       ["refused", "refused"],
