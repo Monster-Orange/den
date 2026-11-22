@@ -793,8 +793,8 @@ export function gateBoxOps(d: {
         params: { name: b.name, ...(replaces ? {} : { isNew: "1" }) },
         details: [
           replaces
-            ? `Replaces the test box "${b.name}" with these settings. Its browser slots take gate runs from agents.`
-            : `Adds the test box "${b.name}". Its browser slots take gate runs from agents.`,
+            ? `Replaces the test box ${b.name} with these settings. Its browser slots take gate runs from agents.`
+            : `Adds the test box ${b.name}. Its browser slots take gate runs from agents.`,
           ...BOX_CARD_FIELDS.map(
             ([k, w]) => `${BOX_CARD_WORDS[w]}: ${shown(k)}`,
           ),
