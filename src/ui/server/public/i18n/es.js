@@ -2639,9 +2639,9 @@
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
     "bell.m.ranLoggedOut":
-      "Mientras tenías la sesión cerrada ({min} min), estos agentes trabajaron: {names}", // words-ok: "sesión cerrada" is Spanish for logged out
+      "Mientras estabas desconectado ({min} min), estos agentes trabajaron: {names}",
     "bell.m.stoppedLoggedOut":
-      "Mientras tenías la sesión cerrada ({min} min), estos agentes se detuvieron: {names}", // words-ok: "sesión cerrada" is Spanish for logged out
+      "Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":

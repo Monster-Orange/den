@@ -268,7 +268,10 @@ describe("the bell note on return", () => {
       "utf-8",
     );
     expect(src).toContain(
-      '"Mientras tenías la sesión cerrada ({min} min), estos agentes trabajaron: {names}"',
+      '"Mientras estabas desconectado ({min} min), estos agentes trabajaron: {names}"',
+    );
+    expect(src).toContain(
+      '"Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}"',
     );
   });
 });
