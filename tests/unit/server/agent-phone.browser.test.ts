@@ -23,6 +23,7 @@
  * names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { EventEmitter } from "events";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
@@ -36,6 +37,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { signInUrl } from "./helpers/den-auth.js";
+import { enCatalog } from "./helpers/en-catalog.js";
 import { signIn } from "./helpers/signed-in.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
@@ -50,6 +52,15 @@ let hostServer: http.Server;
 let LISTED = "";
 /** Den's newest version: What's new seen, so it never opens over the page. */
 let latest = "";
+/** Each write an agent's PTY gets ("write"): what a wait listens for. */
+const wrote = new EventEmitter();
+/** shell.js's English catalog: the page's words, as a browser in English shows them. */
+const en = enCatalog();
+/** en's words for `key`, its {vars} filled. */
+const words = (key: string, vars: Record<string, string | number> = {}) =>
+  (en[key] ?? key).replace(/\{(\w+)\}/g, (m, k: string) =>
+    vars[k] == null ? m : String(vars[k]),
+  );
 
 /** A host page: frames `target`, says hello to Den, logs what Den says. */
 function hostPage(target: string, den: string): string {
@@ -93,6 +104,12 @@ beforeAll(async () => {
     });
     sid[id] = info.ref.id;
     pty[id] = s.made.at(-1)!;
+    const made = pty[id];
+    const write = made.write.bind(made);
+    made.write = (d: Buffer) => {
+      write(d);
+      wrote.emit("write");
+    };
     s.seed({
       id,
       persona: "builder",
@@ -113,12 +130,10 @@ beforeAll(async () => {
   await new Promise<void>((r) => hostServer.listen(0, "::", r));
   LISTED = `http://127.0.0.1:${(hostServer.address() as AddressInfo).port}`;
   expect(await s.settings({ embed: { origins: [LISTED] } })).toBe(200);
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
 }, 120_000);
 
 afterAll(async () => {
@@ -183,9 +198,44 @@ async function phone(
 
 const typed = (id: string, from: number) =>
   Buffer.concat(pty[id].writes.slice(from)).toString("utf8");
-const pane = (p: Page, id: string) => p.locator(`.pane[data-id="${sid[id]}"]`);
-const box = (p: Page, id: string) => pane(p, id).locator(".agc .agc-in");
-const sendBtn = (p: Page, id: string) => pane(p, id).locator(".agc .agc-send");
+/**
+ * Until what agent `id` got since write `from` holds `want`, or `ms` pass:
+ * each write it gets is a look, never a fixed pause.
+ */
+function typedUntil(
+  id: string,
+  from: number,
+  want: string,
+  ms = 15_000,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      wrote.off("write", look);
+      resolve();
+    };
+    const look = () => {
+      if (typed(id, from).includes(want)) done();
+    };
+    const timer = setTimeout(done, ms);
+    wrote.on("write", look);
+    look();
+  });
+}
+/** An agent's pane (a section keyed by its session), and its parts. */
+const PANE = (id: string) => `section[data-id="${sid[id]}"]`;
+const pane = (p: Page, id: string) => p.locator(PANE(id));
+const box = (p: Page, id: string) => pane(p, id).locator('[data-agc="in"]');
+const sendBtn = (p: Page, id: string) =>
+  pane(p, id).locator('[data-agc="send"]');
+/** The composer's line, saying the message went. */
+const sentOk = (p: Page, id: string) =>
+  pane(p, id).locator('[data-agc="msg"][data-tone="ok"]');
+/** The pane's own bar (Back, Stop, ⋯) and its terminal. */
+const bar = (p: Page, id: string) => pane(p, id).locator("[data-pane-bar]");
+const term = (p: Page, id: string) => pane(p, id).locator("[data-term]");
+/** The top bar: the header that holds ☰. */
+const TOP = "header:has(#den-menu-btn)";
 const frameTick = (p: Page) =>
   p.evaluate(
     () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50))),
@@ -225,7 +275,9 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     // The mock's frame 2: an agent open on a phone has no runs dock.
     expect(await p.locator("#den-dock").isVisible()).toBe(false);
     // A phone's box is always there: no Close.
-    expect(await pane(p, "scout").locator(".agc .agc-close").count()).toBe(0);
+    expect(await pane(p, "scout").locator('[data-agc="close"]').count()).toBe(
+      0,
+    );
     const over = await p.evaluate(
       () =>
         document.documentElement.scrollWidth -
@@ -242,9 +294,10 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     await openAgent(p, "scout");
     const small = await p.evaluate(() =>
       [
-        ...document.querySelectorAll<HTMLElement>(
-          ".den-top button, .den-top a[href]",
-        ),
+        ...(document
+          .getElementById("den-menu-btn")
+          ?.closest("header")
+          ?.querySelectorAll<HTMLElement>("button, a[href]") ?? []),
       ]
         .filter((b) => b.offsetParent !== null)
         .map((b) => {
@@ -258,12 +311,13 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
         .filter((b) => b.w > 0 && (b.w < 44 || b.h < 44)),
     );
     expect(small).toEqual([]);
-    await pane(p, "scout").locator(".xterm-helper-textarea").waitFor({
+    // xterm's own hidden input, the one field in the terminal.
+    await term(p, "scout").locator("textarea").waitFor({
       state: "attached",
     });
     expect(
-      await pane(p, "scout")
-        .locator(".xterm-helper-textarea")
+      await term(p, "scout")
+        .locator("textarea")
         .evaluate((el) => getComputedStyle(el).fontSize),
     ).toBe("16px");
     await p.context().close();
@@ -281,19 +335,19 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     expect(
       await p.evaluate(() => "kbdUp" in document.documentElement.dataset),
     ).toBe(true);
-    expect(await p.locator(".den-top").isVisible()).toBe(false);
+    expect(await p.locator(TOP).isVisible()).toBe(false);
     expect(await p.locator("#den-dock").isVisible()).toBe(false);
     // The mock's frame 3: the pane's own bar steps aside too.
-    expect(await pane(p, "scout").locator(".bar2").isVisible()).toBe(false);
+    expect(await bar(p, "scout").isVisible()).toBe(false);
     const b = (await box(p, "scout").boundingBox())!;
     const send = (await sendBtn(p, "scout").boundingBox())!;
     expect(b.y).toBeGreaterThanOrEqual(0);
     expect(b.y + b.height).toBeLessThanOrEqual(508);
     expect(send.y + send.height).toBeLessThanOrEqual(508);
     // The terminal still reads above it.
-    const term = (await pane(p, "scout").locator(".term").boundingBox())!;
-    expect(term.height).toBeGreaterThan(100);
-    expect(term.y).toBeGreaterThanOrEqual(0);
+    const tb = (await term(p, "scout").boundingBox())!;
+    expect(tb.height).toBeGreaterThan(100);
+    expect(tb.y).toBeGreaterThanOrEqual(0);
     await shot(p, engine, "3-keyboard-up-390");
     expect(errors).toEqual([]);
     await p.context().close();
@@ -306,12 +360,10 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     const from = pty.scout.writes.length;
     await box(p, "scout").fill(`hello from a phone (${engine})`);
     await sendBtn(p, "scout").tap();
-    const t0 = Date.now();
-    while (!typed("scout", from).includes("\r") && Date.now() - t0 < 15_000)
-      await new Promise((r) => setTimeout(r, 100));
+    await typedUntil("scout", from, "\r");
     expect(typed("scout", from)).toContain(`hello from a phone (${engine})`);
     expect(typed("scout", from).endsWith("\r")).toBe(true);
-    await pane(p, "scout").locator('.agc .agc-msg[data-tone="ok"]').waitFor();
+    await sentOk(p, "scout").waitFor();
     expect(await box(p, "scout").inputValue()).toBe("");
     expect(errors).toEqual([]);
     await p.context().close();
@@ -321,17 +373,25 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
     if (!browsers[engine]) return;
     const { p, errors } = await phone(engine);
     await openAgent(p, "scout");
-    // The send takes a moment, as on a phone's network.
+    // The send takes a while, as on a phone's network: it is held on its
+    // way until the words below are typed.
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
     await p.route("**/say", async (r) => {
-      await new Promise((res) => setTimeout(res, 1500));
+      await held;
       await r.continue();
     });
     const from = pty.scout.writes.length;
     await box(p, "scout").fill("first");
+    const asked = p.waitForRequest((r) =>
+      new URL(r.url()).pathname.endsWith("/say"),
+    );
     await sendBtn(p, "scout").tap();
+    await asked;
     await box(p, "scout").press("End");
     await box(p, "scout").pressSequentially(" second");
-    await pane(p, "scout").locator('.agc .agc-msg[data-tone="ok"]').waitFor();
+    release();
+    await sentOk(p, "scout").waitFor();
     expect((await box(p, "scout").inputValue()).trim()).toBe("second");
     expect(typed("scout", from)).toContain("first");
     expect(typed("scout", from)).not.toContain("second");
@@ -342,30 +402,31 @@ describe.each(ENGINES)("issue 302: an agent on a phone, in %s", (engine) => {
   it("a draft survives a reload, per agent; sent, a reload brings back nothing", async () => {
     if (!browsers[engine]) return;
     const { p, errors } = await phone(engine);
+    // The words each box is given (typed by the test, not the page's).
+    const SCOUT_DRAFT = "half a thought for scout";
+    const PLANNER_DRAFT = "for planner";
     await openAgent(p, "scout");
-    await box(p, "scout").fill("half a thought for scout");
+    await box(p, "scout").fill(SCOUT_DRAFT);
     await p.reload();
     await box(p, "scout").waitFor({ timeout: 20_000 });
-    expect(await box(p, "scout").inputValue()).toBe("half a thought for scout");
+    expect(await box(p, "scout").inputValue()).toBe(SCOUT_DRAFT);
     // Another agent's box is its own.
     await openAgent(p, "planner");
     expect(await box(p, "planner").inputValue()).toBe("");
-    await box(p, "planner").fill("for planner");
+    await box(p, "planner").fill(PLANNER_DRAFT);
     await openAgent(p, "scout");
-    expect(await box(p, "scout").inputValue()).toBe("half a thought for scout");
+    expect(await box(p, "scout").inputValue()).toBe(SCOUT_DRAFT);
     // Sent: gone, and a reload doesn't bring it back.
     const from = pty.scout.writes.length;
     await sendBtn(p, "scout").tap();
-    const t0 = Date.now();
-    while (!typed("scout", from).includes("\r") && Date.now() - t0 < 15_000)
-      await new Promise((r) => setTimeout(r, 100));
-    await pane(p, "scout").locator('.agc .agc-msg[data-tone="ok"]').waitFor();
+    await typedUntil("scout", from, "\r");
+    await sentOk(p, "scout").waitFor();
     await p.reload();
     await box(p, "scout").waitFor({ timeout: 20_000 });
     expect(await box(p, "scout").inputValue()).toBe("");
     // The person's own clear: gone too.
     await openAgent(p, "planner");
-    expect(await box(p, "planner").inputValue()).toBe("for planner");
+    expect(await box(p, "planner").inputValue()).toBe(PLANNER_DRAFT);
     await box(p, "planner").fill("");
     await p.reload();
     await box(p, "planner").waitFor({ timeout: 20_000 });
@@ -411,18 +472,28 @@ describe.each(ENGINES)(
             () =>
               (window as unknown as { dockOpenSeen: string[] }).dockOpenSeen,
           );
+        // The shell's saved choice (its GET /api/settings) arriving is when
+        // the dock would open late.
+        const prefs = p.waitForResponse(
+          (r) =>
+            new URL(r.url()).pathname === "/api/settings" &&
+            r.request().method() === "GET",
+        );
         await openAgent(p, "scout");
         // Frame 2: no dock with an agent open, and never drawn open.
         expect(await p.locator("#den-dock").isVisible()).toBe(false);
         expect(await seen()).toEqual([]);
-        await new Promise((r) => setTimeout(r, 500));
+        // The choice in and applied (a frame on): still never drawn open.
+        await (await prefs).finished();
+        await frameTick(p);
+        expect(await seen()).toEqual([]);
         // Frame 1: the list, no agent open: the dock is there, shut.
         await p.goto(`${s.base}/agents`);
         // The Agents page is up (its list drawn), not only the shell.
-        await p.waitForSelector("#agl:not([aria-busy]) .agr", {
+        await p.waitForSelector("#agl:not([aria-busy]) button[data-id]", {
           timeout: 20_000,
         });
-        expect(await p.locator("#agr .pane").count()).toBe(0);
+        expect(await p.locator("#agr section[data-id]").count()).toBe(0);
         const shut = await p
           .waitForFunction(
             () => {
@@ -459,7 +530,10 @@ describe.each(ENGINES)(
         }, latest);
         const d = await ctx.newPage();
         await d.goto(`${s.base}/p/north/agents/scout`);
-        await d.locator("#den-dock.open").waitFor({ timeout: 20_000 });
+        // Open: the dock's output is drawn (only an open dock has it).
+        await d
+          .locator("#den-dock-out")
+          .waitFor({ state: "attached", timeout: 20_000 });
         await ctx.close();
       } finally {
         await s.settings({ shell: { dock: null } });
@@ -478,9 +552,11 @@ const shown = (p: Page, sel: string) =>
       ? { x: r.x, y: r.y, w: r.width, h: r.height }
       : null;
   }, sel);
-const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
-const back = (id: string) =>
-  `.pane[data-id="${sid[id]}"] .bar2 [data-act="back"]`;
+const row = (id: string) => `#agl button[data-id="${sid[id]}"]`;
+/** A button in agent `id`'s pane bar, by its data-act. */
+const inBar = (id: string, act: string) =>
+  `${PANE(id)} [data-pane-bar] [data-act="${act}"]`;
+const back = (id: string) => inBar(id, "back");
 const sideways = (p: Page) =>
   p.evaluate(
     () =>
@@ -505,21 +581,12 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       // The mock's frame 2: the box names the agent, and the bar is one
       // row: Change is in ⋯, not a link on its own line.
       expect(await box(p, "scout").getAttribute("placeholder")).toBe(
-        "Message scout",
+        words("agc.label", { name: "scout" }),
       );
-      expect(
-        await shown(p, `.pane[data-id="${sid.scout}"] .bar2 [data-act="link"]`),
-      ).toBeNull();
-      expect(
-        await shown(
-          p,
-          `.pane[data-id="${sid.scout}"] .bar2 [data-act="attach"]`,
-        ),
-      ).toBeNull();
-      const rowTops = await pane(p, "scout")
-        .locator(
-          '.bar2 [data-act="back"], .bar2 [data-act="stop"], .bar2 [data-act="more"]',
-        )
+      expect(await shown(p, inBar("scout", "link"))).toBeNull();
+      expect(await shown(p, inBar("scout", "attach"))).toBeNull();
+      const rowTops = await bar(p, "scout")
+        .locator('[data-act="back"], [data-act="stop"], [data-act="more"]')
         .evaluateAll((bs) =>
           bs.map((b) => {
             const r = b.getBoundingClientRect();
@@ -530,7 +597,7 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       expect(Math.max(...rowTops) - Math.min(...rowTops)).toBeLessThanOrEqual(
         2,
       );
-      await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
+      await bar(p, "scout").locator('[data-act="more"]').tap();
       await p
         .getByRole("menuitem", { name: "Change the repo scout works on" })
         .waitFor();
@@ -541,9 +608,10 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       // Frame 2: no list, no page header, no tab strip; the pane fills
       // the window under the top bar; a 44px Back named for the list.
       expect(await shown(p, "#agl")).toBeNull();
-      expect(await shown(p, "#den-content > .ph")).toBeNull();
-      expect(await shown(p, "#agr > .agtabs")).toBeNull();
-      const pn = (await shown(p, `.pane[data-id="${sid.scout}"]`))!;
+      // The page header (the one holding the page's h1) and the tab strip.
+      expect(await shown(p, "#den-content > div:has(#ag-h)")).toBeNull();
+      expect(await shown(p, '#agr > [role="tablist"]')).toBeNull();
+      const pn = (await shown(p, PANE("scout")))!;
       expect(pn).not.toBeNull();
       expect(pn.y + pn.h).toBeLessThanOrEqual(height + 1);
       expect(pn.h).toBeGreaterThanOrEqual(height * 0.75);
@@ -552,13 +620,10 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       expect(Math.round(b.w)).toBeGreaterThanOrEqual(44);
       expect(Math.round(b.h)).toBeGreaterThanOrEqual(44);
       expect(await p.locator(back("scout")).getAttribute("aria-label")).toBe(
-        "Back to agents",
+        en["ag.back"],
       );
       // Stop and ⋯ in the bar are 44px too.
-      const more = (await shown(
-        p,
-        `.pane[data-id="${sid.scout}"] .bar2 [data-act="more"]`,
-      ))!;
+      const more = (await shown(p, inBar("scout", "more")))!;
       expect(Math.round(more.h)).toBeGreaterThanOrEqual(44);
       expect(Math.round(more.w)).toBeGreaterThanOrEqual(44);
       expect(await sideways(p)).toBeLessThanOrEqual(0);
@@ -570,17 +635,18 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       await shot(p, engine, `1-list-${width}`);
       // The mock's frame 1: plain rows. The count, never the address; no
       // desktop hint, no Reorder, no drag handles.
-      expect(await p.locator("#ag-count").textContent()).toMatch(
-        /^2 agents · 0 waiting · /,
-      );
+      const counted = `${words("ag.sub.agents", { n: 2 })} · ${words("ag.sub.waiting", { w: 0 })} · `;
+      expect(
+        (await p.locator("#ag-count").textContent())?.slice(0, counted.length),
+      ).toBe(counted);
       for (const sel of [
         "#ag-url",
         "#agl-hint",
         '#agl [data-act="reorder"]',
-        "#agl .agrip",
+        "#agl [data-grip]",
       ])
         expect([sel, await shown(p, sel)]).toEqual([sel, null]);
-      expect(await shown(p, `.pane[data-id="${sid.scout}"]`)).toBeNull();
+      expect(await shown(p, PANE("scout"))).toBeNull();
       expect(await p.locator("#den-dock").isVisible()).toBe(true);
       const after = new URL(p.url());
       expect(after.pathname).toBe(before.pathname);
@@ -590,8 +656,8 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       expect(await sideways(p)).toBeLessThanOrEqual(0);
       // A row: its agent, the whole screen again.
       await p.locator(row("planner")).tap();
-      await pane(p, "planner").locator(".agc .agc-in").waitFor();
-      expect(await shown(p, `.pane[data-id="${sid.planner}"]`)).not.toBeNull();
+      await box(p, "planner").waitFor();
+      expect(await shown(p, PANE("planner"))).not.toBeNull();
       expect(await shown(p, "#agl")).toBeNull();
       await p.locator(back("planner")).tap();
       await p.locator(row("scout")).tap();
@@ -621,8 +687,8 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     await p.locator("#ag-start").tap();
     await p.waitForSelector("#ag-dlg[open]");
     await p.locator("#ag-go").tap();
-    await pane(p, "planner").locator(".agc .agc-in").waitFor();
-    expect(await shown(p, `.pane[data-id="${sid.planner}"]`)).not.toBeNull();
+    await box(p, "planner").waitFor();
+    expect(await shown(p, PANE("planner"))).not.toBeNull();
     expect(await shown(p, "#agl")).toBeNull();
     expect(errors).toEqual([]);
     await p.context().close();
@@ -633,7 +699,7 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     const { p, errors } = await phone(engine, { width: 600, height: 900 });
     await openAgent(p, "scout");
     expect(await shown(p, "#agl")).not.toBeNull();
-    expect(await shown(p, `.pane[data-id="${sid.scout}"]`)).not.toBeNull();
+    expect(await shown(p, PANE("scout"))).not.toBeNull();
     expect(await shown(p, back("scout"))).toBeNull();
     expect(errors).toEqual([]);
     await p.context().close();
@@ -643,14 +709,15 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     if (!browsers[engine]) return;
     const { p, errors } = await phone(engine);
     await openAgent(p, "scout");
-    const keys = pane(p, "scout").locator(".agkeys");
+    // The keys row: the group of buttons that carry a key.
+    const keys = pane(p, "scout").locator('[role="group"]:has([data-key])');
     expect(await keys.count()).toBe(0);
-    await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
+    await bar(p, "scout").locator('[data-act="more"]').tap();
     await p.getByRole("menuitem", { name: "Terminal keys" }).tap();
     await keys.waitFor();
     await shot(p, engine, "4-terminal-keys-390");
     await keys.waitFor({ state: "visible" });
-    expect(await keys.getAttribute("aria-label")).toBe("Terminal keys");
+    expect(await keys.getAttribute("aria-label")).toBe(en["ag.keys.show"]);
     const sizes = await keys
       .locator("button")
       .evaluateAll((bs) =>
@@ -703,9 +770,7 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       const t0 = Date.now();
       while (!typed("scout", from).includes(want) && Date.now() - t0 < 15_000) {
         await keys.getByRole("button", { name: label }).tap();
-        const t1 = Date.now();
-        while (!typed("scout", from).includes(want) && Date.now() - t1 < 1_000)
-          await new Promise((r) => setTimeout(r, 100));
+        await typedUntil("scout", from, want, 1_000);
       }
       expect(typed("scout", from)).toContain(want);
     };
@@ -717,7 +782,7 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     await press("Up arrow", "\x1b[A");
     await press("Right arrow", "\x1b[C");
     // ⋯ again: Hide terminal keys.
-    await pane(p, "scout").locator('.bar2 [data-act="more"]').tap();
+    await bar(p, "scout").locator('[data-act="more"]').tap();
     await p.getByRole("menuitem", { name: "Hide terminal keys" }).tap();
     await keys.waitFor({ state: "detached" });
     expect(errors).toEqual([]);
@@ -739,9 +804,9 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     // The terminal reads (the mock: a tap on the reading area puts the
     // keyboard down).
     expect(
-      await pane(p, "scout").locator(".term").getAttribute("data-kbd-dismiss"),
+      await term(p, "scout").getAttribute("data-kbd-dismiss"),
     ).not.toBeNull();
-    await pane(p, "scout").locator(".term").tap();
+    await term(p, "scout").tap();
     await frameTick(p);
     expect(
       await p.evaluate(() => "kbdUp" in document.documentElement.dataset),
@@ -751,9 +816,7 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
     ).toBe(false);
     // Its hidden input asks for no on-screen keyboard.
     expect(
-      await pane(p, "scout")
-        .locator(".xterm-helper-textarea")
-        .getAttribute("inputmode"),
+      await term(p, "scout").locator("textarea").getAttribute("inputmode"),
     ).toBe("none");
     expect(errors).toEqual([]);
     await p.context().close();
@@ -767,24 +830,58 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
  */
 async function embFrame(p: Page): Promise<Frame> {
   const t0 = Date.now();
+  const left = () => Math.max(1, 30_000 - (Date.now() - t0));
   while (Date.now() - t0 < 30_000) {
-    for (const f of p.frames()) {
-      if (f === p.mainFrame()) continue;
-      const has = await f
-        .evaluate(() => !!document.querySelector(".agc-in"))
-        .catch(() => false);
-      if (has) return f;
-      const btn = f.locator("#emb-signin");
-      if (await btn.isVisible().catch(() => false)) {
+    const frames = p.frames().filter((f) => f !== p.mainFrame());
+    if (!frames.length)
+      await p
+        .waitForEvent("frameattached", { timeout: left() })
+        .catch(() => undefined);
+    for (const f of frames) {
+      // The composer there, or Sign in to Den on view: whichever comes
+      // first ("" when neither did in time, or the frame went away).
+      const what = await f
+        .waitForFunction(
+          () => {
+            if (document.querySelector('[data-agc="in"]')) return "composer";
+            const b = document.getElementById("emb-signin");
+            if (!b) return "";
+            const r = b.getBoundingClientRect();
+            const on =
+              r.width > 0 &&
+              r.height > 0 &&
+              getComputedStyle(b).visibility !== "hidden";
+            return on ? "signin" : "";
+          },
+          undefined,
+          { timeout: Math.min(left(), 5_000) },
+        )
+        .then((h) => h.jsonValue())
+        .catch(() => "");
+      if (what === "composer") return f;
+      if (what === "signin") {
+        const btn = f.locator("#emb-signin");
         const [pop] = await Promise.all([p.waitForEvent("popup"), btn.click()]);
         await pop.locator("#emc-allow").click();
         if (!pop.isClosed())
           await pop.waitForEvent("close", { timeout: 10_000 });
+        // Allowed: Sign in goes (or the frame loads again) before a look.
+        await btn
+          .waitFor({ state: "hidden", timeout: left() })
+          .catch(() => undefined);
       }
     }
-    await new Promise((r) => setTimeout(r, 200));
   }
   throw new Error("the embedded pane's composer never came");
+}
+
+/** Reloads frame `f`: back once the new page has replaced the old one. */
+async function reloadFrame(p: Page, f: Frame): Promise<void> {
+  const loaded = p.waitForEvent("framenavigated", {
+    predicate: (x) => x === f,
+  });
+  await f.evaluate(() => location.reload());
+  await loaded;
 }
 
 describe.each(ENGINES)(
@@ -798,25 +895,22 @@ describe.each(ENGINES)(
       await p.goto(
         `${LISTED}/host?target=${encodeURIComponent(`${s.base}/embed/p/north/agents/scout`)}`,
       );
+      // The words the test types in the frame's box.
+      const DRAFT = "a draft in the frame";
+      const IN = '[data-agc="in"]';
       let f = await embFrame(p);
-      await f.locator(".agc-in").fill("a draft in the frame");
-      await f.evaluate(() => location.reload());
-      await new Promise((r) => setTimeout(r, 300));
+      await f.locator(IN).fill(DRAFT);
+      await reloadFrame(p, f);
       f = await embFrame(p);
-      expect(await f.locator(".agc-in").inputValue()).toBe(
-        "a draft in the frame",
-      );
+      expect(await f.locator(IN).inputValue()).toBe(DRAFT);
       const from = pty.scout.writes.length;
-      await f.locator(".agc-send").click();
-      const t0 = Date.now();
-      while (!typed("scout", from).includes("\r") && Date.now() - t0 < 15_000)
-        await new Promise((r) => setTimeout(r, 100));
-      expect(typed("scout", from)).toContain("a draft in the frame");
-      await f.locator('.agc-msg[data-tone="ok"]').waitFor();
-      await f.evaluate(() => location.reload());
-      await new Promise((r) => setTimeout(r, 300));
+      await f.locator('[data-agc="send"]').click();
+      await typedUntil("scout", from, "\r");
+      expect(typed("scout", from)).toContain(DRAFT);
+      await f.locator('[data-agc="msg"][data-tone="ok"]').waitFor();
+      await reloadFrame(p, f);
       f = await embFrame(p);
-      expect(await f.locator(".agc-in").inputValue()).toBe("");
+      expect(await f.locator(IN).inputValue()).toBe("");
       await p.context().close();
     }, 120_000);
   },
@@ -832,7 +926,7 @@ describe.each(ENGINES)(
       // box until the person asks for one.
       const res = await p.goto(`${s.base}/p/north/agents/scout`);
       expect(res?.status()).toBe(200);
-      await pane(p, "scout").locator(".term").waitFor({ timeout: 20_000 });
+      await term(p, "scout").waitFor({ timeout: 20_000 });
       const v = await p.evaluate(() => ({
         phoneAgent: document.body.hasAttribute("data-phone-agent"),
         dock:

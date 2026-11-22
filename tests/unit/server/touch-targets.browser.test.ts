@@ -99,12 +99,10 @@ beforeAll(async () => {
   }
   s = await startAgentsPageServer();
   host = await connectHost(sessionPaths(s.stateDir).socket);
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
   for (const [id, persona, ws] of AGENTS) {
     const info = await host.start({
       name: `acme-${ws}:${id}`,
@@ -174,6 +172,16 @@ async function phone(
       /* none */
     }
   }, latest);
+  // The page's fetches in flight (denInFlight), for settled().
+  await ctx.addInitScript(() => {
+    const w = window as unknown as { denInFlight: number };
+    w.denInFlight = 0;
+    const own = window.fetch.bind(window);
+    window.fetch = (...a: Parameters<typeof fetch>) => {
+      w.denInFlight++;
+      return own(...a).finally(() => w.denInFlight--);
+    };
+  });
   const p = await ctx.newPage();
   // Only while the page is in use: WebKit reports a fetch the page had
   // open when its context closes as an error.
@@ -201,6 +209,36 @@ const done = new WeakSet<Page>();
 async function close(p: Page): Promise<void> {
   done.add(p);
   await p.context().close();
+}
+
+/**
+ * The page has settled: no fetch in flight and nothing sliding or fading
+ * (no finite animation or transition running), two frames in a row.
+ */
+async function settled(p: Page): Promise<void> {
+  await p.evaluate(() => {
+    (window as unknown as { denQuiet?: number }).denQuiet = 0;
+  });
+  await p.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        denInFlight?: number;
+        denQuiet?: number;
+      };
+      const moving = document
+        .getAnimations()
+        .some(
+          (a) =>
+            a.playState === "running" &&
+            a.effect?.getComputedTiming().endTime !== Infinity,
+        );
+      const quiet = !moving && (w.denInFlight ?? 0) === 0;
+      w.denQuiet = quiet ? (w.denQuiet ?? 0) + 1 : 0;
+      return w.denQuiet >= 2;
+    },
+    undefined,
+    { polling: "raf", timeout: 20_000 },
+  );
 }
 
 type Small = { what: string; w: number; h: number };
@@ -352,7 +390,8 @@ describe.each(ENGINES)(
     it("/agents: every list row and control is 44px or more, no sideways scroll", async () => {
       if (skip()) return;
       const p = await phone(engine, "/agents");
-      await p.waitForSelector(".agr", { timeout: 20_000 });
+      // A row of the list.
+      await p.waitForSelector("#agl button[data-id]", { timeout: 20_000 });
       const r = await sweep(p, "body");
       expect(r.n).toBeGreaterThan(5);
       expect(report(r.small)).toEqual([]);
@@ -363,10 +402,11 @@ describe.each(ENGINES)(
     it("the rail drawer: every row is 44px or more", async () => {
       if (skip()) return;
       const p = await phone(engine, "/agents");
-      await p.click(".den-menu-btn");
-      await p.waitForSelector("body.den-rail-open");
-      await p.waitForTimeout(300);
-      const r = await sweep(p, ".den-rail");
+      await p.click("#den-menu-btn");
+      // Open: ☰ says so, and the drawer has slid in.
+      await p.waitForSelector('#den-menu-btn[aria-expanded="true"]');
+      await settled(p);
+      const r = await sweep(p, "#den-rail");
       expect(r.n).toBeGreaterThan(3);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
@@ -377,7 +417,7 @@ describe.each(ENGINES)(
       if (skip()) return;
       const p = await phone(engine, "/services");
       await p.waitForSelector("#den-content main, main", { timeout: 20_000 });
-      await p.waitForTimeout(1000);
+      await settled(p);
       const r = await sweep(p, "body");
       expect(r.n).toBeGreaterThan(5);
       expect(report(r.small)).toEqual([]);
@@ -388,8 +428,9 @@ describe.each(ENGINES)(
     it("/settings: every category and control is 44px or more, no sideways scroll", async () => {
       if (skip()) return;
       const p = await phone(engine, "/settings");
-      await p.waitForSelector("#set-nav .set-ni", { timeout: 20_000 });
-      await p.waitForTimeout(1000);
+      // A category in the nav.
+      await p.waitForSelector("#set-nav [data-cat]", { timeout: 20_000 });
+      await settled(p);
       const r = await sweep(p, "body");
       expect(r.n).toBeGreaterThan(5);
       expect(report(r.small)).toEqual([]);
@@ -401,7 +442,10 @@ describe.each(ENGINES)(
       if (skip()) return;
       const p = await phone(engine, "/services");
       await p.click("#den-bell");
-      await p.locator("#den-bell-pop .den-bell-row").first().waitFor();
+      // A notification's row (each carries its kind).
+      await p.waitForFunction(
+        () => !!document.querySelector("#den-bell-pop [data-kind]"),
+      );
       const r = await sweep(p, "#den-bell-pop");
       expect(r.n).toBeGreaterThan(1);
       expect(report(r.small)).toEqual([]);
@@ -412,10 +456,19 @@ describe.each(ENGINES)(
     it("a kit menu (the top bar's ◐ ▾): every item is 44px or more", async () => {
       if (skip()) return;
       const p = await phone(engine, "/services");
-      const btn = p.locator(".den-top .appearance-btn").first();
-      await btn.click();
-      await p.locator(".den-pop .den-mi:visible").first().waitFor();
-      const r = await sweep(p, ".den-pop");
+      await p.locator("#appearance-btn").click();
+      // Its menu (the button's id + "-menu"), an item drawn.
+      await p.waitForFunction(() =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '#appearance-btn-menu [role^="menuitem"]',
+          ),
+        ].some((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        }),
+      );
+      const r = await sweep(p, "#appearance-btn-menu");
       expect(r.n).toBeGreaterThan(1);
       expect(report(r.small)).toEqual([]);
       await noSideways(p);
@@ -480,7 +533,8 @@ describe.each(ENGINES)(
 async function measureAsk(p: Page): Promise<void> {
   const b = await p.evaluate(() => {
     const d = document.getElementById("den-ap-dlg")!;
-    const foot = d.querySelector(".btns")!;
+    // The buttons' row: Allow's own box.
+    const foot = d.querySelector("#den-ap-allow")!.parentElement!;
     const fr = foot.getBoundingClientRect();
     const cs = getComputedStyle(foot);
     const inner =

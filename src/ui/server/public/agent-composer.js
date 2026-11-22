@@ -19,6 +19,8 @@
  *
  * Every word is the page's catalog (`t`). Text is only ever set as text
  * (textContent, value), never as HTML.
+ * Its parts carry data-agc (in, send, close, msg): a stable name to find
+ * each by, whatever its styling classes become.
  *
  * Issue 302: with `draft` (draftKey(...)), what is written is kept, unsent,
  * in this tab's own storage (sessionStorage; localStorage only where that
@@ -117,6 +119,7 @@ export function makeComposer({ t, name, send, onClose, draft, holds = false }) {
   };
   const ta = document.createElement("textarea");
   ta.className = "agc-in";
+  ta.dataset.agc = "in";
   ta.rows = 3;
   ta.setAttribute("aria-label", label);
   ta.placeholder = label;
@@ -127,6 +130,7 @@ export function makeComposer({ t, name, send, onClose, draft, holds = false }) {
   hint.textContent = t("agc.hint");
   const msg = document.createElement("p");
   msg.className = "agc-msg";
+  msg.dataset.agc = "msg";
   msg.setAttribute("role", "status");
   msg.setAttribute("aria-live", "polite");
   const acts = document.createElement("div");
@@ -134,11 +138,13 @@ export function makeComposer({ t, name, send, onClose, draft, holds = false }) {
   const sendBtn = document.createElement("button");
   sendBtn.type = "submit";
   sendBtn.className = "btn primary agc-send";
+  sendBtn.dataset.agc = "send";
   sendBtn.textContent = t("agc.send");
   if (onClose) {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "btn agc-close";
+    close.dataset.agc = "close";
     close.textContent = t("agc.close");
     close.addEventListener("click", () => onClose());
     acts.append(close);
