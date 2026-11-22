@@ -5464,6 +5464,7 @@ async function handleRequest(
       method: req.method ?? "GET",
       pathname,
       forwarded: hasForwardingHeaders(req.headers),
+      edgeProved: guard.edgeProved,
     })
   ) {
     markOperatorAct(req, opAct);
@@ -10082,6 +10083,7 @@ function handleUpgrade(
       method: "GET",
       pathname,
       forwarded: hasForwardingHeaders(req.headers),
+      edgeProved: guard.edgeProved,
     })
   ) {
     markOperatorAct(req, "terminal-attach");

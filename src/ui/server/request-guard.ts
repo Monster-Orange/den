@@ -271,6 +271,8 @@ export type GuardResult =
       via: Via;
       /** Beyond loopback: the edge, a LAN name, or a non-loopback peer. */
       beyond: boolean;
+      /** Via the edge, with the install's own edge's proof (H1; issue 1034). */
+      edgeProved: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
       /**
@@ -819,6 +821,7 @@ export function checkRequest(
     principal: p,
     via,
     beyond,
+    edgeProved: proved,
     session,
     ...(client ? { client: normAddress(client) } : {}),
   });
@@ -901,6 +904,7 @@ export function checkRequest(
       principal: null,
       via,
       beyond,
+      edgeProved: proved,
       session: null,
       ending,
       ...(client ? { client: normAddress(client) } : {}),
