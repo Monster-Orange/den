@@ -205,6 +205,9 @@ describe("issue 698: the approval buttons hold the dots", () => {
   it("the Allow card's Allow and Deny (apDecide) hold the pressed button's dots", () => {
     const f = body(read("shell.js"), /function apDecide\(/, /\n {2}function /);
     expect(f).toMatch(/holdDots\(/);
+    // shell.js's $ helper isn't in apDecide's scope: a bare $( throws before
+    // the decision is sent, and the dialog never closes.
+    expect(f).not.toMatch(/[^\w.$]\$\(/);
   });
 
   it("Settings' Approve and Deny for a computer hold the button's dots", () => {
