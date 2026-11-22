@@ -50,6 +50,17 @@ import { getStateDir } from "../../shared/paths.js";
 import { recordUnrevoked } from "../../shared/hub-binding.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { projectRepos } from "../../shared/project-repos.js";
+import { workspaceDisplayName } from "../../shared/workspace-name.js";
+import {
+  setHubProject,
+  type HubProjectLink,
+} from "../../shared/hub-project-link.js";
+import {
+  parseGrantReview,
+  reviewParam,
+  type GrantReview,
+  type ReviewProject,
+} from "../../shared/hub-connect-review-grant.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { envKey, product } from "../../shared/product.js";
 import {
@@ -69,6 +80,11 @@ interface Pending {
   hubUrl: string;
   redirectUri: string;
   at: number;
+  /**
+   * Issue 648: the projects sent to Hub's page (their hash and keys), or
+   * why none were (then issue 646's flow); absent: nothing to link.
+   */
+  review?: { hash: string; keys: string[] } | { why: string };
 }
 
 /** What hub.token becomes after a connect: a store ref, or a file source. */
@@ -119,6 +135,13 @@ export interface HubConnectDeps {
    * Connect page so Hub ranks the person's companies by them.
    */
   repos?: () => string[];
+  /**
+   * Issue 648: the projects Hub's Connect page links or creates in the one
+   * approval (key, name, repos); the catch-all and the server scope never.
+   */
+  reviewProjects?: () => ReviewProject[];
+  /** Issue 648: store a link Hub made in that approval. */
+  linkProject?: (ws: string, link: HubProjectLink, by: string) => void;
 }
 
 /** Issue 646: at most this many repos go to Hub's Connect page. */
@@ -143,6 +166,18 @@ export function connectRepos(
     }
   }
   return [...out];
+}
+
+function defaultReviewProjects(): ReviewProject[] {
+  const file = readWorkspacesFile();
+  return Object.keys(file.workspaces ?? {})
+    .sort()
+    .filter((ws) => !isServerScope(ws))
+    .map((ws) => ({
+      key: ws,
+      name: workspaceDisplayName(ws, file.workspaces[ws]),
+      repos: connectRepos([ws], projectRepos),
+    }));
 }
 
 function defaultRepos(): string[] {
@@ -377,6 +412,8 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     },
     unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
     repos: defaultRepos,
+    reviewProjects: defaultReviewProjects,
+    linkProject: (ws, link, by) => setHubProject(ws, link, by),
   };
 }
 
@@ -398,8 +435,40 @@ export function callbackOriginProblem(origin: string): string | null {
 }
 
 export type ConnectResult =
-  | { ok: true; team?: string; where: string }
+  | {
+      ok: true;
+      team?: string;
+      where: string;
+      /** Issue 648: what Hub's one approval did with the projects. */
+      review?: GrantReview | { ok: false; why: string; quiet?: boolean };
+    }
   | { ok: false; reason: "denied" | "expired" | "failed"; message: string };
+
+/** Issue 648: what the one approval did, after "Connected to Hub (…)." */
+function grantWords(
+  r: GrantReview | { ok: false; why: string; quiet?: boolean },
+): string {
+  if (!r.ok) {
+    if ("quiet" in r && r.quiet) return "";
+    const why = r.why.charAt(0).toUpperCase() + r.why.slice(1);
+    return ` ${why}, so they wait for your review here.`;
+  }
+  const n = r.links.length;
+  const made = r.links.filter((l) => l.how === "created").length;
+  let out = n
+    ? ` Linked ${n} project${n === 1 ? "" : "s"} in the same approval${made ? ` (${made} new)` : ""}.`
+    : "";
+  for (const s of r.skipped) {
+    const d = s.detail ? ` (${s.detail})` : "";
+    out +=
+      s.why === "permission"
+        ? ` ${s.key}: not created${d}.`
+        : s.why === "failed"
+          ? ` ${s.key}: not done on Hub${d}.`
+          : ` ${s.key}: left for later.`;
+  }
+  return out;
+}
 
 /** Issue 646: what waits for the review, after "Connected to Hub." */
 function reviewWords(l: { review: number } | { cannot: true }): string {
@@ -445,12 +514,29 @@ export class HubConnect {
     this.sweep();
     const state = newHubState();
     const { verifier, challenge } = newPkce();
+    let projectsParam = "";
     const redirectUri = `${new URL(origin).origin}/hub/callback`;
+    // Issue 648: the projects, for Hub's page to link or create in the
+    // one approval. Never stops Connect: a cap passed means 646's flow.
+    let review: Pending["review"];
+    try {
+      const list = this.deps.reviewProjects?.() ?? [];
+      const r = reviewParam(list);
+      review = r.ok
+        ? { hash: r.hash, keys: r.keys }
+        : list.length
+          ? { why: `Connect couldn't send the projects to Hub (${r.why})` }
+          : undefined;
+      if (r.ok) projectsParam = r.param;
+    } catch {
+      review = undefined;
+    }
     this.pending.set(state, {
       verifier,
       hubUrl,
       redirectUri,
       at: this.deps.now(),
+      ...(review ? { review } : {}),
     });
     const q = new URLSearchParams({
       install: this.deps.installLabel(),
@@ -474,6 +560,10 @@ export class HubConnect {
     }
     if (repos.length)
       q.set("repos", repos.slice(0, CONNECT_REPOS_MAX).join(","));
+    if (projectsParam) {
+      q.set("review", "1");
+      q.set("projects", projectsParam);
+    }
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
 
@@ -485,7 +575,7 @@ export class HubConnect {
   async finish(q: URLSearchParams): Promise<ConnectResult> {
     const r = await this.finishOnce(q);
     let message = r.ok
-      ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.`
+      ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.${r.review ? grantWords(r.review) : ""}`
       : r.message;
     // Issue 646: the projects wait for the review. It never fails Connect.
     if (r.ok && this.deps.reviewAfter) {
@@ -603,10 +693,31 @@ export class HubConnect {
     await this.deps
       .rebind?.(hubUrl, grant.company?.slug || grant.company?.name || undefined)
       .catch(() => undefined);
+    // Issue 648: the links Hub's one approval made, stored after the rebind
+    // so each is stamped with the Hub and company connected now.
+    let review: Extract<ConnectResult, { ok: true }>["review"];
+    if (p.review && "why" in p.review)
+      review = { ok: false, why: p.review.why };
+    else if (p.review) {
+      review = parseGrantReview(grant.review, p.review);
+      if (review.ok)
+        for (const l of review.links) {
+          try {
+            this.deps.linkProject?.(
+              l.key,
+              l.project,
+              `Connect, Hub's one approval (${l.how})`,
+            );
+          } catch {
+            /* one project's write never stops Connect */
+          }
+        }
+    }
     return {
       ok: true,
       ...(grant.company?.name ? { team: grant.company.name } : {}),
       where: stored.where,
+      ...(review ? { review } : {}),
     };
   }
 
