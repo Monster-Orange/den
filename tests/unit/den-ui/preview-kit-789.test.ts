@@ -58,8 +58,43 @@ describe("issue 789: the preview's document", () => {
     for (const kitBase of ["//evil.example/", "/kit", "/../x/", 'x"/', "kit/"])
       expect(() => previewHtml({ kitBase })).toThrow(/kitBase/);
     expect(() => previewHtml({ mode: "dim" })).toThrow(/mode/);
+    for (const origin of [
+      "hub.example",
+      "https://hub.example/",
+      "javascript:x",
+      "https://a b",
+    ])
+      expect(() => previewHtml({ origin })).toThrow(/origin/);
     expect(previewTheme(null)).toBeNull();
     expect(previewTheme("sketch")).toBe("sketch");
+  });
+
+  it("a CSP first in the head: only the kit's own files load, nothing calls out", async () => {
+    const { previewHtml } = await load();
+    const html = previewHtml({
+      kitBase: "/static/den-ui/",
+      origin: "https://hub.example",
+    });
+    const m =
+      /<head><meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(
+        html,
+      );
+    expect(m).not.toBeNull();
+    const csp = Object.fromEntries(
+      m![1].split(";").map((d) => {
+        const [k, ...v] = d.trim().split(/\s+/);
+        return [k, v.join(" ")];
+      }),
+    );
+    expect(csp).toEqual({
+      "default-src": "'none'",
+      "style-src": "https://hub.example/static/den-ui/ 'unsafe-inline'",
+      "script-src": "https://hub.example/static/den-ui/ 'unsafe-inline'",
+      "img-src": "data: https://hub.example/static/den-ui/",
+      "font-src": "https://hub.example/static/den-ui/",
+      "connect-src": "'none'",
+      "form-action": "'none'",
+    });
   });
 
   it("sandboxes with scripts only, and names Hub's widths", async () => {
