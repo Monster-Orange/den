@@ -18,6 +18,7 @@
  *
  * No timers of its own: tick() is called on a beat and reads when due.
  */
+import { plainText } from "./typed-text.js";
 import fs from "node:fs";
 import { writeFileAtomic } from "./atomic-write.js";
 import path from "node:path";
@@ -107,7 +108,7 @@ export function parseInbox(body: unknown, agent: string): InboxEvent[] {
       kind: kindOf(r.kind),
       by: line(str(r.by, 128) || str(r.last_by, 128)) || "someone",
       title: line(str(r.title, 200)),
-      body: str(r.body, 20_000),
+      body: plainText(str(r.body, 20_000)),
       url: safeUrl(r.url),
       thread,
       at: Date.parse(atRaw),

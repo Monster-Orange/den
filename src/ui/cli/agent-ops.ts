@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { plainText } from "../../shared/typed-text.js";
 import {
   agentOrderOf,
   inAgentOrder,
@@ -8057,10 +8058,10 @@ export function instructionBytes(
   softNewline: string,
 ): { body: string; enter: string } {
   const paste = said.lastIndexOf(PASTE_ON) > said.lastIndexOf(PASTE_OFF);
+  // Plain text only: nothing in it can act as a key.
+  const t = plainText(text);
   return {
-    body: paste
-      ? `\x1b[200~${text}\x1b[201~`
-      : text.split("\n").join(softNewline),
+    body: paste ? `\x1b[200~${t}\x1b[201~` : t.split("\n").join(softNewline),
     enter: "\r",
   };
 }

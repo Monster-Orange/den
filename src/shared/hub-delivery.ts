@@ -8,6 +8,7 @@
  * agent whether it is an edit request (its own person, verified) or
  * information (anyone else). No I/O here but the de-dup file.
  */
+import { plainText } from "./typed-text.js";
 import fs from "node:fs";
 import { writeFileAtomic } from "./atomic-write.js";
 
@@ -153,6 +154,46 @@ function readAuthor(v: unknown): DeliveryAuthor | null {
 }
 
 /** A delivery from Hub's stream or list, or null when it isn't one. */
+/**
+ * A delivery with every field Den may type cleaned: one plain line for
+ * names, ids and titles, plain text for bodies. Deliveries Den builds
+ * itself (a web app's message, gate and GitHub notices) get the same
+ * cleaning as Hub's before they're held to be typed.
+ */
+export function cleanDelivery(d: Delivery): Delivery {
+  const out: Delivery = {
+    ...d,
+    id: line(d.id),
+    agent: line(d.agent),
+    project: line(d.project),
+    thread: {
+      ...d.thread,
+      kind: line(d.thread.kind) || "comment",
+      id: line(d.thread.id),
+      ...(d.thread.artifact !== undefined
+        ? { artifact: line(d.thread.artifact) }
+        : {}),
+    },
+    author: {
+      ...d.author,
+      login: line(d.author.login),
+      name: line(d.author.name),
+    },
+    body: plainText(d.body),
+  };
+  if (d.forwarded)
+    out.forwarded = {
+      ...d.forwarded,
+      author: {
+        ...d.forwarded.author,
+        login: line(d.forwarded.author.login),
+        name: line(d.forwarded.author.name),
+      },
+      body: plainText(d.forwarded.body),
+    };
+  return out;
+}
+
 /** A Delivery back in Hub's shape, so parseDelivery reads it again. */
 export function deliveryRaw(d: Delivery): Record<string, unknown> {
   return {
@@ -212,8 +253,8 @@ function readReplyWith(v: unknown): ReplyWith[] | undefined {
 export function parseDelivery(v: unknown): Delivery | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
-  const id = s(r.id, 64);
-  const agent = s(r.agent, 128);
+  const id = line(s(r.id, 64));
+  const agent = line(s(r.agent, 128));
   const author = readAuthor(r.author);
   if (!id || !agent || !author) return null;
   const th = (r.thread ?? {}) as Record<string, unknown>;
@@ -227,15 +268,15 @@ export function parseDelivery(v: unknown): Delivery | null {
       ? { version: ver }
       : {}),
     agent,
-    project: s(r.project, 128),
+    project: line(s(r.project, 128)),
     thread: {
-      kind: s(th.kind, 32) || "comment",
-      id: s(th.id, 128),
+      kind: line(s(th.kind, 32)) || "comment",
+      id: line(s(th.id, 128)),
       url: safeUrl(th.url),
       ...(artifact ? { artifact } : {}),
     },
     author,
-    body: s(r.body, MAX_BODY),
+    body: plainText(s(r.body, MAX_BODY)),
     createdAt: line(s(r.created_at, 64)),
     ...(r.intent === "edit" || r.intent === "info" ? { intent: r.intent } : {}),
   };
@@ -246,7 +287,7 @@ export function parseDelivery(v: unknown): Delivery | null {
   if (f && fa)
     d.forwarded = {
       author: fa,
-      body: s(f.body, MAX_BODY),
+      body: plainText(s(f.body, MAX_BODY)),
       url: safeUrl(f.url),
     };
   return d;
@@ -259,7 +300,7 @@ const LOOKALIKE =
 /** The body without lines that look like Den's header. */
 export function stripLookalikes(body: string): string {
   return body
-    .split(/\r?\n/)
+    .split(/\r\n?|\n|[\u2028\u2029]/)
     .filter((l) => !LOOKALIKE.test(l))
     .join("\n");
 }

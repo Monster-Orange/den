@@ -12,6 +12,7 @@
  */
 import path from "node:path";
 import {
+  cleanDelivery,
   deliveryAlert,
   readDeliveryHealth,
   SeenDeliveries,
@@ -560,7 +561,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
 export async function relayMessage(dv: Delivery): Promise<boolean> {
   if (!lastOpts) return false;
   const l = await ensureLoop(lastOpts);
-  return l.takeLocal(dv);
+  return l.takeLocal(cleanDelivery(dv));
 }
 
 /** Issue 334: how many relayed messages wait for `agent`. */
