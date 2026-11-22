@@ -36,12 +36,11 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer({});
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  // The newest release (the list's head), so What's new stays shut.
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
   // north: stopped agents (hollow dots); south: two a restart interrupted.
   for (const id of ["scout", "keeper"])
     s.seed({
