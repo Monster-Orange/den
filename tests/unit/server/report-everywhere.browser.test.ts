@@ -78,10 +78,6 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     n: 1,
     how: "the gate queue (issue 144): a dialog on the body, given Report by the injector (gate-chip.browser.test.ts)",
   },
-  "graph.js": {
-    n: 1,
-    how: "the popped detail panel: reportFoot() drawn with it (panel.js, den#143)",
-  },
   "popover.js": { n: 3, how: "not a pop-up: how pop-ups close" },
   "report-inject.js": { n: 2, how: "not a pop-up: the injector's own list" },
 };

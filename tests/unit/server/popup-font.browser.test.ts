@@ -391,6 +391,22 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       await p.keyboard.press("Escape");
       await p.context().close();
     }, 60_000);
+
+    // Issue 837: the graph's details, popped out, on the kit's dialog.
+    it("the graph's popped-out details", async () => {
+      if (!browser) return;
+      const p = await pageOn(theme, "/graph?ws=default");
+      await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
+      await p.keyboard.press("Escape");
+      await p.locator(WHATS_NEW).waitFor({ state: "detached" });
+      await p.locator(".dg-card").first().click({ timeout: 30_000 });
+      await p.locator(".dg-panel:not([hidden]) [data-popout]").click();
+      const pop = "dialog.dg-pop[open]";
+      await p.locator(pop).waitFor();
+      expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
+      await p.keyboard.press("Escape");
+      await p.context().close();
+    }, 60_000);
   });
 
   it("the serif check can fail", () => {
