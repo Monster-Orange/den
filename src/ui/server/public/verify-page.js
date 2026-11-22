@@ -82,7 +82,7 @@ export function stateTag(state) {
 
 function badge(answer, word) {
   const a = ANSWER[answer] ?? ANSWER.notrun;
-  return `<span class="vf-badge vf-${a.tone}"><span class="vf-dot" aria-hidden="true"></span>${esc(t(word ?? a.word))}</span>`;
+  return `<span class="vf-badge vf-${a.tone}" data-badge="${esc(answer)}"><span class="vf-dot" aria-hidden="true"></span>${esc(t(word ?? a.word))}</span>`;
 }
 
 /** In the person's chosen zone and the page's language (issue 668). */
@@ -206,8 +206,8 @@ function clauseList(title, items, lede) {
     })
     .join("");
   return (
-    `<div class="vf-clist"><h3>${esc(t(title, { n: items.length }))}</h3>` +
-    (lede ? `<p class="vf-meta">${esc(lede)}</p>` : "") +
+    `<div class="vf-clist" data-part="list"><h3>${esc(t(title, { n: items.length }))}</h3>` +
+    (lede ? `<p class="vf-meta" data-part="meta">${esc(lede)}</p>` : "") +
     `<ul class="vf-rows">${rows}</ul></div>`
   );
 }
@@ -256,7 +256,7 @@ function checkRows(e) {
         t("v.i_chk", { p, n }) + (need ? t("v.i_chk_needs", { n: need }) : "");
       const s = STATE[g.state] ?? STATE.none;
       return (
-        `<li><a class="vf-row" href="?why=${encodeURIComponent(e.env)}#${esc(checkId(g.module))}" data-why="${esc(e.env)}">` +
+        `<li><a class="vf-row" href="?why=${encodeURIComponent(e.env)}#${esc(checkId(g.module))}" data-why="${esc(e.env)}" data-check="${esc(g.module)}">` +
         `<span class="vf-mk vf-${s.tone}" aria-hidden="true">${s.mark}</span>` +
         `<span class="vf-grow"><code>${esc(g.module)}</code> · ${esc(say)}</span></a></li>`
       );
@@ -274,11 +274,11 @@ function importedBadge(e) {
 
 /** The card's top: the answer, the meta line, the counts. */
 function importedTop(e) {
-  if (!e.run) return `<p class="vf-say">${importedSentence(e)}</p>`;
+  if (!e.run) return `<p class="vf-say" data-part="say">${importedSentence(e)}</p>`;
   const c = e.clauses ?? {};
   return (
-    `<p class="vf-say">${importedSentence(e)}</p>` +
-    `<p class="vf-meta">${esc(metaLine(e.run))} ${esc(t("v.i_sizes", { a: t("v.i_nchecks", { n: e.run.checks ?? 0 }), b: t("v.i_nclauses", { n: c.total ?? 0 }) }))}</p>` +
+    `<p class="vf-say" data-part="say">${importedSentence(e)}</p>` +
+    `<p class="vf-meta" data-part="meta">${esc(metaLine(e.run))} ${esc(t("v.i_sizes", { a: t("v.i_nchecks", { n: e.run.checks ?? 0 }), b: t("v.i_nclauses", { n: c.total ?? 0 }) }))}</p>` +
     clauseCounts(c)
   );
 }
@@ -340,7 +340,7 @@ function clauseTable(e, g) {
 
 /** Issue 441: why an imported environment says what it says. */
 function importedWhy(e) {
-  const back = `<p class="vf-back"><a href="?">${esc(t("v.back"))}</a></p>`;
+  const back = `<p class="vf-back" data-part="back"><a href="?">${esc(t("v.back"))}</a></p>`;
   return (
     back +
     `<div class="vf-head"><div><h2 tabindex="-1">${esc(envName(e.env))}</h2></div>${importedBadge(e)}</div>` +
@@ -362,8 +362,8 @@ function card(e) {
   return (
     `<section class="vf-ans vf-${a.tone}" data-env="${esc(e.env)}" data-answer="${esc(e.answer)}" aria-label="${esc(envName(e.env))}">` +
     `<div class="vf-env"><b>${esc(envName(e.env))}</b>${badge(e.answer)}</div>` +
-    `<p class="vf-say">${esc(answerSentence(e))}</p>` +
-    (e.run ? `<p class="vf-meta">${esc(metaLine(e.run))}</p>` : "") +
+    `<p class="vf-say" data-part="say">${esc(answerSentence(e))}</p>` +
+    (e.run ? `<p class="vf-meta" data-part="meta">${esc(metaLine(e.run))}</p>` : "") +
     why +
     `</section>`
   );
@@ -489,8 +489,8 @@ const SNIPPET = `verify:
 export function emptyView() {
   return (
     `<section class="vf-ans vf-neutral" data-answer="empty"><div class="vf-env"><b>${esc(t("v.em_h"))}</b>${badge("notrun", "v.v_none")}</div>` +
-    `<p class="vf-say">${esc(t("v.em_p"))}</p><pre class="vf-pre">${esc(SNIPPET)}</pre>` +
-    `<p class="vf-meta">${esc(t("v.em_where"))}</p></section>`
+    `<p class="vf-say" data-part="say">${esc(t("v.em_p"))}</p><pre class="vf-pre">${esc(SNIPPET)}</pre>` +
+    `<p class="vf-meta" data-part="meta">${esc(t("v.em_where"))}</p></section>`
   );
 }
 
@@ -519,7 +519,7 @@ function reportHref(project, f) {
 /** S4: why an environment is not ready, down to each failure's report. */
 export function whyView(ov, env) {
   const e = (ov.envs ?? []).find((x) => x.env === env);
-  const back = `<p class="vf-back"><a href="?">${esc(t("v.back"))}</a></p>`;
+  const back = `<p class="vf-back" data-part="back"><a href="?">${esc(t("v.back"))}</a></p>`;
   if (!e) return back;
   if (e.imported) return importedWhy(e);
   const fails = (e.failures ?? [])
@@ -560,8 +560,8 @@ export function whyView(ov, env) {
   return (
     back +
     `<div class="vf-head"><div><h2 tabindex="-1">${esc(envName(e.env))}</h2></div>${badge(e.answer)}</div>` +
-    `<p class="vf-say">${esc(answerSentence(e))}</p>` +
-    (e.run ? `<p class="vf-meta">${esc(metaLine(e.run))}</p>` : "") +
+    `<p class="vf-say" data-part="say">${esc(answerSentence(e))}</p>` +
+    (e.run ? `<p class="vf-meta" data-part="meta">${esc(metaLine(e.run))}</p>` : "") +
     `<section class="vf-card vf-why-card" role="alert"><h2>${esc(t("v.why_t"))}</h2><ol class="vf-why">${fails}${waits}${rest}</ol></section>`
   );
 }

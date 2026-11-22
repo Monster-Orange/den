@@ -374,7 +374,9 @@ describe("issue 441: gate results on an imported environment", () => {
   it("each check on the tag is one row, the whole row opening its clauses", () => {
     const c = cardOf(answerView(withBed), "bed");
     const rows = [
-      ...c.matchAll(/<a class="vf-row" href="([^"]+)" data-why="bed">/g),
+      ...c.matchAll(
+        /<a class="vf-row" href="([^"]+)" data-why="bed" data-check="[^"]+">/g,
+      ),
     ].map((m) => m[1]);
     expect(rows).toEqual([
       "?why=bed#gate-327",

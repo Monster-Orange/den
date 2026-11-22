@@ -126,10 +126,12 @@ export async function run(ctx, s) {
   await ctx.goto(ctx.page, "/verify");
   // A new version's "What's new" may cover the page: close it, as a person would.
   try {
-    await ctx.page.locator("#cl-overlay.open").waitFor({ timeout: 2500 });
+    await ctx.page
+      .locator("dialog#cl-overlay[open]")
+      .waitFor({ timeout: 2500 });
     await ctx.page.click("#cl-close-btn");
     await ctx.page
-      .locator("#cl-overlay.open")
+      .locator("dialog#cl-overlay[open]")
       .waitFor({ state: "detached", timeout: 5000 });
   } catch {
     /* not shown */
@@ -143,16 +145,16 @@ export async function run(ctx, s) {
     for (const li of c.querySelectorAll("[data-count]"))
       counts[li.dataset.count] = li.querySelector("b")?.textContent ?? "";
     return {
-      say: c.querySelector(".vf-say")?.textContent ?? "",
+      say: c.querySelector('[data-part="say"]')?.textContent ?? "",
       counts,
-      rows: c.querySelectorAll("a.vf-row").length,
+      rows: c.querySelectorAll("a[data-check]").length,
     };
   }, card);
   await ctx.shot(`bed-card-${ctx.browser}-${ctx.width}`);
   let why = null;
-  const row = ctx.page.locator(`${card} a.vf-row[href$="#gate-441"]`);
-  if (await row.count()) {
-    await row.first().click();
+  const row = ctx.page.locator(`${card} a[data-check="gate/441"]`);
+  if ((await row.count()) === 1) {
+    await row.click();
     await ctx.page
       .waitForSelector("#gate-441", { timeout: 15000 })
       .catch(() => {});
@@ -167,8 +169,8 @@ export async function run(ctx, s) {
             )
           : [],
         firstList:
-          document.querySelector("#verify-body .vf-clist h3")?.textContent ??
-          "",
+          document.querySelector('#verify-body [data-part="list"] h3')
+            ?.textContent ?? "",
         imgs: document.querySelectorAll("#verify-body img").length,
         ran: window.__gate441 ?? 0,
         sideways: document.documentElement.scrollWidth > window.innerWidth,
@@ -186,7 +188,7 @@ export async function teardown(ctx, s) {
 }
 
 export function expect(cells) {
-  const r0 = cells[0].result;
+  const r0 = cells.map((c) => c.result).find(Boolean);
   if (r0.skip) {
     const row = (clause) => ({
       clause,
