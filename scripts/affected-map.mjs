@@ -5,6 +5,11 @@
  *
  *   node scripts/affected-map.mjs           rewrite the rules
  *   node scripts/affected-map.mjs --check   exit 1 if the file is out of date
+ *   node scripts/affected-map.mjs --shrink-only <base ref>
+ *        exit 1 if `subjectless` gained a test against the merge base of
+ *        <base ref> and HEAD (CI: the pull request's base), 2 on a git
+ *        error. A test that joins the list, or a listed one renamed,
+ *        gets a subject instead.
  *
  * Browser specs load pages over HTTP, so jest's import graph never links a
  * page's scripts to them. The rules say it instead:
@@ -18,9 +23,11 @@
  *   - each test that starts Den as a process, when its subject changes
  *     (issue 708; below).
  * --check also fails on a test that starts Den with no subject, unless it
- * is on the map's `subjectless` list (which only shrinks).
+ * is on the map's `subjectless` list, which only shrinks: --shrink-only,
+ * run by CI, fails a change that adds a test to it.
  * The everything list, the smoke set and $comment are kept as they are.
  */
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -236,6 +243,37 @@ export function subjectGaps(map) {
 
 const readMap = () => JSON.parse(fs.readFileSync(MAP, "utf-8"));
 
+/**
+ * The tests on `map`'s subjectless list that weren't on `baseMap`'s (null:
+ * no map at the base, so every one is new). Sorted.
+ */
+export function subjectlessGrowth(map, baseMap) {
+  const before = new Set(baseMap?.subjectless ?? []);
+  return [...new Set(map.subjectless ?? [])]
+    .filter((t) => !before.has(t))
+    .sort();
+}
+
+/**
+ * The map at the merge base of `base` and HEAD: the parsed map, null when
+ * the file wasn't there, or an Error saying why the base can't be read.
+ */
+function mapAtBase(base) {
+  const git = (...a) =>
+    spawnSync("git", a, { cwd: ROOT, encoding: "utf-8", maxBuffer: 64 << 20 });
+  const mb = git("merge-base", base, "HEAD");
+  if (mb.status !== 0 || !mb.stdout.trim())
+    return new Error(
+      `no merge base between ${base} and HEAD: fetch the base (in CI, fetch-depth: 0)`,
+    );
+  const rel = path.relative(ROOT, MAP).split(path.sep).join("/");
+  const at = mb.stdout.trim();
+  if (git("cat-file", "-e", `${at}:${rel}`).status !== 0) return null;
+  const shown = git("show", `${at}:${rel}`);
+  if (shown.status !== 0) return new Error(`git show ${at}:${rel} failed`);
+  return JSON.parse(shown.stdout);
+}
+
 export function buildRules(map = readMap()) {
   const tests = listTests();
   const specs = tests.filter((t) => t.endsWith(".browser.test.ts"));
@@ -357,6 +395,29 @@ export function buildRules(map = readMap()) {
 
 function main(argv) {
   const map = readMap();
+  const so = argv.indexOf("--shrink-only");
+  if (so !== -1) {
+    const base = argv[so + 1];
+    if (!base || base.startsWith("-")) {
+      console.error("--shrink-only needs the base ref (a commit or branch)");
+      return 2;
+    }
+    const at = mapAtBase(base);
+    if (at instanceof Error) {
+      console.error(at.message);
+      return 2;
+    }
+    const added = subjectlessGrowth(map, at);
+    for (const t of added)
+      console.error(
+        `${t} joined "subjectless" in tests/affected-map.json, which only shrinks: give it a subject (name it like its module, name its module in it, or add it to "subjects")`,
+      );
+    if (added.length) return 1;
+    console.log(
+      `affected-map: "subjectless" gained no test against ${base} (${(map.subjectless ?? []).length} listed)`,
+    );
+    return 0;
+  }
   const rules = buildRules(map);
   if (argv.includes("--check")) {
     const { missing, stale } = subjectGaps(map);

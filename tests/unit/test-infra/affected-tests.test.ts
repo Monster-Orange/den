@@ -405,6 +405,57 @@ describe("tests that start Den as a process (issue 708)", () => {
   });
 });
 
+describe("the subjectless list only shrinks (issue 708)", () => {
+  const LISTED = [
+    "tests/unit/server/a.integration.test.ts",
+    "tests/unit/server/b.browser.test.ts",
+  ];
+  const growth = (now: string[], base: string[] | null) =>
+    call<string[]>(
+      MAP_GEN,
+      "subjectlessGrowth",
+      { subjectless: now },
+      base === null ? null : { subjectless: base },
+    );
+
+  it("a test that joins the list fails the check", () => {
+    expect(
+      growth([...LISTED, "tests/unit/server/new.browser.test.ts"], LISTED),
+    ).toEqual(["tests/unit/server/new.browser.test.ts"]);
+  });
+
+  it("the same list, a shorter one, or one in another order passes", () => {
+    expect(growth(LISTED, LISTED)).toEqual([]);
+    expect(growth(LISTED.slice(1), LISTED)).toEqual([]);
+    expect(growth([...LISTED].reverse(), LISTED)).toEqual([]);
+  });
+
+  it("a renamed test on the list counts as a new one", () => {
+    expect(
+      growth([LISTED[0], "tests/unit/server/b2.browser.test.ts"], LISTED),
+    ).toEqual(["tests/unit/server/b2.browser.test.ts"]);
+  });
+
+  it("with no map at the base, nothing may be on the list", () => {
+    expect(growth(LISTED, null)).toEqual(LISTED);
+  });
+
+  it("CI runs the guard against the pull request's base", () => {
+    const ci = yaml.parse(
+      fs.readFileSync(
+        path.join(ROOT, ".github", "workflows", "ci.yml"),
+        "utf-8",
+      ),
+    ) as { jobs: Record<string, { steps: { run?: string }[] }> };
+    const runs = ci.jobs.pr.steps.map((st) => st.run ?? "");
+    expect(runs).toContainEqual(
+      expect.stringMatching(
+        /node scripts\/affected-map\.mjs --shrink-only "\$\{\{ github\.event\.pull_request\.base\.sha \}\}"/,
+      ),
+    );
+  });
+});
+
 describe("the replay's real failures stay caught", () => {
   const cases = JSON.parse(fs.readFileSync(CASES_FILE, "utf-8")) as Case[];
 
