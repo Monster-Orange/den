@@ -981,7 +981,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
   // Issue 194 (a phone, 390x844): with the runs dock open, the "server
   // isn't responding" banner pushed the page down about 59px, and the
   // pane's To line sat under the dock until the banner went.
-  it("issue 194: at 390x844 with the dock open, the server-down banner never pushes the To line under the dock", async () => {
+  it("issue 194: at 390x844 with the dock saved open, the server-down banner never pushes the To line out of the window", async () => {
     if (skip()) return;
     await s!.settings({ agents_layout: null, shell: { dock: true } });
     const ctx = await browser!.newContext({
@@ -1004,9 +1004,8 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       timeout: 20_000,
     });
     await termsUp(p, 1);
-    if (!(await p.$("#den-dock-out")))
-      await p.click('#den-dock [data-act="dock"]');
-    await p.waitForSelector("#den-dock-out");
+    // Issue 302: on a phone an agent open is the whole screen, with no
+    // runs dock even when it was saved open (frame 2 of the mock).
     // Den's server stops answering: every call fails as a network error.
     await ctx.route(/\/api\//, (r) => r.abort("connectionrefused"));
     await p.evaluate(() => fetch("/api/server-info").catch(() => undefined));
@@ -1022,12 +1021,16 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       return {
         banner: box(document.getElementById("den-banners")),
         to: box(pane.querySelector("[data-to]")),
-        dock: box(document.getElementById("den-dock")),
+        dock:
+          getComputedStyle(document.getElementById("den-dock")!).display !==
+          "none",
+        h: window.innerHeight,
       };
     });
+    expect(m.dock).toBe(false);
     expect(m.banner.h).toBeGreaterThan(0);
     expect(m.to.t).toBeGreaterThanOrEqual(m.banner.b - 0.5);
-    expect(m.to.b).toBeLessThanOrEqual(m.dock.t + 0.5);
+    expect(m.to.b).toBeLessThanOrEqual(m.h + 0.5);
     await shot(p, "issue-194-390-banner");
     await ctx.unrouteAll({ behavior: "ignoreErrors" });
     await ctx.close();
