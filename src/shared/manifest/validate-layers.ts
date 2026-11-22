@@ -33,6 +33,7 @@ import {
   type ManifestLayer,
 } from "./read-manifest.js";
 import { product } from "../product.js";
+import { reviewLoosenings, reviewSchema } from "../review/rules.js";
 
 /** What layered validation needs from the schema module. */
 export interface SchemaTools {
@@ -161,7 +162,39 @@ export function validateOverride(
     ...overrideKeyErrors(base, override),
     ...overrideSchemaErrors(tools, tools.schema, override, base, []),
   ];
+  if (errors.length === 0) errors.push(...reviewTightenErrors(base, override));
   return { valid: errors.length === 0, version, errors, warnings: [] };
+}
+
+/**
+ * Issue 798 (RV-1): an override can only tighten the base's review rules
+ * (the default rule, when the base has no `review:` section). Run once the
+ * override's shape is valid, so both sides parse.
+ */
+function reviewTightenErrors(
+  base: ManifestMap,
+  override: ManifestMap,
+): ValidationError[] {
+  if (!("review" in override)) return [];
+  const was = reviewSchema.safeParse(base.review);
+  const merged = mergeOverride(base, override).review;
+  const now = merged === undefined ? undefined : reviewSchema.safeParse(merged);
+  if (base.review !== undefined && !was.success) return []; // the base layer reports it
+  if (now && !now.success) return []; // the schema check reports it
+  const loosened = reviewLoosenings(
+    base.review === undefined ? undefined : was.data,
+    now?.data,
+  );
+  return loosened.length
+    ? [
+        {
+          path: "review",
+          message: `an override can only tighten review rules: ${loosened.join("; ")}`,
+          suggestion:
+            "Change the repo's own review rules to loosen them, through a reviewed pull request.",
+        },
+      ]
+    : [];
 }
 
 function withFile(result: ValidationResult, file: string): ValidationResult {

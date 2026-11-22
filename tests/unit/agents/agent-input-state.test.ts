@@ -555,6 +555,7 @@ describe("issue 664: each runtime's input check", () => {
     codex: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
     gemini: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
     grok: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
+    antigravity: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
     generic: { prompt: "today", ready: "\x1b[2J\x1b[Hready" },
   };
 
