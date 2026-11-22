@@ -36,7 +36,8 @@
  *     The pop-up: a modal dialog; the address holds ?account=<section>
  *     while it is open and loses it on close.
  *
- *   onAction(act, id, button, extra) is the host's: "unlink", "pair",
+ *   onAction(act, id, button, extra) is the host's: "sign-out" (signOut
+ *   true), "unlink", "pair",
  *   "new-token", "revoke-token" (id), "sign-out-device" (id),
  *   "sign-out-all" (asked first, in the source product's words), "approve" (the code),
  *   "retry-devices", "notify" (id, extra { on }). A request goes through
@@ -171,11 +172,14 @@ function profilePane(p, lang, t) {
         t(p.since, "date"),
       )
     : "";
-  let rows =
-    `<div class="den-aa-item den-aa-me" data-aa-find="${esc(findOf(who, second))}">` +
-    `<div class="den-aa-me-l">${avatar}<div class="den-aa-l"><b class="den-aa-who">${esc(who)}</b>` +
-    (second ? `<small class="den-aa-login">${esc(second)}</small>` : "") +
-    `</div></div>${edit}</div>`;
+  // No person known (a device paired with a link or a code may be
+  // anyone's): no person row, the how line first.
+  let rows = !who
+    ? ""
+    : `<div class="den-aa-item den-aa-me" data-aa-find="${esc(findOf(who, second))}">` +
+      `<div class="den-aa-me-l">${avatar}<div class="den-aa-l"><b class="den-aa-who">${esc(who)}</b>` +
+      (second ? `<small class="den-aa-login">${esc(second)}</small>` : "") +
+      `</div></div>${edit}</div>`;
   rows += item(
     `<b data-aa-how="${how}">${esc(kitT(lang, `kit.aa.how.${how}`))}</b>`,
     since,
@@ -192,6 +196,9 @@ function profilePane(p, lang, t) {
         ? `<input type="hidden" name="csrf" value="${esc(p.signOut.csrf)}">`
         : "") +
       `<button type="submit" class="den-btn">${esc(kitT(lang, "kit.aa.signOut"))}</button></form>`;
+  // A host whose sign-out isn't a plain form (a header-borne csrf, say):
+  // signOut true, and Sign out is its action "sign-out".
+  else if (p.signOut === true) foot += btn(lang, "kit.aa.signOut", "sign-out");
   if (p.signOutAll)
     foot += btn(lang, "kit.aa.signOutAll", "sign-out-all", { ghost: true });
   return card(rows) + (foot ? `<div class="den-aa-foot">${foot}</div>` : "");

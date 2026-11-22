@@ -763,13 +763,16 @@ name, date and code comes from the product.
   notifications. A section with no data is left out.
 - `accountAreaHtml(data)` is pure (it runs on a server too). Every pane is
   drawn, so search finds rows in all of them. Only the open one shows.
-- `onAction` gets `unlink`, `pair`, `new-token`, `revoke-token`,
+- `onAction` gets `sign-out` (with `signOut: true`), `unlink`, `pair`, `new-token`, `revoke-token`,
   `sign-out-device`, `sign-out-all` (the kit asks first), `approve`,
   `retry-devices` and `notify` (`extra.on`; a rejected promise switches it
   back). Send each request through `pending(button, ...)` so the button
   shows its dots.
 - Sign out is a plain POST form with its csrf (`watchForms()` gives it
-  dots). There is no Sign out without `signOut`.
+  dots). A host whose csrf travels in a header passes `signOut: true`:
+  Sign out is then a button and its `sign-out` action. There is no Sign out
+  without `signOut`. A profile with no `login` (a paired device may be
+  anyone's) has no person row.
 - Keys: "/" goes to search, Escape clears it first, and Enter opens the
   first hit's section and flashes its row.
 - Dates are `<time>` in the viewer's own time zone.

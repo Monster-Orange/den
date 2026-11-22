@@ -263,6 +263,25 @@ describe("issue 310: Profile", () => {
     expect(local).not.toContain("<form");
     expect(local).not.toContain("sign-out-all");
   });
+  it("no person known (a paired device): no person row, the how line first", () => {
+    const p = pane(
+      accountAreaHtml({ ...FULL, profile: { how: "paired", signOut: true } }),
+      "profile",
+    );
+    expect(p).not.toContain("den-aa-me");
+    expect(p).not.toContain("den-aa-av");
+    expect(p).toContain('data-aa-how="paired"');
+  });
+  it("Sign out as the host's action (signOut: true): a button, no form", () => {
+    const p = pane(
+      accountAreaHtml({ ...FULL, profile: { ...FULL.profile, signOut: true } }),
+      "profile",
+    );
+    expect(p).not.toContain("<form");
+    expect(p).toMatch(
+      /<button type="button" class="den-btn" data-aa-act="sign-out">Sign out<\/button>/,
+    );
+  });
 });
 
 describe("issue 310: Access and security", () => {

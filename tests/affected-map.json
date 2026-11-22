@@ -48,6 +48,11 @@
       "packages/den-ui/src/shell.css",
       "packages/den-ui/inventory/nav-inventory.js",
       "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/account-den.browser.test.ts": [
+      "src/ui/server/public/account-den.js",
+      "src/ui/server/public/device-words.js",
+      "packages/den-ui/src/account-area.*"
     ]
   },
   "subjectless": [
@@ -427,6 +432,7 @@
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -483,6 +489,7 @@
       "when": ["src/ui/server/public/logs.html"],
       "run": [
         "tests/unit/den-ui/kit-csp.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -595,6 +602,7 @@
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/agent-mode-page.browser.test.ts",
         "tests/unit/server/agent-runtimes.browser.test.ts",
@@ -765,6 +773,7 @@
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
         "tests/unit/server/address-banner.browser.test.ts",
@@ -944,6 +953,7 @@
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/address-banner.browser.test.ts",
         "tests/unit/server/agent-deep-link.browser.test.ts",
@@ -1090,6 +1100,7 @@
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
         "tests/unit/server/agent-order.browser.test.ts",
@@ -1162,6 +1173,7 @@
         "src/ui/server/public/combobox.js",
         "src/ui/server/public/den-kit.js",
         "src/ui/server/public/den-sw.js",
+        "src/ui/server/public/device-words.js",
         "src/ui/server/public/dialog-den.js",
         "src/ui/server/public/header.js",
         "src/ui/server/public/health-fit.js",
@@ -1198,6 +1210,7 @@
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
+        "tests/unit/server/account-den.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
         "tests/unit/server/account-who.browser.test.ts",
         "tests/unit/server/address-banner.browser.test.ts",
@@ -1619,6 +1632,15 @@
         "src/ui/cli/index.ts"
       ],
       "run": ["tests/unit/engine-roots.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/account-area.*",
+        "src/ui/server/public/account-den.js",
+        "src/ui/server/public/device-words.js"
+      ],
+      "run": ["tests/unit/server/account-den.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

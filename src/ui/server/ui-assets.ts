@@ -103,6 +103,10 @@ export const UI_MODULES: readonly string[] = [
   "/report-den.js",
   // Issue 95: Den's adapter for the kit's client entry (/kit/kit.js).
   "/den-kit.js",
+  // Issue 310: Den on the kit's Account area, and a device's name in the
+  // page's words (shared with Settings › Access).
+  "/account-den.js",
+  "/device-words.js",
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
