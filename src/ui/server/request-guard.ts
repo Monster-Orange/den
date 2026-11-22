@@ -80,6 +80,9 @@ import {
 } from "../../shared/agent-actor.js";
 import { osUser } from "../../shared/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+
+/** Issue 796: the audit client of an agent's read-only view. */
+export const AGENT_VIEW_CLIENT = "page view (read-only)";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
 import {
   EMBED_KEY_ROUTES,
@@ -132,6 +135,8 @@ export type Principal =
       session?: string;
       /** Issue 810: the fixture person's session (a test install's live checks). */
       fixture?: true;
+      /** Issue 796: an agent's read-only view: the agent and its project. */
+      view?: { agent: string; workspace: string };
     }
   | RunnerPrincipal;
 
@@ -151,6 +156,9 @@ export interface GuardSession {
   secure?: boolean;
   /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
   via?: string;
+  /** Issue 796: an agent's view (via "agent-view"): whose, and its project. */
+  agent?: string;
+  agentWorkspace?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -701,8 +709,13 @@ export function checkRequest(
   // minted on it: none on a loopback name, and none minted elsewhere.
   const namedOnly = ctx.loopbackSessions?.() === false;
   const found = principal ? null : (ctx.session?.(req, via) ?? null);
+  // Issue 796: an agent's read-only view lives on loopback only, so it
+  // still counts there.
+  const loopView = via === "loopback" && found?.via === "agent-view";
   const session =
-    namedOnly && (via === "loopback" || !found?.secure) ? null : found;
+    namedOnly && (via === "loopback" || !found?.secure) && !loopView
+      ? null
+      : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
@@ -772,6 +785,14 @@ export function checkRequest(
         kind: "person-browser",
         session: session.key,
         ...(session.via === "fixture" ? { fixture: true as const } : {}),
+        ...(session.via === "agent-view" && session.agent
+          ? {
+              view: {
+                agent: session.agent,
+                workspace: session.agentWorkspace ?? "",
+              },
+            }
+          : {}),
       }
     : null;
 
@@ -1201,6 +1222,8 @@ export function principalOf(req: http.IncomingMessage): string | undefined {
   // Issue 810: the fixture person is named as such, never the human.
   if (p?.kind === "person-browser" && p.session && p.fixture)
     return FIXTURE_PRINCIPAL;
+  // Issue 796: an agent's view is the agent, never the person.
+  if (p?.kind === "person-browser" && p.session && p.view) return p.view.agent;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1233,6 +1256,18 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
   // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
   // it, and the audit keeps it as a claim, labelled as such.
   const p = PRINCIPALS.get(req);
+  // Issue 796: an agent's read-only view, named as that agent (its session
+  // was minted for the agent's own token), never the person.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      kind: "agent",
+      client: AGENT_VIEW_CLIENT,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      agent: p.view.agent as `agent:${string}`,
+      workspace: p.view.workspace,
+    };
   if (p?.kind === "person-browser" && p.fixture)
     return {
       kind: "agent",
@@ -1247,7 +1282,8 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
 
 /**
  * Issue 810: whether a person-only check must refuse this request: an
- * agent's token, a claimed agent, or the fixture person.
+ * agent's token, a claimed agent, the fixture person, or (issue 796) an
+ * agent's read-only view.
  */
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);

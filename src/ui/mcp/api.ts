@@ -153,6 +153,8 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/approvals": "POST",
   // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
   "/api/agents/self/attention": "POST",
+  // Issue 796 (MCP page_view): a one-time link to a read-only view.
+  "/api/agents/self/view": "POST",
   // Issue 208 (MCP verify_run): the plan (runs nothing), and a run on
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",

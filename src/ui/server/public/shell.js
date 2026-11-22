@@ -696,6 +696,7 @@
     "set.ui.viaGithubAs": "signed in with GitHub (@{login})",
     "set.ui.viaGithub": "signed in with GitHub",
     "set.ui.viaCode": "approved with a code",
+    "set.ui.viaAgentView": "{agent}'s read-only view",
     "set.ui.viaClaim": "claimed with a setup link",
     "set.ui.viaLink": "signed in with a one-time link",
     "set.ui.unknownBrowser": "Unknown browser",
@@ -1706,6 +1707,10 @@
       "In a terminal on this computer, run this. It opens this page signed in:",
     "shell.signin.line": "Sign in to make changes here.",
     "shell.signin.btn": "Sign in",
+    "shell.view.title": "Read-only view",
+    "shell.view.line":
+      "{agent} is viewing these pages. Nothing can be changed here, and the view ends in a few minutes.",
+    "shell.view.off": "Read-only view: this changes nothing here",
     "err.signin.codeExpired": "This code expired.",
     "err.signin.codeDenied": "This computer was denied on {host}.",
     "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
@@ -2228,6 +2233,12 @@
     "set.access.approve_window": "Wrong-code window, in seconds",
     "set.access.approve_window.d":
       "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
+    "set.access.agent_view": "Agents may view pages, read-only",
+    "set.access.agent_view.d":
+      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+    "set.access.agent_view_minutes": "An agent's view lasts, in minutes",
+    "set.access.agent_view_minutes.d":
+      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -7818,6 +7829,7 @@
             csrf.token = b && typeof b.csrf === "string" ? b.csrf : null;
             applyIdentity(b);
             signinBanner(b);
+            viewMode(b);
             return csrf.token;
           },
           function () {
@@ -7826,6 +7838,62 @@
           },
         );
     return csrf.pending;
+  }
+  /**
+   * Issue 796: an agent's read-only view (GET /api/session `view`). One
+   * line says so, and no write control is live: every button, field and
+   * switch outside the rail is disabled as it appears. Tabs, menus and
+   * disclosures (they change nothing) and search boxes stay. The server
+   * refuses every write all the same, and the person's approval dialog
+   * never opens here.
+   */
+  var VIEW = null;
+  var VIEW_KEEP =
+    '[role="tab"],[aria-haspopup],[aria-expanded],[aria-controls],' +
+    '[data-nav],[data-visit],[data-den-view-ok],input[type="search"],' +
+    '[role="combobox"],[role="searchbox"]';
+  function viewLock(root) {
+    if (!VIEW || !root || !root.querySelectorAll) return;
+    var all = root.querySelectorAll(
+      'button,input,select,textarea,[contenteditable="true"]',
+    );
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (el.closest(".den-rail,#den-banners") || el.matches(VIEW_KEEP))
+        continue;
+      if (el.isContentEditable) el.setAttribute("contenteditable", "false");
+      else el.disabled = true;
+      el.setAttribute("aria-disabled", "true");
+      el.setAttribute("data-den-view-off", "");
+      el.title = t("shell.view.off");
+    }
+  }
+  function viewMode(b) {
+    if (!b || !b.view || VIEW) return;
+    VIEW = b.view;
+    document.documentElement.setAttribute("data-den-view", "read-only");
+    hideBanner("signin");
+    showBanner("view", {
+      title: t("shell.view.title"),
+      text: t("shell.view.line", { agent: String(VIEW.agent || "") }),
+    });
+    apClose();
+    var run = function () {
+      viewLock(document);
+      if (typeof MutationObserver === "undefined") return;
+      new MutationObserver(function (list) {
+        for (var i = 0; i < list.length; i++)
+          for (var j = 0; j < list[i].addedNodes.length; j++) {
+            var n = list[i].addedNodes[j];
+            if (n.nodeType !== 1) continue;
+            if (n.matches && n.matches("button,input,select,textarea"))
+              viewLock(n.parentNode);
+            else viewLock(n);
+          }
+      }).observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.body) run();
+    else document.addEventListener("DOMContentLoaded", run, { once: true });
   }
   /**
    * 0.4.71: a page read on this machine with no session (a bookmark, a
@@ -8298,6 +8366,8 @@
     apPoll();
   });
   function apPoll() {
+    // Issue 796: an agent's read-only view never opens the person's asks.
+    if (VIEW) return;
     // One ask at a time: a tick while the last is still open sends none.
     if (document.hidden || ap.busy || ap.polling) return;
     ap.polling = true;

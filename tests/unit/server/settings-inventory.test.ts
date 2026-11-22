@@ -51,6 +51,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     approve_attempts: true,
     approve_window_seconds: true,
   },
+  // Issue 796: agents' read-only page views.
+  web_agent_view: { on: true, minutes: true },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
@@ -221,6 +223,8 @@ describe("the settings inventory (R21)", () => {
         "crash_loop.minutes",
         "crash_loop.max_wait_seconds",
         // 0.4.48: Den on the Docker bridge for the edge (Linux).
+        "web_agent_view.minutes",
+        "web_agent_view.on",
         "web_bridge.listen",
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.

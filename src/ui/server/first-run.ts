@@ -74,9 +74,12 @@ export interface FirstRunDeps {
   now?: () => number;
 }
 
-/** A person's sign-in (every one but the fixture person's). */
+/**
+ * A person's sign-in: every one but the fixture person's and (issue 796)
+ * an agent's read-only view.
+ */
 export function personVia(via: Via): boolean {
-  return via !== "fixture";
+  return via !== "fixture" && via !== "agent-view";
 }
 
 export class FirstRun {

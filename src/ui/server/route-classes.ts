@@ -749,6 +749,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/agents/self/view",
+    "Issue 796: an agent (its own token only) asks for a read-only view of these pages; a one-time link",
+  ),
+  M(
+    ["POST"],
     "/api/agents/self/attention",
     "NT-1: an agent (its own token only) says it waits for its person or finished its turn",
   ),

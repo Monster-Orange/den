@@ -426,6 +426,31 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "page_view",
+    "View this Den's pages, read-only",
+    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so.",
+    {
+      next: z
+        .string()
+        .optional()
+        .describe("The page to open, a path on this Den (default /agents)"),
+    },
+    async (a, { api }) => {
+      const next = str(a.next)?.trim() || "/agents";
+      if (!next.startsWith("/") || next.startsWith("//"))
+        throw new Refusal(
+          "page_view: next is a path on this Den, such as /agents or /settings.",
+        );
+      try {
+        return await api.get("/api/agents/self/view", {}, "POST", { next });
+      } catch (e) {
+        if (e instanceof DenHttpError && e.status === 403)
+          throw new Refusal(`page_view: ${e.body}`);
+        throw e;
+      }
+    },
+  ),
+  read(
     "notifications_list",
     "Your person's bell",
     "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. Reads only: an agent can't mark or clear these.",
@@ -2814,6 +2839,7 @@ export const ROUTE_SINCE: Readonly<Record<string, string>> = {
   "/api/verify/plan": "0.4.51",
   "/api/verify/run": "0.4.51",
   "/api/server-agent/update": "0.4.64",
+  "/api/agents/self/view": "0.4.82",
 };
 
 /** `a` is older than `b`, by major.minor.patch (a pre-release counts as its release). */
