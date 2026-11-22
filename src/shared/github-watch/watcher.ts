@@ -323,6 +323,9 @@ export class GithubWatcher {
   async tick(): Promise<void> {
     const now = this.now();
     this.prune(now);
+    // Nothing to watch: no GitHub call and no file write (an idle install
+    // never touches its state files).
+    if (!this.watches.some((w) => w.phase !== "done")) return;
     if (this.paused(now)) return this.writeStatus(now);
     this.pause = null;
     if (now < this.next) return;

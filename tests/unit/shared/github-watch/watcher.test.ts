@@ -491,3 +491,41 @@ describe("the status line and the kept watches", () => {
     }
   });
 });
+
+describe("an idle watcher writes nothing", () => {
+  it("with no watches, its rounds write neither the watches file nor the status file", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gh-watch-idle-"));
+    const file = path.join(dir, "github", "watches.json");
+    const statusFile = path.join(dir, "github", "watch-status.json");
+    const w = watcher({ file, statusFile });
+    for (let i = 0; i < 5; i++) {
+      t += 10 * 60_000;
+      await w.tick();
+    }
+    expect(fs.existsSync(file)).toBe(false);
+    expect(fs.existsSync(statusFile)).toBe(false);
+    expect(gh.calls.length).toBe(0);
+  });
+
+  it("after its last watch is cancelled, later rounds leave the files alone", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gh-watch-idle-"));
+    const file = path.join(dir, "github", "watches.json");
+    const statusFile = path.join(dir, "github", "watch-status.json");
+    const w = watcher({ file, statusFile });
+    const c = await w.create(ask({ pr: 1 }));
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(w.cancel("planner", c.watch.id).ok).toBe(true);
+    const before = [fs.statSync(file).mtimeMs, fs.statSync(statusFile).mtimeMs];
+    const calls = gh.calls.length;
+    for (let i = 0; i < 5; i++) {
+      t += 10 * 60_000;
+      await w.tick();
+    }
+    expect([
+      fs.statSync(file).mtimeMs,
+      fs.statSync(statusFile).mtimeMs,
+    ]).toEqual(before);
+    expect(gh.calls.length).toBe(calls);
+  });
+});
