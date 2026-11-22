@@ -195,10 +195,18 @@ export function orphanOverrideMessage(): string {
   return `an override with no base manifest is not a manifest: add a ${product().manifestYml} to the repo, or to manifests/`;
 }
 
-interface Located {
+export interface Located {
   baseFile: string | null;
   baseLayer: "repo" | "held" | null;
   overrideFile: string | null;
+}
+
+/**
+ * Which manifest files apply to `repoPath` (the base and its layer, the
+ * override), found by name only: nothing is read.
+ */
+export function locateManifest(repoPath: string): Located {
+  return locate(repoPath);
 }
 
 function locate(repoPath: string): Located {

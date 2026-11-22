@@ -26,7 +26,7 @@ import {
 } from "./merge-override.js";
 import {
   heldManifestPath,
-  loadManifest,
+  locateManifest,
   orphanOverrideMessage,
   overrideSuffix,
   parseManifestText,
@@ -63,7 +63,24 @@ export interface LayeredValidation {
    * and both layers pass on their own). Empty when no manifest file exists.
    */
   layers: LayerValidation[];
+  /**
+   * The layers that applied, base first, as loadManifest's `layers` says
+   * (e.g. ["held", "override"]); empty when no usable manifest results.
+   */
+  applied?: ManifestLayer[];
 }
+
+/**
+ * How a layer file is read (issue 583): the default reads it as is; a
+ * caller may check where the file really is first, and throw to refuse it.
+ */
+export type ReadLayerFile = (file: string, layer: ManifestLayer) => string;
+
+export interface ValidateLayersOptions {
+  read?: ReadLayerFile;
+}
+
+const readAsIs: ReadLayerFile = (file) => fs.readFileSync(file, "utf-8");
 
 /** Strip optional/nullable/default wrappers to the schema underneath. */
 function unwrap(schema: z.ZodType): z.ZodType {
@@ -163,9 +180,13 @@ function failure(
 }
 
 /** Read and parse a layer file, or the reason it cannot be used. */
-function readLayer(file: string): { value: unknown } | { error: string } {
+function readLayer(
+  file: string,
+  layer: ManifestLayer,
+  read: ReadLayerFile,
+): { value: unknown } | { error: string } {
   try {
-    const raw = fs.readFileSync(file, "utf-8");
+    const raw = read(file, layer);
     // A non-map (scalar, list, empty file) is passed on as is, so the
     // validator reports it the way it reports any other bad manifest.
     let value: unknown;
@@ -209,8 +230,11 @@ function redundantHeldWarning(
 export function validateLayers(
   tools: SchemaTools,
   repoPath: string,
+  opts: ValidateLayersOptions = {},
 ): LayeredValidation {
-  const { baseFile, baseLayer, overrideFile } = loadManifest(repoPath);
+  const read = opts.read ?? readAsIs;
+  // Located by name only: every file is read below, through `read`.
+  const { baseFile, baseLayer, overrideFile } = locateManifest(repoPath);
   const layers: LayerValidation[] = [];
 
   if (!baseFile || !baseLayer) {
@@ -220,10 +244,10 @@ export function validateLayers(
         file: overrideFile,
         result: failure(tools.version, overrideFile, orphanOverrideMessage()),
       });
-    return { valid: false, layers };
+    return { valid: false, layers, applied: [] };
   }
 
-  const base = readLayer(baseFile);
+  const base = readLayer(baseFile, baseLayer, read);
   let baseResult =
     "error" in base
       ? failure(tools.version, baseFile, base.error)
@@ -240,8 +264,10 @@ export function validateLayers(
     };
   layers.push({ layer: baseLayer, file: baseFile, result: baseResult });
 
+  let overrideRead: ReturnType<typeof readLayer> | null = null;
   if (overrideFile) {
-    const override = readLayer(overrideFile);
+    const override = readLayer(overrideFile, "override", read);
+    overrideRead = override;
     const baseMap = "value" in base && isPlainMap(base.value) ? base.value : {};
     const overrideResult =
       "error" in override
@@ -270,5 +296,23 @@ export function validateLayers(
       });
   }
 
-  return { valid: layers.every((l) => l.result.valid), layers };
+  return {
+    valid: layers.every((l) => l.result.valid),
+    layers,
+    applied: appliedLayers(baseLayer, base, overrideFile, overrideRead),
+  };
+}
+
+/** loadManifest's `layers`: both files read as maps, else none. */
+function appliedLayers(
+  baseLayer: "repo" | "held",
+  base: { value: unknown } | { error: string },
+  overrideFile: string | null,
+  override: { value: unknown } | { error: string } | null,
+): ManifestLayer[] {
+  if (!("value" in base) || !isPlainMap(base.value)) return [];
+  if (!overrideFile) return [baseLayer];
+  return override && "value" in override && isPlainMap(override.value)
+    ? [baseLayer, "override"]
+    : [];
 }

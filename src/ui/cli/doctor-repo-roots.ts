@@ -1,0 +1,61 @@
+/**
+ * Issue 583, clause 3: doctor's row for the projects' configured repo
+ * roots. A root that is far too broad (broadRootReason: the whole disk, a
+ * top-level folder, the home folder or one holding it, the state folder or
+ * one holding it) is refused by Validate, which would otherwise read
+ * anything under it; ✗ names each one, its project and why.
+ */
+import type { OnboardCheck } from "./doctor-onboard.js";
+import {
+  broadRootReason,
+  type BroadRootOptions,
+} from "../../shared/manifest/contained-read.js";
+
+export interface RepoRoot {
+  project: string;
+  repoPath: string;
+}
+
+export function repoRootLines(
+  roots: readonly RepoRoot[],
+  opts: BroadRootOptions = {},
+): { lines: string[]; check: OnboardCheck; problem: boolean } {
+  const seen = new Set<string>();
+  const broad: string[] = [];
+  for (const { project, repoPath } of roots) {
+    const key = `${project}\0${repoPath}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const why = broadRootReason(repoPath, opts);
+    if (why) broad.push(`${project}: ${repoPath} (${why})`);
+  }
+  const fail = broad.length > 0;
+  const detail = fail
+    ? `Validate refuses ${broad.length === 1 ? "this repo root" : "these repo roots"}, far too broad to read inside: ${broad.join("; ")}; fix: point the project's repo at the repo's own folder`
+    : "every repo root is a repo's own folder";
+  const mark = fail ? "✗" : "✓";
+  return {
+    lines: [`  Repo roots  ${mark}  ${detail}`],
+    check: { id: "repo_roots", status: fail ? "fail" : "ok", detail },
+    problem: fail,
+  };
+}
+
+/** Every project's configured repo roots (none when none can be read). */
+export async function defaultRepoRoots(): Promise<RepoRoot[]> {
+  try {
+    const { readWorkspacesFile, listWorkspaceServices } =
+      await import("../../shared/environment-manager/workspaces.js");
+    const { readCatalog } =
+      await import("../../shared/environment-manager/catalog.js");
+    const catalog = readCatalog();
+    return Object.entries(readWorkspacesFile().workspaces ?? {}).flatMap(
+      ([project, config]) =>
+        listWorkspaceServices(config, catalog, project)
+          .filter((s) => !!s.repoPath)
+          .map((s) => ({ project, repoPath: s.repoPath })),
+    );
+  } catch {
+    return [];
+  }
+}

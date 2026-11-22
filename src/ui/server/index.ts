@@ -164,7 +164,7 @@ import {
 } from "../../shared/environment-manager/service-runner.js";
 import { reapDeadDaemons } from "./daemon-reaper.js";
 import {
-  loadManifest,
+  heldManifestsDir,
   readManifest,
 } from "../../shared/manifest/read-manifest.js";
 import {
@@ -235,10 +235,8 @@ import {
   webServerEnv,
 } from "../cli/web-command.js";
 import { recordInvocation } from "../../shared/dev-metrics/emit.js";
-import {
-  validateManifest,
-  validateManifestLayers,
-} from "../../shared/manifest/validate-manifest.js";
+import { validateManifest } from "../../shared/manifest/validate-manifest.js";
+import { validateAtPath } from "./manifest-validate-path.js";
 import { depService } from "../../shared/manifest/deps.js";
 import {
   placementRefusal,
@@ -1039,52 +1037,6 @@ function pinProjects(): PinProjects {
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
-/** A message's first line: a parser's code frame quotes the file. */
-function firstLine(m: string): string {
-  return String(m).split("\n")[0].replace(/:\s*$/, "");
-}
-
-/**
- * Where `p` really is, when it is a project repo's checkout or inside one,
- * both as written and after resolving every symlink; else null.
- */
-function manifestPathInRepo(p: string): string | null {
-  if (!path.isAbsolute(p) || p.length > 4096 || p.includes("\0")) return null;
-  let roots: string[];
-  try {
-    roots = allWorkspaceCheckouts()
-      .map((c) => c.repoPath)
-      .filter((r): r is string => !!r && path.isAbsolute(r));
-  } catch {
-    return null;
-  }
-  const within = (x: string, rs: string[]) =>
-    rs.some(
-      (r) => x === r || x.startsWith(r.endsWith(path.sep) ? r : r + path.sep),
-    );
-  if (
-    !within(
-      path.resolve(p),
-      roots.map((r) => path.resolve(r)),
-    )
-  )
-    return null;
-  let real: string;
-  try {
-    real = fs.realpathSync(p);
-  } catch {
-    return null;
-  }
-  const realRoots = roots.flatMap((r) => {
-    try {
-      return [fs.realpathSync(r)];
-    } catch {
-      return [];
-    }
-  });
-  return within(real, realRoots) ? real : null;
-}
-
 function allWorkspaceCheckouts(): ResolvedService[] {
   const catalog = readCatalog();
   return Object.entries(readWorkspacesFile().workspaces).flatMap(
@@ -7983,70 +7935,20 @@ async function handleRequest(
     if (req.method === "GET" || req.method === "HEAD") {
       const filePath = url.searchParams.get("path");
       if (!filePath) return send400(res, '"path" query param required');
-      // Only inside a project's repo: the path as written and, after every
-      // symlink, where it really is. Any other path is refused the same way,
-      // there or not.
-      const real = manifestPathInRepo(filePath);
-      if (!real)
-        return sendJson(
-          res,
-          {
-            ok: false,
-            code: "outside_repos",
-            error:
-              "Validate reads only a repo folder (or a file in one) of a project here.",
-          },
-          403,
-        );
-      // Errors name the file's line and column, never its text.
-      const plain = (r: ReturnType<typeof validateManifest>) => ({
-        ...r,
-        errors: r.errors.map((e) => ({ ...e, message: firstLine(e.message) })),
-        warnings: r.warnings.map((w) => ({
-          ...w,
-          message: firstLine(w.message),
-        })),
-      });
+      // Issue 583: every file it opens is checked where it really is, and
+      // read at that same path; a far too broad repo root is no root.
+      let repoRoots: string[] = [];
       try {
-        const isDir = fs.statSync(real).isDirectory();
-        // A repo folder: every layer that applies (repo or held, override,
-        // merged), flattened into the usual shape; each error names its file.
-        if (isDir) {
-          const layered = validateManifestLayers(real);
-          if (layered.layers.length > 0)
-            return sendJson(res, {
-              valid: layered.valid,
-              version: layered.layers[0].result.version,
-              errors: layered.layers.flatMap((l) => plain(l.result).errors),
-              warnings: layered.layers.flatMap((l) => plain(l.result).warnings),
-              manifestLayers: loadManifest(real).layers,
-              layers: layered.layers.map((l) => ({
-                ...l,
-                result: plain(l.result),
-              })),
-            });
-        }
-        const denYml = isDir
-          ? path.join(real, `${product().manifestYml}`)
-          : real;
-        const content = fs.readFileSync(denYml, "utf-8");
-        return sendJson(res, plain(validateManifest(content)));
-      } catch (e) {
-        return sendJson(res, {
-          valid: false,
-          version: 1,
-          errors: [
-            {
-              path: "",
-              message:
-                (e as NodeJS.ErrnoException).code === "ENOENT"
-                  ? "No manifest there."
-                  : "The manifest couldn't be read.",
-            },
-          ],
-          warnings: [],
-        });
+        repoRoots = allWorkspaceCheckouts().map((c) => c.repoPath);
+      } catch {
+        repoRoots = [];
       }
+      const r = validateAtPath(filePath, {
+        repoRoots,
+        heldDir: heldManifestsDir(),
+        stateDir: getStateDir(),
+      });
+      return sendJson(res, r.body, r.status);
     }
   }
 
