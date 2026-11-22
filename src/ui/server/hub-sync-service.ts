@@ -158,6 +158,9 @@ export function startMcpReconnect(
           // Issue 629: the note waits for the person's dialog: the bell says so.
           held: (id, ws) => void bellToolsNote(id, ws, true),
           cleared: (id) => void bellToolsNote(id, "", false),
+          // Issue 749: its tool listing still fails after Den's one restart.
+          gaveUp: (id, ws, error) => void bellToolsListFailed(id, ws, error),
+          listed: (id) => void bellToolsListFailed(id, "", null),
         });
       }
       await rc.tick();
@@ -185,6 +188,24 @@ async function bellToolsNote(
     if (on) u.toolsNoteHeldNote(store, product().title, id, workspace);
     else
       store.remove((x) => x.subject === `${u.TOOLS_NOTE_HELD_SUBJECT}:${id}`);
+  } catch {
+    /* the bell is best effort */
+  }
+}
+
+/** Issue 749: the bell item for an agent whose Hub tools still don't load, or its end. */
+async function bellToolsListFailed(
+  id: string,
+  workspace: string,
+  error: string | null,
+): Promise<void> {
+  try {
+    const { notificationDeps } = await import("./notification-service.js");
+    const u = await import("./update-check.js");
+    const store = notificationDeps().store;
+    if (error !== null) u.toolsListFailedNote(store, id, workspace, error);
+    else
+      store.remove((x) => x.subject === `${u.TOOLS_LIST_FAILED_SUBJECT}:${id}`);
   } catch {
     /* the bell is best effort */
   }

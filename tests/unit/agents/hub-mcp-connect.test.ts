@@ -376,6 +376,18 @@ describe("issue 749: Hub connected but listing its tools failed", () => {
     expect(lists).toEqual([{ agentId: "planner", ok: true }]);
   });
 
+  it("review: an answer with a content-encoding isn't read (Den can't see its result), so it is never noted as a failure", async () => {
+    const { lists, post } = await listed((res) => {
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "content-encoding": "gzip",
+      });
+      res.end(Buffer.from([0x1f, 0x8b, 0x08, 0x00]));
+    });
+    await (await post("tools/list")).arrayBuffer().catch(() => undefined);
+    expect(lists).toEqual([]);
+  });
+
   it("whoami: connected, its connect ok, its listing failed: not loaded, restart, the reason named", async () => {
     const { r, d } = await started();
     noteHubMcpInit(r.stateDir, "planner", { ok: true });

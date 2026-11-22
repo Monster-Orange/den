@@ -291,7 +291,12 @@ export async function handleHubProxy(
       const status = hubRes.statusCode ?? 502;
       answered(status);
       const statusLine = `hub (${status}): ${http.STATUS_CODES[status] ?? "error"}`;
-      if (session) {
+      // An encoded answer can't be read here: never noted either way.
+      const encoded = !/^(identity)?$/i.test(
+        String(hubRes.headers["content-encoding"] ?? "").trim(),
+      );
+      if (session && encoded) listed = true;
+      if (session && !encoded) {
         hubRes.on("data", (c: Buffer) => {
           if (answer.length < SNIFF_BYTES) answer += c.toString("utf8");
         });

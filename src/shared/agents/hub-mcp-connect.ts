@@ -24,9 +24,10 @@ export interface HubMcpInit {
   last?: HubMcpCall;
   /**
    * Issue 749: false when the connect worked but listing Hub's tools
-   * failed (tools/list), so the session has no hub_* tools either.
+   * failed (tools/list), so the session has no hub_* tools either; true
+   * once a listing worked (Den's one restart for it is spent until then).
    */
-  tools?: false;
+  tools?: boolean;
 }
 
 export interface HubMcpCall {
@@ -91,8 +92,16 @@ export function noteHubMcpTools(
   if (had?.tools === false)
     write(stateDir, agentId, {
       ...note({ ok: true }),
+      tools: true,
       ...(last ? { last } : {}),
     });
+  else if (had && typeof had.ok === "boolean" && had.tools !== true)
+    write(stateDir, agentId, { ...had, tools: true });
+}
+
+/** Issue 749: whether its latest connect has had a tool listing that worked. */
+export function hubToolsListed(stateDir: string, agentId: string): boolean {
+  return readHubMcpInit(stateDir, agentId)?.tools === true;
 }
 
 /** Issue 749: an MCP server whose tools this agent's session didn't get. */
