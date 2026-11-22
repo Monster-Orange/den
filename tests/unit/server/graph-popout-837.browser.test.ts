@@ -45,6 +45,11 @@ beforeAll(async () => {
   const repo = path.join(tmp, "repos", "kettle");
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
   write(path.join(root, "config", "den.yml"), "environments: [local]\n");
+  // A repo is a service only once the catalog names it.
+  write(
+    path.join(root, "config", "local", "service-catalog.yml"),
+    "kettle:\n  gh: acme/kettle\n",
+  );
   write(
     path.join(root, "config", "local", "workspaces.yml"),
     `active: [north]\nfocus: north\nworkspaces:\n  north:\n    services:\n      kettle:\n        mode: dev-managed\n        path: ${repo}\n`,

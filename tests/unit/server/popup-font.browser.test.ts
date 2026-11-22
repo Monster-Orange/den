@@ -86,6 +86,11 @@ beforeAll(async () => {
     path.join(dist, "config", "local", "workspaces.yml"),
     "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
   );
+  // The catalog names it, so it is a service (the graph draws its card).
+  fs.writeFileSync(
+    path.join(dist, "config", "local", "service-catalog.yml"),
+    "shop:\n  gh: acme/shop\n",
+  );
   addTheme(dist, "webfont", (m) => {
     m.type = {
       sans: 'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
