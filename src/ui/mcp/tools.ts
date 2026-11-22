@@ -1801,7 +1801,7 @@ const RESTART_NEXT =
  * the project, so it runs only on a person's Allow (never a setting).
  */
 const updateWaitingScoped = (id: string): string =>
-  `Held for a person's Allow: Den is not updated until a person Allows it in Den's browser (the Allow dialog, and Needs you in the bell) (request ${id}). Carry on with other work; call approval_check with this id later. Once it is allowed, Den updates and restarts, then types "Server is back on <version> (pid …)" to you.`; // words-ok: SRV-1's own line, for the agent
+  `Held for a person's Allow: Den is not updated until a person Allows it in Den's browser (the Allow dialog, and Needs you in the bell) (request ${id}). Carry on with other work; call approval_check with this id later. Once it is allowed, Den updates, restarts and tells you when it is back.`;
 
 /** SRV-1b: what the agent does after den_update. */
 const UPDATE_NEXT =
