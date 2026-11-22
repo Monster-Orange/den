@@ -728,12 +728,14 @@ export async function handleApprovalRoutes(
     // browser asks for it first (needs_sudo), and nothing is decided.
     if (decision === "allow" && found?.state === "pending") {
       const need = deps.actions[found.action]?.needsSudo?.({ ...found.args });
+      // Asked only when this run needs sudo: the check may run sudo -n.
       let ready = true;
-      try {
-        ready = deps.sudoReady ? deps.sudoReady() : true;
-      } catch {
-        ready = false;
-      }
+      if (need)
+        try {
+          ready = deps.sudoReady ? deps.sudoReady() : true;
+        } catch {
+          ready = false;
+        }
       if (need && !ready) {
         sendJson(
           res,
@@ -744,7 +746,9 @@ export async function handleApprovalRoutes(
               "This needs your Mac's admin password: give it in this browser, then Allow again.",
             needsSudo: need,
           },
-          409,
+          // Not a conflict: an answer the page acts on (it asks for the
+          // password), so 200, and the browser logs no failed request.
+          200,
         );
         return true;
       }

@@ -51,6 +51,8 @@ const world = {
   token: true as boolean | null,
   installs: [] as ServiceMode[],
   saved: [] as (boolean | null)[],
+  /** How often the decide route asked whether sudo is ready (it may run sudo -n). */
+  routeAsked: 0,
 };
 
 const keep = keepRunningHeld({
@@ -107,7 +109,14 @@ beforeAll(async () => {
       res,
       new URL(req.url!, "http://x").pathname,
       guard,
-      { queue, actions, sudoReady: () => world.sudo },
+      {
+        queue,
+        actions,
+        sudoReady: () => {
+          world.routeAsked += 1;
+          return world.sudo;
+        },
+      },
     ).then((handled) => {
       if (!handled) {
         res.writeHead(404);
@@ -296,11 +305,25 @@ describe("keep_running, the server agent's offer", () => {
     expect(a.body.error).toMatch(/turned it off/);
   });
 
+  it("an Allow that needs no sudo never asks whether sudo is ready (that may run sudo -n)", async () => {
+    // The password is held: the action itself says it needs no sudo now.
+    reset({ sudo: true });
+    world.routeAsked = 0;
+    const a = await ask({ on: true });
+    expect(a.status).toBe(202);
+    const r = await allow(a.body.id);
+    expect(r.status).toBe(200);
+    expect(r.body.code).toBeUndefined();
+    expect(world.installs).toEqual(["always"]);
+    expect(world.routeAsked).toBe(0);
+  });
+
   it("Allow with no password held: the browser is asked for it, nothing runs", async () => {
     reset();
     const a = await ask({ on: true });
     const r = await allow(a.body.id);
-    expect(r.status).toBe(409);
+    // Not a conflict: the page acts on it (asks for the password).
+    expect(r.status).toBe(200);
     expect(r.body.code).toBe("needs_sudo");
     expect(r.body.needsSudo).toEqual({
       command: "acme service install --mode always",

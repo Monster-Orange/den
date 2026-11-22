@@ -430,7 +430,7 @@ describe("the approval dialog (ON-3)", () => {
       decides.push(r.request().postData() ?? "");
       if (!passwordSet)
         return r.fulfill({
-          status: 409,
+          status: 200,
           contentType: "application/json",
           body: JSON.stringify({
             ok: false,

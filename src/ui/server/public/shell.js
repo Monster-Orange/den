@@ -8891,7 +8891,7 @@
         function (x) {
           // Issue 592: the run needs the admin password: this browser
           // asks with the existing dialog, then Allows again. Nothing ran.
-          if (!x.ok && x.b.code === "needs_sudo" && decision === "allow") {
+          if (x.b.code === "needs_sudo" && decision === "allow") {
             return import("/topbar.js")
               .then(function (m) {
                 return m.askSudo(x.b.needsSudo || {});
