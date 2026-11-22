@@ -9575,6 +9575,8 @@
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
+    // Issue 187: a row that opens on a click anywhere shows the pointer.
+    ".den-bell-row.opens { cursor: pointer; }",
     ".den-bell-x, .den-bell-row .den-ib { font: 500 11px var(--mono); background: none; color: var(--muted);",
     "  border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; min-height: 20px; cursor: pointer; }",
     ".den-bell-row .den-ib { border-color: transparent; }",
