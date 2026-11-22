@@ -194,3 +194,17 @@ export const PRIORITY_OFF_WARNING: Record<UiLanguage, string> = {
   es: "priority_max 0 desactiva la prioridad de versión para todos los repositorios de esta máquina: una ejecución de versión espera entonces detrás de las normales. Para seguir, ejecútalo de nuevo con --yes.",
   ja: "priority_max 0 は、このマシンのすべてのリポジトリでリリース優先をオフにします。リリース実行は通常の実行の後ろで待つことになります。続けるには --yes を付けてもう一度実行してください。",
 };
+
+/** Issue 963: `gate status`'s last line while release priority is off. */
+export const PRIORITY_OFF_STATUS: Record<UiLanguage, string> = {
+  en: "release priority: off (priority_max 0)",
+  es: "prioridad de versión: desactivada (priority_max 0)",
+  ja: "リリース優先: オフ (priority_max 0)",
+};
+
+/** Issue 963: a release ask while release priority is off. */
+export const PRIORITY_OFF_RUN: Record<UiLanguage, string> = {
+  en: "taken as an ordinary run: release priority is off on this machine (priority_max 0)",
+  es: "se toma como una ejecución normal: la prioridad de versión está desactivada en esta máquina (priority_max 0)",
+  ja: "通常の実行として扱います: このマシンではリリース優先がオフです (priority_max 0)",
+};
