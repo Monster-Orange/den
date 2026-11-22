@@ -10,7 +10,10 @@
  * the current env is counted.
  */
 
-import { buildScopeMenuModel } from "./workspace-picker.js";
+import {
+  buildScopeMenuModel,
+  PROJECT_COLOURS_KEY,
+} from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
 import DenUI from "./den-kit.js";
 import { copyText, ensureWhatsNew } from "/kit/whatsnew.js";
@@ -376,7 +379,24 @@ export function groupReposByApplication(repos, apps) {
  * no longer used: the view applies to every env.
  */
 export async function initWorkspacePill() {
+  _watchProjectColours();
   await _renderScopeMenu();
+}
+
+/**
+ * Issue 168: a colour saved in this tab (den:project-colours) or another
+ * (the storage stamp) repaints the chip, and with it every colour the
+ * shell knows (the bell's headings): no reload.
+ */
+let _coloursWatched = false;
+function _watchProjectColours() {
+  if (_coloursWatched || typeof window === "undefined") return;
+  _coloursWatched = true;
+  const again = () => void _renderScopeMenu();
+  window.addEventListener("den:project-colours", again);
+  window.addEventListener("storage", (e) => {
+    if (e.key === PROJECT_COLOURS_KEY) again();
+  });
 }
 
 /** Re-fetch and repaint the Workspace part (after a workspace change). */
