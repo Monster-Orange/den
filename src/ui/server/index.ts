@@ -11,6 +11,22 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  COACH_ROUTES,
+  handleCoachRoute,
+  type CoachRouteDeps,
+} from "./coach-routes.js";
+import { runCoach } from "../../shared/coach/run.js";
+import { readCoachReport } from "../../shared/coach/store.js";
+import {
+  dismissFinding,
+  openFindings,
+  readDismissals,
+} from "../../shared/coach/findings.js";
+import {
+  COACH_DEFAULTS,
+  type CoachSettings,
+} from "../../shared/coach/settings.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
@@ -96,6 +112,7 @@ import { planSuites } from "../../pillars/suites/run.js";
 import {
   listReposWithManifests,
   listServicesWithManifests,
+  workspaceNames,
 } from "../../shared/manifest/workspace-manifests.js";
 import {
   awsProfileEnv,
@@ -382,6 +399,13 @@ import {
   verifiedFixtureKey,
 } from "../../shared/fixture-person.js";
 import {
+  FIXTURE_SETUP_SECRET_ENV_KEY,
+  SETUP_SECRET_AUDIT,
+  SetupSecret,
+  setupSecretRefusal,
+  writeFixtureMadeBy,
+} from "../../shared/fixture-setup-secret.js";
+import {
   AGENT_VIEW_LINK_PARAM,
   AGENT_VIEW_LINK_TTL_MS,
   AgentViewCodes,
@@ -595,7 +619,7 @@ import { terminalLinkRedirect, terminalsPageHtml } from "./terminals-page.js";
 import {
   fixtureSave,
   mergeShellPrefs,
-  readFixturePins,
+  prunedFixturePins,
   writeFixturePins,
   pinnedItems,
   shellPrefs,
@@ -1184,6 +1208,7 @@ let sudoInVault = false;
 import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
+  readBodyCapped,
   readMethodOnly,
   sendJson,
   sendMethodNotAllowed,
@@ -1285,6 +1310,11 @@ import {
   runVerify,
   type VerifyServerDeps,
 } from "./verify-routes.js";
+import {
+  handleScheduleRoutes,
+  isSchedulePath,
+  type ScheduleServerDeps,
+} from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -3410,6 +3440,23 @@ const TEST_INSTALL_LAUNCH_FLAG = (() => {
   return on;
 })();
 
+/**
+ * Issue 1018: the launcher's one-time setup value, read once from the
+ * server's own start environment and taken out of process.env, like the
+ * flag, so nothing this server starts (agents, terminals) inherits it.
+ * That hides it from children only: the process's own start environment
+ * stays readable to the same OS user (`ps eww <pid>`, Linux's
+ * /proc/<pid>/environ), the same limit as every secret this user's
+ * processes hold. Held in memory as a digest; spent values are recorded
+ * in the state folder, so a restart with one doesn't revive it; dropped
+ * at start unless this is a test install then.
+ */
+const FIXTURE_SETUP_SECRET = (() => {
+  const v = readEnv(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY);
+  delete process.env[envName(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY)];
+  return new SetupSecret(v, getStateDir());
+})();
+
 function realOrResolved(p: string): string {
   try {
     return fs.realpathSync(p);
@@ -3485,7 +3532,8 @@ function sealNewTestInstall(): void {
   const secret = webSecret.current();
   if (!secret || !testInstallNow()) return dropPendingRecord(stateDir);
   writeCreationRecord(stateDir, secret);
-  const r = fixtureKeyNow()
+  const had = !!fixtureKeyNow();
+  const r = had
     ? ({ ok: true } as const)
     : setupFixturePerson(stateDir, {
         testInstall: true,
@@ -3493,6 +3541,7 @@ function sealNewTestInstall(): void {
         webSecret: secret,
         configFile: product().configFile,
       });
+  if (r.ok && !had) writeFixtureMadeBy(stateDir, "creation");
   recordAction(
     null,
     {
@@ -3798,6 +3847,36 @@ function handleAgentViewAuth(
  * too), a claimed agent and the fixture person are refused. Setting it up
  * again replaces the key, which ends every older fixture session.
  */
+/** Issue 52: agents.coach now; its defaults (off) when the config can't be read. */
+function coachSettingsNow(): CoachSettings {
+  try {
+    return readAgentsConfig().coach ?? { ...COACH_DEFAULTS };
+  } catch {
+    return { ...COACH_DEFAULTS };
+  }
+}
+
+/** Issue 52: what the Coach's routes need from this server. */
+function coachRouteDeps(): CoachRouteDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    settings: coachSettingsNow,
+    latest: () => readCoachReport(getStateDir()),
+    run: () =>
+      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    findings: (report) => ({
+      open: openFindings(getStateDir(), report?.findings ?? []),
+      dismissed: readDismissals(getStateDir()),
+    }),
+    dismiss: (id, reason) =>
+      dismissFinding(getStateDir(), id, reason, "person"),
+    readBody,
+  };
+}
+
 async function handleFixturePersonRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -3844,6 +3923,7 @@ async function handleFixturePersonRoute(
     configFile: product().configFile,
   });
   if (r.ok && browser) webSessions.markTestOperator(session!.key);
+  if (r.ok) writeFixtureMadeBy(getStateDir(), "settings");
   recordAction(
     auditActorOf(req),
     {
@@ -3857,6 +3937,105 @@ async function handleFixturePersonRoute(
   );
   if (!r.ok)
     return sendJson(res, { ok: false, code: r.code, error: r.error }, 403);
+  return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 1018: `POST /api/web/fixture-person/setup-secret {secret}`: a test
+ * install's CLI (`web fixture-person --from-setup-secret`) makes the
+ * fixture person with the launcher's one-time setup value, no browser
+ * needed. Refused first for an agent (a person grant, as everywhere),
+ * before the value is read; then off a test install; then by the value
+ * itself (none at start, used, wrong), which the first try spends. On a
+ * match, the key is made exactly as Set up test person makes it. No
+ * answer, log line or audit line holds the value.
+ */
+/** Issue 1018: the setup route's body, `{"secret": …}`, at most this. */
+const SETUP_SECRET_BODY_MAX = 4096;
+
+async function handleFixtureSetupSecretRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    res.setHeader("Allow", "POST");
+    return sendJson(res, { ok: false, error: "use POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  let presented: unknown = undefined;
+  let tooBig = false;
+  try {
+    const raw = await readBodyCapped(req, SETUP_SECRET_BODY_MAX);
+    tooBig = raw === null;
+    const b = JSON.parse(raw ?? "{}") as { secret?: unknown } | null;
+    presented = b?.secret;
+  } catch {
+    presented = undefined;
+  }
+  const refuse = (code: string, error: string, status = 403) => {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "fixture-person",
+        detail: `${FIXTURE_LABEL} from the setup secret: refused`,
+        outcome: "refused",
+        reason: code,
+      },
+      principalOf(req),
+    );
+    return sendJson(res, { ok: false, code, error }, status);
+  };
+  const person =
+    g.ok &&
+    g.principal?.kind === "person" &&
+    !g.principal.testPerson &&
+    !notAPersonOf(req);
+  // Only from this machine, as the test-person path (issue 636): beyond
+  // it, the value and the person's bearer would cross the network.
+  if (person && g.beyond)
+    return refuse(
+      "not_this_machine",
+      `The ${FIXTURE_LABEL} is made from the setup value only on this computer, from its own command line; never through the edge or the network.`,
+    );
+  if (!person)
+    return refuse(
+      "person_only",
+      `Only the person's own command line makes the ${FIXTURE_LABEL} from the setup value: an agent, a claimed agent or the ${FIXTURE_LABEL} itself can't.`,
+    );
+  if (!testInstallNow())
+    return refuse(
+      "not_test_install",
+      notTestInstallRefusal(product().configFile),
+    );
+  // Before the value: a body over the cap spends nothing.
+  if (tooBig)
+    return refuse(
+      "body_too_big",
+      `The request is over ${SETUP_SECRET_BODY_MAX} bytes; it sends only {"secret": …}. Nothing was spent.`,
+      413,
+    );
+  const t = FIXTURE_SETUP_SECRET.take(presented);
+  presented = undefined;
+  if (!t.ok) return refuse(t.code, setupSecretRefusal(t.code, product().cli));
+  const r = setupFixturePerson(getStateDir(), {
+    testInstall: true,
+    agent: false,
+    webSecret: webSecret.current(),
+    configFile: product().configFile,
+  });
+  if (!r.ok) return refuse(r.code, r.error);
+  writeFixtureMadeBy(getStateDir(), "setup-secret");
+  // Who made it: the person whose bearer sent the value (as Settings'
+  // Set up test person records its presser); the fixture person is what.
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "fixture-person",
+      detail: `${SETUP_SECRET_AUDIT} (${FIXTURE_PRINCIPAL})`,
+    },
+    principalOf(req),
+  );
+  serverLog(`  ${logTimestamp()}  ${SETUP_SECRET_AUDIT}`, "lifecycle");
   return sendJson(res, { ok: true, testInstall: true, ready: true });
 }
 
@@ -5009,6 +5188,17 @@ function verifyDeps(): VerifyServerDeps {
     verifyConfig: () => readDenConfig().verify,
   };
 }
+/** Issue 214: Verify's schedules, on top of the verify deps. */
+function scheduleDeps(): ScheduleServerDeps {
+  return {
+    ...verifyDeps(),
+    projects: () => workspaceNames(),
+    bell: (n) => {
+      notificationDeps().store.add(n);
+    },
+    log: (l) => serverLog(`  ${l}`, "warn"),
+  };
+}
 /** The agent ids with a held write waiting (their rows say "waiting"). */
 function waitingAgentIds(): Set<string> {
   // NT-3b: one "needs you" state: a held Allow, or the attention hooks.
@@ -5279,6 +5469,21 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     process_lookup: (() => {
       const [first, retry] = lookupTimeouts({}, () => user);
       return { first_seconds: first / 1000, retry_seconds: retry / 1000 };
+    })(),
+    // Issue 532: the terminal limits in force (user.yml over den.yml).
+    sessions: (() => {
+      try {
+        const c = readSessionsConfig(undefined, user);
+        return {
+          max_concurrent: c.maxConcurrent,
+          close_grace_seconds: c.closeGraceSeconds,
+          pty_close_seconds: c.ptyCloseSeconds,
+          pty_warn_above: c.ptyWarnAbove,
+          pty_machine_warn_percent: c.ptyMachineWarnPercent,
+        };
+      } catch {
+        return null;
+      }
     })(),
     // Issue 742: how long a held write waits for the person's Allow.
     held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
@@ -5763,6 +5968,13 @@ async function handleRequest(
     (await handleApprovalRoutes(req, res, pathname, guard, approvalDeps()))
   )
     return;
+  // Issue 214: Verify's schedules; allowing one or running it now is a person's.
+  if (
+    guard.ok &&
+    isSchedulePath(pathname) &&
+    (await handleScheduleRoutes(req, res, pathname, guard, scheduleDeps))
+  )
+    return;
   // 0.4.15: what lets another browser in needs the person, not just
   // loopback (approvals.ts: an agent with a shell is on loopback too).
   if (req.method === "POST" && PERSON_GRANT_ROUTES.includes(pathname)) {
@@ -5825,6 +6037,9 @@ async function handleRequest(
   // Issue 810: Settings › Access, the test install and its fixture person.
   if (pathname === "/api/web/fixture-person")
     return handleFixturePersonRoute(req, res);
+  // Issue 1018: the same, from the launcher's one-time setup value.
+  if (pathname === "/api/web/fixture-person/setup-secret")
+    return handleFixtureSetupSecretRoute(req, res);
   // Issue 636: a test bed's CLI starts a --test-person command.
   if (pathname === "/api/web/test-person")
     return handleTestPersonRoute(req, res);
@@ -6259,6 +6474,10 @@ async function handleRequest(
   // Imported by header.js (the workspace pill's picker models).
   if (pathname === "/workspace-picker.js") {
     return serveFile(res, path.join(PUBLIC_DIR, "workspace-picker.js"));
+  }
+  // Issue 168: the project colour picker the scope menu opens.
+  if (pathname === "/project-colour-picker.js") {
+    return serveFile(res, path.join(PUBLIC_DIR, "project-colour-picker.js"));
   }
 
   // Issue 644: the kit's site files at the root (/favicon.ico,
@@ -8844,6 +9063,14 @@ async function handleRequest(
 
   // ── API: changelog ────────────────────────────────────────────────────────
   // GET /api/changelog  — parses CHANGELOG.md and returns structured entries
+  // ── API: the Coach (issue 52) ─────────────────────────────────────────────
+  // GET /api/coach, POST /api/coach/run (Run now): coach-routes.ts.
+  if (
+    (COACH_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+
   if (pathname === "/api/changelog" && req.method === "GET") {
     const changelogPath = enginePath("CHANGELOG.md");
     try {
@@ -9095,6 +9322,11 @@ async function handleRequest(
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
+      // Issue 957: a pin dropped from user.yml leaves the fixture's record.
+      prunedFixturePins(
+        getStateDir(),
+        shellPrefs(user.shell, pinProjects()).pins,
+      );
       const editorList = editors.listEditors();
       const terminalList = editors.listTerminals();
       return sendJson(res, {
@@ -9232,6 +9464,7 @@ async function handleRequest(
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
+          sessions?: unknown;
           held_writes?: unknown;
           github?: unknown;
           embed?: unknown;
@@ -9296,6 +9529,7 @@ async function handleRequest(
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
+            sessions: body.sessions,
             held_writes: body.held_writes,
             github: body.github,
           });
@@ -9462,7 +9696,8 @@ async function handleRequest(
           if (!sh.ok) return send400(res, sh.error);
           // Issue 946: a pin makes a held write on it wait for an Allow, so
           // the fixture person adds pins and takes off only its own.
-          const added = readFixturePins(getStateDir());
+          // Issue 957: only the fixture's pins still stored before this save.
+          const added = prunedFixturePins(getStateDir(), before.pins);
           if (fixture) {
             const f = fixtureSave(before.pins, sh.value.pins, added);
             sh.value.pins = f.pins;
@@ -10404,6 +10639,12 @@ try {
     `  ⚠ the new test install couldn't be set up: ${(e as Error).message}`,
   );
 }
+// Issue 1018: the setup value is kept only on a test install at start.
+try {
+  if (!testInstallNow()) FIXTURE_SETUP_SECRET.drop();
+} catch {
+  FIXTURE_SETUP_SECRET.drop();
+}
 // AG-0.1: the login shell's PATH, once, in the background (at most
 // agents.shell_path_timeout_seconds, 10 s unset: issue 456),
 // so agents find their CLI as the person's terminal would: a launchd
@@ -10644,6 +10885,10 @@ void CRASH_GATE.then(() =>
     // Issue 714: an agent's gate slot held over MCP. Granted while it
     // waited: it is told (typed at its prompt) and claims it; passed on
     // unclaimed: told it is back in line; its lease lapsed: the bell.
+    // Issue 214: Verify's schedules run on their own, once a minute.
+    void import("./verify-schedule-routes.js").then((m) =>
+      m.startVerifySchedules(scheduleDeps()),
+    );
     void hubChecked
       .then(() => import("./gate-notices.js"))
       .then((m) =>

@@ -213,6 +213,103 @@
     "v.old_link": "Open Tests",
     "v.err_load": "Verify couldn't load results.",
     "v.retry": "Try again",
+    "v.sch_link": "Schedules",
+    "v.sch_t": "Schedules",
+    "v.sch_s": "Checks that run on their own. Heavy ones run in their window.",
+    "v.sch_tz":
+      "“When” and “Window” are in this Den's time zone, {z}. Heavy checks run one at a time.",
+    "v.sch_when": "When",
+    "v.sch_window_h": "Window",
+    "v.sch_next_h": "Next",
+    "v.sch_last_h": "Last run",
+    "v.sch_hourly": "Every hour",
+    "v.sch_daily": "Every day at {t}",
+    "v.sch_weekly": "{d} at {t}",
+    "v.sch_d0": "Sundays",
+    "v.sch_d1": "Mondays",
+    "v.sch_d2": "Tuesdays",
+    "v.sch_d3": "Wednesdays",
+    "v.sch_d4": "Thursdays",
+    "v.sch_d5": "Fridays",
+    "v.sch_d6": "Saturdays",
+    "v.sch_any": "Any time",
+    "v.sch_night": "At night (22:00 to 06:00)",
+    "v.sch_span": "{a} to {b}",
+    "v.sch_st_allowed": "Allowed",
+    "v.sch_st_free": "No Allow needed",
+    "v.sch_st_expiring": "Allow expiring",
+    "v.sch_st_paused": "Paused",
+    "v.sch_free_code": "Reads code only, so it needs no Allow.",
+    "v.sch_free_local": "Runs on local, so it needs no Allow.",
+    "v.sch_needs": "It needs an Allow before it runs.",
+    "v.sch_needs_h": "Nothing runs until someone allows this schedule.",
+    "v.sch_lapsed": "The Allow from {t} lapsed when the plan changed.",
+    "v.sch_expired": "The Allow expired on {t}.",
+    "v.sch_allow_until": "Allowed until {t}.",
+    "v.sch_changed": "The plan changed, so this schedule needs a new Allow.",
+    "v.sch_expiring":
+      "The Allow expires {t}. When it does, this schedule stops until someone allows it again.",
+    "v.sch_code": "Code",
+    "v.sch_ro": "read-only",
+    "v.sch_ro_h":
+      "On production it is read-only: only GET, HEAD and OPTIONS, plus the writes the repo allows in write_allow.",
+    "v.sch_never": "Not run yet",
+    "v.sch_ask": "Allow this schedule",
+    "v.sch_ask_t": "Allow the schedule “{s}” on {e}?",
+    "v.sch_ask_h":
+      "One Allow covers every run of this plan until it changes or expires on {t}.",
+    "v.sch_does": "What each run does",
+    "v.sch_mk_enforced": "enforced by Den",
+    "v.sch_mk_declared": "declared read-only",
+    "v.sch_mk_code": "reads the code only",
+    "v.sch_touch_writes": "writes",
+    "v.sch_touch_reads": "reads only",
+    "v.sch_mk_service": "declared by the service",
+    "v.sch_decline": "Decline",
+    "v.sch_decline_h":
+      "Decline leaves the schedule paused. Nothing runs until someone allows it.",
+    "v.sch_revoke": "Take back Allow",
+    "v.sch_revoked": "Allow taken back. The schedule waits for a new one.",
+    "v.sch_run": "Run now",
+    "v.sch_runs": "See runs",
+    "v.sch_ch_h": "What changed",
+    "v.sch_ch_added": "{m} joined the schedule",
+    "v.sch_ch_removed": "{m} left the schedule",
+    "v.sch_ch_cmd": "{m}: its command changed",
+    "v.sch_ch_writes": "{m} now writes",
+    "v.sch_ch_window": "Its window changed",
+    "v.sch_ch_cron": "Its times changed",
+    "v.sch_missed_h": "Missed while paused",
+    "v.sch_sk_allow": "needs an Allow",
+    "v.sch_sk_changed": "needs a new Allow",
+    "v.sch_sk_expired": "its Allow expired",
+    "v.sch_sk_window": "its window closed first",
+    "v.sch_sk_busy": "another run was going",
+    "v.sch_sk_cmdoff": "commands are off here",
+    "v.sch_sk_prodoff": "production schedules are off here",
+    "v.sch_sk_often": "it runs too often for production",
+    "v.sch_sk_host": "it reaches a host production may not",
+    "v.sch_lim_prod_off":
+      "Schedules don't run on production here. To turn them on, set this in Den's verify: block:",
+    "v.sch_lim_often":
+      "This runs on production more often than Den allows. Run it less often, or set the shortest gap in Den's verify: block:",
+    "v.sch_lim_host":
+      "A production run may not reach these hosts. Add them to verify.schedule.production.hosts, or point the check elsewhere:",
+    "v.sch_sk_unclear": "Den couldn't follow its command",
+    "v.sch_lim_off":
+      "Commands don't run on their own on a shared environment here. To turn them on, set this in Den's verify: block:",
+    "v.sch_lim_unclear":
+      "Den can't follow this command, so it can't run on its own:",
+    "v.sch_empty":
+      "No schedules yet. Add {c} to a module to run it on its own.",
+    "v.sch_empty_h":
+      "A schedule on staging or production asks for an Allow once. Code-only and local schedules run without one.",
+    "v.sch_how":
+      "Schedules come from {a} in the repo's {b} block. To add, change or remove one, change the repo.",
+    "v.sch_started": "Started. Its result comes to the bell.",
+    "v.sch_allowed": "Allowed. It runs at its next time.",
+    "v.sch_declined": "Declined. The schedule stays paused.",
+    "v.sch_err": "That didn't work: {e}",
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "Ran {a} to {b}.",
     "v.m_runner": "From an outside runner.",
@@ -414,6 +511,26 @@
     "ws.pickTip":
       "Picking a project here also makes it the CLI default, so __DEN_CLI__ commands run there.",
     "ws.none": "No active projects",
+    "pc.title": "Colour for {name}",
+    "pc.help":
+      "Used for its agents, tabs and the To line. Yours only, never shared. Automatic picks one for you.",
+    "pc.auto": "Automatic",
+    "pc.autoIs": "Automatic ({colour})",
+    "pc.save": "Save",
+    "pc.change": "Change colour",
+    "pc.changeFor": "Change the colour for {name}",
+    "pc.failed": "The colour wasn't saved: {err}",
+    "pc.blue": "Blue",
+    "pc.teal": "Teal",
+    "pc.green": "Green",
+    "pc.purple": "Purple",
+    "pc.pink": "Pink",
+    "pc.gold": "Gold",
+    "pc.brown": "Brown",
+    "pc.slate": "Slate",
+    "set.workspace.colour": "Colour",
+    "set.workspace.colour.d":
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
     "ws.manage": "Manage projects…",
     "ws.order.az": "Sorted A to Z",
     "ws.order.mine": "Your order",
@@ -816,6 +933,13 @@
     "set.ui.boxHoldIs": "hold file {path}",
     "set.ui.boxScaleIs": "time ×{n}",
     "set.ui.boxRemove": "Remove",
+    "set.ui.boxWindow": "Window (this machine's time)",
+    "set.ui.boxRecheck": "Recheck after, in seconds",
+    "set.ui.boxOn": "On",
+    "set.ui.boxWindowIs": "{window}, this machine's time",
+    "set.ui.boxIsOff": "turned off",
+    "set.ui.boxTurnOn": "Turn on",
+    "set.ui.boxTurnOff": "Turn off",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -1542,6 +1666,12 @@
     "busy.startF": "Couldn't start {name}.",
     "busy.termW": "Opening a terminal…",
     "busy.termS": "Terminal open.",
+    "busy.schAllowW": "Allowing the schedule…",
+    "busy.schAllowS": "Allowed. It runs at its next time.",
+    "busy.schAllowF": "Couldn't allow the schedule.",
+    "busy.schRunW": "Starting the scheduled checks…",
+    "busy.schRunS": "Started. Its result comes to the bell.",
+    "busy.schRunF": "Couldn't start the scheduled checks.",
     "busy.termF": "Couldn't open a terminal.",
     "busy.sayW": "Sending to {name}…",
     "busy.sayS": "Sent to {name}.",
@@ -2190,7 +2320,7 @@
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
     "set.server.gate_boxes": "Test boxes",
     "set.server.gate_boxes.d":
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check": "Test box check waits, in seconds",
     "set.server.gate_box_check.d":
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
@@ -2247,6 +2377,21 @@
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.server.sessions_max": "Terminals at once",
+    "set.server.sessions_max.d":
+      "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
+    "set.server.sessions_close_grace": "Terminal close grace",
+    "set.server.sessions_close_grace.d":
+      "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_pty_close": "Terminal close after exit",
+    "set.server.sessions_pty_close.d":
+      "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    "set.server.sessions_pty_warn": "Terminal count warning",
+    "set.server.sessions_pty_warn.d":
+      "Doctor fails when the terminal host holds more terminals than this. __DEN_CLI__ config sessions.pty_warn_above=400",
+    "set.server.sessions_pty_machine": "Machine terminal warning, in percent",
+    "set.server.sessions_pty_machine.d":
+      "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "Agent hook wait",
     "set.agents.hook_wait.d":
       "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
@@ -2947,6 +3092,8 @@
       "{module} can't run here: it runs on {envs} only.",
     "ap.vr.cant.production":
       "{module} can't run on production yet: opting in to production comes in a later Den.",
+    "ap.vr.cant.production-declared":
+      "{module} is left out of a scheduled production run: Den can't keep a command read-only, so only smoke checks and code scans run there.",
     "ap.vr.cant.adapter-later":
       "{module} can't run yet: its adapter ({adapter}) comes in a later Den.",
     "ap.vr.cant.no-health-url":
@@ -3296,6 +3443,12 @@
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.toLead": "{name} asked the lead, {lead}: {text}",
+    "bell.m.settled":
+      "{name} withdrew its question, settled: {reason} ({text})",
+    "bell.m.settledYou":
+      "You withdrew {name}'s question, settled: {reason} ({text})",
+    "bell.m.settledLate":
+      "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
     "bell.m.pick": "{n} projects need your pick",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
@@ -3325,6 +3478,16 @@
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
+    "bell.m.vschedPass": "Scheduled run on {env}: {n} checks passed.",
+    "bell.m.vschedPass.one": "Scheduled run on {env}: {n} check passed.",
+    "bell.m.vschedFail":
+      "Scheduled run on {env}: {n} of {total} checks failed.",
+    "bell.m.vschedFail.one":
+      "Scheduled run on {env}: {n} of {total} checks failed.",
+    "bell.m.vschedExpire":
+      'The Allow for the schedule "{name}" expires in {n} days.',
+    "bell.m.vschedExpire.one":
+      'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
     "bell.m.heldLapsed":
       "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
@@ -3687,6 +3850,9 @@
     "busy.ordW": "Moving {id}…",
     "busy.ordS": "Done: {id} moved.",
     "busy.ordF": "Couldn't move {id}.",
+    "busy.pcW": "Saving the project's colour…",
+    "busy.pcS": "Done: the project's colour is saved.",
+    "busy.pcF": "Couldn't save the project's colour.",
     // Issue 133: Delete project and Remove service, on the working pop-up.
     "busy.delProjW": "Deleting {name}…",
     "busy.delProjS": "Deleted {name}.",
@@ -3720,7 +3886,11 @@
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
     "gate.boxLow": "{box}: skipped, low on memory ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: skipped, its free memory can't be read ({reason})",
     "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.boxOff": "{box}: skipped, turned off",
+    "gate.boxClosed": "{box}: skipped, outside its window (opens {time})",
     "gate.yielded": "Let {to} go ahead",
     "gate.class": "Class: {name}",
     "gate.window": "waits for its {window} window",
@@ -5926,7 +6096,41 @@
   function workspaceNames() {
     return workspaceNameList.slice();
   }
+  /**
+   * Issue 168: the top bar's project chip carries the project's colour, a
+   * dot beside its name (never colour alone); none under All active.
+   */
+  function paintProjectColour(btn, colour) {
+    var vn = btn.querySelector(".den-vn");
+    var dot = btn.querySelector(".den-pc");
+    if (!colour || !vn) {
+      if (dot) dot.parentNode.removeChild(dot);
+      return;
+    }
+    if (!dot) {
+      dot = document.createElement("span");
+      dot.className = "den-pc";
+      dot.setAttribute("aria-hidden", "true");
+      vn.parentNode.insertBefore(dot, vn);
+    }
+    dot.setAttribute("data-pc", colour);
+  }
+  /** Issue 168: every project's colour, from the last setWorkspaces. */
+  var projectColourMap = {};
   function setWorkspaces(model) {
+    var coloursWere = JSON.stringify(projectColourMap);
+    projectColourMap =
+      model && model.colours && typeof model.colours === "object"
+        ? model.colours
+        : {};
+    // Issue 168: what wears a project's colour repaints (the bell's
+    // headings, the Agents page).
+    if (JSON.stringify(projectColourMap) !== coloursWere)
+      try {
+        window.dispatchEvent(new CustomEvent("den:project-colours-shown"));
+      } catch (e) {
+        /* no CustomEvent */
+      }
     workspaceNameList =
       model && Array.isArray(model.names) ? model.names.slice() : [];
     // Issue 402: the project picked (null under All): the rail and every
@@ -5956,6 +6160,7 @@
       return;
     }
     setValue(btn, model.label, model.title || null);
+    paintProjectColour(btn, model.colour);
     btn.hidden = false;
     if (sep) sep.hidden = false;
     var items = [{ heading: t("k.ws") }];
@@ -9332,6 +9537,12 @@
     pin: pin,
     unpin: unpin,
     isPinned: isPinned,
+    /** Issue 168: a project's colour name (null: none, or not known yet). */
+    projectColour: function (slug) {
+      return Object.prototype.hasOwnProperty.call(projectColourMap, slug)
+        ? projectColourMap[slug]
+        : null;
+    },
     toast: toast,
     toastAction: toastAction,
     /** R26c: a call that resolves with its data or throws a DenApiError. */
@@ -9844,6 +10055,21 @@
     "@media (max-width: 479.98px) {",
     "  .den-dock .den-ib, .den-dock .den-rtab { min-height: 32px; min-width: 32px; }",
     "}",
+    // Issue 168: project colours (workspace-picker.js projectColour). Eight,
+    // none orange or red, each 3:1 against the page in both modes, for
+    // edges, dots and tiles only: text is never coloured by project. An
+    // element names its project's colour with data-pc; --pc is the colour.
+    // The colours themselves are theme tokens (--pc-<name>, /theme.css).
+    '[data-pc="blue"] { --pc: var(--pc-blue); }',
+    '[data-pc="teal"] { --pc: var(--pc-teal); }',
+    '[data-pc="green"] { --pc: var(--pc-green); }',
+    '[data-pc="purple"] { --pc: var(--pc-purple); }',
+    '[data-pc="pink"] { --pc: var(--pc-pink); }',
+    '[data-pc="gold"] { --pc: var(--pc-gold); }',
+    '[data-pc="brown"] { --pc: var(--pc-brown); }',
+    '[data-pc="slate"] { --pc: var(--pc-slate); }',
+    ".den-pc { display: inline-block; width: 10px; height: 10px; border-radius: 50%;",
+    "  background: var(--pc, var(--faint)); flex: none; vertical-align: 0; margin-inline-end: 6px; }",
   ].join("\n");
   document.head.appendChild(style);
 })();
