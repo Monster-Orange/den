@@ -5884,6 +5884,35 @@ export interface Resumed extends Started {
    * this one didn't restart it again. `at`: when that session started.
    */
   already?: { at: string; note: string };
+  /**
+   * Issue 923: its rotation was ready, so the restart relaunched it from
+   * its handoff in a new conversation (why it rotated, where it was kept).
+   */
+  relaunched?: { why: string; handoff: string };
+}
+
+/**
+ * Issue 923: relaunch agent `id` from its handoff when its rotation is
+ * ready (due, the handoff passes, on_due not off): what a resume would
+ * refuse. Undefined when it isn't, to resume as before.
+ */
+async function relaunchIfReady(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<Resumed | undefined> {
+  const rot = rotationOf(d, agentRecord(d, id, ws));
+  if (!rot?.ready || rot.onDue === "off") return undefined;
+  const r = await relaunchAgent(d, id, ws, {
+    ...(rot.onDue === "auto" ? { auto: true } : {}),
+  });
+  const { why, handoff, reason: _reason, ...started } = r;
+  return {
+    ...started,
+    fresh: true,
+    newConversation: true,
+    relaunched: { why, handoff },
+  };
 }
 
 /** Issue 216: what a restart says when another request already did it. */
@@ -6650,7 +6679,11 @@ export async function restartAgent(
     // Issue 124: a resume that fails never leaves it stopped by Den.
     let out: Resumed;
     try {
-      out = await resumeAgent(d, rec.id, rec.workspace);
+      // Issue 923: its rotation is ready, so a resume is bound to be
+      // refused. Den stopped it: it relaunches from its handoff instead.
+      out =
+        (await relaunchIfReady(d, rec.id, rec.workspace)) ??
+        (await resumeAgent(d, rec.id, rec.workspace));
     } catch (e) {
       if (stopped.session)
         notBackAfterRestart(d, rec.id, rec.workspace, (e as Error).message);
@@ -8726,9 +8759,26 @@ export async function rotationTick(
     const who = { agent: rec.id, workspace: rec.workspace };
     try {
       const s = rec.session ? sessionOf(sessions, rec) : undefined;
-      if (!s || s.exited) continue;
       const pol = policyOf(rec);
       if (!pol) continue;
+      if (!s || s.exited) {
+        // Issue 923: a due agent that a Den restart stopped and left not
+        // back (never one a person stopped) relaunches from a passing
+        // handoff. Nothing to ask: it isn't running.
+        if (!rec.restartFailed || rec.stoppedAt || rec.endedAt) continue;
+        const rot = rotationOf(d, rec);
+        if (!rot?.ready || rot.onDue === "off") continue;
+        const r = await relaunchAgent(d, rec.id, rec.workspace, {
+          ...(rot.onDue === "auto" ? { auto: true } : {}),
+        });
+        events.push({
+          kind: "relaunched",
+          ...who,
+          why: r.why,
+          ...(rec.resumeToken ? { old: rec.resumeToken } : {}),
+        });
+        continue;
+      }
       const files = agentFilesDir(d.stateDir(), rec.id);
       const st = readRotation(files);
       if (!st) continue;
