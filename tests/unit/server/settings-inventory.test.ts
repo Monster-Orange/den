@@ -90,6 +90,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     class_order: true,
     class_map: true,
     class_windows: true,
+    // Issue 1033: where a browser run with no --box goes, and the
+    // projects and labels kept on this machine.
+    browser_box_default: true,
+    browser_host_only: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -273,6 +277,8 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
+        "gate_slots.browser_box_default",
+        "gate_slots.browser_host_only",
         "gate_slots.browser_requires_container",
         "gate_slots.claim_minutes",
         "gate_slots.class_map",

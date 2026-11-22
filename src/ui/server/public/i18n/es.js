@@ -1288,6 +1288,14 @@
       "Una máquina omitida se comprueba de nuevo tras, en segundos",
     "set.server.gate_box_recheck.d":
       "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    "set.server.gate_box_default": "Las pruebas de navegador van a",
+    "set.server.gate_box_default.d":
+      "Adónde va una prueba de navegador sin --box. Aquí o una máquina de pruebas: el primer turno de navegador libre, aquí o en una máquina de pruebas. Una prueba sin --base-url, o sin máquina para su versión de Playwright, se queda aquí y dice por qué. Solo aquí: como antes; una prueba va a una máquina solo con --box. __DEN_CLI__ gate settings --browser-box-default any",
+    "set.server.gate_box_default.any": "Aquí o una máquina de pruebas",
+    "set.server.gate_box_default.local": "Solo aquí",
+    "set.server.gate_host_only": "Pruebas de navegador que se quedan aquí",
+    "set.server.gate_host_only.d":
+      "Separados por comas: <proyecto>, label:<patrón> (* vale por cualquier texto). Estas pruebas de navegador nunca van a una máquina de pruebas, por ejemplo las de diseño o WebKit en macOS. Vacío: ninguna. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
