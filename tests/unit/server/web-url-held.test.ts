@@ -38,6 +38,9 @@ const OLD = "https://old.example.test";
 let cfg: Record<string, unknown> = {};
 let answering = true;
 let saves: WebUrlChange[] = [];
+/** Hosts the fake resolver places on this machine or Den already serves. */
+let known = new Set<string>(["den.example.test", "old.example.test"]);
+let audits: string[] = [];
 const read = () => cfg as never;
 const merge = (p: Record<string, unknown>) => {
   cfg = { ...cfg, ...p };
@@ -46,6 +49,7 @@ const merge = (p: Record<string, unknown>) => {
 
 function build(o: { now?: () => number; ttlMs?: number } = {}) {
   const action = webUrlSetAction({
+    knownHost: async (host) => known.has(host),
     read: () => readWebUrl(read),
     set: (url, how) => {
       saves.push(how);
@@ -83,7 +87,11 @@ async function ask(
 }
 
 beforeEach(() => {
-  setConfigAuditSink(() => undefined);
+  audits = [];
+  setConfigAuditSink((e: unknown) => {
+    audits.push(JSON.stringify(e));
+  });
+  known = new Set(["den.example.test", "old.example.test"]);
   cfg = {
     web: { url: OLD, url_confirmed: false, url_from: "the edge's route" },
   };
@@ -113,6 +121,39 @@ describe("web_url_set", () => {
     expect(saves).toEqual([
       { path: "held write web_url_set", who: "person:me" },
     ]);
+  });
+
+  it("Allowed: the audit has both the old address and the new", async () => {
+    const b = build();
+    const { approval } = await ask(b);
+    await b.queue.decide(approval!.id, "allow", "person:me");
+    expect(audits.join("\n")).toContain(`${OLD} → ${NEW}`);
+  });
+
+  it("a host that isn't this machine or one Den serves gets its warning, first", async () => {
+    const away = "https://tunnel.elsewhere.test";
+    const { checked } = await ask(build(), away);
+    if (!checked.ok) throw new Error("refused");
+    expect(checked.details[0]).toBe(
+      "New host: tunnel.elsewhere.test isn't this machine or an address Den serves. Sign-in and every link will go through it.",
+    );
+    expect(checked.detailKeys?.[0]).toEqual({
+      key: "ap.det.web_url_set.newHost",
+      vars: { host: "tunnel.elsewhere.test" },
+    });
+  });
+
+  it("a host this machine has, or one Den serves (the current address, the mesh name), gets no warning", async () => {
+    for (const url of [NEW, OLD]) {
+      const { checked } = await ask(build(), url);
+      if (!checked.ok) throw new Error("refused");
+      expect(checked.details.join(" ")).not.toContain("New host:");
+    }
+  });
+
+  it("the warning never refuses: a real tunnel for remote access is allowed", async () => {
+    const { checked } = await ask(build(), "https://tunnel.elsewhere.test");
+    expect(checked.ok).toBe(true);
   });
 
   it("Denied: nothing changes", async () => {

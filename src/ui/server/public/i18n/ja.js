@@ -1835,6 +1835,8 @@
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
     "ap.do.web_url_set": "{url} をこの Den のアドレスにする",
+    "ap.det.web_url_set.newHost":
+      "新しいホスト: {host} はこのマシンでも Den が提供するアドレスでもありません。サインインとすべてのリンクがここを経由します。",
     "ap.det.web_url_set.now": "現在: {from}。",
     "ap.det.web_url_set.nowUnconfirmed": "現在: {from} (未確認)。",
     "ap.det.web_url_set.none": "現在: アドレスは設定されていません。",

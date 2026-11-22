@@ -71,6 +71,7 @@ import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
+import { lookup as dnsLookup } from "dns/promises";
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
@@ -2036,6 +2037,48 @@ function adoptOffer(req: http.IncomingMessage): {
         },
       }
     : {};
+}
+
+/**
+ * Issue 869: whether an address's host is this machine or one Den already
+ * serves: the current address's host, an edge name (its domains and
+ * aliases, and names under them), or a name that resolves to one of this
+ * machine's own addresses (its interfaces, the mesh's among them, or
+ * loopback). A host that is none of these gets web_url_set's warning.
+ */
+async function addressHostKnown(host: string): Promise<boolean> {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  try {
+    const now = readWebUrl();
+    if (now && new URL(now.url).hostname.toLowerCase() === h) return true;
+  } catch {
+    /* no current address */
+  }
+  try {
+    const domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+    if (domains.some((d) => h === d || h.endsWith(`.${d}`))) return true;
+  } catch {
+    /* no edge */
+  }
+  const mine = new Set(
+    Object.values(os.networkInterfaces())
+      .flat()
+      .flatMap((i) => (i ? [i.address.toLowerCase()] : [])),
+  );
+  try {
+    const found = await dnsLookup(h, { all: true });
+    return (
+      found.length > 0 &&
+      found.every(
+        (a) =>
+          mine.has(a.address.toLowerCase()) ||
+          a.address === "::1" ||
+          a.address.startsWith("127."),
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Whether the request is the owner's (web-url-routes adoptAllowed). */
@@ -4455,6 +4498,7 @@ function approvalDeps(): ApprovalDeps {
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
     webUrlSet: webUrlSetAction({
+      knownHost: addressHostKnown,
       read: () => readWebUrl(),
       set: (url, how) => saveWebUrl(url, how),
       ping: (url, ms) => pingHttp(url, ms),

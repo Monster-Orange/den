@@ -2766,6 +2766,8 @@
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
     "ap.do.web_url_set": "Make {url} this Den's address",
+    "ap.det.web_url_set.newHost":
+      "New host: {host} isn't this machine or an address Den serves. Sign-in and every link will go through it.",
     "ap.det.web_url_set.now": "Now: {from}.",
     "ap.det.web_url_set.nowUnconfirmed": "Now: {from} (not confirmed).",
     "ap.det.web_url_set.none": "Now: no address is set.",

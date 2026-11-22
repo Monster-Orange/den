@@ -25,6 +25,15 @@ export interface WebUrlHeldDeps extends Pick<
   read: () => WebUrl | null;
   /** Save it, as Settings does (confirmed, audited, live at once). */
   set: (url: string, how: WebUrlChange) => string;
+  /**
+   * Whether `host` is this machine (it resolves to one of its own
+   * addresses, the mesh's too) or a host Den already serves (the current
+   * address, the edge's names). "Answers as this Den" can't tell this Den
+   * from a proxy passing requests through to it, so a host that is none of
+   * those gets a warning first on the card: every sign-in and link would
+   * go through it. Never a refusal (a real tunnel is allowed).
+   */
+  knownHost?: (host: string) => Promise<boolean>;
 }
 
 export function webUrlSetAction(d: WebUrlHeldDeps): HeldAction {
@@ -52,6 +61,15 @@ export function webUrlSetAction(d: WebUrlHeldDeps): HeldAction {
         summary: `make ${ok.url} this Den's address`,
         params: { url: ok.url, from: from ?? "" },
         ...reviewLines([
+          ...(d.knownHost && !(await d.knownHost(new URL(ok.url).hostname))
+            ? [
+                line(
+                  `New host: ${new URL(ok.url).hostname} isn't this machine or an address Den serves. Sign-in and every link will go through it.`,
+                  "ap.det.web_url_set.newHost",
+                  { host: new URL(ok.url).hostname },
+                ),
+              ]
+            : []),
           from
             ? now?.confirmed
               ? line(`Now: ${from}.`, "ap.det.web_url_set.now", { from })

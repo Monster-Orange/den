@@ -1893,6 +1893,8 @@
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
     "ap.do.web_url_set": "Hacer de {url} la dirección de este Den",
+    "ap.det.web_url_set.newHost":
+      "Host nuevo: {host} no es esta máquina ni una dirección que Den sirve. El inicio de sesión y todos los enlaces pasarán por él.",
     "ap.det.web_url_set.now": "Ahora: {from}.",
     "ap.det.web_url_set.nowUnconfirmed": "Ahora: {from} (sin confirmar).",
     "ap.det.web_url_set.none": "Ahora: no hay dirección.",
