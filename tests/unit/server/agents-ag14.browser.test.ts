@@ -509,13 +509,16 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           bs.map((b) => [
             (b as HTMLElement).dataset.agd,
             b.classList.contains("primary"),
+            // Issue 1085: the kit's small row-action size, every one.
+            b.classList.contains("sm"),
           ]),
         );
       expect(actions.slice(0, 3)).toEqual([
-        ["resume", true],
-        ["fresh", false],
-        ["remove", false],
+        ["resume", true, true],
+        ["fresh", false, true],
+        ["remove", false, true],
       ]);
+      expect(actions.every((a) => a[2] === true)).toBe(true);
       // Focus is in it: its first action.
       expect(
         await p.evaluate(

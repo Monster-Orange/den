@@ -217,12 +217,14 @@ function attrsOf(o) {
  * plain one (no kind) never validates the form: it is a way out.
  */
 function actionHtml(a) {
+  // Issue 673: the kit's one button (button.css); dk-btn, dk-primary and
+  // dk-danger stay as the dialog's hooks.
   const cls =
-    "dk-btn" +
+    "den-btn dk-btn" +
     (a.kind === "primary"
-      ? " dk-primary"
+      ? " primary dk-primary"
       : a.kind === "danger"
-        ? " dk-danger"
+        ? " danger dk-danger"
         : "") +
     (a.className ? ` ${a.className}` : "");
   if (a.href != null)
@@ -281,7 +283,7 @@ function panelInner(spec, ids) {
       ? `<span class="dk-sub" id="${esc(ids.sub)}">${esc(spec.subtitle)}</span>`
       : "") +
     `<span class="dk-acts">${actionsHtml(spec.headActions)}` +
-    `<form class="dk-x-f" method="dialog"><button type="submit" class="dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
+    `<form class="dk-x-f" method="dialog"><button type="submit" class="den-btn dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
     `</span></div>` +
     `<div class="dk-body" id="${esc(ids.body)}"${attrsOf(spec.bodyAttrs)}>${spec.body ?? ""}</div>` +
     (spec.foot ?? "") +
