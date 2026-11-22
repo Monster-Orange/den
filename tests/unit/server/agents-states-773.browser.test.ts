@@ -219,7 +219,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     // Line 2 as mock v3 draws it: what a need asks, and Needs you's and
     // Working's time with no "ago" ("3 min"; just now: "now").
     const meta = async (k: string) =>
-      ((await row(k).locator(".meta").textContent()) ?? "").replace(
+      ((await row(k).locator("[data-meta]").textContent()) ?? "").replace(
         (await tag(k).textContent()) ?? "",
         "",
       );
@@ -247,8 +247,8 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     expect(sub).toContain("1 working");
     expect(sub).toMatch(/\d+ idle/);
     // The rail's Agents count: Needs you, an amber (warn) pill.
-    const pill = p.locator('.den-rail [data-nav="agents"] .den-bdg');
-    expect(await pill.getAttribute("class")).toBe("den-bdg warn");
+    const pill = p.locator('[data-nav="agents"] [data-badge]');
+    expect(await pill.getAttribute("data-badge")).toBe("warn");
     expect(errors).toEqual([]);
     await p.context().close();
   }, 60_000);
@@ -323,16 +323,25 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     // and the detail (no runtime, no time for Needs you); a › at the right.
     const row = (k: string) => p.locator(`#agl button[data-id="${ag[k].sid}"]`);
     const seen = (el: import("playwright").Locator) => el.innerText();
-    expect((await seen(row("planner").locator("[data-attn]"))).trim()).toBe(
-      "Needs you",
+    // The words are the page's own (its i18n keys), not English here.
+    const words = await p.evaluate(() => {
+      const en = (
+        window as unknown as {
+          denMessages: Record<string, Record<string, string>>;
+        }
+      ).denMessages.en;
+      return { needs: en["ag.chip.needs"], command: en["ag.whyLong.command"] };
+    });
+    const chipEl = row("planner").locator("[data-attn]");
+    expect(await chipEl.getAttribute("data-attn")).toBe("needs");
+    expect((await seen(chipEl)).trim()).toBe(words.needs);
+    expect((await seen(row("planner").locator("[data-meta]"))).trim()).toBe(
+      `north${words.command}`,
     );
-    expect((await seen(row("planner").locator(".meta"))).trim()).toBe(
-      "northasks to run a command",
-    );
-    expect((await seen(row("reviewer").locator(".meta"))).trim()).toMatch(
+    expect((await seen(row("reviewer").locator("[data-meta]"))).trim()).toMatch(
       /^south(now|\d+ min)$/,
     );
-    expect(await row("planner").locator(".agchev").isVisible()).toBe(true);
+    expect(await row("planner").locator("[data-chev]").isVisible()).toBe(true);
     expect(
       await p.evaluate(
         () =>

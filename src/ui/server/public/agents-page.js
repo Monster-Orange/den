@@ -1131,13 +1131,13 @@ function rowHtml(r) {
     markHtml(attn) +
     `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
     (chip
-      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta">${ptag}${meta}</span>` : ""}</span>`
+      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta" data-meta>${ptag}${meta}</span>` : ""}</span>`
       : meta || ptag
-        ? `<span class="meta">${ptag}${meta}</span>`
+        ? `<span class="meta" data-meta>${ptag}${meta}</span>`
         : "") +
     tags +
     // Mock v3: a phone's card ends in a › (CSS shows it there only).
-    (attn ? `<span class="agchev" aria-hidden="true">›</span>` : "") +
+    (attn ? `<span class="agchev" data-chev aria-hidden="true">›</span>` : "") +
     `</button>`;
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
