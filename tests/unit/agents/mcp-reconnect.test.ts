@@ -96,11 +96,19 @@ async function startedWhileHubFailed() {
   return { r, d: resolveAgentsDeps(r.deps), token };
 }
 
-/** Wait (at most `ms`) for `ok`; fails the test if it never holds. */
-async function until(ok: () => boolean, ms: number): Promise<void> {
+/**
+ * Wait (at most `ms`) for `ok`; fails the test, naming `what`, if it never
+ * holds. Issue 954: a bound, not a count of short sleeps, so a loaded CI
+ * runner waits as long as it needs, and a miss says what never came.
+ */
+async function until(
+  ok: () => boolean,
+  ms: number,
+  what = "the condition",
+): Promise<void> {
   const end = Date.now() + ms;
   while (!ok()) {
-    if (Date.now() > end) throw new Error("timed out waiting");
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
     await new Promise((res) => setTimeout(res, 25));
   }
 }
@@ -129,8 +137,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     hub.up = true;
     expect(await rc.tick()).toEqual(["planner"]);
     // Issue 664: its line is typed once its input prompt shows.
-    for (let i = 0; i < 250 && r.made.length < 2; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => r.made.length >= 2, 15_000, "the restarted session");
     r.made[1]?.emit("> ");
     await rc.pending();
     await until(() => rc.waiting().length === 0, 15_000);
@@ -146,7 +153,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     });
     expect(await hubToolsMissing(d)).toEqual([]);
     expect(await rc.tick()).toEqual([]);
-  }, 30_000);
+  }, 60_000);
 
   // Issue 629: the reconnected-tools note was dropped when a dialog for
   // the agent's person was on its screen. It is kept, the bell says it
@@ -165,8 +172,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
       log: () => undefined,
     });
     expect(await rc.tick()).toEqual(["planner"]);
-    for (let i = 0; i < 250 && r.made.length < 2; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => r.made.length >= 2, 15_000, "the restarted session");
     // The restarted agent opens with a permission dialog for its person.
     r.made[1].emit(
       "Bash command\r\n\r\n  npm run build\r\n  Build it\r\n\r\n" +
@@ -174,8 +180,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
         "  2. Yes, and don't ask again for npm run build commands in /work\r\n" +
         "  3. No, and tell Claude what to do differently (esc)\r\n",
     );
-    for (let i = 0; i < 300 && held.length === 0; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => held.length > 0, 15_000, "the held note");
     expect(held).toEqual(["planner@north"]);
     expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
     // Still waiting: belled once, nothing typed.
@@ -188,7 +193,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     await until(() => rc.waiting().length === 0, 15_000);
     expect(typed(r, 1)).toContain(RECONNECTED_LINE);
     expect(cleared).toEqual(["planner"]);
-  }, 30_000);
+  }, 60_000);
 
   it("issue 629: a choice list that isn't a trust or permission dialog: the note is kept and belled, not dropped, and typed once it goes", async () => {
     const { r, d } = await startedWhileHubFailed();
@@ -205,14 +210,12 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
       log: (l) => lines.push(l),
     });
     expect(await rc.tick()).toEqual(["planner"]);
-    for (let i = 0; i < 250 && r.made.length < 2; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => r.made.length >= 2, 15_000, "the restarted session");
     // The restarted agent shows a list to pick from (not its prompt).
     r.made[1].emit(
       "Which one?\r\n❯ 1. The first\r\n  2. The second\r\n  3. The third\r\n",
     );
-    for (let i = 0; i < 400 && held.length === 0; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => held.length > 0, 15_000, "the held note");
     expect(held).toEqual(["planner@north"]);
     expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
     // Its log says what holds it, never that it stopped.
@@ -222,7 +225,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     await until(() => rc.waiting().length === 0, 15_000);
     expect(typed(r, 1)).toContain(RECONNECTED_LINE);
     expect(cleared).toEqual(["planner"]);
-  }, 30_000);
+  }, 60_000);
 
   it("issue 629: mid-turn, nothing is typed until the agent is idle; a plain turn rings no bell", async () => {
     const { r, d, token } = await startedWhileHubFailed();
@@ -268,8 +271,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
       log: () => undefined,
     });
     expect(await rc.tick()).toEqual(["planner"]);
-    for (let i = 0; i < 750 && r.made.length < 2; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => r.made.length >= 2, 15_000, "the restarted session");
     const at = Date.now();
     try {
       while (Date.now() - at < 12_000) {
@@ -448,8 +450,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
     expect(await once.tick()).toEqual(["planner"]);
     // Issue 629: its note waits for its input prompt (never dropped while
     // it runs), so the restarted agent shows it.
-    for (let i = 0; i < 750 && r.made.length < 2; i++)
-      await new Promise((res) => setTimeout(res, 20));
+    await until(() => r.made.length >= 2, 15_000, "the restarted session");
     expect(r.made.length).toBeGreaterThanOrEqual(2);
     r.made[1].emit("> ");
     await once.pending();
@@ -465,7 +466,7 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
       expect(await always.tick()).toEqual(["ghost"]);
       await always.pending();
     }
-  }, 30_000);
+  }, 60_000);
 
   it("0.4.48: started while Den couldn't read its Hub token (no Hub at all): once the token reads again, it is in the same list and gets the same restart", async () => {
     let hubUp = false;
