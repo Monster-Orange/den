@@ -7178,6 +7178,9 @@ function drawHub(host, ctx, back, flash) {
           picked: "",
           company: b.team || "",
           owner: b.role ? b.role === "owner" : null,
+          host: b.url ? hostOf(b.url) : "",
+          role: b.role || "",
+          login: b.login || "",
           result: null,
         });
       }
@@ -7442,11 +7445,31 @@ export function hubReviewHtml(v, t) {
   const asks = hubReviewAsks(rows, sel);
   const todo = rows.some((r) => r.proposal || sel[r.project]);
   const creates = asks.filter((a) => a.create).length;
+  const offline = d.connected === false;
+  // Mock v4, 2d: every row a clear match (no pick, no create left).
+  const allClear =
+    !offline &&
+    rows.every((r) => {
+      const c = sel[r.project];
+      if (c) return !c.create;
+      return r.linked || r.waiting || r.proposal?.kind === "link";
+    });
+  // Mock v4, 2a: "<host> · you are owner|member · signed in as <login>".
+  const sub = [
+    v.host || "",
+    v.role === "owner" || v.role === "member"
+      ? t("hubrv.youAre", { role: t(`hubrv.role.${v.role}`) })
+      : "",
+    v.login ? t("hubrv.signedAs", { login: v.login }) : "",
+  ].filter(Boolean);
   const head =
     `<h3 class="hub-rv-h">${escR(company ? t("hubrv.title", { company }) : t("hubrv.titleNo"))}</h3>` +
-    (d.connected === false
-      ? `<p class="set-note set-warn" data-hub-rv-offline>${escR(t("hubrv.offline"))} <button type="button" class="btn sm" data-hub-rv-retry>${escR(t("hubrv.retry"))}</button></p>`
-      : !todo
+    (sub.length
+      ? `<p class="set-note hub-rv-sub" data-hub-rv-sub>${escR(sub.join(" · "))}</p>`
+      : "") +
+    (offline
+      ? `<p class="set-note set-warn" data-hub-rv-offline>${escR(t("hubrv.offline"))}</p>`
+      : allClear
         ? `<p class="set-note ok" data-hub-rv-all>${escR(t("hubrv.allMatch", { n: rows.length }))}</p>`
         : "");
   const body = rows
@@ -7486,16 +7509,19 @@ export function hubReviewHtml(v, t) {
             `</div>` +
             (canChange
               ? `<button type="button" class="btn sm" data-hub-rv-change="${escR(r.project)}">${escR(t("hubrv.change"))}</button>`
-              : "")) +
+              : offline
+                ? `<button type="button" class="btn sm" data-hub-rv-retry="${escR(r.project)}">${escR(t("hubrv.retry"))}</button>`
+                : "")) +
         `</div>`
       );
     })
     .join("");
+  // Mock v4, 2e: Hub not answering keeps the button on screen, off.
   const bar =
-    d.connected === false || !todo
+    !offline && !todo
       ? ""
       : `<div class="hub-rv-bar">` +
-        `<button type="button" class="btn primary" data-hub-rv-apply${asks.length ? "" : " disabled"}>${escR(t("hubrv.apply"))}</button>` +
+        `<button type="button" class="btn primary" data-hub-rv-apply${asks.length && !offline ? "" : " disabled"}>${escR(t("hubrv.apply"))}</button>` +
         `<span class="set-note">${escR(t("hubrv.applyNote"))}</span></div>` +
         (creates && v.owner === false
           ? `<p class="set-note set-warn" data-hub-rv-member>${escR(t("hubrv.member", { n: creates }))}</p>`
@@ -7526,7 +7552,7 @@ export function hubReviewResultHtml(r, company, t) {
       .filter((x) => x.code !== "linked")
       .map(
         (x) =>
-          `<div><span class="set-warn">⚠</span> ${escR(t(`hubrv.skip.${["unknown", "offline", "stale", "waiting", "hub", "name"].includes(x.code) ? x.code : "hub"}`, { project: x.project, why: x.why || "" }))}</div>`,
+          `<div><span class="set-warn">⚠</span> ${escR(t(`hubrv.skip.${["unknown", "duplicate", "offline", "stale", "waiting", "hub", "name"].includes(x.code) ? x.code : "hub"}`, { project: x.project, why: x.why || "" }))}</div>`,
       ),
   ];
   const plan =
@@ -7625,8 +7651,8 @@ function drawHubReview(host, ctx, v) {
         });
     }
     host
-      .querySelector("[data-hub-rv-retry]")
-      ?.addEventListener("click", () => void load());
+      .querySelectorAll("[data-hub-rv-retry]")
+      .forEach((b) => b.addEventListener("click", () => void load()));
     const apply = host.querySelector("[data-hub-rv-apply]");
     apply?.addEventListener("click", () => {
       const rows = hubReviewAsks(v.data.rows, v.sel);

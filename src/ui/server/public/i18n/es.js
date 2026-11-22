@@ -1420,6 +1420,10 @@
     "hubrv.titleNo": "Vincular los proyectos de este Den a Hub",
     "hubrv.offline":
       "Hub no respondió. La empresa se conoce, pero no se pueden listar sus proyectos. No se cambió nada.",
+    "hubrv.youAre": "eres {role}",
+    "hubrv.signedAs": "conectado como {login}",
+    "hubrv.role.owner": "propietario",
+    "hubrv.role.member": "miembro",
     "hubrv.retry": "Reintentar",
     "hubrv.allMatch.one": "{n} proyecto coincide. No hay nada que elegir.",
     "hubrv.allMatch": "Los {n} proyectos coinciden. No hay nada que elegir.",
@@ -1459,6 +1463,7 @@
     "hubrv.linkedLine": "{project} → {name} ({why})",
     "hubrv.creatingLine":
       "{project}: un proyecto de Hub nuevo, {name}, a la espera de Aplicar en Hub. Se vincula cuando se aplica.",
+    "hubrv.skip.duplicate": "{project}: aparece dos veces; se hizo una vez.",
     "hubrv.skip.unknown": "{project}: sin hacer: aquí no existe ese proyecto.",
     "hubrv.skip.offline":
       "{project}: sin hacer: Hub no respondió. Inténtalo de nuevo.",

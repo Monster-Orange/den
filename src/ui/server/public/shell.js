@@ -1993,6 +1993,10 @@
     "hubrv.titleNo": "Link this Den's projects to Hub",
     "hubrv.offline":
       "Hub didn't answer. The company is known, but its projects can't be listed. Nothing was changed.",
+    "hubrv.youAre": "you are {role}",
+    "hubrv.signedAs": "signed in as {login}",
+    "hubrv.role.owner": "owner",
+    "hubrv.role.member": "member",
     "hubrv.retry": "Try again",
     "hubrv.allMatch.one": "{n} project matches. Nothing to pick.",
     "hubrv.allMatch": "All {n} projects match. Nothing to pick.",
@@ -2031,6 +2035,7 @@
     "hubrv.linkedLine": "{project} → {name} ({why})",
     "hubrv.creatingLine":
       "{project}: a new Hub project, {name}, waiting for an Apply in Hub. It links when it is applied.",
+    "hubrv.skip.duplicate": "{project}: listed twice; done once.",
     "hubrv.skip.unknown": "{project}: not done: there is no such project here.",
     "hubrv.skip.offline": "{project}: not done: Hub didn't answer. Try again.",
     "hubrv.skip.stale":

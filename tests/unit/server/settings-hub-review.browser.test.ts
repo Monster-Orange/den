@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -144,7 +144,10 @@ async function page(
       body: JSON.stringify(b),
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents.hub"));
+  // Each test's own session (signInPage), never a login link: after the
+  // first run, a link opened away from the Den computer asks for pairing
+  // (issue 819), so a second test's link would land signed out.
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForSelector(`${ROW} [data-hub-review]`);
   return p;
 }

@@ -159,7 +159,7 @@ describe("issue 646: the review", () => {
     );
   });
 
-  it("Hub not answering: says so with Try again, no button", async () => {
+  it("Hub not answering (mock v4, 2e): says so, Try again on each row, the button on screen but off", async () => {
     const { hubReviewHtml } = await mod();
     const html = hubReviewHtml(
       {
@@ -172,8 +172,43 @@ describe("issue 646: the review", () => {
       },
       tt,
     );
-    expect(html).toContain("data-hub-rv-retry");
-    expect(html).not.toContain("data-hub-rv-apply");
+    expect(html).toContain("[hubrv.offline]");
+    expect(html.match(/data-hub-rv-retry=/g)).toHaveLength(3);
+    expect(html).toMatch(/data-hub-rv-apply disabled>\[hubrv.apply\]/);
+  });
+
+  it("every row a clear match (mock v4, 2d): 'All N match', and the button stays", async () => {
+    const { hubReviewHtml } = await mod();
+    const html = hubReviewHtml(
+      { data: { ...data, rows: data.rows.slice(0, 2) }, sel: {} },
+      tt,
+    );
+    expect(html).toContain("[hubrv.allMatch:2]");
+    expect(html).toMatch(/data-hub-rv-apply>\[hubrv.apply\]/);
+    // A create or a pick left: not "all match".
+    expect(hubReviewHtml({ data, sel: {} }, tt)).not.toContain(
+      "hubrv.allMatch",
+    );
+  });
+
+  it("under the heading (mock v4, 2a): the Hub's host, the person's role and login", async () => {
+    const { hubReviewHtml } = await mod();
+    const html = hubReviewHtml(
+      {
+        data,
+        sel: {},
+        company: "Acme",
+        host: "hub.example.test",
+        role: "owner",
+        login: "sam",
+      },
+      tt,
+    );
+    expect(html).toContain(
+      "data-hub-rv-sub>hub.example.test · [hubrv.youAre:[hubrv.role.owner]] · [hubrv.signedAs:sam]<",
+    );
+    const bare = hubReviewHtml({ data, sel: {}, host: "hub.example.test" }, tt);
+    expect(bare).toContain("data-hub-rv-sub>hub.example.test<");
   });
 
   it("a member's creates go to an owner: the review says so", async () => {

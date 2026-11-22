@@ -1374,6 +1374,10 @@
     "hubrv.titleNo": "この Den のプロジェクトを Hub にリンク",
     "hubrv.offline":
       "Hub が応答しませんでした。会社はわかっていますが、プロジェクトを一覧できません。何も変更していません。",
+    "hubrv.youAre": "あなたは{role}です",
+    "hubrv.signedAs": "{login} としてサインイン中",
+    "hubrv.role.owner": "オーナー",
+    "hubrv.role.member": "メンバー",
     "hubrv.retry": "再試行",
     "hubrv.allMatch":
       "{n} 件のプロジェクトがすべて一致しています。選ぶものはありません。",
@@ -1410,6 +1414,7 @@
     "hubrv.linkedLine": "{project} → {name}({why})",
     "hubrv.creatingLine":
       "{project}: 新しい Hub プロジェクト {name} は Hub での適用を待っています。適用されるとリンクされます。",
+    "hubrv.skip.duplicate": "{project}: 2回指定されたため、1回だけ行いました。",
     "hubrv.skip.unknown":
       "{project}: 未実行: ここにそのプロジェクトはありません。",
     "hubrv.skip.offline":

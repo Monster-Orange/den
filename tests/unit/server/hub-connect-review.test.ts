@@ -13,6 +13,7 @@ import type { HubCreate } from "../../../src/shared/hub-project-create.js";
 import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
 import {
   applyReview,
+  hubReviewRoute,
   reviewCount,
   reviewRows,
   type HubReviewDeps,
@@ -371,5 +372,70 @@ describe("issue 646: Connect and link all (clause 6)", () => {
     );
     expect(r.skipped.map((s) => s.code)).toEqual(["waiting"]);
     expect(f.plans).toHaveLength(0);
+  });
+});
+
+describe("issue 646 review: Hub calls, duplicates, no token (review asks)", () => {
+  it("asks Hub about at most 6 projects at a time", async () => {
+    let inFlight = 0;
+    let most = 0;
+    const many = Array.from({ length: 20 }, (_, i) => `p${i}`);
+    const f = fake({
+      projects: () => many,
+      choices: async () => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return { suggestions: [], projects: [P.web] };
+      },
+    });
+    const r = await reviewRows(f.d);
+    expect(r.rows).toHaveLength(20);
+    expect(r.connected).toBe(true);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(6);
+  });
+
+  it("a project listed twice is skipped as a duplicate, not as unknown", async () => {
+    const f = fake();
+    const r = await applyReview(
+      f.d,
+      [
+        { project: "north", hub: P.web.id },
+        { project: "north", hub: P.docs.id },
+      ],
+      "t",
+    );
+    expect(r.linked.map((x) => x.project)).toEqual(["north"]);
+    expect(r.skipped).toEqual([
+      { project: "north", code: "duplicate", why: "listed twice" },
+    ]);
+  });
+
+  it("GET's body never carries a token", async () => {
+    const f = fake({
+      choices: async (ws) => ({
+        suggestions: ws === "north" ? [{ ...P.web, why: "repo" }] : [],
+        projects: [
+          { ...P.web, token: "hubtok_secret", auth: "Bearer x" } as never,
+          P.docs,
+        ],
+      }),
+    });
+    let body = "";
+    const res = {
+      writeHead: () => res,
+      setHeader: () => undefined,
+      end: (b: string) => void (body = b),
+    };
+    await hubReviewRoute(
+      { method: "GET", headers: {} } as never,
+      res as never,
+      f.d,
+      "t",
+    );
+    expect(body).toContain('"rows"');
+    expect(body).not.toMatch(/token|Bearer/i);
   });
 });

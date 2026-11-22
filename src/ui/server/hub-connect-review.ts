@@ -93,6 +93,28 @@ export interface ReviewRow {
 }
 
 const MAX_ROWS = 200;
+/** How many projects Den asks Hub about at a time (a review, a count). */
+const HUB_AT_ONCE = 6;
+
+/** `f` over `xs`, at most `n` at a time; results in the order of `xs`. */
+async function inTurn<T, R>(
+  xs: T[],
+  n: number,
+  f: (x: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(xs.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < xs.length) {
+      const i = next++;
+      out[i] = await f(xs[i]!);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(n, xs.length) }, () => lane()),
+  );
+  return out;
+}
 
 const projectsOf = (d: HubReviewDeps) =>
   d.projects().filter((p) => !isCatchAllProject(p));
@@ -104,8 +126,8 @@ export async function reviewRows(d: HubReviewDeps): Promise<{
   rows: ReviewRow[];
 }> {
   const names = projectsOf(d).slice(0, MAX_ROWS);
-  const found = await Promise.all(
-    names.map((ws) => d.choices(ws).catch(() => null)),
+  const found = await inTurn(names, HUB_AT_ONCE, (ws) =>
+    d.choices(ws).catch(() => null),
   );
   const connected = found.every((c) => c !== null) && found.length > 0;
   const company = new Map<string, Plain>();
@@ -166,7 +188,15 @@ export type ReviewAsk = { project: string; hub?: string; create?: string };
 
 export interface ReviewSkip {
   project: string;
-  code: "unknown" | "linked" | "offline" | "stale" | "waiting" | "hub" | "name";
+  code:
+    | "unknown"
+    | "duplicate"
+    | "linked"
+    | "offline"
+    | "stale"
+    | "waiting"
+    | "hub"
+    | "name";
   why: string;
 }
 
@@ -193,7 +223,11 @@ export async function applyReview(
   let picks = 0;
   for (const a of asks) {
     const project = a.project;
-    if (!known.has(project) || seen.has(project)) {
+    if (seen.has(project)) {
+      skipped.push({ project, code: "duplicate", why: "listed twice" });
+      continue;
+    }
+    if (!known.has(project)) {
       skipped.push({ project, code: "unknown", why: "no such project" });
       continue;
     }
