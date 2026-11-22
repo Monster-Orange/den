@@ -2607,6 +2607,16 @@
     "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.web_url_set": "Make {url} this Den's address",
+    "ap.det.web_url_set.now": "Now: {from}.",
+    "ap.det.web_url_set.nowUnconfirmed": "Now: {from} (not confirmed).",
+    "ap.det.web_url_set.none": "Now: no address is set.",
+    "ap.det.web_url_set.answers":
+      "{url} answers as this Den now: Den asked it for a one-time token, through its name.",
+    "ap.det.web_url_set.saves":
+      "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
+    "set.ui.hub.denUrlRefused":
+      "Hub didn't take this Den's address ({url}): {why}",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",

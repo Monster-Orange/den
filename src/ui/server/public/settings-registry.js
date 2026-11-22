@@ -4721,6 +4721,24 @@ function hubAddressHtml(b) {
   );
 }
 
+/**
+ * Issue 869: Hub refused this Den's address when Den last told it (400,
+ * 401, 403): what Hub said, until a later tell goes through.
+ */
+export function hubDenUrlHtml(d) {
+  if (!d || !d.url) return "";
+  return `<p class="set-note set-warn" data-hub-den-url="refused" role="status">${escR(
+    L(
+      "set.ui.hub.denUrlRefused",
+      "Hub didn't take this Den's address ({url}): {why}",
+      {
+        url: d.url,
+        why: d.error || String(d.status || ""),
+      },
+    ),
+  )}</p>`;
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
@@ -4829,6 +4847,7 @@ export function hubHtml(b, flash, t = (k) => k) {
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
     (why ? note(why, "data-hub-problem") : "") +
+    hubDenUrlHtml(b.denUrl) +
     `<div class="hub-acts">` +
     (state === "rejected" || b.legacy
       ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `

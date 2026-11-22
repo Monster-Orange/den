@@ -389,7 +389,10 @@ import {
   notSetLine,
   readWebUrl,
   setWebUrl,
+  type WebUrlChange,
 } from "../../shared/web-url.js";
+import { tellHubDenUrl } from "../../shared/hub-den-url.js";
+import { webUrlSetAction } from "./web-url-held.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -1850,6 +1853,31 @@ function sessionCookie(
 
 /** web.url, re-read at most every 5 s (the request checks ask often). */
 let WEB_URL_NOW = { at: 0, url: null as string | null };
+
+/**
+ * Issue 869: tell the connected Hub this install's address after it
+ * changes (hub-den-url.ts). Never waited on; the save never fails for it.
+ */
+function tellHubAddress(url: string): void {
+  void tellHubDenUrl(url, {
+    hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+    put: async (h, t, u) =>
+      (await import("../../shared/hub.js")).hubPutDenUrl(h, t, u),
+    stateDir: getStateDir(),
+  }).catch(() => undefined);
+}
+
+/**
+ * This install's address, saved the one way every path saves it
+ * (Settings, `web url`, an alias made the address, web_url_set):
+ * confirmed, audited, read again at once, and told to Hub.
+ */
+function saveWebUrl(url: string, how?: WebUrlChange): string {
+  const saved = setWebUrl(url, undefined, undefined, how);
+  WEB_URL_NOW = { at: 0, url: null }; // re-read at once
+  tellHubAddress(saved);
+  return saved;
+}
 function webUrlNow(): string | null {
   if (Date.now() - WEB_URL_NOW.at > 5_000)
     WEB_URL_NOW = { at: Date.now(), url: readWebUrl()?.url ?? null };
@@ -3942,6 +3970,13 @@ function approvalDeps(): ApprovalDeps {
       const box = gateBoxOps({ store: () => gates() });
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
+    // Issue 869: Den's own agent proposes the address; the person Allows.
+    webUrlSet: webUrlSetAction({
+      read: () => readWebUrl(),
+      set: (url, how) => saveWebUrl(url, how),
+      ping: (url, ms) => pingHttp(url, ms),
+      checkMs: () => webUrlCheckSeconds() * 1000,
+    }),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
@@ -5216,11 +5251,7 @@ async function handleRequest(
     handleWebUrlRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       read: () => readWebUrl(),
-      set: (url, how) => {
-        const saved = setWebUrl(url, undefined, undefined, how);
-        WEB_URL_NOW = { at: 0, url: null }; // re-read at once
-        return saved;
-      },
+      set: (url, how) => saveWebUrl(url, how),
       who: (r) => principalOf(r),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
@@ -9519,6 +9550,7 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // and puts it in place of a loopback one). A route edge.routes names is
 // taken over the one made from the brand, and corrects an unconfirmed
 // brand-route address once: only the named one may reach other machines.
+const ADDRESS_BEFORE = readWebUrl();
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
@@ -9531,6 +9563,8 @@ const ADDRESS = migrateWebUrl(() => {
     return undefined; // no edge config: nothing to take
   }
 });
+// Issue 869: the migration wrote or corrected it: tell Hub.
+if (ADDRESS && ADDRESS.url !== ADDRESS_BEFORE?.url) tellHubAddress(ADDRESS.url);
 // Review M4 (0.4.48): server_agent.self_update is the person's (user.yml).
 // Once, at the first start without it there, the team file's ask or auto
 // is copied (an audit row; doctor says so), so the person's choice carries
