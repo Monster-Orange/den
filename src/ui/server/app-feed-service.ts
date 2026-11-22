@@ -1,23 +1,31 @@
 /**
  * Issue 459: the server's app event feeds (shared/agents/app-feeds.ts).
  *
- * Reads every project's `agents.event_feeds` each tick, keeps one reader
- * (shared/app-feed-reader.ts) per feed, up to embed.feed_max_streams for
- * the install, and hands each event to the delivery loop that types Hub's
- * comments (hub-delivery-service relayMessage): typed when the agent is
- * idle, never mid-turn. The bearer is read from the install's secrets
- * store at each connect and goes only into the request's Authorization
- * header: never a log line, a status, an /api answer, a file or the
- * agent's text (an error that might hold it is scrubbed first).
+ * Reads every project's `agents.event_feeds` each tick and keeps one
+ * reader (shared/app-feed-reader.ts) per feed, up to embed.feed_max_streams
+ * for the install. Events go into the feed's store: one small file each,
+ * at most embed.feed_keep_events (the oldest go, and the bell says when an
+ * unread one did). The agent is typed only a pointer (feedPointerText),
+ * through the delivery loop that types Hub's comments (relayMessage):
+ * typed when it is idle, never mid-turn, one pointer at a time per feed.
+ * It reads the events with the app_feed_read tool (readFor), which serves
+ * only feeds of the caller's own project that name the caller.
+ *
+ * The bearer is read from the install's secrets store at each connect and
+ * goes only into the request's Authorization header: never a log line, a
+ * status, an /api answer, a file or the agent's text (an error that might
+ * hold it is scrubbed first). Redirects are never followed.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import {
-  feedDelivery,
+  feedPointerDelivery,
+  feedPointerText,
   parseAppFeeds,
   type AppFeedConfig,
+  type FeedPointer,
 } from "../../shared/agents/app-feeds.js";
 import {
   AppFeedReader,
@@ -25,7 +33,8 @@ import {
   type FeedError,
   type FeedNotice,
   type FeedState,
-  type FeedStatus,
+  type FeedStore,
+  type StoredEvent,
 } from "../../shared/app-feed-reader.js";
 import type { Delivery } from "../../shared/hub-delivery.js";
 import type { NotificationStore } from "../../shared/notifications.js";
@@ -34,6 +43,12 @@ export interface AppFeedLimits {
   maxStreams: number;
   eventMaxKb: number;
   perMinute: number;
+  /** Events one feed keeps. */
+  keepEvents: number;
+  /** What one app_feed_read call returns, in KB. */
+  readMaxKb: number;
+  listTimeoutSeconds: number;
+  listMaxMb: number;
 }
 
 export interface AppFeedServiceDeps {
@@ -49,12 +64,15 @@ export interface AppFeedServiceDeps {
   relay(dv: Delivery): Promise<boolean>;
   /** Whether the delivery loop has seen this id. */
   seen(id: string): boolean;
+  /** Whether the delivery loop still waits to type (or is typing) this id. */
+  holds(id: string): boolean;
   limits(): AppFeedLimits;
   bell(n: Parameters<NotificationStore["add"]>[0]): void;
   stateDir: string;
   fetch?: typeof fetch;
   log?: (line: string) => void;
   retryMs?: { first: number; max: number };
+  now?: () => number;
 }
 
 /** What Settings shows for a feed: never its bearer or its ref. */
@@ -65,21 +83,205 @@ export interface AppFeedView {
   state: FeedState | "no_agent";
   since: number;
   last_event_at: number | null;
-  waiting: number;
+  unread: number;
   problem: string | null;
 }
 
-interface Running {
-  sig: string;
-  feed: AppFeedConfig;
-  project: string;
-  reader: AppFeedReader | null;
-  ctl: AbortController | null;
-  /** When the feed isn't read: why. */
-  idle?: { state: "over_limit" | "no_agent"; problem: string; since: number };
+/** The events one app_feed_read call returns. */
+export interface FeedRead {
+  feed: string;
+  events: (Omit<StoredEvent, "data"> & {
+    data: string | null;
+    note?: string;
+  })[];
+  /** More unread events after these: call again. */
+  more: boolean;
+  unread: number;
 }
 
-const MAX_LIST_BYTES = 8 * 1024 * 1024;
+const FILE = /^(\d{1,15})-([0-9a-f]{16})-(\d{1,12}|x)\.json$/;
+const kh = (key: string) =>
+  createHash("sha256").update(key).digest("hex").slice(0, 16);
+
+/**
+ * A feed's events on disk: one file each, named by its sequence number,
+ * its key's hash and its size, so opening the store reads no event. The
+ * read mark and the last pointer's sequence go in a small meta file.
+ */
+export class FileFeedStore implements FeedStore {
+  private readonly seqs: number[] = [];
+  private readonly files = new Map<number, string>();
+  private readonly keys = new Map<string, number>();
+  private readonly sizes = new Map<number, number | null>();
+  private meta = { read: 0, pointed: 0 };
+
+  constructor(
+    private readonly dir: string,
+    private readonly cap: () => number,
+  ) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    for (const f of fs.readdirSync(dir)) {
+      const m = FILE.exec(f);
+      if (!m) continue;
+      const seq = Number(m[1]);
+      this.seqs.push(seq);
+      this.files.set(seq, f);
+      this.keys.set(m[2], seq);
+      this.sizes.set(seq, m[3] === "x" ? null : Number(m[3]));
+    }
+    this.seqs.sort((a, b) => a - b);
+    try {
+      const v = JSON.parse(
+        fs.readFileSync(path.join(dir, "meta.json"), "utf8"),
+      ) as { read?: unknown; pointed?: unknown };
+      if (typeof v.read === "number") this.meta.read = v.read;
+      if (typeof v.pointed === "number") this.meta.pointed = v.pointed;
+    } catch {
+      /* a new store */
+    }
+  }
+
+  private saveMeta(): void {
+    writeFileAtomic(
+      path.join(this.dir, "meta.json"),
+      JSON.stringify(this.meta),
+      {
+        mode: 0o600,
+      },
+    );
+  }
+
+  has(key: string): boolean {
+    return this.keys.has(kh(key));
+  }
+
+  lastSeq(): number {
+    return this.seqs.length ? this.seqs[this.seqs.length - 1] : this.meta.read;
+  }
+
+  add(key: string, ev: Omit<StoredEvent, "seq">): { dropped: number } {
+    const seq = Math.max(this.lastSeq(), this.meta.read) + 1;
+    const h = kh(key);
+    const f = `${seq}-${h}-${ev.bytes === null ? "x" : ev.bytes}.json`;
+    fs.writeFileSync(path.join(this.dir, f), JSON.stringify({ seq, ...ev }), {
+      flag: "wx",
+      mode: 0o600,
+    });
+    this.seqs.push(seq);
+    this.files.set(seq, f);
+    this.keys.set(h, seq);
+    this.sizes.set(seq, ev.bytes);
+    let dropped = 0;
+    const cap = Math.max(1, this.cap());
+    while (this.seqs.length > cap) {
+      const old = this.seqs.shift()!;
+      const name = this.files.get(old);
+      this.files.delete(old);
+      this.sizes.delete(old);
+      if (name) {
+        const m = FILE.exec(name);
+        if (m && this.keys.get(m[2]) === old) this.keys.delete(m[2]);
+        try {
+          fs.unlinkSync(path.join(this.dir, name));
+        } catch {
+          /* gone already */
+        }
+      }
+      if (old > this.meta.read) dropped++;
+    }
+    return { dropped };
+  }
+
+  private event(seq: number): StoredEvent | null {
+    const f = this.files.get(seq);
+    if (!f) return null;
+    try {
+      return JSON.parse(
+        fs.readFileSync(path.join(this.dir, f), "utf8"),
+      ) as StoredEvent;
+    } catch {
+      return null;
+    }
+  }
+
+  private unreadSeqs(): number[] {
+    return this.seqs.filter((s) => s > this.meta.read);
+  }
+
+  /** The unread events in brief (for the pointer), or null when none. */
+  unread(): FeedPointer | null {
+    const u = this.unreadSeqs();
+    if (!u.length) return null;
+    const first = this.event(u[0]);
+    const last = this.event(u[u.length - 1]);
+    return {
+      count: u.length,
+      firstId: first?.id ?? "",
+      lastId: last?.id ?? "",
+      bytes: u.reduce((n, s) => n + (this.sizes.get(s) ?? 0), 0),
+    };
+  }
+
+  unreadCount(): number {
+    return this.unreadSeqs().length;
+  }
+
+  /** Whether a pointer already names every event up to the last. */
+  pointedAll(): boolean {
+    return this.meta.pointed >= this.lastSeq();
+  }
+
+  setPointed(seq: number): void {
+    this.meta.pointed = Math.max(this.meta.pointed, seq);
+    this.saveMeta();
+  }
+
+  /**
+   * Events after `after` (the read mark when null), up to `maxBytes` of
+   * data in all and `limit` events. One alone past `maxBytes` comes
+   * without its data. Without `after`, the read mark moves past them.
+   */
+  read(
+    after: number | null,
+    maxBytes: number,
+    limit: number,
+  ): { events: FeedRead["events"]; more: boolean } {
+    const from = after ?? this.meta.read;
+    const seqs = this.seqs.filter((s) => s > from);
+    const events: FeedRead["events"] = [];
+    let total = 0;
+    for (const s of seqs) {
+      if (events.length >= limit) break;
+      const ev = this.event(s);
+      if (!ev) continue;
+      const size = ev.data === null ? 0 : Buffer.byteLength(ev.data, "utf8");
+      if (events.length && total + size > maxBytes) break;
+      if (size > maxBytes) {
+        events.push({
+          ...ev,
+          data: null,
+          note: "larger than one read returns (Settings › Embedding); its data isn't served",
+        });
+      } else {
+        total += size;
+        events.push(
+          ev.data === null
+            ? {
+                ...ev,
+                note: "over the event size limit when it came; its data wasn't kept",
+              }
+            : ev,
+        );
+      }
+    }
+    const lastSeq = events.length ? events[events.length - 1].seq : from;
+    if (after === null && lastSeq > this.meta.read) {
+      this.meta.read = lastSeq;
+      this.saveMeta();
+    }
+    return { events, more: seqs.some((s) => s > lastSeq) };
+  }
+}
 
 /** Every occurrence of `secret` out of `s` (an error may echo a header). */
 function scrub(s: string, secret: string | null): string {
@@ -90,21 +292,49 @@ function failure(kind: FeedError["kind"], message: string): Error {
   return Object.assign(new Error(message), { kind });
 }
 
+interface Running {
+  sig: string;
+  feed: AppFeedConfig;
+  project: string;
+  reader: AppFeedReader | null;
+  ctl: AbortController | null;
+  /** The last pointer relayed (the next waits until it's typed). */
+  pointer?: string;
+  /** When the feed isn't read: why. */
+  idle?: { state: "over_limit" | "no_agent"; problem: string; since: number };
+}
+
 export class AppFeeds {
   private readonly feeds = new Map<string, Running>();
+  private readonly stores = new Map<string, FileFeedStore>();
   private readonly f: typeof fetch;
   private readonly overSaid = new Set<string>();
+  private readonly now: () => number;
 
   constructor(private readonly d: AppFeedServiceDeps) {
     this.f = d.fetch ?? fetch;
+    this.now = d.now ?? Date.now;
   }
 
-  private cursorFile(project: string, name: string): string {
+  private dirOf(project: string, name: string): string {
     const h = createHash("sha256")
       .update(`${project}\0${name}`)
       .digest("hex")
       .slice(0, 24);
-    return path.join(this.d.stateDir, "app-feeds", `${h}.json`);
+    return path.join(this.d.stateDir, "app-feeds", h);
+  }
+
+  private storeOf(project: string, name: string): FileFeedStore {
+    const k = `${project}\0${name}`;
+    let s = this.stores.get(k);
+    if (!s) {
+      s = new FileFeedStore(
+        path.join(this.dirOf(project, name), "events"),
+        () => this.d.limits().keepEvents,
+      );
+      this.stores.set(k, s);
+    }
+    return s;
   }
 
   /** The Authorization header for `feed`, read now; throws when it can't be. */
@@ -129,7 +359,7 @@ export class AppFeeds {
     feed: AppFeedConfig,
     headers: Record<string, string>,
     signal?: AbortSignal,
-  ): Promise<Response> {
+  ): Promise<{ res: Response; bearer: string | null }> {
     const bearer = await this.auth(feed);
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
     let res: Response;
@@ -138,10 +368,13 @@ export class AppFeeds {
       res = await this.f(url, { headers, redirect: "error", signal });
     } catch (e) {
       const c = (e as { cause?: { code?: unknown } })?.cause?.code;
+      const timedOut = (e as { name?: string })?.name === "TimeoutError";
       throw failure(
         undefined,
         scrub(
-          `couldn't reach the app${typeof c === "string" ? ` (${c})` : ""}`,
+          timedOut
+            ? "the app didn't answer in time"
+            : `couldn't reach the app${typeof c === "string" ? ` (${c})` : ""}`,
           bearer,
         ),
       );
@@ -154,15 +387,38 @@ export class AppFeeds {
     if (res.status === 404) throw failure("not_found", "HTTP 404");
     if (!res.ok)
       throw failure(undefined, `the app answered HTTP ${res.status}`);
-    return res;
+    return { res, bearer };
+  }
+
+  /** The list form's body, read up to `max` bytes (else refused). */
+  private static async bodyUpTo(res: Response, max: number): Promise<string> {
+    if (!res.body) return "";
+    const parts: Uint8Array[] = [];
+    let n = 0;
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      n += chunk.byteLength;
+      if (n > max) {
+        await res.body.cancel().catch(() => undefined);
+        throw failure(
+          undefined,
+          "the list form's answer is over its size limit",
+        );
+      }
+      parts.push(chunk);
+    }
+    return Buffer.concat(parts).toString("utf8");
   }
 
   private reader(project: string, feed: AppFeedConfig): AppFeedReader {
-    const file = this.cursorFile(project, feed.name);
+    const dir = this.dirOf(project, feed.name);
+    const file = path.join(dir, "cursor.json");
     const where = { project, name: feed.name, agent: feed.agent };
     const request = this.request.bind(this);
+    const store = this.storeOf(project, feed.name);
     return new AppFeedReader({
       feed: where,
+      store,
+      stored: () => void this.point(`${project}\0${feed.name}`),
       open: (lastId, signal) =>
         (async function* () {
           const headers: Record<string, string> = {
@@ -170,7 +426,7 @@ export class AppFeeds {
             "Cache-Control": "no-cache",
           };
           if (lastId) headers["Last-Event-ID"] = lastId;
-          const res = await request(feed.url, feed, headers, signal);
+          const { res } = await request(feed.url, feed, headers, signal);
           const type = res.headers.get("content-type") ?? "";
           if (!/text\/event-stream/i.test(type))
             throw failure(undefined, "the app's answer is not an event stream");
@@ -180,26 +436,35 @@ export class AppFeeds {
             yield dec.decode(chunk, { stream: true });
         })(),
       list: async (after) => {
+        const l = this.d.limits();
         const u = new URL(feed.listUrl ?? feed.url);
         if (after) u.searchParams.set("after", after);
-        const res = await this.request(u.href, feed, {
-          Accept: "application/json",
-        });
-        const text = await res.text();
-        if (text.length > MAX_LIST_BYTES)
-          throw failure(undefined, "the list form's answer is too large");
+        const { res, bearer } = await this.request(
+          u.href,
+          feed,
+          { Accept: "application/json" },
+          AbortSignal.timeout(l.listTimeoutSeconds * 1000),
+        );
+        let text: string;
+        try {
+          text = await AppFeeds.bodyUpTo(res, l.listMaxMb * 1024 * 1024);
+        } catch (e) {
+          const name = (e as { name?: string })?.name;
+          throw failure(
+            undefined,
+            scrub(
+              name === "TimeoutError" || name === "AbortError"
+                ? "the list form didn't answer in time"
+                : String((e as Error)?.message ?? e),
+              bearer,
+            ),
+          );
+        }
         try {
           return JSON.parse(text) as unknown;
         } catch {
           throw failure(undefined, "the list form's answer is not JSON");
         }
-      },
-      deliver: async (key, text, at) => {
-        const dv = feedDelivery(where, key, text, at);
-        if (this.d.seen(dv.id)) return "seen";
-        const ok = await this.d.relay(dv);
-        if (ok) return "held";
-        return this.d.seen(dv.id) ? "seen" : "not_ready";
       },
       load: () => {
         try {
@@ -221,7 +486,56 @@ export class AppFeeds {
       notice: (code, detail) => this.notice(project, feed, code, detail),
       log: this.d.log,
       ...(this.d.retryMs ? { retryMs: this.d.retryMs } : {}),
+      ...(this.d.now ? { now: this.d.now } : {}),
     });
+  }
+
+  private pointing = new Set<string>();
+
+  /**
+   * Type the agent one pointer for what is unread: only when the last one
+   * was typed, only when there is something new, and only when the
+   * feed's agent is in the feed's project now (an id may be reused).
+   */
+  private async point(key: string): Promise<void> {
+    const r = this.feeds.get(key);
+    if (!r?.reader || this.pointing.has(key)) return;
+    this.pointing.add(key);
+    try {
+      const store = this.storeOf(r.project, r.feed.name);
+      if (store.pointedAll()) return;
+      if (r.pointer && this.d.holds(r.pointer)) return;
+      const u = store.unread();
+      if (!u) return;
+      if (this.d.agentProject(r.feed.agent) !== r.project) {
+        this.d.log?.(
+          `app feed ${r.project}/${r.feed.name}: ${r.feed.agent} is not in ${r.project} now: nothing typed`,
+        );
+        return;
+      }
+      const seq = store.lastSeq();
+      const where = {
+        project: r.project,
+        name: r.feed.name,
+        agent: r.feed.agent,
+      };
+      const dv = feedPointerDelivery(
+        where,
+        seq,
+        feedPointerText(where, u),
+        this.now(),
+      );
+      if (this.d.seen(dv.id)) {
+        store.setPointed(seq);
+        return;
+      }
+      if (await this.d.relay(dv)) {
+        r.pointer = dv.id;
+        store.setPointed(seq);
+      }
+    } finally {
+      this.pointing.delete(key);
+    }
   }
 
   private notice(
@@ -282,13 +596,13 @@ export class AppFeeds {
           ? {
               state: "no_agent",
               problem: `project ${w.project} has no agent ${w.feed.agent}`,
-              since: Date.now(),
+              since: this.now(),
             }
           : reading >= maxStreams
             ? {
                 state: "over_limit",
                 problem: `over the limit of ${maxStreams} app feed streams for this install (Settings › Embedding)`,
-                since: Date.now(),
+                since: this.now(),
               }
             : undefined;
       if (!idle) reading++;
@@ -333,10 +647,10 @@ export class AppFeeds {
     }
   }
 
-  /** The service's tick: config again, then what waits for the rate. */
+  /** The service's tick: config again, then a pointer where one is due. */
   async tick(): Promise<void> {
     this.sync();
-    for (const r of this.feeds.values()) await r.reader?.drain();
+    for (const k of this.feeds.keys()) await this.point(k);
   }
 
   /** Project `ws`'s feeds as Settings shows them. */
@@ -350,21 +664,78 @@ export class AppFeeds {
     const parsed = parseAppFeeds(raw);
     const feeds = parsed.feeds.map((feed): AppFeedView => {
       const r = this.feeds.get(`${ws}\0${feed.name}`);
-      const s: FeedStatus | null =
-        r?.sig === JSON.stringify(feed) ? (r.reader?.status() ?? null) : null;
-      const idle = r?.sig === JSON.stringify(feed) ? r.idle : undefined;
+      const same = r?.sig === JSON.stringify(feed);
+      const s = same ? (r?.reader?.status() ?? null) : null;
+      const idle = same ? r?.idle : undefined;
+      let unread = 0;
+      try {
+        unread = this.storeOf(ws, feed.name).unreadCount();
+      } catch {
+        unread = 0;
+      }
       return {
         name: feed.name,
         agent: feed.agent,
         url: feed.url,
         state: idle?.state ?? s?.state ?? "connecting",
-        since: idle?.since ?? s?.since ?? Date.now(),
+        since: idle?.since ?? s?.since ?? this.now(),
         last_event_at: s?.lastEventAt ?? null,
-        waiting: s?.waiting ?? 0,
+        unread,
         problem: idle?.problem ?? s?.problem ?? null,
       };
     });
     return { feeds, problems: parsed.problems };
+  }
+
+  /**
+   * What app_feed_read serves `agent`: only feeds of its own project now
+   * that name it. No `feed`: those feeds and their unread counts. With
+   * `feed`: its events after `after` (unread when null, which marks them
+   * read), up to embed.feed_read_max_kb of data and `limit` events.
+   */
+  readFor(
+    agent: string,
+    feed: string | null,
+    after: number | null,
+    limit: number,
+  ):
+    | { ok: true; feeds: { name: string; unread: number }[] }
+    | ({ ok: true } & FeedRead)
+    | { ok: false; code: "no_feed"; error: string } {
+    const project = this.d.agentProject(agent);
+    const mine = project
+      ? parseAppFeeds(this.d.feedsOf(project)).feeds.filter(
+          (f) => f.agent === agent,
+        )
+      : [];
+    if (feed === null)
+      return {
+        ok: true,
+        feeds: mine.map((f) => ({
+          name: f.name,
+          unread: this.storeOf(project!, f.name).unreadCount(),
+        })),
+      };
+    const f = mine.find((x) => x.name === feed);
+    if (!f || !project)
+      return {
+        ok: false,
+        code: "no_feed",
+        error: `You have no app feed "${feed.slice(0, 40)}" in your project.`,
+      };
+    const store = this.storeOf(project, f.name);
+    const { events, more } = store.read(
+      after,
+      this.d.limits().readMaxKb * 1024,
+      Math.max(1, Math.min(1000, limit)),
+    );
+    return {
+      ok: true,
+      feed: f.name,
+      events,
+      more,
+      unread: store.unreadCount(),
+    };
   }
 
   stop(): void {
@@ -376,7 +747,7 @@ export class AppFeeds {
 let current: AppFeeds | null = null;
 let timer: NodeJS.Timeout | null = null;
 
-/** How often the server reads the config again and drains, ms. */
+/** How often the server reads the config again and points, ms. */
 export const APP_FEED_TICK_MS = 5_000;
 
 /** The server's feeds: one AppFeeds, ticked every APP_FEED_TICK_MS. */
@@ -408,4 +779,14 @@ export function appFeedsView(ws: string): {
   problems: string[];
 } {
   return current ? current.view(ws) : { feeds: [], problems: [] };
+}
+
+/** app_feed_read for `agent`; null before the server started the feeds. */
+export function appFeedRead(
+  agent: string,
+  feed: string | null,
+  after: number | null,
+  limit: number,
+): ReturnType<AppFeeds["readFor"]> | null {
+  return current ? current.readFor(agent, feed, after, limit) : null;
 }

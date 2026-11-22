@@ -2738,21 +2738,38 @@
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "set.workspace.event_feeds": "App event feeds: this project",
     "set.workspace.event_feeds.d":
-      "Events an app of this project sends on its own stream, each typed into one agent when it is idle, never mid-turn. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
     "set.embed.feed_max_streams": "App feeds read at once",
     "set.embed.feed_max_streams.d":
       "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
     "set.embed.feed_event_max_kb": "Largest app feed event",
     "set.embed.feed_event_max_kb.d":
-      "The largest event an app feed types into its agent. A larger one is typed as a note that it came, without its data, and the project's notifications say so.",
+      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
     "set.embed.feed_events_per_minute": "App feed events a minute",
     "set.embed.feed_events_per_minute.d":
-      "How many events one app feed types into its agent in a minute. More wait, typed as the rate allows, and the project's notifications say so.",
+      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
     "feed.none": "No app event feeds for this project.",
     "feed.row": "{name} to {agent}: {url}",
     "feed.last": "Last event {time}.",
     "feed.noEvents": "No events yet.",
-    "feed.waiting": "Waiting: {n}.",
+    "set.embed.feed_keep_events": "Events one app feed keeps",
+    "set.embed.feed_keep_events.d":
+      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+    "set.embed.feed_read_max_kb": "Most app feed data in one read",
+    "set.embed.feed_read_max_kb.d":
+      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+    "set.embed.feed_list_timeout": "App feed list wait",
+    "set.embed.feed_list_timeout.d":
+      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+    "set.embed.feed_list_max_mb": "Largest app feed list answer",
+    "set.embed.feed_list_max_mb.d":
+      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+    "set.embed.paste_max_kb": "Most text typed into an agent at once",
+    "set.embed.paste_max_kb.d":
+      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+    "feed.unread": "Unread: {n}.",
+    "bell.m.appFeed.dropped":
+      "App feed {name} for {agent}: unread events went because the feed keeps at most its limit.",
     "feed.problems": "Entries in agents.event_feeds that can't be read: {n}.",
     "feed.failed": "Couldn't read this project's app event feeds.",
     "feed.st.connecting": "Connecting",

@@ -1887,21 +1887,38 @@
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
     "set.workspace.event_feeds": "Flujos de eventos de apps: este proyecto",
     "set.workspace.event_feeds.d":
-      "Eventos que una app de este proyecto envía en su propio flujo; cada uno se escribe en un agente cuando está libre, nunca a mitad de turno. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade uno en agents.event_feeds; el bearer es un nombre de secrets.refs.",
+      "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade uno en agents.event_feeds; el bearer es un nombre de secrets.refs.",
     "set.embed.feed_max_streams": "Flujos de apps leídos a la vez",
     "set.embed.feed_max_streams.d":
       "El máximo de flujos de eventos de apps que Den lee a la vez, en todos los proyectos. Por encima, un flujo no se lee y las notificaciones de su proyecto lo dicen.",
     "set.embed.feed_event_max_kb": "Evento de flujo más grande",
     "set.embed.feed_event_max_kb.d":
-      "El evento más grande que un flujo de app escribe en su agente. Uno mayor se escribe como un aviso de que llegó, sin sus datos, y las notificaciones del proyecto lo dicen.",
+      "El evento más grande que un flujo de app guarda para su agente. Uno mayor se guarda como un aviso de que llegó, sin sus datos, y las notificaciones del proyecto lo dicen.",
     "set.embed.feed_events_per_minute": "Eventos de flujo por minuto",
     "set.embed.feed_events_per_minute.d":
-      "Cuántos eventos escribe un flujo de app en su agente por minuto. Los demás esperan y se escriben según lo permita el ritmo, y las notificaciones del proyecto lo dicen.",
+      "Cuántos eventos lee Den de un flujo de app por minuto. Por encima, Den lee el resto según lo permita el ritmo, y las notificaciones del proyecto lo dicen.",
     "feed.none": "Este proyecto no tiene flujos de eventos de apps.",
     "feed.row": "{name} a {agent}: {url}",
     "feed.last": "Último evento {time}.",
     "feed.noEvents": "Aún no hay eventos.",
-    "feed.waiting": "En espera: {n}.",
+    "set.embed.feed_keep_events": "Eventos que guarda un flujo de app",
+    "set.embed.feed_keep_events.d":
+      "El máximo de eventos que Den guarda para un flujo de app. Por encima, se van los más antiguos, y las notificaciones del proyecto lo dicen si alguno no se había leído.",
+    "set.embed.feed_read_max_kb": "Datos de flujo en una lectura",
+    "set.embed.feed_read_max_kb.d":
+      "El máximo de datos de eventos que da una llamada a app_feed_read. El agente lee el resto con otra llamada.",
+    "set.embed.feed_list_timeout": "Espera de la lista de un flujo",
+    "set.embed.feed_list_timeout.d":
+      "Cuánto espera Den la lista de eventos de una app (llena un hueco tras un corte) antes de volver a intentarlo más tarde.",
+    "set.embed.feed_list_max_mb": "Lista de flujo más grande",
+    "set.embed.feed_list_max_mb.d":
+      "La lista de eventos más grande que Den lee de una app de una vez. Una respuesta mayor se rechaza y se vuelve a intentar más tarde.",
+    "set.embed.paste_max_kb": "Texto máximo escrito en un agente de una vez",
+    "set.embed.paste_max_kb.d":
+      "El máximo de texto que Den escribe en un agente de una vez: comentarios de Hub, mensajes reenviados y líneas de flujos de apps. El resto se escribe después.",
+    "feed.unread": "Sin leer: {n}.",
+    "bell.m.appFeed.dropped":
+      "Flujo {name} para {agent}: se fueron eventos sin leer porque el flujo guarda como máximo su límite.",
     "feed.problems":
       "Entradas de agents.event_feeds que no se pueden leer: {n}.",
     "feed.failed":

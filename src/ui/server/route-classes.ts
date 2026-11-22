@@ -751,6 +751,14 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
+  R(
+    "/api/agents/self/app-feeds",
+    "issue 459: an agent's own app feeds and their unread counts (its own token only)",
+  ),
+  R(
+    "/api/agents/self/app-feeds/:name",
+    "issue 459: an agent's own app feed's events, capped per call (its own token only)",
+  ),
   M(
     ["POST"],
     "/api/agents/self/attention",
@@ -1094,6 +1102,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
+  "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
     "/api/workspaces/:ws/hub-project",
   ],

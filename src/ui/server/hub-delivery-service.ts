@@ -38,6 +38,8 @@ import {
   type InboxSettings,
 } from "../../shared/hub-inbox-watch.js";
 import { getStateDir } from "../../shared/paths.js";
+import { readUserConfig } from "../../shared/den-config.js";
+import { embedSettings } from "./embed-settings.js";
 
 const PUMP_MS = 2000;
 /** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
@@ -428,6 +430,18 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),
+    // Issue 459: app feed pointers keep their own seen ids.
+    feedSeen: new SeenDeliveries(
+      path.join(getStateDir(), "hub", "feed-pointers-seen.json"),
+    ),
+    // Issue 459: one paste holds at most embed.paste_max_kb.
+    pasteMaxChars: () => {
+      try {
+        return embedSettings(readUserConfig()).paste_max_kb * 1024;
+      } catch {
+        return 256 * 1024;
+      }
+    },
     heartbeatMs: o.heartbeatSeconds * 1000,
     pollMs: o.pollSeconds * 1000,
     log: o.log,
@@ -566,6 +580,11 @@ export async function relayMessage(dv: Delivery): Promise<boolean> {
 /** Issue 459: whether the loop has taken (or passed over) Den's own item `id`. */
 export function relaySeen(id: string): boolean {
   return loop?.seenLocal(id) ?? false;
+}
+
+/** Issue 459: whether the loop still waits to type (or is typing) `id`. */
+export function relayHolds(id: string): boolean {
+  return loop?.holds(id) ?? false;
 }
 
 /** Issue 334: how many relayed messages wait for `agent`. */

@@ -23,6 +23,7 @@ import {
   deliveryRaw,
   deliveryText,
   EMBED_PREFIX,
+  FEED_PREFIX,
   isOwner,
   LOCAL_PREFIX,
   parseDelivery,
@@ -120,6 +121,17 @@ export interface DeliveryLoopDeps {
   /** Called when a delivery waits on the owner: look it up again. */
   ownerWanted?: () => void;
   seen: SeenDeliveries;
+  /**
+   * Issue 459: the seen store for app feed notices (FEED_PREFIX), apart
+   * from `seen`; `seen` when unset.
+   */
+  feedSeen?: SeenDeliveries;
+  /**
+   * Issue 459: the most characters one paste types (read at each paste).
+   * Items past it wait for the next one; the first item always goes.
+   * Unset: no cap.
+   */
+  pasteMaxChars?: () => number;
   /** hub.delivery_heartbeat_seconds (default 15), in ms. */
   heartbeatMs?: number;
   now?: () => number;
@@ -567,19 +579,19 @@ export class DeliveryLoop {
    */
   async takeLocal(dv: Delivery): Promise<boolean> {
     if (!dv.id.startsWith(LOCAL_PREFIX)) return false;
-    if (this.d.seen.has(dv.id) || this.states.has(dv.id)) return false;
+    if (this.seenOf(dv.id).has(dv.id) || this.states.has(dv.id)) return false;
     await this.hold(dv);
     return true;
   }
 
   /** Whether an inbox item was seen (taken, or passed over). */
   seenLocal(id: string): boolean {
-    return this.d.seen.has(id);
+    return this.seenOf(id).has(id);
   }
 
   /** Mark an inbox item seen without typing it (older, or a delivery had it). */
   passLocal(id: string): void {
-    if (id.startsWith(LOCAL_PREFIX)) this.d.seen.add(id);
+    if (id.startsWith(LOCAL_PREFIX)) this.seenOf(id).add(id);
   }
 
   /**
@@ -591,8 +603,23 @@ export class DeliveryLoop {
     return t !== undefined && t >= at;
   }
 
+  /** Issue 459: the seen store an id belongs in. */
+  private seenOf(id: string): SeenDeliveries {
+    return id.startsWith(FEED_PREFIX) && this.d.feedSeen
+      ? this.d.feedSeen
+      : this.d.seen;
+  }
+
+  /** Issue 459: whether `id` waits in a queue or is in a running turn. */
+  holds(id: string): boolean {
+    for (const q of this.queue.values())
+      if (q.some((dv) => dv.id === id)) return true;
+    for (const a of this.active.values()) if (a.ids.includes(id)) return true;
+    return false;
+  }
+
   private async hold(dv: Delivery): Promise<void> {
-    this.d.seen.add(dv.id);
+    this.seenOf(dv.id).add(dv.id);
     const s = await this.stateOf(dv.agent);
     if (s === "missing") {
       await this.ack(dv.id, "refused", {
@@ -833,17 +860,31 @@ export class DeliveryLoop {
       await this.ackHeld(q, "owner");
       return;
     }
-    const texts = q.map((dv) => dv.text ?? deliveryText(dv, o!));
-    const relayed = q.some((dv) => dv.id.startsWith(EMBED_PREFIX));
+    const all = q.map((dv) => dv.text ?? deliveryText(dv, o!));
+    // Issue 459: one paste holds at most pasteMaxChars (the first item
+    // always goes); the rest wait for the next paste.
+    let n = q.length;
+    const cap = this.d.pasteMaxChars?.() ?? 0;
+    if (cap > 0) {
+      let total = 0;
+      n = 0;
+      while (n < q.length && (n === 0 || total + all[n].length <= cap))
+        total += all[n++].length;
+    }
+    const batch = q.slice(0, n);
+    const rest = q.slice(n);
+    const texts = all.slice(0, n);
+    const relayed = batch.some((dv) => dv.id.startsWith(EMBED_PREFIX));
     const text =
-      q.length === 1
+      batch.length === 1
         ? texts[0]
         : [
-            `${q.length} ${relayed ? "messages" : "Hub comments"}:`,
+            `${batch.length} ${relayed ? "messages" : "Hub comments"}:`,
             ...texts,
           ].join("\n\n---\n\n");
     // Claim them before the paste: the queue keeps only what comes after.
-    this.queue.delete(agent);
+    if (rest.length) this.queue.set(agent, rest);
+    else this.queue.delete(agent);
     this.typing.add(agent);
     let typed = false;
     try {
@@ -851,35 +892,35 @@ export class DeliveryLoop {
     } finally {
       this.typing.delete(agent);
       if (!typed)
-        this.queue.set(agent, [...q, ...(this.queue.get(agent) ?? [])]);
+        this.queue.set(agent, [...batch, ...(this.queue.get(agent) ?? [])]);
     }
     if (!typed) {
       this.d.log?.(
-        `hub delivery: couldn't type ${q.length} Hub item${q.length === 1 ? "" : "s"} into ${agent}; kept for the next try`,
+        `hub delivery: couldn't type ${batch.length} Hub item${batch.length === 1 ? "" : "s"} into ${agent}; kept for the next try`,
       );
       return;
     }
     this.waitSaid.delete(agent);
     this.heldCode.delete(agent);
     const oldest = Math.min(
-      ...q.map((dv) => {
+      ...batch.map((dv) => {
         const t = Date.parse(dv.createdAt);
         return Number.isFinite(t) ? t : now;
       }),
     );
     const waited = Math.max(0, Math.round((now - oldest) / 1000));
     this.d.log?.(
-      `hub delivery: typed ${q.length} Hub item${q.length === 1 ? "" : "s"} into ${agent} (oldest waited ${waited}s)`,
+      `hub delivery: typed ${batch.length} Hub item${batch.length === 1 ? "" : "s"} into ${agent} (oldest waited ${waited}s)`,
     );
     this.active.set(agent, {
-      ids: q.map((dv) => dv.id),
-      artifact: q[0].thread.artifact,
-      url: q[0].thread.url || undefined,
+      ids: batch.map((dv) => dv.id),
+      artifact: batch[0].thread.artifact,
+      url: batch[0].thread.url || undefined,
       sawBusy: false,
       typedAt: now,
       lastBeat: now,
     });
-    for (const dv of q) {
+    for (const dv of batch) {
       this.heldReason.delete(dv.id);
       await this.ack(dv.id, "delivered");
       await this.ack(dv.id, "working");
@@ -888,7 +929,9 @@ export class DeliveryLoop {
     // asked them (its waiting mark goes).
     if (
       o &&
-      q.some((dv) => !dv.id.startsWith(LOCAL_PREFIX) && isOwner(dv.author, o))
+      batch.some(
+        (dv) => !dv.id.startsWith(LOCAL_PREFIX) && isOwner(dv.author, o),
+      )
     ) {
       try {
         this.d.answered?.(agent);

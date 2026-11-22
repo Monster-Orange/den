@@ -1636,11 +1636,11 @@ const EMBED_ROWS = [
     category: "embed",
     label: "Largest app feed event",
     description:
-      "The largest event an app feed types into its agent. A larger one is typed as a note that it came, without its data, and the project's notifications say so.",
+      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
     keywords: ["feed", "event", "size", "limit"],
     scope: "user",
     keys: ["embed.feed_event_max_kb"],
-    control: { type: "number", min: 1, max: 36, step: 1, unit: "KB" },
+    control: { type: "number", min: 1, max: 10240, step: 1, unit: "KB" },
     read: (ctx) => ctx.data.embed?.feed_event_max_kb ?? 32,
     write: (v, ctx) => ctx.post({ embed: { feed_event_max_kb: v } }),
   },
@@ -1649,13 +1649,78 @@ const EMBED_ROWS = [
     category: "embed",
     label: "App feed events a minute",
     description:
-      "How many events one app feed types into its agent in a minute. More wait, typed as the rate allows, and the project's notifications say so.",
+      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
     keywords: ["feed", "events", "rate", "minute", "limit"],
     scope: "user",
     keys: ["embed.feed_events_per_minute"],
     control: { type: "number", min: 1, max: 1000000, step: 1 },
     read: (ctx) => ctx.data.embed?.feed_events_per_minute ?? 600,
     write: (v, ctx) => ctx.post({ embed: { feed_events_per_minute: v } }),
+  },
+  {
+    id: "embed.feed_keep_events",
+    category: "embed",
+    label: "Events one app feed keeps",
+    description:
+      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+    keywords: ["feed", "events", "keep", "limit"],
+    scope: "user",
+    keys: ["embed.feed_keep_events"],
+    control: { type: "number", min: 1, max: 1000000, step: 1 },
+    read: (ctx) => ctx.data.embed?.feed_keep_events ?? 1000,
+    write: (v, ctx) => ctx.post({ embed: { feed_keep_events: v } }),
+  },
+  {
+    id: "embed.feed_read_max_kb",
+    category: "embed",
+    label: "Most app feed data in one read",
+    description:
+      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+    keywords: ["feed", "read", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_read_max_kb"],
+    control: { type: "number", min: 1, max: 102400, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.feed_read_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { feed_read_max_kb: v } }),
+  },
+  {
+    id: "embed.feed_list_timeout",
+    category: "embed",
+    label: "App feed list wait",
+    description:
+      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+    keywords: ["feed", "list", "timeout", "wait"],
+    scope: "user",
+    keys: ["embed.feed_list_timeout_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.embed?.feed_list_timeout_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ embed: { feed_list_timeout_seconds: v } }),
+  },
+  {
+    id: "embed.feed_list_max_mb",
+    category: "embed",
+    label: "Largest app feed list answer",
+    description:
+      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+    keywords: ["feed", "list", "size", "limit"],
+    scope: "user",
+    keys: ["embed.feed_list_max_mb"],
+    control: { type: "number", min: 1, max: 1024, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.embed?.feed_list_max_mb ?? 8,
+    write: (v, ctx) => ctx.post({ embed: { feed_list_max_mb: v } }),
+  },
+  {
+    id: "embed.paste_max_kb",
+    category: "embed",
+    label: "Most text typed into an agent at once",
+    description:
+      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+    keywords: ["paste", "type", "agent", "limit", "size"],
+    scope: "user",
+    keys: ["embed.paste_max_kb"],
+    control: { type: "number", min: 1, max: 102400, step: 1, unit: "KB" },
+    read: (ctx) => ctx.data.embed?.paste_max_kb ?? 256,
+    write: (v, ctx) => ctx.post({ embed: { paste_max_kb: v } }),
   },
   {
     id: "embed.url_max",
@@ -3566,7 +3631,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "App event feeds: this project",
     description:
-      "Events an app of this project sends on its own stream, each typed into one agent when it is idle, never mid-turn. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
     keywords: ["feed", "events", "stream", "app", "sse"],
     scope: "workspace",
     control: { type: "custom", render: renderAppFeeds },
@@ -5302,8 +5367,7 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
       typeof f.last_event_at === "number"
         ? t("feed.last", { time: fmt(f.last_event_at) })
         : t("feed.noEvents");
-    const waiting =
-      f.waiting > 0 ? ` ${t("feed.waiting", { n: f.waiting })}` : "";
+    const waiting = f.unread > 0 ? ` ${t("feed.unread", { n: f.unread })}` : "";
     return (
       `<li data-feed="${escR(f.name)}" data-feed-state="${escR(state)}">` +
       `<span data-feed-text>${escR(t("feed.row", { name: f.name, agent: f.agent, url: f.url }))}</span> ` +

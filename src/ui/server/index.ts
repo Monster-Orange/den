@@ -15,6 +15,7 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
+import { handleAppFeedRoutes, isAppFeedPath } from "./app-feed-routes.js";
 import {
   alertFeed,
   attentionDetail,
@@ -4924,6 +4925,11 @@ async function handleRequest(
     });
     return;
   }
+  // Issue 459: an agent reads its own app feeds (app_feed_read).
+  if (guard.ok && isAppFeedPath(pathname)) {
+    await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
   // NT: the bell, and agents saying they wait for their person.
   if (guard.ok && isNotificationPath(pathname)) {
     await handleNotificationRoutes(req, res, pathname, notificationDeps());
@@ -9789,12 +9795,17 @@ void CRASH_GATE.then(() =>
           },
           relay: (dv) => dl.relayMessage(dv),
           seen: (id) => dl.relaySeen(id),
+          holds: (id) => dl.relayHolds(id),
           limits: () => {
             const e = embedSettings(readUserConfig());
             return {
               maxStreams: e.feed_max_streams,
               eventMaxKb: e.feed_event_max_kb,
               perMinute: e.feed_events_per_minute,
+              keepEvents: e.feed_keep_events,
+              readMaxKb: e.feed_read_max_kb,
+              listTimeoutSeconds: e.feed_list_timeout_seconds,
+              listMaxMb: e.feed_list_max_mb,
             };
           },
           bell: (n) => {

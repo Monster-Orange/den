@@ -44,7 +44,7 @@ const view = {
       state: "connected",
       since: 1,
       last_event_at: Date.UTC(2026, 10, 21, 18, 0),
-      waiting: 0,
+      unread: 0,
       problem: null,
     },
     {
@@ -54,7 +54,7 @@ const view = {
       state: "retrying",
       since: 1,
       last_event_at: null,
-      waiting: 2,
+      unread: 2,
       problem: "the app answered HTTP 502",
     },
   ],
@@ -71,7 +71,7 @@ describe("issue 459: the app event feeds row", () => {
     expect(html).toContain("<strong data-feed-st>Connected</strong>");
     expect(html).toContain("Last event 6:00 PM.");
     expect(html).toContain("<strong data-feed-st>Retrying</strong>");
-    expect(html).toContain("No events yet. Waiting: 2.");
+    expect(html).toContain("No events yet. Unread: 2.");
   });
 
   it("every word it draws is in es and ja", () => {
@@ -93,7 +93,7 @@ describe("issue 459: the app event feeds row", () => {
             url: "https://x.example.test",
             state,
             last_event_at: i ? 1 : null,
-            waiting: 1,
+            unread: 1,
           })),
           problems: ["agents.event_feeds[3]: name: bad"],
         },
@@ -116,9 +116,12 @@ describe("issue 459: the app event feeds row", () => {
 
   it("the rows' labels don't fuzzy-match the palette's unrelated search", () => {
     const mine = rows.filter(
-      (r) => r.id === "workspace.event_feeds" || r.id.startsWith("embed.feed_"),
+      (r) =>
+        r.id === "workspace.event_feeds" ||
+        r.id.startsWith("embed.feed_") ||
+        r.id === "embed.paste_max_kb",
     );
-    expect(mine).toHaveLength(4);
+    expect(mine).toHaveLength(9);
     const fuzzy = (w: string, s: string) => {
       let at = -1;
       for (const ch of w) {
