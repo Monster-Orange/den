@@ -110,7 +110,7 @@ describe.each(["chromium", "webkit"])("the rail in %s", (engine) => {
     const p = await ctx.newPage();
     const base = `http://localhost:${port}`;
     await p.goto(`${base}/settings`);
-    await p.waitForSelector('.den-rail [data-pin="shop"]');
+    await p.waitForSelector('#den-rail [data-pin="shop"]');
     const settled = p.waitForResponse(
       (r) =>
         r.request().method() === "GET" &&
@@ -122,15 +122,17 @@ describe.each(["chromium", "webkit"])("the rail in %s", (engine) => {
         window as unknown as { denShell: { unpin(id: string): void } }
       ).denShell.unpin("shop");
       (
-        document.querySelector('.den-rail [data-nav="logs"]') as HTMLElement
+        document.querySelector('#den-rail [data-nav="logs"]') as HTMLElement
       ).click();
     });
     await p.waitForURL(`${base}/logs`);
     await settled;
-    // The server's copy has been applied (setState runs in its .then).
-    await p.waitForTimeout(300);
-    expect(await p.$$('.den-rail [data-pin="shop"]')).toHaveLength(0);
-    expect(await p.$$('.den-rail [data-pin="billing"]')).toHaveLength(1);
+    // The server's copy has been read and applied: the rail says so.
+    await p.waitForSelector("#den-rail[data-prefs-applied]", {
+      state: "attached",
+    });
+    expect(await p.$$('#den-rail [data-pin="shop"]')).toHaveLength(0);
+    expect(await p.$$('#den-rail [data-pin="billing"]')).toHaveLength(1);
     expect(await serverPins()).toEqual(["billing"]);
     await ctx.close();
   }, 60_000);

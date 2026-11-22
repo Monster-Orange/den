@@ -8957,7 +8957,7 @@
       })
       .then(function (s) {
         if (s && s.feedback_enabled === false) setState({ reportOff: true });
-        if (!s || !s.shell) return;
+        if (!s || !s.shell) return markPrefsApplied();
         setState({
           pinList: pinTuples(s.shell.pins),
           pinsLoaded: true,
@@ -8970,8 +8970,15 @@
         });
         remember();
         dockFromPrefs();
+        markPrefsApplied();
       })
-      .catch(function () {});
+      .catch(markPrefsApplied);
+  // The rail says when the server's prefs have been read and applied
+  // (data-prefs-applied), so a check can wait on it instead of a timer.
+  function markPrefsApplied() {
+    var rail = document.getElementById("den-rail");
+    if (rail) rail.setAttribute("data-prefs-applied", "");
+  }
 
   // The Edge page shows once the edge is configured (no Docker asked).
   if (typeof fetch === "function" && !configInvalid())
