@@ -1,8 +1,8 @@
 /**
  * Issue 897: the project drop-down shows no "CLI default" tag. Picking a
  * project already makes it the CLI default, so the tag only followed the
- * checkmark. The CLI keeps its default silently. The tag's string is gone
- * from en, es and ja; the error line for a failed change stays.
+ * checkmark. The CLI keeps its default silently. The Projects page still
+ * shows its own "CLI default" tag, so ws.focus stays in en, es and ja.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -17,11 +17,15 @@ describe("issue 897: no CLI default tag in the project drop-down", () => {
   });
 
   it.each(["shell.js", "i18n/es.js", "i18n/ja.js"])(
-    "%s has no ws.focus string (ws.focusFailed stays)",
+    "%s keeps ws.focus for the Projects page's tag",
     (f) => {
       const src = read(f);
-      expect(src).not.toMatch(/"ws\.focus":/);
+      expect(src).toMatch(/"ws\.focus":/);
       expect(src).toMatch(/"ws\.focusFailed":/);
     },
   );
+
+  it("the Projects page still uses ws.focus", () => {
+    expect(read("local-dev.html")).toMatch(/wsT\("ws\.focus"/);
+  });
 });

@@ -293,6 +293,7 @@
     "org.title": "Org: {title}",
     "org.titleId": "Org: {title} ({id})",
     "ws.all": "Todos los activos",
+    "ws.focus": "predeterminado de la CLI",
     "ws.hubChip": "Hub: {name}",
     "ws.hubUnseen": "Den Hub no puede ver {n} repos",
     "ws.hubTip":

@@ -403,6 +403,7 @@
     "org.title": "Org: {title}",
     "org.titleId": "Org: {title} ({id})",
     "ws.all": "All active",
+    "ws.focus": "CLI default",
     "ws.hubChip": "Hub: {name}",
     "ws.hubUnseen": "Den Hub can't see {n} repos",
     "ws.hubTip":
