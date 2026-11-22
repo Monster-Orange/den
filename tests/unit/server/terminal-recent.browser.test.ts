@@ -111,10 +111,29 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     return p;
   }
 
+  /**
+   * Issue 640: the pane's live connection is open. The pane draws before
+   * its socket opens, and a key typed before then is dropped; a remote
+   * browser (DEN_PW_WS) opens it later than a local one. The shell's
+   * prompt in the pane came over that socket.
+   */
+  async function connected(p: Page, id: string) {
+    await p.waitForFunction(
+      (i) =>
+        (
+          document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
+            ?.textContent ?? ""
+        ).includes("$"),
+      id,
+      { timeout: 20_000 },
+    );
+  }
+
   /** A person types in shell `id`, on a machine of its own, then leaves. */
   async function typeIn(id: string) {
     const p = await open(`/agents?open=${id}`);
     await p.waitForSelector(`.pane[data-id="${id}"] .xterm-screen`);
+    await connected(p, id);
     await p.click(`.pane[data-id="${id}"] .xterm-screen`);
     const pty = ptys.get(id)!;
     const before = pty.writes.length;
@@ -246,6 +265,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     // The page lists south1 running and in front; it ends while open.
     const p = await open(`/agents?project=south&open=${south1}`);
     await p.waitForSelector(`.pane[data-id="${south1}"] .xterm-screen`);
+    await connected(p, south1);
     await p.click(`.pane[data-id="${south1}"] .xterm-screen`);
     await p.keyboard.type("x");
     await endShell(south1);
