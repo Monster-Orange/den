@@ -404,18 +404,58 @@ who asked and who allowed. Deny changes nothing.
 
 ### Which runs go to a box
 
-A browser run says where it may go:
+A browser run with no `--box` takes whichever browser slot frees first:
+this machine's, then the first test box with a free slot. It needs
+`--base-url` for that (a box's browser reaches the app by it):
 
 ```sh
-den gate run --kind browser --box any --base-url http://app.localhost:4100 -- npm run test:e2e
-den gate run --kind browser -- npm run test:e2e             # this machine only
+den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
+den gate run --kind browser --box local -- npm run test:e2e    # this machine only
+den gate run --kind browser --box box1 --base-url http://app.localhost:4100 -- npm run test:e2e
 ```
 
-`--box any` takes whichever slot frees first: this machine's, then the
-first box with a free slot. A run that needs a local browser leaves `--box`
-out and takes only this machine's slot. The run is told what it got:
-`DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
-set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
+`--box local` (or this machine's own name) keeps a run here; `--box <name>`
+sends it to that box; `--box any` is the default spelled out. The run is
+told what it got: `DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its
+Playwright server, when set), `DEN_PW_EXPOSE` (`<loopback>`, beside
+`DEN_PW_WS`: what its client exposes to the box), `DEN_GATE_BOX_SSH` and
+`DEN_GATE_TIME_SCALE`.
+
+A run with no `--box` stays on this machine, and says why in one line
+(`gate: stays on this machine: …`), when:
+
+- its project or label is host-only (`browser_host_only`, below);
+- it brings its own browser: `--browser-endpoint` (an address, or `self`
+  for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
+  `E2E_WEBKIT_WS` in its environment;
+- it has no `--base-url`, or one a box can't use;
+- its Playwright version is unknown (no `--pw-version`, and none installed
+  where it runs): a box's server would refuse it;
+- no box can serve it. By default a run skips a box that declares no
+  Playwright version (`playwright_version` or `--pw`; its server refuses another
+  client version), and a box whose versions don't serve the run's (a
+  box's one `playwright_version` matches by major.minor: 1.61.1 serves a
+  1.61.0 client). It
+  takes a box like that only with `--box <name>`. When some boxes are
+  skipped and others aren't, it says which (`gate: skips …`) and takes
+  only the others.
+
+It never fails for that: it waits for this machine's slot, as before.
+`gate status` shows each held browser slot's machine (`on box box1`, or
+`on this machine` with the reason it stayed), and so do `gate status
+--json` (`machine`, `hostWhy`) and the slot log's `granted` rows.
+
+Two settings (Settings, or `den gate settings`):
+
+- `browser_box_default`: `any` (the default) or `local`. At `local`, a run
+  with no `--box` takes only this machine's slot, as before boxes were the
+  default: `den gate settings --browser-box-default local`.
+- `browser_host_only`: projects and label patterns whose browser runs
+  stay here, comma-separated, as `class_map` names them: a project by
+  name, `label:<pattern>` with `*` for any text. For example layout suites
+  and WebKit on macOS:
+  `den gate settings --browser-host-only "label:layout*, label:*webkit*"`.
+  Empty (the default): none.
 
 A test suite that starts its own server on a free port (Den's own browser
 suites do) names a loopback host (`127.0.0.1`, `localhost` or
@@ -492,6 +532,18 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
   Playwright setup guards every browser context with Den's
   `shared/gates/pw-guard` module (`guardBrowser`), so only those
   host:ports load, and each blocked request is reported.
+- The box's browser reaches this machine's ports only through a client
+  that connects with `exposeNetwork: "<loopback>"`. The gate hands a box
+  run `DEN_PW_WS` (the box's Playwright server) and `DEN_PW_EXPOSE`
+  (`<loopback>`); on this machine it adds neither. Den's own browser
+  helper reads both. Another product's client either connects with
+  pw-guard's `connectGuarded(chromium, process.env.DEN_PW_WS)`, which
+  reads `DEN_PW_EXPOSE` itself, or passes it:
+  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`.
+  A box run (`DEN_GATE_SLOT_BOX` is a box's name) that connects through
+  pw-guard without it is told once: `box run without exposeNetwork
+<loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE
+to connect()`.
 - The setup calls `pinLoopbackNames()` too: `localhost` and
   `*.localhost` resolve to 127.0.0.1 in the client, never ::1 (the
   tunnel's forwarders listen on IPv4).
