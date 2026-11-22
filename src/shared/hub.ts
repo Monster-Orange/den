@@ -22,6 +22,7 @@
  */
 import { isServerScope } from "./agents/server-agent.js";
 import * as crypto from "crypto";
+import { hubUrlProblem } from "./hub-url.js";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
 import { readHubProjectChoices } from "./hub-project-link.js";
 import {
@@ -216,21 +217,9 @@ function rawHub(den: unknown, user: unknown): RawHub {
   return { ...d, ...u };
 }
 
-/** A URL Den will send a token to: https, or http to this machine. */
-export function hubUrlProblem(url: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return `hub.url is not a URL: ${url}`;
-  }
-  const local =
-    ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ||
-    u.hostname.endsWith(".localhost");
-  if (u.protocol !== "https:" && !(u.protocol === "http:" && local))
-    return `hub.url must be https (http only to this machine): ${url}`;
-  return null;
-}
+// Issue 727: in its own module, so `create` can check it before any
+// distribution exists.
+export { hubUrlProblem };
 
 /**
  * hub.* (org config, then user.yml), or null without hub.url. A bad value
