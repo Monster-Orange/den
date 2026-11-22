@@ -1824,6 +1824,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 1131: agents' refused calls in the last hour.
+      r.checks.push((await tokenRefusalRow()).check);
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
@@ -1959,6 +1961,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  for (const l of (await tokenRefusalRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // The shared GitHub watcher: calls left, reset, watches, interval.
@@ -2127,6 +2130,20 @@ async function previousHubRows(): Promise<
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */
+/** Issue 1131: agents' refused calls in the last hour, from the audit. */
+async function tokenRefusalRow(): Promise<{
+  lines: string[];
+  check: OnboardCheck;
+}> {
+  const { tokenRefusalLines, readRefusalEntries } =
+    await import("./doctor-token-refusals.js");
+  const { AUDIT_FILE } = await import("../server/audit.js");
+  return tokenRefusalLines(
+    readBrand().name,
+    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
+  );
+}
+
 async function heldHubLines(): Promise<
   ReturnType<typeof import("./doctor-hub-held.js").heldLines>
 > {
