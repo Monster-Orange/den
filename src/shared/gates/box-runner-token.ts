@@ -164,7 +164,9 @@ export async function mintBoxRunnerToken(
     path: string,
     bearer: string,
     body?: unknown,
-  ): Promise<{ ok: true; json: Record<string, unknown> } | BoxRunnerTokenResult> => {
+  ): Promise<
+    { ok: true; json: Record<string, unknown> } | BoxRunnerTokenResult
+  > => {
     let res: Response;
     try {
       res = await fetch(`${api}${path}`, {

@@ -36,7 +36,9 @@ function provider(vals: Record<string, string | undefined>) {
 }
 
 /** A fake GitHub API; `fail` names a step to answer with a status. */
-function github(fail: Partial<Record<"install" | "access" | "reg", number>> = {}) {
+function github(
+  fail: Partial<Record<"install" | "access" | "reg", number>> = {},
+) {
   const calls: Call[] = [];
   const res = (status: number, body: unknown) =>
     ({
@@ -131,24 +133,34 @@ describe("issue 921: the box runner's token, from the project's GitHub App", () 
     ["private-key", { app_id: "12345" }],
     ["app-id", { app_id: "not a number", private_key: PEM }],
     ["private-key", { app_id: "12345", private_key: "not a key" }],
-  ] as const)("a missing or wrong %s fails closed", async (part, vals) => {
-    const d = deps(vals);
-    const r = await mintBoxRunnerToken("acme/app", refs, d);
-    expect(r).toMatchObject({ ok: false, part });
-    expect(d.calls).toEqual([]);
-    clean(r);
-  });
+  ] as [string, Record<string, string>][])(
+    "a missing or wrong %s fails closed",
+    async (part, vals) => {
+      const d = deps(vals);
+      const r = await mintBoxRunnerToken("acme/app", refs, d);
+      expect(r).toMatchObject({ ok: false, part });
+      expect(d.calls).toEqual([]);
+      clean(r);
+    },
+  );
 
   it.each([
     ["installation", { install: 404 }],
     ["installation-token", { access: 401 }],
     ["registration-token", { reg: 403 }],
-  ] as const)("GitHub refusing the %s fails closed, with no token in the error", async (part, fail) => {
-    const r = await mintBoxRunnerToken("acme/app", refs, deps(good, github(fail)));
-    expect(r).toMatchObject({ ok: false, part });
-    expect((r as { error: string }).error).toMatch(/GitHub answered \d{3}/);
-    clean(r);
-  });
+  ] as [string, Parameters<typeof github>[0]][])(
+    "GitHub refusing the %s fails closed, with no token in the error",
+    async (part, fail) => {
+      const r = await mintBoxRunnerToken(
+        "acme/app",
+        refs,
+        deps(good, github(fail)),
+      );
+      expect(r).toMatchObject({ ok: false, part });
+      expect((r as { error: string }).error).toMatch(/GitHub answered \d{3}/);
+      clean(r);
+    },
+  );
 
   it("a network error fails closed without its message's secrets", async () => {
     const fetch = (async () => {
@@ -195,6 +207,8 @@ describe("issue 921: the box runner's token, from the project's GitHub App", () 
     });
     expect(boxRunnerAppRefs({ vault: "ci" })).toBeNull();
     expect(boxRunnerAppRefs("ci/Runner App")).toBeNull();
-    expect(boxRunnerAppRefs({ vault: "ci", item: "x", app_id_field: "a b" })).toBeNull();
+    expect(
+      boxRunnerAppRefs({ vault: "ci", item: "x", app_id_field: "a b" }),
+    ).toBeNull();
   });
 });
