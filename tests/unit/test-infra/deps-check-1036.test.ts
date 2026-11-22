@@ -15,8 +15,9 @@ import * as path from "path";
 type M = typeof import("../../deps-check.js");
 let checkDeps: M["checkDeps"];
 let depsDrift: M["depsDrift"];
+let skippedHere: M["skippedHere"];
 beforeAll(async () => {
-  ({ checkDeps, depsDrift } = await import("../../deps-check.js"));
+  ({ checkDeps, depsDrift, skippedHere } = await import("../../deps-check.js"));
 });
 
 const tmps: string[] = [];
@@ -97,6 +98,18 @@ describe("depsDrift (issue 1036)", () => {
     l.packages["node_modules/c"].os = ["no-such-os"];
     fs.writeFileSync(lock, JSON.stringify(l));
     expect(depsDrift(root)).toEqual([]);
+  });
+
+  it("os and cpu lists read as npm reads them, negations too", () => {
+    expect(skippedHere({ os: ["darwin"] }, "darwin", "arm64")).toBe(false);
+    expect(skippedHere({ os: ["darwin"] }, "linux", "x64")).toBe(true);
+    expect(skippedHere({ os: ["!win32"] }, "win32", "x64")).toBe(true);
+    expect(skippedHere({ os: ["!win32"] }, "linux", "x64")).toBe(false);
+    expect(skippedHere({ cpu: ["arm64"] }, "darwin", "x64")).toBe(true);
+    expect(skippedHere({ os: ["linux", "!android"] }, "android", "arm64")).toBe(
+      true,
+    );
+    expect(skippedHere({}, "linux", "x64")).toBe(false);
   });
 
   it("no lock (an installed package, not a checkout): nothing to check", () => {

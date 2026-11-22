@@ -11,13 +11,24 @@ import * as path from "path";
 
 const readJson = (f) => JSON.parse(fs.readFileSync(f, "utf-8"));
 
+/**
+ * Whether `list` (a lock entry's os or cpu) leaves out `v`, as npm reads
+ * it: a "!v" entry leaves it out; a list with plain entries must name it.
+ */
+function leavesOut(list, v) {
+  if (!Array.isArray(list) || !list.length) return false;
+  if (list.includes(`!${v}`)) return true;
+  const plain = list.filter((x) => typeof x === "string" && !x.startsWith("!"));
+  return plain.length > 0 && !plain.includes(v);
+}
+
 /** Whether the lock skips `entry` on this platform (its os or cpu list). */
-function skippedHere(entry) {
-  const not = (list, v) =>
-    Array.isArray(list) &&
-    !list.some((x) => x === v) &&
-    !list.every((x) => typeof x === "string" && x.startsWith("!"));
-  return not(entry.os, process.platform) || not(entry.cpu, process.arch);
+export function skippedHere(
+  entry,
+  platform = process.platform,
+  arch = process.arch,
+) {
+  return leavesOut(entry.os, platform) || leavesOut(entry.cpu, arch);
 }
 
 /**
