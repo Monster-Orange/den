@@ -188,10 +188,24 @@ function guardCtx(): GuardContext {
             ? agent("north")
             : null,
     csrfToken: "server-start-csrf-token",
-    session: () => null,
+    // Issue 946: the fixture person's session (a test install's live checks).
+    session: (req) =>
+      String(req.headers.cookie ?? "").includes("den_session_fx=1")
+        ? FIXTURE_SESSION
+        : null,
   };
 }
 const PERSON = { authorization: "Bearer den_pt_person" };
+const FIXTURE_SESSION = {
+  key: "sess-fixture",
+  csrf: "fixture-session-csrf-token",
+  via: "fixture" as const,
+};
+/** The fixture person's signed-in browser, as the bed sends it. */
+const FIXTURE = {
+  cookie: "den_session_fx=1",
+  "x-den-csrf": FIXTURE_SESSION.csrf,
+};
 
 const deps: ReportRouteDeps = {
   settings: () =>
@@ -217,6 +231,13 @@ const deps: ReportRouteDeps = {
   shotMaxBytes: () => shotLimits(user).keptBytes,
   // Den's own check, on the real request guard (tokens below).
   shotReader: (r) => shotReaderOf(r, checkRequest(r, guardCtx())),
+  // Issue 946: whether a filing comes from the fixture person's session.
+  filedByFixture: (r) => {
+    const g = checkRequest(r, guardCtx());
+    return (
+      g.ok && g.principal?.kind === "person-browser" && !!g.principal.fixture
+    );
+  },
   readBody: (req) =>
     new Promise((ok) => {
       let b = "";
@@ -957,5 +978,51 @@ describe("issue 403: the janitor", () => {
     ]);
     expect(s.sweep(7, now)).toBe(1);
     expect(fs.readdirSync(s.dir)).toEqual([]);
+  });
+});
+
+describe("issue 946: the fixture person reads only what a fixture session filed", () => {
+  const file = async (headers: Record<string, string>) =>
+    (
+      await call(
+        "POST",
+        "/api/report/send",
+        { ...FORM, shot: SHOT, shareShot: false },
+        // A POST from the page carries its Origin, as the bed's does.
+        { origin: base, ...headers },
+      )
+    ).body.shot.id as string;
+
+  it("a screenshot the fixture person filed: it reads it", async () => {
+    const id = await file(FIXTURE);
+    const r = await call("GET", `/api/report/shots/${id}`, undefined, FIXTURE);
+    expect(r.status).toBe(200);
+    expect(Buffer.from(r.body.base64, "base64").equals(PNG)).toBe(true);
+  });
+
+  it("a screenshot the person filed: 404 to the fixture person, as if none were kept", async () => {
+    const id = await file(PERSON);
+    const r = await call("GET", `/api/report/shots/${id}`, undefined, FIXTURE);
+    expect(r.status).toBe(404);
+    expect(r.body.base64).toBeUndefined();
+    expect(r.body.error).toMatch(/no screenshot is kept/);
+  });
+
+  it("the person still reads one the fixture person filed", async () => {
+    const id = await file(FIXTURE);
+    const r = await call("GET", `/api/report/shots/${id}`, undefined, PERSON);
+    expect(r.status).toBe(200);
+  });
+
+  it("the person's filing again of the same id takes the mark off", async () => {
+    const id = await file(FIXTURE);
+    await call(
+      "POST",
+      "/api/report/send",
+      { ...FORM, shot: SHOT, shareShot: false, draftId: id },
+      PERSON,
+    );
+    const r = await call("GET", `/api/report/shots/${id}`, undefined, FIXTURE);
+    expect(r.status).toBe(404);
   });
 });

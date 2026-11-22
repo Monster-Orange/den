@@ -34,8 +34,8 @@ const GH_SHIM = `#!/bin/bash
 case "$2" in
   repos/owner-x/repo-x/commits/*/status)
     s=\${2#repos/owner-x/repo-x/commits/}; s=\${s%/status}
-    f="\$GH_STATUS_DIR/\$s.json"
-    if [ -f "\$f" ]; then cat "\$f"; else echo '{"statuses":[]}'; fi ;;
+    f="$GH_STATUS_DIR/$s.json"
+    if [ -f "$f" ]; then cat "$f"; else echo '{"statuses":[]}'; fi ;;
   *) echo "gh shim: unexpected api $2" >&2; exit 2 ;;
 esac
 `;

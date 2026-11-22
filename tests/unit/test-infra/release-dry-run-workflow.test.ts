@@ -87,15 +87,17 @@ describe("release-gates.yml: the release's checks, tests and pack, in one place"
 describe("release.yml calls the gates and publishes only after them", () => {
   const w = wf("release.yml");
 
-  it("one job calls release-gates.yml with no versions (the commit's own), only the promoted commit (issue 922)", () => {
+  it("one job calls release-gates.yml with no versions (the commit's own) and no tests (issue 996), only the promoted commit (issue 922)", () => {
     const callers = Object.entries(w.jobs).filter(([, j]) => j.uses === GATES);
     expect(callers.map(([n]) => n)).toEqual(["gates"]);
     expect(Object.keys(w.jobs.gates.with ?? {}).sort()).toEqual([
       "dev-commit",
       "dev-tag",
       "ref",
+      "tests",
     ]);
-    expect(needs(w.jobs.gates)).toEqual(["check"]);
+    expect(w.jobs.gates.with?.tests).toBe(false);
+    expect(needs(w.jobs.gates)).toEqual(["check", "tested"]);
   });
 
   it("the tag, the publish, the GitHub release and the kit wait on the gates", () => {

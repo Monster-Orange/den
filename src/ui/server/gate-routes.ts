@@ -45,6 +45,7 @@
  * A runner's ask may say `where`: "any", or a box's name (a runner on
  * that box). The box is checked just before its slot is given.
  */
+import { line, reviewLines } from "../../shared/review-lines.js";
 import type * as http from "http";
 import {
   expectedEnd,
@@ -176,7 +177,7 @@ function standing(store: GateStore, e: GateEntry): Record<string, unknown> {
       ? { expected_end: new Date(expectedEnd(now)).toISOString() }
       : {
           expected_start: new Date(
-            expectedStart(all, now.id, Date.now()),
+            expectedStart(all, now.id, Date.now(), s),
           ).toISOString(),
         }),
     ...(now.remote ? { lease_until: now.remote.leaseUntil } : {}),
@@ -591,12 +592,6 @@ export function gateRunnerTokenOp(d: {
           error: `the runner ${name} has a token already: revoke it in Settings first`,
         };
       const asker = who?.agent ?? "";
-      const once: { key: string; vars?: Record<string, string> } = asker
-        ? {
-            key: "ap.det.gate_runner_token_create.onceAgent",
-            vars: { agent: asker },
-          }
-        : { key: "ap.det.gate_runner_token_create.once" };
       // Critical by its name (a token) and its placement (approval-policy.ts).
       return {
         ok: true,
@@ -604,18 +599,27 @@ export function gateRunnerTokenOp(d: {
         args: { name },
         summary: `make a gate-only token for the CI runner "${name}"`,
         params: { name },
-        details: [
-          `Makes a token for the CI runner "${name}". It can only ask for, renew and give back gate slots on this machine: nothing else in Den.`,
+        ...reviewLines([
+          line(
+            `Makes a token for the CI runner ${name}. It can only ask for, renew and give back gate slots on this machine: nothing else in Den.`,
+            "ap.det.gate_runner_token_create.reach",
+            { name },
+          ),
           asker
-            ? `The token goes once to ${asker}, the agent that asked, and is never shown again. Den keeps only its hash.`
-            : "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
-          "You can revoke it any time in Settings, under CI runner tokens.",
-        ],
-        detailKeys: [
-          { key: "ap.det.gate_runner_token_create.reach", vars: { name } },
-          once,
-          { key: "ap.det.gate_runner_token_create.revoke" },
-        ],
+            ? line(
+                `The token goes once to ${asker}, the agent that asked, and is never shown again. Den keeps only its hash.`,
+                "ap.det.gate_runner_token_create.onceAgent",
+                { agent: asker },
+              )
+            : line(
+                "The token goes once to whoever asked, and is never shown again. Den keeps only its hash.",
+                "ap.det.gate_runner_token_create.once",
+              ),
+          line(
+            "You can revoke it any time in Settings, under CI runner tokens.",
+            "ap.det.gate_runner_token_create.revoke",
+          ),
+        ]),
       };
     },
     run(a, asked) {
@@ -735,6 +739,7 @@ const BOX_CARD_FIELDS: readonly [keyof GateBox, string][] = [
   ["time_scale", "time_scale"],
   ["playwright_version", "playwright_version"],
   ["min_free_mem_mb", "min_free_mem_mb"],
+  ["playwright_endpoints", "playwright_endpoints"],
 ];
 
 /** The English line for each field on the Allow card. */
@@ -748,10 +753,17 @@ const BOX_CARD_WORDS: Record<string, string> = {
   time_scale: "Time scale",
   playwright_version: "Playwright version",
   min_free_mem_mb: "Least free memory (MB)",
+  playwright_endpoints: "Playwright by version",
 };
 
 /** Unset on the card: the same in every language. */
 const UNSET = "—";
+
+/** Issue 1017: a box's endpoints on the card, `1.61 → ws://…, …`. */
+const endpointsText = (m: Record<string, string>) =>
+  Object.entries(m)
+    .map(([v, ws]) => `${v} → ${ws}`)
+    .join(", ");
 
 /**
  * Issue 625 follow-up: the held writes gate_box_set and gate_box_remove.
@@ -780,7 +792,11 @@ export function gateBoxOps(d: {
         .boxes()
         .some((x) => x.name === b.name);
       const shown = (k: keyof GateBox) =>
-        b[k] === undefined ? UNSET : String(b[k]);
+        b[k] === undefined
+          ? UNSET
+          : k === "playwright_endpoints"
+            ? endpointsText(b.playwright_endpoints!)
+            : String(b[k]);
       return {
         ok: true,
         personOnly: true,
@@ -837,10 +853,13 @@ export function gateBoxOps(d: {
         args: { name },
         summary: `remove the test box "${name}"`,
         params: { name },
-        details: [
-          `Removes the test box "${name}". Runs on it now finish; no new run goes there.`,
-        ],
-        detailKeys: [{ key: "ap.det.gate_box_remove.what", vars: { name } }],
+        ...reviewLines([
+          line(
+            `Removes the test box ${name}. Runs on it now finish; no new run goes there.`,
+            "ap.det.gate_box_remove.what",
+            { name },
+          ),
+        ]),
       };
     },
     run(a, asked) {

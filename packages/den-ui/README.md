@@ -431,6 +431,10 @@ pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
   `data-instant="opens a menu"`. An empty reason doesn't count;
   `instantProblems(html)` lists each one (a kit test runs it over the
   kit and its first product's pages).
+- A wait that says its own words and isn't one request through
+  `busyAction` (a stream's output, a form with its own error line) holds
+  its button with the dots alone: `holdDots(button)`, then
+  `holdDots(button, false)` to give the label back. No pop-up opens.
 - `opts.dots: false` on busyAction holds a button the old way (no dots,
   the pop-up at `OPEN_MS`).
 - The look is in `src/busy.css`, under "issue 699: the held button"
@@ -746,6 +750,10 @@ The top bar's search sits in the same place in every product (issue 303).
   256 at 960, 82 / 54 on a phone), the same in any host. The left part is
   the smaller of `--den-top-left` (444px) and what the search and the
   right group's reserve (`--den-top-right`, 380px) leave.
+  Under 944px the search gives way first (issue 981): the left part keeps
+  `--den-top-left-min` (220px), so the project picker is never under the
+  search, and the search narrows down to its icon
+  (`--den-top-search-min`, 56px; 240 / 128 at 768).
 - **The right group is anchored from the right edge.** ◐ at the bar's
   padding, then the version in a fixed slot (`--den-top-version` 96px;
   `--den-top-version-md` 64px up to 1100px; its text ends in "…", the
@@ -780,7 +788,8 @@ The top bar's search sits in the same place in every product (issue 303).
   its search in `start` and puts it in its slot; a host's markup is
   unchanged.
 - **Settings** (custom properties on `.den-top`, with their defaults):
-  `--den-top-left` (444px), `--den-top-search` (304px), and under 720px
+  `--den-top-left` (444px), `--den-top-search` (304px),
+  `--den-top-left-min` (220px), `--den-top-search-min` (56px), and under 720px
   `--den-top-left-md`
   (200px) and, under 480px, `--den-top-left-sm` (62px: ☰ and the mark).
   At 1280px the search is at x 464, 304 wide; on a phone at x 82.

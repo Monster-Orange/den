@@ -256,7 +256,7 @@ describe("Workspace ▾ (R4)", () => {
       ),
     ).toEqual([
       ["All active (3)", "true"],
-      ["ws-aCLI default", "false"],
+      ["ws-a", "false"],
       ["ws-b", "false"],
       ["ws-c", "false"],
       ["Manage projects…", null],

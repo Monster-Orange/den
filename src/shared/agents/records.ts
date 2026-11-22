@@ -77,6 +77,13 @@ export interface AgentRecord {
    */
   outside?: boolean;
   /**
+   * Issue 943: Den started it on the test-person path (issue 636), so it is
+   * the test bed's own stub agent. Written by Den at start only (a start off
+   * the path clears it); no route writes it. The fixture person may send a
+   * message only to an agent with it, on a test install.
+   */
+  testBed?: true;
+  /**
    * The runtime was launched on resumeToken at least once (0.4.8). A
    * resume then always tries the runtime's own resume first, never a new
    * conversation under the same id (which the runtime refuses once the
@@ -109,7 +116,12 @@ export interface AgentRecord {
    * and why. It shows as interrupted (not stopped), so Resume and
    * restore-on-boot bring it back; cleared by a resume or a start.
    */
-  restartFailed?: { at: string; why: string };
+  restartFailed?: { at: string; why: string; relaunchTried?: boolean };
+  /**
+   * Issue 926: its last session that ended without Den asking: when, which
+   * session, its exit code, and whether Den brought it back.
+   */
+  unaskedExit?: { at: string; session: string; code: number; back?: boolean };
   /**
    * Issue 659: when Den saw its runtime ask whether to trust its folder
    * (the question on its screen, waiting for its person); cleared once

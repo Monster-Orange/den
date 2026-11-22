@@ -32,8 +32,14 @@ import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
-import { windowHeld } from "./classes.js";
-import { queueOrder, type GateEntry, type GateSettings } from "./rules.js";
+import { glob, items, windowHeld } from "./classes.js";
+import {
+  loadHold,
+  localRoom,
+  queueOrder,
+  type GateEntry,
+  type GateSettings,
+} from "./rules.js";
 
 export const BOX_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -57,6 +63,13 @@ export interface GateBox {
   min_free_mem_mb?: number;
   /** Clause 11: the box's Playwright server version; a client must match. */
   playwright_version?: string;
+  /**
+   * Issue 1017: the box's Playwright servers, version → ws:// or wss://
+   * address ("1.61" serves any 1.61.x client). A run gets the one whose
+   * version matches its own. Instead of `playwright` and
+   * `playwright_version`, which stay as they were for a box with one.
+   */
+  playwright_endpoints?: Record<string, string>;
 }
 
 export const BOX_LIMITS = {
@@ -73,20 +86,120 @@ export const BOX_MIN_FREE_MEM_MB = 2048;
 export const BOX_CHECK_CAP_MS = 25_000;
 
 const PW_VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[A-Za-z0-9.-]{1,40})?$/;
+/** Issue 1017: an endpoint's version: major.minor, or a full version. */
+const PW_ENDPOINT_VERSION =
+  /^\d{1,4}\.\d{1,4}(?:\.\d{1,4}(?:-[A-Za-z0-9.-]{1,40})?)?$/;
+
+/**
+ * Issue 1017: whether an endpoint's version serves a client's: the same,
+ * or one names the other's major.minor (1.61 serves 1.61.2).
+ */
+export function pwServes(endpoint: string, client: string): boolean {
+  return (
+    endpoint === client ||
+    client.startsWith(endpoint + ".") ||
+    endpoint.startsWith(client + ".")
+  );
+}
+
+/**
+ * Issue 1017: a box's Playwright endpoints, in the order set. A box with
+ * one (`playwright`, maybe `playwright_version`) reads as a list of one,
+ * so a settings.json written before keeps working as it is; nothing is
+ * rewritten.
+ */
+export function boxEndpoints(
+  b: Pick<
+    GateBox,
+    "playwright" | "playwright_version" | "playwright_endpoints"
+  >,
+): { version?: string; ws: string }[] {
+  if (b.playwright_endpoints)
+    return Object.entries(b.playwright_endpoints).map(([version, ws]) => ({
+      version,
+      ws,
+    }));
+  return b.playwright
+    ? [
+        {
+          ...(b.playwright_version ? { version: b.playwright_version } : {}),
+          ws: b.playwright,
+        },
+      ]
+    : [];
+}
+
+/**
+ * The endpoint a run with this client version gets on the box: the one
+ * whose version serves it; with no version, none. A one-endpoint box
+ * gives its one address, as before.
+ */
+export function boxEndpointFor(
+  b: Pick<
+    GateBox,
+    "playwright" | "playwright_version" | "playwright_endpoints"
+  >,
+  pwVersion?: string,
+): string | undefined {
+  if (!b.playwright_endpoints) return b.playwright;
+  // An unknown version gets none: which server it needs can't be said.
+  if (!pwVersion) return undefined;
+  return boxEndpoints(b).find((x) => pwServes(x.version!, pwVersion))?.ws;
+}
 
 /**
  * Clause 11: why a run can't use a box's browser (its Playwright client
- * isn't the box server's version), or "" when it can.
+ * isn't the box server's version), or "" when it can. Issue 1017: a box
+ * with several endpoints is skipped only when none serves the client.
  */
 export function boxSkipReason(
   e: { pwVersion?: string },
-  b: Pick<GateBox, "playwright_version">,
+  b: Pick<GateBox, "playwright_version" | "playwright_endpoints">,
 ): string {
-  return e.pwVersion &&
-    b.playwright_version &&
-    e.pwVersion !== b.playwright_version
-    ? `client ${e.pwVersion} ≠ server ${b.playwright_version}`
+  return versionSkip(
+    e.pwVersion,
+    b.playwright_endpoints
+      ? { versions: Object.keys(b.playwright_endpoints) }
+      : { version: b.playwright_version },
+  );
+}
+
+/** boxSkipReason over what a BoxCap carries (one version, or several). */
+function versionSkip(
+  client: string | undefined,
+  b: { version?: string; versions?: string[] },
+): string {
+  // A box with one address checks no unknown version, as before; one with
+  // several can't pick a server for it.
+  if (!client)
+    return b.versions ? "Playwright version unknown: pass --pw-version" : "";
+  if (b.versions)
+    return b.versions.some((v) => pwServes(v, client))
+      ? ""
+      : `client ${client}: box serves ${b.versions.join(", ")}`;
+  // Issue 1033: Playwright's remote connect needs the same major.minor
+  // only, so a 1.61.0 client takes a box that declares 1.61.1.
+  return b.version && majorMinor(client) !== majorMinor(b.version)
+    ? `client ${client} ≠ server ${b.version}`
     : "";
+}
+
+/** Issue 1033: a version's major.minor ("1.61.2" → "1.61"). */
+const majorMinor = (v: string) =>
+  v.split("-")[0]!.split(".").slice(0, 2).join(".");
+
+/** A ws:// or wss:// address with a host and no login; or what is wrong. */
+function wsProblem(pw: string): string {
+  let u: URL | null = null;
+  try {
+    u = new URL(pw);
+  } catch {
+    /* below */
+  }
+  if (!u || (u.protocol !== "ws:" && u.protocol !== "wss:") || !u.hostname)
+    return "is a ws:// or wss:// address";
+  if (u.username || u.password) return "address carries no login or password";
+  return "";
 }
 
 /** Box settings: how long a check may take, and how long a no is kept. */
@@ -135,25 +248,55 @@ export function checkBox(
   }
   const pw = str("playwright");
   if (pw !== undefined) {
-    let u: URL | null = null;
-    try {
-      u = new URL(pw);
-    } catch {
-      /* below */
-    }
-    if (!u || (u.protocol !== "ws:" && u.protocol !== "wss:") || !u.hostname)
+    const bad = wsProblem(pw);
+    if (bad)
       return {
         ok: false,
-        error: `box ${name}: playwright is a ws:// or wss:// address`,
-      };
-    if (u.username || u.password)
-      return {
-        ok: false,
-        error: `box ${name}: playwright address carries no login or password`,
+        error: `box ${name}: playwright ${bad}`,
       };
     box.playwright = pw;
   }
-  if (!box.ssh && !box.playwright)
+  // Issue 1017: several Playwright servers, version → address.
+  const eps = o.playwright_endpoints;
+  if (eps !== undefined && eps !== null) {
+    if (typeof eps !== "object" || Array.isArray(eps))
+      return {
+        ok: false,
+        error: `box ${name}: playwright_endpoints is version → ws:// address`,
+      };
+    const list = Object.entries(eps as Record<string, unknown>);
+    if (!list.length)
+      return {
+        ok: false,
+        error: `box ${name}: playwright_endpoints names at least one version`,
+      };
+    if (box.playwright || str("playwright_version") !== undefined)
+      return {
+        ok: false,
+        error: `box ${name}: give playwright_endpoints, or playwright (and playwright_version), not both`,
+      };
+    const map: Record<string, string> = {};
+    for (const [v, ws] of list) {
+      const version = v.trim();
+      if (!PW_ENDPOINT_VERSION.test(version))
+        return {
+          ok: false,
+          error: `box ${name}: playwright_endpoints: ${version.slice(0, 48)} is not a version like 1.61 or 1.61.0`,
+        };
+      const bad =
+        typeof ws === "string" && ws.trim()
+          ? wsProblem(ws.trim())
+          : "is a ws:// or wss:// address";
+      if (bad)
+        return {
+          ok: false,
+          error: `box ${name}: playwright_endpoints ${version} ${bad}`,
+        };
+      map[version] = (ws as string).trim();
+    }
+    box.playwright_endpoints = map;
+  }
+  if (!box.ssh && !box.playwright && !box.playwright_endpoints)
     return {
       ok: false,
       error: `box ${name}: say how Den reaches it (ssh, or a playwright address)`,
@@ -239,6 +382,22 @@ export interface BoxCap {
   open: boolean;
   /** Clause 11: its Playwright server's version, when set. */
   version?: string;
+  /** Issue 1017: the versions its endpoints serve, when it lists several. */
+  versions?: string[];
+}
+
+/** Issue 1017: a box as one assignment sees it (BoxCap), from its settings. */
+export function boxCapOf(b: GateBox, open: boolean): BoxCap {
+  return {
+    name: b.name,
+    slots: b.browser_slots,
+    open,
+    ...(b.playwright_endpoints
+      ? { versions: Object.keys(b.playwright_endpoints) }
+      : b.playwright_version
+        ? { version: b.playwright_version }
+        : {}),
+  };
 }
 
 /**
@@ -250,8 +409,11 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
   if (e.kind !== "browser") return ["local"];
   const w = e.where ?? "local";
   if (w === "local") return ["local"];
+  // Issue 1033: a default pick names the boxes that can serve it.
   const fits = boxes.filter(
-    (b) => !boxSkipReason(e, { playwright_version: b.version }),
+    (b) =>
+      !versionSkip(e.pwVersion, b) &&
+      (!e.onlyBoxes || e.onlyBoxes.includes(b.name)),
   );
   if (w === "any") return ["local", ...fits.map((b) => b.name)];
   return fits.some((b) => b.name === w) ? [w] : [];
@@ -262,48 +424,66 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
  * machine). With no boxes it gives exactly what `grants` gives. A browser
  * run that may go anywhere takes this machine first, then the first open
  * box with a free slot. A waiter that can't start keeps every slot it
- * waits for from the waiters behind it (first come, first served), and
- * leaves the others free. Issue 803: a waiter its class's window holds
- * back is passed over and holds no slot from the runs behind it.
+ * waits for from the waiters of its kind behind it (first come, first
+ * served, in each kind's line: issue 751), and leaves the others free.
+ * This machine's room is `localRoom` (rules.ts): cpu runs beside a browser
+ * run up to the beside count; a browser run on a box holds no room here.
+ * Issue 803: a waiter its class's window holds back is passed over and
+ * holds no slot from the runs behind it.
+ * Issue 1009: `load` is the machine's 5-minute load; at or above
+ * cpuHoldLoad under a release browser run, cpu waiters are passed over.
  */
 export function assign(
   entries: GateEntry[],
   s: Pick<GateSettings, "cpuSlots"> &
     Partial<
-      Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes" | "classes">
+      Pick<
+        GateSettings,
+        | "cpuSlotsBesideBrowser"
+        | "cpuSlotsBesideReleaseBrowser"
+        | "localBrowserSlots"
+        | "priorityMax"
+        | "priorityPassLimitMinutes"
+        | "classes"
+        | "cpuHoldLoad"
+      >
     >,
   now: number,
   boxes: BoxCap[] = [],
+  load?: number,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
-  let browserHeld = holders.some((e) => e.kind === "browser" && !e.box);
-  let cpuHeld = holders.filter((e) => e.kind === "cpu").length;
+  const room = localRoom(entries, s);
   const used: Record<string, number> = {};
   for (const h of holders) if (h.box) used[h.box] = (used[h.box] ?? 0) + 1;
+  // Issue 751: this machine is reserved per kind; a box is browser only.
+  const key = (place: string, kind: GateEntry["kind"]) =>
+    place === "local" ? `local:${kind}` : place;
   const reserved = new Set<string>();
   const out: { id: string; box?: string }[] = [];
   const cap = (n: string) => boxes.find((b) => b.name === n);
-  const free = (place: string, kind: GateEntry["kind"]): boolean => {
-    if (reserved.has(place)) return false;
-    if (place === "local")
-      return kind === "browser"
-        ? !browserHeld && cpuHeld === 0
-        : !browserHeld && cpuHeld < Math.max(1, s.cpuSlots);
+  const free = (place: string, w: GateEntry): boolean => {
+    if (reserved.has(key(place, w.kind))) return false;
+    if (place === "local") return room.fits(w);
     const b = cap(place);
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
   const held = windowHeld(entries, s.classes, now);
+  // Issue 1009: a loaded machine under a release browser run: plain cpu
+  // asks wait; a release one goes through.
+  const cpuHeld = !!loadHold(entries, s, load);
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
+    if (cpuHeld && w.kind === "cpu" && !w.priority) continue;
     const places = placesOf(w, boxes);
-    const at = places.find((p) => free(p, w.kind));
+    const at = places.find((p) => free(p, w));
     if (at === undefined) {
-      for (const p of places) reserved.add(p);
+      for (const p of places) reserved.add(key(p, w.kind));
+      if (places.includes("local")) room.wait(w);
       continue;
     }
     if (at === "local") {
-      if (w.kind === "browser") browserHeld = true;
-      else cpuHeld++;
+      room.take(w);
       out.push({ id: w.id });
     } else {
       used[at] = (used[at] ?? 0) + 1;
@@ -321,7 +501,15 @@ export function boxesWanted(
   entries: GateEntry[],
   s: Pick<GateSettings, "cpuSlots"> &
     Partial<
-      Pick<GateSettings, "priorityMax" | "priorityPassLimitMinutes" | "classes">
+      Pick<
+        GateSettings,
+        | "cpuSlotsBesideBrowser"
+        | "cpuSlotsBesideReleaseBrowser"
+        | "localBrowserSlots"
+        | "priorityMax"
+        | "priorityPassLimitMinutes"
+        | "classes"
+      >
     >,
   now: number,
   boxes: BoxCap[],
@@ -413,7 +601,8 @@ export function memAvailableMb(text: string): number | undefined {
  */
 export function sftpProbe(start: typeof spawn): BoxProbe {
   return (box, timeoutMs) => {
-    if (!box.ssh) return tcpReach(new URL(box.playwright!), timeoutMs);
+    // Issue 1017: with several Playwright servers, the first is reached.
+    if (!box.ssh) return tcpReach(new URL(boxEndpoints(box)[0]!.ws), timeoutMs);
     const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
     const secs = Math.max(1, Math.round(capMs / 1000));
     const args = [
@@ -539,12 +728,144 @@ export function freshYes(
   );
 }
 
-/** What the environment of a run that got a box's slot says. */
-export function boxEnv(box: GateBox): Record<string, string> {
+/**
+ * What the environment of a run that got a box's slot says. Issue 1017:
+ * DEN_PW_WS is the endpoint that serves the run's Playwright version.
+ */
+export function boxEnv(
+  box: GateBox,
+  pwVersion?: string,
+): Record<string, string> {
+  const ws = boxEndpointFor(box, pwVersion);
   return {
     DEN_GATE_BOX: box.name,
     DEN_GATE_TIME_SCALE: String(box.time_scale ?? 1),
-    ...(box.playwright ? { DEN_PW_WS: box.playwright } : {}),
+    // Issue 1033: the box's browser reaches this machine's ports only
+    // through a client that exposes the loopback; pw-guard reads this.
+    ...(ws ? { DEN_PW_WS: ws, DEN_PW_EXPOSE: "<loopback>" } : {}),
     ...(box.ssh ? { DEN_GATE_BOX_SSH: box.ssh } : {}),
   };
+}
+
+/** Issue 1033: one host-only rule: a project, or a label pattern. */
+type HostOnlyRule = { project?: string; label?: string; text: string };
+
+/**
+ * Issue 1033: "den, label:*webkit*" (browser_host_only) → the rules; or
+ * what is wrong. A project by name (* is every project), a label by
+ * pattern (* matches any text), as class_map names them.
+ */
+export function parseHostOnly(s: string): HostOnlyRule[] | string {
+  const out: HostOnlyRule[] = [];
+  for (const it of items(s)) {
+    if (it.length > 120 || it.includes("="))
+      return `"${it.slice(0, 60)}" is not <project> or label:<pattern>`;
+    if (it.startsWith("label:")) {
+      const pattern = it.slice(6).trim();
+      if (!pattern) return `"${it}" needs a label pattern`;
+      out.push({ label: pattern, text: it });
+    } else out.push({ project: it, text: it });
+  }
+  return out;
+}
+
+/** Issue 1033: the host-only rule a run matches, as written; else none. */
+export function hostOnlyMatch(
+  e: { project?: string; label: string },
+  setting: string,
+): HostOnlyRule | undefined {
+  const rules = parseHostOnly(setting);
+  if (typeof rules === "string") return undefined;
+  return rules.find((r) =>
+    r.label
+      ? glob(r.label).test(e.label)
+      : r.project === "*" || (!!e.project && r.project === e.project),
+  );
+}
+
+/** Issue 1033: browser_box_default is any or local; null when it is. */
+export function checkBoxDefault(v: string): string | null {
+  const t = v.trim();
+  return t === "any" || t === "local"
+    ? null
+    : `any or local, not ${t.slice(0, 40)}`;
+}
+
+/**
+ * Issue 1033: where a browser `gate run` with no --box goes. With the
+ * setting at any and a test box set: anywhere (`where` "any": the first
+ * free browser slot, here or on a box), unless it can't or mustn't go to
+ * a box; then it stays here, and `why` says so in one line. The setting
+ * at local, or no box set: here, as before, with nothing to say.
+ */
+export function defaultPlace(o: {
+  setting: "any" | "local";
+  hostOnly: string;
+  label: string;
+  project?: string;
+  boxes: GateBox[];
+  /** The run gave --base-url (a box's browser reaches the app by it). */
+  baseUrl: boolean;
+  pwVersion?: string;
+  /**
+   * Issue 1033: the run brings its own browser (--browser-endpoint, or
+   * one in its environment): why it stays here, in words.
+   */
+  ownBrowser?: string;
+}): {
+  where?: "any";
+  why?: string;
+  /** The boxes it may take (where "any"), when some are skipped. */
+  only?: string[];
+  /** Those skipped, and why, in one line. */
+  skipped?: string;
+} {
+  if (o.setting === "local" || !o.boxes.length) return {};
+  const rule = hostOnlyMatch(o, o.hostOnly);
+  if (rule)
+    return {
+      why: rule.label
+        ? `${o.label} is host-only (browser_host_only ${rule.text})`
+        : `project ${o.project ?? "*"} is host-only (browser_host_only ${rule.text})`,
+    };
+  if (o.ownBrowser) return { why: o.ownBrowser };
+  if (!o.baseUrl)
+    return { why: "no --base-url, so a test box can't reach the app" };
+  // Issue 1033: which box server it needs can't be said; a box would
+  // refuse it at connect (HTTP 428). Only an explicit --box takes one.
+  if (!o.pwVersion)
+    return {
+      why: "this run's Playwright version is unknown: pass --pw-version",
+    };
+  const skips = o.boxes.map((b) => ({
+    name: b.name,
+    reason: defaultSkip(b, o.pwVersion),
+  }));
+  const said = skips
+    .filter((x) => x.reason)
+    .map((x) => x.reason)
+    .join("; ");
+  if (skips.every((x) => x.reason))
+    return { why: oneLine(`no test box can take it: ${said}`) };
+  if (!said) return { where: "any" };
+  return {
+    where: "any",
+    only: skips.filter((x) => !x.reason).map((x) => x.name),
+    skipped: oneLine(said),
+  };
+}
+
+/**
+ * Issue 1033: why a default pick can't send a run with --base-url to this
+ * box, or "". Only an explicit --box <name> takes such a box (as before):
+ *   no declared Playwright version (playwright_version or
+ *     playwright_endpoints): its server refuses a client of another
+ *     version (HTTP 428), and which one it runs can't be said;
+ *   a declared version that doesn't serve the run's (clause 11).
+ */
+function defaultSkip(b: GateBox, pwVersion: string | undefined): string {
+  if (!b.playwright_version && !b.playwright_endpoints)
+    return `box ${b.name} declares no Playwright version`;
+  const v = boxSkipReason({ pwVersion }, b);
+  return v ? `box ${b.name}: ${v}` : "";
 }

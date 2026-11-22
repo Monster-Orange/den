@@ -1,0 +1,8 @@
+ > Fix the failing parser test
+
+ ⠼ Reading the parser's tests (esc to cancel, 4s)
+
+╭──────────────────────────────────────────────╮
+│ >   Type your message or @path/to/file       │
+╰──────────────────────────────────────────────╯
+~/web              no sandbox              <model>

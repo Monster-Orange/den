@@ -50,6 +50,11 @@ export interface ShotRecord {
   repo: string;
   savedAt: string;
   /**
+   * Issue 946: filed by the fixture person (a test install's live checks).
+   * The fixture person reads only screenshots with it.
+   */
+  byFixture?: true;
+  /**
    * Hub's record of it. `confirmed`: Hub's sha256 is the one of the bytes
    * sent (false: Hub stored something else, or said so wrongly).
    */
@@ -79,6 +84,35 @@ export function pngOfDataUrl(
   if (png.length > maxBytes || !png.subarray(0, 8).equals(PNG_MAGIC))
     return null;
   return png;
+}
+
+/**
+ * Issue 565: the largest screenshot file `<cli> report` and the agents'
+ * `report` take: what a report draft keeps (its data URL under 8,000,000
+ * characters, POST /api/report/drafts).
+ */
+export const SHOT_FILE_MAX_BYTES = 5_900_000;
+
+/**
+ * Issue 565: a screenshot file as the PNG data URL a report carries, read
+ * on the caller's side. Only a PNG; an error saying why otherwise.
+ */
+export function shotFileDataUrl(file: string): string {
+  let png: Buffer;
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile()) throw new Error("not a file");
+    if (st.size > SHOT_FILE_MAX_BYTES)
+      throw new Error(
+        `larger than ${Math.round(SHOT_FILE_MAX_BYTES / 100_000) / 10} MB`,
+      );
+    png = fs.readFileSync(file);
+  } catch (e) {
+    throw new Error(`the screenshot can't be read: ${(e as Error).message}`);
+  }
+  if (!png.subarray(0, 8).equals(PNG_MAGIC))
+    throw new Error("the screenshot must be a PNG file");
+  return `data:image/png;base64,${png.toString("base64")}`;
 }
 
 /**
@@ -142,7 +176,13 @@ export function shotStore(stateDir: string) {
   };
   return {
     dir,
-    save(id: string, png: Buffer, repo: string, now = Date.now()): ShotRecord {
+    save(
+      id: string,
+      png: Buffer,
+      repo: string,
+      now = Date.now(),
+      o: { byFixture?: boolean } = {},
+    ): ShotRecord {
       // The same report sent again with the same bytes keeps Hub's record.
       const had = readRec(id);
       let same = false;
@@ -155,6 +195,7 @@ export function shotStore(stateDir: string) {
         id,
         repo,
         savedAt: new Date(now).toISOString(),
+        ...(o.byFixture ? { byFixture: true as const } : {}),
         ...(same && had?.hub ? { hub: had.hub } : {}),
       };
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

@@ -19,6 +19,11 @@
  *                           [{ cell, result }]
  *     timeoutMs             a cell's time limit (the harness's default
  *                           otherwise); over it, the cell is ok false
+ *     items                 the release items whose clauses it proves, its
+ *                           own issue among them, on one line:
+ *                           `export const items = [715, 991];`. The bed
+ *                           reads it from the source to plan a tag's items
+ *                           (gate/<item>.mjs, or a check that lists the item)
  *
  * Prints a JSON array of problems (empty when all is well); exits 1 when
  * there are any. Loads each file, so a file that throws on import counts.
@@ -60,8 +65,18 @@ export function checkGateModule(file, mod) {
     !(Number.isInteger(mod.timeoutMs) && mod.timeoutMs > 0)
   )
     out.push(`${file}: timeoutMs is not a positive whole number`);
+  if ("items" in mod) {
+    const items = Array.isArray(mod.items) ? mod.items : [];
+    if (!items.includes(mod.issue))
+      out.push(`${file}: items must list its own issue (${mod.issue})`);
+    if (!items.every((n) => Number.isInteger(n) && n > 0))
+      out.push(`${file}: items must be issue numbers (whole numbers above 0)`);
+  }
   return out;
 }
+
+// What the bed reads without loading the file (den-bed lib/order-modules.zsh).
+const ITEMS_LINE = /^export const items = \[[0-9, ]*\];?$/m;
 
 /**
  * A module's own plain `fetch` runs on the host, where the browser's
@@ -82,6 +97,10 @@ const SKIP_LITERAL =
 export function checkGateSource(file, src) {
   const out = [];
   const text = String(src);
+  if (/^export const items\b/m.test(text) && !ITEMS_LINE.test(text))
+    out.push(
+      `${file}: items must be on one line, \`export const items = [${/^(\d+)/.exec(file)?.[1]}, …];\` (the bed reads it from the source)`,
+    );
   const lineOf = (i) => text.slice(0, i).split("\n").length;
   for (const m of text.matchAll(HOST_FETCH_AT_URL)) {
     out.push(

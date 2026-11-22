@@ -276,4 +276,98 @@ describe("issue 172: alerts on the real server", () => {
       await stub.close();
     }
   }, 60_000);
+
+  it("the person's devices: listed without endpoints, a test alert reaches each and says how it went, one can be forgotten", async () => {
+    const stub = await startPushStub();
+    type D = {
+      id: string;
+      service: string;
+      device: string;
+      at: string;
+      status?: number;
+      reached?: boolean;
+      gone?: boolean;
+    };
+    const devices = async () =>
+      (await call("GET", "/api/alerts/devices")).json.devices as D[];
+    try {
+      expect(
+        (await call("GET", "/api/alerts/devices", undefined, "agent")).status,
+      ).toBe(403);
+      expect(await devices()).toEqual([]);
+      // None yet: the test says so, nothing goes out.
+      const none = await call("POST", "/api/alerts/test", {});
+      expect(none.status).toBe(200);
+      expect(none.json.devices).toEqual([]);
+      const r = await fetch(`${s.base}/api/alerts/subscribe`, {
+        method: "POST",
+        headers: {
+          ...denAuth(s.stateDir),
+          "content-type": "application/json",
+          "user-agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+        },
+        body: JSON.stringify({ subscription: stub.subscription }),
+      });
+      expect(r.status).toBe(200);
+      const list = await devices();
+      expect(list).toHaveLength(1);
+      expect(list[0]).toMatchObject({ service: "other", device: "iPhone" });
+      expect(list[0].id).toMatch(/^[0-9a-f]{16}$/);
+      expect(Number.isNaN(Date.parse(list[0].at))).toBe(false);
+      expect(JSON.stringify(list)).not.toContain(stub.subscription.endpoint);
+      expect(JSON.stringify(list)).not.toContain(stub.subscription.keys.auth);
+      // An agent can't send one.
+      expect((await call("POST", "/api/alerts/test", {}, "agent")).status).toBe(
+        403,
+      );
+      const t = await call("POST", "/api/alerts/test", {});
+      expect(t.status).toBe(200);
+      expect(t.json.devices).toEqual([
+        { ...list[0], status: 201, reached: true, gone: false },
+      ]);
+      expect(stub.received).toHaveLength(1);
+      expect(stub.received[0].vapidOk).toBe(true);
+      expect(JSON.parse(stub.received[0].text!)).toMatchObject({
+        body: "Test alert: this device gets alerts when an agent needs you.",
+        link: "/settings#notifications",
+      });
+      // The push service refuses: not reached, still kept.
+      stub.answer = 500;
+      const bad = await call("POST", "/api/alerts/test", {});
+      expect((bad.json.devices as D[])[0]).toMatchObject({
+        status: 500,
+        reached: false,
+        gone: false,
+      });
+      expect(await devices()).toHaveLength(1);
+      stub.answer = 201;
+      // Forget it by its id: an agent can't; the person can.
+      expect(
+        (await call("POST", "/api/alerts/forget", { id: list[0].id }, "agent"))
+          .status,
+      ).toBe(403);
+      const f = await call("POST", "/api/alerts/forget", { id: list[0].id });
+      expect(f.json).toMatchObject({ ok: true, removed: true });
+      expect(await devices()).toEqual([]);
+      // Gone at the push service: the test says so and drops it.
+      await call("POST", "/api/alerts/subscribe", {
+        subscription: stub.subscription,
+      });
+      stub.answer = 410;
+      const gone = await call("POST", "/api/alerts/test", {});
+      expect((gone.json.devices as D[])[0]).toMatchObject({
+        status: 410,
+        reached: false,
+        gone: true,
+      });
+      expect(await devices()).toEqual([]);
+    } finally {
+      stub.answer = 201;
+      await call("POST", "/api/alerts/unsubscribe", {
+        endpoint: stub.subscription.endpoint,
+      });
+      await stub.close();
+    }
+  }, 60_000);
 });

@@ -331,7 +331,10 @@ describe("up --plan resolving nothing exits 1 (0.2.8)", () => {
     const named = den(root, ["up", "--plan", "no-such-repo"]);
     expect(named.code).toBe(1);
     const all = den(root, ["up", "-a", "--plan"]);
-    expect(all.out).toContain("nothing to start");
+    // Issue 300 (PR 885): the line names the project, not "the active project".
+    expect(all.out).toContain(
+      "Nothing to start in project main: it has no services.",
+    );
     expect(all.code).toBe(1);
     expect(calls().slice(n)).toEqual([]);
   }, 60_000);

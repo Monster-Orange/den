@@ -141,7 +141,7 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
 
   it("New terminal in the shell's bar starts another one", async () => {
     if (skip() || !first) return;
-    const p = await open(`/agents?ws=north&open=${first}`);
+    const p = await open(`/terminals?ws=north&open=${first}`);
     const btn = p.locator(`.pane[data-id="${first}"] [data-act="new-shell"]`);
     await btn.waitFor();
     expect((await btn.textContent())?.trim()).toBe("New terminal");
@@ -163,14 +163,14 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     if (skip() || !first || !second) return;
     const before = s!.made.length;
     // The first one is used last: the rail opens it.
-    const p = await open(`/agents?ws=north&open=${first}`);
+    const p = await open(`/terminals?ws=north&open=${first}`);
     await p.waitForSelector(`.pane[data-id="${first}"] .xterm-screen`);
     await p.click(`.pane[data-id="${first}"] .xterm-screen`);
     await p.waitForTimeout(300);
     await railTerminal(p);
     expect(await keyed(p)).toBe(first);
     // Now the second one: the rail opens that.
-    const q = await open(`/agents?ws=north&open=${second}`);
+    const q = await open(`/terminals?ws=north&open=${second}`);
     await q.waitForSelector(`.pane[data-id="${second}"] .xterm-screen`);
     await q.click(`.pane[data-id="${second}"] .xterm-screen`);
     await q.waitForTimeout(300);

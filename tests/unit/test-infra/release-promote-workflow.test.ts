@@ -97,6 +97,22 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
     expect(tagText).toContain("needs.check.outputs.ref");
   });
 
+  it("the tested-tree check (issue 996) runs on the promoted commit, and the gates wait on it", () => {
+    const tested = w.jobs.tested;
+    const cos = checkouts(tested);
+    expect(cos.length).toBeGreaterThan(0);
+    // release-tree-check.mjs checks HEAD: HEAD must be what publishes.
+    for (const co of cos) expect(co.with?.ref).toBe(REF);
+    expect(
+      (tested.steps ?? []).some((st) =>
+        (st.run ?? "").includes("scripts/release-tree-check.mjs"),
+      ),
+    ).toBe(true);
+    expect(String(w.jobs.gates.if)).toContain(
+      "needs.tested.result == 'success'",
+    );
+  });
+
   it("only main releases: the check refuses a dispatch from any other branch before anything builds", () => {
     const first = w.jobs.check.steps?.[0];
     expect(first?.run).toContain('"$GITHUB_REF" != refs/heads/main');

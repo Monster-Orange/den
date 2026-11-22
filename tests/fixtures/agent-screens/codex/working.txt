@@ -1,0 +1,9 @@
+› Fix the failing parser test
+
+• I'll start with the parser's tests.
+
+• Working (12s • esc to interrupt)
+
+› Ask Codex to do anything
+
+  ? for shortcuts

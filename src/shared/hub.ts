@@ -22,6 +22,7 @@
  */
 import { isServerScope } from "./agents/server-agent.js";
 import * as crypto from "crypto";
+import { hubUrlProblem } from "./hub-url.js";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
 import { readHubProjectChoices } from "./hub-project-link.js";
 import {
@@ -77,6 +78,14 @@ export interface HubConfig {
    * asked once to call hub_inbox when more Hub comments wait on it.
    */
   inboxOnStop: "nudge" | "off";
+  /**
+   * Issue 158 hub.delivery_loop (default true): every agent gets the Hub
+   * delivery loop in its instructions (shared/hub-loop.ts); a project's
+   * own setting wins.
+   */
+  deliveryLoop: boolean;
+  /** Issue 158: why a bad hub.delivery_loop was ignored (doctor says it). */
+  deliveryLoopIgnored?: string;
   /**
    * H5 hub.sync_check_seconds (default 30, at least 5): how often Den
    * checks whether its project list changed, to send it to Hub.
@@ -187,6 +196,7 @@ type RawHub =
       url?: unknown;
       token?: unknown;
       allow_tools?: unknown;
+      delivery_loop?: unknown;
       mcp_url?: unknown;
       inbox_on_stop?: unknown;
       sync_check_seconds?: unknown;
@@ -216,21 +226,9 @@ function rawHub(den: unknown, user: unknown): RawHub {
   return { ...d, ...u };
 }
 
-/** A URL Den will send a token to: https, or http to this machine. */
-export function hubUrlProblem(url: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return `hub.url is not a URL: ${url}`;
-  }
-  const local =
-    ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ||
-    u.hostname.endsWith(".localhost");
-  if (u.protocol !== "https:" && !(u.protocol === "http:" && local))
-    return `hub.url must be https (http only to this machine): ${url}`;
-  return null;
-}
+// Issue 727: in its own module, so `create` can check it before any
+// distribution exists.
+export { hubUrlProblem };
 
 /**
  * hub.* (org config, then user.yml), or null without hub.url. A bad value
@@ -275,6 +273,13 @@ export function readHubConfig(
   const at = h.allow_tools;
   if (at !== undefined && at !== null && typeof at !== "boolean")
     throw new Error("hub.allow_tools must be true or false");
+  // Issue 158: a bad hub.delivery_loop is ignored (the default, on) and
+  // said in doctor; it never drops every agent's Hub connection.
+  const dl = h.delivery_loop;
+  const dlIgnored =
+    dl !== undefined && dl !== null && typeof dl !== "boolean"
+      ? "hub.delivery_loop must be true or false; Den uses the default (on) until it is fixed"
+      : undefined;
   let mcpUrl = `${url}/mcp`;
   if (h.mcp_url !== undefined && h.mcp_url !== null && h.mcp_url !== "") {
     if (typeof h.mcp_url !== "string")
@@ -384,6 +389,8 @@ export function readHubConfig(
     tokenFrom,
     mcpUrl,
     allowTools: at !== false,
+    deliveryLoop: dl !== false,
+    ...(dlIgnored ? { deliveryLoopIgnored: dlIgnored } : {}),
     inboxOnStop: ios === "off" ? "off" : "nudge",
     syncCheckSeconds: typeof scs === "number" ? scs : 30,
     namesCheckSeconds: names,
@@ -794,6 +801,10 @@ export type HubStatus =
       state: HubState;
       /** hub.allow_tools: agents use Hub's tools without asking. */
       allowTools?: boolean;
+      /** Issue 158: hub.delivery_loop (Settings › Hub). */
+      deliveryLoop?: boolean;
+      /** Issue 158: why a bad hub.delivery_loop was ignored. */
+      deliveryLoopIgnored?: string;
       /** The company's name (Hub's company.name). */
       team?: string;
       /** Its page on Hub, for the deep link. */
@@ -1643,6 +1654,10 @@ async function hubStatusOnce(
     configured: true as const,
     url: cfg.url,
     allowTools: cfg.allowTools,
+    deliveryLoop: cfg.deliveryLoop,
+    ...(cfg.deliveryLoopIgnored
+      ? { deliveryLoopIgnored: cfg.deliveryLoopIgnored }
+      : {}),
   };
   if (!cfg.tokenRef && !cfg.tokenSource)
     return {
