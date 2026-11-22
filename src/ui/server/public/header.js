@@ -386,11 +386,17 @@ function _scopeFailed(sh) {
   }, _scopeRetryMs);
 }
 
-if (typeof window !== "undefined")
+if (typeof window !== "undefined") {
   window.addEventListener?.("pagehide", () => {
     if (_scopeRetry) clearTimeout(_scopeRetry);
     _scopeRetry = null;
   });
+  // Back from the back/forward cache with no menu yet: try again now (the
+  // retry pagehide cleared would otherwise wait for the next render).
+  window.addEventListener?.("pageshow", (e) => {
+    if (e.persisted && !_scopeShown) _renderScopeMenu();
+  });
+}
 
 async function _renderScopeMenu() {
   const sh = window.denShell;
