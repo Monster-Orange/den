@@ -390,6 +390,14 @@ describe("P0-D2: an approval clears the questions that name it", () => {
       body: "The apply failed.",
     })!;
     expect(heldOutcome(applied)).toBe("allowed");
+    // Hub refused to apply it: it didn't land either.
+    const refused = parseDelivery({
+      ...r,
+      held: { ...r.held, state: "refused" },
+      body: "",
+    })!;
+    expect(heldOutcome(refused)).toBe("failed");
+    expect(approvalNoticeText(refused, OWNER)).toMatch(/didn't land/);
     const noHeld = parseDelivery({
       ...r,
       held: undefined,

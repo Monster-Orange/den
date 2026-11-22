@@ -320,7 +320,7 @@ export function heldOutcome(
   if (d.kind !== "held" || !d.decision) return undefined;
   if (d.decision === "denied") return "denied";
   // Hub's held.state; its words only when Hub sends no held block.
-  if (d.heldState) return d.heldState === "failed" ? "failed" : "allowed";
+  if (d.heldState) return d.heldState === "applied" ? "allowed" : "failed";
   return /\bfail(ed|s|ure)?\b/i.test(d.body) ? "failed" : "allowed";
 }
 /** A held write's id, as Hub names it. */
@@ -409,7 +409,7 @@ export function approvalNoticeText(d: Delivery, o: DeliveryOwner): string {
     `${d.author.name} (${who(d.author, o)}) ${what} ${art}${ver}. Link: ${link}`,
     ...(out === "failed"
       ? [
-          "The change didn't land: its apply failed. Check it before you rely on it.",
+          "The change didn't land: Hub failed or refused to apply it. Check it before you rely on it.",
         ]
       : out === "denied"
         ? ["They said no: don't go ahead with it."]
