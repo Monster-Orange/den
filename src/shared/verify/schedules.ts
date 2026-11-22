@@ -418,6 +418,10 @@ export function cmdUnclear(repoPath: string, cmd: string): string | null {
   if (!steps.length || steps.some((w) => !w.length))
     return "it has an empty step";
   for (const w of steps) {
+    if (w.some((x) => x.includes("&")))
+      return "it uses shell syntax Den doesn't follow";
+    const odd = w.find((x) => !/^[A-Za-z0-9._/=:@,+-]+$/.test(x));
+    if (odd !== undefined) return `${odd} has characters Den doesn't follow`;
     if (/=/.test(w[0])) return "it sets a variable";
     let i = 0;
     if (INTERPRETERS.has(w[0])) {

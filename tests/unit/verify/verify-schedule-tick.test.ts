@@ -94,6 +94,10 @@ describe("decide", () => {
       "./scripts/speed.sh > out.txt",
       "FOO=1 ./scripts/speed.sh",
       "bash scripts/speed.sh $HOME",
+      "./scripts/speed.sh & curl evilhost",
+      "bash scripts/speed.sh & rm -rf x",
+      "./scripts/speed.sh&curl evilhost",
+      "./scripts/speed.sh --to=caf\u00e9",
     ]) {
       const s = listSchedules("shop", [
         mod("web/speed", "staging", { cmd }),
