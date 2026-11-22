@@ -169,8 +169,10 @@ describe("the bell's row (issue 993)", () => {
       overMin: 11,
       agent: "coder",
     };
-    const needs = bellPanel({ groups: [], waiting: [w], unread: 0 }).sections
-      .needs as string;
+    const p = bellPanel({ groups: [], waiting: [w], unread: 0 });
+    // The panel is one of two shapes (items, or sections): it has sections.
+    if (!("sections" in p)) throw new Error("the bell has no sections");
+    const needs = p.sections.needs as string;
     expect(needs).toContain('data-kind="gate_overrun"');
     expect(needs).toContain(
       "[bell.go.row:den · north · agent:coder|browser|e2e suite]",
