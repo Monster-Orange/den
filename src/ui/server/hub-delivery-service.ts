@@ -403,6 +403,26 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
         )
         .catch(() => undefined);
     },
+    // P0-D2: an owner's approval clears the questions that name it, on
+    // arrival; another agent whose question named it is told.
+    approved: (dv) => {
+      void Promise.all([
+        import("./notification-service.js"),
+        import("./hub-approval.js"),
+      ])
+        .then(([{ notificationDeps }, { settleApproval }]) =>
+          settleApproval(dv, {
+            approvedAbout: (a, ws, keys, version) =>
+              notificationDeps().attention.approvedAbout(a, ws, keys, version),
+            log: (l) => o.log(l),
+            workspaceOf: (a) => readRecord(getStateDir(), a)?.workspace ?? null,
+            owner: () => owner,
+            takeLocal: (x) =>
+              loop ? loop.takeLocal(x) : Promise.resolve(false),
+          }),
+        )
+        .catch(() => undefined);
+    },
     // Issue 664: text held because the agent isn't at its prompt: the
     // bell says so once it has waited hub.delivery_held_note_seconds, and
     // keeps saying it (refreshed each minute) until it's typed.
@@ -510,6 +530,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
   };
   // A new connection may be a different person: never keep the old one.
   owner = null;
+  loop?.ownerReset();
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);

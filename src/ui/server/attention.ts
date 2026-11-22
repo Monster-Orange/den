@@ -524,6 +524,41 @@ export class Attention {
     if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
   }
 
+  /**
+   * P0-D2: an approval came for `agent`'s doc or held write (`keys`, from
+   * approvalKeys). Its question that names one of them goes, and so does
+   * a question of another agent in `workspace` that names one. Returns
+   * each agent cleared and the key its question named (Den tells the
+   * others, and logs each). A dialog (permission) stays.
+   */
+  approvedAbout(
+    agent: string,
+    workspace: string,
+    keys: string[],
+    version?: number,
+  ): { agent: string; key: string }[] {
+    const out: { agent: string; key: string }[] = [];
+    for (const [a, w] of [...this.waiting]) {
+      if (w.why !== "asked") continue;
+      if (a !== agent && w.workspace !== workspace) continue;
+      const key = keys.find((k) => namesKey(w.text, k));
+      if (!key) continue;
+      // A question about another version of the doc isn't answered.
+      // One version asked and it is this one, or none: answered. Several
+      // (v2 or v3?) or another: the person still has to say which.
+      const asked = askedVersions(w.text);
+      if (
+        version !== undefined &&
+        asked.size &&
+        (asked.size > 1 || !asked.has(version))
+      )
+        continue;
+      this.clear(a);
+      out.push({ agent: a, key });
+    }
+    return out;
+  }
+
   private clear(agent: string): void {
     const w = this.waiting.get(agent);
     this.waiting.delete(agent);
@@ -741,4 +776,27 @@ export class Attention {
       this.clear(agent);
     }
   }
+}
+
+/**
+ * P0-D2: whether `text` names `key`, case aside: whole, never inside a
+ * longer word or id.
+ */
+function namesKey(text: string, key: string): boolean {
+  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9_-])${esc}($|[^A-Za-z0-9_-])`, "i").test(
+    text,
+  );
+}
+
+/**
+ * P0-D2: the versions a question names ("v3", "version 3"), links aside
+ * (a "/v4/" inside a URL is no version asked about).
+ */
+function askedVersions(text: string): Set<number> {
+  const plain = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  const out = new Set<number>();
+  for (const m of plain.matchAll(/\b(?:v|version\s+)(\d+)\b/gi))
+    out.add(Number(m[1]));
+  return out;
 }
