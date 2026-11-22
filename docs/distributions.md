@@ -2127,6 +2127,16 @@ sets `DEN_ROOT` only when it is unset and the engine directory holds a
 engine directory is never taken for a distribution. `DEN_USE_DIST=1` still
 runs a compiled `dist/` build when one exists.
 
+Before it sets anything, the first `bin/den` in a chain records what the
+caller had (issue 1038): `DEN_CALLER_ENV_SET=1`, plus `DEN_CALLER_ROOT`,
+`DEN_CALLER_ENGINE_ROOT` and `DEN_CALLER_INVOKE_CWD` for the ones that were
+set. A `DEN_ROOT` that names the distribution Den is installed in, or Den's
+own checkout, came from that distribution's shim, so it isn't recorded. A
+command Den runs for its caller (`den gate run -- <command>`) gets the
+caller's values back and none of the install's, so a test run in another
+checkout never reads the distribution's Den. A shim like the one above needs
+no change.
+
 ## make: den.mk
 
 A distribution's `Makefile` includes Den's targets from the package:

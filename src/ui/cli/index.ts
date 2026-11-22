@@ -5,6 +5,8 @@
  * Main entry point for the interactive CLI
  */
 
+// Issue 1038: first, so no module or child sees the caller record.
+import "../../shared/caller-env-take.js";
 import { notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { getStateDir } from "../../shared/paths.js";
 import { listRecords } from "../../shared/agents/records.js";
