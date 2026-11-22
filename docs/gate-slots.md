@@ -161,6 +161,11 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 
 Change the three settings in Settings › Server, or with
 `den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
+`--priority-max 0` turns release priority off for every repo on the machine,
+so it warns first and changes nothing (exit 1) unless you add `--yes`. A
+script that turns it off must pass `--yes`. While it is off, `gate status`
+says so on its last line, and a `gate run --priority release` says it is
+taken as an ordinary run.
 A CI runner may ask for it too (see below; `priority_runners`).
 
 ## Let one waiting run go ahead of yours
