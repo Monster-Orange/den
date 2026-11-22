@@ -164,6 +164,25 @@ export const DEN_ACTIONS = {
       failure: "busy.termF",
     },
   },
+  // Issue 214: a schedule's standing Allow, and Run now (Verify › Schedules).
+  "schedule-allow": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.schAllowW",
+      success: "busy.schAllowS",
+      failure: "busy.schAllowF",
+    },
+  },
+  "schedule-run": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.schRunW",
+      success: "busy.schRunS",
+      failure: "busy.schRunF",
+    },
+  },
   "restart-agent": {
     who: "Den",
     autoClose: true,

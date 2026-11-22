@@ -838,10 +838,15 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
   let sv = null;
   let open = null;
   let note = "";
-  const getJson = async (url, init) => {
+  /** `opts.headers`: the working pop-up's (its request id), on a write. */
+  const getJson = async (url, init, opts) => {
     const res = await fetchImpl(url, {
       ...init,
-      headers: { Accept: "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(opts?.headers ?? {}),
+      },
     });
     const body = await res.json();
     if (!res.ok || !body.ok) throw new Error(body.error ?? String(res.status));
@@ -885,19 +890,31 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
       failed();
     }
   };
-  /** Allow or Run now: a person's POST (shell.js adds the approve headers). */
-  const act = async (path, id, done) => {
+  /** Allow or Run now: a person's POST, through the working pop-up (BUSY-1). */
+  const act = async (path, id, button) => {
+    const run = async (headers) =>
+      getJson(
+        `/api/verify/schedules/${path}`,
+        { method: "POST", body: JSON.stringify({ project: sv?.project, id }) },
+        { headers },
+      );
+    const busy = globalThis.window?.denShell?.busyAction;
+    let done = null;
     try {
-      await getJson(`/api/verify/schedules/${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project: sv?.project, id }),
-      });
-      note = t(done);
-      if (path === "allow") open = null;
-      sv = await getJson("/api/verify/schedules");
+      done = busy
+        ? await busy(`schedule-${path}`, run, { button })
+        : await run({});
     } catch (e) {
       note = t("v.sch_err", { e: e.message });
+    }
+    if (done) {
+      note = t(path === "allow" ? "v.sch_allowed" : "v.sch_started");
+      if (path === "allow") open = null;
+    }
+    try {
+      sv = await getJson("/api/verify/schedules");
+    } catch {
+      // The list stays as it was; the pop-up said what happened.
     }
     draw();
     root.querySelector(`#sch-${CSS.escape(id)}`)?.focus?.();
@@ -930,10 +947,9 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
         root.querySelector(`#sch-${CSS.escape(decline)}`)?.focus?.();
         return;
       }
-      b.disabled = true;
       const allow = b.getAttribute("data-sch-allow");
-      if (allow !== null) void act("allow", allow, "v.sch_allowed");
-      else void act("run", b.getAttribute("data-sch-run"), "v.sch_started");
+      if (allow !== null) void act("allow", allow, b);
+      else void act("run", b.getAttribute("data-sch-run"), b);
       return;
     }
     const a = el?.closest("a[data-why], a[data-sched-open], .vf-back a");
