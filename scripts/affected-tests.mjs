@@ -80,6 +80,8 @@ export function validateMap(map) {
   if (!Array.isArray(map.everything))
     problems.push("everything: a list of globs");
   if (!Array.isArray(map.smoke)) problems.push("smoke: a list of test files");
+  if (map.browser !== undefined && !["changed", "mapped"].includes(map.browser))
+    problems.push('browser: "changed" or "mapped"');
   if (!Array.isArray(map.rules))
     problems.push("rules: a list of {when, run, why}");
   for (const [i, r] of (map.rules ?? []).entries()) {
@@ -119,7 +121,8 @@ export function loadMap(file = DEFAULT_MAP) {
  *             each (jest's import graph), { file: [tests] }
  *   mentioned the browser specs that mention a changed catalog key or its
  *             English text, for a rule with `mentions: true`
- * Returns { all, allBecause, files: Map<test file, reasons[]> }.
+ * Returns { all, allBecause, files: Map<test file, reasons[]>, deferred }:
+ * deferred holds the browser specs left to main's run (map.browser).
  */
 export function selectTests({
   changed,
@@ -144,7 +147,8 @@ export function selectTests({
   };
   if (allBecause.length) {
     for (const f of allTests) add(f, "everything");
-    return { all: true, allBecause, files };
+    for (const s of map.smoke) if (files.has(s)) add(s, "smoke");
+    return { all: true, allBecause, ...deferBrowser(files, changed, map) };
   }
   const tests = new Set(allTests);
   for (const f of changed) if (tests.has(f)) add(f, "changed");
@@ -164,7 +168,27 @@ export function selectTests({
         if (tests.has(t)) add(t, `${why}: mentions a changed key or its text`);
   }
   for (const s of map.smoke) if (tests.has(s)) add(s, "smoke");
-  return { all: false, allBecause, files };
+  return { all: false, allBecause, ...deferBrowser(files, changed, map) };
+}
+
+/**
+ * Testing policy 1 (mo-commons specs/platform/TESTING-POLICY.md): with the
+ * map's `browser: "changed"`, a pull request runs only the browser specs it
+ * changes, plus the smoke set. Every other browser spec it would have run
+ * is `deferred`: main's full run (every push to main runs every test) and
+ * the nightly cover it. Without the setting, every selected spec runs.
+ */
+const isBrowserSpec = (f) => f.endsWith(".browser.test.ts");
+function deferBrowser(files, changed, map) {
+  if (map.browser !== "changed") return { files, deferred: new Map() };
+  const keep = new Set([...changed, ...(map.smoke ?? [])]);
+  const deferred = new Map();
+  for (const [f, why] of files)
+    if (isBrowserSpec(f) && !keep.has(f)) {
+      deferred.set(f, why);
+      files.delete(f);
+    }
+  return { files, deferred };
 }
 
 /**
@@ -218,11 +242,26 @@ export function specsMentioning(specSources, keys, texts) {
 /** The Markdown job summary. */
 export function summaryMarkdown(sel, changedCount) {
   const lines = ["## Tests this pull request runs (issue 398)", ""];
+  const deferred = sel.deferred ?? new Map();
+  // Testing policy 1: the browser specs left to main's full run.
+  const later = () => {
+    if (!deferred.size) return;
+    lines.push(
+      "",
+      `${deferred.size} browser specs are left to main's full run and the nightly (testing policy 1: a pull request runs only the browser specs it changes, plus the smoke).`,
+      "",
+      "<details><summary>Left to main's run</summary>",
+      "",
+      ...[...deferred.keys()].sort().map((f) => `- \`${f}\``),
+      "",
+      "</details>",
+    );
+  };
   if (sel.all) {
     lines.push(
-      `**Everything**: ${sel.files.size} test files, because of ${sel.allBecause.map((f) => `\`${f}\``).join(", ")}.`,
-      "",
+      `**Everything**${deferred.size ? " but the browser specs" : ""}: ${sel.files.size} test files, because of ${sel.allBecause.map((f) => `\`${f}\``).join(", ")}.`,
     );
+    later();
     return lines.join("\n") + "\n";
   }
   lines.push(
@@ -233,6 +272,7 @@ export function summaryMarkdown(sel, changedCount) {
   );
   for (const [f, why] of [...sel.files].sort(([a], [b]) => a.localeCompare(b)))
     lines.push(`| \`${f}\` | ${why.join("; ")} |`);
+  later();
   return lines.join("\n") + "\n";
 }
 
@@ -380,16 +420,20 @@ async function main(argv) {
     importersOf,
     mentioned,
   });
-  if (sel.all)
+  // Testing policy 1: with browser specs left out, "everything" is a list.
+  const whole = sel.all && !sel.deferred?.size;
+  if (whole)
     console.log(
       `ALL  (${sel.files.size} files) because: ${sel.allBecause.join(", ")}`,
     );
   else
     for (const [f, why] of sel.files) console.log(`${f}  # ${why.join("; ")}`);
+  for (const f of sel.deferred?.keys() ?? [])
+    console.log(`${f}  # left to main's full run (testing policy 1)`);
   if (opt.out)
     fs.writeFileSync(
       opt.out,
-      sel.all ? "ALL\n" : [...sel.files.keys()].join("\n") + "\n",
+      whole ? "ALL\n" : [...sel.files.keys()].join("\n") + "\n",
     );
   if (opt.summary)
     fs.appendFileSync(opt.summary, summaryMarkdown(sel, changed.length));

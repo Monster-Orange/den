@@ -27,8 +27,12 @@ interface Selection {
   all: boolean;
   allBecause: string[];
   files: Record<string, string[]>;
+  /** Testing policy 1: browser specs a pull request leaves to main's run. */
+  deferred?: Record<string, string[]>;
 }
 interface Map {
+  /** Testing policy 1: "changed" runs only the browser specs a PR changes. */
+  browser?: "changed" | "mapped";
   everything: string[];
   smoke: string[];
   rules: { when: string[]; run: string[]; why: string }[];
@@ -229,6 +233,82 @@ describe("selectTests (fixtures)", () => {
   });
 });
 
+describe("testing policy 1: a pull request runs only the browser specs it changes", () => {
+  const map: Map = {
+    browser: "changed",
+    everything: ["src/guard.ts"],
+    smoke: ["tests/smoke.test.ts", "tests/s.browser.test.ts"],
+    rules: [
+      {
+        when: ["src/public/a-page.js"],
+        run: ["tests/a-*.browser.test.ts"],
+        why: "page a",
+      },
+    ],
+  };
+  const tests = [
+    "tests/smoke.test.ts",
+    "tests/s.browser.test.ts",
+    "tests/a-one.browser.test.ts",
+    "tests/a-two.browser.test.ts",
+    "tests/lib.test.ts",
+  ];
+
+  it("a page change runs no spec of that page; they're left to main's full run, with the reason", () => {
+    const s = select({
+      changed: ["src/public/a-page.js"],
+      allTests: tests,
+      related: [],
+      map,
+    });
+    expect(Object.keys(s.files).sort()).toEqual([
+      "tests/s.browser.test.ts",
+      "tests/smoke.test.ts",
+    ]);
+    expect(Object.keys(s.deferred ?? {}).sort()).toEqual([
+      "tests/a-one.browser.test.ts",
+      "tests/a-two.browser.test.ts",
+    ]);
+    expect(s.deferred!["tests/a-one.browser.test.ts"]).toEqual([
+      "mapped: src/public/a-page.js (page a)",
+    ]);
+  });
+
+  it("a changed browser spec runs", () => {
+    const s = select({
+      changed: ["tests/a-one.browser.test.ts"],
+      allTests: tests,
+      related: [],
+      map,
+    });
+    expect(s.files["tests/a-one.browser.test.ts"]).toEqual(["changed"]);
+    expect(s.deferred?.["tests/a-one.browser.test.ts"]).toBeUndefined();
+  });
+
+  it("a shared file runs every non-browser test plus the smoke specs, never the whole browser suite", () => {
+    const s = select({
+      changed: ["src/guard.ts"],
+      allTests: tests,
+      related: [],
+      map,
+    });
+    expect(s.all).toBe(true);
+    expect(Object.keys(s.files).sort()).toEqual([
+      "tests/lib.test.ts",
+      "tests/s.browser.test.ts",
+      "tests/smoke.test.ts",
+    ]);
+    expect(Object.keys(s.deferred ?? {}).sort()).toEqual([
+      "tests/a-one.browser.test.ts",
+      "tests/a-two.browser.test.ts",
+    ]);
+  });
+
+  it("Den's own map sets it", () => {
+    expect(MAP.browser).toBe("changed");
+  });
+});
+
 describe("the map (tests/affected-map.json)", () => {
   it("is valid; smoke files exist; every run glob names a test", () => {
     call(AFFECTED, "validateMap", MAP);
@@ -297,7 +377,10 @@ describe("the map (tests/affected-map.json)", () => {
     });
     expect(s.all).toBe(false);
     const files = Object.keys(s.files);
-    expect(files).toContain("tests/unit/server/verify-page.browser.test.ts");
+    // Testing policy 1: the page's specs are left to main's full run.
+    expect(Object.keys(s.deferred ?? {})).toContain(
+      "tests/unit/server/verify-page.browser.test.ts",
+    );
     for (const f of files) {
       const why = s.files[f].join("; ");
       expect([
@@ -324,7 +407,11 @@ describe("the map (tests/affected-map.json)", () => {
     });
     expect(s.all).toBe(true);
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
-    expect(Object.keys(s.files)).toHaveLength(TESTS.length);
+    // Testing policy 1: every test but the browser specs outside the smoke.
+    const deferred = Object.keys(s.deferred ?? {});
+    expect(deferred.length).toBeGreaterThan(50);
+    expect(deferred.every((f) => f.endsWith(".browser.test.ts"))).toBe(true);
+    expect(Object.keys(s.files).length + deferred.length).toBe(TESTS.length);
   });
 });
 
@@ -424,14 +511,31 @@ describe("the replay's real failures stay caught", () => {
     const nodes = call<string[]>(REPLAY, "caughtNodesOf", ciText);
     expect(nodes).toEqual(["22.13.0", "24.13.0"]);
     for (const c of cases) expect(c.nodes?.length).toBeGreaterThan(0);
-    const rows = call<Case[]>(REPLAY, "recheck", cases, MAP, nodes);
-    const missed = rows.filter((r) => !r.caught).map((r) => r.file);
+    const rows = call<(Case & { leftToMain?: boolean })[]>(
+      REPLAY,
+      "recheck",
+      cases,
+      MAP,
+      nodes,
+    );
+    const missed = rows
+      .filter((r) => !r.caught && !r.leftToMain)
+      .map((r) => r.file);
     expect(missed).toEqual([]);
+    // Testing policy 1: the real browser failures a pull request now leaves
+    // to main's full run, by name. A new one here is a choice to see.
+    // Measured 11-22: 37 of the 92 real failures (30 spec files), 35 of
+    // them reached through a shared file (the "everything" list).
+    const later = rows.filter((r) => r.leftToMain);
+    expect(later.length).toBe(37);
+    expect(later.every((r) => r.file.endsWith(".browser.test.ts"))).toBe(true);
   });
 
   it("a pull request on Node 24 alone misses the Node-22-only failures", () => {
     const rows = call<Case[]>(REPLAY, "recheck", cases, MAP, ["24.13.0"]);
-    const missed = rows.filter((r) => !r.caught);
+    const missed = rows.filter(
+      (r) => !r.caught && !(r as { leftToMain?: boolean }).leftToMain,
+    );
     expect(missed.length).toBeGreaterThan(0);
     for (const r of missed) expect(r.nodes).toEqual(["22.13.0"]);
   });
@@ -818,18 +922,23 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
     const files = Object.keys(s.files);
     for (const f of [
       "tests/unit/scripts/words.test.ts",
+      "tests/x-imports-catalog.test.ts",
+    ])
+      expect([f, files.includes(f)]).toEqual([f, true]);
+    // Testing policy 1: the browser specs are picked, then left to main's run.
+    const later = s.deferred ?? {};
+    for (const f of [
       "tests/unit/server/i18n-pages.browser.test.ts",
       "tests/unit/server/i18n-shell.browser.test.ts",
       "tests/unit/server/one-url-per-module.browser.test.ts",
       "tests/unit/server/kit-dialog.browser.test.ts",
-      "tests/x-imports-catalog.test.ts",
       "tests/unit/server/bell.browser.test.ts",
     ])
-      expect([f, files.includes(f)]).toEqual([f, true]);
+      expect([f, f in later || files.includes(f)]).toEqual([f, true]);
     expect(s.files["tests/x-imports-catalog.test.ts"].join()).toMatch(
       /imports en-catalog\.ts/,
     );
-    expect(s.files["tests/unit/server/bell.browser.test.ts"].join()).toMatch(
+    expect(later["tests/unit/server/bell.browser.test.ts"].join()).toMatch(
       /mentions a changed key/,
     );
     // A spec that neither checks every page's words, switches language,

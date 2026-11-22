@@ -219,7 +219,10 @@ export function recheck(cases, map, prNodes = null) {
       related: c.related ? [c.file] : [],
       map,
     });
-    const selected = sel.all || sel.files.has(c.file);
+    // Testing policy 1: a browser spec a pull request leaves to main's full
+    // run is not caught on the pull request; it is caught after the merge.
+    const leftToMain = !!sel.deferred?.has(c.file);
+    const selected = !leftToMain && (sel.all || sel.files.has(c.file));
     // Per Node: caught only if a pull request runs it on a Node it failed
     // on (prNodes: the pr job's matrix; null skips the check). A failure
     // seen only on Node 22 needs a Node 22 run.
@@ -239,14 +242,17 @@ export function recheck(cases, map, prNodes = null) {
     return {
       ...c,
       caught,
+      leftToMain,
       caughtByMap: narrow.files.has(c.file),
-      caughtWhy: missingNodes.length
-        ? `selected, but a pull request never runs Node ${missingNodes.join(", ")}`
-        : sel.all
-          ? `ALL (${sel.allBecause.join(", ")})`
-          : caught
-            ? sel.files.get(c.file).join("; ")
-            : "not in the subset",
+      caughtWhy: leftToMain
+        ? `left to main's full run (testing policy 1): ${sel.deferred.get(c.file).join("; ")}`
+        : missingNodes.length
+          ? `selected, but a pull request never runs Node ${missingNodes.join(", ")}`
+          : sel.all
+            ? `ALL (${sel.allBecause.join(", ")})`
+            : caught
+              ? sel.files.get(c.file).join("; ")
+              : "not in the subset",
     };
   });
 }
@@ -283,9 +289,16 @@ export async function caughtNodesOf(ciText) {
   return [...out].sort();
 }
 
-/** The real failures the subset misses. */
+/**
+ * The real failures the subset misses. A browser spec left to main's full
+ * run (testing policy 1) is listed apart (leftToMainFailures), not missed.
+ */
 export const missedFailures = (rows) =>
-  rows.filter((r) => isReal(r) && !r.caught);
+  rows.filter((r) => isReal(r) && !r.caught && !r.leftToMain);
+
+/** Testing policy 1: real failures a pull request now leaves to main. */
+export const leftToMainFailures = (rows) =>
+  rows.filter((r) => isReal(r) && r.leftToMain);
 
 /** The replay as Markdown: the counts, the rule, one row per failing file. */
 export function renderReplay(rows, meta) {
@@ -573,6 +586,13 @@ function changedFiles(api, repo, base, head) {
 }
 
 function report(rows) {
+  const later = leftToMainFailures(rows);
+  if (later.length) {
+    console.log(
+      `ci-replay: ${later.length} real failure(s) in browser specs are left to main's full run (testing policy 1):`,
+    );
+    for (const m of later) console.log(`  ${m.file}  (${m.run})`);
+  }
   const missed = missedFailures(rows);
   if (missed.length) {
     console.error(
