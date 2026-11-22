@@ -278,6 +278,8 @@ const AGENTS_PATH =
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
+/** Issue 459: GET a project's app event feeds and their state. */
+const EVENT_FEEDS_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds$/;
 /** Issue 352: one of them, changed or removed by a person. */
 const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
@@ -607,6 +609,8 @@ export async function handleAgentRoutes(
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const mcpp = MCP_SERVERS_PATH.exec(pathname);
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
+  const efp = EVENT_FEEDS_PATH.exec(pathname);
+  if (efp) return eventFeedsRoute(req, res, efp[1], webDeps(deps.agents));
   const mcp1 = MCP_SERVER_PATH.exec(pathname);
   if (mcp1)
     return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
@@ -984,6 +988,21 @@ export async function handleAgentRoutes(
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Any other agent: refused, as a
+    // person-only act is.
+    const opAct = operatorActOf(req);
+    if (
+      (opAct === "agent-say" || opAct === "agent-relaunch") &&
+      (id === undefined || agentRecord(d, id, ws).testBed !== true)
+    )
+      throw new AgentError(
+        opAct === "agent-say"
+          ? "only a person can send an agent a message"
+          : "only a person can relaunch an agent",
+        { status: 403 },
+      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -2846,6 +2865,34 @@ async function mcpServersRoute(
     return true;
   }
   sendJson(res, { ok: true, ...projectMcpView(d, ws) });
+  return true;
+}
+
+/**
+ * Issue 459: GET /api/workspaces/:ws/event-feeds: the project's app event
+ * feeds with their state (connected, retrying, last event time); names,
+ * agents and urls only, never a bearer or its value.
+ */
+async function eventFeedsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  const { appFeedsView } = await import("./app-feed-service.js");
+  sendJson(res, { ok: true, ...appFeedsView(ws) });
   return true;
 }
 

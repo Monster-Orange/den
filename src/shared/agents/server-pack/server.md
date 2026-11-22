@@ -130,6 +130,7 @@ Reads (they change nothing):
   you, to look, take a screenshot or check a fix. It changes nothing, and
   ends in a few minutes.
 - `notifications_list`: your person's bell.
+- `app_feed_read`: the events an app's feed sent you, when Den types you that some are unread (only your own project's feeds that name you).
 - `approval_check`: where one of your held asks stands.
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several

@@ -11,6 +11,7 @@
  * take minutes, so the Allow answers at once and the refresh goes on; the
  * activity trail and doctor say how it ended.
  */
+import { line, reviewLines } from "../../shared/review-lines.js";
 import type { RefreshResult } from "../../shared/sessions/host-refresh.js";
 import { HOST_RESTART_TITLE } from "../../shared/sessions/host-refresh-state.js";
 import type { HeldOp } from "./held-actions.js";
@@ -42,14 +43,17 @@ export function hostRestartOp(d: HostRestartOpDeps): HeldOp {
         args: {},
         summary: HOST_RESTART_TITLE.replace(/^R/, "r"),
         params: { min },
-        details: [
-          `Waits until no agent is mid-turn (at most ${min} min, sessions.host_restart_wait_seconds), then restarts the terminal host on the installed Den.`,
-          "The agents it ran resume where they were; open terminals end. The activity trail says how it went.",
-        ],
-        detailKeys: [
-          { key: "ap.det.host_restart.wait", vars: { min } },
-          { key: "ap.det.host_restart.resume" },
-        ],
+        ...reviewLines([
+          line(
+            `Waits until no agent is mid-turn (at most ${min} min), then restarts the terminal host on the installed Den.`,
+            "ap.det.host_restart.wait",
+            { min },
+          ),
+          line(
+            "The agents it ran resume where they were; open terminals end. The activity trail says how it went.",
+            "ap.det.host_restart.resume",
+          ),
+        ]),
       };
     },
     run() {
