@@ -144,6 +144,29 @@ export interface CoachOptions {
   after?: number;
 }
 
+/** Transcripts read at once: many agents, each with many, would run out of file handles. */
+const MINE_AT_ONCE = 8;
+
+/** `fn` over `items`, at most `limit` at a time; results in `items`' order. */
+export async function mapLimited<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return out;
+}
+
 /** The breakdown for `records` over the window ending now. */
 export async function coachBreakdown(
   records: readonly AgentRecord[],
@@ -188,7 +211,7 @@ export async function coachBreakdown(
       ),
     ];
     const stats = (
-      await Promise.all(files.map((f) => src.mine(f, { since })))
+      await mapLimited(files, MINE_AT_ONCE, (f) => src.mine(f, { since }))
     ).filter((s) => s.calls > 0 || s.prompts > 0);
     if (!stats.length) {
       row.why = "no conversation in the window";

@@ -22,6 +22,7 @@ import {
 import {
   coachBreakdown,
   coachWindow,
+  mapLimited,
 } from "../../../src/shared/coach/breakdown.js";
 import {
   readCoachReport,
@@ -361,5 +362,26 @@ describe("agents.coach in the org config", () => {
         {},
       ),
     ).toThrow(/agents\.coach\.window_days/);
+  });
+});
+
+describe("mapLimited (reading transcripts a few at a time)", () => {
+  it("keeps at most `limit` running at once, and the results in order", async () => {
+    let now = 0;
+    let most = 0;
+    const out = await mapLimited(
+      Array.from({ length: 20 }, (_, i) => i),
+      8,
+      async (i) => {
+        now++;
+        most = Math.max(most, now);
+        await new Promise((r) => setTimeout(r, 1));
+        now--;
+        return i * 2;
+      },
+    );
+    expect(most).toBe(8);
+    expect(out).toEqual(Array.from({ length: 20 }, (_, i) => i * 2));
+    expect(await mapLimited([], 8, async (x) => x)).toEqual([]);
   });
 });
