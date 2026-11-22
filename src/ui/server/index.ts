@@ -4338,6 +4338,21 @@ type ApprovalDeps = {
 };
 let approvals: ApprovalDeps | null = null;
 /** The held writes and their queue, made on first use. */
+/**
+ * Issue 869: web_url_set's deps. Outside approvalDeps on purpose: this held
+ * write reads the stored web.url (its "Now:" line, and the address it
+ * replaces), while approvalDeps' links use the people address (issue 1016).
+ */
+function webUrlSetDeps(): Parameters<typeof webUrlSetAction>[0] {
+  return {
+    knownHost: addressHostKnown,
+    read: () => readWebUrl(),
+    set: (url, how) => saveWebUrl(url, how),
+    ping: (url, ms) => pingHttp(url, ms),
+    checkMs: () => webUrlCheckSeconds() * 1000,
+  };
+}
+
 function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
   const actions = heldActions({
@@ -4676,13 +4691,7 @@ function approvalDeps(): ApprovalDeps {
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
-    webUrlSet: webUrlSetAction({
-      knownHost: addressHostKnown,
-      read: () => readWebUrl(),
-      set: (url, how) => saveWebUrl(url, how),
-      ping: (url, ms) => pingHttp(url, ms),
-      checkMs: () => webUrlCheckSeconds() * 1000,
-    }),
+    webUrlSet: webUrlSetAction(webUrlSetDeps()),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
