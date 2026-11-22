@@ -20,6 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { VerifyModule } from "./config.js";
 import type { RunActor } from "./records.js";
+import { nextRun } from "./cron.js";
 
 export interface Schedule {
   /** Stable across plan changes: from the project, environment, cron, window and name. */
@@ -52,6 +53,16 @@ export interface ScheduleAllow {
   window?: string;
 }
 
+/** Issue 964: what production schedules may do (verify.schedule.production). */
+export interface ProductionScheduleSettings {
+  /** The org's opt-in: off, no production schedule runs or takes an Allow. */
+  enabled: boolean;
+  /** The shortest gap a production schedule may run at. */
+  minIntervalMs: number;
+  /** The hosts a production run may reach; null: any host, but never a link-local or metadata one. */
+  hosts: string[] | null;
+}
+
 export interface ScheduleSettings {
   allowExpiryMs: number;
   expiryWarningMs: number;
@@ -62,13 +73,20 @@ export interface ScheduleSettings {
    * Allow named, a command runs on its own only where the org turns it on.
    */
   sharedCommands: boolean;
+  production: ProductionScheduleSettings;
 }
 
 const DAY = 86_400_000;
+const MINUTE = 60_000;
 export const SCHEDULE_DEFAULTS: Readonly<ScheduleSettings> = Object.freeze({
   allowExpiryMs: 30 * DAY,
   expiryWarningMs: 3 * DAY,
   sharedCommands: false,
+  production: Object.freeze({
+    enabled: false,
+    minIntervalMs: 15 * MINUTE,
+    hosts: null,
+  }),
 });
 
 const obj = (v: unknown): Record<string, unknown> =>
@@ -81,17 +99,49 @@ function span(v: unknown, name: string, fallback: number): number {
   let ms = NaN;
   if (typeof v === "number") ms = v * DAY;
   else if (typeof v === "string") {
-    const m = /^(\d+(?:\.\d+)?)\s*([dh])$/.exec(v.trim());
-    if (m) ms = Number(m[1]) * (m[2] === "d" ? DAY : 3_600_000);
+    const m = /^(\d+(?:\.\d+)?)\s*([dhm])$/.exec(v.trim());
+    if (m)
+      ms =
+        Number(m[1]) * (m[2] === "d" ? DAY : m[2] === "h" ? 3_600_000 : MINUTE);
   }
   if (!Number.isFinite(ms) || ms <= 0)
     throw new Error(
-      `verify.schedule.${name}: days as a number (30), or "30d" or "12h", got ${JSON.stringify(v)}`,
+      `verify.schedule.${name}: days as a number (30), or "30d", "12h" or "15m", got ${JSON.stringify(v)}`,
     );
   return ms;
 }
 
-/** verify.schedule.allow_expiry and expiry_warning, from Den's `verify:` block. */
+function hostList(v: unknown): string[] | null {
+  if (v === undefined || v === null) return null;
+  if (
+    !Array.isArray(v) ||
+    v.some((h) => typeof h !== "string" || !/^[a-z0-9.:[\]-]+$/i.test(h))
+  )
+    throw new Error(
+      `verify.schedule.production.hosts: a list of host names, like ["shop.example.com"], got ${JSON.stringify(v)}`,
+    );
+  return v.map((h) => h.toLowerCase());
+}
+
+function readProduction(v: unknown): ProductionScheduleSettings {
+  const p = obj(v);
+  const d = SCHEDULE_DEFAULTS.production;
+  if (p.enabled !== undefined && typeof p.enabled !== "boolean")
+    throw new Error(
+      `verify.schedule.production.enabled: true or false, got ${JSON.stringify(p.enabled)}`,
+    );
+  return {
+    enabled: p.enabled === true,
+    minIntervalMs: span(
+      p.min_interval,
+      "production.min_interval",
+      d.minIntervalMs,
+    ),
+    hosts: hostList(p.hosts),
+  };
+}
+
+/** verify.schedule.allow_expiry, expiry_warning and production, from Den's `verify:` block. */
 export function readScheduleSettings(raw: unknown): ScheduleSettings {
   const s = obj(obj(raw).schedule);
   if (s.shared_commands !== undefined && typeof s.shared_commands !== "boolean")
@@ -100,6 +150,7 @@ export function readScheduleSettings(raw: unknown): ScheduleSettings {
     );
   return {
     sharedCommands: s.shared_commands === true,
+    production: readProduction(s.production),
     allowExpiryMs: span(
       s.allow_expiry,
       "allow_expiry",
@@ -458,13 +509,118 @@ export function commandLimit(
   return null;
 }
 
+/** Issue 964: why a production schedule may not run or take an Allow. */
+export type ProductionLimit = "production-off" | "too-often" | "host";
+
+/** The shortest gap between two runs of `cron`, over the next two weeks. */
+export function shortestGapMs(cron: string, from = new Date(0)): number {
+  let min = Infinity;
+  let prev = nextRun(cron, from);
+  const end = (prev?.getTime() ?? 0) + 14 * DAY;
+  for (let i = 0; prev && i < 5000 && prev.getTime() < end; i++) {
+    const next = nextRun(cron, prev);
+    if (!next) break;
+    min = Math.min(min, next.getTime() - prev.getTime());
+    prev = next;
+  }
+  return min;
+}
+
+/** A link-local or cloud metadata address: never a production run's to reach. */
+export function metadataHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    /^169\.254\./.test(h) ||
+    /^fe[89ab][0-9a-f]:/.test(h) ||
+    h === "fd00:ec2::254" ||
+    h === "100.100.100.200" ||
+    h === "metadata" ||
+    h === "metadata.google.internal" ||
+    h.endsWith(".metadata.google.internal")
+  );
+}
+
+/** The hosts a schedule's run reaches on its environment (its smoke URLs). */
+export function hostsOf(s: Schedule): string[] {
+  const out = new Set<string>();
+  for (const m of s.modules)
+    for (const u of m.healthUrls[s.env] ?? []) {
+      try {
+        out.add(new URL(u).hostname.toLowerCase());
+      } catch {
+        out.add(u);
+      }
+    }
+  return [...out].sort();
+}
+
+/**
+ * Why a production schedule may not run (or be allowed), or null: the
+ * org hasn't opted in, it runs more often than min_interval, or a URL it
+ * reaches is a metadata address or off the host list. Other environments:
+ * null.
+ */
+export function productionLimit(
+  s: Schedule,
+  settings: ScheduleSettings,
+): { reason: ProductionLimit; hosts?: string[] } | null {
+  if (s.env !== "production") return null;
+  const p = settings.production ?? SCHEDULE_DEFAULTS.production;
+  if (!p.enabled) return { reason: "production-off" };
+  if (shortestGapMs(s.cron) < p.minIntervalMs) return { reason: "too-often" };
+  const bad = hostsOf(s).filter(
+    (h) => metadataHost(h) || (p.hosts !== null && !p.hosts.includes(h)),
+  );
+  if (bad.length) return { reason: "host", hosts: bad };
+  return null;
+}
+
+/** Every reason a schedule may not run on its own, or be allowed. */
+export type ScheduleLimitReason =
+  | ProductionLimit
+  | "commands-off"
+  | "command-unclear";
+
+export interface ScheduleLimit {
+  reason: ScheduleLimitReason;
+  /** command-unclear: the module and why. */
+  why?: string;
+  /** host: the hosts off the list, or metadata addresses. */
+  hosts?: string[];
+}
+
+/** The production limit first (issue 964), then the command limit. */
+export function scheduleLimit(
+  s: Schedule,
+  settings: ScheduleSettings,
+): ScheduleLimit | null {
+  return productionLimit(s, settings) ?? commandLimit(s, settings);
+}
+
+/** What the Allow route says when a limit refuses it. */
+export function limitMessage(l: ScheduleLimit): string {
+  switch (l.reason) {
+    case "production-off":
+      return "Schedules don't run on production here (verify.schedule.production.enabled is off).";
+    case "too-often":
+      return "This schedule runs on production more often than verify.schedule.production.min_interval allows.";
+    case "host":
+      return `This schedule reaches a host a production run may not: ${(l.hosts ?? []).join(", ")}.`;
+    case "commands-off":
+      return "Commands don't run on their own on a shared environment here (verify.schedule.shared_commands is off).";
+    default:
+      return `Den can't follow this schedule's command, so it can't be allowed: ${l.why}.`;
+  }
+}
+
 export function mayRun(
   s: Schedule,
   a: ScheduleAllow | undefined,
   now: Date,
   settings: ScheduleSettings,
 ): boolean {
-  if (commandLimit(s, settings)) return false;
+  if (scheduleLimit(s, settings)) return false;
+  if (productionLimit(s, settings)) return false;
   const st = scheduleState(s, a, now, settings);
   return st === "no-allow-needed" || st === "allowed" || st === "expiring";
 }

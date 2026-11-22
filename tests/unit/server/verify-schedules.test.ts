@@ -330,7 +330,29 @@ describe("T18: the standing Allow", () => {
 });
 
 describe("T19: a scheduled production run is read-only", () => {
+  it("issue 964: off until the org opts in; the Allow is refused and the row says why", async () => {
+    await tick(at(21, 12));
+    const id = await idOf("Production smoke");
+    const row = ((await get()).schedules as any[]).find((s) => s.id === id);
+    expect(row).toMatchObject({
+      runs: false,
+      limit: { reason: "production-off" },
+    });
+    const r = await post("/api/verify/schedules/allow", {
+      project: "north",
+      id,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe("production-off");
+    const notes = await tick(at(21, 13, 0));
+    expect(
+      notes.find((n) => n.schedule.startsWith("production-smoke")),
+    ).toMatchObject({ action: "skip", reason: "production-off" });
+    expect(probes).toEqual([]);
+  });
+
   it("only GET goes out, through the guard, and the run's log keeps it", async () => {
+    verifyBlock = { schedule: { ...ON, production: { enabled: true } } };
     await tick(at(21, 12));
     // Production is shared: it runs under its Allow too.
     await post("/api/verify/schedules/allow", {

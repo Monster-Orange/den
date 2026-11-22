@@ -11,8 +11,9 @@ import * as fs from "fs";
 import * as path from "path";
 import { inWindow, nextRun, parseWindow, windowEnd } from "./cron.js";
 import {
-  commandLimit,
+  scheduleLimit,
   scheduleState,
+  type ScheduleLimitReason,
   type Schedule,
   type ScheduleAllow,
   type ScheduleSettings,
@@ -24,8 +25,7 @@ export type SkipReason =
   | "expired"
   | "window"
   | "busy"
-  | "commands-off"
-  | "command-unclear";
+  | ScheduleLimitReason;
 
 export interface ScheduleRunState {
   /** The last due time Den handled (or first saw the schedule at). */
@@ -58,7 +58,7 @@ export function decide(
   const iso = due.toISOString();
   if (end && now >= end) return { action: "skip", due: iso, reason: "window" };
   if (!inWindow(w, now)) return { action: "wait" };
-  const lim = commandLimit(s, settings);
+  const lim = scheduleLimit(s, settings);
   if (lim) return { action: "skip", due: iso, reason: lim.reason };
   const st = scheduleState(s, allow, now, settings);
   if (st === "needs-allow" || st === "plan-changed" || st === "expired")

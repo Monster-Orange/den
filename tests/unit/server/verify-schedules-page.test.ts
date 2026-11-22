@@ -300,6 +300,28 @@ describe("issue 214: Schedules (S11)", () => {
     expect(speed).not.toMatch(/data-sch-run=/);
   });
 
+  it("issue 964: a production limit says why and names the setting or the hosts", () => {
+    const lim = (id: string, limit: object) => ({
+      ...SV,
+      schedules: SV.schedules.map((r: any) =>
+        r.id === id ? { ...r, runs: false, limit } : r,
+      ),
+    });
+    const id = "devices-9c0d1e2f";
+    const off = rowOf(schedulesView(lim(id, { reason: "production-off" })), id);
+    expect(off).toContain("Schedules don&#39;t run on production here.");
+    expect(off).toContain(
+      "<code>schedule: { production: { enabled: true } }</code>",
+    );
+    expect(off).not.toMatch(/data-sch-ask=/);
+    const host = rowOf(
+      schedulesView(lim(id, { reason: "host", hosts: ["169.254.169.254"] })),
+      id,
+    );
+    expect(host).toContain("A production run may not reach these hosts.");
+    expect(host).toContain("<code>169.254.169.254</code>");
+  });
+
   it("a name or a module from the repo stays plain text", () => {
     const html = schedulesView({
       ...SV,

@@ -700,6 +700,10 @@ verify:
     allow_expiry: 30d # a schedule's standing Allow lasts this long
     expiry_warning: 3d # the bell warns this long before it ends
     shared_commands: false # a command (cmd) runs on its own on staging or production
+    production:
+      enabled: false # schedules run on production at all (the org's opt-in)
+      min_interval: 15m # the shortest gap between two production runs
+      hosts: [shop.example.com] # leave out for any host; never a metadata address
 ```
 
 `environments` can also be a map, when an environment needs its own
@@ -785,6 +789,11 @@ verify:
   writes, its health URLs, the environment's method rule, the times or the
   window). It ends after `verify.schedule.allow_expiry`. An agent
   can't give or use one: the routes refuse an agent's token.
+- Production schedules are off until `verify.schedule.production.enabled`
+  is true. Then a schedule may run there no more often than
+  `min_interval`, and only to the hosts in `hosts` when that list is set.
+  A link-local or cloud metadata address is always refused. A schedule
+  outside these limits can't be allowed, and its row says why.
 - On production a scheduled run is read-only. It sends only GET, HEAD and
   OPTIONS, plus the `write_allow` pairs for that environment. Any other
   request is blocked before it leaves, and the run's record names it.

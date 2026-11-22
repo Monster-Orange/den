@@ -662,7 +662,22 @@ function allowLine(row) {
   return esc(t("v.sch_allow_until", { t: day(row.allow.expiresAt) }));
 }
 
+/** Issue 964: production limits, the page's words and the line to show. */
+const LIMIT_KEYS = {
+  "production-off": [
+    "v.sch_lim_prod_off",
+    "schedule: { production: { enabled: true } }",
+  ],
+  "too-often": [
+    "v.sch_lim_often",
+    "schedule: { production: { min_interval: 15m } }",
+  ],
+  host: ["v.sch_lim_host", ""],
+};
+
 function flagOf(row) {
+  if (row.limit && LIMIT_KEYS[row.limit.reason])
+    return `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t(LIMIT_KEYS[row.limit.reason][0]))} <code>${esc(row.limit.reason === "host" ? (row.limit.hosts ?? []).join(", ") : LIMIT_KEYS[row.limit.reason][1])}</code></div>`;
   if (row.limit)
     return row.limit.reason === "commands-off"
       ? `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t("v.sch_lim_off"))} <code>schedule: { shared_commands: true }</code></div>`
@@ -691,6 +706,9 @@ const SKIP_WORD = {
   busy: "v.sch_sk_busy",
   "commands-off": "v.sch_sk_cmdoff",
   "command-unclear": "v.sch_sk_unclear",
+  "production-off": "v.sch_sk_prodoff",
+  "too-often": "v.sch_sk_often",
+  host: "v.sch_sk_host",
 };
 
 const modName = (row, id) =>

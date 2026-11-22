@@ -22,7 +22,8 @@ import { httpProbe, spawnCmd } from "../../shared/verify/run.js";
 import { realGit } from "../../shared/verify/changes.js";
 import {
   cmdFiles,
-  commandLimit,
+  limitMessage,
+  scheduleLimit,
   listSchedules,
   mayRun,
   readAllows,
@@ -193,7 +194,7 @@ function rowOf(
     state,
     runs: mayRun(s, a, now, set),
     ...(() => {
-      const l = commandLimit(s, set);
+      const l = scheduleLimit(s, set);
       return l ? { limit: l } : {};
     })(),
     allow: a ? { by: a.by, at: a.at, expiresAt: a.expiresAt } : null,
@@ -323,7 +324,7 @@ async function runSchedule(
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
-    const lim = commandLimit(fresh, set);
+    const lim = scheduleLimit(fresh, set);
     if (lim)
       return {
         ok: false,
@@ -564,18 +565,11 @@ export async function handleScheduleRoutes(
   }
   const allows = readAllows(d.stateDir(), p.project);
   if (pathname === "/api/verify/schedules/allow") {
-    const lim = commandLimit(s, set);
+    const lim = scheduleLimit(s, set);
     if (lim) {
       sendJson(
         res,
-        {
-          ok: false,
-          code: lim.reason,
-          error:
-            lim.reason === "commands-off"
-              ? "Commands don't run on their own on a shared environment here (verify.schedule.shared_commands is off)."
-              : `Den can't follow this schedule's command, so it can't be allowed: ${lim.why}.`,
-        },
+        { ok: false, code: lim.reason, error: limitMessage(lim) },
         409,
       );
       return true;

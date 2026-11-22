@@ -22,6 +22,9 @@ import {
   scheduleState,
   mayRun,
   SCHEDULE_DEFAULTS,
+  productionLimit,
+  shortestGapMs,
+  metadataHost,
 } from "../../../src/shared/verify/schedules.js";
 
 // A repo with the script the scheduled commands run (Den follows only a
@@ -307,7 +310,34 @@ describe("settings", () => {
       allowExpiryMs: 30 * DAY,
       expiryWarningMs: 3 * DAY,
       sharedCommands: false,
+      production: { enabled: false, minIntervalMs: 15 * 60_000, hosts: null },
     });
+    expect(
+      readScheduleSettings({
+        schedule: {
+          production: {
+            enabled: true,
+            min_interval: "1h",
+            hosts: ["Shop.Example.com"],
+          },
+        },
+      }).production,
+    ).toEqual({
+      enabled: true,
+      minIntervalMs: 3_600_000,
+      hosts: ["shop.example.com"],
+    });
+    expect(() =>
+      readScheduleSettings({ schedule: { production: { enabled: "yes" } } }),
+    ).toThrow(/verify\.schedule\.production\.enabled/);
+    expect(() =>
+      readScheduleSettings({ schedule: { production: { hosts: "x" } } }),
+    ).toThrow(/verify\.schedule\.production\.hosts/);
+    expect(() =>
+      readScheduleSettings({
+        schedule: { production: { min_interval: "soon" } },
+      }),
+    ).toThrow(/verify\.schedule\.production\.min_interval/);
     expect(
       readScheduleSettings({ schedule: { shared_commands: true } })
         .sharedCommands,
@@ -323,6 +353,7 @@ describe("settings", () => {
       allowExpiryMs: 7 * DAY,
       expiryWarningMs: 12 * 3_600_000,
       sharedCommands: false,
+      production: SCHEDULE_DEFAULTS.production,
     });
     expect(() =>
       readScheduleSettings({ schedule: { allow_expiry: "soon" } }),
@@ -354,7 +385,9 @@ describe("the standing Allow (T18)", () => {
       by: { kind: "person", name: "ward" },
       at: now.toISOString(),
       expiresAt: new Date(now.getTime() + 30 * DAY).toISOString(),
-      modules: [{ id: "shop:web/devices", writes: false, cmd: "./scripts/speed.sh" }],
+      modules: [
+        { id: "shop:web/devices", writes: false, cmd: "./scripts/speed.sh" },
+      ],
     });
     expect(readAllows(dir, "shop")[s.id]).toEqual(a);
     expect(
@@ -420,5 +453,80 @@ describe("the standing Allow (T18)", () => {
       "{not json",
     );
     expect(readAllows(dir, "shop")).toEqual({});
+  });
+});
+
+describe("issue 964: production schedules", () => {
+  const prod = (cron: string, urls: string[]) =>
+    listSchedules("shop", [
+      mod("web/smoke", {
+        environments: ["production"],
+        kind: "smoke",
+        adapter: "smoke",
+        cmd: undefined,
+        healthUrls: { production: urls },
+        schedule: { cron, env: "production" },
+      } as any),
+    ])[0];
+  const on = (p: object = {}) => ({
+    ...SCHEDULE_DEFAULTS,
+    production: { ...SCHEDULE_DEFAULTS.production, enabled: true, ...p },
+  });
+  const ok = ["https://shop.example.com/health"];
+
+  it("off until the org opts in", () => {
+    expect(productionLimit(prod("0 * * * *", ok), SCHEDULE_DEFAULTS)).toEqual({
+      reason: "production-off",
+    });
+    expect(
+      mayRun(prod("0 * * * *", ok), undefined, new Date(), SCHEDULE_DEFAULTS),
+    ).toBe(false);
+    expect(productionLimit(prod("0 * * * *", ok), on())).toBeNull();
+  });
+
+  it("no more often than min_interval (15 minutes by default)", () => {
+    expect(shortestGapMs("*/5 * * * *")).toBe(5 * 60_000);
+    expect(shortestGapMs("0 2 * * 1,2")).toBe(DAY);
+    expect(productionLimit(prod("* * * * *", ok), on())).toEqual({
+      reason: "too-often",
+    });
+    expect(productionLimit(prod("*/15 * * * *", ok), on())).toBeNull();
+    expect(
+      productionLimit(
+        prod("0 * * * *", ok),
+        on({ minIntervalMs: 2 * 3_600_000 }),
+      ),
+    ).toEqual({
+      reason: "too-often",
+    });
+  });
+
+  it("never a metadata address; only listed hosts when there is a list", () => {
+    expect(metadataHost("169.254.169.254")).toBe(true);
+    expect(metadataHost("[fe80::1]")).toBe(true);
+    expect(metadataHost("metadata.google.internal")).toBe(true);
+    expect(metadataHost("shop.example.com")).toBe(false);
+    expect(
+      productionLimit(
+        prod("0 * * * *", ["http://169.254.169.254/latest/"]),
+        on(),
+      ),
+    ).toEqual({
+      reason: "host",
+      hosts: ["169.254.169.254"],
+    });
+    const listed = on({ hosts: ["shop.example.com"] });
+    expect(productionLimit(prod("0 * * * *", ok), listed)).toBeNull();
+    expect(
+      productionLimit(prod("0 * * * *", ["https://other.example/x"]), listed),
+    ).toEqual({
+      reason: "host",
+      hosts: ["other.example"],
+    });
+  });
+
+  it("other environments: no production limit", () => {
+    const st = listSchedules("shop", [speed])[0];
+    expect(productionLimit(st, SCHEDULE_DEFAULTS)).toBeNull();
   });
 });

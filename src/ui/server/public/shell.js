@@ -284,6 +284,15 @@
     "v.sch_sk_window": "its window closed first",
     "v.sch_sk_busy": "another run was going",
     "v.sch_sk_cmdoff": "commands are off here",
+    "v.sch_sk_prodoff": "production schedules are off here",
+    "v.sch_sk_often": "it runs too often for production",
+    "v.sch_sk_host": "it reaches a host production may not",
+    "v.sch_lim_prod_off":
+      "Schedules don't run on production here. To turn them on, set this in Den's verify: block:",
+    "v.sch_lim_often":
+      "This runs on production more often than Den allows. Run it less often, or set the shortest gap in Den's verify: block:",
+    "v.sch_lim_host":
+      "A production run may not reach these hosts. Add them to verify.schedule.production.hosts, or point the check elsewhere:",
     "v.sch_sk_unclear": "Den couldn't follow its command",
     "v.sch_lim_off":
       "Commands don't run on their own on a shared environment here. To turn them on, set this in Den's verify: block:",
