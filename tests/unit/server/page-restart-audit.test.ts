@@ -103,6 +103,13 @@ describe("a person's restart from the page (issue 227)", () => {
     let calls = 0;
     for (const f of files) {
       const text = fs.readFileSync(path.join(dir, f), "utf-8");
+      // A call the scan can't read (restartDen(opts), nested braces) fails too.
+      const all = text.match(/restartDen\(/g)?.length ?? 0;
+      const read = [...text.matchAll(/restartDen\((\{[^}]*\})?\)/g)].length;
+      if (read !== all)
+        unnamed.push(
+          `${f}: ${all - read} restartDen call(s) the scan can't read`,
+        );
       for (const m of text.matchAll(/restartDen\((\{[^}]*\})?\)/g)) {
         calls++;
         const args = m[1] ?? "";
