@@ -76,12 +76,21 @@ export function syncHeldBell(
       kind: "decision",
       subject,
       scope: `workspace/${project || "den-server"}`,
+      // Issue 1293: a person's own ask under an unverified agent claim
+      // says so, never as though that agent asked.
       text: a.agent
         ? `${a.agent} waits for your Allow: ${what}`
-        : `Waiting for your Allow: ${what}`,
+        : a.claimedAs
+          ? `Waiting for your Allow: ${what}. You asked, as ${a.claimedAs} (not verified).`
+          : `Waiting for your Allow: ${what}`,
       msg: a.agent
         ? { key: "bell.m.heldAllow", vars: { name: a.agent, what } }
-        : { key: "bell.m.heldAllowAsk", vars: { what } },
+        : a.claimedAs
+          ? {
+              key: "bell.m.heldAllowClaimed",
+              vars: { name: a.claimedAs, what },
+            }
+          : { key: "bell.m.heldAllowAsk", vars: { what } },
       link: heldLink(a.agent, project),
     });
     if (n) added++;
@@ -100,6 +109,8 @@ export interface HeldWaiting {
   action: string;
   what: string;
   agent?: string;
+  /** Issue 1293: the person asked, under this unverified agent claim. */
+  claimedAs?: string;
   since: string;
   expiresAt: string;
   /**
@@ -127,6 +138,7 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       action: a.action,
       what: a.summary,
       ...(a.agent ? { agent: a.agent } : {}),
+      ...(a.claimedAs && !a.agent ? { claimedAs: a.claimedAs } : {}),
       since: new Date(a.requestedAt).toISOString(),
       expiresAt: new Date(a.expiresAt).toISOString(),
       ...(a.params ? { params: a.params } : {}),

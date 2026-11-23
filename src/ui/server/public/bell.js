@@ -248,9 +248,12 @@ export function allowsOf(b) {
  */
 function allowRowHtml(w, open) {
   const what = allowWhat(w);
+  // Issue 1293: the person asked, under an unverified agent claim.
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
-    : tr("bell.ap.rowAsk", { what });
+    : w.claimedAs
+      ? tr("bell.ap.rowClaimed", { name: w.claimedAs, what })
+      : tr("bell.ap.rowAsk", { what });
   const waits =
     typeof w.since === "string" && typeof w.expiresAt === "string"
       ? tr("bell.ap.waits", {

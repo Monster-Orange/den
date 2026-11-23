@@ -210,6 +210,14 @@ export interface Approval {
   actor: string;
   /** The asking agent's session name, for the dialog ("server wants to …"). */
   agent?: string;
+  /**
+   * Issue 1293: the agent a person's own scoped server claimed to be
+   * (`mcp --actor agent:<id>` with no agent token): never verified, so
+   * `actor` stays the person, who alone may withdraw or be held to it.
+   * Shown as "You asked, as <agent> (not verified)". Never set with
+   * `agent`.
+   */
+  claimedAs?: string;
   /** The action's name (an MCP write tool's). */
   action: string;
   /** A copy of the exact args, taken when it was asked for. */
@@ -673,6 +681,8 @@ export class ApprovalQueue {
   request(r: {
     actor: string;
     agent?: string;
+    /** Issue 1293: an unverified agent claim (see Approval.claimedAs). */
+    claimedAs?: string;
     action: string;
     args: Record<string, unknown>;
     summary: string;
@@ -748,6 +758,9 @@ export class ApprovalQueue {
           }
         : {}),
       ...(r.agent ? { agent: r.agent.slice(0, 64) } : {}),
+      ...(r.claimedAs && !r.agent
+        ? { claimedAs: r.claimedAs.slice(0, 80) }
+        : {}),
       ...(r.note?.trim()
         ? { note: r.note.replace(/\s+/g, " ").trim().slice(0, 300) }
         : {}),

@@ -211,6 +211,7 @@ import {
 } from "./notifications-command.js";
 import { GITHUB_HELP, cmdGithub } from "./github-command.js";
 import { ASK_HELP, cmdAsk } from "./ask-command.js";
+import { APPROVALS_HELP, cmdApprovals } from "./approvals-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
@@ -606,6 +607,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
   ask: ASK_HELP,
+  approvals: APPROVALS_HELP,
   github: GITHUB_HELP,
   feedback: {
     ...FEEDBACK_HELP,
@@ -1276,6 +1278,10 @@ class DenCLI {
 
         case "ask":
           process.exitCode = await cmdAsk(args.slice(1));
+          break;
+
+        case "approvals":
+          process.exitCode = await cmdApprovals(args.slice(1));
           break;
 
         case "github":
