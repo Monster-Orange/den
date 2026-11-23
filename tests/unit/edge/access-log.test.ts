@@ -74,6 +74,7 @@ describe("edge.access_log config", () => {
       ],
       maskPaths: ["/auth/link/*", "/invite/*"],
       maxMb: 5,
+      rawWarnKb: 1024,
     });
   });
   it("names the key on a bad value", () => {
@@ -337,9 +338,15 @@ describe("the sweep", () => {
     const small = fs.mkdtempSync(path.join(os.tmpdir(), "den-access-"));
     try {
       prepareAccessRaw(small);
+      // Issue 637: never swept is not swept, whatever its size.
       fs.appendFileSync(accessPaths(small).raw, traefikLine("/a") + "\n");
-      expect(rawAccessWarning(small, now)).toBeNull();
-      expect(rawAccessWarning(small, now + 11_000)).toMatch(/s ago/);
+      expect(rawAccessWarning(small, now)).toMatch(/never swept/);
+      // Swept, then a small line: fine until the sweep is 10 s old.
+      sweepAccessLog(small, on);
+      const at = fs.statSync(accessPaths(small).swept).mtimeMs;
+      fs.appendFileSync(accessPaths(small).raw, traefikLine("/b") + "\n");
+      expect(rawAccessWarning(small, at + 1_000)).toBeNull();
+      expect(rawAccessWarning(small, at + 11_000)).toMatch(/s ago/);
     } finally {
       fs.rmSync(small, { recursive: true, force: true });
     }
@@ -354,8 +361,9 @@ describe("the sweep", () => {
     expect(fs.statSync(raw()).size).toBe(0);
     expect(kept()).not.toContain(SECRET);
     expect(rawAccessWarning(dir, now + 60_000)).toBeNull();
-    expect(edgeAccessHealthy(cfg, now + 60_000)).toBe(
-      `access log on: masked into ${accessPaths(dir).log}, and kept up with`,
+    // Issue 637: a minute later, nothing waits, so the last sweep's age.
+    expect(edgeAccessHealthy(cfg, now + 60_000)).toMatch(
+      /, and kept up with \(last sweep \d+ s ago\)$/,
     );
     expect(
       edgeAccessHealthy({ ...cfg, accessLog: { enabled: false } }, now),
