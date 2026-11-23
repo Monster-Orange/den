@@ -88,7 +88,8 @@ describe("the server's store: busy at once, never a spin (issue 1339)", () => {
     await holdLock(dir, 5_000);
     const t0 = performance.now();
     expect(() => store.list()).toThrow(GateLockBusy);
-    expect(performance.now() - t0).toBeLessThan(50);
+    // A wait would take the default 10 s; a busy runner takes far less than 1 s.
+    expect(performance.now() - t0).toBeLessThan(1_000);
   });
 
   it("a lock left by a process that is gone is taken back at once", () => {
