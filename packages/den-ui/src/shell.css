@@ -455,6 +455,10 @@ body.den-has-shell > #den-content {
   background: var(--surface);
   border-right: 1px var(--edge-style, solid) var(--border);
   overflow-y: auto;
+  /* Issue 1341: an entry scrolled into view (keyboard focus) stops above
+     the sticky foot, never under it (WCAG 2.4.11). shell-client sets the
+     foot's height. */
+  scroll-padding-bottom: var(--den-rail-foot-h, 0px);
   z-index: 15;
   color: var(--text);
 }

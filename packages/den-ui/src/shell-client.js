@@ -174,6 +174,28 @@ export function hydrateShell(root, opts = {}) {
     for (const a of links) a.tabIndex = a === stop ? 0 : -1;
   }
 
+  // Issue 1341: the sticky foot's height, as the rail's scroll padding,
+  // so a focused entry scrolls to above the foot. Kept as the foot
+  // changes size (the account's lines, the drawer's Report).
+  const footRo =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => padFoot())
+      : null;
+  function padFoot() {
+    const f = nav && nav.querySelector(".den-rail-foot");
+    if (!nav) return;
+    if (f) nav.style.setProperty("--den-rail-foot-h", f.offsetHeight + "px");
+    else nav.style.removeProperty("--den-rail-foot-h");
+  }
+  function watchFoot() {
+    if (!nav) return;
+    if (footRo) footRo.disconnect();
+    const f = nav.querySelector(".den-rail-foot");
+    if (f && footRo) footRo.observe(f);
+    padFoot();
+  }
+  watchFoot();
+
   let lastHtml = null;
   function paint(html, force) {
     if (!nav || (!force && html === lastHtml)) return false;
@@ -185,6 +207,7 @@ export function hydrateShell(root, opts = {}) {
         : null;
     lastHtml = html;
     nav.innerHTML = html;
+    watchFoot();
     rove();
     if (keep) {
       const again = nav.querySelector('[data-nav="' + keep + '"]');

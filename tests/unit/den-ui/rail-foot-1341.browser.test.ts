@@ -182,6 +182,50 @@ function footInView(l: Look): void {
   }
 }
 
+/**
+ * From the current entry (where Tab lands), ArrowDown through every group
+ * entry to the last: each focused entry's bottom, against the foot's top.
+ * WCAG 2.4.11: focus is never under the sticky foot.
+ */
+const arrowToLast = (p: Page) =>
+  p.evaluate(async () => {
+    const rail = document.getElementById("den-rail") as HTMLElement;
+    const items = [
+      ...rail.querySelectorAll<HTMLElement>('[role="group"] [data-nav]'),
+    ];
+    const footTop = () =>
+      Math.min(
+        ...[...rail.querySelectorAll<HTMLElement>("a, button")]
+          .filter((el) => !el.closest('[role="group"]'))
+          .filter((el) => el.getClientRects().length > 0)
+          .map((el) => el.getBoundingClientRect().top),
+      );
+    const start =
+      rail.querySelector<HTMLElement>('[aria-current="page"]') ?? items[0];
+    start.focus();
+    const seen: { nav: string; bottom: number; footTop: number }[] = [];
+    for (let n = 0; n < 200; n++) {
+      const a = document.activeElement as HTMLElement;
+      const r = a.getBoundingClientRect();
+      seen.push({
+        nav: a.dataset.nav ?? "",
+        bottom: r.bottom,
+        footTop: footTop(),
+      });
+      if (a === items[items.length - 1]) break;
+      a.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      );
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    return { seen, last: items[items.length - 1].dataset.nav ?? "" };
+  });
+
+const focusClear = (o: Awaited<ReturnType<typeof arrowToLast>>) => {
+  expect(o.seen[o.seen.length - 1].nav).toBe(o.last);
+  for (const x of o.seen) expect(x.bottom).toBeLessThanOrEqual(x.footTop + 0.5);
+};
+
 describe.each(["chromium", "webkit"])(
   "issue 1341: the rail's foot, %s",
   (name) => {
@@ -252,6 +296,58 @@ describe.each(["chromium", "webkit"])(
         footInView(l);
         // The drawer's own Report ends the foot, in view with it.
         expect(l.foot[l.foot.length - 1].name).toBe("report");
+      } finally {
+        await p.context().close();
+      }
+    });
+
+    it("1280×700, keyboard down the groups: the focused entry is never under the foot", async () => {
+      if (!b()) return;
+      const p = await open(b());
+      try {
+        focusClear(await arrowToLast(p));
+      } finally {
+        await p.context().close();
+      }
+    });
+
+    it("1280×700 collapsed, keyboard down the groups: the focused entry is never under the foot", async () => {
+      if (!b()) return;
+      const p = await open(b(), { query: "?more" });
+      try {
+        await p.click('[data-act="collapse"]');
+        await p.waitForFunction(() =>
+          document.body.classList.contains("den-rail-collapsed"),
+        );
+        await p.evaluate(() => {
+          (document.getElementById("den-rail") as HTMLElement).scrollTop = 0;
+        });
+        focusClear(await arrowToLast(p));
+      } finally {
+        await p.context().close();
+      }
+    });
+
+    it("1280×900, the nav inventory's size: the rail keeps its 832 px height and 10 px padding", async () => {
+      if (!b()) return;
+      const p = await open(b(), { height: 900 });
+      try {
+        const r = await p.evaluate(() => {
+          const rail = document.getElementById("den-rail") as HTMLElement;
+          const cs = getComputedStyle(rail);
+          return {
+            height: cs.height,
+            top: cs.paddingTop,
+            bottom: cs.paddingBottom,
+            box: rail.getBoundingClientRect().height,
+          };
+        });
+        expect(r).toEqual({
+          height: "832px",
+          top: "10px",
+          bottom: "10px",
+          box: 852,
+        });
       } finally {
         await p.context().close();
       }
