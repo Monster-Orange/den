@@ -2165,7 +2165,10 @@
     },
     {
       "when": ["scripts/fast-checks.mjs"],
-      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "run": [
+        "tests/unit/scripts/org-name-commits.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
+      ],
       "why": "tests that run scripts/fast-checks.mjs"
     },
     {
