@@ -57,9 +57,172 @@ export function lockClosedHere(): boolean {
 let _sudoDir: string | null = null;
 let _askDir: string | null = null;
 
+/**
+ * Issue 121: what is wrong with a temp folder to make the shim folder in,
+ * or null. Nobody else may rename things in it. A folder's owner always
+ * can, sticky or not, so it is this user's, or root's and either sticky
+ * (like /tmp) or written by root only.
+ */
+export function tempParentProblem(
+  dir: string,
+  uid: number | undefined = process.getuid?.(),
+): string | null {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(dir);
+  } catch {
+    return "it is missing";
+  }
+  if (!st.isDirectory()) return "it is not a folder";
+  if (uid === undefined || st.uid === uid) return null;
+  if (st.uid !== 0) return "another user owns it"; // words-ok: the OS user that owns the folder
+  if (st.mode & 0o1000) return null;
+  if ((st.mode & 0o022) === 0) return null;
+  return "others can write to it and it has no sticky bit";
+}
+
+/** The temp folders to try, in order: TMPDIR first. */
+function tempCandidates(): string[] {
+  // os.tmpdir() is TMPDIR when set; read here as well, so the setting this
+  // process holds now (a test's too) is the one used.
+  const tmp = process.env.TMPDIR?.replace(/\/+$/, "") || os.tmpdir();
+  return [...new Set([tmp, os.tmpdir(), "/tmp"])];
+}
+
+/** The first temp folder that passes tempParentProblem, or null. */
+function safeTempParent(): string | null {
+  return tempCandidates().find((d) => tempParentProblem(d) === null) ?? null;
+}
+
 /** Den's own sudo shim dirs (never the real sudo). */
 function shimDirPrefix(): string {
-  return path.join(os.tmpdir(), `${product().cli}-sudo-`);
+  const tmp = safeTempParent() ?? tempCandidates()[0];
+  return path.join(tmp, `${product().cli}-sudo-`);
+}
+
+/**
+ * Issue 121: what is wrong with a folder for the shims, or null: it must be
+ * a real folder (not a link), this user's, and 0700. Read with lstat, so a
+ * link is never followed.
+ */
+export function privateDirProblem(
+  dir: string,
+  uid: number | undefined = process.getuid?.(),
+): string | null {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(dir);
+  } catch {
+    return "it is missing";
+  }
+  if (st.isSymbolicLink()) return "it is a link";
+  if (!st.isDirectory()) return "it is not a folder";
+  if (uid !== undefined && st.uid !== uid) return "another user owns it"; // words-ok: the OS user that owns the folder
+  if ((st.mode & 0o777) !== 0o700) return "its mode isn't 0700";
+  return null;
+}
+
+/**
+ * Issue 121: a fresh shim folder with a name nobody can guess (mkdtemp, so
+ * never one that was already there), checked, with this process's id in
+ * it for the sweep. Throws when the check fails.
+ */
+function makeShimDir(): string {
+  const parent = safeTempParent();
+  if (!parent)
+    throw new Error(
+      `The sudo store's folder can't be made: no temp folder is safe (${tempCandidates()
+        .map((d) => `${d}: ${tempParentProblem(d)}`)
+        .join("; ")}). Set TMPDIR to a folder only you can write to.`,
+    );
+  const dir = fs.mkdtempSync(path.join(parent, `${product().cli}-sudo-`));
+  fs.chmodSync(dir, 0o700);
+  const problem = privateDirProblem(dir);
+  if (problem) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* left for the sweep */
+    }
+    throw new Error(`The sudo store's folder can't be used: ${problem}.`);
+  }
+  fs.writeFileSync(path.join(dir, "pid"), `${process.pid}\n`, {
+    mode: 0o600,
+    flag: "wx",
+  });
+  return dir;
+}
+
+/** Whether process `pid` still runs (EPERM: it runs, as another user). */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Issue 121: at start, removes this user's shim folders whose process is
+ * gone (a crash leaves them, the password file with them): the old names
+ * (`-<pid>`, `-<pid>-ask`) and mkdtemp's (their `pid` file). Never a link,
+ * never another user's folder, never a live process's.
+ */
+export function sweepStaleSudoDirs(): void {
+  try {
+    sweep();
+  } catch {
+    /* a cleanup: never stops the server */
+  }
+}
+
+function sweep(): void {
+  // Only in a temp folder nobody else can swap things in.
+  if (!safeTempParent()) return;
+  const prefix = shimDirPrefix();
+  const parent = path.dirname(prefix);
+  const base = path.basename(prefix);
+  let names: string[];
+  try {
+    names = fs.readdirSync(parent);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!name.startsWith(base)) continue;
+    const dir = path.join(parent, name);
+    if (dir === _sudoDir || dir === _askDir) continue;
+    if (privateDirProblem(dir) && !ownFolder(dir)) continue;
+    let pid = Number(/^(\d+)(?:-ask)?$/.exec(name.slice(base.length))?.[1]);
+    if (!pid) {
+      try {
+        pid = Number(fs.readFileSync(path.join(dir, "pid"), "utf-8").trim());
+      } catch {
+        continue; // no owner known: left alone
+      }
+    }
+    if (!Number.isSafeInteger(pid) || pid <= 0 || alive(pid)) continue;
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* next start */
+    }
+  }
+}
+
+/** A real folder of this user's (old folders may not be 0700). */
+function ownFolder(dir: string): boolean {
+  try {
+    const st = fs.lstatSync(dir);
+    return (
+      !st.isSymbolicLink() &&
+      st.isDirectory() &&
+      st.uid === (process.getuid?.() ?? st.uid)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** The system's sudo: what Den runs whenever it is there. */
@@ -116,9 +279,11 @@ function shq(s: string): string {
 }
 
 export function setSudoPassword(password: string): void {
+  // Issue 121: the folder already made, if it still checks out; else a
+  // fresh one. Never a folder at a known name.
+  const dir =
+    _sudoDir && !privateDirProblem(_sudoDir) ? _sudoDir : makeShimDir();
   _sudoPassword = password;
-  const dir = `${shimDirPrefix()}${process.pid}`;
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const pwFile = path.join(dir, "pw");
   fs.writeFileSync(pwFile, password + "\n", { mode: 0o600 });
   const wrapper = path.join(dir, "sudo");
@@ -163,8 +328,7 @@ function askShim(): string {
 function ensureAskDir(): string | null {
   if (_askDir) return _askDir;
   try {
-    const dir = `${shimDirPrefix()}${process.pid}-ask`;
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const dir = makeShimDir(); // issue 121
     fs.writeFileSync(path.join(dir, "sudo"), askShim(), { mode: 0o700 });
     _askDir = dir;
   } catch {
