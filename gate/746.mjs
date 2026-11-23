@@ -30,7 +30,8 @@ export const clauses = [
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 180000;
 
-const FIXTURE = "decided by test fixture (Vision ruling 11-22)";
+const FIXTURE =
+  "clicked by the test fixture; Den refuses it (issue 810), so nothing is decided";
 // New names each run: a request an earlier run left waiting (the fixture
 // can't decide it) never shares a row or the per-agent waiting cap with this
 // run's (dev.5: two rows per name; dev.6: "already has 5 requests waiting").
