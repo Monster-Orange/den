@@ -73,16 +73,44 @@ describe("hardening: a sign-in start replaces its own browser's only", () => {
     expect(f.get(b)).toMatchObject({ state: "pending" });
   });
 
-  it("one address holds at most all slots but one: its oldest makes room", async () => {
+  it("one address past all slots but one: a new browser's start is busy, none is cancelled", async () => {
     const f = rig();
     const ids: string[] = [];
-    for (let i = 0; i < MAX_PENDING_FLOWS; i++)
+    for (let i = 0; i < MAX_PENDING_FLOWS - 1; i++)
       ids.push(await start(f, ip, f.browserTag()));
-    expect(f.get(ids[0]!)).toBeNull();
-    expect(f.pending()).toBe(MAX_PENDING_FLOWS - 1);
+    expect(
+      await f.start("signin", { client: ip, browser: f.browserTag() }),
+    ).toEqual({ error: "busy" });
+    for (const id of ids) expect(f.get(id)).toMatchObject({ state: "pending" });
     expect(
       "error" in (await f.start("signin", { client: "100.64.0.10" })),
     ).toBe(false);
+  });
+
+  it("a peer at the person's address, fresh tags each start, never cancels the person's sign-in", async () => {
+    const f = rig();
+    const person = await start(f, ip, f.browserTag());
+    const peer1 = await f.start("signin", {
+      client: ip,
+      browser: f.browserTag(),
+    });
+    const peer2 = await f.start("signin", {
+      client: ip,
+      browser: f.browserTag(),
+    });
+    expect("error" in peer1).toBe(false);
+    expect(peer2).toEqual({ error: "busy" });
+    expect(f.get(person)).toMatchObject({ state: "pending" });
+  });
+
+  it("at the address's share, the same browser still replaces its own (a reload)", async () => {
+    const f = rig();
+    const tag = f.browserTag();
+    await start(f, ip, f.browserTag());
+    const a = await start(f, ip, tag);
+    const b = await start(f, ip, tag);
+    expect(f.get(a)).toBeNull();
+    expect(f.get(b)).toMatchObject({ state: "pending" });
   });
 });
 
@@ -95,6 +123,14 @@ describe("hardening: the browser tag cookie", () => {
     expect(r.setCookie).toContain("HttpOnly");
     expect(r.setCookie).toContain("SameSite=Strict");
     expect(r.setCookie).toContain("Path=/api/github");
+  });
+
+  it("over https: the cookie is Secure too", () => {
+    const f = rig();
+    expect(browserTagFor(undefined, f, true).setCookie).toMatch(/; Secure$/);
+    expect(browserTagFor(undefined, f, false).setCookie).not.toContain(
+      "Secure",
+    );
   });
 
   it("a signed one sent: kept, no new cookie", () => {

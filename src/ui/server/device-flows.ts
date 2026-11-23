@@ -130,6 +130,8 @@ export const BROWSER_COOKIE = "den_gh_b";
 export function browserTagFor(
   cookieHeader: string | undefined,
   flows: Pick<DeviceFlows, "browserTag" | "browserOk">,
+  /** The request came over https: the cookie is Secure too. */
+  secure = false,
 ): { tag: string; setCookie?: string } {
   for (const part of (cookieHeader ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
@@ -139,7 +141,7 @@ export function browserTagFor(
   const tag = flows.browserTag();
   return {
     tag,
-    setCookie: `${BROWSER_COOKIE}=${tag}; Path=/api/github; HttpOnly; SameSite=Strict; Max-Age=86400`,
+    setCookie: `${BROWSER_COOKIE}=${tag}; Path=/api/github; HttpOnly; SameSite=Strict; Max-Age=86400${secure ? "; Secure" : ""}`,
   };
 }
 
@@ -223,8 +225,8 @@ export class DeviceFlows {
    * Issue 362: a start replaces the pending flow of the same browser at
    * the same address (a page reloaded; with no signed tag, the address's
    * untagged one). Two browsers behind one address keep theirs. An
-   * address holds all slots but one at most: past that its oldest goes,
-   * so one address can't fill every slot.
+   * address holds all slots but one at most: past that a new start is
+   * busy, so one address can't fill every slot or cancel another's.
    */
   async start(
     purpose: FlowPurpose,
@@ -260,11 +262,9 @@ export class DeviceFlows {
           f.cancel?.();
           this.flows.delete(f.id);
         }
-      const share = Math.max(1, this.max - 1);
-      for (const f of mine().slice(0, Math.max(0, mine().length - share + 1))) {
-        f.cancel?.();
-        this.flows.delete(f.id);
-      }
+      // Past its share another browser's start is busy: one address
+      // never fills every slot, and never cancels a sign-in in progress.
+      if (mine().length >= Math.max(1, this.max - 1)) return { error: "busy" };
     }
     if (this.pending() >= this.max) return { error: "busy" };
     // Held as pending while GitHub answers, so a burst can't pass the cap.

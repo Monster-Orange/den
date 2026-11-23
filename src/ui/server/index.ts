@@ -6143,6 +6143,10 @@ async function handleRequest(
         const g = checkRequest(r, GUARD, product().cli, product().title);
         return g.ok ? g.client : undefined;
       },
+      https: (r) => {
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        return httpsOf(r, g.ok ? g.via : null);
+      },
       tokensExpire: () => GITHUB_TOKENS_EXPIRE,
       cli: product().cli,
       sendJson,

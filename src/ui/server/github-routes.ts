@@ -88,6 +88,8 @@ export interface GithubRouteDeps {
   clientId: () => string;
   /** Issue 362: the address a request came from, when the guard knows it. */
   client?: (req: http.IncomingMessage) => string | undefined;
+  /** Whether the request came over https (the edge's proven header). */
+  https?: (req: http.IncomingMessage) => boolean;
   /** The app issued an expiring token (its token expiry is on): a misconfiguration. */
   tokensExpire?: () => boolean;
   cli: string;
@@ -343,7 +345,11 @@ export async function handleGithubRoutes(
     }
     const client = deps.client?.(req);
     // A start replaces only this browser's own pending sign-in.
-    const tag = browserTagFor(req.headers.cookie, deps.flows);
+    const tag = browserTagFor(
+      req.headers.cookie,
+      deps.flows,
+      deps.https?.(req) === true,
+    );
     if (tag.setCookie) res.setHeader("Set-Cookie", tag.setCookie);
     await startFlow(deps, res, "signin", {
       local,
