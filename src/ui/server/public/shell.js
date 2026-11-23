@@ -2343,6 +2343,10 @@
       "An agent's gate slot: grace past its estimate, in minutes",
     "set.server.gate_mcp_grace.d":
       "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_waiter_return":
+      "A waiting test run keeps its place this long after it ends, in minutes",
+    "set.server.gate_waiter_return.d":
+      "When a waiting test run ends without giving up its place (a restart, or its window closed), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "Gate classes, highest first",
     "set.server.gate_class_order.d":
       "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
@@ -2379,6 +2383,9 @@
     "set.server.report_screenshot_days": "Report screenshots, kept for",
     "set.server.report_screenshot_days.d":
       "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.server_log_max": "Warnings log, largest size",
+    "set.server.server_log_max.d":
+      "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max": "Report screenshots, largest kept",
     "set.server.report_screenshot_max.d":
       "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
@@ -2850,6 +2857,9 @@
     "ag.mcp.reloading": "Restarting to load Hub's tools",
     "ag.mcp.reloadingTip":
       "Hub's tools changed. Den restarts this agent at its next idle so it can use them. It keeps its conversation.",
+    "ag.mcp.failed": "Hub's tools didn't load",
+    "ag.mcp.failedTip":
+      "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
@@ -2956,6 +2966,18 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.web_url_set": "Make {url} this Den's address",
+    "ap.det.web_url_set.newHost":
+      "New host: {host} isn't this machine or an address Den serves. Sign-in and every link will go through it.",
+    "ap.det.web_url_set.now": "Now: {from}.",
+    "ap.det.web_url_set.nowUnconfirmed": "Now: {from} (not confirmed).",
+    "ap.det.web_url_set.none": "Now: no address is set.",
+    "ap.det.web_url_set.answers":
+      "{url} answers as this Den now: Den asked it for a one-time token, through its name.",
+    "ap.det.web_url_set.saves":
+      "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
+    "set.ui.hub.denUrlRefused":
+      "Hub didn't take this Den's address ({url}): {why}",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -3523,6 +3545,11 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.shared": "{actor} shared {title} with you",
+    "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
+    "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
+    "bell.m.sharedAgentNote":
+      "The agent {actor} shared {title} with you: {note}",
     "bell.m.heldLapsed":
       "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
     "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
@@ -3548,6 +3575,10 @@
     "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
+    "bell.m.ranLoggedOut":
+      "While you were logged out ({min} min), these agents ran: {names}",
+    "bell.m.stoppedLoggedOut":
+      "While you were logged out ({min} min), these agents stopped: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
@@ -3607,6 +3638,8 @@
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
+    "bell.m.toolsListFailed":
+      "{agent} can't use Hub's tools: listing them failed again after __DEN_TITLE__ restarted it once. Restart it from Agents once Hub is fixed",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":

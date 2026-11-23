@@ -174,8 +174,10 @@ describe("den-ui tokens (UK-1)", () => {
         const p = path.join(d, e.name);
         // site/ is the kit's tab icons and head snippet (issue 644): the
         // brand's own colours (the theme colour), not a component's.
+        // themes/ is a theme's tokens, built from its den-theme.json
+        // (issue 788): colours are what a theme is.
         if (e.isDirectory()) {
-          if (path.relative(SRC, p) !== "site") walk(p);
+          if (!["site", "themes"].includes(path.relative(SRC, p))) walk(p);
         } else if (/\.(css|js|mjs|html)$/.test(e.name)) files.push(p);
       }
     };
