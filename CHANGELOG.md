@@ -4,6 +4,20 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.88] - unreleased
+
+### Added
+
+- Groups (off by default; turn on with `hub.groups`). The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30). (issue 750)
+- UI kit 0.14.0: a group header component.
+
+### Fixed
+
+- Agents' git commits sign again inside the sandbox when the person's git signs with GPG. The sandbox keeps the person's GPG key out of reach, so agents now sign with their own SSH key by default when the person's git signs commits: an install-owned key, made once, readable to agent sessions and never writable by them. `agents.git.signing_key` still picks a key, which must sit outside Den's state folder or in its `agent-signing` folder (Doctor says so if not), and `agents.git.signing: off` keeps the old behaviour. Doctor checks signing inside the sandbox and shows the one-time step that makes GitHub show the agents' commits as Verified. When gpg fails inside a session, the note says why. (issue 1316)
+
+- A message Den delivers to an agent (a Hub comment, a lead or group message, the tools note) no longer sends the person's unsent draft with it. While the person has text on the agent's input line, deliveries wait in order, and the agent's terminal shows how many are waiting. Den never submits a draft; after `agents.draft_hold_max_minutes` (default 30) the person is belled once and deliveries keep waiting. A draft typed outside Den's terminal (for example a local tmux attach) isn't seen. (issue 1311)
+- On the Agents page, a tab or row the person picks while the page is still opening the panes its link asked for stays in front; the rest open behind it. Once every pane is open, picks and `?front=` work as before. (issue 1315)
+
 ## [0.4.87] - 2026-11-23
 
 ### Security

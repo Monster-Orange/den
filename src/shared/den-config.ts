@@ -37,10 +37,7 @@ import {
   type RolesConfig,
 } from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
-import {
-  gitSigningBlock,
-  type AgentGitBlock,
-} from "./agents/git-signing.js";
+import { gitSigningBlock, type AgentGitBlock } from "./agents/git-signing.js";
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";

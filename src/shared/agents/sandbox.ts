@@ -340,7 +340,11 @@ export function sandboxHidesFile(
     return isUnder(f, path.join(state, SESSION_SIGNING_DIR))
       ? null
       : `${file} is in Den's state folder, hidden from agents: put the key in ${path.join(state, SESSION_SIGNING_DIR)}/ or outside the state folder`;
-  if ([...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) => isUnder(f, d)))
+  if (
+    [...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) =>
+      isUnder(f, d),
+    )
+  )
     return `${file} is in a folder hidden from agents (Den's local proof, an edge's keys or another install's state)`;
   return null;
 }

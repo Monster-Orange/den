@@ -1011,6 +1011,9 @@
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
       "{name} no dio un código a esta página. Inténtalo de nuevo.",
+    "err.signin.pairStartLead":
+      "Inicia sesión con un código desde un navegador que ya tenga la sesión iniciada en {name}, en {host} u otro ordenador.",
+    "err.signin.pairStart": "Iniciar sesión desde otro ordenador",
     "err.signin.newCode": "Obtener un código nuevo",
     "err.signin.youreIn": "Ya estás dentro.",
     "err.signin.expiredLead":
@@ -2159,14 +2162,20 @@
     "pair.aDevice": "Un navegador",
     "pair.local": "en este ordenador, por localhost",
     "pair.help":
-      "Escribe el código que se muestra en la pantalla de ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
+      "Escribirlo demuestra que estás en ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
     "pair.ended":
       "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
     "pair.expired": "Ese código caducó. No se permitió nada.",
     "pair.close": "Cerrar",
-    "pair.codeLabel": "Código en la pantalla de ese ordenador",
+    "pair.from": "Desde {client}, pide {host}, a las {time}.",
+    "pair.fromNamed":
+      "Desde {client} (se hace llamar {name}), pide {host}, a las {time}.",
+    "pair.unknownAddr": "una dirección que Den no pudo ver",
+    "pair.unexpected":
+      "Si no acabas de intentar iniciar sesión en otro ordenador, deniégalo.",
+    "pair.codeLabel": "Escribe el código que muestra ese ordenador",
     "pair.age": "Lo pidió hace {n} min.",
     "pair.ageNow": "Lo pidió ahora mismo.",
     "pair.fromLogin": "Del web login ejecutado a las {time}.",

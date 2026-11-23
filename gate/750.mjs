@@ -9,6 +9,17 @@
 // Den side drawn from them is the bed's own page. Its routes live on a
 // page of the module's own, closed after. The real Hub read is checked on
 // its own, and skipped while the bed's Hub has no groups route.
+//
+// The real-Hub leg (setup, once) runs on a throwaway second Den
+// (ctx.den2()), never the bed's own, connected by the harness's fixture
+// Connect to test Hub A in a gate-750 test company. Allowed by test
+// fixture (Vision's ruling): the fixture person presses Allow, the
+// harness's Hub helpers make the group and send to it, test companies
+// only; nothing steps around Hub's refusal of sign-in links in agent
+// sessions. Two stub agents: a lead whose Hub tools load, and a member
+// whose session's Hub initialize fails (the stub's /hubmcp-badinit, through
+// Den's real /hub/mcp proxy). Each step skips by name while the harness
+// lacks what it needs.
 export const issue = 750;
 export const clauses = [
   "By group beside By project: each group's kit header with its lead marked, opening the group in Hub (a new tab)",
@@ -19,6 +30,10 @@ export const clauses = [
   "403 groups_not_in_plan and a guest's 403 each show their own line, and no group UI",
   "Den reads the bed's own Hub for groups",
   "hub.groups off (the default): the page's groups read answers off, and Hub isn't asked",
+  "real Hub: By group reads the test group from Hub, its lead marked, and this Den's agents under it",
+  "real Hub: Message group opens the test Hub's composer for the group",
+  "real Hub: a group message to an agent whose Hub tools failed to load is acked held, and Hub's thread shows exactly the reason Den sent",
+  "real Hub: with hub.groups off, the Den reads off and the test Hub sees no groups request",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000;
@@ -55,10 +70,219 @@ const groupsOk = () => ({
   ],
 });
 
+// The real-Hub leg's names (test data only).
+const SLUG = "g750-check";
+const LEAD = "g750-lead";
+const HELD = "g750-held";
+const WS = "gate-750";
+// What Den sends Hub for an agent whose Hub tools failed to load (issue
+// 750, src/shared/hub-delivery.ts HUB_TOOLS_UNAVAILABLE).
+const HELD_REASON = "hub_tools_unavailable";
+let D2 = null;
+
+const msg = (e) => String(e?.message ?? e).slice(0, 200);
+// A missing harness piece skips (needs-*); a product step that fails fails.
+const fail = (why, detail) => ({ fail: why, why: detail ?? why });
+const skip = (why, detail) => ({
+  skip: why,
+  ...(detail ? { why: detail } : {}),
+});
+
+async function poll(ctx, f, ms, every = 1000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await f().catch(() => null);
+    if (v || Date.now() >= end) return v;
+    await ctx.sleep(every);
+  }
+}
+
+/** The real-Hub leg: every value it returns is plain JSON. */
+async function hubLeg(ctx) {
+  if (!ctx.den2) return skip("needs-den2", "the bed gives no ctx.den2");
+  let d2;
+  try {
+    // A test install (den-bed's fixture-person exception for den2): its
+    // page and API run as the fixture person, on test Hubs only.
+    d2 = await ctx.den2({ product: { testInstall: true } });
+  } catch (e) {
+    return skip(
+      "needs-den2-person",
+      `the second Den could not start signed in: ${msg(e)}`,
+    );
+  }
+  D2 = d2;
+  const A = d2.hubs?.a;
+  const company = (A?.companies ?? []).find((c) => /^gate-750/.test(String(c)));
+  if (!A?.url) return skip("needs-test-hub");
+  if (!company)
+    return skip(
+      "needs-gate-750-company",
+      "test Hub A lists no gate-750 company",
+    );
+  if (!d2.hubConnect) return skip("needs-fixture-connect");
+  if (!A.group || !A.groupSend || !A.groupThread)
+    return skip(
+      "needs-hub-group-fixture",
+      "no group / groupSend / groupThread on test Hub A",
+    );
+  const out = { fixture: "allowed by test fixture", hub: A.url, company };
+  try {
+    const on = d2.cli(["config", "hub.groups=true"]);
+    if (on.code !== 0)
+      return { ...out, ...fail("config", `hub.groups=true: ${on.code}`) };
+    const c = await d2.hubConnect("a", { company });
+    if (!c?.ok)
+      return { ...out, ...fail("connect", c?.why ?? "fixture Connect failed") };
+    // Both agents tell Hub they exist (a Hub call through Den's proxy).
+    const lead = d2.agent(LEAD, { workspace: WS });
+    const held = d2.agent(HELD, { workspace: WS });
+    lead.start("tester");
+    held.start("tester");
+    if (
+      (await lead.running(30000)) == null ||
+      (await held.running(30000)) == null
+    )
+      return { ...out, ...fail("agents", "the stub agents didn't start") };
+    // A raw line typed into the stub (its /hubmcp commands): ctx.agent(id).line.
+    if (!lead.line)
+      return {
+        ...out,
+        ...skip("needs-stub-line", "no ctx.agent(id).line(text)"),
+      };
+    lead.line("/hubmcp hub_whoami {}");
+    held.line("/hubmcp hub_whoami {}");
+    if (!lead.hubIdentity || !held.hubIdentity)
+      return {
+        ...out,
+        ...skip("needs-hub-identity", "no ctx.agent(id).hubIdentity()"),
+      };
+    const idLead = await poll(ctx, () => lead.hubIdentity(), 20000);
+    const idHeld = await poll(ctx, () => held.hubIdentity(), 20000);
+    if (!idLead?.install || !idHeld?.install)
+      return {
+        ...out,
+        ...fail("hub-identity", "Hub doesn't know the stub agents yet"),
+      };
+    await A.group(company, SLUG, {
+      name: "Gate 750 check",
+      leadAgent: `${idLead.install}:${idLead.agentKey}`,
+      // escalates: left to the harness's default, the test Hub's fixture person.
+      roles: { held: `${idHeld.install}:${idHeld.agentKey}` },
+    });
+
+    // (1) Den reads the group from Hub, its lead and member marked as here.
+    const read = await poll(
+      ctx,
+      async () => {
+        const r = await d2.api("/api/hub/groups?fresh=1");
+        return r?.state === "ok" && r.groups?.some((g) => g.slug === SLUG)
+          ? r
+          : null;
+      },
+      20000,
+    );
+    const g = read?.groups?.find((x) => x.slug === SLUG) ?? null;
+    out.read = {
+      state: read?.state ?? null,
+      found: !!g,
+      leadHere: g?.lead?.here === true && g?.lead?.agentId === LEAD,
+      heldHere: !!g?.members?.some(
+        (m) => m.agentId === HELD && m.here === true,
+      ),
+      compose: g?.compose ?? null,
+    };
+
+    // (2) Message group: Hub's composer for the group, and Hub serves it.
+    const want = `${A.url.replace(/\/$/, "")}/${company}/groups/${SLUG}?compose=1`;
+    out.compose = {
+      want,
+      got: g?.compose ?? null,
+      origin: new URL(A.url).origin,
+    };
+    if (g?.compose) {
+      const r = await fetch(g.compose, { redirect: "manual" }).catch((e) => ({
+        status: msg(e),
+      }));
+      out.compose.status = r.status;
+      out.compose.location = r.headers?.get?.("location") ?? null;
+    }
+
+    // (3) The member's Hub tools fail to load; a group message to it is held.
+    held.line("/hubmcp-badinit");
+    const failed = await poll(
+      ctx,
+      async () => {
+        const ss = await d2.api("/api/sessions");
+        const row = (ss?.rows ?? ss ?? []).find?.((x) => x.agent === HELD);
+        return Array.isArray(row?.mcpFailed) && row.mcpFailed.length
+          ? row.mcpFailed
+          : null;
+      },
+      20000,
+    );
+    out.failed = !!failed;
+    if (failed) {
+      const sent = await A.groupSend(
+        company,
+        `${SLUG}/all`,
+        `gate 750 check ${Date.now()}`,
+      );
+      out.thread = sent?.thread ?? null;
+      const marks = await poll(
+        ctx,
+        async () => {
+          const t = await A.groupThread(company, sent.thread);
+          const m = (t ?? []).find((x) => x.address === `${SLUG}/held`);
+          return m && m.state === "held" ? t : null;
+        },
+        60000,
+        2000,
+      );
+      const m = (marks ?? []).find((x) => x.address === `${SLUG}/held`) ?? null;
+      out.held = { state: m?.state ?? null, reason: m?.reason ?? null };
+    }
+
+    // (4) Off: the Den reads off, and Hub sees no groups request from it.
+    // The control first: the same fresh read with groups on must reach
+    // Hub, so a count of 0 can't come from a Den that never calls this Hub
+    // or a prefix that never matches.
+    if (!A.requests)
+      out.off = skip("needs-hub-request-count", "no requests() on test Hub A");
+    else {
+      const onSince = new Date().toISOString();
+      await d2.api("/api/hub/groups?fresh=1");
+      await ctx.sleep(2000);
+      const onRequests = await A.requests("/api/groups", { since: onSince });
+      const off = d2.cli(["config", "hub.groups=false"]);
+      if (off.code !== 0)
+        out.off = {
+          onRequests,
+          ...fail("config", `hub.groups=false: ${off.code}`),
+        };
+      else {
+        const since = new Date().toISOString();
+        const r = await d2.api("/api/hub/groups?fresh=1");
+        await ctx.sleep(2000);
+        out.off = {
+          state: r?.state ?? null,
+          onRequests,
+          requests: await A.requests("/api/groups", { since }),
+        };
+      }
+    }
+  } catch (e) {
+    out.error = msg(e);
+  }
+  return out;
+}
+
 export async function setup(ctx) {
   const a = ctx.agent(AGENT);
   a.start("tester");
-  return { runMs: await a.running(20000) };
+  const s = { runMs: await a.running(20000) };
+  s.hubLeg = await hubLeg(ctx).catch((e) => ({ error: msg(e) }));
+  return s;
 }
 
 export async function run(ctx, s) {
@@ -181,8 +405,12 @@ export async function run(ctx, s) {
     await p.close().catch(() => {});
   }
   // The bed's own Hub, through Den (no page routes).
-  const real = await ctx.api("/api/hub/groups").catch(() => null);
+  // A failed read says why (status, message), never a bare null.
+  const real = await ctx.api("/api/hub/groups").catch((e) => ({
+    error: String(e?.message ?? e).slice(0, 200),
+  }));
   out.real = real?.state ?? null;
+  if (real?.error) out.realError = real.error;
   return out;
 }
 
@@ -278,6 +506,7 @@ export function expect(cells) {
     },
   ];
   const real = list[0]?.result?.real ?? null;
+  const realError = list[0]?.result?.realError ?? null;
   // Until the bed's Hub serves GET /api/groups (G1), Den says it can't.
   if (real === "ok" || real === "unavailable" || real === "refused")
     rows.push({
@@ -290,7 +519,7 @@ export function expect(cells) {
       clause: clauses[6],
       ok: null,
       skip: "needs-hub-groups",
-      detail: `the bed's Hub: ${real}`,
+      detail: `the bed's Hub: ${real}${realError ? ` (${realError})` : ""}`,
     });
   // The bed runs with hub.groups at its default (off): nothing new.
   rows.push(
@@ -301,12 +530,98 @@ export function expect(cells) {
           ok: null,
           skip: "needs-hub-groups-off",
           why: "the bed's Den has hub.groups on",
-          detail: `the bed's Den: ${real}`,
+          detail: `the bed's Den: ${real}${realError ? ` (${realError})` : ""}`,
         },
   );
+  rows.push(...hubRows(list[0]?.result?.hubLeg ?? null));
   return rows;
 }
 
+/** The real-Hub leg's four rows: a skip names the missing harness piece;
+ *  a product step that failed fails all four, with its reason. */
+export function hubRows(h) {
+  const at = (i) => clauses[8 + i];
+  const skipped = (why, detail) =>
+    [0, 1, 2, 3].map((i) => ({ clause: at(i), ok: null, skip: why, detail }));
+  if (!h) return skipped("needs-hub-leg", "the leg didn't run");
+  if (h.skip) return skipped(h.skip, h.why ?? h.skip);
+  if (h.fail || (h.error && !h.read))
+    return [0, 1, 2, 3].map((i) => ({
+      clause: at(i),
+      ok: false,
+      detail: h.fail ? `${h.fail}: ${h.why}` : `error: ${h.error}`,
+    }));
+  const rows = [];
+  const r = h.read ?? {};
+  rows.push({
+    clause: at(0),
+    ok:
+      r.state === "ok" &&
+      r.found === true &&
+      r.leadHere === true &&
+      r.heldHere === true,
+    detail: `read ${r.state}; group ${r.found ? "found" : "missing"}; lead here ${r.leadHere}; member here ${r.heldHere} (${h.fixture})`,
+  });
+  const c = h.compose ?? {};
+  rows.push({
+    clause: at(1),
+    ok: !!c.got && c.got === c.want && served(c),
+    detail: `compose ${c.got} (want ${c.want}), Hub answered ${c.status}${c.location ? ` → ${c.location}` : ""}`,
+  });
+  const held = h.held ?? {};
+  rows.push(
+    h.failed === false
+      ? {
+          clause: at(2),
+          ok: false,
+          detail: "the member's Hub tools never showed as failed",
+        }
+      : {
+          clause: at(2),
+          ok: held.state === "held" && held.reason === HELD_REASON,
+          detail: `thread ${h.thread}: the member's mark ${held.state} "${held.reason}" (want held "${HELD_REASON}")`,
+        },
+  );
+  const off = h.off ?? {};
+  rows.push(
+    off.skip
+      ? { clause: at(3), ok: null, skip: off.skip, detail: off.why ?? off.skip }
+      : off.fail
+        ? { clause: at(3), ok: false, detail: `${off.fail}: ${off.why}` }
+        : {
+            clause: at(3),
+            ok:
+              off.onRequests >= 1 && off.state === "off" && off.requests === 0,
+            detail: `groups requests to Hub while on: ${off.onRequests}; read ${off.state} when off; requests since: ${off.requests}`,
+          },
+  );
+  // An error thrown after the read: the rows it cut short say so.
+  if (h.error)
+    for (const x of rows)
+      if (x.ok === false) x.detail += ` (error: ${h.error})`;
+  return rows;
+}
+
+/** Hub served the composer: a 2xx, or a 3xx that stays on the test Hub. */
+function served(c) {
+  if (typeof c.status !== "number") return false;
+  if (c.status >= 200 && c.status < 300) return true;
+  if (c.status < 300 || c.status >= 400 || !c.location) return false;
+  try {
+    return new URL(c.location, c.origin).origin === c.origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function teardown(ctx) {
-  if (ctx.agent(AGENT).state()) ctx.agent(AGENT).remove();
+  try {
+    if (ctx.agent(AGENT).state()) ctx.agent(AGENT).remove();
+  } finally {
+    if (D2) {
+      const d = D2;
+      D2 = null;
+      await d.close().catch(() => {});
+    }
+  }
 }

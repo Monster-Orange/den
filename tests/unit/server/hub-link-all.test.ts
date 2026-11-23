@@ -199,6 +199,22 @@ describe("#68: /api/hub/link-suggestions", () => {
     expect(picks).toEqual([]);
   });
 
+  it("issue 1334: an empty project is never offered, and a pick of it links nothing", async () => {
+    const { url, store, sent } = await serve({
+      empty: (ws) => ws === "back-office",
+    });
+    const j = (await (await fetch(url)).json()) as {
+      projects: { project: string }[];
+    };
+    expect(j.projects.map((p) => p.project)).not.toContain("back-office");
+    const r = await post(url, {
+      links: [{ project: "back-office", hub: BACK.id }],
+    });
+    expect(await r.json()).toMatchObject({ ok: true, linked: [] });
+    expect(store.get("back-office")).toBeUndefined();
+    expect(sent.n).toBe(0);
+  });
+
   it("POST nothing to link: no sync", async () => {
     const { url, sent } = await serve();
     expect((await post(url, { links: [] })).status).toBe(200);

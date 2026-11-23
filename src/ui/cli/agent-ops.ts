@@ -929,10 +929,10 @@ function signingKeyRefusedDirs(
 ): string[] {
   const out = [...edgeKeyDirs(distRoot)];
   try {
-    for (const o of listOtherInstalls(
-      registryDir({ ...process.env, ...env }),
-      { ownStateDir: stateDir, home: { ...process.env, ...env }.HOME },
-    ))
+    for (const o of listOtherInstalls(registryDir({ ...process.env, ...env }), {
+      ownStateDir: stateDir,
+      home: { ...process.env, ...env }.HOME,
+    }))
       out.push(o.stateDir, ...o.edgeKeyDirs);
   } catch {
     /* no registry: nothing more to refuse */
@@ -4350,70 +4350,75 @@ export async function startAgent(
       });
       const { rec, info, signInWarning, sandboxWarning, signingWarning } =
         await startSession(
-        d,
-        c,
-        {
-          rec: {
-            id,
-            persona: persona.id,
-            // PSN-3: the persona as it started.
-            personaOrigin: persona.origin,
-            ...(personaHashOf(persona)
-              ? { personaHash: personaHashOf(persona) }
-              : {}),
-            runtime: rt.id,
-            ...(ch.model ? { model: ch.model } : {}),
-            ...(ch.model ? { version: ch.version } : {}),
-            ...(ch.permission ? { permission: ch.permission } : {}),
-            ...(req.allow !== undefined ? { allow: ch.extras } : {}),
-            ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
-            ...subagentsField(rt, persona, cfg),
-            workspace: ws,
-            cwd: input.worktree,
-            // D65 v2: its project and repo outlive every new conversation.
-            ...linkFields(d, ws, input.worktree, req.repo, prev),
-            sessionName: sessionName(d.dist, ws, id),
-            peerName,
-            // AG-4b: a name given to the agent is the agent's, not its
-            // conversation's: Start fresh and Relaunch keep it. AG-10.8:
-            // else its persona's name ("Rita").
-            // AG-10.10: a name given at start wins.
-            ...(given
-              ? { displayName: given, displayNameAt: new Date().toISOString() }
-              : prev?.displayName
+          d,
+          c,
+          {
+            rec: {
+              id,
+              persona: persona.id,
+              // PSN-3: the persona as it started.
+              personaOrigin: persona.origin,
+              ...(personaHashOf(persona)
+                ? { personaHash: personaHashOf(persona) }
+                : {}),
+              runtime: rt.id,
+              ...(ch.model ? { model: ch.model } : {}),
+              ...(ch.model ? { version: ch.version } : {}),
+              ...(ch.permission ? { permission: ch.permission } : {}),
+              ...(req.allow !== undefined ? { allow: ch.extras } : {}),
+              ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
+              ...subagentsField(rt, persona, cfg),
+              workspace: ws,
+              cwd: input.worktree,
+              // D65 v2: its project and repo outlive every new conversation.
+              ...linkFields(d, ws, input.worktree, req.repo, prev),
+              sessionName: sessionName(d.dist, ws, id),
+              peerName,
+              // AG-4b: a name given to the agent is the agent's, not its
+              // conversation's: Start fresh and Relaunch keep it. AG-10.8:
+              // else its persona's name ("Rita").
+              // AG-10.10: a name given at start wins.
+              ...(given
                 ? {
-                    displayName: prev.displayName,
-                    ...(prev.displayNameAt
-                      ? { displayNameAt: prev.displayNameAt }
-                      : {}),
+                    displayName: given,
+                    displayNameAt: new Date().toISOString(),
                   }
-                : persona.displayName
-                  ? { displayName: persona.displayName }
-                  : {}),
-            // 0.4.8: launched on this token, so a resume continues it.
-            ...(out.resumeToken
-              ? { resumeToken: out.resumeToken, launched: true }
-              : {}),
-            ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
-            // Issue 943: started on the test-person path, never brought in.
-            ...(auditVia() === "test-person" && !more.bringIn
-              ? { testBed: true as const }
-              : {}),
-            // D56: started outside its project, brought in by an ask naming
-            // that folder.
-            ...(more.bringIn?.outside ? { outside: true } : {}),
+                : prev?.displayName
+                  ? {
+                      displayName: prev.displayName,
+                      ...(prev.displayNameAt
+                        ? { displayNameAt: prev.displayNameAt }
+                        : {}),
+                    }
+                  : persona.displayName
+                    ? { displayName: persona.displayName }
+                    : {}),
+              // 0.4.8: launched on this token, so a resume continues it.
+              ...(out.resumeToken
+                ? { resumeToken: out.resumeToken, launched: true }
+                : {}),
+              ...(more.bringIn
+                ? { broughtInAt: new Date().toISOString() }
+                : {}),
+              // Issue 943: started on the test-person path, never brought in.
+              ...(auditVia() === "test-person" && !more.bringIn
+                ? { testBed: true as const }
+                : {}),
+              // D56: started outside its project, brought in by an ask naming
+              // that folder.
+              ...(more.bringIn?.outside ? { outside: true } : {}),
+            },
+            argv: out.argv,
+            env: out.env,
+            passthrough: rt.envPassthrough,
+            launchEnv: rt.launchEnv,
+            tokenEnv: rt.signInTokenEnv,
+            grants: cfg.agents[id]?.grants ?? [],
+            ...binDirOf(det),
           },
-          argv: out.argv,
-          env: out.env,
-          passthrough: rt.envPassthrough,
-          launchEnv: rt.launchEnv,
-          tokenEnv: rt.signInTokenEnv,
-          grants: cfg.agents[id]?.grants ?? [],
-          ...binDirOf(det),
-        },
-        old,
-        more.rotations?.length ? { rotations: more.rotations } : {},
-      );
+          old,
+          more.rotations?.length ? { rotations: more.rotations } : {},
+        );
       // 0.4.48: launched with no Hub because its token couldn't be read:
       // noted as a failed connect, so once Den reads it again the agent is
       // restarted to load Hub's tools, as after a Hub outage (mcp-reconnect).
