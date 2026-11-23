@@ -341,6 +341,24 @@ the few writes live checks need, never opens a terminal, and ends as soon
 as the install stops being a test install, the key goes, or its time is
 up.
 
+A check that needs a project set up (a long name, to see how a row
+truncates) makes it as the fixture person and removes it at the end, even
+when the check throws:
+
+```js
+import { withFixtureProject } from "./lib/fixture-project.mjs";
+
+await withFixtureProject(ctx, "a very long project name", async (slug) => {
+  // ... the check, against the project `slug`
+});
+```
+
+On a test install the fixture person may create a project, and activate,
+deactivate and delete the projects it made, audited as "fixture person".
+It can't rename or focus one, touch a project it didn't make, or remove
+folders or clones when it deletes one. Anywhere else, and for an agent's
+token everywhere, these are refused.
+
 ### A new test install, and the test operator
 
 A test install can also be **created** as one. Start the server with the
