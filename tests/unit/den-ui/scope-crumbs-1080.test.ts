@@ -84,27 +84,26 @@ describe("issue 1080: scope crumbs never draw over each other or under the searc
 });
 
 // Review: the last crumb, kept whole (issue 303), still ran under the
-// search with a long value. On a narrow left part its key goes and its
-// value ends in "…" where its own column can't hold it (the left part's
-// own width, cqi). The left part itself never clips: a crumb's open menu
-// hangs past it.
+// search with a long value, and a guessed cap (100cqi less a fixed sum)
+// was short at 960px. On a narrow left part the last crumb has a floor
+// like the others (its padding, 7ch: 6 characters and "…", its ▾) and
+// shrinks to it, so the layout itself ends the crumbs where the left part
+// ends, with or without an optional menu crumb. The left part itself
+// never clips: a crumb's open menu hangs past it.
 describe("issue 1080: a long last crumb on a narrow left part", () => {
   const q = () =>
     CSS.match(
       /@container den-left \(max-width: 300px\)\s*\{([\s\S]*?)\n\}/,
     )?.[1] ?? "";
-  it("its key goes and its value is capped by the left part's width", () => {
+  it("its key is hidden from sight only, and it shrinks to a floor of 7ch (6 characters and …)", () => {
     // Hidden from sight only: a screen reader still hears the key.
     expect(q()).not.toMatch(/\.den-scope \.den-k\s*\{\s*display:\s*none/);
     expect(q()).toMatch(
-      // Never under 7ch: 6 characters and its "…" (Den Design).
-      /\.den-scope \.den-last \.den-vn\s*\{[^}]*max-width:\s*min\(\s*200px,\s*max\(7ch,\s*calc\(100cqi - 96px\)\)\s*\)/,
+      /\.den-scope \.den-ib\.den-last\s*\{[^}]*min-width:\s*calc\(24px \+ 7ch \+ 0\.28em\)/,
     );
   });
-  it("beside an optional menu crumb (it stays, at its floor), the last value's cap leaves it room", () => {
-    expect(q()).toMatch(
-      /\.den-scope:has\(\.den-opt\[aria-haspopup\]\) \.den-last \.den-vn\s*\{[^}]*max-width:\s*min\(\s*200px,\s*max\(\s*7ch,\s*calc\(100cqi - 96px - 24px - 5ch - 0\.28em - 20px\)\s*\)\s*\)/,
-    );
+  it("no guessed cap from the left part's width", () => {
+    expect(CSS).not.toMatch(/cqi/);
   });
   it("the left part never clips: a crumb's menu hangs past it", () => {
     expect(rule(".den-left") ?? "").not.toMatch(
