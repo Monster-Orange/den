@@ -2707,7 +2707,9 @@ export async function cmdWebLogout(
     // No server: the state files themselves (the same OS user's).
     const store = offlineStore(stateDir);
     try {
-      ended = id ? (store.endByPrefix(id), 1) : store.endAll();
+      ended = id
+        ? (store.endByPrefix(id, "revoked"), 1)
+        : store.endAll("signed-out-everywhere");
     } catch (e) {
       io.err(`${product().cli}: ${(e as Error).message}\n`);
       return 1;

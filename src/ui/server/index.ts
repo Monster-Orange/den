@@ -419,6 +419,9 @@ import {
   withApproveKey,
   type SessionVia,
   type WebAuthConfig,
+  fixtureSessionEndWhy,
+  sessionEndRow,
+  type SessionEndWhy,
 } from "../../shared/web-session.js";
 import {
   checkFixtureCode,
@@ -427,7 +430,6 @@ import {
   FIXTURE_PRINCIPAL,
   fixtureKeyFingerprint,
   fixtureScopeRefusal,
-  fixtureSessionExpired,
   notTestInstallRefusal,
   setupFixturePerson,
   TEST_INSTALL_ENV_KEY,
@@ -1972,6 +1974,13 @@ function edgeFronted(): boolean {
 const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
+  // Issue 1295: every session that ends says why in the activity trail.
+  onEnd: (ended, why) => {
+    for (const s of ended) {
+      const row = sessionEndRow(s, why);
+      recordAction(null, { verb: row.verb, detail: row.detail }, row.principal);
+    }
+  },
 });
 /** Issue 819: whether a person has ever signed in here (first-run.ts). */
 const FIRST_RUN = new FirstRun({
@@ -2054,7 +2063,10 @@ const NAMED = new NamedAddressWatch({
   // session ends now, its terminals with it.
   onProven: () => {
     try {
-      const ended = webSessions.endWhere((x) => x.secure !== true);
+      const ended = webSessions.endWhere(
+        (x) => x.secure !== true,
+        "address-proven",
+      );
       closeSessionSockets(ended);
       if (ended.length)
         serverLog(
@@ -2370,15 +2382,18 @@ const GUARD: GuardContext = {
   session: (req, via) => {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
     // Issue 810: a fixture session ends as soon as what allowed it goes.
-    if (s?.via === "fixture" && !fixtureSessionStands(s)) {
-      webSessions.end(s.key);
-      return null;
+    if (s?.via === "fixture") {
+      const why = fixtureSessionWhyEnds(s);
+      if (why) {
+        webSessions.end(s.key, why);
+        return null;
+      }
     }
     // Issue 796: an agent's view ends at its time, when the install turns
     // views off, or when the agent's token goes; it counts on loopback only.
     if (s?.via === "agent-view") {
       if (!agentViewStands(s)) {
-        webSessions.end(s.key);
+        webSessions.end(s.key, "agent-view-ended");
         closeSessionSockets([s.key]);
         return null;
       }
@@ -3718,24 +3733,27 @@ function sealNewTestInstall(): void {
  * sealed key it signed in with still the current one, and within its
  * lifetime.
  */
-function fixtureSessionStands(s: {
+/**
+ * Issue 810: why a fixture session no longer stands, or null while it does
+ * (issue 1295: the reason goes in the activity trail).
+ */
+function fixtureSessionWhyEnds(s: {
   createdAt: number;
   fixtureKey?: string;
-}): boolean {
+}): SessionEndWhy | null {
   let minutes: number;
   try {
     minutes = webAuthNow().fixtureSessionMinutes;
   } catch {
-    return false;
+    return "fixture-not-allowed";
   }
   const key = fixtureKeyNow();
-  return (
-    testInstallNow() &&
-    !!key &&
-    !!s.fixtureKey &&
-    s.fixtureKey === fixtureKeyFingerprint(key) &&
-    !fixtureSessionExpired(s.createdAt, Date.now(), minutes)
-  );
+  return fixtureSessionEndWhy(s, {
+    testInstall: testInstallNow(),
+    fingerprint: key ? fixtureKeyFingerprint(key) : null,
+    minutes,
+    now: Date.now(),
+  });
 }
 
 /**
@@ -9059,7 +9077,7 @@ async function handleRequest(
     // Its session, or (one that no longer counts) the one its cookie names,
     // proved by that session's own CSRF token: it ends on the server.
     const named = g?.session ?? g?.ending ?? null;
-    const ended = named ? webSessions.end(named.key) : false;
+    const ended = named ? webSessions.end(named.key, "signed-out") : false;
     if (named) closeSessionSockets([named.key]);
     res.setHeader("Set-Cookie", clearSessionCookies(PORT, https));
     return sendJson(res, { ok: true, ended });
@@ -9103,9 +9121,10 @@ async function handleRequest(
     try {
       const endedKeys =
         typeof body.id === "string"
-          ? [webSessions.endByPrefix(body.id).key]
+          ? [webSessions.endByPrefix(body.id, "revoked").key]
           : webSessions.list().map((x) => x.key);
-      if (typeof body.id !== "string") webSessions.endAll();
+      if (typeof body.id !== "string")
+        webSessions.endAll("signed-out-everywhere");
       // SEC-2a: a revoked device's open terminals close now, too.
       closeSessionSockets(endedKeys);
       const ended = endedKeys.map(sessionIdPrefix);

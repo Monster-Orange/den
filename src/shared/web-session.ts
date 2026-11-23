@@ -857,6 +857,101 @@ export interface SessionView extends SessionRecord {
   key: string;
 }
 
+/**
+ * Issue 1295: why a browser session ended. Every end names one, and the
+ * activity trail records it (sessionEndRow), so a session never ends
+ * without a line saying why.
+ */
+export type SessionEndWhy =
+  /** Its own sign-out. */
+  | "signed-out"
+  /** Revoked from linked devices (Settings, or `web logout <id>`). */
+  | "revoked"
+  /** Sign out everywhere (or `web logout` with no id). */
+  | "signed-out-everywhere"
+  /** Den's own https address now works: sign-in lives there. */
+  | "address-proven"
+  /** A test-person session reached its minutes (web.fixture_session_minutes). */
+  | "fixture-expired"
+  /** The test person was set up again: a new key. */
+  | "fixture-key-changed"
+  /** Test sign-in isn't allowed here any more (not a test install, no key). */
+  | "fixture-not-allowed"
+  /** An agent's view ended (its time, views off, or its token gone). */
+  | "agent-view-ended";
+
+const END_WORDS: Record<SessionEndWhy, string> = {
+  "signed-out": "signed out",
+  revoked: "revoked from linked devices",
+  "signed-out-everywhere": "signed out everywhere",
+  "address-proven": "Den's own address works now, so sign-in moved there",
+  "fixture-expired":
+    "the test person's sign-in reached its time limit (web.fixture_session_minutes)",
+  "fixture-key-changed": "the test person was set up again",
+  "fixture-not-allowed": "test sign-in isn't allowed here any more",
+  "agent-view-ended": "the agent's view ended",
+};
+
+/**
+ * Issue 1295: the activity-trail row for a session that ended: the id
+ * `web sessions` shows (8 hex), whose it was, and why. Never the key,
+ * the cookie or the CSRF value.
+ */
+export function sessionEndRow(
+  s: SessionView,
+  why: SessionEndWhy,
+): { verb: "session-end"; detail: string; principal: string } {
+  const kind =
+    s.via === "fixture"
+      ? "test person"
+      : s.via === "agent-view"
+        ? "agent view"
+        : "browser";
+  const principal =
+    s.via === "fixture"
+      ? "fixture:person"
+      : s.via === "agent-view" && s.agent
+        ? `agent:${s.agent}`
+        : s.login
+          ? `person:${s.login}`
+          : "person";
+  return {
+    verb: "session-end",
+    detail: `${sessionIdPrefix(s.key)} (${kind}) ended: ${END_WORDS[why]}`,
+    principal,
+  };
+}
+
+/** Issue 810: whether a fixture session made at `createdAt` is past its minutes. */
+export function fixtureSessionPastTime(
+  createdAt: number,
+  now: number,
+  minutes: number,
+): boolean {
+  return now - createdAt >= minutes * 60_000;
+}
+
+/**
+ * Issue 1295: why a test-person session no longer stands, or null while
+ * it does. `fingerprint` is the current key's (null: no key).
+ */
+export function fixtureSessionEndWhy(
+  s: { createdAt: number; fixtureKey?: string },
+  now: {
+    testInstall: boolean;
+    fingerprint: string | null;
+    minutes: number;
+    now: number;
+  },
+): SessionEndWhy | null {
+  if (!now.testInstall || !now.fingerprint) return "fixture-not-allowed";
+  if (!s.fixtureKey || s.fixtureKey !== now.fingerprint)
+    return "fixture-key-changed";
+  if (fixtureSessionPastTime(s.createdAt, now.now, now.minutes))
+    return "fixture-expired";
+  return null;
+}
+
 export function webSessionsPath(stateDir: string = getStateDir()): string {
   return path.join(stateDir, WEB_SESSIONS_FILE);
 }
@@ -873,14 +968,30 @@ export class WebSessionStore {
   private readonly secret: () => Buffer | null;
   private readonly now: () => number;
 
+  /** Issue 1295: told what ended and why, after each end. */
+  private readonly onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
+
   constructor(opts: {
     stateDir?: () => string;
     secret: () => Buffer | null;
     now?: () => number;
+    /** Issue 1295: told what ended and why (the activity trail). */
+    onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
     this.secret = opts.secret;
     this.now = opts.now ?? Date.now;
+    this.onEnd = opts.onEnd;
+  }
+
+  /** Issue 1295: tells onEnd; a listener's failure never undoes the end. */
+  private told(ended: SessionView[], why: SessionEndWhy): void {
+    if (!ended.length || !this.onEnd) return;
+    try {
+      this.onEnd(ended, why);
+    } catch {
+      /* the end stands */
+    }
   }
 
   private file(): string {
@@ -1084,32 +1195,35 @@ export class WebSessionStore {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  /** End the session with this key. */
-  end(key: string): boolean {
+  /** End the session with this key, saying why (issue 1295). */
+  end(key: string, why: SessionEndWhy): boolean {
     const data = structuredClone(this.load());
-    if (!data.sessions[key]) return false;
+    const r = data.sessions[key];
+    if (!r) return false;
     delete data.sessions[key];
     this.save(data);
+    this.told([{ key, ...r }], why);
     return true;
   }
 
   /** End every session `which` picks, in one write. Returns their keys. */
-  endWhere(which: (s: SessionView) => boolean): string[] {
+  endWhere(which: (s: SessionView) => boolean, why: SessionEndWhy): string[] {
     const data = structuredClone(this.load());
-    const keys = Object.entries(data.sessions)
-      .filter(([key, r]) => which({ key, ...r }))
-      .map(([key]) => key);
-    if (keys.length === 0) return [];
-    for (const k of keys) delete data.sessions[k];
+    const ended = Object.entries(data.sessions)
+      .map(([key, r]) => ({ key, ...r }))
+      .filter((v) => which(v));
+    if (ended.length === 0) return [];
+    for (const v of ended) delete data.sessions[v.key];
     this.save(data);
-    return keys;
+    this.told(ended, why);
+    return ended.map((v) => v.key);
   }
 
   /**
    * End the one session whose key starts with `prefix` (4 hex at least).
    * Throws when none or several match.
    */
-  endByPrefix(prefix: string): SessionView {
+  endByPrefix(prefix: string, why: SessionEndWhy): SessionView {
     const p = prefix.trim().toLowerCase();
     if (!/^[0-9a-f]{4,64}$/.test(p))
       throw new Error(
@@ -1122,17 +1236,21 @@ export class WebSessionStore {
       throw new Error(
         `${hits.length} browser sessions start with ${p}; give more of the id`,
       );
-    this.end(hits[0].key);
+    this.end(hits[0].key, why);
     return hits[0];
   }
 
   /** End every browser session; how many there were. */
-  endAll(): number {
+  endAll(why: SessionEndWhy): number {
     const data = structuredClone(this.load());
-    const n = Object.keys(data.sessions).length;
+    const ended = Object.entries(data.sessions).map(([key, r]) => ({
+      key,
+      ...r,
+    }));
     data.sessions = {};
     this.save(data);
-    return n;
+    this.told(ended, why);
+    return ended.length;
   }
 }
 
