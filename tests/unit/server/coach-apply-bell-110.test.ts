@@ -143,8 +143,10 @@ describe("the bell's Coach card (mock v3)", () => {
   };
   it("who asks, the finding, Change, Why, Reversible, then Allow and Deny", async () => {
     const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
-    const needs: string = bellPanel({ groups: [], waiting: [w], unread: 1 })
-      .sections.needs;
+    const panel = bellPanel({ groups: [], waiting: [w], unread: 1 }) as {
+      sections: { needs: string };
+    };
+    const needs = panel.sections.needs;
     const order = [
       "[bell.coach.asks:",
       "[bell.coach.from:[co.f.subagent_opus.t:",

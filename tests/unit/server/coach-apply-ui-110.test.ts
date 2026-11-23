@@ -136,7 +136,9 @@ describe("waiting (rules 3, 4)", () => {
       { ...OPUS, applied: { state: "waiting", approval: "a1", at } },
     ]);
     const r = rowOf(html, OPUS.id);
-    expect(r).toContain('<span class="co-chip wait">[co.ap.waiting]</span>');
+    expect(r).toContain(
+      '<span class="co-chip wait" data-apply-state="waiting">[co.ap.waiting]</span>',
+    );
     expect(r).not.toContain('data-act="coach-apply"');
     expect(r).not.toContain('data-act="coach-dismiss"');
     expect(r).toContain("[co.ap.waiting.line]");
@@ -163,7 +165,9 @@ describe("the ending states (rules 5–7)", () => {
       ]),
       OPUS.id,
     );
-    expect(r).toContain('<span class="co-chip ok">[co.ap.applied]</span>');
+    expect(r).toContain(
+      '<span class="co-chip ok" data-apply-state="applied">[co.ap.applied]</span>',
+    );
     expect(r).toContain("[co.ap.applied.by:Pat|");
     expect(r).toContain("[co.ap.now.subagent_opus:");
     expect(r).not.toContain('data-act="coach-apply"');
@@ -196,7 +200,9 @@ describe("the ending states (rules 5–7)", () => {
       ]),
       OPUS.id,
     );
-    expect(r).toContain('<span class="co-chip bad">[co.ap.denied]</span>');
+    expect(r).toContain(
+      '<span class="co-chip bad" data-apply-state="denied">[co.ap.denied]</span>',
+    );
     expect(r).toContain("[co.ap.denied.by:Pat|");
     expect(r).toMatch(/data-act="coach-apply"[^>]*>\[co\.ap\.again\]/);
     expect(r).toContain('data-act="coach-dismiss"');
@@ -217,7 +223,9 @@ describe("the ending states (rules 5–7)", () => {
       ]),
       OPUS.id,
     );
-    expect(r).toContain('<span class="co-chip bad">[co.ap.failed]</span>');
+    expect(r).toContain(
+      '<span class="co-chip bad" data-apply-state="failed">[co.ap.failed]</span>',
+    );
     expect(r).toContain("[co.ap.failed.line:&lt;b&gt;locked&lt;/b&gt;]");
     expect(r).not.toContain("<b>locked</b>");
     expect(r).toMatch(/data-act="coach-apply"[^>]*>\[co\.ap\.retry\]/);

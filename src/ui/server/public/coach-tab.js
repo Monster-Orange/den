@@ -491,10 +491,10 @@ function applyParts(f, wide) {
     `<button type="button" class="den-btn primary ${wide ? "co-fdis-wide" : "sm co-fap"}" data-act="coach-apply" data-id="${esc(f.id)}">${esc(t(label))}</button>`;
   if (!f.apply) return { line: "", none: true, chip: "", buttons: dismiss };
   const v = applyVars(f);
-  const proposed = `<p class="co-fchg">${esc(t("co.ap.proposed", { change: t(`co.ap.change.${f.kind}`, v) }))}</p>`;
+  const proposed = `<p class="co-fchg" data-note="coach-change">${esc(t("co.ap.proposed", { change: t(`co.ap.change.${f.kind}`, v) }))}</p>`;
   const a = f.applied;
   const chip = (cls, key) =>
-    `<span class="co-chip ${cls}">${esc(t(key))}</span>`;
+    `<span class="co-chip ${cls}" data-apply-state="${esc(a?.state ?? "")}">${esc(t(key))}</span>`;
   const note = (text) => `<p class="co-apl">${text}</p>`;
   const w = { by: a?.by ?? "", when: decidedWhen(a) };
   switch (a?.state) {

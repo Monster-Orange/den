@@ -118,7 +118,9 @@ async function open(width: number, persona: string) {
     await r.continue();
   });
   await signInPage(p, s!.stateDir, s!.base, "/server-agent?tab=coach");
-  await p.locator(".co-findings").waitFor({ timeout: 20_000 });
+  await p
+    .locator('[data-note="coach-findings-table"]')
+    .waitFor({ state: "attached", timeout: 20_000 });
   return { p, release };
 }
 
@@ -153,18 +155,25 @@ describe("Coach Apply", () => {
       if (!browser) return;
       const persona = `opus-user-${width}`;
       const { p, release } = await open(width, persona);
-      const scope = width < 600 ? ".co-fcards" : ".co-ftable";
+      const scope =
+        width < 600
+          ? '[data-note="coach-finding-cards"]'
+          : '[data-note="coach-findings-table"]';
       const apply = p.locator(`${scope} [data-act="coach-apply"]`);
       await expect(apply.textContent()).resolves.toBe("Apply");
-      expect(await p.locator(`${scope} .co-fchg`).textContent()).toContain(
+      expect(
+        await p.locator(`${scope} [data-note="coach-change"]`).textContent(),
+      ).toContain(
         `Proposed change: Set ${persona}’s subagent model to Sonnet.`,
       );
-      if (width < 600) expect(await under44(p, ".co-fcards")).toEqual([]);
+      if (width < 600) expect(await under44(p, scope)).toEqual([]);
       await apply.click();
       await expect(apply.getAttribute("aria-busy")).resolves.toBe("true");
       expect(await apply.isDisabled()).toBe(true);
       release();
-      await p.locator(`${scope} .co-chip.wait`).waitFor({ timeout: 15_000 });
+      await p
+        .locator(`${scope} [data-apply-state="waiting"]`)
+        .waitFor({ timeout: 15_000 });
       expect(await p.locator(`${scope} [data-act="coach-apply"]`).count()).toBe(
         0,
       );
@@ -176,7 +185,7 @@ describe("Coach Apply", () => {
       await later(p);
       // Open the bell from the row.
       await p.locator(`${scope} [data-act="coach-bell"]`).click();
-      const card = p.locator(".den-bell-coach");
+      const card = p.locator("[data-bell-coach]");
       await card.waitFor({ timeout: 15_000 });
       const text = (await card.textContent()) ?? "";
       for (const words of [
@@ -188,17 +197,21 @@ describe("Coach Apply", () => {
       ])
         expect(text).toContain(words);
       if (width < 600) {
-        expect(await under44(p, ".den-bell-coach")).toEqual([]);
+        expect(await under44(p, "[data-bell-coach]")).toEqual([]);
         const [a, d] = await Promise.all(
           ["allow", "deny"].map((b) =>
             card.locator(`[data-bell="${b}"]`).boundingBox(),
           ),
         );
         expect(d!.y).toBeGreaterThan(a!.y);
+        // The whole card fits one phone screen: Allow and Deny on it.
+        expect(d!.y + d!.height).toBeLessThanOrEqual(844);
       }
       await card.locator('[data-bell="allow"]').click();
       await p.keyboard.press("Escape");
-      await p.locator(`${scope} .co-chip.ok`).waitFor({ timeout: 15_000 });
+      await p
+        .locator(`${scope} [data-apply-state="applied"]`)
+        .waitFor({ timeout: 15_000 });
       expect(fs.readFileSync(file, "utf-8")).toMatch(
         /^subagent_model: sonnet$/m,
       );

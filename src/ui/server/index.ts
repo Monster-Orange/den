@@ -3911,10 +3911,11 @@ function coachHeldState(approval: string): ApplyState {
 /** Issue 110: a held write as its finding's row says it (mock v3). */
 function coachHeldView(approval: string): ApplyView {
   try {
-    const owner = ownerIdentity();
+    // The owner's display name only: never a login, an id or an email
+    // (Den Design, issue 110); with none the row says "Allowed <time>".
     return applyViewOf(
       approvalDeps().queue.get(approval),
-      owner?.name || owner?.login,
+      ownerIdentity()?.name,
     );
   } catch {
     return { state: "failed" };

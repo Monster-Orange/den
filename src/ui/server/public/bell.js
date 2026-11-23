@@ -292,7 +292,7 @@ function coachRowHtml(w) {
   const row = (label, text) =>
     `<div class="den-bell-cr"><dt>${esc(tr(label))}</dt><dd>${esc(text)}</dd></div>`;
   return (
-    `<div class="den-bell-row den-bell-allow den-bell-coach" data-kind="allow" data-ap-row="${esc(w.id)}">` +
+    `<div class="den-bell-row den-bell-allow den-bell-coach" data-kind="allow" data-bell-coach data-ap-row="${esc(w.id)}">` +
     `<span class="den-dot warn" aria-hidden="true"></span>` +
     `<span class="den-bell-t"><b>${esc(tr("bell.coach.asks", { persona: vars.persona }))}</b>` +
     `<span class="den-bell-sub">${esc(tr("bell.coach.from", { title: tr(`co.f.${kind}.t`, vars) }))}</span>` +

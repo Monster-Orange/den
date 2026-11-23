@@ -219,9 +219,9 @@ describe("POST /api/coach/apply", () => {
     const gate = new Promise<void>((r) => (release = r));
     const h = harness();
     const ask = h.d.ask;
-    h.d.ask = async (req, b) => {
+    h.d.ask = async (req, b, o) => {
       await gate;
-      return ask(req, b);
+      return ask(req, b, o);
     };
     const one = h.call("POST", { id: "subagent_opus:builder" });
     const two = h.call("POST", { id: "subagent_opus:builder" });
