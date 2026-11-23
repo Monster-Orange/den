@@ -51,6 +51,7 @@ import {
   WebSessionStore,
 } from "../../shared/web-session.js";
 import { appendAuditRow } from "../../shared/audit-file.js";
+import { denProcessPids, pidAlive } from "../../shared/den-procs.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -2601,6 +2602,23 @@ async function serverCall(
   return r.kind === "answer" ? { status: r.status, json: r.json } : null;
 }
 
+/**
+ * Issue 1300: throws, saying why, unless Den's process records show no
+ * running server (den-procs, written at its start). Records that can't be
+ * read count as "can't tell".
+ */
+function serverNotRunning(stateDir: string, port: number): void {
+  const pids = denProcessPids(stateDir, pidAlive, "server");
+  if (pids === null)
+    throw new Error(
+      `Den's process records can't be read, so whether its server runs is unknown; nothing was changed`,
+    );
+  if (pids.length)
+    throw new Error(
+      `a Den server is running here (pid ${pids[0]}) but nothing answered on port ${port} at ${webProbeTarget(process.env.DEN_BIND_HOST, port).host}; it may listen on another address (DEN_BIND_HOST). Nothing was changed: run this where DEN_BIND_HOST is set as the server's`,
+    );
+}
+
 function offlineStore(stateDir: string): WebSessionStore {
   return new WebSessionStore({
     stateDir: () => stateDir,
@@ -2776,13 +2794,21 @@ export async function cmdWebLogout(
     // Nothing listens: the state files themselves (the same OS user's),
     // under the sessions lock, ending only what it means to (issue 1300).
     const store = offlineStore(stateDir);
+    // Refused on the address this shell dials doesn't prove no server: one
+    // started with DEN_BIND_HOST listens elsewhere. Its own record decides.
+    const noServer = () => serverNotRunning(stateDir, port);
     try {
       ended = (
         id
-          ? store.endLocked((now) => [sessionByPrefix(now, id).key], "revoked")
+          ? store.endLocked(
+              (now) => [sessionByPrefix(now, id).key],
+              "revoked",
+              noServer,
+            )
           : store.endLocked(
               (now) => now.map((x) => x.key),
               "signed-out-everywhere",
+              noServer,
             )
       ).length;
     } catch (e) {

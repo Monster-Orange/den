@@ -1313,9 +1313,15 @@ export class WebSessionStore {
   endLocked(
     choose: (all: SessionView[]) => string[],
     why: SessionEndWhy,
+    /**
+     * Run under the lock before anything is read or changed; it throws to
+     * change nothing (issue 1300: a Den server turned out to be running).
+     */
+    first?: () => void,
   ): SessionView[] {
     const release = this.lock();
     try {
+      first?.();
       // Never the copy read before the lock.
       this.cache = null;
       const data = structuredClone(this.load());
@@ -1367,17 +1373,24 @@ export class WebSessionStore {
       }
       // A holder that runs (not this process) keeps it; one try at a
       // takeover of a lock its holder left behind.
-      if (holder && holder !== process.pid && pidRuns(holder))
-        throw new WebSessionsBusy(holder);
+      // A running holder keeps it. This process is one too: it never
+      // takes a lock it holds over (endLocked never nests).
+      if (holder && pidRuns(holder)) throw new WebSessionsBusy(holder);
       // No pid yet: a holder between making it and writing it, unless it
       // is older than that takes (one that died there).
       if (!holder && !lockOlderThan(file, LOCK_UNREAD_STALE_MS))
         throw new WebSessionsBusy(0);
       if (tries >= 1) throw new WebSessionsBusy(holder);
+      // Remove only the lock judged left behind: one another process took
+      // over meanwhile (a new pid in it) is left alone. Two takeovers at
+      // the very same moment remain possible in principle; the window is
+      // the read-then-unlink here, and a second CLI logout is the only
+      // other taker until the server takes this lock too (PR 1301).
       try {
-        fs.unlinkSync(file);
+        if (Number(fs.readFileSync(file, "utf-8").trim()) === holder)
+          fs.unlinkSync(file);
       } catch {
-        /* someone else took it over */
+        /* gone meanwhile */
       }
     }
   }

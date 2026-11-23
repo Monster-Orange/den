@@ -2427,7 +2427,10 @@ user, and the CLI does that for you:
 
 `web logout` asks the running server. When the server is there but doesn't
 answer in time, it says so and changes nothing: try again. It edits the
-sessions file itself only when nothing listens on the port. Then it holds
+sessions file itself only when nothing listens on the port and Den's own
+process records (`den-procs/` in the state folder, written when the server
+starts) show no running server. A server started with `DEN_BIND_HOST` on
+another address still counts. Then it holds
 `web-sessions.lock` in the state folder, re-reads the file under it, ends
 only the sessions it was asked to, and records each end in the activity
 trail. If another running process holds that lock, it says so and changes
