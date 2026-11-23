@@ -1166,8 +1166,13 @@ body.den-has-shell .den-upd {
   border-radius: 10px;
   box-shadow: var(--shadow);
   padding: 6px;
+  /* A sister app's menu, value for value (issue 898): as wide as its longest
+     name up to 320px, 8px clear of a phone's edges; past that a name ends
+     in an ellipsis (.den-mi-l). At most 70% of the window's height, and
+     never past the bar's room, scrolling inside. */
   min-width: 220px;
-  max-height: calc(100vh - 72px);
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(70vh, calc(100vh - 72px));
   overflow-y: auto;
   box-sizing: border-box;
   font: 14px/1.45 var(--sans);
