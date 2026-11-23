@@ -1955,6 +1955,14 @@
       "プロジェクト {where} のペルソナ {id} を変更: {fields}",
     "ap.do.den_pin_commit":
       "ディストリビューションの固定バージョンを Den {version} でコミット",
+    "ap.do.den_sandbox_on":
+      "それより前に起動した {count} 個のエージェントでエージェント サンドボックスをオンにする (それぞれ次の起動時)",
+    "ap.det.den_sandbox_on.sets":
+      "config/local/user.yml に agents.sandbox: on を設定します。",
+    "ap.det.den_sandbox_on.next":
+      "各エージェントは次の起動時にサンドボックスに入ります。いま動いているエージェントはそのまま続きます。",
+    "ap.det.den_sandbox_on.off":
+      "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
