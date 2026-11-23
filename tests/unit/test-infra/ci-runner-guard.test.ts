@@ -24,14 +24,37 @@ import * as yaml from "yaml";
 const ROOT = process.cwd();
 const WORKFLOWS = path.join(ROOT, ".github", "workflows");
 
+// Issue 1226: the runner's labels come from DEN_SELF_HOSTED_LABELS (a JSON
+// array, such as ["self-hosted","devbox"]); unset, today's label.
+const LABELS =
+  'fromJSON(vars.DEN_SELF_HOSTED_LABELS || \'["self-hosted","den-wsl"]\')';
+
 const GUARD =
   "${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && " +
   "(github.event_name == 'push' || " +
   "github.event.pull_request.head.repo.full_name == github.repository)) && " +
-  "fromJSON('[\"self-hosted\",\"den-wsl\"]') || 'ubuntu-latest' }}";
+  LABELS +
+  " || 'ubuntu-latest' }}";
 
 // The jobs that may use the box in the day (their Node 22 leg only).
 const BOX_JOBS = ["checks", "dist-smoke"];
+
+// Issue 1226: the pull-request jobs, any Node, for a merge-queue run or a
+// pull request whose head branch lives here; a fork's stays hosted.
+const PR_GUARD =
+  "${{ (vars.DEN_SELF_HOSTED == 'on' && " +
+  "(github.event_name == 'merge_group' || " +
+  "github.event.pull_request.head.repo.full_name == github.repository)) && " +
+  LABELS +
+  " || 'ubuntu-latest' }}";
+// den-ui-nav stays hosted: its browser image is pinned to linux/amd64.
+const PR_BOX_JOBS = ["pr", "pr-shards"];
+const guardOf = (job: string) =>
+  BOX_JOBS.includes(job)
+    ? GUARD
+    : PR_BOX_JOBS.includes(job)
+      ? PR_GUARD
+      : "ubuntu-latest";
 
 const NIGHT_GUARD =
   "${{ vars.DEN_SELF_HOSTED_NIGHT == 'on' && " +
@@ -171,13 +194,13 @@ const PUSH = { event_name: "push", repository: REPO, event: {} };
 // --- the tests -------------------------------------------------------------
 
 describe("CI's self-hosted runner guard", () => {
-  it("only the checks and the install smoke may use the box; every other ci.yml job is GitHub-hosted", () => {
+  it("only the checks, the install smoke, pr and pr-shards may use the box; every other ci.yml job is GitHub-hosted", () => {
     const jobs = workflow("ci.yml").jobs;
     expect(Object.keys(jobs).length).toBeGreaterThan(2);
     for (const [name, job] of Object.entries(jobs)) {
       expect({ job: name, "runs-on": job["runs-on"] }).toEqual({
         job: name,
-        "runs-on": BOX_JOBS.includes(name) ? GUARD : "ubuntu-latest",
+        "runs-on": guardOf(name),
       });
     }
   });
@@ -185,7 +208,7 @@ describe("CI's self-hosted runner guard", () => {
   it("DEN_SELF_HOSTED appears in no other job, and in no other workflow", () => {
     const jobs = workflow("ci.yml").jobs;
     for (const [name, job] of Object.entries(jobs)) {
-      if (BOX_JOBS.includes(name)) continue;
+      if (guardOf(name) !== "ubuntu-latest") continue;
       expect({
         job: name,
         uses: /DEN_SELF_HOSTED/.test(JSON.stringify(job)),
@@ -208,6 +231,71 @@ describe("CI's self-hosted runner guard", () => {
     });
     expect(evaluate(GUARD, push("22.13.0"))).toEqual(SELF_HOSTED);
     expect(evaluate(GUARD, push("24.13.0"))).toBe("ubuntu-latest");
+  });
+
+  it("the label variable picks the runner; unset, today's label", () => {
+    const push = (labels?: string) => ({
+      vars: {
+        DEN_SELF_HOSTED: "on",
+        ...(labels ? { DEN_SELF_HOSTED_LABELS: labels } : {}),
+      },
+      matrix: { node: "22.13.0" },
+      github: PUSH,
+    });
+    expect(evaluate(GUARD, push())).toEqual(SELF_HOSTED);
+    expect(evaluate(GUARD, push('["self-hosted","devbox"]'))).toEqual([
+      "self-hosted",
+      "devbox",
+    ]);
+  });
+
+  it("pull-request jobs: a same-repo PR or the merge queue goes to the box, any Node; a fork's never", () => {
+    const on = {
+      DEN_SELF_HOSTED: "on",
+      DEN_SELF_HOSTED_LABELS: '["self-hosted","devbox"]',
+    };
+    const box = ["self-hosted", "devbox"];
+    for (const node of ["24.13.0", "22.13.0"]) {
+      expect(
+        evaluate(PR_GUARD, {
+          vars: on,
+          matrix: { node },
+          github: prEvent(REPO),
+        }),
+      ).toEqual(box);
+      expect(
+        evaluate(PR_GUARD, {
+          vars: on,
+          matrix: { node },
+          github: { event_name: "merge_group", repository: REPO, event: {} },
+        }),
+      ).toEqual(box);
+      expect(
+        evaluate(PR_GUARD, {
+          vars: on,
+          matrix: { node },
+          github: prEvent("someone/den"),
+        }),
+      ).toBe("ubuntu-latest");
+    }
+    // The switch off: hosted, whatever the labels say.
+    expect(
+      evaluate(PR_GUARD, {
+        vars: { DEN_SELF_HOSTED_LABELS: '["self-hosted","devbox"]' },
+        github: prEvent(REPO),
+      }),
+    ).toBe("ubuntu-latest");
+    // A run by hand (workflow_dispatch) stays hosted.
+    expect(
+      evaluate(PR_GUARD, {
+        vars: on,
+        github: {
+          event_name: "workflow_dispatch",
+          repository: REPO,
+          event: {},
+        },
+      }),
+    ).toBe("ubuntu-latest");
   });
 
   it("the release's workflows never name a self-hosted variable", () => {
