@@ -24,7 +24,7 @@
   width: min(440px, calc(100vw - 32px));
   max-width: 100%;
   padding: 0;
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
@@ -88,7 +88,7 @@
   font-size: var(--fs-s);
   min-height: var(--tap-min);
   padding: 0 var(--space-2);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius-button);
   background: var(--bg);
   color: var(--text);
@@ -132,7 +132,7 @@
   gap: var(--space-2);
   align-items: center;
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
   flex: none;
 }
 .dk-hd h2 {
@@ -166,12 +166,12 @@
   padding: var(--space-2) var(--space-4) var(--space-3);
   color: var(--muted);
   font-size: var(--fs-xs);
-  border-top: 1px solid var(--border);
+  border-top: 1px var(--edge-style, solid) var(--border);
   flex: none;
 }
 .dk-panel > .dk-ft {
   padding: var(--space-2) var(--space-4) var(--space-3);
-  border-top: 1px solid var(--border);
+  border-top: 1px var(--edge-style, solid) var(--border);
   flex: none;
 }
 
@@ -196,9 +196,9 @@
 }
 .den-btn.dk-danger,
 .den-btn.dk-danger:not([aria-busy="true"]):hover {
-  background: var(--bad);
-  border-color: var(--bad);
-  color: var(--on-accent);
+  background: var(--danger-bg, var(--bad));
+  border-color: var(--danger-border, var(--bad));
+  color: var(--danger-text, var(--on-accent));
 }
 @media (max-width: 480px) {
   .dk-btn {

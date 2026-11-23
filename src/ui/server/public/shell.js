@@ -2343,6 +2343,10 @@
       "An agent's gate slot: grace past its estimate, in minutes",
     "set.server.gate_mcp_grace.d":
       "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_waiter_return":
+      "A waiting test run keeps its place this long after it ends, in minutes",
+    "set.server.gate_waiter_return.d":
+      "When a waiting test run ends without giving up its place (a restart, or its window closed), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "Gate classes, highest first",
     "set.server.gate_class_order.d":
       "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
@@ -2379,6 +2383,9 @@
     "set.server.report_screenshot_days": "Report screenshots, kept for",
     "set.server.report_screenshot_days.d":
       "How many days __DEN_TITLE__ keeps the masked screenshot of a report filed from here, for you and this install's own agent to read (report_screenshot). Then it is deleted. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.server_log_max": "Warnings log, largest size",
+    "set.server.server_log_max.d":
+      "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max": "Report screenshots, largest kept",
     "set.server.report_screenshot_max.d":
       "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
@@ -2918,6 +2925,13 @@
     "ap.do.persona_update.project":
       "Change the persona {id} in project {where}: {fields}",
     "ap.do.den_pin_commit": "Commit the distribution's pin to Den {version}",
+    "ap.do.den_sandbox_on":
+      "Turn on the agent sandbox for {count} agents started before it (each at its next start)",
+    "ap.det.den_sandbox_on.sets":
+      "Sets agents.sandbox: on in config/local/user.yml.",
+    "ap.det.den_sandbox_on.next":
+      "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
+    "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
@@ -2959,6 +2973,18 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.web_url_set": "Make {url} this Den's address",
+    "ap.det.web_url_set.newHost":
+      "New host: {host} isn't this machine or an address Den serves. Sign-in and every link will go through it.",
+    "ap.det.web_url_set.now": "Now: {from}.",
+    "ap.det.web_url_set.nowUnconfirmed": "Now: {from} (not confirmed).",
+    "ap.det.web_url_set.none": "Now: no address is set.",
+    "ap.det.web_url_set.answers":
+      "{url} answers as this Den now: Den asked it for a one-time token, through its name.",
+    "ap.det.web_url_set.saves":
+      "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
+    "set.ui.hub.denUrlRefused":
+      "Hub didn't take this Den's address ({url}): {why}",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
