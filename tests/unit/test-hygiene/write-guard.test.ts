@@ -168,6 +168,23 @@ describe("the write guard is an allow-list (issue 1356)", () => {
   });
 });
 
+describe("the roots a run names (issue 1356)", () => {
+  it("adds CI's own temp folder and jest's named cache folder, and nothing else from the env", () => {
+    const ci = path.join(tmp, "runner-temp");
+    const cache = path.join(tmp, "elsewhere", "jest-cache");
+    const roots = writeGuardRoots({
+      RUNNER_TEMP: ci,
+      DEN_FAST_JEST_CACHE: cache,
+      DEN_TEST_WRITE_ALLOW: "/opt",
+    });
+    expect(roots.temp).toEqual(expect.arrayContaining([ci, cache]));
+    expect(roots.temp).not.toContain("/opt");
+    const bare = writeGuardRoots({});
+    expect(bare.temp).not.toContain(ci);
+    expect(bare.temp).not.toContain(cache);
+  });
+});
+
 describe("one refusal list per worker (issue 1356)", () => {
   it("a later test file's load of the guard sees a refusal made through the first load's wrappers", () => {
     const f = { ...fs, promises: { ...fs.promises } } as typeof fs;

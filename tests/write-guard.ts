@@ -4,7 +4,8 @@
  * write (it throws at the call, and the test file fails at its end too,
  * should the writer swallow the error) may reach only
  *
- *   - the temp folders (os.tmpdir(), /tmp, $TMPDIR);
+ *   - the temp folders (os.tmpdir(), /tmp, $TMPDIR, CI's $RUNNER_TEMP, and
+ *     DEN_FAST_JEST_CACHE, the jest cache folder fast-checks names);
  *   - the checkout under test, except any config/local in it (coverage,
  *     fixtures);
  *   - /dev (/dev/null);
@@ -105,7 +106,9 @@ export function refusedWrite(p: string, roots: WriteGuardRoots): boolean {
 }
 
 /** This run's roots: the checkout and the temp folders. */
-export function writeGuardRoots(): WriteGuardRoots {
+export function writeGuardRoots(
+  env: NodeJS.ProcessEnv = process.env,
+): WriteGuardRoots {
   const r = (p: string) => {
     try {
       return fs.realpathSync(p);
@@ -113,7 +116,18 @@ export function writeGuardRoots(): WriteGuardRoots {
       return path.resolve(p);
     }
   };
-  const temp = [os.tmpdir(), "/tmp", process.env.TMPDIR ?? ""]
+  const temp = [
+    os.tmpdir(),
+    "/tmp",
+    env.TMPDIR ?? "",
+    // Named roots only: CI's own temp folder (a GitHub runner's
+    // $RUNNER_TEMP is not os.tmpdir()), and the jest cache folder
+    // scripts/fast-checks.mjs passes as --cacheDirectory. Jest's own cache
+    // and report writes share the guarded fs.
+    env.RUNNER_TEMP ?? "",
+    env.DEN_FAST_JEST_CACHE ?? "",
+  ]
+    .map((p) => p.trim())
     .filter(Boolean)
     .map(r);
   return {
