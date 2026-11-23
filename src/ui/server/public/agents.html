@@ -342,6 +342,18 @@
       .agord-r {
         flex: 1;
         min-width: 0;
+        overflow: hidden;
+      }
+      /* In Reorder, a row's mode tag ends where the row does (an
+         ellipsis), 8px before Up and Down (.agord-b's padding). */
+      .agord-r .tagx {
+        display: inline-block;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
       }
       .agord-b {
         display: flex;

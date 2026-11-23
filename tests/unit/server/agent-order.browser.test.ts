@@ -369,6 +369,21 @@ describe.each(ENGINES)(
       const up = p.locator('#agl .agord[data-agent="cy"] [data-act="ord-up"]');
       await up.waitFor();
       await phoneShot(p, engine, "5-reorder-375");
+      // Each row's words, its mode tag too, end 8px before its Up.
+      const clear = await p.evaluate(() =>
+        [...document.querySelectorAll("#agl .agord")].map((w) => {
+          const up = w.querySelector('[data-act="ord-up"]')!;
+          const left = up.getBoundingClientRect().left;
+          const right = Math.max(
+            ...[...w.querySelectorAll(".agord-r *")].map(
+              (e) => e.getBoundingClientRect().right,
+            ),
+          );
+          return Math.round(left - right);
+        }),
+      );
+      expect(clear.length).toBeGreaterThan(0);
+      for (const gap of clear) expect(gap).toBeGreaterThanOrEqual(8);
       const box = (await up.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
