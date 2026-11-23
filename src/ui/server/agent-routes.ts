@@ -278,6 +278,15 @@ export interface AgentRouteDeps {
   hubConnect?: import("./hub-connect.js").HubConnect;
   /** H5: Settings › Project setup › Hub project (tests swap Hub and the store). */
   hubProject?: Partial<import("./hub-project-routes.js").HubProjectRouteDeps>;
+  /**
+   * Issue 1223: the restart queue restart-stale sends agents through
+   * (issue 1129; the server's). None: each restarts at once (tests).
+   */
+  restartQueue?: () => {
+    add(
+      job: import("../../shared/agents/restart-queue.js").RestartJob,
+    ): Promise<unknown>;
+  };
 }
 
 const AGENTS_PATH =
@@ -3058,20 +3067,39 @@ async function staleRoute(
     );
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
-        d,
-        a.id,
-        a.workspace,
-        "after-turn",
-        deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
-      );
-    }
-    sendJson(res, { ok: true, pending: list }, 202);
+    // Issue 1223: through the restart queue (a batch at a time, under the
+    // load ceiling); the bell row shows how far it got, and who failed.
+    const { restartToolsOld, noteToolsOld } =
+      await import("./tools-old-service.js");
+    if (body.only !== "hub") noteToolsOld(d.stateDir(), list);
+    const queued = restartToolsOld(d.stateDir(), list, {
+      ...(deps.restartQueue ? { queue: deps.restartQueue() } : {}),
+      restart: async (a) => {
+        const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
+        try {
+          const s = await restartAgent(
+            d,
+            a.id,
+            a.workspace,
+            "after-turn",
+            deps.personaWait ?? {},
+          );
+          audit(restarted(one, s), s.early ? "exited at once" : undefined);
+          if (s.early) throw new Error(`${a.id} exited at once`);
+          return s;
+        } catch (e) {
+          if (!(e instanceof Error && e.message === `${a.id} exited at once`))
+            audit(one, e instanceof Error ? e.message : String(e));
+          throw e;
+        }
+      },
+    });
+    const ids = new Set(queued.map((a) => a.id));
+    sendJson(
+      res,
+      { ok: true, pending: list.filter((a) => ids.has(a.id)) },
+      202,
+    );
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);

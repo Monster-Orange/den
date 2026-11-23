@@ -24,7 +24,7 @@
  * each batch, so a changed Setting applies to the next one.
  */
 
-export type RestartWhy = "resume" | "hub-tools" | "settings";
+export type RestartWhy = "resume" | "hub-tools" | "settings" | "tools";
 
 export interface RestartJob {
   id: string;

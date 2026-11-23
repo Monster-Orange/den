@@ -121,6 +121,13 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
+  /**
+   * Issue 1223: the agents still on older tools, one row with Restart N
+   * agents; it follows the gate rows in `waiting`, kind tools_old.
+   */
+  toolsOld?: () =>
+    | import("../../shared/agents/tools-restarts.js").ToolsOldWaiting
+    | null;
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -161,6 +168,17 @@ const inputKeyOf = (v: unknown) =>
 
 /** Issue 746: what waits on the person's Allow now; best effort. */
 /** Issue 993: the overrun slots, or none when the store can't be read. */
+function toolsOldNow(
+  deps: NotificationRouteDeps,
+): import("../../shared/agents/tools-restarts.js").ToolsOldWaiting[] {
+  try {
+    const r = deps.toolsOld?.();
+    return r ? [r] : [];
+  } catch {
+    return [];
+  }
+}
+
 function gateOverrunsNow(
   deps: NotificationRouteDeps,
 ): readonly GateOverrunWaiting[] {
@@ -446,6 +464,7 @@ export async function handleNotificationRoutes(
       waiting: [
         ...heldWaiting(heldNow(deps)),
         ...gateOverrunsNow(deps),
+        ...toolsOldNow(deps),
         ...[...deps.attention.waitingNow()].map(([a, why]) => {
           const w = deps.attention.waitingDetail(a);
           return {

@@ -11,6 +11,8 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import { toolsOldRow } from "./tools-old-service.js";
+import { restartQueue } from "./restart-queue-service.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   COACH_ROUTES,
@@ -1427,6 +1429,7 @@ import {
   policyResolver,
   restartResolver,
   modeResolver,
+  staleAgents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -6031,6 +6034,9 @@ async function handleRequest(
         const s = gates();
         return gateOverrunWaiting(s.list(), s.settings(), Date.now());
       },
+      // Issue 1223: the agents still on older tools, with Restart N agents.
+      toolsOld: () =>
+        toolsOldRow(agentWebDeps(), () => staleAgents(agentWebDeps())),
     });
     return;
   }
@@ -9099,7 +9105,17 @@ async function handleRequest(
   // ── The server agent (ON-6, server-agent-routes.ts) ──────────────────────
   if (await handleServerAgentRoutes(req, res, pathname)) return;
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
-  if (await handleAgentRoutes(req, res, pathname)) return;
+  if (
+    await handleAgentRoutes(req, res, pathname, {
+      // Issue 1223: restart-stale goes through the one restart queue.
+      restartQueue: () =>
+        restartQueue({
+          log: (line) => serverLog(line, "lifecycle"),
+          store: () => notificationDeps().store,
+        }),
+    })
+  )
+    return;
   // ── The Agents tab's list (AG-4a-term, session-routes.ts) ────────────────
   // Beyond loopback a terminal needs a signed-in session (or a bearer).
   if (
