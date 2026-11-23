@@ -496,6 +496,92 @@ describe("the fixture sign-in", () => {
  * every pin check failed on the bed from the day it signed in as the
  * fixture person.
  */
+// Issue 1210: `web.fixture_person` gives the fixture person an invented
+// name and login on the rail; the audit and the log keep "fixture person".
+const NAMED = [
+  ...MARKED.slice(0, -1),
+  "  fixture_person:",
+  "    name: Robin Example",
+  "    login: robin-example",
+  "",
+];
+const INVENTED = /Robin Example|robin-example/;
+async function withConfig<T>(den: Den, lines: string[], fn: () => Promise<T>) {
+  const cfg = path.join(den.root, "config", "den.yml");
+  fs.writeFileSync(cfg, lines.join("\n"));
+  try {
+    return await fn();
+  } finally {
+    fs.writeFileSync(cfg, MARKED.join("\n"));
+  }
+}
+
+describe("the fixture person's invented name (issue 1210)", () => {
+  it("the rail shows the name over its login", async () => {
+    await withConfig(test, NAMED, async () => {
+      const f = await fixtureSignIn(test);
+      expect(f.me.identity).toEqual({
+        kind: "github",
+        via: "fixture",
+        login: "robin-example",
+        name: "Robin Example",
+      });
+    });
+  });
+
+  it("without the setting it is the local identity, as before", async () => {
+    const f = await fixtureSignIn(test);
+    expect((f.me.identity as { kind?: string })?.kind).toBe("local");
+  });
+
+  it("the audit and the log still say fixture person, never the name", async () => {
+    await withConfig(test, NAMED, async () => {
+      await fixtureSignIn(test);
+      const rows = fs
+        .readFileSync(path.join(test.stateDir, "audit.jsonl"), "utf-8")
+        .split("\n")
+        .filter(Boolean);
+      expect(rows.join("\n")).not.toMatch(INVENTED);
+      const last = JSON.parse(
+        rows.filter((l) => l.includes("fixture person signed in")).pop()!,
+      ) as Record<string, unknown>;
+      expect(last.principal).toBe("fixture:person");
+      expect(test.out()).not.toMatch(INVENTED);
+    });
+  });
+
+  it("a person's own session never takes the name", async () => {
+    await withConfig(test, NAMED, async () => {
+      const p = await signedIn(test.stateDir, test.base);
+      try {
+        const me = await call(test, "GET", "/api/session", {
+          cookie: p.headers.cookie,
+          "sec-fetch-site": "same-origin",
+        });
+        expect((me.json.identity as { kind?: string })?.kind).toBe("local");
+        expect(JSON.stringify(me.json)).not.toMatch(INVENTED);
+      } finally {
+        await signOut(test, p.headers);
+      }
+    });
+  });
+
+  it("an install that isn't a bound test install ignores it", async () => {
+    await withConfig(noflag, NAMED, async () => {
+      const p = await signedIn(noflag.stateDir, noflag.base);
+      try {
+        const me = await call(noflag, "GET", "/api/session", {
+          cookie: p.headers.cookie,
+          "sec-fetch-site": "same-origin",
+        });
+        expect(JSON.stringify(me.json)).not.toMatch(INVENTED);
+      } finally {
+        await signOut(noflag, p.headers);
+      }
+    });
+  });
+});
+
 describe("what the fixture person saves from a page", () => {
   it("the rail's pins, as the Services page's ☆ saves them", async () => {
     const f = await fixtureSignIn(test);

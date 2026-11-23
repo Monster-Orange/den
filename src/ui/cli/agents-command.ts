@@ -114,6 +114,7 @@ import {
   loadAgentWorkspaces,
   relaunchAgent,
   resumeOrRelaunch,
+  agentRecord,
   keepAgentConversation,
   setAgentResumeOnRestart,
   askForHandoff,
@@ -184,6 +185,7 @@ import {
   SERVER_AGENT_ID,
 } from "../../shared/agents/server-agent.js";
 import { localDateTime } from "../../shared/local-time.js";
+import { throughServer } from "./person-server.js";
 
 export const AGENTS_HELP = {
   usage:
@@ -609,6 +611,31 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
       ? "after-turn"
       : undefined;
   mustBeAgent(d, id, workspaceFlag(where, p));
+  // Issue 989: the server changes it and audits it when it answers.
+  const answer = await askServer(
+    d,
+    agentRoute(d, id, workspaceFlag(where, p), "persona"),
+    {
+      persona: to,
+      ...(str(p, "--model") !== undefined ? { model: str(p, "--model") } : {}),
+      ...(str(p, "--version") !== undefined
+        ? { version: str(p, "--version") }
+        : {}),
+      ...(when ? { when } : {}),
+    },
+  );
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      answer.pending
+        ? `agent ${id} becomes ${to} at its next idle (the web app does it; the audit says how it went)`
+        : startedLine(
+            answer,
+            (a) => `agent ${String(a.id)} is now ${String(a.persona)}`,
+          ),
+    );
+    return 0;
+  }
   if (when === "after-turn") d.out(`waiting for agent ${id}'s turn to end…`);
   const s = await changePersona(d, id, workspaceFlag(where, p), {
     persona: to,
@@ -738,6 +765,26 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
   if (!id) throw new UsageError(`${where} needs <id>`);
   const now = p.flags["--now"] === true;
   const ws = workspaceFlag(where, p);
+  // Issue 989: the server restarts it and audits it when it answers. An
+  // unknown agent is refused below, with the CLI's own audit row.
+  const known = readRecord(d.stateDir(), id);
+  const answer =
+    known && (!ws || known.workspace === ws)
+      ? await askServer(d, agentRoute(d, id, ws, "restart"), {
+          when: now ? "now" : "after-turn",
+        })
+      : null;
+  if (answer === "refused") return 1;
+  if (answer) {
+    if (answer.pending)
+      d.out(
+        `agent ${id} restarts at its next idle, same conversation (the web app does it; the audit says how it went)`,
+      );
+    else if (typeof answer.already === "string")
+      d.out(`agent ${id} was ${String(answer.note)}`);
+    else d.out(startedLine(answer, (a) => `restarted agent ${String(a.id)}`));
+    return 0;
+  }
   return audited(
     d,
     "restart",
@@ -792,6 +839,20 @@ async function move(args: string[], d: AgentsResolved): Promise<number> {
   if (!id || !to)
     throw new UsageError(`${where} needs <id> and -w <project to move it to>`);
   const now = p.flags["--now"] === true;
+  // Issue 989: the server moves it and audits it when it answers.
+  const answer = await askServer(d, agentRoute(d, id, undefined, "move"), {
+    to,
+    when: now ? "now" : "after-turn",
+  });
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      answer.pending
+        ? `agent ${id} moves to ${to} at its next idle, same conversation (the web app does it; the audit says how it went)`
+        : `moved agent ${id} from ${String(answer.from)} to ${to}${answer.resumed ? `; same conversation, restarted now so its tools are ${to}'s` : "; it was stopped"}`,
+    );
+    return 0;
+  }
   const m = await moveAgent(d, id, undefined, to, now ? "now" : "after-turn");
   if (!m.resumed) {
     d.out(`moved agent ${m.rec.id} from ${m.from} to ${to}; it was stopped`);
@@ -811,9 +872,16 @@ export function staleLines(
 ): string[] {
   if (!stale.length) return ["Agents' tools     all current"];
   const say = (x: McpStale) =>
-    x.adds.length
-      ? `${x.adds.join(", ")} tools arrive on restart`
-      : `${x.drops.join(", ")} tools go on restart`;
+    [
+      ...(x.adds.length
+        ? [`${x.adds.join(", ")} tools arrive on restart`]
+        : []),
+      ...(x.drops.length ? [`${x.drops.join(", ")} tools go on restart`] : []),
+      // Issue 1223: its Den tools are an older Den's.
+      ...(x.den
+        ? [`its Den tools are ${x.den.from}'s; ${x.den.to}'s arrive on restart`]
+        : []),
+    ].join("; ");
   return [
     `Agents' tools     ${stale.length} running ${stale.length === 1 ? "agent started" : "agents started"} before the change:`,
     ...stale.map((a) => `  ${a.id} (${a.workspace}): ${say(a.stale)}`),
@@ -1113,19 +1181,23 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
     throw new UsageError(
       `${where} [--agent|--persona|--workspace|--service <x>] <key> <value> (or --unset <key>)`,
     );
-  setRotationSetting(d, {
+  const setting = {
     scope,
     ...(target !== undefined ? { target } : {}),
     key,
     value: unset ? null : parseRotateValue(key, raw!),
-  });
+  };
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(d, "/api/agents/rotation", setting, "PUT");
+  if (said === "refused") return 1;
+  if (said === "unanswered") setRotationSetting(d, setting);
   const at = scope === "install" ? "this install" : `${scope} ${target}`;
   d.out(unset ? `${key} cleared at ${at}` : `${key} = ${raw} at ${at}`);
   return 0;
 }
 
 /** `agents keep <id> [-w <ws>] [--never]` (D28 Keep this conversation). */
-function keep(args: string[], d: AgentsResolved): number {
+async function keep(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents keep";
   personOnly(where, d);
   const never = args.includes("--never");
@@ -1133,7 +1205,13 @@ function keep(args: string[], d: AgentsResolved): number {
     where,
     args.filter((a) => a !== "--never"),
   );
-  const rec = keepAgentConversation(d, id, ws, { never });
+  // Issue 989: the server keeps it when it answers; its refusal is final.
+  const said = await viaServer(d, agentRoute(d, id, ws, "keep"), { never });
+  if (said === "refused") return 1;
+  const rec =
+    said === "unanswered"
+      ? keepAgentConversation(d, id, ws, { never })
+      : agentRecord(d, id, ws);
   d.out(
     `kept ${rec.id}'s conversation: its compaction count starts again${never ? "; it never rotates (agents rotate --agent " + rec.id + " --unset after_compactions to undo)" : ""}`,
   );
@@ -1141,7 +1219,7 @@ function keep(args: string[], d: AgentsResolved): number {
 }
 
 /** `agents set <id> [-w <ws>] resume_on_restart on|off|default` (D59). */
-function setAgent(args: string[], d: AgentsResolved): number {
+async function setAgent(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents set";
   personOnly(where, d, "whether an agent resumes after a restart");
   const at = args.indexOf("resume_on_restart");
@@ -1155,7 +1233,15 @@ function setAgent(args: string[], d: AgentsResolved): number {
     ...args.slice(at + 2),
   ]);
   const value = raw === "default" ? null : raw === "on";
-  const rec = setAgentResumeOnRestart(d, id, ws, value);
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(d, agentRoute(d, id, ws, "settings"), {
+    resumeOnRestart: value,
+  });
+  if (said === "refused") return 1;
+  const rec =
+    said === "unanswered"
+      ? setAgentResumeOnRestart(d, id, ws, value)
+      : agentRecord(d, id, ws);
   d.out(
     value === null
       ? `${rec.id} resumes after a restart as its persona says`
@@ -1294,7 +1380,10 @@ function files(args: string[], d: AgentsResolved): number {
  * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
  * workspace's agents start with when the start names none.
  */
-function permission(args: string[], d: AgentsResolved): number {
+async function permission(
+  args: string[],
+  d: AgentsResolved,
+): Promise<number> {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
   const ws = workspaceFlag(where, p);
@@ -1343,13 +1432,71 @@ function permission(args: string[], d: AgentsResolved): number {
     } catch (e) {
       throw new UsageError((e as Error).message);
     }
-  d.saveWorkspacePermission(ws, intent);
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(
+    d,
+    `/api/workspaces/${encodeURIComponent(ws)}/agent-modes`,
+    { mode: intent },
+  );
+  if (said === "refused") return 1;
+  if (said === "unanswered") d.saveWorkspacePermission(ws, intent);
   d.out(
     intent
       ? `${ws}: agents now start in ${intent} unless the start names a mode; running agents switch after their current turn`
       : `${ws}: no default now; agents start in their persona's mode`,
   );
   return 0;
+}
+
+/**
+ * Issue 989: a person-only change sent to the running server: its answer
+ * when it made the change; "refused" (its error is said, nothing is
+ * written); null when no server listens (the caller writes it as before).
+ */
+async function askServer(
+  d: AgentsResolved,
+  path: string,
+  body: unknown,
+  method: "POST" | "PUT" | "DELETE" = "POST",
+  secret?: string,
+): Promise<Record<string, unknown> | "refused" | null> {
+  try {
+    return await throughServer(d.server, method, path, body);
+  } catch (e) {
+    // A secret sent is never said back, whatever the server answered.
+    const msg = (e as Error).message;
+    d.err(
+      `✗ ${secret ? msg.split(secret).join("***") : msg}; nothing was changed`,
+    );
+    return "refused";
+  }
+}
+
+/** askServer, when the server's answer itself isn't needed. */
+async function viaServer(
+  d: AgentsResolved,
+  path: string,
+  body: unknown,
+  method: "POST" | "PUT" = "POST",
+): Promise<"done" | "refused" | "unanswered"> {
+  const r = await askServer(d, path, body, method);
+  return r === null ? "unanswered" : r === "refused" ? r : "done";
+}
+
+/** A started agent as the server answers it (sendStarted's agent). */
+function startedLine(
+  json: Record<string, unknown>,
+  lead: (a: Record<string, unknown>) => string,
+): string {
+  const a = (json.agent ?? {}) as Record<string, unknown>;
+  const note = typeof json.note === "string" ? json.note : "same conversation";
+  return `${lead(a)}; ${note}, as ${String(a.session)} in ${String(a.cwd)}`;
+}
+
+/** Issue 989: an agent's own route on the server, in its project. */
+function agentRoute(d: AgentsResolved, id: string, ws: string | undefined, verb: string): string {
+  const rec = agentRecord(d, id, ws);
+  return `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(rec.id)}/${verb}`;
 }
 
 /** Whether `s` names a permission mode (ask, edits, auto, all). */
@@ -1368,11 +1515,11 @@ function isIntent(s: string): boolean {
  * the agent follows its project's mode, else its persona's. Issue 252: a
  * running agent takes either at its next idle (Den's mode check).
  */
-function agentPermission(
+async function agentPermission(
   where: string,
   p: ReturnType<typeof parseArgs>,
   d: AgentsResolved,
-): number {
+): Promise<number> {
   noExtra(where, p, 2);
   const [id, given] = p.positional;
   if (!id)
@@ -1403,7 +1550,17 @@ function agentPermission(
     } catch (e) {
       throw new UsageError((e as Error).message);
     }
-  const next = setAgentPermission(d, id, rec.workspace, intent);
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(
+    d,
+    `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(id)}/mode`,
+    { mode: intent },
+  );
+  if (said === "refused") return 1;
+  const next =
+    said === "unanswered"
+      ? setAgentPermission(d, id, rec.workspace, intent)
+      : rec;
   // Issue 252: a running agent takes it at its next idle: the web
   // server's mode check restarts it on the same conversation.
   const when = next.stoppedAt
@@ -1727,8 +1884,33 @@ async function tokenCmd(
     );
     return 1;
   }
-  // With env the value would live only in this CLI process: refuse before
-  // reading it (Settings saves it inside Den's own process).
+  const input = await (deps.tokenInput ?? (() => readTokenInput()))();
+  const bad = tokenShapeError(input);
+  if (bad) {
+    d.err(
+      `✗ ${where}: ${bad}. Make one with ${TOKEN_MAKE_HINT}, then pipe it in: ${d.cli} agents token set < file, or paste it at the prompt`,
+    );
+    return 1;
+  }
+  // Issue 989: the running server saves it, inside Den's own process (so
+  // the env backend keeps it as well); only with no server does the CLI.
+  const answer = await askServer(
+    d,
+    "/api/agents/signin-token",
+    { token: input.trim() },
+    "POST",
+    input.trim(),
+  );
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      `✓ the agents' sign-in token is saved in ${String(answer.store ?? "the install's secrets store")}. ` +
+        `Agents started under Keep agents running after logout use it from their next start.`,
+    );
+    return 0;
+  }
+  // With env the value would live only in this CLI process (Settings, and
+  // the server above, save it inside Den's own process).
   const { secretsStatus } = await import("../../shared/secrets/index.js");
   const backend = (
     deps.tokenDeps?.status ??
@@ -1736,14 +1918,6 @@ async function tokenCmd(
   )().backend;
   if (backend === "env") {
     d.err(`✗ ${where}: ${ENV_SET_OUTSIDE_DEN}`);
-    return 1;
-  }
-  const input = await (deps.tokenInput ?? (() => readTokenInput()))();
-  const bad = tokenShapeError(input);
-  if (bad) {
-    d.err(
-      `✗ ${where}: ${bad}. Make one with ${TOKEN_MAKE_HINT}, then pipe it in: ${d.cli} agents token set < file, or paste it at the prompt`,
-    );
     return 1;
   }
   let res: { ref: "configured" | "created"; store: string };
@@ -1813,6 +1987,22 @@ async function tokenClearCmd(
       d.out("Nothing removed.");
       return 0;
     }
+  }
+  // Issue 989: the running server removes it when it answers.
+  const answer = await askServer(
+    d,
+    "/api/agents/signin-token",
+    undefined,
+    "DELETE",
+  );
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      answer.cleared === false
+        ? "no sign-in token set: nothing to remove"
+        : "✓ removed the agents' sign-in token from the install's secrets store",
+    );
+    return 0;
   }
   const { clearAgentToken } =
     await import("../../shared/agents/signin-token.js");
@@ -1952,6 +2142,18 @@ async function accountsCmd(
         else left.push(rest[i]!);
       }
       if (left.length) throw new UsageError(`${where} takes only --name`);
+      // Issue 989: the running server adds it when it answers.
+      const answer = await askServer(d, "/api/agents/accounts", {
+        runtime: runtimeId,
+        ...(name !== undefined ? { name } : {}),
+      });
+      if (answer === "refused") return 1;
+      if (answer) {
+        d.out(
+          `✓ added ${rt.account} account${name ? ` ${name}` : ""}. \`${d.cli} agents accounts list${flag}\` shows its number; set its token with \`${d.cli} agents accounts set-token <number>${flag}\``,
+        );
+        return 0;
+      }
       const a = A.addAccount(stateDir, runtimeId, name);
       d.out(
         `✓ added ${rt.account} account ${a.id}${a.name ? ` (${a.name})` : ""}. Set its token: \`${d.cli} agents accounts set-token ${a.id}${flag}\``,
@@ -1964,6 +2166,18 @@ async function accountsCmd(
           `${where} takes every ${rt.account} account, in order`,
         );
       const ids = rest.map((w) => A.findAccount(stateDir, runtimeId, w).id);
+      // Issue 989: the running server orders them when it answers.
+      const answer = await askServer(d, "/api/agents/accounts/order", {
+        runtime: runtimeId,
+        order: ids,
+      });
+      if (answer === "refused") return 1;
+      if (answer) {
+        d.out(
+          `✓ ${rt.account} accounts, in order: ${ids.map((id) => label(A.findAccount(stateDir, runtimeId, id))).join(", ")}. Agents sign in with the first from their next start.`,
+        );
+        return 0;
+      }
       const list = A.setAccountOrder(stateDir, runtimeId, ids);
       d.out(
         `✓ ${rt.account} accounts, in order: ${list.map(label).join(", ")}. Agents sign in with ${label(list[0]!)} from their next start.`,
@@ -2013,6 +2227,28 @@ async function accountsCmd(
     }
     // set-token
     const acct = A.findAccount(stateDir, runtimeId, rest[0]!);
+    const input = await (deps.tokenInput ?? (() => readTokenInput()))();
+    const value = input.trim();
+    const bad = T.tokenShapeError(input);
+    if (bad) {
+      d.err(
+        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: \`${d.cli} agents accounts set-token ${acct.id}${flag} < file\`, or paste it at the prompt`,
+      );
+      return 1;
+    }
+    // Issue 989: the running server saves it, inside Den's own process.
+    const answer = await askServer(
+      d,
+      "/api/agents/accounts/token",
+      { runtime: runtimeId, account: acct.id, token: value },
+      "POST",
+      value,
+    );
+    if (answer === "refused") return 1;
+    if (answer) {
+      d.out(`✓ the sign-in token of ${label(acct)} is saved.`);
+      return 0;
+    }
     const backend = (
       ad.status ??
       (await import("../../shared/secrets/index.js")).secretsStatus.bind(
@@ -2024,15 +2260,6 @@ async function accountsCmd(
     )().backend;
     if (backend === "env") {
       d.err(`✗ ${where}: ${T.ENV_SET_OUTSIDE_DEN}`);
-      return 1;
-    }
-    const input = await (deps.tokenInput ?? (() => readTokenInput()))();
-    const value = input.trim();
-    const bad = T.tokenShapeError(input);
-    if (bad) {
-      d.err(
-        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: \`${d.cli} agents accounts set-token ${acct.id}${flag} < file\`, or paste it at the prompt`,
-      );
       return 1;
     }
     const name = A.accountRefName(runtimeId, acct.id);
@@ -2582,9 +2809,9 @@ export async function cmdAgents(
           await loadAgentWorkspaces(deps);
           return await rotate(rest, d);
         case "keep":
-          return keep(rest, d);
+          return await keep(rest, d);
         case "set":
-          return setAgent(rest, d);
+          return await setAgent(rest, d);
         case "handoff":
           await loadAgentWorkspaces(deps);
           return await handoff(rest, d);
@@ -2621,7 +2848,7 @@ export async function cmdAgents(
           return await rm(rest, d);
         case "permission":
           await loadAgentWorkspaces(deps);
-          return permission(rest, d);
+          return await permission(rest, d);
         case "personas":
           return await listPersonas(rest, d);
         case "doctor":

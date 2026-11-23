@@ -487,8 +487,10 @@ describe("ci.yml: tests run on the pull request, not again on main", () => {
     expect(ci.jobs.pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    // pr-shards follows pr (it needs pr's shard list)
+    // pr-shards follows pr (it needs pr's shard list), and the fast
+    // static checks (issue 843)
     expect(([] as string[]).concat(ci.jobs["pr-shards"].needs ?? [])).toEqual([
+      "fast",
       "pr",
     ]);
     const raw = fs.readFileSync(path.join(DIR, "ci.yml"), "utf8");

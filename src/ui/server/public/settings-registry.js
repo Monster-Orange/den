@@ -5981,8 +5981,13 @@ function wireHubAddress(host, ctx, err, busy) {
  * (from GET /api/agents/stale), and the offer to restart them at their
  * next idle, each keeping its conversation. "" when there are none.
  */
-export function restartOfferHtml(agents) {
-  const n = Array.isArray(agents) ? agents.length : 0;
+export function restartOfferHtml(all) {
+  // Issue 1223: Hub's section, Hub's stale agents only (an older Den's
+  // tools are the bell's to restart).
+  const agents = (Array.isArray(all) ? all : []).filter(
+    (a) => a?.stale?.adds?.length || a?.stale?.drops?.length,
+  );
+  const n = agents.length;
   if (!n) return "";
   const adds = agents.some((a) => a?.stale?.adds?.length);
   const who = n === 1 ? "1 agent" : `${n} agents`;
@@ -6009,7 +6014,7 @@ function offerRestart(host, ctx, fresh) {
       btn?.addEventListener("click", () => {
         btn.disabled = true;
         ctx.shell
-          .api("POST", "/api/agents/restart-stale", {})
+          .api("POST", "/api/agents/restart-stale", { only: "hub" })
           .then((x) => {
             const k = Array.isArray(x?.pending) ? x.pending.length : 0;
             box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
