@@ -133,10 +133,21 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     const p = await open(e);
     await p.goto(`${s.base}/logs?account=devices`);
     await area(p).waitFor({ timeout: 20_000 });
-    // Another device: the first sign-out button's id, and its row.
+    // Another device (not This device): its sign-out button's id, and its row.
     const [id] = await p
-      .locator('[data-aa-pane="devices"] [data-aa-act="sign-out-device"]')
-      .evaluateAll((els) => els.map((x) => x.getAttribute("data-aa-id")));
+      .locator('[data-aa-pane="devices"]')
+      .locator("[data-aa-find]")
+      .evaluateAll(
+        (els, mine) =>
+          els
+            .filter((x) => !x.textContent?.includes(mine))
+            .map((x) =>
+              x
+                .querySelector('[data-aa-act="sign-out-device"]')
+                ?.getAttribute("data-aa-id"),
+            ),
+        kitT("en", "kit.aa.thisDevice"),
+      );
     const row = p.locator('[data-aa-pane="devices"] [data-aa-find]').filter({
       has: p.locator(`[data-aa-act="sign-out-device"][data-aa-id="${id}"]`),
     });

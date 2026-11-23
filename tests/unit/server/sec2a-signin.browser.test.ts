@@ -25,6 +25,7 @@ import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { kitT } from "../../../packages/den-ui/src/strings.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const EDGE = "den.acme.localhost";
@@ -339,10 +340,20 @@ describe("Settings › Access", () => {
     await shots(p, "pair-a-device", () => qr.waitFor());
 
     await p.click('[data-aa-section="devices"]');
-    // Another browser's row: the first sign-out button's id.
+    // Another browser's row (not This device): its sign-out button's id.
     const [other] = await pane("devices")
-      .locator('[data-aa-act="sign-out-device"]')
-      .evaluateAll((els) => els.map((x) => x.getAttribute("data-aa-id")));
+      .locator("[data-aa-find]")
+      .evaluateAll(
+        (els, mine) =>
+          els
+            .filter((x) => !x.textContent?.includes(mine))
+            .map((x) =>
+              x
+                .querySelector('[data-aa-act="sign-out-device"]')
+                ?.getAttribute("data-aa-id"),
+            ),
+        kitT("en", "kit.aa.thisDevice"),
+      );
     await pane("devices")
       .locator(`[data-aa-act="sign-out-device"][data-aa-id="${other}"]`)
       .click();
