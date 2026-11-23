@@ -97,6 +97,9 @@ describe("issue 843: the fast static checks", () => {
   it("ci.yml: a job that runs on !cancelled() still stops when `fast` failed", () => {
     for (const [name, job] of Object.entries(ci.jobs)) {
       if (!needs(job).includes("fast")) continue;
+      // ci-ok runs no work: it is the verdict, so it must run when fast
+      // failed, to fail the required check (ci-ok.test.ts).
+      if (name === "ci-ok") continue;
       if (!/!cancelled\(\)|always\(\)/.test(job.if ?? "")) continue;
       expect(`${name}: ${job.if}`).toContain("needs.fast.result == 'success'");
     }

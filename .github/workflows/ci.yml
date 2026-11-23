@@ -517,6 +517,24 @@ jobs:
 
   # Issue 998: what a pull request ran on Node 22 before it went Node 24
   # only, nightly on main: the fast gates and the install smoke.
+  # Issue 843: the merge queue's one required check. It passes only when
+  # every job a pull request runs passed, or was skipped because pr planned
+  # nothing for it (scripts/ci-ok.mjs), so the ruleset never names a shard.
+  ci-ok:
+    needs: [fast, pr, den-ui-nav, pr-shards]
+    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci-ok.mjs
+          sparse-checkout-cone-mode: false
+      - run: node scripts/ci-ok.mjs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+
   nightly-node22-checks:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
