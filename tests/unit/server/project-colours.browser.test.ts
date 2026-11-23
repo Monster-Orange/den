@@ -34,6 +34,7 @@ import {
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { NotificationStore } from "../../../src/shared/notifications.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -149,50 +150,97 @@ const computed = (p: Page, sel: string, prop: string) =>
   );
 
 describe("project colours (issue 168)", () => {
-  it("two projects differ (Automatic); every part of an agent wears its project's colour, the same after a reload", async () => {
+  // The issue's widths (1280 and 390) and the mock's (1440).
+  it.each([1440, 1280, 390])(
+    "two projects differ (Automatic); every part of an agent wears its project's colour, the same after a reload (%i)",
+    async (width) => {
+      if (skip()) return;
+      expect(await s!.settings({ shell: { projectColours: null } })).toBe(200);
+      const p = await agentsPage(width);
+      const first = await colours(p);
+      expect(first.north.row).toBeTruthy();
+      expect(first.south.row).toBeTruthy();
+      expect(first.north.row).not.toBe(first.south.row);
+      expect(first.north.group).toBe(first.north.row);
+      expect(first.south.group).toBe(first.south.row);
+      // The tile, the row edge, the tab and the pane all use it.
+      for (const [id] of AGENTS) {
+        const row = `#agl .agr[data-id="${sid[id]}"]`;
+        const want = await computed(p, row, "border-left-color");
+        expect(await computed(p, `${row} .agtile`, "background-color")).toBe(
+          want,
+        );
+        expect(
+          await p.getAttribute(
+            `#agr [role="tab"][data-id="${sid[id]}"]`,
+            "data-pc",
+          ),
+        ).toBe(await p.getAttribute(row, "data-pc"));
+        await p.click(`#agr [role="tab"][data-id="${sid[id]}"]`);
+        const pane = `#agr .pane[data-id="${sid[id]}"]`;
+        await p.waitForSelector(`${pane}[data-pc]`);
+        expect(await computed(p, `${pane} .agto`, "border-left-color")).toBe(
+          want,
+        );
+        expect(await computed(p, `${pane} .bar2`, "border-bottom-color")).toBe(
+          want,
+        );
+        // The agent in front: outlined and bold, its edge its project's.
+        const front = `#agl .agr[aria-current="true"]`;
+        await p.waitForSelector(`${front}[data-id="${sid[id]}"]`);
+        expect(await computed(p, front, "outline-style")).toBe("solid");
+        expect(Number(await computed(p, `${front} .nm`, "font-weight"))).toBe(
+          600,
+        );
+        expect(await computed(p, front, "border-left-color")).toBe(want);
+      }
+      await p.reload();
+      await p.waitForSelector("#agl:not([aria-busy]) button[data-id][data-pc]");
+      expect(await colours(p)).toEqual(first);
+      await p.context().close();
+    },
+    60_000,
+  );
+
+  it("the bell's project groups carry their project's colour", async () => {
     if (skip()) return;
     expect(await s!.settings({ shell: { projectColours: null } })).toBe(200);
+    const st = new NotificationStore(s!.stateDir);
+    for (const [id, , ws] of AGENTS)
+      st.add({
+        // A kind that needs the person: drawn in its project's group (an
+        // update folds into one Updates list, with no project heading).
+        kind: "mention",
+        subject: `agent:${id}`,
+        scope: `workspace/${ws}`,
+        text: `${id} mentioned you`,
+      });
     const p = await agentsPage();
-    const first = await colours(p);
-    expect(first.north.row).toBeTruthy();
-    expect(first.south.row).toBeTruthy();
-    expect(first.north.row).not.toBe(first.south.row);
-    expect(first.north.group).toBe(first.north.row);
-    expect(first.south.group).toBe(first.south.row);
-    // The tile, the row edge, the tab and the pane all use it.
-    for (const [id] of AGENTS) {
-      const row = `#agl .agr[data-id="${sid[id]}"]`;
-      const want = await computed(p, row, "border-left-color");
-      expect(await computed(p, `${row} .agtile`, "background-color")).toBe(
-        want,
-      );
+    const want = await colours(p);
+    await p.click("#den-bell");
+    for (const [, , ws] of AGENTS)
       expect(
-        await p.getAttribute(
-          `#agr [role="tab"][data-id="${sid[id]}"]`,
-          "data-pc",
+        await p
+          .locator(
+            `#den-bell-pop section[data-scope="workspace/${ws}"] [data-pc]`,
+          )
+          .getAttribute("data-pc"),
+      ).toBe(want[ws].row);
+    // A dot's colour is the project's: the same computed colour as its row.
+    for (const [id, , ws] of AGENTS)
+      expect(
+        await computed(
+          p,
+          `#den-bell-pop section[data-scope="workspace/${ws}"] [data-pc]`,
+          "background-color",
         ),
-      ).toBe(await p.getAttribute(row, "data-pc"));
-      await p.click(`#agr [role="tab"][data-id="${sid[id]}"]`);
-      const pane = `#agr .pane[data-id="${sid[id]}"]`;
-      await p.waitForSelector(`${pane}[data-pc]`);
-      expect(await computed(p, `${pane} .agto`, "border-left-color")).toBe(
-        want,
+      ).toBe(
+        await computed(
+          p,
+          `#agl .agr[data-id="${sid[id]}"]`,
+          "border-left-color",
+        ),
       );
-      expect(await computed(p, `${pane} .bar2`, "border-bottom-color")).toBe(
-        want,
-      );
-      // The agent in front: outlined and bold, its edge its project's.
-      const front = `#agl .agr[aria-current="true"]`;
-      await p.waitForSelector(`${front}[data-id="${sid[id]}"]`);
-      expect(await computed(p, front, "outline-style")).toBe("solid");
-      expect(Number(await computed(p, `${front} .nm`, "font-weight"))).toBe(
-        600,
-      );
-      expect(await computed(p, front, "border-left-color")).toBe(want);
-    }
-    await p.reload();
-    await p.waitForSelector("#agl:not([aria-busy]) button[data-id][data-pc]");
-    expect(await colours(p)).toEqual(first);
     await p.context().close();
   }, 60_000);
 

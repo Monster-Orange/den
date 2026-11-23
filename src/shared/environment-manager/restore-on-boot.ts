@@ -21,7 +21,11 @@ import {
   type GroupState,
   type RecordedProcessGroup,
 } from "../process/process-group.js";
-import { isDaemonVerifiablyDead, type DaemonRecord } from "./service-runner.js";
+import {
+  groupOf,
+  isDaemonVerifiablyDead,
+  type DaemonRecord,
+} from "./service-runner.js";
 
 /** Why the startup prune dropped a record (service-runner.ts). */
 export type PrunedWhy = "unresolved" | "stale" | "dead";
@@ -73,7 +77,9 @@ export async function servicesToRestore(
     if (why === "stale" || why === "unresolved") continue;
     let down = isDaemonVerifiablyDead(d, opts.running);
     if (!down && typeof d.pgid === "number" && d.pgidStartedAt) {
-      const st = await groupState({ pgid: d.pgid, startedAt: d.pgidStartedAt });
+      const st = await groupState(
+        groupOf({ ...d, pgid: d.pgid, pgidStartedAt: d.pgidStartedAt }),
+      );
       down = !!st && st.state !== "ours";
     }
     if (!down) continue;
