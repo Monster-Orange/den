@@ -213,6 +213,103 @@
     "v.old_link": "Open Tests",
     "v.err_load": "Verify couldn't load results.",
     "v.retry": "Try again",
+    "v.sch_link": "Schedules",
+    "v.sch_t": "Schedules",
+    "v.sch_s": "Checks that run on their own. Heavy ones run in their window.",
+    "v.sch_tz":
+      "“When” and “Window” are in this Den's time zone, {z}. Heavy checks run one at a time.",
+    "v.sch_when": "When",
+    "v.sch_window_h": "Window",
+    "v.sch_next_h": "Next",
+    "v.sch_last_h": "Last run",
+    "v.sch_hourly": "Every hour",
+    "v.sch_daily": "Every day at {t}",
+    "v.sch_weekly": "{d} at {t}",
+    "v.sch_d0": "Sundays",
+    "v.sch_d1": "Mondays",
+    "v.sch_d2": "Tuesdays",
+    "v.sch_d3": "Wednesdays",
+    "v.sch_d4": "Thursdays",
+    "v.sch_d5": "Fridays",
+    "v.sch_d6": "Saturdays",
+    "v.sch_any": "Any time",
+    "v.sch_night": "At night (22:00 to 06:00)",
+    "v.sch_span": "{a} to {b}",
+    "v.sch_st_allowed": "Allowed",
+    "v.sch_st_free": "No Allow needed",
+    "v.sch_st_expiring": "Allow expiring",
+    "v.sch_st_paused": "Paused",
+    "v.sch_free_code": "Reads code only, so it needs no Allow.",
+    "v.sch_free_local": "Runs on local, so it needs no Allow.",
+    "v.sch_needs": "It needs an Allow before it runs.",
+    "v.sch_needs_h": "Nothing runs until someone allows this schedule.",
+    "v.sch_lapsed": "The Allow from {t} lapsed when the plan changed.",
+    "v.sch_expired": "The Allow expired on {t}.",
+    "v.sch_allow_until": "Allowed until {t}.",
+    "v.sch_changed": "The plan changed, so this schedule needs a new Allow.",
+    "v.sch_expiring":
+      "The Allow expires {t}. When it does, this schedule stops until someone allows it again.",
+    "v.sch_code": "Code",
+    "v.sch_ro": "read-only",
+    "v.sch_ro_h":
+      "On production it is read-only: only GET, HEAD and OPTIONS, plus the writes the repo allows in write_allow.",
+    "v.sch_never": "Not run yet",
+    "v.sch_ask": "Allow this schedule",
+    "v.sch_ask_t": "Allow the schedule “{s}” on {e}?",
+    "v.sch_ask_h":
+      "One Allow covers every run of this plan until it changes or expires on {t}.",
+    "v.sch_does": "What each run does",
+    "v.sch_mk_enforced": "enforced by Den",
+    "v.sch_mk_declared": "declared read-only",
+    "v.sch_mk_code": "reads the code only",
+    "v.sch_touch_writes": "writes",
+    "v.sch_touch_reads": "reads only",
+    "v.sch_mk_service": "declared by the service",
+    "v.sch_decline": "Decline",
+    "v.sch_decline_h":
+      "Decline leaves the schedule paused. Nothing runs until someone allows it.",
+    "v.sch_revoke": "Take back Allow",
+    "v.sch_revoked": "Allow taken back. The schedule waits for a new one.",
+    "v.sch_run": "Run now",
+    "v.sch_runs": "See runs",
+    "v.sch_ch_h": "What changed",
+    "v.sch_ch_added": "{m} joined the schedule",
+    "v.sch_ch_removed": "{m} left the schedule",
+    "v.sch_ch_cmd": "{m}: its command changed",
+    "v.sch_ch_writes": "{m} now writes",
+    "v.sch_ch_window": "Its window changed",
+    "v.sch_ch_cron": "Its times changed",
+    "v.sch_missed_h": "Missed while paused",
+    "v.sch_sk_allow": "needs an Allow",
+    "v.sch_sk_changed": "needs a new Allow",
+    "v.sch_sk_expired": "its Allow expired",
+    "v.sch_sk_window": "its window closed first",
+    "v.sch_sk_busy": "another run was going",
+    "v.sch_sk_cmdoff": "commands are off here",
+    "v.sch_sk_prodoff": "production schedules are off here",
+    "v.sch_sk_often": "it runs too often for production",
+    "v.sch_sk_host": "it reaches a host production may not",
+    "v.sch_lim_prod_off":
+      "Schedules don't run on production here. To turn them on, set this in Den's verify: block:",
+    "v.sch_lim_often":
+      "This runs on production more often than Den allows. Run it less often, or set the shortest gap in Den's verify: block:",
+    "v.sch_lim_host":
+      "A production run may not reach these hosts. Add them to verify.schedule.production.hosts, or point the check elsewhere:",
+    "v.sch_sk_unclear": "Den couldn't follow its command",
+    "v.sch_lim_off":
+      "Commands don't run on their own on a shared environment here. To turn them on, set this in Den's verify: block:",
+    "v.sch_lim_unclear":
+      "Den can't follow this command, so it can't run on its own:",
+    "v.sch_empty":
+      "No schedules yet. Add {c} to a module to run it on its own.",
+    "v.sch_empty_h":
+      "A schedule on staging or production asks for an Allow once. Code-only and local schedules run without one.",
+    "v.sch_how":
+      "Schedules come from {a} in the repo's {b} block. To add, change or remove one, change the repo.",
+    "v.sch_started": "Started. Its result comes to the bell.",
+    "v.sch_allowed": "Allowed. It runs at its next time.",
+    "v.sch_declined": "Declined. The schedule stays paused.",
+    "v.sch_err": "That didn't work: {e}",
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "Ran {a} to {b}.",
     "v.m_runner": "From an outside runner.",
@@ -738,6 +835,39 @@
     "pj.th.lastRun": "Last test run",
     "pj.th.actions": "Actions",
     "pj.addRepo": "Add repo",
+    "addSvc.title": "Add Service: {ws}",
+    "addSvc.filter": "Filter repos",
+    "addSvc.filterPh": "Filter repos…",
+    "addSvc.tab.local": "Local",
+    "addSvc.tab.gh": "GitHub",
+    "addSvc.sortBy": "Sort by",
+    "addSvc.sort.name": "Name",
+    "addSvc.sort.project": "Project",
+    "addSvc.loading": "Loading…",
+    "addSvc.noLocal": "No repos found on this machine",
+    "addSvc.noResults": "No repos match",
+    "addSvc.added": "added",
+    "addSvc.group.dev": "Dev-managed",
+    "addSvc.group.managed": "Managed by __DEN_TITLE__",
+    "addSvc.ghLoading": "Loading GitHub repos…",
+    "addSvc.ghNoMatch": "No repos match “{q}”",
+    "addSvc.ghNone": "No GitHub repos found",
+    "addSvc.noManifest": "no manifest",
+    "addSvc.group.supported": "Ready for __DEN_TITLE__",
+    "addSvc.group.unsupported": "No __DEN_MANIFEST_YML__",
+    "addSvc.refresh": "Refresh",
+    "addSvc.refreshTip": "Fetch the GitHub repo list again",
+    "addSvc.refreshing": "Refreshing…",
+    "addSvc.manage": "Manage",
+    "addSvc.mode.dev": "Dev-managed",
+    "addSvc.mode.managed": "Managed",
+    "addSvc.branch": "Branch",
+    "addSvc.newBranch": "New branch",
+    "addSvc.optional": "optional",
+    "addSvc.add": "Add",
+    "addSvc.done": "✓ Added {name}",
+    "addSvc.doneSetup": "✓ Added {name} · setup is running (see Logs)",
+    "addSvc.missingDeps": "Missing dependencies: {deps}",
     "pj.validate.title": "Validate a manifest",
     "pj.validate.path": "Path or dir",
     "pj.validate.pathPh": "/absolute/path/to/repo  or  /path/to/{file}",
@@ -829,11 +959,20 @@
     "set.ui.boxSave": "Save box",
     "set.ui.boxMem": "Keep free memory (MB)",
     "set.ui.boxPwv": "Playwright version on the box",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
+    "set.ui.boxPws": "Or Playwright by version (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone": "No test boxes. Browser runs use this machine only.",
     "set.ui.boxSlotsN": "{n} browser slots",
     "set.ui.boxHoldIs": "hold file {path}",
     "set.ui.boxScaleIs": "time ×{n}",
     "set.ui.boxRemove": "Remove",
+    "set.ui.boxWindow": "Window (this machine's time)",
+    "set.ui.boxRecheck": "Recheck after, in seconds",
+    "set.ui.boxOn": "On",
+    "set.ui.boxWindowIs": "{window}, this machine's time",
+    "set.ui.boxIsOff": "turned off",
+    "set.ui.boxTurnOn": "Turn on",
+    "set.ui.boxTurnOff": "Turn off",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -1560,6 +1699,12 @@
     "busy.startF": "Couldn't start {name}.",
     "busy.termW": "Opening a terminal…",
     "busy.termS": "Terminal open.",
+    "busy.schAllowW": "Allowing the schedule…",
+    "busy.schAllowS": "Allowed. It runs at its next time.",
+    "busy.schAllowF": "Couldn't allow the schedule.",
+    "busy.schRunW": "Starting the scheduled checks…",
+    "busy.schRunS": "Started. Its result comes to the bell.",
+    "busy.schRunF": "Couldn't start the scheduled checks.",
     "busy.termF": "Couldn't open a terminal.",
     "busy.sayW": "Sending to {name}…",
     "busy.sayS": "Sent to {name}.",
@@ -2133,9 +2278,21 @@
       "Unit test runs beside a release browser test run",
     "set.server.gate_cpu_beside_release.d":
       "How many unit-test runs may run on this machine while a release-priority browser test run does. 0 (the default): a release run runs alone, so other runs don't slow its checks. Other browser runs use the setting above. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_load_hold_per_core":
+      "Hold new unit test runs over this load per core",
+    "set.server.gate_load_hold_per_core.d":
+      "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_cpu_hold_load":
+      "Machine load that holds unit test runs during a release browser run",
+    "set.server.gate_cpu_hold_load.d":
+      "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "Test slot in the bell past this many times its estimate",
+    "set.server.gate_overrun_bell.d":
+      "A test slot held this many times longer than its estimate shows in the bell under Needs you, with End. If an agent holds it, Den tells that agent once to release it. 2: twice its estimate. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun": "Test run flagged past its estimate, in minutes",
     "set.server.gate_overrun.d":
       "A test run still going this long after its estimate is flagged in `gate status` and on the Agents page. It is never stopped. __DEN_CLI__ gate settings --overrun-margin-minutes 15",
@@ -2200,7 +2357,7 @@
       "Tokens that let a CI job in a runner VM ask for, renew and give back gate slots on this machine. Nothing else. An agent asks for one and you allow it; revoke one here.",
     "set.server.gate_boxes": "Test boxes",
     "set.server.gate_boxes.d":
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check": "Test box check waits, in seconds",
     "set.server.gate_box_check.d":
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
@@ -2208,6 +2365,14 @@
       "A skipped test box is checked again after, in seconds",
     "set.server.gate_box_recheck.d":
       "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    "set.server.gate_box_default": "Browser runs go to",
+    "set.server.gate_box_default.d":
+      "Where a browser test run with no --box goes. Here or a test box: the first free browser slot, here or on a test box. A run with no --base-url, or no box for its Playwright version, stays here and says why. Here only: as before; a run goes to a box only with --box. __DEN_CLI__ gate settings --browser-box-default any",
+    "set.server.gate_box_default.any": "Here or a test box",
+    "set.server.gate_box_default.local": "Here only",
+    "set.server.gate_host_only": "Browser runs kept here",
+    "set.server.gate_host_only.d":
+      "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2331,6 +2496,12 @@
     "set.agents.approvals_critical": "Critical",
     "set.agents.approvals_critical.d":
       "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    "set.server.health_poll": "Health checks while you look",
+    "set.server.health_poll.d":
+      "How often an open, visible page checks every service's health: 2 to 300 seconds. __DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden": "Health checks in a hidden tab",
+    "set.server.health_poll_hidden.d":
+      "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -2679,6 +2850,9 @@
     "ag.mcp.reloading": "Restarting to load Hub's tools",
     "ag.mcp.reloadingTip":
       "Hub's tools changed. Den restarts this agent at its next idle so it can use them. It keeps its conversation.",
+    "ag.mcp.failed": "Hub's tools didn't load",
+    "ag.mcp.failedTip":
+      "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
@@ -2734,6 +2908,9 @@
       'Add the repo at {path} to a new project "{workspace}"',
     "ap.do.service_try": "Start {service}",
     "ap.do.den_restart": "Restart Den ({reason})",
+    "ap.do.den_update": "Update Den to {version} ({reason})",
+    "ap.do.hub_connect": "Set Hub's address to {url}",
+    "ap.do.hub_connect.clear": "Clear Hub's address",
     "ap.do.persona_create": "Add the persona {name} ({id})",
     "ap.do.persona_update": "Change the persona {id}: {fields}",
     "ap.do.persona_create.project":
@@ -2779,6 +2956,7 @@
     "ap.det.gate_box_set.time_scale": "Time scale: {v}",
     "ap.det.gate_box_set.playwright_version": "Playwright version: {v}",
     "ap.det.gate_box_set.min_free_mem_mb": "Least free memory (MB): {v}",
+    "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
@@ -2951,6 +3129,8 @@
       "{module} can't run here: it runs on {envs} only.",
     "ap.vr.cant.production":
       "{module} can't run on production yet: opting in to production comes in a later Den.",
+    "ap.vr.cant.production-declared":
+      "{module} is left out of a scheduled production run: Den can't keep a command read-only, so only smoke checks and code scans run there.",
     "ap.vr.cant.adapter-later":
       "{module} can't run yet: its adapter ({adapter}) comes in a later Den.",
     "ap.vr.cant.no-health-url":
@@ -3300,6 +3480,12 @@
     "bell.m.input": "{name} is waiting for you",
     "bell.m.asked": "{name} asked: {text}",
     "bell.m.toLead": "{name} asked the lead, {lead}: {text}",
+    "bell.m.settled":
+      "{name} withdrew its question, settled: {reason} ({text})",
+    "bell.m.settledYou":
+      "You withdrew {name}'s question, settled: {reason} ({text})",
+    "bell.m.settledLate":
+      "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
     "bell.m.pick": "{n} projects need your pick",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
@@ -3329,7 +3515,22 @@
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
+    "bell.m.vschedPass": "Scheduled run on {env}: {n} checks passed.",
+    "bell.m.vschedPass.one": "Scheduled run on {env}: {n} check passed.",
+    "bell.m.vschedFail":
+      "Scheduled run on {env}: {n} of {total} checks failed.",
+    "bell.m.vschedFail.one":
+      "Scheduled run on {env}: {n} of {total} checks failed.",
+    "bell.m.vschedExpire":
+      'The Allow for the schedule "{name}" expires in {n} days.',
+    "bell.m.vschedExpire.one":
+      'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.shared": "{actor} shared {title} with you",
+    "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
+    "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
+    "bell.m.sharedAgentNote":
+      "The agent {actor} shared {title} with you: {note}",
     "bell.m.heldLapsed":
       "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
     "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
@@ -3339,6 +3540,11 @@
       "A request was lost at a restart: {what}. Nothing ran from it.",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
+    "bell.go.h": "Test slots past their estimate",
+    "bell.go.row": "{who} holds the {kind} test slot: {label}",
+    "bell.go.sub": "Since {time} · estimate {est} min · {over} min over",
+    "bell.go.end": "End",
+    "bell.go.ended": "Ended the test slot. The next in line starts.",
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
@@ -3350,6 +3556,10 @@
     "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
+    "bell.m.ranLoggedOut":
+      "While you were logged out ({min} min), these agents ran: {names}",
+    "bell.m.stoppedLoggedOut":
+      "While you were logged out ({min} min), these agents stopped: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
@@ -3409,6 +3619,8 @@
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
+    "bell.m.toolsListFailed":
+      "{agent} can't use Hub's tools: listing them failed again after __DEN_TITLE__ restarted it once. Restart it from Agents once Hub is fixed",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":
@@ -3701,6 +3913,7 @@
     "gate.popH": "Test runs on this machine",
     "gate.holds": "Runs {kind}, until about {at}",
     "gate.waits": "Waits to run {kind}, from about {at}",
+    "gate.padded": "estimate {est} min; this usually takes {usual}",
     "gate.over": "past its estimate",
     "gate.none": "No test runs hold or wait.",
     "gate.end": "End early",
@@ -3721,16 +3934,27 @@
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
     "gate.boxLow": "{box}: skipped, low on memory ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: skipped, its free memory can't be read ({reason})",
     "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.boxOff": "{box}: skipped, turned off",
+    "gate.boxClosed": "{box}: skipped, outside its window (opens {time})",
     "gate.yielded": "Let {to} go ahead",
     "gate.class": "Class: {name}",
     "gate.window": "waits for its {window} window",
+    "gate.loadHoldCores":
+      "waiting: this machine's load is {load}, over {perCore} × {cores} cores ({limit}), while another unit test run is going; it starts once the load drops or that run ends",
+    "gate.loadHold":
+      "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",
+    "busy.addSvcW": "Adding {name}…",
+    "busy.addSvcS": "Added {name}.",
+    "busy.addSvcF": "Couldn't add {name}.",
     "ag.orphan.one":
       "{names} has no project: its project was deleted. Give it one with ⋯ › Move to project….",
     "ag.orphan.many":
@@ -4355,6 +4579,20 @@
       return typeof vars[k] === "number" ? num(vars[k]) : String(vars[k]);
     });
   }
+
+  /**
+   * A held write's details lines as its Allow card shows them: a line with
+   * a key in the page's language, else as sent. The approval dialog and the
+   * bell's Allow row (its Review) both show these, so they can't differ.
+   */
+  function apDetailLines(a) {
+    var dk = (a && a.detailKeys) || [];
+    return ((a && a.details) || []).map(function (l, i) {
+      var k = dk[i];
+      return k && k.key ? t(k.key, k.vars || {}) : String(l);
+    });
+  }
+  window.denApDetailLines = apDetailLines;
 
   /**
    * A built-in text's words in this page's language (0.4.45): `en` is the
@@ -5985,7 +6223,7 @@
       items.push({
         label: it.label,
         checked: !!it.checked,
-        tag: it.focused ? t("ws.focus") : null,
+        // Issue 897: no "CLI default" tag: picking a project sets it.
         title: it.title || null,
         onSelect: function () {
           if (typeof model.onSelect !== "function") return;
@@ -8498,12 +8736,17 @@
             ? ".project"
             : p.loosens
               ? ".loosens"
-              : "");
+              : p.clears
+                ? ".clear"
+                : "");
     var s = t(key, p);
     if (s !== key) return s;
-    s = String(a.summary || a.action);
+    s = String(a.summary || a.what || a.action);
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  // Issue 746: the bell words a held write (its Allow row, a lapsed item)
+  // as this dialog does, in the page's language.
+  window.denApWhat = apWhat;
   // Issue 199: Done, and for a project's mode, which agents follow it now
   // and which keep their own mode.
   function apDoneWords(a, res) {
@@ -8605,14 +8848,7 @@
     var note = $("den-ap-note");
     note.hidden = !a.note;
     note.textContent = a.note ? t("ap.says") + " “" + a.note + "”" : "";
-    // A line with a key is shown in the page's language; else as sent.
-    var dk = a.detailKeys || [];
-    $("den-ap-det").textContent = (a.details || [])
-      .map(function (l, i) {
-        var k = dk[i];
-        return k && k.key ? t(k.key, k.vars || {}) : l;
-      })
-      .join("\n");
+    $("den-ap-det").textContent = apDetailLines(a).join("\n");
     // Issue 199: the agents that keep their own mode, and the choice.
     var own = a.ownMode || [];
     $("den-ap-own").hidden = !own.length;
@@ -9615,9 +9851,24 @@
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
     // Issue 167: the pick item's line under its title.
     ".den-bell-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }",
+    // Issue 746: the Allow row's Review, and the lines it opens.
+    ".den-bell-rv { display: inline; font: 500 12.5px var(--sans); background: none; border: 0;",
+    "  color: var(--accent-text); cursor: pointer; padding: 4px 0; margin-top: 2px; }",
+    ".den-bell-det { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 6px;",
+    "  background: var(--surface-2, var(--surface)); border: 1px solid var(--border);",
+    "  color: var(--text); font-size: 12.5px; }",
+    ".den-bell-det[hidden] { display: none; }",
+    // Allow and Deny stay put when Review opens: the row keeps to its top,
+    // on a phone too (the kit centers a phone's rows).
+    ".den-bell-row.den-bell-allow { align-items: flex-start; }",
+    ".den-bell-detl { overflow-wrap: anywhere; }",
+    // A phone's finger needs 44 px to hit Review.
+    "@media (max-width: 600px) { .den-bell-rv { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px 0 0; } }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
+    // Issue 187: a row that opens on a click anywhere shows the pointer.
+    ".den-bell-row.opens { cursor: pointer; }",
     ".den-bell-x, .den-bell-row .den-ib { font: 500 11px var(--mono); background: none; color: var(--muted);",
     "  border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; min-height: 20px; cursor: pointer; }",
     ".den-bell-row .den-ib { border-color: transparent; }",

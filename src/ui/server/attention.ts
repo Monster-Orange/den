@@ -131,6 +131,11 @@ export interface AttentionDeps {
   /** Issue 101: type `text` to agent `lead`; false when Den couldn't. */
   tellLead?: (lead: string, text: string) => Promise<boolean>;
   /**
+   * Issue 1008: type `text` to `agent` (an answer came after it withdrew
+   * its question); false when Den couldn't.
+   */
+  tell?: (agent: string, text: string) => Promise<boolean>;
+  /**
    * Issue 172: an agent began to need its person (a permission prompt or
    * a question), and its person isn't looking at it: alert them outside
    * the bell (alert-feed.ts). Once per wait, never for a repeat.
@@ -174,6 +179,40 @@ export interface WaitingDetail {
   since: string;
 }
 
+/**
+ * Issue 1008: an agent's withdrawn question, until its next question or
+ * an answer that came late. `typed`: its person typed into it since.
+ */
+interface SettledAsk {
+  id: string;
+  reason: string;
+  name: string;
+  question: string;
+  typed: boolean;
+}
+
+/** Issue 1008: the bell's words for a settled question. */
+function settledSay(
+  how: "agent" | "person" | "late",
+  v: { name: string; question: string; reason: string },
+): { text: string; msg: NoteMsg } {
+  const vars = { name: v.name, text: v.question, reason: v.reason };
+  if (how === "late")
+    return {
+      text: `${v.name}'s question was settled: ${v.reason}; your answer came after it and was passed on (${v.question})`,
+      msg: { key: "bell.m.settledLate", vars },
+    };
+  if (how === "person")
+    return {
+      text: `You withdrew ${v.name}'s question, settled: ${v.reason} (${v.question})`,
+      msg: { key: "bell.m.settledYou", vars },
+    };
+  return {
+    text: `${v.name} withdrew its question, settled: ${v.reason} (${v.question})`,
+    msg: { key: "bell.m.settled", vars },
+  };
+}
+
 interface Waiting {
   why: WaitingWhy;
   text: string;
@@ -193,10 +232,18 @@ interface Waiting {
    * the agent's next turn ending with no question says it no longer asks.
    */
   turn?: boolean;
+  /**
+   * Issue 828: a question on the agent's screen (AskUserQuestion, an
+   * elicitation): its answer (a tool run, a prompt) or its turn's end
+   * ends it; never sent to the lead.
+   */
+  dialog?: boolean;
 }
 
 export class Attention {
   private readonly waiting = new Map<string, Waiting>();
+  /** Issue 1008: each agent's last withdrawn question. */
+  private readonly settledAsks = new Map<string, SettledAsk>();
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
   private readonly now: () => number;
@@ -264,6 +311,8 @@ export class Attention {
           input?: string;
           /** The ask is its turn's last line, not an ask_human call. */
           turn?: boolean;
+          /** Issue 828: a question on the agent's screen. */
+          dialog?: boolean;
         }
       | { event: "finished"; text?: string; question?: string }
       | {
@@ -273,7 +322,7 @@ export class Attention {
           what?: string;
           input?: string;
         },
-  ): Promise<{ lead: string } | void> {
+  ): Promise<{ lead: string; askId?: string } | void> {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
@@ -289,6 +338,8 @@ export class Attention {
           ? { seq, at: arrived, what: ev.what, input: ev.input }
           : undefined;
       if (run) this.lastRun.set(agent, run);
+      // Issue 1008: the person's prompt after a withdraw: a late answer.
+      if (ev.from === "prompt") await this.lateAnswer(agent);
       const w = this.waiting.get(agent);
       if (!w) return;
       // Issue 609: the asked tool ran (it was allowed): its dialog is
@@ -301,13 +352,14 @@ export class Attention {
       // Issue 327: a new session has no dialog from before it; an ask
       // stays (Den holds the question, not the session).
       if (ev.from === "session") {
-        if (w.why !== "asked") this.clear(agent);
+        if (w.why !== "asked" || w.dialog) this.clear(agent);
         return;
       }
       if (this.now() - w.at < RESUME_AFTER_MS) return;
       // An ask is answered by a prompt (the person's reply), not by the
-      // ask_human call itself finishing.
-      if (w.why === "asked" && ev.from !== "prompt") return;
+      // ask_human call itself finishing. Issue 828: a question on screen
+      // is answered in it, and the agent goes on (a tool runs).
+      if (w.why === "asked" && ev.from !== "prompt" && !w.dialog) return;
       this.clear(agent);
       return;
     }
@@ -317,7 +369,7 @@ export class Attention {
       // own: this turn's end says again whether it asks (a hand-back with
       // "Decisions: none" doesn't), so it goes and this end decides.
       const prior = this.waiting.get(agent);
-      if (prior?.why === "asked" && !prior.turn) return;
+      if (prior?.why === "asked" && !prior.turn && !prior.dialog) return;
       // #142: a turn that ended on a question to its person needs them:
       // the question the hook said (issue 142, Claude Code's last answer),
       // else the one its transcript ends on.
@@ -358,6 +410,17 @@ export class Attention {
       return;
     }
     const prev = this.waiting.get(agent);
+    // Issue 828: the permission notice that comes with AskUserQuestion's
+    // dialog is that question, not a permission: a permission with no
+    // tool input (a Notification), or one naming AskUserQuestion. Another
+    // tool's PermissionRequest is its own wait.
+    if (
+      prev?.why === "asked" &&
+      prev.dialog &&
+      ev.why === "permission" &&
+      (!ev.input || /AskUserQuestion/.test(`${ev.what ?? ""} ${ev.text ?? ""}`))
+    )
+      return;
     // Issue 327: Claude Code's idle notice means no dialog is open: a
     // permission wait from before it is over.
     if (
@@ -395,6 +458,7 @@ export class Attention {
                 name,
                 text: ev.text ?? "",
                 ...(ev.turn ? { turn: 1 } : {}),
+                ...(ev.dialog ? { dialog: 1 } : {}),
               },
             }
           : { key: "bell.m.input", vars: { name } };
@@ -411,7 +475,7 @@ export class Attention {
     // Den can type to; the same question again isn't told twice.
     const q = ev.text ?? "";
     const lead =
-      ev.why !== "asked"
+      ev.why !== "asked" || ev.dialog
         ? undefined
         : prev?.why === "asked" && prev.lead && prev.text === text
           ? prev.lead
@@ -435,6 +499,8 @@ export class Attention {
       return;
     }
     const cur = this.waiting.get(agent);
+    // Issue 1008: a new question; the withdrawn one is behind it.
+    if (ev.why === "asked") this.settledAsks.delete(agent);
     this.waiting.set(agent, {
       why: ev.why,
       text,
@@ -446,10 +512,12 @@ export class Attention {
       input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
       ...(ev.why === "asked" && ev.turn ? { turn: true } : {}),
+      ...(ev.why === "asked" && ev.dialog ? { dialog: true } : {}),
     });
     if (lead) {
+      let row: Notification | null | undefined = null;
       if (prev?.lead !== lead || prev.text !== text)
-        this.d.store.add({
+        row = this.d.store.add({
           kind: "finished",
           subject,
           scope,
@@ -460,7 +528,17 @@ export class Attention {
           },
           link,
         });
-      return { lead };
+      // Issue 1058: the "asked the lead" row is the question's id.
+      row ??= this.d.store
+        .list()
+        .find(
+          (n) =>
+            n.subject === subject &&
+            !n.settled &&
+            n.msg?.key === "bell.m.toLead" &&
+            n.msg.vars.text === q,
+        );
+      return { lead, ...(row ? { askId: row.id } : {}) };
     }
     const looking = this.onScreen(agent);
     // Issue 172: a new need (not the same wait said again) alerts.
@@ -512,7 +590,87 @@ export class Attention {
 
   /** Its person typed into its terminal: answered, whatever it waited on. */
   typed(agent: string): void {
+    const s = this.settledAsks.get(agent);
+    if (s) s.typed = true;
     if (this.waiting.has(agent)) this.clear(agent);
+  }
+
+  /** Issue 1008: whether any agent has a withdrawn question kept. */
+  hasSettled(): boolean {
+    return this.settledAsks.size > 0;
+  }
+
+  /**
+   * Issue 1008: the question in bell row `id` (agent `agent`'s) was
+   * settled elsewhere: `by` is `agent:<id>` (the agent that asked) or
+   * `person`. Its wait goes; the row stays, read, saying why, who and
+   * when. Null when the row isn't there or was settled already.
+   */
+  settle(
+    agent: string,
+    id: string,
+    s: { reason: string; by: string },
+  ): Notification | null {
+    const row = this.d.store.list().find((n) => n.id === id);
+    if (!row || row.settled) return null;
+    const name = this.d.nameOf(agent);
+    const v = row.msg?.vars.text;
+    const question =
+      typeof v === "string" ? v : row.text.replace(/^.*? asked: /, "");
+    const out = this.d.store.settle(
+      id,
+      s,
+      settledSay(s.by === "person" ? "person" : "agent", {
+        name,
+        question,
+        reason: s.reason,
+      }),
+    );
+    if (!out) return null;
+    const w = this.waiting.get(agent);
+    if (w?.why === "asked") this.clear(agent);
+    // Issue 1058: a question that went to the lead: the lead is told.
+    if (row.msg?.key === "bell.m.toLead" && w?.lead)
+      void this.d
+        .tellLead?.(
+          w.lead,
+          `Den: ${name}'s question to you is settled: ${out.settled?.reason ?? s.reason}. It asked: "${question}". Nothing is left to decide.`,
+        )
+        .catch(() => false);
+    this.settledAsks.set(agent, {
+      id,
+      reason: out.settled?.reason ?? s.reason,
+      name,
+      question,
+      typed: false,
+    });
+    return out;
+  }
+
+  /**
+   * Issue 1008: a prompt went in after the agent withdrew its question,
+   * and its person had typed into it (a prompt Den types is no answer):
+   * the answer came late. Kept (it went in) and the row says so; the
+   * agent is told, once.
+   */
+  private async lateAnswer(agent: string): Promise<void> {
+    const s = this.settledAsks.get(agent);
+    if (!s?.typed) return;
+    this.settledAsks.delete(agent);
+    this.d.store.settledLate(
+      s.id,
+      settledSay("late", {
+        name: s.name,
+        question: s.question,
+        reason: s.reason,
+      }),
+    );
+    await this.d
+      .tell?.(
+        agent,
+        `Den: your person answered after you withdrew your question (settled: ${s.reason}). Their answer is the input you just got; it is kept. Check whether it changes anything.`,
+      )
+      .catch(() => false);
   }
 
   /**
@@ -521,6 +679,9 @@ export class Attention {
    * screen ends that.
    */
   answered(agent: string): void {
+    // Issue 1008: a comment typed in after a withdraw is a late answer.
+    const s = this.settledAsks.get(agent);
+    if (s) s.typed = true;
     if (this.waiting.get(agent)?.why === "asked") this.clear(agent);
   }
 
@@ -565,7 +726,10 @@ export class Attention {
     // The wait's row goes with it, read or not: "Needs you" lists read
     // rows too, so a row the person had opened stayed after its answer.
     const subject = `agent:${agent}`;
-    this.d.store.remove((n) => n.subject === subject && n.kind === "waiting");
+    // Issue 1008: a settled question's row is history: it stays.
+    this.d.store.remove(
+      (n) => n.subject === subject && n.kind === "waiting" && !n.settled,
+    );
     // #142: a hookless bell's update ("is waiting for you") goes with it.
     if (w?.why === "input") this.d.store.withdraw(`agent:${agent}`, "finished");
   }
@@ -710,7 +874,11 @@ export class Attention {
         const drop = () => this.d.store.remove((x) => x.id === n.id);
         // An ask ends with its agent stopped or removed; Den holds it
         // across its session ending by itself (as sweepEnded).
-        if (how === "stopped" || (how === "exited" && why !== "asked")) {
+        const dialog = why === "asked" && n.msg?.vars.dialog === 1;
+        if (
+          how === "stopped" ||
+          (how === "exited" && (why !== "asked" || dialog))
+        ) {
           drop();
           continue;
         }
@@ -740,6 +908,7 @@ export class Attention {
             : n.scope,
           byHook: !!this.d.hooked?.(agent),
           ...(why === "asked" && n.msg?.vars.turn === 1 ? { turn: true } : {}),
+          ...(dialog ? { dialog: true } : {}),
         });
       }
     } catch {
@@ -772,7 +941,7 @@ export class Attention {
     for (const [agent, how] of ended) {
       const w = this.waiting.get(agent);
       if (!w) continue;
-      if (how === "exited" && w.why === "asked") continue;
+      if (how === "exited" && w.why === "asked" && !w.dialog) continue;
       this.clear(agent);
     }
   }

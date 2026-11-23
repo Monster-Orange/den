@@ -100,6 +100,104 @@
     "v.old_link": "Abrir Pruebas",
     "v.err_load": "Verificación no pudo cargar los resultados.",
     "v.retry": "Intentar de nuevo",
+    "v.sch_link": "Programaciones",
+    "v.sch_t": "Programaciones",
+    "v.sch_s": "Pruebas que corren solas. Las pesadas corren en su ventana.",
+    "v.sch_tz":
+      "«Cuándo» y «Ventana» van en la zona horaria de este Den, {z}. Las pruebas pesadas corren de una en una.",
+    "v.sch_when": "Cuándo",
+    "v.sch_window_h": "Ventana",
+    "v.sch_next_h": "Próxima",
+    "v.sch_last_h": "Última corrida",
+    "v.sch_hourly": "Cada hora",
+    "v.sch_daily": "Cada día a las {t}",
+    "v.sch_weekly": "{d} a las {t}",
+    "v.sch_d0": "Los domingos",
+    "v.sch_d1": "Los lunes",
+    "v.sch_d2": "Los martes",
+    "v.sch_d3": "Los miércoles",
+    "v.sch_d4": "Los jueves",
+    "v.sch_d5": "Los viernes",
+    "v.sch_d6": "Los sábados",
+    "v.sch_any": "A cualquier hora",
+    "v.sch_night": "De noche (22:00 a 06:00)",
+    "v.sch_span": "De {a} a {b}",
+    "v.sch_st_allowed": "Permitida",
+    "v.sch_st_free": "Sin permiso necesario",
+    "v.sch_st_expiring": "Permiso por vencer",
+    "v.sch_st_paused": "En pausa",
+    "v.sch_free_code": "Solo lee el código, así que no necesita permiso.",
+    "v.sch_free_local": "Corre en local, así que no necesita permiso.",
+    "v.sch_needs": "Necesita un permiso antes de correr.",
+    "v.sch_needs_h": "Nada corre hasta que alguien permita esta programación.",
+    "v.sch_lapsed": "El permiso del {t} caducó cuando cambió el plan.",
+    "v.sch_expired": "El permiso venció el {t}.",
+    "v.sch_allow_until": "Permitida hasta el {t}.",
+    "v.sch_changed":
+      "El plan cambió, así que esta programación necesita un permiso nuevo.",
+    "v.sch_expiring":
+      "El permiso vence {t}. Cuando venza, esta programación se detiene hasta que alguien la permita de nuevo.",
+    "v.sch_code": "Código",
+    "v.sch_ro": "solo lectura",
+    "v.sch_ro_h":
+      "En producción es de solo lectura: solo GET, HEAD y OPTIONS, más las escrituras que el repositorio permite en write_allow.",
+    "v.sch_never": "Aún sin correr",
+    "v.sch_ask": "Permitir esta programación",
+    "v.sch_ask_t": "¿Permitir la programación «{s}» en {e}?",
+    "v.sch_ask_h":
+      "Un permiso cubre cada corrida de este plan hasta que cambie o venza el {t}.",
+    "v.sch_does": "Qué hace cada corrida",
+    "v.sch_mk_enforced": "lo garantiza Den",
+    "v.sch_mk_declared": "declarado de solo lectura",
+    "v.sch_mk_code": "solo lee el código",
+    "v.sch_touch_writes": "escribe",
+    "v.sch_touch_reads": "solo lee",
+    "v.sch_mk_service": "lo declara el servicio",
+    "v.sch_decline": "Rechazar",
+    "v.sch_decline_h":
+      "Rechazar deja la programación en pausa. Nada corre hasta que alguien la permita.",
+    "v.sch_revoke": "Retirar permiso",
+    "v.sch_revoked": "Permiso retirado. La programación espera uno nuevo.",
+    "v.sch_run": "Correr ahora",
+    "v.sch_runs": "Ver corridas",
+    "v.sch_ch_h": "Qué cambió",
+    "v.sch_ch_added": "{m} se sumó a la programación",
+    "v.sch_ch_removed": "{m} salió de la programación",
+    "v.sch_ch_cmd": "{m}: cambió su comando",
+    "v.sch_ch_writes": "{m} ahora escribe",
+    "v.sch_ch_window": "Cambió su ventana",
+    "v.sch_ch_cron": "Cambiaron sus horas",
+    "v.sch_missed_h": "Perdidas durante la pausa",
+    "v.sch_sk_allow": "necesita un permiso",
+    "v.sch_sk_changed": "necesita un permiso nuevo",
+    "v.sch_sk_expired": "su permiso venció",
+    "v.sch_sk_window": "su ventana cerró antes",
+    "v.sch_sk_busy": "había otra corrida en curso",
+    "v.sch_sk_cmdoff": "los comandos están apagados aquí",
+    "v.sch_sk_prodoff": "las programaciones en producción están apagadas aquí",
+    "v.sch_sk_often": "corre demasiado seguido para producción",
+    "v.sch_sk_host": "llega a un host que producción no permite",
+    "v.sch_lim_prod_off":
+      "Aquí las programaciones no corren en producción. Para activarlas, pon esto en el bloque verify: de Den:",
+    "v.sch_lim_often":
+      "Esto corre en producción más seguido de lo que Den permite. Córrelo menos seguido, o fija el intervalo mínimo en el bloque verify: de Den:",
+    "v.sch_lim_host":
+      "Una corrida en producción no puede llegar a estos hosts. Agrégalos a verify.schedule.production.hosts, o apunta la prueba a otro lugar:",
+    "v.sch_sk_unclear": "Den no pudo seguir su comando",
+    "v.sch_lim_off":
+      "Aquí los comandos no corren solos en un entorno compartido. Para activarlos, pon esto en el bloque verify: de Den:",
+    "v.sch_lim_unclear":
+      "Den no puede seguir este comando, así que no puede correr solo:",
+    "v.sch_empty":
+      "Aún no hay programaciones. Agrega {c} a un módulo para que corra solo.",
+    "v.sch_empty_h":
+      "Una programación en staging o producción pide un permiso una vez. Las de solo código y las locales corren sin él.",
+    "v.sch_how":
+      "Las programaciones vienen de {a} en el bloque {b} del repositorio. Para agregar, cambiar o quitar una, cambia el repositorio.",
+    "v.sch_started": "Empezó. Su resultado llega a la campana.",
+    "v.sch_allowed": "Permitida. Corre en su próxima hora.",
+    "v.sch_declined": "Rechazada. La programación sigue en pausa.",
+    "v.sch_err": "No funcionó: {e}",
     // Issue 441: an outside runner's gate results on Checks.
     "v.m_ran": "Se ejecutó de {a} a {b}.",
     "v.m_runner": "De un ejecutor externo.",
@@ -639,6 +737,12 @@
     "busy.startF": "No se pudo iniciar {name}.",
     "busy.termW": "Abriendo una terminal…",
     "busy.termS": "Terminal abierta.",
+    "busy.schAllowW": "Permitiendo la programación…",
+    "busy.schAllowS": "Permitida. Corre en su próxima hora.",
+    "busy.schAllowF": "No se pudo permitir la programación.",
+    "busy.schRunW": "Iniciando las pruebas programadas…",
+    "busy.schRunS": "Empezó. Su resultado llega a la campana.",
+    "busy.schRunF": "No se pudieron iniciar las pruebas programadas.",
     "busy.termF": "No se pudo abrir una terminal.",
     "busy.sayW": "Enviando a {name}…",
     "busy.sayS": "Enviado a {name}.",
@@ -1094,10 +1198,22 @@
       "Pruebas unitarias junto a una prueba de navegador de versión",
     "set.server.gate_cpu_beside_release.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_load_hold_per_core":
+      "Esperar nuevas pruebas unitarias por encima de esta carga por núcleo",
+    "set.server.gate_load_hold_per_core.d":
+      "Las nuevas pruebas unitarias esperan mientras la carga media de 5 minutos de esta máquina supere este número de veces sus núcleos, pero solo mientras otra prueba unitaria se ejecuta: si no hay ninguna, la siguiente empieza con cualquier carga. Las pruebas de versión y las que ya se ejecutan nunca esperan. Cada prueba unitaria recibe también su parte de los núcleos en DEN_GATE_WORKERS. 0 desactiva la espera. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_cpu_hold_load":
+      "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
+    "set.server.gate_cpu_hold_load.d":
+      "Mientras la carga media de 5 minutos de esta máquina sea igual o mayor que este valor, y una prueba de navegador con prioridad de versión tenga un puesto de navegador, las pruebas unitarias esperan. Las que ya corren nunca se detienen. El valor predeterminado es el número de núcleos × 4 / 3. 0 lo apaga. __DEN_CLI__ gate settings --cpu-hold-load 24",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":
       "Cuántas pruebas de navegador pueden ejecutarse a la vez en esta máquina, cada una en su propio contenedor. Una prueba de navegador en una máquina de pruebas no se incluye. 1: una a la vez. __DEN_CLI__ gate settings --local-browser-slots 1",
+    "set.server.gate_overrun_bell":
+      "Turno de prueba en la campana pasadas estas veces su estimación",
+    "set.server.gate_overrun_bell.d":
+      "Un turno de prueba que dura estas veces más que su estimación aparece en la campana, en Te necesitan, con Terminar. Si lo tiene un agente, Den le dice una vez que lo libere. 2: el doble de su estimación. __DEN_CLI__ gate settings --overrun-bell-multiple 2",
     "set.server.gate_overrun":
       "Prueba marcada pasada su estimación, en minutos",
     "set.server.gate_overrun.d":
@@ -1167,7 +1283,7 @@
       "Tokens con los que un trabajo de CI en una VM runner pide, renueva y devuelve turnos de pruebas en esta máquina. Nada más. Un agente pide uno y tú lo permites; revócalo aquí.",
     "set.server.gate_boxes": "Máquinas de pruebas",
     "set.server.gate_boxes.d":
-      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+      "Otras máquinas que ejecutan pruebas de navegador. Cada una tiene sus propios turnos de navegador. Una ejecución de navegador que puede usar una máquina toma el turno que se libere primero, aquí o en una máquina. Una máquina con su archivo de pausa presente no toma ejecuciones nuevas. Una que no responde se omite, nunca se espera. Una máquina con horario solo toma ejecuciones dentro de él, en la hora de esta máquina. Fuera de él, o apagada, Den nunca la contacta; una ejecución que ya está en ella termina. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
     "set.server.gate_box_check":
       "Espera de la comprobación de una máquina, en segundos",
     "set.server.gate_box_check.d":
@@ -1176,6 +1292,14 @@
       "Una máquina omitida se comprueba de nuevo tras, en segundos",
     "set.server.gate_box_recheck.d":
       "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
+    "set.server.gate_box_default": "Las pruebas de navegador van a",
+    "set.server.gate_box_default.d":
+      "Adónde va una prueba de navegador sin --box. Aquí o una máquina de pruebas: el primer turno de navegador libre, aquí o en una máquina de pruebas. Una prueba sin --base-url, o sin máquina para su versión de Playwright, se queda aquí y dice por qué. Solo aquí: como antes; una prueba va a una máquina solo con --box. __DEN_CLI__ gate settings --browser-box-default any",
+    "set.server.gate_box_default.any": "Aquí o una máquina de pruebas",
+    "set.server.gate_box_default.local": "Solo aquí",
+    "set.server.gate_host_only": "Pruebas de navegador que se quedan aquí",
+    "set.server.gate_host_only.d":
+      "Separados por comas: <proyecto>, label:<patrón> (* vale por cualquier texto). Estas pruebas de navegador nunca van a una máquina de pruebas, por ejemplo las de diseño o WebKit en macOS. Vacío: ninguna. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
     "set.server.crash_loop_wait": "Espera máxima de la protección",
     "set.server.crash_loop_wait.d":
       "Lo más que espera el siguiente arranque. 0 nunca espera. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1306,6 +1430,13 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.server.health_poll": "Comprobaciones de salud mientras miras",
+    "set.server.health_poll.d":
+      "Cada cuánto una página abierta y visible comprueba la salud de cada servicio: de 2 a 300 segundos. __DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden":
+      "Comprobaciones de salud en una pestaña oculta",
+    "set.server.health_poll_hidden.d":
+      "Cada cuánto una página en una pestaña oculta comprueba la salud: de 10 a 3600 segundos. Sin ninguna página a la vista, las comprobaciones se ejecutan como mucho con esa frecuencia. Al volver a la vista, la página comprueba enseguida. __DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -1805,6 +1936,9 @@
     "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",
     "ag.mcp.dropsTip":
       "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.failed": "Las herramientas de Hub no cargaron",
+    "ag.mcp.failedTip":
+      "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -1861,6 +1995,9 @@
       'Añadir el repositorio de {path} a un proyecto nuevo "{workspace}"',
     "ap.do.service_try": "Iniciar {service}",
     "ap.do.den_restart": "Reiniciar Den ({reason})",
+    "ap.do.den_update": "Actualizar Den a {version} ({reason})",
+    "ap.do.hub_connect": "Poner la dirección de Hub en {url}",
+    "ap.do.hub_connect.clear": "Borrar la dirección de Hub",
     "ap.do.persona_create": "Añadir la persona {name} ({id})",
     "ap.do.persona_update": "Cambiar la persona {id}: {fields}",
     "ap.do.persona_create.project":
@@ -1909,6 +2046,7 @@
     "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
     "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",
     "ap.det.gate_box_set.min_free_mem_mb": "Memoria libre mínima (MB): {v}",
+    "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
     "ap.do.host_restart":
@@ -2086,6 +2224,8 @@
       "{module} no puede correr aquí: solo corre en {envs}.",
     "ap.vr.cant.production":
       "{module} aún no puede correr en producción: activarlo para producción llega en un Den posterior.",
+    "ap.vr.cant.production-declared":
+      "{module} queda fuera de una corrida programada en producción: Den no puede mantener un comando en solo lectura, así que allí solo corren las pruebas de humo y los análisis del código.",
     "ap.vr.cant.adapter-later":
       "{module} aún no puede correr: su adaptador ({adapter}) llega en un Den posterior.",
     "ap.vr.cant.no-health-url":
@@ -2443,6 +2583,11 @@
     "bell.m.input": "{name} te está esperando",
     "bell.m.asked": "{name} preguntó: {text}",
     "bell.m.toLead": "{name} preguntó al líder, {lead}: {text}",
+    "bell.m.settled": "{name} retiró su pregunta, resuelta: {reason} ({text})",
+    "bell.m.settledYou":
+      "Retiraste la pregunta de {name}, resuelta: {reason} ({text})",
+    "bell.m.settledLate":
+      "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
@@ -2472,7 +2617,22 @@
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
+    "bell.m.vschedPass": "Corrida programada en {env}: pasaron {n} pruebas.",
+    "bell.m.vschedPass.one": "Corrida programada en {env}: pasó {n} prueba.",
+    "bell.m.vschedFail":
+      "Corrida programada en {env}: fallaron {n} de {total} pruebas.",
+    "bell.m.vschedFail.one":
+      "Corrida programada en {env}: falló {n} de {total} pruebas.",
+    "bell.m.vschedExpire":
+      'El permiso de la programación "{name}" vence en {n} días.',
+    "bell.m.vschedExpire.one":
+      'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.shared": "{actor} compartió {title} contigo",
+    "bell.m.sharedNote": "{actor} compartió {title} contigo: {note}",
+    "bell.m.sharedAgent": "El agente {actor} compartió {title} contigo",
+    "bell.m.sharedAgentNote":
+      "El agente {actor} compartió {title} contigo: {note}",
     "bell.m.heldLapsed":
       "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLapsedAsk":
@@ -2483,6 +2643,12 @@
       "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
     "bell.m.heldLostAll":
       "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
+    "bell.go.h": "Turnos de prueba pasados de su estimación",
+    "bell.go.row": "{who} tiene el turno de prueba {kind}: {label}",
+    "bell.go.sub": "Desde {time} · estimación {est} min · {over} min de más",
+    "bell.go.end": "Terminar",
+    "bell.go.ended":
+      "Turno de prueba terminado. Empieza el siguiente en la fila.",
     "bell.ap.h": "Esperan tu permiso",
     "bell.ap.row": "{name} pide: {what}",
     "bell.ap.rowAsk": "Pedido: {what}",
@@ -2494,6 +2660,10 @@
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.ranLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes trabajaron: {names}",
+    "bell.m.stoppedLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
@@ -2553,6 +2723,8 @@
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
+    "bell.m.toolsListFailed":
+      "{agent} no puede usar las herramientas de Hub: no se pudieron listar otra vez después de que __DEN_TITLE__ lo reiniciara una vez. Reinícialo desde Agentes cuando Hub esté arreglado",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":
@@ -2851,6 +3023,7 @@
     "gate.popH": "Pruebas en esta máquina",
     "gate.holds": "Ejecuta {kind}, hasta las {at} más o menos",
     "gate.waits": "Espera para ejecutar {kind}, desde las {at} más o menos",
+    "gate.padded": "estimación {est} min; esto suele tardar {usual}",
     "gate.over": "pasada su estimación",
     "gate.none": "Ninguna prueba tiene turno ni espera.",
     "gate.end": "Terminar antes",
@@ -2870,16 +3043,27 @@
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",
     "gate.boxLow": "{box}: omitida, poca memoria libre ({reason})",
+    "gate.boxMemUnknown":
+      "{box}: omitida, no se puede leer su memoria libre ({reason})",
     "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.boxOff": "{box}: omitida, apagada",
+    "gate.boxClosed": "{box}: omitida, fuera de su horario (abre a las {time})",
     "gate.yielded": "Dejó pasar a {to}",
     "gate.class": "Clase: {name}",
     "gate.window": "espera su horario {window}",
+    "gate.loadHoldCores":
+      "esperando: la carga de esta máquina es {load}, más de {perCore} × {cores} núcleos ({limit}), mientras se ejecuta otra prueba unitaria; empieza cuando baje la carga o termine esa prueba",
+    "gate.loadHold":
+      "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",
+    "busy.addSvcW": "Añadiendo {name}…",
+    "busy.addSvcS": "Se añadió {name}.",
+    "busy.addSvcF": "No se pudo añadir {name}.",
     "ag.orphan.one":
       "{names} no tiene proyecto: se eliminó. Asígnale uno con ⋯ › Mover a otro proyecto….",
     "ag.orphan.many":
@@ -3169,6 +3353,40 @@
     "pj.th.lastRun": "Última prueba",
     "pj.th.actions": "Acciones",
     "pj.addRepo": "Añadir repositorio",
+    "addSvc.title": "Añadir servicio: {ws}",
+    "addSvc.filter": "Filtrar repositorios",
+    "addSvc.filterPh": "Filtrar repositorios…",
+    "addSvc.tab.local": "Locales",
+    "addSvc.tab.gh": "GitHub",
+    "addSvc.sortBy": "Ordenar por",
+    "addSvc.sort.name": "Nombre",
+    "addSvc.sort.project": "Proyecto",
+    "addSvc.loading": "Cargando…",
+    "addSvc.noLocal": "No hay repositorios en esta máquina",
+    "addSvc.noResults": "Ningún repositorio coincide",
+    "addSvc.added": "añadido",
+    "addSvc.group.dev": "Gestionados por desarrollo",
+    "addSvc.group.managed": "Gestionados por __DEN_TITLE__",
+    "addSvc.ghLoading": "Cargando repositorios de GitHub…",
+    "addSvc.ghNoMatch": "Ningún repositorio coincide con «{q}»",
+    "addSvc.ghNone": "No hay repositorios de GitHub",
+    "addSvc.noManifest": "sin manifiesto",
+    "addSvc.group.supported": "Listos para __DEN_TITLE__",
+    "addSvc.group.unsupported": "Sin __DEN_MANIFEST_YML__",
+    "addSvc.refresh": "Actualizar",
+    "addSvc.refreshTip": "Volver a cargar la lista de repositorios de GitHub",
+    "addSvc.refreshing": "Actualizando…",
+    "addSvc.manage": "Gestión",
+    "addSvc.mode.dev": "Por desarrollo",
+    "addSvc.mode.managed": "Gestionado",
+    "addSvc.branch": "Rama",
+    "addSvc.newBranch": "Rama nueva",
+    "addSvc.optional": "opcional",
+    "addSvc.add": "Añadir",
+    "addSvc.done": "✓ {name} añadido",
+    "addSvc.doneSetup":
+      "✓ {name} añadido · la configuración está en marcha (ver Registros)",
+    "addSvc.missingDeps": "Faltan dependencias: {deps}",
     "pj.validate.title": "Validar un manifiesto",
     "pj.validate.path": "Ruta o carpeta",
     "pj.validate.pathPh": "/absolute/path/to/repo  o  /path/to/{file}",
@@ -3263,12 +3481,21 @@
     "set.ui.boxSave": "Guardar máquina",
     "set.ui.boxMem": "Memoria libre a mantener (MB)",
     "set.ui.boxPwv": "Versión de Playwright en la máquina",
+    "set.ui.boxPwsEx": "1.61=ws://box:3931, 1.63=ws://box:3932",
+    "set.ui.boxPws": "O Playwright por versión (1.61=ws://…, 1.63=ws://…)",
     "set.ui.boxNone":
       "No hay máquinas de pruebas. Las ejecuciones de navegador usan solo esta máquina.",
     "set.ui.boxSlotsN": "{n} turnos de navegador",
     "set.ui.boxHoldIs": "archivo de pausa {path}",
     "set.ui.boxScaleIs": "tiempo ×{n}",
     "set.ui.boxRemove": "Quitar",
+    "set.ui.boxWindow": "Horario (hora de esta máquina)",
+    "set.ui.boxRecheck": "Volver a comprobar tras, en segundos",
+    "set.ui.boxOn": "Encendida",
+    "set.ui.boxWindowIs": "{window}, hora de esta máquina",
+    "set.ui.boxIsOff": "apagada",
+    "set.ui.boxTurnOn": "Encender",
+    "set.ui.boxTurnOff": "Apagar",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",

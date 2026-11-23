@@ -10,6 +10,7 @@ export type GateSettingKey =
   | "cpu_slots_beside_browser"
   | "cpu_slots_beside_release_browser"
   | "local_browser_slots"
+  | "cpu_hold_load"
   | "overrun_margin_minutes"
   | "remote_renew_seconds"
   | "remote_lapse_seconds"
@@ -28,7 +29,9 @@ export type GateSettingKey =
   | "browser_requires_container"
   | "class_order"
   | "class_map"
-  | "class_windows";
+  | "class_windows"
+  | "browser_box_default"
+  | "browser_host_only";
 
 export const GATE_MEANINGS: Record<
   UiLanguage,
@@ -41,6 +44,8 @@ export const GATE_MEANINGS: Record<
     cpu_slots_beside_release_browser:
       "Unit test runs beside a release browser run (0: it runs alone)",
     local_browser_slots: "Browser test runs at once on this machine",
+    cpu_hold_load:
+      "Machine load at which unit test runs wait while a release browser run holds (0: off)",
     overrun_margin_minutes:
       "Minutes past its estimate before a run is flagged (never stopped)",
     remote_renew_seconds: "Seconds between a CI runner's renewals of its slot",
@@ -74,6 +79,10 @@ export const GATE_MEANINGS: Record<
     class_map: "Which projects and labels go in which class",
     class_windows:
       "When each class's long runs may start ahead of a higher class",
+    browser_box_default:
+      "Where a browser run with no --box goes (any: the first free slot here or on a test box; local: here only)",
+    browser_host_only:
+      "Projects and label patterns whose browser runs stay on this machine",
   },
   es: {
     cpu_slots: "Ejecuciones de pruebas unitarias a la vez en esta máquina",
@@ -83,6 +92,8 @@ export const GATE_MEANINGS: Record<
       "Pruebas unitarias junto a una de navegador de versión (0: va sola)",
     local_browser_slots:
       "Ejecuciones de pruebas de navegador a la vez en esta máquina",
+    cpu_hold_load:
+      "Carga de la máquina a la que las pruebas unitarias esperan mientras corre una de navegador de versión (0: apagado)",
     overrun_margin_minutes:
       "Minutos pasada su estimación antes de marcar una ejecución (nunca se detiene)",
     remote_renew_seconds:
@@ -119,6 +130,10 @@ export const GATE_MEANINGS: Record<
     class_map: "Qué proyectos y etiquetas van en cada clase",
     class_windows:
       "Cuándo las ejecuciones largas de cada clase pueden empezar antes que una clase más alta",
+    browser_box_default:
+      "Adónde va una prueba de navegador sin --box (any: el primer turno libre aquí o en una máquina de pruebas; local: solo aquí)",
+    browser_host_only:
+      "Proyectos y patrones de etiqueta cuyas pruebas de navegador se quedan en esta máquina",
   },
   ja: {
     cpu_slots: "このマシンで同時に動くユニットテストの数",
@@ -127,6 +142,8 @@ export const GATE_MEANINGS: Record<
     cpu_slots_beside_release_browser:
       "リリースのブラウザテストと並んで動くユニットテストの数（0: 単独）",
     local_browser_slots: "このマシンで同時に動くブラウザテストの数",
+    cpu_hold_load:
+      "リリースのブラウザテスト中、ユニットテストを待たせるマシン負荷 (0: オフ)",
     overrun_margin_minutes:
       "見積もりを何分過ぎたら印を付けるか（止めはしない）",
     remote_renew_seconds: "CI ランナーが枠を更新する間隔（秒）",
@@ -157,6 +174,10 @@ export const GATE_MEANINGS: Record<
     class_order: "優先クラス、高い順（空: すべて先着順）",
     class_map: "どのプロジェクトとラベルがどのクラスに入るか",
     class_windows: "各クラスの長い実行が上のクラスより先に始められる時間帯",
+    browser_box_default:
+      "--box のないブラウザテストの行き先（any: ここかテスト用マシンの先に空いた枠、local: ここだけ）",
+    browser_host_only:
+      "ブラウザテストをこのマシンに残すプロジェクトとラベルのパターン",
   },
 };
 
@@ -165,4 +186,18 @@ export const PRIORITY_OFF_WARNING: Record<UiLanguage, string> = {
   en: "priority_max 0 turns release priority off for every repo on this machine: a release run then waits behind plain runs. To go ahead, run it again with --yes.",
   es: "priority_max 0 desactiva la prioridad de versión para todos los repositorios de esta máquina: una ejecución de versión espera entonces detrás de las normales. Para seguir, ejecútalo de nuevo con --yes.",
   ja: "priority_max 0 は、このマシンのすべてのリポジトリでリリース優先をオフにします。リリース実行は通常の実行の後ろで待つことになります。続けるには --yes を付けてもう一度実行してください。",
+};
+
+/** Issue 963: `gate status`'s last line while release priority is off. */
+export const PRIORITY_OFF_STATUS: Record<UiLanguage, string> = {
+  en: "release priority: off (priority_max 0)",
+  es: "prioridad de versión: desactivada (priority_max 0)",
+  ja: "リリース優先: オフ (priority_max 0)",
+};
+
+/** Issue 963: a release ask while release priority is off. */
+export const PRIORITY_OFF_RUN: Record<UiLanguage, string> = {
+  en: "taken as an ordinary run: release priority is off on this machine (priority_max 0)",
+  es: "se toma como una ejecución normal: la prioridad de versión está desactivada en esta máquina (priority_max 0)",
+  ja: "通常の実行として扱います: このマシンではリリース優先がオフです (priority_max 0)",
 };

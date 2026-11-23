@@ -31,8 +31,14 @@
  *                                     devices, each with {status, reached,
  *                                     gone} (gone: dropped).
  *   POST /api/alerts/forget          {id}: stop push to that device.
+ *   POST /api/notifications/withdraw issue 1008: {id, reason}: a question
+ *                                     settled elsewhere leaves Needs you;
+ *                                     the bell keeps it, saying why, who
+ *                                     and when. The agent that asked (its
+ *                                     token) or the person only; another
+ *                                     agent's is refused and recorded.
  * An agent reads the bell (notifications_list) but changes nothing in it
- * but its own attention.
+ * but its own attention and its own questions.
  */
 import type * as http from "http";
 import {
@@ -46,8 +52,10 @@ import {
   type Which,
 } from "../../shared/notifications.js";
 import type { Approval } from "./approvals.js";
-import type { Attention, WaitingWhy } from "./attention.js";
+import { rowWhy, type Attention, type WaitingWhy } from "./attention.js";
+import { recordAction } from "./audit.js";
 import { heldWaiting } from "./held-bell.js";
+import type { GateOverrunWaiting } from "./gate-overrun-bell.js";
 import type { AlertFeed } from "./alert-feed.js";
 import {
   deviceId,
@@ -58,7 +66,14 @@ import {
   type PushSubscriptions,
 } from "./web-push.js";
 import { readBody, sendJson } from "./http-helpers.js";
-import { agentPrincipalOf } from "./request-guard.js";
+import {
+  agentPrincipalOf,
+  auditActorOf,
+  principalOf,
+} from "./request-guard.js";
+
+/** Issue 1008: a withdraw's reason, one line. */
+export const WITHDRAW_REASON_MAX = 200;
 
 export const NOTIFICATION_PATHS = [
   "/api/agents/self/attention",
@@ -67,6 +82,7 @@ export const NOTIFICATION_PATHS = [
   "/api/notifications/clear",
   "/api/notifications/mute",
   "/api/notifications/looking",
+  "/api/notifications/withdraw",
   "/api/alerts",
   "/api/alerts/push-key",
   "/api/alerts/subscribe",
@@ -100,6 +116,11 @@ export interface NotificationRouteDeps {
    * queue's pending()); they lead `waiting`, kind "allow".
    */
   held?: () => readonly Approval[];
+  /**
+   * Issue 993: the gate slots held past the overrun multiple of their
+   * estimate; they follow the held writes in `waiting`, kind gate_overrun.
+   */
+  gateOverruns?: () => readonly GateOverrunWaiting[];
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -139,6 +160,17 @@ const inputKeyOf = (v: unknown) =>
   typeof v === "string" && /^[0-9a-f]{16}$/.test(v) ? v : undefined;
 
 /** Issue 746: what waits on the person's Allow now; best effort. */
+/** Issue 993: the overrun slots, or none when the store can't be read. */
+function gateOverrunsNow(
+  deps: NotificationRouteDeps,
+): readonly GateOverrunWaiting[] {
+  try {
+    return deps.gateOverruns?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
 function heldNow(deps: NotificationRouteDeps): readonly Approval[] {
   try {
     return deps.held?.() ?? [];
@@ -199,6 +231,10 @@ export async function handleNotificationRoutes(
       return true;
     }
     const id = agent.actor.slice("agent:".length);
+    // Issue 828: a question on the agent's screen (its hook says so). It
+    // counts toward the ask limit like any question: the flag is the
+    // agent's own word.
+    const dialog = ev === "waiting" && why === "asked" && b?.dialog === true;
     if (ev === "waiting" && why === "asked" && deps.asks) {
       let perHour: number;
       try {
@@ -232,6 +268,7 @@ export async function handleNotificationRoutes(
             input: inputKeyOf(b?.input),
             idle: b?.idle === true,
             hooked: b?.hooked === true,
+            ...(dialog ? { dialog: true } : {}),
           }
         : ev === "resumed"
           ? {
@@ -249,11 +286,101 @@ export async function handleNotificationRoutes(
               question: str(b?.question),
             },
     );
+    // Issue 1008: the question's bell row, for a withdraw.
+    const askId =
+      ev === "waiting" && why === "asked" && !routed
+        ? deps.store
+            .list()
+            .find(
+              (n) =>
+                n.subject === `agent:${id}` &&
+                n.kind === "waiting" &&
+                !n.settled &&
+                rowWhy(n) === "asked",
+            )?.id
+        : undefined;
     // Issue 101: the question went to the project's lead (its name).
     sendJson(res, {
       ok: true,
       ...(routed ? { lead: deps.attention.nameOf(routed.lead) } : {}),
+      ...(askId || routed?.askId ? { askId: askId ?? routed?.askId } : {}),
     });
+    return true;
+  }
+
+  if (pathname === "/api/notifications/withdraw") {
+    if (method !== "POST")
+      return (refuse(res, 405, "method", "POST only."), true);
+    const b = await jsonBody(req);
+    const id = typeof b?.id === "string" ? b.id.trim().slice(0, 128) : "";
+    const reason =
+      typeof b?.reason === "string" ? b.reason.replace(/\s+/g, " ").trim() : "";
+    if (!id || !reason || reason.length > WITHDRAW_REASON_MAX) {
+      refuse(
+        res,
+        400,
+        "bad_withdraw",
+        `Give the question's id and a one-line reason (at most ${WITHDRAW_REASON_MAX} characters).`,
+      );
+      return true;
+    }
+    const row = deps.store
+      .list()
+      .find(
+        (n) =>
+          n.id === id &&
+          n.source === "den" &&
+          (n.kind === "waiting" || n.kind === "finished") &&
+          n.subject.startsWith("agent:"),
+      );
+    // Issue 1058: a question routed to the lead is its "asked the lead" row.
+    const isAsk = (n: NonNullable<typeof row>) =>
+      n.kind === "waiting"
+        ? rowWhy(n) === "asked"
+        : n.msg?.key === "bell.m.toLead";
+    if (!row || (!row.settled && !isAsk(row))) {
+      refuse(res, 404, "not_found", "No question in the bell has that id.");
+      return true;
+    }
+    const asker = row.subject.slice("agent:".length);
+    const by = agent ? agent.actor : "person";
+    const audit = (outcome: "refused" | undefined, detail: string) =>
+      recordAction(
+        auditActorOf(req),
+        {
+          verb: "ask_withdraw",
+          detail,
+          ...(outcome ? { outcome, reason: detail } : {}),
+        },
+        principalOf(req),
+      );
+    if (agent && agent.actor !== `agent:${asker}`) {
+      audit(
+        "refused",
+        `withdraw of ${asker}'s question ${id} refused: only the agent that asked, or the person, may withdraw it`,
+      );
+      refuse(
+        res,
+        403,
+        "not_yours",
+        "Only the agent that asked, or the person, can withdraw a question.",
+      );
+      return true;
+    }
+    if (row.settled) {
+      refuse(res, 409, "settled", "That question was withdrawn already.");
+      return true;
+    }
+    const out = deps.attention.settle(asker, id, { reason, by });
+    if (!out?.settled) {
+      refuse(res, 409, "settled", "That question was withdrawn already.");
+      return true;
+    }
+    audit(
+      undefined,
+      `${asker}'s question ${id} withdrawn by ${by}, settled: ${out.settled.reason}`,
+    );
+    sendJson(res, { ok: true, id, settled: out.settled });
     return true;
   }
 
@@ -318,6 +445,7 @@ export async function handleNotificationRoutes(
       // then (issue 327) each agent waiting, what on, since when.
       waiting: [
         ...heldWaiting(heldNow(deps)),
+        ...gateOverrunsNow(deps),
         ...[...deps.attention.waitingNow()].map(([a, why]) => {
           const w = deps.attention.waitingDetail(a);
           return {

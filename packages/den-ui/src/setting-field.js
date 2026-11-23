@@ -48,7 +48,6 @@ import { esc, kitT, safeId } from "./strings.js";
 /** The kit's shared button verbs (strings.js kit.verb.*). */
 export const VERBS = ["save", "cancel", "delete", "close", "tryAgain"];
 
-
 /** The host's words: its own text, or a key it added ({ key, vars }). */
 function words(lang, w) {
   if (w && typeof w === "object" && typeof w.key === "string")

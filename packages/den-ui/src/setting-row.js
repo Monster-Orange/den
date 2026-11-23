@@ -45,7 +45,6 @@ import { timeHtml, upgradeTimes } from "./time.js";
 
 const STATES = ["idle", "saving", "saved", "error"];
 
-
 /** "Admins and Owners", in the row's language. */
 function joinWho(lang, who) {
   try {

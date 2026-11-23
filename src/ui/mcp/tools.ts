@@ -17,6 +17,7 @@ import {
   GateYieldRefused,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import { gateWorkers } from "../../shared/gates/rules.js";
 import {
   browserSlotCheck,
   browserSlotRefusal,
@@ -30,6 +31,7 @@ import {
   type McpAction,
   type ResolvedMcpConfig,
 } from "../../shared/den-config.js";
+import { peopleAddress } from "../../shared/agent-links.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { NOTHING_RAN_EXIT } from "../../shared/run-outcome.js";
 import { checkIssueWrite } from "../../shared/issue-write.js";
@@ -286,8 +288,14 @@ function lapseNotices(): string[] {
 function slotView(store: GateStore, id: string) {
   const v = gateView(store);
   const mine = v.slots.find((x) => x.id === id);
+  // Issue 1048: a cpu run here uses its share of the cores (one waiting
+  // on the machine's load has it in loadHold, from the view).
+  const cpu = mine?.kind === "cpu";
   return {
     ...mine,
+    ...(cpu && mine?.granted && !mine.box
+      ? { workers: gateWorkers(store.cores(), v.settings.cpuSlots) }
+      : {}),
     // Issue 714: renew it this often while you work (gate_slot_request
     // with its id), or it lapses once past its estimate.
     renewEveryMinutes: v.settings.mcpRenewMinutes,
@@ -431,7 +439,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "whoami",
     "Who you are to Den, and your tools",
-    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (your session started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
+    "D44: your agent id and project, and whether Hub's tools (hub_*) are yours: `hub.connected` (this Den is connected to Hub), `hub.loaded` (you started with Hub's tools), `hub.restart` (a restart from Den brings them in line), and `note`, one line to tell the person. Issue 1016: `webUrl` is this Den's address for people (null when it isn't set), and `links` the full links on it to give your person (`agent`: your page, `project`, `notifications`, `allow`: where they Allow your held writes); `address` says it in one line, or where a person sets it. Give only these links, never a localhost or 127.0.0.1 one. When Hub is connected but its tools are missing, say so and ask the person to restart you from Den (Restart keeps this conversation); there is no token for you or them to make. Reads only.",
     {},
     async (_a, { api, scope }) => {
       const id = scope?.actor.startsWith("agent:")
@@ -466,11 +474,54 @@ const READ_TOOLS: DenTool[] = [
         event: "waiting",
         why: "asked",
         text: question,
-      })) as { lead?: unknown } | null;
-      // Issue 101: a project with a lead: the question went to it.
+      })) as { lead?: unknown; askId?: unknown } | null;
+      // Issue 1008: its id, to withdraw it if it is settled elsewhere.
+      const id =
+        typeof r?.askId === "string" && r.askId
+          ? ` Its id is ${r.askId}: if it is settled another way, withdraw it with ask_withdraw.`
+          : "";
+      // Issue 101: a project with a lead: the question went to it. Issue
+      // 1058: it has an id too.
       if (typeof r?.lead === "string" && r.lead)
-        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.`;
-      return "Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.";
+        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.${id}`;
+      return `Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.${id}`;
+    },
+  ),
+  read(
+    "ask_withdraw",
+    "Withdraw your question",
+    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    {
+      id: z.string().describe("The question's id, from ask_human"),
+      reason: z
+        .string()
+        .describe("How it was settled, one line, at most 200 characters"),
+    },
+    async (a, { api }) => {
+      const id = (str(a.id) ?? "").trim();
+      const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
+      if (!id || !reason)
+        throw new Refusal(
+          "ask_withdraw: give the question's id and a one-line reason.",
+        );
+      if (reason.length > 200)
+        throw new Refusal(
+          "ask_withdraw: a reason is one line, at most 200 characters.",
+        );
+      try {
+        await api.get("/api/notifications/withdraw", {}, "POST", {
+          id,
+          reason,
+        });
+      } catch (e) {
+        if (
+          e instanceof DenHttpError &&
+          [400, 403, 404, 409].includes(e.status)
+        )
+          throw new Refusal(`ask_withdraw: ${e.body}`);
+        throw e;
+      }
+      return `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
     },
   ),
   read(
@@ -569,7 +620,9 @@ const READ_TOOLS: DenTool[] = [
         .number()
         .positive()
         .optional()
-        .describe("How long you expect to hold it (default 10)"),
+        .describe(
+          "How long you expect to hold it. Leave it out: the gate uses the median of this label's last runs (else yours of this kind, else 10).",
+        ),
       label: z
         .string()
         .optional()
@@ -642,8 +695,10 @@ const READ_TOOLS: DenTool[] = [
           who: `${ctx.scope?.actor ?? "an agent"} · ${ctx.scope?.workspace ?? "no project"}`,
           label: (str(a.label) ?? "tests").slice(0, 120),
           pid: process.pid,
-          estimateMin:
-            typeof a.estimate_minutes === "number" ? a.estimate_minutes : 10,
+          // Issue 999: none given: the gate measures it from the label.
+          ...(typeof a.estimate_minutes === "number"
+            ? { estimateMin: a.estimate_minutes }
+            : {}),
           agent: true,
           ...(ctx.scope?.actor ? { actor: ctx.scope.actor } : {}),
           mcp: { install: ctx.install ?? path.resolve(getStateDir()) },
@@ -731,14 +786,24 @@ const READ_TOOLS: DenTool[] = [
   read(
     "gate_slot_release",
     "Give a gate slot back",
-    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting). Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`.",
+    "Issue 144: give back a slot you asked for with gate_slot_request (holding or still waiting), or (issue 1023) one a `gate run` from your own shell made, as the same agent. Only your own: ending anyone else's slot is a person's, on the Agents page or with `<cli> gate end`. Giving back a `gate run`'s slot does not stop its command.",
     { id: z.string().describe("Your slot's id") },
     async (a, ctx) => {
       const id = str(a.id) ?? "";
-      if (!mySlots.has(id))
+      const store = gatesOf(ctx);
+      const actor = ctx.scope?.actor;
+      // Issue 1023: a slot this agent's own `gate run` made (the CLI marks
+      // it with the agent's DEN_AGENT), never a runner's or an MCP ask
+      // from elsewhere.
+      const fromMyShell = (): boolean => {
+        if (!actor || !/^[a-z0-9-]{1,64}$/.test(id)) return false;
+        const e = store.get(id);
+        return !!e && !e.remote && !e.mcp && e.actor === actor;
+      };
+      if (!mySlots.has(id) && !fromMyShell())
         throw new Refusal("gate_slot_release: that slot isn't yours.");
       mySlots.delete(id);
-      return { released: gatesOf(ctx).release(id) };
+      return { released: store.release(id) };
     },
   ),
   read(
@@ -1930,19 +1995,21 @@ async function askPerson(
   ctx: ToolContext,
   /** SRV-1a: the answer when Den stops answering after the ask (it restarted). */
   lostAfterAsk?: string,
+  /** The answer while it still waits (default: waitingText). */
+  waiting: (id: string) => string = waitingText,
 ): Promise<unknown> {
   const clean = Object.fromEntries(
     Object.entries(args).filter(([, v]) => v !== undefined && v !== ""),
   );
   const note = own.note;
-  let asked: { id?: unknown; ticket?: unknown };
+  let asked: { id?: unknown; ticket?: unknown; allowLink?: unknown };
   try {
     asked = (await ctx.api.get("/api/approvals", {}, "POST", {
       action,
       args: clean,
       ...(typeof note === "string" && note.trim() ? { note: note.trim() } : {}),
       ...(own.ask === true ? { ask: true } : {}),
-    })) as { id?: unknown; ticket?: unknown };
+    })) as { id?: unknown; ticket?: unknown; allowLink?: unknown };
   } catch (e) {
     if (e instanceof DenHttpError && [400, 403, 409, 429].includes(e.status))
       throw new Refusal(`${tool}: ${e.body}`);
@@ -1950,8 +2017,17 @@ async function askPerson(
   }
   const id = String(asked?.id ?? "");
   keepTicket(id, asked?.ticket);
+  // Issue 1016: the full Allow link on Den's address, when the server
+  // gives one (web.url set); never made up here.
+  const allowLink =
+    typeof asked?.allowLink === "string" && peopleAddress(asked.allowLink)
+      ? asked.allowLink
+      : null;
+  const waitingWithLink = allowLink
+    ? (x: string) => `${waiting(x)} The person Allows it at ${allowLink}`
+    : waiting;
   try {
-    return await waitForPerson(tool, id, asked, ctx);
+    return await waitForPerson(tool, id, asked, ctx, waitingWithLink);
   } catch (e) {
     if (
       lostAfterAsk &&
@@ -1964,11 +2040,17 @@ async function askPerson(
   }
 }
 
+/** A held write's answer while it still waits for the person. */
+function waitingText(id: string): string {
+  return `Waiting for the person to approve in Den (request ${id}); call approval_check with this id later.`;
+}
+
 async function waitForPerson(
   tool: string,
   id: string,
   asked: unknown,
   ctx: ToolContext,
+  waiting: (id: string) => string = waitingText,
 ): Promise<unknown> {
   const w = ctx.approvalWait ?? APPROVAL_WAIT;
   const sleep =
@@ -2020,7 +2102,7 @@ async function waitForPerson(
     if (Date.now() >= until) break;
     await sleep(w.intervalMs);
   }
-  return `Waiting for the person to approve in Den (request ${id}); call approval_check with this id later.`;
+  return waiting(id);
 }
 
 /** A required string argument, or a refusal before anything is asked. */
@@ -2072,6 +2154,13 @@ function refuseScoped(tool: string, scope: McpScope | undefined): void {
 /** SRV-1a: what the agent does after den_restart_server. */
 const RESTART_NEXT =
   'End your turn now. When Den is back it types "Server is back on <version> (pid …)" to you.'; // words-ok: SRV-1's own line, for the agent
+
+/**
+ * A project's agent's den_update, while it waits: it changes Den beyond
+ * the project, so it runs only on a person's Allow (never a setting).
+ */
+const updateWaitingScoped = (id: string): string =>
+  `Held for a person's Allow: Den is not updated until a person Allows it in Den's browser (the Allow dialog, and Needs you in the bell) (request ${id}). Carry on with other work; call approval_check with this id later. Once it is allowed, Den updates, restarts and tells you when it is back.`;
 
 /** SRV-1b: what the agent does after den_update. */
 const UPDATE_NEXT =
@@ -2288,7 +2377,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "den_update",
     title: "Update Den",
     description:
-      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (Den's line when it is back says what it found, and so do release_status's doctor results), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person." + // words-ok: SRV-1's own line
+      "Update this Den to another version from npm (`latest` by default, or one like 0.4.44), then restart on it. Den saves the pin, installs, runs the new version's doctor (Den's line when it is back says what it found, and so do release_status's doctor results), and restarts; if the new version isn't up in time it rolls back by itself and tells you why. Only for a Den installed from npm in the distribution; a Den run from a checkout is updated with git. When Den is up again it types \"Server is back on <version> (pid …)\" to you: end your turn after this call. With server_agent.self_update: auto your own ask runs at once; with ask (the default) it is held for the person. A project's agent's ask is always held for a person's Allow." + // words-ok: SRV-1's own line
       HELD,
     action: true,
     shape: {
@@ -2305,7 +2394,9 @@ const APPROVAL_TOOLS: DenTool[] = [
       ask: askArg,
     },
     async run(a, ctx) {
-      refuseScoped("den_update", ctx.scope);
+      // A project's agent may ask too: den_update is critical (approval
+      // policy), and server_agent.self_update covers Den's own agent only,
+      // so its ask always waits for a person's Allow.
       const reason = needArg("den_update", a, "reason", "one line: why update");
       const r = await askPerson(
         "den_update",
@@ -2314,6 +2405,7 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
         `Den stopped answering after the ask: if it was allowed, Den is updating and restarting. ${UPDATE_NEXT}`,
+        ctx.scope ? updateWaitingScoped : undefined,
       );
       return typeof r === "string"
         ? r

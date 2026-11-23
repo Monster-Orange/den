@@ -90,11 +90,46 @@ jobs:
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "$name@$version: release=$release ($GITHUB_EVENT_NAME)"
 
-  # The gates and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615).
-  gates:
+  # Issue 996: the release runs no test suite. It publishes only a tree that was tested: this commit is the newest
+  # dev tag of its version with the release's versions applied, and that tag's tree has a green ci.yml run on a pull
+  # request or in the merge queue. With DEN_BED_REQUIRED "true", the bed's success status too (context
+  # DEN_BED_CONTEXT, default den/bed; from DEN_BED_POSTER only, default github-actions[bot]).
+  # scripts/release-tree-check.mjs decides, and says in one line why not.
+  tested:
     needs: check
-    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # ci.yml's runs
+      statuses: read # the bed's status
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the dev tags and their trees
+          fetch-tags: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+      - name: This tree was tested (its pull request's CI and the bed)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEN_BED_CONTEXT: ${{ vars.DEN_BED_CONTEXT }}
+          # "true": the bed's status is required too (off by default: the bed's PASS stays the dev tag and its verdict)
+          DEN_BED_REQUIRED: ${{ vars.DEN_BED_REQUIRED }}
+          # whose status counts, when required: one login, default github-actions[bot] (the bed's own workflow token)
+          DEN_BED_POSTER: ${{ vars.DEN_BED_POSTER }}
+        run: node scripts/release-tree-check.mjs "${{ needs.check.outputs.version }}"
+
+  # The checks and the tarball: release-gates.yml, the same jobs the dry run on every dev tag runs (issue 615), here
+  # without the tests (issue 996).
+  gates:
+    needs: [check, tested]
+    if: ${{ !cancelled() && ((needs.check.outputs.release == 'true' && needs.tested.result == 'success') || github.event_name == 'workflow_dispatch') }}
     uses: ./.github/workflows/release-gates.yml
+    with:
+      tests: false
     secrets:
       DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
 
@@ -114,6 +149,12 @@ jobs:
       # that passed its gate and never merged stops the release.
       - name: The gated candidates are in this release
         run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
+      # The release holds what its newest gated candidate held, apart from the version lines and the changelog:
+      # work that reached main after the candidate was tagged stops the release.
+      - name: The release is the gated candidate
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: sh scripts/release-tree.sh "$VERSION" "$GITHUB_SHA"
       - name: The tag v<version>
         env:
           TAG: v${{ needs.check.outputs.version }}
@@ -133,6 +174,7 @@ jobs:
 
   publish:
     needs: [check, gates, tag]
+    environment: release # only main may deploy to it; npm's trusted publisher can name it
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45 # npm can take ~20 min to serve an accepted (202) upload
     permissions:
@@ -194,6 +236,7 @@ jobs:
   den-ui:
     # Issue 296: the kit ships only once both test halves pass, as Den does.
     needs: [gates]
+    environment: release # only main may deploy to it; npm's trusted publisher can name it
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:

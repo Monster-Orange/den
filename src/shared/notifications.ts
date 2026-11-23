@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export type NotificationKind =
   | "waiting"
@@ -23,7 +24,9 @@ export type NotificationKind =
   | "answer"
   | "mention"
   | "decision"
-  | "service";
+  | "service"
+  // Issue 581: Hub's "<someone> shared <a doc> with you".
+  | "shared";
 
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "waiting",
@@ -32,6 +35,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "mention",
   "decision",
   "service",
+  "shared",
 ];
 
 export interface Notification {
@@ -54,6 +58,22 @@ export interface Notification {
    * language (`text` is the English, for the CLI and old pages).
    */
   msg?: NoteMsg;
+  /**
+   * Issue 1008: a question withdrawn once it was settled elsewhere: why,
+   * who withdrew it (`agent:<id>`, the agent that asked, or `person`) and
+   * when; `late` once an answer came after it. A settled row is read and
+   * no longer needs the person: the bell lists it with the updates.
+   */
+  settled?: Settled;
+}
+
+/** Issue 1008: how a withdrawn question was settled. */
+export interface Settled {
+  reason: string;
+  by: string;
+  /** ISO 8601. */
+  at: string;
+  late?: true;
 }
 
 /** A page string key (bell.m.*) and its values. */
@@ -87,10 +107,68 @@ export interface HubNote {
   readBy: string[];
   /** Its project's name (Hub, when it sends one). */
   scopeName?: string;
+  /** Issue 581: Den's own words for it (a shared item: Hub sends no text). */
+  msg?: NoteMsg;
+}
+
+/** Issue 581: a field of a shared item's data, cut and plain. */
+const field = (v: unknown, max: number): string =>
+  typeof v === "string"
+    ? v
+        .slice(0, max)
+        // Control characters out (terminal escapes included). Intentional.
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
+
+/**
+ * Issue 581: a "shared" item's bounded data, worded by Den in the page's
+ * language; null when its slug or its sharer is missing.
+ */
+function sharedWords(
+  data: unknown,
+): { msg: NoteMsg; text: string; slug: string } | null {
+  const d = (data && typeof data === "object" ? data : {}) as Record<
+    string,
+    Record<string, unknown> | undefined
+  >;
+  const slug = field(d.artifact?.slug, 128);
+  const actor = field(d.actor?.login, 64);
+  if (!slug || !actor) return null;
+  const title = field(d.artifact?.title, 200) || slug;
+  const note = field((d as Record<string, unknown>).note, 1000);
+  const agent = d.actor?.kind === "agent";
+  const key = `bell.m.shared${agent ? "Agent" : ""}${note ? "Note" : ""}`;
+  const said = `${agent ? "The agent " : ""}${actor} shared ${title} with you`;
+  return {
+    msg: { key, vars: { actor, title, ...(note ? { note } : {}) } },
+    text: note ? `${said}: ${note}` : said,
+    slug,
+  };
+}
+
+/** Issue 581: a link only when https on the connected Hub's origin. */
+function onHub(link: string, hub: string | undefined): string | undefined {
+  let origin = "";
+  try {
+    origin = hub ? new URL(hub).origin : "";
+  } catch {
+    origin = "";
+  }
+  if (!/^https:\/\//.test(origin)) return undefined;
+  try {
+    const u = new URL(link);
+    if (u.protocol === "https:" && u.origin === origin) return link;
+  } catch {
+    /* not a URL: Hub's home */
+  }
+  return `${origin}/`;
 }
 
 /** Hub's item, or null when it isn't one Den can show. */
-export function parseHubNote(v: unknown): HubNote | null {
+export function parseHubNote(v: unknown, hubUrl?: string): HubNote | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
   const str = (x: unknown, max: number) =>
@@ -99,10 +177,33 @@ export function parseHubNote(v: unknown): HubNote | null {
   const kind = r.kind as NotificationKind;
   const subject = str(r.subject, 200);
   if (!id || !NOTIFICATION_KINDS.includes(kind)) return null;
-  if (!/^(thread|record|agent):/.test(subject)) return null;
   const at = str(r.at, 64);
   if (!at || Number.isNaN(Date.parse(at))) return null;
   const link = str(r.link, 2048);
+  if (kind === "shared") {
+    const w = sharedWords(r.data);
+    if (!w) return null;
+    const home = onHub(link, hubUrl);
+    return {
+      id,
+      kind,
+      subject: /^(thread|record):/.test(subject)
+        ? subject
+        : `record:artifact/${w.slug}`,
+      scope: str(r.scope, 128).replace(/[^\w.:/-]/g, ""),
+      ...(str(r.scopeName, 120).trim()
+        ? { scopeName: plain(str(r.scopeName, 120)) }
+        : {}),
+      text: w.text,
+      msg: w.msg,
+      ...(home ? { link: home } : {}),
+      at: new Date(at).toISOString(),
+      readBy: Array.isArray(r.readBy)
+        ? r.readBy.filter((x): x is string => typeof x === "string")
+        : [],
+    };
+  }
+  if (!/^(thread|record|agent):/.test(subject)) return null;
   return {
     id,
     kind,
@@ -200,9 +301,7 @@ export class NotificationStore {
 
   private write(f: StoreFile): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(f)}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, this.file);
+    writeFileAtomic(this.file, `${JSON.stringify(f)}\n`, { mode: 0o600 });
   }
 
   /** Newest first. */
@@ -307,6 +406,7 @@ export class NotificationStore {
           scope,
           ...(n.scopeName ? { scopeName: n.scopeName } : {}),
           text: plain(n.text),
+          ...(n.msg ? { msg: cleanMsg(n.msg) } : {}),
           ...(n.link ? { link: n.link } : {}),
           at: n.at,
           read: hubRead,
@@ -327,6 +427,9 @@ export class NotificationStore {
       ) {
         x.text = text;
         x.at = n.at;
+        const msg = cleanMsg(n.msg);
+        if (msg) x.msg = msg;
+        else delete x.msg;
         if (n.link) x.link = n.link;
         else delete x.link;
         // Hub filed it under its own project (Hub before that: the team's).
@@ -386,6 +489,44 @@ export class NotificationStore {
       (x) => !(x.subject === subject && x.kind === kind && !x.read),
     );
     if (f.items.length === before) return false;
+    this.write(f);
+    return true;
+  }
+
+  /**
+   * Issue 1008: a question is settled: it stays, read, with why, who and
+   * when, and the text and key that say so. False when there is no such
+   * row, or it was settled already.
+   */
+  settle(
+    id: string,
+    s: { reason: string; by: string },
+    say: { text: string; msg: NoteMsg },
+  ): Notification | null {
+    const f = this.read();
+    const x = f.items.find((n) => n.id === id);
+    if (!x || x.settled) return null;
+    const at = this.now().toISOString();
+    x.settled = { reason: plain(s.reason), by: s.by, at };
+    x.read = true;
+    x.at = at;
+    x.text = plain(say.text);
+    const msg = cleanMsg(say.msg);
+    if (msg) x.msg = msg;
+    f.items.sort((a, b) => a.at.localeCompare(b.at));
+    this.write(f);
+    return { ...x };
+  }
+
+  /** Issue 1008: an answer came after the question was settled. */
+  settledLate(id: string, say: { text: string; msg: NoteMsg }): boolean {
+    const f = this.read();
+    const x = f.items.find((n) => n.id === id);
+    if (!x?.settled || x.settled.late) return false;
+    x.settled.late = true;
+    x.text = plain(say.text);
+    const msg = cleanMsg(say.msg);
+    if (msg) x.msg = msg;
     this.write(f);
     return true;
   }
@@ -551,7 +692,7 @@ export class AskLimit {
 /**
  * Bell v6 (0.4.45): the seven switches a person turns kinds on and off
  * with. Each notification kind belongs to one; pr and shared have none
- * producing yet (their switches are ready).
+ * producing yet (its switch is ready); shared comes from Hub (issue 581).
  */
 export const BELL_SWITCHES = [
   "waiting",
@@ -578,6 +719,8 @@ export function switchOf(kind: NotificationKind): BellSwitch {
       return "pick";
     case "service":
       return "release";
+    case "shared":
+      return "shared";
   }
 }
 
@@ -645,11 +788,13 @@ export function bellView(
   const from = now - prefs.foldDays * 86_400_000;
   const old = (n: Notification) => Date.parse(n.at) < from;
   const fresh = shown.filter((n) => !old(n));
-  const recent = fresh.filter((n) => needsYou(n.kind));
+  // Issue 1008: a settled question no longer needs the person.
+  const needs = (n: Notification) => needsYou(n.kind) && !n.settled;
+  const recent = fresh.filter(needs);
   return {
     unread: recent.filter((n) => !n.read).length,
     recent,
-    updates: fresh.filter((n) => !needsYou(n.kind)),
+    updates: fresh.filter((n) => !needs(n)),
     older: shown.filter(old),
     off: prefs.off,
     foldDays: prefs.foldDays,

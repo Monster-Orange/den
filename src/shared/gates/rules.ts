@@ -43,6 +43,7 @@
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
+import * as os from "os";
 import {
   classRank,
   windowHeld,
@@ -51,6 +52,16 @@ import {
 } from "./classes.js";
 
 export type GateKind = "browser" | "cpu";
+
+/** Issue 999: where a run's estimate came from. */
+export type EstimateSource = "given" | "label" | "actor" | "default";
+
+/** Issue 999: a run with no estimate and no history: minutes. */
+export const DEFAULT_ESTIMATE_MIN = 10;
+
+/** Issue 999: the minutes the queue's wait times use for a run. */
+export const queueMinOf = (e: GateEntry): number =>
+  e.expectedMin ?? e.estimateMin;
 
 export interface GateEntry {
   id: string;
@@ -73,6 +84,20 @@ export interface GateEntry {
   flaggedAt?: string;
   /** How long the run expects to take, minutes. */
   estimateMin: number;
+  /**
+   * Issue 999: where estimateMin came from: given by the caller, or the
+   * median of the label's runs, of the asker's runs of its kind, or the
+   * kind's default. Absent on entries from before: given.
+   */
+  estimateFrom?: EstimateSource;
+  /**
+   * Issue 999: a given estimate over twice the measured median: the
+   * median the queue's wait times use instead, and where it came from.
+   */
+  expectedMin?: number;
+  expectedFrom?: EstimateSource;
+  /** Issue 999: the given estimate is over twice the measured median. */
+  padded?: boolean;
   /** An agent asked (an agent token or DEN_AGENT), not a person. */
   agent?: boolean;
   /** Which agent (`agent:<id>`), when it said; its row on Agents shows it. */
@@ -115,6 +140,17 @@ export interface GateEntry {
    * "self" (the run starts its own), or the address without its path.
    */
   browserEndpoint?: string;
+  /**
+   * Issue 1033: a browser run that could have gone to a test box by
+   * default but stays on this machine: why, in one line.
+   */
+  hostWhy?: string;
+  /**
+   * Issue 1033: a default pick (where "any") may take only these boxes:
+   * the others can't serve it (no declared Playwright version, or one
+   * that doesn't serve the run's).
+   */
+  onlyBoxes?: string[];
   box?: string;
   boxTimeScale?: number;
   /**
@@ -151,8 +187,26 @@ export interface GateSettings {
    * container), counted as a test box's slots are. Default 1.
    */
   localBrowserSlots: number;
+  /**
+   * Issue 1009: while this machine's 5-minute load average is at or above
+   * this, and a release-priority browser run holds a browser slot, cpu
+   * asks wait (holders are never stopped). 0 turns it off.
+   */
+  cpuHoldLoad: number;
+  /**
+   * Issue 1048: while this machine's 5-minute load average is over this
+   * many times its cores, new cpu runs wait, but only while another cpu
+   * run is going (so the line never stops for good). A release run never
+   * waits. 0 turns it off.
+   */
+  loadHoldPerCore: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
+  /**
+   * Issue 993: held past this many times its estimate, a slot is in the
+   * bell's Needs you (End for the person) and its agent is told once.
+   */
+  overrunBellMultiple: number;
   /** Issue 621: how often a runner renews its lease, seconds (it is told). */
   remoteRenewSeconds: number;
   /** Issue 621: a runner's lease not renewed this long is taken back. */
@@ -191,6 +245,24 @@ export interface GateSettings {
    * (browser-container.ts). Default: on for a macOS host, off elsewhere.
    */
   browserRequiresContainer: boolean;
+  /**
+   * Issue 1033: where a browser `gate run` with no --box goes: "any",
+   * the first free browser slot here or on a test box (the default), or
+   * "local", this machine only (as before).
+   */
+  browserBoxDefault: "any" | "local";
+  /**
+   * Issue 1033: projects and label patterns whose browser runs stay on
+   * this machine, comma-separated: <project>, label:<pattern> (* matches
+   * any text). Empty: none.
+   */
+  browserHostOnly: string;
+}
+
+/** Issue 1009: the default hold load, cores × 4 / 3 (24 on 18 cores). */
+export function cpuHoldLoadDefault(): number {
+  const cores = os.availableParallelism?.() ?? os.cpus().length;
+  return Math.round((Math.max(1, cores) * 4) / 3);
 }
 
 export const GATE_DEFAULTS: GateSettings = {
@@ -198,7 +270,12 @@ export const GATE_DEFAULTS: GateSettings = {
   cpuSlotsBesideBrowser: 2,
   cpuSlotsBesideReleaseBrowser: 0,
   localBrowserSlots: 1,
+  cpuHoldLoad: cpuHoldLoadDefault(),
+  // Issue 1048 (Vision 11-22): 3 × cores. At 1.5 (27 on 18 cores) the
+  // build machine's normal load of about 40 would hold every new run.
+  loadHoldPerCore: 3,
   overrunMarginMinutes: 15,
+  overrunBellMultiple: 2,
   remoteRenewSeconds: 30,
   remoteLapseSeconds: 120,
   remoteMaxSlots: 4,
@@ -212,6 +289,8 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpLapseMinutes: 15,
   mcpGraceMinutes: 15,
   browserRequiresContainer: process.platform === "darwin",
+  browserBoxDefault: "any",
+  browserHostOnly: "",
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -447,6 +526,54 @@ export function passedBy(
     .map((w) => w.id);
 }
 
+/** Why plain cpu asks wait on the machine's load (issues 1009, 1048). */
+export type LoadHold =
+  | { why: "release"; load: number; limit: number }
+  | {
+      why: "cores";
+      load: number;
+      limit: number;
+      perCore: number;
+      cores: number;
+    };
+
+/**
+ * Why plain cpu asks wait now, if they do (a release cpu ask never does).
+ * Issue 1009: the 5-minute load (`load`) is at or above cpuHoldLoad (0:
+ * off) while a release browser run holds a browser slot, here or on a
+ * test box (its app runs here).
+ * Issue 1048: the load is over loadHoldPerCore × `cores` (0: off) while a
+ * cpu run is going. With none going the next one starts, whatever the
+ * load: the hold slows the line, never stops it.
+ * Absent: they don't (or no load was read).
+ */
+export function loadHold(
+  entries: GateEntry[],
+  s: Partial<Pick<GateSettings, "cpuHoldLoad" | "loadHoldPerCore">>,
+  load: number | undefined,
+  cores?: number,
+): LoadHold | undefined {
+  if (load === undefined || !Number.isFinite(load)) return undefined;
+  const limit = s.cpuHoldLoad ?? GATE_DEFAULTS.cpuHoldLoad;
+  const release = entries.some(
+    (e) => e.grantedAt && e.kind === "browser" && !!e.priority,
+  );
+  if (limit > 0 && load >= limit && release)
+    return { why: "release", load, limit };
+  const perCore = s.loadHoldPerCore ?? GATE_DEFAULTS.loadHoldPerCore;
+  if (!(perCore > 0) || !(cores !== undefined && cores > 0)) return undefined;
+  const coreLimit = Math.round(perCore * cores * 100) / 100;
+  const cpuGoing = entries.some((e) => e.grantedAt && e.kind === "cpu");
+  return load > coreLimit && cpuGoing
+    ? { why: "cores", load, limit: coreLimit, perCore, cores }
+    : undefined;
+}
+
+/** Issue 1048: a cpu slot's worker cap: its share of the cores, at least 2. */
+export function gateWorkers(cores: number, cpuSlots: number): number {
+  return Math.max(2, Math.floor(cores / Math.max(1, Math.floor(cpuSlots))));
+}
+
 /**
  * Which waiters may start now on this machine, in order. Issue 751: each
  * kind's line on its own; a waiter that can't start holds back only its
@@ -454,15 +581,22 @@ export function passedBy(
  */
 export function grants(
   entries: GateEntry[],
-  s: Pick<GateSettings, "cpuSlots"> & Partial<QueueSettings>,
+  s: Pick<GateSettings, "cpuSlots"> &
+    Partial<
+      QueueSettings & Pick<GateSettings, "cpuHoldLoad" | "loadHoldPerCore">
+    >,
   now: number = Date.now(),
+  load?: number,
+  cores?: number,
 ): string[] {
   const room = localRoom(entries, s);
   const held = windowHeld(entries, s.classes, now);
+  const cpuHeld = !!loadHold(entries, s, load, cores); // issues 1009, 1048
   const out: string[] = [];
   const stopped = new Set<GateKind>();
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
+    if (cpuHeld && w.kind === "cpu" && !w.priority) continue; // issue 1009
     if (stopped.has(w.kind)) continue;
     if (!room.fits(w)) {
       room.wait(w);
@@ -514,15 +648,41 @@ export function expectedEnd(e: GateEntry): number {
   );
 }
 
-/** Past its estimate plus the margin: flagged, never stopped. */
+/**
+ * Issue 999: when the queue expects a holder to end (ms): as expectedEnd,
+ * with the measured median in place of a padded estimate.
+ */
+export function queueEnd(e: GateEntry): number {
+  return (
+    t(e.grantedAt ?? e.askedAt) + queueMinOf(e) * (e.boxTimeScale ?? 1) * 60_000
+  );
+}
+
+/**
+ * Past its estimate plus the margin: flagged, never stopped. Issue 999: a
+ * padded estimate's measured median, so padding can't hide a slot.
+ */
 export function overrun(
   e: GateEntry,
   s: Pick<GateSettings, "overrunMarginMinutes">,
   now: number,
 ): boolean {
-  return (
-    !!e.grantedAt && now > expectedEnd(e) + s.overrunMarginMinutes * 60_000
-  );
+  return !!e.grantedAt && now > queueEnd(e) + s.overrunMarginMinutes * 60_000;
+}
+
+/**
+ * Issue 993: held past `overrunBellMultiple` times its estimate (the box's
+ * time scale counted): the bell shows it, with End for the person.
+ */
+export function overrunBell(
+  e: GateEntry,
+  s: Pick<GateSettings, "overrunBellMultiple">,
+  now: number,
+): boolean {
+  if (!e.grantedAt) return false;
+  // Issue 999: a padded estimate's measured median, as overrun.
+  const est = queueMinOf(e) * (e.boxTimeScale ?? 1) * 60_000;
+  return now - t(e.grantedAt) > s.overrunBellMultiple * est;
 }
 
 /**
@@ -556,21 +716,21 @@ export function expectedStart(
   if (me?.kind === "browser" && n > 1) {
     const ends = entries
       .filter((e) => e.grantedAt && e.kind === "browser" && !e.box)
-      .map((e) => Math.max(now, expectedEnd(e)))
+      .map((e) => Math.max(now, queueEnd(e)))
       .sort((a, b) => a - b)
       .slice(-n);
     const slots = [...Array<number>(n - ends.length).fill(now), ...ends];
     for (const w of ahead.filter((x) => x.kind === "browser")) {
       const i = slots.indexOf(Math.min(...slots));
-      slots[i] = slots[i]! + w.estimateMin * 60_000;
+      slots[i] = slots[i]! + queueMinOf(w) * 60_000;
     }
     free = Math.min(...slots);
   } else {
     free = Math.max(
       now,
-      ...entries.filter((e) => e.grantedAt && mine(e)).map(expectedEnd),
+      ...entries.filter((e) => e.grantedAt && mine(e)).map(queueEnd),
     );
-    for (const w of ahead) free += w.estimateMin * 60_000;
+    for (const w of ahead) free += queueMinOf(w) * 60_000;
   }
   // Issue 803: held for its window: not before the window opens.
   const win = windowHeld(entries, s.classes, now).get(id);

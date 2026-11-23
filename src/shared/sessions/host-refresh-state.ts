@@ -12,6 +12,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export type HostRefreshPhase =
   | "waiting"
@@ -35,6 +36,12 @@ export interface HostRefreshState {
   why?: string;
   /** What started it: the web server's start, or the held write. */
   by?: "start" | "held";
+  /**
+   * Issue 732: while waiting, the agents whose turn has ended but a
+   * background job they started still runs (the restart would end it),
+   * each with how long it has run: doctor says so, never "mid-turn".
+   */
+  jobs?: { agent: string; minutes: number }[];
 }
 
 export const hostRefreshFile = (stateDir: string): string =>
@@ -48,9 +55,7 @@ export function writeHostRefreshState(
   const file = hostRefreshFile(stateDir);
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(s) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, JSON.stringify(s) + "\n", { mode: 0o600 });
   } catch {
     /* doctor then offers the held write: never worse than before */
   }
@@ -99,7 +104,27 @@ export function readHostRefreshState(
   )
     return null;
   if (v.state === "waiting" && !alive(v.pid)) return null;
-  return v as HostRefreshState;
+  const out = { ...v } as HostRefreshState;
+  delete out.jobs;
+  // Issue 732: only well-formed entries.
+  const jobs = Array.isArray(v.jobs)
+    ? v.jobs.filter(
+        (j): j is { agent: string; minutes: number } =>
+          !!j &&
+          typeof j.agent === "string" &&
+          j.agent.length > 0 &&
+          j.agent.length <= 64 &&
+          typeof j.minutes === "number" &&
+          Number.isFinite(j.minutes) &&
+          j.minutes >= 0,
+      )
+    : [];
+  return jobs.length
+    ? {
+        ...out,
+        jobs: jobs.map((j) => ({ agent: j.agent, minutes: j.minutes })),
+      }
+    : out;
 }
 
 /**

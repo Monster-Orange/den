@@ -16,8 +16,12 @@ import {
   PROJECT_COLOURS,
   buildScopeMenuModel,
   projectColour,
-  projectColours,
+  projectColours as pickerColours,
 } from "../../../src/ui/server/public/workspace-picker.js";
+
+/** The page's colours, by slug (workspace-picker.js is untyped JS). */
+const projectColours = (data: unknown) =>
+  pickerColours(data) as Record<string, string>;
 
 describe("the stored choice (shell.projectColours)", () => {
   it("keeps a valid choice and drops a hand-broken one", () => {

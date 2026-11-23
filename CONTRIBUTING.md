@@ -194,6 +194,9 @@ export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000; // optional; a cell over it is ok: false
 // Optional: it changes nothing in Den, so it may run beside others.
 export const readOnly = true;
+// Optional: other release items whose clauses it proves, its own issue first.
+// One line: the bed reads it from the source to plan a tag's items.
+export const items = [406, 991];
 export async function setup(ctx) {} // prepare the bed; returns state
 export async function run(ctx, state) {} // act; returns what it saw
 export async function teardown(ctx, state) {} // optional; always called

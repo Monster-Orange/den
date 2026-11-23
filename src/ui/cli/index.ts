@@ -209,6 +209,7 @@ import {
   cmdNotifications,
 } from "./notifications-command.js";
 import { GITHUB_HELP, cmdGithub } from "./github-command.js";
+import { ASK_HELP, cmdAsk } from "./ask-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
@@ -568,6 +569,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   gate: GATE_HELP,
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
+  ask: ASK_HELP,
   github: GITHUB_HELP,
   feedback: {
     ...FEEDBACK_HELP,
@@ -632,6 +634,7 @@ const TELEMETRY_COMMANDS = new Set<string>([
   "gate",
   "hub",
   "notifications",
+  "ask",
   "github",
   "feedback",
   "report",
@@ -673,6 +676,8 @@ const CONFIG_FREE_COMMANDS = new Set<string>([
   "hub",
   // NT: the bell's own file, no org data.
   "notifications",
+  // Issue 1008: the bell's own withdraw route, no org data.
+  "ask",
   // The shared GitHub watcher's status file, no org data.
   "github",
   // FB: Den's own report routes; a report matters most when the config is
@@ -1230,6 +1235,10 @@ class DenCLI {
 
         case "notifications":
           process.exitCode = await cmdNotifications(args.slice(1));
+          break;
+
+        case "ask":
+          process.exitCode = await cmdAsk(args.slice(1));
           break;
 
         case "github":
@@ -2646,6 +2655,12 @@ class DenCLI {
     return out;
   }
 
+  /** "project <name>" for the focused one (`-w` too), else "this project". */
+  private static projectLabel(): string {
+    const name = getActiveWorkspace()?.name;
+    return name ? `project ${name}` : "this project";
+  }
+
   /** "cfg (runs nothing), sdk (library)": repos with no runtime, and why. */
   private static noRuntimeList(none: Map<string, string>): string {
     return [...none].map(([r, why]) => `${r} (${why})`).join(", ");
@@ -2705,11 +2720,14 @@ class DenCLI {
       );
       for (const [repo, why] of none)
         this.upReport?.noRuntime.push({ repo, why });
+      // Issue 300: the project by its name; under `up -w` it may not be
+      // active yet (a dry run never makes it so).
+      const ws = DenCLI.projectLabel();
       console.log(
         chalk.yellow(
           none.size > 0
-            ? `\n  Nothing to start: no repo in the active project has a runtime of its own: ${DenCLI.noRuntimeList(none)}.\n`
-            : "\n  No services in the active project — nothing to start.\n",
+            ? `\n  Nothing to start in ${ws}: its repos run nothing: ${DenCLI.noRuntimeList(none)}.\n`
+            : `\n  Nothing to start in ${ws}: it has no services.\n`,
         ),
       );
       if (plan && none.size === 0) process.exitCode = 1;
@@ -2832,7 +2850,7 @@ class DenCLI {
     if (!target) {
       console.log(
         chalk.yellow(
-          "\n  No services in the active project — nothing to stop.\n",
+          `\n  Nothing to stop in ${DenCLI.projectLabel()}: it has no services.\n`,
         ),
       );
       return;
@@ -5496,6 +5514,9 @@ class DenCLI {
     );
     console.log(
       "  feedback                 Report an issue: shows exactly what is posted, then asks",
+    );
+    console.log(
+      '  ask withdraw <id> --reason "…"  Withdraw a question settled elsewhere',
     );
     console.log();
     console.log(

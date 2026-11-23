@@ -668,11 +668,17 @@ Three pieces, data in, the kit's words out (en, es, ja).
 
 - **The general button** (issue 556): `src/button.css` and `src/button.js`
   (exports `./button.css`, `./button`). `.den-btn` for any page, inside the
-  frame or not: secondary is the base, `.primary` the accent fill, `.sm`
-  the small size; a link drawn as a button is `a.den-btn`. A visible focus
-  ring, and a 44px tap on a touch screen (its box unchanged). These are
-  the values Den's frame drew; Den now links `button.css` and keeps no
-  copy.
+  frame or not: secondary is the base, `.primary` the accent fill,
+  `.danger` a step that takes something away (red words), `.sm` the small
+  size; a link drawn as a button is `a.den-btn`. Its words and an icon sit
+  in a row, 6px apart. A visible focus ring, and a 44px tap on a touch
+  screen (its box unchanged). These are the values Den's frame drew and
+  the second product's shipped button (issue 673). It is the one button:
+  the kit's dialogs and the working pop-up draw `.den-btn` too, and
+  `den-ui-parity` counts a product's own `.btn` as a copy. A page that
+  links `dialog.css` (or `busy.css`) must link `button.css` beside it:
+  `.dk-btn` sets only the size, so without it the dialog's buttons have
+  no look. Neither imports it, so it is asked for by one URL (issue 231).
 
       buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
                    disabled?, id?, attrs: { "data-…": …, "aria-…": … } })
@@ -778,6 +784,10 @@ The top bar's search sits in the same place in every product (issue 303).
   256 at 960, 82 / 54 on a phone), the same in any host. The left part is
   the smaller of `--den-top-left` (444px) and what the search and the
   right group's reserve (`--den-top-right`, 380px) leave.
+  Under 944px the search gives way first (issue 981): the left part keeps
+  `--den-top-left-min` (220px), so the project picker is never under the
+  search, and the search narrows down to its icon
+  (`--den-top-search-min`, 56px; 240 / 128 at 768).
 - **The right group is anchored from the right edge.** ◐ at the bar's
   padding, then the version in a fixed slot (`--den-top-version` 96px;
   `--den-top-version-md` 64px up to 1100px; its text ends in "…", the
@@ -812,7 +822,8 @@ The top bar's search sits in the same place in every product (issue 303).
   its search in `start` and puts it in its slot; a host's markup is
   unchanged.
 - **Settings** (custom properties on `.den-top`, with their defaults):
-  `--den-top-left` (444px), `--den-top-search` (304px), and under 720px
+  `--den-top-left` (444px), `--den-top-search` (304px),
+  `--den-top-left-min` (220px), `--den-top-search-min` (56px), and under 720px
   `--den-top-left-md`
   (200px) and, under 480px, `--den-top-left-sm` (62px: ☰ and the mark).
   At 1280px the search is at x 464, 304 wide; on a phone at x 82.

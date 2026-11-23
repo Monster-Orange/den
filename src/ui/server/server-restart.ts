@@ -19,6 +19,33 @@ import * as path from "path";
 import { recordAction, type AuditEntry } from "./audit.js";
 import type { Actor } from "../../shared/agent-actor.js";
 import type { LastUpdate } from "./den-update.js";
+import {
+  SERVER_AGENT_ID,
+  isServerScope,
+} from "../../shared/agents/server-agent.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+
+/**
+ * SRV-1a/1b: the setting that runs an agent's den_restart or den_update
+ * without the person's Allow ("server_agent.self_update: auto"), or null.
+ * It covers Den's own agent only: its id AND its token's scope (the
+ * server scope), so a project's agent created with the id "server" is
+ * still held. A project's agent's ask always waits for a person. `auto` is
+ * read only when it could apply.
+ */
+export function selfUpdateAutoAllow(
+  action: string,
+  agent: string,
+  workspace: string | undefined,
+  auto: () => boolean,
+): string | null {
+  return (action === "den_restart" || action === "den_update") &&
+    agent === SERVER_AGENT_ID &&
+    isServerScope(workspace) &&
+    auto()
+    ? "server_agent.self_update: auto"
+    : null;
+}
 
 export interface RestartMarker {
   /** The approval it ran for. */
@@ -51,9 +78,7 @@ export function restartMarkerPath(stateDir: string): string {
 export function writeRestartMarker(stateDir: string, m: RestartMarker): void {
   const p = restartMarkerPath(stateDir);
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-  const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(m) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(p, JSON.stringify(m) + "\n", { mode: 0o600 });
 }
 
 /**

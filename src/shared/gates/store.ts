@@ -8,8 +8,10 @@
  *   slots/<id>.json   one per holder or waiter (no secrets, a label only)
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
  *                     cpu_slots_beside_release_browser (its follow-up),
+ *                     cpu_hold_load (issue 1009),
+ *                     load_hold_per_core (issue 1048),
  *                     local_browser_slots,
- *                     overrun_margin_minutes,
+ *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
  *                     803: class_order, class_map, class_windows (text)
  *   events.jsonl      the slot log: asked, waits, granted, released, taken
@@ -31,17 +33,24 @@ import { writeFileAtomic } from "../atomic-write.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
+  BOX_NAME_RE,
   assign,
+  boxCapOf,
+  boxOff,
+  boxRecheckSeconds,
   boxesOf,
   boxesWanted,
   checkBox,
+  checkBoxDefault,
   freshNo,
   freshYes,
+  parseHostOnly,
   withMemory,
   readBoxStates,
   realBoxProbe,
   writeBoxStates,
   type BoxCap,
+  type BoxOff,
   type BoxProbe,
   type BoxSettings,
   type BoxState,
@@ -55,6 +64,7 @@ import {
   readClasses,
 } from "./classes.js";
 import {
+  DEFAULT_ESTIMATE_MIN,
   GATE_DEFAULTS,
   byAsked,
   expectedStart,
@@ -100,7 +110,13 @@ export type GateSettingsPatch = {
   cpu_slots_beside_release_browser?: number | null;
   /** Browser runs that may hold this machine at once (default 1). */
   local_browser_slots?: number | null;
+  /** Issue 1009: cpu asks wait at this load under a release run (0: off). */
+  cpu_hold_load?: number | null;
+  /** Issue 1048: cpu asks wait over this many times the cores (0: off). */
+  load_hold_per_core?: number | null;
   overrun_margin_minutes?: number | null;
+  /** Issue 993: held past this many times its estimate: the bell. */
+  overrun_bell_multiple?: number | null;
   remote_renew_seconds?: number | null;
   remote_lapse_seconds?: number | null;
   remote_max_slots?: number | null;
@@ -121,16 +137,34 @@ export type GateSettingsPatch = {
   class_order?: string | null;
   class_map?: string | null;
   class_windows?: string | null;
+  /** Issue 1033: where a browser run with no --box goes: any or local. */
+  browser_box_default?: string | null;
+  /** Issue 1033: projects and label patterns kept on this machine. */
+  browser_host_only?: string | null;
 };
 
 /** Issue 803: the settings that are a line of text, and their checks. */
+/**
+ * Issue 1002: the most of the slot log an ask's measured estimate reads,
+ * from its end (1 MiB, some 5,000 rows), so an ask's cost doesn't grow
+ * with the log. A log under it reads whole, as before.
+ */
+export const MEASURE_TAIL_MAX_BYTES = 1024 * 1024;
+const MEASURE_CHUNK_BYTES = 64 * 1024;
+
 export const GATE_TEXT: Record<
-  "class_order" | "class_map" | "class_windows",
+  | "class_order"
+  | "class_map"
+  | "class_windows"
+  | "browser_box_default"
+  | "browser_host_only",
   (v: string) => unknown
 > = {
   class_order: parseClassOrder,
   class_map: parseClassMap,
   class_windows: parseClassWindows,
+  browser_box_default: checkBoxDefault,
+  browser_host_only: parseHostOnly,
 };
 type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
@@ -146,7 +180,13 @@ export const GATE_LIMITS: Record<
   cpu_slots_beside_release_browser: { min: 0, max: 64, int: true },
   // Each local browser run is in its own container; 1 is one at a time.
   local_browser_slots: { min: 1, max: 64, int: true },
+  // Issue 1009: a 5-minute load average; 0 turns the hold off.
+  cpu_hold_load: { min: 0, max: 1024, int: false },
+  // Issue 1048: a multiple of the cores; 0 turns the hold off.
+  load_hold_per_core: { min: 0, max: 64, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
+  // Issue 993: 1 is "as soon as it passes its estimate".
+  overrun_bell_multiple: { min: 1, max: 100, int: false },
   remote_renew_seconds: { min: 5, max: 3600, int: true },
   remote_lapse_seconds: { min: 10, max: 24 * 3600, int: true },
   remote_max_slots: { min: 1, max: 256, int: true },
@@ -259,6 +299,14 @@ function settingValue(s: GateSettings, key: string): number | string | null {
   return null;
 }
 
+/** Issue 999: the median of some minutes, to a whole minute. */
+function median(xs: number[]): number {
+  const v = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  const m = v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
+  return Math.max(1, Math.round(m));
+}
+
 export interface GateEventRow {
   at: string;
   event: GateEvent;
@@ -291,6 +339,10 @@ export interface GateEventRow {
   to?: string;
   /** Issue 803: its class, when classes are set. */
   class?: string;
+  /** Issue 1033: granted (browser): the test box's name, or "local". */
+  machine?: string;
+  /** Issue 1033: why a run that could go to a box stays here. */
+  hostWhy?: string;
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -322,7 +374,28 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
+  /**
+   * Issue 1009: the machine's 5-minute load average (default
+   * os.loadavg()[1]); tests pass a stub.
+   */
+  load?: () => number;
+  /** Issue 1048: the machine's cores (default os.availableParallelism). */
+  cores?: () => number;
 }
+
+/**
+ * Issue 1048: this machine's 5-minute load average. DEN_GATE_LOAD5 fixes
+ * the reading (the test setup sets 0, so a busy machine never holds an
+ * unrelated test's slot; a drill can set it high).
+ */
+export function realLoad(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_LOAD5 ?? "").trim() || NaN);
+  return Number.isFinite(fixed) ? fixed : (os.loadavg()[1] ?? 0);
+}
+
+/** Issue 1048: this machine's cores. */
+export const realCores = (): number =>
+  os.availableParallelism?.() ?? os.cpus().length;
 
 /**
  * Issue 621: renew and lapse, seconds. A lapse shorter than two renews
@@ -353,6 +426,14 @@ function browserEndpointOf(kind: GateKind, v: string | undefined) {
     : {};
 }
 
+/** Issue 1033: one line, at most 200 characters, no control characters. */
+const oneLineOf = (r: string) =>
+  r
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, " ")
+    .trim()
+    .slice(0, 200);
+
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
 
@@ -368,7 +449,11 @@ export class GateStore {
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
+  private readonly readLoad: () => number;
+  private readonly readCores: () => number;
   readonly platform: NodeJS.Platform;
+  /** Issue 1002: bytes of the slot log measured() has read (for tests). */
+  logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
@@ -377,10 +462,37 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
+    this.readLoad = o.load ?? (() => realLoad());
+    this.readCores = o.cores ?? realCores;
+  }
+
+  /** Issue 1048: this machine's cores (at least 1). */
+  cores(): number {
+    try {
+      const n = this.readCores();
+      return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  /** Issue 1009: the machine's 5-minute load average now (NaN: unread). */
+  load(): number {
+    try {
+      const n = this.readLoad();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
   }
 
   private get slots() {
     return path.join(this.dir, "slots");
+  }
+
+  /** Issue 993: the store's clock (ms), as its rules read the time. */
+  clock(): number {
+    return this.now();
   }
 
   settings(): GateSettings & BoxSettings {
@@ -414,9 +526,18 @@ export class GateStore {
         localBrowserSlots: Math.floor(
           num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
         ),
+        cpuHoldLoad: num("cpu_hold_load", GATE_DEFAULTS.cpuHoldLoad),
+        loadHoldPerCore: num(
+          "load_hold_per_core",
+          GATE_DEFAULTS.loadHoldPerCore,
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
+        ),
+        overrunBellMultiple: num(
+          "overrun_bell_multiple",
+          GATE_DEFAULTS.overrunBellMultiple,
         ),
         ...leaseTimes(
           num("remote_renew_seconds", GATE_DEFAULTS.remoteRenewSeconds),
@@ -463,6 +584,10 @@ export class GateStore {
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
           ) === 1,
+        // Issue 1033: a browser run with no --box: here or a test box.
+        browserBoxDefault:
+          text("browser_box_default").trim() === "local" ? "local" : "any",
+        browserHostOnly: text("browser_host_only"),
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -734,7 +859,15 @@ export class GateStore {
     }
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
-    for (const g of assign(entries, s, now, caps.caps)) {
+    // Issue 1009: the machine's load, read once per pass.
+    for (const g of assign(
+      entries,
+      s,
+      now,
+      caps.caps,
+      this.load(),
+      this.cores(),
+    )) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its
@@ -753,6 +886,9 @@ export class GateStore {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
         ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
+        // Issue 1033: the machine a browser run got, and why it stayed.
+        ...(e.kind === "browser" ? { machine: e.box ?? "local" } : {}),
+        ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
       });
     }
     if (caps.used) writeBoxStates(this.dir, caps.states);
@@ -773,6 +909,130 @@ export class GateStore {
     return this.locked(() => this.settle());
   }
 
+  /**
+   * Issue 999: a run's estimate from the slot log's finished runs: the
+   * median of the label's last 10 (3 or more), else of the asker's last
+   * 10 of its kind, else none. The asker: the same `who`, or its agent.
+   */
+  measured(o: {
+    kind: GateKind;
+    label: string;
+    who: string;
+    actor?: string;
+  }): { minutes: number; from: "label" | "actor" } | null {
+    // Issue 1002: newest first, from the log's tail, until the label has
+    // its 10 (nothing older could change the answer) or the cap is read.
+    const label: number[] = [];
+    const mine: number[] = [];
+    this.tailRows((r) => {
+      if (r.event !== "released" || typeof r.minutes !== "number") return true;
+      if (r.kind !== o.kind) return true;
+      if (r.label === o.label && label.length < 10) label.push(r.minutes);
+      // Its agent's runs from any project, or the same asker in words.
+      if (
+        mine.length < 10 &&
+        (r.who === o.who || (!!o.actor && r.actor === o.actor))
+      )
+        mine.push(r.minutes);
+      return label.length < 10;
+    });
+    if (label.length >= 3) return { minutes: median(label), from: "label" };
+    return mine.length ? { minutes: median(mine), from: "actor" } : null;
+  }
+
+  /**
+   * Issue 1002: the slot log's rows, newest first, read back from its end
+   * in chunks, to `visit` until it returns false, the log's start, or
+   * MEASURE_TAIL_MAX_BYTES read. A broken line is skipped.
+   */
+  private tailRows(visit: (r: GateEventRow | GateSettingsRow) => boolean) {
+    let fd: number;
+    try {
+      fd = fs.openSync(this.eventsFile, "r");
+    } catch {
+      return;
+    }
+    try {
+      let pos = fs.fstatSync(fd).size;
+      const floor = Math.max(0, pos - MEASURE_TAIL_MAX_BYTES);
+      // Bytes of a line cut by the chunk before (it continues later on).
+      let rest = Buffer.alloc(0);
+      while (pos > floor) {
+        const n = Math.min(MEASURE_CHUNK_BYTES, pos - floor);
+        pos -= n;
+        const chunk = Buffer.alloc(n);
+        fs.readSync(fd, chunk, 0, n, pos);
+        this.logBytesRead += n;
+        const buf = Buffer.concat([chunk, rest]);
+        // The first line is whole only at the log's start.
+        let end = buf.length;
+        let nl = buf.lastIndexOf(0x0a, end - 1);
+        while (nl >= 0) {
+          const l = buf.subarray(nl + 1, end).toString("utf-8");
+          if (l && !this.visitLine(l, visit)) return;
+          end = nl;
+          nl = end > 0 ? buf.lastIndexOf(0x0a, end - 1) : -1;
+        }
+        rest = buf.subarray(0, end);
+        if (pos === 0 && rest.length) {
+          this.visitLine(rest.toString("utf-8"), visit);
+          return;
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  private visitLine(
+    l: string,
+    visit: (r: GateEventRow | GateSettingsRow) => boolean,
+  ): boolean {
+    let r: GateEventRow | GateSettingsRow;
+    try {
+      r = JSON.parse(l) as GateEventRow | GateSettingsRow;
+    } catch {
+      return true;
+    }
+    return visit(r);
+  }
+
+  /**
+   * Issue 999: the entry's estimate fields. None given: the measured
+   * median, else the kind's default. Given and over twice the median: kept
+   * and flagged, and the queue uses the median.
+   */
+  private estimateOf(o: {
+    kind: GateKind;
+    label: string;
+    who: string;
+    actor?: string;
+    estimateMin?: number;
+  }): Pick<
+    GateEntry,
+    "estimateMin" | "estimateFrom" | "expectedMin" | "expectedFrom" | "padded"
+  > {
+    const m = this.measured({
+      kind: o.kind,
+      label: o.label.slice(0, 120),
+      who: o.who.slice(0, 200),
+      ...(o.actor ? { actor: o.actor } : {}),
+    });
+    if (o.estimateMin === undefined)
+      return m
+        ? { estimateMin: m.minutes, estimateFrom: m.from }
+        : { estimateMin: DEFAULT_ESTIMATE_MIN, estimateFrom: "default" };
+    if (m && o.estimateMin > 2 * m.minutes)
+      return {
+        estimateMin: o.estimateMin,
+        estimateFrom: "given",
+        expectedMin: m.minutes,
+        expectedFrom: m.from,
+        padded: true,
+      };
+    return { estimateMin: o.estimateMin, estimateFrom: "given" };
+  }
+
   /** One slot now (after settling), or null when it is gone. */
   get(id: string): GateEntry | null {
     return this.list().find((e) => e.id === id) ?? null;
@@ -784,7 +1044,8 @@ export class GateStore {
     who: string;
     label: string;
     pid: number;
-    estimateMin: number;
+    /** Issue 999: absent: the measured median, else the kind's default. */
+    estimateMin?: number;
     agent?: boolean;
     actor?: string;
     /** Issue 715: a release run a person waits on, and why. */
@@ -799,6 +1060,10 @@ export class GateStore {
     project?: string;
     /** A browser run's declared container browser, as recorded. */
     browserEndpoint?: string;
+    /** Issue 1033: why a run that could go to a box stays here. */
+    hostWhy?: string;
+    /** Issue 1033: a default pick's boxes (the others can't serve it). */
+    onlyBoxes?: string[];
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -816,7 +1081,7 @@ export class GateStore {
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),
-        estimateMin: o.estimateMin,
+        ...this.estimateOf(o),
         ...(o.agent ? { agent: true } : {}),
         ...(o.actor && /^agent:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(o.actor)
           ? { actor: o.actor }
@@ -828,6 +1093,16 @@ export class GateStore {
           ? { pwVersion: o.pwVersion }
           : {}),
         ...browserEndpointOf(o.kind, o.browserEndpoint),
+        ...(o.kind === "browser" && o.hostWhy
+          ? { hostWhy: oneLineOf(o.hostWhy) }
+          : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.onlyBoxes
+          ? {
+              onlyBoxes: o.onlyBoxes
+                .filter((n) => BOX_NAME_RE.test(n))
+                .slice(0, 64),
+            }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -1201,6 +1476,33 @@ export class GateStore {
     });
   }
 
+  /**
+   * Turns a test box on or off (a person's). Off: no new slot and no
+   * contact; its running slots finish. The box, or null when none is set.
+   */
+  setBoxEnabled(name: string, on: boolean): GateBox | null {
+    return this.locked(() => {
+      const list = this.boxes();
+      const b = list.find((x) => x.name === name);
+      if (!b) return null;
+      if (on) delete b.enabled;
+      else b.enabled = false;
+      this.writeBoxes(list, name);
+      return b;
+    });
+  }
+
+  /** The boxes skipped now (turned off, or outside their window), and why. */
+  boxesOff(): Record<string, BoxOff> {
+    const now = this.now();
+    const out: Record<string, BoxOff> = {};
+    for (const b of this.boxes()) {
+      const off = boxOff(b, now);
+      if (off) out[b.name] = off;
+    }
+    return out;
+  }
+
   /** What the last check of each box found. */
   boxStates(): Record<string, BoxState> {
     return readBoxStates(this.dir);
@@ -1211,12 +1513,12 @@ export class GateStore {
     const boxes = this.boxes();
     const states = boxes.length ? readBoxStates(this.dir) : {};
     const s = this.settings();
-    const caps: BoxCap[] = boxes.map((b) => ({
-      name: b.name,
-      slots: b.browser_slots,
-      open: freshYes(states[b.name], now, s.boxCheckTimeoutSeconds),
-      ...(b.playwright_version ? { version: b.playwright_version } : {}),
-    }));
+    // Turned off, or outside its window: no new slot (running ones finish).
+    const caps: BoxCap[] = boxes
+      .filter((b) => !boxOff(b, now))
+      .map((b) =>
+        boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
+      );
     return { boxes, states, caps, used: false };
   }
 
@@ -1238,9 +1540,10 @@ export class GateStore {
    * gives the slots. Called by whoever waits (gate run, a runner's ask),
    * never on a timer. A box is checked only when a slot on it is about to
    * be given; a held or unreachable box is not checked again for
-   * box_recheck_seconds. The checks run outside the lock. A held or
-   * unreachable box is passed over in the same call: the run goes to the
-   * next box, or waits.
+   * its recheck_seconds (else box_recheck_seconds). A box turned off, or
+   * outside its window, is never contacted. The checks run outside the
+   * lock. A held or unreachable box is passed over in the same call: the
+   * run goes to the next box, or waits.
    */
   async checkBoxes(): Promise<void> {
     const boxes = this.boxes();
@@ -1250,13 +1553,12 @@ export class GateStore {
       const now = this.now();
       const states = readBoxStates(this.dir);
       const caps = boxes
-        .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
-        .map((b) => ({
-          name: b.name,
-          slots: b.browser_slots,
-          open: true,
-          ...(b.playwright_version ? { version: b.playwright_version } : {}),
-        }));
+        .filter(
+          (b) =>
+            !boxOff(b, now) &&
+            !freshNo(states[b.name], now, boxRecheckSeconds(b, s)),
+        )
+        .map((b) => boxCapOf(b, true));
       const want = boxesWanted(this.readAll(), s, now, caps).filter(
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
       );

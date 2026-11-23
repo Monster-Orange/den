@@ -108,7 +108,15 @@ import {
   getReposRoot,
   readAgentsConfig,
   readMcpConfig,
+  uiConsoleCheckSeconds,
+  uiRestartWaitSeconds,
 } from "../../shared/den-config.js";
+import {
+  CONSOLE_AWAY_FILE,
+  consoleOwnerUid,
+  stepConsole,
+  type ConsoleBack,
+} from "../../shared/console-away.js";
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
@@ -149,7 +157,7 @@ import {
   listRuntimes,
   markInterrupted,
   runningAgentIds,
-  busyAgentIds,
+  busyAgentHolds,
   resumeAfterHostRestart,
   agentsOfSessions,
   endedAfterHostRestart,
@@ -2227,8 +2235,14 @@ async function refreshAndReport(
       by,
       ...s,
     });
+  // Issue 732: while it waits, which agents a background job holds it for.
+  let waitWhy: string | null = null;
+  let heldBy = "";
   const r = await refreshSessionHost({
-    onWait: ({ why }) => state({ state: "waiting", why }),
+    onWait: ({ why }) => {
+      waitWhy = why;
+      state({ state: "waiting", why });
+    },
     connectExisting: () => d.connectExisting(),
     connect: () => d.connect(),
     socket: sessionPaths(d.stateDir()).socket,
@@ -2238,7 +2252,22 @@ async function refreshAndReport(
       pty: installedPtyModule(),
     }),
     running: () => runningAgentIds(d),
-    busy: (ids) => busyAgentIds(d, ids),
+    busy: async (ids) => {
+      const holds = await busyAgentHolds(d, ids);
+      const jobs = holds.flatMap((h) =>
+        h.job ? [{ agent: h.agent, minutes: h.job.minutes }] : [],
+      );
+      const key = JSON.stringify(jobs);
+      if (waitWhy !== null && key !== heldBy) {
+        heldBy = key;
+        state({
+          state: "waiting",
+          why: waitWhy,
+          ...(jobs.length ? { jobs } : {}),
+        });
+      }
+      return holds.map((h) => h.agent);
+    },
     waitMs: waitS * 1000,
     cutNote: note ? HOST_RESTART_NOTE : null,
     resume: (id, n) => resumeAfterHostRestart(d, id, n),
@@ -2329,6 +2358,175 @@ export function noteRanWhileAway(
     },
     link: "/agents",
   });
+}
+
+/**
+ * Issue 163: back from a logout (the web server ran on, under Keep agents
+ * running after logout): one bell note naming the agents that ran while
+ * the person was logged out, and one naming those that stopped meanwhile.
+ * Neither when nothing ran or stopped.
+ */
+export function noteRanWhileLoggedOut(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  back: ConsoleBack,
+): void {
+  const min = Math.max(1, Math.round(back.awayMs / 60_000));
+  const ran = [...back.kept, ...back.started];
+  if (ran.length) {
+    const names = ran.join(", ");
+    store.add({
+      kind: "service",
+      subject: "record:agents-ran-while-logged-out",
+      scope: "workspace/den-server",
+      text: `While you were logged out (${min} min), these agents ran: ${names}`,
+      msg: { key: "bell.m.ranLoggedOut", vars: { min, names } },
+      link: "/agents",
+    });
+  }
+  if (back.ended.length) {
+    const names = back.ended.join(", ");
+    store.add({
+      kind: "service",
+      subject: "record:agents-stopped-while-logged-out",
+      scope: "workspace/den-server",
+      text: `While you were logged out (${min} min), these agents stopped: ${names}`,
+      msg: { key: "bell.m.stoppedLoggedOut", vars: { min, names } },
+      link: "/agents",
+    });
+  }
+}
+
+/**
+ * Issue 163: one look at the console (console-away.ts). On the person's
+ * return after longer than `waitMs` (ui.restart_wait_seconds: a quick user
+ * switch is not an absence), the bell note. Returns the return it noted.
+ */
+export function consoleTick(d: {
+  stateDir: string;
+  me: number;
+  owner: () => number | null;
+  running: () => string[];
+  now: () => number;
+  waitMs: number;
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">;
+}): ConsoleBack | null {
+  const r = stepConsole(d.stateDir, {
+    me: d.me,
+    owner: d.owner(),
+    running: d.running(),
+    now: d.now(),
+  });
+  if (r.back && r.back.awayMs > d.waitMs) {
+    noteRanWhileLoggedOut(d.store, r.back);
+    return r.back;
+  }
+  return null;
+}
+
+type NoteStore = Pick<
+  import("../../shared/notifications.js").NotificationStore,
+  "add"
+>;
+
+/**
+ * Issue 163: one tick of the logout watch, its parts passed in. Nothing
+ * happens when the console can't be read, or when nothing changed (logged
+ * in and not away, or still away): the running agents are asked, and the
+ * store opened, only when the person has just left or just come back.
+ * A web server running as root (me 0) never watches: at the login window
+ * root owns the console, which would read as "logged in".
+ */
+export async function logoutWatchTick(d: {
+  me: number;
+  owner: () => number | null;
+  stateDir: string;
+  running: () => Promise<string[]>;
+  store: () => NoteStore | Promise<NoteStore>;
+  now: () => number;
+  waitMs: number;
+}): Promise<ConsoleBack | null> {
+  if (d.me === 0) return null;
+  const owner = d.owner();
+  if (owner === null) return null;
+  const away = fs.existsSync(path.join(d.stateDir, CONSOLE_AWAY_FILE));
+  // Nothing changed: logged in and not away, or still away.
+  if ((owner === d.me) !== away) return null;
+  // A failed lookup is not "nobody is running": it would save an empty
+  // record at the leave, or name every agent as stopped at the return.
+  // Leave the record as it is; the next tick tries again.
+  let running: string[];
+  try {
+    running = await d.running();
+  } catch {
+    return null;
+  }
+  const store = await d.store();
+  return consoleTick({
+    stateDir: d.stateDir,
+    me: d.me,
+    owner: () => owner,
+    running: () => running,
+    now: d.now,
+    waitMs: d.waitMs,
+    store,
+  });
+}
+
+/**
+ * Issue 163: on macOS, look at the console every ui.console_check_seconds
+ * (30). Never off macOS, and never as root (see logoutWatchTick). Returns
+ * whether the watch started.
+ */
+export function startLogoutWatch(
+  log: (line: string) => void,
+  deps: AgentRouteDeps = {},
+  env: {
+    platform?: NodeJS.Platform;
+    uid?: number | null;
+    every?: (fn: () => void, ms: number) => void;
+  } = {},
+): boolean {
+  const platform = env.platform ?? process.platform;
+  const me =
+    env.uid !== undefined
+      ? env.uid
+      : typeof process.getuid === "function"
+        ? process.getuid()
+        : null;
+  if (platform !== "darwin" || me === null || me === 0) return false;
+  const every =
+    env.every ??
+    ((fn: () => void, ms: number) => {
+      setInterval(fn, ms).unref();
+    });
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const back = await logoutWatchTick({
+        me,
+        owner: () => consoleOwnerUid(),
+        stateDir: getStateDir(),
+        running: () => runningAgentIds(webDeps(deps.agents)),
+        store: async () =>
+          (await import("./notification-service.js")).notificationDeps().store,
+        now: () => Date.now(),
+        waitMs: uiRestartWaitSeconds() * 1000,
+      });
+      if (back)
+        log(
+          `Ran while you were logged out (${Math.round(back.awayMs / 60_000)} min): kept running: ${back.kept.join(", ") || "none"} · started: ${back.started.join(", ") || "none"} · ended: ${back.ended.join(", ") || "none"}`,
+        );
+    } catch {
+      /* the bell is best effort: the next tick tries again */
+    } finally {
+      busy = false;
+    }
+  };
+  void tick();
+  every(() => void tick(), uiConsoleCheckSeconds() * 1000);
+  return true;
 }
 
 /** How often stopped agents are checked against remove_stopped_after. */

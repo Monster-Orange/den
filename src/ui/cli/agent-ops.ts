@@ -52,6 +52,14 @@
  */
 import { auditVia } from "../../shared/test-person.js";
 import {
+  addressBriefLine,
+  addressNotSetNote,
+  agentLinks,
+  peopleAddress,
+  peopleWebUrl,
+  type AgentLinks,
+} from "../../shared/agent-links.js";
+import {
   line as rl,
   reviewLines as review,
   type DetailKey,
@@ -242,8 +250,9 @@ import {
 } from "../../shared/agents/runtimes.js";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
 import {
+  mcpLoadFailures,
   noteHubMcpInit,
-  readHubMcpInit,
+  type McpLoadFailure,
 } from "../../shared/agents/hub-mcp-connect.js";
 import type {
   RuntimeDetect,
@@ -430,6 +439,11 @@ export interface AgentsDeps extends SessionsDeps {
   ) => void;
   /** The user.yml a person edits to set it (default: config/local/user.yml). */
   userConfigFile?: () => string;
+  /**
+   * Issue 1016: the install's address for people (web.url, D80), or null
+   * when it isn't set (default: user.yml's). Never a loopback address.
+   */
+  webUrl?: () => string | null;
   /** D28: workspace `ws`'s services and their folders (the service scope). */
   workspaceServices?: (ws: string) => { address: string; path: string }[];
   /**
@@ -518,6 +532,7 @@ export interface AgentsResolved extends Resolved {
   userCatalog: (taken: readonly string[]) => CatalogEntry[];
   saveRuntimeBin: NonNullable<AgentsDeps["saveRuntimeBin"]>;
   userConfigFile: () => string;
+  webUrl: () => string | null;
   workspaceServices: (ws: string) => { address: string; path: string }[];
   hub: () => Promise<{
     url: string;
@@ -864,6 +879,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
           ? setWorkspaceRuntimeBin(ws, id, bin)
           : setUserRuntimeBin(id, bin)),
     userConfigFile: d.userConfigFile ?? userConfigPath,
+    webUrl: d.webUrl ?? (() => peopleWebUrl()),
     workspaceServices:
       d.workspaceServices ?? ((ws) => (servicesFn ? servicesFn(ws) : [])),
     hub: d.hub ?? defaultHub,
@@ -1209,6 +1225,11 @@ export interface AgentRow {
    * keeps its conversation brings them in line.
    */
   mcpStale?: McpStale;
+  /**
+   * Issue 749: MCP servers whose tools failed to load in its running
+   * session (Hub's, as Den sees it through its proxy), with the error.
+   */
+  mcpFailed?: McpLoadFailure[];
   /** D56: started outside its project (rec.cwd is that folder). */
   outside?: boolean;
   /**
@@ -1667,6 +1688,9 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
       waiting,
     });
     if (st) r.mcpStale = st;
+    const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
+    const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
+    if (failed.length) r.mcpFailed = failed;
   }
 }
 
@@ -1708,6 +1732,15 @@ export interface AgentTools {
   };
   /** One plain line saying so, for the agent to tell the person. */
   note: string;
+  /**
+   * Issue 1016: the install's address for people (web.url), or null when
+   * it isn't set. Never a loopback address.
+   */
+  webUrl: string | null;
+  /** Issue 1016: full links on webUrl; absent when it isn't set. */
+  links?: AgentLinks;
+  /** Issue 1016: one line on the address: set, or where a person sets it. */
+  address: string;
 }
 
 export async function agentTools(
@@ -1728,11 +1761,11 @@ export async function agentTools(
   // What its session actually got: a connect that failed in this session
   // (the proxy's note) means no hub_* tools until it connects again.
   // 0.4.48: or it launched with none because Den couldn't read its token.
-  const init =
-    loaded || connected ? readHubMcpInit(d.stateDir(), rec.id) : null;
+  // Issue 749: or its connect worked but listing Hub's tools failed.
   const failed =
-    init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt)
-      ? (init.error ?? "an error")
+    loaded || connected
+      ? (mcpLoadFailures(d.stateDir(), rec).find((f) => f.server === HUB_SERVER)
+          ?.error ?? null)
       : null;
   if (failed) {
     loaded = false;
@@ -1751,12 +1784,31 @@ export async function agentTools(
         : restart
           ? "Hub is connected, but you started without its tools. Ask the person to restart you from Den (Restart keeps this conversation); no token step is needed."
           : "Hub is connected and its tools (hub_*) are yours.";
+  // Issue 1016: the address people open, and full links on it; never
+  // guessed when it isn't set.
+  const webUrl = safeWebUrl(d);
+  const links = agentLinks(webUrl, rec.workspace, rec.id);
   return {
     agent: rec.id,
     workspace: rec.workspace,
     hub: { connected, loaded, restart },
     note,
+    webUrl,
+    ...(links ? { links } : {}),
+    address: webUrl ? addressBriefLine(webUrl) : addressNotSetNote(),
   };
+}
+
+/**
+ * Issue 1016: web.url as an address people open, or null when it isn't
+ * set, can't be read, or is loopback (peopleAddress).
+ */
+function safeWebUrl(d: AgentsResolved): string | null {
+  try {
+    return peopleAddress(d.webUrl());
+  } catch {
+    return null;
+  }
 }
 
 /** D32: agents.helpers, or its defaults when the config can't be read. */
@@ -3441,6 +3493,8 @@ function launchInput(
     // ON-6: the server agent runs Den's own tools without the runtime's
     // prompt; its writes wait for the person's Allow in the browser.
     ...(isServerScope(ws) ? { denToolsAllowed: true } : {}),
+    // Issue 1016: the address line of its start brief.
+    webUrl: safeWebUrl(d),
     // NT-1: it tells Den when it waits for its person (the bell).
     // Issue 609: its hooks' wait and retries (user.yml agent_hooks.*).
     attention: {
@@ -3846,6 +3900,12 @@ export async function startAgent(
     (given ? await namedId(d, given, ws) : null) ??
     defaultId(d.stateDir(), persona.id, ws);
   checkId(where, id);
+  // Den's own agent's id is never a project's agent's: what trusts it
+  // (server_agent.self_update: auto) also checks the scope.
+  if (id === SERVER_AGENT_ID && !isServerScope(ws))
+    throw refused(
+      `${where}: "${SERVER_AGENT_ID}" is Den's own agent's id; give this one another --id`,
+    );
   // Review M1: the rest under this agent's lock (agent-lock.ts).
   return lockAgent(d, id, async () => {
     syncCatalog(d);
@@ -8217,18 +8277,32 @@ export async function busyAgentIds(
   d: AgentsResolved,
   ids: readonly string[],
 ): Promise<string[]> {
-  const out: string[] = [];
+  return (await busyAgentHolds(d, ids)).map((h) => h.agent);
+}
+
+/**
+ * Issue 732: busyAgentIds with why each one holds the wait: mid-turn (no
+ * `job`), or its turn ended and a background job it started still runs
+ * (`job`, with its minutes), for doctor's honest words.
+ */
+export async function busyAgentHolds(
+  d: AgentsResolved,
+  ids: readonly string[],
+): Promise<{ agent: string; job?: { minutes: number } }[]> {
+  const out: { agent: string; job?: { minutes: number } }[] = [];
   for (const id of ids) {
     const rec = readRecord(d.stateDir(), id);
     if (!rec) continue;
     const st = await inputState(d, rec, new Set(), 3000, {
       promptCheck: false,
     });
-    if (
-      st === "busy" ||
-      (st === "idle" && (await agentJob(d, rec).catch(() => null)) !== null)
-    )
-      out.push(id);
+    if (st === "busy") {
+      out.push({ agent: id });
+      continue;
+    }
+    if (st !== "idle") continue;
+    const job = await agentJob(d, rec).catch(() => null);
+    if (job) out.push({ agent: id, job: { minutes: job.minutes } });
   }
   return out;
 }

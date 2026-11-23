@@ -675,6 +675,20 @@ that a container existed, running or not).
 `service`, with both forms at once, or with a key of another type (`cmd`,
 `url`), and says which.
 
+### How often the checks run
+
+An open page checks health every 5 seconds while it is in view, and every
+60 seconds while its tab is hidden. Back in view, it checks at once. A
+hidden page's poll says so, and the server keeps its last answer for the
+slow interval: with no page in view, the checks run at most once a minute.
+Both are Settings (Settings > Server), or in `user.yml`:
+
+```yaml
+health_poll:
+  visible_seconds: 5 # 2 to 300
+  hidden_seconds: 60 # 10 to 3600
+```
+
 ### The Environments page
 
 The Environments page lists every service's row at once, each cell pulsing
@@ -721,6 +735,26 @@ verify:
     max_bytes: 5000000 # the largest verdict file Den reads
     max_clauses: 5000 # the most clauses in one file
     max_text: 2000 # a clause or note longer than this is cut
+  schedule:
+    allow_expiry: 30d # a schedule's standing Allow lasts this long
+    expiry_warning: 3d # the bell warns this long before it ends
+    shared_commands: false # a command (cmd) runs on its own on staging or production
+    production:
+      enabled: false # schedules run on production at all (the org's opt-in)
+      min_interval: 15m # the shortest gap between two production runs
+      hosts: [shop.example.com] # leave out for any host; never a metadata address
+```
+
+`environments` can also be a map, when an environment needs its own
+settings. Each key is an environment. `imported: true` marks one whose
+answer comes from an outside runner:
+
+```yaml
+verify:
+  environments:
+    bed: { imported: true }
+    production:
+      write_allow: ["POST /login"] # writes a read-only run may still send
 ```
 
 A bad value is named in the error: the CLI exits 1, and the Checks API
@@ -754,6 +788,67 @@ then needs you, then one row for each check. A row opens its clauses
 (`?why=bed`): the result, the clause, the runner's note and the time.
 Before any import the environment says it hasn't been checked yet, and an
 import where nothing ran is never a pass.
+
+### Schedules: checks that run on their own
+
+A module in a repo's `verify:` block can carry a `schedule:`. Den runs it at
+those times, with no one there:
+
+```yaml
+# .acme.yml of shop
+verify:
+  modules:
+    web/home-speed:
+      kind: performance
+      environments: [staging]
+      schedule:
+        { cron: "0 2 * * *", window: "01:00-05:00", name: Nightly speed }
+```
+
+- `cron` is five fields, in this Den's time zone. `window` is `HH:MM-HH:MM`,
+  `night` (22:00 to 06:00) or `any`. A run that can't start before its
+  window ends is skipped, and the skip is named. `env` picks the
+  environment when the module has more than one.
+- Modules with the same environment, cron, window and name are one
+  schedule. Heavy runs go one at a time. After Den was down, a schedule
+  catches up once, not once for every time it missed.
+- A schedule on `local`, or one whose modules only read the code and run
+  no command, runs without an Allow.
+- On staging and production a scheduled command (`cmd`) runs only when
+  `verify.schedule.shared_commands` is true. It's off by default. Even when
+  it's on, Den runs only a command it can follow: one or more steps joined
+  by `&&`, each a script in the repo (`./scripts/speed.sh --quick`), or an
+  interpreter and a script (`bash scripts/speed.sh`), every file there. A
+  runner such as `make` or `npm`, shell syntax, or a file Den can't find:
+  the schedule can't be allowed, and its row says why.
+- Such a command runs from the commit the Allow named, never the working
+  tree. Den copies that commit's files (`git archive`) into its state
+  folder and runs there, so a later edit can't reach the run. The files
+  the command names must be committed when a person allows it. Untracked
+  files (installed packages, a local `.env`) aren't in the copy.
+- A schedule on staging or production runs only under a standing Allow. A
+  person gives it once, on the Checks page's Schedules screen
+  (`/verify?schedules=1`). It covers every run of that plan. It lapses when
+  the plan changes (a module, its command or the scripts it names, what it
+  writes, its health URLs, the environment's method rule, the times or the
+  window). It ends after `verify.schedule.allow_expiry`. An agent
+  can't give or use one: the routes refuse an agent's token. A person can take an
+  Allow back with **Take back Allow** on its row. The schedule then waits
+  for a new one.
+- Production schedules are off until `verify.schedule.production.enabled`
+  is true. Then a schedule may run there no more often than
+  `min_interval`, and only to the hosts in `hosts` when that list is set.
+  A link-local or cloud metadata address is always refused. A schedule
+  outside these limits can't be allowed, and its row says why.
+- On production a scheduled run is read-only. It sends only GET, HEAD and
+  OPTIONS, plus the `write_allow` pairs for that environment. Any other
+  request is blocked before it leaves, and the run's record names it.
+  Only built-in smoke and built-in code scans run there: never a command.
+- Each result goes to the bell, a failure as an alert. The bell warns once,
+  `verify.schedule.expiry_warning` before an Allow ends.
+
+Schedules come from the repo. The Schedules screen shows them and allows
+them. To add, change or remove one, change the repo.
 
 ## Placement
 
@@ -2747,6 +2842,21 @@ set keeps its mode, because switching needs sudo; its web server offers it
 once in the bell ("Keep agents running after logout: Apply"), Settings
 shows the offer, and `doctor` names it. An explicit off stays off.
 
+`doctor`'s **survives logout** row answers it in one word: `yes`, or `no`
+with why (no service, login mode, turned off, the job not loaded, or a
+host started in your login) and the fix in words. A login install says
+"this install stops its agents at logout (login mode)" and points to
+Apply.
+
+**Back from a logout.** Under `always` the web server runs through a
+logout, so it watches who owns the console (`/dev/console`: you while
+logged in, root at the login window) every `ui.console_check_seconds`
+(user.yml, 30). When you come back after longer than
+`ui.restart_wait_seconds` (90), the bell says "While you were logged out
+(N min), these agents ran: <names>", linked to the Agents page. Agents
+that stopped meanwhile get a second note, "While you were logged out (N
+min), these agents stopped: <names>", also when nothing else ran.
+
 **Agents' sign-in under `always`.** A LaunchDaemon started after a logout
 isn't assumed to reach the login keychain, and the CLI's interactive
 sign-in expires on its own. So agents started under `always` sign in with
@@ -3546,7 +3656,10 @@ project may take that name.
   stays behind that.
 - **It updates Den** (0.4.44, `den_update { version, reason }`, the held
   action `den_update`). Held for the person like `den_restart`, under
-  the same `server_agent.self_update`. Allowed, Den saves the version it
+  the same `server_agent.self_update`. A project's agent may ask too
+  (0.4.83): its ask is always held for a person's Allow in the browser,
+  whatever `server_agent.self_update` or the approval policy says, and
+  the answer tells it so; no agent Allows it. Allowed, Den saves the version it
   runs now, installs `<version>` exactly from npm in the distribution
   (`npm install --save-exact`), runs `doctor --json`, and restarts.
   `version` is `latest` or an exact version such as `0.4.44` (default
@@ -5811,6 +5924,15 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   once, each in its own container. A browser run waiting
   for cpu runs to drop to that number stops new cpu grants past it, so it
   can't starve.
+- While the machine's 5-minute load average is at or above
+  `cpu_hold_load` and a release-priority browser run holds a browser slot
+  (here or on a test box), cpu asks wait (issue 1009). The default is the
+  machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders are
+  never stopped, and a release-priority cpu ask goes through (a release
+  run's own next step never waits on it). A plain cpu ask is granted on the next pass once either
+  condition stops. Its line in `gate status` and on the Gate panel says
+  why: "waiting: load 38 ≥ 24 while a release run holds the browser
+  slot". Set it with `gate settings --cpu-hold-load N`, or in Settings.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.
@@ -5822,11 +5944,29 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - A slot whose processes are gone is taken back at once (on the next
   read): the wrapper and the command it started both count, so a wrapper
   killed with SIGKILL leaves the slot to its command until that ends.
+- A run's estimate is measured when it gives none (issue 999): the median
+  of its label's last 10 finished runs (3 or more), else of the asker's
+  last 10 runs of that kind, else 10 minutes. A given estimate over twice
+  that median is kept but flagged ("estimate 150 min; this usually takes
+  74" in `gate status` and on the Gate panel), and the queue's wait times
+  use the median. So do "past its estimate" and the bell's overrun line
+  (`overrun_bell_multiple`): a padded estimate can't keep a slot out of
+  sight. Only an MCP slot's lease still goes by the given estimate.
+  `gate status --json` gives each slot's `estimate` (given
+  or measured) and `expected` (what the queue uses), each with `from`:
+  `given`, `label`, `actor` or `default`.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
-- A person ends a slot early on the Agents page (the gate chip) or with
-  `gate end`; the run is not stopped. An agent can't: the web route
+- Held past `overrun_bell_multiple` times its estimate (default 2; `gate
+  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+  the bell's Needs you: who holds it, what it runs, since when and its
+  estimate, with End for the person. When an agent holds it, Den types one
+  line at that agent's prompt, once per slot, to release it with
+  `gate_slot_release` or let its command finish. The line leaves the bell
+  as soon as the slot ends, however it ends (issue 993).
+- A person ends a slot early on the Agents page (the gate chip), from the
+  bell, or with `gate end`; the run is not stopped. An agent can't: the web route
   refuses an agent's token, `gate end` refuses in an agent's terminal, and
   the MCP tools give back only the agent's own slot.
 - The slots are the machine user's, shared by every install and repo, and

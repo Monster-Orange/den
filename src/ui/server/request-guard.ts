@@ -271,6 +271,13 @@ export type GuardResult =
       via: Via;
       /** Beyond loopback: the edge, a LAN name, or a non-loopback peer. */
       beyond: boolean;
+      /**
+       * Via the edge, with the install's own edge's proof (H1), and the edge
+       * attests the client is this machine (edgeClient "local"): never an
+       * unattested client, even where web.edge_unattested counts it local.
+       * Issue 1034: the test operator's own shell through the edge.
+       */
+      edgeLocal: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
       /**
@@ -819,6 +826,7 @@ export function checkRequest(
     principal: p,
     via,
     beyond,
+    edgeLocal: proved && who === "local",
     session,
     ...(client ? { client: normAddress(client) } : {}),
   });
@@ -901,6 +909,7 @@ export function checkRequest(
       principal: null,
       via,
       beyond,
+      edgeLocal: proved && who === "local",
       session: null,
       ending,
       ...(client ? { client: normAddress(client) } : {}),
@@ -960,6 +969,11 @@ export const AGENT_READ_ONLY: readonly string[] = [
 export const AGENT_PERSON_WRITES: readonly string[] = [
   // Allow and Deny on a held write: never the asking agent's.
   "/api/approvals/:id/decide",
+  // Issue 214: a schedule's standing Allow, and running it now: a person's.
+  "/api/verify/schedules/allow",
+  "/api/verify/schedules/run",
+  // Issue 964: taking an Allow back: a person's too.
+  "/api/verify/schedules/revoke",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
   // Issue 52: Dismiss a Coach finding, with the reason: a person's.
@@ -1051,6 +1065,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 625: the test boxes are a person's to change.
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
+  "/api/gate-slots/boxes/enable",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */

@@ -1,10 +1,18 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.82",
+  "version": "0.4.84",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
     "den": "./bin/den"
+  },
+  "exports": {
+    "./pw-guard": {
+      "types": "./lib/pw-guard/pw-guard-export.d.ts",
+      "default": "./lib/pw-guard/pw-guard-export.js"
+    },
+    "./package.json": "./package.json",
+    "./*": "./*"
   },
   "workspaces": [
     "packages/*"
@@ -12,6 +20,7 @@
   "files": [
     "bin/",
     "packages/den-ui/",
+    "lib/pw-guard/",
     "src/",
     "!src/**/*.test.ts",
     "make/",
@@ -36,6 +45,7 @@
   "scripts": {
     "cli": "tsx src/ui/cli/index.ts menu",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-web-assets.mjs",
+    "build:pw-guard": "node scripts/build-pw-guard.mjs",
     "test:unit": "jest --coverage --forceExit",
     "test:unit:watch": "jest --watch",
     "test:framework": "npm run test:unit",
@@ -45,7 +55,7 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
     "preflight": "npm run format && npm run lint:fix && npm run typecheck && DEN_TEST_WORKERS=${DEN_TEST_WORKERS:-8} npm run test:unit",
     "prepare": "husky install",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.build.json && node scripts/typecheck-tests.mjs",
     "test": "jest --forceExit",
     "gate:org-names": "node scripts/org-name-gate.mjs",
     "gate:words": "node scripts/words-gate.mjs",

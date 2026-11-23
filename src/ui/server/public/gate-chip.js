@@ -100,6 +100,20 @@ export function startGateChip(o) {
       ? t("gate.class", { name: s.class }) +
         (s.window ? " · " + t("gate.window", { window: s.window }) : "")
       : "";
+    // Issues 1009, 1048: a cpu run held by the machine's load.
+    const hold = !s.loadHold
+      ? ""
+      : s.loadHold.why === "cores"
+        ? t("gate.loadHoldCores", {
+            load: String(s.loadHold.load),
+            limit: String(s.loadHold.limit),
+            perCore: String(s.loadHold.perCore),
+            cores: String(s.loadHold.cores),
+          })
+        : t("gate.loadHold", {
+            load: String(s.loadHold.load),
+            limit: String(s.loadHold.limit),
+          });
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -114,6 +128,20 @@ export function startGateChip(o) {
       (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
       (yld ? '<div class="gate-pri">' + esc(yld) + "</div>" : "") +
       (cls ? '<div class="gate-pri">' + esc(cls) + "</div>" : "") +
+      (hold
+        ? '<div class="gate-pri" data-gate-load-hold>' + esc(hold) + "</div>"
+        : "") +
+      // Issue 999: a padded estimate, and what the queue uses instead.
+      (s.padded && s.expected
+        ? '<div class="gate-pri" data-gate-padded>' +
+          esc(
+            t("gate.padded", {
+              est: s.estimate?.minutes ?? "?",
+              usual: s.expected.minutes,
+            }),
+          ) +
+          "</div>"
+        : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"
@@ -122,17 +150,30 @@ export function startGateChip(o) {
 
   /** Issue 625: a test box: its slots held, or why it is skipped. */
   function boxHtml(b) {
+    // Turned off, or outside its window (shown in this viewer's time).
     const text =
-      b.state === "held" || b.state === "unreachable" || b.state === "low"
-        ? t(
-            b.state === "held"
-              ? "gate.boxHeld"
-              : b.state === "low"
-                ? "gate.boxLow"
-                : "gate.boxDown",
-            { box: b.name, reason: b.reason || "" },
-          )
-        : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
+      b.state === "off"
+        ? t("gate.boxOff", { box: b.name })
+        : b.state === "window"
+          ? t("gate.boxClosed", {
+              box: b.name,
+              time: b.opensAt ? gateTime(b.opensAt) : b.opens || "",
+            })
+          : b.state === "held" ||
+              b.state === "unreachable" ||
+              b.state === "low" ||
+              b.state === "unknown"
+            ? t(
+                b.state === "held"
+                  ? "gate.boxHeld"
+                  : b.state === "low"
+                    ? "gate.boxLow"
+                    : b.state === "unknown"
+                      ? "gate.boxMemUnknown"
+                      : "gate.boxDown",
+                { box: b.name, reason: b.reason || "" },
+              )
+            : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
     return (
       '<li class="gate-box" data-gate-box="' +
       esc(b.name) +

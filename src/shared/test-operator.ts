@@ -17,7 +17,9 @@
  *    then (claimAtBirth) and wrote the creation record, sealed with the
  *    install's new secret for that folder. A mark added later by a config
  *    edit never makes one. It binds to loopback only, and an operator act
- *    that came through a proxy (forwarded headers) is refused.
+ *    that came through a proxy (forwarded headers) is refused, with one
+ *    exception (issue 1034): attaching or closing its own shell through
+ *    the install's own proved edge, from this machine.
  *  - At that same first start the server gives the install its fixture
  *    person, so a new test install needs no person's click.
  *
@@ -30,6 +32,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { isServerScope } from "./agents/server-agent.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** The test operator's principal in the audit trail. */
 export const OPERATOR_PRINCIPAL = "test:operator";
@@ -89,8 +92,8 @@ export function claimAtBirth(o: {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") return false;
       if (!stateDirIsEmpty(o.stateDir)) return false;
     }
-    fs.writeFileSync(creationRecordPath(o.stateDir), `${CREATION_PENDING}\n`, {
-      flag: "wx",
+    writeFileAtomic(creationRecordPath(o.stateDir), `${CREATION_PENDING}\n`, {
+      exclusive: true,
       mode: 0o600,
     });
     return (
@@ -116,14 +119,11 @@ export function writeCreationRecord(
 ): void {
   const at = String(now);
   const f = creationRecordPath(stateDir);
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(
-    tmp,
+  writeFileAtomic(
+    f,
     `v1.${at}.${sealOf(stateDir, at, secret).toString("base64url")}\n`,
     { mode: 0o600 },
   );
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, f);
 }
 
 /** Drop a pending record (the first start turned out not to be a test install). */
@@ -271,13 +271,29 @@ export function operatorRefusal(o: {
   method: string;
   pathname: string;
   forwarded?: boolean;
+  /**
+   * Via the install's own edge, with its proof, from a client the edge
+   * attests is this machine (request-guard: GuardResult.edgeLocal).
+   */
+  edgeLocal?: boolean;
   ownShell?: (key: string) => boolean;
 }): OperatorRefusal | null {
   const act = operatorAct(o.method, o.pathname);
   if (!act) return "not_an_act";
   if (!o.operatorInstall) return "not_operator_install";
-  if (o.via !== "loopback" || o.beyond) return "not_loopback";
-  if (o.forwarded) return "forwarded";
+  // Issue 1034: attach and close of the operator's own shell may come through
+  // the install's own edge (proved, and it attests this machine's client), so
+  // a live check proves the terminal path through the edge (gate 653). Every
+  // other act, and every other way in, stays loopback-only and unforwarded.
+  const ownEdge =
+    (act === "terminal-attach" || act === "terminal-close") &&
+    o.via === "edge" &&
+    !o.beyond &&
+    o.edgeLocal === true;
+  if (!ownEdge) {
+    if (o.via !== "loopback" || o.beyond) return "not_loopback";
+    if (o.forwarded) return "forwarded";
+  }
   // say and relaunch reach this install's project agents only, never the
   // server agent (its held writes are not the checks' to drive).
   if (act === "agent-say" || act === "agent-relaunch") {

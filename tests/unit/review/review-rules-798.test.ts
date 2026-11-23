@@ -16,6 +16,7 @@ import {
   matchReview,
   reviewAt,
   reviewLoosenings,
+  type Review,
   type ReviewPr,
 } from "../../../src/shared/review/rules.js";
 import {
@@ -37,7 +38,7 @@ const pr = (o: Partial<ReviewPr> = {}): ReviewPr => ({
 });
 const names = (r: ReturnType<typeof matchReview>) => r.map((m) => m.rule);
 
-const CORE = {
+const CORE: Review = {
   rules: [
     {
       name: "core",
@@ -182,7 +183,7 @@ describe("which pull requests want a review", () => {
 });
 
 describe("an override can only tighten", () => {
-  const rule = (o: Record<string, unknown> = {}, req = {}) => ({
+  const rule = (o: Record<string, unknown> = {}, req = {}): Review => ({
     rules: [
       {
         name: "core",

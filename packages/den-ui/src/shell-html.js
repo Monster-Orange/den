@@ -1072,7 +1072,6 @@ export function menuRowHtml(r) {
   );
 }
 
-
 /** A host's words: text, or { key, vars } in the kit's tables (addStrings). */
 const words = (w, lang) =>
   w == null
