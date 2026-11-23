@@ -678,7 +678,9 @@ describe("the Agents tab", () => {
     await opt.click();
     await p.waitForURL(
       (u) =>
-        u.pathname === "/local-dev" && u.searchParams.get("ws") === "north",
+        u.pathname === "/local-dev" &&
+        // #80: ?project= names it (an old ?ws= still reads the same).
+        (u.searchParams.get("project") ?? u.searchParams.get("ws")) === "north",
     );
     await p.context().close();
   }, 45_000);
