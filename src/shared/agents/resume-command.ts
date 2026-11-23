@@ -68,6 +68,20 @@ export function resumeTemplateProblem(argv: readonly string[]): string | null {
   return null;
 }
 
+/**
+ * What is wrong with the words that start a runtime under an id Den chose
+ * (catalog resume.start), or null: exactly one "{conversation}" standing
+ * alone, no word naming it otherwise, no "{bin}".
+ */
+export function resumeStartProblem(words: readonly string[]): string | null {
+  if (!words.length || words.length > 4) return "1 to 4 words";
+  const slots = words.filter((w) => w.includes("{conversation}"));
+  if (slots.length !== 1 || !words.includes("{conversation}"))
+    return 'exactly one "{conversation}", a word of its own';
+  if (words.some((w) => w.includes("{bin}"))) return 'no "{bin}"';
+  return null;
+}
+
 /** The template's words: the binary first, the id in its slot. */
 export function resumeArgv(
   template: readonly string[],

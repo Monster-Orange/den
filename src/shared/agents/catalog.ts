@@ -66,7 +66,7 @@
  */
 import * as path from "path";
 import { RULE_SETS } from "./detect/index.js";
-import { resumeTemplateProblem } from "./resume-command.js";
+import { resumeStartProblem, resumeTemplateProblem } from "./resume-command.js";
 
 export interface CatalogIdentity {
   /** A case-insensitive pattern the version command's output matches. */
@@ -115,9 +115,18 @@ export interface CatalogEntry {
   /**
    * Issue 785: how it resumes a conversation: "{bin}" (the binary Den
    * launches for it) first and the conversation's id in one "{conversation}"
-   * word. The agent reports only that id. Unset: it can't resume.
+   * word. Unset: it can't resume.
+   *
+   * `conversation`: whose id it is. Unset ("reported"): the agent reports
+   * it (`agents report-resume`). "den": Den chooses it at launch and
+   * starts the runtime under it with the `start` words (one
+   * "{conversation}" word among them), so nothing the agent writes is used.
    */
-  resume?: { argv: string[] };
+  resume?: {
+    argv: string[];
+    conversation?: "den";
+    start?: string[];
+  };
   /** What Shift+Enter sends (AG-4b); unset: "esc-cr". */
   softNewline?: SoftNewline;
   /** The adapter reads a session name, from a source this stable. */
@@ -271,7 +280,13 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     launch: { argv: ["{bin}"] },
     // Issue 785: `gemini --resume <session id>` (docs/cli/session-management.md)
     // continues that session.
-    resume: { argv: ["{bin}", "--resume", "{conversation}"] },
+    // `--session-id <uuid>` (packages/cli/src/config/config.ts) starts a
+    // session under an id Den chose, so the agent reports nothing.
+    resume: {
+      argv: ["{bin}", "--resume", "{conversation}"],
+      conversation: "den",
+      start: ["--session-id", "{conversation}"],
+    },
     // https://geminicli.com/docs/reference/keyboard-shortcuts: Alt+Enter
     // (ESC CR), Ctrl+J and Shift+Enter insert a newline.
     softNewline: "esc-cr",
@@ -569,8 +584,24 @@ export function validateCatalogEntry(
   let resume: CatalogEntry["resume"];
   if (raw.resume !== undefined) {
     const r = raw.resume;
-    if (!isMapping(r) || Object.keys(r).some((k) => k !== "argv"))
-      throw new Error(`${where}.resume: must be a mapping { argv: [...] }`);
+    if (
+      !isMapping(r) ||
+      Object.keys(r).some(
+        (k) => k !== "argv" && k !== "conversation" && k !== "start",
+      )
+    )
+      throw new Error(
+        `${where}.resume: must be a mapping { argv: [...], conversation?, start? }`,
+      );
+    if (
+      r.conversation !== undefined &&
+      r.conversation !== "den" &&
+      r.conversation !== "reported"
+    )
+      throw new Error(
+        `${where}.resume.conversation: must be "den" or "reported"`,
+      );
+    const denId = r.conversation === "den";
     const words = list(
       `${where}.resume.argv`,
       r.argv,
@@ -594,7 +625,31 @@ export function validateCatalogEntry(
         );
       left.splice(at, 1);
     }
-    resume = { argv: words };
+    // Den's own id: the words that start the runtime under it.
+    let start: string[] | undefined;
+    if (r.start !== undefined || denId) {
+      if (!denId)
+        throw new Error(
+          `${where}.resume.start: only with conversation "den" (Den's own id)`,
+        );
+      start = list(
+        `${where}.resume.start`,
+        r.start,
+        (x, at) => {
+          if (typeof x === "string" && x.length <= 200 && !/[\0\n]/.test(x))
+            return x;
+          throw new Error(`${at}: must be an argument of up to 200 characters`);
+        },
+        { min: 1, max: 4 },
+      );
+      const startProblem = resumeStartProblem(start);
+      if (startProblem)
+        throw new Error(`${where}.resume.start: ${startProblem}`);
+    }
+    resume = {
+      argv: words,
+      ...(denId ? { conversation: "den" as const, start } : {}),
+    };
   }
   const traits: Pick<
     CatalogEntry,

@@ -159,8 +159,11 @@ describe("issue 785: a catalog entry's resume template", () => {
       await import("../../../src/shared/agents/catalog.js");
     const of = (id: string) => BUILTIN_CATALOG.find((e) => e.id === id);
     expect(of("codex")?.resume).toEqual({ argv: CODEX });
+    // Gemini's id is Den's own (gemini-den-conversation-785.test.ts).
     expect(of("gemini")?.resume).toEqual({
       argv: ["{bin}", "--resume", "{conversation}"],
+      conversation: "den",
+      start: ["--session-id", "{conversation}"],
     });
     expect(of("grok")?.resume).toBeUndefined();
     for (const e of BUILTIN_CATALOG)

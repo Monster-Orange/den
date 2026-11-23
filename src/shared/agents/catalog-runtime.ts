@@ -14,11 +14,16 @@
  * vendor's npm package, or under the vendor's install directory), so a
  * path that isn't that runtime is refused.
  */
+import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { configuredRuntimeBin } from "../den-config.js";
 import { entryDirs, type CatalogEntry } from "./catalog.js";
-import { resumeCommandFor } from "./resume-command.js";
+import {
+  CONVERSATION_ID,
+  resumeArgv,
+  resumeCommandFor,
+} from "./resume-command.js";
 import {
   LaunchError,
   type DetectOptions,
@@ -70,6 +75,11 @@ export function detectEntry(
   };
 }
 
+/** Issue 785: the words that start it under Den's own id, when it takes one. */
+function denIdStart(e: CatalogEntry): readonly string[] | undefined {
+  return e.resume?.conversation === "den" ? e.resume.start : undefined;
+}
+
 /** The launch argv: the entry's template, "{bin}" the path found. */
 export function launchArgv(e: CatalogEntry, bin: string): string[] {
   return e.launch.argv.map((a) => a.split("{bin}").join(bin));
@@ -98,9 +108,23 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
           throw new LaunchError(`${e.id}: ${d.why ?? "not found"}`);
         bin = d.path;
       }
+      // Issue 785: Den's own conversation id, when the runtime takes one:
+      // the one it had (a fresh start under the same id), else a new one.
+      const den = denIdStart(e);
+      const id = den
+        ? input.resumeToken && CONVERSATION_ID.test(input.resumeToken)
+          ? input.resumeToken
+          : randomUUID()
+        : undefined;
       return {
-        argv: launchArgv(e, bin),
+        argv: [
+          ...launchArgv(e, bin),
+          ...(den && id
+            ? den.map((w) => (w === "{conversation}" ? id : w))
+            : []),
+        ],
         env: {},
+        ...(id ? { resumeToken: id } : {}),
         warnings: [
           `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,
         ],
@@ -113,8 +137,14 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
     // why before this is reached.
     ...(e.resume
       ? {
-          reportedResume: true as const,
+          ...(denIdStart(e) ? {} : { reportedResume: true as const }),
           resume(input: Parameters<NonNullable<Runtime["resume"]>>[0]) {
+            // Den's own id: only the one it kept, in Den's shape.
+            if (
+              denIdStart(e) &&
+              !(input.resumeToken && CONVERSATION_ID.test(input.resumeToken))
+            )
+              return null;
             let bin = input.bin;
             if (!bin) {
               const d = detect(input.env);
@@ -122,12 +152,16 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
                 throw new LaunchError(`${e.id}: ${d.why ?? "not found"}`);
               bin = d.path;
             }
-            const got = resumeCommandFor(
-              input.resumeReport,
-              input.worktree,
-              e.resume!.argv,
-              bin,
-            );
+            const got = denIdStart(e)
+              ? {
+                  argv: resumeArgv(e.resume!.argv, bin, input.resumeToken!),
+                }
+              : resumeCommandFor(
+                  input.resumeReport,
+                  input.worktree,
+                  e.resume!.argv,
+                  bin,
+                );
             if ("problem" in got) return null;
             return {
               argv: got.argv,
