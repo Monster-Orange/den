@@ -181,6 +181,7 @@ function unsweptBytes(file: string): number {
  * A warning when the raw file is not being swept, or (issue 637) is
  * larger than `rawWarnKb` while it is. Null when it's empty or absent.
  * Not swept: unmasked lines, and no sweep within RAW_STALE_MS, or never.
+ * Swept but not emptied: unmasked lines last written over RAW_STALE_MS ago.
  */
 export function rawAccessWarning(
   stateDir: string,
@@ -199,6 +200,15 @@ export function rawAccessWarning(
   const ago = (t: number) =>
     `${Math.max(0, Math.round((now - t) / 1000))} s ago`;
   if (swept !== null && now - swept <= RAW_STALE_MS) {
+    // A sweep empties a file that stopped growing. Unmasked lines last
+    // written over 10 s ago with sweeps running: it can't (a part line
+    // the edge never finished, or one that kept growing).
+    const age = now - st.mtimeMs;
+    if (age > RAW_STALE_MS)
+      return (
+        `the edge's raw access log has ${bytes} bytes of unmasked lines, last written ${ago(st.mtimeMs)}: ` +
+        `the sweep runs but isn't emptying it (last sweep ${ago(swept)}). A line the edge never finished is swept when the edge next writes.`
+      );
     if (bytes <= rawWarnKb * 1024) return null;
     return (
       `the edge's raw access log holds ${Math.round(bytes / 1024)} KB of unmasked lines, over edge.access_log.raw_warn_kb (${rawWarnKb}). ` +
