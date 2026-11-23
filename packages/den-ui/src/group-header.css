@@ -9,7 +9,7 @@
   justify-content: space-between;
   gap: 4px 8px;
   padding: 10px 12px 4px;
-  border-top: 1px solid var(--border);
+  border-top: 1px var(--edge-style, solid) var(--border);
 }
 .den-grph:first-child {
   border-top: 0;
