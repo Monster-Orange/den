@@ -109,11 +109,7 @@ describe("the write guard (issue 1356)", () => {
   it("a config/local outside the home and the temp folders is refused too", () => {
     const r = rig();
     const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
-    installWriteGuard(
-      f,
-      { home: r.home, checkout: r.checkout, temp: [] },
-      () => {},
-    );
+    installWriteGuard(f, { checkout: r.checkout, temp: [] }, () => {});
     expect(() =>
       f.writeFileSync(
         path.join(r.scratch, "x", "config", "local", "user.yml"),
