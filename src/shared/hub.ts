@@ -1169,6 +1169,83 @@ export async function hubPlanCreate(
   }
 }
 
+/**
+ * Issue 646: ask Hub for several new projects as ONE plan an owner applies
+ * once in Hub (Connect's review): POST <url>/api/projects/plan with
+ * {changes: [{op: "create", slug, name}, …], reason}, the same path as one
+ * create (issue 271). Slugs skip `taken` and each other. One name: the
+ * same as hubPlanCreate (a taken slug is re-picked).
+ */
+export async function hubPlanCreates(
+  url: string,
+  token: string,
+  ask: { names: string[]; reason: string; taken?: readonly string[] },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{
+  held: string;
+  state: string;
+  url?: string;
+  made: { name: string; slug: string }[];
+}> {
+  const names = ask.names.map((n) => n.replace(/\s+/g, " ").trim());
+  if (!names.length) throw new Error("no projects to create");
+  if (names.some((n) => !n || n.length > HUB_PROJECT_NAME_MAX))
+    throw new Error(
+      `name: 1 to ${HUB_PROJECT_NAME_MAX} characters, as Hub takes it`,
+    );
+  if (names.length === 1) {
+    const one = await hubPlanCreate(
+      url,
+      token,
+      { name: names[0]!, reason: ask.reason, taken: ask.taken },
+      opts,
+    );
+    return {
+      held: one.held,
+      state: one.state,
+      ...(one.url ? { url: one.url } : {}),
+      made: [{ name: one.name, slug: one.slug }],
+    };
+  }
+  const reason = ask.reason.replace(/\s+/g, " ").trim();
+  if (!reason) throw new Error("say why: Hub's owner reads the reason");
+  const taken = [...(ask.taken ?? [])];
+  const made = names.map((name) => {
+    const slug = hubSlugFor(name, taken);
+    taken.push(slug);
+    return { name, slug };
+  });
+  const b = await hubCall(
+    `${url}/api/projects/plan`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        changes: made.map((m) => ({
+          op: "create",
+          slug: m.slug,
+          name: m.name,
+        })),
+        reason,
+      }),
+    },
+    opts,
+  );
+  const held = str(b.held);
+  if (!held) throw new HubCallError("refused", "Hub held no change for it");
+  const link = str(b.url);
+  return {
+    held,
+    state: str(b.state) ?? "pending",
+    ...(link && /^https?:\/\//.test(link) ? { url: link } : {}),
+    made,
+  };
+}
+
 /** What Den reads of a plan's outcome (issue 271). */
 export type HubPlanState = "pending" | "applied" | "declined" | "superseded";
 

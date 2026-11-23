@@ -502,6 +502,11 @@
     "ws.all": "All active",
     "ws.focus": "CLI default",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Connected to {company} ({host}). This project: {name}.",
+    "ws.hubAway": "Another Hub",
+    "ws.hubAwayTip":
+      "This project's link points at another Hub, so it doesn't count here. Relink it in Project setup.",
     "ws.hubUnseen": "Den Hub can't see {n} repos",
     "ws.hubTip":
       "This project's agents file their Hub work in this Hub project. Change it in Project setup.",
@@ -1075,7 +1080,7 @@
     "set.ui.hub.address": "Hub's address",
     "set.ui.hub.connect": "Connect",
     "set.ui.hub.connectLinks":
-      "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you.",
+      "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all.",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
     "set.ui.hub.teams": "a shared Hub at {host}.",
@@ -2079,6 +2084,9 @@
     "hubp.whyRepo": "has these repos",
     "hubp.whyName": "same name",
     "hubp.link": "Link",
+    "hubp.elsewhere":
+      "{project} points at “{name}” on another Hub ({host}, {company}). This Den is connected to {nowHost} ({nowCompany}), so the link doesn’t count. Relink it here, or unlink it.",
+    "hubp.relink": "Relink",
     "hubp.unlink": "Unlink",
     "hubp.none": "Your company has no Hub projects yet.",
     "hubp.noOther": "Your company has no other Hub projects to switch to.",
@@ -2137,6 +2145,9 @@
     "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
+    "hub.addressMore": "Hub address…",
+    "hub.justConnected":
+      "Connected to {company} ({host}). Not the company you meant?",
     "hub.reconnect": "Reconnect",
     "hubgh.offline": "This install isn't connected to Hub yet.",
     "hubgh.failed": "Den couldn't ask Hub about GitHub access.",
@@ -2159,6 +2170,64 @@
     "hubla.linked": "Linked {n} projects.",
     "hubla.failed": "{n} couldn't be linked: {names}. Try again.",
     "hubla.failedAll": "Couldn't link {names}. Try again.",
+    "hubrv.title": "Connect this Den to {company}",
+    "hubrv.titleNo": "Link this Den's projects to Hub",
+    "hubrv.offline":
+      "Hub didn't answer. The company is known, but its projects can't be listed. Nothing was changed.",
+    "hubrv.youAre": "you are {role}",
+    "hubrv.signedAs": "signed in as {login}",
+    "hubrv.role.owner": "owner",
+    "hubrv.role.member": "member",
+    "hubrv.retry": "Try again",
+    "hubrv.allMatch.one": "{n} project matches. Nothing to pick.",
+    "hubrv.allMatch": "All {n} projects match. Nothing to pick.",
+    "hubrv.why.repo": "same repo",
+    "hubrv.why.name": "same name",
+    "hubrv.why.picked": "your pick",
+    "hubrv.why.linked": "linked",
+    "hubrv.why.new": "no Hub project fits: a new one",
+    "hubrv.why.pick": "two Hub projects fit: choose one",
+    "hubrv.waiting": "a new Hub project, waiting for an owner's Apply in Hub",
+    "hubrv.was": "was linked to “{name}” on {host}; {why} here",
+    "hubrv.wasCo":
+      "was linked to “{name}” on {host} (company {company}); {why} here",
+    "hubrv.offlineRow": "Hub didn't answer for the project list",
+    "hubrv.create": "Create “{name}”",
+    "hubrv.suggested": "Suggested",
+    "hubrv.choose": "Choose a Hub project for “{project}”",
+    "hubrv.search.one": "Search {n} project",
+    "hubrv.search": "Search {n} projects",
+    "hubrv.noMatch": "No Hub project matches.",
+    "hubrv.noProjects": "Hub has no projects in this company yet.",
+    "hubrv.use": "Use {name}",
+    "hubrv.createInstead": "Create “{name}” instead",
+    "hubrv.cancel": "Cancel",
+    "hubrv.change": "Change",
+    "hubrv.openPlan": "Open Hub's plan page",
+    "hubrv.apply": "Connect and link all",
+    "hubrv.applyNote":
+      "Links apply at once. Any new projects open Hub's plan page: one Apply there creates them all.",
+    "hubrv.member.one":
+      "{n} new project goes to an owner for approval. You are a member, so Hub asks an owner to Apply it. The links apply at once.",
+    "hubrv.member":
+      "These {n} new projects go to an owner for approval. You are a member, so Hub asks an owner to Apply them. The links apply at once.",
+    "hubrv.doneTitle": "Connected to {company}",
+    "hubrv.doneTitleNo": "Done",
+    "hubrv.linkedLine": "{project} → {name} ({why})",
+    "hubrv.creatingLine":
+      "{project}: a new Hub project, {name}, waiting for an Apply in Hub. It links when it is applied.",
+    "hubrv.skip.duplicate": "{project}: listed twice; done once.",
+    "hubrv.skip.unknown": "{project}: not done: there is no such project here.",
+    "hubrv.skip.offline": "{project}: not done: Hub didn't answer. Try again.",
+    "hubrv.skip.stale":
+      "{project}: not done: that isn't one of the company's Hub projects any more.",
+    "hubrv.skip.waiting":
+      "{project}: not done: a new Hub project is already waiting for an owner.",
+    "hubrv.skip.hub": "{project}: not done: Hub said: {why}",
+    "hubrv.skip.name":
+      "{project}: not done: the name must be 1 to 80 characters.",
+    "hubrv.asked": "Asked Hub for the new projects.",
+    "hubrv.switch": "Switch company",
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
       "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
@@ -9460,6 +9529,13 @@
             if (k !== last) {
               last = k;
               setState({ hub: h });
+              // Issue 646: pages that name the company (a project's Hub
+              // chip) redraw from it.
+              try {
+                window.dispatchEvent(new CustomEvent("den:hub", { detail: h }));
+              } catch (e) {
+                /* none */
+              }
             }
           },
           function () {},
@@ -9575,6 +9651,10 @@
   });
 
   window.denShell = {
+    /** Issue 646: the rail's Hub status (team, url, state), or null. */
+    hub: function () {
+      return state.hub;
+    },
     /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
     report: openReport,
     /** FB: My reports (the person's reports and the drafts). */

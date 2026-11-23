@@ -393,6 +393,11 @@
     "ws.all": "Todos los activos",
     "ws.focus": "predeterminado de la CLI",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Conectado a {company} ({host}). Este proyecto: {name}.",
+    "ws.hubAway": "Otro Hub",
+    "ws.hubAwayTip":
+      "El enlace de este proyecto apunta a otro Hub, así que aquí no vale. Vuelve a enlazarlo en Configuración del proyecto.",
     "ws.hubUnseen": "Den Hub no puede ver {n} repos",
     "ws.hubTip":
       "Los agentes de este proyecto archivan su trabajo de Hub en este proyecto de Hub. Cámbialo en Configuración del proyecto.",
@@ -1503,6 +1508,9 @@
     "hubp.whyRepo": "tiene estos repos",
     "hubp.whyName": "mismo nombre",
     "hubp.link": "Vincular",
+    "hubp.elsewhere":
+      "{project} apunta a “{name}” en otro Hub ({host}, {company}). Este Den está conectado a {nowHost} ({nowCompany}), así que el enlace no vale aquí. Vuelve a enlazarlo aquí o desenlázalo.",
+    "hubp.relink": "Volver a enlazar",
     "hubp.unlink": "Desvincular",
     "hubp.none": "Tu empresa aún no tiene proyectos en Hub.",
     "hubp.noOther":
@@ -1564,6 +1572,9 @@
     "hubp.createF": "Hub no aceptó la petición. No se creó nada.",
     "hub.legacy":
       "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
+    "hub.addressMore": "Dirección del Hub…",
+    "hub.justConnected":
+      "Conectado a {company} ({host}). ¿No es la empresa que querías?",
     "hub.reconnect": "Volver a conectar",
     "hubgh.offline": "Esta instalación aún no está conectada a Hub.",
     "hubgh.failed": "Den no pudo preguntar a Hub por el acceso a GitHub.",
@@ -1586,6 +1597,66 @@
     "hubla.linked": "{n} proyectos vinculados.",
     "hubla.failed": "{n} sin vincular: {names}. Inténtalo de nuevo.",
     "hubla.failedAll": "No se pudo vincular {names}. Inténtalo de nuevo.",
+    "hubrv.title": "Conectar este Den a {company}",
+    "hubrv.titleNo": "Vincular los proyectos de este Den a Hub",
+    "hubrv.offline":
+      "Hub no respondió. La empresa se conoce, pero no se pueden listar sus proyectos. No se cambió nada.",
+    "hubrv.youAre": "eres {role}",
+    "hubrv.signedAs": "conectado como {login}",
+    "hubrv.role.owner": "propietario",
+    "hubrv.role.member": "miembro",
+    "hubrv.retry": "Reintentar",
+    "hubrv.allMatch.one": "{n} proyecto coincide. No hay nada que elegir.",
+    "hubrv.allMatch": "Los {n} proyectos coinciden. No hay nada que elegir.",
+    "hubrv.why.repo": "mismo repositorio",
+    "hubrv.why.name": "mismo nombre",
+    "hubrv.why.picked": "tu elección",
+    "hubrv.why.linked": "vinculado",
+    "hubrv.why.new": "ningún proyecto de Hub encaja: uno nuevo",
+    "hubrv.why.pick": "encajan dos proyectos de Hub: elige uno",
+    "hubrv.waiting":
+      "un proyecto de Hub nuevo, a la espera de que un propietario lo aplique en Hub",
+    "hubrv.was": "estaba vinculado a «{name}» en {host}; aquí, {why}",
+    "hubrv.wasCo":
+      "estaba vinculado a «{name}» en {host} (empresa {company}); aquí, {why}",
+    "hubrv.offlineRow": "Hub no respondió con la lista de proyectos",
+    "hubrv.create": "Crear «{name}»",
+    "hubrv.suggested": "Sugerido",
+    "hubrv.choose": "Elige un proyecto de Hub para «{project}»",
+    "hubrv.search.one": "Buscar en {n} proyecto",
+    "hubrv.search": "Buscar en {n} proyectos",
+    "hubrv.noMatch": "Ningún proyecto de Hub coincide.",
+    "hubrv.noProjects": "Hub aún no tiene proyectos en esta empresa.",
+    "hubrv.use": "Usar {name}",
+    "hubrv.createInstead": "Crear «{name}» en su lugar",
+    "hubrv.cancel": "Cancelar",
+    "hubrv.change": "Cambiar",
+    "hubrv.openPlan": "Abrir la página del plan en Hub",
+    "hubrv.apply": "Conectar y vincular todo",
+    "hubrv.applyNote":
+      "Los vínculos se aplican al momento. Los proyectos nuevos abren la página del plan en Hub: un solo Aplicar allí los crea todos.",
+    "hubrv.member.one":
+      "{n} proyecto nuevo va a un propietario para su aprobación. Eres miembro, así que Hub pide a un propietario que lo aplique. Los vínculos se aplican al momento.",
+    "hubrv.member":
+      "Estos {n} proyectos nuevos van a un propietario para su aprobación. Eres miembro, así que Hub pide a un propietario que los aplique. Los vínculos se aplican al momento.",
+    "hubrv.doneTitle": "Conectado a {company}",
+    "hubrv.doneTitleNo": "Hecho",
+    "hubrv.linkedLine": "{project} → {name} ({why})",
+    "hubrv.creatingLine":
+      "{project}: un proyecto de Hub nuevo, {name}, a la espera de Aplicar en Hub. Se vincula cuando se aplica.",
+    "hubrv.skip.duplicate": "{project}: aparece dos veces; se hizo una vez.",
+    "hubrv.skip.unknown": "{project}: sin hacer: aquí no existe ese proyecto.",
+    "hubrv.skip.offline":
+      "{project}: sin hacer: Hub no respondió. Inténtalo de nuevo.",
+    "hubrv.skip.stale":
+      "{project}: sin hacer: ya no es uno de los proyectos de Hub de la empresa.",
+    "hubrv.skip.waiting":
+      "{project}: sin hacer: ya hay un proyecto de Hub nuevo esperando a un propietario.",
+    "hubrv.skip.hub": "{project}: sin hacer: Hub dijo: {why}",
+    "hubrv.skip.name":
+      "{project}: sin hacer: el nombre debe tener de 1 a 80 caracteres.",
+    "hubrv.asked": "Se pidieron a Hub los proyectos nuevos.",
+    "hubrv.switch": "Cambiar de empresa",
     "set.agents.hub_link_all": "Coincidencias dudosas",
     "set.agents.hub_link_all.d":
       "Vincular une un proyecto con su proyecto de Hub, para que sus agentes guarden allí documentos, maquetas y comentarios. Den lista aquí un proyecto solo cuando no sabe cuál de Hub corresponde. Elige uno y pulsa Vincular. Hasta entonces, no se guarda nada de ese proyecto.",
@@ -3662,7 +3733,7 @@
     "set.ui.hub.address": "Dirección de Hub",
     "set.ui.hub.connect": "Conectar",
     "set.ui.hub.connectLinks":
-      "Conectar también vincula cada proyecto de aquí con su proyecto de Hub. Cuando Den no sabe cuál corresponde, te pregunta.",
+      "Después de Conectar, cada proyecto de aquí muestra su proyecto de Hub sugerido. Revísalos y pulsa Conectar y vincular todo.",
     "set.ui.hub.connectNote":
       "Conectar abre Hub. Inicia sesión allí y aprueba esta instalación; vuelves aquí ya conectado. El token se guarda en el almacén de secretos de esta instalación y nunca se muestra.",
     "set.ui.hub.teams": "un Hub compartido en {host}.",

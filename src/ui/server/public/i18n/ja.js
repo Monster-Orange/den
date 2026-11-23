@@ -380,6 +380,11 @@
     "ws.all": "すべてのアクティブ",
     "ws.focus": "CLI の既定",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "{company}（{host}）に接続中。このプロジェクト: {name}。",
+    "ws.hubAway": "別の Hub",
+    "ws.hubAwayTip":
+      "このプロジェクトのリンクは別の Hub を指しているため、ここでは無効です。プロジェクト設定でリンクし直してください。",
     "ws.hubUnseen": "Den Hub が参照できないリポジトリ: {n} 件",
     "ws.hubTip":
       "このプロジェクトのエージェントは Hub の作業をこの Hub プロジェクトに保存します。プロジェクト設定で変更できます。",
@@ -1456,6 +1461,9 @@
     "hubp.whyRepo": "同じリポジトリ",
     "hubp.whyName": "同じ名前",
     "hubp.link": "リンク",
+    "hubp.elsewhere":
+      "{project} は別の Hub（{host}、{company}）の「{name}」を指しています。この Den は {nowHost}（{nowCompany}）に接続しているため、このリンクは無効です。ここでリンクし直すか、リンクを解除してください。",
+    "hubp.relink": "リンクし直す",
     "hubp.unlink": "リンクを解除",
     "hubp.none": "あなたの会社にはまだ Hub のプロジェクトがありません。",
     "hubp.noOther": "切り替えられる Hub のプロジェクトはほかにありません。",
@@ -1517,6 +1525,9 @@
       "Hub は依頼を受け付けませんでした。何も作成されていません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
+    "hub.addressMore": "Hub のアドレス…",
+    "hub.justConnected":
+      "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
     "hub.reconnect": "再接続",
     "hubgh.offline": "このインストールはまだ Hub に接続されていません。",
     "hubgh.failed":
@@ -1541,6 +1552,63 @@
       "{n} 件をリンクできませんでした: {names}。もう一度お試しください。",
     "hubla.failedAll":
       "{names} をリンクできませんでした。もう一度お試しください。",
+    "hubrv.title": "この Den を {company} に接続",
+    "hubrv.titleNo": "この Den のプロジェクトを Hub にリンク",
+    "hubrv.offline":
+      "Hub が応答しませんでした。会社はわかっていますが、プロジェクトを一覧できません。何も変更していません。",
+    "hubrv.youAre": "あなたは{role}です",
+    "hubrv.signedAs": "{login} としてサインイン中",
+    "hubrv.role.owner": "オーナー",
+    "hubrv.role.member": "メンバー",
+    "hubrv.retry": "再試行",
+    "hubrv.allMatch":
+      "{n} 件のプロジェクトがすべて一致しています。選ぶものはありません。",
+    "hubrv.why.repo": "同じリポジトリ",
+    "hubrv.why.name": "同じ名前",
+    "hubrv.why.picked": "あなたの選択",
+    "hubrv.why.linked": "リンク済み",
+    "hubrv.why.new": "合う Hub プロジェクトがありません: 新規作成",
+    "hubrv.why.pick": "2 つの Hub プロジェクトが合います: 1 つ選んでください",
+    "hubrv.waiting":
+      "新しい Hub プロジェクト。Hub でオーナーの適用を待っています",
+    "hubrv.was": "{host} の「{name}」にリンクされていました。ここでは{why}",
+    "hubrv.wasCo":
+      "{host}(会社 {company})の「{name}」にリンクされていました。ここでは{why}",
+    "hubrv.offlineRow": "Hub がプロジェクト一覧に応答しませんでした",
+    "hubrv.create": "「{name}」を作成",
+    "hubrv.suggested": "おすすめ",
+    "hubrv.choose": "「{project}」の Hub プロジェクトを選択",
+    "hubrv.search": "{n} 件のプロジェクトを検索",
+    "hubrv.noMatch": "一致する Hub プロジェクトはありません。",
+    "hubrv.noProjects": "この会社の Hub にはまだプロジェクトがありません。",
+    "hubrv.use": "{name} を使う",
+    "hubrv.createInstead": "代わりに「{name}」を作成",
+    "hubrv.cancel": "キャンセル",
+    "hubrv.change": "変更",
+    "hubrv.openPlan": "Hub のプランページを開く",
+    "hubrv.apply": "接続してすべてリンク",
+    "hubrv.applyNote":
+      "リンクはすぐに適用されます。新しいプロジェクトは Hub のプランページを開きます。そこで 1 回適用すればすべて作成されます。",
+    "hubrv.member":
+      "{n} 件の新しいプロジェクトはオーナーの承認に回ります。あなたはメンバーなので、Hub がオーナーに適用を依頼します。リンクはすぐに適用されます。",
+    "hubrv.doneTitle": "{company} に接続しました",
+    "hubrv.doneTitleNo": "完了",
+    "hubrv.linkedLine": "{project} → {name}({why})",
+    "hubrv.creatingLine":
+      "{project}: 新しい Hub プロジェクト {name} は Hub での適用を待っています。適用されるとリンクされます。",
+    "hubrv.skip.duplicate": "{project}: 2回指定されたため、1回だけ行いました。",
+    "hubrv.skip.unknown":
+      "{project}: 未実行: ここにそのプロジェクトはありません。",
+    "hubrv.skip.offline":
+      "{project}: 未実行: Hub が応答しませんでした。もう一度お試しください。",
+    "hubrv.skip.stale":
+      "{project}: 未実行: もうこの会社の Hub プロジェクトではありません。",
+    "hubrv.skip.waiting":
+      "{project}: 未実行: 新しい Hub プロジェクトがすでにオーナーを待っています。",
+    "hubrv.skip.hub": "{project}: 未実行: Hub の応答: {why}",
+    "hubrv.skip.name": "{project}: 未実行: 名前は 1〜80 文字にしてください。",
+    "hubrv.asked": "新しいプロジェクトを Hub に依頼しました。",
+    "hubrv.switch": "会社を切り替え",
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
       "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
@@ -3558,7 +3626,7 @@
     "set.ui.hub.address": "Hub のアドレス",
     "set.ui.hub.connect": "接続",
     "set.ui.hub.connectLinks":
-      "接続すると、ここの各プロジェクトが対応する Hub プロジェクトにも結び付けられます。どれが合うか Den が判断できないときは、あなたに確認します。",
+      "接続すると、ここの各プロジェクトにおすすめの Hub プロジェクトが表示されます。確認してから「接続してすべてリンク」を押してください。",
     "set.ui.hub.connectNote":
       "「接続」を押すと Hub が開きます。そこでサインインしてこのインストールを承認すると、接続された状態でここに戻ります。トークンはこのインストールのシークレットストアに保存され、表示されることはありません。",
     "set.ui.hub.teams": "{host} の共有 Hub。",
