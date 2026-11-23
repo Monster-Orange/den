@@ -63,7 +63,7 @@ function rig(o: { sub?: boolean } = {}) {
   const fire = (type: string) =>
     (winListeners.get(type) ?? []).forEach((fn) => fn());
   return {
-    win: win as unknown as Window,
+    win: win as unknown as Window & typeof globalThis,
     streams,
     posts,
     fire,
