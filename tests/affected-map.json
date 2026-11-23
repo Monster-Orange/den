@@ -2828,6 +2828,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/server/coach-settings-pref.ts"],
+      "run": ["tests/unit/server/coach-settings-rows-52.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": [
         "src/ui/server/coach-routes.ts",
         "src/ui/server/public/coach-tab.js",
