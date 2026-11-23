@@ -104,3 +104,22 @@ describe("issue 1129: agents.resume in Settings and config", () => {
     ]);
   });
 });
+
+describe("issue 1129: agents.resume is a setting, never an agent", () => {
+  it("in a distribution's config it parses, and no agent is named resume", async () => {
+    const { readAgentsConfig, AGENTS_RESERVED_KEYS } =
+      await import("../../../src/shared/den-config.js");
+    expect(AGENTS_RESERVED_KEYS).toContain("resume");
+    const r = readAgentsConfig(
+      {
+        environments: [],
+        agents: {
+          resume: { batch: 2, gap_seconds: 10 },
+          planner: { grants: ["south"] },
+        } as Record<string, never>,
+      },
+      {},
+    );
+    expect(r.agents).toEqual({ planner: { grants: ["south"] } });
+  });
+});

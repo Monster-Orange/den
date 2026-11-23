@@ -1957,6 +1957,8 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  // Issue 1129: the restart queue (agents.resume.*), never an agent id.
+  "resume",
 ];
 
 /**
