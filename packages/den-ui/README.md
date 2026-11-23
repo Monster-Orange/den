@@ -590,6 +590,10 @@ never converted to HTML and back).
   `--border-strong` off (`--border` when disabled); the knob is
   `--surface` and slides over `--dur-fast`, not at all under reduced
   motion. A transparent border shows the track in forced colours.
+- A row that draws its own label (a settings row) takes the bare switch,
+  `switchInputHtml({ id, on, disabled, labelledBy, describedBy, attrs })`:
+  the same input, named by the row's `<label for>` (or `labelledBy`).
+  `switchHtml` draws its input through it. Link `switch.css` either way.
 - Under `style-src 'self'`: no inline styles, nothing injected.
 
 ## A list's filter bar and bulk bar

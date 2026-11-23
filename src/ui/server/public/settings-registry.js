@@ -36,6 +36,7 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
+import { switchInputHtml } from "/kit/switch.js";
 import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
@@ -529,7 +530,12 @@ function drawPush(host, ctx, io) {
   };
   const draw = (on, note) => {
     host.innerHTML =
-      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      // Issue 680: the kit's switch, named by the row's label.
+      switchInputHtml({
+        id: "set-phone-push",
+        on,
+        labelledBy: "l-notifications-phone",
+      }) +
       (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
     host
       .querySelector("input")

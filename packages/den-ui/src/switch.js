@@ -12,6 +12,12 @@
  *     No label: nothing is drawn (a switch must have a name). No id: one
  *     of the kit's own (den-sw-N).
  *
+ *   switchInputHtml({ id, on, disabled, labelledBy, describedBy, attrs })
+ *     The bare switch (issue 680), for a row that draws its own label (a
+ *     settings row): the same input switchHtml draws, named by the row's
+ *     label (its <label for=id>, or labelledBy) and described by
+ *     describedBy. attrs: more attributes, escaped (data-* for the host).
+ *
  * In the page:
  *
  *   const sw = hydrateSwitch(inputOrLabel, { onChange: (on) => … });
@@ -25,6 +31,23 @@
 import { esc } from "./strings.js";
 
 let seq = 0;
+
+/** The bare switch input (see the top of this file). */
+export function switchInputHtml(o = {}) {
+  const id = o.id ? String(o.id) : `den-sw-${++seq}`;
+  const more = Object.entries(o.attrs ?? {})
+    .map(([k, v]) => ` ${esc(k)}="${esc(v)}"`)
+    .join("");
+  return (
+    `<input type="checkbox" role="switch" class="den-switch-input" id="${esc(id)}"` +
+    (o.labelledBy ? ` aria-labelledby="${esc(o.labelledBy)}"` : "") +
+    (o.describedBy ? ` aria-describedby="${esc(o.describedBy)}"` : "") +
+    more +
+    (o.on ? " checked" : "") +
+    (o.disabled ? " disabled" : "") +
+    " data-den-switch>"
+  );
+}
 
 /** The switch's markup (see the top of this file). */
 export function switchHtml(o = {}) {
@@ -43,12 +66,14 @@ export function switchHtml(o = {}) {
       ? `<span class="den-switch-help" id="${esc(helpId)}">${esc(help)}</span>`
       : "") +
     "</span>" +
-    `<input type="checkbox" role="switch" class="den-switch-input" id="${esc(id)}"` +
-    ` aria-labelledby="${esc(labelId)}"` +
-    (help ? ` aria-describedby="${esc(helpId)}"` : "") +
-    (o.on ? " checked" : "") +
-    (o.disabled ? " disabled" : "") +
-    " data-den-switch></label>"
+    switchInputHtml({
+      id,
+      on: o.on,
+      disabled: o.disabled,
+      labelledBy: labelId,
+      describedBy: help ? helpId : "",
+    }) +
+    "</label>"
   );
 }
 
