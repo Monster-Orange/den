@@ -11,7 +11,8 @@
  * Issue 803: with classes set, each run's class, and a wait for its window.
  * Issue 1132: a run whose command waits for the load to drop under the
  * start ceiling says so; what was stopped of ended runs (last hour) shows
- * under the queue.
+ * under the queue. Issue 1263: so do the throwaway containers removed
+ * after their run ended (last day).
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -44,6 +45,18 @@ export function startHoldWords(s, t) {
     : "";
 }
 
+/**
+ * Issue 1263: throwaway containers removed after their run ended, in
+ * words: how many, the run (its label, else its slot id), their images.
+ */
+export function removedWords(r, t) {
+  const label = r.label || r.id;
+  const images = (r.images ?? []).join(", ");
+  return images
+    ? t("gate.removed", { n: r.count, label, images })
+    : t("gate.removedBare", { n: r.count, label });
+}
+
 /** Issue 1132: what was stopped of an ended run, in words. */
 export function leftoverWords(l, t) {
   return t("gate.leftovers", { n: l.count, cmd: l.cmd, label: l.label });
@@ -56,6 +69,7 @@ export function startGateChip(o) {
   let slots = [];
   let boxes = [];
   let leftovers = [];
+  let removed = [];
   // Issue 1274: this machine's free memory and what its VMs reserve.
   let machine = null;
   let pop = null;
@@ -301,6 +315,20 @@ export function startGateChip(o) {
             .join("") +
           "</ul>"
         : "") +
+      (removed.length
+        ? '<h3 class="gate-h">' +
+          esc(t("gate.removedH")) +
+          '</h3><ul class="gate-ul" data-gate-removed>' +
+          removed
+            .map(
+              (r) =>
+                '<li class="gate-box">' +
+                esc(hm(r.at) + " · " + removedWords(r, t)) +
+                "</li>",
+            )
+            .join("") +
+          "</ul>"
+        : "") +
       machineHtml(machine);
   }
 
@@ -372,6 +400,7 @@ export function startGateChip(o) {
         slots = body.slots ?? [];
         boxes = body.boxes ?? [];
         leftovers = body.leftovers ?? [];
+        removed = body.removed ?? [];
         machine = body.machine ?? null;
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();
