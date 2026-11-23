@@ -5585,7 +5585,9 @@
     closeMenu(false);
     if (again || !menu) return;
     var pop = document.createElement("div");
-    pop.className = "den-pop";
+    // A picker's menu: capped in width and height (the kit's .den-pick,
+    // issue 898).
+    pop.className = "den-pop den-pick";
     pop.tabIndex = -1;
     pop.id = "den-pop-" + (anchor.dataset.scope || "menu");
     pop.setAttribute("role", "menu");

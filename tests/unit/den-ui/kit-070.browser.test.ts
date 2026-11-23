@@ -1745,7 +1745,9 @@ for (const engine of ["chromium", "webkit"]) {
           (r) => {
             const l = r.firstElementChild as HTMLElement;
             const lc = getComputedStyle(l);
-            const pop = r.closest(".den-pop")!.getBoundingClientRect();
+            const pop = r
+              .closest("#den-scope-ws-menu")!
+              .getBoundingClientRect();
             const box = r.getBoundingClientRect();
             const lb = l.getBoundingClientRect();
             return {
@@ -1776,6 +1778,27 @@ for (const engine of ["chromium", "webkit"]) {
       }
     });
 
+    // Issue 898: the cap is a picker's (a crumb's menu, .den-pick). A
+    // pop-over with a width of its own (a host's 420px panel) keeps it.
+    it("a pop-over with its own width keeps it; only a picker's menu is capped (issue 898)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const t = await open(b, "", 1280);
+      const w = await t.evaluate(() => {
+        const mk = (cls: string) => {
+          const el = document.createElement("div");
+          el.className = cls;
+          el.style.width = "420px";
+          el.style.position = "fixed";
+          document.body.appendChild(el);
+          return el.getBoundingClientRect().width;
+        };
+        return { own: mk("den-pop"), pick: mk("den-pop den-pick") };
+      });
+      expect(w).toEqual({ own: 420, pick: 320 });
+      await t.context().close();
+    });
+
     // Issue 898: on a short window (an iPad with its keyboard up) a menu
     // is at most 70% of the window's height and scrolls inside, as
     // a sister app's menu does.
@@ -1785,8 +1808,8 @@ for (const engine of ["chromium", "webkit"]) {
       const h = 360;
       const t = await open(b, "?many&nofilter", 1024, true, h);
       await t.click('[data-scope="ws"]');
-      await t.waitForSelector(".den-pop [role=menuitem]");
-      const p = await t.$eval(".den-pop", (el) => ({
+      await t.waitForSelector("#den-scope-ws-menu [role=menuitem]");
+      const p = await t.$eval("#den-scope-ws-menu", (el) => ({
         h: el.getBoundingClientRect().height,
         scrolls: el.scrollHeight > el.clientHeight,
         overflowY: getComputedStyle(el).overflowY,

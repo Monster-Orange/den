@@ -154,6 +154,11 @@ describe("issue 144: the gate chip on Agents", () => {
     const pop = p.locator('#ag-gate-pop[role="dialog"]');
     await pop.waitFor();
     expect(await pop.locator(".gate-li").count()).toBe(2);
+    // Issue 898: a picker's 320px cap is not this pop-over's: it keeps
+    // its own 420px.
+    expect(
+      await pop.evaluate((el) => Math.round(el.getBoundingClientRect().width)),
+    ).toBe(420);
     await pop.locator("[data-den-report]").waitFor({ timeout: 5_000 });
     const waiter = pop.locator(`.gate-li[data-gate-id="${WAITER.id}"]`);
     expect(await waiter.locator(".gate-when").textContent()).toBe(
