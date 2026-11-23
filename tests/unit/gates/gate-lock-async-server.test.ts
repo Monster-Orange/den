@@ -179,7 +179,9 @@ async function runnerServer(
           }
           return (v as (...x: unknown[]) => unknown).apply(t, a);
         };
-      return typeof v === "function" ? (v as Function).bind(t) : v;
+      return typeof v === "function"
+        ? (v as (...x: unknown[]) => unknown).bind(t)
+        : v;
     },
   });
   const server = http.createServer((req, res) => {
