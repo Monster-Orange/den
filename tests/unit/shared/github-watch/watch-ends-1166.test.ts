@@ -181,6 +181,51 @@ describe("a watch with no progress", () => {
     expect(w.list("planner")[0].state).toBe("running");
   });
 
+  it("time while every check is still queued (no runner yet) doesn't count; running time does", async () => {
+    settings = { ...settings, staleMinutes: 20 };
+    const w = watcher();
+    gh.check(A, SHA1, {
+      id: 11,
+      name: "lint",
+      status: "queued",
+      conclusion: null,
+      suite: 5,
+    });
+    await w.create(ask(1));
+    // 90 minutes behind a full runner pool: still watched.
+    await minutes(w, 90);
+    expect(w.list("planner")[0].state).not.toBe("done");
+    // A runner takes it, then nothing moves: running time counts.
+    running(SHA1);
+    await minutes(w, 19);
+    expect(w.list("planner")[0].state).not.toBe("done");
+    await minutes(w, 3);
+    expect(w.list("planner")[0].state).toBe("done");
+    expect(w.list("planner")[0].note).toMatch(/no progress/i);
+  });
+
+  it("several heads: time while every workflow run is still queued doesn't count", async () => {
+    settings = { ...settings, staleMinutes: 20 };
+    const w = watcher();
+    for (const [id, sha] of [
+      [31, SHA1],
+      [32, SHA2],
+    ] as const)
+      gh.run(A, {
+        id,
+        name: "ci",
+        status: "queued",
+        conclusion: null,
+        head_sha: sha,
+        check_suite_id: id,
+      });
+    await w.create(ask(1));
+    await w.create(ask(2, "tester"));
+    await minutes(w, 90);
+    expect(w.list("planner")[0].state).not.toBe("done");
+    expect(w.list("tester")[0].state).not.toBe("done");
+  });
+
   it("is a Setting: github.watch_stale_minutes, 60 by default, kept in range", () => {
     expect(githubWatchSettings({}).staleMinutes).toBe(60);
     expect(

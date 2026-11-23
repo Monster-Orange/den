@@ -2264,7 +2264,7 @@
       "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
     "set.server.github_watch_stale": "GitHub watch: minutes with no progress",
     "set.server.github_watch_stale.d":
-      "A watch whose checks haven't changed in this many minutes ends, and its agent is told why. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+      "A watch whose checks haven't changed in this many minutes ends, and its agent is told why. Time while its checks wait for a runner doesn't count. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
     "set.server.ready_probe": "Readiness check, in seconds",
     "set.server.ready_probe.d":
       "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",

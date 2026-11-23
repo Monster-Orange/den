@@ -30,7 +30,8 @@
  * Issue 1166: no watch holds a slot forever. A pull request is asked about
  * again every PR_RECHECK_MS (never two rounds running in a repo): merged,
  * closed or a newer head ends its watch, told once. A watch with no
- * progress for github.watch_stale_minutes ends, saying why. The cap is
+ * progress for github.watch_stale_minutes ends, saying why (time while all
+ * its checks are still queued for a runner doesn't count). The cap is
  * github.watches_max at least, raised by the calls left before GitHub's
  * reset; past it a watch is queued and starts when a slot frees.
  */
@@ -151,6 +152,11 @@ interface Watch {
   progressAt?: number;
   /** Issue 1166: when its pull request was last asked about. */
   resolvedAt?: number;
+  /**
+   * Issue 1166: every check (or workflow run) of it is still queued, waiting
+   * for a runner: that wait isn't a stall, so it doesn't count as no progress.
+   */
+  allQueued?: boolean;
 }
 
 interface Call {
@@ -178,6 +184,8 @@ const QUEUE_MAX = CAP_CEILING;
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
 
 const PASS = new Set(["success"]);
+/** Issue 1166: a check or run not yet on a runner. */
+const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 const SKIP = new Set(["skipped", "neutral"]);
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -431,7 +439,8 @@ export class GithubWatcher {
       }
       const before = new Map(ws.map((w) => [w, mark(w)]));
       if (this.apply(call, ws, r, now)) changed = true;
-      for (const w of ws) if (mark(w) !== before.get(w)) w.progressAt = now;
+      for (const w of ws)
+        if (mark(w) !== before.get(w) || w.allQueued) w.progressAt = now;
       if (this.paused(now)) break; // under the floor: nothing more this hour
     }
     // A finished watch frees a slot for the first queued one.
@@ -646,6 +655,7 @@ export class GithubWatcher {
       if (print !== w.print) changed = true;
       w.print = print;
       const open = mine.filter((r) => r.status !== "completed").length;
+      w.allQueued = mine.every((r) => QUEUED.has(asStr(r.status)));
       w.phase = open ? "running" : "ready";
       w.note = open
         ? `${open} of ${mine.length} workflow runs still going.`
@@ -673,6 +683,8 @@ export class GithubWatcher {
       );
       if (print !== w.print) changed = true;
       w.print = print;
+      w.allQueued =
+        cs.length > 0 && cs.every((c) => QUEUED.has(asStr(c.status)));
       if (!cs.length) {
         if (now - this.since(w) >= NO_CHECKS_MS) {
           this.finish(w, now, {

@@ -5899,7 +5899,8 @@ How the watcher paces itself:
   minutes. When it merges or closes, or a newer push replaces its head
   ("replaced by <sha>"), the watch ends and its agent is told once.
 - A watch whose state hasn't changed for `github.watch_stale_minutes` (60)
-  ends, and its agent is told why. Its slot is freed.
+  ends, and its agent is told why. Its slot is freed. Time while all its
+  checks (or workflow runs) wait for a runner doesn't count.
 
 These five are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
