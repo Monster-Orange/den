@@ -114,6 +114,8 @@ export function errorText(body: string, requestId?: string | null): string {
 /** Read routes: GET only. */
 const READ_ROUTES = new Set([
   "/api/health",
+  // Issue 772: agent_wait's poll (the caller's project's agents only).
+  "/api/agents/prompt-state",
   "/api/services",
   "/api/applications",
   "/api/graph",

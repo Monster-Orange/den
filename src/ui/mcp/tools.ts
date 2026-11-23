@@ -380,7 +380,97 @@ async function githubWatchCall(
   }
 }
 
+/** Issue 772: agent_wait's states; blocked is "needs its person". */
+const WAIT_UNTIL = {
+  working: "working",
+  blocked: "needs",
+  done: "done",
+  idle: "idle",
+} as const;
+type WaitUntil = keyof typeof WAIT_UNTIL;
+const UNTIL_NAMES = Object.keys(WAIT_UNTIL) as [WaitUntil, ...WaitUntil[]];
+/** agent_wait's longest timeout (s). */
+const WAIT_MAX_S = 600;
+
+/**
+ * Issue 772: poll `agent`'s state (GET /api/agents/prompt-state) until it
+ * is `until`, it stops running, or `timeoutS` passes. Reads only: a
+ * timeout never resends anything.
+ */
+async function waitForAgent(
+  tool: string,
+  agent: string,
+  until: WaitUntil,
+  timeoutS: number,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const want = WAIT_UNTIL[until];
+  const interval = ctx.approvalWait?.intervalMs ?? 2000;
+  const sleep =
+    ctx.approvalWait?.sleep ??
+    ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const s = Math.min(WAIT_MAX_S, Math.max(1, Math.round(timeoutS)));
+  const tries = Math.max(1, Math.ceil((s * 1000) / interval));
+  let state: string | null = null;
+  for (let i = 0; i < tries; i++) {
+    const b = (await githubWatchCall(tool, () =>
+      ctx.api.get("/api/agents/prompt-state", { agent }),
+    )) as { state?: string | null } | null;
+    state = b?.state ?? null;
+    if (state === want) return { agent, until, state, reached: true };
+    if (state === null)
+      return {
+        agent,
+        until,
+        state,
+        reached: false,
+        ended: true,
+        note: `${agent} isn't running.`,
+      };
+    if (i < tries - 1) await sleep(interval);
+  }
+  return {
+    agent,
+    until,
+    state,
+    reached: false,
+    timedOut: true,
+    note: `Not ${until} within ${s} s. Nothing was sent again; call agent_wait to keep waiting.`,
+  };
+}
+
 const READ_TOOLS: DenTool[] = [
+  read(
+    "agent_wait",
+    "Wait for an agent",
+    "Issue 772: wait until an agent of your project is `until`: working (a turn under way), blocked (it needs its person: a dialog or a question), done (it finished work you haven't looked at) or idle. Answers as soon as it is, or with `timedOut` after `timeout` seconds (default 60, at most 600), or with `ended` when it isn't running. Reads only: it never sends anything, and a timeout never resends a prompt.",
+    {
+      agent: z.string().describe("The agent's id"),
+      until: z.enum(UNTIL_NAMES).describe("working, blocked, done or idle"),
+      timeout: z
+        .number()
+        .int()
+        .min(1)
+        .max(WAIT_MAX_S)
+        .optional()
+        .describe("Seconds to wait (default 60, at most 600)"),
+    },
+    async (a, ctx) => {
+      const agent = needArg("agent_wait", a, "agent", "the agent's id");
+      const until = (str(a.until) ?? "") as WaitUntil;
+      if (!(until in WAIT_UNTIL))
+        throw new Refusal(
+          "agent_wait: until is working, blocked, done or idle.",
+        );
+      return waitForAgent(
+        "agent_wait",
+        agent,
+        until,
+        typeof a.timeout === "number" ? a.timeout : 60,
+        ctx,
+      );
+    },
+  ),
   read(
     "agent_helpers",
     "An agent's helpers",
@@ -836,7 +926,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, agent_prompt, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2472,6 +2562,60 @@ const APPROVAL_TOOLS: DenTool[] = [
         a,
         ctx,
       );
+    },
+  },
+  {
+    name: "agent_prompt",
+    title: "Prompt an agent",
+    description:
+      "Issue 772: type `text` into another agent of your project, as its next message, once. Never into an agent that is blocked (it needs its person: agent_blocked), never into yourself, and never back into an agent that is waiting on you (no loops). It must be working or blocked within 5 s, else agent_prompt_stalled (nothing is ever sent twice). With `wait` (working, blocked, done or idle), it then waits as agent_wait does, up to `timeout` seconds. You get one note when the agent you prompted becomes blocked or ends." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id (in your project)"),
+      text: z.string().max(8000).describe("What to tell it: its next message"),
+      wait: z
+        .enum(UNTIL_NAMES)
+        .optional()
+        .describe("Then wait until it is working, blocked, done or idle"),
+      timeout: z
+        .number()
+        .int()
+        .min(1)
+        .max(WAIT_MAX_S)
+        .optional()
+        .describe("Seconds to wait with `wait` (default 60, at most 600)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_prompt", a, "agent", "the agent's id");
+      const text = needArg("agent_prompt", a, "text", "what to tell it");
+      if (ctx.scope && ctx.scope.actor === `agent:${agent}`)
+        throw new Refusal(
+          `agent_prompt: ${agent} can't prompt itself; nothing was asked.`,
+        );
+      const r = await askPerson(
+        "agent_prompt",
+        "agent_prompt",
+        { agent, text },
+        a,
+        ctx,
+      );
+      const until = str(a.wait) as WaitUntil | undefined;
+      const approved =
+        !!r && typeof r === "object" && (r as { approved?: unknown }).approved;
+      if (!until || !approved || !(until in WAIT_UNTIL)) return r;
+      return {
+        ...(r as object),
+        wait: await waitForAgent(
+          "agent_prompt",
+          agent,
+          until,
+          typeof a.timeout === "number" ? a.timeout : 60,
+          ctx,
+        ),
+      };
     },
   },
   {

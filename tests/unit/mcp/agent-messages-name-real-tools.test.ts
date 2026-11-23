@@ -52,6 +52,10 @@ const PACK = path.join(ROOT, "src/shared/agents/server-pack");
 
 /** snake_case words in this text that are not tools. */
 const NOT_TOOLS: Readonly<Record<string, string>> = {
+  agent_blocked:
+    "issue 772: agent_prompt's refusal code (the target needs its person)",
+  agent_prompt_stalled:
+    "issue 772: agent_prompt's code when the target didn't start within 5 s",
   // server.md's frontmatter keys.
   permission_mode: "a persona's frontmatter key",
   resume_on_restart: "a persona's frontmatter key",
