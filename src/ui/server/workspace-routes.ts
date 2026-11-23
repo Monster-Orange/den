@@ -120,7 +120,6 @@ import {
   fixtureProjectRefusal,
   fixtureProjects,
   fixtureTestInstall,
-  forgetFixtureProject,
   rememberFixtureProject,
   type FixtureProjectAsk,
   type FixtureProjectOp,
@@ -693,7 +692,6 @@ export async function handleWorkspaceRoutes(
         }
 
         deleteWorkspaceConfig(name);
-        forgetFixtureProject(getStateDir(), name);
         auditProject(req, "delete", name);
         return sendJson(res, { ok: true, ...agentsDone });
       } catch (e) {

@@ -30,7 +30,8 @@ import type {
 } from "../types/index.js";
 import { readManifest } from "../manifest/read-manifest.js";
 import { depService } from "../manifest/deps.js";
-import { getDistRoot } from "../paths.js";
+import { getDistRoot, getStateDir } from "../paths.js";
+import { forgetFixtureProject } from "../fixture-projects-store.js";
 import { readCatalog } from "./catalog.js";
 import { auditConfig, callerName } from "../config-audit.js";
 import { noteLinksSeen } from "../hub-links-seen.js";
@@ -620,6 +621,9 @@ export function createWorkspace(name: string, config: WorkspaceConfig): string {
   if (reserved) throw new Error(reserved);
   file.workspaces[slug] = typed === slug ? config : { ...config, name: typed };
   writeWorkspacesFile(file);
+  // Issue 1215: a new project is never the fixture person's until the
+  // server's fixture create says so (fixture-projects-store.ts).
+  forgetFixtureProject(getStateDir(), slug);
   return slug;
 }
 
@@ -639,6 +643,8 @@ export function renameWorkspace(slug: string, name: string): void {
 }
 
 export function deleteWorkspaceConfig(name: string): void {
+  // Issue 1215: a deleted project's slug is no longer the fixture person's.
+  forgetFixtureProject(getStateDir(), name);
   const file = readWorkspacesFile();
   delete file.workspaces[name];
   file.active = file.active.filter((n) => n !== name);

@@ -660,6 +660,44 @@ describe("the fixture person's own projects (issue 1215)", () => {
     }
   });
 
+  it("a name it once used, now a person's project, is never its own", async () => {
+    const f = await fixtureSignIn(test);
+    const c = await call(test, "POST", "/api/workspaces/create", f.headers, {
+      name: "fx-1215-reused",
+    });
+    expect(c.status).toBe(200);
+    // Removed without the server (by hand, or the CLI's own write).
+    const file = path.join(test.root, "config", "local", "workspaces.yml");
+    const doc = yaml.parse(fs.readFileSync(file, "utf-8")) as {
+      workspaces: Record<string, unknown>;
+      active?: string[];
+    };
+    delete doc.workspaces["fx-1215-reused"];
+    doc.active = (doc.active ?? []).filter((n) => n !== "fx-1215-reused");
+    fs.writeFileSync(file, yaml.stringify(doc));
+    // A person makes a project with the same name.
+    const p = await signedIn(test.stateDir, test.base);
+    try {
+      const made = await call(
+        test,
+        "POST",
+        "/api/workspaces/create",
+        p.headers,
+        {
+          name: "fx-1215-reused",
+        },
+      );
+      expect(made.status).toBe(200);
+    } finally {
+      await signOut(test, p.headers);
+    }
+    const f2 = await fixtureSignIn(test);
+    const d = await call(test, "DELETE", "/api/workspaces", f2.headers, {
+      name: "fx-1215-reused",
+    });
+    expect([d.status, d.json.code]).toEqual([403, "fixture_not_its_project"]);
+  });
+
   it("can't rename, focus, or remove clones with its own project", async () => {
     const f = await fixtureSignIn(test);
     await call(test, "POST", "/api/workspaces/create", f.headers, {
