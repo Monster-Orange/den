@@ -75,7 +75,7 @@ export function tempParentProblem(
   }
   if (!st.isDirectory()) return "it is not a folder";
   if (uid === undefined || st.uid === uid) return null;
-  if (st.uid !== 0) return "another user owns it"; // words-ok: the OS user that owns the folder
+  if (st.uid !== 0) return "someone else owns it";
   if (st.mode & 0o1000) return null;
   if ((st.mode & 0o022) === 0) return null;
   return "others can write to it and it has no sticky bit";
@@ -117,7 +117,7 @@ export function privateDirProblem(
   }
   if (st.isSymbolicLink()) return "it is a link";
   if (!st.isDirectory()) return "it is not a folder";
-  if (uid !== undefined && st.uid !== uid) return "another user owns it"; // words-ok: the OS user that owns the folder
+  if (uid !== undefined && st.uid !== uid) return "someone else owns it";
   if ((st.mode & 0o777) !== 0o700) return "its mode isn't 0700";
   return null;
 }

@@ -83,7 +83,7 @@ describe("the sudo store's folder", () => {
     fs.symlinkSync(ok, link);
     expect(privateDirProblem(link)).toMatch(/link/);
     expect(privateDirProblem(ok, (process.getuid?.() ?? 0) + 1)).toMatch(
-      /user/,
+      /someone else/,
     );
     expect(privateDirProblem(path.join(tmp, "none"))).toMatch(/missing/);
   });
@@ -131,11 +131,11 @@ describe("the temp folder it is made in", () => {
     fs.chmodSync(dir, 0o777);
     expect(tempParentProblem(dir)).toBeNull(); // this user's own
     // Seen as another (non-root) user: the folder is someone else's.
-    expect(tempParentProblem(dir, other)).toMatch(/another user/);
+    expect(tempParentProblem(dir, other)).toMatch(/someone else/);
     fs.chmodSync(dir, 0o1777);
-    expect(tempParentProblem(dir, other)).toMatch(/another user/);
+    expect(tempParentProblem(dir, other)).toMatch(/someone else/);
     fs.chmodSync(dir, 0o755);
-    expect(tempParentProblem(dir, other)).toMatch(/another user/);
+    expect(tempParentProblem(dir, other)).toMatch(/someone else/);
     // Root's: sticky (/tmp) or only root writes (/) passes.
     expect(tempParentProblem("/tmp", other)).toBeNull();
     expect(tempParentProblem("/", other)).toBeNull();
