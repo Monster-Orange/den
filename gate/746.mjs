@@ -109,7 +109,8 @@ export async function run(ctx, s) {
     const id = IDS[which];
     if (await later.isVisible().catch(() => false)) await later.click();
     await page.locator("#den-bell").click();
-    const row = page.locator("[data-ap-row]", { hasText: id }).first();
+    // Each agent asks about itself, so its id names one row.
+    const row = page.locator("[data-ap-row]").filter({ hasText: id });
     const rowMs = await ctx.until(
       async () => (await row.count()) > 0 && (await row.isVisible()),
       20000,
@@ -162,7 +163,11 @@ function row(r, which, clause) {
 }
 
 export function expect(cells) {
-  const r = cells[0]?.result ?? { seen: {}, asked: {}, errors: ["no cell"] };
+  const r = cells.find((c) => c?.result)?.result ?? {
+    seen: {},
+    asked: {},
+    errors: ["no cell"],
+  };
   r.asked = r.asked || {};
   r.asked.allow = r.asked.allow || {};
   r.asked.deny = r.asked.deny || {};
