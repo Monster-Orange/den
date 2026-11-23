@@ -3,14 +3,21 @@
 # say "Refs #N"; an issue closes only with a live-proof comment
 # (scripts/no-close-keywords.mjs). Its own workflow, so editing the title or
 # body runs it again without rerunning the tests.
+#
+# Issue 1235: it runs on merge-queue runs too, so the queue can require it
+# beside ci-ok (a required check must report on the queue's own run). There
+# it checks the queued commits; the title and body were checked on the pull
+# request.
 name: pr-text
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
 permissions:
   contents: read
 concurrency:
-  group: pr-text-${{ github.event.pull_request.number }}
+  group: pr-text-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   closing-keywords:
@@ -29,6 +36,6 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           # Never counted as a shared branch, so its own commits are checked.
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
-          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: node scripts/no-close-keywords.mjs "$RANGE_BASE..$RANGE_HEAD"

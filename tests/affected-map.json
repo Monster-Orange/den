@@ -2119,7 +2119,10 @@
     },
     {
       "when": ["scripts/no-close-keywords.mjs"],
-      "run": ["tests/unit/scripts/no-close-keywords.test.ts"],
+      "run": [
+        "tests/unit/scripts/no-close-keywords.test.ts",
+        "tests/unit/test-infra/pr-text-queue-1235.test.ts"
+      ],
       "why": "tests that run scripts/no-close-keywords.mjs"
     },
     {
