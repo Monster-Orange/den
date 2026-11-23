@@ -50,6 +50,8 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import { readActivity } from "../../shared/agents/activity.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -8108,6 +8110,12 @@ export async function markInterrupted(
     /** agents.restore_hub_wait_seconds, in ms. */
     hubWaitMs?: number;
     hubPollMs?: number;
+    /**
+     * Issue 1129: the restart queue they go through (agents.resume): a
+     * batch at a time, the ones that were working first. None: all at
+     * once, as before.
+     */
+    queue?: RestartQueue;
   } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
@@ -8143,19 +8151,46 @@ export async function markInterrupted(
   const hubAnswered = opts.hubUp
     ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
     : true;
+  // den#4: a rotated one relaunches from its handoff instead.
+  const bring = (rec: AgentRecord) =>
+    rotationOf(d, rec)?.ready
+      ? relaunchAgent(d, rec.id)
+      : resumeAgent(d, rec.id);
+  const note = (rec: AgentRecord, r: { early?: unknown }) => {
+    if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+    else {
+      found.resumed.push(rec.id);
+      if (!hubAnswered) found.withoutHub.push(rec.id);
+    }
+  };
+  const failed = (rec: AgentRecord, e: unknown) =>
+    found.failed.push({ agent: rec.id, why: (e as Error).message });
+  if (opts.queue) {
+    // Issue 1129: a batch at a time; the ones working when Den stopped first.
+    const activity = readActivity(d.stateDir());
+    const q = opts.queue;
+    await Promise.all(
+      due.map((rec) =>
+        q
+          .add({
+            id: rec.id,
+            why: "resume",
+            working: activity[rec.id]?.working === true,
+            run: () => bring(rec),
+          })
+          .then(
+            (r) => note(rec, r as { early?: unknown }),
+            (e) => failed(rec, e),
+          ),
+      ),
+    );
+    return found;
+  }
   for (const rec of due) {
     try {
-      // den#4: a rotated one relaunches from its handoff instead.
-      const r = rotationOf(d, rec)?.ready
-        ? await relaunchAgent(d, rec.id)
-        : await resumeAgent(d, rec.id);
-      if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else {
-        found.resumed.push(rec.id);
-        if (!hubAnswered) found.withoutHub.push(rec.id);
-      }
+      note(rec, await bring(rec));
     } catch (e) {
-      found.failed.push({ agent: rec.id, why: (e as Error).message });
+      failed(rec, e);
     }
   }
   return found;
