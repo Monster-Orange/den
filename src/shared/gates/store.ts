@@ -283,7 +283,9 @@ export type GateEvent =
   | "yielded"
   // Issue 867: a waiter's run is gone, its place kept; and taken back.
   | "waiter-gone"
-  | "reattached";
+  | "reattached"
+  // Issue 1263: a run's throwaway containers removed after its slot ended.
+  | "containers-removed";
 
 /** Issue 963: one key's change: the value in effect before and after. */
 export interface GateSettingChange {
@@ -376,6 +378,9 @@ export interface GateEventRow {
   machine?: string;
   /** Issue 1033: why a run that could go to a box stays here. */
   hostWhy?: string;
+  /** Issue 1263: containers-removed: how many, and their image names. */
+  count?: number;
+  images?: string[];
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -722,6 +727,34 @@ export class GateStore {
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
     return at;
+  }
+
+  /**
+   * Issue 1263: logs that run `id`'s throwaway containers were removed. The
+   * slot is gone by then, so its kind, asker and label come from its last
+   * row. Image names only: never a command line or environment.
+   */
+  noteContainersRemoved(
+    id: string,
+    r: { count: number; images: string[] },
+  ): void {
+    this.locked(() => {
+      const last = this.events()
+        .filter((x) => x.id === id)
+        .at(-1);
+      fs.mkdirSync(this.dir, { recursive: true });
+      const row: GateEventRow = {
+        at: new Date(this.now()).toISOString(),
+        event: "containers-removed",
+        id,
+        kind: last?.kind ?? (id.startsWith("browser-") ? "browser" : "cpu"),
+        who: last?.who ?? "",
+        label: last?.label ?? "",
+        count: r.count,
+        images: r.images,
+      };
+      fs.appendFileSync(this.eventsFile, JSON.stringify(row) + "\n");
+    });
   }
 
   /** The runs' rows (issue 963: never a settings change). */

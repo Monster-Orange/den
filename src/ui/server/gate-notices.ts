@@ -15,6 +15,7 @@
  * and reads the slot log's new rows.
  */
 import type { NotificationStore } from "../../shared/notifications.js";
+import { sweepThrowaway, type Docker } from "../../shared/gates/ephemeral.js";
 import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
 import type { GateStore, GateEventRow } from "../../shared/gates/store.js";
 import { gateOverrunWaiting } from "./gate-overrun-bell.js";
@@ -31,6 +32,11 @@ export interface GateNoticeDeps {
   log?: (line: string) => void;
   /** The clock (tests); default Date.now. */
   now?: () => number;
+  /**
+   * Issue 1263: the docker CLI; each tick removes throwaway containers whose
+   * run has no live slot (absent: no sweep).
+   */
+  docker?: Docker;
 }
 
 /** How often the server looks, ms. */
@@ -62,6 +68,7 @@ export class GateNotices {
   async tick(): Promise<void> {
     const store = this.d.store();
     store.list(); // settles: passes on the unclaimed, takes back the lapsed
+    if (this.d.docker) await sweepThrowaway(store, this.d.docker);
     const { rows, next } = store.eventsFrom(this.from);
     this.from = next;
     const out = this.pending.splice(0);

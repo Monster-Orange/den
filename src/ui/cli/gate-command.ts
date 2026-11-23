@@ -77,6 +77,13 @@ import {
   realCores,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import {
+  GATE_STORE_ENV,
+  cleanRun,
+  realDocker,
+  storeTag,
+  type Docker,
+} from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
   boxEnv,
@@ -105,7 +112,9 @@ import {
   boxOffWords,
   gateBoxesView,
   gateView,
+  removedView,
 } from "../../shared/gates/view.js";
+import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
@@ -202,6 +211,11 @@ export interface GateDeps {
   descends?: (pid: number, root: number) => boolean;
   /** Issue 989: the running server (default: this install's). */
   server?: PersonServer;
+  /**
+   * Issue 1263: the docker CLI, to remove the run's throwaway containers
+   * when its slot ends (absent: nothing is removed; tests pass a fake).
+   */
+  docker?: Docker;
 }
 
 /**
@@ -364,6 +378,7 @@ export function realGateDeps(): GateDeps {
     now: Date.now,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     exec: realExec,
+    docker: realDocker(),
     every: (ms, fn) => {
       const h = setInterval(fn, ms);
       h.unref();
@@ -912,6 +927,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (priority && s.settings().priorityMax === 0)
     d.err(`gate: ${PRIORITY_OFF_RUN[d.lang ?? personLanguage()]}`);
   const id = e.id;
+  const onBox = !!e.box;
   let child: GateRun | undefined;
   let released = false;
   let cancelled: number | undefined;
@@ -964,6 +980,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       [GATE_SLOT_ENV]: id,
       [GATE_SLOT_KIND_ENV]: kind,
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
+      // Issue 1263: the store's tag, for a throwaway container's labels.
+      [GATE_STORE_ENV]: storeTag(s.dir),
     };
     // Issue 1048: a cpu run here uses its share of the cores, no more.
     if (kind === "cpu" && !e.box)
@@ -1013,6 +1031,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   } finally {
     off();
     release();
+    // Issue 1263: the run's throwaway containers go with its slot (a box
+    // run's are on the box, swept there). Never fails the run.
+    if (d.docker && !onBox) await cleanRun(s, id, d.docker);
   }
 }
 
@@ -1033,6 +1054,11 @@ function status(args: string[], d: GateDeps): number {
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
+  // Issue 1263: throwaway containers removed after their run ended.
+  for (const r of removedView(d.store, d.now()))
+    d.out(
+      `Gate: removed ${r.count} container${r.count === 1 ? "" : "s"} for ${r.label} (${r.id}) at ${localDateTime(r.at)}${r.images.length ? `: ${r.images.join(", ")}` : ""}`,
+    );
   // Issue 963: said plainly, so a release run waiting in line has a why.
   if (set.priorityMax === 0)
     d.out(PRIORITY_OFF_STATUS[d.lang ?? personLanguage()]);

@@ -310,6 +310,7 @@ import {
   checkGatePatch,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import { realDocker, sweepThrowaway } from "../../shared/gates/ephemeral.js";
 import {
   gateBoxOps,
   gateRunnerTokenOp,
@@ -10545,6 +10546,15 @@ startupPrune = pruneDeadDaemonsAsync((a, why) => prunedAtStart.set(a, why))
 // a time. A person's down took it off the record, so it stays down.
 void (async () => {
   await startupPrune;
+  // Issue 1263: throwaway test containers Docker brought back after a
+  // restart are removed before any service comes back: their runs' slots
+  // are gone. (Docker not up yet: the gate tick sweeps them later.)
+  const swept = await sweepThrowaway(gates(), realDocker());
+  if (swept.length)
+    serverLog(
+      `  removed the throwaway containers of ${swept.length} ended gate run${swept.length === 1 ? "" : "s"}`,
+      "lifecycle",
+    );
   const m = await import("../../shared/environment-manager/restore-on-boot.js");
   let wait: number;
   try {
@@ -11057,6 +11067,7 @@ void CRASH_GATE.then(() =>
       .then((m) =>
         m.startGateNotices({
           store: gates,
+          docker: realDocker(),
           install: path.resolve(getStateDir()),
           projectOf: (agent) =>
             readAgentRecord(getStateDir(), agent)?.workspace ?? null,

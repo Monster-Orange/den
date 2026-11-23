@@ -233,5 +233,37 @@ export function gateView(store: GateStore, now = Date.now()) {
           ).toISOString(),
         }),
   }));
-  return { settings, slots, boxes: gateBoxesView(store, slots) };
+  return {
+    settings,
+    slots,
+    boxes: gateBoxesView(store, slots),
+    removed: removedView(store, now),
+  };
+}
+
+/** Issue 1263: how far back gate status shows removed containers. */
+const REMOVED_SHOWN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Issue 1263: throwaway containers removed after their run's slot ended, in
+ * the last day (the newest 20, oldest first): the run, how many, and their
+ * image names.
+ */
+export function removedView(store: GateStore, now = Date.now()) {
+  return store
+    .events()
+    .filter(
+      (r) =>
+        r.event === "containers-removed" &&
+        now - Date.parse(r.at) <= REMOVED_SHOWN_MS,
+    )
+    .slice(-20)
+    .map((r) => ({
+      at: r.at,
+      id: r.id,
+      kind: r.kind,
+      label: r.label,
+      count: r.count ?? 0,
+      images: r.images ?? [],
+    }));
 }
