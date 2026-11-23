@@ -976,6 +976,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/verify/schedules/run",
   // Issue 964: taking an Allow back: a person's too.
   "/api/verify/schedules/revoke",
+  // Issue 1182: importing or removing an outside runner's run: a person's.
+  "/api/verify/import",
+  "/api/verify/remove",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
   // Issue 52: Dismiss a Coach finding, with the reason: a person's.

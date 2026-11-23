@@ -514,6 +514,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
   ),
+  M(
+    ["POST"],
+    "/api/verify/import",
+    "issue 1182: a person keeps an outside runner's verdict as a Verify run",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/remove",
+    "issue 1182: a person removes an imported Verify run",
+  ),
   R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
   M(
     ["POST"],
