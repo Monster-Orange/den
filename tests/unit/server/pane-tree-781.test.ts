@@ -77,10 +77,13 @@ describe("issue 781 (1): split, drag, close", () => {
   });
 
   it("refuses a split past the pane limit", () => {
+    // Each split is of the last pane (after the first, the top is a split).
+    const last = (x: ReturnType<typeof leaf>) => panesOf(x).at(-1)!.path;
     let t = leaf("p0");
     for (let i = 1; i < 4; i++)
-      t = splitPane(t, [], "right", `p${i}`, { maxPanes: 4 });
-    expect(() => splitPane(t, [], "right", "p4", { maxPanes: 4 })).toThrow(
+      t = splitPane(t, last(t), "right", `p${i}`, { maxPanes: 4 });
+    expect(panesOf(t)).toHaveLength(4);
+    expect(() => splitPane(t, last(t), "right", "p4", { maxPanes: 4 })).toThrow(
       /at most 4 panes/,
     );
   });
