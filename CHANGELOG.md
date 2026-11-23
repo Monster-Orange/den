@@ -8,7 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- Groups (off by default; turn on with `hub.groups`). The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30). (issue 750)
+- Groups from Den Hub. They show by themselves when your Den Hub supports groups. Set this in Settings › Hub › Groups from Hub (Auto, On or Off), or with `den config hub.groups=auto|on|off`. Off never asks Hub. The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30, from 5 to 3600; also in Settings). `den hub groups` prints the same read as the page. (issue 750)
 - UI kit 0.14.0: a group header component.
 
 ### Fixed
