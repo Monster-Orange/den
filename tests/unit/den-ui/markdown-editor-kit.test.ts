@@ -453,12 +453,20 @@ describe("accessible, tokens only, the kit's words", () => {
     const css = CSS.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsl\(/);
     expect(SRC).not.toMatch(/\b[dD]en\b(?!-ui)/);
-    // Every var() it reads is a kit token or its own knob.
+    // Every var() it reads is a kit token, its own knob, or a theme hook
+    // (issue 1137: the kit leaves it unset, a theme such as sketch sets it,
+    // and the rule gives today's value as the fallback).
     const tokens = fs.readFileSync(path.join(KIT, "src/tokens.css"), "utf-8");
+    const sketch = fs.readFileSync(
+      path.join(KIT, "src/themes/sketch.css"),
+      "utf-8",
+    );
+    const hook = (v: string) =>
+      sketch.includes(`${v}:`) && css.includes(`var(${v}, `);
     for (const m of css.matchAll(/var\((--[\w-]+)/g))
       expect([
         m[1],
-        tokens.includes(`${m[1]}:`) || /^--md-/.test(m[1]!),
+        tokens.includes(`${m[1]}:`) || /^--md-/.test(m[1]!) || hook(m[1]!),
       ]).toEqual([m[1], true]);
   });
 
