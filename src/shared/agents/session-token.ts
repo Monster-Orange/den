@@ -22,6 +22,9 @@
  */
 import { randomBytes } from "crypto";
 
+/** The command these messages come from. */
+const CMD = "agents session"; // words-ok: the CLI command's own name
+
 /** The longest token line read: a sign-in token is far shorter. */
 export const TOKEN_LINE_MAX = 4096;
 const NONCE_RE = /^[0-9a-f]{32}$/;
@@ -69,10 +72,10 @@ export async function readTokenLine(
   const tty = input as TtyIn;
   if (!tty.isTTY || typeof tty.setRawMode !== "function")
     throw new Error(
-      "agents session: stdin is not a terminal, so echo can't be turned off for the token",
+      `${CMD}: stdin is not a terminal, so echo can't be turned off for the token`,
     );
   if (!NONCE_RE.test(o.nonce))
-    throw new Error("agents session: the launch nonce is not Den's shape");
+    throw new Error(`${CMD}: the launch nonce is not Den's shape`);
   tty.setRawMode(true);
   try {
     // Drop what was typed before: it is never the token.
@@ -99,7 +102,7 @@ export async function readTokenLine(
         () =>
           done(
             new Error(
-              `agents session: no token within ${Math.round((o.timeoutMs ?? 5000) / 1000) || 1} s`,
+              `${CMD}: no token within ${Math.round((o.timeoutMs ?? 5000) / 1000) || 1} s`,
             ),
           ),
         o.timeoutMs ?? 5000,
@@ -113,7 +116,7 @@ export async function readTokenLine(
             if (got.length > TOKEN_LINE_MAX)
               return done(
                 new Error(
-                  `agents session: the token line is longer than ${TOKEN_LINE_MAX} bytes`,
+                  `${CMD}: the token line is longer than ${TOKEN_LINE_MAX} bytes`,
                 ),
               );
             continue;
@@ -121,7 +124,7 @@ export async function readTokenLine(
           if (end > TOKEN_LINE_MAX)
             return done(
               new Error(
-                `agents session: the token line is longer than ${TOKEN_LINE_MAX} bytes`,
+                `${CMD}: the token line is longer than ${TOKEN_LINE_MAX} bytes`,
               ),
             );
           const line = got.subarray(0, end).toString("latin1");
@@ -129,7 +132,7 @@ export async function readTokenLine(
           // What follows stays for the runtime.
           if (rest.length) tty.unshift(rest);
           if (!TOKEN_RE.test(line))
-            return done(new Error("agents session: that line is not a token"));
+            return done(new Error(`${CMD}: that line is not a token`));
           return done(null, line);
         }
       };
