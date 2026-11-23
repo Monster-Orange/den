@@ -1,8 +1,11 @@
 /* den-ui: the general button (issue 556), for any page, inside the frame or
-   not. Tokens only. Secondary is the base; `.primary` is the accent fill;
-   `.sm` is the small size. A link drawn as a button is `a.den-btn`.
-   The values are the ones Den's frame drew, value for value. A held
-   button (aria-busy, issue 699) keeps its look: no hover change. */
+   not, and the one button of both products and the kit's own dialogs
+   (issue 673). Tokens only. Secondary is the base; `.primary` is the
+   accent fill; `.danger` takes something away; `.sm` is the small size.
+   A link drawn as a button is `a.den-btn`. The values are the ones Den's
+   frame drew and the second product's shipped button (its row of words
+   and icon, its danger), value for value. A held button (aria-busy,
+   issue 699) keeps its look: no hover change. */
 .den-btn {
   border: 1px solid var(--border);
   background: var(--surface);
@@ -13,6 +16,14 @@
   font-weight: 500;
   white-space: nowrap;
   color: var(--text);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.den-btn[hidden] {
+  display: none;
 }
 .den-btn:not([aria-busy="true"]):hover {
   border-color: var(--border-strong);
@@ -22,6 +33,13 @@
   border-color: var(--accent-fill);
   color: var(--on-accent);
 }
+/* A step that takes something away: red words, a red-tinted border, kept
+   on hover (as the second product's, where danger comes after hover). */
+.den-btn.danger,
+.den-btn.danger:not([aria-busy="true"]):hover {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--border));
+}
 .den-btn.sm {
   padding: 2px 9px;
   font-size: 12.5px;
@@ -30,12 +48,6 @@
 a.den-btn[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
-}
-a.den-btn {
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 .den-btn:focus-visible {
   outline: 2px solid var(--accent);

@@ -531,11 +531,13 @@ export function assign(
         | "priorityPassLimitMinutes"
         | "classes"
         | "cpuHoldLoad"
+        | "loadHoldPerCore"
       >
     >,
   now: number,
   boxes: BoxCap[] = [],
   load?: number,
+  cores?: number,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);
@@ -554,9 +556,9 @@ export function assign(
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
   const held = windowHeld(entries, s.classes, now);
-  // Issue 1009: a loaded machine under a release browser run: plain cpu
-  // asks wait; a release one goes through.
-  const cpuHeld = !!loadHold(entries, s, load);
+  // Issues 1009, 1048: a loaded machine: plain cpu asks wait; a release
+  // one goes through.
+  const cpuHeld = !!loadHold(entries, s, load, cores);
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
     if (cpuHeld && w.kind === "cpu" && !w.priority) continue;

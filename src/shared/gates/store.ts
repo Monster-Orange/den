@@ -9,6 +9,7 @@
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
  *                     cpu_slots_beside_release_browser (its follow-up),
  *                     cpu_hold_load (issue 1009),
+ *                     load_hold_per_core (issue 1048),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -111,6 +112,8 @@ export type GateSettingsPatch = {
   local_browser_slots?: number | null;
   /** Issue 1009: cpu asks wait at this load under a release run (0: off). */
   cpu_hold_load?: number | null;
+  /** Issue 1048: cpu asks wait over this many times the cores (0: off). */
+  load_hold_per_core?: number | null;
   overrun_margin_minutes?: number | null;
   /** Issue 993: held past this many times its estimate: the bell. */
   overrun_bell_multiple?: number | null;
@@ -141,6 +144,14 @@ export type GateSettingsPatch = {
 };
 
 /** Issue 803: the settings that are a line of text, and their checks. */
+/**
+ * Issue 1002: the most of the slot log an ask's measured estimate reads,
+ * from its end (1 MiB, some 5,000 rows), so an ask's cost doesn't grow
+ * with the log. A log under it reads whole, as before.
+ */
+export const MEASURE_TAIL_MAX_BYTES = 1024 * 1024;
+const MEASURE_CHUNK_BYTES = 64 * 1024;
+
 export const GATE_TEXT: Record<
   | "class_order"
   | "class_map"
@@ -171,6 +182,8 @@ export const GATE_LIMITS: Record<
   local_browser_slots: { min: 1, max: 64, int: true },
   // Issue 1009: a 5-minute load average; 0 turns the hold off.
   cpu_hold_load: { min: 0, max: 1024, int: false },
+  // Issue 1048: a multiple of the cores; 0 turns the hold off.
+  load_hold_per_core: { min: 0, max: 64, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 993: 1 is "as soon as it passes its estimate".
   overrun_bell_multiple: { min: 1, max: 100, int: false },
@@ -366,7 +379,23 @@ export interface GateStoreOpts {
    * os.loadavg()[1]); tests pass a stub.
    */
   load?: () => number;
+  /** Issue 1048: the machine's cores (default os.availableParallelism). */
+  cores?: () => number;
 }
+
+/**
+ * Issue 1048: this machine's 5-minute load average. DEN_GATE_LOAD5 fixes
+ * the reading (the test setup sets 0, so a busy machine never holds an
+ * unrelated test's slot; a drill can set it high).
+ */
+export function realLoad(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_LOAD5 ?? "").trim() || NaN);
+  return Number.isFinite(fixed) ? fixed : (os.loadavg()[1] ?? 0);
+}
+
+/** Issue 1048: this machine's cores. */
+export const realCores = (): number =>
+  os.availableParallelism?.() ?? os.cpus().length;
 
 /**
  * Issue 621: renew and lapse, seconds. A lapse shorter than two renews
@@ -421,7 +450,10 @@ export class GateStore {
   private readonly lockWaitMs: number;
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
+  private readonly readCores: () => number;
   readonly platform: NodeJS.Platform;
+  /** Issue 1002: bytes of the slot log measured() has read (for tests). */
+  logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
@@ -430,7 +462,18 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
-    this.readLoad = o.load ?? (() => os.loadavg()[1]!);
+    this.readLoad = o.load ?? (() => realLoad());
+    this.readCores = o.cores ?? realCores;
+  }
+
+  /** Issue 1048: this machine's cores (at least 1). */
+  cores(): number {
+    try {
+      const n = this.readCores();
+      return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    } catch {
+      return 1;
+    }
   }
 
   /** Issue 1009: the machine's 5-minute load average now (NaN: unread). */
@@ -484,6 +527,10 @@ export class GateStore {
           num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
         ),
         cpuHoldLoad: num("cpu_hold_load", GATE_DEFAULTS.cpuHoldLoad),
+        loadHoldPerCore: num(
+          "load_hold_per_core",
+          GATE_DEFAULTS.loadHoldPerCore,
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -813,7 +860,14 @@ export class GateStore {
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
     // Issue 1009: the machine's load, read once per pass.
-    for (const g of assign(entries, s, now, caps.caps, this.load())) {
+    for (const g of assign(
+      entries,
+      s,
+      now,
+      caps.caps,
+      this.load(),
+      this.cores(),
+    )) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its
@@ -866,24 +920,81 @@ export class GateStore {
     who: string;
     actor?: string;
   }): { minutes: number; from: "label" | "actor" } | null {
-    const done = this.events().filter(
-      (r) => r.event === "released" && typeof r.minutes === "number",
-    );
-    const last10 = (rows: GateEventRow[]) =>
-      rows.slice(-10).map((r) => r.minutes!);
-    const label = last10(
-      done.filter((r) => r.kind === o.kind && r.label === o.label),
-    );
+    // Issue 1002: newest first, from the log's tail, until the label has
+    // its 10 (nothing older could change the answer) or the cap is read.
+    const label: number[] = [];
+    const mine: number[] = [];
+    this.tailRows((r) => {
+      if (r.event !== "released" || typeof r.minutes !== "number") return true;
+      if (r.kind !== o.kind) return true;
+      if (r.label === o.label && label.length < 10) label.push(r.minutes);
+      // Its agent's runs from any project, or the same asker in words.
+      if (
+        mine.length < 10 &&
+        (r.who === o.who || (!!o.actor && r.actor === o.actor))
+      )
+        mine.push(r.minutes);
+      return label.length < 10;
+    });
     if (label.length >= 3) return { minutes: median(label), from: "label" };
-    // Its agent's runs from any project, or the same asker in words.
-    const mine = last10(
-      done.filter(
-        (r) =>
-          r.kind === o.kind &&
-          (r.who === o.who || (!!o.actor && r.actor === o.actor)),
-      ),
-    );
     return mine.length ? { minutes: median(mine), from: "actor" } : null;
+  }
+
+  /**
+   * Issue 1002: the slot log's rows, newest first, read back from its end
+   * in chunks, to `visit` until it returns false, the log's start, or
+   * MEASURE_TAIL_MAX_BYTES read. A broken line is skipped.
+   */
+  private tailRows(visit: (r: GateEventRow | GateSettingsRow) => boolean) {
+    let fd: number;
+    try {
+      fd = fs.openSync(this.eventsFile, "r");
+    } catch {
+      return;
+    }
+    try {
+      let pos = fs.fstatSync(fd).size;
+      const floor = Math.max(0, pos - MEASURE_TAIL_MAX_BYTES);
+      // Bytes of a line cut by the chunk before (it continues later on).
+      let rest = Buffer.alloc(0);
+      while (pos > floor) {
+        const n = Math.min(MEASURE_CHUNK_BYTES, pos - floor);
+        pos -= n;
+        const chunk = Buffer.alloc(n);
+        fs.readSync(fd, chunk, 0, n, pos);
+        this.logBytesRead += n;
+        const buf = Buffer.concat([chunk, rest]);
+        // The first line is whole only at the log's start.
+        let end = buf.length;
+        let nl = buf.lastIndexOf(0x0a, end - 1);
+        while (nl >= 0) {
+          const l = buf.subarray(nl + 1, end).toString("utf-8");
+          if (l && !this.visitLine(l, visit)) return;
+          end = nl;
+          nl = end > 0 ? buf.lastIndexOf(0x0a, end - 1) : -1;
+        }
+        rest = buf.subarray(0, end);
+        if (pos === 0 && rest.length) {
+          this.visitLine(rest.toString("utf-8"), visit);
+          return;
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  private visitLine(
+    l: string,
+    visit: (r: GateEventRow | GateSettingsRow) => boolean,
+  ): boolean {
+    let r: GateEventRow | GateSettingsRow;
+    try {
+      r = JSON.parse(l) as GateEventRow | GateSettingsRow;
+    } catch {
+      return true;
+    }
+    return visit(r);
   }
 
   /**
