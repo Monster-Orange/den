@@ -2790,6 +2790,8 @@
     "ag.restored": "Back in the list: {ids}",
     "ag.clear": "Clear stopped",
     "ag.noResume": "{runtime} can't resume a conversation",
+    "ag.noResumeNone":
+      "{runtime} can't resume {id}: it reported no resume command",
     // Session rotation (den#4).
     "ag.rot.ready": "Ready to relaunch ({why})",
     "ag.rot.due": "Handoff due ({why})",

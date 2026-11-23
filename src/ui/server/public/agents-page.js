@@ -773,13 +773,26 @@ function stoppedChip(r) {
 function stoppedTip(r) {
   const who = [r.persona, r.agent].filter(Boolean).join(" · ");
   const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
-  const cant =
-    !r.resumable && r.noResume
-      ? r.noResume.startsWith(`${r.runtime} `)
-        ? t("ag.noResume", { runtime: r.runtime })
-        : r.noResume
-      : "";
+  const cant = !r.resumable && r.noResume ? noResumeText(r) : "";
   return [who, meta, stopReason(r), cant].filter(Boolean).join("\n");
+}
+
+/**
+ * Why a stopped agent can't resume, in the person's language where Den
+ * knows the words: its runtime can't resume at all, or (issue 785) it
+ * reported no resume command. Any other reason (reported for another
+ * folder, not on PATH, a rule it broke) is the server's own.
+ */
+function noResumeText(r) {
+  const why = r.noResume;
+  if (why === `${r.runtime} can't resume a conversation`)
+    return t("ag.noResume", { runtime: r.runtime });
+  if (
+    why ===
+    `${r.runtime} can't resume ${r.agent}: it reported no resume command`
+  )
+    return t("ag.noResumeNone", { runtime: r.runtime, id: r.agent });
+  return why;
 }
 
 /**

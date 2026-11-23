@@ -1860,6 +1860,8 @@
     "ag.restored": "一覧に戻しました: {ids}",
     "ag.clear": "停止中を削除",
     "ag.noResume": "{runtime} は会話を再開できません",
+    "ag.noResumeNone":
+      "{runtime} は {id} を再開できません: 再開コマンドが報告されていません",
     "ag.interrupted": "{name} の再起動でエージェント {n} 件が中断されました",
     "ag.resumeAll": "すべて再開",
     "ag.review": "確認",

@@ -18,6 +18,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { configuredRuntimeBin } from "../den-config.js";
 import { entryDirs, type CatalogEntry } from "./catalog.js";
+import { findOnPath } from "../cli-command.js";
+import { resumeCommandFor } from "./resume-command.js";
 import {
   LaunchError,
   type DetectOptions,
@@ -99,6 +101,28 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
       }
       return {
         argv: launchArgv(e, bin),
+        env: {},
+        warnings: [
+          `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,
+        ],
+      };
+    },
+    // Issue 785: it resumes with the command its agent reported, checked
+    // again now and only in the folder it was reported for; its first word
+    // runs from PATH. Null (nothing to resume) when there is none or it
+    // fails a rule: resumeRefusal says why before this is reached.
+    reportedResume: true,
+    resume(input) {
+      const pathEnv = input.env.PATH ?? "";
+      const got = resumeCommandFor(input.resumeReport, input.worktree, {
+        pathEnv,
+      });
+      if ("problem" in got) return null;
+      const [first, ...rest] = got.argv;
+      const bin = findOnPath(first!, pathEnv);
+      if (!bin) return null;
+      return {
+        argv: [bin, ...rest],
         env: {},
         warnings: [
           `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,

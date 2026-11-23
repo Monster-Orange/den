@@ -1925,6 +1925,8 @@
     "ag.restored": "De vuelta en la lista: {ids}",
     "ag.clear": "Quitar detenidos",
     "ag.noResume": "{runtime} no puede reanudar una conversación",
+    "ag.noResumeNone":
+      "{runtime} no puede reanudar {id}: no indicó ningún comando para reanudar",
     "ag.interrupted": "{n} agentes se interrumpieron al reiniciarse {name}",
     "ag.interrupted.one": "{n} agente se interrumpió al reiniciarse {name}",
     "ag.resumeAll": "Reanudar todos",
