@@ -5901,8 +5901,11 @@ How the watcher paces itself:
 - A watch whose state hasn't changed for `github.watch_stale_minutes` (60)
   ends, and its agent is told why. Its slot is freed. Time while all its
   checks (or workflow runs) wait for a runner doesn't count.
+- Any watch open longer than `github.watch_max_open_hours` (24) ends,
+  whatever its checks say, and its agent is told why. This catches a check
+  that never reports.
 
-These five are Settings › Server rows, a person's only
+These six are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
 `<cli> github status` show one line: the calls left, the reset time, the
 open and queued watches, the oldest open watch's age, the cap now and the
