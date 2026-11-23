@@ -38,6 +38,67 @@ const LOGIN_CODE_SKEW_MS = 5_000;
 const LOGIN_CONTEXT = "den-login-v1:";
 const SESSION_CONTEXT = "den-session-v1:";
 export const WEB_SESSIONS_FILE = "web-sessions.json";
+
+/**
+ * Issue 1300: held while a process other than the server changes the
+ * sessions file (`web logout` with no server running). It holds the
+ * holder's pid. A lock whose pid no longer runs is taken over.
+ */
+export const WEB_SESSIONS_LOCK = "web-sessions.lock";
+
+/** Issue 1300: another running process holds the sessions lock. */
+export class WebSessionsBusy extends Error {
+  constructor(readonly holder: number) {
+    super(
+      `the sessions file is in use by another process${holder ? ` (pid ${holder})` : ""}; nothing was changed. Try again.`,
+    );
+    this.name = "WebSessionsBusy";
+  }
+}
+
+/** Issue 1300: a lock with no pid in it this old was left by a crash. */
+const LOCK_UNREAD_STALE_MS = 5_000;
+
+function lockOlderThan(file: string, ms: number): boolean {
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs > ms;
+  } catch {
+    return true;
+  }
+}
+
+/** Whether `pid` runs (EPERM: it runs, as another user). */
+function pidRuns(pid: number): boolean {
+  if (!(Number.isInteger(pid) && pid > 0)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Issue 1300: the one session whose key starts with `prefix` (4 hex at
+ * least). Throws when the prefix isn't one, or none or several match.
+ */
+export function sessionByPrefix(
+  all: SessionView[],
+  prefix: string,
+): SessionView {
+  const p = prefix.trim().toLowerCase();
+  if (!/^[0-9a-f]{4,64}$/.test(p))
+    throw new Error(
+      `"${prefix}" is not a session id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
+    );
+  const hits = all.filter((s) => s.key.startsWith(p));
+  if (hits.length === 0) throw new Error(`No browser session starts with ${p}`);
+  if (hits.length > 1)
+    throw new Error(
+      `${hits.length} browser sessions start with ${p}; give more of the id`,
+    );
+  return hits[0];
+}
 /**
  * lastSeenAt is written at most this often per session (so a page load
  * doesn't rewrite the file): `web sessions` shows it to the minute.
@@ -1224,20 +1285,9 @@ export class WebSessionStore {
    * Throws when none or several match.
    */
   endByPrefix(prefix: string, why: SessionEndWhy): SessionView {
-    const p = prefix.trim().toLowerCase();
-    if (!/^[0-9a-f]{4,64}$/.test(p))
-      throw new Error(
-        `"${prefix}" is not a session id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
-      );
-    const hits = this.list().filter((s) => s.key.startsWith(p));
-    if (hits.length === 0)
-      throw new Error(`No browser session starts with ${p}`);
-    if (hits.length > 1)
-      throw new Error(
-        `${hits.length} browser sessions start with ${p}; give more of the id`,
-      );
-    this.end(hits[0].key, why);
-    return hits[0];
+    const hit = sessionByPrefix(this.list(), prefix);
+    this.end(hit.key, why);
+    return hit;
   }
 
   /** End every browser session; how many there were. */
@@ -1251,6 +1301,85 @@ export class WebSessionStore {
     this.save(data);
     this.told(ended, why);
     return ended.length;
+  }
+
+  /**
+   * Issue 1300: for a process other than the server. Under the sessions
+   * lock, re-reads the file and ends only the sessions `choose` names
+   * from what is there now; every other session, one made a moment ago
+   * included, is written back as it is. Throws WebSessionsBusy, changing
+   * nothing, when another running process holds the lock.
+   */
+  endLocked(
+    choose: (all: SessionView[]) => string[],
+    why: SessionEndWhy,
+  ): SessionView[] {
+    const release = this.lock();
+    try {
+      // Never the copy read before the lock.
+      this.cache = null;
+      const data = structuredClone(this.load());
+      const all = Object.entries(data.sessions).map(([key, r]) => ({
+        key,
+        ...r,
+      }));
+      const pick = new Set(choose(all));
+      const ended = all.filter((v) => pick.has(v.key));
+      if (ended.length === 0) return [];
+      for (const v of ended) delete data.sessions[v.key];
+      this.save(data);
+      this.told(ended, why);
+      return ended;
+    } finally {
+      release();
+    }
+  }
+
+  /** Issue 1300: takes the sessions lock (O_EXCL); returns its release. */
+  private lock(): () => void {
+    const dir = this.stateDir();
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, WEB_SESSIONS_LOCK);
+    for (let tries = 0; ; tries++) {
+      try {
+        const fd = fs.openSync(file, "wx", 0o600);
+        try {
+          fs.writeSync(fd, `${process.pid}\n`);
+        } finally {
+          fs.closeSync(fd);
+        }
+        return () => {
+          try {
+            if (Number(fs.readFileSync(file, "utf-8").trim()) === process.pid)
+              fs.unlinkSync(file);
+          } catch {
+            /* already gone */
+          }
+        };
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+      let holder = 0;
+      try {
+        holder = Number(fs.readFileSync(file, "utf-8").trim());
+      } catch {
+        /* gone meanwhile: try again */
+      }
+      // A holder that runs (not this process) keeps it; one try at a
+      // takeover of a lock its holder left behind.
+      if (holder && holder !== process.pid && pidRuns(holder))
+        throw new WebSessionsBusy(holder);
+      // No pid yet: a holder between making it and writing it, unless it
+      // is older than that takes (one that died there).
+      if (!holder && !lockOlderThan(file, LOCK_UNREAD_STALE_MS))
+        throw new WebSessionsBusy(0);
+      if (tries >= 1) throw new WebSessionsBusy(holder);
+      try {
+        fs.unlinkSync(file);
+      } catch {
+        /* someone else took it over */
+      }
+    }
   }
 }
 

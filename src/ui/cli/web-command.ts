@@ -45,9 +45,12 @@ import {
   parseOrigin,
   readWebAuthConfig,
   SESSION_TOUCH_MS,
+  sessionByPrefix,
+  sessionEndRow,
   sessionIdPrefix,
   WebSessionStore,
 } from "../../shared/web-session.js";
+import { appendAuditRow } from "../../shared/audit-file.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -1953,6 +1956,8 @@ interface CliIo {
   addressDeps?: Partial<CheckDeps>;
   /** Sign-in: where this runs (tests give its parents and the terminal). */
   person?: PersonCheck;
+  /** Issue 1300: how long a call waits for the server (default 10 s). */
+  callTimeoutMs?: number;
 }
 
 /** Sign-in: personHereRefusal's parts, and whether output is a terminal. */
@@ -2497,17 +2502,38 @@ interface SessionRow {
 }
 
 /**
- * A call to the running server with the person token, or null when no
- * server answers on the port (the caller then edits the state files).
+ * Issue 1300: what a call to the running server came to: its answer;
+ * "none" when nothing listens on the port (checked: the connection was
+ * refused); "no-answer" when something took the call but didn't answer
+ * in time, or the call failed some other way. Only "none" lets a command
+ * change the state files itself.
  */
-function serverCall(
+export type ServerReply =
+  | { kind: "answer"; status: number; json: unknown }
+  | { kind: "none" }
+  | { kind: "no-answer" };
+
+/** Nothing listens there (the same set as person-server.ts). */
+const NOT_LISTENING = new Set(["ECONNREFUSED", "EADDRNOTAVAIL"]);
+
+/** How long a call waits for the server's answer, by default. */
+const SERVER_CALL_MS = 10_000;
+
+function serverReply(
   stateDir: string,
   port: number,
   method: string,
   p: string,
   body?: unknown,
-): Promise<{ status: number; json: unknown } | null> {
+  timeoutMs: number = SERVER_CALL_MS,
+): Promise<ServerReply> {
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r: ServerReply) => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const to = webProbeTarget(process.env.DEN_BIND_HOST, port);
     const req = http.request(
@@ -2516,7 +2542,7 @@ function serverCall(
         port,
         path: p,
         method,
-        timeout: 10_000,
+        timeout: timeoutMs,
         setHost: false,
         headers: {
           host: to.hostHeader,
@@ -2540,20 +2566,49 @@ function serverCall(
           } catch {
             /* not JSON */
           }
-          resolve({ status: res.statusCode ?? 0, json });
+          finish({ kind: "answer", status: res.statusCode ?? 0, json });
         });
+        res.on("error", () => finish({ kind: "no-answer" }));
       },
     );
-    req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(null));
+    req.on("timeout", () => {
+      finish({ kind: "no-answer" });
+      req.destroy();
+    });
+    req.on("error", (e: NodeJS.ErrnoException) =>
+      finish(
+        NOT_LISTENING.has(e.code ?? "")
+          ? { kind: "none" }
+          : { kind: "no-answer" },
+      ),
+    );
     req.end(payload);
   });
+}
+
+/**
+ * A call to the running server with the person token, or null when no
+ * server answered (the caller then reads or edits the state files).
+ */
+async function serverCall(
+  stateDir: string,
+  port: number,
+  method: string,
+  p: string,
+  body?: unknown,
+): Promise<{ status: number; json: unknown } | null> {
+  const r = await serverReply(stateDir, port, method, p, body);
+  return r.kind === "answer" ? { status: r.status, json: r.json } : null;
 }
 
 function offlineStore(stateDir: string): WebSessionStore {
   return new WebSessionStore({
     stateDir: () => stateDir,
     secret: () => readWebSecret(stateDir),
+    // Issue 1300: ends made here reach the activity trail too, with why.
+    onEnd: (ended, why) => {
+      for (const s of ended) appendAuditRow(stateDir, sessionEndRow(s, why));
+    },
   });
 }
 
@@ -2689,13 +2744,27 @@ export async function cmdWebLogout(
   }
   const id = ids[0];
   const stateDir = io.stateDir ?? getStateDir();
-  const r = await serverCall(stateDir, port, "POST", "/api/web/logout", {
-    ...(id ? { id } : {}),
-    ...(all ? { rotate: true } : {}),
-  });
+  const r = await serverReply(
+    stateDir,
+    port,
+    "POST",
+    "/api/web/logout",
+    {
+      ...(id ? { id } : {}),
+      ...(all ? { rotate: true } : {}),
+    },
+    io.callTimeoutMs,
+  );
   let ended: number;
   let agentTokens = 0;
-  if (r) {
+  if (r.kind === "no-answer") {
+    // Issue 1300: a server is there: never write its file behind it.
+    io.err(
+      `${product().cli}: Den didn't answer on port ${port}; nothing was changed. Try again.\n`,
+    );
+    return 1;
+  }
+  if (r.kind === "answer") {
     if (r.status !== 200) {
       io.err(`${product().cli}: ${apiError(r)}\n`);
       return 1;
@@ -2704,12 +2773,18 @@ export async function cmdWebLogout(
     ended = (j.ended ?? []).length;
     if (typeof j.agentTokens === "number") agentTokens = j.agentTokens;
   } else {
-    // No server: the state files themselves (the same OS user's).
+    // Nothing listens: the state files themselves (the same OS user's),
+    // under the sessions lock, ending only what it means to (issue 1300).
     const store = offlineStore(stateDir);
     try {
-      ended = id
-        ? (store.endByPrefix(id, "revoked"), 1)
-        : store.endAll("signed-out-everywhere");
+      ended = (
+        id
+          ? store.endLocked((now) => [sessionByPrefix(now, id).key], "revoked")
+          : store.endLocked(
+              (now) => now.map((x) => x.key),
+              "signed-out-everywhere",
+            )
+      ).length;
     } catch (e) {
       io.err(`${product().cli}: ${(e as Error).message}\n`);
       return 1;
