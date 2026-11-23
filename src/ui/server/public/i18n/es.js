@@ -1211,6 +1211,10 @@
       "Esperar nuevas pruebas aquí con menos memoria libre que esta (%)",
     "set.server.gate_memory_free_min_percent.d":
       "Las nuevas pruebas en esta máquina (unitarias y de navegador, también las de versión) esperan mientras su memoria libre esté por debajo de este porcentaje, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "Esperar nuevas pruebas aquí con más intercambio en uso que esto (GB)",
+    "set.server.gate_swap_hold_gb.d":
+      "Las nuevas pruebas en esta máquina esperan mientras el intercambio en uso supere estos GB, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Una máquina puede mostrar mucha memoria libre mientras el intercambio se llena. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --swap-hold-gb 8",
     "set.server.gate_vm_memory_share":
       "Avisar cuando las máquinas virtuales reserven más que esta parte de la memoria",
     "set.server.gate_vm_memory_share.d":
@@ -3205,6 +3209,17 @@
     "gate.onBox": "en la máquina de pruebas {box}",
     "gate.anyBox": "aquí o en una máquina de pruebas",
     "gate.boxesH": "Máquinas de pruebas",
+    "gate.swapHold":
+      "esperando: esta máquina usa {used} GB de intercambio, más de {limit} GB, mientras se ejecuta otra prueba aquí; empieza cuando baje el intercambio o termine esa prueba",
+    "gate.swapUsed": "Intercambio en uso: {used} GB",
+    "gate.memoryHold":
+      "esperando: esta máquina tiene {free}% de memoria libre, menos del {limit}%, mientras se ejecuta otra prueba aquí; empieza cuando se libere memoria o termine esa prueba",
+    "gate.freeMemory": "Esta máquina: {free}% de memoria libre",
+    "gate.vms":
+      "Las máquinas virtuales aquí reservan {promised} GB de {limit} GB permitidos",
+    "gate.vmsOver":
+      "Las máquinas virtuales aquí reservan {promised} GB, más de los {limit} GB permitidos: la máquina puede quedarse sin memoria",
+    "gate.vmsNotCounted": "{runtime}: sin contar (no se pudo leer)",
     "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",

@@ -67,6 +67,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // Issue 1274: memory free under which new runs here wait; VM share.
     memory_free_min_percent: true,
     vm_memory_share: true,
+    swap_hold_gb: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -322,6 +323,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.swap_hold_gb",
         "gate_slots.vm_memory_share",
         "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.

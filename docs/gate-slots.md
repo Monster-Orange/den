@@ -48,6 +48,13 @@ kernel's free level (what `memory_pressure` prints); Linux reads
 MemAvailable. 0 turns it off; `gate settings --memory-free-min-percent N`
 sets it. `DEN_GATE_FREE_MEM` fixes the reading for tests and drills.
 
+New runs here also wait, on the same terms, while swap in use is over
+`swap_hold_gb` (default 8): macOS can show plenty of free memory while swap
+fills. `gate settings --swap-hold-gb N` sets it (0: off);
+`DEN_GATE_SWAP_GB` fixes the reading. `gate status`, its `--json` and the
+Gate pop-up show a run waiting on memory or swap, this machine's free memory
+and swap, and what running VMs reserve.
+
 `den doctor` lists the VMs here (OrbStack machines, and Docker's VM when it
 isn't OrbStack's) with the memory and cpus each reserves, and warns when
 running VMs promise more than `vm_memory_share` × the machine's RAM
