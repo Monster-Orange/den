@@ -17,7 +17,7 @@ import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { isTmpDir, resolveOn, sentinelDir, withSentinel } from "./sentinel.js";
-import { boxOwnPort } from "./unit/helpers/own-ports.js";
+import { boxOwnPort } from "@monster-orange/den/pw-guard";
 
 const REGISTRY_DIR = path.join(os.tmpdir(), "den-test-children");
 const recordOf = (pgid: number): string =>

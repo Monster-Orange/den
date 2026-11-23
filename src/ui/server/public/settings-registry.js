@@ -3155,6 +3155,29 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
   },
   {
+    // Issue 1048: new cpu runs wait while the load is over this × cores.
+    id: "server.gate_load_hold_per_core",
+    category: "server",
+    label: "Hold new unit test runs over this load per core",
+    description:
+      "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "load",
+      "workers",
+      "cores",
+    ],
+    scope: "user",
+    keys: ["gate_slots.load_hold_per_core"],
+    control: { type: "number", min: 0, max: 64, step: 0.1 },
+    read: (ctx) => ctx.data.gate_slots?.loadHoldPerCore ?? 3,
+    write: (v, ctx) => ctx.post({ gate_slots: { load_hold_per_core: v } }),
+  },
+  {
     // Issue 1009: cpu runs wait at this load under a release browser run.
     id: "server.gate_cpu_hold_load",
     category: "server",
@@ -4378,6 +4401,44 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
     read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
+  },
+  {
+    // Issue 1022: how often a visible page checks health (user.yml
+    // health_poll.visible_seconds).
+    id: "server.health_poll",
+    category: "server",
+    label: "Health checks while you look",
+    description:
+      "How often an open, visible page checks every service's health: 2 to 300 seconds. __DEN_CLI__ config health_poll.visible_seconds=5",
+    keywords: ["health", "poll", "check", "status", "interval", "visible"],
+    scope: "user",
+    keys: ["health_poll.visible_seconds"],
+    control: { type: "number", min: 2, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.health_poll?.visible ?? 5,
+    write: (v, ctx) => ctx.post({ health_poll: { visible_seconds: v } }),
+  },
+  {
+    // Issue 1022: how often a hidden page checks health; the server keeps
+    // its answer this long (user.yml health_poll.hidden_seconds).
+    id: "server.health_poll_hidden",
+    category: "server",
+    label: "Health checks in a hidden tab",
+    description:
+      "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    keywords: [
+      "health",
+      "poll",
+      "check",
+      "hidden",
+      "background",
+      "tab",
+      "interval",
+    ],
+    scope: "user",
+    keys: ["health_poll.hidden_seconds"],
+    control: { type: "number", min: 10, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.health_poll?.hidden ?? 60,
+    write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
     // issue_write: which persona roles write GitHub issues in their

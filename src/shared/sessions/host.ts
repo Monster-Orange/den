@@ -46,6 +46,7 @@ import {
   type SessionInfo,
   type SessionPool,
 } from "./types.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const BACKEND_ID = "den-pty";
 
@@ -500,11 +501,9 @@ export class SessionHost {
       // Whole or not at all: a reader (an agent token's check) never sees
       // it half-written.
       const file = path.join(this.paths.dir, `${s.info.ref.id}.json`);
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(rec, null, 2) + "\n", {
+      writeFileAtomic(file, JSON.stringify(rec, null, 2) + "\n", {
         mode: 0o600,
       });
-      fs.renameSync(tmp, file);
     } catch (e) {
       this.log(
         `could not save session ${s.info.ref.id}: ${(e as Error).message}`,

@@ -149,6 +149,12 @@ jobs:
       # that passed its gate and never merged stops the release.
       - name: The gated candidates are in this release
         run: sh scripts/release-ancestry.sh "${{ needs.check.outputs.version }}" "$GITHUB_SHA"
+      # The release holds what its newest gated candidate held, apart from the version lines and the changelog:
+      # work that reached main after the candidate was tagged stops the release.
+      - name: The release is the gated candidate
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: sh scripts/release-tree.sh "$VERSION" "$GITHUB_SHA"
       - name: The tag v<version>
         env:
           TAG: v${{ needs.check.outputs.version }}
@@ -168,6 +174,7 @@ jobs:
 
   publish:
     needs: [check, gates, tag]
+    environment: release # only main may deploy to it; npm's trusted publisher can name it
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45 # npm can take ~20 min to serve an accepted (202) upload
     permissions:
@@ -229,6 +236,7 @@ jobs:
   den-ui:
     # Issue 296: the kit ships only once both test halves pass, as Den does.
     needs: [gates]
+    environment: release # only main may deploy to it; npm's trusted publisher can name it
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45
     permissions:

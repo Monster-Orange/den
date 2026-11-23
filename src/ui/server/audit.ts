@@ -20,6 +20,7 @@ import {
   type AgentActor,
 } from "../../shared/agent-actor.js";
 import { auditVia } from "../../shared/test-person.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
@@ -131,15 +132,11 @@ function persist(entry: AuditEntry): void {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     if (fileLines + 1 > RING_MAX * 2) {
       // Compact to the ring (which already holds this entry).
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(
-        tmp,
+      writeFileAtomic(
+        file,
         ring.map((e) => JSON.stringify(e)).join("\n") + "\n",
-        {
-          mode: 0o600,
-        },
+        { mode: 0o600 },
       );
-      fs.renameSync(tmp, file);
       fileLines = ring.length;
       return;
     }

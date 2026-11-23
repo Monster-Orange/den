@@ -231,6 +231,10 @@ export async function handleNotificationRoutes(
       return true;
     }
     const id = agent.actor.slice("agent:".length);
+    // Issue 828: a question on the agent's screen (its hook says so). It
+    // counts toward the ask limit like any question: the flag is the
+    // agent's own word.
+    const dialog = ev === "waiting" && why === "asked" && b?.dialog === true;
     if (ev === "waiting" && why === "asked" && deps.asks) {
       let perHour: number;
       try {
@@ -264,6 +268,7 @@ export async function handleNotificationRoutes(
             input: inputKeyOf(b?.input),
             idle: b?.idle === true,
             hooked: b?.hooked === true,
+            ...(dialog ? { dialog: true } : {}),
           }
         : ev === "resumed"
           ? {
@@ -298,7 +303,7 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       ...(routed ? { lead: deps.attention.nameOf(routed.lead) } : {}),
-      ...(askId ? { askId } : {}),
+      ...(askId || routed?.askId ? { askId: askId ?? routed?.askId } : {}),
     });
     return true;
   }
@@ -325,10 +330,15 @@ export async function handleNotificationRoutes(
         (n) =>
           n.id === id &&
           n.source === "den" &&
-          n.kind === "waiting" &&
+          (n.kind === "waiting" || n.kind === "finished") &&
           n.subject.startsWith("agent:"),
       );
-    if (!row || (!row.settled && rowWhy(row) !== "asked")) {
+    // Issue 1058: a question routed to the lead is its "asked the lead" row.
+    const isAsk = (n: NonNullable<typeof row>) =>
+      n.kind === "waiting"
+        ? rowWhy(n) === "asked"
+        : n.msg?.key === "bell.m.toLead";
+    if (!row || (!row.settled && !isAsk(row))) {
       refuse(res, 404, "not_found", "No question in the bell has that id.");
       return true;
     }
