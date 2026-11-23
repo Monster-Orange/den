@@ -49,6 +49,30 @@ async function setup(principal: unknown, runtime = "codex") {
     sessionName: "acme-north:coder",
     startedAt: "2026-11-22T09:00:00.000Z",
   } as never);
+  const codexHome = path.join(dir, "codex");
+  /** Codex's session file for thread `id` (a sub-agent's with `parent`). */
+  const thread = (id: string, parent?: string) => {
+    const day = path.join(codexHome, "sessions", "2026", "11", "22");
+    fs.mkdirSync(day, { recursive: true });
+    fs.writeFileSync(
+      path.join(day, `rollout-2026-11-22T10-00-00-${id}.jsonl`),
+      JSON.stringify({
+        timestamp: "2026-11-22T10:00:00.000Z",
+        type: "session_meta",
+        payload: {
+          session_id: parent ?? id,
+          id,
+          ...(parent ? { parent_thread_id: parent } : {}),
+          timestamp: "2026-11-22T10:00:00.000Z",
+          cwd,
+          originator: "codex_cli_rs",
+          cli_version: "0.171.0",
+          source: "cli",
+        },
+      }) + "\n",
+    );
+  };
+  for (const id of ["s-1", "s-9", "s-10"]) thread(id);
   const logs: string[] = [];
   const server = http.createServer((req, res) => {
     void handleResumeReportRoutes(
@@ -60,6 +84,8 @@ async function setup(principal: unknown, runtime = "codex") {
         principal: () => principal as never,
         log: (l) => logs.push(l),
         now: () => new Date("2026-11-22T10:00:00.000Z"),
+        // Codex's own session records: this test's, never this machine's.
+        env: { CODEX_HOME: codexHome, HOME: dir },
       },
     ).then((handled) => {
       if (!handled) {
@@ -84,7 +110,7 @@ async function setup(principal: unknown, runtime = "codex") {
   const close = () => new Promise((r) => server.close(r));
   const kept = () => readRecord(stateDir, "coder")?.resumeReport;
   const url = `http://127.0.0.1:${port}`;
-  return { post, close, cwd, logs, kept, stateDir, url };
+  return { post, close, cwd, logs, kept, stateDir, url, thread };
 }
 
 describe("issue 785: POST /api/agents/self/resume-command", () => {
@@ -317,5 +343,36 @@ describe("issue 785: an agent's read-only view can't report (issue 796)", () => 
     const tok = {} as http.IncomingMessage;
     setPrincipal(tok, agentOf("coder") as never);
     expect(agentTokenPrincipalOf(tok)?.actor).toBe("agent:coder");
+  });
+});
+
+describe("issue 785: a Codex sub-agent's report never replaces its main thread's", () => {
+  it("a thread Codex's own record names a sub-agent's: refused, the main thread's report kept", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      expect(
+        (await t.post({ conversation: "s-9", cwd: t.cwd, seq: 1 })).body,
+      ).toMatchObject({ kept: true });
+      t.thread("child-1", "s-9");
+      const r = await t.post({ conversation: "child-1", cwd: t.cwd, seq: 2 });
+      expect(r.status).toBe(400);
+      expect(r.body).toMatchObject({ ok: false, code: "not_main_thread" });
+      expect(t.kept()?.conversation).toBe("s-9");
+      expect(t.logs.join("\n")).not.toMatch(/child-1/);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("a thread with no record of Codex's own: refused", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      const r = await t.post({ conversation: "nowhere", cwd: t.cwd, seq: 1 });
+      expect(r.status).toBe(400);
+      expect(r.body).toMatchObject({ code: "not_main_thread" });
+      expect(t.kept()).toBeUndefined();
+    } finally {
+      await t.close();
+    }
   });
 });

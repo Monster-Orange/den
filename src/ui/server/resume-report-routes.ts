@@ -34,6 +34,8 @@ export interface ResumeReportDeps {
   /** Tests: the agent the request is from. */
   principal?: (req: http.IncomingMessage) => AgentPrincipal | null;
   now?: () => Date;
+  /** Den's own environment, where the runtime keeps its sessions (tests). */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** The body: a JSON object, at most 4 KiB (a report fits in well under). */
@@ -152,6 +154,22 @@ export async function handleResumeReportRoutes(
   if (!acceptResumeReport(prev, report)) {
     sendJson(res, { ok: true, kept: false, seq: prev!.seq });
     return true;
+  }
+  // Only a report that would be kept is checked against the runtime's own
+  // session record (Codex: a main thread in the agent's folder), so a
+  // sub-agent's thread never replaces its main thread's. A read, no await.
+  const rt = getRuntime(rec.runtime);
+  if (
+    rt?.reportedConversationOk &&
+    !rt.reportedConversationOk(
+      report.conversation,
+      rec.cwd,
+      d.env ?? process.env,
+    )
+  ) {
+    const why = `it is not a main thread of ${rec.runtime} in the agent's folder`;
+    d.log(`agent ${id}: resume report refused: ${why}`);
+    return refuse(res, 400, "not_main_thread", why);
   }
   writeRecord(d.stateDir(), {
     ...rec,
