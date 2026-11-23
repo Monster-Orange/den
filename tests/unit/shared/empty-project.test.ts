@@ -26,7 +26,9 @@ describe("isEmptyProject (issue 1334)", () => {
     expect(
       isEmptyProject(
         "x",
-        cfg({ services: { "shop/api": {} } } as Partial<WorkspaceConfig>),
+        cfg({
+          services: { "shop/api": {} },
+        } as unknown as Partial<WorkspaceConfig>),
         [],
       ),
     ).toBe(false);
