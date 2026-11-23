@@ -920,9 +920,32 @@ function pushLog(kind: string, text: string, actor?: string): void {
  * Log to stdout unless --silent was passed, AND fan out to the log ring so the
  * /logs page and any connected SSE subscribers see the same stream.
  */
+/**
+ * Issue 707: while it runs silent (as a service), warn and error lines also
+ * go to <state>/logs/server.log (server_log.max_mb, rotated once), so they
+ * outlive a restart. The cap is read again at most once a minute.
+ */
+let serverLogCap = { at: 0, bytes: serverLogMaxBytes(null) };
+const toServerLogFile = serverLogWriter({
+  stateDir: () => getStateDir(),
+  maxBytes: () => {
+    if (Date.now() - serverLogCap.at > 60_000) {
+      let user: unknown = null;
+      try {
+        user = readUserConfig();
+      } catch {
+        /* a bad user.yml: the default */
+      }
+      serverLogCap = { at: Date.now(), bytes: serverLogMaxBytes(user) };
+    }
+    return serverLogCap.bytes;
+  },
+});
+
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
   if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
+  if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
 
 // Its output's reader gone (the terminal, runner or script that started it
@@ -1328,6 +1351,10 @@ import {
 } from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
+import {
+  serverLogMaxBytes,
+  serverLogWriter,
+} from "../../shared/server-log-file.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
 
 /** Sign-in: Den's own processes, this server always among them. */
@@ -5615,6 +5642,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
+    // Issue 707: the server's warning lines on disk, capped (server_log.*).
+    server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
     reports: (() => {
       const l = shotLimits(user);
@@ -9530,6 +9559,7 @@ async function handleRequest(
           agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
+          server_log?: unknown;
           feedback?: unknown;
           address_check?: unknown;
           process_lookup?: unknown;
@@ -9596,6 +9626,7 @@ async function handleRequest(
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
+            server_log: body.server_log,
             feedback: body.feedback,
             address_check: body.address_check,
             process_lookup: body.process_lookup,
