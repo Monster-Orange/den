@@ -487,9 +487,11 @@ describe("release-promote.sh (issue 922)", () => {
     } finally {
       statuses(sha.dev, PASS);
     }
+    // A promotion: its lines and its outputs (GITHUB_OUTPUT) name no login.
     const ok = promote(sha.release, { RELEASE_BED_CREATORS: "tester-x" });
     expect(ok.code).toBe(0);
     expect(ok.text.includes(TESTER)).toBe(false);
+    expect(JSON.stringify(ok.out).includes(TESTER)).toBe(false);
   });
 
   it("refuses a dev tag signed by a key the allowed-signers file doesn't list, unsigned, or lightweight", () => {
