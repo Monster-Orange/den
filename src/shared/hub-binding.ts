@@ -302,7 +302,7 @@ export function previousLinkOf(
 ): { name: string; origin: string; company?: string } | null {
   for (const a of listPreviousHubs(stateDir).reverse()) {
     if (!a.projects.includes(ws) || !a.from) continue;
-    const v = readJson(path.join(a.dir, "from.json")) as {
+    const v = readJson(stateDir, path.join(a.dir, "from.json")) as {
       links?: Record<string, { name?: unknown; slug?: unknown }>;
     } | null;
     const l = v?.links?.[ws];
