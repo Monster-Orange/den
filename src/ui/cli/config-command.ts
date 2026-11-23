@@ -10,6 +10,7 @@ import {
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
+import { patchHubGroups } from "../../shared/hub.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { testInstallByHandRefusal } from "../../shared/fixture-person.js";
 
@@ -165,13 +166,31 @@ const DOTTED_SWITCH: Record<string, string> = {
   "services.restore_on_boot": "restore_services_on_boot",
 };
 
+/**
+ * Issue 750: hub.groups (auto | on | off) and hub.groups_cache_seconds,
+ * as Settings › Hub › Groups from Hub sets them (hub.ts patchHubGroups).
+ */
+const HUB_GROUPS: Record<string, "mode" | "cache_seconds"> = {
+  "hub.groups": "mode",
+  "hub.groups_cache_seconds": "cache_seconds",
+};
+
 /** Every key `config` accepts, aliases too. */
 export function configKeyNames(): string[] {
   return [
     ...Object.keys(KEY_ALIASES),
     ...Object.keys(DOTTED),
     ...Object.keys(DOTTED_SWITCH),
+    ...Object.keys(HUB_GROUPS),
   ];
+}
+
+/** Issue 750: a groups setting set (or, with null, cleared) as Settings would. */
+function setHubGroups(name: string, value: unknown): void {
+  const user = readUserConfig() as Record<string, unknown>;
+  const r = patchHubGroups(user, { [HUB_GROUPS[name]!]: value });
+  if (!r.ok) throw new Error(r.error);
+  writeUserConfig(user as UserConfig);
 }
 
 /** A dotted switch set (or, with null, cleared) as Settings would. */
@@ -237,6 +256,11 @@ export async function cmdConfig(args: string[]): Promise<void> {
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
       return;
     }
+    if (HUB_GROUPS[keyArg]) {
+      setHubGroups(keyArg, null);
+      console.log(chalk.green(`  ✓ Removed ${keyArg}`));
+      return;
+    }
     const key = canonicalKey(keyArg);
     mergeUserConfig({ [key]: undefined });
     console.log(chalk.green(`  ✓ Removed ${key}`));
@@ -269,6 +293,11 @@ export async function cmdConfig(args: string[]): Promise<void> {
   }
   if (DOTTED[name]) {
     setDotted(name, parseValue(assignment.slice(eq + 1)));
+    console.log(chalk.green(`  ✓ Set ${name}`));
+    return;
+  }
+  if (HUB_GROUPS[name]) {
+    setHubGroups(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));
     return;
   }

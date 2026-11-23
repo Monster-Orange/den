@@ -35,6 +35,13 @@
  */
 import { HubCallError, hubCall } from "./hub.js";
 
+/**
+ * Issue 750: what the connected Hub's whoami lists when it serves groups
+ * (its groups list, the hub_group_* tools, group sends and deliveries).
+ * hub.groups auto reads groups only from a Hub that lists it.
+ */
+export const GROUPS_FEATURE = "groups.read";
+
 export const GROUPS_PATH = "/api/groups";
 /** Hub's 403 code for a company whose plan has no groups. */
 export const GROUPS_NOT_IN_PLAN = "groups_not_in_plan";

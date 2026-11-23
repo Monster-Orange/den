@@ -14,16 +14,21 @@
  * hub.groups_cache_seconds; `?fresh=1` (Try again) reads Hub now.
  *
  *   → { ok, state: "ok", rule, groups, hub, groupsUrl }
- *     { ok, state: "off" }                  hub.groups off (the default),
- *                                           or Hub has no groups route
- *     { ok, state: "none" }                 no Hub connected
+ *     { ok, state: "off" }                  hub.groups off; or auto (the
+ *                                           default) with no Hub, a Hub
+ *                                           whose whoami lacks groups.read,
+ *                                           or no whoami answer; or Hub
+ *                                           has no groups route
+ *     { ok, state: "none" }                 hub.groups on, no Hub connected
  *     { ok, state: "unavailable", hub }     403 groups_not_in_plan
  *     { ok, state: "refused" }              403 install_refused (a guest)
  *     { ok, state: "rejected" | "unreachable" }
  */
 import type * as http from "http";
+import type { HubGroupsMode } from "../../shared/hub.js";
 import {
   fetchHubGroups,
+  GROUPS_FEATURE,
   groupComposeUrl,
   groupHubUrl,
   isGroupSlug,
@@ -39,12 +44,19 @@ export interface HubGroupsDeps {
   hub: () => Promise<{ url: string; token: string } | null>;
   /** The company's slug from Den's Hub binding, or null when not known. */
   company: () => string | null;
-  /** Who this install is on Hub (whoami), for `here`; {} when not known. */
-  self: () => Promise<{ install?: string; login?: string }>;
+  /**
+   * Who this install is on Hub (whoami), for `here`, and what Hub lists
+   * (features, for auto); {} when not known. Throws with no answer.
+   */
+  self: () => Promise<{
+    install?: string;
+    login?: string;
+    features?: readonly string[];
+  }>;
   /** hub.groups_cache_seconds. */
   cacheSeconds: () => number;
-  /** hub.groups (default off): whether Den reads Hub's groups at all. */
-  enabled: () => boolean;
+  /** hub.groups: auto (the default), on or off. */
+  mode: () => HubGroupsMode;
   /** The in-memory copy, by Hub URL (never written anywhere). */
   cache: Map<
     string,
@@ -73,8 +85,9 @@ export async function hubGroupsRoute(
     sendJson(res, { ok: false, error: "use GET" }, 405);
     return true;
   }
-  // hub.groups off (the default): nothing new on the page, Hub not asked.
-  if (!d.enabled()) {
+  // hub.groups off: nothing new on the page, Hub not asked.
+  const mode = d.mode();
+  if (mode === "off") {
     d.cache.clear();
     sendJson(res, { ok: true, state: "off" });
     return true;
@@ -82,7 +95,8 @@ export async function hubGroupsRoute(
   const hub = await d.hub().catch(() => null);
   if (!hub) {
     d.cache.clear();
-    sendJson(res, { ok: true, state: "none" });
+    // Auto with no Hub: nothing about groups. On: the Connect line.
+    sendJson(res, { ok: true, state: mode === "auto" ? "off" : "none" });
     return true;
   }
   const fresh = /[?&]fresh=1(&|$)/.test(req.url ?? "");
@@ -93,6 +107,22 @@ export async function hubGroupsRoute(
   if (!fresh && kept && now - kept.at < d.cacheSeconds() * 1000) {
     read = kept.read;
     self = kept.self;
+  } else if (mode === "auto") {
+    // Auto: Hub's groups only when its whoami lists groups.read; a Hub
+    // without it reads as one with no groups route (kept), and no
+    // whoami answer as off (asked again next time).
+    const w = await d.self().catch(() => null);
+    d.cache.clear();
+    if (!w) {
+      sendJson(res, { ok: true, state: "off" });
+      return true;
+    }
+    self = { install: w.install, login: w.login };
+    read = w.features?.includes(GROUPS_FEATURE)
+      ? await fetchHubGroups(hub.url, hub.token)
+      : { state: "absent" };
+    if (read.state !== "unreachable")
+      d.cache.set(hub.url, { at: now, read, self });
   } else {
     read = await fetchHubGroups(hub.url, hub.token);
     self = read.state === "ok" ? await d.self().catch(() => ({})) : {};
@@ -175,10 +205,12 @@ export async function defaultHubGroupsDeps(): Promise<HubGroupsDeps> {
       return {
         ...(w.install ? { install: w.install } : {}),
         ...(w.login ? { login: w.login } : {}),
+        ...(w.features ? { features: w.features } : {}),
       };
     },
     cacheSeconds: () => cfg?.groupsCacheSeconds ?? 30,
-    enabled: () => cfg?.groups === true,
+    // Without a Hub address (no hub config): the default, auto.
+    mode: () => cfg?.groups ?? "auto",
     cache: memory,
   };
 }
