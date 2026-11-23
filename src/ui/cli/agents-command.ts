@@ -1380,10 +1380,7 @@ function files(args: string[], d: AgentsResolved): number {
  * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
  * workspace's agents start with when the start names none.
  */
-async function permission(
-  args: string[],
-  d: AgentsResolved,
-): Promise<number> {
+async function permission(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
   const ws = workspaceFlag(where, p);
@@ -1494,7 +1491,12 @@ function startedLine(
 }
 
 /** Issue 989: an agent's own route on the server, in its project. */
-function agentRoute(d: AgentsResolved, id: string, ws: string | undefined, verb: string): string {
+function agentRoute(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  verb: string,
+): string {
   const rec = agentRecord(d, id, ws);
   return `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(rec.id)}/${verb}`;
 }
@@ -1636,7 +1638,7 @@ function rename(args: string[], d: AgentsResolved): number {
  * a stopped agent's folder, a repo of its project or a folder in it. A
  * conversation belongs to its folder, so its next start is a new one.
  */
-function folder(args: string[], d: AgentsResolved): number {
+async function folder(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents folder";
   personOnly(where, d, "an agent's folder");
   const p = parseArgs(where, args, {
@@ -1651,10 +1653,23 @@ function folder(args: string[], d: AgentsResolved): number {
   const dir = str(p, "--folder");
   if ((repo === undefined) === (dir === undefined))
     throw new UsageError(`${where} needs --repo <repo> or --folder <path>`);
-  const rec = setAgentFolder(d, id, workspaceFlag(where, p), {
+  const to = {
     ...(repo !== undefined ? { repo: checkRepoName(repo) } : {}),
     ...(dir !== undefined ? { folder: dir } : {}),
-  });
+  };
+  const ws = workspaceFlag(where, p);
+  // Issue 1182: the running server changes it, audited as the person; with
+  // none listening the CLI changes the record as before.
+  const json = await askServer(d, agentRoute(d, id, ws, "folder"), to);
+  if (json === "refused") return 1;
+  const rec =
+    json === null
+      ? setAgentFolder(d, id, ws, to)
+      : {
+          cwd: String(json.cwd ?? ""),
+          repo: typeof json.repo === "string" ? json.repo : undefined,
+          project: typeof json.project === "string" ? json.project : undefined,
+        };
   d.out(
     `agent ${id} now works in ${rec.cwd}${rec.repo ? ` (${rec.project} › ${rec.repo})` : ""}; its next start is a new conversation there`,
   );
@@ -2204,6 +2219,22 @@ async function accountsCmd(
           d.out("Nothing removed.");
           return 0;
         }
+      }
+      // Issue 1182: the running server removes it, audited as the person;
+      // with none listening the CLI removes it as before.
+      const json = await askServer(d, "/api/agents/accounts/remove", {
+        runtime: runtimeId,
+        account: acct.id,
+      });
+      if (json === "refused") return 1;
+      if (json !== null) {
+        d.out(
+          `✓ removed ${String(json.removed ?? label(acct))}` +
+            (typeof json.store === "string"
+              ? `; its token is gone from ${json.store}`
+              : ""),
+        );
+        return 0;
       }
       const name = A.accountRefName(runtimeId, acct.id);
       const r = await A.removeAccount({
@@ -2837,7 +2868,7 @@ export async function cmdAgents(
           return link(rest, d, "add");
         case "folder":
           await loadAgentWorkspaces(deps);
-          return folder(rest, d);
+          return await folder(rest, d);
         case "unlink":
           await loadAgentWorkspaces(deps);
           return link(rest, d, "remove");
