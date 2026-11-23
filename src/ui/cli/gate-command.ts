@@ -52,9 +52,11 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
   type LoadHold,
+  type MemoryHold,
   expectedStart,
   GATE_DEFAULTS,
   loadHold,
+  memoryHold,
   queueEnd,
   queueMinOf,
   overrun,
@@ -496,6 +498,11 @@ export function holdWords(h: LoadHold): string {
     : `waiting: this machine's load is ${h.load.toFixed(1)}, over ${h.perCore} × ${h.cores} cores (${h.limit}), while another unit test run is going; it starts once the load drops or that run ends`;
 }
 
+/** Issue 1274: why a run here waits on memory, in words. */
+export function memoryHoldWords(h: MemoryHold): string {
+  return `waiting: this machine has ${Math.round(h.free)}% of its memory free, under ${h.limit}%, while another run here is going; it starts once memory frees or that run ends (test boxes still take runs)`;
+}
+
 /** One line for a holder or waiter. */
 export function slotLine(
   e: GateEntry,
@@ -916,6 +923,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
             ? loadHold(all, set, s.load(), s.cores())
             : undefined;
         if (hold) d.err(holdWords(hold));
+        // Issue 1274: a run here held by low memory says so.
+        const mem =
+          !where || where === "local"
+            ? memoryHold(all, set, s.freeMemory())
+            : undefined;
+        if (mem) d.err(memoryHoldWords(mem));
         said = d.now();
       }
       await d.sleep(2_000);
@@ -1177,6 +1190,8 @@ function settings(args: string[], d: GateDeps): number {
     "--local-browser-slots": true,
     "--cpu-hold-load": true,
     "--load-hold-per-core": true,
+    "--memory-free-min-percent": true,
+    "--vm-memory-share": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -1204,6 +1219,8 @@ function settings(args: string[], d: GateDeps): number {
     ["--local-browser-slots", "local_browser_slots"],
     ["--cpu-hold-load", "cpu_hold_load"],
     ["--load-hold-per-core", "load_hold_per_core"],
+    ["--memory-free-min-percent", "memory_free_min_percent"],
+    ["--vm-memory-share", "vm_memory_share"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
     ["--remote-renew-seconds", "remote_renew_seconds"],

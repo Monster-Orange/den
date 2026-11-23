@@ -98,6 +98,8 @@ describe("gate-slot routes", () => {
       // Issue 1009: cores × 4 / 3 on the machine the test runs on.
       cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
       loadHoldPerCore: 3,
+      memoryFreeMinPercent: 10,
+      vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       overrunBellMultiple: 2,
