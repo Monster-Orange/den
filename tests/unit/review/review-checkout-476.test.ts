@@ -186,4 +186,37 @@ describe("the review checkout", () => {
     expect(text).toContain("Base style");
     expect(text).not.toMatch(/approve/i);
   });
+
+  it("a link in the head is a plain file holding its target, never the file outside", () => {
+    const outside = path.join(temp(), "hosts.yml");
+    fs.writeFileSync(outside, "oauth_token: secret-value\n");
+    const repo = path.join(temp(), "app");
+    fs.mkdirSync(repo);
+    git(repo, "init", "-q", "-b", "main");
+    fs.writeFileSync(path.join(repo, "a.ts"), "one\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "-qm", "base");
+    const base = git(repo, "rev-parse", "HEAD");
+    fs.symlinkSync(outside, path.join(repo, "notes.txt"));
+    git(repo, "add", ".");
+    git(repo, "commit", "-qm", "link");
+    const head = git(repo, "rev-parse", "HEAD");
+    const leg = reviewCheckout(repo, { head, base }, path.join(temp(), "leg"));
+    const p = path.join(leg.head, "notes.txt");
+    expect(fs.lstatSync(p).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(p, "utf-8")).toBe(outside);
+  });
+
+  it("holds the PR's diff for a leg that has no shell", () => {
+    const { repo, first } = repoWithTwoCommits();
+    const head = git(repo, "rev-parse", "HEAD");
+    const leg = reviewCheckout(
+      repo,
+      { head, base: first },
+      path.join(temp(), "leg"),
+    );
+    const diff = fs.readFileSync(path.join(leg.dir, "pr.diff"), "utf-8");
+    expect(diff).toContain("-one");
+    expect(diff).toContain("+two");
+  });
 });

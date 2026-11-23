@@ -2,8 +2,11 @@
  * Issue 476: a review leg reads untrusted PR content (a fork's, after a
  * person's "Review this"), so its launch is narrower than any agent's:
  *
- * - It never loads project or local settings (--setting-sources user): the
- *   head's .claude/settings.json hooks and allow rules can't take effect.
+ * - It runs Claude Code's --restricted mode: no Bash or other code-running
+ *   tools, no WebFetch, no user, project or local settings (so neither the
+ *   head's .claude/settings.json nor the person's own allow rules or
+ *   default mode apply; only Den's --settings), file tools confined to its
+ *   folder. A Claude Code without --restricted can't run a leg.
  * - Only Den's own MCP server, limited to review_submit (--only), with
  *   strict MCP config: no Hub, no project servers, no .mcp.json, no
  *   claude.ai connectors.
@@ -32,9 +35,29 @@ const root = fs.realpathSync(
 );
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
+/** A stand-in Claude Code whose --help says what it takes. */
+function fakeClaude(name: string, help: string): string {
+  const bin = path.join(root, name);
+  fs.writeFileSync(bin, `#!/bin/sh\ncat <<'EOF'\n${help}\nEOF\n`, {
+    mode: 0o755,
+  });
+  return bin;
+}
+const HELP =
+  '  --permission-mode <mode>  Permission mode (choices: "acceptEdits", "auto", "manual", "plan")\n' +
+  "  --restricted              Restricted mode: removes the built-in tools that run commands\n" +
+  "  --setting-sources <s>     Comma-separated list of setting sources";
+const withRestricted = fakeClaude("claude-new", HELP);
+const withoutRestricted = fakeClaude(
+  "claude-old",
+  HELP.split("\n")
+    .filter((l) => !l.includes("--restricted"))
+    .join("\n"),
+);
+
 const persona: Persona = serverPersona();
 
-function input(review: boolean): LaunchInput {
+function input(review: boolean, bin = withRestricted): LaunchInput {
   return {
     persona,
     workspace: { name: "north", dir: root },
@@ -68,13 +91,13 @@ function input(review: boolean): LaunchInput {
     claudeAiConnectors: true,
     permission: "ask",
     env: { HOME: path.join(root, "home") },
-    bin: "/nowhere/claude",
+    bin,
     ...(review ? { review: { tools: ["review_submit"] } } : {}),
   } as LaunchInput;
 }
 
-function launch(review: boolean) {
-  const out = getRuntime("den-claude")!.launch(input(review));
+function launch(review: boolean, bin = withRestricted) {
+  const out = getRuntime("den-claude")!.launch(input(review, bin));
   const files = out.files ?? {};
   const mcpFile = Object.keys(files).find(
     (f) => f.endsWith(".json") && files[f].includes("mcpServers"),
@@ -94,12 +117,17 @@ function launch(review: boolean) {
 }
 
 describe("a review leg's launch", () => {
-  it("loads only the person's own settings, never the head's project settings", () => {
+  it("runs restricted: no shell, no user, project or local settings, file tools in its folder", () => {
     const l = launch(true);
-    const i = l.argv.indexOf("--setting-sources");
-    expect(i).toBeGreaterThan(0);
-    expect(l.argv[i + 1]).toBe("user");
-    expect(launch(false).argv).not.toContain("--setting-sources");
+    expect(l.argv).toContain("--restricted");
+    // Restricted ignores every settings file: no user-only fallback.
+    expect(l.argv).not.toContain("--setting-sources");
+    expect(launch(false).argv).not.toContain("--restricted");
+  });
+
+  it("a Claude Code without --restricted can't run a leg; an ordinary agent still starts", () => {
+    expect(() => launch(true, withoutRestricted)).toThrow(/restricted/i);
+    expect(launch(false, withoutRestricted).argv).not.toContain("--restricted");
   });
 
   it("has only Den's server, limited to review_submit, with strict MCP config", () => {

@@ -57,6 +57,28 @@ function stripAgentConfig(dir: string): void {
   }
 }
 
+/** The PR's diff (base to head), cut at DIFF_MAX with a note saying so. */
+const DIFF_MAX = 4 * 1024 * 1024;
+function prDiff(
+  repoPath: string,
+  refs: { head: string; base: string },
+): string {
+  const d = execFileSync(
+    "git",
+    ["diff", "--no-color", "--no-ext-diff", refs.base, refs.head],
+    {
+      cwd: repoPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 256 * 1024 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    },
+  );
+  return d.length > DIFF_MAX
+    ? d.subarray(0, DIFF_MAX).toString("utf-8") +
+        `\n\n[Den: the diff is ${d.length} bytes; cut here at ${DIFF_MAX}. Read the rest in head/.]\n`
+    : d.toString("utf-8");
+}
+
 export interface LegFolders {
   /** The leg's working folder. */
   dir: string;
@@ -92,7 +114,12 @@ export function reviewCheckout(
       repoPath,
       head,
     ]);
+    // A link checks out as a plain file holding its target: the leg never
+    // reads through a link to a file outside head/.
+    git(head, ["config", "core.symlinks", "false"]);
     git(head, [
+      "-c",
+      "core.symlinks=false",
       "-c",
       "advice.detachedHead=false",
       "checkout",
@@ -122,6 +149,8 @@ export function reviewCheckout(
         git(repoPath, ["show", `${refs.base}:${n}`]) + "\n",
       );
     }
+    // The leg has no shell (--restricted): the PR's diff is a file.
+    fs.writeFileSync(path.join(dir, "pr.diff"), prDiff(repoPath, refs));
     execFileSync("chmod", ["-R", "a-w", dir]);
   } catch (e) {
     removeCheckout(dir);

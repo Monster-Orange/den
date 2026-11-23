@@ -308,6 +308,7 @@ const helpModes = new Map<string, string[] | null>();
 /** Forget the modes asked (tests). */
 export function clearPermissionModesCache(): void {
   helpModes.clear();
+  helpFlags.clear();
 }
 
 /** The choices on `--help`'s --permission-mode entry, or null. */
@@ -343,6 +344,56 @@ function modeCheck(input: LaunchInput, bin: string): string[] {
     );
   }
   return [];
+}
+
+/**
+ * Issue 476: a review leg needs --restricted. Where this Claude Code
+ * doesn't list it, or its help can't be read, the leg doesn't start (fail
+ * closed): its narrowing would otherwise rest on deny rules alone.
+ */
+function restrictedCheck(input: LaunchInput, bin: string): void {
+  if (helpHasFlag(bin, "--restricted", input.env ?? process.env)) return;
+  const v = installedVersion(bin);
+  throw new LaunchError(
+    `${DEN_CLAUDE_ID}: this Claude Code${v ? ` (${v})` : ""} has no --restricted mode, so it can't run a review leg. Update Claude Code.`,
+  );
+}
+
+const helpFlags = new Map<string, string | null>();
+
+/** Whether `bin --help` lists `flag` (cached per binary; false when unreadable). */
+function helpHasFlag(
+  bin: string,
+  flag: string,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  if (isQuarantined(bin)) return false;
+  let key: string;
+  try {
+    const real = fs.realpathSync(bin);
+    const st = fs.statSync(real);
+    key = `${real}\0${st.size}\0${st.mtimeMs}`;
+  } catch {
+    return false;
+  }
+  if (!helpFlags.has(key)) {
+    let text: string | null = null;
+    try {
+      const r = spawnSync(bin, ["--help"], {
+        env,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: HELP_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      if (r.status === 0) text = r.stdout ?? "";
+    } catch {
+      text = null;
+    }
+    helpFlags.set(key, text);
+  }
+  const text = helpFlags.get(key);
+  return !!text && new RegExp(`(^|\\s)${flag}(\\s|$)`, "m").test(text);
 }
 
 /** The installed version, from the install's own files; undefined when unknown. */
@@ -588,9 +639,11 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
 }
 
 /**
- * Issue 476: what a review leg may never do. A leg reads untrusted PR
- * content; gh keeps its login outside the environment, so these denies
- * (and the "ask" intent under them) are the guard, not the env allowlist.
+ * Issue 476: what a review leg may never do, a belt under --restricted
+ * (which removes Bash and WebFetch outright and loads no settings file but
+ * Den's). Bash prefix denies alone are bypassable (`env gh`,
+ * `/usr/bin/curl`); they would hold only because the "ask" intent waits
+ * for a person on any Bash not allowed, and a leg has no allow rules.
  */
 export const REVIEW_LEG_DENY: readonly string[] = [
   "Bash(gh)",
@@ -722,8 +775,10 @@ function common(input: LaunchInput): {
       file,
       ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
-      // Issue 476: a leg never loads the head's project or local settings.
-      ...(input.review ? ["--setting-sources", "user"] : []),
+      // Issue 476: a leg runs restricted (launch() checks this Claude
+      // Code takes it): no shell or WebFetch, no user, project or local
+      // settings (only Den's --settings), file tools in its folder.
+      ...(input.review ? ["--restricted"] : []),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -901,6 +956,7 @@ export const denClaude: Runtime = {
   launch(input): LaunchOutput {
     const bin = binFor(input);
     const id = input.resumeToken ?? randomUUID();
+    if (input.review) restrictedCheck(input, bin);
     const c = common(input);
     const modeWarnings = modeCheck(input, bin);
     // A relaunch from handoff (den#4): the handoff is the first prompt,
