@@ -566,13 +566,17 @@ export class GithubWatcher {
 
   /**
    * Issue 1214: finished run watches still kept, one a repo (the least
-   * lately looked at): a re-run reopens them.
+   * lately looked at), each at most every github.rerun_look_minutes: a
+   * re-run reopens them. A reopened watch takes no slot from the cap or
+   * the queue: it is the same watch, open again for a while.
    */
   private rerunWatches(now: number): Watch[] {
+    const gap = this.d.settings().rerunLookMinutes * 60_000;
     const by = new Map<string, Watch>();
     for (const w of this.watches) {
       if (w.kind !== "run" || w.phase !== "done" || !w.head) continue;
       if ((w.doneAt ?? 0) + DONE_KEEP_MS < now) continue;
+      if ((w.checkedAt ?? w.doneAt ?? 0) + gap > now) continue;
       const k = w.repo.toLowerCase();
       const o = by.get(k);
       if (!o || (w.checkedAt ?? 0) < (o.checkedAt ?? 0)) by.set(k, w);

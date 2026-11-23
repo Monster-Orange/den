@@ -55,6 +55,7 @@ function setup(principal: unknown) {
       watchesMax: 50,
       staleMinutes: 60,
       maxOpenHours: 24,
+      rerunLookMinutes: 5,
     }),
     relay: async () => true,
   });

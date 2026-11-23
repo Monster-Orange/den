@@ -8,7 +8,10 @@
  */
 import { beforeEach, describe, expect, it } from "@jest/globals";
 import { GithubWatcher } from "../../../../src/shared/github-watch/watcher.js";
-import type { GithubWatchSettings } from "../../../../src/shared/github-watch/settings.js";
+import {
+  githubWatchSettings,
+  type GithubWatchSettings,
+} from "../../../../src/shared/github-watch/settings.js";
 import type { Delivery } from "../../../../src/shared/hub-delivery.js";
 import { FakeGithub } from "./fake-github.js";
 
@@ -74,6 +77,7 @@ beforeEach(() => {
     watchesMax: 50,
     staleMinutes: 60,
     maxOpenHours: 24,
+    rerunLookMinutes: 5,
   };
   gh.pr(A, 1, SHA1);
 });
@@ -177,7 +181,7 @@ describe("a run watch counts the run's own jobs", () => {
       conclusion: null,
       attempt: 2,
     });
-    await minutes(w, 3);
+    await minutes(w, 6);
     const v = w.list("planner")[0];
     expect(v.state).toBe("running");
     expect(v.note).toMatch(/attempt 2/i);
@@ -193,6 +197,46 @@ describe("a run watch counts the run's own jobs", () => {
     expect(sent).toHaveLength(2);
     expect(sent[1].text).toMatch(/attempt 2/);
     expect(sent[1].text).toContain("1 passed, 0 failed");
+  });
+});
+
+describe("looking for a re-run costs little", () => {
+  it("a finished run is looked at no more than every github.rerun_look_minutes", async () => {
+    run(903, "completed", "success");
+    gh.job(A, 903, {
+      id: 1,
+      name: "lint",
+      status: "completed",
+      conclusion: "success",
+    });
+    const w = watcher();
+    await w.create(ask({ run: 903 }));
+    await minutes(w, 2);
+    expect(sent).toHaveLength(1);
+    // Told at minute 1: no look until minute 6.
+    gh.calls = [];
+    await minutes(w, 3);
+    expect(gh.calls.filter((c) => c === `repos/${A}/actions/runs/903`)).toEqual(
+      [],
+    );
+    await minutes(w, 20);
+    const looks = gh.calls.filter(
+      (c) => c === `repos/${A}/actions/runs/903`,
+    ).length;
+    expect(looks).toBeGreaterThanOrEqual(3);
+    expect(looks).toBeLessThanOrEqual(5);
+  });
+
+  it("is a Setting: github.rerun_look_minutes, 5 by default, kept in range", () => {
+    expect(githubWatchSettings({}).rerunLookMinutes).toBe(5);
+    expect(
+      githubWatchSettings({ github: { rerun_look_minutes: 15 } })
+        .rerunLookMinutes,
+    ).toBe(15);
+    expect(
+      githubWatchSettings({ github: { rerun_look_minutes: 0 } })
+        .rerunLookMinutes,
+    ).toBe(5);
   });
 });
 
