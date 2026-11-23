@@ -947,8 +947,10 @@ body.den-has-shell .den-upd {
      (6 characters and its "…") and its ▾. Its value ends in "…" where
      the left part can't hold it, so the crumbs end where the left part
      ends, beside an optional menu crumb too. The whole value is in its
-     menu. */
-  .den-scope .den-ib.den-last {
+     menu. An env's name is short and never capped (below): an env crumb
+     last keeps its own width, so a floor wider than its words never takes
+     room from the crumb before it. */
+  .den-scope .den-ib.den-last:not([data-scope="env"]) {
     min-width: calc(24px + 7ch + 0.28em);
     overflow: hidden;
   }

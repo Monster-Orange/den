@@ -99,8 +99,15 @@ describe("issue 1080: a long last crumb on a narrow left part", () => {
     // Hidden from sight only: a screen reader still hears the key.
     expect(q()).not.toMatch(/\.den-scope \.den-k\s*\{\s*display:\s*none/);
     expect(q()).toMatch(
-      /\.den-scope \.den-ib\.den-last\s*\{[^}]*min-width:\s*calc\(24px \+ 7ch \+ 0\.28em\)/,
+      /\.den-scope \.den-ib\.den-last:not\(\[data-scope="env"\]\)\s*\{[^}]*min-width:\s*calc\(24px \+ 7ch \+ 0\.28em\)/,
     );
+  });
+  // CI (issue 981's tablet test): an env crumb last ("local") is shorter
+  // than the floor, so the floor made its box wider than its words and
+  // took that room from the crumb before it ("All active" cut short). An
+  // env's name is short and never capped: it keeps its own width.
+  it("an env crumb last keeps its own width: no floor wider than its words", () => {
+    expect(q()).not.toMatch(/\.den-scope \.den-ib\.den-last\s*\{/);
   });
   it("no guessed cap from the left part's width", () => {
     expect(CSS).not.toMatch(/cqi/);
