@@ -16,8 +16,36 @@ export interface GhResponse {
   error?: string;
 }
 
-/** One GET of a REST path (`repos/o/r/...`, no leading slash). */
-export type GhGet = (path: string) => Promise<GhResponse>;
+/**
+ * One GET of a REST path (`repos/o/r/...`, no leading slash). With `etag`
+ * it sends If-None-Match, so an unchanged answer is a 304 with no body and
+ * costs no rate limit (issue 476).
+ */
+export type GhGet = (
+  path: string,
+  opts?: { etag?: string },
+) => Promise<GhResponse>;
+
+/** A write: the method, the REST path, and the JSON body (on stdin). */
+export type GhSend = (
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  path: string,
+  body: unknown,
+) => Promise<GhResponse>;
+
+type GhRun = (
+  args: string[],
+  stdin?: string,
+) => Promise<{ code: number; stdout: string; stderr: string }>;
+
+/** A REST path gh takes as a path, never as an option or a URL. */
+const PATH_RE = /^[A-Za-z0-9][A-Za-z0-9_./%-]*(\?[A-Za-z0-9_.=&%,+-]*)?$/;
+/** An ETag as GitHub sends it: no quotes inside, no line breaks. */
+const ETAG_RE = /^(W\/)?"[^"\r\n]{1,200}"$/;
+
+function checkPath(path: string): void {
+  if (!PATH_RE.test(path)) throw new Error(`not a REST path: ${path}`);
+}
 
 /** `gh api -i <path>`'s output as a response. */
 export function parseGhInclude(
@@ -59,13 +87,28 @@ export function parseGhInclude(
 }
 
 /** A GhGet over gh (the server passes report-routes' runGh). */
-export function ghGet(
-  run: (
-    args: string[],
-  ) => Promise<{ code: number; stdout: string; stderr: string }>,
-): GhGet {
-  return async (path) => {
-    const r = await run(["api", "-i", path]);
+export function ghGet(run: GhRun): GhGet {
+  return async (path, opts) => {
+    checkPath(path);
+    const args = ["api", "-i"];
+    if (opts?.etag !== undefined) {
+      if (!ETAG_RE.test(opts.etag)) throw new Error("not an ETag");
+      args.push("-H", `If-None-Match: ${opts.etag}`);
+    }
+    args.push(path);
+    const r = await run(args);
+    return parseGhInclude(r.stdout, r.code, r.stderr);
+  };
+}
+
+/** A GhSend over gh: the JSON goes on stdin, never in argv. */
+export function ghSend(run: GhRun): GhSend {
+  return async (method, path, body) => {
+    checkPath(path);
+    const r = await run(
+      ["api", "-i", "--method", method, path, "--input", "-"],
+      JSON.stringify(body ?? {}),
+    );
     return parseGhInclude(r.stdout, r.code, r.stderr);
   };
 }
