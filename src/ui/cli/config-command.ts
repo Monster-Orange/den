@@ -76,6 +76,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // Issue 1311: how long messages wait on a draft before the bell says so.
+  "agents.draft_hold_max_minutes": ["agents_draft", "hold_max_minutes"],
   // Issue 1129: the restart queue (agents.resume.*).
   "agents.resume.batch": ["agents_resume", "batch"],
   "agents.resume.gap_seconds": ["agents_resume", "gap_seconds"],

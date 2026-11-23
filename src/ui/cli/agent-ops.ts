@@ -92,7 +92,11 @@ import {
   typingCheck,
   type TypingCheck,
 } from "../../shared/agents/trust-prompt.js";
-import { clearDraft, draftPending } from "../../shared/agents/draft-input.js";
+import {
+  clearDraft,
+  clearDraftSeenEmpty,
+  draftPending,
+} from "../../shared/agents/draft-input.js";
 import {
   resolveMode,
   type EffectiveMode,
@@ -8950,6 +8954,7 @@ async function inputState(
     let screen: TypingCheck = "not_at_prompt";
     let out = "";
     let sid = rec.session.id;
+    let readAt = 0;
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
@@ -8957,6 +8962,7 @@ async function inputState(
       // A dialog waiting for the person: not at its prompt, whatever its
       // transcript or quiet output says.
       if (live && s) {
+        readAt = Date.now();
         out = (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8");
         screen = agentScreenCheck(rec.runtime, out);
       }
@@ -8974,8 +8980,9 @@ async function inputState(
     // types, until it is sent or cleared (an empty input line on screen
     // clears it too). Not for the restart waits (promptCheck false).
     if (o.promptCheck !== false) {
+      // An empty line read before the draft (or its echo) can't clear it.
       if (draftPending(sid) && inputLineEmpty(out, getRuntime(rec.runtime)))
-        clearDraft(sid);
+        clearDraftSeenEmpty(sid, readAt);
       if (draftPending(sid)) {
         draftHeld.add(id);
         return "busy";
@@ -9341,6 +9348,8 @@ const typingQueued = new Map<string, number>();
 
 /** Issue 1311: how often a held text looks again for its draft's end. */
 const DRAFT_LOOK_MS = 500;
+/** Issue 1311: the same, once a draft has held it for a minute. */
+const DRAFT_LOOK_SLOW_MS = 2000;
 
 /**
  * Issue 1311: waits until agent `rec`'s person's draft is sent or cleared
@@ -9352,6 +9361,7 @@ async function draftCleared(
   rec: AgentRecord,
 ): Promise<boolean> {
   const sid = rec.session.id;
+  const began = Date.now();
   for (;;) {
     if (!draftPending(sid)) return true;
     try {
@@ -9360,18 +9370,23 @@ async function draftCleared(
       try {
         const s = (await c.list()).find((x) => x.ref.id === sid);
         if (!s || s.exited) return (clearDraft(sid), false);
+        const readAt = Date.now();
         const out = (await c.scrollback(sid, 64 * 1024)).toString("utf-8");
-        if (inputLineEmpty(out, getRuntime(rec.runtime))) {
-          clearDraft(sid);
+        if (
+          inputLineEmpty(out, getRuntime(rec.runtime)) &&
+          clearDraftSeenEmpty(sid, readAt)
+        )
           return true;
-        }
       } finally {
         c.close();
       }
     } catch {
       /* the host didn't answer: look again */
     }
-    await new Promise((r) => setTimeout(r, DRAFT_LOOK_MS));
+    // A draft left a while: look less often (each look reads its screen).
+    const wait =
+      Date.now() - began > 60_000 ? DRAFT_LOOK_SLOW_MS : DRAFT_LOOK_MS;
+    await new Promise((r) => setTimeout(r, wait));
   }
 }
 

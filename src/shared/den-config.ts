@@ -673,6 +673,7 @@ export interface UserConfig {
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
      */
     shell_path_timeout_seconds?: unknown;
+    draft_hold_max_minutes?: unknown;
     /**
      * issue_write: the persona roles that write GitHub issues in their
      * project's repos (a list), and the install's writes an hour
@@ -2001,7 +2002,33 @@ export const UNASKED_EXIT_WINDOW_MINUTES_DEFAULT = 10;
  * messages wait on a person's unsent draft before the bell says so. The
  * draft is never sent for them; they go on waiting.
  */
-export const DRAFT_HOLD_MAX_MINUTES_DEFAULT = 30;
+export const DRAFT_HOLD_MAX_MINUTES = {
+  default: 30,
+  min: 1,
+  max: 1440,
+} as const;
+export const DRAFT_HOLD_MAX_MINUTES_DEFAULT = DRAFT_HOLD_MAX_MINUTES.default;
+
+/**
+ * Issue 1311: agents.draft_hold_max_minutes (user.yml) for Settings: 30
+ * when unset, 1 to 1440. A wrong value throws, naming the key.
+ */
+export function agentsDraftHoldMaxMinutes(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.draft_hold_max_minutes;
+  if (v === undefined || v === null) return DRAFT_HOLD_MAX_MINUTES.default;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v >= DRAFT_HOLD_MAX_MINUTES.min &&
+    v <= DRAFT_HOLD_MAX_MINUTES.max
+  )
+    return v;
+  throw new Error(
+    `agents.draft_hold_max_minutes: minutes, ${DRAFT_HOLD_MAX_MINUTES.min} to ${DRAFT_HOLD_MAX_MINUTES.max} (got ${JSON.stringify(v)})`,
+  );
+}
 
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
@@ -2529,9 +2556,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     .draft_hold_max_minutes;
   out.draftHoldMaxMs = DRAFT_HOLD_MAX_MINUTES_DEFAULT * 60_000;
   if (dh !== undefined && dh !== null) {
-    if (typeof dh !== "number" || !Number.isFinite(dh) || dh <= 0)
+    if (
+      typeof dh !== "number" ||
+      !Number.isFinite(dh) ||
+      dh < DRAFT_HOLD_MAX_MINUTES.min ||
+      dh > DRAFT_HOLD_MAX_MINUTES.max
+    )
       throw new Error(
-        `agents.draft_hold_max_minutes: minutes, above 0 (got ${JSON.stringify(dh)})`,
+        `agents.draft_hold_max_minutes: minutes, ${DRAFT_HOLD_MAX_MINUTES.min} to ${DRAFT_HOLD_MAX_MINUTES.max} (got ${JSON.stringify(dh)})`,
       );
     out.draftHoldMaxMs = Math.round(dh * 60_000);
   }

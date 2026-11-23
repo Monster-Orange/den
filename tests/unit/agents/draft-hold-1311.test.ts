@@ -18,9 +18,17 @@ import {
 import {
   clearDraft,
   draftPending,
+  ECHO_MS,
   noteInput,
 } from "../../../src/shared/agents/draft-input.js";
 import "../../../src/shared/agents/runtimes.js";
+import {
+  DRAFT_HOLD_MAX_MINUTES,
+  readAgentsConfig,
+  type DenConfig,
+} from "../../../src/shared/den-config.js";
+import * as cliRows from "../../../src/shared/settings-cli-rows.js";
+import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
@@ -69,6 +77,30 @@ describe("issue 1311: which keys make a draft", () => {
     key(sid, "\x1b]11;rgb:0000/0000/0000\x07"); // an OSC answer
     key(sid, "\x1b[2;1R"); // a cursor report
     expect(draftPending(sid)).toBe(false);
+  });
+
+  it("an escape split across two frames is still an escape, not text", () => {
+    key(sid, "\x1b");
+    key(sid, "[A"); // an arrow, its ESC in the frame before
+    key(sid, "\x1b[");
+    key(sid, "<0;12;5M"); // a mouse click, split inside
+    key(sid, "\x1b]11;rgb:00");
+    key(sid, "00/0000/0000\x07"); // an OSC answer, split inside
+    expect(draftPending(sid)).toBe(false);
+  });
+
+  it("a paste whose start marker is split still makes a draft, and its end ends it", () => {
+    key(sid, "\x1b[20");
+    key(sid, "0~pasted\x1b[2");
+    key(sid, "01~");
+    expect(draftPending(sid)).toBe(true);
+  });
+
+  it("an Escape key alone, then text a moment later: the text is a draft", async () => {
+    key(sid, "\x1b");
+    await new Promise((r) => setTimeout(r, 600));
+    key(sid, "[abc");
+    expect(draftPending(sid)).toBe(true);
   });
 
   it("a backslash before Enter is a new line in the draft, not a send", () => {
@@ -179,9 +211,27 @@ describe("issue 1311: a draft holds what Den types", () => {
     expect(draftPending(sid)).toBe(true);
     r.made[0].emit(box(""));
     await settle();
+    // Older than its echo could take: the empty line is what it shows.
+    await new Promise((res) => setTimeout(res, ECHO_MS + 100));
     const d = resolveAgentsDeps(r.deps);
     expect(await agentInputState(d, "planner", new Set(), 200)).toBe("idle");
     expect(draftPending(sid)).toBe(false);
+  }, 30_000);
+
+  it("a draft just begun, against an empty line its echo hasn't reached: held", async () => {
+    const { r, sid } = await planner(box(""));
+    key(sid, "h");
+    const d = resolveAgentsDeps(r.deps);
+    expect(await agentInputState(d, "planner", new Set(), 200)).toBe("busy");
+    expect(draftPending(sid)).toBe(true);
+    const before = r.made[0].writes.length;
+    expect(
+      await typeIntoAgent(d, "planner", "a comment from Hub", {
+        onDraft: "refuse",
+      }),
+    ).toBe(false);
+    expect(written(r, before)).toBe("");
+    clearDraft(sid);
   }, 30_000);
 
   it("no draft: typed as today", async () => {
@@ -189,4 +239,57 @@ describe("issue 1311: a draft holds what Den types", () => {
     const d = resolveAgentsDeps(r.deps);
     expect(await typeIntoAgent(d, "planner", "a comment from Hub")).toBe(true);
   }, 30_000);
+});
+
+describe("issue 1311: agents.draft_hold_max_minutes is a Setting", () => {
+  const MIN = 60_000;
+  const hold = (v: unknown) =>
+    readAgentsConfig({
+      agents: { draft_hold_max_minutes: v },
+    } as unknown as DenConfig).draftHoldMaxMs;
+
+  it("30 unset; 1 to 1440; anything else names the key", () => {
+    expect(readAgentsConfig({} as DenConfig).draftHoldMaxMs).toBe(30 * MIN);
+    expect(hold(1)).toBe(MIN);
+    expect(hold(1440)).toBe(1440 * MIN);
+    for (const bad of [0, 0.5, 1441, "30", -1])
+      expect(() => hold(bad)).toThrow(/agents\.draft_hold_max_minutes/);
+  });
+
+  it("Settings has its row, and its POST field writes user.yml agents.draft_hold_max_minutes", () => {
+    const row = (
+      DEN_SETTINGS as {
+        id: string;
+        keys?: string[];
+        control?: Record<string, unknown>;
+        scope?: string;
+        category?: string;
+      }[]
+    ).find((x) => x.keys?.includes("agents_draft.hold_max_minutes"));
+    expect(row).toMatchObject({
+      category: "agents",
+      scope: "user",
+      control: {
+        type: "number",
+        min: DRAFT_HOLD_MAX_MINUTES.min,
+        max: DRAFT_HOLD_MAX_MINUTES.max,
+      },
+    });
+    expect(DRAFT_HOLD_MAX_MINUTES).toMatchObject({ min: 1, max: 1440 });
+    const user: Record<string, unknown> = { agents: { lock_wait_minutes: 5 } };
+    expect(
+      cliRows.patchCliRows(user, { agents_draft: { hold_max_minutes: 45 } }),
+    ).toEqual({ ok: true });
+    expect(user.agents).toEqual({
+      lock_wait_minutes: 5,
+      draft_hold_max_minutes: 45,
+    });
+    for (const bad of [0, 1441])
+      expect(
+        cliRows.patchCliRows(user, { agents_draft: { hold_max_minutes: bad } })
+          .ok,
+      ).toBe(false);
+    cliRows.patchCliRows(user, { agents_draft: { hold_max_minutes: null } });
+    expect(user.agents).toEqual({ lock_wait_minutes: 5 });
+  });
 });
