@@ -342,6 +342,7 @@ import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
+import { unbindAgentHubToken } from "../../shared/hub-agent-tokens.js";
 import {
   jobsUnder,
   readProcesses,
@@ -465,6 +466,20 @@ export interface AgentsDeps extends SessionsDeps {
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
   /**
+   * Issue 249: the Hub token agent `a` calls Hub with, bound to it on Hub
+   * (hub-agent-tokens.ts), or null for the install's. Den's web server
+   * sets it; default: the install's token for every agent.
+   */
+  hubAgentToken?: (
+    hub: { url: string; token: string },
+    a: { id: string; name: string; workspace: string },
+  ) => Promise<string | null>;
+  /**
+   * Issue 249: agent `id` is removed: revoke its Hub token on Hub and
+   * forget it (default: the server's store, when it keeps one for `id`).
+   */
+  hubAgentUnbind?: (id: string) => Promise<void>;
+  /**
    * Issue 163 (b): the secrets store and ref the agents' sign-in token is
    * read from under the always-on service (default: the install's
    * configured backend and secrets.refs.agent_signin_token). Issue 338:
@@ -554,6 +569,8 @@ export interface AgentsResolved extends Resolved {
    * store refused it), in plain words; null otherwise.
    */
   hubProblem: () => string | null;
+  hubAgentToken: NonNullable<AgentsDeps["hubAgentToken"]>;
+  hubAgentUnbind: NonNullable<AgentsDeps["hubAgentUnbind"]>;
   processes: () => ProcessRow[];
   /** Issue 163 (b): the env a start signs in with, and what to say. */
   agentSignIn: (
@@ -754,8 +771,9 @@ function defaultDenBase(): string {
 /**
  * D52: Hub as Den's proxy calls it for agent `agentId` (its actor token
  * proved it): Hub's base URL, its MCP endpoint, and the headers Den sets
- * from its own records. The install token is among them; it never leaves
- * Den's server. Null when Hub isn't set up or its token can't be read.
+ * from its own records. The token is the agent's own (issue 249,
+ * hubAgentToken), else the install's; neither leaves Den's server. Null
+ * when Hub isn't set up or its token can't be read.
  */
 export async function hubUpstream(
   d: AgentsResolved,
@@ -789,10 +807,18 @@ export async function hubUpstream(
   const projectWs = [linked, who.workspace].find(
     (w): w is string => !!w && !isServerScope(w),
   );
+  // Issue 249: the agent's own Hub token, bound to it on Hub, when Hub gave
+  // one; the install's for the server agent and when Hub didn't.
+  const own = await d
+    .hubAgentToken(
+      { url: h.url, token: h.token },
+      { id: who.agentId, name, workspace: who.workspace },
+    )
+    .catch(() => null);
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
-    headers: hubHeaders(h.token, {
+    headers: hubHeaders(own ?? h.token, {
       agent: name,
       agentId: who.agentId,
       session: who.session,
@@ -894,6 +920,10 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
+    hubAgentToken: d.hubAgentToken ?? (async () => null),
+    hubAgentUnbind:
+      d.hubAgentUnbind ??
+      ((id) => unbindAgentHubToken(base.stateDir, d.hub ?? defaultHub, id)),
     processes: d.processes ?? readProcesses,
     agentSignIn: (tokenEnv, runtimeId, folder) =>
       agentSignInEnv(
@@ -7981,6 +8011,8 @@ async function removeRecords(
     for (const rec of recs) {
       const s = sessionOf(sessions, rec);
       revokeAgentTokens(d.stateDir(), rec.id);
+      // Issue 249: its Hub token too, on Hub.
+      await d.hubAgentUnbind(rec.id).catch(() => undefined);
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
       if (removeRecord(d.stateDir(), rec.id))
         out.push({ agent: rec.id, workspace: rec.workspace });
@@ -8046,6 +8078,7 @@ export async function pruneStopped(
   });
   for (const r of old) {
     revokeAgentTokens(d.stateDir(), r.id);
+    await d.hubAgentUnbind(r.id).catch(() => undefined);
     removeRecord(d.stateDir(), r.id);
   }
   purgeRemoved(d.stateDir(), 0, now);

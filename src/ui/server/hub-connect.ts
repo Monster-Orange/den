@@ -14,8 +14,9 @@
  *      /connect/token), stores the token and points hub.token at it, then
  *      answers a page that moves on to Settings by script, a same-site
  *      navigation that carries the cookie again.
- *   4. POST /api/hub/disconnect revokes the token on Hub, then removes it
- *      here and clears hub.token.
+ *   4. POST /api/hub/disconnect revokes the agents' own Hub tokens (issue
+ *      249), then the install's token on Hub, then removes it here and
+ *      clears hub.token.
  *
  * Where the token goes (SEC-0: the install's, never Den's): the install's
  * own secrets store when it keeps secrets (1Password, Doppler: a new item
@@ -43,6 +44,10 @@ import {
   type HubTokenRotation,
 } from "../../shared/hub.js";
 import { recordAction } from "./audit.js";
+import {
+  AGENT_GRANT_NOTE_SUBJECT,
+  clearAgentsNotCovered,
+} from "../../shared/hub-agent-grant.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
@@ -112,6 +117,22 @@ export interface HubConnectDeps {
    * (doctor lists it; each start tries the revoke again).
    */
   unrevoked?: (u: { url: string; why: string; token: string }) => void;
+  /**
+   * Issue 249: revoke every agent's own Hub token (hub-agent-tokens.ts)
+   * with the install's token, before the install's own is revoked.
+   * `force`: forget the ones Hub couldn't revoke anyway. Absent: none.
+   */
+  unbindAgents?: (
+    hub: { url: string; token: string },
+    force: boolean,
+  ) => Promise<{ revoked: number; failed: number }>;
+  /**
+   * Issue 249: the install connected (its new grant carries agents=yes) or
+   * disconnected: the not-covered mark goes, so the next agent mint asks
+   * Hub again, and so does the reconnect item (hub-agent-grant.ts).
+   * Absent: nothing.
+   */
+  agentGrantSettled?: () => void;
 }
 
 /** A `<name>.localhost` host: this machine (RFC 6761). */
@@ -334,6 +355,24 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       return m.noteHub(await m.defaultHubChangeDeps(), { url, company });
     },
     unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
+    agentGrantSettled: () => {
+      try {
+        clearAgentsNotCovered(getStateDir());
+      } catch {
+        /* a mark that can't go: the next mint is held as before */
+      }
+      void import("./notification-service.js")
+        .then((m) =>
+          m
+            .notificationDeps()
+            .store.remove((n) => n.subject === AGENT_GRANT_NOTE_SUBJECT),
+        )
+        .catch(() => undefined);
+    },
+    unbindAgents: async (hub, force) =>
+      (await import("../../shared/hub-agent-tokens.js"))
+        .serverHubAgentTokens()
+        .unbindAll(hub, { force }),
   };
 }
 
@@ -428,6 +467,11 @@ export class HubConnect {
     // reconnect sends it again.
     const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
+    // Issue 249: the one grant covers this install's agents. Always sent:
+    // a Hub that doesn't know the field ignores it. Whether it covers them
+    // Den learns only from the agent mint (403 agents_not_covered), never
+    // from whoami's connect.agents feature (a capability of Hub's).
+    q.set("agents", "yes");
     return { ok: true, location: `${hubUrl}/connect?${q}` };
   }
 
@@ -539,6 +583,8 @@ export class HubConnect {
       hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
     this.deps.writeUser({ ...user, hub });
+    // Issue 249: a new grant (agents=yes): the next agent mint asks again.
+    this.deps.agentGrantSettled?.();
     // 0.4.47: the token Den keeps in memory is the old one: read anew.
     forgetHubToken(undefined, Date.now(), { now: true });
     if (leaving && oldToken)
@@ -582,6 +628,24 @@ export class HubConnect {
     const token = await this.deps.readToken(cfg);
     let revoked = false;
     let note = "";
+    let agents = 0;
+    if (token && this.deps.unbindAgents) {
+      // Issue 249: the agents' own tokens first, each by its id, while the
+      // install's works. Hub doesn't yet end an install's agent tokens when
+      // the install disconnects; Hub 0.2.11 will, and this revoke per agent
+      // stays harmless after that.
+      const a = await this.deps
+        .unbindAgents({ url: cfg.url, token }, force)
+        .catch(() => ({ revoked: 0, failed: 1 }));
+      if (a.failed && !force)
+        return {
+          ok: false,
+          error: `Hub couldn't revoke ${a.failed === 1 ? "1 agent's Hub token" : `${a.failed} agents' Hub tokens`}. Nothing was removed. Try again, or remove it here anyway.`,
+        };
+      if (a.failed)
+        note += ` Hub couldn't revoke ${a.failed === 1 ? "1 agent's token" : `${a.failed} agents' tokens`}: ${a.failed === 1 ? "it works" : "they work"} there until an admin revokes this install.`;
+      agents = a.revoked;
+    }
     if (token) {
       try {
         revoked = await this.deps.revoke(cfg.url, token);
@@ -617,10 +681,11 @@ export class HubConnect {
     if (Object.keys(hub).length) user.hub = hub;
     else delete user.hub;
     this.deps.writeUser(user);
+    this.deps.agentGrantSettled?.();
     return {
       ok: true,
       revoked,
-      message: `Disconnected.${revoked ? " Hub revoked this install's token." : ""}${note}`,
+      message: `Disconnected.${revoked ? ` Hub revoked this install's token${agents ? ` and ${agents === 1 ? "1 agent's token" : `${agents} agents' tokens`}` : ""}.` : ""}${note}`,
     };
   }
 }
