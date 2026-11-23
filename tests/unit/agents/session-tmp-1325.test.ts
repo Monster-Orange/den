@@ -138,8 +138,8 @@ describe("issue 1325: the session's own temp folder", () => {
       x.includes(`/den-${"[A-Za-z0-9]".repeat(6)}(/|$)`),
     );
     const allowOwn = lines.findIndex((x) => x.startsWith("(allow file-write*"));
-    expect(lines[denyOthers]).toMatch(
-      /^\(deny file-write\* \(regex #"\^\/private\/tmp\/den-/,
+    expect(lines[denyOthers]).toContain(
+      `(deny file-write* (regex #"^${realPath("/tmp")}/den-`,
     );
     expect(denyOthers).toBeLessThan(allowOwn);
     expect(lines[allowOwn]).toContain(realPath(dir));
@@ -239,10 +239,12 @@ describe("issue 1325: the session's own temp folder", () => {
   });
 
   it("doctor names a den-XXXXXX folder no record names", () => {
-    const named = makeSessionTmp(base);
-    const left = makeSessionTmp(base);
-    expect(leftoverSessionTmps([named], base)).toEqual([realPath(left)]);
-    for (const d of [named, left]) removeSessionTmp(d, base);
+    // Its own base: a folder another case left can't count here.
+    const own = fs.mkdtempSync(path.join(base, "doc-"));
+    const named = makeSessionTmp(own);
+    const left = makeSessionTmp(own);
+    expect(leftoverSessionTmps([named], own)).toEqual([realPath(left)]);
+    for (const d of [named, left]) removeSessionTmp(d, own);
   });
 });
 
