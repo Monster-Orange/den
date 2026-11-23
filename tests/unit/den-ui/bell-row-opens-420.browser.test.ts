@@ -127,7 +127,7 @@ async function hit(
   phone: boolean,
   where: "left" | "right" | "middle" = "middle",
 ) {
-  const box = (await p.locator(sel).first().boundingBox())!;
+  const box = (await p.locator(sel).boundingBox())!;
   const x =
     where === "left"
       ? box.x + 3
