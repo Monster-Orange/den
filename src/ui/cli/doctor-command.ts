@@ -53,6 +53,11 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { AUDIT_FILE } from "../../shared/audit-file.js";
+import {
+  SIGNIN_REQUEST_VERB,
+  signinRequestCounts,
+} from "../../shared/signin-request-count.js";
 import {
   sandboxFor,
   sandboxHidesFile,
@@ -1715,6 +1720,60 @@ export function requestKeepLines(
 }
 
 /**
+ * Issue 1333: "Allow this computer?" requests in the last day, from the
+ * activity trail (audit.jsonl, verb signin-request), and how many nobody
+ * approved. Requests are named by count only here; the trail has each
+ * one's address. Never a code.
+ */
+export function signinRequestLines(
+  title: string,
+  o: { stateDir?: () => string; now?: number } = {},
+): { lines: string[]; check?: OnboardCheck } {
+  let text = "";
+  try {
+    text = fs.readFileSync(
+      path.join((o.stateDir ?? getStateDir)(), AUDIT_FILE),
+      "utf-8",
+    );
+  } catch {
+    /* no trail yet: none */
+  }
+  const entries: { ts: string; verb: string; detail: string }[] = [];
+  for (const l of text.split("\n")) {
+    if (!l.includes(SIGNIN_REQUEST_VERB)) continue;
+    try {
+      const e = JSON.parse(l) as {
+        ts?: unknown;
+        verb?: unknown;
+        detail?: unknown;
+      };
+      if (typeof e.ts === "string" && typeof e.verb === "string")
+        entries.push({
+          ts: e.ts,
+          verb: e.verb,
+          detail: String(e.detail ?? ""),
+        });
+    } catch {
+      /* a torn line */
+    }
+  }
+  const c = signinRequestCounts(entries, o.now);
+  const detail = c.requests
+    ? `${c.requests} sign-in request${c.requests === 1 ? "" : "s"} in the last day, ${c.notApproved} nobody approved. The activity trail (verb signin-request) says where each came from`
+    : "no sign-in requests in the last day";
+  const status = c.notApproved ? "warn" : "ok";
+  return {
+    lines: [
+      "",
+      `${title} doctor: Sign-in requests`,
+      "",
+      `  sign-in requests  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "signin_requests", status, detail },
+  };
+}
+
+/**
  * Issue 278: each running agent's instruction files (the ones its runtime
  * loads at start for its folder, by stat only) against a share of its
  * model's context (agent_context.instruction_share_percent). Over it: a
@@ -1865,7 +1924,10 @@ export function signingInSandbox(
     if (fs.existsSync(f)) {
       const why = sandboxHidesFile(f, input);
       if (why)
-        return { ok: false, detail: `agents can't read their signing key: ${why}` };
+        return {
+          ok: false,
+          detail: `agents can't read their signing key: ${why}`,
+        };
     }
   return checkAgentSigning(g, {
     ...(o.tmp ? { tmp: o.tmp } : {}),
@@ -2157,6 +2219,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    // Issue 1333: sign-in requests in the last day.
+    r.checks.push(signinRequestLines(readBrand().name).check!);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
     // Issue 636: whether this install is a test bed.
@@ -2323,6 +2387,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   // Issue 636: whether this install is a test bed.
   for (const l of (await import("./test-person.js")).testBedLines(

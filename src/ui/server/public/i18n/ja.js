@@ -989,6 +989,9 @@
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
       "{name} からコードを取得できませんでした。もう一度お試しください。",
+    "err.signin.pairStartLead":
+      "{host} またはほかのコンピューターで、すでに {name} にサインインしているブラウザーからコードでサインインします。",
+    "err.signin.pairStart": "ほかのコンピューターからサインイン",
     "err.signin.newCode": "新しいコードを取得",
     "err.signin.youreIn": "サインインしました。",
     "err.signin.expiredLead":
@@ -2091,14 +2094,20 @@
     "pair.aDevice": "ブラウザー",
     "pair.local": "このコンピューター(localhost 経由)",
     "pair.help":
-      "そのコンピューターの画面に表示されているコードを入力してください。自分でサインインしているコンピューターだけを許可してください。",
+      "入力することで、そのコンピューターの前にいることを証明します。自分でサインインしているコンピューターだけを許可してください。",
     "pair.allow": "許可",
     "pair.allowed": "そのコンピューターはサインインしました。",
     "pair.ended":
       "そのリクエストは終了しました。そのコンピューターはページを閉じたか、すでにサインインしています。何も許可していません。",
     "pair.expired": "そのコードは期限切れです。何も許可していません。",
     "pair.close": "閉じる",
-    "pair.codeLabel": "そのコンピューターの画面のコード",
+    "pair.from": "{client} から、{host} を求めています（{time}）。",
+    "pair.fromNamed":
+      "{client}（自称 {name}）から、{host} を求めています（{time}）。",
+    "pair.unknownAddr": "Den が確認できなかったアドレス",
+    "pair.unexpected":
+      "今ほかのコンピューターでサインインしようとしていないなら、拒否してください。",
+    "pair.codeLabel": "そのコンピューターに表示されているコードを入力",
     "pair.age": "{n} 分前に要求。",
     "pair.ageNow": "たった今要求。",
     "pair.fromLogin": "{time} に実行した web login から。",
