@@ -186,6 +186,9 @@ export const KIT_FILES: readonly string[] = [
   "setting-field.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  // Issue 789: a preview in a sandboxed frame, and the script inside it.
+  "preview.js",
+  "preview-frame.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",

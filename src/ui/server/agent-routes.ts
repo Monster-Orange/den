@@ -675,6 +675,26 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 646: Connect's one review: a row per project, Connect and link all.
+  if (pathname === "/api/hub/connect-review") {
+    const [rv, audit, guard] = await Promise.all([
+      import("./hub-connect-review.js"),
+      import("./audit.js"),
+      import("./request-guard.js"),
+    ]);
+    return rv.hubReviewRoute(
+      req,
+      res,
+      await rv.defaultHubReviewDeps((line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+      ),
+      `Settings › Hub, Connect's review (${guard.principalOf(req) ?? "person"})`,
+    );
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");
@@ -1529,7 +1549,13 @@ export async function handleAgentRoutes(
       sendJson(res, { ok: true, removed });
     } else {
       // D28: a due agent under auto relaunches from its handoff instead.
-      const r = await resumeOrRelaunch(d, id!, ws);
+      // Issue 1129: one waiting in the restart queue leaves it and starts
+      // now, ahead of the rest (a person opened it); never twice.
+      const run = () => resumeOrRelaunch(d, id!, ws);
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const r = (await (restartQueue().openNow(id!, run) ?? run())) as Awaited<
+        ReturnType<typeof resumeOrRelaunch>
+      >;
       if (r.kind === "relaunched") {
         what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
         audit(what, r.s.early ? "exited at once" : undefined);
@@ -2605,9 +2631,15 @@ export function startAgentUpkeep(
         log(`  ⚠ ${(e as Error).message}`);
       }
       const hubUp = await hubAnswers();
+      // Issue 1129: a batch at a time (agents.resume), never all at once.
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const { notificationDeps: bell } =
+        await import("./notification-service.js");
+      const queue = restartQueue({ log, store: () => bell().store });
       const f = await markInterrupted(d, {
         restoreAll,
         ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+        queue,
       });
       if (f.withoutHub.length) {
         log(

@@ -31,6 +31,7 @@ import {
   type LaunchInput,
 } from "../../../src/shared/agents/runtimes.js";
 import { readAgentsConfig } from "../../../src/shared/den-config.js";
+import { ownFilesDenyRules } from "../../../src/shared/agents/den-claude.js";
 
 const root = fs.realpathSync(
   fs.mkdtempSync(path.join(os.tmpdir(), "den-guard-")),
@@ -135,7 +136,15 @@ describe("a default-pack persona's launch", () => {
   it("writes the settings file for the hooks even with no state dir", () => {
     const l = launch(planner);
     expect(l.argv).toContain("--settings");
+    const files = path.join(root, "files", "planner");
     expect(l.settings).toEqual({
+      // Issue 362: the files it was launched with are denied to its edits.
+      permissions: {
+        deny: ownFilesDenyRules([
+          path.join(files, "settings.json"),
+          path.join(files, "mcp.json"),
+        ]),
+      },
       hooks: agentHooks("planner"),
       disableClaudeAiConnectors: true,
     });

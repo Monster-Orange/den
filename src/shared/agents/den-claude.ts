@@ -454,6 +454,23 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 }
 
 /**
+ * Issue 816 review: the folder where test installs announce themselves.
+ * Reading it would show an agent the state folder (and so the web.secret)
+ * of a test install announced after the agent started, which its launch
+ * rules don't name. Binds a cooperating agent, as stateDirDenyRules does.
+ */
+export function announceDirDenyRules(dir: string, home?: string): string[] {
+  const abs = path.resolve(dir);
+  const targets = shellSpellings(abs, home).map((p) => `${p}*`);
+  return [
+    `Read(/${abs}/**)`,
+    `Edit(/${abs}/**)`,
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+  ];
+}
+
+/**
  * A path as a shell may write it from `home`: as is, `~/…`, `$HOME/…`,
  * `${HOME}/…`, and with each space backslash-escaped.
  */
@@ -508,6 +525,24 @@ export function personConfigDenyRules(
           ...shellSpellings(dist, home).map((t) => `Bash(*${t}*)`),
         ]
       : []),
+  ];
+}
+
+/**
+ * Issue 362: the files Den launches an agent with (its settings file:
+ * hooks, deny and allow rules; its MCP config) are denied to its edits,
+ * and to any shell command naming them. Its files folder stays writable
+ * otherwise (its handoff goes there). A cooperating agent's boundary
+ * only, as the state-dir rules are.
+ */
+export function ownFilesDenyRules(
+  files: readonly string[],
+  home?: string,
+): string[] {
+  const abs = files.map((f) => path.resolve(f));
+  return [
+    ...abs.map((f) => `Edit(/${f})`),
+    ...abs.flatMap((f) => shellSpellings(f, home).map((t) => `Bash(*${t}*)`)),
   ];
 }
 
@@ -716,33 +751,33 @@ function common(input: LaunchInput): {
         ? {
             [settings]: `${JSON.stringify(
               {
-                ...(input.stateDir || input.personConfigDir || allow.length
-                  ? {
-                      permissions: {
-                        ...(allow.length ? { allow } : {}),
-                        ...(ask.length ? { ask } : {}),
-                        ...(input.stateDir || input.personConfigDir
-                          ? {
-                              deny: [
-                                ...(input.stateDir
-                                  ? stateDirDenyRules(
-                                      input.stateDir,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                                ...(input.personConfigDir
-                                  ? personConfigDenyRules(
-                                      input.personConfigDir,
-                                      input.distConfigFile,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                              ],
-                            }
-                          : {}),
-                      },
-                    }
-                  : {}),
+                permissions: {
+                  ...(allow.length ? { allow } : {}),
+                  ...(ask.length ? { ask } : {}),
+                  deny: [
+                    ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    ...(input.stateDir
+                      ? stateDirDenyRules(input.stateDir, input.env?.HOME)
+                      : []),
+                    // Issue 816: announced test installs'.
+                    ...(input.otherStateDirs ?? []).flatMap((d) =>
+                      stateDirDenyRules(d, input.env?.HOME),
+                    ),
+                    ...(input.testAnnounceDir
+                      ? announceDirDenyRules(
+                          input.testAnnounceDir,
+                          input.env?.HOME,
+                        )
+                      : []),
+                    ...(input.personConfigDir
+                      ? personConfigDenyRules(
+                          input.personConfigDir,
+                          input.distConfigFile,
+                          input.env?.HOME,
+                        )
+                      : []),
+                  ],
+                },
                 ...(hooks ? { hooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays

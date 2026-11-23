@@ -220,6 +220,10 @@ describe("pre-push hook", () => {
           PATH: process.env.PATH ?? "",
           DEN_ROOT: path.join(dir, "a-distribution"),
           DEN_PREPUSH_FILES: "0",
+          // The temp checkout has no fast-checks.mjs (fast-checks.test.ts
+          // covers them); left on, every push here would exit 1 before the
+          // name check.
+          DEN_PREPUSH_FAST: "0",
           DEN_ORG_NAMES_FILE: names,
         },
       });
