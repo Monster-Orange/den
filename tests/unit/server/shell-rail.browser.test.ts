@@ -156,7 +156,7 @@ describe("the rail", () => {
     expect(await p.getAttribute('[data-nav="verify"]', "aria-current")).toBe(
       "page",
     );
-    expect(await p.$$('.den-rail [data-nav="tests"]')).toHaveLength(0);
+    expect(await p.$$('#den-rail [data-nav="tests"]')).toHaveLength(0);
     expect(await p.textContent("#den-content h1")).toBe("Tests");
     // The page is still in the registry's page list (the a11y sweep's).
     expect(
