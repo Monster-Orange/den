@@ -71,11 +71,16 @@ import {
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  sandboxRefusalHooks,
+  type GateRouteArgs,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { distributionBin, shellQuote } from "../cli-command.js";
+import { getDistRoot, getEngineRoot } from "../paths.js";
+import { gateDir } from "../gates/store.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -426,16 +431,33 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const spellings = (p: string) => shellSpellings(p, home);
   // Issue 810: the fixture person's key, as the web secret.
   const fixtureKey = path.join(abs, "fixture-person.key");
+  // Issue 1299 review: the sessions lock; a live pid written there would
+  // hold every sign-in for its wait, then refuse it.
+  const sessionsLock = path.join(abs, "web-sessions.lock");
+  // Issue 728: the state dir's other credential files and folders.
+  const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
+  const dirs = STATE_CREDENTIAL_DIRS.map((d) => path.join(abs, d));
   const targets = [
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
+    ...spellings(sessionsLock).map((p) => `${p}*`),
+    ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
+    ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
   return [
     `Read(/${secret})`,
     `Read(/${sessions}/**)`,
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
+    `Read(/${sessionsLock})`,
+    // Edit(path) covers writes too (issue 660: no Write(path) rules).
+    `Edit(/${sessionsLock})`,
+    ...files.map((f) => `Read(/${f})`),
+    // Issue 1299: copies beside each (a damaged file moved aside, a
+    // write's temporary file) hold the same records.
+    ...files.map((f) => `Read(/${f}*)`),
+    ...dirs.map((d) => `Read(/${d}/**)`),
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),
     // The common readers by name too, should a version match a leading
@@ -445,6 +467,86 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
     ...SIGN_IN_DENY_RULES,
+  ];
+}
+
+/**
+ * Issue 728: the state dir's files that hold a secret or a credential's
+ * record, besides web.secret, sessions/ and fixture-person.key: the agent
+ * token hashes, the push key and subscriptions, the browser sessions, the
+ * test-install seal, and the embed key and runner token hashes. Relative
+ * to the state dir.
+ */
+export const STATE_CREDENTIAL_FILES: readonly string[] = [
+  "actor-tokens.json",
+  "push-vapid.json",
+  "push-subscriptions.json",
+  "web-sessions.json",
+  "test-install.created",
+  "embed/server-keys.json",
+  "gate/runner-tokens.json",
+];
+
+/**
+ * Issue 728: the state dir's folders that hold credentials: each agent's
+ * token file (an agent's own reaches its MCP server and the CLI through
+ * DEN_ACTOR_TOKEN_FILE, never through these tools), and Hub's token with
+ * the old ones kept for a retried revoke. agent-files/ (an agent's MCP
+ * config and settings, no secret) stays readable.
+ */
+export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
+
+/**
+ * Issue 728: a path as given (resolved) and by its real path, when a
+ * symlink makes them differ, so a deny rule binds both spellings.
+ */
+export function bothSpellings(p: string): string[] {
+  const given = path.resolve(p);
+  let real = given;
+  try {
+    real = fs.realpathSync(given);
+  } catch {
+    /* not there yet: its given spelling only */
+  }
+  return real === given ? [given] : [given, real];
+}
+
+/**
+ * Issue 728: rules denying an agent's Read, Edit and Bash tools the files in
+ * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
+ * naming the path in each shell spelling, and the readers by name. For the
+ * edge's key folders (edgeKeyDirs), wherever the edge config puts them.
+ */
+export function credentialDirRules(
+  dirs: readonly string[],
+  home?: string,
+): string[] {
+  const abs = dirs.map((d) => path.resolve(d));
+  const targets = abs.flatMap((d) =>
+    shellSpellings(d, home).map((p) => `${p}/*`),
+  );
+  return [
+    ...abs.map((d) => `Read(/${d}/**)`),
+    ...abs.map((d) => `Edit(/${d}/**)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+  ];
+}
+
+/**
+ * Issue 816 review: the folder where test installs announce themselves.
+ * Reading it would show an agent the state folder (and so the web.secret)
+ * of a test install announced after the agent started, which its launch
+ * rules don't name. Binds a cooperating agent, as stateDirDenyRules does.
+ */
+export function announceDirDenyRules(dir: string, home?: string): string[] {
+  const abs = path.resolve(dir);
+  const targets = shellSpellings(abs, home).map((p) => `${p}*`);
+  return [
+    `Read(/${abs}/**)`,
+    `Edit(/${abs}/**)`,
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
   ];
 }
 
@@ -503,6 +605,24 @@ export function personConfigDenyRules(
           ...shellSpellings(dist, home).map((t) => `Bash(*${t}*)`),
         ]
       : []),
+  ];
+}
+
+/**
+ * Issue 362: the files Den launches an agent with (its settings file:
+ * hooks, deny and allow rules; its MCP config) are denied to its edits,
+ * and to any shell command naming them. Its files folder stays writable
+ * otherwise (its handoff goes there). A cooperating agent's boundary
+ * only, as the state-dir rules are.
+ */
+export function ownFilesDenyRules(
+  files: readonly string[],
+  home?: string,
+): string[] {
+  const abs = files.map((f) => path.resolve(f));
+  return [
+    ...abs.map((f) => `Edit(/${f})`),
+    ...abs.flatMap((f) => shellSpellings(f, home).map((t) => `Bash(*${t}*)`)),
   ];
 }
 
@@ -602,6 +722,8 @@ function common(input: LaunchInput): {
   const inbox = inboxBase
     ? { base: inboxBase, ...(call ? { call } : {}) }
     : undefined;
+  // Issue 1264: the hook routes heavy runs through the gate (guardrails on).
+  const gate = input.persona.guardrails?.hooks ? gateRouteArgs() : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -620,6 +742,7 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          gate,
         ),
         !!input.apiOnly,
       )
@@ -639,7 +762,11 @@ function common(input: LaunchInput): {
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
   const hooks = mergeHooks(
-    baseHooks,
+    // Issue 936: a refused write in the sandbox says why, with Den's hooks
+    // (a persona with den_hooks: false gets none of them).
+    input.persona.guardrails?.hooks
+      ? mergeHooks(baseHooks, sandboxRefusalHooks())
+      : baseHooks,
     input.attention
       ? attentionHooks(
           input.attention.base,
@@ -659,6 +786,7 @@ function common(input: LaunchInput): {
       : [];
   const allow = [
     ...allowRules(input.allow ?? []),
+    ...gateAllowRules(gate?.cli, input.allow ?? []),
     ...(den?.allow ?? []),
     ...hubAllow,
   ];
@@ -703,33 +831,50 @@ function common(input: LaunchInput): {
         ? {
             [settings]: `${JSON.stringify(
               {
-                ...(input.stateDir || input.personConfigDir || allow.length
-                  ? {
-                      permissions: {
-                        ...(allow.length ? { allow } : {}),
-                        ...(ask.length ? { ask } : {}),
-                        ...(input.stateDir || input.personConfigDir
-                          ? {
-                              deny: [
-                                ...(input.stateDir
-                                  ? stateDirDenyRules(
-                                      input.stateDir,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                                ...(input.personConfigDir
-                                  ? personConfigDenyRules(
-                                      input.personConfigDir,
-                                      input.distConfigFile,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                              ],
-                            }
-                          : {}),
-                      },
-                    }
-                  : {}),
+                permissions: {
+                  ...(allow.length ? { allow } : {}),
+                  ...(ask.length ? { ask } : {}),
+                  deny: [
+                    ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 728: this install's own folders by their
+                    // given and their real paths (a symlink in either).
+                    ...(input.stateDir
+                      ? bothSpellings(input.stateDir).flatMap((d) =>
+                          stateDirDenyRules(d, input.env?.HOME),
+                        )
+                      : []),
+                    // Issue 728: the edge's key folders.
+                    ...credentialDirRules(
+                      (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
+                      input.env?.HOME,
+                    ),
+                    // Issue 816: announced test installs'; issue 728:
+                    // the other installs in the install registry.
+                    ...(input.otherStateDirs ?? []).flatMap((d) =>
+                      stateDirDenyRules(d, input.env?.HOME),
+                    ),
+                    ...(input.testAnnounceDir
+                      ? announceDirDenyRules(
+                          input.testAnnounceDir,
+                          input.env?.HOME,
+                        )
+                      : []),
+                    // Issue 728: the install registry, as 816's folder.
+                    ...(input.installRegistryDir
+                      ? announceDirDenyRules(
+                          input.installRegistryDir,
+                          input.env?.HOME,
+                        )
+                      : []),
+                    ...(input.personConfigDir
+                      ? personConfigDenyRules(
+                          input.personConfigDir,
+                          input.distConfigFile,
+                          input.env?.HOME,
+                        )
+                      : []),
+                  ],
+                },
                 ...(hooks ? { hooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays
@@ -1077,3 +1222,38 @@ export const denClaude: Runtime = {
   // catalog entry's sign-in data.
   signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };
+
+/**
+ * Issue 1264: allow rules for the gated form of each command the agent is
+ * already allowed (`<cli> gate run --kind cpu|browser -- <command>`), so a
+ * run the hook routes still runs without asking. Only those commands, never
+ * the gate on its own. The words match the hook's (gate-route.mjs
+ * gatePrefix, pretooluse.mjs gateRewrite); a test checks both agree.
+ */
+export function gateAllowRules(
+  cli: string | undefined,
+  commands: readonly string[],
+): string[] {
+  if (!cli) return [];
+  return ["cpu", "browser"].flatMap((kind) =>
+    allowRules(
+      commands.map((c) => `${shellQuote(cli)} gate run --kind ${kind} -- ${c}`),
+    ),
+  );
+}
+
+/**
+ * Issue 1264: this install's CLI and the gate's settings file, for the
+ * PreToolUse hook to route an agent's heavy runs through the gate; none
+ * when the install's CLI can't be found (no routing then).
+ */
+export function gateRouteArgs(): GateRouteArgs | undefined {
+  try {
+    const cli = distributionBin(product().cli, getDistRoot(), getEngineRoot());
+    return cli
+      ? { cli, settings: path.join(gateDir(), "settings.json") }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

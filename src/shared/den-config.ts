@@ -368,6 +368,11 @@ export interface UserConfig {
    */
   approvals?: unknown;
   /**
+   * Issue 1072: settings that widen what agents may do, read from here
+   * only (an agent's sandbox can't write this file): mcp.actions.
+   */
+  mcp?: { actions?: unknown };
+  /**
    * Issue 742: held writes. wait_minutes (default 1440, 10 to 10080): how
    * long a request waits for the person's Allow before it lapses.
    */
@@ -612,6 +617,12 @@ export interface UserConfig {
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     /**
+     * Issue 936: on (default) or off: agents' sessions start in the OS
+     * sandbox, Den's state read-only to them. `agents.<id>.sandbox: off`
+     * for one agent. Only here: agents can't write this file.
+     */
+    sandbox?: unknown;
+    /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
      */
@@ -645,6 +656,18 @@ export interface UserConfig {
     trust_check_seconds?: unknown;
     /** 0.4.46: how long that restore waits for Hub first (120 s). */
     restore_hub_wait_seconds?: unknown;
+    /**
+     * Issue 1129: agent restarts in batches (a resume, Hub's tools):
+     * `batch` at a time (4; 0: all at once), `gap_seconds` apart (30),
+     * waiting while the 1-minute load is over `load_ceiling` (cores × 2;
+     * 0: no ceiling).
+     */
+    resume?: {
+      batch?: unknown;
+      gap_seconds?: unknown;
+      load_ceiling?: unknown;
+      max_wait_seconds?: unknown;
+    };
     /**
      * Issue 456: how long Den waits for your shell's PATH, the login
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
@@ -837,6 +860,26 @@ export function agentsDefaultMode(
 }
 
 /** web.url_check_seconds (user.yml): how long Check and save waits (10). */
+/**
+ * Issue 816: how long a test-person setup grant your Den mints at your
+ * Allow lasts (web.test_grant_seconds): 30 s by default, 1 to 120. The
+ * Allow mints and sends it in one step, so it need only cover the request.
+ */
+export function testGrantSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  let v: unknown;
+  try {
+    const w = read().web as Record<string, unknown> | undefined;
+    v = w && typeof w === "object" ? w.test_grant_seconds : undefined;
+  } catch {
+    return 30;
+  }
+  return typeof v === "number" && Number.isFinite(v) && v >= 1
+    ? Math.min(Math.floor(v), 120)
+    : 30;
+}
+
 export function webUrlCheckSeconds(
   read: () => UserConfig = readUserConfig,
 ): number {
@@ -1024,6 +1067,61 @@ export function shellPathTimeoutMs(
   }
 }
 
+/**
+ * Issue 1129: the ranges Settings and `config` accept for agents.resume.
+ * user.yml itself takes any value at least 0 (agentsResume).
+ */
+export const AGENTS_RESUME_LIMITS = {
+  batch: { min: 0, max: 1000, int: true },
+  gap_seconds: { min: 0, max: 3600, int: false },
+  load_ceiling: { min: 0, max: 10000, int: false },
+  max_wait_seconds: { min: 0, max: 86400, int: false },
+} as const;
+
+/** Issue 1129: agents.resume (user.yml), with its defaults. */
+export interface AgentsResume {
+  /** Agents per batch; 0: all at once. */
+  batch: number;
+  gapSeconds: number;
+  /** The 1-minute load over which the next batch waits; 0: no ceiling. */
+  loadCeiling: number;
+  /** The longest the load holds an agent back; 0: no limit. */
+  maxWaitSeconds: number;
+}
+
+/**
+ * Issue 1129: agents.resume (user.yml): batch 4 (a whole number, at least
+ * 0), gap_seconds 30 (at least 0), load_ceiling `cores` × 2 (at least 0),
+ * max_wait_seconds 600 (at least 0; 0: the load may hold them any time).
+ */
+export function agentsResume(
+  read: () => UserConfig = readUserConfig,
+  cores: number = os.cpus().length || 1,
+): AgentsResume {
+  const r = read().agents?.resume;
+  const o = (r && typeof r === "object" ? r : {}) as Record<string, unknown>;
+  const num = (key: string, dflt: number, whole: boolean): number => {
+    const v = o[key];
+    if (v === undefined || v === null) return dflt;
+    if (
+      typeof v === "number" &&
+      Number.isFinite(v) &&
+      v >= 0 &&
+      (!whole || Number.isInteger(v))
+    )
+      return v;
+    throw new Error(
+      `agents.resume.${key} must be ${whole ? "a whole number" : "a number"}, at least 0 (user.yml; got ${JSON.stringify(v)})`,
+    );
+  };
+  return {
+    batch: num("batch", 4, true),
+    gapSeconds: num("gap_seconds", 30, false),
+    loadCeiling: num("load_ceiling", Math.max(1, cores) * 2, false),
+    maxWaitSeconds: num("max_wait_seconds", 600, false),
+  };
+}
+
 /** agents.restore_hub_wait_seconds (user.yml): 120 when unset, at least 0. */
 export function agentsRestoreHubWaitSeconds(
   read: () => UserConfig = readUserConfig,
@@ -1052,6 +1150,18 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   if (Object.keys(agents).length) next.agents = agents;
   else delete next.agents;
   writeUserConfig(next);
+}
+
+/**
+ * Issue 936, the rollout's Turn on: `agents.sandbox: on` in user.yml,
+ * keeping everything else there (an agent's own `off` stays).
+ */
+export function setUserSandboxOn(): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), sandbox: "on" },
+  } as UserConfig);
 }
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
@@ -1713,6 +1823,8 @@ export interface McpConfig {
 /** `mcp:` with its defaults applied. */
 export interface ResolvedMcpConfig {
   actions: McpAction[];
+  /** Issue 1072: mcp.actions in the distribution's config, not read. */
+  notReadFromOrg?: string[];
   runTestsEnvs: Environment[];
   logsRemote: boolean;
   /** Whether the held writes are registered (default true). */
@@ -1729,10 +1841,21 @@ export interface ResolvedMcpConfig {
  * a typo must not silently turn a guard off (or an action on).
  */
 export function readMcpConfig(
-  config: DenConfig = readDenConfig(),
+  config?: DenConfig,
+  /** user.yml (default: read only when `config` is Den's own, unpassed). */
+  user?: UserConfig,
 ): ResolvedMcpConfig {
-  const raw = config.mcp ?? {};
-  const actions = (Array.isArray(raw.actions) ? raw.actions : []).map((a) => {
+  const c = config ?? readDenConfig();
+  const u = user ?? (config ? {} : readUserConfigQuiet());
+  const raw = c.mcp ?? {};
+  // Issue 1072: action tools widen what agents may do: user.yml only.
+  const orgActions = Array.isArray(raw.actions) ? raw.actions : [];
+  const mine = u.mcp?.actions;
+  if (mine !== undefined && mine !== null && !Array.isArray(mine))
+    throw new Error(
+      `mcp.actions: a list of action names (user.yml; got ${JSON.stringify(mine)})`,
+    );
+  const actions = ((mine as unknown[] | undefined) ?? []).map((a) => {
     if (!(MCP_ACTIONS as readonly string[]).includes(String(a)))
       throw new Error(
         `mcp.actions: unknown action "${String(a)}" (known: ${MCP_ACTIONS.join(", ")})`,
@@ -1755,6 +1878,7 @@ export function readMcpConfig(
     );
   return {
     actions: [...new Set(actions)],
+    ...(orgActions.length ? { notReadFromOrg: ["mcp.actions"] } : {}),
     runTestsEnvs: [...new Set(runTestsEnvs)],
     logsRemote: raw.logs?.remote === true,
     approvals: raw.approvals !== false,
@@ -1916,6 +2040,11 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  // Issue 1129: the restart queue (agents.resume.*), never an agent id.
+  "resume",
+  // Issue 936: Den's state read-only to agents' sessions (on|off|required).
+  "sandbox",
+  "sandbox_sockets",
 ];
 
 /**
@@ -1923,23 +2052,71 @@ export const AGENTS_RESERVED_KEYS = [
  * key other than grants (signing_key, or a typo gitSigningBlock names).
  */
 function isGitSettings(block: unknown): boolean {
-  return isMapping(block) && Object.keys(block).some((k) => k !== "grants");
+  return (
+    isMapping(block) &&
+    Object.keys(block).some((k) => k !== "grants" && k !== "sandbox")
+  );
 }
 
 /** One agent's own block, `agents.<id>`. */
 export interface AgentGrantsConfig {
   /** Workspaces beyond its own that its MCP serves. */
   grants: string[];
+  /** Issue 936: false: this agent's session starts outside the sandbox. */
+  sandbox?: boolean;
+  /** Issue 936: required: it doesn't start where no sandbox applies. */
+  sandboxRequired?: boolean;
+}
+
+const SANDBOX_IN_USER_YML = (key: string) =>
+  `${key}: set it in config/local/user.yml, which agents can't write`;
+
+/**
+ * Issue 936: agents.sandbox / agents.<id>.sandbox: on, off (true, false),
+ * or required (on, and an agent with no sandbox here doesn't start).
+ */
+function sandboxValue(
+  v: unknown,
+  where: string,
+): { on: boolean; required: boolean } | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (v === true || v === "on") return { on: true, required: false };
+  if (v === false || v === "off") return { on: false, required: false };
+  if (v === "required") return { on: true, required: true };
+  throw new Error(
+    `${where}: must be on, off or required (got ${JSON.stringify(v)})`,
+  );
 }
 
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
   /**
+   * Issue 936: agents' sessions start in the OS sandbox, Den's state
+   * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
+   * off for one agent.
+   */
+  sandbox?: boolean;
+  /** Issue 936: agents.sandbox: required (an unsandboxed start refused). */
+  sandboxRequired?: boolean;
+  /** Issue 936: agents.sandbox_sockets, more unix-socket folders allowed. */
+  sandboxSockets?: string[];
+  /**
    * #70: an agent's token counts only from its own session's processes
    * (agents.token_binding, default true). false: from any process here.
    */
   tokenBinding?: boolean;
+  /**
+   * Issue 1072: widening keys found in the distribution's config, which
+   * Den no longer reads (agents.<id>.grants): doctor names each.
+   */
+  notReadFromOrg?: string[];
+  /**
+   * Issue 1072: user.yml blocks under agents that look like an agent's
+   * (a grants- or sandbox-like key) but hold other keys, so they are
+   * skipped, sandbox setting and all: doctor names each with its keys.
+   */
+  notAgentBlocks?: { id: string; keys: string[] }[];
   /**
    * Issue 242: agents.token_peer_wait_ms (default
    * TOKEN_PEER_WAIT_MS_DEFAULT): how long an agent's call waits for Den to
@@ -2142,9 +2319,19 @@ export function readAgentsConfig(
   const c = config ?? readDenConfig();
   const u = user ?? (config ? {} : readUserConfigQuiet());
   const out = asConfigError(() => parseAgentsConfig(c));
+  // Issue 936: the sandbox is per machine, from user.yml only.
+  asConfigError(
+    () => applyUserSandbox(out, u.agents),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
   // A signing key is per machine: user.yml's agents.git wins.
   const mine = u.agents?.git;
-  if (mine !== undefined && mine !== null) {
+  // An agent called git (grants or sandbox only) is no signing key.
+  const agentCalledGit =
+    isMapping(mine) &&
+    Object.keys(mine).length > 0 &&
+    Object.keys(mine).every((k) => k === "grants" || k === "sandbox");
+  if (mine !== undefined && mine !== null && !agentCalledGit) {
     const g = asConfigError(
       () => gitSigningBlock(mine),
       path.relative(ROOT, USER_CONFIG_PATH),
@@ -2152,6 +2339,75 @@ export function readAgentsConfig(
     if (g) out.git = g;
   }
   return out;
+}
+
+/**
+ * Issue 936: user.yml's agents.sandbox and agents.<id>.sandbox (on or off)
+ * onto the resolved config. Other keys of user.yml's agents block are not
+ * read here.
+ */
+export function applyUserSandbox(
+  out: ResolvedAgentsConfig,
+  userAgents: unknown,
+): void {
+  if (!isMapping(userAgents)) return;
+  const all = sandboxValue(userAgents.sandbox, "agents.sandbox");
+  if (all !== undefined) {
+    out.sandbox = all.on;
+    out.sandboxRequired = all.required;
+  }
+  const socks = userAgents.sandbox_sockets;
+  if (socks !== undefined && socks !== null) {
+    if (
+      !Array.isArray(socks) ||
+      !socks.every((x) => typeof x === "string" && path.isAbsolute(x))
+    )
+      throw new Error(
+        `agents.sandbox_sockets: a list of absolute folder paths (got ${JSON.stringify(socks)})`,
+      );
+    out.sandboxSockets = [...new Set(socks as string[])];
+  }
+  for (const [id, block] of Object.entries(userAgents)) {
+    // agents.git is the signing key, unless it holds an agent's keys only
+    // (an agent called git): the keys check below tells them apart.
+    if (AGENTS_RESERVED_KEYS.includes(id) || id === "sandbox_sockets") continue;
+    if (!AGENT_KEY_RE.test(id) || !isMapping(block)) continue;
+    // An agent's block holds grants and sandbox only; other mappings here
+    // (runtimes, layout, …) are settings, never an agent.
+    const keys = Object.keys(block);
+    if (!keys.length || !keys.every((k) => k === "grants" || k === "sandbox")) {
+      // One that looks like an agent's (a misspelt or extra key) is named.
+      if (keys.some((k) => /^(grant|sandbox)/i.test(k)))
+        (out.notAgentBlocks ??= []).push({ id, keys });
+      continue;
+    }
+    const where = `agents.${id}`;
+    // Issue 1072: its grants, from here only.
+    if (block.grants !== undefined) {
+      const grants = block.grants;
+      if (!Array.isArray(grants))
+        throw new Error(
+          `${where}.grants: must be a list of project names (got ${JSON.stringify(grants)})`,
+        );
+      grants.forEach((g, i) => {
+        if (typeof g !== "string" || !AGENT_KEY_RE.test(g))
+          throw new Error(
+            `${where}.grants[${i}]: ${JSON.stringify(g)} is not a project name`,
+          );
+      });
+      out.agents[id] = {
+        ...(out.agents[id] ?? {}),
+        grants: [...new Set(grants as string[])],
+      };
+    }
+    const one = sandboxValue(block.sandbox, `${where}.sandbox`);
+    if (one === undefined) continue;
+    out.agents[id] = {
+      ...(out.agents[id] ?? { grants: [] }),
+      sandbox: one.on,
+      ...(one.required ? { sandboxRequired: true } : {}),
+    };
+  }
 }
 
 /** user.yml, or {} when it can't be read (a bad one is its own row). */
@@ -2205,6 +2461,11 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     })(),
   };
   out.helpers = helpersBlock(raw.helpers);
+  // Issue 936: the sandbox is the machine's, in user.yml (config/local is
+  // read-only to agents; the org config may sit in a repo they edit).
+  if (raw.sandbox !== undefined)
+    throw new Error(SANDBOX_IN_USER_YML("agents.sandbox"));
+  out.sandbox = true;
   // agents.git, unless it is an agent called git (a block with grants).
   const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;
   out.git = gitSigningBlock(gitBlock);
@@ -2312,7 +2573,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))
-      if (k !== "grants")
+      if (k !== "grants" && k !== "sandbox")
         throw new Error(`${where}.${k}: unknown key (an agent takes grants)`);
     const grants = block.grants ?? [];
     if (!Array.isArray(grants))
@@ -2325,7 +2586,10 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
           `${where}.grants[${i}]: ${JSON.stringify(g)} is not a project name`,
         );
     });
-    out.agents[id] = { grants: [...new Set(grants as string[])] };
+    if (block.sandbox !== undefined)
+      throw new Error(SANDBOX_IN_USER_YML(`${where}.sandbox`));
+    // Issue 1072: a grant widens what an agent may do: user.yml only.
+    if (grants.length) (out.notReadFromOrg ??= []).push(`${where}.grants`);
   }
   return out;
 }

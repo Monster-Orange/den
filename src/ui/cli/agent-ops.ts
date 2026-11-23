@@ -47,9 +47,15 @@
  *           resumes the standing personas and those with
  *           `resume_on_restart: true`.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import { readActivity } from "../../shared/agents/activity.js";
+import {
+  denToolsOld,
+  type DenToolsOld,
+} from "../../shared/agents/den-tools-version.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -96,6 +102,12 @@ import {
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
+import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
+import {
+  listOtherInstalls,
+  registerInstall,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
@@ -128,6 +140,7 @@ import {
   shellPathTimeoutMs,
   configuredRuntimeCatalog,
   readAgentsConfig,
+  readMcpConfig,
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
@@ -175,7 +188,7 @@ import {
   peerSessionName,
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { engineVersion, getDistRoot } from "../../shared/paths.js";
 import {
   operatorStubArgv,
   operatorStubEnv,
@@ -183,7 +196,14 @@ import {
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { installLocationEnv, product } from "../../shared/product.js";
+import { envKey, installLocationEnv, product } from "../../shared/product.js";
+import {
+  isFromBefore,
+  LEGACY_SANDBOX_REASON,
+  sandboxSetByPerson,
+} from "../../shared/agents/sandbox-rollout.js";
+import * as os from "os";
+import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -357,7 +377,17 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
+import {
+  type AgentSandboxInput,
+  localProofDirs,
+  sandboxFor,
+  sandboxRequired,
+  sandboxSetting,
+  type SandboxWrap,
+} from "../../shared/agents/sandbox.js";
+import { gateDir } from "../../shared/gates/store.js";
 import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
@@ -374,7 +404,19 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
+  /**
+   * Issue 989: this install's server, called with the person token. A
+   * test gives one that answers null (no server) unless it asks for one.
+   */
+  server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
+  /**
+   * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
+   * read-only to it). Default: sandboxFor with the person's setting.
+   */
+  agentSandbox?: AgentSandboxFn;
+  /** Issue 1072: mcp.actions in the distribution's config, not read. */
+  mcpNotReadFromOrg?: () => string[];
   distRoot?: () => string;
   /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
   serverAgentFolder?: () => string;
@@ -509,8 +551,15 @@ export interface AgentsDeps extends SessionsDeps {
   denBase?: () => string;
 }
 
+/** Issue 936: an agent's argv, wrapped (or not, and why). */
+export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
+
 export interface AgentsResolved extends Resolved {
+  /** Issue 989: this install's server, for person-only verbs. */
+  server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
+  agentSandbox: AgentSandboxFn;
+  mcpNotReadFromOrg: () => string[];
   distRoot: () => string;
   serverAgentFolder: () => string;
   workspaceDir: (ws: string) => string;
@@ -827,11 +876,64 @@ function defaultMcpServer(cli: string): {
   return { command: [e.command, ...e.args], env: s.env };
 }
 
+/**
+ * Issue 936: what an agent's sandbox is built from on this machine: Den's
+ * state, the distribution, the gate store, the socket folders allowed, and
+ * the folders no session reads (the machine's local proof).
+ */
+export function agentSandboxInput(o: {
+  stateDir: string;
+  distRoot: string;
+  env: NodeJS.ProcessEnv;
+  agentId: string;
+  sockets?: string[];
+  platform?: NodeJS.Platform;
+  home?: string;
+}): AgentSandboxInput {
+  return {
+    stateDir: o.stateDir,
+    distRoot: o.distRoot,
+    gateDir: gateDir(o.env),
+    agentId: o.agentId,
+    env: o.env,
+    socketsAllowed: o.sockets ?? [],
+    deniedDirs: localProofDirs(
+      o.env,
+      o.platform ?? process.platform,
+      o.home ?? os.homedir(),
+      envKey("LOCAL_PROOF_DIR"),
+    ),
+  };
+}
+
 export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
     ...base,
+    server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    mcpNotReadFromOrg:
+      d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
+    agentSandbox:
+      d.agentSandbox ??
+      ((argv, agentId) =>
+        sandboxFor(
+          argv,
+          agentSandboxInput({
+            stateDir: base.stateDir(),
+            distRoot: (d.distRoot ?? getDistRoot)(),
+            env: base.env,
+            agentId,
+            sockets: (d.agentsConfig ?? (() => readAgentsConfig()))()
+              .sandboxSockets,
+          }),
+          {
+            on: sandboxSetting(
+              (d.agentsConfig ?? (() => readAgentsConfig()))(),
+              agentId,
+            ),
+          },
+        )),
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
       d.serverAgentFolder ??
@@ -1578,6 +1680,17 @@ export function resumesOnRestart(rec: AgentRecord, p?: Persona): boolean {
 export interface McpStale {
   adds: string[];
   drops: string[];
+  /** Issue 1223: its Den tools are an older Den's. */
+  den?: DenToolsOld;
+}
+
+/** Issue 1223: Hub's change and its Den tools' age, in one; or none. */
+export function withDenTools(
+  st: McpStale | undefined,
+  den: DenToolsOld | undefined,
+): McpStale | undefined {
+  if (!den) return st;
+  return { ...(st ?? { adds: [], drops: [] }), den };
 }
 
 /** How long what Hub gives agents now is trusted (the token read is slow). */
@@ -1684,9 +1797,13 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
   const url = await hubNow(d);
   const waiting = d.hubProblem() !== null;
   for (const r of running) {
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, {
-      waiting,
-    });
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, { waiting }),
+      (() => {
+        const rec = readRecord(d.stateDir(), r.agent);
+        return rec ? denToolsOld(rec, r.startedAt, d.stateDir()) : undefined;
+      })(),
+    );
     if (st) r.mcpStale = st;
     const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
     const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
@@ -1709,10 +1826,14 @@ export async function staleAgents(
   }
   const out: { id: string; workspace: string; stale: McpStale }[] = [];
   for (const rec of listRecords(d.stateDir())) {
-    if (!live.some((s) => sessionOf([s], rec))) continue;
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
-      waiting: d.hubProblem() !== null,
-    });
+    const s = sessionOf(live, rec);
+    if (!s) continue;
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
+        waiting: d.hubProblem() !== null,
+      }),
+      denToolsOld(rec, s.startedAt ?? rec.startedAt, d.stateDir()),
+    );
     if (st) out.push({ id: rec.id, workspace: rec.workspace, stale: st });
   }
   return out;
@@ -3209,6 +3330,8 @@ function checkId(where: string, id: string): void {
 
 interface Launch {
   rec: Omit<AgentRecord, "session" | "startedAt">;
+  /** Issue 936: an agent that has a record already (resume, relaunch). */
+  existing?: boolean;
   argv: string[];
   env: Record<string, string>;
   /** The runtime's envPassthrough. */
@@ -3261,7 +3384,12 @@ async function startSession(
   launch: Launch,
   old: SessionInfo | undefined,
   extra: Partial<AgentRecord>,
-): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
+): Promise<{
+  rec: AgentRecord;
+  info: SessionInfo;
+  signInWarning?: string;
+  sandboxWarning?: string;
+}> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
@@ -3277,6 +3405,8 @@ async function startSession(
     sessionName: launch.rec.sessionName,
   });
   let info: SessionInfo;
+  let box: SandboxWrap;
+  let legacy = false;
   try {
     // #70: the token in a file of the agent's own; the env names the file.
     const tokenFile = writeActorTokenFile(
@@ -3284,12 +3414,33 @@ async function startSession(
       launch.rec.id,
       minted.token,
     );
+    // Issue 936: Den's state read-only to the session (the OS sandbox).
+    // An agent from before the sandbox starts outside it until the person
+    // turns it on (the rollout, sandbox-rollout.ts).
+    legacy =
+      launch.existing === true &&
+      isFromBefore(launch.rec as AgentRecord) &&
+      !sandboxSetByPerson(d.agentsConfig(), launch.rec.id);
+    box = legacy
+      ? {
+          applied: false,
+          argv: launch.argv,
+          env: {},
+          reason: LEGACY_SANDBOX_REASON,
+        }
+      : d.agentSandbox(launch.argv, launch.rec.id);
+    if (!box.applied && sandboxRequired(d.agentsConfig(), launch.rec.id))
+      throw refused(
+        `agents start: ${launch.rec.id} needs the agent sandbox (agents.sandbox: required), and it can't apply here: ${box.reason ?? "no sandbox"}`,
+        [`\`${d.cli} agents doctor\` shows why.`],
+        409,
+      );
     info = await c
       .start(
         {
           name: launch.rec.sessionName,
           cwd: launch.rec.cwd,
-          argv: launch.argv,
+          argv: box.argv,
           // Never the caller's whole env: the allowlist, then the runtime's.
           env: agentSessionEnv(
             d.env,
@@ -3299,7 +3450,7 @@ async function startSession(
             tokenFile,
             launch.binDir ? [launch.binDir] : [],
             // agents.git.signing_key: its commits signed with that key.
-            agentGitEnv(d.agentsConfig().git),
+            { ...agentGitEnv(d.agentsConfig().git), ...box.env },
             signIn.env,
           ),
           cols: (tty && d.stdout.columns) || 80,
@@ -3321,6 +3472,10 @@ async function startSession(
     grants: [...launch.grants],
     ...extra,
   };
+  // Issue 1223: the Den its tools start on (they keep its code).
+  const denV = engineVersion();
+  if (denV) rec.denVersion = denV;
+  else delete rec.denVersion;
   // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
   delete rec.endedAt;
@@ -3335,11 +3490,25 @@ async function startSession(
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
+  // Issue 936: whether its session is sandboxed, and why not.
+  rec.sandbox = box.applied
+    ? { applied: true, ...(box.tool ? { tool: box.tool } : {}) }
+    : {
+        applied: false,
+        ...(legacy ? { legacy: true as const } : {}),
+        ...(box.reason ? { reason: box.reason } : {}),
+      };
   writeRecord(d.stateDir(), rec);
   return {
     rec,
     info,
     ...(signIn.warning ? { signInWarning: signIn.warning } : {}),
+    // Issue 936: the start line names an agent that runs unsandboxed.
+    ...(box.applied
+      ? {}
+      : {
+          sandboxWarning: `${rec.id} runs outside the agent sandbox (Den's state is writable to it): ${box.reason ?? "no sandbox here"}`,
+        }),
   };
 }
 
@@ -3456,6 +3625,32 @@ function launchInput(
     { id, persona: persona.id, workspace: ws, cwd: dir },
     persona,
   ).afterCompactions;
+  // Issue 728: this install registers itself (its server does at start too),
+  // then reads the others.
+  const ownEdgeKeys = edgeKeyDirs(d.distRoot());
+  // ...narrowed where the edge folder holds this install's own folders.
+  const ownEdgeDeny = narrowEdgeDirs(ownEdgeKeys, [
+    path.resolve(d.stateDir()),
+    path.resolve(d.distRoot()),
+    path.resolve(dir),
+  ]);
+  const reg = registryDir({ ...process.env, ...d.env });
+  const others = (() => {
+    try {
+      registerInstall(reg, {
+        stateDir: d.stateDir(),
+        edgeKeyDirs: ownEdgeKeys,
+      });
+    } catch {
+      /* listed at its server's next start */
+    }
+    return listOtherInstalls(reg, {
+      ownStateDir: d.stateDir(),
+      home: { ...process.env, ...d.env }.HOME,
+      // No entry may deny this install's own checkout or workspace.
+      protect: [d.distRoot(), dir],
+    });
+  })();
   return {
     persona,
     workspace: { name: ws, dir },
@@ -3465,7 +3660,25 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 816: test installs announced on this computer; issue 728: the
+    // other installs registered for this OS user, any distribution's.
+    otherStateDirs: [
+      ...new Set([
+        ...listAnnounced(announceDir(), { ownStateDir: d.stateDir() }).map(
+          (a) => a.stateDir,
+        ),
+        ...others.map((o) => o.stateDir),
+      ]),
+    ],
+    // ...and where they announce, for those announced after this launch.
+    testAnnounceDir: announceDir(),
+    installRegistryDir: reg,
     personConfigDir: path.join(d.distRoot(), "config", "local"),
+    // Issue 728: the edge's key folders, wherever its config puts them, and
+    // the other installs' edges'.
+    edgeKeyDirs: [
+      ...new Set([...ownEdgeDeny, ...others.flatMap((o) => o.edgeKeyDirs)]),
+    ],
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
@@ -4000,7 +4213,7 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
-      const { rec, info, signInWarning } = await startSession(
+      const { rec, info, signInWarning, sandboxWarning } = await startSession(
         d,
         c,
         {
@@ -4085,6 +4298,7 @@ export async function startAgent(
           ...unexpressed,
           ...sized,
           ...(signInWarning ? [signInWarning] : []),
+          ...(sandboxWarning ? [sandboxWarning] : []),
         ],
         early,
       };
@@ -6370,6 +6584,7 @@ export async function resumeAgent(
           rec: next,
           info,
           signInWarning,
+          sandboxWarning,
         } = await startSession(
           d,
           c,
@@ -6393,12 +6608,13 @@ export async function resumeAgent(
             tokenEnv: rt.signInTokenEnv,
             grants,
             ...binDirOf(det),
+            existing: true,
           },
           prior,
           asFresh ? {} : { resumedAt: new Date().toISOString() },
         );
         const early = await exitedAtOnce(d, c, info);
-        return { out, next, info, early, signInWarning };
+        return { out, next, info, early, signInWarning, sandboxWarning };
       };
       let fresh = !known && Boolean(token);
       let newConversation = false;
@@ -6464,6 +6680,7 @@ export async function resumeAgent(
         warnings: [
           ...(r.out.warnings ?? []),
           ...(r.signInWarning ? [r.signInWarning] : []),
+          ...(r.sandboxWarning ? [r.sandboxWarning] : []),
         ],
         early: r.early,
         fresh,
@@ -8108,6 +8325,12 @@ export async function markInterrupted(
     /** agents.restore_hub_wait_seconds, in ms. */
     hubWaitMs?: number;
     hubPollMs?: number;
+    /**
+     * Issue 1129: the restart queue they go through (agents.resume): a
+     * batch at a time, the ones that were working first. None: all at
+     * once, as before.
+     */
+    queue?: RestartQueue;
   } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
@@ -8143,19 +8366,46 @@ export async function markInterrupted(
   const hubAnswered = opts.hubUp
     ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
     : true;
+  // den#4: a rotated one relaunches from its handoff instead.
+  const bring = (rec: AgentRecord) =>
+    rotationOf(d, rec)?.ready
+      ? relaunchAgent(d, rec.id)
+      : resumeAgent(d, rec.id);
+  const note = (rec: AgentRecord, r: { early?: unknown }) => {
+    if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+    else {
+      found.resumed.push(rec.id);
+      if (!hubAnswered) found.withoutHub.push(rec.id);
+    }
+  };
+  const failed = (rec: AgentRecord, e: unknown) =>
+    found.failed.push({ agent: rec.id, why: (e as Error).message });
+  if (opts.queue) {
+    // Issue 1129: a batch at a time; the ones working when Den stopped first.
+    const activity = readActivity(d.stateDir());
+    const q = opts.queue;
+    await Promise.all(
+      due.map((rec) =>
+        q
+          .add({
+            id: rec.id,
+            why: "resume",
+            working: activity[rec.id]?.working === true,
+            run: () => bring(rec),
+          })
+          .then(
+            (r) => note(rec, r as { early?: unknown }),
+            (e) => failed(rec, e),
+          ),
+      ),
+    );
+    return found;
+  }
   for (const rec of due) {
     try {
-      // den#4: a rotated one relaunches from its handoff instead.
-      const r = rotationOf(d, rec)?.ready
-        ? await relaunchAgent(d, rec.id)
-        : await resumeAgent(d, rec.id);
-      if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else {
-        found.resumed.push(rec.id);
-        if (!hubAnswered) found.withoutHub.push(rec.id);
-      }
+      note(rec, await bring(rec));
     } catch (e) {
-      found.failed.push({ agent: rec.id, why: (e as Error).message });
+      failed(rec, e);
     }
   }
   return found;

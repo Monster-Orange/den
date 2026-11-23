@@ -50,10 +50,23 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
+import { localDateTime } from "../../shared/local-time.js";
+import {
+  readRestartsWaiting,
+  type RestartsWaiting,
+} from "../../shared/agents/restarts-waiting.js";
 import {
   readTestResolveState,
   testResolveDoctorLine,
 } from "../../shared/test-resolve.js";
+import { listDaemons } from "../../shared/environment-manager/service-runner.js";
+import {
+  containerRuntimeOnPath,
+  readLastRestore,
+  restoreDoctorLine,
+  runtimeMissingDoctorLine,
+  servicesRestoreOnBoot,
+} from "../../shared/environment-manager/restore-on-boot.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
@@ -90,6 +103,11 @@ import {
   statedAddress,
 } from "../../shared/edge/address-check.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
+import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
+import {
+  edgeProofRotation,
+  stacksWithGeneratedSecrets,
+} from "../../shared/edge/runtime.js";
 import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
@@ -406,6 +424,23 @@ export function approvalsLines(read: () => boolean): {
       problem: true,
     };
   }
+}
+
+/**
+ * Issue 1129: agents waiting in the restart queue, as doctor prints them.
+ * Informational: the queue starts them a few at a time on its own.
+ */
+export function restartsWaitingLines(
+  read: () => RestartsWaiting | null,
+): string[] {
+  const w = read();
+  if (!w || w.waiting <= 0) return [];
+  const names = w.ids.slice(0, 5).join(", ");
+  const more = w.ids.length > 5 ? ` and ${w.ids.length - 5} more` : "";
+  return [
+    "",
+    `  ℹ ${w.waiting} agent${w.waiting === 1 ? "" : "s"} waiting to restart, a few at a time (as of ${localDateTime(w.at)}): ${names}${more}`,
+  ];
 }
 
 /** Informational lines after the rows: never a failure. */
@@ -846,11 +881,27 @@ export function hubProjectLines(
     link: { slug: string; name: string } | null;
     /** 0.4.44: the link it had, when it lost it with no unlink asked. */
     lost?: { slug: string; at: string };
+    /** Issue 646: its link points at another Hub or company. */
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
   }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  // Issue 646: a link to another Hub fails, connected or not.
+  for (const { ws, link, elsewhere: e } of projects) {
+    if (link || !e) continue;
+    const where = `${e.origin.replace(/^https?:\/\//, "")}${e.company ? ` (company ${e.company})` : ""}`;
+    const detail = `${ws}: linked to Hub project ${e.name} on ${where}, not the connected Hub, so Den sends Hub no project for it. Link it again: Settings › Hub, Connect's project review`;
+    lines.push(`  hub project  ✗  ${detail}`);
+    checks.push({ id: `hub:project:${ws}`, status: "fail", detail });
+  }
+  projects = projects.filter((p) => p.link || !p.elsewhere);
   // 0.4.44: a lost link warns even with Hub down: the config lost it.
   for (const { ws, link, lost } of projects) {
     if (link || !lost) continue;
@@ -1026,22 +1077,41 @@ async function projectsWithHubProject(): Promise<
     ws: string;
     link: { slug: string; name: string } | null;
     lost?: { slug: string; at: string };
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
   }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
-  const { parseHubProjectLink } =
+  const { hubProjectOf, hubLinkElsewhere } =
     await import("../../shared/hub-project-link.js");
   const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
   try {
-    const all = readWorkspacesFile().workspaces;
+    const file = readWorkspacesFile();
+    const all = file.workspaces;
     const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
-    return Object.entries(all).map(([ws, c]) => {
+    return Object.keys(all).map((ws) => {
       const was = lost.get(ws);
+      // Issue 646: a link to another Hub or company isn't this one's.
+      const e = hubLinkElsewhere(ws, () => file);
       return {
         ws,
-        link: parseHubProjectLink(c?.hub_project),
+        link: hubProjectOf(ws, () => file),
         ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
+        ...(e?.hub
+          ? {
+              elsewhere: {
+                slug: e.slug,
+                name: e.name,
+                origin: e.hub.origin,
+                ...(e.hub.company ? { company: e.hub.company } : {}),
+              },
+            }
+          : {}),
       };
     });
   } catch {
@@ -1381,6 +1451,98 @@ export function pushContactLines(
       detail,
       ...(c.accepted ? {} : { settings: ADDRESS_SETTINGS_LINK }),
     },
+  };
+}
+
+/**
+ * Issue 728: whether the edge's proof was rotated once since agents lost
+ * read access to the edge's state folder, and each stack whose generated
+ * secrets they could read before, named with its owning project so that
+ * project's agent rotates them (the stack's own way; Den never regenerates
+ * them, which would lock a stack out of its data). A stack whose
+ * generated.env changed after the rotation is done. Never a value.
+ */
+export function edgeRotationLines(
+  title: string,
+  o: {
+    edgeDir?: () => string | null;
+    /** Den's projects, to tell a stack's project from its name. */
+    projects?: () => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const dir = (
+    o.edgeDir ??
+    (() => {
+      try {
+        return readEdgeConfig().stateDir;
+      } catch {
+        return null;
+      }
+    })
+  )();
+  if (!dir || !fs.existsSync(dir)) return { lines: [], checks: [] };
+  const at = edgeProofRotation({ stateDir: dir }).rotatedAt;
+  const none = !at && readEdgeProof(dir) === null;
+  const rotate = none
+    ? "the edge has no proof yet, nothing to rotate"
+    : at
+      ? `the edge's proof was rotated once, at ${at}, after agents lost read access to the edge's state folder`
+      : `the edge's proof hasn't been rotated since agents lost read access to the edge's state folder: ${title} rotates it once at its next start (people stay signed in)`;
+  const checks: OnboardCheck[] = [
+    { id: "edge_rotate", status: at || none ? "ok" : "warn", detail: rotate },
+  ];
+  const since = at ? Date.parse(at) : Infinity;
+  const projects = (
+    o.projects ??
+    (() => {
+      try {
+        return getActiveWorkspaces();
+      } catch {
+        return [];
+      }
+    })
+  )();
+  const stale = stacksWithGeneratedSecrets({ stateDir: dir }).filter((f) => {
+    try {
+      const m = fs.statSync(path.join(dir, "stacks", f, "generated.env"));
+      return !(m.mtimeMs > since);
+    } catch {
+      return false;
+    }
+  });
+  const named = stale.map((f) => {
+    const p = projects
+      .filter((w) => f.endsWith(`-${w}`))
+      .sort((a, b) => b.length - a.length)[0];
+    return p
+      ? { stack: f.slice(0, -p.length - 1), project: p }
+      : { stack: f, project: null };
+  });
+  const stacks = named.length
+    ? `agents could read these stacks' generated secrets before: ${named
+        .map((n) =>
+          n.project
+            ? `${n.stack} (project ${n.project}): ${n.project}'s agent rotates them the stack's own way`
+            : `${n.stack}: its project's agent rotates them the stack's own way`,
+        )
+        .join(
+          "; ",
+        )}. ${title} never makes new values, which would lock a stack out of its data`
+    : "no stack's generated secrets wait on a rotation";
+  checks.push({
+    id: "edge_stack_secrets",
+    status: named.length ? "warn" : "ok",
+    detail: stacks,
+  });
+  return {
+    lines: [
+      "",
+      `${title} doctor: Edge secrets`,
+      "",
+      `  edge rotate  ${at || none ? "✓" : "⚠"}  ${rotate}`,
+      `  stack secrets  ${named.length ? "⚠" : "✓"}  ${stacks}`,
+    ],
+    checks,
   };
 }
 
@@ -1824,11 +1986,18 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 1131: agents' refused calls in the last hour.
+      r.checks.push((await tokenRefusalRow()).check);
       // Issue 707: the server's warning lines on disk.
       r.checks.push((await serverLogRow()).check);
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
+      // Issue 1274: memory VMs promise, against the machine's RAM.
+      const vm = await gateVmRows();
+      if (vm.lines.length) r.checks.push(vm.check);
+      // Issue 1263: throwaway containers left over from gate runs.
+      r.checks.push((await throwawayRows()).check);
       // The shared GitHub watcher: calls left, reset, watches, interval.
       const gw = await githubWatchRow();
       if (gw.check) r.checks.push(gw.check);
@@ -1914,6 +2083,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const ep = edgeProofLines(readBrand().name, product().cli);
       if (ep.check) r.checks.push(ep.check);
     }
+    // Issue 728: the edge's once-only rotation, and stacks' secrets.
+    r.checks.push(...edgeRotationLines(readBrand().name).checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -1933,6 +2104,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
   const held = approvalsLines(() => readMcpConfig().approvals);
   for (const l of held.lines) console.log(l);
+  // Issue 1129: agents the restart queue still holds.
+  for (const l of restartsWaitingLines(() =>
+    readRestartsWaiting(getStateDir()),
+  ))
+    console.log(l);
   // D17: who can connect GitHub to this instance from the browser.
   const owner = await ownerCheck();
   console.log("");
@@ -1961,9 +2137,20 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  for (const l of (await tokenRefusalRow()).lines) console.log(l);
   for (const l of (await serverLogRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
+  // Issue 1274: memory VMs promise, against the machine's RAM.
+  for (const l of (await gateVmRows()).lines) console.log(l);
+  // Issue 1263: throwaway containers left over from gate runs.
+  {
+    const tw = await throwawayRows();
+    if (tw.lines.length) {
+      console.log(`Throwaway containers: ${tw.check.detail}`);
+      for (const l of tw.lines) console.log(l);
+    }
+  }
   // The shared GitHub watcher: calls left, reset, watches, interval.
   for (const l of (await githubWatchRow()).lines) console.log(l);
   {
@@ -2033,6 +2220,30 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
     if (tr) console.log(tr);
   }
+  // Issue 1225: what the last restore after a restart brought back, or that
+  // the setting is off.
+  {
+    let enabled = true;
+    try {
+      enabled = servicesRestoreOnBoot();
+    } catch {
+      /* a bad value: doctor's config check says so */
+    }
+    const rl = restoreDoctorLine({
+      enabled,
+      last: readLastRestore(getStateDir()),
+    });
+    if (rl) console.log(rl);
+    try {
+      const rm = runtimeMissingDoctorLine({
+        runtime: await containerRuntimeOnPath(),
+        records: listDaemons(),
+      });
+      if (rm) console.log(rm);
+    } catch {
+      /* no service records to read: nothing to say */
+    }
+  }
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,
@@ -2043,6 +2254,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
+  for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
@@ -2102,6 +2314,26 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 
 /** Issue 726: doctor's rows for state from an earlier Hub. */
 /** Issue 625: the machine's test boxes (never checked from here). */
+/**
+ * Issue 1274: the VMs here and what they promise. DEN_GATE_VMS=0 skips the
+ * reading (the test setup sets it: a test never reads this machine's VMs).
+ */
+async function gateVmRows() {
+  const none = {
+    lines: [] as string[],
+    check: { id: "gate_vms", status: "ok" as const, detail: "" },
+  };
+  if (process.env.DEN_GATE_VMS === "0") return none;
+  try {
+    const { vmLines } = await import("./doctor-vms.js");
+    const { readVms } = await import("../../shared/gates/vms.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return vmLines(readVms(new GateStore().settings().vmMemoryShare));
+  } catch {
+    return none;
+  }
+}
+
 async function gateBoxRows() {
   const { boxLines } = await import("./doctor-boxes.js");
   const { GateStore } = await import("../../shared/gates/store.js");
@@ -2112,6 +2344,26 @@ async function gateBoxRows() {
       lines: [] as string[],
       check: { id: "gate_boxes", status: "ok" as const, detail: "" },
     };
+  }
+}
+
+/** Issue 1263: doctor reads docker's throwaway containers; removes none. */
+async function throwawayRows() {
+  const { throwawayLines } = await import("./doctor-throwaway.js");
+  const { listThrowaway, realDocker, storeTag } =
+    await import("../../shared/gates/ephemeral.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    const store = new GateStore();
+    const list = await listThrowaway(realDocker(10_000));
+    const all = store.list();
+    const live = new Set(all.map((e) => e.id));
+    const checkouts = new Set(
+      all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
+    );
+    return throwawayLines(list, live, storeTag(store.dir), checkouts);
+  } catch {
+    return throwawayLines(null, new Set());
   }
 }
 
@@ -2127,6 +2379,20 @@ async function previousHubRows(): Promise<
     /* a bad hub block: its own row says so */
   }
   return previousHubDoctor(getStateDir(), url);
+}
+
+/** Issue 1131: agents' refused calls in the last hour, from the audit. */
+async function tokenRefusalRow(): Promise<{
+  lines: string[];
+  check: OnboardCheck;
+}> {
+  const { tokenRefusalLines, readRefusalEntries } =
+    await import("./doctor-token-refusals.js");
+  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
+  return tokenRefusalLines(
+    readBrand().name,
+    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
+  );
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */

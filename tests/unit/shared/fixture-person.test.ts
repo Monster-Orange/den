@@ -228,6 +228,12 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["POST", "/api/session/logout", "mutating"],
     ["POST", "/api/notifications/read", "mutating"],
     ["POST", "/api/workspaces/notes/agents/a1/stop", "mutating"],
+    // Issue 1215: a live check makes, activates, deactivates and removes
+    // its own project (test installs only: a fixture session exists only
+    // there, and the route checks the mark again).
+    ["POST", "/api/workspaces/create", "mutating"],
+    ["POST", "/api/workspaces", "mutating"],
+    ["DELETE", "/api/workspaces", "mutating"],
   ] as const)("%s %s passes", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toBeNull();
   });
@@ -247,7 +253,11 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["GET", "/api/hub/github", "readonly"],
     ["GET", "/api/web/sessions", "shell-grade"],
     ["GET", "/api/nowhere", null],
-    ["DELETE", "/api/workspaces", "mutating"],
+    // Issue 1215: the rest of the project family stays the person's.
+    ["POST", "/api/workspaces/rename", "mutating"],
+    ["POST", "/api/workspaces/settings", "mutating"],
+    ["POST", "/api/workspaces/services", "mutating"],
+    ["POST", "/api/workspaces/notes/hub-create", "mutating"],
     // Hardening: agent writes that are refused to a fixture session anyway.
     ["POST", "/api/workspaces/notes/agents/a1/say", "mutating"],
     ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],

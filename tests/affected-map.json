@@ -34,6 +34,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/fixture-grant.integration.test.ts": [
+      "src/shared/test-install-grant.ts",
+      "src/ui/server/index.ts"
+    ],
     "tests/unit/server/test-operator-edge.integration.test.ts": [
       "src/shared/test-operator.ts",
       "src/ui/server/index.ts",
@@ -584,6 +588,10 @@
       "src/ui/server/github-routes.ts",
       "src/ui/server/signin-methods.ts"
     ],
+    "tests/unit/server/token-rebind-1131.integration.test.ts": [
+      "src/shared/actor-token.ts",
+      "src/ui/server/token-binding.ts"
+    ],
     "tests/unit/server/sec3-token-binding.integration.test.ts": [
       "src/ui/server/token-binding.ts",
       "src/shared/actor-token.ts"
@@ -745,6 +753,31 @@
       "src/shared/health-poll.ts",
       "src/ui/server/index.ts",
       "src/ui/server/public/header.js"
+    ],
+    "tests/unit/server/bell-decide-746.browser.test.ts": [
+      "src/ui/server/public/bell.js",
+      "src/ui/server/public/busy-den.js"
+    ],
+    "tests/unit/cli/issue-989-through-server.test.ts": [
+      "src/ui/cli/person-server.ts",
+      "src/ui/cli/workspace-person.ts",
+      "src/ui/cli/agents-command.ts",
+      "src/ui/cli/notifications-command.ts",
+      "src/ui/cli/web-command.ts",
+      "src/ui/cli/gate-command.ts",
+      "src/ui/cli/hub-link-command.ts",
+      "src/ui/cli/index.ts",
+      "src/shared/agents/sandbox.ts"
+    ],
+    "tests/unit/server/status-not-colour-1137.browser.test.ts": [
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/bell.js",
+      "packages/den-ui/src/shell.css"
+    ],
+    "tests/unit/agents/gate-route-e2e-1264.test.ts": [
+      "src/shared/agents/guardrails/gate-route.mjs",
+      "src/shared/agents/guardrails/pretooluse.mjs",
+      "src/ui/cli/gate-command.ts"
     ]
   },
   "subjectless": [],
@@ -819,6 +852,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -943,6 +977,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1136,6 +1171,7 @@
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
+        "tests/unit/server/bell-decide-746.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/busy-popup.browser.test.ts",
@@ -1176,6 +1212,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1272,6 +1309,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1295,6 +1333,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1384,6 +1423,7 @@
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
@@ -1469,6 +1509,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1518,6 +1559,7 @@
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
+        "tests/unit/server/bell-decide-746.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1569,6 +1611,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1583,6 +1626,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1627,6 +1671,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1746,6 +1791,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1787,6 +1833,7 @@
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
+        "tests/unit/server/bell-decide-746.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1859,6 +1906,7 @@
         "tests/unit/server/settings-hub-github.browser.test.ts",
         "tests/unit/server/settings-hub-link-all.browser.test.ts",
         "tests/unit/server/settings-hub-project.browser.test.ts",
+        "tests/unit/server/settings-hub-review.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/settings-pressed.browser.test.ts",
         "tests/unit/server/settings-project-name.browser.test.ts",
@@ -1873,6 +1921,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
@@ -1957,6 +2006,7 @@
         "tests/unit/server/accent-pairs.test.ts",
         "tests/unit/server/appearance-ui.test.ts",
         "tests/unit/server/busy-dots-sweep.test.ts",
+        "tests/unit/server/busy-names-registered.test.ts",
         "tests/unit/server/busy-writes-ratchet.test.ts",
         "tests/unit/server/held-review-keys-205.test.ts",
         "tests/unit/server/i18n.test.ts",
@@ -1992,6 +2042,7 @@
         "tests/unit/agents/den-claude-deny.test.ts",
         "tests/unit/agents/file-deny.test.ts",
         "tests/unit/agents/guardrails-pretooluse.test.ts",
+        "tests/unit/agents/other-installs-728.test.ts",
         "tests/unit/agents/personas.test.ts",
         "tests/unit/agents/project-mcp-edit.test.ts",
         "tests/unit/agents/runtimes.test.ts",
@@ -2021,13 +2072,17 @@
         "tests/unit/security/plan.test.ts",
         "tests/unit/server/agent-groups-view.test.ts",
         "tests/unit/server/hub-change.test.ts",
+        "tests/unit/server/hub-connect-648.test.ts",
+        "tests/unit/server/hub-connect-review.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
+        "tests/unit/server/settings-hub-review.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
         "tests/unit/shared/github-watch/watcher.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/hub-groups.test.ts",
+        "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
@@ -2043,6 +2098,7 @@
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
         "tests/unit/server/whats-new-dialog.browser.test.ts",
+        "tests/unit/test-infra/release-promote.test.ts",
         "tests/unit/version-sync.test.ts"
       ],
       "why": "tests that read the changelog"
@@ -2059,9 +2115,15 @@
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/keep-running-routes.test.ts",
-        "tests/unit/shared/managed-repos-org.test.ts"
+        "tests/unit/shared/managed-repos-org.test.ts",
+        "tests/unit/test-infra/release-promote.test.ts"
       ],
       "why": "tests that read examples/"
+    },
+    {
+      "when": ["scripts/affected-tests.mjs"],
+      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "why": "tests that run scripts/affected-tests.mjs"
     },
     {
       "when": ["scripts/brittle-ratchet.mjs"],
@@ -2087,6 +2149,11 @@
       "why": "tests that run scripts/ci-force-all.mjs"
     },
     {
+      "when": ["scripts/ci-ok.mjs"],
+      "run": ["tests/unit/test-infra/ci-ok.test.ts"],
+      "why": "tests that run scripts/ci-ok.mjs"
+    },
+    {
       "when": ["scripts/ci-pw-install.sh"],
       "run": ["tests/unit/test-infra/pw-install.test.ts"],
       "why": "tests that run scripts/ci-pw-install.sh"
@@ -2107,6 +2174,14 @@
       "why": "tests that run scripts/docs-links.js"
     },
     {
+      "when": ["scripts/fast-checks.mjs"],
+      "run": [
+        "tests/unit/scripts/org-name-commits.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
+      ],
+      "why": "tests that run scripts/fast-checks.mjs"
+    },
+    {
       "when": ["scripts/flake-evidence.mjs"],
       "run": ["tests/unit/test-infra/quarantine.test.ts"],
       "why": "tests that run scripts/flake-evidence.mjs"
@@ -2118,7 +2193,10 @@
     },
     {
       "when": ["scripts/kit-version.mjs"],
-      "run": ["tests/unit/scripts/kit-version.test.ts"],
+      "run": [
+        "tests/unit/scripts/kit-version.test.ts",
+        "tests/unit/test-infra/release-promote-workflow.test.ts"
+      ],
       "why": "tests that run scripts/kit-version.mjs"
     },
     {
@@ -2128,20 +2206,33 @@
     },
     {
       "when": ["scripts/org-name-commits.mjs"],
-      "run": ["tests/unit/scripts/org-name-commits.test.ts"],
+      "run": [
+        "tests/unit/scripts/org-name-commits.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
+      ],
       "why": "tests that run scripts/org-name-commits.mjs"
+    },
+    {
+      "when": ["scripts/org-name-gate.mjs"],
+      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "why": "tests that run scripts/org-name-gate.mjs"
     },
     {
       "when": ["scripts/org-names.js"],
       "run": [
         "tests/unit/scripts/doc-shots-guard.browser.test.ts",
-        "tests/unit/scripts/org-names.test.ts"
+        "tests/unit/scripts/org-name-commits.test.ts",
+        "tests/unit/scripts/org-names.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
       ],
       "why": "tests that run scripts/org-names.js"
     },
     {
       "when": ["scripts/release-ancestry.sh"],
-      "run": ["tests/unit/scripts/release-ancestry.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-ancestry.test.ts",
+        "tests/unit/test-infra/release-promote-workflow.test.ts"
+      ],
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
@@ -2154,13 +2245,32 @@
       "why": "tests that run scripts/release-dry-run.mjs"
     },
     {
+      "when": ["scripts/release-promote.sh"],
+      "run": [
+        "tests/unit/test-infra/release-promote-workflow.test.ts",
+        "tests/unit/test-infra/release-promote.test.ts"
+      ],
+      "why": "tests that run scripts/release-promote.sh"
+    },
+    {
+      "when": ["scripts/release-record.mjs"],
+      "run": ["tests/unit/test-infra/release-promote-workflow.test.ts"],
+      "why": "tests that run scripts/release-record.mjs"
+    },
+    {
       "when": ["scripts/release-tree-check.mjs"],
-      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "run": [
+        "tests/unit/test-infra/release-promote-workflow.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/release-tree-check.mjs"
     },
     {
       "when": ["scripts/release-tree.sh"],
-      "run": ["tests/unit/scripts/release-tree.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-tree.test.ts",
+        "tests/unit/test-infra/release-promote-workflow.test.ts"
+      ],
       "why": "tests that run scripts/release-tree.sh"
     },
     {
@@ -2174,6 +2284,7 @@
     {
       "when": ["scripts/shard-plan.cjs"],
       "run": [
+        "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/quarantine.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
       ],
@@ -2193,6 +2304,7 @@
       "when": ["scripts/words-gate.mjs"],
       "run": [
         "tests/unit/scripts/words-gate-vendored.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
       ],
       "why": "tests that run scripts/words-gate.mjs"
@@ -2214,6 +2326,15 @@
     {
       "when": ["src/shared/agents/runtimes.ts"],
       "run": ["tests/unit/agents/agent-shell-install-home.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/guardrails/gate-route.mjs",
+        "src/shared/agents/guardrails/pretooluse.mjs",
+        "src/ui/cli/gate-command.ts"
+      ],
+      "run": ["tests/unit/agents/gate-route-e2e-1264.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2267,6 +2388,21 @@
         "src/ui/cli/flag-parser.ts"
       ],
       "run": ["tests/unit/cli/edge-route-cli.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/sandbox.ts",
+        "src/ui/cli/agents-command.ts",
+        "src/ui/cli/gate-command.ts",
+        "src/ui/cli/hub-link-command.ts",
+        "src/ui/cli/index.ts",
+        "src/ui/cli/notifications-command.ts",
+        "src/ui/cli/person-server.ts",
+        "src/ui/cli/web-command.ts",
+        "src/ui/cli/workspace-person.ts"
+      ],
+      "run": ["tests/unit/cli/issue-989-through-server.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2760,6 +2896,14 @@
     },
     {
       "when": [
+        "src/ui/server/public/bell.js",
+        "src/ui/server/public/busy-den.js"
+      ],
+      "run": ["tests/unit/server/bell-decide-746.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/ui/server/notification-routes.ts",
         "src/ui/server/notification-service.ts"
       ],
@@ -2895,6 +3039,11 @@
         "src/ui/server/release-service.ts"
       ],
       "run": ["tests/unit/server/environments-view.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/test-install-grant.ts", "src/ui/server/index.ts"],
+      "run": ["tests/unit/server/fixture-grant.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -3520,6 +3669,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/server/hub-connect-review.ts"],
+      "run": ["tests/unit/server/settings-hub-review.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/hub-address.ts", "src/ui/server/hub-connect.ts"],
       "run": ["tests/unit/server/settings-hub.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -3634,6 +3788,15 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "packages/den-ui/src/shell.css",
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/bell.js"
+      ],
+      "run": ["tests/unit/server/status-not-colour-1137.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/agent-routes.ts", "src/ui/server/login-waits.ts"],
       "run": ["tests/unit/server/stop-ends-wait.integration.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -3683,7 +3846,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/test-person.ts", "src/ui/cli/test-person.ts"],
+      "when": [
+        "src/shared/test-person.ts",
+        "src/ui/cli/test-person.ts",
+        "src/ui/server/test-person-held.ts"
+      ],
       "run": ["tests/unit/server/test-person.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3710,6 +3877,11 @@
     {
       "when": ["src/ui/server/time-zone-pref.ts"],
       "run": ["tests/unit/server/time-zone.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/actor-token.ts", "src/ui/server/token-binding.ts"],
+      "run": ["tests/unit/server/token-rebind-1131.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

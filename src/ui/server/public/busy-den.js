@@ -79,6 +79,26 @@ export const DEN_ACTIONS = {
       failure: "busy.gateEndF",
     },
   },
+  // Issue 746: Allow and Deny in the bell's Needs you rows. The bell
+  // says what was allowed or denied itself, so no success toast here.
+  "decide-allow": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.allowW",
+      success: "busy.allowS",
+      failure: "busy.allowF",
+    },
+  },
+  "decide-deny": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.denyW",
+      success: "busy.denyS",
+      failure: "busy.denyF",
+    },
+  },
   "remove-service": {
     who: "__DEN_TITLE__",
     autoClose: true,

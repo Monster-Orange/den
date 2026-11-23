@@ -443,6 +443,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
+  R(
+    "/api/web/test-installs",
+    "issue 816: the test installs on this computer waiting for their test person (the signed-in person only, checked in the route)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person/grant",
+    "issue 816: your own Den, at your Allow, makes this test install's test person (its person bearer on this machine plus a one-use grant)",
+  ),
   M(
     ["POST"],
     "/api/web/fixture-person/setup-secret",
@@ -514,6 +523,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
   ),
+  M(
+    ["POST"],
+    "/api/verify/import",
+    "issue 1182: a person keeps an outside runner's verdict as a Verify run",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/remove",
+    "issue 1182: a person removes an imported Verify run",
+  ),
   R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
   M(
     ["POST"],
@@ -568,6 +587,11 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/agents/accounts/order",
     "changes the order agents use {vendor} accounts in",
   ),
+  M(
+    ["POST"],
+    "/api/agents/accounts/remove",
+    "issue 1182: removes a {vendor} account and its sign-in token; a person's only",
+  ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
     ["POST"],
@@ -599,6 +623,11 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST", "DELETE"], "/api/workspaces"),
   M(["POST"], "/api/workspaces/rename"),
   M(["POST"], "/api/workspaces/create"),
+  M(
+    ["POST"],
+    "/api/workspaces/seed",
+    "issue 1182: resets the blueprint's projects to the committed config; a person's only",
+  ),
   M(["POST"], "/api/workspaces/services/autostart"),
   M(["POST"], "/api/workspaces/services/mode"),
   M(["POST", "DELETE"], "/api/workspaces/services"),
@@ -689,6 +718,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/workspaces/:ws/agents/:id/compacting-clear",
     "issue 278: a person looked at an agent stuck compacting: its loop is over for now and held deliveries go again; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/folder",
+    "issue 1182: a stopped agent's folder ({repo} or {folder}); a person's only (an agent asks with agent_folder)",
   ),
   M(
     ["POST"],
@@ -895,6 +929,15 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/hub/groups",
     "Issue 750: this install's groups as Hub serves them (read from Hub, kept in memory only), for the agents page's By group view",
+  ),
+  R(
+    "/api/hub/connect-review",
+    "issue 646: Connect's review: each project, its Hub project or the proposed one and why (names only)",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/connect-review",
+    "issue 646: Connect and link all: link the rows at once, ask Hub for the new projects as one plan; a person's only",
   ),
   R(
     "/api/hub/names-check",
@@ -1183,6 +1226,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/link",
     "/api/workspaces/:ws/agents/:id/move",
+    "/api/workspaces/:ws/agents/:id/folder",
     "/api/workspaces/:ws/agents/:id/say",
     "/api/workspaces/:ws/agents/:id/order",
   ],

@@ -235,6 +235,7 @@ async function inboxSettings(): Promise<InboxSettings> {
         on: c.inboxWatch,
         pollSeconds: c.inboxPollSeconds,
         backoffMaxSeconds: c.inboxBackoffMaxSeconds,
+        readsPerSecond: c.inboxReadsPerSecond,
       };
   } catch {
     /* doctor says so; the defaults meanwhile */

@@ -170,6 +170,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "routine",
     why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",
   },
+  den_sandbox_on: {
+    risk: "routine",
+    why: "puts agents from before the agent sandbox into it: it narrows what they may do",
+  },
   service_try: { risk: "routine", why: "starts a service locally" },
   verify_run: {
     risk: "critical",
@@ -203,6 +207,10 @@ export const HELD_WRITE_RISK: Readonly<
   host_restart: {
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
+  },
+  test_person_setup: {
+    risk: "critical",
+    why: "gives a test install on this computer its test person, which its live checks sign in as: a person's own Allow (CRITICAL_HELD_ACTIONS)",
   },
   approval_policy: {
     risk: "critical",

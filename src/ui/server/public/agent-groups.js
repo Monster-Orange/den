@@ -28,17 +28,36 @@ const esc = (s) =>
   );
 
 /**
- * Issue 750 step 3: Restart on the row of a running agent whose session
- * failed to load a server's tools (issue 749's mcpFailed, the one source;
- * its tag says "Can't reach Hub"). Restart loads them again on the same
- * conversation (data-act="tools-restart", the pane bar's own action). None
- * while Den restarts it already (toolsRestarting), or for a stopped agent.
+ * Why a running agent's tools need a restart, the one source for its tag
+ * (agents-page mcpStaleTag) and its Restart (toolsRestartHtml):
+ * "restarting" while Den restarts it already (issue 193); "failed" when its
+ * session didn't get a server's tools (issue 749's mcpFailed: "Can't reach
+ * Hub"); "adds" or "drops" when Hub was connected or disconnected since it
+ * launched (D44); "den" when its Den tools are an older Den's (issue 1223).
+ * Null for a stopped agent, a shell, or one whose tools are current.
+ */
+export function toolsStale(r) {
+  if (r?.kind !== "agent") return null;
+  if (r.toolsRestarting) return "restarting";
+  if (r.state !== "running" && r.state !== "stopping") return null;
+  if (Array.isArray(r.mcpFailed) && r.mcpFailed.length) return "failed";
+  const sx = r.mcpStale;
+  if (sx?.adds?.length) return "adds";
+  if (sx?.drops?.length) return "drops";
+  if (sx?.den) return "den";
+  return null;
+}
+
+/**
+ * Restart on the row of a running agent whose tools need it: issue 750
+ * step 3 (its Hub tools failed to load) and issue 1223 (its tools are out
+ * of date). It loads them again on the same conversation, at its next idle
+ * (data-act="tools-restart", the pane bar's own action). None while Den
+ * restarts it already, or for a stopped agent.
  */
 export function toolsRestartHtml(r, t) {
-  if (r?.kind !== "agent" || r.toolsRestarting) return "";
-  if (r.state !== "running" && r.state !== "stopping") return "";
-  if (!Array.isArray(r.mcpFailed) || !r.mcpFailed.length) return "";
-  return toolsRestartButton(r, t);
+  const why = toolsStale(r);
+  return why && why !== "restarting" ? toolsRestartButton(r, t) : "";
 }
 
 /**

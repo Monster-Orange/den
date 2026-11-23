@@ -53,6 +53,9 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   den_sandbox_on    issue 936: agents.sandbox: on in user.yml, for the
+ *                     agents that started before the sandbox. Den asks for
+ *                     it itself; only the person's Allow runs it
  *   embed_key_create  issue 334: an app key for a web app's own server,
  *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
  *                     person's own ask and Allow only; the key is shown
@@ -94,6 +97,10 @@
  *   report            issue 565: file a report the way the page's Report
  *                     does (report-held.ts): to a public destination the
  *                     person's own Allow, to a private one the policy
+ *   test_person_setup issue 816: set up the test person of a test install
+ *                     announced on this computer (test-person-held.ts):
+ *                     one grant and that install's bearer, sent once over
+ *                     loopback at the Allow. The person's own Allow only
  *   web_url_set       issue 869: Den's own agent proposes this install's
  *                     address (web-url-held.ts); it must answer as this
  *                     Den at the ask and at the Allow, and saves as
@@ -112,6 +119,7 @@ import {
   type PolicySetting,
 } from "../../shared/approval-policy.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
+import { createHash } from "crypto";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
 import {
@@ -153,11 +161,17 @@ export interface HeldActionDeps {
   workspaceExists: (name: string) => boolean;
   /** Where `repo add` puts a repo with no -w: the focused one, else `default`. */
   defaultWorkspace: () => string;
-  /** The service `up` would start, or why it can't (the exec route's checks). */
+  /**
+   * The service `up` would start, or why it can't (the exec route's
+   * checks). `command`: its declared local "up", as the dialog shows it
+   * (issue 362), absent when it runs the runner's own.
+   */
   serviceTarget: (
     service: string,
     workspace?: string,
-  ) => { ok: true; address: string } | { ok: false; error: string };
+  ) =>
+    | { ok: true; address: string; command?: string }
+    | { ok: false; error: string };
   tryService: (address: string, workspace?: string) => Promise<TryResult>;
   /** SRV-1a: leave the marker, then restart this server (after answering). */
   restartDen?: (
@@ -239,8 +253,12 @@ export interface HeldActionDeps {
   }) => Promise<unknown>;
   /** Issue 565: file a report as the page does (report-held.ts reportHeld). */
   report?: HeldAction;
+  /** Issue 816: set up a test install's test person (test-person-held.ts). */
+  testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
+  sandboxOn?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -276,6 +294,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "test_person_setup",
   "web_url_set",
 ]);
 
@@ -454,7 +473,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const serviceTry: HeldAction = {
-    check(a): HeldCheck {
+    check(a, _who, o): HeldCheck {
       const service = str(a.service);
       if (!service)
         return { ok: false, error: "give service: <repo> or <repo>/<service>" };
@@ -468,11 +487,34 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: `there is no project "${workspace}"` };
       const t = d.serviceTarget(service, workspace);
       if (!t.ok) return { ok: false, error: t.error };
+      // Issue 362: the Allow is for the command the dialog shows. Its
+      // fingerprint rides in the request; the check again before the run
+      // refuses a command that changed while it waited.
+      const up = createHash("sha256")
+        .update(`${t.address}\n${t.command ?? ""}`)
+        .digest("hex")
+        .slice(0, 32);
+      // A request with no fingerprint at the Allow (asked before Den kept
+      // it, or its args changed on the way) names no command: refused.
+      if (o?.again && a.up === undefined)
+        return {
+          ok: false,
+          error: `this request for ${t.address} doesn't say which "up" command it was asked for, so the Allow is not for one: ask again`,
+        };
+      if (a.up !== undefined && a.up !== up)
+        return {
+          ok: false,
+          error: `the "up" command of ${t.address} changed after this was asked, so the Allow is not for it: ask again`,
+        };
       const activates =
         workspace !== undefined && !d.workspaceActive(workspace);
       return {
         ok: true,
-        args: { service: t.address, ...(workspace ? { workspace } : {}) },
+        args: {
+          service: t.address,
+          ...(workspace ? { workspace } : {}),
+          up,
+        },
         summary: `start ${t.address}${workspace ? ` in project "${workspace}"` : ""}${activates ? ` (this activates ${workspace})` : ""}`,
         params: {
           service: t.address,
@@ -493,6 +535,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             `Runs the service's local "up", as the Services page's Start does.`,
             "ap.det.service_try.up",
           ),
+          ...(t.command
+            ? [
+                line(`Command: ${t.command}`, "ap.det.service_try.command", {
+                  command: t.command,
+                }),
+              ]
+            : []),
           line(
             `Den reports the exit code and the last lines of its output.`,
             "ap.det.service_try.reports",
@@ -660,6 +709,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const sandboxOn = op(
+    d.sandboxOn,
+    "this Den can't turn the agent sandbox on here",
+  );
   const gateRunnerToken = op(
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
@@ -1021,12 +1074,23 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       }),
     },
     den_pin_commit: pinCommit,
+    den_sandbox_on: sandboxOn,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    test_person_setup: d.testPersonSetup ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+      run: async () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+    },
     web_url_set: d.webUrlSet ?? {
       check: () => ({
         ok: false,

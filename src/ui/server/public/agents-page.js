@@ -106,6 +106,7 @@ import {
   groupsViewHtml,
   toolsRestartButton,
   toolsRestartHtml,
+  toolsStale,
   viewSwitchHtml,
 } from "/agent-groups.js";
 import { focusBack, refindKey } from "/transcript-view.js";
@@ -1050,9 +1051,9 @@ function rowHtml(r) {
     r.kind === "agent"
       ? rotCalloutHtml(r) +
         modeApplyHtml(r) +
-        compactingHtml(r) +
-        // Issue 750 step 3: Can't reach Hub: Restart, on the row too.
-        toolsRestartHtml(r, t)
+        // Issues 750 and 1223: Restart for its tools, on the row too.
+        toolsRestartHtml(r, t) +
+        compactingHtml(r)
       : "";
   // D32: the helpers it started in its own session, under it. #80: only
   // once its badge is opened (closed by default, the agent in front too).
@@ -2258,24 +2259,29 @@ function apiOnlyTag(r) {
  * failed to load a server's tools, with the error in the tag's title.
  */
 function mcpStaleTag(r, withButton) {
+  const why = toolsStale(r);
+  if (!why) return "";
   // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
-  if (r?.kind === "agent" && r.toolsRestarting)
+  if (why === "restarting")
     return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  const live = r?.kind === "agent" && !isStopped(r);
-  // Issue 749: its session didn't get a server's tools (the error says why).
-  const fx = live && Array.isArray(r.mcpFailed) ? r.mcpFailed[0] : null;
-  const sx = live ? r.mcpStale : null;
   let tag;
-  if (fx) {
-    const tip = t("ag.mcp.failedTip", { error: String(fx.error ?? "") });
-    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
+  if (why === "failed") {
+    // Issue 749: its session didn't get a server's tools (the error says why).
+    const fx = r.mcpFailed[0];
+    const tip = t("ag.mcp.failedTip", { error: String(fx?.error ?? "") });
+    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx?.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
+  } else if (why === "den") {
+    // Issue 1223: its Den tools are an older Den's (Den updated since).
+    const v = {
+      from: String(r.mcpStale.den.from),
+      to: String(r.mcpStale.den.to),
+    };
+    tag = `<span class="tagx warn" data-mcp-stale="den" title="${esc(t("ag.mcp.denTip", v))}">${esc(t("ag.mcp.den", v))}</span>`;
   } else {
-    if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
-    const k = sx.adds?.length ? "adds" : "drops";
-    tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+    tag = `<span class="tagx warn" data-mcp-stale="${why}" title="${esc(t(`ag.mcp.${why}Tip`))}">${esc(t(`ag.mcp.${why}`))}</span>`;
   }
   if (!withButton) return tag;
-  return `<span class="agstale">${tag}` + `${toolsRestartButton(r, t)}</span>`;
+  return `<span class="agstale">${tag}${toolsRestartButton(r, t)}</span>`;
 }
 
 /**
@@ -5914,7 +5920,7 @@ export async function mountAgentsPage(root) {
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
-      // Issue 750: Can't reach Hub: Restart loads its Hub tools.
+      // Issues 750 and 1223: the row's Restart for its tools, as the pane bar's.
       else if (which === "tools-restart") void restartForTools(r, act);
       // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
       else if (which === "stop")
