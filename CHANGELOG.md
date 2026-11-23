@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.86] - unreleased
+
+### Fixed
+
+- Bell: Allow and Deny in "Needs you" decide again. Since 0.4.84 both showed an error and decided nothing; the Allow pop-up kept working. A new test fails on any busy action a page uses that isn't registered. (issue 746)
+
 ## [0.4.85] - 2026-11-22
 
 ### Added
