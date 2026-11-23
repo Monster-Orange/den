@@ -114,11 +114,15 @@ export async function run(ctx, state) {
   }
   r.waitOrder = slots.filter((s) => !s.granted).map((s) => s.id);
   r.firstPriority = slots.find((s) => s.id === ID.first)?.priority ?? null;
+  // The words a person reads are under test here, so this stays on the
+  // text form (issue 840), read whole: the first slot's id and its reason
+  // on one line, by a regex over all of it, never a line by position.
   const text = await ctx.cli(["gate", "status"], { env, timeout: 30000 });
-  r.textLine =
-    String(text?.out ?? "")
-      .split("\n")
-      .find((l) => l.includes(ID.first)) ?? "";
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const said = new RegExp(
+    `${esc(ID.first)}[^\\n]*release priority: "${esc(WHY_FIRST)}"`,
+  ).exec(String(text?.out ?? ""));
+  r.textLine = said ? said[0] : "";
   const t0 = Date.now();
   const second = await ctx.cli(
     [
@@ -263,7 +267,7 @@ export function expect(cells) {
       ok:
         r.firstPriority?.reason === WHY_FIRST &&
         r.firstPriority?.holds === true &&
-        r.textLine.includes(`release priority: "${WHY_FIRST}"`),
+        r.textLine !== "",
       detail: `--json: ${JSON.stringify(r.firstPriority)}; text: ${r.textLine}`,
     },
   ];

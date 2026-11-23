@@ -18,8 +18,22 @@ const TOKENISH = /\b(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{40,})\b/;
 export const readOnly = true;
 
 export async function setup(ctx) {
-  const l = ctx.cli(["agents", "accounts", "list"]);
-  return { code: l.code, out: String(l.out), err: String(l.err) };
+  // Issue 840: the list's --json form. `out` stays the whole printed
+  // text, so the token and email checks below read every byte of it.
+  const l = ctx.cli(["agents", "accounts", "list", "--json"]);
+  let list = null;
+  try {
+    list = JSON.parse(String(l.out ?? ""));
+  } catch {
+    list = null;
+  }
+  return {
+    code: l.code,
+    out: String(l.out ?? ""),
+    err: String(l.err ?? ""),
+    runtime: list?.runtime ?? null,
+    accounts: Array.isArray(list?.accounts) ? list.accounts : null,
+  };
 }
 
 export async function run(ctx, s) {
@@ -66,8 +80,8 @@ export function expect(cells) {
   return [
     {
       clause: clauses[0],
-      ok: r0.code === 0 && /^\S.*\(\S+\):/m.test(r0.out),
-      detail: `agents accounts list: ${r0.code}; ${r0.out.split("\n").slice(0, 4).join(" / ") || r0.err.slice(0, 120)} (add, set-token, order and remove change accounts: not run)`,
+      ok: r0.code === 0 && !!r0.runtime?.id && (r0.accounts?.length ?? 0) > 0,
+      detail: `agents accounts list --json: ${r0.code}; ${r0.accounts ? `${r0.runtime?.name} (${r0.runtime?.id}): ${r0.accounts.map((a) => `${a.id} ${a.label} ${a.tokenSet ? "token set" : "no token"}`).join(" / ")}` : r0.err.slice(0, 120)} (add, set-token, order and remove change accounts: not run)`,
     },
     {
       clause: clauses[1],

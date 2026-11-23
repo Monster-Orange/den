@@ -17,14 +17,21 @@ export async function setup() {
 }
 
 export async function run(ctx) {
-  const d = ctx.cli(["doctor"]);
-  const text = String(d.out + d.err);
-  const line =
-    text.split("\n").find((l) => /cannot sign in after logout/.test(l)) ?? null;
+  // Issue 840: doctor --json's where: checks. The sign-in row is
+  // where:runtime-sign-in; the service's mode leads where:service.
+  const d = ctx.cli(["doctor", "--json"]);
+  let checks = [];
+  try {
+    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
+  } catch {
+    checks = [];
+  }
+  const byId = (id) => checks.find((c) => c?.id === id) ?? null;
+  const signIn = byId("where:runtime-sign-in");
   return {
     code: d.code,
-    line: line?.trim() ?? null,
-    always: /keep running|always/i.test(text),
+    line: signIn ? String(signIn.detail ?? "") : null,
+    always: /^always\b/.test(String(byId("where:service")?.detail ?? "")),
   };
 }
 

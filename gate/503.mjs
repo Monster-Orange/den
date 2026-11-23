@@ -121,14 +121,23 @@ export async function run(ctx, state) {
         state.ws,
         "--name",
         name,
+        "--json",
         "--",
         "sleep",
         "900",
       ],
       { timeout: 30000 },
     );
-    if (r?.code !== 0 || !/^started /m.test(r?.out ?? "")) {
-      const said = `${r?.err ?? ""}\n${r?.out ?? ""}`.trim();
+    // Issue 840: started is the --json record's session; a refusal's
+    // words (whether they name the cap) are read whole from stderr.
+    let started = null;
+    try {
+      started = JSON.parse(String(r?.out ?? "")).session ?? null;
+    } catch {
+      started = null;
+    }
+    if (r?.code !== 0 || !started?.name) {
+      const said = String(r?.err ?? "").trim();
       out.openError = {
         exit: r?.code ?? null,
         cap: /sessions\.max_concurrent/.test(said),

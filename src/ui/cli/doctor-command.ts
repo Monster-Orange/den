@@ -452,6 +452,8 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
         ? "warn"
         : "ok",
     detail: `${sel} ${r.available ? "available" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    // Issue 840: what the human doctor says is healthy, as a field.
+    ...(r.notes?.length ? { notes: [...r.notes] } : {}),
   };
 }
 

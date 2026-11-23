@@ -29,11 +29,18 @@ export async function run(ctx) {
   const labels = (Array.isArray(rows) ? rows : [])
     .filter((a) => a && "signIn" in a)
     .map((a) => ({ agent: a.agent ?? a.id, signIn: a.signIn }));
-  const d = ctx.cli(["doctor"]);
-  const why = String(d.out + d.err)
-    .split("\n")
-    .filter((l2) => /agents accounts set-token/.test(l2))
-    .map((l2) => l2.trim());
+  // Issue 840: doctor --json's checks that point at set-token (the
+  // where: sign-in rows), read by field.
+  const d = ctx.cli(["doctor", "--json"]);
+  let checks = [];
+  try {
+    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
+  } catch {
+    checks = [];
+  }
+  const why = checks
+    .filter((c) => /agents accounts set-token/.test(String(c?.detail ?? "")))
+    .map((c) => `${c.id}: ${c.detail}`);
   return {
     code: l.code,
     agents: Array.isArray(rows) ? rows.length : null,

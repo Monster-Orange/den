@@ -71,7 +71,7 @@ export const SESSIONS_HELP = {
     "Terminals that keep running when the web server restarts, owned by a",
     "session host (one per distribution, started on demand).",
     "",
-    "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>",
+    "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] [--json] -- <argv…>",
     "    run argv in a PTY as <dist>-<ws>:<n> (cwd: here); capped by sessions.max_concurrent",
     "    env: PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG, LC_*, TZ,",
     "    TMPDIR only; --keep-env NAME (exact, repeatable; audited) adds one",
@@ -405,6 +405,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
     "--name": true,
     "--cwd": true,
     "--keep-env": "repeat",
+    "--json": false,
   });
   if (p.positional.length)
     throw new UsageError(
@@ -519,6 +520,21 @@ async function start(args: string[], d: Resolved): Promise<number> {
             : {}),
         },
       );
+      // Issue 840: the record, as `sessions list --json` gives it.
+      if (p.flags["--json"]) {
+        d.out(
+          JSON.stringify(
+            { session: contractInfo(info), dropped: [...dropped] },
+            null,
+            2,
+          ),
+        );
+        for (const k of kept.filter((x) => x.credentialShaped))
+          d.err(
+            `  ⚠ --keep-env ${k.name}: credential-shaped; passed because you named it`,
+          );
+        return 0;
+      }
       d.out(`started ${info.name} (id ${info.ref.id}, pid ${info.pid})`);
       // With an allowlist nearly everything is left out: the first few
       // names, then a count, so the line stays readable.

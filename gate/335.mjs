@@ -17,11 +17,17 @@ export const timeoutMs = 120000;
 export const readOnly = true;
 
 export async function setup(ctx) {
-  const d = ctx.cli(["doctor"]);
-  const lines = String(d.out + d.err)
-    .split("\n")
-    .filter((l) => /^\s*mcp server\s/.test(l))
-    .map((l) => l.trim());
+  // Issue 840: doctor --json's mcp:server:<project>:<name> checks.
+  const d = ctx.cli(["doctor", "--json"]);
+  let checks = [];
+  try {
+    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
+  } catch {
+    checks = [];
+  }
+  const lines = checks
+    .filter((c) => String(c?.id ?? "").startsWith("mcp:server:"))
+    .map((c) => `${c.status}: ${c.detail}`);
   return { doctorCode: d.code, doctor: lines };
 }
 

@@ -20,13 +20,16 @@ const ROWS = {
 export const readOnly = true;
 
 export async function setup(ctx) {
-  const d = ctx.cli(["doctor"]);
-  const line =
-    String(d.out + d.err)
-      .split("\n")
-      .find((l) => /^\s*push\s+[✓⚠]/.test(l))
-      ?.trim() ?? null;
-  return { push: line };
+  // Issue 840: doctor --json's push_contact check, by field.
+  const d = ctx.cli(["doctor", "--json"]);
+  let checks = [];
+  try {
+    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
+  } catch {
+    checks = [];
+  }
+  const c = checks.find((x) => x?.id === "push_contact");
+  return { push: c ? String(c.detail ?? "") : null };
 }
 
 export async function run(ctx, s) {

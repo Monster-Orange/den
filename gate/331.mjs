@@ -10,11 +10,22 @@ export const clauses = [
 export const timeoutMs = 300000;
 const DEFAULT = /Set edge\.image to traefik:v3\.\d+\.\d+, Den's default\./;
 
-const imageLines = (out) =>
-  String(out)
-    .split("\n")
-    .filter((l) => /edge\.image/.test(l))
-    .map((l) => l.trim());
+// Issue 840: doctor --json's strategy:tls check carries the edge.image
+// line: a warning in its detail, the healthy line in its notes.
+const parse = (b) => {
+  try {
+    return JSON.parse(String(b ?? ""));
+  } catch {
+    return null;
+  }
+};
+function imageView(d) {
+  const c = (parse(d.out)?.checks ?? []).find((x) => x?.id === "strategy:tls");
+  const said = [c?.detail ?? "", ...(c?.notes ?? [])].filter((t) =>
+    /edge\.image/.test(t),
+  );
+  return { code: d.code, status: c?.status ?? null, lines: said };
+}
 
 export async function setup() {
   return {};
@@ -22,14 +33,11 @@ export async function setup() {
 
 export async function run(ctx) {
   const r = {};
-  const base = ctx.cli(["doctor"]);
-  r.base = { code: base.code, lines: imageLines(base.out + base.err) };
+  r.base = imageView(ctx.cli(["doctor", "--json"]));
   ctx.edge.swap({ image: "traefik:v2.11" });
-  const v2 = ctx.cli(["doctor"]);
-  r.v2 = { code: v2.code, lines: imageLines(v2.out + v2.err) };
+  r.v2 = imageView(ctx.cli(["doctor", "--json"]));
   ctx.edge.swap({ image: "traefik:latest" });
-  const latest = ctx.cli(["doctor"]);
-  r.latest = { code: latest.code, lines: imageLines(latest.out + latest.err) };
+  r.latest = imageView(ctx.cli(["doctor", "--json"]));
   return r;
 }
 

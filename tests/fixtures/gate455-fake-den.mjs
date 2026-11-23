@@ -12,6 +12,61 @@ export function fakeBed({ broken = null, address = null } = {}) {
   const unreachable = `Not reachable yet: nothing answers at ${wanted}.`;
   const answer = "a".repeat(64);
   const json = (status, body) => ({ status, body: JSON.stringify(body) });
+  // doctor --json and edge route --json (issue 840), with the same words
+  // as the text forms below.
+  const jsonCli = (args) => {
+    if (args[0] === "doctor") {
+      const details = address
+        ? [
+            ...(address === "held"
+              ? [
+                  "Edge: not running. Port 80 is held by nginx. Options: free port 80, or add Den to that proxy (route below).",
+                ]
+              : broken === "unreachable-cli"
+                ? []
+                : [unreachable]),
+            `Den answers at ${direct}. That address was checked just now: it is this Den.`,
+          ]
+        : broken === "doctor"
+          ? []
+          : ["https://den.example.test: checked just now: it is this Den"];
+      return {
+        code: 0,
+        out: JSON.stringify({
+          ok: true,
+          checks: [
+            { id: "node", status: "ok", detail: "Den 0.0.0" },
+            ...details.map((detail, i) => ({
+              id: i ? "address_reaches" : "address",
+              status: "ok",
+              detail,
+            })),
+          ],
+        }),
+      };
+    }
+    const kind = args[3];
+    const config =
+      broken === "routes"
+        ? ""
+        : {
+            nginx:
+              "server_name den.example.test;\nlocation / {\n  proxy_pass http://127.0.0.1:1;\n}",
+            caddy: "den.example.test {\n  reverse_proxy 127.0.0.1:1\n}",
+            traefik: 'rule: "Host(`den.example.test`)"',
+          }[kind];
+    return {
+      code: 0,
+      out: JSON.stringify({
+        kind,
+        host: "den.example.test",
+        listen: 80,
+        upstream: "http://127.0.0.1:1",
+        config,
+      }),
+      err: "",
+    };
+  };
   const ctx = {
     async fetch(p) {
       if (p.endsWith("c=nope")) return json(400, { error: "bad challenge" });
@@ -38,6 +93,7 @@ export function fakeBed({ broken = null, address = null } = {}) {
       return null;
     },
     cli(args) {
+      if (args.includes("--json")) return jsonCli(args);
       if (args[0] === "doctor" && address)
         return {
           code: 0,

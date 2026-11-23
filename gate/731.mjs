@@ -67,11 +67,13 @@ export async function run(ctx) {
         refresh: row.refresh ?? null,
       }
     : null;
-  const text = ctx.cli(["doctor"]).out ?? "";
-  out.hostLine =
-    String(text)
-      .split("\n")
-      .find((l) => /^\s+Host\s/.test(l)) ?? null;
+  // No secret in the words a person reads is under test here, so this
+  // stays on the text form (issue 840), read whole: the Host row by a
+  // regex over all of it, never a line by position.
+  const said = /^[ \t]+Host[ \t].*$/m.exec(
+    String(ctx.cli(["doctor"]).out ?? ""),
+  );
+  out.hostLine = said ? said[0] : null;
   return out;
 }
 

@@ -60,9 +60,20 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
         next++;
         host++;
         machine++;
+        // As the real CLI: --json gives the record (issue 840).
         return {
           code: 0,
-          out: `started ${name} (id s${next}, pid ${1000 + next})\n  attach: den sessions attach ${name}`,
+          out: args.includes("--json")
+            ? JSON.stringify({
+                session: {
+                  name,
+                  pid: 1000 + next,
+                  ref: { id: `s${next}` },
+                  startedAt: new Date(0).toISOString(),
+                },
+                dropped: [],
+              })
+            : `started ${name} (id s${next}, pid ${1000 + next})\n  attach: den sessions attach ${name}`,
           err: "",
         };
       }

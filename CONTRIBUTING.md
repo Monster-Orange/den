@@ -210,6 +210,14 @@ export function expect(cells) {
 
 - `issue` matches the file name. `clauses` names each clause the check
   proves, as the issue words it, and `expect` answers each one once.
+- A check reads Den's CLI through its `--json` form and the fields it
+  names (`ctx.cli(["doctor", "--json"])`, then a check's `id`, `status`
+  and `detail`), never by splitting or matching the text a person reads.
+  A command a check needs without `--json` gets one first. When the words
+  themselves are under test (a refusal an agent is told, what a person
+  reads), the check reads the text whole, with a contains or a regex over
+  all of it, never a line or word by position.
+  `tests/unit/test-infra/gate-cli-json-840.test.ts` enforces both.
 - The harness reads a row's `detail:` (what was seen), never `note:`.
 - `ok` is `true`, `false`, or `null` for "not run". `null` always comes
   with `skip`: `"person"` for a person's own act (an Allow, an answer, an
