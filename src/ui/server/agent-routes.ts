@@ -1529,7 +1529,13 @@ export async function handleAgentRoutes(
       sendJson(res, { ok: true, removed });
     } else {
       // D28: a due agent under auto relaunches from its handoff instead.
-      const r = await resumeOrRelaunch(d, id!, ws);
+      // Issue 1129: one waiting in the restart queue leaves it and starts
+      // now, ahead of the rest (a person opened it); never twice.
+      const run = () => resumeOrRelaunch(d, id!, ws);
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const r = (await (restartQueue().openNow(id!, run) ?? run())) as Awaited<
+        ReturnType<typeof resumeOrRelaunch>
+      >;
       if (r.kind === "relaunched") {
         what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
         audit(what, r.s.early ? "exited at once" : undefined);
@@ -2605,9 +2611,15 @@ export function startAgentUpkeep(
         log(`  ⚠ ${(e as Error).message}`);
       }
       const hubUp = await hubAnswers();
+      // Issue 1129: a batch at a time (agents.resume), never all at once.
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const { notificationDeps: bell } =
+        await import("./notification-service.js");
+      const queue = restartQueue({ log, store: () => bell().store });
       const f = await markInterrupted(d, {
         restoreAll,
         ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+        queue,
       });
       if (f.withoutHub.length) {
         log(

@@ -2671,6 +2671,8 @@
       "La solicitud de {name} se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLostAsk":
       "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
+    "bell.m.restartsWaiting":
+      "{n} agentes esperan para reiniciarse, unos pocos a la vez",
     "bell.m.heldLostAll":
       "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
     "bell.go.h": "Turnos de prueba pasados de su estimación",
