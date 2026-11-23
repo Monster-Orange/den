@@ -1322,8 +1322,7 @@
     "set.server.report_screenshot_days": "Capturas de informes, se guardan",
     "set.server.report_screenshot_days.d":
       "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
-    "set.server.server_log_max":
-      "Registro de avisos, tamaño máximo",
+    "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
@@ -3097,12 +3096,9 @@
       "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
     "gate.startHold":
       "tiene su puesto; espera a que la carga ({load}) baje de {limit} antes de empezar",
-    "gate.leftoversH":
-      "Detenidos al terminar su ejecución",
-    "gate.leftovers":
-      "{n} procesos sobrantes de {label} ({cmd})",
-    "gate.leftovers.one":
-      "{n} proceso sobrante de {label} ({cmd})",
+    "gate.leftoversH": "Detenidos al terminar su ejecución",
+    "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
+    "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

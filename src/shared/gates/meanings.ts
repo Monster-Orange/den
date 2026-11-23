@@ -269,7 +269,8 @@ export const START_HOLD_WORDS: Record<
 > = {
   en: (load, limit) => `waiting for the load (${load}) to drop under ${limit}`,
   es: (load, limit) => `esperando a que la carga (${load}) baje de ${limit}`,
-  ja: (load, limit) => `負荷 (${load}) が ${limit} 未満に下がるのを待っています`,
+  ja: (load, limit) =>
+    `負荷 (${load}) が ${limit} 未満に下がるのを待っています`,
 };
 
 /** Issue 1132: what was stopped of an ended run, for gate status. */
@@ -281,5 +282,6 @@ export const LEFTOVER_WORDS: Record<
     `stopped ${n} leftover process${n === 1 ? "" : "es"} of ${label} (${cmd})`,
   es: (n, label, cmd) =>
     `${n === 1 ? "se detuvo 1 proceso sobrante" : `se detuvieron ${n} procesos sobrantes`} de ${label} (${cmd})`,
-  ja: (n, label, cmd) => `${label} (${cmd}) の残りのプロセス ${n} 個を止めました`,
+  ja: (n, label, cmd) =>
+    `${label} (${cmd}) の残りのプロセス ${n} 個を止めました`,
 };

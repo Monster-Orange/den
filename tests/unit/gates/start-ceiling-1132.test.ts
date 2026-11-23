@@ -118,9 +118,7 @@ function rig(o: { load: number; ceiling?: number; waitMin?: number }) {
   store.writeSettings(
     {
       max_start_load: o.ceiling ?? 27,
-      ...(o.waitMin !== undefined
-        ? { max_start_wait_minutes: o.waitMin }
-        : {}),
+      ...(o.waitMin !== undefined ? { max_start_wait_minutes: o.waitMin } : {}),
     },
     "test",
   );
@@ -179,7 +177,9 @@ describe("gate run under the ceiling", () => {
     expect(r.ran[0]!.sleeps).toBeGreaterThanOrEqual(3);
     expect(seen[0]).toMatchObject({ load: 40, limit: 27 });
     expect(seen[1]).toMatchObject({ load: 40, limit: 27 });
-    expect(String(seen[2])).toContain("waiting for the load (40) to drop under 27");
+    expect(String(seen[2])).toContain(
+      "waiting for the load (40) to drop under 27",
+    );
     expect(r.err.join("\n")).toContain(
       "waiting for the load (40) to drop under 27",
     );
@@ -221,9 +221,9 @@ describe("the Gate page's words", () => {
     k + JSON.stringify(v);
 
   it("a run held by the ceiling says the load and the ceiling", () => {
-    expect(
-      startHoldWords({ startHold: { load: 40, limit: 27 } }, t),
-    ).toBe('gate.startHold{"load":"40","limit":"27"}');
+    expect(startHoldWords({ startHold: { load: 40, limit: 27 } }, t)).toBe(
+      'gate.startHold{"load":"40","limit":"27"}',
+    );
     expect(startHoldWords({}, t)).toBe("");
   });
 

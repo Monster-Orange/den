@@ -2294,8 +2294,7 @@
       "Minutes a run waits for the load",
     "set.server.gate_max_start_wait_minutes.d":
       "A run held by the load starts anyway after this many minutes, and its record says it started on a busy machine. The default is 10. 0 means it waits however long. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
-    "set.server.gate_reap_grace_seconds":
-      "Seconds before leftovers are killed",
+    "set.server.gate_reap_grace_seconds": "Seconds before leftovers are killed",
     "set.server.gate_reap_grace_seconds.d":
       "When a test run ends, or its folder is deleted, whatever it started that is still running is asked to stop, then killed after this many seconds. Nothing outside the run is touched. The default is 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
@@ -3986,12 +3985,9 @@
       "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
     "gate.startHold":
       "holds its slot; waiting for the load ({load}) to drop under {limit} before it starts",
-    "gate.leftoversH":
-      "Stopped after their run ended",
-    "gate.leftovers":
-      "{n} leftover processes of {label} ({cmd})",
-    "gate.leftovers.one":
-      "{n} leftover process of {label} ({cmd})",
+    "gate.leftoversH": "Stopped after their run ended",
+    "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
+    "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

@@ -75,8 +75,9 @@ async function start(o: {
     [
       "--import",
       // By its full path: the run may start in a folder outside the repo.
-      pathToFileURL(path.join(process.cwd(), "node_modules/tsx/dist/loader.mjs"))
-        .href,
+      pathToFileURL(
+        path.join(process.cwd(), "node_modules/tsx/dist/loader.mjs"),
+      ).href,
       path.join(__dirname, "reap-child.ts"),
     ],
     {
@@ -136,10 +137,16 @@ describe("a run's worker tree", () => {
 
   it("workers that ignore TERM are killed after the grace period", async () => {
     const r = await start({ mode: "exit", stubborn: true, grace: 1 });
-    expect(await within(8_000, () => r.k.exitCode !== null)).not.toBe(-1);
-    // Still up just after TERM: they ignore it.
-    expect(r.workers.some(alive)).toBe(true);
-    expect(await within(4_000, () => !r.workers.some(alive))).not.toBe(-1);
+    // gate run stays until its tree is gone: TERM, the grace, then KILL.
+    expect(await within(10_000, () => r.k.exitCode !== null)).not.toBe(-1);
+    expect(await within(2_000, () => !r.workers.some(alive))).not.toBe(-1);
+    const rows = leftoverRows(r.store);
+    expect(rows.map((x) => x.signal)).toEqual(["TERM", "KILL"]);
+    expect(rows[1]).toMatchObject({ count: 3, label: "reaper" });
+    // KILL came no sooner than the grace after TERM.
+    expect(
+      Date.parse(rows[1]!.at) - Date.parse(rows[0]!.at),
+    ).toBeGreaterThanOrEqual(1_000);
   });
 
   it("the run's folder is deleted while it holds the slot: its tree is stopped and the slot ends with that reason", async () => {
@@ -150,33 +157,41 @@ describe("a run's worker tree", () => {
     expect(
       await within(8_000, () => ![r.command, ...r.workers].some(alive)),
     ).not.toBe(-1);
-    expect(await within(3_000, () => r.store.list().length === 0)).not.toBe(
-      -1,
-    );
+    expect(await within(3_000, () => r.store.list().length === 0)).not.toBe(-1);
     const end = r.store
       .events()
       .find((e) => e.event === "released" || e.event === "taken-back-gone");
     expect(end).toMatchObject({ reason: "folder-gone" });
   });
 
-  it("gate run killed hard: the next pass of the queue stops the group it left", async () => {
+  it("gate run and its command killed hard: the next pass of the queue stops the workers they left", async () => {
     const r = await start({ mode: "stay" });
+    // As in the incident: the run's processes gone, its workers not. (A
+    // wrapper killed while its command lives keeps the slot: that rule
+    // is unchanged.)
     r.k.kill("SIGKILL");
-    expect(await within(3_000, () => r.k.exitCode !== null || r.k.signalCode !== null)).not.toBe(-1);
+    process.kill(r.command, "SIGKILL");
+    expect(
+      await within(
+        3_000,
+        () => r.k.exitCode !== null || r.k.signalCode !== null,
+      ),
+    ).not.toBe(-1);
+    expect(await within(3_000, () => !alive(r.command))).not.toBe(-1);
     // Left behind, until the queue looks.
-    expect([r.command, ...r.workers].every(alive)).toBe(true);
+    expect(r.workers.every(alive)).toBe(true);
     // Any store on the machine: the next pass takes the slot back and
     // stops what it left (and KILLs it after the grace, on a later pass).
     const look = new GateStore({ platform: "linux", dir: r.dir });
     expect(
       await within(6_000, () => {
         look.list();
-        return ![r.command, ...r.workers].some(alive);
+        return !r.workers.some(alive);
       }),
     ).not.toBe(-1);
     const rows = leftoverRows(look);
     expect(rows[0]).toMatchObject({
-      count: 4,
+      count: 3,
       cmd: "node",
       label: "reaper",
       reason: "gone",
@@ -184,9 +199,13 @@ describe("a run's worker tree", () => {
   });
 
   it("a process outside the run's group, with the same command line, is never stopped", async () => {
-    const same = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
-      stdio: "ignore",
-    });
+    const same = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000);"],
+      {
+        stdio: "ignore",
+      },
+    );
     kids.push(same);
     const r = await start({ mode: "exit" });
     expect(await within(8_000, () => !r.workers.some(alive))).not.toBe(-1);

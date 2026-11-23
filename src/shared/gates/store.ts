@@ -1687,16 +1687,13 @@ export class GateStore {
     signal?: "TERM" | "KILL";
   }): void {
     const { id, kind, who, label, cmd, count, reason, signal } = o;
-    this.record(
-      { id, kind, who, label } as GateEntry,
-      {
-        event: "stopped-leftovers",
-        count,
-        cmd,
-        reason,
-        signal: signal ?? "TERM",
-      },
-    );
+    this.record({ id, kind, who, label } as GateEntry, {
+      event: "stopped-leftovers",
+      count,
+      cmd,
+      reason,
+      signal: signal ?? "TERM",
+    });
   }
 
   /**

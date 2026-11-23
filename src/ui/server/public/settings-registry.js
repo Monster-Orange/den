@@ -3239,7 +3239,15 @@ export const DEN_SETTINGS = [
     label: "Seconds before leftovers are killed",
     description:
       "When a test run ends, or its folder is deleted, whatever it started that is still running is asked to stop, then killed after this many seconds. Nothing outside the run is touched. The default is 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
-    keywords: ["gate", "slot", "tests", "queue", "leftovers", "processes", "stop"],
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "leftovers",
+      "processes",
+      "stop",
+    ],
     scope: "user",
     keys: ["gate_slots.reap_grace_seconds"],
     control: { type: "number", min: 0, max: 600, step: 1 },

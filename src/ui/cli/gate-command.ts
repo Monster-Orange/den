@@ -981,7 +981,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     // limit it starts anyway, recorded as busy.
     const held = await waitForLoad(d, id, label);
     if (cancelled !== undefined) return cancelled;
-    if (held === "gone") throw new Error(`the slot ${id} was ended while waiting`);
+    if (held === "gone")
+      throw new Error(`the slot ${id} was ended while waiting`);
     d.err(`gate: ${id} holds ${kind}${machineWords(e)}; running ${label}`);
     // Issue 928: the command knows the slot it runs in.
     const slotEnv: Record<string, string> = {
@@ -1030,7 +1031,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
               ? "parent-gone"
               : undefined;
           if (!why) return;
-          d.err(`gate: ${label}: ${why === "folder-gone" ? "its folder was deleted" : "the process that started it is gone"}; stopping it and what it started`);
+          d.err(
+            `gate: ${label}: ${why === "folder-gone" ? "its folder was deleted" : "the process that started it is gone"}; stopping it and what it started`,
+          );
           s.release(id, { reason: why });
           released = true;
         })
@@ -1073,8 +1076,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     release();
     if (dumped) s.reap(mine, "ended");
     if (mine.group !== undefined) {
-      const until =
-        d.now() + (s.settings().reapGraceSeconds + 2) * 1000;
+      const until = d.now() + (s.settings().reapGraceSeconds + 2) * 1000;
       while (s.stopLeftovers(id) && d.now() < until) await d.sleep(200);
     }
     return code;
