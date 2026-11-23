@@ -53,6 +53,9 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   den_sandbox_on    issue 936: agents.sandbox: on in user.yml, for the
+ *                     agents that started before the sandbox. Den asks for
+ *                     it itself; only the person's Allow runs it
  *   embed_key_create  issue 334: an app key for a web app's own server,
  *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
  *                     person's own ask and Allow only; the key is shown
@@ -94,6 +97,10 @@
  *   report            issue 565: file a report the way the page's Report
  *                     does (report-held.ts): to a public destination the
  *                     person's own Allow, to a private one the policy
+ *   web_url_set       issue 869: Den's own agent proposes this install's
+ *                     address (web-url-held.ts); it must answer as this
+ *                     Den at the ask and at the Allow, and saves as
+ *                     Settings does. The person's own Allow
  */
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
@@ -204,6 +211,8 @@ export interface HeldActionDeps {
   gateBoxRemove?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
+  /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
+  webUrlSet?: HeldAction;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -235,6 +244,8 @@ export interface HeldActionDeps {
   report?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
+  sandboxOn?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -270,6 +281,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "web_url_set",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -653,6 +665,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const sandboxOn = op(
+    d.sandboxOn,
+    "this Den can't turn the agent sandbox on here",
+  );
   const gateRunnerToken = op(
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
@@ -1014,11 +1030,23 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       }),
     },
     den_pin_commit: pinCommit,
+    den_sandbox_on: sandboxOn,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    web_url_set: d.webUrlSet ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set its address here",
+      }),
+      run: () =>
+        Promise.resolve({
+          ok: false,
+          error: "this Den can't set its address here",
+        }),
+    },
   };
 }

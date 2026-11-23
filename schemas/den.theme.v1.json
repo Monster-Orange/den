@@ -193,7 +193,17 @@
           "type": "string",
           "pattern": "^(0|\\d{1,2}(\\.\\d+)?(px|rem)|50%)$"
         },
-        "density": { "enum": ["compact", "comfortable"] }
+        "density": { "enum": ["compact", "comfortable"] },
+        "edge": {
+          "enum": ["solid", "dashed"],
+          "default": "solid",
+          "description": "How the kit draws edges (borders): solid, or dashed (a sketch). Added in Den 0.4.88; unset is solid."
+        },
+        "buttons": {
+          "enum": ["filled", "outline"],
+          "default": "filled",
+          "description": "How the kit draws the primary and danger buttons: filled (accent-fill, bad), or outline only (no fill; a border-strong edge and text-coloured words; danger in bad). Added in Den 0.4.88; unset is filled."
+        }
       }
     },
     "mark": {
