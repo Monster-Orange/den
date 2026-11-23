@@ -81,6 +81,8 @@ const HELD_REASON = "hub_tools_unavailable";
 let D2 = null;
 
 const msg = (e) => String(e?.message ?? e).slice(0, 200);
+// A missing harness piece skips (needs-*); a product step that fails fails.
+const fail = (why, detail) => ({ fail: why, why: detail ?? why });
 const skip = (why, detail) => ({
   skip: why,
   ...(detail ? { why: detail } : {}),
@@ -105,7 +107,7 @@ async function hubLeg(ctx) {
     d2 = await ctx.den2({ product: { testInstall: true } });
   } catch (e) {
     return skip(
-      "person",
+      "needs-den2-person",
       `the second Den could not start signed in: ${msg(e)}`,
     );
   }
@@ -128,10 +130,10 @@ async function hubLeg(ctx) {
   try {
     const on = d2.cli(["config", "hub.groups=true"]);
     if (on.code !== 0)
-      return { ...out, ...skip("config", `hub.groups=true: ${on.code}`) };
+      return { ...out, ...fail("config", `hub.groups=true: ${on.code}`) };
     const c = await d2.hubConnect("a", { company });
     if (!c?.ok)
-      return { ...out, ...skip("connect", c?.why ?? "fixture Connect failed") };
+      return { ...out, ...fail("connect", c?.why ?? "fixture Connect failed") };
     // Both agents tell Hub they exist (a Hub call through Den's proxy).
     const lead = d2.agent(LEAD, { workspace: WS });
     const held = d2.agent(HELD, { workspace: WS });
@@ -141,7 +143,7 @@ async function hubLeg(ctx) {
       (await lead.running(30000)) == null ||
       (await held.running(30000)) == null
     )
-      return { ...out, ...skip("agents", "the stub agents didn't start") };
+      return { ...out, ...fail("agents", "the stub agents didn't start") };
     // A raw line typed into the stub (its /hubmcp commands): ctx.agent(id).line.
     if (!lead.line)
       return {
@@ -160,7 +162,7 @@ async function hubLeg(ctx) {
     if (!idLead?.install || !idHeld?.install)
       return {
         ...out,
-        ...skip("hub-identity", "Hub doesn't know the stub agents yet"),
+        ...fail("hub-identity", "Hub doesn't know the stub agents yet"),
       };
     await A.group(company, SLUG, {
       name: "Gate 750 check",
@@ -193,12 +195,17 @@ async function hubLeg(ctx) {
 
     // (2) Message group: Hub's composer for the group, and Hub serves it.
     const want = `${A.url.replace(/\/$/, "")}/${company}/groups/${SLUG}?compose=1`;
-    out.compose = { want, got: g?.compose ?? null };
+    out.compose = {
+      want,
+      got: g?.compose ?? null,
+      origin: new URL(A.url).origin,
+    };
     if (g?.compose) {
       const r = await fetch(g.compose, { redirect: "manual" }).catch((e) => ({
         status: msg(e),
       }));
       out.compose.status = r.status;
+      out.compose.location = r.headers?.get?.("location") ?? null;
     }
 
     // (3) The member's Hub tools fail to load; a group message to it is held.
@@ -237,19 +244,32 @@ async function hubLeg(ctx) {
     }
 
     // (4) Off: the Den reads off, and Hub sees no groups request from it.
-    const off = d2.cli(["config", "hub.groups=false"]);
+    // The control first: the same fresh read with groups on must reach
+    // Hub, so a count of 0 can't come from a Den that never calls this Hub
+    // or a prefix that never matches.
     if (!A.requests)
       out.off = skip("needs-hub-request-count", "no requests() on test Hub A");
-    else if (off.code !== 0)
-      out.off = skip("config", `hub.groups=false: ${off.code}`);
     else {
-      const since = new Date().toISOString();
-      const r = await d2.api("/api/hub/groups?fresh=1");
+      const onSince = new Date().toISOString();
+      await d2.api("/api/hub/groups?fresh=1");
       await ctx.sleep(2000);
-      out.off = {
-        state: r?.state ?? null,
-        requests: await A.requests("/api/groups", { since }),
-      };
+      const onRequests = await A.requests("/api/groups", { since: onSince });
+      const off = d2.cli(["config", "hub.groups=false"]);
+      if (off.code !== 0)
+        out.off = {
+          onRequests,
+          ...fail("config", `hub.groups=false: ${off.code}`),
+        };
+      else {
+        const since = new Date().toISOString();
+        const r = await d2.api("/api/hub/groups?fresh=1");
+        await ctx.sleep(2000);
+        out.off = {
+          state: r?.state ?? null,
+          onRequests,
+          requests: await A.requests("/api/groups", { since }),
+        };
+      }
     }
   } catch (e) {
     out.error = msg(e);
@@ -517,14 +537,20 @@ export function expect(cells) {
   return rows;
 }
 
-/** The real-Hub leg's four rows: a skip names what's missing. */
+/** The real-Hub leg's four rows: a skip names the missing harness piece;
+ *  a product step that failed fails all four, with its reason. */
 export function hubRows(h) {
   const at = (i) => clauses[8 + i];
   const skipped = (why, detail) =>
     [0, 1, 2, 3].map((i) => ({ clause: at(i), ok: null, skip: why, detail }));
   if (!h) return skipped("needs-hub-leg", "the leg didn't run");
   if (h.skip) return skipped(h.skip, h.why ?? h.skip);
-  if (h.error && !h.read) return skipped("error", h.error);
+  if (h.fail || (h.error && !h.read))
+    return [0, 1, 2, 3].map((i) => ({
+      clause: at(i),
+      ok: false,
+      detail: h.fail ? `${h.fail}: ${h.why}` : `error: ${h.error}`,
+    }));
   const rows = [];
   const r = h.read ?? {};
   rows.push({
@@ -539,12 +565,8 @@ export function hubRows(h) {
   const c = h.compose ?? {};
   rows.push({
     clause: at(1),
-    ok:
-      !!c.got &&
-      c.got === c.want &&
-      typeof c.status === "number" &&
-      c.status < 400,
-    detail: `compose ${c.got} (want ${c.want}), Hub answered ${c.status}`,
+    ok: !!c.got && c.got === c.want && served(c),
+    detail: `compose ${c.got} (want ${c.want}), Hub answered ${c.status}${c.location ? ` → ${c.location}` : ""}`,
   });
   const held = h.held ?? {};
   rows.push(
@@ -564,20 +586,42 @@ export function hubRows(h) {
   rows.push(
     off.skip
       ? { clause: at(3), ok: null, skip: off.skip, detail: off.why ?? off.skip }
-      : {
-          clause: at(3),
-          ok: off.state === "off" && off.requests === 0,
-          detail: `read ${off.state}; groups requests to Hub since: ${off.requests}`,
-        },
+      : off.fail
+        ? { clause: at(3), ok: false, detail: `${off.fail}: ${off.why}` }
+        : {
+            clause: at(3),
+            ok:
+              off.onRequests >= 1 && off.state === "off" && off.requests === 0,
+            detail: `groups requests to Hub while on: ${off.onRequests}; read ${off.state} when off; requests since: ${off.requests}`,
+          },
   );
+  // An error thrown after the read: the rows it cut short say so.
+  if (h.error)
+    for (const x of rows)
+      if (x.ok === false) x.detail += ` (error: ${h.error})`;
   return rows;
 }
 
+/** Hub served the composer: a 2xx, or a 3xx that stays on the test Hub. */
+function served(c) {
+  if (typeof c.status !== "number") return false;
+  if (c.status >= 200 && c.status < 300) return true;
+  if (c.status < 300 || c.status >= 400 || !c.location) return false;
+  try {
+    return new URL(c.location, c.origin).origin === c.origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function teardown(ctx) {
-  if (ctx.agent(AGENT).state()) ctx.agent(AGENT).remove();
-  if (D2) {
-    const d = D2;
-    D2 = null;
-    await d.close();
+  try {
+    if (ctx.agent(AGENT).state()) ctx.agent(AGENT).remove();
+  } finally {
+    if (D2) {
+      const d = D2;
+      D2 = null;
+      await d.close().catch(() => {});
+    }
   }
 }

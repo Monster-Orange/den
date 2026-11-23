@@ -2,7 +2,8 @@
  * Issue 750: gate/750.mjs's real-Hub leg. Its four rows pass only on what
  * Hub itself shows: clause 3 on the exact reason Den sent for a held
  * member, clause 4 on Hub's groups request count staying at zero. A leg
- * that couldn't run skips every row by name. The module is plain
+ * whose harness lacks a piece skips every row by name; a product failure
+ * (Connect, config, agents, Hub identity, a thrown error) fails them. The module is plain
  * JavaScript, so it runs in a child node, as the bed runs it. Invented
  * names only.
  */
@@ -40,11 +41,17 @@ const good = {
     heldHere: true,
     compose: WANT,
   },
-  compose: { want: WANT, got: WANT, status: 200 },
+  compose: {
+    want: WANT,
+    got: WANT,
+    status: 200,
+    location: null,
+    origin: "https://hub.example.test",
+  },
   failed: true,
   thread: "t1",
   held: { state: "held", reason: "hub_tools_unavailable" },
-  off: { state: "off", requests: 0 },
+  off: { state: "off", requests: 0, onRequests: 1 },
 };
 
 describe("issue 750: the real-Hub leg", () => {
@@ -121,5 +128,70 @@ describe("issue 750: the real-Hub leg", () => {
       ok: false,
       clause: expect.stringMatching(/^real Hub: Message group/),
     });
+  });
+  it("a product failure before the read fails all four rows, never skips", () => {
+    const r = rows({ fail: "connect", why: "connect start 500: boom" });
+    expect(r).toHaveLength(4);
+    for (const x of r) {
+      expect(x.ok).toBe(false);
+      expect(x.skip).toBeUndefined();
+      expect(x.detail).toContain("connect start 500: boom");
+    }
+  });
+
+  it("an error thrown before the read fails all four rows", () => {
+    for (const x of rows({
+      fixture: "allowed by test fixture",
+      error: "boom",
+    })) {
+      expect(x.ok).toBe(false);
+      expect(x.detail).toContain("boom");
+    }
+  });
+
+  it("clause 4 fails when Hub saw no groups request while groups were on", () => {
+    const r = rows({
+      ...good,
+      off: { state: "off", requests: 0, onRequests: 0 },
+    });
+    expect(r[3].ok).toBe(false);
+    expect(r[3].detail).toContain("while on: 0");
+  });
+
+  it("clause 4 fails when turning groups off failed", () => {
+    const r = rows({
+      ...good,
+      off: { fail: "config", why: "hub.groups=false: 1" },
+    });
+    expect(r[3]).toMatchObject({ ok: false });
+    expect(r[3].skip).toBeUndefined();
+  });
+
+  it("clause 2 passes a redirect only when it stays on the test Hub", () => {
+    const c = good.compose;
+    const at = (compose: object) =>
+      rows({ ...good, compose: { ...c, ...compose } })[1];
+    expect(
+      at({ status: 302, location: "https://elsewhere.example.test/sign-in" })
+        .ok,
+    ).toBe(false);
+    const stay = at({
+      status: 302,
+      location: "https://hub.example.test/sign-in?next=x",
+    });
+    expect(stay.ok).toBe(true);
+    expect(stay.detail).toContain("https://hub.example.test/sign-in?next=x");
+    expect(at({ status: 302, location: "/sign-in" }).ok).toBe(true);
+    expect(at({ status: 404 }).ok).toBe(false);
+    expect(at({ status: 302, location: null }).ok).toBe(false);
+  });
+
+  it("an error thrown after the read names itself on the rows it cut short", () => {
+    const r = rows({ fixture: good.fixture, read: good.read, error: "boom" });
+    expect(r[0].ok).toBe(true);
+    for (const x of r.slice(1)) {
+      expect(x.ok).toBe(false);
+      expect(x.detail).toContain("error: boom");
+    }
   });
 });
