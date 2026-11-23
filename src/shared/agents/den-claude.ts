@@ -451,8 +451,8 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
     `Read(/${sessionsLock})`,
+    // Edit(path) covers writes too (issue 660: no Write(path) rules).
     `Edit(/${sessionsLock})`,
-    `Write(/${sessionsLock})`,
     ...files.map((f) => `Read(/${f})`),
     // Issue 1299: copies beside each (a damaged file moved aside, a
     // write's temporary file) hold the same records.
