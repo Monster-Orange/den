@@ -1891,6 +1891,9 @@
     "ag.mcp.failed": "Hub のツールを読み込めませんでした",
     "ag.mcp.failedTip":
       "このエージェントは起動時に Hub のツールを読み込めませんでした（{error}）。そのため Hub からは連絡できません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.den": "再起動で Den {to} のツールが入ります",
+    "ag.mcp.denTip":
+      "このエージェントの開始後に Den が {to} に更新されたため、Den のツールはまだ {from} のコードで動いています。再起動すると、次のアイドル時に同じ会話のまま {to} のツールを読み込みます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
@@ -3000,6 +3003,12 @@
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
+    "busy.allowW": "許可しています…",
+    "busy.allowS": "許可しました。",
+    "busy.allowF": "許可できませんでした。",
+    "busy.denyW": "拒否しています…",
+    "busy.denyS": "拒否しました。",
+    "busy.denyF": "拒否できませんでした。",
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",

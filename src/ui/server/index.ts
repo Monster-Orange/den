@@ -8648,6 +8648,13 @@ async function handleRequest(
     }
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
+      // Issue 1210: the fixture person, on a bound test install with
+      // web.fixture_person set, shows its invented name over its login on
+      // the rail. Display only: the audit and the log keep FIXTURE_LABEL.
+      const named =
+        rec?.via === "fixture" && testInstallNow()
+          ? webAuthNow().fixturePerson
+          : undefined;
       const github = rec?.via === "github" && !!rec.login;
       const name = github ? githubSessionName(rec) : undefined;
       return sendJson(res, {
@@ -8656,8 +8663,14 @@ async function handleRequest(
         signedIn: true,
         // 0.4.71: a browser on this machine, signed in with a link or a
         // code, is the local browser it always was (the owner's chip).
-        identity:
-          !github && !g.beyond
+        identity: named
+          ? {
+              kind: "github",
+              via: "fixture",
+              login: named.login,
+              name: named.name,
+            }
+          : !github && !g.beyond
             ? localIdentity()
             : {
                 kind: github ? "github" : "device",

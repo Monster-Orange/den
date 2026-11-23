@@ -719,13 +719,15 @@ describe("ci.yml (issue 398)", () => {
     expect(pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    // Issue 843: and the fast static checks.
+    expect(ci.jobs["pr-shards"].needs).toEqual(["fast", "pr"]);
     const text = runs(pr);
+    // Issue 843: the words gate and the kit copies run once, in `fast`,
+    // which the pr job waits for.
+    expect(ci.jobs.pr.needs).toEqual(["fast"]);
     for (const gate of [
       "npm run typecheck",
-      "scripts/words-gate.mjs",
       "npm run lint",
-      "gate:den-ui",
       "scripts/org-name-gate.mjs",
       "scripts/org-name-commits.mjs",
       "scripts/dist-smoke.sh",
