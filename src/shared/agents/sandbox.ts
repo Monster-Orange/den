@@ -449,7 +449,10 @@ function sessionTmpRegex(base: string): string {
   if (/["\0\n\r]/.test(base))
     throw new Error(`sandbox: a temp folder can't hold a quote: ${base}`);
   const esc = base.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-  return `#"^${esc}/den-[A-Za-z0-9]{6}(/|$)"`;
+  // Six classes, not {6}: with {6} this compiled but let a write through
+  // on macOS (issue 1325's run), and no system profile uses a counted
+  // repeat.
+  return `#"^${esc}/den-${"[A-Za-z0-9]".repeat(6)}(/|$)"`;
 }
 
 function underRegex(dir: string): string {

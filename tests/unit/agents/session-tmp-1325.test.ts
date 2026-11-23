@@ -129,7 +129,7 @@ describe("issue 1325: the session's own temp folder", () => {
     const lines = prof.split("\n");
     expect(lines).toContain("(deny file-link (vnode-type SOCKET))");
     const denyOthers = lines.findIndex((x) =>
-      x.includes("/den-[A-Za-z0-9]{6}(/|$)"),
+      x.includes(`/den-${"[A-Za-z0-9]".repeat(6)}(/|$)`),
     );
     const allowOwn = lines.findIndex((x) => x.startsWith("(allow file-write*"));
     expect(lines[denyOthers]).toMatch(
