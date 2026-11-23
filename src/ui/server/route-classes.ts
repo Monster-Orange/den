@@ -817,6 +817,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/agents/self/review-submit",
+    "Issue 476, review_submit: a review leg (its own token only) hands Den its findings once; the handler accepts only the leg's own agent, PR and head, and audits a refusal",
+  ),
+  M(
+    ["POST"],
     "/api/agents/self/issue-write",
     "issue_write: an agent (its own token only) writes a GitHub issue in its own project's repos; audited",
   ),

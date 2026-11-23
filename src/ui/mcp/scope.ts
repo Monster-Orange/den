@@ -29,6 +29,11 @@ export interface McpScope {
    * absent when there are none.
    */
   grants?: string[];
+  /**
+   * Issue 476: the only tools this server registers (`--only a,b`); absent
+   * means every tool. A review leg's server has review_submit only.
+   */
+  only?: string[];
 }
 
 /** The workspaces a scope serves: its own first, then its grants. */
@@ -52,12 +57,15 @@ export class ScopeUsageError extends Error {
   }
 }
 
-const FLAGS: Record<string, "workspace" | "actor" | "grant"> = {
+const FLAGS: Record<string, "workspace" | "actor" | "grant" | "only"> = {
   "--workspace": "workspace",
   "-w": "workspace",
   "--actor": "actor",
   "--grant": "grant",
+  "--only": "only",
 };
+
+const TOOL_NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 /**
  * Take `--workspace <ws>` (or `-w`) and `--actor agent:<id>` out of `argv`,
@@ -72,6 +80,7 @@ export function parseScopeFlags(argv: readonly string[]): {
 } {
   const got: Partial<Record<"workspace" | "actor", string>> = {};
   const grants: string[] = [];
+  let only: string[] | undefined;
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -90,6 +99,16 @@ export function parseScopeFlags(argv: readonly string[]): {
         throw new ScopeUsageError(`${name} needs a value`);
       i++;
     }
+    if (key === "only") {
+      const names = value.split(",").filter(Boolean);
+      const bad = names.find((n) => !TOOL_NAME_RE.test(n));
+      if (!names.length || bad !== undefined)
+        throw new ScopeUsageError(
+          `--only "${printable(value)}" is not a list of tool names`,
+        );
+      only = [...new Set([...(only ?? []), ...names])];
+      continue;
+    }
     if (key === "grant") {
       if (!WORKSPACE_NAME_RE.test(value))
         throw new ScopeUsageError(
@@ -106,6 +125,10 @@ export function parseScopeFlags(argv: readonly string[]): {
     if (grants.length)
       throw new ScopeUsageError(
         "--grant needs --workspace and --actor: a grant widens a scoped server",
+      );
+    if (only)
+      throw new ScopeUsageError(
+        "--only needs --workspace and --actor: it narrows one agent's tools",
       );
     return { scope: null, rest };
   }
@@ -133,6 +156,7 @@ export function parseScopeFlags(argv: readonly string[]): {
       workspace: got.workspace,
       actor: got.actor,
       ...(widened.length ? { grants: widened } : {}),
+      ...(only ? { only } : {}),
     },
     rest,
   };

@@ -3283,7 +3283,11 @@ export function toolsFor(cfg: ResolvedMcpConfig, scope?: McpScope): DenTool[] {
       ? { ...t, description: t.description.split(HELD_WAIT).join(wait) }
       : t,
   );
-  return scope ? tools.map((t) => pinnedTool(t, scope)) : tools;
+  // Issue 476: --only narrows a scoped server to those tools (a review leg).
+  const kept = scope?.only
+    ? tools.filter((t) => scope.only!.includes(t.name))
+    : tools;
+  return scope ? kept.map((t) => pinnedTool(t, scope)) : kept;
 }
 
 /**

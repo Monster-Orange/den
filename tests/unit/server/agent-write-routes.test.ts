@@ -91,6 +91,8 @@ const AGENTS_MAY: Record<string, string> = {
     "issue 1008: withdraws the agent's own question; another agent's is refused and recorded",
   "POST /api/agents/self/view":
     "issue 796: a one-time link to the agent's own read-only view of these pages; it changes nothing",
+  "POST /api/agents/self/review-submit":
+    "issue 476, MCP review_submit: only the leg's own token, for its own PR and head, once (checked in the handler); audited",
   "POST /api/agents/self/issue-write":
     "issue_write: by the agent's own token only, in its own project's repos; audited and rate-limited",
   "POST /hub/*": "D52: the agent's own Hub calls, with its own Hub token",

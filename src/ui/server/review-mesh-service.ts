@@ -53,6 +53,8 @@ import {
 } from "../../shared/review/rules.js";
 import { readUsageLeft, usageCaps } from "../../shared/usage/left.js";
 import { runGh } from "./report-routes.js";
+import { isReviewLegId, reviewLegId } from "../../shared/agents/review-leg.js";
+import { DEN_CLAUDE_ID } from "../../shared/agents/den-claude.js";
 
 let runner: ReviewRunner | null = null;
 let timer: NodeJS.Timeout | null = null;
@@ -165,7 +167,7 @@ async function buildDeps(log: (l: string) => void): Promise<RunnerDeps> {
           id: r.id,
           cwd: r.cwd,
           running: !r.stoppedAt,
-          leg: legAgents.has(r.id),
+          leg: legAgents.has(r.id) || isReviewLegId(r.id),
         })),
         (cwd) => {
           try {
@@ -179,6 +181,12 @@ async function buildDeps(log: (l: string) => void): Promise<RunnerDeps> {
       const repoPath = await repoPathOf(repo);
       const rec = reviewerRec();
       if (!repoPath || !rec) throw new Error("no clone or no reviewer agent");
+      // rulesFor fetched the base into refs/den-review/base-<pr>.
+      const base = git(repoPath, [
+        "rev-parse",
+        "--verify",
+        `refs/den-review/base-${pr}^{commit}`,
+      ]);
       const root = path.join(d.workspaceDir(rec.workspace), ".den-review-legs");
       fs.mkdirSync(root, { recursive: true });
       const dir = path.join(
@@ -186,19 +194,25 @@ async function buildDeps(log: (l: string) => void): Promise<RunnerDeps> {
         `${repo.replace("/", "-")}-${pr}-${sha.slice(0, 12)}`,
       );
       if (fs.existsSync(dir)) removeCheckout(dir);
-      reviewCheckout(repoPath, sha, dir);
-      return dir;
+      return reviewCheckout(repoPath, { head: sha, base }, dir);
     },
     instructionFiles,
     startLeg: async (l) => {
       const rec = reviewerRec();
       if (!rec) throw new Error("the reviewer agent is gone");
+      // Only a runtime that narrows a leg's launch (den-claude: user-only
+      // settings, review_submit only, the leg denies) may run one.
+      if (rec.runtime !== DEN_CLAUDE_ID)
+        throw new Error(
+          `the reviewer's runtime (${rec.runtime}) can't run a review leg`,
+        );
       const s = await ops.startAgent(
         d,
         {
+          id: reviewLegId(l.legId),
           workspace: rec.workspace,
           persona: rec.persona,
-          runtime: rec.runtime,
+          runtime: DEN_CLAUDE_ID,
           ...(rec.model ? { model: rec.model } : {}),
           name: `${rec.id} review ${l.repo}#${l.pr}`,
           folder: l.dir,

@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { reviewLegLaunch } from "../../shared/agents/review-leg.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -3486,6 +3487,8 @@ function launchInput(
         return {};
       }
     })(),
+    // Issue 476: a review leg is narrowed on every launch, by its id.
+    ...reviewLegLaunch(id),
     rotateAfter: after,
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),

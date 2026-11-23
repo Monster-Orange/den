@@ -1,66 +1,133 @@
 /**
- * Issue 476 (REVIEW-MESH-SPEC RV-4, RV-8 item 16): a review leg's fresh,
- * read-only checkout at the PR's head, and the environment it runs with.
+ * Issue 476 (REVIEW-MESH-SPEC RV-4, RV-8 item 16): a review leg's folder.
  *
- * The checkout is a local clone with its remote removed, every push URL
- * rewritten to one git can't use (an empty pushInsteadOf matches them all),
- * no credential helper and no hooks. Then every file in it, its .git
- * folder too, is made read-only. Den fetched the head into `repoPath`
- * first; the clone never talks to GitHub.
+ *   <dir>/          the leg's working folder (read-only, nothing else in it)
+ *   <dir>/head/     the PR's head: a local clone, remote removed, every push
+ *                   URL rewritten to one git can't use, no credential helper,
+ *                   no hooks
+ *   <dir>/base/     the base ref's instruction files only (CLAUDE.md,
+ *                   AGENTS.md, .claude/rules/*.md): what the leg follows
  *
- * The leg's session gets no push credential from its environment either:
- * every agent session starts from Den's allowlist (sessions/env.ts), with
- * no GitHub token, askpass helper or SSH agent.
+ * The head's own agent config (.claude/, .mcp.json, CLAUDE.md, AGENTS.md)
+ * is removed at any depth, so a PR can't hand its reviewer hooks, allow
+ * rules, MCP servers or orders; its edits to them stay reviewable through
+ * git (`git show HEAD:CLAUDE.md`), as data. Den fetched both refs into
+ * `repoPath` first; the clone never talks to GitHub.
+ *
+ * Read-only files are a convenience only: the leg runs as this user, who
+ * can undo a chmod, and gh keeps its login outside the environment. The
+ * guard is the leg's launch (den-claude REVIEW_LEG_DENY, user-only
+ * settings, Den's server limited to review_submit) under the "ask" intent.
  */
 import { execFileSync } from "child_process";
 import * as fs from "fs";
+import * as path from "path";
 
 const SHA_RE = /^[0-9a-f]{40}$/;
+
+/** Agent config a runtime would load from a folder: never from a head. */
+const AGENT_CONFIG = new Set([
+  ".claude",
+  ".mcp.json",
+  "CLAUDE.md",
+  "AGENTS.md",
+]);
+
+/** The base's instruction files a leg follows (instructions.ts reads them). */
+const INSTRUCTION_RE =
+  /(^|\/)(CLAUDE\.md|AGENTS\.md)$|^\.claude\/rules\/[^/]+\.md$/;
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf-8",
+    maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
   }).trim();
 }
 
-/** Clones `repoPath` at `sha` into `dir` (which must not exist), read-only. */
+function stripAgentConfig(dir: string): void {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === ".git") continue;
+    const p = path.join(dir, e.name);
+    if (AGENT_CONFIG.has(e.name))
+      fs.rmSync(p, { recursive: true, force: true });
+    else if (e.isDirectory() && !e.isSymbolicLink()) stripAgentConfig(p);
+  }
+}
+
+export interface LegFolders {
+  /** The leg's working folder. */
+  dir: string;
+  /** The PR's head, stripped of agent config. */
+  head: string;
+  /** The base ref's instruction files. */
+  base: string;
+}
+
+/**
+ * Makes the leg's folder at `dir` (which must not exist): the head and the
+ * base's instruction files, all read-only. Both must be full commit ids
+ * already in `repoPath`.
+ */
 export function reviewCheckout(
   repoPath: string,
-  sha: string,
+  refs: { head: string; base: string },
   dir: string,
-): void {
-  if (!SHA_RE.test(sha)) throw new Error("the head must be a full commit id");
+): LegFolders {
+  if (!SHA_RE.test(refs.head) || !SHA_RE.test(refs.base))
+    throw new Error("the head and the base must be full commit ids");
   if (fs.existsSync(dir)) throw new Error(`${dir} already exists`);
-  git(repoPath, [
-    "clone",
-    "-q",
-    "--no-checkout",
-    "--no-hardlinks",
-    "--",
-    repoPath,
-    dir,
-  ]);
+  const head = path.join(dir, "head");
+  const base = path.join(dir, "base");
+  fs.mkdirSync(base, { recursive: true });
   try {
-    git(dir, [
+    git(repoPath, [
+      "clone",
+      "-q",
+      "--no-checkout",
+      "--no-hardlinks",
+      "--",
+      repoPath,
+      head,
+    ]);
+    git(head, [
       "-c",
       "advice.detachedHead=false",
       "checkout",
       "-q",
       "--detach",
-      sha,
+      refs.head,
     ]);
-    git(dir, ["remote", "remove", "origin"]);
-    git(dir, ["config", "url.no-push://den-review-leg/.pushInsteadOf", ""]);
-    git(dir, ["config", "credential.helper", ""]);
-    git(dir, ["config", "core.hooksPath", "/dev/null"]);
+    git(head, ["remote", "remove", "origin"]);
+    git(head, ["config", "url.no-push://den-review-leg/.pushInsteadOf", ""]);
+    git(head, ["config", "credential.helper", ""]);
+    git(head, ["config", "core.hooksPath", "/dev/null"]);
+    stripAgentConfig(head);
+    const names = git(repoPath, [
+      "ls-tree",
+      "-r",
+      "--name-only",
+      "-z",
+      refs.base,
+    ])
+      .split("\0")
+      .filter((n) => INSTRUCTION_RE.test(n) && !n.split("/").includes(".."));
+    for (const n of names) {
+      const out = path.join(base, n);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(
+        out,
+        git(repoPath, ["show", `${refs.base}:${n}`]) + "\n",
+      );
+    }
     execFileSync("chmod", ["-R", "a-w", dir]);
   } catch (e) {
     removeCheckout(dir);
     throw e;
   }
+  return { dir, head, base };
 }
 
 /** Removes a checkout made by reviewCheckout. */

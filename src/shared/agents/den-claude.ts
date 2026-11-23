@@ -587,12 +587,52 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
   return path.join(input.filesDir, "settings.json");
 }
 
+/**
+ * Issue 476: what a review leg may never do. A leg reads untrusted PR
+ * content; gh keeps its login outside the environment, so these denies
+ * (and the "ask" intent under them) are the guard, not the env allowlist.
+ */
+export const REVIEW_LEG_DENY: readonly string[] = [
+  "Bash(gh)",
+  "Bash(gh:*)",
+  "Bash(git push)",
+  "Bash(git push:*)",
+  "Bash(git remote:*)",
+  "Bash(git config:*)",
+  "Bash(git credential:*)",
+  "Bash(curl:*)",
+  "Bash(wget:*)",
+  "Bash(ssh:*)",
+  "Bash(scp:*)",
+  "Bash(nc:*)",
+  "Bash(chmod:*)",
+  "WebFetch",
+  "WebSearch",
+];
+
+/**
+ * Issue 476: a leg's launch input: only Den's server, limited to `tools`
+ * (--only); no Hub, no project servers, no claude.ai connectors; no allow
+ * rules and no Den-tools allow.
+ */
+function legInput(input: LaunchInput, tools: readonly string[]): LaunchInput {
+  const { hub: _hub, extra: _extra, ...mcp } = input.mcp;
+  return {
+    ...input,
+    mcp: { ...mcp, command: [...mcp.command, "--only", tools.join(",")] },
+    claudeAiConnectors: false,
+    denToolsAllowed: false,
+    allow: [],
+  };
+}
+
 /** The flags every run shares: Den's MCP only, the model, the role prompt. */
 function common(input: LaunchInput): {
   argv: string[];
   files: Record<string, string>;
   warnings: string[];
 } {
+  if (input.review) input = legInput(input, input.review.tools);
   const file = mcpConfigPath(input);
   const mode = permissionMode(input);
   // D41: the Stop hook asks Hub for comments waiting on this agent.
@@ -682,6 +722,8 @@ function common(input: LaunchInput): {
       file,
       ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
+      // Issue 476: a leg never loads the head's project or local settings.
+      ...(input.review ? ["--setting-sources", "user"] : []),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -711,6 +753,7 @@ function common(input: LaunchInput): {
                         ...(input.stateDir || input.personConfigDir
                           ? {
                               deny: [
+                                ...(input.review ? REVIEW_LEG_DENY : []),
                                 ...(input.stateDir
                                   ? stateDirDenyRules(
                                       input.stateDir,

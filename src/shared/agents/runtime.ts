@@ -205,6 +205,13 @@ export interface LaunchInput {
    * `--name`) does, at launch and at resume.
    */
   sessionLabel?: string;
+  /**
+   * Issue 476: a review leg. It reads untrusted PR content, so it loads no
+   * project or local settings, has only Den's MCP server limited to these
+   * tools, allows nothing on its own, and denies reaching out (gh, git
+   * push, curl …). Runtimes that can't narrow a launch this way refuse it.
+   */
+  review?: { tools: string[] };
 }
 
 export interface LaunchOutput {
