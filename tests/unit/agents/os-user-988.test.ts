@@ -143,6 +143,7 @@ describe("issue 988 (pin 3): the launcher", () => {
       runtime: { bin: "/bin/sh", script: fake },
     }),
   );
+  const NONCE = "0123456789abcdef0123456789abcdef";
   const run = (...args: string[]) =>
     spawnSync("/bin/sh", [script, ...args], {
       encoding: "utf-8",
@@ -150,51 +151,59 @@ describe("issue 988 (pin 3): the launcher", () => {
     });
 
   it("execs the registered runtime with the agent id, and nothing else", () => {
-    const r = run("scout");
+    const r = run("scout", NONCE);
     expect(r.status).toBe(0);
-    expect(r.stdout.split("\n")[0]).toBe("ARGS [agents] [session] [scout]");
+    expect(r.stdout.split("\n")[0]).toBe(`ARGS [agents] [session] [scout] [${NONCE}]`);
   });
 
   it("scrubs the environment to its allowlist", () => {
-    const env = run("scout")
+    const env = run("scout", NONCE)
       .stdout.split("\n")
       .slice(1)
       .filter(Boolean)
       .map((l) => l.slice(0, l.indexOf("=")))
       .filter((k) => k !== "PWD" && k !== "SHLVL" && k !== "_");
     expect(env.sort()).toEqual([...LAUNCH_ENV].sort());
-    const out = run("scout").stdout;
+    const out = run("scout", NONCE).stdout;
     expect(out).not.toMatch(/^FOO=/m);
     expect(out).toMatch(new RegExp(`^HOME=${home}$`, "m"));
     expect(out).toMatch(/^USER=den-agents-robin$/m);
     expect(out).toMatch(/^DEN_AGENT_ID=scout$/m);
     expect(out).toMatch(/^TERM=xterm-256color$/m);
+    // The nonce reaches only argv (issue 988 slice 2), never the env.
+    expect(out.split("\n").slice(1).join("\n")).not.toContain(NONCE);
   });
 
-  it("takes exactly one agent id, by Den's pattern", () => {
+  it("takes exactly one agent id, by Den's pattern, and Den's launch nonce", () => {
     const bad = [
       [],
-      ["scout", "more"],
-      [""],
-      ["../x"],
-      ["-x"],
-      [".x"],
-      ["a b"],
-      ["a;id"],
-      ["a$(id)"],
-      ["a".repeat(65)],
+      ["scout"],
+      ["scout", NONCE, "more"],
+      ["scout", "short"],
+      ["scout", NONCE.toUpperCase()],
+      ["scout", NONCE.slice(1)],
+      ["scout", `${NONCE}0`],
+      ["scout", `${NONCE.slice(1)};`],
+      ["", NONCE],
+      ["../x", NONCE],
+      ["-x", NONCE],
+      [".x", NONCE],
+      ["a b", NONCE],
+      ["a;id", NONCE],
+      ["a$(id)", NONCE],
+      ["a".repeat(65), NONCE],
     ];
     for (const args of bad) {
       const r = run(...args);
       expect(r.status).toBe(64);
       expect(r.stdout).not.toContain("ARGS");
     }
-    expect(run("a".repeat(64)).status).toBe(0);
-    expect(run("Scout.2_b-c").status).toBe(0);
+    expect(run("a".repeat(64), NONCE).status).toBe(0);
+    expect(run("Scout.2_b-c", NONCE).status).toBe(0);
   });
 
   it("a bad TERM is replaced, never passed through", () => {
-    const r = spawnSync("/bin/sh", [script, "scout"], {
+    const r = spawnSync("/bin/sh", [script, "scout", NONCE], {
       encoding: "utf-8",
       env: { TERM: "x;rm -rf /" },
     });

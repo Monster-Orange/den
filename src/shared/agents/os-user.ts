@@ -157,8 +157,10 @@ export function listedRulesProblem(
 const shQuote = (s: string) => `'${s}'`;
 
 /**
- * The launcher (root's, 0555). Takes one agent id, by Den's pattern;
- * starts `<runtime.bin> <runtime.script> agents session <id>` with only
+ * The launcher (root's, 0555). Takes one agent id, by Den's pattern, and
+ * Den's launch nonce (32 lower-case hex: the ready marker's, issue 988
+ * slice 2; single use, so its showing in `ps` gives nothing); starts
+ * `<runtime.bin> <runtime.script> agents session <id> <nonce>` with only
  * LAUNCH_ENV set.
  */
 export function launcherScript(o: {
@@ -184,11 +186,21 @@ set -eu
 # Bracket ranges below mean ASCII, whatever locale sudo kept.
 LC_ALL=C
 export LC_ALL
-if [ "$#" -ne 1 ]; then
-  echo "den-agent-launch: give one agent id" >&2
+if [ "$#" -ne 2 ]; then
+  echo "den-agent-launch: give one agent id and Den's launch nonce" >&2
   exit 64
 fi
 id=$1
+nonce=$2
+case "$nonce" in
+  *[!0-9a-f]*)
+    echo "den-agent-launch: that is not Den's launch nonce" >&2
+    exit 64 ;;
+esac
+if [ "\${#nonce}" -ne 32 ]; then
+  echo "den-agent-launch: that is not Den's launch nonce" >&2
+  exit 64
+fi
 case "$id" in
   "" | [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*)
     echo "den-agent-launch: that is not an agent id" >&2
@@ -207,7 +219,7 @@ esac
 cd ${shQuote(o.home)}
 exec /usr/bin/env -i HOME=${shQuote(o.home)} USER=${shQuote(o.user)} LOGNAME=${shQuote(o.user)} \\
   PATH='/usr/bin:/bin:/usr/sbin:/sbin' LANG='C.UTF-8' TERM="$term" DEN_AGENT_ID="$id" \\
-  ${shQuote(o.runtime.bin)} ${shQuote(o.runtime.script)} agents session "$id"
+  ${shQuote(o.runtime.bin)} ${shQuote(o.runtime.script)} agents session "$id" "$nonce"
 `;
 }
 
