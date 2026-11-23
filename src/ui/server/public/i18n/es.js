@@ -1223,6 +1223,18 @@
       "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
     "set.server.gate_cpu_hold_load.d":
       "Mientras la carga media de 5 minutos de esta máquina sea igual o mayor que este valor, y una prueba de navegador con prioridad de versión tenga un puesto de navegador, las pruebas unitarias esperan. Las que ya corren nunca se detienen. El valor predeterminado es el número de núcleos × 4 / 3. 0 lo apaga. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    "set.server.gate_max_start_load":
+      "Carga de la máquina a la que ninguna prueba empieza",
+    "set.server.gate_max_start_load.d":
+      "Mientras la carga media de 5 minutos de esta máquina sea igual o mayor que este valor (el total, no por núcleo), una prueba que ya tiene su puesto espera antes de empezar su comando, y dice por qué. Queda por debajo de donde la máquina se atasca: el valor predeterminado es el número de núcleos × 1,5. 0 lo apaga. __DEN_CLI__ gate settings --max-start-load 27",
+    "set.server.gate_max_start_wait_minutes":
+      "Minutos que una prueba espera a la carga",
+    "set.server.gate_max_start_wait_minutes.d":
+      "Una prueba detenida por la carga empieza igualmente tras estos minutos, y su registro dice que empezó con la máquina ocupada. El valor predeterminado es 10. 0 significa que espera lo que haga falta. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
+    "set.server.gate_reap_grace_seconds":
+      "Segundos antes de cerrar a la fuerza lo que queda",
+    "set.server.gate_reap_grace_seconds.d":
+      "Cuando una prueba termina, o se borra su carpeta, lo que inició y sigue en marcha recibe la orden de parar y, tras estos segundos, se cierra a la fuerza. Nada fuera de la prueba se toca. El valor predeterminado es 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser":
       "Pruebas de navegador a la vez en esta máquina",
     "set.server.gate_local_browser.d":
@@ -3248,6 +3260,11 @@
       "esperando: la carga de esta máquina es {load}, más de {perCore} × {cores} núcleos ({limit}), mientras se ejecuta otra prueba unitaria; empieza cuando baje la carga o termine esa prueba",
     "gate.loadHold":
       "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
+    "gate.startHold":
+      "tiene su puesto; espera a que la carga ({load}) baje de {limit} antes de empezar",
+    "gate.leftoversH": "Detenidos al terminar su ejecución",
+    "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
+    "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
