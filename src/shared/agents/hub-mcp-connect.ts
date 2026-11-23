@@ -11,6 +11,7 @@ import * as path from "path";
 import { HUB_SERVER } from "../hub.js";
 import { agentFilesDir } from "./records.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export interface HubMcpInit {
   ok: boolean;
@@ -156,12 +157,13 @@ function readRaw(
   agentId: string,
 ): Partial<HubMcpInit> | null {
   try {
-    const v = JSON.parse(
-      fs.readFileSync(
-        path.join(agentFilesDir(stateDir, agentId), FILE),
-        "utf8",
-      ),
-    ) as Partial<HubMcpInit> | null;
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(
+      stateDir,
+      path.join(agentFilesDir(stateDir, agentId), FILE),
+    );
+    if (!r.ok) return null;
+    const v = r.value as Partial<HubMcpInit> | null;
     return v && typeof v === "object" ? v : null;
   } catch {
     return null;

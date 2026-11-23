@@ -20,6 +20,7 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readStateJson } from "../../shared/state-backup.js";
 
 export const SERVER_KEY_PREFIX = "den_sk_";
 const KEY_RE = /^den_sk_([0-9a-f]{16})_[A-Za-z0-9_-]{43}$/;
@@ -100,22 +101,26 @@ export type ServerKeyCheck =
   | { ok: false; code: "bad_key" | "key_revoked" };
 
 export class ServerKeys {
+  private readonly file: string;
+
   constructor(
-    private readonly file: string,
+    private readonly stateDir: string,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    this.file = path.join(stateDir, "embed", "server-keys.json");
+  }
 
   /** The store under a state dir. */
   static at(stateDir: string, now?: () => number): ServerKeys {
-    return new ServerKeys(
-      path.join(stateDir, "embed", "server-keys.json"),
-      now,
-    );
+    return new ServerKeys(stateDir, now);
   }
 
   private read(): Stored[] {
     try {
-      const v = JSON.parse(fs.readFileSync(this.file, "utf-8")) as {
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(this.stateDir, this.file);
+      if (!r.ok) return [];
+      const v = (r.value ?? {}) as {
         keys?: unknown;
       };
       return Array.isArray(v.keys)

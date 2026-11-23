@@ -12,6 +12,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 /** "notrun": an imported check where nothing ran (issue 441, clause 3). */
 export type ResultState = "passed" | "failed" | "error" | "blocked" | "notrun";
@@ -40,9 +41,9 @@ function latestFile(stateDir: string, project: string): string {
 /** The project's latest results ({} when there are none yet). */
 export function readLatest(stateDir: string, project: string): LatestByEnv {
   try {
-    const v: unknown = JSON.parse(
-      fs.readFileSync(latestFile(stateDir, project), "utf-8"),
-    );
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, latestFile(stateDir, project));
+    const v: unknown = r.ok ? r.value : null;
     return v && typeof v === "object" && !Array.isArray(v)
       ? (v as LatestByEnv)
       : {};

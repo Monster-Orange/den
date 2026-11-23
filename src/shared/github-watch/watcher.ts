@@ -34,6 +34,8 @@ import { embedDelivery, type Delivery } from "../hub-delivery.js";
 import type { GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { getStateDir } from "../paths.js";
+import { readStateJson } from "../state-backup.js";
 
 export interface GithubWatchDeps {
   /** GitHub's REST API (gh api -i); tests pass a fake. */
@@ -45,6 +47,8 @@ export interface GithubWatchDeps {
   now?: () => number;
   /** Where the watches are kept across a restart. */
   file?: string;
+  /** The state folder `file` is in (default: Den's), for issue 786's backup. */
+  stateDir?: string;
   /** Where doctor reads the status line from. */
   statusFile?: string;
   log?: (line: string) => void;
@@ -707,7 +711,10 @@ export class GithubWatcher {
   private load(): void {
     if (!this.d.file) return;
     try {
-      const j = JSON.parse(fs.readFileSync(this.d.file, "utf-8")) as {
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(this.d.stateDir ?? getStateDir(), this.d.file);
+      if (!r.ok) return;
+      const j = (r.value ?? {}) as {
         watches?: unknown;
       };
       if (Array.isArray(j.watches))

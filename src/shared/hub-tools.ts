@@ -34,6 +34,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeFileAtomic } from "./atomic-write.js";
+import { getStateDir } from "./paths.js";
+import { readStateJson } from "./state-backup.js";
 
 /** Each Hub tool's parameters and the required ones, sorted. */
 export type ToolShape = Record<
@@ -271,6 +273,8 @@ export interface HubToolsWatchDeps {
   restartOn?(id: string): boolean;
   /** The state file (mode 0600). */
   file: string;
+  /** The state folder `file` is in (default: Den's), for issue 786's backup. */
+  stateDir?: string;
   log?: (line: string) => void;
 }
 
@@ -323,7 +327,10 @@ export class HubToolsWatch {
 
   constructor(private readonly d: HubToolsWatchDeps) {
     try {
-      const raw = JSON.parse(fs.readFileSync(d.file, "utf8")) as {
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(d.stateDir ?? getStateDir(), d.file);
+      if (!r.ok) throw new Error("unreadable");
+      const raw = r.value as {
         v?: unknown;
         agents?: Record<string, Seen>;
         launches?: Record<string, Launch>;

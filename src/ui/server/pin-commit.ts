@@ -35,6 +35,7 @@ import * as path from "path";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
 import type { Ran } from "./den-update.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readStateJson } from "../../shared/state-backup.js";
 
 export const PIN_FILES = ["package.json", "package-lock.json"] as const;
 
@@ -106,9 +107,10 @@ export const pinRecordFile = (stateDir: string): string =>
 
 export function readPinRecord(stateDir: string): PinRecord | null {
   try {
-    const r = JSON.parse(
-      fs.readFileSync(pinRecordFile(stateDir), "utf8"),
-    ) as PinRecord;
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const read = readStateJson(stateDir, pinRecordFile(stateDir));
+    if (!read.ok) return null;
+    const r = read.value as PinRecord;
     return typeof r?.version === "string" && typeof r.state === "string"
       ? r
       : null;

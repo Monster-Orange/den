@@ -25,6 +25,7 @@ import type { RawManifest } from "../types/index.js";
 import type { ApiOnlyArgs } from "./guardrails.js";
 import { readDenConfig } from "../den-config.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 /** One service, as the hook reads it. */
 export interface ApiOnlyService {
@@ -240,9 +241,10 @@ export function writeApiOnlyRules(
  */
 export function apiOnlyNames(stateDir: string): string[] {
   try {
-    const r = JSON.parse(
-      fs.readFileSync(apiOnlyFiles(stateDir).rules, "utf-8"),
-    ) as { services?: { name?: unknown }[] };
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const read = readStateJson(stateDir, apiOnlyFiles(stateDir).rules);
+    if (!read.ok) return [];
+    const r = (read.value ?? {}) as { services?: { name?: unknown }[] };
     return (r.services ?? [])
       .map((s) => s?.name)
       .filter((n): n is string => typeof n === "string" && n.length > 0);

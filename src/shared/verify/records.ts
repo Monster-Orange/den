@@ -14,6 +14,7 @@ import * as path from "path";
 import type { ClauseRecord } from "./imports.js";
 import type { ModuleRun, RunResult } from "./run.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 /** Who did something to a run. */
 export interface RunActor {
@@ -77,9 +78,9 @@ function readPointers(
   project: string,
 ): Record<string, string> {
   try {
-    const v: unknown = JSON.parse(
-      fs.readFileSync(pointersFile(stateDir, project), "utf-8"),
-    );
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, pointersFile(stateDir, project));
+    const v: unknown = r.ok ? r.value : null;
     return v && typeof v === "object" && !Array.isArray(v)
       ? (v as Record<string, string>)
       : {};
@@ -124,12 +125,12 @@ export function readRunRecord(
 ): RunRecord | null {
   if (!RUN_RE.test(runId)) return null;
   try {
-    const v: unknown = JSON.parse(
-      fs.readFileSync(
-        path.join(runsDir(stateDir, project), runId, "run.json"),
-        "utf-8",
-      ),
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(
+      stateDir,
+      path.join(runsDir(stateDir, project), runId, "run.json"),
     );
+    const v: unknown = r.ok ? r.value : null;
     return v && typeof v === "object" && !Array.isArray(v)
       ? (v as RunRecord)
       : null;

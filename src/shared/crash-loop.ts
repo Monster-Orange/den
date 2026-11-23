@@ -18,6 +18,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "./atomic-write.js";
+import { readStateJson } from "./state-backup.js";
 
 export const BOOTS_FILE = "web-boots.json";
 const KEEP = 50;
@@ -72,9 +73,12 @@ export function crashLoopSettings(web: unknown): CrashLoopSettings {
   };
 }
 
-function readBoots(file: string): Boot[] {
+function readBoots(stateDir: string): Boot[] {
   try {
-    const v = JSON.parse(fs.readFileSync(file, "utf-8")) as unknown;
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, path.join(stateDir, BOOTS_FILE));
+    if (!r.ok) return [];
+    const v = r.value;
     return Array.isArray(v)
       ? (v as Boot[]).filter(
           (b) => b && typeof b.at === "string" && typeof b.pid === "number",
@@ -114,7 +118,7 @@ export function recordBoot(
   pid: number = process.pid,
 ): BootCheck {
   const file = path.join(stateDir, BOOTS_FILE);
-  const boots = readBoots(file);
+  const boots = readBoots(stateDir);
   const since = now - s.minutes * 60_000;
   const crashes = boots.filter(
     (b) => !b.clean && b.pid !== pid && Date.parse(b.at) >= since,
@@ -133,7 +137,7 @@ export function markCleanStop(
   pid: number = process.pid,
 ): void {
   const file = path.join(stateDir, BOOTS_FILE);
-  const boots = readBoots(file);
+  const boots = readBoots(stateDir);
   const mine = [...boots].reverse().find((b) => b.pid === pid && !b.clean);
   if (!mine) return;
   mine.clean = true;
@@ -147,7 +151,7 @@ export function markStopped(
   now: number = Date.now(),
 ): void {
   const file = path.join(stateDir, BOOTS_FILE);
-  const boots = readBoots(file);
+  const boots = readBoots(stateDir);
   const mine = [...boots].reverse().find((b) => b.pid === pid);
   if (!mine || mine.stoppedAt) return;
   mine.stoppedAt = new Date(now).toISOString();
@@ -163,7 +167,7 @@ export function webAwayMs(
   stateDir: string,
   pid: number = process.pid,
 ): number | null {
-  const boots = readBoots(path.join(stateDir, BOOTS_FILE));
+  const boots = readBoots(stateDir);
   const i = boots.map((b) => b.pid).lastIndexOf(pid);
   if (i < 1) return null;
   const prev = boots[i - 1]!;

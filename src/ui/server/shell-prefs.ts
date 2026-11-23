@@ -11,6 +11,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readStateJson } from "../../shared/state-backup.js";
 
 /**
  * Issue 402 (the model set on 11-18): a pin is (company, project or none,
@@ -429,9 +430,9 @@ export function fixturePinsFile(stateDir: string): string {
 /** Issue 946: the pins the fixture person added (none when unreadable). */
 export function readFixturePins(stateDir: string): Pin[] {
   try {
-    const v: unknown = JSON.parse(
-      fs.readFileSync(fixturePinsFile(stateDir), "utf8"),
-    );
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, fixturePinsFile(stateDir));
+    const v: unknown = r.ok ? r.value : null;
     if (!Array.isArray(v)) return [];
     return v.flatMap((x) =>
       x && typeof x === "object" && typeof (x as Pin).item === "string"

@@ -26,6 +26,7 @@ import { execFile, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readStateJson } from "../../shared/state-backup.js";
 
 /** What one command came to (exit code, the end of its output). */
 export interface Ran {
@@ -124,9 +125,10 @@ export type LastUpdate = UpdateState & {
 
 function readUpdateDoctor(stateDir: string): UpdateDoctor | null {
   try {
-    const v = JSON.parse(
-      fs.readFileSync(updateDoctorFile(stateDir), "utf8"),
-    ) as Partial<UpdateDoctor>;
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, updateDoctorFile(stateDir));
+    if (!r.ok) return null;
+    const v = r.value as Partial<UpdateDoctor>;
     return typeof v?.from === "string" &&
       typeof v.to === "string" &&
       typeof v.at === "string" &&
@@ -159,9 +161,10 @@ export function lastUpdate(stateDir: string): LastUpdate | null {
 
 export function readUpdateState(stateDir: string): UpdateState | null {
   try {
-    const v = JSON.parse(
-      fs.readFileSync(updateStateFile(stateDir), "utf8"),
-    ) as UpdateState;
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, updateStateFile(stateDir));
+    if (!r.ok) return null;
+    const v = r.value as UpdateState;
     return typeof v?.state === "string" ? v : null;
   } catch {
     return null;

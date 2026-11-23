@@ -26,6 +26,7 @@ import { parseMachineName, parseSshUser } from "./cli-command.js";
 import { getStateDir } from "./paths.js";
 import { githubDisplayName } from "./web-owner.js";
 import { writeFileAtomic } from "./atomic-write.js";
+import { readStateJson } from "./state-backup.js";
 
 /** D16: how long a sign-in link lasts unless `web.login_link_ttl` says. */
 export const LOGIN_CODE_TTL_MS = 5 * 60_000;
@@ -823,9 +824,10 @@ export class WebSessionStore {
     if (this.cache?.key === key) return this.cache.data;
     let data = empty();
     try {
-      const raw = JSON.parse(
-        fs.readFileSync(this.file(), "utf-8"),
-      ) as Partial<StoreFile>;
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(this.stateDir(), this.file());
+      if (!r.ok) throw new Error("unreadable");
+      const raw = (r.value ?? {}) as Partial<StoreFile>;
       data = {
         v: 1,
         sessions:

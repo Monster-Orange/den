@@ -27,6 +27,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readStateJson } from "../../shared/state-backup.js";
 
 export const VAPID_FILE = "push-vapid.json";
 export const SUBSCRIPTIONS_FILE = "push-subscriptions.json";
@@ -52,7 +53,10 @@ function writePrivate(file: string, text: string): void {
 export function vapidKeys(stateDir: string): VapidKeys {
   const file = path.join(stateDir, VAPID_FILE);
   try {
-    const j = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+    // Issue 786: a key file that can't be parsed is kept in backup before
+    // new keys are made, never written over.
+    const r = readStateJson(stateDir, file);
+    const j = (r.ok ? (r.value ?? {}) : {}) as {
       jwk?: { kty: string; crv: string; x: string; y: string; d: string };
     };
     if (j.jwk?.d && j.jwk.x && j.jwk.y) {
@@ -242,7 +246,9 @@ export class PushSubscriptions {
 
   list(): PushSubscription[] {
     try {
-      const v = JSON.parse(fs.readFileSync(this.file, "utf-8")) as unknown;
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(this.stateDir, this.file);
+      const v = r.ok ? r.value : null;
       return Array.isArray(v)
         ? v
             .filter(

@@ -38,6 +38,8 @@ import {
 } from "../../shared/app-feed-reader.js";
 import type { Delivery } from "../../shared/hub-delivery.js";
 import type { NotificationStore } from "../../shared/notifications.js";
+import { getStateDir } from "../../shared/paths.js";
+import { readStateJson } from "../../shared/state-backup.js";
 
 export interface AppFeedLimits {
   maxStreams: number;
@@ -118,6 +120,8 @@ export class FileFeedStore implements FeedStore {
   constructor(
     private readonly dir: string,
     private readonly cap: () => number,
+    /** The state folder `dir` is in, for issue 786's backup. */
+    private readonly stateDir: string = getStateDir(),
   ) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     for (const f of fs.readdirSync(dir)) {
@@ -131,9 +135,10 @@ export class FileFeedStore implements FeedStore {
     }
     this.seqs.sort((a, b) => a - b);
     try {
-      const v = JSON.parse(
-        fs.readFileSync(path.join(dir, "meta.json"), "utf8"),
-      ) as { read?: unknown; pointed?: unknown };
+      // Issue 786: a file that can't be parsed is kept in backup, not reset.
+      const r = readStateJson(this.stateDir, path.join(dir, "meta.json"));
+      if (!r.ok) throw new Error("unreadable");
+      const v = (r.value ?? {}) as { read?: unknown; pointed?: unknown };
       if (typeof v.read === "number") this.meta.read = v.read;
       if (typeof v.pointed === "number") this.meta.pointed = v.pointed;
     } catch {
@@ -331,6 +336,7 @@ export class AppFeeds {
       s = new FileFeedStore(
         path.join(this.dirOf(project, name), "events"),
         () => this.d.limits().keepEvents,
+        this.d.stateDir,
       );
       this.stores.set(k, s);
     }
@@ -468,7 +474,10 @@ export class AppFeeds {
       },
       load: () => {
         try {
-          const v = JSON.parse(fs.readFileSync(file, "utf8")) as FeedCursor;
+          // Issue 786: a file that can't be parsed is kept in backup, not reset.
+          const r = readStateJson(this.d.stateDir, file);
+          if (!r.ok) return null;
+          const v = r.value as FeedCursor;
           return {
             cursor: typeof v?.cursor === "string" ? v.cursor : null,
             lastEventAt:

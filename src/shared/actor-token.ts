@@ -29,6 +29,7 @@ import * as path from "path";
 import { AGENT_ACTOR_RE, WORKSPACE_NAME_RE } from "./agent-actor.js";
 import { sessionPaths } from "./sessions/paths.js";
 import { writeFileAtomic } from "./atomic-write.js";
+import { readStateJson } from "./state-backup.js";
 
 export const ACTOR_TOKEN_PREFIX = "den_at_";
 /** The agent's session carries its token here (AG spec §5a-env). */
@@ -89,9 +90,10 @@ export function isActorTokenShape(v: string | undefined): v is string {
 
 function load(stateDir: string): StoreFile {
   try {
-    const raw = JSON.parse(
-      fs.readFileSync(actorTokensPath(stateDir), "utf-8"),
-    ) as Partial<StoreFile>;
+    // Issue 786: a file that can't be parsed is kept in backup, not reset.
+    const r = readStateJson(stateDir, actorTokensPath(stateDir));
+    if (!r.ok) return { v: 1, tokens: {} };
+    const raw = (r.value ?? {}) as Partial<StoreFile>;
     const tokens =
       raw.tokens && typeof raw.tokens === "object" && !Array.isArray(raw.tokens)
         ? raw.tokens
