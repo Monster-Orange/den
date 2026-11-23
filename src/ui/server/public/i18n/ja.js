@@ -1402,6 +1402,18 @@
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.agents.resume_batch": "一度に再起動するエージェント数",
+    "set.agents.resume_batch.d":
+      "再起動のあと、または Hub のツールが変わったとき、エージェントはこの数ずつ再起動します。作業中だったものが先です。0 にするとすべて同時に再起動します。__DEN_CLI__ config agents.resume.batch=4",
+    "set.agents.resume_gap": "再起動グループの間隔",
+    "set.agents.resume_gap.d":
+      "エージェントの再起動グループが始まってから、次のグループまで待つ時間。__DEN_CLI__ config agents.resume.gap_seconds=30",
+    "set.agents.resume_load": "再起動を止める負荷",
+    "set.agents.resume_load.d":
+      "マシンの 1 分間の負荷がこれを超えている間、次のエージェント再起動グループは待ちます。0: 制限なし。既定はコア数 × 2 です。__DEN_CLI__ config agents.resume.load_ceiling=16",
+    "set.agents.resume_max_wait": "負荷で再起動を待たせる最長時間",
+    "set.agents.resume_max_wait.d":
+      "エージェントがこれだけ待つと、負荷が高いままでもそのグループを再起動します（これまでどおり数件ずつ）。0: 負荷が高い間はいつまでも待ちます。__DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "GitHub の issue を書けるロール",
     "set.agents.issue_writes.d":
       "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",

@@ -1042,6 +1042,17 @@ export function shellPathTimeoutMs(
   }
 }
 
+/**
+ * Issue 1129: the ranges Settings and `config` accept for agents.resume.
+ * user.yml itself takes any value at least 0 (agentsResume).
+ */
+export const AGENTS_RESUME_LIMITS = {
+  batch: { min: 0, max: 1000, int: true },
+  gap_seconds: { min: 0, max: 3600, int: false },
+  load_ceiling: { min: 0, max: 10000, int: false },
+  max_wait_seconds: { min: 0, max: 86400, int: false },
+} as const;
+
 /** Issue 1129: agents.resume (user.yml), with its defaults. */
 export interface AgentsResume {
   /** Agents per batch; 0: all at once. */
@@ -1990,6 +2001,8 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  // Issue 1129: the restart queue (agents.resume.*), never an agent id.
+  "resume",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
   "sandbox",
   "sandbox_sockets",

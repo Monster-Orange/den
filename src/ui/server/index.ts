@@ -248,6 +248,7 @@ import {
   readWebKeepAliveSeconds,
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
+  agentsResume,
   agentsShellPathTimeoutSeconds,
   heldWriteWaitMinutes,
   readSessionsConfig,
@@ -5662,6 +5663,20 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    // Issue 1129: the restart queue (agents.resume.*).
+    agents_resume: (() => {
+      try {
+        const r = agentsResume(() => user);
+        return {
+          batch: r.batch,
+          gap_seconds: r.gapSeconds,
+          load_ceiling: r.loadCeiling,
+          max_wait_seconds: r.maxWaitSeconds,
+        };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 415: how long Report keeps, and waits for, a repo's
     // visibility (feedback.*), their defaults when unset.
     feedback: (() => {
@@ -9610,6 +9625,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_resume?: unknown;
           agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
@@ -9677,6 +9693,7 @@ async function handleRequest(
             web_agent_view: body.web_agent_view,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_resume: body.agents_resume,
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
