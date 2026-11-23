@@ -103,6 +103,11 @@ import {
   statedAddress,
 } from "../../shared/edge/address-check.js";
 import { readEdgeProof } from "../../shared/edge/proof.js";
+import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
+import {
+  edgeProofRotation,
+  stacksWithGeneratedSecrets,
+} from "../../shared/edge/runtime.js";
 import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
@@ -1450,6 +1455,95 @@ export function pushContactLines(
 }
 
 /**
+ * Issue 728: whether the edge's proof was rotated once since agents lost
+ * read access to the edge's state folder, and each stack whose generated
+ * secrets they could read before, named with its owning project so that
+ * project's agent rotates them (the stack's own way; Den never regenerates
+ * them, which would lock a stack out of its data). A stack whose
+ * generated.env changed after the rotation is done. Never a value.
+ */
+export function edgeRotationLines(
+  title: string,
+  o: {
+    edgeDir?: () => string | null;
+    /** Den's projects, to tell a stack's project from its name. */
+    projects?: () => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const dir = (
+    o.edgeDir ??
+    (() => {
+      try {
+        return readEdgeConfig().stateDir;
+      } catch {
+        return null;
+      }
+    })
+  )();
+  if (!dir || !fs.existsSync(dir)) return { lines: [], checks: [] };
+  const at = edgeProofRotation({ stateDir: dir }).rotatedAt;
+  const rotate = at
+    ? `the edge's proof was rotated once, at ${at}, after agents lost read access to the edge's state folder`
+    : `the edge's proof hasn't been rotated since agents lost read access to the edge's state folder: ${title} rotates it once at its next start (people stay signed in)`;
+  const checks: OnboardCheck[] = [
+    { id: "edge_rotate", status: at ? "ok" : "warn", detail: rotate },
+  ];
+  const since = at ? Date.parse(at) : Infinity;
+  const projects = (
+    o.projects ??
+    (() => {
+      try {
+        return getActiveWorkspaces();
+      } catch {
+        return [];
+      }
+    })
+  )();
+  const stale = stacksWithGeneratedSecrets({ stateDir: dir }).filter((f) => {
+    try {
+      const m = fs.statSync(path.join(dir, "stacks", f, "generated.env"));
+      return !(m.mtimeMs > since);
+    } catch {
+      return false;
+    }
+  });
+  const named = stale.map((f) => {
+    const p = projects
+      .filter((w) => f.endsWith(`-${w}`))
+      .sort((a, b) => b.length - a.length)[0];
+    return p
+      ? { stack: f.slice(0, -p.length - 1), project: p }
+      : { stack: f, project: null };
+  });
+  const stacks = named.length
+    ? `agents could read these stacks' generated secrets before: ${named
+        .map((n) =>
+          n.project
+            ? `${n.stack} (project ${n.project}): ${n.project}'s agent rotates them the stack's own way`
+            : `${n.stack}: its project's agent rotates them the stack's own way`,
+        )
+        .join(
+          "; ",
+        )}. ${title} never makes new values, which would lock a stack out of its data`
+    : "no stack's generated secrets wait on a rotation";
+  checks.push({
+    id: "edge_stack_secrets",
+    status: named.length ? "warn" : "ok",
+    detail: stacks,
+  });
+  return {
+    lines: [
+      "",
+      `${title} doctor: Edge secrets`,
+      "",
+      `  edge rotate  ${at ? "✓" : "⚠"}  ${rotate}`,
+      `  stack secrets  ${named.length ? "⚠" : "✓"}  ${stacks}`,
+    ],
+    checks,
+  };
+}
+
+/**
  * H1 (0.4.48): whether the edge set up here carries Den's proof (the
  * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
@@ -1986,6 +2080,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const ep = edgeProofLines(readBrand().name, product().cli);
       if (ep.check) r.checks.push(ep.check);
     }
+    // Issue 728: the edge's once-only rotation, and stacks' secrets.
+    r.checks.push(...edgeRotationLines(readBrand().name).checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -2155,6 +2251,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
+  for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
