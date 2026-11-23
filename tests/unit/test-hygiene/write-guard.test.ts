@@ -187,15 +187,15 @@ describe("one refusal list per worker (issue 1356)", () => {
     const roots = { checkout: r.checkout, temp: [r.scratch] };
     first!.installWriteGuard(f, roots);
     second!.installWriteGuard(f, roots); // already guarded: a no-op
-    const start = second!.guardedWrites().length;
+    const start = second!.guardedWrites(f).length;
     const file = path.join(r.home, ".den", "swallowed");
     try {
       f.writeFileSync(file, "x");
     } catch {
       /* a writer that swallows the error */
     }
-    expect(second!.guardedWrites().slice(start)).toEqual([file]);
-    second!.guardedWrites().splice(start);
+    expect(second!.guardedWrites(f).slice(start)).toEqual([file]);
+    second!.guardedWrites(f).splice(start);
   });
 });
 

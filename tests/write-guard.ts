@@ -17,6 +17,7 @@
  * covered: their own sandbox and env (DEN_HOME, …) are.
  */
 import * as fs from "fs";
+import fsModule from "fs";
 import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -34,14 +35,37 @@ const GUARDED = Symbol.for("den.writeGuard");
 const REFUSALS = Symbol.for("den.writeGuard.refusals");
 
 /**
- * The refusals so far in this worker (setup.ts fails each file on its own).
- * One list per worker, on globalThis: the fs module, and so the wrappers
- * installed on it, outlive a test file, while jest loads this module afresh
- * for each.
+ * The refusals so far through `fsObj`'s wrappers (setup.ts fails each test
+ * file on its own). The list lives on the fs module object itself, beside
+ * the wrappers: the core module, and so they, outlive a test file, while
+ * each test file gets its own globalThis and its own load of this module.
  */
-export function guardedWrites(): string[] {
-  const g = globalThis as unknown as Record<symbol, string[] | undefined>;
-  return (g[REFUSALS] ??= []);
+export function guardedWrites(fsObj: typeof fs = fsModule): string[] {
+  const m = fsObj as unknown as Record<symbol, string[] | undefined>;
+  return (m[REFUSALS] ??= []);
+}
+
+/**
+ * Installs the guard on the real fs and fails the test file, at its end,
+ * on any refusal made during it (a writer that swallowed the error too).
+ * tests/setup.ts calls it for every test file.
+ */
+export function armWriteGuard(
+  afterAll: (fn: () => void) => void,
+  roots: WriteGuardRoots = writeGuardRoots(),
+): void {
+  installWriteGuard(fsModule, roots);
+  const before = guardedWrites().length;
+  afterAll(() => {
+    const refused = guardedWrites().splice(before);
+    if (refused.length)
+      throw new Error(
+        [
+          "This test file wrote outside its temp folders (issue 1356): set DEN_ROOT or DEN_HOME to a temp folder first, then import Den's modules dynamically.",
+          ...[...new Set(refused)].map((p) => `  ${p}`),
+        ].join("\n"),
+      );
+  });
 }
 
 /** A path's real form, for one that may not exist yet (its nearest folder). */
@@ -178,7 +202,7 @@ function pathOf(a: unknown): string | null {
 export function installWriteGuard(
   fsObj: typeof fs,
   roots: WriteGuardRoots,
-  onRefused: (p: string) => void = (p) => void guardedWrites().push(p),
+  onRefused: (p: string) => void = (p) => void guardedWrites(fsObj).push(p),
 ): void {
   const mod = fsObj as unknown as Record<string | symbol, unknown>;
   if (mod[GUARDED]) return;
