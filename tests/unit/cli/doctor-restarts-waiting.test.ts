@@ -12,7 +12,7 @@ import {
   clearRestartsWaiting,
   readRestartsWaiting,
   restartsWaitingFile,
-} from "../../../src/ui/server/restart-queue-service";
+} from "../../../src/shared/agents/restarts-waiting";
 
 const at = "2026-01-02T10:00:00.000Z";
 

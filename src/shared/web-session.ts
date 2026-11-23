@@ -25,6 +25,7 @@ import * as yaml from "yaml";
 import { parseMachineName, parseSshUser } from "./cli-command.js";
 import { getStateDir } from "./paths.js";
 import { githubDisplayName } from "./web-owner.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** D16: how long a sign-in link lasts unless `web.login_link_ttl` says. */
 export const LOGIN_CODE_TTL_MS = 5 * 60_000;
@@ -845,9 +846,7 @@ export class WebSessionStore {
     const dir = this.stateDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = this.file();
-    const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(data)}\n`, { mode: 0o600 });
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, `${JSON.stringify(data)}\n`, { mode: 0o600 });
     const key = this.statKey();
     this.cache = key ? { key, data } : null;
   }
