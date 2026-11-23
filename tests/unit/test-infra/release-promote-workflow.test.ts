@@ -202,8 +202,10 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
 
   it("the check passes the signers file, the bed's context and its testers to the script", () => {
     const step = w.jobs.check.steps?.find((s) => s.id === "promote");
+    // The testers are a secret: a login can be a person's own account, and
+    // the logs are public (a secret is masked in them).
     expect(step?.env).toMatchObject({
-      RELEASE_BED_CREATORS: "${{ vars.RELEASE_BED_CREATORS }}",
+      RELEASE_BED_CREATORS: "${{ secrets.RELEASE_BED_CREATORS }}",
     });
     // The signers file is the default one, from main's own checkout.
     expect(step?.env?.RELEASE_SIGNERS).toBeUndefined();

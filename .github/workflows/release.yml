@@ -69,7 +69,7 @@ jobs:
           NPM_SCOPE: ${{ vars.NPM_SCOPE }}
           RELEASE_BED_CONTEXT: ${{ vars.RELEASE_BED_CONTEXT }}
           # the testers whose PASS counts; the signers are .github/release-signers, from this checkout of main
-          RELEASE_BED_CREATORS: ${{ vars.RELEASE_BED_CREATORS }}
+          RELEASE_BED_CREATORS: ${{ secrets.RELEASE_BED_CREATORS }} # a secret: a login can be a person's own
           GH_TOKEN: ${{ github.token }}
         run: |
           # A full commit id only: nothing that git could read as an option or a ref expression

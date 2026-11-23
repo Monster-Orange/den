@@ -28,8 +28,11 @@ status on the dev tag's commit. The context is `release/bed`, or the
 repository variable `RELEASE_BED_CONTEXT` when it is set. Only the newest
 status in that context counts, only `success` lets the candidate be
 promoted, and only when it was set by a GitHub login listed in the
-repository variable `RELEASE_BED_CREATORS` (comma or space separated).
-With no login listed, nothing can be promoted.
+repository secret `RELEASE_BED_CREATORS` (comma or space separated).
+With no login listed, nothing can be promoted. It is a secret, not a
+variable, because a login can be a person's own account and the
+workflow's logs are public: GitHub masks a secret in them, and a refusal
+never names a login.
 
 ```sh
 sha=$(git rev-parse v1.2.3-dev.N^{commit})
@@ -42,6 +45,16 @@ A failed run records `-f state=failure`. A failure is fixed in a new dev
 tag, never by setting `success` on the old one. The tester's token needs
 the right to set commit statuses (`repo:status`, or `statuses: write`),
 and the tester's login must be in `RELEASE_BED_CREATORS`.
+
+### What a PASS proves
+
+While the agents share one GitHub login and one signing key, a PASS
+proves the bed ran, not who ran it: any agent with that login can sign a
+dev tag and set the status. It still catches a candidate with no PASS or
+a failed one. The gates that hold today are the signed dev tag, a release
+from `main` only, and the tested-tree check (the release's tree is the
+dev tag's, and a green CI run tested it). A login only the bed holds (a
+GitHub App, issue 1181) will make a PASS name its tester too.
 
 ## 3. Promote it
 
@@ -68,8 +81,8 @@ gh workflow run release.yml -f promote=<the version commit's sha>
 - `v<version>` tags no other commit.
 
 The jobs that publish (Den, and the UI kit) run in the `release`
-environment. That environment allows only `main`, and its required
-reviewers are the people who approve each publish. On npm, the package's
+environment. That environment allows only `main`; required reviewers
+on it, when set, are the people who approve each publish. On npm, the package's
 trusted publisher must name that `release` environment too, so npm takes
 a publish only from it. These are settings outside the repository: set
 them before the first release that should prove them.

@@ -11,7 +11,8 @@
 #   - that parent has the bed's PASS: its newest commit status whose context
 #     is $RELEASE_BED_CONTEXT (default release/bed) is success, and was set by
 #     a tester listed in $RELEASE_BED_CREATORS (logins, comma or space
-#     separated). docs/releasing.md;
+#     separated; a repository secret, and no login is ever printed: one can
+#     be a person's own account, and the logs are public). docs/releasing.md;
 #   - it changes only the version (scripts/release-version-diff.mjs), so its
 #     tree is the dev tag's;
 #   - vV tags no other commit (a tag is never moved).
@@ -70,7 +71,7 @@ git -c gpg.ssh.allowedSignersFile="$signers" verify-tag "$dev_tag" > /dev/null 2
   fail "$dev_tag isn't signed by a key in $signers: a candidate's tag must be signed by an allowed key"
 
 # The bed's PASS on the candidate's commit, from a listed tester.
-[ -n "$(echo $creators)" ] || fail "the repository variable RELEASE_BED_CREATORS lists no tester: no PASS can count"
+[ -n "$(echo $creators)" ] || fail "the repository secret RELEASE_BED_CREATORS lists no tester: no PASS can count"
 # The statuses list (newest first, each with its creator): the combined
 # /status endpoint names no creator.
 statuses=$(gh api "repos/$repo/commits/$parent/statuses?per_page=100" 2> /dev/null) || fail "GitHub couldn't be asked for $dev_tag's statuses"
@@ -87,7 +88,7 @@ by=$2
 [ "$state" = success ] || fail "$dev_tag ($(git rev-parse --short "$parent")) has no PASS: its $context status is $state, not success"
 case " $creators " in
   *" $by "*) ;;
-  *) fail "$dev_tag's $context PASS was set by $by, whom RELEASE_BED_CREATORS doesn't list" ;;
+  *) fail "$dev_tag's $context PASS isn't from a listed tester (RELEASE_BED_CREATORS)" ;;
 esac
 
 # Only the version changed since the dev tag.

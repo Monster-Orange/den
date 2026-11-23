@@ -461,7 +461,7 @@ describe("release-promote.sh (issue 922)", () => {
     try {
       const r = promote(sha.release);
       expect(r.code).toBe(1);
-      expect(r.text).toMatch(/::error::.*intruder-x/);
+      expect(r.text).toMatch(/::error::.*isn't from a listed tester/);
     } finally {
       statuses(sha.dev, PASS);
     }
@@ -471,6 +471,25 @@ describe("release-promote.sh (issue 922)", () => {
     const none = promote(sha.release, { RELEASE_BED_CREATORS: "" });
     expect(none.code).toBe(1);
     expect(none.text).toMatch(/::error::.*RELEASE_BED_CREATORS/);
+  });
+
+  it("never prints a tester's login or the poster's: they can be a person's own account, in public logs", () => {
+    statuses(sha.dev, [
+      { context: "release/bed", state: "success", creator: "intruder-x" },
+    ]);
+    try {
+      const r = promote(sha.release, {
+        RELEASE_BED_CREATORS: "a-x, tester-x",
+      });
+      expect(r.code).toBe(1);
+      for (const login of ["intruder-x", "a-x", "tester-x"])
+        expect([login, r.text.includes(login)]).toEqual([login, false]);
+    } finally {
+      statuses(sha.dev, PASS);
+    }
+    const ok = promote(sha.release, { RELEASE_BED_CREATORS: "tester-x" });
+    expect(ok.code).toBe(0);
+    expect(ok.text.includes(TESTER)).toBe(false);
   });
 
   it("refuses a dev tag signed by a key the allowed-signers file doesn't list, unsigned, or lightweight", () => {
