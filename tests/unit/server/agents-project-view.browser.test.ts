@@ -282,11 +282,18 @@ describe("#80: a project's view holds only its own", () => {
     await p.waitForFunction(
       () => new URLSearchParams(location.search).get("project") === "north",
     );
-    await p.waitForFunction(() =>
-      Array.from(
-        document.querySelectorAll("#agl .agband button.agr[data-ws]"),
-      ).every((x) => (x as HTMLElement).dataset.ws === "north"),
-    );
+    // The whole list (bands and Stopped) is north's: it re-rendered.
+    await p.waitForFunction(() => {
+      const xs = Array.from(
+        document.querySelectorAll(
+          "#agl .agband button.agr[data-ws], #agl [data-stopped] .agst[data-ws]",
+        ),
+      );
+      return (
+        xs.length > 0 &&
+        xs.every((x) => (x as HTMLElement).dataset.ws === "north")
+      );
+    });
     expect(await listed(p)).toEqual(["north"]);
     await expect(p.locator("#ws-pill").textContent()).resolves.toContain(
       "north",

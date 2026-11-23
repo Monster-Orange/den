@@ -1082,8 +1082,15 @@ function rowHtml(r) {
   const seen = seenMap();
   const attn = rowState(r, seen);
   const right = chipHtml(r, seen);
-  const meta = metaHtml({ runtime: r.runtime, ...attnParts(r, attn) });
-  const ptag = tagHtml(r, { all: allProjects(), name: projName });
+  const meta = metaHtml({
+    runtime: r.runtimeLabel || r.runtime,
+    ...attnParts(r, attn),
+  });
+  const ptag = tagHtml(r, {
+    all: allProjects(),
+    name: projName,
+    pc: (ws) => projectColour(st.projects, ws),
+  });
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').
   const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";

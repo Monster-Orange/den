@@ -205,9 +205,10 @@ describe("the Agents tab", () => {
     expect(
       Math.abs(agr.x + agr.width - (agx.x + agx.width)),
     ).toBeLessThanOrEqual(1);
-    // The prototype's panes are 845 wide beside its rail (a tolerance for
-    // the rail and the scrollbar: it is the remainder, not a constant).
-    expect(Math.abs(agr.width - 845)).toBeLessThanOrEqual(24);
+    // The prototype's panes were 845 wide beside its 300px list; mock v3's
+    // list is 80 wider, so they are 765 (a tolerance for the rail and the
+    // scrollbar: it is the remainder, not a constant).
+    expect(Math.abs(agr.width - 765)).toBeLessThanOrEqual(24);
     // The rail: Agents under Develop, after Graph, current here.
     expect(
       await p.$$eval(".den-rail [data-nav]", (as) =>
