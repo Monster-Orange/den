@@ -164,6 +164,11 @@ export interface HubConfig {
    */
   inboxBackoffMaxSeconds: number;
   /**
+   * hub.inbox_reads_per_second (default 2, more than 0): the most inbox
+   * reads the whole install makes a second, however many agents it has.
+   */
+  inboxReadsPerSecond: number;
+  /**
    * 0.4.46 hub.mcp_retry_seconds (default 30, at least 5): how often Den
    * asks whether Hub answers again, for agents that started without its
    * tools (ui/cli/mcp-reconnect.ts).
@@ -213,6 +218,7 @@ type RawHub =
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
+      inbox_reads_per_second?: unknown;
       mcp_retry_seconds?: unknown;
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
@@ -368,6 +374,14 @@ export function readHubConfig(
     "inbox_backoff_max_seconds",
     600,
   );
+  const rps = h.inbox_reads_per_second;
+  if (
+    rps !== undefined &&
+    rps !== null &&
+    !(typeof rps === "number" && Number.isFinite(rps) && rps > 0)
+  )
+    throw new Error("hub.inbox_reads_per_second must be a number above 0");
+  const inboxReads = typeof rps === "number" ? rps : 2;
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
   const tr = h.tools_restart;
@@ -406,6 +420,7 @@ export function readHubConfig(
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,
+    inboxReadsPerSecond: inboxReads,
     mcpRetrySeconds: retry,
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
