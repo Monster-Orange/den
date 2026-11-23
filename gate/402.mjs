@@ -4,8 +4,9 @@
 // { item, project }. Needs two active projects whose Services pages list a service the other's
 // doesn't. A person's acts go through the page: the Services page's ☆/★, the rail, and the Undo
 // in the toast. The view (the top bar's project) is set the way the menu sets it, POST /api/scope,
-// so the CLI default never moves. Each cell starts with no pins; teardown puts the person's pins
-// and view back as they were.
+// so the CLI default never moves. Each cell starts with an empty save; the person's own pins, which
+// a fixture save never removes (issue 946), are set aside and left out of every comparison, and
+// their items are never tested. Teardown puts the person's pins and view back as they were.
 export const issue = 402;
 export const clauses = [
   "pinning records the project picked at that moment; pinned under All projects, the project is none",
@@ -26,9 +27,20 @@ const json = (body) => ({
 const savePins = (ctx, pins) =>
   ctx.api("/api/settings", json({ shell: { pins } }));
 const setView = (ctx, scope) => ctx.api("/api/scope", json({ scope }));
-const storedPins = async (ctx) => {
+/**
+ * The person's own pins: a save by the fixture person never removes them
+ * (issue 946), so a bed that has some keeps them through every clause.
+ * The check leaves them out of what it compares, and never tests their
+ * items. Set at the start of each run, from what an empty save left.
+ */
+let base = { keys: new Set(), items: new Set() };
+const allPins = async (ctx) => {
   const p = (await ctx.api("/api/settings"))?.shell?.pins;
   return Array.isArray(p) ? p : null;
+};
+const storedPins = async (ctx) => {
+  const p = await allPins(ctx);
+  return p && p.filter((x) => !base.keys.has(key(x)));
 };
 const key = (p) =>
   typeof p === "string" ? `${p}@?` : `${p.item}@${p.project ?? ""}`;
@@ -85,12 +97,14 @@ const toggles = (ctx) =>
       on: b.getAttribute("aria-pressed") === "true",
     })),
   );
-const railPins = (ctx) =>
-  ctx.page.evaluate(() =>
-    [...document.querySelectorAll(".den-rail .den-ni[data-pin]")].map(
-      (r) => r.dataset.pin,
-    ),
-  );
+const railPins = async (ctx) =>
+  (
+    await ctx.page.evaluate(() =>
+      [...document.querySelectorAll(".den-rail .den-ni[data-pin]")].map(
+        (r) => r.dataset.pin,
+      ),
+    )
+  ).filter((i) => !base.items.has(i));
 
 /** View `scope`, open Services, and wait until the page has the pins and reads the same project. */
 async function open(ctx, scope) {
@@ -151,15 +165,25 @@ export async function run(ctx, s) {
   const [A, B] = s.projects;
   const tag = `${ctx.browser}-${ctx.width}`;
   const r = { A, B };
+  base = { keys: new Set(), items: new Set() };
   await savePins(ctx, []);
+  // What an empty save leaves is the person's own (issue 946): kept aside.
+  const own = (await allPins(ctx)) ?? [];
+  base = {
+    keys: new Set(own.map(key)),
+    items: new Set(own.map((p) => (typeof p === "string" ? p : p.item))),
+  };
+  r.personsPins = own.map(key);
 
   // The items each project's Services page offers to pin.
   if (!(await open(ctx, A))) return { skipped: "needs-services-page" };
-  const idsA = (await toggles(ctx)).map((x) => x.id);
+  const free = (list) =>
+    list.map((x) => x.id).filter((i) => !base.items.has(i));
+  const idsA = free(await toggles(ctx));
   await open(ctx, B);
-  const idsB = (await toggles(ctx)).map((x) => x.id);
+  const idsB = free(await toggles(ctx));
   await open(ctx, "all");
-  const idsAll = (await toggles(ctx)).map((x) => x.id);
+  const idsAll = free(await toggles(ctx));
   const onlyA = idsA.find((i) => !idsB.includes(i));
   const onlyB = idsB.find((i) => !idsA.includes(i));
   if (!onlyA || !onlyB) return { skipped: "needs-two-projects" };
