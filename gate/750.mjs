@@ -14,7 +14,7 @@ export const clauses = [
   "By group beside By project: each group's kit header with its lead marked, opening the group in Hub (a new tab)",
   "Message group opens Hub's composer for <group>/all in a new tab",
   "this Den's agents sit under their group, the rest under Not in a group",
-  "an agent whose Hub tools failed to load shows issue 749's tag on its row in the group view",
+  "an agent whose Hub tools failed to load shows issue 749's tag on its row in the group view, with Restart on the row",
   "no Hub connected: only the line Groups come with Den Hub, with Connect Den Hub, and no group UI",
   "403 groups_not_in_plan and a guest's 403 each show their own line, and no group UI",
   "Den reads the bed's own Hub for groups",
@@ -99,7 +99,7 @@ export async function run(ctx, s) {
       .waitFor({ timeout: 20000 })
       .catch(() => {});
     await p
-      .locator(`[data-group="g750-group"] [data-mcp-failed="hub"]`)
+      .locator(`[data-group="g750-group"] .agst [data-act="tools-restart"]`)
       .waitFor({ timeout: 10000 })
       .catch(() => {});
     out.groups = await p.evaluate((agent) => {
@@ -133,6 +133,9 @@ export async function run(ctx, s) {
         unreach:
           wrap?.querySelector('[data-mcp-failed="hub"]')?.textContent?.trim() ??
           null,
+        restart: !!wrap?.querySelector(
+          '.agacts button[data-act="tools-restart"]',
+        ),
         sideScroll:
           document.documentElement.scrollWidth >
           document.documentElement.clientWidth + 1,
@@ -231,8 +234,10 @@ export function expect(cells) {
     },
     {
       clause: clauses[3],
-      ok: all((r) => !!g(r).unreach),
-      detail: say((r) => `tag "${g(r).unreach}"`),
+      ok: all((r) => !!g(r).unreach && g(r).restart === true),
+      detail: say(
+        (r) => `tag "${g(r).unreach}", Restart on the row ${g(r).restart}`,
+      ),
       evidence: shots("by-group"),
     },
     {
