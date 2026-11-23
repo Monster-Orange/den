@@ -161,6 +161,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     workspaceExists: (ws) => ["north", "south"].includes(ws),
     maxConcurrent: () => r.config.maxConcurrent,
     agentsConfig: () => r.config,
+    // Issue 936: the rig's fake PTY records argv as given; a test of the
+    // sandbox deletes this to get Den's own.
+    agentSandbox: (argv) => ({ applied: true, argv, env: {} }),
     distRoot: () => dir,
     stateDir: () => stateDir,
     workspaceDir: wsDir,
@@ -185,6 +188,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     workspaceHubLoop: () => undefined,
     // D52: Den's own address as agents reach it (never this machine's port).
     denBase: () => DEN_BASE,
+    // Issue 989: never this machine's server: none answers unless a test
+    // gives one.
+    server: async () => null,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).

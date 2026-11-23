@@ -131,11 +131,19 @@ function main(argv) {
     fs.writeFileSync(out, JSON.stringify({ files: sorted }, null, 2) + "\n");
     return;
   }
+  // Issue 843: the jest files CI's `fast` job ran (scripts/fast-checks.json)
+  // are left out; the shards wait for `fast`, so each check runs once.
+  const fastList = path.join(root, "scripts", "fast-checks.json");
+  const ranFirst = new Set(
+    fs.existsSync(fastList)
+      ? (JSON.parse(fs.readFileSync(fastList, "utf-8")).jest ?? [])
+      : [],
+  );
   const list = fs
     .readFileSync(arg(argv, "--files"), "utf-8")
     .split("\n")
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter((s) => s && !ranFirst.has(s));
   const timesFile = arg(
     argv,
     "--times",
