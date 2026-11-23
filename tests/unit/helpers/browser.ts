@@ -19,7 +19,7 @@
  *   context is held to the run's base URLs (DEN_GATE_ALLOW, Den's
  *   shared/gates/pw-guard), localhost names are pinned to 127.0.0.1, and
  *   each refused request is recorded (`boxGuardBlocks`) and printed. A
- *   "host:*" base URL covers only the ports this run serves (./own-ports:
+ *   "host:*" base URL covers only the ports this run serves (own-ports.ts, in the export:
  *   its servers while they listen, and child servers a helper saw answer).
  *   A box run with no base URLs opens no browser.
  *
@@ -27,15 +27,16 @@
  * this one launches or connects a browser itself.
  */
 import type { Browser, BrowserType, LaunchOptions, Page } from "playwright";
+// Issue 1010: from the package's own export, so it is used on every run.
 import {
   allowFromEnv,
   connectGuarded,
   guardBrowser,
+  ownPorts,
   pinLoopbackNames,
-} from "../../../src/shared/gates/pw-guard.js";
-import { ownPorts } from "./own-ports.js";
+} from "@monster-orange/den/pw-guard";
 
-export { boxOwnPort } from "./own-ports.js";
+export { boxOwnPort } from "@monster-orange/den/pw-guard";
 
 export type BrowserEngine = "chromium" | "firefox" | "webkit";
 
