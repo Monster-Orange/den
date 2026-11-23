@@ -6533,9 +6533,14 @@
           ? id.owner
           : null;
     // Issue 406: GitHub has no name: Hub's, when Hub's login is the same one.
+    // Issue 1210: never for the fixture person (via "fixture"): its login is
+    // invented, and a match would show a real person's name on a test
+    // install. kind "github" with via "fixture" is display only: no
+    // decision anywhere reads this identity as a GitHub sign-in.
     var h = state.hub;
     var hubName =
       gh &&
+      id.via !== "fixture" &&
       h &&
       h.state === "connected" &&
       typeof h.name === "string" &&
