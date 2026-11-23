@@ -85,6 +85,8 @@ export const HELD_CODES = [
   "stopped",
   "owner",
   "unread",
+  // Issue 1311: its person's unsent draft is on its input line.
+  "draft",
 ] as const;
 export type HeldCode = (typeof HELD_CODES)[number];
 
@@ -100,6 +102,8 @@ export const HELD_WORDS: Record<HeldCode, string> = {
   stopped: "the agent isn't running; typed when it next runs",
   owner: "still asking Hub who its person is; typed once Hub answers",
   unread: "couldn't read the agent's state in time; trying again",
+  draft:
+    "its person is typing a message to it; typed once they send or clear it",
 };
 
 /**
@@ -1072,6 +1076,16 @@ export class DeliveryLoop {
    * Issue 701: tell Hub why these wait (`queued`, with the reason in
    * plain words), once per reason. Den's own items have no ack.
    */
+  /**
+   * Issue 1311: how many items wait for agent `agent` on its person's
+   * unsent draft (0 when something else holds them, or nothing does).
+   */
+  waitingOnDraft(agent: string): number {
+    return this.heldCode.get(agent) === "draft"
+      ? (this.queue.get(agent)?.length ?? 0)
+      : 0;
+  }
+
   private async ackHeld(q: Delivery[], code: HeldCode): Promise<void> {
     if (q[0]) this.heldCode.set(q[0].agent, code);
     const reason = HELD_WORDS[code];

@@ -1996,6 +1996,12 @@ export const ROTATION_WAIT_MINUTES_DEFAULT = 240;
  * session ends without Den asking is brought back once in this window.
  */
 export const UNASKED_EXIT_WINDOW_MINUTES_DEFAULT = 10;
+/**
+ * Issue 1311: agents.draft_hold_max_minutes when unset: how long Den's held
+ * messages wait on a person's unsent draft before the bell says so. The
+ * draft is never sent for them; they go on waiting.
+ */
+export const DRAFT_HOLD_MAX_MINUTES_DEFAULT = 30;
 
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
@@ -2019,6 +2025,8 @@ export const AGENTS_RESERVED_KEYS = [
   "rotation_wait_minutes",
   // Issue 926: bring back an agent whose session ended without Den asking.
   "unasked_exit_window_minutes",
+  // Issue 1311: how long held messages wait on a draft before the bell.
+  "draft_hold_max_minutes",
   // Issue 218: how long a change waits for another process's on one agent.
   "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
@@ -2163,6 +2171,13 @@ export interface ResolvedAgentsConfig {
    * back. 0: never brought back (still recorded and told).
    */
   unaskedExitWindowMs: number;
+  /**
+   * Issue 1311: agents.draft_hold_max_minutes (default 30). Messages Den
+   * holds while its person's unsent draft is on an agent's input line wait
+   * this long before the bell says so. The draft is never sent for them:
+   * they go on waiting.
+   */
+  draftHoldMaxMs?: number;
   /**
    * Issue 218: agents.lock_wait_minutes (default LOCK_WAIT_MINUTES_DEFAULT):
    * how long a change to an agent waits while another process changes it.
@@ -2509,6 +2524,16 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.unasked_exit_window_minutes: minutes, 0 or more (got ${JSON.stringify(uw)})`,
       );
     out.unaskedExitWindowMs = Math.round(uw * 60_000);
+  }
+  const dh = (raw as { draft_hold_max_minutes?: unknown })
+    .draft_hold_max_minutes;
+  out.draftHoldMaxMs = DRAFT_HOLD_MAX_MINUTES_DEFAULT * 60_000;
+  if (dh !== undefined && dh !== null) {
+    if (typeof dh !== "number" || !Number.isFinite(dh) || dh <= 0)
+      throw new Error(
+        `agents.draft_hold_max_minutes: minutes, above 0 (got ${JSON.stringify(dh)})`,
+      );
+    out.draftHoldMaxMs = Math.round(dh * 60_000);
   }
   const lw = raw.lock_wait_minutes;
   if (lw !== undefined && lw !== null) {

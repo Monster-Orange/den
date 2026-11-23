@@ -84,6 +84,7 @@ import {
   type CommandLineOf,
 } from "../../shared/agents/running-mode.js";
 import {
+  inputLineEmpty,
   plainTerminalText,
   trustAnswerKey,
   promptOnScreen,
@@ -91,6 +92,7 @@ import {
   typingCheck,
   type TypingCheck,
 } from "../../shared/agents/trust-prompt.js";
+import { clearDraft, draftPending } from "../../shared/agents/draft-input.js";
 import {
   resolveMode,
   type EffectiveMode,
@@ -8709,6 +8711,26 @@ export function heldNotAtPrompt(id: string): boolean {
 }
 
 /**
+ * Issue 1311: agents whose last look found their person's unsent draft on
+ * the input line: what Den would type waits for it.
+ */
+const draftHeld = new Set<string>();
+
+/** Issue 1311: whether agent `id`'s text waits for its person's draft. */
+export function heldForDraft(id: string): boolean {
+  return draftHeld.has(id);
+}
+
+/**
+ * Issue 1311: how many texts Den holds for agent `id` while its person's
+ * draft is on the line (typeIntoAgent's queue; Hub's own queue counts
+ * apart). 0 when no draft holds it.
+ */
+export function draftWaiting(id: string): number {
+  return draftHeld.has(id) ? (typingQueued.get(id) ?? 0) : 0;
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
@@ -8731,6 +8753,11 @@ export async function sendFirstInstruction(
     onDialog?: () => void;
     /** Issue 664: called when it wasn't at its input prompt (text held). */
     onNotAtPrompt?: () => void;
+    /**
+     * Issue 1311: asked just before the text is typed; true (its person
+     * has an unsent draft on the line) holds it: nothing typed, false.
+     */
+    held?: () => boolean;
   } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
@@ -8773,6 +8800,8 @@ export async function sendFirstInstruction(
       o.onNotAtPrompt?.();
       return false;
     }
+    // Issue 1311: never into a prompt that holds its person's draft.
+    if (o.held?.()) return false;
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
     const b = instructionBytes(text, said, soft);
     c.write(sessionId, Buffer.from(b.body, "utf-8"));
@@ -8919,21 +8948,40 @@ async function inputState(
     if (!c) return "stopped";
     let live = false;
     let screen: TypingCheck = "not_at_prompt";
+    let out = "";
+    let sid = rec.session.id;
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
+      if (s) sid = s.ref.id;
       // A dialog waiting for the person: not at its prompt, whatever its
       // transcript or quiet output says.
-      if (live && s)
-        screen = agentScreenCheck(
-          rec.runtime,
-          (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
-        );
+      if (live && s) {
+        out = (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8");
+        screen = agentScreenCheck(rec.runtime, out);
+      }
     } finally {
       c.close();
     }
     if (o.promptCheck !== false) notAtPrompt.delete(id);
-    if (!live) return "stopped";
+    if (!live) {
+      // Issue 1311: a draft dies with its session.
+      clearDraft(sid);
+      draftHeld.delete(id);
+      return "stopped";
+    }
+    // Issue 1311: its person's unsent draft on the line holds what Den
+    // types, until it is sent or cleared (an empty input line on screen
+    // clears it too). Not for the restart waits (promptCheck false).
+    if (o.promptCheck !== false) {
+      if (draftPending(sid) && inputLineEmpty(out, getRuntime(rec.runtime)))
+        clearDraft(sid);
+      if (draftPending(sid)) {
+        draftHeld.add(id);
+        return "busy";
+      }
+      draftHeld.delete(id);
+    }
     if (screen === "dialog") return "busy";
     if (waiting.has(id)) return "busy";
     // Issue 732: its turn alone. A background shell it left running (a
@@ -9219,35 +9267,60 @@ export function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
+  opts?: { onDraft?: "wait" | "refuse" },
 ): Promise<boolean>;
 /**
  * Issue 629: with `ready`, it is asked once this text's turn in the queue
  * comes (what was typed just ahead may have started a turn); "not-ready"
  * when it says no, and nothing is typed.
+ *
+ * Issue 1311: while its person has an unsent draft on the input line,
+ * nothing is typed. `onDraft` "wait" (the default): it waits, in order,
+ * until the draft is sent or cleared (the agent stopping ends the wait:
+ * false). "refuse": false at once, for a caller that keeps its own queue.
  */
 export function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-  opts: { ready: () => Promise<boolean> },
+  opts: { ready: () => Promise<boolean>; onDraft?: "wait" | "refuse" },
 ): Promise<boolean | "not-ready">;
 export async function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-  opts?: { ready: () => Promise<boolean> },
+  opts?: { ready?: () => Promise<boolean>; onDraft?: "wait" | "refuse" },
 ): Promise<boolean | "not-ready"> {
   // Everything Den types into one agent (Hub comments, the tools note)
   // goes one at a time: two texts at once would land mixed in the pane.
   const before = typing.get(id) ?? Promise.resolve();
+  typingQueued.set(id, (typingQueued.get(id) ?? 0) + 1);
   const mine = before.then(async (): Promise<boolean | "not-ready"> => {
-    if (opts && !(await opts.ready())) return "not-ready";
-    const rec = readRecord(d.stateDir(), id);
-    if (!rec) return false;
-    return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
-      quietMs: 1500,
-      maxMs: 10_000,
-    });
+    for (;;) {
+      if (opts?.ready && !(await opts.ready())) return "not-ready";
+      const rec = readRecord(d.stateDir(), id);
+      if (!rec) return false;
+      const sid = rec.session.id;
+      if (draftPending(sid)) {
+        draftHeld.add(id);
+        if (opts?.onDraft === "refuse") return false;
+        if (!(await draftCleared(d, rec))) return false;
+        continue;
+      }
+      let heldByDraft = false;
+      const sent = await sendFirstInstruction(d, sid, rec.runtime, text, {
+        quietMs: 1500,
+        maxMs: 10_000,
+        held: () => (heldByDraft = draftPending(sid)),
+      });
+      if (!heldByDraft) {
+        if (sent) draftHeld.delete(id);
+        return sent;
+      }
+      // A draft began while it waited for quiet: as above.
+      draftHeld.add(id);
+      if (opts?.onDraft === "refuse") return false;
+    }
   });
   const done = mine.then(
     () => undefined,
@@ -9255,11 +9328,52 @@ export async function typeIntoAgent(
   );
   typing.set(id, done);
   void done.then(() => {
+    const n = (typingQueued.get(id) ?? 1) - 1;
+    if (n > 0) typingQueued.set(id, n);
+    else typingQueued.delete(id);
     if (typing.get(id) === done) typing.delete(id);
   });
   return mine;
 }
 const typing = new Map<string, Promise<void>>();
+/** Issue 1311: texts in each agent's typing queue (draftWaiting). */
+const typingQueued = new Map<string, number>();
+
+/** Issue 1311: how often a held text looks again for its draft's end. */
+const DRAFT_LOOK_MS = 500;
+
+/**
+ * Issue 1311: waits until agent `rec`'s person's draft is sent or cleared
+ * (by their keys, or an empty input line on its screen): true. False when
+ * its session ends first (the draft dies with it). Never throws.
+ */
+async function draftCleared(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<boolean> {
+  const sid = rec.session.id;
+  for (;;) {
+    if (!draftPending(sid)) return true;
+    try {
+      const c = await d.connectExisting();
+      if (!c) return (clearDraft(sid), false);
+      try {
+        const s = (await c.list()).find((x) => x.ref.id === sid);
+        if (!s || s.exited) return (clearDraft(sid), false);
+        const out = (await c.scrollback(sid, 64 * 1024)).toString("utf-8");
+        if (inputLineEmpty(out, getRuntime(rec.runtime))) {
+          clearDraft(sid);
+          return true;
+        }
+      } finally {
+        c.close();
+      }
+    } catch {
+      /* the host didn't answer: look again */
+    }
+    await new Promise((r) => setTimeout(r, DRAFT_LOOK_MS));
+  }
+}
 
 /** A plain session started from the page (AG-10.1 "Plain session"). */
 export interface PlainStarted {
