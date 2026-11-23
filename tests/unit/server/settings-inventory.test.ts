@@ -64,6 +64,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_hold_load: true,
     // Issue 1048: new cpu runs wait over this × the cores.
     load_hold_per_core: true,
+    // Issue 1274: memory free under which new runs here wait; VM share.
+    memory_free_min_percent: true,
+    vm_memory_share: true,
+    swap_hold_gb: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -112,6 +116,13 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   server_log: { max_mb: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // Issue 1129: the restart queue.
+  agents_resume: {
+    batch: true,
+    gap_seconds: true,
+    load_ceiling: true,
+    max_wait_seconds: true,
+  },
   // issue_write: which roles write GitHub issues, and how many an hour.
   agent_issue_writes: { roles: true, per_hour: true },
   // Issue 278: agents stuck compacting; instruction size.
@@ -301,6 +312,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
+        "gate_slots.memory_free_min_percent",
         "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
@@ -311,6 +323,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.swap_hold_gb",
+        "gate_slots.vm_memory_share",
         "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
@@ -388,6 +402,11 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        // Issue 1129: the restart queue.
+        "agents_resume.batch",
+        "agents_resume.gap_seconds",
+        "agents_resume.load_ceiling",
+        "agents_resume.max_wait_seconds",
       ].sort(),
     );
   });

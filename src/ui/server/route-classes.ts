@@ -443,6 +443,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
+  R(
+    "/api/web/test-installs",
+    "issue 816: the test installs on this computer waiting for their test person (the signed-in person only, checked in the route)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person/grant",
+    "issue 816: your own Den, at your Allow, makes this test install's test person (its person bearer on this machine plus a one-use grant)",
+  ),
   M(
     ["POST"],
     "/api/web/fixture-person/setup-secret",
@@ -916,6 +925,15 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/hub/link-suggestions",
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
+  ),
+  R(
+    "/api/hub/connect-review",
+    "issue 646: Connect's review: each project, its Hub project or the proposed one and why (names only)",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/connect-review",
+    "issue 646: Connect and link all: link the rows at once, ask Hub for the new projects as one plan; a person's only",
   ),
   R(
     "/api/hub/names-check",

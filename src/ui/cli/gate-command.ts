@@ -57,9 +57,13 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
   type LoadHold,
+  type MemoryHold,
+  type SwapHold,
   expectedStart,
   GATE_DEFAULTS,
   loadHold,
+  memoryHold,
+  swapHold,
   queueEnd,
   queueMinOf,
   overrun,
@@ -77,6 +81,13 @@ import {
   realCores,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import {
+  GATE_STORE_ENV,
+  cleanRun,
+  realDocker,
+  storeTag,
+  type Docker,
+} from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
   boxEnv,
@@ -105,7 +116,10 @@ import {
   boxOffWords,
   gateBoxesView,
   gateView,
+  type GateMachineView,
+  removedView,
 } from "../../shared/gates/view.js";
+import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
@@ -202,6 +216,11 @@ export interface GateDeps {
   descends?: (pid: number, root: number) => boolean;
   /** Issue 989: the running server (default: this install's). */
   server?: PersonServer;
+  /**
+   * Issue 1263: the docker CLI, to remove the run's throwaway containers
+   * when its slot ends (absent: nothing is removed; tests pass a fake).
+   */
+  docker?: Docker;
 }
 
 /**
@@ -364,6 +383,7 @@ export function realGateDeps(): GateDeps {
     now: Date.now,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     exec: realExec,
+    docker: realDocker(),
     every: (ms, fn) => {
       const h = setInterval(fn, ms);
       h.unref();
@@ -528,6 +548,46 @@ export function holdWords(h: LoadHold): string {
     : `waiting: this machine's load is ${h.load.toFixed(1)}, over ${h.perCore} × ${h.cores} cores (${h.limit}), while another unit test run is going; it starts once the load drops or that run ends`;
 }
 
+/** Issue 1274: why a run here waits on swap, in words. */
+export function swapHoldWords(h: SwapHold): string {
+  return `waiting: this machine has ${h.usedGb} GB of swap in use, over ${h.limitGb} GB, while another run here is going; it starts once swap drops or that run ends (test boxes still take runs)`;
+}
+
+/** Issue 1274: why a run here waits on memory, in words. */
+export function memoryHoldWords(h: MemoryHold): string {
+  return `waiting: this machine has ${Math.round(h.free)}% of its memory free, under ${h.limit}%, while another run here is going; it starts once memory frees or that run ends (test boxes still take runs)`;
+}
+
+const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
+
+/** Issue 1274: gate status's lines for this machine's memory and VMs. */
+export function machineLines(m: GateMachineView | undefined): string[] {
+  if (!m) return [];
+  const out: string[] = [];
+  if (m.freeMemory !== undefined)
+    out.push(
+      `This machine: ${m.freeMemory}% of memory free` +
+        (m.swapUsedGb ? `, ${m.swapUsedGb} GB of swap in use.` : "."),
+    );
+  if (m.vms && m.ramBytes !== undefined && m.promisedBytes !== undefined) {
+    const limit = gbWords(Math.round(m.ramBytes * (m.share ?? 1)));
+    const of = `${m.share ?? 1} × ${gbWords(m.ramBytes)} RAM`;
+    if (m.vms.length || m.notCounted?.length)
+      out.push(
+        m.over
+          ? `⚠ VMs here promise ${gbWords(m.promisedBytes)}, over ${limit} (${of}): the machine can run out of memory`
+          : `VMs here promise ${gbWords(m.promisedBytes)} of ${limit} (${of}).`,
+      );
+    for (const v of m.vms)
+      out.push(
+        `  ${v.name} (${v.runtime}) ${gbWords(v.memBytes)}, ${v.cpus} cpus`,
+      );
+    for (const n of m.notCounted ?? [])
+      out.push(`  ${n}: not counted (couldn't read it)`);
+  }
+  return out;
+}
+
 /** One line for a holder or waiter. */
 export function slotLine(
   e: GateEntry,
@@ -540,6 +600,10 @@ export function slotLine(
       lang?: UiLanguage;
       /** Issue 1048: the machine's cores. */
       cores?: number;
+      /** Issue 1274: this machine's free memory, percent. */
+      freeMemory?: number;
+      /** Issue 1274: swap in use here, GB. */
+      swapUsedGb?: number;
     },
 ): string {
   const yields = yieldedTo(e, all);
@@ -547,6 +611,15 @@ export function slotLine(
   const hold =
     !e.grantedAt && e.kind === "cpu" && !e.priority
       ? loadHold(all, margin, margin.load, margin.cores)
+      : undefined;
+  // Issue 1274: a run here held by low memory.
+  const mem =
+    !e.grantedAt && (!e.where || e.where === "local" || e.where === "any")
+      ? memoryHold(all, margin, margin.freeMemory)
+      : undefined;
+  const swap =
+    !e.grantedAt && (!e.where || e.where === "local" || e.where === "any")
+      ? swapHold(all, margin, margin.swapUsedGb)
       : undefined;
   // Issue 803: its class, and a wait for its class's window.
   const cls = classOf(e, margin.classes);
@@ -556,6 +629,8 @@ export function slotLine(
     (cls ? `  class ${cls}` : "") +
     (win ? `  waits for its ${win.text} window` : "") +
     (hold ? `  ${holdWords(hold)}` : "") +
+    (mem ? `  ${memoryHoldWords(mem)}` : "") +
+    (swap ? `  ${swapHoldWords(swap)}` : "") +
     (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
     (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "") +
     (e.hostWhy ? `  stays here: ${e.hostWhy}` : "") +
@@ -912,6 +987,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (priority && s.settings().priorityMax === 0)
     d.err(`gate: ${PRIORITY_OFF_RUN[d.lang ?? personLanguage()]}`);
   const id = e.id;
+  const onBox = !!e.box;
   let child: GateRun | undefined;
   let released = false;
   let cancelled: number | undefined;
@@ -948,6 +1024,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
             ? loadHold(all, set, s.load(), s.cores())
             : undefined;
         if (hold) d.err(holdWords(hold));
+        // Issue 1274: a run here held by low memory says so.
+        const mem =
+          !where || where === "local"
+            ? memoryHold(all, set, s.freeMemory())
+            : undefined;
+        if (mem) d.err(memoryHoldWords(mem));
+        const sw =
+          !where || where === "local"
+            ? swapHold(all, set, s.swapUsedGb())
+            : undefined;
+        if (sw) d.err(swapHoldWords(sw));
         said = d.now();
       }
       await d.sleep(2_000);
@@ -964,6 +1051,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       [GATE_SLOT_ENV]: id,
       [GATE_SLOT_KIND_ENV]: kind,
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
+      // Issue 1263: the store's tag, for a throwaway container's labels.
+      [GATE_STORE_ENV]: storeTag(s.dir),
     };
     // Issue 1048: a cpu run here uses its share of the cores, no more.
     if (kind === "cpu" && !e.box)
@@ -1013,6 +1102,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   } finally {
     off();
     release();
+    // Issue 1263: the run's throwaway containers go with its slot (a box
+    // run's are on the box, swept there). Never fails the run.
+    if (d.docker && !onBox) await cleanRun(s, id, d.docker);
   }
 }
 
@@ -1028,11 +1120,23 @@ function status(args: string[], d: GateDeps): number {
     ...d.store.settings(),
     load: d.store.load(),
     cores: d.store.cores(),
+    freeMemory: d.store.freeMemory(),
+    swapUsedGb: d.store.swapUsedGb(),
     lang: d.lang ?? personLanguage(),
   };
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
+  // Issue 1274: free memory, and what running VMs reserve.
+  for (const l of machineLines(
+    gateView(d.store, d.now(), { vmsNow: true }).machine,
+  ))
+    d.out(l);
+  // Issue 1263: throwaway containers removed after their run ended.
+  for (const r of removedView(d.store, d.now()))
+    d.out(
+      `Gate: removed ${r.count} container${r.count === 1 ? "" : "s"} for ${r.label} (${r.id}) at ${localDateTime(r.at)}${r.images.length ? `: ${r.images.join(", ")}` : ""}`,
+    );
   // Issue 963: said plainly, so a release run waiting in line has a why.
   if (set.priorityMax === 0)
     d.out(PRIORITY_OFF_STATUS[d.lang ?? personLanguage()]);
@@ -1248,6 +1352,9 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--local-browser-slots": true,
     "--cpu-hold-load": true,
     "--load-hold-per-core": true,
+    "--memory-free-min-percent": true,
+    "--swap-hold-gb": true,
+    "--vm-memory-share": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -1275,6 +1382,9 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--local-browser-slots", "local_browser_slots"],
     ["--cpu-hold-load", "cpu_hold_load"],
     ["--load-hold-per-core", "load_hold_per_core"],
+    ["--memory-free-min-percent", "memory_free_min_percent"],
+    ["--swap-hold-gb", "swap_hold_gb"],
+    ["--vm-memory-share", "vm_memory_share"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
     ["--remote-renew-seconds", "remote_renew_seconds"],

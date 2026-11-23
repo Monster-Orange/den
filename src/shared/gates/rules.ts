@@ -205,6 +205,23 @@ export interface GateSettings {
    * waits. 0 turns it off.
    */
   loadHoldPerCore: number;
+  /**
+   * Issue 1274: while this machine's free memory is under this percent, new
+   * runs here wait, but only while another run here is going (so the line
+   * never stops for good). Test boxes still take theirs. 0 turns it off.
+   */
+  memoryFreeMinPercent: number;
+  /**
+   * Issue 1274: while swap in use is over this many GB, new runs here wait,
+   * on the same terms as the free-memory floor (macOS keeps its free level
+   * high while swap fills). 0 turns it off.
+   */
+  swapHoldGb: number;
+  /**
+   * Issue 1274: doctor warns when what running VMs promise is over this
+   * share of the machine's RAM (1: more than it has).
+   */
+  vmMemoryShare: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
   /**
@@ -281,6 +298,10 @@ export const GATE_DEFAULTS: GateSettings = {
   // Issue 1048 (Vision 11-22): 3 × cores. At 1.5 (27 on 18 cores) the
   // build machine's normal load of about 40 would hold every new run.
   loadHoldPerCore: 3,
+  // Issue 1274: three watchdog resets on 11-22 came with the compressor full.
+  memoryFreeMinPercent: 10,
+  swapHoldGb: 8,
+  vmMemoryShare: 1,
   overrunMarginMinutes: 15,
   overrunBellMultiple: 2,
   remoteRenewSeconds: 30,
@@ -575,6 +596,56 @@ export function loadHold(
   return load > coreLimit && cpuGoing
     ? { why: "cores", load, limit: coreLimit, perCore, cores }
     : undefined;
+}
+
+/** Issue 1274: why new runs here wait on memory. */
+export interface MemoryHold {
+  why: "memory";
+  /** Free memory now, percent. */
+  free: number;
+  /** memoryFreeMinPercent. */
+  limit: number;
+}
+
+/**
+ * Issue 1274: free memory (`free`, percent) is under memoryFreeMinPercent
+ * (0: off) while a run here is going. With none going the next one
+ * starts: the hold slows the line, never stops it. Absent: no hold (or no
+ * reading).
+ */
+export function memoryHold(
+  entries: GateEntry[],
+  s: Partial<Pick<GateSettings, "memoryFreeMinPercent">>,
+  free: number | undefined,
+): MemoryHold | undefined {
+  if (free === undefined || !Number.isFinite(free)) return undefined;
+  const limit = s.memoryFreeMinPercent ?? GATE_DEFAULTS.memoryFreeMinPercent;
+  if (!(limit > 0) || free >= limit) return undefined;
+  const localGoing = entries.some((e) => e.grantedAt && !e.box && !e.remote);
+  return localGoing ? { why: "memory", free, limit } : undefined;
+}
+
+/** Issue 1274: why new runs here wait on swap. */
+export interface SwapHold {
+  why: "swap";
+  usedGb: number;
+  limitGb: number;
+}
+
+/**
+ * Issue 1274: swap in use (`usedGb`) is over swapHoldGb (0: off) while a
+ * run here is going. Absent: no hold (or no reading).
+ */
+export function swapHold(
+  entries: GateEntry[],
+  s: Partial<Pick<GateSettings, "swapHoldGb">>,
+  usedGb: number | undefined,
+): SwapHold | undefined {
+  if (usedGb === undefined || !Number.isFinite(usedGb)) return undefined;
+  const limitGb = s.swapHoldGb ?? GATE_DEFAULTS.swapHoldGb;
+  if (!(limitGb > 0) || usedGb <= limitGb) return undefined;
+  const localGoing = entries.some((e) => e.grantedAt && !e.box && !e.remote);
+  return localGoing ? { why: "swap", usedGb, limitGb } : undefined;
 }
 
 /** Issue 1048: a cpu slot's worker cap: its share of the cores, at least 2. */

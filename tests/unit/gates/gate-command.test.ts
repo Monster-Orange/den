@@ -405,7 +405,11 @@ describe("gate status", () => {
   it("lists holders then waiters; --json carries overrun", async () => {
     const t = deps();
     expect(await cmdGate(["status"], t.d)).toBe(0);
-    expect(t.out).toEqual(["No gate runs hold or wait."]);
+    // Issue 1274: the machine line (tests/setup.ts pins 100% free, 0 swap).
+    expect(t.out).toEqual([
+      "No gate runs hold or wait.",
+      "This machine: 100% of memory free.",
+    ]);
     // Issue 751: a browser run runs alone only at 0 beside it.
     t.d.store.writeSettings({ cpu_slots_beside_browser: 0 });
     const a = t.d.store.ask({
