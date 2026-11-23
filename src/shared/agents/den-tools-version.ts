@@ -41,7 +41,8 @@ export function denToolsOld(
   rec: { denVersion?: string },
   startedAt: string | undefined,
   stateDir: string,
-  installed: string | undefined = engineVersion(),
+  /** The installed Den; null: not known (never old). */
+  installed: string | null = engineVersion() ?? null,
 ): DenToolsOld | undefined {
   if (!installed) return undefined;
   if (rec.denVersion)

@@ -131,6 +131,8 @@ describe("agents start", () => {
         "resumeToken",
         // AG-14: the grants it started with, kept by a resume.
         "grants",
+        // Issue 1223: the Den version its tools started on.
+        "denVersion",
         // 0.4.8: launched on resumeToken, so a resume continues it.
         "launched",
         // AG-12: its model's version ("latest": the alias); AG-10.9: what

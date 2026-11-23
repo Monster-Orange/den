@@ -53,9 +53,7 @@ describe("issue 1223: denToolsOld, the Den an agent's tools started on", () => {
       undefined,
     );
     // Nothing known of the installed Den: never stale.
-    expect(denToolsOld({ denVersion: "0.4.84" }, at, s, undefined)).toBe(
-      undefined,
-    );
+    expect(denToolsOld({ denVersion: "0.4.84" }, at, s, null)).toBe(undefined);
   });
 
   it("no stamp (started before 0.4.86): an update to this Den after it started makes it old", () => {
