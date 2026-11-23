@@ -1,9 +1,9 @@
 /**
  * Issue 1263: doctor's row for throwaway containers (den.ephemeral=1) left
- * over from gate runs. One whose run has no live slot is ⚠: the server's
- * gate tick removes it within seconds, so one still here means no server is
- * running, or docker refused. One started outside a gate run (no run label)
- * is listed, never removed and never a warning: it may be a test running
+ * over from gate runs. One whose run has no live slot is ⚠: Den's sweeper
+ * removes it within minutes of the run's end, so one still here means Den
+ * isn't running, or docker refused. One started outside a gate run (no run
+ * label) is listed, never removed and never a warning: it may be a test running
  * now. Doctor only reads; it removes nothing.
  */
 import type { OnboardCheck } from "./doctor-onboard.js";
@@ -44,7 +44,7 @@ export function throwawayLines(
         id,
         status: "warn",
         detail: `${left.length} left over from ended gate runs`,
-        fix: "start Den's server (its gate tick removes them), or docker rm -f the ids listed",
+        fix: "start Den (it removes them within minutes), or docker rm -f the ids listed",
       },
     };
   return {
