@@ -4,6 +4,13 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.86] - 2026-11-22
+
+### Fixed
+
+- Bell: Allow and Deny in "Needs you" decide again. Since 0.4.84 both showed an error and decided nothing; the Allow pop-up kept working. A new test fails on any busy action a page uses that isn't registered. (issue 746)
+- Hub inbox: an install reads Hub's inbox at most `hub.inbox_reads_per_second` times a second (default 2), each agent at most once per poll, and agents' turn ends share one answer for 30 s. After a restart, a Den with many agents read it many times a second. (issue 1273)
+
 ## [0.4.85] - 2026-11-22
 
 ### Added
