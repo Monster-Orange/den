@@ -18,6 +18,18 @@ import {
   type CoachRouteDeps,
 } from "./coach-routes.js";
 import { runCoach } from "../../shared/coach/run.js";
+import {
+  applyLinkOf,
+  applyStateOf,
+  linkApply,
+  readApplyLinks,
+  type ApplyState,
+} from "../../shared/coach/applies.js";
+import {
+  COACH_APPLY_ROUTES,
+  handleCoachApplyRoute,
+  type CoachApplyDeps,
+} from "./coach-apply-routes.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
@@ -1266,6 +1278,7 @@ import {
 } from "./workspace-routes.js";
 import {
   createApprovalQueue,
+  askHeld,
   handleApprovalRoutes,
   isApprovalPath,
   notePolicyRun,
@@ -3849,12 +3862,72 @@ function coachRouteDeps(): CoachRouteDeps {
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),
     findings: (report) => ({
-      open: openFindings(getStateDir(), report?.findings ?? []),
+      open: withApplyState(openFindings(getStateDir(), report?.findings ?? [])),
       dismissed: readDismissals(getStateDir()),
     }),
+    // Issue 110: a finding whose Apply waits for Allow can't be dismissed.
     dismiss: (id, reason) =>
-      dismissFinding(getStateDir(), id, reason, "person"),
+      coachApplyState(id) === "waiting"
+        ? {
+            ok: false,
+            code: "apply_waiting",
+            error:
+              "This finding's change is waiting for a person's Allow: Deny it in the bell first.",
+          }
+        : dismissFinding(getStateDir(), id, reason, "person"),
     readBody,
+  };
+}
+
+/** Issue 110: a held write's state, as its Coach finding's row shows it. */
+function coachHeldState(approval: string): ApplyState {
+  try {
+    return applyStateOf(approvalDeps().queue.get(approval));
+  } catch {
+    return "failed";
+  }
+}
+
+/** Issue 110: finding `id`'s Apply state, or null when it was never applied. */
+function coachApplyState(id: string): ApplyState | null {
+  const link = applyLinkOf(getStateDir(), id);
+  return link ? coachHeldState(link.approval) : null;
+}
+
+/** Issue 110: each finding with its Apply's state (`applied`), when it has one. */
+function withApplyState<T extends { id: string }>(open: T[]) {
+  const links = readApplyLinks(getStateDir());
+  return open.map((f) =>
+    Object.hasOwn(links, f.id)
+      ? {
+          ...f,
+          applied: {
+            state: coachHeldState(links[f.id].approval),
+            approval: links[f.id].approval,
+            at: links[f.id].at,
+          },
+        }
+      : f,
+  );
+}
+
+/** Issue 110: what Coach Apply's route needs from this server. */
+function coachApplyDeps(): CoachApplyDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    readBody,
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    openFindings: () =>
+      openFindings(
+        getStateDir(),
+        readCoachReport(getStateDir())?.findings ?? [],
+      ),
+    linkOf: (id) => applyLinkOf(getStateDir(), id),
+    stateOf: coachHeldState,
+    ask: (req, body) => askHeld(req, approvalDeps(), body),
+    link: (id, approval, at) => linkApply(getStateDir(), id, approval, at),
   };
 }
 
@@ -9052,6 +9125,12 @@ async function handleRequest(
   if (
     (COACH_ROUTES as readonly string[]).includes(pathname) &&
     (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+  // POST /api/coach/apply (issue 110): coach-apply-routes.ts.
+  if (
+    (COACH_APPLY_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachApplyRoute(req, res, pathname, coachApplyDeps()))
   )
     return;
 

@@ -440,6 +440,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   M(
     ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
+  ),
+  M(
+    ["POST"],
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),

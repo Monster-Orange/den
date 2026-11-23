@@ -74,6 +74,8 @@ describe("a finding's proposal", () => {
     expect(f.apply).toEqual({
       action: "persona_update",
       args: { id: "copy-checker", project: "north", subagentModel: "sonnet" },
+      change: "Set copy-checker's subagent model to Sonnet.",
+      reversible: "Set it back in copy-checker's persona.",
     });
   });
 

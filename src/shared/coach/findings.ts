@@ -57,6 +57,10 @@ export interface CoachFinding {
 export interface CoachApply {
   action: "persona_update";
   args: Record<string, string>;
+  /** The change, in one plain sentence (the row and the bell show it). */
+  change: string;
+  /** How to undo it, in one plain sentence. */
+  reversible: string;
 }
 
 /** Issue 110: the held write that applies finding `kind` on row `a`. */
@@ -65,6 +69,8 @@ function applyOf(kind: FindingKind, a: CoachAgentRow): CoachApply | undefined {
     return {
       action: "persona_update",
       args: { id: a.persona, project: a.workspace, subagentModel: "sonnet" },
+      change: `Set ${a.persona}'s subagent model to Sonnet.`,
+      reversible: `Set it back in ${a.persona}'s persona.`,
     };
   return undefined;
 }
@@ -197,7 +203,8 @@ export type DismissResult =
   | { ok: true }
   | {
       ok: false;
-      code: "bad_id" | "reason_required" | "reason_too_long";
+      /** apply_waiting (issue 110): its Apply waits for a person's Allow. */
+      code: "bad_id" | "reason_required" | "reason_too_long" | "apply_waiting";
       error: string;
     };
 
