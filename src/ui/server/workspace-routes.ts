@@ -117,8 +117,16 @@ import {
 } from "../../shared/environment-manager/sync-targets.js";
 import { recordAction } from "./audit.js";
 import {
+  fixtureProjectRefusal,
+  fixtureTestInstall,
+  type FixtureProjectAsk,
+  type FixtureProjectOp,
+} from "./fixture-projects.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import {
   agentPrincipalOf,
   auditActorOf,
+  fixturePersonOf,
   principalOf,
 } from "./request-guard.js";
 import { approvalsView, patchApprovals } from "../../shared/approval-policy.js";
@@ -407,6 +415,55 @@ export function setWorkspaceAgentsDeps(f: (() => AgentsResolved) | null): void {
 const wsAgentsDeps = (): AgentsResolved =>
   (wsAgentsOver ?? (() => webDeps()))();
 
+/**
+ * Issue 1215: a project act, audited (verb "project") whoever makes it;
+ * the fixture person's own projects are remembered and forgotten here.
+ */
+function auditProject(
+  req: http.IncomingMessage,
+  op: FixtureProjectOp,
+  slug: string,
+  refused?: { code: string },
+): void {
+  recordAction(
+    auditActorOf(req),
+    {
+      verb: "project",
+      detail: `${op} ${slug}`,
+      ...(refused ? { outcome: "refused" as const, reason: refused.code } : {}),
+    },
+    principalOf(req),
+  );
+}
+
+/**
+ * Issue 1215: for the fixture person's session, why this project act is
+ * refused (answered and audited here, true), or false to go on. Any other
+ * caller goes on: agents' tokens never reach here (AGENT_PERSON_WRITES).
+ */
+function fixtureProjectRefused(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ask: Omit<FixtureProjectAsk, "testInstall" | "claimed" | "fixtureMade">,
+): boolean {
+  if (principalOf(req) !== FIXTURE_PRINCIPAL) return false;
+  const refusal = fixtureProjectRefusal({
+    ...ask,
+    testInstall: fixtureTestInstall(),
+    claimed: !fixturePersonOf(req),
+    fixtureMade:
+      readWorkspacesFile().workspaces[ask.slug]?.fixture_made === true,
+  });
+  if (!refusal) return false;
+  auditProject(req, ask.op, ask.slug, refusal);
+  sendJson(
+    res,
+    { ok: false, code: refusal.code, error: refusal.error },
+    refusal.status,
+  );
+  return true;
+}
+
 export async function handleWorkspaceRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -492,6 +549,7 @@ export async function handleWorkspaceRoutes(
         // D70: by its name or its slug.
         const name = resolveWorkspaceInput(parsed.name);
         const act = parsed.action ?? "use";
+        if (fixtureProjectRefused(req, res, { op: act, slug: name })) return;
         if (act === "rename") {
           if (!readWorkspacesFile().workspaces[name])
             return send400(res, `no project "${parsed.name}"`);
@@ -525,6 +583,8 @@ export async function handleWorkspaceRoutes(
             return send400(res, `unknown action: ${String(_exhaustive)}`);
           }
         }
+        if (act === "activate" || act === "deactivate")
+          auditProject(req, act, name);
         const file = readWorkspacesFile();
         return sendJson(res, {
           ok: true,
@@ -554,6 +614,15 @@ export async function handleWorkspaceRoutes(
         const name = resolveWorkspaceInput(parsed.name);
         if (name === "default")
           return send400(res, "cannot delete the default project");
+        if (
+          fixtureProjectRefused(req, res, {
+            op: "delete",
+            slug: name,
+            flags: { cleanupDirectory, cleanupDev, cleanupDen },
+            ...(parsed.agents !== undefined ? { agents: parsed.agents } : {}),
+          })
+        )
+          return;
         if (
           parsed.agents !== undefined &&
           parsed.agents !== "stop" &&
@@ -622,6 +691,7 @@ export async function handleWorkspaceRoutes(
         }
 
         deleteWorkspaceConfig(name);
+        auditProject(req, "delete", name);
         return sendJson(res, { ok: true, ...agentsDone });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
@@ -747,7 +817,21 @@ export async function handleWorkspaceRoutes(
       const { name } = JSON.parse(body) as { name?: string };
       const refusal = workspaceCreateRefusal(name);
       if (refusal || !name) return send400(res, refusal ?? "name required");
-      const slug = createWorkspace(name, { services: {} });
+      if (
+        fixtureProjectRefused(req, res, {
+          op: "create",
+          slug: workspaceSlug(name) ?? name.trim(),
+        })
+      )
+        return;
+      // Issue 1215: the fixture person's own project carries its marker
+      // (only here, and only past fixtureProjectRefused: a test install).
+      const slug = createWorkspace(
+        name,
+        { services: {} },
+        { fixtureMade: principalOf(req) === FIXTURE_PRINCIPAL },
+      );
+      auditProject(req, "create", slug);
       return sendJson(res, { ok: true, name: name.trim(), slug });
     } catch (e) {
       return send400(res, `Invalid request: ${(e as Error).message}`);

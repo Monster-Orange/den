@@ -37,6 +37,8 @@ export function startGateChip(o) {
     t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
   let slots = [];
   let boxes = [];
+  // Issue 1274: this machine's free memory and what its VMs reserve.
+  let machine = null;
   let pop = null;
   let release = null;
   let timer = 0;
@@ -114,6 +116,19 @@ export function startGateChip(o) {
             load: String(s.loadHold.load),
             limit: String(s.loadHold.limit),
           });
+    // Issue 1274: a run here held by low memory.
+    const mem = s.memoryHold
+      ? t("gate.memoryHold", {
+          free: String(s.memoryHold.free),
+          limit: String(s.memoryHold.limit),
+        })
+      : "";
+    const sw = s.swapHold
+      ? t("gate.swapHold", {
+          used: String(s.swapHold.usedGb),
+          limit: String(s.swapHold.limitGb),
+        })
+      : "";
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -131,6 +146,12 @@ export function startGateChip(o) {
       (hold
         ? '<div class="gate-pri" data-gate-load-hold>' + esc(hold) + "</div>"
         : "") +
+      (mem
+        ? '<div class="gate-pri" data-gate-memory-hold>' + esc(mem) + "</div>"
+        : "") +
+      (sw
+        ? '<div class="gate-pri" data-gate-swap-hold>' + esc(sw) + "</div>"
+        : "") +
       // Issue 999: a padded estimate, and what the queue uses instead.
       (s.padded && s.expected
         ? '<div class="gate-pri" data-gate-padded>' +
@@ -146,6 +167,50 @@ export function startGateChip(o) {
       esc(t("gate.end")) +
       "</button></li>"
     );
+  }
+
+  /**
+   * Issue 1274: this machine: its free memory, and what running VMs
+   * reserve against the share of its RAM ("not counted" when unread).
+   */
+  function machineHtml(m) {
+    if (!m) return "";
+    const gb = (b) => String(Math.round(b / 1024 ** 3));
+    const rows = [];
+    if (typeof m.freeMemory === "number")
+      rows.push(esc(t("gate.freeMemory", { free: String(m.freeMemory) })));
+    if (typeof m.swapUsedGb === "number")
+      rows.push(esc(t("gate.swapUsed", { used: String(m.swapUsedGb) })));
+    if (Array.isArray(m.vms) && (m.vms.length || m.notCounted?.length)) {
+      const vars = {
+        promised: gb(m.promisedBytes),
+        limit: gb(m.ramBytes * (m.share ?? 1)),
+      };
+      rows.push(
+        m.over
+          ? "<span data-gate-vms-over>⚠ " +
+              esc(t("gate.vmsOver", vars)) +
+              "</span>"
+          : esc(t("gate.vms", vars)),
+      );
+      for (const v of m.vms)
+        rows.push(
+          '<span class="mono">' +
+            esc(v.name) +
+            "</span> · " +
+            esc(gb(v.memBytes)) +
+            " GB · " +
+            esc(String(v.cpus)) +
+            " cpu",
+        );
+      for (const n of m.notCounted ?? [])
+        rows.push(esc(t("gate.vmsNotCounted", { runtime: n })));
+    }
+    return rows.length
+      ? '<div class="gate-pri" data-gate-machine>' +
+          rows.join("<br>") +
+          "</div>"
+      : "";
   }
 
   /** Issue 625: a test box: its slots held, or why it is skipped. */
@@ -197,7 +262,8 @@ export function startGateChip(o) {
           '</h3><ul class="gate-ul">' +
           boxes.map(boxHtml).join("") +
           "</ul>"
-        : "");
+        : "") +
+      machineHtml(machine);
   }
 
   async function endIt(li, btn) {
@@ -267,6 +333,7 @@ export function startGateChip(o) {
         const body = await r.json();
         slots = body.slots ?? [];
         boxes = body.boxes ?? [];
+        machine = body.machine ?? null;
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();
       }

@@ -84,8 +84,8 @@
     "reason": "temp .command scripts in the OS temp folder, removed after Terminal opens them"
   },
   "src/ui/server/sudo-store.ts": {
-    "count": 3,
-    "reason": "the sudo shim's files in a per-process temp folder, never state"
+    "count": 4,
+    "reason": "the sudo shim's files and its pid file in a per-process temp folder, never state"
   },
   "src/ui/server/update-watch.mjs": {
     "count": 1,

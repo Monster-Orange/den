@@ -5,6 +5,8 @@
 import {
   expectedStart,
   loadHold,
+  memoryHold,
+  swapHold,
   overrun,
   priorityIds,
   queueEnd,
@@ -14,6 +16,7 @@ import {
 } from "./rules.js";
 import { boxEndpoints, boxSkipReason, type GateBox } from "./boxes.js";
 import { classOf, windowHeld } from "./classes.js";
+import { vmOvercommit } from "./vms.js";
 import type { GateStore } from "./store.js";
 
 export interface GateSlotView {
@@ -74,6 +77,10 @@ export interface GateSlotView {
     perCore?: number;
     cores?: number;
   };
+  /** Issue 1274: a run here waiting on low memory: free and the setting, %. */
+  memoryHold?: { free: number; limit: number };
+  /** Issue 1274: a run here waiting on swap: in use and the setting, GB. */
+  swapHold?: { usedGb: number; limitGb: number };
 }
 
 /**
@@ -157,7 +164,12 @@ export function gateBoxesView(
   });
 }
 
-export function gateView(store: GateStore, now = Date.now()) {
+export function gateView(
+  store: GateStore,
+  now = Date.now(),
+  /** Issue 1274: read the VMs now (gate status), not the last reading. */
+  o: { vmsNow?: boolean } = {},
+) {
   const all = store.list();
   const settings = store.settings();
   const pri = priorityIds(all, settings);
@@ -178,6 +190,11 @@ export function gateView(store: GateStore, now = Date.now()) {
   };
   const held = windowHeld(all, settings.classes, now);
   const hold = loadHold(all, settings, store.load(), store.cores());
+  // Issue 1274: free memory here, and a run here held by it.
+  const freeMem = store.freeMemory();
+  const memHold = memoryHold(all, settings, freeMem);
+  const swapGb = store.swapUsedGb();
+  const swHold = swapHold(all, settings, swapGb);
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -219,6 +236,21 @@ export function gateView(store: GateStore, now = Date.now()) {
           },
         }
       : {}),
+    ...(memHold &&
+    !e.grantedAt &&
+    (!e.where || e.where === "local" || e.where === "any")
+      ? {
+          memoryHold: {
+            free: Math.round(memHold.free),
+            limit: memHold.limit,
+          },
+        }
+      : {}),
+    ...(swHold &&
+    !e.grantedAt &&
+    (!e.where || e.where === "local" || e.where === "any")
+      ? { swapHold: { usedGb: swHold.usedGb, limitGb: swHold.limitGb } }
+      : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,
@@ -237,7 +269,56 @@ export function gateView(store: GateStore, now = Date.now()) {
     settings,
     slots,
     boxes: gateBoxesView(store, slots),
+    machine: machineView(store, freeMem, swapGb, !!o.vmsNow),
     removed: removedView(store, now),
+  };
+}
+
+/**
+ * Issue 1274: this machine's free memory (percent, when read) and, when
+ * the VMs here were read, what the running ones reserve against
+ * vm_memory_share × its RAM. Only names, memory and cpus.
+ */
+export interface GateMachineView {
+  freeMemory?: number;
+  /** Swap in use, GB (left out at 0 or unread). */
+  swapUsedGb?: number;
+  ramBytes?: number;
+  share?: number;
+  promisedBytes?: number;
+  over?: boolean;
+  vms?: { runtime: string; name: string; memBytes: number; cpus: number }[];
+  notCounted?: string[];
+}
+
+function machineView(
+  store: GateStore,
+  freeMem: number,
+  swapGb: number,
+  now: boolean,
+): GateMachineView {
+  const out: GateMachineView = {
+    ...(Number.isFinite(freeMem) ? { freeMemory: Math.round(freeMem) } : {}),
+    ...(Number.isFinite(swapGb) && swapGb > 0 ? { swapUsedGb: swapGb } : {}),
+  };
+  const r = now ? store.vmsNow() : store.vms();
+  if (!r) return out;
+  const o = vmOvercommit(r.vms, r.ramBytes, r.share);
+  return {
+    ...out,
+    ramBytes: r.ramBytes,
+    share: r.share,
+    promisedBytes: o.promised,
+    over: o.over,
+    vms: r.vms
+      .filter((v) => v.running)
+      .map((v) => ({
+        runtime: v.runtime,
+        name: v.name,
+        memBytes: v.memBytes,
+        cpus: v.cpus,
+      })),
+    notCounted: r.notCounted,
   };
 }
 

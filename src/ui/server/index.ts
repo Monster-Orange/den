@@ -1245,6 +1245,7 @@ import {
   realSudoPath,
   clearSudoPassword,
   clearSudoShims,
+  sweepStaleSudoDirs,
   closeLockForThisRequest,
   inRequestLockScope,
   getSudoEnv,
@@ -1253,6 +1254,8 @@ import {
   hasPasswordlessSudo,
   watchSudo,
 } from "./sudo-store.js";
+// Issue 121: sudo shim folders an earlier run left behind (a crash): gone.
+sweepStaleSudoDirs();
 import {
   guardStdio,
   isLostOutputError,
@@ -1316,6 +1319,7 @@ import {
   handleWorkspaceRoutes,
   workspaceCreateRefusal,
 } from "./workspace-routes.js";
+import { setFixtureTestInstall } from "./fixture-projects.js";
 import {
   createApprovalQueue,
   handleApprovalRoutes,
@@ -3595,6 +3599,8 @@ function testInstallNow(except?: string): boolean {
       ),
   }).ok;
 }
+// Issue 1215: the fixture person's project acts check the mark too.
+setFixtureTestInstall(() => testInstallNow());
 
 // Issue 1073: install the name map's hook, and tell the log and doctor.
 if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {

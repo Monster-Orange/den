@@ -3262,6 +3262,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { load_hold_per_core: v } }),
   },
   {
+    // Issue 1274: new runs here wait while free memory is under this.
+    id: "server.gate_memory_free_min_percent",
+    category: "server",
+    label: "Hold new runs here under this much free memory (%)",
+    description:
+      "New test runs on this machine (unit and browser, release ones too) wait while its free memory is under this percent, but only while another run here is going: with none going, the next one starts. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "ram", "swap"],
+    scope: "user",
+    keys: ["gate_slots.memory_free_min_percent"],
+    control: { type: "number", min: 0, max: 90, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.memoryFreeMinPercent ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { memory_free_min_percent: v } }),
+  },
+  {
+    // Issue 1274: new runs here wait while swap in use is over this.
+    id: "server.gate_swap_hold_gb",
+    category: "server",
+    label: "Hold new runs here over this much swap in use (GB)",
+    description:
+      "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.swap_hold_gb"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.swapHoldGb ?? 8,
+    write: (v, ctx) => ctx.post({ gate_slots: { swap_hold_gb: v } }),
+  },
+  {
+    // Issue 1274: doctor warns over this share of RAM promised to VMs.
+    id: "server.gate_vm_memory_share",
+    category: "server",
+    label: "Warn when VMs promise more than this share of memory",
+    description:
+      "Doctor warns when the memory that running VMs (OrbStack machines, Docker's VM) have reserved adds up to more than this share of the machine's RAM. 1 is all of it; under 1 warns sooner. __DEN_CLI__ gate settings --vm-memory-share 1",
+    keywords: ["gate", "vm", "orbstack", "docker", "memory", "ram", "doctor"],
+    scope: "user",
+    keys: ["gate_slots.vm_memory_share"],
+    control: { type: "number", min: 0.1, max: 4, step: 0.05 },
+    read: (ctx) => ctx.data.gate_slots?.vmMemoryShare ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { vm_memory_share: v } }),
+  },
+  {
     // Issue 1009: cpu runs wait at this load under a release browser run.
     id: "server.gate_cpu_hold_load",
     category: "server",

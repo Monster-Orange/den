@@ -2393,6 +2393,18 @@
       "Hold new unit test runs over this load per core",
     "set.server.gate_load_hold_per_core.d":
       "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Hold new runs here under this much free memory (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "New test runs on this machine (unit and browser, release ones too) wait while its free memory is under this percent, but only while another run here is going: with none going, the next one starts. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "Hold new runs here over this much swap in use (GB)",
+    "set.server.gate_swap_hold_gb.d":
+      "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_vm_memory_share":
+      "Warn when VMs promise more than this share of memory",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor warns when the memory that running VMs (OrbStack machines, Docker's VM) have reserved adds up to more than this share of the machine's RAM. 1 is all of it; under 1 warns sooner. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Machine load that holds unit test runs during a release browser run",
     "set.server.gate_cpu_hold_load.d":
@@ -4090,6 +4102,16 @@
     "gate.onBox": "on box {box}",
     "gate.anyBox": "here or on a test box",
     "gate.boxesH": "Test boxes",
+    "gate.swapHold":
+      "waiting: this machine has {used} GB of swap in use, over {limit} GB, while another run here is going; it starts once swap drops or that run ends",
+    "gate.swapUsed": "Swap in use: {used} GB",
+    "gate.memoryHold":
+      "waiting: this machine has {free}% of its memory free, under {limit}%, while another run here is going; it starts once memory frees or that run ends",
+    "gate.freeMemory": "This machine: {free}% of memory free",
+    "gate.vms": "VMs here promise {promised} GB of {limit} GB allowed",
+    "gate.vmsOver":
+      "VMs here promise {promised} GB, over the {limit} GB allowed: the machine can run out of memory",
+    "gate.vmsNotCounted": "{runtime}: not counted (couldn't read it)",
     "gate.boxSlots": "{box}: {held} of {n} browser slots in use",
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
