@@ -8,11 +8,12 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { writeRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
   markInterrupted,
   resolveAgentsDeps,
+  resumeInterrupted,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
 
@@ -197,6 +198,46 @@ describe("issue 785: a conversation is this agent's own (security review)", () =
       "codex can't resume coder: its conversation is also another agent's",
     );
     expect(await agents(r, "resume", "coder")).toBe(1);
+    expect(r.made).toHaveLength(0);
+  });
+
+  it("Resume all: a conversation a running agent holds is refused; the coder is not resumed", async () => {
+    const r = await rig();
+    codexOnPath(r);
+    const report = { conversation: "019a-77", cwd: r.wsDir("north"), seq: 1 };
+    coder(r, report, { interrupted: true });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    const holder = readRecord(r.stateDir, "planner")!;
+    expect(holder.stoppedAt).toBeUndefined();
+    writeRecord(r.stateDir, {
+      ...holder,
+      resumeReport: { ...report, seq: 9 },
+    } as never);
+    r.made.length = 0;
+    const got = await resumeInterrupted(resolveAgentsDeps(r.deps), ["north"]);
+    expect(got.resumed).toEqual([]);
+    expect(got.failed).toEqual([
+      {
+        agent: "coder",
+        why: "codex can't resume coder: its conversation is also another agent's",
+      },
+    ]);
+    expect(r.made).toHaveLength(0);
+  });
+
+  it("Resume all in one workspace: a conversation an agent in another workspace holds is refused", async () => {
+    const r = await rig();
+    codexOnPath(r);
+    const report = { conversation: "019a-77", cwd: r.wsDir("north"), seq: 1 };
+    coder(r, report, { interrupted: true });
+    coder(r, { ...report, seq: 9 }, { id: "other" });
+    const other = readRecord(r.stateDir, "other")!;
+    writeRecord(r.stateDir, { ...other, workspace: "south" } as never);
+    const got = await resumeInterrupted(resolveAgentsDeps(r.deps), ["north"]);
+    expect(got.resumed).toEqual([]);
+    expect(got.failed.map((f) => f.agent)).toEqual(["coder"]);
     expect(r.made).toHaveLength(0);
   });
 });

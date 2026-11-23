@@ -8600,7 +8600,10 @@ export async function resumeInterrupted(
   failed: { agent: string; why: string }[];
 }> {
   const sessions = await hostSessions(d);
-  const recs = listRecords(d.stateDir()).filter(
+  // Issue 785: a conversation is checked against every agent's record,
+  // running ones and other workspaces too, not just the interrupted here.
+  const all = listRecords(d.stateDir());
+  const recs = all.filter(
     (r) =>
       (!workspaces || workspaces.includes(r.workspace)) &&
       rowState(r, sessionOf(sessions, r)) === "interrupted",
@@ -8610,7 +8613,7 @@ export async function resumeInterrupted(
   for (const rec of recs) {
     const rot = rotationOf(d, rec);
     const why =
-      resumeRefusal(rec, recs) ??
+      resumeRefusal(rec, all) ??
       (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
       failed.push({ agent: rec.id, why });
