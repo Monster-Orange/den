@@ -1829,10 +1829,10 @@ and the guide to making your own
 - `shape` (optional): `radius`, `radius-button` and `density`, and two
   keys for how the kit draws edges and buttons:
   - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
-    Added in 0.4.88.
+    Added in 0.4.87.
   - `buttons`: `filled` (the default) or `outline`. With `outline`, the
     primary and danger buttons have no fill: a `border-strong` edge and
-    `text` words, danger in `bad`. Added in 0.4.88.
+    `text` words, danger in `bad`. Added in 0.4.87.
 
   A theme that sets neither draws as before. The built-in `sketch` theme
   (greys only, dashed, outline, one face) ships in the UI kit as
