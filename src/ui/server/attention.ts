@@ -38,6 +38,12 @@ import type {
 } from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
+import {
+  agentStatus,
+  detectScreen,
+  type AgentStatus,
+  type Screen,
+} from "../../shared/agents/detect/index.js";
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
@@ -140,6 +146,15 @@ export interface AttentionDeps {
    * a question), and its person isn't looking at it: alert them outside
    * the bell (alert-feed.ts). Once per wait, never for a repeat.
    */
+  /**
+   * Issue 770: a hookless agent's screen and the rule set that reads it
+   * (agents/detect), or null: no session, the host not answering, or its
+   * runtime's rules not switched on (detect/live.ts).
+   */
+  screenTail?: (agent: string) => Promise<{
+    rules: string;
+    screen: Screen;
+  } | null>;
   alert?: (n: {
     agent: string;
     workspace: string;
@@ -238,6 +253,11 @@ interface Waiting {
    * ends it; never sent to the lead.
    */
   dialog?: boolean;
+  /**
+   * Issue 770: made from the agent's screen (its rule set read Blocked):
+   * the screen ends it, never its output moving (a cursor blinks).
+   */
+  byScreen?: boolean;
 }
 
 export class Attention {
@@ -259,6 +279,9 @@ export class Attention {
     { seq: number; at: number; what: string; input?: string }
   >();
 
+  /** Issue 770: each hookless agent's status, from its screen. */
+  private readonly status = new Map<string, AgentStatus>();
+
   constructor(private readonly d: AttentionDeps) {
     this.now = d.now ?? Date.now;
   }
@@ -279,6 +302,61 @@ export class Attention {
     return w
       ? { why: w.why, what: w.what, since: new Date(w.at).toISOString() }
       : undefined;
+  }
+
+  /**
+   * Issue 770: what `agent`'s screen last said: working, blocked (needs
+   * its person) or idle; undefined when Den reads no status for it (hooks,
+   * no rules switched on, or no rule matched yet).
+   */
+  statusOf(agent: string): AgentStatus | undefined {
+    return this.status.get(agent);
+  }
+
+  /**
+   * Issue 770: read these hookless agents' screens with their runtimes'
+   * rule sets. Blocked is a "needs your permission" wait; working again
+   * ends a screen's or a bell's wait (after SETTLE_MS, as output does);
+   * idle keeps the bell's. A screen no rule matches, a transcript viewer
+   * (skip_state_update), or no screen at all changes nothing: the bell
+   * and output stopped go on as before. Never throws.
+   */
+  async screens(
+    list: readonly { agent: string; workspace: string }[],
+  ): Promise<void> {
+    if (!this.d.screenTail) return;
+    for (const { agent, workspace } of list) {
+      if (this.d.hooked?.(agent)) continue;
+      let tail: { rules: string; screen: Screen } | null;
+      try {
+        tail = await this.d.screenTail(agent);
+      } catch {
+        continue;
+      }
+      if (!tail) continue;
+      const now = agentStatus(undefined, detectScreen(tail.rules, tail.screen));
+      if (!now) continue;
+      this.status.set(agent, now);
+      const w = this.waiting.get(agent);
+      if (now === "blocked") {
+        if (w) continue;
+        await this.event(agent, workspace, {
+          event: "waiting",
+          why: "permission",
+        });
+        const made = this.waiting.get(agent);
+        if (made) made.byScreen = true;
+      } else if (
+        now === "working" &&
+        w &&
+        !w.byHook &&
+        (w.byScreen || this.now() - w.at >= SETTLE_MS)
+      ) {
+        this.clear(agent);
+      } else if (now === "idle" && w?.byScreen) {
+        this.clear(agent);
+      }
+    }
   }
 
   /** NT-2: a page shows these agents now (visible and focused). */
@@ -823,7 +901,7 @@ export class Attention {
     await this.reconcile();
     await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
-      if (w.byHook) continue;
+      if (w.byHook || w.byScreen) continue;
       const m = await this.d.outputMark(agent);
       if (m === null || m === w.mark) continue;
       if (w.mark === null || this.now() - w.at < SETTLE_MS) {
@@ -920,6 +998,7 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.lastRun.delete(agent);
+    this.status.delete(agent);
     this.clear(agent);
   }
 
