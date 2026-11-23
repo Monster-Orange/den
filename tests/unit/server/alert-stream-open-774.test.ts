@@ -14,6 +14,7 @@ const flush = async () => {
 
 function rig(o: { sub?: boolean } = {}) {
   const streams: string[] = [];
+  const open: { onmessage: ((m: { data: string }) => void) | null }[] = [];
   const posts: string[] = [];
   const winListeners = new Map<string, (() => void)[]>();
   let sub = o.sub === true;
@@ -26,9 +27,10 @@ function rig(o: { sub?: boolean } = {}) {
     querySelector: () => null,
   };
   class FakeES {
-    onmessage: unknown = null;
+    onmessage: ((m: { data: string }) => void) | null = null;
     constructor(url: string) {
       streams.push(url);
+      open.push(this);
     }
     close() {}
   }
@@ -65,6 +67,7 @@ function rig(o: { sub?: boolean } = {}) {
   return {
     win: win as unknown as Window & typeof globalThis,
     streams,
+    open,
     posts,
     fire,
     subscribe: () => void (sub = true),
@@ -85,6 +88,17 @@ describe("774 row 7b: when a page opens the alert stream", () => {
     initAlerts(r.win);
     await flush();
     expect(r.streams).toEqual(["/api/alerts/stream"]);
+  });
+
+  it("subscribed: loading writes one thing, the tab's presence", async () => {
+    // The one load-time write where push is on: an in-memory heartbeat
+    // (this tab, a hash of its endpoint, whether it shows), never saved.
+    const r = rig({ sub: true });
+    initAlerts(r.win);
+    await flush();
+    r.open[0]!.onmessage!({ data: JSON.stringify({ type: "tab", tab: "t1" }) });
+    await flush();
+    expect(r.posts).toEqual(["/api/alerts/presence"]);
   });
 
   it("subscribing on this page opens it then, once", async () => {
