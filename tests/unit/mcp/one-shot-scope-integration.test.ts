@@ -27,7 +27,13 @@ beforeAll(async () => {
   fs.mkdirSync(path.join(root, "config"));
   fs.writeFileSync(
     path.join(root, "config", "den.yml"),
-    "environments: [local]\nagents:\n  scout:\n    grants: [east]\n",
+    "environments: [local]\n",
+  );
+  // Issue 1072: an agent's grants come from this install's user.yml only.
+  fs.mkdirSync(path.join(root, "config", "local"));
+  fs.writeFileSync(
+    path.join(root, "config", "local", "user.yml"),
+    "agents:\n  scout:\n    grants: [east]\n",
   );
   stub = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
