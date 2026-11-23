@@ -7,6 +7,8 @@ export interface SwitchModel {
   help?: string;
   /** The input's id (default: den-sw-N). */
   id?: string;
+  /** More attributes on the input (escaped), e.g. a host's data-*. */
+  attrs?: Record<string, string>;
 }
 
 export interface SwitchOptions {

@@ -84,6 +84,42 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
       expect([f, /set-check|toggle-input/.test(read(f))]).toEqual([f, false]);
   });
 
+  // Review: every on/off setting is a switch; a checkbox that picks an
+  // option inside a form stays one, and is named here, so a new checkbox
+  // has to choose.
+  const MUST_BE_SWITCHES: [string, RegExp][] = [
+    ["settings-registry.js", /switchHtml\(\{\s*id: "set-box-on"/],
+    ["settings-registry.js", /switchHtml\(\{\s*id: "hub-allow-tools"/],
+    ["settings-registry.js", /attrs: \{ "data-keep-on": "" \}/],
+    ["settings-registry.js", /switchInputHtml\(\{\s*id: "set-phone-push"/],
+  ];
+  const ALLOWED_CHECKBOXES = [
+    /data-signout-rotate/, // Sign out: also rotate the key (an option)
+    /id="rot-a-never"/, // a rotation's "never" (an option in a form)
+    /data-pmcp-nobearer/, // a project MCP's "no token" (an option in a form)
+    /id="module-check-all"/, // Testing: the module checklist's "all"
+    /value="\$\{m\.name\}"/, // Testing: a module in the checklist
+  ];
+  it("the named on/off settings are switches", () => {
+    for (const [f, re] of MUST_BE_SWITCHES)
+      expect([f, String(re), re.test(read(f))]).toEqual([f, String(re), true]);
+  });
+  it("any other checkbox in these files is a switch, or a named option in a form", () => {
+    for (const f of ["settings-registry.js", "settings-page.js", "index.html"])
+      for (const tag of read(f).match(/<input\b[^>]*type="checkbox"[^>]*>/g) ??
+        []) {
+        const ok =
+          /role="switch"/.test(tag) ||
+          ALLOWED_CHECKBOXES.some((re) => re.test(tag));
+        expect([f, tag, ok]).toEqual([f, tag, true]);
+      }
+  });
+  it("switchHtml passes a host's attributes to its input", () => {
+    expect(
+      switchHtml({ id: "k", label: "Keep", attrs: { "data-keep-on": "" } }),
+    ).toContain('id="k" aria-labelledby="k-label" data-keep-on=""');
+  });
+
   it("no product-local CSS for it remains; the pages link the kit's switch.css", () => {
     for (const f of ["settings.html", "index.html"]) {
       const html = read(f);

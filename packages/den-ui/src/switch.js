@@ -6,11 +6,12 @@
  * (aria-checked through the checkbox), which a screen reader says in its
  * own language. Pure builder, runs in Node too:
  *
- *   switchHtml({ label, on, disabled, help, id })
+ *   switchHtml({ label, on, disabled, help, id, attrs })
  *     <label class="den-switch" for=id>: the label (and the help under
  *     it, its description), then <input type="checkbox" role="switch">.
  *     No label: nothing is drawn (a switch must have a name). No id: one
- *     of the kit's own (den-sw-N).
+ *     of the kit's own (den-sw-N). attrs: more attributes on the input
+ *     (a host's data-*, for its handler).
  *
  *   switchInputHtml({ id, on, disabled, labelledBy, describedBy, attrs })
  *     The bare switch (issue 680), for a row that draws its own label (a
@@ -72,6 +73,7 @@ export function switchHtml(o = {}) {
       disabled: o.disabled,
       labelledBy: labelId,
       describedBy: help ? helpId : "",
+      attrs: o.attrs,
     }) +
     "</label>"
   );
