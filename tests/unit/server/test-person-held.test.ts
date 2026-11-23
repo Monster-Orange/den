@@ -15,7 +15,10 @@ import { beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { testPersonSetupAction } from "../../../src/ui/server/test-person-held.js";
+import {
+  listWaitingInstalls,
+  testPersonSetupAction,
+} from "../../../src/ui/server/test-person-held.js";
 import {
   installIdOf,
   takeSetupGrant,
@@ -35,6 +38,8 @@ let alive = true;
 let probeOk = true;
 let waiting = true;
 let answerRight = true;
+let refusalHasAnswer = true;
+let forceRefusal: string | null = null;
 let posts: { port: number; body: string; bearer: string }[] = [];
 let audits: string[] = [];
 let taken: ReturnType<typeof takeSetupGrant>[] = [];
@@ -48,7 +53,8 @@ beforeEach(() => {
     pid: 4242,
     startedAt: "",
   };
-  alive = probeOk = waiting = answerRight = true;
+  alive = probeOk = waiting = answerRight = refusalHasAnswer = true;
+  forceRefusal = null;
   posts = [];
   audits = [];
   taken = [];
@@ -67,15 +73,22 @@ function build() {
     post: async (port, bearer, body) => {
       posts.push({ port, body, bearer });
       const b = JSON.parse(body) as { grant: string; challenge: string };
-      const t = takeSetupGrant(b.grant, { secret, stateDir });
+      const t: ReturnType<typeof takeSetupGrant> = forceRefusal
+        ? { ok: false, code: forceRefusal as "expired" }
+        : takeSetupGrant(b.grant, { secret, stateDir });
       taken.push(t);
       return {
         status: t.ok ? 200 : 403,
         json: {
           ok: t.ok,
-          answer: answerRight
-            ? identityAnswer(identityKey(secret), b.challenge)
-            : "wrong",
+          ...(t.ok ? {} : { code: t.code }),
+          ...(t.ok || refusalHasAnswer
+            ? {
+                answer: answerRight
+                  ? identityAnswer(identityKey(secret), b.challenge)
+                  : "wrong",
+              }
+            : {}),
         },
       };
     },
@@ -154,5 +167,55 @@ describe("test_person_setup: the Allow", () => {
     await build().run({ id: entry.id });
     expect(audits.join("\n")).toContain(entry.id);
     expect(audits.join("\n")).toContain("~/");
+  });
+});
+
+describe("test_person_setup: the list", () => {
+  const deps = () => ({
+    home: HOME,
+    list: () => [entry],
+    probe: async () => probeOk,
+    waiting: async () => waiting,
+  });
+
+  it("lists an install that answers as itself and still waits", async () => {
+    expect(await listWaitingInstalls(deps())).toEqual([
+      {
+        id: entry.id,
+        where: "~/" + path.relative(HOME, stateDir),
+        port: 45123,
+      },
+    ]);
+  });
+
+  it("leaves out one that answers as itself but no longer waits (a forged announcement of a real install)", async () => {
+    waiting = false;
+    expect(await listWaitingInstalls(deps())).toEqual([]);
+  });
+
+  it("leaves out one whose port doesn't answer as that install", async () => {
+    probeOk = false;
+    expect(await listWaitingInstalls(deps())).toEqual([]);
+  });
+});
+
+describe("test_person_setup: a refusal says why", () => {
+  it("an expired grant reads as expired, not as an impostor", async () => {
+    forceRefusal = "expired";
+    refusalHasAnswer = false;
+    const r = (await build().run({ id: entry.id })) as {
+      ok: boolean;
+      error?: string;
+    };
+    expect(r.ok).toBe(false);
+    expect(r.error ?? "").toMatch(/expired/);
+    expect(r.error ?? "").not.toMatch(/didn't answer as that install/);
+  });
+
+  it("a success without the right answer is still an impostor", async () => {
+    answerRight = false;
+    const r = (await build().run({ id: entry.id })) as { ok: boolean };
+    expect(r.ok).toBe(false);
+    expect(audits.join("\n")).toMatch(/didn't answer as that install/);
   });
 });

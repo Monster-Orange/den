@@ -25,11 +25,13 @@ import { product } from "./product.js";
 
 export const TEST_ANNOUNCE_ENV_KEY = "TEST_ANNOUNCE";
 /**
- * One tag per grant taken, in the test install's state folder. It only
- * grows: a test install takes a grant once, or a handful of times over its
- * life (Set up again), and its state folder goes with it.
+ * One marker file per grant taken, in this folder of the test install's
+ * state folder, made with O_EXCL so two racing takes of one grant can't
+ * both pass. It only grows: a test install takes a grant once, or a
+ * handful of times over its life (Set up again), and its state folder
+ * goes with it.
  */
-export const SETUP_GRANT_SPENT_FILE = "fixture-grant.spent";
+export const SETUP_GRANT_SPENT_DIR = "fixture-grant.spent.d";
 export const SETUP_GRANT_DEFAULT_SECONDS = 30;
 export const SETUP_GRANT_MAX_SECONDS = 120;
 const ANNOUNCE_MAX_BYTES = 4096;
@@ -219,10 +221,15 @@ export type GrantRefusal =
 const spentTag = (g: string) =>
   createHash("sha256").update(`den-816-grant-spent-v1:${g}`).digest("hex");
 
+/** Where taking `grant` leaves its marker. */
+export function spentMarkerPath(stateDir: string, grant: string): string {
+  return path.join(stateDir, SETUP_GRANT_SPENT_DIR, spentTag(grant));
+}
+
 /**
  * Check a grant for this install (its secret and state folder) and spend
- * it. Spent first: the tag is appended before success, and a failed append
- * refuses.
+ * it. Spent first: its marker is made (O_EXCL) before success; a marker
+ * already there is spent, and one that can't be made refuses.
  */
 export function takeSetupGrant(
   grant: string,
@@ -262,19 +269,18 @@ export function takeSetupGrant(
   );
   if (exp <= now) return { ok: false, code: "expired" };
   if (exp - now > max) return { ok: false, code: "too_long" };
-  const file = path.join(o.stateDir, SETUP_GRANT_SPENT_FILE);
-  const tag = spentTag(grant);
-  let spent = "";
+  const marker = spentMarkerPath(o.stateDir, grant);
   try {
-    spent = fs.readFileSync(file, "utf8");
-  } catch {
-    spent = "";
-  }
-  if (spent.split("\n").includes(tag)) return { ok: false, code: "spent" };
-  try {
-    fs.appendFileSync(file, tag + "\n", { mode: 0o600 });
-  } catch {
-    return { ok: false, code: "cannot_spend" };
+    fs.mkdirSync(path.dirname(marker), { recursive: true, mode: 0o700 });
+    fs.closeSync(fs.openSync(marker, "wx", 0o600));
+  } catch (e) {
+    return {
+      ok: false,
+      code:
+        (e as NodeJS.ErrnoException).code === "EEXIST"
+          ? "spent"
+          : "cannot_spend",
+    };
   }
   return { ok: true, from };
 }

@@ -133,6 +133,12 @@ export interface LaunchInput {
    */
   otherStateDirs?: string[];
   /**
+   * Issue 816 review: the folder where test installs announce themselves
+   * (~/.<cli>/test-installs). Denied too, so an agent can't find the
+   * state folder of a test install announced after it started.
+   */
+  testAnnounceDir?: string;
+  /**
    * Issue 810: the distribution config file (it holds the test-install
    * mark), denied to the agent's edits with personConfigDir.
    */

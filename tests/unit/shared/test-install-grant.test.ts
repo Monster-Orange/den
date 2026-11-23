@@ -18,6 +18,7 @@ import {
   listAnnounced,
   mintSetupGrant,
   setupGrantKey,
+  spentMarkerPath,
   takeSetupGrant,
   unannounceTestInstall,
 } from "../../../src/shared/test-install-grant.js";
@@ -100,6 +101,14 @@ describe("the grant", () => {
       ok: false,
       code: "spent",
     });
+  });
+
+  it("a racing take that marked the grant first wins (O_EXCL marker)", () => {
+    const g = mint();
+    const m = spentMarkerPath(stateDir, g);
+    fs.mkdirSync(path.dirname(m), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(m, "", { flag: "wx", mode: 0o600 });
+    expect(take(g)).toEqual({ ok: false, code: "spent" });
   });
 
   it("refuses a grant made with another key", () => {

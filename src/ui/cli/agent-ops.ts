@@ -3470,6 +3470,8 @@ function launchInput(
     otherStateDirs: listAnnounced(announceDir(), {
       ownStateDir: d.stateDir(),
     }).map((a) => a.stateDir),
+    // ...and where they announce, for those announced after this launch.
+    testAnnounceDir: announceDir(),
     personConfigDir: path.join(d.distRoot(), "config", "local"),
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),

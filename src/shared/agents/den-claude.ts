@@ -449,6 +449,23 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
 }
 
 /**
+ * Issue 816 review: the folder where test installs announce themselves.
+ * Reading it would show an agent the state folder (and so the web.secret)
+ * of a test install announced after the agent started, which its launch
+ * rules don't name. Binds a cooperating agent, as stateDirDenyRules does.
+ */
+export function announceDirDenyRules(dir: string, home?: string): string[] {
+  const abs = path.resolve(dir);
+  const targets = shellSpellings(abs, home).map((p) => `${p}*`);
+  return [
+    `Read(/${abs}/**)`,
+    `Edit(/${abs}/**)`,
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+  ];
+}
+
+/**
  * A path as a shell may write it from `home`: as is, `~/…`, `$HOME/…`,
  * `${HOME}/…`, and with each space backslash-escaped.
  */
@@ -721,6 +738,12 @@ function common(input: LaunchInput): {
                                 ...(input.otherStateDirs ?? []).flatMap((d) =>
                                   stateDirDenyRules(d, input.env?.HOME),
                                 ),
+                                ...(input.testAnnounceDir
+                                  ? announceDirDenyRules(
+                                      input.testAnnounceDir,
+                                      input.env?.HOME,
+                                    )
+                                  : []),
                                 ...(input.personConfigDir
                                   ? personConfigDenyRules(
                                       input.personConfigDir,

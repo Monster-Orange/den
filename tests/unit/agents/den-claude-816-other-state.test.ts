@@ -77,3 +77,15 @@ describe("issue 816: announced test installs' state folders", () => {
     expect(deny(input())).toEqual(stateDirDenyRules("/home/someone/.acme"));
   });
 });
+
+describe("issue 816: the announce folder itself", () => {
+  const dir = "/home/someone/.acme/test-installs";
+
+  it("is denied, so an agent can't find a test install announced after it started", () => {
+    const rules = deny(input({ testAnnounceDir: dir }));
+    expect(rules).toContain(`Read(/${dir}/**)`);
+    expect(rules.some((r) => r.startsWith("Bash(") && r.includes(dir))).toBe(
+      true,
+    );
+  });
+});

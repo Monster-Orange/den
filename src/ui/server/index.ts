@@ -92,7 +92,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import {
-  shortPath,
+  listWaitingInstalls,
   testPersonSetupAction,
   type TestPersonSetupDeps,
 } from "./test-person-held.js";
@@ -4119,16 +4119,9 @@ async function handleTestInstallsListRoute(
       },
       403,
     );
-  const d = testPersonSetupDeps();
-  const installs: { id: string; where: string; port: number }[] = [];
-  for (const a of d.list()) {
-    if (!(await d.probe(a))) continue;
-    installs.push({
-      id: a.id,
-      where: shortPath(a.stateDir, d.home),
-      port: a.port,
-    });
-  }
+  // Issue 816 review: probed and still waiting, so a forged announcement of
+  // a real install never offers Set up.
+  const installs = await listWaitingInstalls(testPersonSetupDeps());
   return sendJson(res, { ok: true, installs });
 }
 

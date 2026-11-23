@@ -68,6 +68,23 @@ export function shortPath(p: string, home: string): string {
   return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? `~/${rel}` : p;
 }
 
+/**
+ * The rows of Settings › Test installs on this computer: an announcement
+ * whose port answers as that install and that still says it is a test
+ * install waiting for setup. A forged announcement naming a real install's
+ * folder answers the probe but not the waiting check, so it never shows.
+ */
+export async function listWaitingInstalls(
+  d: Pick<TestPersonSetupDeps, "home" | "list" | "probe" | "waiting">,
+): Promise<{ id: string; where: string; port: number }[]> {
+  const out: { id: string; where: string; port: number }[] = [];
+  for (const a of d.list()) {
+    if (!(await d.probe(a)) || !(await d.waiting(a))) continue;
+    out.push({ id: a.id, where: shortPath(a.stateDir, d.home), port: a.port });
+  }
+  return out;
+}
+
 export function testPersonSetupAction(d: TestPersonSetupDeps): HeldAction {
   const find = (args: Record<string, unknown>): Announced | string => {
     const id = typeof args.id === "string" ? args.id : "";
@@ -150,20 +167,22 @@ export function testPersonSetupAction(d: TestPersonSetupDeps): HeldAction {
           "unreachable",
         );
       }
+      // A refusal carries its code and no answer: say the code. Only a
+      // success must also answer the challenge as that install.
+      if (res.status !== 200 || res.json.ok !== true) {
+        const raw = typeof res.json.code === "string" ? res.json.code : "";
+        const code = /^[a-z_]{1,40}$/.test(raw) ? raw : "refused";
+        return fail(
+          `test install ${a.id} (${where}) refused the setup: ${code}`,
+          code,
+        );
+      }
       const want = identityAnswer(identityKey(secret), challenge);
       if (!want || res.json.answer !== want)
         return fail(
           `test install ${a.id} (${where}) didn't answer as that install`,
           "wrong_answer",
         );
-      if (res.status !== 200 || res.json.ok !== true) {
-        const code =
-          typeof res.json.code === "string" ? res.json.code : "refused";
-        return fail(
-          `test install ${a.id} (${where}) refused the setup: ${code}`,
-          code,
-        );
-      }
       d.audit({
         verb: "test-person-setup",
         detail: `set up the test person on test install ${a.id} (${where})`,
