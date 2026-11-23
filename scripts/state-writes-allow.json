@@ -55,6 +55,10 @@
     "count": 1,
     "reason": "test results: the index is written to a temp file and renamed, async"
   },
+  "src/shared/review/mesh/checkout.ts": {
+    "count": 2,
+    "reason": "issue 476: a review leg's base instruction files and pr.diff, in the leg's folder under the project (not the state folder), made read-only and removed when the leg ends"
+  },
   "src/shared/verify/pin.ts": {
     "count": 1,
     "reason": "a pin note inside a temp folder that is renamed into place whole"

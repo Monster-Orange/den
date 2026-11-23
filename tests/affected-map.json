@@ -2011,6 +2011,7 @@
         "tests/unit/manifest/validate-manifest.test.ts",
         "tests/unit/mcp/approval-tools.test.ts",
         "tests/unit/plugins/plugin-command.test.ts",
+        "tests/unit/review/review-instructions-476.test.ts",
         "tests/unit/review/review-rules-798.test.ts",
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
