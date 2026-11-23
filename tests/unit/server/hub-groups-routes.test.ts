@@ -6,7 +6,8 @@
  * at most a copy in memory for hub.groups_cache_seconds.
  * - no Hub connected: state "none" (the page's quiet line, no group UI);
  * - 403 groups_not_in_plan: state "unavailable" (the same line);
- * - any other 403: state "refused" with Hub's words.
+ * - 403 install_refused (a guest): state "refused", none of Hub's words;
+ * - any other 403, a code-less one included: state "unreachable".
  * Invented names only.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";

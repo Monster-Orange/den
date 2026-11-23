@@ -188,9 +188,9 @@ describe("issue 750: fetchHubGroups against a stub Hub", () => {
     expect(await fetchHubGroups(hub.url, "t")).toEqual({ state: "refused" });
   });
 
-  it("a 403 with no code (an older Hub) reads as a guest too", async () => {
+  it("a 403 with no code (the token isn't an install's) shows no groups, never the guest line", async () => {
     const hub = await stubHub(() => [403, { error: "forbidden" }]);
-    expect(await fetchHubGroups(hub.url, "t")).toEqual({ state: "refused" });
+    expect(await fetchHubGroups(hub.url, "t")).toEqual({ state: "unreachable" });
   });
 
   it("a 403 with another code (not a guest, not the plan) shows no groups, never the guest line", async () => {

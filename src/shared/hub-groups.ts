@@ -16,9 +16,9 @@
  *     person { name, kind: "person", login }. Den matches its agents by
  *     agent_id.
  *   401: the token isn't taken. 403 with code "groups_not_in_plan": the
- *   company's plan has no groups. 403 with code "install_refused" (Hub
- *   0.2.29), or with no code (an older Hub): a guest (the token's person
- *   is a guest in the company). A 403 with any other code isn't about
+ *   company's plan has no groups. 403 with code "install_refused": a
+ *   guest (the token's person is a guest in the company). A 403 with any
+ *   other code, or none (a token that isn't an install's), isn't about
  *   groups: not shown. Den reads the `code`, never the error's words. No
  *   answer, or a 5xx: not shown. A Hub with no groups route (404 or 405)
  *   is "absent": Den shows nothing new, as with hub.groups off.
@@ -88,7 +88,7 @@ export type GroupsRead =
   | { state: "none" }
   /** 403 groups_not_in_plan: not in the company's Den Hub plan. */
   | { state: "unavailable" }
-  /** 403 install_refused (or no code): a guest in the company. */
+  /** 403 install_refused: a guest in the company. */
   | { state: "refused" }
   /** 401: the token isn't taken. */
   | { state: "rejected" }
@@ -281,10 +281,10 @@ export async function fetchHubGroups(
     if (e.kind === "forbidden") {
       const code = (e.body as Record<string, unknown> | undefined)?.code;
       if (code === GROUPS_NOT_IN_PLAN) return { state: "unavailable" };
-      // A guest's token (Hub 0.2.29 names it); an older Hub sends no code.
-      if (code === INSTALL_REFUSED || code === undefined)
-        return { state: "refused" };
-      // Another refusal (not about groups): no groups, never the guest line.
+      // A guest's token: Hub names it, and only it.
+      if (code === INSTALL_REFUSED) return { state: "refused" };
+      // Another refusal, or none named (a token that isn't an install's):
+      // no groups, never the guest line.
       return { state: "unreachable" };
     }
     // A Hub with no groups route yet: nothing to show, nothing wrong.
