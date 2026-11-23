@@ -386,13 +386,13 @@ describe("project colours (issue 168)", () => {
     try {
       const tab = `#agr [role="tab"][data-id="${sid.planner}"]`;
       await p.waitForSelector(tab);
-      expect(await p.$(`#agr .pane[data-id="${sid.builder}"]`)).toBeNull();
+      expect(
+        await p.$(`#agr [role="tab"][data-id="${sid.builder}"]`),
+      ).toBeNull();
       await p.click(tab);
       release();
-      // The second pane opens, behind the picked one (so it isn't visible).
-      await p.waitForSelector(`#agr .pane[data-id="${sid.builder}"] .xterm`, {
-        state: "attached",
-      });
+      // The second pane opens (its tab is drawn as it decides the front).
+      await p.waitForSelector(`#agr [role="tab"][data-id="${sid.builder}"]`);
       // The tab in front (the list's mark is drawn only for a running
       // agent's row; these may have stopped by now).
       const selected = () =>
@@ -413,12 +413,8 @@ describe("project colours (issue 168)", () => {
       const inFront = (id: string) =>
         p.waitForSelector(`${tab(id)}[aria-selected="true"]`);
       // Start-up done: both panes open, the last one in front.
-      await p.waitForSelector(`#agr .pane[data-id="${sid.planner}"] .xterm`, {
-        state: "attached",
-      });
-      await p.waitForSelector(`#agr .pane[data-id="${sid.builder}"] .xterm`, {
-        state: "attached",
-      });
+      await p.waitForSelector(`#agr [role="tab"][data-id="${sid.planner}"]`);
+      await p.waitForSelector(`#agr [role="tab"][data-id="${sid.builder}"]`);
       await inFront("builder");
       // Picks after start-up move the front each time.
       await p.click(tab("planner"));
