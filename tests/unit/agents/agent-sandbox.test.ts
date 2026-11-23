@@ -343,7 +343,8 @@ describe("macProfile and bwrapArgs (issue 936)", () => {
       (f) => (socks.has(real(f)) ? real(f) : f),
     );
     const masked = a.filter((_, i) => a[i - 1] === "/dev/null");
-    expect(masked).toEqual(["/run/docker.sock"]);
+    // Once, at /run (the machine may have other engines' sockets too).
+    expect(masked.filter((x) => x === "/run/docker.sock")).toHaveLength(1);
     expect(a).not.toContain("/var/run/docker.sock");
   });
 });
