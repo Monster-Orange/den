@@ -1044,6 +1044,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/coach-tab.js",
         "src/ui/server/public/server-agent-page.js",
         "src/ui/server/public/server-agent.html"
       ],
@@ -1053,6 +1054,7 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
+        "tests/unit/server/coach-tab.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1188,6 +1190,8 @@
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
+        "tests/unit/server/toast-hold.browser.test.ts",
+        "tests/unit/server/toast-tap-1216.browser.test.ts",
         "tests/unit/server/workspaces-page.browser.test.ts"
       ],
       "why": "settings.html"
@@ -1438,6 +1442,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/bring-in.browser.test.ts",
+        "tests/unit/server/coach-tab.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
@@ -1581,6 +1586,8 @@
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
+        "tests/unit/server/toast-hold.browser.test.ts",
+        "tests/unit/server/toast-tap-1216.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
@@ -1787,6 +1794,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/busy-popup.browser.test.ts",
         "tests/unit/server/busy-request-ledger.browser.test.ts",
+        "tests/unit/server/coach-tab.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/confirm-busy.browser.test.ts",
         "tests/unit/server/d17-claim.browser.test.ts",
@@ -1869,6 +1877,8 @@
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
+        "tests/unit/server/toast-hold.browser.test.ts",
+        "tests/unit/server/toast-tap-1216.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -2773,6 +2783,15 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/ui/server/coach-routes.ts",
+        "src/ui/server/public/coach-tab.js",
+        "src/ui/server/public/server-agent.html"
+      ],
+      "run": ["tests/unit/server/coach-tab.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/shared/config-error.ts", "src/shared/den-config.ts"],
       "run": ["tests/unit/server/config-invalid.integration.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -3652,6 +3671,11 @@
     {
       "when": ["src/ui/server/time-zone-pref.ts"],
       "run": ["tests/unit/server/time-zone.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/shell.js"],
+      "run": ["tests/unit/server/toast-hold.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

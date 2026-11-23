@@ -10006,6 +10006,13 @@
     // panel full width and its rows 44px).
     "@media (max-width: 480px) {",
     "  .den-bell-x, .den-bell-row .den-ib, .den-tbtn { min-height: 32px; min-width: 32px; } }",
+    // Issue 1216: a toast's actions (Undo, Retry, Copy) are hit by a 44 px
+    // area on a touch phone, centred on the button, as the kit's buttons
+    // are (button.css); the button's look and box never change.
+    "@media (pointer: coarse) and (max-width: 767px) {",
+    "  .den-tbtn { position: relative; }",
+    "  .den-tbtn::after { content: ''; position: absolute; left: 50%; top: 50%; width: 100%; height: 100%;",
+    "    min-width: var(--tap, 44px); min-height: var(--tap, 44px); transform: translate(-50%, -50%); } }",
     "#den-lock { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }",
     ".den-dot.run { background: var(--accent); animation: den-pulse 1.2s infinite; }",
     ".den-dot.pending { background: var(--faint); animation: den-pulse 1.2s infinite; }",
