@@ -3046,6 +3046,7 @@
     "gate.boxMemUnknown":
       "{box}: omitida, no se puede leer su memoria libre ({reason})",
     "gate.boxSkip": "no puede usar {box}: {reason}",
+    "gate.staysHere": "se queda en esta máquina: {why}",
     "gate.boxOff": "{box}: omitida, apagada",
     "gate.boxClosed": "{box}: omitida, fuera de su horario (abre a las {time})",
     "gate.yielded": "Dejó pasar a {to}",

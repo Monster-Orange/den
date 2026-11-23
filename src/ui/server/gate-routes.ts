@@ -728,8 +728,16 @@ export async function setTestBox(
 ): Promise<GateBox> {
   const set = store.setBox(box);
   audit(`test box ${set.name} set (${set.browser_slots} browser slots)${by}`);
-  // Issue 1199: checked at once (unless off or outside its window).
-  await store.checkBoxesNow([set.name]);
+  // Issue 1199: checked at once (unless off or outside its window). The
+  // box is saved either way: a check that can't be recorded is noted, and
+  // the next check records it.
+  try {
+    await store.checkBoxesNow([set.name]);
+  } catch (e) {
+    audit(
+      `test box ${set.name}: its first check couldn't be recorded (${String((e as Error).message).slice(0, 200)})`,
+    );
+  }
   return set;
 }
 

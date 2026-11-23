@@ -708,6 +708,14 @@ const READ_TOOLS: DenTool[] = [
             ? { priority: { reason } }
             : {}),
           ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
+          // Issue 1199: an agent's MCP slot is on this machine; with boxes
+          // set, it says why it doesn't go to one.
+          ...(kind === "browser" && store.boxes().length
+            ? {
+                hostWhy:
+                  "asked over MCP: an agent's slot is on this machine (gate run takes a box)",
+              }
+            : {}),
         });
       } catch (err) {
         if (err instanceof GatePriorityRefused)

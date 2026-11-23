@@ -192,3 +192,27 @@ describe("issue 1199: a box is checked when it is added or changed", () => {
     expect(readBoxStates(w.dir).m1?.state).toBe("open");
   });
 });
+
+describe("issue 1199: a failed check never undoes a saved box", () => {
+  it("setTestBox returns the saved box even when recording its check throws", async () => {
+    const w = world();
+    const audit: string[] = [];
+    w.store.checkBoxesNow = () => Promise.reject(new Error("disk full"));
+    const b = await setTestBox(
+      w.store,
+      {
+        name: "m1",
+        ssh: "ci@m1.test",
+        playwright: "ws://m1.test:3000",
+        playwright_version: "1.48.0",
+        browser_slots: 1,
+      } as never,
+      (x) => audit.push(x),
+    );
+    expect(b.name).toBe("m1");
+    expect(audit.at(-1)).toMatch(
+      /m1: its first check couldn't be recorded \(disk full\)/,
+    );
+    expect(w.store.boxes().map((x) => x.name)).toEqual(["m1"]);
+  });
+});

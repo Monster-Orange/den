@@ -2944,6 +2944,7 @@
     "gate.boxMemUnknown":
       "{box}: 空きメモリを読めないため飛ばします ({reason})",
     "gate.boxSkip": "{box} は使えません: {reason}",
+    "gate.staysHere": "このマシンで実行: {why}",
     "gate.boxOff": "{box}: オフのため飛ばします",
     "gate.boxClosed": "{box}: 時間帯外のため飛ばします ({time} から)",
     "gate.yielded": "{to} に先を譲りました",

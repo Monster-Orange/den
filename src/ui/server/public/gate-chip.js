@@ -76,7 +76,11 @@ export function startGateChip(o) {
           ? " · " + t("gate.anyBox")
           : s.where
             ? " · " + t("gate.onBox", { box: s.where })
-            : "");
+            : "") +
+      // Issue 1199: a browser run kept on this machine, and why.
+      (s.hostWhy && !s.box
+        ? " · " + t("gate.staysHere", { why: s.hostWhy })
+        : "");
     // Issue 625 clause 11: a box this run can't use, and why.
     const skips = (s.skips || [])
       .map((x) => t("gate.boxSkip", { box: x.box, reason: x.reason }))

@@ -3937,6 +3937,7 @@
     "gate.boxMemUnknown":
       "{box}: skipped, its free memory can't be read ({reason})",
     "gate.boxSkip": "can't use {box}: {reason}",
+    "gate.staysHere": "stays here: {why}",
     "gate.boxOff": "{box}: skipped, turned off",
     "gate.boxClosed": "{box}: skipped, outside its window (opens {time})",
     "gate.yielded": "Let {to} go ahead",

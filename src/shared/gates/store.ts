@@ -1117,7 +1117,11 @@ export class GateStore {
    * the lock.
    */
   private afterAsk(e: GateEntry): GateEntry {
-    this.record(e, { event: "asked" });
+    // Issue 1199: a browser run that stays here says why, from the ask on.
+    this.record(e, {
+      event: "asked",
+      ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
+    });
     // Issue 714: granted as it asks, an MCP slot is claimed at once.
     const all = this.settle(e.id);
     const now = all.find((x) => x.id === e.id) ?? e;

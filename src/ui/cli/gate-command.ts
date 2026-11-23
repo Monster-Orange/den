@@ -766,6 +766,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
+  // Issue 1199: with boxes set, a browser run kept here always says why.
+  if (kind === "browser" && !hostWhy && d.store.boxes().length) {
+    if (where === "local") hostWhy = "asked for this machine (--box local)";
+    else if (
+      where === undefined &&
+      d.store.settings().browserBoxDefault === "local"
+    )
+      hostWhy = "browser_box_default local: a run takes a box only with --box";
+  }
   const verdict = browserSlotCheck({
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
