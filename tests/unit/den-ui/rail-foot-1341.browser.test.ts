@@ -200,8 +200,9 @@ const arrowToLast = (p: Page) =>
           .filter((el) => el.getClientRects().length > 0)
           .map((el) => el.getBoundingClientRect().top),
       );
-    const start =
-      rail.querySelector<HTMLElement>('[aria-current="page"]') ?? items[0];
+    // Where Tab lands: the rail's roving tab stop.
+    const start = rail.querySelector<HTMLElement>('[tabindex="0"]');
+    if (!start) throw new Error("the rail has no tab stop (tabindex=0)");
     start.focus();
     const seen: { nav: string; bottom: number; footTop: number }[] = [];
     for (let n = 0; n < 200; n++) {
