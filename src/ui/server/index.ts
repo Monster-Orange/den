@@ -418,6 +418,7 @@ import {
   writeFixtureMadeBy,
 } from "../../shared/fixture-setup-secret.js";
 import {
+  AGENT_VIEW_LINK_NOTE,
   AGENT_VIEW_LINK_PARAM,
   AGENT_VIEW_LINK_TTL_MS,
   AgentViewCodes,
@@ -3844,6 +3845,9 @@ async function handleAgentViewRequest(
     expiresAt: new Date(expiresAt).toISOString(),
     linkSeconds: AGENT_VIEW_LINK_TTL_MS / 1000,
     minutes: w.agentViewMinutes,
+    // Issue 1243: localhost on purpose (it opens on loopback only, as the
+    // agent). The agent keeps it; a person gets the page on web.url.
+    note: AGENT_VIEW_LINK_NOTE,
   });
 }
 

@@ -34,6 +34,12 @@ export const AGENT_VIEW_LINK_PARAM = "agent_view";
 export const AGENT_VIEW_VIA = "agent-view";
 /** How long the one-time link waits to be opened. */
 export const AGENT_VIEW_LINK_TTL_MS = 60_000;
+/**
+ * Issue 1243: said beside the link. It is localhost on purpose (it opens on
+ * loopback only, as the agent), so it is never handed to a person.
+ */
+export const AGENT_VIEW_LINK_NOTE =
+  "This link is for your own browser on this machine, and opens only here, as you. Never give it to a person: to show a person a page, give them its address on this Den's web.url.";
 /** The most unopened links kept at once (the oldest go first). */
 const MAX_PENDING = 64;
 
