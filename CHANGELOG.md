@@ -61,6 +61,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Sign-in: "This device is signed in" shows once after a sign-in, even when another part of the page checks the session first. (issue 1299)
 - Sessions: a failed read of the sessions file never costs a session. Writes wait for one lock and answer 503 "try again" while a read fails. A damaged file is moved aside and recorded in the activity trail. New setting `web.sessions_lock_wait_ms` (default 2000). (issue 1299)
 - Agents: a missed lookup of an agent's caller tries again under load, and several processes on one connection count only when all are inside the agent's session. (issue 1131)
 - Safer saves: every state file is written whole, and a check keeps it so. (issue 786)
