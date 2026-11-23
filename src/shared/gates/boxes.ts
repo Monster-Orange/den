@@ -54,6 +54,7 @@ import {
 import {
   loadHold,
   memoryHold,
+  swapHold,
   localRoom,
   queueOrder,
   type GateEntry,
@@ -534,6 +535,7 @@ export function assign(
         | "cpuHoldLoad"
         | "loadHoldPerCore"
         | "memoryFreeMinPercent"
+        | "swapHoldGb"
       >
     >,
   now: number,
@@ -542,6 +544,8 @@ export function assign(
   cores?: number,
   /** Issue 1274: this machine's free memory, percent. */
   freeMem?: number,
+  /** Issue 1274: swap in use here, GB. */
+  swapGb?: number,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);
@@ -554,7 +558,8 @@ export function assign(
   const out: { id: string; box?: string }[] = [];
   const cap = (n: string) => boxes.find((b) => b.name === n);
   // Issue 1274: low memory here: new runs here wait; boxes still take theirs.
-  const memHeld = !!memoryHold(entries, s, freeMem);
+  const memHeld =
+    !!memoryHold(entries, s, freeMem) || !!swapHold(entries, s, swapGb);
   const free = (place: string, w: GateEntry): boolean => {
     if (reserved.has(key(place, w.kind))) return false;
     if (place === "local") return !memHeld && room.fits(w);

@@ -3192,8 +3192,21 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.memory_free_min_percent"],
     control: { type: "number", min: 0, max: 90, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.memoryFreeMinPercent ?? 10,
-    write: (v, ctx) =>
-      ctx.post({ gate_slots: { memory_free_min_percent: v } }),
+    write: (v, ctx) => ctx.post({ gate_slots: { memory_free_min_percent: v } }),
+  },
+  {
+    // Issue 1274: new runs here wait while swap in use is over this.
+    id: "server.gate_swap_hold_gb",
+    category: "server",
+    label: "Hold new runs here over this much swap in use (GB)",
+    description:
+      "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.swap_hold_gb"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.swapHoldGb ?? 8,
+    write: (v, ctx) => ctx.post({ gate_slots: { swap_hold_gb: v } }),
   },
   {
     // Issue 1274: doctor warns over this share of RAM promised to VMs.

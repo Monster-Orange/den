@@ -27,6 +27,7 @@ scrubSecretEnv();
 process.env.DEN_GATE_LOAD5 = "0";
 // Issue 1274: the same for free memory: every test reads 100%.
 process.env.DEN_GATE_FREE_MEM = "100";
+process.env.DEN_GATE_SWAP_GB = "0";
 // ...and doctor never reads this machine's VMs (doctor-vms.ts).
 process.env.DEN_GATE_VMS = "0";
 

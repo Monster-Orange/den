@@ -99,6 +99,7 @@ describe("gate-slot routes", () => {
       cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
       loadHoldPerCore: 3,
       memoryFreeMinPercent: 10,
+      swapHoldGb: 8,
       vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,

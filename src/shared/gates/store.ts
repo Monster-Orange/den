@@ -35,6 +35,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { cachedReadVms, type VmReading } from "./vms.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
@@ -121,6 +122,8 @@ export type GateSettingsPatch = {
   load_hold_per_core?: number | null;
   /** Issue 1274: new runs here wait under this free memory, % (0: off). */
   memory_free_min_percent?: number | null;
+  /** Issue 1274: new runs here wait over this much swap in use, GB (0: off). */
+  swap_hold_gb?: number | null;
   /** Issue 1274: doctor warns over this share of RAM promised to VMs. */
   vm_memory_share?: number | null;
   overrun_margin_minutes?: number | null;
@@ -196,6 +199,8 @@ export const GATE_LIMITS: Record<
   load_hold_per_core: { min: 0, max: 64, int: false },
   // Issue 1274: percent of memory free; 0 turns the hold off.
   memory_free_min_percent: { min: 0, max: 90, int: false },
+  // Issue 1274: GB of swap in use; 0 turns the hold off.
+  swap_hold_gb: { min: 0, max: 1024, int: false },
   // Issue 1274: a share of RAM (1: all of it); above 1 allows overcommit.
   vm_memory_share: { min: 0.1, max: 4, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
@@ -425,6 +430,13 @@ export interface GateStoreOpts {
   cores?: () => number;
   /** Issue 1274: free memory, percent (default realFreeMemory). */
   free?: () => number;
+  /** Issue 1274: swap in use, GB (default realSwapUsedGb). */
+  swap?: () => number;
+  /**
+   * Issue 1274: what VMs here reserve (default: read every 30 s; null with
+   * DEN_GATE_VMS=0, as the test setup sets).
+   */
+  vms?: () => VmReading | null;
 }
 
 /**
@@ -472,6 +484,59 @@ export function realFreeMemory(env: NodeJS.ProcessEnv = process.env): number {
 }
 
 let freeCache: { at: number; value: number } | undefined;
+
+const gb1 = (bytes: number) => Math.round((bytes / 1024 ** 3) * 10) / 10;
+
+/** Issue 1274: macOS `sysctl vm.swapusage`'s used, GB (NaN: unread). */
+export function swapGbFromSysctl(text: string): number {
+  const m = /used\s*=\s*([\d.]+)([KMG])/.exec(text);
+  if (!m) return NaN;
+  const mult = { K: 1024, M: 1024 ** 2, G: 1024 ** 3 }[m[2] as "K" | "M" | "G"];
+  return gb1(Number(m[1]) * mult);
+}
+
+/** Issue 1274: Linux swap in use, GB, from /proc/meminfo (NaN: unread). */
+export function swapGbFromMeminfo(text: string): number {
+  const kb = (k: string) => {
+    const m = new RegExp(`^${k}:\\s+(\\d+)\\s*kB`, "m").exec(text);
+    return m ? Number(m[1]) : NaN;
+  };
+  const total = kb("SwapTotal");
+  const free = kb("SwapFree");
+  return Number.isFinite(total) && Number.isFinite(free)
+    ? gb1((total - free) * 1024)
+    : NaN;
+}
+
+let swapCache: { at: number; value: number } | undefined;
+
+/**
+ * Issue 1274: swap in use here, GB. DEN_GATE_SWAP_GB fixes it (the test
+ * setup sets 0). Read at most every 2 s. NaN: unread (no hold).
+ */
+export function realSwapUsedGb(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_SWAP_GB ?? "").trim() || NaN);
+  if (Number.isFinite(fixed)) return fixed;
+  const now = Date.now();
+  if (swapCache && now - swapCache.at < 2_000) return swapCache.value;
+  let value = NaN;
+  try {
+    if (process.platform === "darwin")
+      value = swapGbFromSysctl(
+        execFileSync("/usr/sbin/sysctl", ["-n", "vm.swapusage"], {
+          encoding: "utf-8",
+          timeout: 2_000,
+          stdio: ["ignore", "pipe", "ignore"],
+        }),
+      );
+    else if (process.platform === "linux")
+      value = swapGbFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
+  } catch {
+    value = NaN;
+  }
+  swapCache = { at: now, value };
+  return value;
+}
 
 function readFreeMemory(): number {
   try {
@@ -557,6 +622,8 @@ export class GateStore {
   private readonly readLoad: () => number;
   private readonly readCores: () => number;
   private readonly readFree: () => number;
+  private readonly readSwap: () => number;
+  private readonly readVmsFn: () => VmReading | null;
   readonly platform: NodeJS.Platform;
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
@@ -571,6 +638,32 @@ export class GateStore {
     this.readLoad = o.load ?? (() => realLoad());
     this.readCores = o.cores ?? realCores;
     this.readFree = o.free ?? (() => realFreeMemory());
+    this.readSwap = o.swap ?? (() => realSwapUsedGb());
+    this.readVmsFn =
+      o.vms ??
+      (() =>
+        process.env.DEN_GATE_VMS === "0"
+          ? null
+          : cachedReadVms(this.settings().vmMemoryShare));
+  }
+
+  /** Issue 1274: swap in use here now, GB (NaN: unread). */
+  swapUsedGb(): number {
+    try {
+      const n = this.readSwap();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
+  }
+
+  /** Issue 1274: what VMs here reserve; null: not read. Never throws. */
+  vms(): VmReading | null {
+    try {
+      return this.readVmsFn();
+    } catch {
+      return null;
+    }
   }
 
   /** Issue 1274: this machine's free memory now, percent (NaN: unread). */
@@ -653,6 +746,7 @@ export class GateStore {
           GATE_DEFAULTS.memoryFreeMinPercent,
         ),
         vmMemoryShare: num("vm_memory_share", GATE_DEFAULTS.vmMemoryShare),
+        swapHoldGb: num("swap_hold_gb", GATE_DEFAULTS.swapHoldGb),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -1107,6 +1201,7 @@ export class GateStore {
       this.load(),
       this.cores(),
       this.freeMemory(),
+      this.swapUsedGb(),
     )) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;

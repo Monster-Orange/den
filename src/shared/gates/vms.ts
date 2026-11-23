@@ -135,3 +135,14 @@ export function readVms(
   }
   return { ramBytes: o.ramBytes ?? os.totalmem(), share, vms, notCounted };
 }
+
+let vmCache: { at: number; share: number; value: VmReading } | undefined;
+
+/** readVms at most every 30 s (the Gate page asks every few seconds). */
+export function cachedReadVms(share: number, now = Date.now()): VmReading {
+  if (vmCache && vmCache.share === share && now - vmCache.at < 30_000)
+    return vmCache.value;
+  const value = readVms(share);
+  vmCache = { at: now, share, value };
+  return value;
+}
