@@ -99,7 +99,7 @@ describe("button.css", () => {
     // and issue 673: the second product's shipped button lays its words
     // and icon out in a row, 6px apart, as Den's error page did.
     expect(rule(".den-btn")).toBe(
-      "border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;",
+      "border: 1px var(--edge-style, solid) var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;",
     );
     // A row of its own must not undo [hidden].
     expect(rule(".den-btn[hidden]")).toBe("display: none;");
@@ -115,7 +115,7 @@ describe("button.css", () => {
       "border-color: var(--border-strong);",
     );
     expect(rule(".den-btn.primary")).toBe(
-      "background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent);",
+      "background: var(--primary-bg, var(--accent-fill)); border-color: var(--primary-border, var(--accent-fill)); color: var(--primary-text, var(--on-accent));",
     );
     expect(rule(".den-btn.sm")).toBe("padding: 2px 9px; font-size: 12.5px;");
     expect(rule('.den-btn:disabled, a.den-btn[aria-disabled="true"]')).toBe(

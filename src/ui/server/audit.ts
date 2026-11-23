@@ -93,8 +93,8 @@ const RING_MAX = 200;
 const ring: AuditEntry[] = [];
 let sink: Sink | null = null;
 
-/** The persisted ring's file name, in the state dir. */
-export const AUDIT_FILE = "audit.jsonl";
+/** The persisted ring's file name, in the state dir (shared/audit-file.ts). */
+export { AUDIT_FILE } from "../../shared/audit-file.js";
 let file: string | null = null;
 let fileLines = 0;
 

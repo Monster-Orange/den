@@ -44,6 +44,7 @@
  *   reports: { screenshot_keep_days?, screenshot_max_mb?,
  *              hub_screenshot_max_mb?, hub_timeout_seconds? }
  *                                     user.yml reports.* (issue 403)
+ *   server_log: { max_mb? }          user.yml server_log.* (issue 707)
  *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
  *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
@@ -93,6 +94,7 @@ import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
+import { SERVER_LOG_LIMITS } from "./server-log-file.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
@@ -118,6 +120,8 @@ export const PERSON_ONLY_SETTINGS = [
   "agents_list",
   // Issue 403: how long a filed report's screenshot is kept here.
   "reports",
+  // Issue 707: how large the server's log file on disk may grow.
+  "server_log",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
   // Issue 1129: how many agents restart at a time, and how far apart.
@@ -279,6 +283,16 @@ const REPORTS: Record<string, Limit> = {
     key: "hub_timeout_seconds",
     min: SHOT_LIMITS.hub_timeout_seconds.min,
     max: SHOT_LIMITS.hub_timeout_seconds.max,
+    int: false,
+  },
+};
+
+/** Issue 707: the server's warning lines on disk, capped (MB). */
+const SERVER_LOG: Record<string, Limit> = {
+  max_mb: {
+    key: "max_mb",
+    min: SERVER_LOG_LIMITS.max_mb.min,
+    max: SERVER_LOG_LIMITS.max_mb.max,
     int: false,
   },
 };
@@ -769,6 +783,14 @@ export function patchCliRows(
       apply,
     ) ??
     patchBlock(user, "reports", "reports", REPORTS, body.reports, apply) ??
+    patchBlock(
+      user,
+      "server_log",
+      "server_log",
+      SERVER_LOG,
+      body.server_log,
+      apply,
+    ) ??
     patchBlock(
       user,
       "agents_shell",
