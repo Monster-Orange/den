@@ -570,36 +570,29 @@
       .agstg[open] > summary::before {
         content: "▾";
       }
-      /* Issue 1086: Remove all stopped (N), on the group's own header line,
-         in the kit's button text. It sits beside the summary, never in it
-         (a summary is itself a button): the row around the group grids it
-         onto the summary's line. The summary stays the group's first
-         child, so it still opens and closes it. */
-      .agl .agstw {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-      }
-      .agl .agstw > details {
-        grid-column: 1 / -1;
-        grid-row: 1;
-        min-width: 0;
+      /* Issue 1086: Remove all stopped (N), at the top of the group's own
+         header, in the kit's button text. It sits beside the summary,
+         never in it (a summary is itself a button), on its own line just
+         above it and to the right, so it never covers the summary's click
+         at any width. The summary stays the group's first child, so it
+         still opens and closes it. The header's rule moves to the row. */
+      .agl .agstw:has(> .den-btn) {
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid var(--border);
+        margin-top: 4px;
       }
       .agl .agstw > .den-btn {
-        grid-column: 2;
-        grid-row: 1;
-        align-self: start;
-        position: relative;
-        z-index: 1;
-        /* On the summary's line: its margin-top (4px) and padding-top. */
-        margin: 8px 12px 0 8px;
+        align-self: flex-end;
+        margin: 8px 12px 0;
         white-space: nowrap;
-      }
-      /* The name never runs under the button. */
-      .agl .agstw:has(> .den-btn) .agstg > summary > span {
-        max-width: 45%;
+        max-width: calc(100% - 24px);
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
+      }
+      .agl .agstw:has(> .den-btn) .agstg > summary {
+        border-top: 0;
+        margin-top: 0;
       }
       .agstg > summary:focus-visible {
         outline: 2px solid var(--accent);

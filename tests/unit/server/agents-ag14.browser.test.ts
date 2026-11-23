@@ -999,6 +999,12 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     expect(
       ((await sum.textContent()) ?? "").match(/\(\d+\)/g) ?? [],
     ).toHaveLength(1);
+    // Its own line above the summary: it never covers the summary's click.
+    const bb = await p
+      .locator('#agl [data-stopped-row] > [data-act="remove-stopped"]')
+      .boundingBox();
+    const sb = await sum.boundingBox();
+    expect(bb!.y + bb!.height).toBeLessThanOrEqual(sb!.y + 0.5);
     const isOpen = () => group.evaluate((d) => (d as HTMLDetailsElement).open);
     const was = await isOpen();
     await sum.click();

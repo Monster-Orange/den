@@ -1339,7 +1339,7 @@ function stoppedGroupHtml(rows) {
   // Issue 1086: Remove all stopped (N), on this list's own header: stopped
   // agents only (an exited shell is the Terminals page's), shown only when
   // one is stopped. Beside the summary, never in it (a summary is itself a
-  // button): a row around the group holds it, drawn on the summary's line.
+  // button): a row around the group holds it, on its own line just above.
   const agents = rows.filter(isStopped).length;
   const rmAll = agents
     ? `<button type="button" class="den-btn sm" data-act="remove-stopped" data-n="${agents}">${esc(t("ag.rmAll", { n: agents }))}</button>`
