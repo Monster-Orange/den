@@ -161,7 +161,10 @@ describe("SRV-P1: on Allow", () => {
     });
     expect(c.ok).toBe(true);
     if (!c.ok) return;
-    const out = await createAgent(d, c.args);
+    const out = await createAgent(
+      d,
+      c.args as unknown as Record<string, unknown>,
+    );
     expect(out).toMatchObject({
       ok: true,
       project: "north",
@@ -177,7 +180,10 @@ describe("SRV-P1: on Allow", () => {
 describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
   it("agent_create needs the person when the id it would get has its sandbox off", async () => {
     const r = await repoRig();
-    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    r.config.agents = {
+      ...r.config.agents,
+      planner: { grants: [], sandbox: false },
+    };
     const c = checkAgentCreate(resolveAgentsDeps(r.deps), {
       project: "north",
       persona: "planner",
@@ -193,7 +199,10 @@ describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
 
   it("so does a name whose id has it off, and agents.sandbox off for the machine", async () => {
     const r = await repoRig();
-    r.config.agents = { ...r.config.agents, ana: { sandbox: false } };
+    r.config.agents = {
+      ...r.config.agents,
+      ana: { grants: [], sandbox: false },
+    };
     const named = checkAgentCreate(resolveAgentsDeps(r.deps), {
       project: "north",
       persona: "reviewer",
@@ -223,7 +232,10 @@ describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
       startedAt: "2026-11-23T00:00:00.000Z",
       stoppedAt: "2026-11-23T00:01:00.000Z",
     } as never);
-    r.config.agents = { ...r.config.agents, "ana-2": { sandbox: false } };
+    r.config.agents = {
+      ...r.config.agents,
+      "ana-2": { grants: [], sandbox: false },
+    };
     const c = checkAgentCreate(resolveAgentsDeps(r.deps), {
       project: "north",
       persona: "reviewer",
@@ -245,7 +257,10 @@ describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
     });
     expect(c.ok && c.personOnly).toBeFalsy();
     expect(c.ok && c.args.sandboxOff).toBeUndefined();
-    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    r.config.agents = {
+      ...r.config.agents,
+      planner: { grants: [], sandbox: false },
+    };
     r.config.sandboxRequired = true;
     const req = checkAgentCreate(resolveAgentsDeps(r.deps), {
       project: "north",
@@ -261,7 +276,10 @@ describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
       persona: "planner",
     });
     if (!c.ok) throw new Error(c.error);
-    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    r.config.agents = {
+      ...r.config.agents,
+      planner: { grants: [], sandbox: false },
+    };
     expect(await createAgent(resolveAgentsDeps(r.deps), { ...c.args })).toEqual(
       {
         ok: false,
@@ -274,7 +292,10 @@ describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
     const r = await repoRig();
     const d = resolveAgentsDeps(r.deps);
     expect(importSandboxOff(d, "planner")).toBeNull();
-    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    r.config.agents = {
+      ...r.config.agents,
+      planner: { grants: [], sandbox: false },
+    };
     expect(importSandboxOff(d, "planner")).toEqual([
       "planner starts outside the sandbox: agents.planner.sandbox is off in config/local/user.yml.",
       { key: "ap.det.agent.sandboxOff", vars: { id: "planner" } },
