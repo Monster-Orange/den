@@ -40,45 +40,6 @@ const SESSION_CONTEXT = "den-session-v1:";
 export const WEB_SESSIONS_FILE = "web-sessions.json";
 
 /**
- * Issue 1300: held while a process other than the server changes the
- * sessions file (`web logout` with no server running). It holds the
- * holder's pid. A lock whose pid no longer runs is taken over.
- */
-export const WEB_SESSIONS_LOCK = "web-sessions.lock";
-
-/** Issue 1300: another running process holds the sessions lock. */
-export class WebSessionsBusy extends Error {
-  constructor(readonly holder: number) {
-    super(
-      `the sessions file is in use by another process${holder ? ` (pid ${holder})` : ""}; nothing was changed. Try again.`,
-    );
-    this.name = "WebSessionsBusy";
-  }
-}
-
-/** Issue 1300: a lock with no pid in it this old was left by a crash. */
-const LOCK_UNREAD_STALE_MS = 5_000;
-
-function lockOlderThan(file: string, ms: number): boolean {
-  try {
-    return Date.now() - fs.statSync(file).mtimeMs > ms;
-  } catch {
-    return true;
-  }
-}
-
-/** Whether `pid` runs (EPERM: it runs, as another user). */
-function pidRuns(pid: number): boolean {
-  if (!(Number.isInteger(pid) && pid > 0)) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-/**
  * Issue 1300: the one session whose key starts with `prefix` (4 hex at
  * least). Throws when the prefix isn't one, or none or several match.
  */
@@ -1653,7 +1614,9 @@ export class WebSessionStore {
    * lock, re-reads the file and ends only the sessions `choose` names
    * from what is there now; every other session, one made a moment ago
    * included, is written back as it is. Throws WebSessionsBusy, changing
-   * nothing, when another running process holds the lock.
+   * nothing, when another running process keeps the lock past
+   * web.sessions_lock_wait_ms (SessionStoreUnreadable when the file can't
+   * be read).
    */
   endLocked(
     choose: (all: SessionView[]) => string[],
@@ -1664,12 +1627,16 @@ export class WebSessionStore {
      */
     first?: () => void,
   ): SessionView[] {
-    const release = this.lock();
+    // Waits up to web.sessions_lock_wait_ms for a running holder (the
+    // server's write), then WebSessionsBusy: nothing changed.
+    const release = this.lock(this.waitMs());
     try {
       first?.();
       // Never the copy read before the lock.
       this.cache = null;
       const data = structuredClone(this.load());
+      if (this.unreadable !== null)
+        throw new SessionStoreUnreadable(this.unreadable);
       const all = Object.entries(data.sessions).map(([key, r]) => ({
         key,
         ...r,
@@ -1683,60 +1650,6 @@ export class WebSessionStore {
       return ended;
     } finally {
       release();
-    }
-  }
-
-  /** Issue 1300: takes the sessions lock (O_EXCL); returns its release. */
-  private lock(): () => void {
-    const dir = this.stateDir();
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = path.join(dir, WEB_SESSIONS_LOCK);
-    for (let tries = 0; ; tries++) {
-      try {
-        const fd = fs.openSync(file, "wx", 0o600);
-        try {
-          fs.writeSync(fd, `${process.pid}\n`);
-        } finally {
-          fs.closeSync(fd);
-        }
-        return () => {
-          try {
-            if (Number(fs.readFileSync(file, "utf-8").trim()) === process.pid)
-              fs.unlinkSync(file);
-          } catch {
-            /* already gone */
-          }
-        };
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      }
-      let holder = 0;
-      try {
-        holder = Number(fs.readFileSync(file, "utf-8").trim());
-      } catch {
-        /* gone meanwhile: try again */
-      }
-      // A holder that runs (not this process) keeps it; one try at a
-      // takeover of a lock its holder left behind.
-      // A running holder keeps it. This process is one too: it never
-      // takes a lock it holds over (endLocked never nests).
-      if (holder && pidRuns(holder)) throw new WebSessionsBusy(holder);
-      // No pid yet: a holder between making it and writing it, unless it
-      // is older than that takes (one that died there).
-      if (!holder && !lockOlderThan(file, LOCK_UNREAD_STALE_MS))
-        throw new WebSessionsBusy(0);
-      if (tries >= 1) throw new WebSessionsBusy(holder);
-      // Remove only the lock judged left behind: one another process took
-      // over meanwhile (a new pid in it) is left alone. Two takeovers at
-      // the very same moment remain possible in principle; the window is
-      // the read-then-unlink here, and a second CLI logout is the only
-      // other taker until the server takes this lock too (PR 1301).
-      try {
-        if (Number(fs.readFileSync(file, "utf-8").trim()) === holder)
-          fs.unlinkSync(file);
-      } catch {
-        /* gone meanwhile */
-      }
     }
   }
 }

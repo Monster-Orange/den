@@ -21,6 +21,7 @@ import {
   it,
   jest,
 } from "@jest/globals";
+import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -95,6 +96,7 @@ const io = () => {
       err: (x: string) => (o.err += x),
       stateDir: tmp,
       callTimeoutMs: 300,
+      lockWaitMs: 100,
     },
   };
 };
@@ -153,7 +155,7 @@ describe("no server: the state files, under the lock", () => {
     expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
       1,
     );
-    expect(a.o.err).toMatch(/sessions file is in use/);
+    expect(a.o.err).toMatch(/sign-ins file is in use/);
     expect(a.o.err).toMatch(/nothing was changed/i);
     expect(keys()).toEqual([one]);
     // Its lock is left alone.
@@ -255,5 +257,66 @@ describe("refused on the port, but is a Den server running? (its own record)", (
       0,
     );
     expect(keys()).toEqual([]);
+  });
+});
+
+describe("a server write holding the lock (web.sessions_lock_wait_ms)", () => {
+  const kids: ChildProcess[] = [];
+  afterEach(() => {
+    for (const k of kids.splice(0)) if (k.exitCode === null) k.kill("SIGKILL");
+  });
+
+  /** Another process takes the lock as the server's write does, for `ms`. */
+  async function holder(ms: number): Promise<void> {
+    const lock = path.join(tmp, WEB_SESSIONS_LOCK);
+    const k = spawn(
+      process.execPath,
+      [
+        "-e",
+        `const fs=require("fs");fs.writeFileSync(${JSON.stringify(lock)},process.pid+"\\n",{flag:"wx"});` +
+          `setTimeout(()=>{fs.unlinkSync(${JSON.stringify(lock)});setInterval(()=>{},1000)},${ms});`,
+      ],
+      { stdio: "ignore" },
+    );
+    kids.push(k);
+    const t0 = Date.now();
+    while (!fs.existsSync(lock)) {
+      if (Date.now() - t0 > 5_000)
+        throw new Error("the holder never took the lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  it("logout waits for it, then ends what it was asked to", async () => {
+    const one = store().create({ userAgent: "one" }).session.key;
+    const two = store().create({ userAgent: "two" }).session.key;
+    await holder(400);
+    const a = { ...io(), wait: 3_000 };
+    const t0 = Date.now();
+    expect(
+      await cmdWebLogout(
+        [one.slice(0, 8), "--port", String(await freePort())],
+        {
+          ...a.io,
+          lockWaitMs: a.wait,
+        },
+      ),
+    ).toBe(0);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(250);
+    expect(keys()).toEqual([two]);
+  });
+
+  it("held past the wait: says so and changes nothing", async () => {
+    const one = store().create({ userAgent: "one" }).session.key;
+    await holder(5_000);
+    const a = io();
+    expect(
+      await cmdWebLogout(["--port", String(await freePort())], {
+        ...a.io,
+        lockWaitMs: 200,
+      }),
+    ).toBe(1);
+    expect(a.o.err).toMatch(/sign-ins file is in use/);
+    expect(keys()).toEqual([one]);
   });
 });

@@ -1959,6 +1959,8 @@ interface CliIo {
   person?: PersonCheck;
   /** Issue 1300: how long a call waits for the server (default 10 s). */
   callTimeoutMs?: number;
+  /** Issue 1300: tests' web.sessions_lock_wait_ms (default: the setting). */
+  lockWaitMs?: number;
 }
 
 /** Sign-in: personHereRefusal's parts, and whether output is a terminal. */
@@ -2619,10 +2621,16 @@ function serverNotRunning(stateDir: string, port: number): void {
     );
 }
 
-function offlineStore(stateDir: string): WebSessionStore {
+function offlineStore(stateDir: string, lockWaitMs?: number): WebSessionStore {
   return new WebSessionStore({
     stateDir: () => stateDir,
     secret: () => readWebSecret(stateDir),
+    // Issue 1300: how long it waits for a server write holding the lock
+    // (web.sessions_lock_wait_ms; the store falls back to its default
+    // when the config can't be read).
+    lockWaitMs: () =>
+      lockWaitMs ??
+      readWebAuthConfig(getDistRoot(), product().configFile).sessionsLockWaitMs,
     // Issue 1300: ends made here reach the activity trail too, with why.
     onEnd: (ended, why) => {
       for (const s of ended) appendAuditRow(stateDir, sessionEndRow(s, why));
@@ -2793,7 +2801,7 @@ export async function cmdWebLogout(
   } else {
     // Nothing listens: the state files themselves (the same OS user's),
     // under the sessions lock, ending only what it means to (issue 1300).
-    const store = offlineStore(stateDir);
+    const store = offlineStore(stateDir, io.lockWaitMs);
     // Refused on the address this shell dials doesn't prove no server: one
     // started with DEN_BIND_HOST listens elsewhere. Its own record decides.
     const noServer = () => serverNotRunning(stateDir, port);
