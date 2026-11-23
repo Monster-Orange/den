@@ -71,7 +71,13 @@ export type PinMode = "push" | "pr";
 
 export type PinStep =
   /** Committed (now or before) and pushed. */
-  | { did: "pushed"; version: string; sha: string }
+  | {
+      did: "pushed";
+      version: string;
+      sha: string;
+      /** Issue 1202: the checkout is behind and couldn't catch up. */
+      why?: string;
+    }
   | {
       did: "push_failed";
       version: string;
@@ -451,7 +457,7 @@ export async function commitPin(
         at: at(),
         ...(why ? { why } : {}),
       });
-      return { did: "pushed", version, sha };
+      return { did: "pushed", version, sha, ...(why ? { why } : {}) };
     }
     // Issue 1189: a branch rule said no: the pin goes to a pull request.
     if (ruleRejected(p.out)) {
@@ -568,6 +574,9 @@ async function catchUp(git: GitRun, sha: string): Promise<string | undefined> {
     const ff = await git(["merge", "--ff-only", "--quiet", sha]);
     if (ff.code === 0) return undefined;
   }
+  // Back as they were: the pin's content in the working tree, the index at
+  // HEAD's. A pin file the person had staged is unstaged here (its content
+  // is unchanged, and it is in the pushed pin).
   await git(["checkout", "-q", sha, "--", ...PIN_FILES]);
   await git(["reset", "-q", "--", ...PIN_FILES]);
   return later;
@@ -804,6 +813,13 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
   switch (step.did) {
     case "pushed": {
       const sha = step.sha.slice(0, 12);
+      // Issue 1202: pushed, but the checkout is behind and couldn't catch up.
+      if (step.why)
+        return item(
+          `${t} updated to ${v}: its pin is pushed (${sha}), but the checkout is behind and has local changes, so pull to get the pin`,
+          "bell.m.pinPushedBehind",
+          { sha },
+        );
       return item(
         `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
         "bell.m.pinPushed",

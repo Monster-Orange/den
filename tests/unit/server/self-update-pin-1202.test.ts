@@ -18,6 +18,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   commitPin,
+  pinBellMessage,
   pinGit,
   readPinRecord,
 } from "../../../src/ui/server/pin-commit.js";
@@ -160,6 +161,13 @@ describe("issue 1202: a checkout behind its remote catches up to the pushed pin"
     expect(pinDoctorText(readPinRecord(stateDir))).toMatch(
       /^pin 1\.1\.0: pushed \([0-9a-f]{12}\); the checkout is behind and has local changes, so pull to get the pin$/,
     );
+    // And the bell says it too.
+    expect(pinBellMessage(step, "Den")).toMatchObject({
+      key: "bell.m.pinPushedBehind",
+      text: expect.stringMatching(
+        /^Den updated to 1\.1\.0: its pin is pushed \([0-9a-f]{12}\), but the checkout is behind and has local changes, so pull to get the pin$/,
+      ),
+    });
   });
 
   it("on the tip, as before: the branch takes the pin, and doctor has nothing to add", async () => {
@@ -173,5 +181,8 @@ describe("issue 1202: a checkout behind its remote catches up to the pushed pin"
     );
     expect(git(root, "status", "--porcelain")).toBe("");
     expect(pinDoctorText(readPinRecord(stateDir))).toBeNull();
+    expect(pinBellMessage(step, "Den")).toMatchObject({
+      key: "bell.m.pinPushed",
+    });
   });
 });
