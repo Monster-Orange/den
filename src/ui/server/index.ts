@@ -1244,6 +1244,7 @@ import {
   realSudoPath,
   clearSudoPassword,
   clearSudoShims,
+  sweepStaleSudoDirs,
   closeLockForThisRequest,
   inRequestLockScope,
   getSudoEnv,
@@ -1252,6 +1253,8 @@ import {
   hasPasswordlessSudo,
   watchSudo,
 } from "./sudo-store.js";
+// Issue 121: sudo shim folders an earlier run left behind (a crash): gone.
+sweepStaleSudoDirs();
 import {
   guardStdio,
   isLostOutputError,
