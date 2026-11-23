@@ -104,6 +104,7 @@ import {
   groupsLineHtml,
   groupsOffered,
   groupsViewHtml,
+  toolsRestartHtml,
   viewSwitchHtml,
 } from "/agent-groups.js";
 import { focusBack, refindKey } from "/transcript-view.js";
@@ -1046,7 +1047,11 @@ function rowHtml(r) {
   // Issue 278: compacting repeatedly: why, Stop, and Clear.
   const callout =
     r.kind === "agent"
-      ? rotCalloutHtml(r) + modeApplyHtml(r) + compactingHtml(r)
+      ? rotCalloutHtml(r) +
+        modeApplyHtml(r) +
+        compactingHtml(r) +
+        // Issue 750 step 3: Can't reach Hub: Restart, on the row too.
+        toolsRestartHtml(r, t)
       : "";
   // D32: the helpers it started in its own session, under it. #80: only
   // once its badge is opened (closed by default, the agent in front too).

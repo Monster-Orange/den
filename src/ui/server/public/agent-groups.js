@@ -27,6 +27,21 @@ const esc = (s) =>
       ],
   );
 
+/**
+ * Issue 750 step 3: Restart on the row of a running agent whose session
+ * failed to load a server's tools (issue 749's mcpFailed, the one source;
+ * its tag says "Can't reach Hub"). Restart loads them again on the same
+ * conversation (data-act="tools-restart", the pane bar's own action). None
+ * while Den restarts it already (toolsRestarting), or for a stopped agent.
+ */
+export function toolsRestartHtml(r, t) {
+  if (r?.kind !== "agent" || r.toolsRestarting) return "";
+  if (r.state !== "running" && r.state !== "stopping") return "";
+  if (!Array.isArray(r.mcpFailed) || !r.mcpFailed.length) return "";
+  const name = esc(t("ag.mcp.restartName", { id: r.agent }));
+  return `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${name}" title="${name}">${esc(t("ag.mcp.restart"))}</button>`;
+}
+
 /** Where Connect is (Settings › Agents › Hub). */
 export const CONNECT_HREF = "/settings#agents.hub";
 
