@@ -19,6 +19,8 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  afterWrite,
+  answerWith,
   denAccountData,
   safeHref,
 } from "../../../src/ui/server/public/account-den.js";
@@ -342,5 +344,38 @@ describe("issue 310 review: a link Den draws is only ever http(s)", () => {
       undefined,
     ])
       expect(safeHref(bad)).toBe("");
+  });
+});
+
+describe("issue 310: a write that didn't happen runs nothing after it", () => {
+  it("afterWrite: the kit's null (a failure it said) and undefined skip the next step; data runs it", () => {
+    const ran: unknown[] = [];
+    const next = afterWrite((r: unknown) => void ran.push(r));
+    next(null);
+    next(undefined);
+    expect(ran).toEqual([]);
+    next({ ok: true });
+    expect(ran).toEqual([{ ok: true }]);
+  });
+
+  it("a refused Approve says why and neither refreshes nor reloads the area; a done one refreshes", async () => {
+    const calls: string[] = [];
+    const deps = {
+      refresh: async () => void calls.push("refresh"),
+      refused: (e: unknown) =>
+        void calls.push(`refused:${(e as Error).message}`),
+    };
+    // A quick refusal (the kit gives it back).
+    await answerWith(async () => {
+      throw new Error("wrong code");
+    }, deps);
+    expect(calls).toEqual(["refused:wrong code"]);
+    // A slow failure the kit's pop-up already said (null).
+    calls.length = 0;
+    await answerWith(async () => null, deps);
+    expect(calls).toEqual([]);
+    // Done.
+    await answerWith(async () => ({ ok: true }), deps);
+    expect(calls).toEqual(["refresh"]);
   });
 });

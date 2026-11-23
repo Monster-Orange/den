@@ -88,8 +88,9 @@ const LISTING: Record<string, Entry> = {
   "web fixture-login": script(
     "the live-check runner's one-time link on a test install; never on a page",
   ),
-  "web owner": page("settings-registry.js", "/api/web/owner"),
-  "web approve": page("settings-registry.js", "/api/web/approve"),
+  // Issue 310: the owner and approving a device are in the Account area.
+  "web owner": page("account-den.js", "/api/web/owner"),
+  "web approve": page("account-den.js", "/api/web/approve"),
   "web claim-link": script("a setup link for a new device, from a shell"),
   "web url": page("settings-registry.js", "/api/web-url"),
 

@@ -280,6 +280,45 @@ export const DEN_ACTIONS = {
       failure: "busy.unlinkF",
     },
   },
+  // Issue 310: the Account area's own steps. Link GitHub and Pair a device
+  // show their next step in place (no success line); a waiting device's
+  // Approve and Deny say they're done.
+  "link-github": {
+    who: "GitHub",
+    autoClose: true,
+    keys: {
+      working: "busy.ghCodeW",
+      success: "busy.ghCodeS",
+      failure: "busy.ghCodeF",
+    },
+  },
+  "pair-device": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pairW",
+      success: "busy.pairS",
+      failure: "busy.pairF",
+    },
+  },
+  "approve-device": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.approveDevW",
+      success: "busy.approveDevS",
+      failure: "busy.approveDevF",
+    },
+  },
+  "deny-device": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.denyDevW",
+      success: "busy.denyDevS",
+      failure: "busy.denyDevF",
+    },
+  },
   "sign-out-all": {
     who: "__DEN_TITLE__",
     keys: {

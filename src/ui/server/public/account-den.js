@@ -234,21 +234,52 @@ function linkCss(name) {
 let open = null;
 
 /** Opens the Account area on `section` (see the top). */
+/**
+ * The step after a write, run only when the write happened: the kit's
+ * busyAction resolves null when it didn't (its failure pop-up said why).
+ */
+export const afterWrite = (then) => (r) => (r == null ? undefined : then(r));
+
+/**
+ * A waiting device's Approve or Deny: `run` is the write. Done: refresh.
+ * A quick refusal (given back by the kit): `refused` says why, and nothing
+ * refreshes. A failure the kit's pop-up said (null): nothing more.
+ */
+export async function answerWith(run, { refresh, refused }) {
+  let r;
+  try {
+    r = await run();
+  } catch (e) {
+    refused(e);
+    return undefined;
+  }
+  return r == null ? undefined : refresh();
+}
+
 export async function openAccount({ section, opener } = {}) {
   if (open) {
     if (section) open.area.show(section);
     return open;
   }
   const [data] = await Promise.all([load(), linkCss("account-area.css")]);
-  // Every write goes through the working pop-up (busy-den.js names it); it
-  // resolves undefined when the write didn't happen.
+  // Every write goes through the working pop-up (busy-den.js names it),
+  // which holds its button's dots. It resolves null when the write didn't
+  // happen (its failure pop-up said why).
   const write = (name, url, body, button, vars) =>
     sh().busyAction(
       name,
       (headers) => sh().api("POST", url, body, { headers }),
       { button, ...(vars ? { vars } : {}) },
     );
-  const done = (then) => (r) => (r === undefined ? undefined : then(r));
+  // The same, for a step that says its own failure in place: a quick
+  // refusal (or no answer) comes back as a rejection for the caller to say.
+  const ask = (name, url, body, button, extra = {}) =>
+    sh().busyAction(
+      name,
+      (headers) => sh().api("POST", url, body, { headers }),
+      { button, quietFail: true, inlineError: true, ...extra },
+    );
+  const done = afterWrite;
   const reload = done(() => location.reload());
   let latest = data;
   const refresh = () =>
@@ -272,15 +303,18 @@ export async function openAccount({ section, opener } = {}) {
 
   // Link GitHub: GitHub's device flow (the code, then GitHub's page).
   const link = async (button) => {
-    button.disabled = true;
     let f;
     try {
-      f = await sh().api("POST", "/api/web/owner/link", {});
+      f = await ask("link-github", "/api/web/owner/link", {}, button, {
+        skipDone: () => true,
+      });
     } catch (e) {
-      button.disabled = false;
       flow("github", note(e.message, true));
       return;
     }
+    if (!f) return;
+    // Held while GitHub waits for the person.
+    button.disabled = true;
     const url =
       safeHref(f.verificationUri) || "https://github.com/login/device";
     flow(
@@ -310,14 +344,17 @@ export async function openAccount({ section, opener } = {}) {
   };
 
   // Pair a device: a one-time link and QR code for an edge hostname.
-  const pairWith = async (host) => {
+  const pairWith = async (host, button) => {
     let p;
     try {
-      p = await sh().api("POST", "/api/web/pair", { host });
+      p = await ask("pair-device", "/api/web/pair", { host }, button, {
+        skipDone: () => true,
+      });
     } catch (e) {
       flow("pair", note(e.message, true));
       return;
     }
+    if (!p) return;
     const href = safeHref(p.url);
     if (!href) {
       flow(
@@ -350,7 +387,7 @@ export async function openAccount({ section, opener } = {}) {
     };
     draw();
   };
-  const pair = () => {
+  const pair = (button) => {
     const hosts = pairHosts || [];
     if (!hosts.length) {
       flow(
@@ -365,7 +402,7 @@ export async function openAccount({ section, opener } = {}) {
       );
       return;
     }
-    if (hosts.length === 1) return pairWith(hosts[0]);
+    if (hosts.length === 1) return pairWith(hosts[0], button);
     flow(
       "pair",
       `<p class="den-aa-gh"><select class="den-aa-host" aria-label="${esc(t("set.ui.edgeHost", "Edge hostname"))}">` +
@@ -377,17 +414,12 @@ export async function openAccount({ section, opener } = {}) {
   };
 
   // A waiting request: the code the person typed, or Deny.
-  const answer = async (path, body, button) => {
-    const release = sh()?.holdDots?.(button) ?? (async () => {});
-    try {
-      await sh().api("POST", path, body);
-      await release();
-    } catch (e) {
-      await release();
-      sh()?.toast?.(approveRefusal(e));
-    }
-    return refresh();
-  };
+  const answer = (name, path, body, button) =>
+    answerWith(() => ask(name, path, body, button), {
+      refresh,
+      // A wrong or old code says so in Den's words (issue 819).
+      refused: (e) => sh()?.toast?.(approveRefusal(e)),
+    });
   // New requests show up while it's open (and expired ones go).
   let shownRefs = (data.devices.waiting || []).map((w) => w.ref).join(",");
   const watchWaiting = () =>
@@ -444,19 +476,21 @@ export async function openAccount({ section, opener } = {}) {
         case "link":
           return link(button);
         case "pair":
-          return pair();
+          return pair(button);
         case "pair-go":
           return pairWith(
             button.parentElement?.querySelector(".den-aa-host")?.value,
+            button,
           );
         case "approve":
           return answer(
+            "approve-device",
             "/api/web/approve",
             { ref: id, code: extra?.code },
             button,
           );
         case "deny":
-          return answer("/api/web/deny", { ref: id }, button);
+          return answer("deny-device", "/api/web/deny", { ref: id }, button);
         case "retry-devices":
           return refresh();
         default:

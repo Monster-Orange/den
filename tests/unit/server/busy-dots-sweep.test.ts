@@ -210,12 +210,20 @@ describe("issue 698: the approval buttons hold the dots", () => {
     expect(f).not.toMatch(/[^\w.$]\$\(/);
   });
 
-  it("Settings' Approve and Deny for a computer hold the button's dots", () => {
+  it("the Account area's Approve and Deny for a computer hold the button's dots (issue 310 moved them)", () => {
+    const src = read("account-den.js");
+    // answer() goes through ask(), the kit's busyAction with the button held.
     const f = body(
-      read("settings-registry.js"),
-      /const act = \(btn, path, body\) =>/,
-      /\n {8}};\n/,
+      src,
+      /const answer = \(name, path, body, button\) =>/,
+      /\n {4}\}\);\n/,
     );
-    expect(f).toMatch(/holdDots\?\.\(btn\)/);
+    expect(f).toMatch(/ask\(name, path, body, button\)/);
+    const a = body(src, /const ask = \(/, /\n {4}\);\n/);
+    expect(a).toMatch(/busyAction\(/);
+    expect(a).toMatch(/\{\s*button,/);
+    // Both buttons go through it.
+    expect(src).toMatch(/case "approve":\s*return answer\(/);
+    expect(src).toMatch(/case "deny":\s*return answer\(/);
   });
 });
