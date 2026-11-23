@@ -381,6 +381,25 @@ export function unregisterDaemon(address: string): void {
 }
 
 /**
+ * Issue 130: a record change made from an exit, close or timer handler. The
+ * daemons file throws when it can't be read or saved; here that is logged
+ * (the message names the file) and the handler carries on, so its onClose,
+ * tab cleanup and the rest still run. User-facing up, down and register
+ * calls keep the throw.
+ */
+function bestEffort(what: string, change: () => void): void {
+  try {
+    change();
+  } catch (e) {
+    console.error(`${(e as Error).message} (while ${what})`);
+  }
+}
+
+function forgetDaemon(address: string): void {
+  bestEffort(`forgetting ${address}`, () => unregisterDaemon(address));
+}
+
+/**
  * Merge observed container base-names into a daemon's record — used to refine
  * the spawn-time seed with the containers a run ACTUALLY created (union, so a
  * partial observation never loses declared candidates). No-op when the daemon
@@ -1016,8 +1035,11 @@ function pruneAgainst(
         pruned.push(d.address);
         onPruned?.(d.address, "dead");
       }
-    } catch {
-      /* keep the entry on any error */
+    } catch (e) {
+      // Keep the entry on any error, and go on to the next one.
+      console.error(
+        `${(e as Error).message} (while checking ${d.address}; its record is kept)`,
+      );
     }
   }
   return pruned;
@@ -1536,20 +1558,20 @@ async function stopDaemonProcessGroup(
       onLine(
         `stopped ${record.address}: process group ${record.pgid} (${result.signal})`,
       );
-      unregisterDaemon(record.address);
+      forgetDaemon(record.address);
       return "stopped";
     case "gone":
       onLine(
         `${record.address} had already exited (process group ${record.pgid})`,
       );
-      unregisterDaemon(record.address);
+      forgetDaemon(record.address);
       return "already-exited";
     case "reused":
       // The recorded process exited; whatever holds its pid now is not ours.
       onLine(
         `${record.address} had already exited: ${result.detail}; left it alone`,
       );
-      unregisterDaemon(record.address);
+      forgetDaemon(record.address);
       return "already-exited";
     case "survived":
       onLine(
@@ -2237,7 +2259,7 @@ export function runServiceCommand(
         options,
       ).then(({ outcome, exitCode }) => {
         const own = findDaemonByAddress(resolved.address);
-        if (own) unregisterDaemon(own.address);
+        if (own) forgetDaemon(own.address);
         reportDown(outcome);
         onClose(exitCode);
       });
@@ -2258,12 +2280,12 @@ export function runServiceCommand(
           `(started before 0.3.0-dev.37) and it has no down command; ` +
           `stop it yourself (${product().cli} has dropped its record)`,
       );
-      unregisterDaemon(record.address);
+      forgetDaemon(record.address);
       reportDown("unstoppable");
       closeAsync(unstoppableExit());
       return dummy();
     }
-    if (record) unregisterDaemon(record.address);
+    if (record) forgetDaemon(record.address);
     onLine(`nothing to stop (${why})`);
     reportDown("nothing-recorded");
     closeAsync(0);
@@ -2441,7 +2463,7 @@ export function runServiceCommand(
         { ...process.env, ...env },
         onLine,
         (exitCode) => {
-          unregisterDaemon(resolved.address);
+          forgetDaemon(resolved.address);
           const existing = lookupTab(resolved.address);
           if (existing) {
             try {
@@ -2646,7 +2668,7 @@ export function runServiceCommand(
       onLine(
         `nothing to stop (no running opctl containers for ${bases.join(", ")})`,
       );
-      unregisterDaemon(resolved.address);
+      forgetDaemon(resolved.address);
       closeAsync(0);
       return dummy();
     }
@@ -2660,7 +2682,7 @@ export function runServiceCommand(
       closeAsync(1);
       return dummy();
     }
-    unregisterDaemon(resolved.address);
+    forgetDaemon(resolved.address);
     closeAsync(0);
     return dummy();
   }
@@ -2837,7 +2859,7 @@ export function runServiceCommand(
         return;
       }
       if (effective === 0) {
-        unregisterDaemon(resolved.address);
+        forgetDaemon(resolved.address);
         closeExistingTab();
       }
       onClose(effective);
@@ -2847,9 +2869,12 @@ export function runServiceCommand(
     // containers usually exist, so record what actually appeared. Best-effort:
     // slow image builds may not have spawned yet; the declared seed remains.
     if (preSpawnContainers) {
-      updateDaemonContainers(
-        resolved.address,
-        diffSpawnedContainers(preSpawnContainers, listRunningOpctlContainers()),
+      const spawned = preSpawnContainers;
+      bestEffort(`recording ${resolved.address}'s containers`, () =>
+        updateDaemonContainers(
+          resolved.address,
+          diffSpawnedContainers(spawned, listRunningOpctlContainers()),
+        ),
       );
     }
     onClose(exitCode);
@@ -2861,7 +2886,11 @@ export function runServiceCommand(
     detachable && logPath && command !== "down"
       ? (pid: number) => {
           recorded = recordProcessGroup(pid);
-          if (recorded) updateDaemonProcessGroup(resolved.address, recorded);
+          const group = recorded;
+          if (group)
+            bestEffort(`recording ${resolved.address}'s process group`, () =>
+              updateDaemonProcessGroup(resolved.address, group),
+            );
         }
       : null;
   // A detached up whose whole group is gone when its leader exits leaves
@@ -2874,9 +2903,11 @@ export function runServiceCommand(
     const state = rec ? (processGroupStateSync(rec)?.state ?? null) : null;
     const now = findDaemonByAddress(resolved.address);
     const action = failedStartCleanup(exitCode, rec, state, now);
-    if (action === "unregister") unregisterDaemon(resolved.address);
+    if (action === "unregister") forgetDaemon(resolved.address);
     else if (action === "clear-group")
-      clearDaemonProcessGroup(resolved.address);
+      bestEffort(`clearing ${resolved.address}'s process group`, () =>
+        clearDaemonProcessGroup(resolved.address),
+      );
     onServiceExit?.(exitCode);
   };
   const proc = recordGroup
