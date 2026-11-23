@@ -352,22 +352,10 @@ export function writeWorkspacesFile(
       ]),
     ),
   };
-  // Write to a temp file then atomically rename, so a crash or a concurrent
-  // den process can never observe a half-written workspaces.yml.
-  const tmp = path.join(dir, `.workspaces.${process.pid}.tmp`);
-  try {
-    fs.writeFileSync(tmp, yaml.stringify(out), "utf-8");
-    fs.renameSync(tmp, WORKSPACES_PATH);
-    auditWorkspacesWrite(before, out, by);
-  } catch (err) {
-    // Don't leave an orphaned temp file behind when the write/rename fails.
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore cleanup failure */
-    }
-    throw err;
-  }
+  // Written whole (atomic-write), so a crash or a concurrent den process
+  // can never observe a half-written workspaces.yml.
+  writeFileAtomic(WORKSPACES_PATH, yaml.stringify(out));
+  auditWorkspacesWrite(before, out, by);
 }
 
 /** workspaces.yml as it is on disk now (for the audit's diff); {} if none. */
