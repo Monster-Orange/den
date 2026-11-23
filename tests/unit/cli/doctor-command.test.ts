@@ -226,6 +226,24 @@ describe("doctor", () => {
     expect(strategyCheck(row).status).toBe("ok");
   });
 
+  it("issue 1334: a source whose detect throws is never idle: still ✗ unavailable and warn", () => {
+    registerStrategy({
+      id: "throw-a",
+      kind: "throw-kind",
+      detect: () => {
+        throw new Error("probe broke");
+      },
+      capabilities: {},
+    });
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "throw-kind",
+    )!;
+    expect(row).toMatchObject({ available: false, reason: "probe broke" });
+    expect(row.idle).toBeUndefined();
+    expect(strategyCheck(row).status).toBe("warn");
+    expect(formatDoctor([row], "Den").join("\n")).toContain("✗ unavailable");
+  });
+
   it("issue 1334: the agent runtime missing with no agents is idle; with an agent it still warns", () => {
     const none = doctorRows(dist("environments: [local]\n"), {
       agents: () => 0,

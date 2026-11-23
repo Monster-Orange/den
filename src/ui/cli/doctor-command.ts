@@ -363,13 +363,18 @@ export function doctorRows(
  */
 function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
   const ids = strategyIds(kind);
-  const found = ids.map((id) => {
-    try {
-      return getStrategy(kind, id)?.detect(env) ?? { available: false };
-    } catch (e) {
-      return { available: false, reason: (e as Error).message };
-    }
-  });
+  const found: { available: boolean; reason?: string; threw?: true }[] =
+    ids.map((id) => {
+      try {
+        return getStrategy(kind, id)?.detect(env) ?? { available: false };
+      } catch (e) {
+        return {
+          available: false,
+          reason: (e as Error).message,
+          threw: true as const,
+        };
+      }
+    });
   const available = found.some((d) => d.available);
   return {
     kind,
@@ -385,7 +390,8 @@ function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
     problem: false,
     warnings: [],
     // Issue 1334: no source found yet (no transcripts): nothing to fix.
-    ...idleIf(!available),
+    // A detect that threw is broken, not idle: it still warns.
+    ...idleIf(!available && !found.some((d) => d.threw)),
   };
 }
 
