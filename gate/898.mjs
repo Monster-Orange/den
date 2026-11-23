@@ -76,6 +76,9 @@ export async function run(ctx) {
           ),
           labelRight: Math.round(l.right),
           rowRight: Math.round(r.right),
+          // How long the label is against the row: a short one can't wrap.
+          labelW: Math.round(row.firstElementChild.scrollWidth),
+          rowW: Math.round(r.width),
           mark: after.content,
           markPos: after.position,
           coarse: matchMedia("(pointer: coarse)").matches,
@@ -105,7 +108,7 @@ export function expect(cells) {
   const say = (r) =>
     r.error
       ? `${r.tag}: ${r.error}`
-      : `${r.tag}: "${r.text}" row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
+      : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
   return [
     {
       clause: clauses[0],
