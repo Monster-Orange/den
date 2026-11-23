@@ -36,6 +36,7 @@ export interface WriteGuardRoots {
 const GUARDED = Symbol.for("den.writeGuard");
 const REFUSALS = Symbol.for("den.writeGuard.refusals");
 const ROOTS = Symbol.for("den.writeGuard.roots");
+const PROTECTED = Symbol.for("den.writeGuard.protected");
 
 /**
  * The refusals so far through `fsObj`'s wrappers (setup.ts fails each test
@@ -85,14 +86,52 @@ const rootsOf = (fsObj: typeof fs): WriteGuardRoots | undefined =>
  * screenshot folder). Until that test file ends; never /, the home itself or
  * a folder above it.
  */
-export function allowWrites(dir: string, fsObj: typeof fs = fsModule): void {
+export function allowWrites(
+  dir: string,
+  fsObj: typeof fs = fsModule,
+  protectedDirs: readonly string[] = realStateDirs(),
+): void {
   const roots = rootsOf(fsObj);
   if (!roots) return;
   const real = realish(dir);
   const home = realish(os.homedir());
   if (real === path.parse(real).root || inside(home, real))
     throw new Error(`allowWrites: ${real} is too wide to allow`);
+  if (hasConfigLocal(real))
+    throw new Error(`allowWrites: ${real} is in a config/local`);
+  for (const p of protectedDirs.map(realish))
+    if (inside(real, p) || inside(p, real))
+      throw new Error(
+        `allowWrites: ${real} overlaps a real state folder (${p})`,
+      );
   (roots.allow ??= []).push(real);
+}
+
+/**
+ * The state folders of a real install, as the run found them before any
+ * test changed the env (read once per worker, kept on the fs module):
+ * ~/.den, DEN_HOME, DEN_STATE_DIR, and the install registry's folder.
+ */
+function realStateDirs(): string[] {
+  const m = fsModule as unknown as Record<symbol, string[] | undefined>;
+  if (m[PROTECTED]) return m[PROTECTED];
+  const env = process.env;
+  const home = os.homedir();
+  const registry =
+    env.DEN_INSTALLS_DIR?.trim() ||
+    (process.platform === "darwin"
+      ? path.join(home, "Library", "Application Support", "den", "installs")
+      : path.join(
+          env.XDG_STATE_HOME?.trim() || path.join(home, ".local", "state"),
+          "den",
+          "installs",
+        ));
+  return (m[PROTECTED] = [
+    path.join(home, ".den"),
+    env.DEN_HOME?.trim() ?? "",
+    env.DEN_STATE_DIR?.trim() ?? "",
+    registry,
+  ].filter(Boolean));
 }
 
 /** A path's real form, for one that may not exist yet (its nearest folder). */
@@ -126,8 +165,9 @@ export function refusedWrite(p: string, roots: WriteGuardRoots): boolean {
   const real = realish(p);
   if (roots.temp.some((t) => inside(real, t))) return false;
   if (inside(real, "/dev")) return false;
-  if ((roots.allow ?? []).some((a) => inside(real, realish(a)))) return false;
+  // Before any named root: no root a suite names covers a config/local.
   if (hasConfigLocal(real)) return true;
+  if ((roots.allow ?? []).some((a) => inside(real, realish(a)))) return false;
   return !inside(real, roots.checkout);
 }
 
@@ -348,3 +388,7 @@ export function installWriteGuard(
       };
   }
 }
+
+// Read the real install's state folders now, at load: setup.ts imports this
+// before its body points DEN_HOME and DEN_INSTALLS_DIR at test folders.
+realStateDirs();

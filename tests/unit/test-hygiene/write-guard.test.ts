@@ -219,6 +219,37 @@ describe("a folder a suite names (issue 1356)", () => {
     );
   });
 
+  it("allowWrites never names a real state folder or a config/local, inside or around it", () => {
+    const r = rig();
+    const home = fs.realpathSync(os.homedir());
+    for (const d of [
+      path.join(home, ".den"),
+      path.join(home, ".den", "agents"),
+      path.join(home, "x", "config", "local"),
+      path.join(home, "x", "config", "local", "deeper"),
+    ])
+      expect(() => allowWrites(d, r.f)).toThrow(
+        /allowWrites: .* (real state|config\/local)/,
+      );
+    // A folder holding ~/.den: the home's own children are above it only
+    // when ~/.den is inside them; here, a made-up protected folder.
+    const holder = path.join(tmp, "holder");
+    expect(() =>
+      allowWrites(holder, r.f, [path.join(holder, "state")]),
+    ).toThrow(/allowWrites: .* real state/);
+  });
+
+  it("a config/local under a folder a suite named is still refused", () => {
+    const r = rig();
+    const shared = path.join(r.home, ".share");
+    allowWrites(shared, r.f);
+    r.f.mkdirSync(shared);
+    r.f.writeFileSync(path.join(shared, "ok"), "x");
+    expect(() =>
+      r.f.mkdirSync(path.join(shared, "config", "local"), { recursive: true }),
+    ).toThrow(/outside its temp folders/);
+  });
+
   it("Playwright's own browser folder is a named root", () => {
     const pw = path.join(tmp, "pw-browsers");
     expect(writeGuardRoots({ PLAYWRIGHT_BROWSERS_PATH: pw }).temp).toContain(
