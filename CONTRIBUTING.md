@@ -58,6 +58,25 @@ there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
 totals per kind and never fails.
 
+The shared helpers in `tests/unit/helpers/find.ts` (issue 841) make the
+right way the short way, in Chromium and WebKit alike:
+
+```ts
+import { byLabel, byRole, settled, waitFor } from "../helpers/find.js";
+
+await byLabel(page, "Project name").fill("billing");
+await settled(page, "/api/projects", () =>
+  byRole(page, "button", "Add project").click(),
+);
+await waitFor(page, { row: "billing" });
+await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
+```
+
+`byRole` and `byLabel` match the name exactly. `waitFor` ends as soon as the
+state holds, and one that runs out says which state and how long it waited.
+`settled` arms the wait before the action, so a fast response is never
+missed. Timeouts default to the suite's wait (`DEN_BROWSER_WAIT_MS`).
+
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as
 `50%`). Unset, jest picks its own. `npm run preflight` uses 8 unless it is

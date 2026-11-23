@@ -59,14 +59,18 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage"]);
 
 const ADVICE = {
   sleeps:
-    "wait for a state instead: await expect(locator).toBeVisible(), " +
-    "expect.poll(…), page.waitForFunction(…) or waitForResponse(…)",
+    "wait for a state instead: waitFor(page, { dialog | row }) or " +
+    "settled(page, url, action) (tests/unit/helpers/find.ts), " +
+    "await expect(locator).toBeVisible(), expect.poll(…) or " +
+    "page.waitForFunction(…)",
   positional:
-    "pick by what the row is, not where it sits: getByRole(role, { name }), " +
-    "getByLabel(…), a data-* attribute, or locator.filter({ hasText })",
+    "pick by what the row is, not where it sits: byRole(page, role, name), " +
+    "byLabel(page, label) (tests/unit/helpers/find.ts), a data-* " +
+    "attribute, or locator.filter({ hasText })",
   classSelectors:
-    "use a role or label finder (getByRole, getByLabel) or a data-* " +
-    "attribute or id the page keeps for tests, not a styling class",
+    "use a role or label finder (byRole, byLabel in " +
+    "tests/unit/helpers/find.ts) or a data-* attribute or id the page " +
+    "keeps for tests, not a styling class",
   englishAsserts:
     "assert on state (a data-* value, a count, an aria-* attribute) or the " +
     "i18n key's text, not a literal English sentence",
