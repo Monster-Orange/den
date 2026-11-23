@@ -281,6 +281,10 @@ import {
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
 import {
   CONFIG_ERROR_STATUS,
   configErrorBody,

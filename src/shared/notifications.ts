@@ -302,21 +302,97 @@ function writeStore(file: string, f: StoreFile): void {
 type StoreOp = (f: StoreFile) => boolean;
 
 /**
- * Issue 1348: when a lock is its holder's leftover. A write takes ms, so a
- * lock with no pid (its holder died between taking it and saying who it
- * is) is left after STORE_LOCK_NO_PID_MS; a live holder's only after
- * STORE_LOCK_LIVE_MS (a process stalled in a swap storm still holds it); a
- * gone holder's at once.
+ * Issue 1348: the lock's times, user.yml `notifications:`, in seconds.
+ * A write takes ms, so a lock with no pid (its holder died between taking
+ * it and saying who it is) is left after lock_no_pid_seconds; a live
+ * holder's only after lock_live_seconds (a process stalled in a swap storm
+ * still holds it); a gone holder's at once. lock_exit_wait_seconds: at
+ * exit only, how long waiting changes wait for the lock.
  */
-const STORE_LOCK_NO_PID_MS = 10_000;
-const STORE_LOCK_LIVE_MS = 60_000;
+export const NOTIFICATION_LOCK_DEFAULTS = {
+  lock_exit_wait_seconds: 2,
+  lock_no_pid_seconds: 10,
+  lock_live_seconds: 60,
+} as const;
+export const NOTIFICATION_LOCK_RANGES = {
+  lock_exit_wait_seconds: { min: 0, max: 60 },
+  lock_no_pid_seconds: { min: 1, max: 3600 },
+  lock_live_seconds: { min: 1, max: 86_400 },
+} as const;
+type LockKey = keyof typeof NOTIFICATION_LOCK_DEFAULTS;
+
+/**
+ * Issue 1348: the lock's times from a `notifications:` block, in ms. A
+ * value that isn't a number in its range keeps its default, and `errors`
+ * says which (doctor and the config check can show them).
+ */
+export function notificationLockSettings(block: unknown): {
+  exitWaitMs: number;
+  noPidMs: number;
+  liveMs: number;
+  errors: string[];
+} {
+  const b = (block && typeof block === "object" ? block : {}) as Record<
+    string,
+    unknown
+  >;
+  const errors: string[] = [];
+  const sec = (k: LockKey): number => {
+    const v = b[k];
+    const r = NOTIFICATION_LOCK_RANGES[k];
+    if (v === undefined || v === null) return NOTIFICATION_LOCK_DEFAULTS[k];
+    if (
+      typeof v !== "number" ||
+      !Number.isFinite(v) ||
+      v < r.min ||
+      v > r.max
+    ) {
+      errors.push(
+        `notifications.${k} must be a number of seconds from ${r.min} to ${r.max}, got ${JSON.stringify(v)}; using ${NOTIFICATION_LOCK_DEFAULTS[k]}`,
+      );
+      return NOTIFICATION_LOCK_DEFAULTS[k];
+    }
+    return v;
+  };
+  return {
+    exitWaitMs: sec("lock_exit_wait_seconds") * 1000,
+    noPidMs: sec("lock_no_pid_seconds") * 1000,
+    liveMs: sec("lock_live_seconds") * 1000,
+    errors,
+  };
+}
+
+/**
+ * Issue 1348: where this process reads its `notifications:` block. The
+ * server and the CLI set it when they start (useNotificationConfig);
+ * any other process keeps the defaults. The store doesn't read the config
+ * itself: that would make every writer need a distribution root.
+ */
+let readLockBlock: () => unknown = () => undefined;
+let lockTimes: ReturnType<typeof notificationLockSettings> | undefined;
+
+/** Issue 1348: how this process reads user.yml `notifications:`. */
+export function useNotificationConfig(read: () => unknown): void {
+  readLockBlock = read;
+  lockTimes = undefined;
+}
+
+/** Issue 1348: this process's lock times, read once. */
+function lockSettings(): ReturnType<typeof notificationLockSettings> {
+  if (lockTimes) return lockTimes;
+  let block: unknown;
+  try {
+    block = readLockBlock();
+  } catch {
+    block = undefined; // unreadable: the defaults
+  }
+  lockTimes = notificationLockSettings(block);
+  // Said once, in the log: a bad value keeps its default.
+  for (const e of lockTimes.errors) console.error(e);
+  return lockTimes;
+}
 /** Issue 1348: how often a change waiting for the lock tries again. */
 const STORE_LOCK_STEP_MS = 5;
-/**
- * Issue 1348: at exit only (nothing is served then), how long the last
- * waiting changes may wait for the lock before they are given up.
- */
-const STORE_EXIT_WAIT_MS = 2_000;
 
 function aliveProcess(pid: number): boolean {
   try {
@@ -329,7 +405,7 @@ function aliveProcess(pid: number): boolean {
 
 /**
  * Issue 1348: the store's cross-process lock, `<file>.lock`, tried once,
- * never waited for. A leftover lock (see STORE_LOCK_LIVE_MS) is taken back:
+ * never waited for. A leftover lock (see lock_live_seconds) is taken back:
  * renamed aside first, and only if it is still the lock looked at (same
  * inode and time), so two takers that both found it stale never both win.
  */
@@ -371,9 +447,8 @@ function takeBackStoreLock(lock: string): boolean {
   }
   const age = Date.now() - seen.mtimeMs;
   const known = Number.isInteger(pid) && pid > 0;
-  const left = known
-    ? !aliveProcess(pid) || age >= STORE_LOCK_LIVE_MS
-    : age >= STORE_LOCK_NO_PID_MS;
+  const t = lockSettings();
+  const left = known ? !aliveProcess(pid) || age >= t.liveMs : age >= t.noPidMs;
   if (!left) return false;
   const aside = `${lock}.old-${process.pid}-${crypto.randomUUID()}`;
   try {
@@ -417,11 +492,11 @@ const PENDING = new Map<
  * Issue 1348: the process is ending (a normal exit, and the server's
  * SIGTERM and restart, which end in process.exit): its waiting changes are
  * saved now. The thread serves nothing any more, so this one waits for the
- * lock, at most STORE_EXIT_WAIT_MS (a gone or stale holder's lock is taken
+ * lock, at most lock_exit_wait_seconds (a gone or stale holder's lock is taken
  * back sooner).
  */
 function savePendingAtExit(): void {
-  const until = Date.now() + STORE_EXIT_WAIT_MS;
+  const until = Date.now() + lockSettings().exitWaitMs;
   const nap = new Int32Array(new SharedArrayBuffer(4));
   for (const file of [...PENDING.keys()]) {
     const p = PENDING.get(file)!;

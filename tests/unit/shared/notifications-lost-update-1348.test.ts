@@ -22,7 +22,9 @@ import * as os from "os";
 import * as path from "path";
 import {
   NotificationStore,
+  notificationLockSettings,
   notificationsSaved,
+  useNotificationConfig,
 } from "../../../src/shared/notifications.js";
 
 const tmps: string[] = [];
@@ -273,4 +275,61 @@ describe("a change still waiting when the process ends (issue 1348)", () => {
     expect(await exited(k)).toBe(0);
     expect(onDisk(d)).toEqual(["agent:late"]);
   }, 30_000);
+});
+
+describe("the lock's times (issue 1348)", () => {
+  it("user.yml notifications: defaults 2, 10 and 60 seconds", () => {
+    expect(notificationLockSettings(undefined)).toEqual({
+      exitWaitMs: 2_000,
+      noPidMs: 10_000,
+      liveMs: 60_000,
+      errors: [],
+    });
+  });
+
+  it("a value in its range is used", () => {
+    expect(
+      notificationLockSettings({
+        lock_exit_wait_seconds: 0,
+        lock_no_pid_seconds: 30,
+        lock_live_seconds: 600,
+      }),
+    ).toMatchObject({ exitWaitMs: 0, noPidMs: 30_000, liveMs: 600_000 });
+  });
+
+  it("a bad value keeps its default, and says which", () => {
+    const t = notificationLockSettings({
+      lock_exit_wait_seconds: 61,
+      lock_no_pid_seconds: "10",
+      lock_live_seconds: 0,
+    });
+    expect(t).toMatchObject({
+      exitWaitMs: 2_000,
+      noPidMs: 10_000,
+      liveMs: 60_000,
+    });
+    expect(t.errors.map((e) => e.split(" ")[0])).toEqual([
+      "notifications.lock_exit_wait_seconds",
+      "notifications.lock_no_pid_seconds",
+      "notifications.lock_live_seconds",
+    ]);
+  });
+
+  it("the server's and the CLI's reader is used: a live lock taken at 15 s", async () => {
+    useNotificationConfig(() => ({ lock_live_seconds: 15 }));
+    try {
+      const d = dir();
+      takeLock(d, 20_000);
+      new NotificationStore(d).add({
+        kind: "waiting",
+        subject: "agent:set",
+        scope: "workspace/north",
+        text: "t",
+      });
+      await notificationsSaved(d);
+      expect(onDisk(d)).toEqual(["agent:set"]);
+    } finally {
+      useNotificationConfig(() => undefined);
+    }
+  });
 });
