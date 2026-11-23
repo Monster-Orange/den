@@ -199,6 +199,9 @@ term=\${TERM:-dumb}
 case "$term" in
   "" | *[!A-Za-z0-9._+-]*) term=dumb ;;
 esac
+# Start in the login's own home, never the folder sudo was run from: a
+# node_modules or a .npmrc there is not the login's to have loaded.
+cd ${shQuote(o.home)}
 exec /usr/bin/env -i HOME=${shQuote(o.home)} USER=${shQuote(o.user)} LOGNAME=${shQuote(o.user)} \\
   PATH='/usr/bin:/bin:/usr/sbin:/sbin' LANG='C.UTF-8' TERM="$term" DEN_AGENT_ID="$id" \\
   ${shQuote(o.runtime.bin)} ${shQuote(o.runtime.script)} agents session "$id"
@@ -803,4 +806,71 @@ export function machineReadDeps(): OsUserReadDeps {
       }
     },
   };
+}
+
+/**
+ * Issue 988, slice 2: why the agents' login could change what the
+ * launcher runs: node, Den's CLI script, Den's own folder (node_modules
+ * and all) and every folder above them. Each path the login owns, its
+ * group can write, or anyone can write (a sticky folder above them, like
+ * /tmp, is fine) is named. Empty: it is all someone else's.
+ */
+export function runtimeWritableProblems(
+  r: { bin: string; script: string; engineRoot: string },
+  agents: { uid: number; gid: number },
+  d: { stat?: (p: string) => { uid: number; gid: number; mode: number } } = {},
+): string[] {
+  const stat =
+    d.stat ??
+    ((p: string) => {
+      const s = fs.lstatSync(p);
+      return { uid: s.uid, gid: s.gid, mode: s.mode };
+    });
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  const why = (p: string, dirAbove: boolean): string | null => {
+    const s = stat(p);
+    if (s.uid === agents.uid) return `${p} is the agents' login's`;
+    const isDir = (s.mode & 0o170000) === 0o040000;
+    const sticky = isDir && (s.mode & 0o1000) !== 0;
+    if ((s.mode & 0o002) !== 0 && !(dirAbove && sticky))
+      return `${p} is ${octal(s.mode)}: anyone can change it`;
+    if ((s.mode & 0o020) !== 0 && s.gid === agents.gid && !(dirAbove && sticky))
+      return `${p} is ${octal(s.mode)}: the agents' group can change it`;
+    return null;
+  };
+  const check = (p: string, dirAbove: boolean) => {
+    if (seen.has(p)) return;
+    seen.add(p);
+    const w = why(p, dirAbove);
+    if (w) problems.push(w);
+  };
+  const above = (p: string) => {
+    let d2 = path.dirname(p);
+    for (;;) {
+      check(d2, true);
+      const up = path.dirname(d2);
+      if (up === d2) break;
+      d2 = up;
+    }
+  };
+  const walk = (p: string) => {
+    check(p, false);
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(p);
+    } catch {
+      return;
+    }
+    if (!st.isDirectory()) return;
+    for (const e of fs.readdirSync(p)) walk(path.join(p, e));
+  };
+  const bin = fs.realpathSync(r.bin);
+  const root = fs.realpathSync(r.engineRoot);
+  check(bin, false);
+  above(bin);
+  above(fs.realpathSync(r.script));
+  walk(root);
+  above(root);
+  return problems;
 }

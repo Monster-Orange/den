@@ -129,6 +129,7 @@ describe("issue 988 (pin 3): the launcher", () => {
     'printf "ARGS"; for a in "$@"; do printf " [%s]" "$a"; done; printf "\\n"; env | sort\n',
   );
   const home = path.join(tmp, "home");
+  fs.mkdirSync(home, { recursive: true });
   const script = path.join(tmp, "den-agent-launch");
   fs.writeFileSync(
     script,
