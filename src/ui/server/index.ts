@@ -313,6 +313,7 @@ import {
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
+  startGateBoxChecks,
 } from "./gate-routes.js";
 import { RunnerTokens } from "../../shared/gates/runner-tokens.js";
 import { actorLabel } from "../../shared/agent-actor.js";
@@ -10733,6 +10734,11 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    // Issue 1199: every test box is checked once at start-up, so none
+    // sits "not checked yet".
+    void startGateBoxChecks(gates()).catch((e: unknown) =>
+      serverLog(`  ⚠ Test box check: ${(e as Error).message}`, "warn"),
+    );
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.

@@ -559,7 +559,7 @@ async function handleBoxes(
   if (pathname === "/api/gate-slots/boxes") {
     const c = checkBox(body.box);
     if (!c.ok) return sendJson(res, { ok: false, error: c.error }, 400);
-    setTestBox(store, c.box, audit);
+    await setTestBox(store, c.box, audit);
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
   const name = typeof body.name === "string" ? body.name : "";
@@ -720,15 +720,25 @@ export async function handleGateRoutes(
  * Issue 625: set one test box and record it. The person's route and the
  * held write gate_box_set both come here.
  */
-export function setTestBox(
+export async function setTestBox(
   store: GateStore,
   box: GateBox,
   audit: (detail: string) => void,
   by = "",
-): GateBox {
+): Promise<GateBox> {
   const set = store.setBox(box);
   audit(`test box ${set.name} set (${set.browser_slots} browser slots)${by}`);
+  // Issue 1199: checked at once (unless off or outside its window).
+  await store.checkBoxesNow([set.name]);
   return set;
+}
+
+/**
+ * Issue 1199: when the gate starts (the Den server), every box that is on,
+ * inside its window and not yet checked is checked once.
+ */
+export function startGateBoxChecks(store: GateStore): Promise<void> {
+  return store.checkBoxesNow();
 }
 
 /** Issue 625: remove one test box and record it (false: no such box). */
@@ -840,14 +850,14 @@ export function gateBoxOps(d: {
         ],
       };
     },
-    run(a, asked) {
+    async run(a, asked) {
       try {
         const c = checkBox(a.box);
-        if (!c.ok) return Promise.resolve({ ok: false, error: c.error });
-        const b = setTestBox(d.store(), c.box, audit, by(asked));
-        return Promise.resolve({ ok: true, box: b });
+        if (!c.ok) return { ok: false, error: c.error };
+        const b = await setTestBox(d.store(), c.box, audit, by(asked));
+        return { ok: true, box: b };
       } catch (e) {
-        return Promise.resolve({ ok: false, error: (e as Error).message });
+        return { ok: false, error: (e as Error).message };
       }
     },
   };

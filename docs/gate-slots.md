@@ -550,8 +550,12 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 
 ### Checking a box
 
-A box is checked only when a slot on it is about to be given, never on a
-timer. The check is a read: over ssh, one sftp session that lists the
+A box is checked when a slot on it is about to be given, never on a
+timer. It is also checked once when the gate starts (every box with no
+state yet), and at once when it is added, changed or turned on (`gate box
+add`, `gate box enable`, Settings, or the held write), so a box never sits
+"not checked yet". A box turned off or outside its window is never
+contacted. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
 it). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
 over ssh, `vm_stat` and `sysctl -n hw.pagesize`, and nothing else, and

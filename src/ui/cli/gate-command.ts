@@ -987,7 +987,14 @@ function status(args: string[], d: GateDeps): number {
  * [--off] [--recheck-seconds N]` (adds or replaces); `box remove <name>`;
  * `box enable|disable <name>`. Changing them is a person's.
  */
-function boxCmd(args: string[], d: GateDeps): number {
+/** Issue 1199: what a box's check just found, in one line. */
+function boxFound(d: GateDeps, name: string): string {
+  const st = d.store.boxStates()[name];
+  if (!st) return `${name}: not checked (turned off, or outside its window)`;
+  return `${name}: ${st.state}${st.reason ? ` (${st.reason})` : ""}`;
+}
+
+async function boxCmd(args: string[], d: GateDeps): Promise<number> {
   const [verb, ...rest] = args;
   if (verb === "list" || verb === undefined) {
     const boxes = d.store.boxes();
@@ -1053,6 +1060,11 @@ function boxCmd(args: string[], d: GateDeps): number {
         ? `Box ${name} turned on${b.window ? `: slots within ${b.window}, this machine's time` : ""}.`
         : `Box ${name} turned off: no new slots and no contact. Its running slots finish.`,
     );
+    // Issue 1199: a box turned on is checked at once.
+    if (verb === "enable") {
+      await d.store.checkBoxesNow([name]);
+      d.out(`Checked ${boxFound(d, name)}`);
+    }
     return 0;
   }
   if (verb === "remove") {
@@ -1086,6 +1098,9 @@ function boxCmd(args: string[], d: GateDeps): number {
   d.out(
     `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A browser run with --base-url takes it when it is free (gate settings --browser-box-default local: only with --box).`,
   );
+  // Issue 1199: checked at once, so it never shows "not checked yet".
+  await d.store.checkBoxesNow([name]);
+  d.out(`Checked ${boxFound(d, name)}`);
   return 0;
 }
 
@@ -1261,7 +1276,7 @@ export async function cmdGate(
       case "end":
         return end(args.slice(1), d);
       case "box":
-        return boxCmd(args.slice(1), d);
+        return await boxCmd(args.slice(1), d);
       case "yield":
         return yieldPlace(args.slice(1), d);
       case "settings":

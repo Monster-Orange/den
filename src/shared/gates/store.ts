@@ -1545,6 +1545,65 @@ export class GateStore {
    * lock. A held or unreachable box is passed over in the same call: the
    * run goes to the next box, or waits.
    */
+  /**
+   * Issue 1199: checks these boxes now and records what each said, so a
+   * box is never left "not checked yet". `names` absent: every box with
+   * no state yet (the gate starting). A named box is checked whatever its
+   * last state (it was just added or changed). A box turned off, or
+   * outside its window, is never contacted.
+   */
+  async checkBoxesNow(names?: string[]): Promise<void> {
+    const now = this.now();
+    const states = readBoxStates(this.dir);
+    const want = this.boxes().filter(
+      (b) =>
+        !boxOff(b, now) && (names ? names.includes(b.name) : !states[b.name]),
+    );
+    if (!want.length) return;
+    await this.probeAndRecord(want.map((b) => b.name));
+  }
+
+  /** Checks the named boxes (outside the lock); records each, then settles. */
+  private async probeAndRecord(want: string[]): Promise<boolean> {
+    const boxes = this.boxes();
+    const s = this.settings();
+    const found = await Promise.all(
+      want.map(async (n) => {
+        const b = boxes.find((x) => x.name === n)!;
+        try {
+          return {
+            n,
+            r: withMemory(
+              b,
+              await this.probe(b, s.boxCheckTimeoutSeconds * 1000),
+            ),
+          };
+        } catch (e) {
+          return {
+            n,
+            r: {
+              state: "unreachable" as const,
+              reason: (e as Error).message,
+            },
+          };
+        }
+      }),
+    );
+    return this.locked(() => {
+      const st = readBoxStates(this.dir);
+      const at = new Date(this.now()).toISOString();
+      for (const { n, r } of found)
+        st[n] = {
+          state: r.state,
+          ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
+          at,
+        };
+      writeBoxStates(this.dir, st);
+      this.settle();
+      return found.some((f) => f.r.state !== "open");
+    });
+  }
+
   async checkBoxes(): Promise<void> {
     const boxes = this.boxes();
     if (!boxes.length) return;
@@ -1566,42 +1625,7 @@ export class GateStore {
         this.locked(() => this.settle());
         return;
       }
-      const found = await Promise.all(
-        want.map(async (n) => {
-          const b = boxes.find((x) => x.name === n)!;
-          try {
-            return {
-              n,
-              r: withMemory(
-                b,
-                await this.probe(b, s.boxCheckTimeoutSeconds * 1000),
-              ),
-            };
-          } catch (e) {
-            return {
-              n,
-              r: {
-                state: "unreachable" as const,
-                reason: (e as Error).message,
-              },
-            };
-          }
-        }),
-      );
-      const no = this.locked(() => {
-        const st = readBoxStates(this.dir);
-        const at = new Date(this.now()).toISOString();
-        for (const { n, r } of found)
-          st[n] = {
-            state: r.state,
-            ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
-            at,
-          };
-        writeBoxStates(this.dir, st);
-        this.settle();
-        return found.some((f) => f.r.state !== "open");
-      });
-      if (!no) return;
+      if (!(await this.probeAndRecord(want))) return;
     }
   }
 }
