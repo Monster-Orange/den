@@ -1075,7 +1075,10 @@ function status(args: string[], d: GateDeps): number {
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
   // Issue 1274: free memory, and what running VMs reserve.
-  for (const l of machineLines(gateView(d.store, d.now()).machine)) d.out(l);
+  for (const l of machineLines(
+    gateView(d.store, d.now(), { vmsNow: true }).machine,
+  ))
+    d.out(l);
   // Issue 963: said plainly, so a release run waiting in line has a why.
   if (set.priorityMax === 0)
     d.out(PRIORITY_OFF_STATUS[d.lang ?? personLanguage()]);

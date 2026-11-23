@@ -89,6 +89,16 @@ describe("new runs here wait while swap is high (issue 1274)", () => {
       swapUsedGb: 9.3,
     });
     expect(line).toMatch(/9\.3 GB of swap in use, over 8 GB/);
+    // The slot log keeps the reading that held it.
+    const waits = fs
+      .readFileSync(store.eventsFile, "utf-8")
+      .trim()
+      .split("\n")
+      .map(
+        (l) => JSON.parse(l) as { id: string; event: string; held?: unknown },
+      )
+      .filter((r) => r.id === b.id && r.event === "waits");
+    expect(waits.at(-1)?.held).toEqual({ swap: { usedGb: 9.3, limitGb: 8 } });
     swap = 2;
     expect(store.get(b.id)?.grantedAt).toBeDefined();
   });

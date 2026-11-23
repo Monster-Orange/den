@@ -164,7 +164,12 @@ export function gateBoxesView(
   });
 }
 
-export function gateView(store: GateStore, now = Date.now()) {
+export function gateView(
+  store: GateStore,
+  now = Date.now(),
+  /** Issue 1274: read the VMs now (gate status), not the last reading. */
+  o: { vmsNow?: boolean } = {},
+) {
   const all = store.list();
   const settings = store.settings();
   const pri = priorityIds(all, settings);
@@ -264,7 +269,7 @@ export function gateView(store: GateStore, now = Date.now()) {
     settings,
     slots,
     boxes: gateBoxesView(store, slots),
-    machine: machineView(store, freeMem, swapGb),
+    machine: machineView(store, freeMem, swapGb, !!o.vmsNow),
   };
 }
 
@@ -289,12 +294,13 @@ function machineView(
   store: GateStore,
   freeMem: number,
   swapGb: number,
+  now: boolean,
 ): GateMachineView {
   const out: GateMachineView = {
     ...(Number.isFinite(freeMem) ? { freeMemory: Math.round(freeMem) } : {}),
     ...(Number.isFinite(swapGb) && swapGb > 0 ? { swapUsedGb: swapGb } : {}),
   };
-  const r = store.vms();
+  const r = now ? store.vmsNow() : store.vms();
   if (!r) return out;
   const o = vmOvercommit(r.vms, r.ramBytes, r.share);
   return {

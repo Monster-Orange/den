@@ -35,7 +35,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
-import { cachedReadVms, type VmReading } from "./vms.js";
+import { peekVms, readVms, type VmReading } from "./vms.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
@@ -77,11 +77,13 @@ import {
   gone,
   lapsed,
   mcpLapsed,
+  memoryHold,
   overrun,
   passedBy,
   priorityIds,
   queueOrder,
   queuePlace,
+  swapHold,
   unclaimed,
   type GateEntry,
   type GateKind,
@@ -371,6 +373,14 @@ export interface GateEventRow {
   passed?: string[];
   /** waits: when it may expect to start (ISO). */
   expectedStart?: string;
+  /**
+   * Issue 1274: waits: the reading that holds it here (free memory under
+   * the floor, or swap over it), when one does.
+   */
+  held?: {
+    memory?: { free: number; limit: number };
+    swap?: { usedGb: number; limitGb: number };
+  };
   /** ended-early: who ended it; priority: who asked (agent or person). */
   by?: string;
   /** Issue 621: a runner's slot: the runner token's name. */
@@ -433,10 +443,12 @@ export interface GateStoreOpts {
   /** Issue 1274: swap in use, GB (default realSwapUsedGb). */
   swap?: () => number;
   /**
-   * Issue 1274: what VMs here reserve (default: read every 30 s; null with
-   * DEN_GATE_VMS=0, as the test setup sets).
+   * Issue 1274: a fixed VM reading (tests). Without it: null with
+   * DEN_GATE_VMS=0 (the test setup), else read in the background.
    */
   vms?: () => VmReading | null;
+  /** Issue 1274: the background VM reader (default readVmsAsync). */
+  vmsAsync?: (share: number) => Promise<VmReading>;
 }
 
 /**
@@ -623,7 +635,10 @@ export class GateStore {
   private readonly readCores: () => number;
   private readonly readFree: () => number;
   private readonly readSwap: () => number;
-  private readonly readVmsFn: () => VmReading | null;
+  private readonly fixedVms: (() => VmReading | null) | undefined;
+  private readonly vmsAsync:
+    | ((share: number) => Promise<VmReading>)
+    | undefined;
   readonly platform: NodeJS.Platform;
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
@@ -639,12 +654,8 @@ export class GateStore {
     this.readCores = o.cores ?? realCores;
     this.readFree = o.free ?? (() => realFreeMemory());
     this.readSwap = o.swap ?? (() => realSwapUsedGb());
-    this.readVmsFn =
-      o.vms ??
-      (() =>
-        process.env.DEN_GATE_VMS === "0"
-          ? null
-          : cachedReadVms(this.settings().vmMemoryShare));
+    this.fixedVms = o.vms;
+    this.vmsAsync = o.vmsAsync;
   }
 
   /** Issue 1274: swap in use here now, GB (NaN: unread). */
@@ -657,10 +668,26 @@ export class GateStore {
     }
   }
 
-  /** Issue 1274: what VMs here reserve; null: not read. Never throws. */
+  /**
+   * Issue 1274: what VMs here reserve, never waiting (the Gate page's
+   * request reads this): the last background reading; null: none yet.
+   */
   vms(): VmReading | null {
     try {
-      return this.readVmsFn();
+      if (this.fixedVms) return this.fixedVms();
+      if (process.env.DEN_GATE_VMS === "0") return null;
+      return peekVms(this.settings().vmMemoryShare, this.vmsAsync);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Issue 1274: the same, read now (gate status and doctor; not a server). */
+  vmsNow(): VmReading | null {
+    try {
+      if (this.fixedVms) return this.fixedVms();
+      if (process.env.DEN_GATE_VMS === "0") return null;
+      return readVms(this.settings().vmMemoryShare);
     } catch {
       return null;
     }
@@ -1469,14 +1496,32 @@ export class GateStore {
           .filter((x) => x.kind === now.kind && !x.grantedAt && x.priority?.at)
           .map((x) => x.id),
       });
-    if (!now.grantedAt)
+    if (!now.grantedAt) {
+      // Issue 1274: the slot log keeps the reading that holds a run here.
+      const set = this.settings();
+      const mem = memoryHold(all, set, this.freeMemory());
+      const sw = swapHold(all, set, this.swapUsedGb());
+      const here = !now.where || now.where === "local" || now.where === "any";
+      const held =
+        here && (mem || sw)
+          ? {
+              ...(mem
+                ? { memory: { free: Math.round(mem.free), limit: mem.limit } }
+                : {}),
+              ...(sw
+                ? { swap: { usedGb: sw.usedGb, limitGb: sw.limitGb } }
+                : {}),
+            }
+          : undefined;
       this.record(now, {
         event: "waits",
         behind: all.filter((x) => x.grantedAt).map((x) => x.id),
         expectedStart: new Date(
-          expectedStart(all, e.id, this.now(), this.settings()),
+          expectedStart(all, e.id, this.now(), set),
         ).toISOString(),
+        ...(held ? { held } : {}),
       });
+    }
     return now;
   }
 
