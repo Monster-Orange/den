@@ -665,6 +665,10 @@
         color: var(--muted);
         font-weight: 400;
       }
+      /* Issue 168: the agent in front stays bold, idle or not. */
+      .agr[data-attn="idle"][aria-current="true"] .nm {
+        font-weight: 600;
+      }
       /* Issue 773: the project tag (All projects) and "Server". */
       .agr .ptag {
         font: 11px var(--mono);
