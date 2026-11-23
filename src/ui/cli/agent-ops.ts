@@ -250,8 +250,9 @@ import {
 } from "../../shared/agents/runtimes.js";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
 import {
+  mcpLoadFailures,
   noteHubMcpInit,
-  readHubMcpInit,
+  type McpLoadFailure,
 } from "../../shared/agents/hub-mcp-connect.js";
 import type {
   RuntimeDetect,
@@ -1224,6 +1225,11 @@ export interface AgentRow {
    * keeps its conversation brings them in line.
    */
   mcpStale?: McpStale;
+  /**
+   * Issue 749: MCP servers whose tools failed to load in its running
+   * session (Hub's, as Den sees it through its proxy), with the error.
+   */
+  mcpFailed?: McpLoadFailure[];
   /** D56: started outside its project (rec.cwd is that folder). */
   outside?: boolean;
   /**
@@ -1682,6 +1688,9 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
       waiting,
     });
     if (st) r.mcpStale = st;
+    const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
+    const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
+    if (failed.length) r.mcpFailed = failed;
   }
 }
 
@@ -1752,11 +1761,11 @@ export async function agentTools(
   // What its session actually got: a connect that failed in this session
   // (the proxy's note) means no hub_* tools until it connects again.
   // 0.4.48: or it launched with none because Den couldn't read its token.
-  const init =
-    loaded || connected ? readHubMcpInit(d.stateDir(), rec.id) : null;
+  // Issue 749: or its connect worked but listing Hub's tools failed.
   const failed =
-    init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt)
-      ? (init.error ?? "an error")
+    loaded || connected
+      ? (mcpLoadFailures(d.stateDir(), rec).find((f) => f.server === HUB_SERVER)
+          ?.error ?? null)
       : null;
   if (failed) {
     loaded = false;
@@ -2637,6 +2646,7 @@ function personaInputOf(p: Persona): Record<string, unknown> {
     version: p.version ?? "latest",
     permission: intentOf(p.permissionMode) ?? "ask",
     allowedCommands: [...p.allowedCommands],
+    ...(p.subagentModel ? { subagentModel: p.subagentModel } : {}),
   };
 }
 

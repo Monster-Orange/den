@@ -90,8 +90,7 @@
         border-bottom: 1px solid var(--border);
         flex-shrink: 0;
       }
-      select,
-      .btn {
+      select {
         background: var(--bg);
         border: 1px solid var(--border);
         color: var(--text);
@@ -104,35 +103,7 @@
       select:focus {
         border-color: var(--accent);
       }
-      .btn {
-        font-weight: 500;
-        transition:
-          border-color 0.1s,
-          color 0.1s,
-          background 0.1s;
-      }
-      .btn:hover:not(:disabled) {
-        border-color: var(--accent);
-        color: var(--accent-text);
-      }
-      .btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-      .btn.primary {
-        background: var(--accent-fill);
-        color: var(--on-accent);
-        border-color: var(--accent-fill);
-        font-weight: 600;
-      }
-      .btn.primary:hover:not(:disabled) {
-        opacity: 0.88;
-        color: var(--on-accent);
-      }
-      .btn.danger:hover:not(:disabled) {
-        border-color: var(--bad);
-        color: var(--bad);
-      }
+      /* Buttons are the kit's .den-btn (issue 673). */
       .env-label {
         font-size: 11px;
         color: var(--muted);
@@ -636,7 +607,7 @@
           data-t-attr="title:rel.target"
         ></select>
         <button
-          class="btn"
+          class="den-btn"
           id="refresh-btn"
           title="Re-check deployed state"
           data-t-attr="title:rel.refresh.title"
@@ -647,7 +618,7 @@
         <span id="view-note"></span>
         <div class="h-spacer" style="flex: 1"></div>
         <button
-          class="btn"
+          class="den-btn"
           id="waves-btn"
           title="Edit wave assignment"
           data-t-attr="title:rel.waves.title"
@@ -655,7 +626,11 @@
         >
           Waves…
         </button>
-        <button class="btn primary" id="deploy-all-btn" data-t="rel.deployAll">
+        <button
+          class="den-btn primary"
+          id="deploy-all-btn"
+          data-t="rel.deployAll"
+        >
           Deploy all →
         </button>
         <span
@@ -1200,7 +1175,7 @@
             )
               return;
             const primary = $("modal-ftr").querySelector(
-              ".btn.primary:not([disabled])",
+              ".den-btn.primary:not([disabled]), .den-btn.danger:not([disabled])",
             );
             if (!primary) return; // still incomplete — leave the modal open
             e.preventDefault();
@@ -1241,8 +1216,8 @@
          <div id="dep-hotfix"></div>
          <div id="dep-confirm-wrap"></div>
          <div id="dep-err" class="err-text"></div>`,
-            `<button class="btn" id="dep-cancel">${esc(t("rel.cancel"))}</button>
-         <button class="btn primary" id="dep-go" disabled>${esc(t("rel.dep.go"))}</button>`,
+            `<button class="den-btn" id="dep-cancel">${esc(t("rel.cancel"))}</button>
+         <button class="den-btn primary" id="dep-go" disabled>${esc(t("rel.dep.go"))}</button>`,
           );
 
           const branchSel = $("dep-branch");
@@ -1318,7 +1293,8 @@
           $("dep-confirm")?.addEventListener("input", validate);
           $("dep-confirm-branch")?.addEventListener("input", validate);
           go.textContent = isHotfix ? t("rel.deployHotfix") : t("rel.deploy");
-          go.className = "btn primary" + (isHotfix ? " danger" : "");
+          // A hotfix is the kit's danger, not its primary (issue 673).
+          go.className = isHotfix ? "den-btn danger" : "den-btn primary";
           go.onclick = () => {
             closeModal();
             startDeploy({
@@ -1377,8 +1353,8 @@
             t("rel.all.title", { env: state.env }),
             `${policy}<div style="margin-top:6px">${planHtml || `<div class="empty-state">${esc(t("rel.all.none"))}</div>`}</div>
          <div class="hint">${esc(t("rel.all.hint"))}</div>`,
-            `<button class="btn" id="all-cancel">${esc(t("rel.cancel"))}</button>
-         <button class="btn primary" id="all-go" ${blocked ? "disabled" : ""}>${esc(t("rel.deployAll"))}</button>`,
+            `<button class="den-btn" id="all-cancel">${esc(t("rel.cancel"))}</button>
+         <button class="den-btn primary" id="all-go" ${blocked ? "disabled" : ""}>${esc(t("rel.deployAll"))}</button>`,
           );
 
           $("all-cancel").addEventListener("click", closeModal);
@@ -1419,8 +1395,8 @@
          ${rowsHtml}
          <div id="wave-err" class="err-text"></div>
          <div class="hint">${t("rel.wave.hint", { mine: "<code>config/local/user.yml</code>", shared: "<code>__DEN_CONFIG_FILE__</code>" })}</div>`,
-            `<button class="btn" id="wave-cancel">${esc(t("rel.cancel"))}</button>
-         <button class="btn primary" id="wave-save">${esc(t("rel.wave.save"))}</button>`,
+            `<button class="den-btn" id="wave-cancel">${esc(t("rel.cancel"))}</button>
+         <button class="den-btn primary" id="wave-save">${esc(t("rel.wave.save"))}</button>`,
           );
           $("wave-cancel").addEventListener("click", closeModal);
           $("wave-save").addEventListener("click", saveWaves);

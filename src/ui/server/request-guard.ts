@@ -979,6 +979,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 52: Dismiss a Coach finding, and Undo it: a person's.
   "/api/coach/dismiss",
   "/api/coach/undismiss",
+  // Issue 110: Apply a Coach finding's change (a held write): a person's.
+  "/api/coach/apply",
   "/api/settings",
   "/api/scope",
   "/api/web-url",

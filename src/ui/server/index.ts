@@ -18,6 +18,18 @@ import {
   type CoachRouteDeps,
 } from "./coach-routes.js";
 import { runCoach } from "../../shared/coach/run.js";
+import {
+  applyLinkOf,
+  applyStateOf,
+  linkApply,
+  readApplyLinks,
+  type ApplyState,
+} from "../../shared/coach/applies.js";
+import {
+  COACH_APPLY_ROUTES,
+  handleCoachApplyRoute,
+  type CoachApplyDeps,
+} from "./coach-apply-routes.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
@@ -29,6 +41,10 @@ import {
   COACH_DEFAULTS,
   type CoachSettings,
 } from "../../shared/coach/settings.js";
+import {
+  healthCacheTtlMs,
+  healthPollSeconds,
+} from "../../shared/health-poll.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
@@ -88,6 +104,14 @@ import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
+import {
+  TEST_RESOLVE_ENV_KEY,
+  parseTestResolve,
+  setTestResolve,
+  testResolveIgnored,
+  testResolver,
+  writeTestResolveState,
+} from "../../shared/test-resolve.js";
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
@@ -748,7 +772,6 @@ function healthForViewer(
   return (r) => ({ ...rewrite(r), inView: inView(r.workspaces) });
 }
 
-const HEALTH_CACHE_TTL_MS = 8_000;
 /** Consecutive timed-out health cycles per check (see TimeoutStreaks). */
 const healthTimeouts = new TimeoutStreaks();
 const healthCache = new Map<string, { results: HealthResult[]; at: number }>();
@@ -1258,6 +1281,7 @@ import {
 } from "./workspace-routes.js";
 import {
   createApprovalQueue,
+  askHeld,
   handleApprovalRoutes,
   isApprovalPath,
   notePolicyRun,
@@ -1351,12 +1375,14 @@ import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
   noteHubMcpCall,
   noteHubMcpInit,
+  noteHubMcpTools,
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
   refreshTerminalHost,
   startAgentUpkeep,
   terminalHostRefreshing,
+  startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import { hostRestartOp } from "./host-restart-held.js";
@@ -1453,6 +1479,7 @@ import {
 import { product } from "../../shared/product.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -1959,7 +1986,7 @@ const NAMED = new NamedAddressWatch({
   // For doctor: whether it is proven, and when it last answered as this Den.
   onChange: (st) => {
     try {
-      fs.writeFileSync(
+      writeFileAtomic(
         path.join(getStateDir(), ADDRESS_PROOF_FILE),
         JSON.stringify({
           proven: st.proven,
@@ -3373,6 +3400,25 @@ const TEST_INSTALL_LAUNCH_FLAG = (() => {
 })();
 
 /**
+ * Issue 1073: the launcher's name map for Den's own address checks, read
+ * once from the server's start environment (never a file, a setting or a
+ * request) and taken out of it like the flag above. It counts only while
+ * this install is a test install (asked at every lookup); otherwise it is
+ * ignored, and the log and doctor say so.
+ */
+const TEST_RESOLVE = (() => {
+  const name = envName(getProfile(), TEST_RESOLVE_ENV_KEY);
+  const raw = readEnv(getProfile(), TEST_RESOLVE_ENV_KEY);
+  delete process.env[name];
+  if (raw === undefined || raw.trim() === "") return null;
+  const parsed = parseTestResolve(raw);
+  if (!parsed.ok) return { name, ignored: parsed.error };
+  if (!TEST_INSTALL_LAUNCH_FLAG)
+    return { name, ignored: "this install wasn't started as a test install" };
+  return { name, map: parsed.map };
+})();
+
+/**
  * Issue 1018: the launcher's one-time setup value, read once from the
  * server's own start environment and taken out of process.env, like the
  * flag, so nothing this server starts (agents, terminals) inherits it.
@@ -3432,6 +3478,25 @@ function testInstallNow(except?: string): boolean {
       ),
   }).ok;
 }
+
+// Issue 1073: install the name map's hook, and tell the log and doctor.
+if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
+  setTestResolve(testResolver(TEST_RESOLVE.map, () => testInstallNow()));
+  writeTestResolveState(getStateDir(), {
+    state: "used",
+    names: [...TEST_RESOLVE.map.keys()],
+  });
+} else if (TEST_RESOLVE && "ignored" in TEST_RESOLVE && TEST_RESOLVE.ignored) {
+  serverLog(
+    `  ${testResolveIgnored(TEST_RESOLVE.name, TEST_RESOLVE.ignored)}`,
+    "lifecycle",
+  );
+  writeTestResolveState(getStateDir(), {
+    state: "ignored",
+    env: TEST_RESOLVE.name,
+    why: TEST_RESOLVE.ignored,
+  });
+} else writeTestResolveState(getStateDir(), null);
 
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
@@ -3804,13 +3869,73 @@ function coachRouteDeps(): CoachRouteDeps {
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),
     findings: (report) => ({
-      open: openFindings(getStateDir(), report?.findings ?? []),
+      open: withApplyState(openFindings(getStateDir(), report?.findings ?? [])),
       dismissed: readDismissals(getStateDir()),
     }),
+    // Issue 110: a finding whose Apply waits for Allow can't be dismissed.
     dismiss: (id, reason) =>
-      dismissFinding(getStateDir(), id, reason, "person"),
+      coachApplyState(id) === "waiting"
+        ? {
+            ok: false,
+            code: "apply_waiting",
+            error:
+              "This finding's change is waiting for a person's Allow: Deny it in the bell first.",
+          }
+        : dismissFinding(getStateDir(), id, reason, "person"),
     undismiss: (id) => undismissFinding(getStateDir(), id),
     readBody,
+  };
+}
+
+/** Issue 110: a held write's state, as its Coach finding's row shows it. */
+function coachHeldState(approval: string): ApplyState {
+  try {
+    return applyStateOf(approvalDeps().queue.get(approval));
+  } catch {
+    return "failed";
+  }
+}
+
+/** Issue 110: finding `id`'s Apply state, or null when it was never applied. */
+function coachApplyState(id: string): ApplyState | null {
+  const link = applyLinkOf(getStateDir(), id);
+  return link ? coachHeldState(link.approval) : null;
+}
+
+/** Issue 110: each finding with its Apply's state (`applied`), when it has one. */
+function withApplyState<T extends { id: string }>(open: T[]) {
+  const links = readApplyLinks(getStateDir());
+  return open.map((f) =>
+    Object.hasOwn(links, f.id)
+      ? {
+          ...f,
+          applied: {
+            state: coachHeldState(links[f.id].approval),
+            approval: links[f.id].approval,
+            at: links[f.id].at,
+          },
+        }
+      : f,
+  );
+}
+
+/** Issue 110: what Coach Apply's route needs from this server. */
+function coachApplyDeps(): CoachApplyDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    readBody,
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    openFindings: () =>
+      openFindings(
+        getStateDir(),
+        readCoachReport(getStateDir())?.findings ?? [],
+      ),
+    linkOf: (id) => applyLinkOf(getStateDir(), id),
+    stateOf: coachHeldState,
+    ask: (req, body) => askHeld(req, approvalDeps(), body),
+    link: (id, approval, at) => linkApply(getStateDir(), id, approval, at),
   };
 }
 
@@ -7138,7 +7263,9 @@ async function handleRequest(
     const refresh = url.searchParams.get("refresh") === "1";
     const cacheKey = healthCacheKey(env, wsParam);
     const hit = refresh ? null : healthCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+    // Issue 1022: a hidden page's poll keeps the answer for the slow interval.
+    const ttl = healthCacheTtlMs(url.searchParams.get("hidden") === "1");
+    if (hit && Date.now() - hit.at < ttl) {
       return sendJson(res, hit.results.map(forViewer));
     }
     return sendJson(
@@ -7167,7 +7294,9 @@ async function handleRequest(
     const refresh = url.searchParams.get("refresh") === "1";
     const cacheKey = healthCacheKey(env, wsParam);
     const hit = refresh ? null : healthCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < HEALTH_CACHE_TTL_MS) {
+    // Issue 1022: a hidden page's poll keeps the answer for the slow interval.
+    const ttl = healthCacheTtlMs(url.searchParams.get("hidden") === "1");
+    if (hit && Date.now() - hit.at < ttl) {
       // Cached: replay in one go. Nothing to stagger — it's already known.
       for (const r of hit.results)
         send({ type: "result", result: forViewer(r) });
@@ -8911,6 +9040,9 @@ async function handleRequest(
     await handleHubProxy(req, res, pathname, {
       upstream: (who) => hubUpstream(agentWebDeps(), who),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
+      // Issue 749: a tool listing that failed leaves it without Hub's tools.
+      onMcpToolsList: (agentId, o) =>
+        noteHubMcpTools(getStateDir(), agentId, o),
       // 0.4.48: Hub turned the token down through an agent's call: let the
       // next call read it again (at most once a minute), as Den's own
       // status check does; and the agent's note says how its calls go.
@@ -9001,6 +9133,12 @@ async function handleRequest(
   if (
     (COACH_ROUTES as readonly string[]).includes(pathname) &&
     (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+  // POST /api/coach/apply (issue 110): coach-apply-routes.ts.
+  if (
+    (COACH_APPLY_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachApplyRoute(req, res, pathname, coachApplyDeps()))
   )
     return;
 
@@ -9294,6 +9432,8 @@ async function handleRequest(
         time_zone: timeZonePref(user.time_zone),
         // 0.4.46 MODE-UI: the install's mode for every agent (null: unset).
         agents_default_mode: user.agents?.default_mode ?? null,
+        // Issue 1022: how often the page polls health, visible and hidden.
+        health_poll: healthPollSeconds(() => user),
         // Issue 158: the Hub delivery loop in agents' instructions.
         hub_delivery_loop:
           (
@@ -9403,6 +9543,7 @@ async function handleRequest(
           agent_hooks?: unknown;
           sessions?: unknown;
           held_writes?: unknown;
+          health_poll?: unknown;
           github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
@@ -9468,6 +9609,7 @@ async function handleRequest(
             agent_hooks: body.agent_hooks,
             sessions: body.sessions,
             held_writes: body.held_writes,
+            health_poll: body.health_poll,
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
@@ -10675,6 +10817,10 @@ try {
     "lifecycle",
   );
 }
+// Issue 163: back from a logout the server ran through: who ran meanwhile.
+void CRASH_GATE.then(() =>
+  startLogoutWatch((line) => serverLog(line, "lifecycle")),
+);
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());

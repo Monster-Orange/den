@@ -1167,6 +1167,10 @@
       "リリース用ブラウザーテストと並んで動かす単体テスト",
     "set.server.gate_cpu_beside_release.d":
       "リリース優先のブラウザーテストの実行中に、このマシンで同時に動かせる単体テストの数です。0 (既定) ではリリース用の実行は単独で動き、ほかの実行がそのチェックを遅くしません。ほかのブラウザーテストは上の設定に従います。__DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_load_hold_per_core":
+      "コアあたりこの負荷を超えたら新しい単体テストを待たせる",
+    "set.server.gate_load_hold_per_core.d":
+      "このマシンの 5 分間の平均負荷がコア数のこの倍数を超えている間、新しい単体テストは待ちます。ただし待つのは別の単体テストが動いている間だけで、動いているものがなければ負荷にかかわらず次が始まります。リリース用の実行とすでに動いている実行は待ちません。各単体テストには DEN_GATE_WORKERS でコアの割り当て分も渡します。0 で待たせません。__DEN_CLI__ gate settings --load-hold-per-core 3",
     "set.server.gate_cpu_hold_load":
       "リリース用ブラウザーテスト中に単体テストを待たせるマシン負荷",
     "set.server.gate_cpu_hold_load.d":
@@ -1382,6 +1386,12 @@
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
       "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+    "set.server.health_poll": "表示中のヘルスチェック",
+    "set.server.health_poll.d":
+      "開いて表示中のページが各サービスのヘルスを確認する間隔: 2〜300 秒。__DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
+    "set.server.health_poll_hidden.d":
+      "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -1868,6 +1878,9 @@
     "ag.mcp.drops": "再起動で Hub のツールが外れます",
     "ag.mcp.dropsTip":
       "このエージェントの起動後に Hub が切断されたため、Hub のツールはもう動きません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.failed": "Hub のツールを読み込めませんでした",
+    "ag.mcp.failedTip":
+      "このエージェントは起動時に Hub のツールを読み込めませんでした（{error}）。そのため Hub からは連絡できません。再起動しても会話は続き、ターンの終わりを待ちます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
@@ -2548,6 +2561,11 @@
     "bell.m.vschedExpire":
       "スケジュール「{name}」の許可はあと {n} 日で切れます。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.shared": "{actor} さんが {title} を共有しました",
+    "bell.m.sharedNote": "{actor} さんが {title} を共有しました: {note}",
+    "bell.m.sharedAgent": "エージェント {actor} が {title} を共有しました",
+    "bell.m.sharedAgentNote":
+      "エージェント {actor} が {title} を共有しました: {note}",
     "bell.m.heldLapsed":
       "{name} の依頼は応答がないまま期限切れになりました: {what}。何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLapsedAsk":
@@ -2574,6 +2592,10 @@
     "bell.ap.failed": "うまくいきませんでした: {error}",
     "bell.m.ranAway":
       "__DEN_TITLE__ が止まっていた間に {kept} 件が動き続け、{back} 件が戻りました: {names}",
+    "bell.m.ranLoggedOut":
+      "ログアウトしていた間（{min} 分）に動いたエージェント: {names}",
+    "bell.m.stoppedLoggedOut":
+      "ログアウトしていた間（{min} 分）に止まったエージェント: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
     "bell.m.notAtPrompt":
@@ -2611,6 +2633,8 @@
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
+    "bell.m.toolsListFailed":
+      "{agent} は Hub のツールを使えません。__DEN_TITLE__ が一度再起動した後も、ツールの一覧を取得できませんでした。Hub が直ったら、エージェント画面から再起動してください",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ が戻りました。{agent} への連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.restartedWhileWorking":
@@ -3075,6 +3099,8 @@
     "gate.yielded": "{to} に先を譲りました",
     "gate.class": "クラス: {name}",
     "gate.window": "時間帯 {window} を待っています",
+    "gate.loadHoldCores":
+      "待機中: このマシンの負荷は {load} で、{perCore} × {cores} コア ({limit}) を超えており、別の単体テストが動いています。負荷が下がるかその実行が終わると始まります",
     "gate.loadHold":
       "待機中: 負荷 {load} ≥ {limit}、リリース用の実行がブラウザー枠を使っています",
     "busy.gateEndW": "{name} の順番を終えています…",
@@ -3083,6 +3109,9 @@
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",
+    "busy.addSvcW": "{name} を追加しています…",
+    "busy.addSvcS": "{name} を追加しました。",
+    "busy.addSvcF": "{name} を追加できませんでした。",
     "ag.orphan.one":
       "{names} にはプロジェクトがありません (削除されました)。⋯ › 別のプロジェクトへ移動… で割り当ててください。",
     "ag.orphan.many":
@@ -3371,6 +3400,39 @@
     "pj.th.lastRun": "前回のテスト",
     "pj.th.actions": "操作",
     "pj.addRepo": "リポジトリを追加",
+    "addSvc.title": "サービスを追加: {ws}",
+    "addSvc.filter": "リポジトリを絞り込む",
+    "addSvc.filterPh": "リポジトリを絞り込む…",
+    "addSvc.tab.local": "ローカル",
+    "addSvc.tab.gh": "GitHub",
+    "addSvc.sortBy": "並べ替え",
+    "addSvc.sort.name": "名前",
+    "addSvc.sort.project": "プロジェクト",
+    "addSvc.loading": "読み込み中…",
+    "addSvc.noLocal": "このマシンにリポジトリがありません",
+    "addSvc.noResults": "一致するリポジトリがありません",
+    "addSvc.added": "追加済み",
+    "addSvc.group.dev": "開発者が管理",
+    "addSvc.group.managed": "__DEN_TITLE__ が管理",
+    "addSvc.ghLoading": "GitHub のリポジトリを読み込み中…",
+    "addSvc.ghNoMatch": "「{q}」に一致するリポジトリがありません",
+    "addSvc.ghNone": "GitHub のリポジトリがありません",
+    "addSvc.noManifest": "マニフェストなし",
+    "addSvc.group.supported": "__DEN_TITLE__ 対応",
+    "addSvc.group.unsupported": "__DEN_MANIFEST_YML__ なし",
+    "addSvc.refresh": "再読み込み",
+    "addSvc.refreshTip": "GitHub のリポジトリ一覧をもう一度取得",
+    "addSvc.refreshing": "再読み込み中…",
+    "addSvc.manage": "管理",
+    "addSvc.mode.dev": "開発者が管理",
+    "addSvc.mode.managed": "管理対象",
+    "addSvc.branch": "ブランチ",
+    "addSvc.newBranch": "新しいブランチ",
+    "addSvc.optional": "任意",
+    "addSvc.add": "追加",
+    "addSvc.done": "✓ {name} を追加しました",
+    "addSvc.doneSetup": "✓ {name} を追加しました · セットアップ中(ログを確認)",
+    "addSvc.missingDeps": "不足している依存関係: {deps}",
     "pj.validate.title": "マニフェストを検証",
     "pj.validate.path": "パスまたはディレクトリ",
     "pj.validate.pathPh": "/absolute/path/to/repo  または  /path/to/{file}",
