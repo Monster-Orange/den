@@ -106,6 +106,8 @@ export const UI_MODULES: readonly string[] = [
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
+  // Issue 806: Projects' Add Service, on the kit's dialog.
+  "/add-service.js",
 ];
 
 /** URL path → file inside node_modules. */
@@ -178,6 +180,8 @@ export const KIT_FILES: readonly string[] = [
   "button.css",
   "setting-row.js",
   "setting-row.css",
+  "setting-field.js",
+  "setting-field.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
   // The shared update pill: a new version of Den, Reload.

@@ -20,6 +20,12 @@ import {
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
 
+// Issue 1048: the gate reads this machine's load to hold new cpu slots. A
+// test that wants a load passes its own; every other test reads 0, so a busy
+// machine never holds an unrelated test's slot. Den processes tests start
+// inherit it.
+process.env.DEN_GATE_LOAD5 = "0";
+
 // No test reads the developer's own state dir: its web.secret would put a
 // real person token on a test server's request (SEC-1a). A suite that needs
 // a state dir sets DEN_HOME itself.
@@ -87,7 +93,7 @@ afterAll(() => {
 process.env.DEN_RUNTIME_DIRS ??= "";
 
 // No test runs a vendor's CLI installed on this machine's PATH (AG-0.5's
-// catalog: claude, codex, gemini, grok), not even its --version: inert
+// catalog: claude, codex, gemini, grok, agy), not even its --version: inert
 // stand-ins come first on the PATH every test and every server a test
 // spawns inherits. They print nothing and exit 127. A suite that tests a
 // runtime builds its own env with its own fakes.
@@ -101,7 +107,15 @@ if (!(process.env.PATH ?? "").split(path.delimiter).includes(stubs)) {
   // D17: and gh (`web up` asks it who is signed in): never the real one.
   // And launchctl: no test may reach this machine's real launchd (a
   // bootout there stops real services); tests that need it shim their own.
-  for (const bin of ["claude", "codex", "gemini", "grok", "gh", "launchctl"])
+  for (const bin of [
+    "claude",
+    "codex",
+    "gemini",
+    "grok",
+    "agy",
+    "gh",
+    "launchctl",
+  ])
     fs.writeFileSync(path.join(stubs, bin), "#!/bin/sh\nexit 127\n", {
       mode: 0o755,
     });

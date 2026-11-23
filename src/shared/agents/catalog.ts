@@ -289,6 +289,32 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     accountName: "xAI",
     screenRules: "grok",
   },
+  // Antigravity CLI (issue 97). https://antigravity.google/docs/getting-started?tab=cli:
+  // install with https://antigravity.google/cli/install.sh, "Default binary
+  // location: ~/.local/bin/agy", check it with `agy --version`, and `agy`
+  // "Launches the interactive TUI in the current directory". The version
+  // output's form isn't documented: "Set path…" takes a binary whose output
+  // names it.
+  {
+    id: "antigravity",
+    vendor: "Google",
+    name: "Antigravity CLI",
+    bins: ["agy"],
+    version: {
+      args: ["--version"],
+      identity: { output: "antigravity|\\bagy\\b" },
+    },
+    dirs: ["~/.local/bin", "{system}"],
+    launch: { argv: ["{bin}"] },
+    // https://antigravity.google/docs/cli/reference/ and
+    // https://antigravity.google/docs/cli/using/ both list Ctrl+J as
+    // "insert newline".
+    softNewline: "lf",
+    // https://antigravity.google/docs/install?tab=cli: "Google OAuth", a
+    // "personal Google Account".
+    accountName: "Google",
+    screenRules: "antigravity",
+  },
 ];
 
 /** Den's own runtime ids that a catalog entry can't take. */

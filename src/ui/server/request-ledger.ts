@@ -20,6 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Principal } from "./request-guard.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export interface LedgerAnswer {
   status: number;
@@ -200,9 +201,9 @@ export function createRequestLedger(opts: {
       });
     try {
       fs.mkdirSync(path.dirname(opts.file), { recursive: true });
-      const tmp = `${opts.file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify({ v: 1, rows }), { mode: 0o600 });
-      fs.renameSync(tmp, opts.file);
+      writeFileAtomic(opts.file, JSON.stringify({ v: 1, rows }), {
+        mode: 0o600,
+      });
       fs.chmodSync(opts.file, 0o600);
     } catch {
       /* the ledger still works in memory */

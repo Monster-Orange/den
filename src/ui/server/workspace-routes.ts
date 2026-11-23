@@ -686,7 +686,10 @@ export async function handleWorkspaceRoutes(
     // 0.4.45: this person's project order (Manage projects); the picker
     // lists A to Z without one.
     const { shellPrefs } = await import("./shell-prefs.js");
-    const projectOrder = shellPrefs(readUserConfig().shell).projectOrder;
+    const prefs = shellPrefs(readUserConfig().shell);
+    const projectOrder = prefs.projectOrder;
+    // Issue 168: the colours this person chose (the rest are Automatic).
+    const projectColours = prefs.projectColours;
     return sendJson(res, {
       ...wsFile,
       resolvedDirs,
@@ -695,6 +698,7 @@ export async function handleWorkspaceRoutes(
       hubUncovered,
       hubElsewhere,
       projectOrder,
+      projectColours,
     });
   }
 

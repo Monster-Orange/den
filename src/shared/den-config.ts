@@ -8,6 +8,7 @@
  * The user file can toggle local_dev on/off without touching the shared config.
  */
 
+import { checkCoachConfig, type CoachSettings } from "./coach/settings.js";
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
@@ -372,6 +373,11 @@ export interface UserConfig {
    */
   held_writes?: { wait_minutes?: unknown };
   /**
+   * Issue 1022: how often the page polls health, visible (default 5 s, 2
+   * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
+   */
+  health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
+  /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
    */
@@ -398,7 +404,12 @@ export interface UserConfig {
    * request_memory_seconds: replaced by requests.keep_minutes in 0.4.48;
    * still read until 0.4.49 when that is unset.
    */
-  ui?: { restart_wait_seconds?: number; request_memory_seconds?: number };
+  ui?: {
+    restart_wait_seconds?: number;
+    request_memory_seconds?: number;
+    /** Issue 163 (default 30): how often the console owner is looked at. */
+    console_check_seconds?: number;
+  };
   /**
    * UK-2: the working pop-up's request ledger. keep_minutes (default 15):
    * how long Den remembers how a write sent from the pop-up ended, so Try
@@ -587,6 +598,12 @@ export interface UserConfig {
     /** How long a failed lookup is held before asking again (60 s, 0..3600). */
     visibility_retry_seconds?: unknown;
   };
+  /**
+   * Issue 532: the terminal limits as set in Settings or `config`
+   * (sessions.max_concurrent and the rest, SESSIONS_SETTINGS_KEYS); each
+   * wins over the distribution's den.yml.
+   */
+  sessions?: Partial<Record<(typeof SESSIONS_SETTINGS_KEYS)[number], unknown>>;
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
     /**
@@ -767,6 +784,22 @@ export function uiRestartWaitSeconds(
     return Number.isFinite(v) && v > 0 ? v : 90;
   } catch {
     return 90;
+  }
+}
+
+/**
+ * Issue 163 ui.console_check_seconds (user.yml, 30): how often the web
+ * server looks at who owns the console, to say on the person's return
+ * which agents ran while they were logged out. A positive number, else 30.
+ */
+export function uiConsoleCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  try {
+    const v = Number(read().ui?.console_check_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 30;
+  } catch {
+    return 30;
   }
 }
 
@@ -1786,6 +1819,11 @@ export interface AgentsConfig {
    */
   exited_shell_minutes?: unknown;
   /**
+   * Issue 52: the Coach, `{ enabled, window_days, keep_runs }` (default
+   * off, 7 days, 100 runs; coach/settings.ts).
+   */
+  coach?: unknown;
+  /**
    * AG-DROP: files dropped or pasted onto an agent's terminal,
    * `{ max_bytes, keep_days, dir }` (defaults 25 MB, 7 days,
    * `<state>/uploads`).
@@ -1868,6 +1906,8 @@ export const AGENTS_RESERVED_KEYS = [
   // den#3: subagents' model; the account's claude.ai connectors.
   "subagents",
   "claude_ai_connectors",
+  // Issue 52: the Coach's settings.
+  "coach",
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
@@ -1949,6 +1989,8 @@ export interface ResolvedAgentsConfig {
   lockWaitMs?: number;
   /** agents.exited_shell_minutes; unset: DEFAULT_EXITED_SHELL_MINUTES. */
   exitedShellMinutes?: number;
+  /** Issue 52: agents.coach with its defaults (coach/settings.ts). */
+  coach?: CoachSettings;
   /** agents.uploads (AG-DROP) with its defaults. */
   uploads?: UploadSettings;
   /** agents.files (AG-DROP-2) with its defaults. */
@@ -2222,6 +2264,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.exitedShellMinutes = exitedMin;
   }
+  out.coach = checkCoachConfig(raw.coach);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
     ...DEN_CATEGORIES.map((c) => c.id),
@@ -2356,9 +2399,46 @@ const SESSIONS_KEYS = [
  * as readAgentsConfig does: a typo must not lift the cap.
  */
 export function readSessionsConfig(
-  config: DenConfig = readDenConfig(),
+  config?: DenConfig,
+  /** user.yml (default: read only when `config` is Den's own, unpassed). */
+  user?: UserConfig,
 ): ResolvedSessionsConfig {
-  return asConfigError(() => parseSessionsConfig(config));
+  const c = config ?? readDenConfig();
+  const u = user ?? (config ? {} : readUserConfigQuiet());
+  // Issue 532: the terminal limits set in Settings (user.yml sessions:)
+  // win over the distribution's, key by key.
+  const mine = isMapping(u.sessions) ? u.sessions : {};
+  const theirs = c.sessions as unknown;
+  // A den.yml sessions: that isn't a mapping is its own error, as before.
+  const merged =
+    theirs === undefined || isMapping(theirs)
+      ? { ...(theirs ?? {}), ...mine }
+      : theirs;
+  return asConfigError(() =>
+    parseSessionsConfig({ ...c, sessions: merged as SessionsConfig }),
+  );
+}
+
+/**
+ * Issue 532: the terminal limits Settings and `config` set (user.yml
+ * sessions:), each checked with the ranges and words above.
+ */
+export const SESSIONS_SETTINGS_KEYS = [
+  "max_concurrent",
+  "close_grace_seconds",
+  "pty_close_seconds",
+  "pty_warn_above",
+  "pty_machine_warn_percent",
+] as const;
+
+/** What is wrong with one sessions.<key> value, in den-config's words; null: fine. */
+export function sessionsValueError(key: string, value: unknown): string | null {
+  try {
+    parseSessionsConfig({ sessions: { [key]: value } } as unknown as DenConfig);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {

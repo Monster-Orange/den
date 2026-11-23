@@ -62,6 +62,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_release_browser: true,
     // Issue 1009: cpu runs wait at this load under a release run.
     cpu_hold_load: true,
+    // Issue 1048: new cpu runs wait over this × the cores.
+    load_hold_per_core: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -146,6 +148,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 609: how long Den's process lookups wait.
   process_lookup: { first_seconds: true, retry_seconds: true },
+  // Issue 532: the terminal limits (user.yml sessions.*).
+  sessions: {
+    max_concurrent: true,
+    close_grace_seconds: true,
+    pty_close_seconds: true,
+    pty_warn_above: true,
+    pty_machine_warn_percent: true,
+  },
   // Issue 609: how agents' hooks wait for Den, and retry.
   agent_hooks: {
     timeout_seconds: true,
@@ -160,6 +170,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
+  // Issue 1022: how often the page polls health, visible and hidden.
+  health_poll: { visible_seconds: true, hidden_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -234,6 +246,8 @@ describe("the settings inventory (R21)", () => {
         "shell.hidden",
         "shell.order",
         "shell.pins",
+        // Issue 168: a project's colour, the person's own.
+        "shell.projectColours",
         // 0.4.45: this person's project order.
         "shell.projectOrder",
         "terminal",
@@ -278,6 +292,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
         "gate_slots.cpu_slots_beside_release_browser",
+        "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
@@ -351,12 +366,21 @@ describe("the settings inventory (R21)", () => {
         // Issue 609: how long Den's process lookups wait.
         "process_lookup.first_seconds",
         "process_lookup.retry_seconds",
+        // Issue 532: the terminal limits.
+        "sessions.close_grace_seconds",
+        "sessions.max_concurrent",
+        "sessions.pty_close_seconds",
+        "sessions.pty_machine_warn_percent",
+        "sessions.pty_warn_above",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
         // Issue 742: how long a held write waits for the person's Allow.
         "held_writes.wait_minutes",
+        // Issue 1022: how often the page polls health, visible and hidden.
+        "health_poll.visible_seconds",
+        "health_poll.hidden_seconds",
       ].sort(),
     );
   });

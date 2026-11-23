@@ -24,7 +24,7 @@ const LEFT: Record<string, number> = {
   "error-page.js": 4,
   "graph.js": 1,
   "header.js": 2,
-  "local-dev.html": 18,
+  "local-dev.html": 16,
   "persona-ui.js": 5,
   "release.html": 4,
   "server-agent-page.js": 4,

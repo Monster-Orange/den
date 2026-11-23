@@ -37,12 +37,10 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer();
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [top] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = top?.version ?? "";
 }, 90_000);
 
 afterAll(async () => {
@@ -50,6 +48,20 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
+/** A key's words from the page's own catalog, filled the way it fills them. */
+const tr = (p: Page, key: string, vars: Record<string, string> = {}) =>
+  p.evaluate(
+    ([k, v]) =>
+      Object.entries(v).reduce(
+        (a, [n, x]) => a.split(`{${n}}`).join(x),
+        String(
+          (
+            window as unknown as { denShell: { t: (k: string) => string } }
+          ).denShell.t(k),
+        ),
+      ),
+    [key, vars] as const,
+  );
 const ROW = '[data-setting="agents.hub"]';
 const WEB = { id: "proj_web1", slug: "web", name: "Web" };
 const DOCS = { id: "proj_docs1", slug: "docs", name: "Docs" };
@@ -173,10 +185,10 @@ describe("issue 646: Connect's review in Settings › Hub", () => {
       };
     });
     const text = await p.textContent(`${ROW} [data-hub-review]`);
-    expect(text).toContain("Connect this Den to Acme Co");
-    expect(text).toContain("same repo");
-    expect(text).toContain("same name");
-    expect(text).toContain("Create “east”");
+    expect(text).toContain(await tr(p, "hubrv.title", { company: "Acme Co" }));
+    expect(text).toContain(await tr(p, "hubrv.why.repo"));
+    expect(text).toContain(await tr(p, "hubrv.why.name"));
+    expect(text).toContain(await tr(p, "hubrv.create", { name: "east" }));
     expect(await p.$(`${ROW} [data-hub-switch]`)).not.toBeNull();
     // Change: the picker opens in the row, a list with a search.
     await p.click(`${ROW} [data-hub-rv-change="south"]`);
@@ -203,9 +215,19 @@ describe("issue 646: Connect's review in Settings › Hub", () => {
       },
     ]);
     const done = await p.textContent(`${ROW} [data-hub-rv-done]`);
-    expect(done).toContain("Connected to Acme Co");
-    expect(done).toContain("north → Web (same repo)");
-    expect(done).toContain("waiting for an Apply in Hub");
+    expect(done).toContain(
+      await tr(p, "hubrv.doneTitle", { company: "Acme Co" }),
+    );
+    expect(done).toContain(
+      await tr(p, "hubrv.linkedLine", {
+        project: "north",
+        name: WEB.name,
+        why: await tr(p, "hubrv.why.repo"),
+      }),
+    );
+    expect(done).toContain(
+      await tr(p, "hubrv.creatingLine", { project: "east", name: "east" }),
+    );
     expect(await p.getAttribute(`${ROW} [data-hub-rv-plan]`, "href")).toBe(
       "https://hub.example.test/plans/1",
     );

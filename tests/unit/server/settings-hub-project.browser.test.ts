@@ -586,7 +586,7 @@ describe("Settings › Project setup › Hub project (H5)", () => {
       return r.fulfill({ response: res, body: JSON.stringify(b) });
     });
     await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
-    await p.waitForSelector(".content-header #ws-hub-project");
+    await p.waitForSelector("#content #ws-hub-project");
     expect(await p.textContent("#ws-hub-project")).toBe("Hub: Back office");
     expect(await p.getAttribute("#ws-hub-project", "href")).toBe(
       "/settings?project=north#workspace",
@@ -639,41 +639,54 @@ describe("Settings › Project setup › Hub project (H5)", () => {
           }),
       );
       await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
-      await p.waitForSelector(".content-header #ws-hub-project");
+      await p.waitForSelector("#content #ws-hub-project");
       return p;
     };
+    // The words come from the page's own catalog, filled the way it fills them.
+    const tr = (pg: Page, key: string, vars: Record<string, string> = {}) =>
+      pg.evaluate(
+        ([k, v]) =>
+          Object.entries(v).reduce(
+            (a, [n, x]) => a.split(`{${n}}`).join(x),
+            String(
+              (
+                window as unknown as { denShell: { t: (k: string) => string } }
+              ).denShell.t(k),
+            ),
+          ),
+        [key, vars] as const,
+      );
+    const v = { company: "Acme Co", name: BACK.name, host: "hub.example.test" };
     let p = await open(1440, false);
     await p.waitForFunction(
       () =>
         document.getElementById("ws-hub-project")?.dataset.hubChip ===
-          "linked" && !!document.querySelector("#ws-hub-project .ws-hub-co"),
+          "linked" && !!document.querySelector("#ws-hub-project [data-hub-co]"),
     );
     expect((await p.textContent("#ws-hub-project"))?.trim()).toBe(
-      "Acme Co · Back office",
+      await tr(p, "ws.hubChipCo", v),
     );
     expect(await p.getAttribute("#ws-hub-project", "title")).toBe(
-      "Connected to Acme Co (hub.example.test). This project: Back office.",
+      await tr(p, "ws.hubChipTip", v),
     );
     await p.context().close();
     p = await open(390, false);
-    await p.waitForSelector("#ws-hub-project .ws-hub-co");
-    expect(await p.isVisible("#ws-hub-project .ws-hub-pj")).toBe(false);
-    expect(await p.isVisible("#ws-hub-project .ws-hub-co")).toBe(true);
+    await p.waitForSelector("#ws-hub-project [data-hub-co]");
+    expect(await p.isVisible("#ws-hub-project [data-hub-pj]")).toBe(false);
+    expect(await p.isVisible("#ws-hub-project [data-hub-co]")).toBe(true);
     await p.context().close();
     p = await open(1440, true);
     expect(await p.getAttribute("#ws-hub-project", "data-hub-chip")).toBe(
       "elsewhere",
     );
     expect((await p.textContent("#ws-hub-project"))?.trim()).toBe(
-      "Another Hub",
+      await tr(p, "ws.hubAway"),
     );
     expect(await p.getAttribute("#ws-hub-project", "href")).toBe(
       "/settings?project=north#workspace",
     );
     // The project shows its own name, not the old Hub's.
-    expect(await p.textContent(".content-header h2")).not.toContain(
-      "Back office",
-    );
+    expect(await p.textContent("#content h2")).not.toContain(BACK.name);
     await p.context().close();
   }, 90_000);
 

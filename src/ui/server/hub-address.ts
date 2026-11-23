@@ -106,7 +106,7 @@ export function checkHubAddress(
     personOnly: true,
     args: { url: p.url },
     summary: p.url ? `set Hub's address to ${p.url}` : "clear Hub's address",
-    params: { url: p.url ?? "", was },
+    params: { url: p.url ?? "", was, ...(p.url ? {} : { clears: "1" }) },
     details: lines.map((l) => l[0]),
     detailKeys: lines.map((l) => l[1]),
   };

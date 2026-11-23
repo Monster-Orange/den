@@ -24,6 +24,7 @@ import {
 import type { RawManifest } from "../types/index.js";
 import type { ApiOnlyArgs } from "./guardrails.js";
 import { readDenConfig } from "../den-config.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** One service, as the hook reads it. */
 export interface ApiOnlyService {
@@ -227,11 +228,9 @@ export function writeApiOnlyRules(
     return null;
   }
   fs.mkdirSync(path.dirname(files.rules), { recursive: true });
-  const tmp = `${files.rules}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(rules, null, 2)}\n`, {
+  writeFileAtomic(files.rules, `${JSON.stringify(rules, null, 2)}\n`, {
     mode: 0o600,
   });
-  fs.renameSync(tmp, files.rules);
   return files;
 }
 
