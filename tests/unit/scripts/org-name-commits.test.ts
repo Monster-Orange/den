@@ -157,7 +157,7 @@ describe("pre-push hook", () => {
       encoding: "utf-8",
       env: {
         PATH: process.env.PATH ?? "",
-        DEN_ROOT: ROOT,
+        DEN_HOOK_ROOT: ROOT,
         DEN_PREPUSH_FILES: "0",
         ...env,
       },
@@ -196,6 +196,15 @@ describe("pre-push hook", () => {
     const r = push(`refs/heads/x ${bad} refs/heads/x ${base}\n`, {});
     expect(r.status).toBe(0);
     expect(r.stdout + r.stderr).toBe("");
+  });
+
+  it("ignores DEN_ROOT, which names a distribution, not the checkout (issue 1252)", () => {
+    const r = push(`refs/heads/x ${clean} refs/heads/x ${base}\n`, {
+      DEN_ORG_NAMES_FILE: names,
+      DEN_ROOT: path.join(dir, "a-distribution"),
+    });
+    expect(r.stderr).not.toContain("can't be read");
+    expect(r.status).toBe(0);
   });
 
   it("fails closed when a names file is set but missing", () => {
