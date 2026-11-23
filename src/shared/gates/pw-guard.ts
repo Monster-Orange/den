@@ -229,6 +229,8 @@ export function guardBrowser<B extends GuardableBrowser>(
   const held = browser as B & { [GUARDS]?: Guard[] };
   const guards = held[GUARDS];
   if (guards) {
+    // A repeat is the same list and reporter; its ownPorts isn't compared,
+    // so a repeat with wider own ports is dropped (errs tight).
     const key = [...allow].sort().join(",");
     const same = guards.some(
       (g) => [...g.allow].sort().join(",") === key && g.onBlock === onBlock,
@@ -392,13 +394,21 @@ export async function connectGuarded<
   const browser = await type.connect(ws, opts);
   if (!opts.exposeNetwork?.trim()) return browser;
   const tell = say ?? ((l: string) => console.error(l));
-  // Loaded here, not at the top: own-ports watches every listen in the
-  // process, which only a run that exposes its loopback needs.
-  const own = guard.ownPorts ?? (await import("./own-ports.js")).ownPorts();
-  return guardBrowser(
-    browser,
-    guard.allow ?? allowFromEnv(env),
-    guard.onBlock ?? ((url) => tell(`pw-guard: refused ${url}`)),
-    own,
-  );
+  try {
+    // Loaded here, not at the top: own-ports watches every listen in the
+    // process, which only a run that exposes its loopback needs. A server
+    // started before own-ports first loads isn't seen: claim its port with
+    // boxOwnPort. (The package export loads own-ports when it is imported.)
+    const own = guard.ownPorts ?? (await import("./own-ports.js")).ownPorts();
+    return guardBrowser(
+      browser,
+      guard.allow ?? allowFromEnv(env),
+      guard.onBlock ?? ((url) => tell(`pw-guard: refused ${url}`)),
+      own,
+    );
+  } catch (err) {
+    // Never hand back, or leave open, a browser that isn't guarded.
+    await (browser as { close?(): Promise<unknown> }).close?.().catch(() => {});
+    throw err;
+  }
 }
