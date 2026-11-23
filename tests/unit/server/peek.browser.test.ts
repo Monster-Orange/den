@@ -208,9 +208,21 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await eventually(() => read !== null);
     expect(read).toEqual({ subject: "agent:planner", seen: true });
     // Live: the agent's output shows.
+    // Not live in time: say what the dialog was doing, so a red run in CI
+    // tells a refused socket from a retry loop from a slow first load.
     await p
       .locator('dialog#den-peek[data-conn="live"]')
-      .waitFor({ timeout: 15_000 });
+      .waitFor({ timeout: 15_000 })
+      .catch(async (e: Error) => {
+        const conn = await d.getAttribute("data-conn").catch(() => "?");
+        const status = await d
+          .locator("[role=status]")
+          .allTextContents()
+          .catch(() => []);
+        throw new Error(
+          `${e.message}\npeek data-conn=${conn} status=${JSON.stringify(status)} pageerrors=${JSON.stringify(errors)}`,
+        );
+      });
     const mark = `peek-${Math.random().toString(36).slice(2, 8)}`;
     pty.emit(`${mark}$ `);
     await p.waitForFunction(
