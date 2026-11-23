@@ -34,6 +34,12 @@
  * its checks are still queued for a runner doesn't count). The cap is
  * github.watches_max at least, raised by the calls left before GitHub's
  * reset; past it a watch is queued and starts when a slot frees.
+ *
+ * Issue 1214: a run's watch reads the run (actions/runs/<id>) and its jobs
+ * (…/jobs?filter=latest, the newest attempt), never the check runs on its
+ * head commit. A finished run's watch, while still kept, is looked at for a
+ * re-run when its repo has nothing else that round: a new attempt reopens
+ * it. Check runs and jobs are read past their first page of 100.
  */
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
@@ -157,11 +163,13 @@ interface Watch {
    * for a runner: that wait isn't a stall, so it doesn't count as no progress.
    */
   allQueued?: boolean;
+  /** Issue 1214: a run's attempt (1 unless re-run). */
+  attempt?: number;
 }
 
 interface Call {
   path: string;
-  kind: "resolve" | "list" | "checks";
+  kind: "resolve" | "list" | "checks" | "jobs";
   watch?: Watch;
   head?: string;
 }
@@ -180,6 +188,8 @@ const PR_RECHECK_MS = 10 * 60_000;
 const CAP_CEILING = GITHUB_WATCH_LIMITS.watches_max.max;
 /** Issue 1166: the most watches waiting for a slot. */
 const QUEUE_MAX = CAP_CEILING;
+/** Issue 1214: the most pages of 100 read for one head's checks or a run's jobs. */
+const MAX_PAGES = 10;
 /** The run list reaches back this far before the oldest watch. */
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
 
@@ -208,6 +218,8 @@ export class GithubWatcher {
   private lastChecks = new Set<string>();
   /** Per repo: the last call asked about a pull request again (1166). */
   private lastResolve = new Set<string>();
+  /** Per repo: the last call was a run's (1214), so pull requests go next. */
+  private lastRun = new Set<string>();
   private readonly now: () => number;
 
   constructor(private readonly d: GithubWatchDeps) {
@@ -397,7 +409,11 @@ export class GithubWatcher {
     this.promote(now);
     // Nothing to watch: no GitHub call and no file write (an idle install
     // never touches its state files).
-    if (!this.watches.some((w) => w.phase !== "done")) return;
+    if (
+      !this.watches.some((w) => w.phase !== "done") &&
+      !this.rerunWatches(now).length
+    )
+      return;
     if (this.paused(now)) return this.writeStatus(now);
     // A pause that just ended was Den's wait, not the watches' own.
     if (this.pause) for (const w of this.open()) w.progressAt = now;
@@ -430,14 +446,18 @@ export class GithubWatcher {
       const k = w.repo.toLowerCase();
       groups.set(k, [...(groups.get(k) ?? []), w]);
     }
+    // Issue 1214: a finished run's watch, looked at for a re-run only when
+    // its repo has nothing else this round.
+    for (const w of this.rerunWatches(now)) {
+      const k = w.repo.toLowerCase();
+      if (!groups.has(k)) groups.set(k, [w]);
+    }
     for (const [key, ws] of groups) {
       const call = this.plan(key, ws, now);
-      let r: GhResponse;
-      try {
-        r = await this.d.get(call.path);
-      } catch (e) {
-        r = { status: 0, headers: {}, body: null, error: String(e) };
-      }
+      let r = await this.ask(call.path);
+      // Issue 1214: a head's checks or a run's jobs, past the first page.
+      if (r.status === 200 && (call.kind === "checks" || call.kind === "jobs"))
+        r = await this.rest(call, r, now);
       if (this.noteRate(r, now)) {
         limited = true;
         break;
@@ -477,7 +497,8 @@ export class GithubWatcher {
       try {
         ok = await this.d.relay(
           embedDelivery({
-            id: `github-watch-${w.id}`,
+            // Issue 1214: a re-run's result is a message of its own.
+            id: `github-watch-${w.id}${(w.attempt ?? 1) > 1 ? `-a${w.attempt}` : ""}`,
             agent: w.agent,
             project: w.project,
             origin: "Den GitHub watch",
@@ -508,15 +529,84 @@ export class GithubWatcher {
     return `repos/${repo}/commits/${head}/check-runs?per_page=100&filter=latest`;
   }
 
+  /** Issue 1214: a run's jobs, the newest attempt's. */
+  private jobsPath(w: Watch): string {
+    return `repos/${w.repo}/actions/runs/${w.number}/jobs?per_page=100&filter=latest`;
+  }
+
+  private async ask(p: string): Promise<GhResponse> {
+    try {
+      return await this.d.get(p);
+    } catch (e) {
+      return { status: 0, headers: {}, body: null, error: String(e) };
+    }
+  }
+
+  /**
+   * Issue 1214: the pages after the first (100 each, up to MAX_PAGES), into
+   * one answer. A page that is a limit or isn't answered is that answer.
+   */
+  private async rest(call: Call, first: GhResponse, now: number) {
+    const key = call.kind === "jobs" ? "jobs" : "check_runs";
+    const body = isObj(first.body) ? first.body : {};
+    const items = Array.isArray(body[key]) ? [...(body[key] as unknown[])] : [];
+    const total = asNum(body.total_count) ?? items.length;
+    let r = first;
+    for (let page = 2; items.length < total && page <= MAX_PAGES; page++) {
+      if (this.noteRate(r, now)) return r;
+      r = await this.ask(`${call.path}&page=${page}`);
+      if (r.status !== 200) return r;
+      const more =
+        isObj(r.body) && Array.isArray(r.body[key]) ? r.body[key] : [];
+      if (!more.length) break;
+      items.push(...more);
+    }
+    return { ...r, body: { ...body, total_count: total, [key]: items } };
+  }
+
+  /**
+   * Issue 1214: finished run watches still kept, one a repo (the least
+   * lately looked at): a re-run reopens them.
+   */
+  private rerunWatches(now: number): Watch[] {
+    const by = new Map<string, Watch>();
+    for (const w of this.watches) {
+      if (w.kind !== "run" || w.phase !== "done" || !w.head) continue;
+      if ((w.doneAt ?? 0) + DONE_KEEP_MS < now) continue;
+      const k = w.repo.toLowerCase();
+      const o = by.get(k);
+      if (!o || (w.checkedAt ?? 0) < (o.checkedAt ?? 0)) by.set(k, w);
+    }
+    return [...by.values()];
+  }
+
   /** The one call for a repo this round. */
-  private plan(key: string, ws: Watch[], now: number): Call {
-    const unresolved = ws.find((w) => !w.head);
+  private plan(key: string, all: Watch[], now: number): Call {
+    // Issue 1214: only finished run watches: look for a re-run.
+    if (all.every((w) => w.phase === "done")) {
+      all[0].checkedAt = now;
+      return { path: this.resolvePath(all[0]), kind: "resolve", watch: all[0] };
+    }
+    const unresolved = all.find((w) => !w.head);
     if (unresolved)
       return {
         path: this.resolvePath(unresolved),
         kind: "resolve",
         watch: unresolved,
       };
+    // Issue 1214: a run's own state, then its jobs once it completed; taking
+    // turns with the repo's pull requests.
+    const runs = all.filter((w) => w.kind === "run");
+    const ws = all.filter((w) => w.kind === "pr");
+    if (runs.length && (!ws.length || !this.lastRun.has(key))) {
+      this.lastRun.add(key);
+      const w = runs.sort((a, b) => (a.checkedAt ?? 0) - (b.checkedAt ?? 0))[0];
+      w.checkedAt = now;
+      return w.phase === "ready"
+        ? { path: this.jobsPath(w), kind: "jobs", watch: w }
+        : { path: this.resolvePath(w), kind: "resolve", watch: w };
+    }
+    this.lastRun.delete(key);
     // Issue 1166: a pull request asked about again (merged, closed or a
     // newer head ends its watch), never two rounds running in a repo.
     const due = ws.find(
@@ -575,11 +665,13 @@ export class GithubWatcher {
         return true;
       }
       const before = w.head;
+      const phase = w.phase;
       w.resolvedAt = now;
       if (w.kind === "pr" && before) return this.prState(w, r.body, now);
-      this.applyResolve(w, r.body);
-      return w.head !== before;
+      this.applyResolve(w, r.body, now);
+      return w.head !== before || w.phase !== phase;
     }
+    if (call.kind === "jobs") return this.applyJobs(call.watch!, r.body, now);
     if (call.kind === "list") return this.applyRuns(ws, r.body);
     return this.applyChecks(
       ws.filter((w) => w.head === call.head),
@@ -588,7 +680,7 @@ export class GithubWatcher {
     );
   }
 
-  private applyResolve(w: Watch, body: unknown): void {
+  private applyResolve(w: Watch, body: unknown, now = this.now()): void {
     if (!isObj(body)) return;
     if (w.kind === "pr") {
       const sha = isObj(body.head) ? asStr(body.head.sha) : "";
@@ -602,8 +694,67 @@ export class GithubWatcher {
     if (/^[0-9a-f]{7,64}$/i.test(sha)) w.head = sha;
     w.suite = asNum(body.check_suite_id) ?? w.suite;
     const st = asStr(body.status);
+    const attempt = asNum(body.run_attempt) ?? 1;
+    if (w.phase === "done") {
+      // Issue 1214: a re-run (a newer attempt) reopens a finished watch.
+      if (attempt <= (w.attempt ?? 1)) return;
+      w.delivered = false;
+      w.text = undefined;
+      w.doneAt = undefined;
+      w.checks = undefined;
+      w.failed = undefined;
+      w.print = "";
+      w.startedAt = now;
+      w.progressAt = now;
+    }
+    w.attempt = attempt;
     w.phase = st === "completed" ? "ready" : "running";
-    w.note = `The run is ${st || "known"}.`;
+    w.allQueued = QUEUED.has(st);
+    w.note = `The run is ${st || "known"}${attempt > 1 ? ` (attempt ${attempt})` : ""}.`;
+  }
+
+  /**
+   * Issue 1214: a run's jobs (its newest attempt): the counts and failures;
+   * done when none is still going and the run completed.
+   */
+  private applyJobs(w: Watch, body: unknown, now: number): boolean {
+    const jobs = (
+      isObj(body) && Array.isArray(body.jobs) ? body.jobs : []
+    ).filter(isObj);
+    const print = JSON.stringify(
+      jobs
+        .map((j) => [asNum(j.id), asStr(j.status), asStr(j.conclusion)])
+        .sort(),
+    );
+    const changed = print !== w.print;
+    w.print = print;
+    const at = (w.attempt ?? 1) > 1 ? `, attempt ${w.attempt}` : "";
+    if (!jobs.length) {
+      this.finish(w, now, {
+        note: "The run completed with no jobs.",
+        text: `Den: GitHub watch ${w.id} finished: ${this.what(w)}${at} completed with no jobs.`,
+      });
+      return true;
+    }
+    const { counts, failed } = tally(jobs);
+    w.checks = counts;
+    w.failed = failed;
+    w.allQueued = jobs.every((j) => QUEUED.has(asStr(j.status)));
+    if (counts.pending) {
+      w.phase = "running";
+      w.note = `${counts.pending} of ${jobs.length} jobs still going${at}.`;
+      return changed;
+    }
+    const sum = `${counts.pass} passed, ${counts.fail} failed, ${counts.skip} skipped`;
+    this.finish(w, now, {
+      note: `Finished${at}: ${sum}.`,
+      text:
+        `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}${at}): ${sum}.` +
+        (failed.length
+          ? ` Failed: ${failed.map((f) => `${f.name} (${f.url})`).join("; ")}.`
+          : " All passed."),
+    });
+    return true;
   }
 
   /**
@@ -708,21 +859,7 @@ export class GithubWatcher {
         }
         continue;
       }
-      const counts: CheckCounts = { pass: 0, fail: 0, skip: 0, pending: 0 };
-      const failed: { name: string; url: string }[] = [];
-      for (const c of cs) {
-        const concl = asStr(c.conclusion);
-        if (c.status !== "completed") counts.pending++;
-        else if (PASS.has(concl)) counts.pass++;
-        else if (SKIP.has(concl) || !concl) counts.skip++;
-        else {
-          counts.fail++;
-          failed.push({
-            name: asStr(c.name) || `check ${asNum(c.id) ?? "?"}`,
-            url: asStr(c.html_url) || asStr(c.details_url),
-          });
-        }
-      }
+      const { counts, failed } = tally(cs);
       w.checks = counts;
       w.failed = failed;
       if (counts.pending) {
@@ -975,6 +1112,29 @@ export class GithubWatcher {
     void now;
     writeJson(this.d.statusFile, this.status());
   }
+}
+
+/** Check runs or jobs: passed, failed, skipped and still going; each failure. */
+function tally(cs: Record<string, unknown>[]): {
+  counts: CheckCounts;
+  failed: { name: string; url: string }[];
+} {
+  const counts: CheckCounts = { pass: 0, fail: 0, skip: 0, pending: 0 };
+  const failed: { name: string; url: string }[] = [];
+  for (const c of cs) {
+    const concl = asStr(c.conclusion);
+    if (c.status !== "completed") counts.pending++;
+    else if (PASS.has(concl)) counts.pass++;
+    else if (SKIP.has(concl) || !concl) counts.skip++;
+    else {
+      counts.fail++;
+      failed.push({
+        name: asStr(c.name) || `check ${asNum(c.id) ?? "?"}`,
+        url: asStr(c.html_url) || asStr(c.details_url),
+      });
+    }
+  }
+  return { counts, failed };
 }
 
 /** What counts as progress: its phase, head or checks changed. */

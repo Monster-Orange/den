@@ -5901,6 +5901,11 @@ How the watcher paces itself:
 - A watch whose state hasn't changed for `github.watch_stale_minutes` (60)
   ends, and its agent is told why. Its slot is freed. Time while all its
   checks (or workflow runs) wait for a runner doesn't count.
+- A run's watch reads the run and its own jobs (the latest attempt, every
+  page), never the check runs on its head commit. A re-run within the hour
+  after it was told reopens the watch, and Den tells the new attempt's
+  result. A pull request's watch reads its head's check runs past the first
+  page of 100.
 - Any watch open longer than `github.watch_max_open_hours` (24) ends,
   whatever its checks say, and its agent is told why. This catches a check
   that never reports.
