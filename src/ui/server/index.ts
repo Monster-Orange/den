@@ -2388,6 +2388,8 @@ const DEVICE_FLOWS = new DeviceFlows({
   // A test's fake GitHub may answer interval 0; the real one never does.
   minIntervalMs: GITHUB.fake ? 50 : 1000,
   onExpiringToken: noteExpiringToken,
+  // Issue 362: one address's new sign-ins a minute, as its pairing requests.
+  perClient: () => webAuthNow().pairRequestsPerMinute,
 });
 
 /**
@@ -6089,6 +6091,10 @@ async function handleRequest(
     (await handleGithubRoutes(req, res, pathname, {
       flows: DEVICE_FLOWS,
       clientId: () => GITHUB_CLIENT_ID,
+      client: (r) => {
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        return g.ok ? g.client : undefined;
+      },
       tokensExpire: () => GITHUB_TOKENS_EXPIRE,
       cli: product().cli,
       sendJson,
