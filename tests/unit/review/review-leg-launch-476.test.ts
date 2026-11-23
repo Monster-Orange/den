@@ -46,7 +46,8 @@ function fakeClaude(name: string, help: string): string {
 const HELP =
   '  --permission-mode <mode>  Permission mode (choices: "acceptEdits", "auto", "manual", "plan")\n' +
   "  --restricted              Restricted mode: removes the built-in tools that run commands\n" +
-  "  --setting-sources <s>     Comma-separated list of setting sources";
+  "  --setting-sources <s>     Comma-separated list of setting sources\n" +
+  '  --tools <tools...>        Built-in tools to make available: "" for none';
 const withRestricted = fakeClaude("claude-new", HELP);
 const withoutRestricted = fakeClaude(
   "claude-old",
@@ -120,6 +121,12 @@ describe("a review leg's launch", () => {
   it("runs restricted: no shell, no user, project or local settings, file tools in its folder", () => {
     const l = launch(true);
     expect(l.argv).toContain("--restricted");
+    // Only the built-ins a review needs: no Agent, Write, Edit, SendMessage
+    // or ListAgents (a leg must never message other sessions). ToolSearch
+    // loads review_submit, which Claude Code defers.
+    const t = l.argv.indexOf("--tools");
+    expect(t).toBeGreaterThan(0);
+    expect(l.argv[t + 1]).toBe("Read,Grep,Glob,ToolSearch");
     // Restricted ignores every settings file: no user-only fallback.
     expect(l.argv).not.toContain("--setting-sources");
     expect(launch(false).argv).not.toContain("--restricted");

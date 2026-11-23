@@ -352,10 +352,12 @@ function modeCheck(input: LaunchInput, bin: string): string[] {
  * closed): its narrowing would otherwise rest on deny rules alone.
  */
 function restrictedCheck(input: LaunchInput, bin: string): void {
-  if (helpHasFlag(bin, "--restricted", input.env ?? process.env)) return;
+  const env = input.env ?? process.env;
+  if (helpHasFlag(bin, "--restricted", env) && helpHasFlag(bin, "--tools", env))
+    return;
   const v = installedVersion(bin);
   throw new LaunchError(
-    `${DEN_CLAUDE_ID}: this Claude Code${v ? ` (${v})` : ""} has no --restricted mode, so it can't run a review leg. Update Claude Code.`,
+    `${DEN_CLAUDE_ID}: this Claude Code${v ? ` (${v})` : ""} has no --restricted mode (or no --tools), so it can't run a review leg. Update Claude Code.`,
   );
 }
 
@@ -638,6 +640,9 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
   return path.join(input.filesDir, "settings.json");
 }
 
+/** Issue 476: the built-in tools a review leg gets (--tools). */
+export const REVIEW_LEG_BUILTINS = "Read,Grep,Glob,ToolSearch";
+
 /**
  * Issue 476: what a review leg may never do, a belt under --restricted
  * (which removes Bash and WebFetch outright and loads no settings file but
@@ -778,7 +783,10 @@ function common(input: LaunchInput): {
       // Issue 476: a leg runs restricted (launch() checks this Claude
       // Code takes it): no shell or WebFetch, no user, project or local
       // settings (only Den's --settings), file tools in its folder.
-      ...(input.review ? ["--restricted"] : []),
+      // Only the built-ins a review needs: never Agent, Write, Edit,
+      // SendMessage or ListAgents (a leg must not message other sessions).
+      // ToolSearch loads review_submit, which Claude Code defers.
+      ...(input.review ? ["--restricted", "--tools", REVIEW_LEG_BUILTINS] : []),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
