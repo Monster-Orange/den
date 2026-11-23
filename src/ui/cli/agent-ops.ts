@@ -367,6 +367,7 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   type AgentSandboxInput,
@@ -393,6 +394,11 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
+  /**
+   * Issue 989: this install's server, called with the person token. A
+   * test gives one that answers null (no server) unless it asks for one.
+   */
+  server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
   /**
    * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
@@ -537,6 +543,8 @@ export interface AgentsDeps extends SessionsDeps {
 export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
 
 export interface AgentsResolved extends Resolved {
+  /** Issue 989: this install's server, for person-only verbs. */
+  server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
   distRoot: () => string;
@@ -889,6 +897,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
     ...base,
+    server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     agentSandbox:
       d.agentSandbox ??

@@ -2166,6 +2166,7 @@
       "when": ["scripts/org-names.js"],
       "run": [
         "tests/unit/scripts/doc-shots-guard.browser.test.ts",
+        "tests/unit/scripts/org-name-commits.test.ts",
         "tests/unit/scripts/org-names.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
