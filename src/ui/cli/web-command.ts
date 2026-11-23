@@ -1,3 +1,4 @@
+import { testInstallRestartEnv } from "../../shared/test-install-launch.js";
 import { browserOpenRefusal } from "../../shared/browser-open.js";
 import {
   ownerGithubLine,
@@ -626,6 +627,19 @@ export function webServerEnv(
   return { ...base, PORT: String(port), ...secretsProcessEnv(cfg, base) };
 }
 
+/**
+ * Issue 832: the env of a restart a running server starts itself: the
+ * daemon's env plus the test-install flag when this server was launched
+ * with it (test-install-launch.ts). Nothing else this server starts gets
+ * the flag.
+ */
+export function webRestartEnv(
+  port: number,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...webServerEnv(port, base), ...testInstallRestartEnv() };
+}
+
 function startDenWebServer(options: WebCommandOptions): StartedServer {
   const root = getDistRoot();
   const entrypoint = resolveServerEntrypoint();
@@ -726,7 +740,7 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
       {
         cwd: root,
         detached: true,
-        env: webServerEnv(port),
+        env: webRestartEnv(port),
         stdio: ["ignore", logFd, logFd],
       },
     );

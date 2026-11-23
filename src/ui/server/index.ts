@@ -11,6 +11,10 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  takeTestInstallLaunchFlag,
+  testInstallRestartEnv,
+} from "../../shared/test-install-launch.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   COACH_ROUTES,
@@ -406,7 +410,6 @@ import {
   fixtureSessionExpired,
   notTestInstallRefusal,
   setupFixturePerson,
-  TEST_INSTALL_ENV_KEY,
   testInstallBinding,
   testInstallByHandRefusal,
   verifiedFixtureKey,
@@ -3484,11 +3487,10 @@ async function confirmFirstRunLink(
  * own start environment (never a file), then taken out of it so nothing
  * this server starts (agents, terminals) inherits it.
  */
-const TEST_INSTALL_LAUNCH_FLAG = (() => {
-  const on = readEnv(getProfile(), TEST_INSTALL_ENV_KEY) === "1";
-  delete process.env[envName(getProfile(), TEST_INSTALL_ENV_KEY)];
-  return on;
-})();
+// Issue 832: held in test-install-launch.ts, which hands it back only to
+// the restart Den starts itself (spawnDetachedWebRestart, the update
+// watch's rollback).
+const TEST_INSTALL_LAUNCH_FLAG = takeTestInstallLaunchFlag(getProfile());
 
 /**
  * Issue 1073: the launcher's name map for Den's own address checks, read
@@ -4589,6 +4591,8 @@ function approvalDeps(): ApprovalDeps {
         npmView: (spec) => u.npmViewVersion(npm, spec, root),
         npm,
         cli: [cli.cmd, ...cli.baseArgs],
+        // Issue 832: the rollback's restart only, never npm.
+        restartEnv: testInstallRestartEnv(),
         run: (argv, cwd) => u.runCommand(argv, cwd, env),
         watch: (script, plan) =>
           u.spawnWatch(

@@ -60,6 +60,11 @@ export interface UpdateDeps {
   beforeRestart?: (keepAlive: () => void) => Promise<void>;
   /** Restart this Den (D64's path, after this answer goes out). */
   restart: () => void;
+  /**
+   * Issue 832: env the watch adds to its rollback's restart only (a test
+   * install's launch flag), never to npm's. Default none.
+   */
+  restartEnv?: Record<string, string>;
   port: number;
   pid: number;
   waitMs: number;
@@ -397,6 +402,7 @@ export async function updateDen(
         "--port",
         String(d.port),
       ],
+      restartEnv: d.restartEnv ?? {},
       stateFile: updateStateFile(d.stateDir),
       restartMarker: d.note(`update Den ${from} → ${to}`),
     });
