@@ -18,22 +18,19 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
-import { actorTokenOf } from "../../../src/shared/actor-token.js";
 
 let s: AgentsPageServer;
 let person: SignedIn;
-let agentToken = "";
 
 beforeAll(async () => {
   s = await startAgentsPageServer();
+  // No agent here: a test server's fake agent runs as this test's own
+  // process, so every child of it would read as inside an agent's
+  // session. An agent's token is refused by the guard
+  // (agent-write-routes.test.ts).
   person = await signedIn(s.stateDir, s.base);
-  const r = await fetch(`${s.base}/api/workspaces/north/agents`, {
-    method: "POST",
-    headers: { ...denAuth(s.stateDir), "content-type": "application/json" },
-    body: JSON.stringify({ persona: "planner" }),
-  });
-  expect(r.status).toBe(200);
-  agentToken = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
+  // The page sends its approve key with every write (shell.js withCsrf).
+  person.headers["x-den-approve-key"] = person.approveKey;
 }, 60_000);
 afterAll(async () => {
   await s?.stop();
@@ -153,18 +150,6 @@ describe("issue 620: a session's ask, bound to its process", () => {
     expect(r.status).toBe(409);
   }, 60_000);
 
-  it("an agent's token files none: agents use their own ask_human", async () => {
-    const r = await fetch(`${s.base}/api/session-asks`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${agentToken}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ question: "Q" }),
-    });
-    expect(r.status).toBe(403);
-  });
-
   it("a bad ask is refused, and writes nothing", async () => {
     const r = await fetch(`${s.base}/api/session-asks`, {
       method: "POST",
@@ -175,22 +160,31 @@ describe("issue 620: a session's ask, bound to its process", () => {
   });
 
   it("the audit names the session, its caller and the answer", () => {
-    const audit = fs.readFileSync(
-      path.join(s.stateDir, "audit.jsonl"),
-      "utf-8",
-    );
-    const lines = audit
+    const lines = fs
+      .readFileSync(path.join(s.stateDir, "audit.jsonl"), "utf-8")
       .trim()
       .split("\n")
       .map(
         (l) =>
           JSON.parse(l) as { verb?: string; outcome?: string; detail?: string },
-      )
-      .filter((e) => e.verb === "session-ask");
-    expect(lines.map((e) => e.outcome)).toEqual(
-      expect.arrayContaining(["asked", "answered", "refused"]),
+      );
+    const asked = lines.filter((e) => e.verb === "session-ask" && !e.outcome);
+    expect(asked[0]?.detail).toMatch(
+      /"builder" \(not a Den agent; \S+ pid \d+/,
     );
-    const answered = lines.find((e) => e.outcome === "answered")!;
-    expect(answered.detail).toMatch(/builder.*pid \d+.*yes/);
+    expect(
+      lines.some(
+        (e) =>
+          e.verb === "session-ask-answer" &&
+          !e.outcome &&
+          /answered: yes/.test(e.detail ?? ""),
+      ),
+    ).toBe(true);
+    // The person token tried to answer: refused, and recorded.
+    expect(
+      lines.some(
+        (e) => e.verb === "session-ask-answer" && e.outcome === "refused",
+      ),
+    ).toBe(true);
   });
 });

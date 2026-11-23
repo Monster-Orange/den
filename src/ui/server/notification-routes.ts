@@ -121,6 +121,11 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
+  /**
+   * Issue 620: questions from sessions that aren't Den agents, with their
+   * choices; they follow the gate overruns in `waiting`, kind session_ask.
+   */
+  sessionAsks?: () => readonly unknown[];
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -166,6 +171,15 @@ function gateOverrunsNow(
 ): readonly GateOverrunWaiting[] {
   try {
     return deps.gateOverruns?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Issue 620: the open session asks, or none when they can't be read. */
+function sessionAsksNow(deps: NotificationRouteDeps): readonly unknown[] {
+  try {
+    return deps.sessionAsks?.() ?? [];
   } catch {
     return [];
   }
@@ -446,6 +460,7 @@ export async function handleNotificationRoutes(
       waiting: [
         ...heldWaiting(heldNow(deps)),
         ...gateOverrunsNow(deps),
+        ...sessionAsksNow(deps),
         ...[...deps.attention.waitingNow()].map(([a, why]) => {
           const w = deps.attention.waitingDetail(a);
           return {

@@ -632,13 +632,25 @@ export interface NotificationConfig {
   asksPerHour: number;
   /** NT-6: how often Den reads Hub's notifications (seconds; 0: never). */
   hubPollSeconds: number;
+  /** Issue 620: open asks one session that isn't an agent may have. */
+  sessionAsksOpen: number;
+  /** Issue 620: open asks from such sessions in all. */
+  sessionAsksTotal: number;
+  /** Issue 620: minutes such an ask waits before it expires. */
+  sessionAskTtlMinutes: number;
 }
 
 export function readNotificationConfig(
   den: unknown,
   user: unknown,
 ): NotificationConfig {
-  type N = { asks_per_hour?: unknown; hub_poll_seconds?: unknown };
+  type N = {
+    asks_per_hour?: unknown;
+    hub_poll_seconds?: unknown;
+    session_asks_open?: unknown;
+    session_asks_total?: unknown;
+    session_ask_ttl_minutes?: unknown;
+  };
   const pick = (c: unknown) =>
     ((c as { notifications?: N } | null)?.notifications ?? {}) as N;
   const ask = pick(user).asks_per_hour ?? pick(den).asks_per_hour;
@@ -665,7 +677,23 @@ export function readNotificationConfig(
       );
     hubPollSeconds = poll;
   }
-  return { asksPerHour, hubPollSeconds };
+  // Issue 620: the limits on asks from sessions that aren't agents.
+  const whole = (key: keyof N, def: number, max: number): number => {
+    const v = pick(user)[key] ?? pick(den)[key];
+    if (v === undefined || v === null) return def;
+    if (!(typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= max))
+      throw new Error(
+        `notifications.${key} must be a whole number from 1 to ${max}`,
+      );
+    return v;
+  };
+  return {
+    asksPerHour,
+    hubPollSeconds,
+    sessionAsksOpen: whole("session_asks_open", 10, 1000),
+    sessionAsksTotal: whole("session_asks_total", 25, 10000),
+    sessionAskTtlMinutes: whole("session_ask_ttl_minutes", 1440, 43200),
+  };
 }
 
 /** ask_human's limit: per agent, the questions of the last hour. */

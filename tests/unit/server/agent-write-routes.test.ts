@@ -182,6 +182,16 @@ describe("every route that changes something is a person's, or listed for agents
     }
   });
 
+  it("issue 620: a session's question routes are classed writes an agent's token is refused", () => {
+    for (const p of ["/api/session-asks", "/api/session-asks/:id/answer"]) {
+      const r = ROUTES.find((x) => x.path === p);
+      expect([p, r?.cls]).toEqual([p, "mutating"]);
+      expect([p, agentRefusal(agent, "POST", concrete(p), "mutating")]).toEqual(
+        [p, expect.any(String)],
+      );
+    }
+  });
+
   it("each listed one is a write route an agent does reach", () => {
     const open = new Set(
       writes()

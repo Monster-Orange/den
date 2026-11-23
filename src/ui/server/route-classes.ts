@@ -296,6 +296,23 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/approvals/:id/withdraw",
     "the asker takes back its own held write (issue 142); nothing runs",
   ),
+  // Issue 620: a session that isn't a Den agent asks the person (the person
+  // token, from a process Den places); the person's browser answers. An
+  // agent's token never reaches the writes (request-guard.ts).
+  R(
+    "/api/session-asks/:id",
+    "a session's own question and its answer: the filing process only",
+  ),
+  M(
+    ["POST"],
+    "/api/session-asks",
+    "a session that isn't an agent asks the person; runs nothing",
+  ),
+  M(
+    ["POST"],
+    "/api/session-asks/:id/answer",
+    "the person's browser answers a session's question; runs nothing",
+  ),
   // 0.4.71: each starts a process for its output (a log command, `tail`,
   // `docker logs`, `grep`): a sign-in, as every GET that runs something.
   M(
@@ -1217,6 +1234,8 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "approval-routes.ts:ONE_PATH": ["/api/approvals/:id"],
   "approval-routes.ts:DECIDE_PATH": ["/api/approvals/:id/decide"],
   "approval-routes.ts:WITHDRAW_PATH": ["/api/approvals/:id/withdraw"],
+  "session-ask-routes.ts:ONE_PATH": ["/api/session-asks/:id"],
+  "session-ask-routes.ts:ANSWER_PATH": ["/api/session-asks/:id/answer"],
   // Issue 209: a Verify run's record, and a module's kept output.
   "verify-routes.ts:RUN_PATH": [
     "/api/verify/runs/:id",

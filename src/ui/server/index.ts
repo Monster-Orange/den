@@ -38,6 +38,16 @@ import {
   handleNotificationRoutes,
   isNotificationPath,
 } from "./notification-routes.js";
+import {
+  handleSessionAskRoutes,
+  isSessionAskPath,
+  sessionAsksWaiting,
+  type SessionAskDeps,
+} from "./session-ask-routes.js";
+import { SessionAskStore } from "../../shared/session-asks.js";
+import { processInfo } from "../../shared/process-info.js";
+import { readNotificationConfig } from "../../shared/notifications.js";
+import { redactSecrets } from "../../shared/redact.js";
 import { handleAppFeedRoutes, isAppFeedPath } from "./app-feed-routes.js";
 import { githubWatchSettings } from "../../shared/github-watch/settings.js";
 import {
@@ -3020,6 +3030,41 @@ async function personCallerWhy(
   });
 }
 
+/** Issue 620: the session asks' store and checks (session-ask-routes.ts). */
+let sessionAskStore: SessionAskStore | null = null;
+function sessionAskDeps(): SessionAskDeps {
+  sessionAskStore ??= new SessionAskStore(
+    path.join(getStateDir(), "session-asks.json"),
+  );
+  return {
+    store: sessionAskStore,
+    limits: () => {
+      const c = readNotificationConfig(readDenConfig(), readUserConfig());
+      return {
+        openPerSession: c.sessionAsksOpen,
+        openTotal: c.sessionAsksTotal,
+        ttlMs: c.sessionAskTtlMinutes * 60_000,
+      };
+    },
+    personCallerWhy,
+    callerPid: (req) => callerPid(req),
+    processInfo,
+    uid: () => process.getuid?.() ?? -1,
+    audit: (req, a) =>
+      recordAction(
+        auditActorOf(req),
+        {
+          verb: a.verb,
+          detail: redactSecrets(a.detail),
+          ...(a.refused
+            ? { outcome: "refused" as const, reason: a.refused }
+            : {}),
+        },
+        principalOf(req),
+      ),
+  };
+}
+
 /**
  * Issue 819: whether this browser is the person at the Den computer
  * itself: on loopback, not forwarded, outside every agent's session
@@ -5914,9 +5959,18 @@ async function handleRequest(
         const s = gates();
         return gateOverrunWaiting(s.list(), s.settings(), Date.now());
       },
+      // Issue 620: a session that isn't an agent asks the person.
+      sessionAsks: () => sessionAsksWaiting(sessionAskDeps()),
     });
     return;
   }
+  // Issue 620: a session that isn't a Den agent asks; the person answers.
+  if (
+    guard.ok &&
+    isSessionAskPath(pathname) &&
+    (await handleSessionAskRoutes(req, res, pathname, guard, sessionAskDeps()))
+  )
+    return;
   // The shared GitHub watcher: an agent's own watches (MCP github_watch).
   if (guard.ok && isGithubWatchPath(pathname)) {
     const { githubWatcher } = await import("./github-watch-service.js");

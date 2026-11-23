@@ -969,6 +969,10 @@ export const AGENT_READ_ONLY: readonly string[] = [
 export const AGENT_PERSON_WRITES: readonly string[] = [
   // Allow and Deny on a held write: never the asking agent's.
   "/api/approvals/:id/decide",
+  // Issue 620: a question from a session that isn't an agent (an agent
+  // uses its own ask_human), and the person's answer to one.
+  "/api/session-asks",
+  "/api/session-asks/:id/answer",
   // Issue 214: a schedule's standing Allow, and running it now: a person's.
   "/api/verify/schedules/allow",
   "/api/verify/schedules/run",
