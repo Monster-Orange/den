@@ -147,6 +147,8 @@ describe("edgeStatus", () => {
       accessLog: {
         enabled: false,
         log: "/nonexistent/edge-state/edge-access.log",
+        // Issue 637: edge status shows the raw log's size limit.
+        rawWarnKb: 1024,
         warnings: [],
       },
       https: {
