@@ -2179,16 +2179,26 @@ function apiOnlyTag(r) {
 /**
  * D44: a running agent whose MCP servers are out of date (Hub connected or
  * disconnected since it launched): a tag, and on the pane bar Restart (at
- * its next idle, same conversation).
+ * its next idle, same conversation). Issue 749: so does one whose session
+ * failed to load a server's tools, with the error in the tag's title.
  */
 function mcpStaleTag(r, withButton) {
   // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
   if (r?.kind === "agent" && r.toolsRestarting)
     return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  const sx = r?.kind === "agent" && !isStopped(r) ? r.mcpStale : null;
-  if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
-  const k = sx.adds?.length ? "adds" : "drops";
-  const tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  const live = r?.kind === "agent" && !isStopped(r);
+  // Issue 749: its session didn't get a server's tools (the error says why).
+  const fx = live && Array.isArray(r.mcpFailed) ? r.mcpFailed[0] : null;
+  const sx = live ? r.mcpStale : null;
+  let tag;
+  if (fx) {
+    const tip = t("ag.mcp.failedTip", { error: String(fx.error ?? "") });
+    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
+  } else {
+    if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
+    const k = sx.adds?.length ? "adds" : "drops";
+    tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  }
   if (!withButton) return tag;
   return (
     `<span class="agstale">${tag}` +
@@ -5460,6 +5470,8 @@ const agd = {
   release: null,
 };
 
+// Issue 1085: its actions are the kit's small row-action size (den-btn sm),
+// as the stopped rows' own: Remove is never the one large button.
 function detailsHtml(r, det) {
   const name = displayName(r);
   const rot = rotationOf(r);
@@ -5483,9 +5495,9 @@ function detailsHtml(r, det) {
     ? `<div class="den-svp-line"><span class="tagx warn">${esc(t("ag.det.handoffDue", { why: rotationWhy(r.rotation) }))}</span></div>`
     : "";
   const first = r.resumable
-    ? `<button type="button" class="den-btn primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
-      `<button type="button" class="den-btn" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
-    : `<button type="button" class="den-btn primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
+    ? `<button type="button" class="den-btn sm primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
+      `<button type="button" class="den-btn sm" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
+    : `<button type="button" class="den-btn sm primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
   return (
     `<div class="den-svp-h"><div class="den-svp-t"><span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
     `<b title="${esc(name)}">${esc(name)}</b>` +
@@ -5493,10 +5505,10 @@ function detailsHtml(r, det) {
     `<div class="den-svp-meta">${r.persona ? `<span>${esc(r.persona)}</span>` : ""}` +
     (runtime ? `<span class="den-svp-ms">${esc(runtime)}</span>` : "") +
     `</div></div>` +
-    `<div class="den-svp-acts">${first}<button type="button" class="den-btn" data-agd="remove">${esc(t("ag.remove"))}</button>` +
+    `<div class="den-svp-acts">${first}<button type="button" class="den-btn sm" data-agd="remove">${esc(t("ag.remove"))}</button>` +
     // Its session ended but is still there: its output, in its pane.
     (r.attachable
-      ? `<button type="button" class="den-btn" data-agd="open">${esc(t("ag.det.output"))}</button>`
+      ? `<button type="button" class="den-btn sm" data-agd="open">${esc(t("ag.det.output"))}</button>`
       : "") +
     `</div>` +
     sec(

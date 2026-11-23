@@ -1,10 +1,18 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.84",
+  "version": "0.4.85",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
     "den": "./bin/den"
+  },
+  "exports": {
+    "./pw-guard": {
+      "types": "./lib/pw-guard/pw-guard-export.d.ts",
+      "default": "./lib/pw-guard/pw-guard-export.js"
+    },
+    "./package.json": "./package.json",
+    "./*": "./*"
   },
   "workspaces": [
     "packages/*"
@@ -12,6 +20,7 @@
   "files": [
     "bin/",
     "packages/den-ui/",
+    "lib/pw-guard/",
     "src/",
     "!src/**/*.test.ts",
     "make/",
@@ -36,6 +45,7 @@
   "scripts": {
     "cli": "tsx src/ui/cli/index.ts menu",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-web-assets.mjs",
+    "build:pw-guard": "node scripts/build-pw-guard.mjs",
     "test:unit": "jest --coverage --forceExit",
     "test:unit:watch": "jest --watch",
     "test:framework": "npm run test:unit",

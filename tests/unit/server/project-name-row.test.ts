@@ -296,7 +296,7 @@ describe("the Hub project row (A0)", () => {
     expect(h).toContain('data-hubp-state="offline"');
     expect(h).toContain("hubp.noHub");
     expect(h).toMatch(
-      /<a[^>]+class="btn sm primary"[^>]+href="\/settings#agents\.hub"[^>]*>hubp\.connectBtn<\/a>/,
+      /<a[^>]+class="den-btn sm primary"[^>]+href="\/settings#agents\.hub"[^>]*>hubp\.connectBtn<\/a>/,
     );
   });
 });
