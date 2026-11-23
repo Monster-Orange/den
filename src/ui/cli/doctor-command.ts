@@ -59,9 +59,12 @@ import {
   readTestResolveState,
   testResolveDoctorLine,
 } from "../../shared/test-resolve.js";
+import { listDaemons } from "../../shared/environment-manager/service-runner.js";
 import {
+  containerRuntimeOnPath,
   readLastRestore,
   restoreDoctorLine,
+  runtimeMissingDoctorLine,
   servicesRestoreOnBoot,
 } from "../../shared/environment-manager/restore-on-boot.js";
 import {
@@ -2079,6 +2082,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       last: readLastRestore(getStateDir()),
     });
     if (rl) console.log(rl);
+    try {
+      const rm = runtimeMissingDoctorLine({
+        runtime: await containerRuntimeOnPath(),
+        records: listDaemons(),
+      });
+      if (rm) console.log(rm);
+    } catch {
+      /* no service records to read: nothing to say */
+    }
   }
   for (const l of pushContactLines(
     readWebUrl(),

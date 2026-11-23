@@ -397,6 +397,29 @@ export function restoreDoctorLine(o: {
 }
 
 /**
+ * Issue 1225: doctor's line when a recorded service lists containers but
+ * this machine has no container runtime on PATH (`runtime`, detected by
+ * containerRuntimeOnPath). A service recorded only as a process group may
+ * need one too, but its record doesn't say, so only listed containers count.
+ */
+export function runtimeMissingDoctorLine(o: {
+  runtime: boolean;
+  records: readonly Pick<DaemonRecord, "address" | "containers">[];
+}): string | null {
+  if (o.runtime) return null;
+  const need = o.records
+    .filter((d) => (d.containers?.length ?? 0) > 0)
+    .map((d) => d.address);
+  if (need.length === 0) return null;
+  const one = need.length === 1;
+  return (
+    `No container runtime (docker) on PATH, but ${need.length} ` +
+    `${one ? "service needs" : "services need"} one: ${need.join(", ")}. ` +
+    `A restart can't bring ${one ? "it" : "them"} back until one is installed.`
+  );
+}
+
+/**
  * Issue 1225: a project's Up through the restart queue (issue 1129), so
  * services come back a few at a time and under its load ceiling, beside
  * the agents. One job per project: `service:<project>`.
