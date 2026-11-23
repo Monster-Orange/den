@@ -2101,8 +2101,9 @@
       "そのリクエストは終了しました。そのコンピューターはページを閉じたか、すでにサインインしています。何も許可していません。",
     "pair.expired": "そのコードは期限切れです。何も許可していません。",
     "pair.close": "閉じる",
-    "pair.from": "{client} から、{host} を開きました（{time}）。",
-    "pair.fromNamed": "{name}（{client}）から、{host} を開きました（{time}）。",
+    "pair.from": "{client} から、{host} を求めています（{time}）。",
+    "pair.fromNamed":
+      "{client}（自称 {name}）から、{host} を求めています（{time}）。",
     "pair.unknownAddr": "Den が確認できなかったアドレス",
     "pair.unexpected":
       "今ほかのコンピューターでサインインしようとしていないなら、拒否してください。",

@@ -2169,8 +2169,9 @@
       "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
     "pair.expired": "Ese código caducó. No se permitió nada.",
     "pair.close": "Cerrar",
-    "pair.from": "Desde {client}, abrió {host}, a las {time}.",
-    "pair.fromNamed": "Desde {name} ({client}), abrió {host}, a las {time}.",
+    "pair.from": "Desde {client}, pide {host}, a las {time}.",
+    "pair.fromNamed":
+      "Desde {client} (se hace llamar {name}), pide {host}, a las {time}.",
     "pair.unknownAddr": "una dirección que Den no pudo ver",
     "pair.unexpected":
       "Si no acabas de intentar iniciar sesión en otro ordenador, deniégalo.",

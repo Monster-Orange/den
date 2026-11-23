@@ -366,6 +366,36 @@ describe("issue 1333 (3): the signed-out page asks for no code until clicked", (
     jest.useRealTimers();
   });
 
+  it("a request the server ended (gone) offers the button again, even with the page in front: no new request by itself", async () => {
+    jest.useFakeTimers();
+    (globalThis as Record<string, unknown>).fetch = (
+      url: string,
+      o: { method?: string } = {},
+    ) => {
+      calls.push({ url, method: o.method ?? "GET" });
+      return Promise.resolve({
+        json: () => Promise.resolve({ ok: false, state: "gone" }),
+      });
+    };
+    wirePair(root(), t, {
+      name: "Den",
+      pair: {
+        id: "p".repeat(24),
+        ref: "r1",
+        code: "ABC-DEF",
+        expiresIn: 600_000,
+      },
+    });
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    jest.advanceTimersByTime(1600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(calls.some((c) => c.method === "GET")).toBe(true);
+    expect(posts()).toHaveLength(0);
+    expect(box.innerHTML).toContain('id="den-pair-start"');
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   it("a page restored from the back-forward cache doesn't ask by itself", () => {
     wirePair(root(), t, { name: "Den" });
     for (const fn of winHandlers.pageshow ?? []) fn({ persisted: true });

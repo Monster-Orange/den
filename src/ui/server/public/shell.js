@@ -3084,8 +3084,9 @@
       "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
     "pair.expired": "That code expired. Nothing was allowed.",
     "pair.close": "Close",
-    "pair.from": "From {client}, opened {host}, at {time}.",
-    "pair.fromNamed": "From {name} ({client}), opened {host}, at {time}.",
+    "pair.from": "From {client}, asking for {host}, at {time}.",
+    "pair.fromNamed":
+      "From {client} (it calls itself {name}), asking for {host}, at {time}.",
     "pair.unknownAddr": "an address Den couldn't see",
     "pair.unexpected":
       "If you didn't just try to sign in on another computer, Deny.",

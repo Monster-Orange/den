@@ -747,11 +747,12 @@ export function wirePair(root, t, s) {
               // Issue 320: gone (the server ended it: this page went
               // unheard, as a background tab may) is no dead end: a fresh
               // code, by itself.
-              // Issue 1333: only while the page is in front; a tab in the
-              // background offers the button again instead.
+              // Issue 1333: the server ended it (its page went unheard,
+              // or the server restarted): the button again, never a new
+              // request by itself, even with the page in front and nobody
+              // at it.
               if (p.state === "gone") {
                 mine = null;
-                if (document.visibilityState === "visible") return begin();
                 stop();
                 return offer();
               }
