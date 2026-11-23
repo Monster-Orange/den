@@ -5430,12 +5430,16 @@
     var el = document.createElement("div");
     el.className = "den-toast den-toast-act";
     el.setAttribute("role", "status");
+    // Hooks for tests (issue 839: never a styling class).
+    el.setAttribute("data-toast", "action");
     var text = document.createElement("span");
     text.className = "den-tmsg";
+    text.setAttribute("data-toast-msg", "");
     text.textContent = msg;
     var b = document.createElement("button");
     b.type = "button";
     b.className = "den-tbtn";
+    b.setAttribute("data-toast-btn", "");
     b.textContent = label;
     var done = false;
     b.addEventListener("click", function () {

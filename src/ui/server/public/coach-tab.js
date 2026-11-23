@@ -324,7 +324,7 @@ function table(rows, o) {
     })
     .join("");
   return (
-    `<div class="co-tw"><table class="co-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>` +
+    `<div class="co-tw"><table class="co-table" data-note="coach-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>` +
     `<p class="co-foot">${esc(t("co.foot"))}</p>`
   );
 }
@@ -333,7 +333,7 @@ function cards(rows, o) {
   const g = (row, key, label) =>
     `<span>${esc(label)} <b>${esc(fmtCell(key, cellValue(row, key, o.perDay), o.perDay))}</b></span>`;
   return (
-    `<div class="co-cards">` +
+    `<div class="co-cards" data-note="coach-cards">` +
     rows
       .map(
         (row) =>
@@ -404,11 +404,11 @@ function detail(row, r, findings = []) {
       })
     : t("co.noNumbers");
   return (
-    `<section class="co-det" aria-label="${esc(row.agent)}" tabindex="-1">` +
+    `<section class="co-det" data-note="coach-detail" aria-label="${esc(row.agent)}" tabindex="-1">` +
     `<h4><button type="button" class="co-back" data-act="coach-close">‹ ${esc(row.agent)}</button>` +
     `<span class="co-dname">${esc(row.agent)}</span>` +
     `<span class="co-sp">${esc(t("co.detail.sub", { range: `${day(r.window.from)} – ${day(r.window.to)}`, n: row.conversations?.inWindow ?? 0 }))}</span>` +
-    `<button type="button" class="den-btn sm co-close" data-act="coach-close">✕ ${esc(t("co.close"))}</button></h4>` +
+    `<button type="button" class="den-btn sm co-close" data-act="coach-close" data-note="coach-close">✕ ${esc(t("co.close"))}</button></h4>` +
     `<div class="co-cols"><div><h5>${esc(t("co.conv.h"))}</h5>${convs}</div>` +
     `<div><h5>${esc(t("co.mix.h"))}</h5>${mixBar(t("co.mix.main"), modelMix(row.models?.main))}` +
     `${mixBar(t("co.mix.sub"), modelMix(row.models?.subagent), opusFlagged)}` +
@@ -488,7 +488,7 @@ function findingsSection(data, rows, o) {
     const btn = (f, cls) =>
       `<button type="button" class="den-btn ${cls}" data-act="coach-dismiss" data-id="${esc(f.id)}">${esc(t("co.f.dismiss"))}</button>`;
     html +=
-      `<div class="co-tw co-ftw"><table class="co-table co-ftable"><thead><tr>` +
+      `<div class="co-tw co-ftw"><table class="co-table co-ftable" data-note="coach-findings-table"><thead><tr>` +
       `<th scope="col">${esc(t("co.f.col.finding"))}</th><th scope="col">${esc(t("co.f.col.agent"))}</th>` +
       `<th scope="col">${esc(t("co.f.col.why"))}</th><th scope="col"><span class="co-sr">${esc(t("co.f.dismiss"))}</span></th>` +
       `</tr></thead><tbody>` +
@@ -502,7 +502,7 @@ function findingsSection(data, rows, o) {
         })
         .join("") +
       `</tbody></table></div>` +
-      `<div class="co-fcards">` +
+      `<div class="co-fcards" data-note="coach-finding-cards">` +
       list
         .map((f) => {
           const w = words(f, th);
