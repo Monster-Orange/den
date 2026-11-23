@@ -2137,8 +2137,12 @@ async function throwawayRows() {
   try {
     const store = new GateStore();
     const list = await listThrowaway(realDocker(10_000));
-    const live = new Set(store.list().map((e) => e.id));
-    return throwawayLines(list, live, storeTag(store.dir));
+    const all = store.list();
+    const live = new Set(all.map((e) => e.id));
+    const checkouts = new Set(
+      all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
+    );
+    return throwawayLines(list, live, storeTag(store.dir), checkouts);
   } catch {
     return throwawayLines(null, new Set());
   }

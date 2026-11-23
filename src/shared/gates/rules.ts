@@ -70,6 +70,8 @@ export interface GateEntry {
   who: string;
   /** Issue 803: the project it ran for (its class comes from settings). */
   project?: string;
+  /** Issue 1289: its checkout's tag (a hash of the checkout's top folder). */
+  checkout?: string;
   /** What runs, a short label (never the command's arguments). */
   label: string;
   /** The process that holds or waits (gate run, or the agent's MCP server). */

@@ -4,7 +4,9 @@
  * gate tick removes it within seconds, so one still here means no server is
  * running, or docker refused. One started outside a gate run (no run label)
  * is listed, never removed and never a warning: it may be a test running
- * now. Doctor only reads; it removes nothing.
+ * now. Issue 1289: a kept container (den.ephemeral=stop) stopped is
+ * counted apart, never as left over; one still running with no live run
+ * from its checkout is ⚠. Doctor only reads; it removes nothing.
  */
 import type { OnboardCheck } from "./doctor-onboard.js";
 import type { Throwaway } from "../../shared/gates/ephemeral.js";
@@ -14,6 +16,8 @@ export function throwawayLines(
   live: Set<string>,
   /** This machine's slot store tag: another store's runs aren't judged. */
   tag?: string,
+  /** Issue 1289: the checkouts with a live slot. */
+  liveCheckouts: Set<string> = new Set(),
 ): { lines: string[]; check: OnboardCheck } {
   const id = "gate_throwaway_containers";
   if (list === null)
@@ -26,9 +30,24 @@ export function throwawayLines(
       },
     };
   const mine = (b: Throwaway) => !tag || !b.store || b.store === tag;
-  const left = list.filter((b) => b.run && mine(b) && !live.has(b.run));
-  const loose = list.filter((b) => !b.run);
+  const kept = list.filter((b) => b.mode === "stop");
+  const removable = list.filter((b) => b.mode !== "stop");
+  const left = removable.filter((b) => b.run && mine(b) && !live.has(b.run));
+  const loose = removable.filter((b) => !b.run);
+  const stopped = kept.filter((b) => b.state !== "running");
+  const idle = kept.filter(
+    (b) =>
+      b.state === "running" &&
+      b.checkout &&
+      mine(b) &&
+      !liveCheckouts.has(b.checkout),
+  );
+  const keptNote = stopped.length ? `; ${stopped.length} kept (stopped)` : "";
   const lines = [
+    ...idle.map(
+      (b) =>
+        `  ⚠ ${b.id} ${b.image}: kept, still running with no run from its checkout`,
+    ),
     ...left.map(
       (b) => `  ⚠ ${b.id} ${b.image}: its gate run ${b.run} has ended`,
     ),
@@ -37,14 +56,22 @@ export function throwawayLines(
         `  · ${b.id} ${b.image}: no gate run${b.created ? ` (created ${b.created})` : ""}; remove it by hand when its test is done`,
     ),
   ];
-  if (left.length)
+  if (left.length || idle.length)
     return {
       lines,
       check: {
         id,
         status: "warn",
-        detail: `${left.length} left over from ended gate runs`,
-        fix: "start Den's server (its gate tick removes them), or docker rm -f the ids listed",
+        detail: [
+          left.length ? `${left.length} left over from ended gate runs` : "",
+          idle.length
+            ? `${idle.length} kept and running with no run from its checkout`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("; ")
+          .concat(keptNote),
+        fix: "start Den's server (its sweeper removes left-over ones and stops idle kept ones), or docker rm -f / docker stop the ids listed",
       },
     };
   return {
@@ -52,9 +79,10 @@ export function throwawayLines(
     check: {
       id,
       status: "ok",
-      detail: loose.length
-        ? `none left over from gate runs; ${loose.length} started outside one`
-        : "none left over",
+      detail:
+        (loose.length
+          ? `none left over from gate runs; ${loose.length} started outside one`
+          : "none left over") + keptNote,
     },
   };
 }

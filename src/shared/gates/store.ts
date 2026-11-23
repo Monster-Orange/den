@@ -955,6 +955,15 @@ export class GateStore {
    * first, as list() does.
    */
   liveIds(): Set<string> | null {
+    const all = this.liveSlots();
+    return all && new Set(all.map((e) => e.id));
+  }
+
+  /**
+   * Issue 1289: liveIds' strict read, with each slot's checkout tag. Null
+   * when the slots can't be read for sure.
+   */
+  liveSlots(): { id: string; checkout?: string }[] | null {
     this.list();
     let names: string[];
     try {
@@ -962,7 +971,7 @@ export class GateStore {
     } catch {
       return null;
     }
-    const ids = new Set<string>();
+    const out: { id: string; checkout?: string }[] = [];
     for (const n of names) {
       let text: string;
       try {
@@ -974,12 +983,15 @@ export class GateStore {
       try {
         const e = JSON.parse(text) as Partial<GateEntry>;
         if (typeof e.id !== "string") return null;
-        ids.add(e.id);
+        out.push({
+          id: e.id,
+          ...(typeof e.checkout === "string" ? { checkout: e.checkout } : {}),
+        });
       } catch {
         return null;
       }
     }
-    return ids;
+    return out;
   }
 
   private file(id: string) {
@@ -1285,6 +1297,8 @@ export class GateStore {
     hostWhy?: string;
     /** Issue 1033: a default pick's boxes (the others can't serve it). */
     onlyBoxes?: string[];
+    /** Issue 1289: the run's checkout tag (12 hex characters). */
+    checkout?: string;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -1303,6 +1317,9 @@ export class GateStore {
         kind: o.kind,
         who: o.who.slice(0, 200),
         ...(o.project ? { project: o.project.slice(0, 120) } : {}),
+        ...(o.checkout && /^[0-9a-f]{12}$/.test(o.checkout)
+          ? { checkout: o.checkout }
+          : {}),
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),

@@ -716,3 +716,22 @@ removed: `den doctor` lists it. The slot log records each removal with the
 count and the image names, never a command line or environment.
 `gate status` (and `--json`, as `removed`) shows the last day's removals,
 and `den doctor` warns about any left over from an ended run.
+
+### Kept containers: stopped, never removed
+
+A test database that is slow to make (an extension to install) can be kept
+for the checkout instead: label it `den.ephemeral=stop` and
+`den.gate.checkout=$DEN_GATE_CHECKOUT`, with `den.gate.run` and
+`den.gate.store` as above (`ephemeralLabels(env, { keep: true })` builds
+them). `gate run` gives its command `DEN_GATE_CHECKOUT`, a tag for the
+checkout it runs in (the folder holding `.git`), and records it on its
+slot.
+
+A kept container belongs to its checkout, not to the run that made it: a
+container's labels can't change, so a later run reusing it would still
+carry the first run's id. It is **stopped**, never removed, when it is
+running and no live slot comes from its checkout: when `gate run` ends, or
+when the server's sweeper finds it so on two looks a minute apart. One
+already stopped is left alone. One with no checkout label is never
+stopped. `den doctor` counts stopped kept containers apart, and warns
+about one still running with no run from its checkout.
