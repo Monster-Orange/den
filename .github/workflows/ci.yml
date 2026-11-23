@@ -426,7 +426,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           start=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at 2>/dev/null || true)
-          node scripts/ci-first-red.mjs "$start" "the directly affected tests" >> "$GITHUB_STEP_SUMMARY"
+          # In the log too: the summary isn't readable through the API.
+          node scripts/ci-first-red.mjs "$start" "the directly affected tests" | tee -a "$GITHUB_STEP_SUMMARY"
       # Issue 296: the files that start Docker containers run after the rest.
       # Issue 844: the rest leaves out what ran first; with nothing left it
       # runs nothing (jest with no files would run them all).

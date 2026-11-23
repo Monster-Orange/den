@@ -270,7 +270,8 @@ describe("issue 844 clause 4: time to first red in the run summary", () => {
     const s = steps.find((x) => (x.run ?? "").includes("ci-first-red.mjs"));
     expect(s?.if).toMatch(/failure\(\)/);
     expect(s?.if).toMatch(/steps\.direct\.outcome == 'failure'/);
-    expect(s?.run).toMatch(/GITHUB_STEP_SUMMARY/);
+    // To the summary, and to the log (the summary isn't in the API).
+    expect(s?.run).toMatch(/\| tee -a "\$GITHUB_STEP_SUMMARY"/);
   });
 });
 
