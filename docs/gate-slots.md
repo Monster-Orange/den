@@ -74,7 +74,9 @@ den gate settings --local-browser-slots 2
 `gate status`, `gate_slot_status` and the runner route's `place` give a
 waiting run's place in its own kind's line (1 is next).
 
-On the machine itself, wrap the run:
+On the machine itself, wrap the run. The browser server at port 3000 is
+the one `npm run pw:server` starts in Den's repo: Playwright's image
+pinned by its multi-arch digest, so it runs the machine's own build.
 
 ```sh
 DEN_PW_WS=ws://127.0.0.1:3000/ den gate run --kind browser --estimate 6m --label "e2e" -- npm run test:e2e

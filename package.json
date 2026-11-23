@@ -59,6 +59,7 @@
     "test": "jest --forceExit",
     "gate:org-names": "node scripts/org-name-gate.mjs",
     "gate:words": "node scripts/words-gate.mjs",
+    "pw:server": "node scripts/pw-server.mjs",
     "gate:den-ui": "node packages/den-ui/bin/den-ui-parity.mjs --root . --src src",
     "docs:shots": "node scripts/doc-shots.mjs",
     "docs:links": "node scripts/docs-links.js",

@@ -235,7 +235,8 @@ build ships another Chromium; on an arm64 machine add
 
     mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6
 
-in the theme `NAV_THEME`, Den's default theme "den" 2.0.1 (the kit's
+(only for this check: Den's other browser tests run on the host's own
+build, `npm run pw:server` in Den's repo) in the theme `NAV_THEME`, Den's default theme "den" 2.0.1 (the kit's
 default tokens). A host must run the inventory on that image, in that
 theme, with the shipped references, so both products are measured in one
 browser build and one look. Start the image's run-server and connect both
