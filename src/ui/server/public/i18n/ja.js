@@ -380,6 +380,11 @@
     "ws.all": "すべてのアクティブ",
     "ws.focus": "CLI の既定",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "{company}（{host}）に接続中。このプロジェクト: {name}。",
+    "ws.hubAway": "別の Hub",
+    "ws.hubAwayTip":
+      "このプロジェクトのリンクは別の Hub を指しているため、ここでは無効です。プロジェクト設定でリンクし直してください。",
     "ws.hubUnseen": "Den Hub が参照できないリポジトリ: {n} 件",
     "ws.hubTip":
       "このプロジェクトのエージェントは Hub の作業をこの Hub プロジェクトに保存します。プロジェクト設定で変更できます。",
@@ -1459,6 +1464,9 @@
     "hubp.whyRepo": "同じリポジトリ",
     "hubp.whyName": "同じ名前",
     "hubp.link": "リンク",
+    "hubp.elsewhere":
+      "{project} は別の Hub（{host}、{company}）の「{name}」を指しています。この Den は {nowHost}（{nowCompany}）に接続しているため、このリンクは無効です。ここでリンクし直すか、リンクを解除してください。",
+    "hubp.relink": "リンクし直す",
     "hubp.unlink": "リンクを解除",
     "hubp.none": "あなたの会社にはまだ Hub のプロジェクトがありません。",
     "hubp.noOther": "切り替えられる Hub のプロジェクトはほかにありません。",
@@ -1520,7 +1528,40 @@
       "Hub は依頼を受け付けませんでした。何も作成されていません。",
     "hub.legacy":
       "このインストールは古い Hub トークンを使っています。Den が置き換えられない場所に保存されています。新しいトークンに移すには再接続してください。",
+    "hub.addressMore": "Hub のアドレス…",
+    "hub.justConnected":
+      "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
     "hub.reconnect": "再接続",
+    "hub.cw.done": "Hub（{company}）に接続しました。",
+    "hub.cw.doneNoCo": "Hub に接続しました。",
+    "hub.cw.linked": "同じ承認で {n} 個のプロジェクトをリンクしました。",
+    "hub.cw.linkedNew":
+      "同じ承認で {n} 個のプロジェクトをリンクしました（新規 {made} 個）。",
+    "hub.cw.notCreated": "{key}：作成されませんでした。",
+    "hub.cw.notCreatedWhy": "{key}：作成されませんでした（{detail}）。",
+    "hub.cw.notDone": "{key}：Hub で完了しませんでした。",
+    "hub.cw.notDoneWhy": "{key}：Hub で完了しませんでした（{detail}）。",
+    "hub.cw.later": "{key}：あなたの確認を待っています。",
+    "hub.cw.fb.oldHub":
+      "この Hub はまだ接続時にプロジェクトをリンクしません。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.otherList":
+      "Hub の応答は別のプロジェクト一覧に対するものでした。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.badAnswer":
+      "プロジェクトに関する Hub の応答を Den が読めませんでした。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.rebind":
+      "Den は Hub の記録をこの Hub に移せませんでした。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.tooMany":
+      "接続で Hub に送れるのは 50 個のプロジェクトまでです。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.tooBig":
+      "プロジェクト一覧が 6 KB を超えていました。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.badKey":
+      "Hub が照合できない文字を含むプロジェクト名があります。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.twice":
+      "同じプロジェクトが 2 回含まれていました。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.review":
+      "下の {n} 個のプロジェクトを確認してから、「接続してすべてリンク」を押してください。",
+    "hub.cw.cannot":
+      "Hub はまだプロジェクトを一覧表示できません。できるようになったら 設定 › Hub でリンクしてください。",
     "hubgh.offline": "このインストールはまだ Hub に接続されていません。",
     "hubgh.failed":
       "Den は GitHub へのアクセスについて Hub に問い合わせできませんでした。",
@@ -1544,6 +1585,63 @@
       "{n} 件をリンクできませんでした: {names}。もう一度お試しください。",
     "hubla.failedAll":
       "{names} をリンクできませんでした。もう一度お試しください。",
+    "hubrv.title": "この Den を {company} に接続",
+    "hubrv.titleNo": "この Den のプロジェクトを Hub にリンク",
+    "hubrv.offline":
+      "Hub が応答しませんでした。会社はわかっていますが、プロジェクトを一覧できません。何も変更していません。",
+    "hubrv.youAre": "あなたは{role}です",
+    "hubrv.signedAs": "{login} としてサインイン中",
+    "hubrv.role.owner": "オーナー",
+    "hubrv.role.member": "メンバー",
+    "hubrv.retry": "再試行",
+    "hubrv.allMatch":
+      "{n} 件のプロジェクトがすべて一致しています。選ぶものはありません。",
+    "hubrv.why.repo": "同じリポジトリ",
+    "hubrv.why.name": "同じ名前",
+    "hubrv.why.picked": "あなたの選択",
+    "hubrv.why.linked": "リンク済み",
+    "hubrv.why.new": "合う Hub プロジェクトがありません: 新規作成",
+    "hubrv.why.pick": "2 つの Hub プロジェクトが合います: 1 つ選んでください",
+    "hubrv.waiting":
+      "新しい Hub プロジェクト。Hub でオーナーの適用を待っています",
+    "hubrv.was": "{host} の「{name}」にリンクされていました。ここでは{why}",
+    "hubrv.wasCo":
+      "{host}(会社 {company})の「{name}」にリンクされていました。ここでは{why}",
+    "hubrv.offlineRow": "Hub がプロジェクト一覧に応答しませんでした",
+    "hubrv.create": "「{name}」を作成",
+    "hubrv.suggested": "おすすめ",
+    "hubrv.choose": "「{project}」の Hub プロジェクトを選択",
+    "hubrv.search": "{n} 件のプロジェクトを検索",
+    "hubrv.noMatch": "一致する Hub プロジェクトはありません。",
+    "hubrv.noProjects": "この会社の Hub にはまだプロジェクトがありません。",
+    "hubrv.use": "{name} を使う",
+    "hubrv.createInstead": "代わりに「{name}」を作成",
+    "hubrv.cancel": "キャンセル",
+    "hubrv.change": "変更",
+    "hubrv.openPlan": "Hub のプランページを開く",
+    "hubrv.apply": "接続してすべてリンク",
+    "hubrv.applyNote":
+      "リンクはすぐに適用されます。新しいプロジェクトは Hub のプランページを開きます。そこで 1 回適用すればすべて作成されます。",
+    "hubrv.member":
+      "{n} 件の新しいプロジェクトはオーナーの承認に回ります。あなたはメンバーなので、Hub がオーナーに適用を依頼します。リンクはすぐに適用されます。",
+    "hubrv.doneTitle": "{company} に接続しました",
+    "hubrv.doneTitleNo": "完了",
+    "hubrv.linkedLine": "{project} → {name}({why})",
+    "hubrv.creatingLine":
+      "{project}: 新しい Hub プロジェクト {name} は Hub での適用を待っています。適用されるとリンクされます。",
+    "hubrv.skip.duplicate": "{project}: 2回指定されたため、1回だけ行いました。",
+    "hubrv.skip.unknown":
+      "{project}: 未実行: ここにそのプロジェクトはありません。",
+    "hubrv.skip.offline":
+      "{project}: 未実行: Hub が応答しませんでした。もう一度お試しください。",
+    "hubrv.skip.stale":
+      "{project}: 未実行: もうこの会社の Hub プロジェクトではありません。",
+    "hubrv.skip.waiting":
+      "{project}: 未実行: 新しい Hub プロジェクトがすでにオーナーを待っています。",
+    "hubrv.skip.hub": "{project}: 未実行: Hub の応答: {why}",
+    "hubrv.skip.name": "{project}: 未実行: 名前は 1〜80 文字にしてください。",
+    "hubrv.asked": "新しいプロジェクトを Hub に依頼しました。",
+    "hubrv.switch": "会社を切り替え",
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
       "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
@@ -1626,6 +1724,8 @@
     "set.access.agent_view_minutes": "エージェントの閲覧時間 (分)",
     "set.access.agent_view_minutes.d":
       "エージェントの読み取り専用の閲覧が続く時間。過ぎると終わります。 __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.test_installs_here":
+      "このコンピューター上のテスト用インストール",
     "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
@@ -2025,6 +2125,12 @@
       "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.test_person_setup":
+      "テスト用インストール {id} のテスト用の人物を設定",
+    "ap.det.test_person_setup.which":
+      "このコンピューター上のテスト用インストール {id}（状態フォルダー {where}）。",
+    "ap.det.test_person_setup.what":
+      "そのライブチェックがテスト用の人物としてそこにサインインできるようになります。ほかの場所にはサインインできません。",
     "ap.do.web_url_set": "{url} をこの Den のアドレスにする",
     "ap.det.web_url_set.newHost":
       "新しいホスト: {host} はこのマシンでも Den が提供するアドレスでもありません。サインインとすべてのリンクがここを経由します。",
@@ -2068,6 +2174,7 @@
       "まずプロジェクト「{project}」をアクティブにして、動かせるようにします。",
     "ap.det.service_try.up":
       "サービスのローカルの「up」を、サービスのページの「開始」と同じように実行します。",
+    "ap.det.service_try.command": "コマンド: {command}",
     "ap.det.service_try.reports":
       "Den は終了コードと出力の最後の数行を伝えます。",
     "ap.det.den_restart.restart":
@@ -3468,6 +3575,11 @@
       "テスト用インストールではありません。ここではライブチェックはサインインできません。テスト用インストールは、人がディストリビューションの設定で手作業で印付けします (web.test_install: true)。",
     "set.ui.testPersonReady": "テスト用の人物は設定済みです。",
     "set.ui.testPersonMissing": "テスト用の人物はまだ設定されていません。",
+    "set.ui.testInstallsNone":
+      "テスト用の人物を待っているテスト用インストールは、このコンピューターにはありません。",
+    "set.ui.testInstallsOne": "{where}（テスト用インストール {id}）",
+    "set.ui.testInstallsSignedIn":
+      "このコンピューター上のテスト用インストールは、サインインしている本人だけが見られます。",
     "set.ui.testPersonSetUp": "テスト用の人物を設定",
     "set.ui.testInstallSignedIn":
       "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
@@ -3553,7 +3665,7 @@
     "set.ui.hub.address": "Hub のアドレス",
     "set.ui.hub.connect": "接続",
     "set.ui.hub.connectLinks":
-      "接続すると、ここの各プロジェクトが対応する Hub プロジェクトにも結び付けられます。どれが合うか Den が判断できないときは、あなたに確認します。",
+      "接続すると、ここの各プロジェクトにおすすめの Hub プロジェクトが表示されます。確認してから「接続してすべてリンク」を押してください。",
     "set.ui.hub.connectNote":
       "「接続」を押すと Hub が開きます。そこでサインインしてこのインストールを承認すると、接続された状態でここに戻ります。トークンはこのインストールのシークレットストアに保存され、表示されることはありません。",
     "set.ui.hub.teams": "{host} の共有 Hub。",
@@ -3877,6 +3989,8 @@
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
       "GitHub を使わない場合やオフラインの場合: エッジのホスト名 1 つに対する一回限りのリンクと QR コードです (__DEN_CLI__ web login --host <name>)。",
+    "set.access.test_installs_here.d":
+      "起動元が知らせている、テスト用の人物を待っているこのコンピューター上のテスト用インストール。「テスト用の人物を設定」で、どのブラウザーからでも、あなた自身の許可でここから設定します。",
     "set.access.test_install.d":
       "このインストールがテスト用として印付けされているかどうか: ディストリビューションの設定の web.test_install で、手作業で設定します。その場合に限り、ライブチェックはテスト用の人物としてサインインできます (あなたでも、エージェントでもありません)。ブラウザのこの画面で「テスト用の人物を設定」を押して一度作成します。",
     "set.distribution.brand.d":

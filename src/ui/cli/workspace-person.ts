@@ -54,10 +54,9 @@ export async function workspaceViaServer(
  * the prompt (`willReset`: the blueprint's projects have entries). A seed
  * with nothing to reset is anyone's. Null when it may go on.
  */
-export type SeedVia = "init" | "workspace seed"; // words-ok: the CLI's command names
-
 export function seedResetRefusal(
-  o: { reset: boolean; willReset: boolean; via: SeedVia },
+  /** `via`: the command that was run, named in the refusal. */
+  o: { reset: boolean; willReset: boolean; via: string },
   env: Record<string, string | undefined> = process.env,
 ): string | null {
   if (!isAgentTokenEnv(env) || (!o.reset && !o.willReset)) return null;

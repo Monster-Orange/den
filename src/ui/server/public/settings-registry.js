@@ -2133,7 +2133,88 @@ const ACCESS_ROWS = [
     control: { type: "custom", render: drawTestInstall },
     read: () => null,
   },
+  {
+    id: "access.test_installs_here",
+    category: "access",
+    label: "Test installs on this computer",
+    description:
+      "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
+    keywords: ["test", "test install", "test person", "live checks", "bed"],
+    scope: "user",
+    control: { type: "custom", render: drawTestInstallsHere },
+    read: () => null,
+  },
 ];
+
+/**
+ * Issue 816: the row's list. `installs`: GET /api/web/test-installs's,
+ * each {id, where, port}. `t(key, en, vars)` words it.
+ */
+export function testInstallsHereHtml(installs, t = (_k, en) => en) {
+  if (!installs || !installs.length)
+    return `<output class="set-ro" id="set-test-installs" data-count="0">${escHtml(t("set.ui.testInstallsNone", "No test install on this computer is waiting for its test person."))}</output>`;
+  return (
+    `<ul class="set-list" id="set-test-installs" data-count="${installs.length}">` +
+    installs
+      .map(
+        (i) =>
+          `<li><span>${escHtml(t("set.ui.testInstallsOne", "{where} (test install {id})", { where: i.where, id: i.id }))}</span> ` +
+          `<button type="button" class="den-btn sm" data-test-install-setup="${escHtml(i.id)}">${escHtml(t("set.ui.testPersonSetUp", "Set up test person"))}</button></li>`,
+      )
+      .join("") +
+    `</ul>`
+  );
+}
+
+/**
+ * Issue 816: Settings › Access › Test installs on this computer. Set up
+ * test person asks for the held write test_person_setup; the shell's Allow
+ * dialog takes it from there, and the list is read again when it's done.
+ */
+function drawTestInstallsHere(host, ctx) {
+  const load = () =>
+    fetch("/api/web/test-installs", { cache: "no-store" })
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(String(r.status))),
+      )
+      .then((b) => {
+        host.innerHTML = testInstallsHereHtml(b.installs || [], L);
+        for (const btn of host.querySelectorAll("[data-test-install-setup]"))
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-test-install-setup");
+            const run = (headers) =>
+              ctx.shell.api(
+                "POST",
+                "/api/approvals",
+                { action: "test_person_setup", args: { id } },
+                { headers },
+              );
+            void (
+              ctx.shell.busyAction
+                ? ctx.shell.busyAction("ask-allow", run, {
+                    button: btn,
+                  })
+                : run({})
+            )
+              .then(() =>
+                window.dispatchEvent(new CustomEvent("den:approvals-poll")),
+              )
+              .catch((e) => {
+                host.insertAdjacentHTML(
+                  "beforeend",
+                  `<p class="set-note set-warn" role="alert">${escHtml(e.message)}</p>`,
+                );
+              });
+          });
+      })
+      .catch(() => {
+        host.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.testInstallsSignedIn", "Only the signed-in person sees the test installs on this computer."))}</output>`;
+      });
+  load();
+  window.addEventListener("den:approval-done", (ev) => {
+    if (host.isConnected && ev.detail?.action === "test_person_setup") load();
+  });
+}
 
 /**
  * Issue 810: Settings › Access › Test install. Read only: whether this is a
@@ -5748,6 +5829,67 @@ function hubAddressHtml(b) {
 }
 
 /**
+ * Issue 648: Connect's summary, worded here in the page's language from
+ * the data the server sends (lastResult().words), never words built on
+ * the server. `head` adds "Connected to Hub (…)." first. Plain sentences:
+ * the caller escapes them (a project's key and Hub's detail are data).
+ */
+const HUB_FALLBACK_KEYS = {
+  "old-hub": "hub.cw.fb.oldHub",
+  "other-list": "hub.cw.fb.otherList",
+  "bad-answer": "hub.cw.fb.badAnswer",
+  rebind: "hub.cw.fb.rebind",
+  "too-many": "hub.cw.fb.tooMany",
+  "too-big": "hub.cw.fb.tooBig",
+  "bad-key": "hub.cw.fb.badKey",
+  twice: "hub.cw.fb.twice",
+};
+export function hubConnectWords(w, t = (k) => k, head = true) {
+  const out = [];
+  if (!w || typeof w !== "object") return out;
+  if (head)
+    out.push(
+      w.team ? t("hub.cw.done", { company: w.team }) : t("hub.cw.doneNoCo"),
+    );
+  const g = w.grant;
+  if (g && typeof g === "object") {
+    if (typeof g.fallback === "string") {
+      const k = HUB_FALLBACK_KEYS[g.fallback];
+      if (k) out.push(t(k));
+    } else {
+      const n = Number(g.linked) || 0;
+      const made = Number(g.created) || 0;
+      if (n)
+        out.push(
+          made ? t("hub.cw.linkedNew", { n, made }) : t("hub.cw.linked", { n }),
+        );
+      for (const x of Array.isArray(g.skipped) ? g.skipped : []) {
+        const key = String(x?.key ?? "");
+        const detail = typeof x?.detail === "string" ? x.detail : "";
+        if (x?.why === "permission")
+          out.push(
+            detail
+              ? t("hub.cw.notCreatedWhy", { key, detail })
+              : t("hub.cw.notCreated", { key }),
+          );
+        else if (x?.why === "failed")
+          out.push(
+            detail
+              ? t("hub.cw.notDoneWhy", { key, detail })
+              : t("hub.cw.notDone", { key }),
+          );
+        else out.push(t("hub.cw.later", { key }));
+      }
+    }
+  }
+  const r = w.review;
+  if (r && r.cannot) out.push(t("hub.cw.cannot"));
+  else if (r && Number(r.n) > 0)
+    out.push(t("hub.cw.review", { n: Number(r.n) }));
+  return out;
+}
+
+/**
  * Issue 869: Hub refused this Den's address when Den last told it (400,
  * 401, 403): what Hub said, until a later tell goes through.
  */
@@ -5771,8 +5913,15 @@ export function hubHtml(b, flash, t = (k) => k) {
     ? b.state || (b.connected ? "connected" : "no_token")
     : "no_token";
   const note = (t, attr) => `<p class="set-note" ${attr}>${escR(t)}</p>`;
+  // Issue 648: Connect's words come as data and are worded here; an older
+  // server (or Disconnect's flash) sends only a message.
+  const flashText = flash
+    ? flash.words
+      ? hubConnectWords(flash.words, t).join(" ")
+      : flash.message
+    : "";
   const flashHtml = flash
-    ? `<p class="set-note hub-flash ${flash.ok ? "ok" : "warn"}" role="status" data-hub-flash="${flash.ok ? "ok" : "failed"}">${escR(flash.message)}</p>`
+    ? `<p class="set-note hub-flash ${flash.ok ? "ok" : "warn"}" role="status" data-hub-flash="${flash.ok ? "ok" : "failed"}">${escR(flashText)}</p>`
     : "";
   if (state === "bad_config")
     return (
@@ -5802,7 +5951,7 @@ export function hubHtml(b, flash, t = (k) => k) {
       (b.url
         ? ""
         : `<p class="set-note" data-hub-empty>${escR(L("set.ui.hub.empty", "No Hub yet. Type your company's Hub address, then Connect. Save only keeps the address."))}</p>`) +
-      `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you."))}</p>` +
+      `<p class="set-note" data-hub-connect-does>${escR(L("set.ui.hub.connectLinks", "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all."))}</p>` +
       `<p class="set-note">${escR(L("set.ui.hub.connectNote", "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown."))}</p>` +
       // 0.4.45: the two editions, until this install is connected, where
       // the distribution says they are. The names stay in English.
@@ -5824,15 +5973,28 @@ export function hubHtml(b, flash, t = (k) => k) {
         `<a href="${escR(b.teamUrl)}">${escR(b.team)}</a>`
       : escR(b.team)
     : "";
+  // Issue 646 (mock v2, 1b): connected to a known company, it comes first
+  // and big, with "<host> · you are owner|member · signed in as <login>"
+  // under it, and the address waits behind Hub address….
+  const first = state === "connected" && !!team;
+  const host = String(b.url || "").replace(/^https?:\/\//, "");
+  const coSub = [
+    host,
+    b.role === "owner" || b.role === "member"
+      ? t("hubrv.youAre", { role: t(`hubrv.role.${b.role}`) })
+      : "",
+    b.login ? t("hubrv.signedAs", { login: b.login }) : "",
+  ].filter(Boolean);
+  const switchBtn = `<button type="button" class="den-btn sm" data-hub-action="switch" data-hub-switch>${escR(t("hubrv.switch"))}</button> `;
   const rows = [
     ["Hub", `<span class="den-mono">${escR(b.url || "")}</span>`],
     [
       L("set.ui.hub.status", "Status"),
       `<span class="set-tag ${status[0]}" data-hub-state="${escR(state)}">${escR(status[1])}</span>`,
     ],
-    ...(team ? [[L("set.ui.hub.company", "Company"), team]] : []),
-    ...(b.role ? [[L("set.ui.hub.role", "Role"), escR(b.role)]] : []),
-    ...(b.login
+    ...(team && !first ? [[L("set.ui.hub.company", "Company"), team]] : []),
+    ...(b.role && !first ? [[L("set.ui.hub.role", "Role"), escR(b.role)]] : []),
+    ...(b.login && !first
       ? [[L("set.ui.hub.signedInAs", "Signed in as"), escR(b.login)]]
       : []),
     ...(b.label
@@ -5866,20 +6028,53 @@ export function hubHtml(b, flash, t = (k) => k) {
           )
         : L("set.ui.hub.toolsOff", "Agents ask before each Hub tool runs."),
     )}</p>`;
+  const acts =
+    `<div class="hub-acts">` +
+    (state === "rejected" || b.legacy
+      ? `<button type="button" class="den-btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
+      : // Issue 646: the same Connect flow, to pick another company.
+        state === "connected"
+        ? switchBtn
+        : "") +
+    (first
+      ? `<button type="button" class="den-btn sm" data-hub-action="address" aria-expanded="false">${escR(t("hub.addressMore"))}</button> `
+      : "") +
+    `<button type="button" class="den-btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
+    `</div>`;
+  // Issue 646 (mock v2, 1c): right after Connect, one line naming the
+  // company, with Switch company; a later visit has no flash, so no line.
+  // Issue 648: what the one approval did follows it, in its own line.
+  const justMore =
+    first && flash?.ok && flash.words
+      ? hubConnectWords(flash.words, t, false).join(" ")
+      : "";
+  const just =
+    first && flash?.ok
+      ? `<p class="set-note ok hub-just" role="status" data-hub-flash="ok" data-hub-just>${escR(t("hub.justConnected", { company: b.team, host }))} ${switchBtn}</p>` +
+        (justMore
+          ? `<p class="set-note" data-hub-words>${escR(justMore)}</p>`
+          : "")
+      : "";
+  const head = first
+    ? `<div class="hub-co" data-hub-co>` +
+      `<div><b class="hub-co-name" data-hub-co-name>${team}</b>` +
+      (coSub.length
+        ? `<p class="set-note" data-hub-co-sub>${escR(coSub.join(" · "))}</p>`
+        : "") +
+      `</div>${acts}</div>`
+    : "";
   return (
-    flashHtml +
-    hubAddressHtml(b) +
+    (just || flashHtml) +
+    head +
+    (first
+      ? `<div data-hub-addr-wrap hidden>${hubAddressHtml(b)}</div>`
+      : hubAddressHtml(b)) +
     `<dl class="hub-st" data-hub>` +
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
     (why ? note(why, "data-hub-problem") : "") +
     hubDenUrlHtml(b.denUrl) +
-    `<div class="hub-acts">` +
-    (state === "rejected" || b.legacy
-      ? `<button type="button" class="den-btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
-      : "") +
-    `<button type="button" class="den-btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
-    `</div>` +
+    (first ? "" : acts) +
     // Disconnect asks first, saying what it does (Hub revokes the key).
     `<div class="hub-confirm" data-hub-confirm hidden>` +
     `<p class="set-note set-warn">${escR(L("set.ui.hub.disconnectWarn", "This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again."))}</p>` +
@@ -6951,6 +7146,8 @@ export const HUB_PICK_HREF = "/settings#agents.hub_link_all";
  * (b.owner), else who must allow it. Declined or ended: said, and Create
  * is offered again.
  */
+const hubHostOf = (u) => String(u || "").replace(/^https?:\/\//, "");
+
 export function hubProjectHtml(b, t, name) {
   const ws = String(b?.project ?? "");
   const st = (dot, text) =>
@@ -7067,6 +7264,34 @@ export function hubProjectHtml(b, t, name) {
           }),
         )}</p>`
       : "";
+  // Issue 646 (mock v2, 3b): a link to another Hub counts as not linked:
+  // say both Hubs, Relink on this company's projects, or Unlink.
+  const away =
+    b.elsewhere && typeof b.elsewhere === "object" ? b.elsewhere : null;
+  if (away)
+    return (
+      `<div data-hubp data-hubp-state="elsewhere">` +
+      st(
+        "warn",
+        t("hubp.elsewhere", {
+          project: ws,
+          name: String(away.name || ""),
+          host: hubHostOf(away.origin),
+          company: String(away.company || ""),
+          nowHost: hubHostOf(away.now?.origin),
+          nowCompany: String(away.now?.company || ""),
+        }),
+      ) +
+      picker(
+        t("hubp.linkProject", { project: ws }),
+        t("hubp.relink"),
+        true,
+      ).replace(
+        "</form>",
+        `<button type="button" class="den-btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button></form>`,
+      ) +
+      tail
+    );
   if (b.pick)
     return (
       `<div data-hubp data-hubp-state="pick">` +
@@ -7208,7 +7433,7 @@ function wireHubProject(host, ctx, url, t, b) {
         ctx,
         t,
         String(b?.project ?? ""),
-        b?.hub?.name || b?.hub?.slug || "",
+        b?.hub?.name || b?.hub?.slug || b?.elsewhere?.name || "",
       ).then((yes) => {
         if (yes) put(null);
       }),
@@ -7537,6 +7762,27 @@ function drawHub(host, ctx, back, flash) {
         f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
       host.innerHTML = hubHtml(b, f, (k, v) => ctx.shell.t(k, v));
       wireHub(host, ctx);
+      // Issue 646: connected: Connect's review, a row per project.
+      if (
+        b &&
+        b.configured &&
+        (b.state || (b.connected ? "connected" : "")) === "connected"
+      ) {
+        const rv = document.createElement("div");
+        rv.dataset.hubReviewHost = "";
+        host.querySelector(".rt-err")?.after(rv);
+        void drawHubReview(rv, ctx, {
+          sel: {},
+          open: null,
+          picked: "",
+          company: b.team || "",
+          owner: b.role ? b.role === "owner" : null,
+          host: b.url ? hostOf(b.url) : "",
+          role: b.role || "",
+          login: b.login || "",
+          result: null,
+        });
+      }
       // D44: agents started before Hub changed keep their old tools.
       return offerRestart(host, ctx, Boolean(f || back));
     })
@@ -7563,7 +7809,7 @@ function wireHub(host, ctx) {
   };
   const busy = (on) =>
     host.querySelectorAll("button, input").forEach((x) => (x.disabled = on));
-  const connect = () => {
+  const connect = (button) => {
     const typed = host.querySelector("#hub-url");
     busy(true);
     err("");
@@ -7580,7 +7826,8 @@ function wireHub(host, ctx) {
             { headers },
           ),
         {
-          button: host.querySelector('button[data-hub-action="connect"]'),
+          button:
+            button || host.querySelector('button[data-hub-action="connect"]'),
           // Off to Hub: sign in and approve there; Hub sends the person back.
           onDone: (r) => location.assign(r.location),
           onFail: (e) => err(e?.message || t("busy.connF")),
@@ -7609,10 +7856,23 @@ function wireHub(host, ctx) {
       connect();
     });
   wireHubAddress(host, ctx, err, busy);
+  // Issue 646 (mock v2, 1b): Hub address… shows the address form.
+  const addrBtn = host.querySelector('[data-hub-action="address"]');
+  const addrWrap = host.querySelector("[data-hub-addr-wrap]");
+  addrBtn?.addEventListener("click", () => {
+    if (!addrWrap) return;
+    addrWrap.hidden = !addrWrap.hidden;
+    addrBtn.setAttribute("aria-expanded", String(!addrWrap.hidden));
+    if (!addrWrap.hidden) addrWrap.querySelector("#hub-addr")?.focus();
+  });
+  // Issue 646: Switch company runs the same Connect flow from a connected card.
   host
-    .querySelectorAll('button[data-hub-action="connect"]')
+    .querySelectorAll(
+      'button[data-hub-action="connect"], button[data-hub-action="switch"]',
+    )
     .forEach(
-      (x) => x.type === "button" && x.addEventListener("click", connect),
+      (x) =>
+        x.type === "button" && x.addEventListener("click", () => connect(x)),
     );
   const acts = host.querySelector(".hub-acts");
   const ask = host.querySelector("[data-hub-confirm]");
@@ -7659,6 +7919,397 @@ function wireHub(host, ctx) {
           box.disabled = false;
         });
     });
+}
+
+/**
+ * Issue 646: what Connect and link all sends for each row: the person's
+ * choice (sel), else the proposal (a pick waits for a choice). A linked row
+ * goes only when the person changed it.
+ */
+export function hubReviewAsks(rows, sel) {
+  const out = [];
+  for (const r of rows || []) {
+    const c = sel?.[r.project];
+    if (c && c.hub && c.hub !== r.linked?.id)
+      out.push({ project: r.project, hub: c.hub });
+    else if (c && c.create && !r.linked)
+      out.push({ project: r.project, create: c.create });
+    else if (!c && r.proposal?.kind === "link")
+      out.push({ project: r.project, hub: r.proposal.hub.id });
+    else if (!c && r.proposal?.kind === "create")
+      out.push({ project: r.project, create: r.proposal.name });
+  }
+  return out;
+}
+
+const hostOf = (u) => String(u || "").replace(/^https?:\/\//, "");
+
+/** Issue 646: the words under a row's target: why it is proposed or linked. */
+function reviewWhy(r, c, projects, t) {
+  if (c?.hub) {
+    const s = (r.proposal?.choices || []).find((x) => x.id === c.hub);
+    if (r.proposal?.kind === "link" && r.proposal.hub.id === c.hub)
+      return [t(`hubrv.why.${r.proposal.why}`), ""];
+    return [s?.why ? t(`hubrv.why.${s.why}`) : t("hubrv.why.picked"), ""];
+  }
+  if (c?.create) return [t("hubrv.why.new"), "new"];
+  if (r.waiting) return [t("hubrv.waiting"), "warn"];
+  if (r.linked)
+    return [
+      r.linked.why ? t(`hubrv.why.${r.linked.why}`) : t("hubrv.why.linked"),
+      "",
+    ];
+  if (r.proposal?.kind === "link") {
+    const why = t(`hubrv.why.${r.proposal.why}`);
+    const away = r.elsewhere || r.was;
+    return away
+      ? [
+          t(away.company ? "hubrv.wasCo" : "hubrv.was", {
+            name: away.name,
+            host: hostOf(away.origin),
+            company: away.company || "",
+            why,
+          }),
+          "warn",
+        ]
+      : [why, ""];
+  }
+  if (r.proposal?.kind === "create") return [t("hubrv.why.new"), "new"];
+  if (r.proposal?.kind === "pick") return [t("hubrv.why.pick"), "warn"];
+  if (!projects) return [t("hubrv.offlineRow"), "warn"];
+  return ["", ""];
+}
+
+/** Issue 646: a row's target: the Hub project it gets, or Create <name>. */
+function reviewTarget(r, c, projects, t) {
+  const named = (id) =>
+    (projects || []).find((p) => p.id === id)?.name ||
+    (r.proposal?.choices || []).find((p) => p.id === id)?.name ||
+    id;
+  if (c?.hub) return escR(named(c.hub));
+  if (c?.create) return escR(t("hubrv.create", { name: c.create }));
+  if (r.waiting) return escR(r.waiting.name);
+  if (r.linked) return escR(r.linked.name);
+  if (r.proposal?.kind === "link") return escR(r.proposal.hub.name);
+  if (r.proposal?.kind === "create")
+    return escR(t("hubrv.create", { name: r.proposal.name }));
+  return "—";
+}
+
+/**
+ * Issue 646 (point 7, mock v3 picker): choose a Hub project for one
+ * project, as a list to pick from: a search, the suggestion(s) on top, a
+ * whole-row choice, then Use, Create instead and Cancel. `pickedId`: the
+ * row chosen in the list so far.
+ */
+export function hubPickerHtml(o, t) {
+  const sugg = (o.suggestions || []).filter((s) => s && s.id);
+  const sIds = new Set(sugg.map((s) => s.id));
+  const rest = (o.projects || []).filter((p) => p && !sIds.has(p.id));
+  const list = [...sugg.map((s) => ({ ...s, top: true })), ...rest];
+  const picked = list.find((p) => p.id === o.pickedId) || null;
+  const rows = list
+    .map(
+      (p) =>
+        `<button type="button" class="hub-pick-row${p.id === o.pickedId ? " sel" : ""}" role="option" aria-selected="${p.id === o.pickedId}" data-hub-pick-id="${escR(p.id)}" data-hub-pick-text="${escR(`${p.name} ${p.slug}`.toLowerCase())}">` +
+        `<b>${escR(p.name)}</b>${p.top ? ` <span class="hub-pick-tag">${escR(t("hubrv.suggested"))}</span>` : ""}` +
+        (p.why ? `<small>${escR(t(`hubrv.why.${p.why}`))}</small>` : "") +
+        `</button>`,
+    )
+    .join("");
+  return (
+    `<div class="hub-pick" data-hub-pick="${escR(o.project)}">` +
+    `<h4>${escR(t("hubrv.choose", { project: o.project }))}</h4>` +
+    (list.length
+      ? `<input type="search" class="hub-pick-q" data-hub-pick-q aria-label="${escR(t("hubrv.search", { n: list.length }))}" placeholder="${escR(t("hubrv.search", { n: list.length }))}">` +
+        `<div class="hub-pick-list" role="listbox" aria-label="${escR(t("hubrv.choose", { project: o.project }))}">${rows}</div>` +
+        `<p class="set-note" data-hub-pick-none hidden>${escR(t("hubrv.noMatch"))}</p>`
+      : `<p class="set-note" data-hub-pick-empty>${escR(t("hubrv.noProjects"))}</p>`) +
+    `<div class="hub-pick-acts">` +
+    (picked
+      ? `<button type="button" class="den-btn sm primary" data-hub-pick-use>${escR(t("hubrv.use", { name: picked.name }))}</button> `
+      : "") +
+    (o.createName
+      ? `<button type="button" class="den-btn sm" data-hub-pick-create>${escR(t("hubrv.createInstead", { name: o.createName }))}</button> `
+      : "") +
+    `<button type="button" class="den-btn sm" data-hub-pick-cancel>${escR(t("hubrv.cancel"))}</button>` +
+    `</div></div>`
+  );
+}
+
+/**
+ * Issue 646: Connect's review in Settings › Hub (shape B): a row per
+ * project with its Hub project or the proposal and why, Change on each
+ * (the picker opens in the row), and one button, Connect and link all.
+ * `v`: { data (GET /api/hub/connect-review), sel, open, picked, company,
+ * owner, result }.
+ */
+export function hubReviewHtml(v, t) {
+  const d = v.data || {};
+  const rows = Array.isArray(d.rows) ? d.rows : [];
+  if (!rows.length) return "";
+  const sel = v.sel || {};
+  const company = v.company || "";
+  const asks = hubReviewAsks(rows, sel);
+  const todo = rows.some((r) => r.proposal || sel[r.project]);
+  const creates = asks.filter((a) => a.create).length;
+  const offline = d.connected === false;
+  // Mock v4, 2d: every row a clear match (no pick, no create left).
+  const allClear =
+    !offline &&
+    rows.every((r) => {
+      const c = sel[r.project];
+      if (c) return !c.create;
+      return r.linked || r.waiting || r.proposal?.kind === "link";
+    });
+  // Mock v4, 2a: "<host> · you are owner|member · signed in as <login>".
+  const sub = [
+    v.host || "",
+    v.role === "owner" || v.role === "member"
+      ? t("hubrv.youAre", { role: t(`hubrv.role.${v.role}`) })
+      : "",
+    v.login ? t("hubrv.signedAs", { login: v.login }) : "",
+  ].filter(Boolean);
+  const head =
+    `<h3 class="hub-rv-h">${escR(company ? t("hubrv.title", { company }) : t("hubrv.titleNo"))}</h3>` +
+    (sub.length
+      ? `<p class="set-note hub-rv-sub" data-hub-rv-sub>${escR(sub.join(" · "))}</p>`
+      : "") +
+    (offline
+      ? `<p class="set-note set-warn" data-hub-rv-offline>${escR(t("hubrv.offline"))}</p>`
+      : allClear
+        ? `<p class="set-note ok" data-hub-rv-all>${escR(t("hubrv.allMatch", { n: rows.length }))}</p>`
+        : "");
+  const body = rows
+    .map((r) => {
+      const c = sel[r.project];
+      const [why, cls] = reviewWhy(r, c, d.projects, t);
+      const open = v.open === r.project;
+      const shown =
+        r.name && r.name !== r.project
+          ? `${escR(r.name)} <span class="den-mono hub-rv-key">${escR(r.project)}</span>`
+          : escR(r.project);
+      const canChange = d.connected !== false && !r.waiting;
+      return (
+        `<div class="hub-rv-row${c ? " chg" : ""}" data-hub-rv-row="${escR(r.project)}" data-hub-rv-kind="${escR(c ? (c.create ? "create" : "link") : r.linked ? "linked" : r.waiting ? "waiting" : r.proposal?.kind || "none")}">` +
+        `<div class="hub-rv-pj">${shown}</div>` +
+        (open
+          ? `<div class="hub-rv-pp">${hubPickerHtml(
+              {
+                project: r.project,
+                suggestions:
+                  r.proposal?.kind === "pick"
+                    ? r.proposal.choices
+                    : r.proposal?.kind === "link"
+                      ? [{ ...r.proposal.hub, why: r.proposal.why }]
+                      : [],
+                projects: d.projects,
+                pickedId: v.picked,
+                createName: r.linked ? "" : r.name || r.project,
+              },
+              t,
+            )}</div>`
+          : `<div class="hub-rv-pp"><span>${reviewTarget(r, c, d.projects, t)}</span>` +
+            (why ? `<span class="hub-rv-why ${cls}">${escR(why)}</span>` : "") +
+            (r.waiting?.url && /^https?:\/\//.test(r.waiting.url)
+              ? `<a class="den-btn sm" href="${escR(r.waiting.url)}" target="_blank" rel="noopener">${escR(t("hubrv.openPlan"))}</a>`
+              : "") +
+            `</div>` +
+            (canChange
+              ? `<button type="button" class="den-btn sm" data-hub-rv-change="${escR(r.project)}">${escR(t("hubrv.change"))}</button>`
+              : offline
+                ? `<button type="button" class="den-btn sm" data-hub-rv-retry="${escR(r.project)}">${escR(t("hubrv.retry"))}</button>`
+                : "")) +
+        `</div>`
+      );
+    })
+    .join("");
+  // Mock v4, 2e: Hub not answering keeps the button on screen, off.
+  const bar =
+    !offline && !todo
+      ? ""
+      : `<div class="hub-rv-bar">` +
+        `<button type="button" class="den-btn primary" data-hub-rv-apply${asks.length && !offline ? "" : " disabled"}>${escR(t("hubrv.apply"))}</button>` +
+        `<span class="set-note">${escR(t("hubrv.applyNote"))}</span></div>` +
+        (creates && v.owner === false
+          ? `<p class="set-note set-warn" data-hub-rv-member>${escR(t("hubrv.member", { n: creates }))}</p>`
+          : "");
+  return (
+    `<div class="hub-rv" data-hub-review>` +
+    head +
+    (v.result ? hubReviewResultHtml(v.result, company, t) : "") +
+    `<div class="hub-rv-rows">${body}</div>` +
+    bar +
+    `<div class="rt-err" role="alert" hidden></div>` +
+    `</div>`
+  );
+}
+
+/** Issue 646: Done: what Connect and link all came to, a line per project. */
+export function hubReviewResultHtml(r, company, t) {
+  const lines = [
+    ...(r.linked || []).map(
+      (x) =>
+        `<div><span class="ok">✓</span> ${escR(t("hubrv.linkedLine", { project: x.project, name: x.hub?.name || "", why: t(`hubrv.why.${x.why}`) }))}</div>`,
+    ),
+    ...(r.creating || []).map(
+      (x) =>
+        `<div><span class="wt">…</span> ${escR(t("hubrv.creatingLine", { project: x.project, name: x.name }))}</div>`,
+    ),
+    ...(r.skipped || [])
+      .filter((x) => x.code !== "linked")
+      .map(
+        (x) =>
+          `<div><span class="set-warn">⚠</span> ${escR(t(`hubrv.skip.${["unknown", "duplicate", "offline", "stale", "waiting", "hub", "name"].includes(x.code) ? x.code : "hub"}`, { project: x.project, why: x.why || "" }))}</div>`,
+      ),
+  ];
+  const plan =
+    r.plan?.url && /^https?:\/\//.test(r.plan.url)
+      ? `<a class="den-btn sm primary" data-hub-rv-plan href="${escR(r.plan.url)}" target="_blank" rel="noopener">${escR(t("hubrv.openPlan"))}</a>`
+      : "";
+  return (
+    `<div class="hub-rv-done" role="status" data-hub-rv-done>` +
+    `<p class="ok"><b>${escR(company ? t("hubrv.doneTitle", { company }) : t("hubrv.doneTitleNo"))}</b></p>` +
+    `<div class="hub-rv-prog">${lines.join("")}</div>` +
+    plan +
+    `</div>`
+  );
+}
+
+/** Issue 646: draw and wire Connect's review under the Hub row. */
+function drawHubReview(host, ctx, v) {
+  const t = (k, x) => ctx.shell.t(k, x);
+  const paint = () => {
+    host.innerHTML = hubReviewHtml(v, t);
+    wire();
+  };
+  const load = () =>
+    ctx.shell
+      .api("GET", "/api/hub/connect-review")
+      .then((data) => {
+        v.data = data;
+        paint();
+      })
+      .catch(() => {
+        host.innerHTML = "";
+      });
+  const wire = () => {
+    host.querySelectorAll("[data-hub-rv-change]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const p = b.dataset.hubRvChange;
+        v.open = p;
+        const c = v.sel[p];
+        const row = (v.data.rows || []).find((x) => x.project === p);
+        v.picked =
+          c?.hub ||
+          (row?.proposal?.kind === "link" ? row.proposal.hub.id : "") ||
+          row?.linked?.id ||
+          "";
+        paint();
+        host.querySelector("[data-hub-pick-q]")?.focus();
+      }),
+    );
+    const pick = host.querySelector("[data-hub-pick]");
+    if (pick) {
+      const p = pick.dataset.hubPick;
+      const q = pick.querySelector("[data-hub-pick-q]");
+      q?.addEventListener("input", () => {
+        const s = q.value.trim().toLowerCase();
+        let shown = 0;
+        pick.querySelectorAll("[data-hub-pick-id]").forEach((r) => {
+          r.hidden = !!s && !r.dataset.hubPickText.includes(s);
+          if (!r.hidden) shown++;
+        });
+        const none = pick.querySelector("[data-hub-pick-none]");
+        if (none) none.hidden = shown > 0;
+      });
+      pick.querySelectorAll("[data-hub-pick-id]").forEach((r) =>
+        r.addEventListener("click", () => {
+          v.picked = r.dataset.hubPickId;
+          const typed = q?.value || "";
+          paint();
+          const q2 = host.querySelector("[data-hub-pick-q]");
+          if (q2 && typed) {
+            q2.value = typed;
+            q2.dispatchEvent(new Event("input"));
+          }
+          host.querySelector("[data-hub-pick-use]")?.focus();
+        }),
+      );
+      pick
+        .querySelector("[data-hub-pick-use]")
+        ?.addEventListener("click", () => {
+          if (v.picked) v.sel[p] = { hub: v.picked };
+          v.open = null;
+          paint();
+        });
+      pick
+        .querySelector("[data-hub-pick-create]")
+        ?.addEventListener("click", () => {
+          const row = (v.data.rows || []).find((x) => x.project === p);
+          v.sel[p] = { create: row?.name || p };
+          v.open = null;
+          paint();
+        });
+      pick
+        .querySelector("[data-hub-pick-cancel]")
+        ?.addEventListener("click", () => {
+          v.open = null;
+          paint();
+        });
+    }
+    host
+      .querySelectorAll("[data-hub-rv-retry]")
+      .forEach((b) => b.addEventListener("click", () => void load()));
+    const apply = host.querySelector("[data-hub-rv-apply]");
+    apply?.addEventListener("click", () => {
+      const rows = hubReviewAsks(v.data.rows, v.sel);
+      if (!rows.length) return;
+      host
+        .querySelectorAll("button, input")
+        .forEach((x) => (x.disabled = true));
+      // BUSY-1: the working pop-up says it is linking, then what happened.
+      ctx.shell
+        .busyAction(
+          "link",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              "/api/hub/connect-review",
+              { rows },
+              { headers },
+            ),
+          {
+            button: apply,
+            success: (r) => {
+              const names = (r?.linked ?? []).map((x) => x?.project);
+              return names.length
+                ? t("busy.linkS", { n: names.length, names: listWords(names) })
+                : t("hubrv.asked");
+            },
+            onFail: (e) => {
+              const err = host.querySelector(".rt-err");
+              if (err) {
+                err.hidden = false;
+                err.textContent = e?.message || t("busy.linkF");
+              }
+            },
+          },
+        )
+        .then((r) => {
+          if (r) {
+            v.result = r;
+            v.sel = {};
+            v.open = null;
+            void load();
+          } else
+            host
+              .querySelectorAll("button, input")
+              .forEach((x) => (x.disabled = false));
+        });
+    });
+  };
+  return load();
 }
 
 /** The Rotation row: this install's values, the overrides, + Add override. */

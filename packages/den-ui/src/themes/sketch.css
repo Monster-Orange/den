@@ -14,6 +14,13 @@
   --danger-bg: transparent;
   --danger-border: var(--bad);
   --danger-text: var(--bad);
+  --danger-edge-width: 2px;
+  --danger-edge-style: solid;
+  --hover-tint: color-mix(in srgb, var(--text) 6%, transparent);
+  --btn-disabled-text: var(--faint);
+  --btn-disabled-opacity: 1;
+  --focus-ring: var(--text);
+  --focus-offset: 2px;
 }
 :root,
 :root[data-mode="light"] {
