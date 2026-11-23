@@ -584,6 +584,10 @@
       "src/ui/server/github-routes.ts",
       "src/ui/server/signin-methods.ts"
     ],
+    "tests/unit/server/token-rebind-1131.integration.test.ts": [
+      "src/shared/actor-token.ts",
+      "src/ui/server/token-binding.ts"
+    ],
     "tests/unit/server/sec3-token-binding.integration.test.ts": [
       "src/ui/server/token-binding.ts",
       "src/shared/actor-token.ts"
@@ -3694,6 +3698,11 @@
     {
       "when": ["src/ui/server/time-zone-pref.ts"],
       "run": ["tests/unit/server/time-zone.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/actor-token.ts", "src/ui/server/token-binding.ts"],
+      "run": ["tests/unit/server/token-rebind-1131.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
