@@ -307,6 +307,13 @@ export interface GateSettings {
    * any text). Empty: none.
    */
   browserHostOnly: string;
+  /**
+   * Issue 1264: Den's agent hook sends an agent's heavy runs through the
+   * gate (route_agents; off, they run as written and are counted).
+   */
+  routeAgents: boolean;
+  /** Issue 1264: the programs it routes (route_commands). */
+  routeCommands: string[];
 }
 
 /**
@@ -355,6 +362,16 @@ export const GATE_DEFAULTS: GateSettings = {
   browserRequiresContainer: process.platform === "darwin",
   browserBoxDefault: "any",
   browserHostOnly: "",
+  routeAgents: true,
+  // Issue 1264: as the hook's ROUTE_DEFAULT (guardrails/gate-route.mjs).
+  routeCommands: [
+    "jest",
+    "vitest",
+    "tsc",
+    "playwright",
+    "npm test",
+    "npm run test*",
+  ],
 };
 
 const t = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);

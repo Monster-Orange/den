@@ -35,7 +35,9 @@ export type GateSettingKey =
   | "class_map"
   | "class_windows"
   | "browser_box_default"
-  | "browser_host_only";
+  | "browser_host_only"
+  | "route_agents"
+  | "route_commands";
 
 export const GATE_MEANINGS: Record<
   UiLanguage,
@@ -95,6 +97,10 @@ export const GATE_MEANINGS: Record<
       "Where a browser run with no --box goes (any: the first free slot here or on a test box; local: here only)",
     browser_host_only:
       "Projects and label patterns whose browser runs stay on this machine",
+    route_agents:
+      "Agents' test, typecheck and browser runs go through the gate (1 yes, 0 no: they run as written and are counted)",
+    route_commands:
+      "The programs Den's agent hook sends through the gate, comma-separated",
   },
   es: {
     cpu_slots: "Ejecuciones de pruebas unitarias a la vez en esta máquina",
@@ -154,6 +160,10 @@ export const GATE_MEANINGS: Record<
       "Adónde va una prueba de navegador sin --box (any: el primer turno libre aquí o en una máquina de pruebas; local: solo aquí)",
     browser_host_only:
       "Proyectos y patrones de etiqueta cuyas pruebas de navegador se quedan en esta máquina",
+    route_agents:
+      "Las pruebas, comprobaciones de tipos y pruebas de navegador de los agentes pasan por la cola (1 sí, 0 no: se ejecutan tal cual y se cuentan)",
+    route_commands:
+      "Los programas que el hook de agentes de Den manda a la cola, separados por comas",
   },
   ja: {
     cpu_slots: "このマシンで同時に動くユニットテストの数",
@@ -206,6 +216,10 @@ export const GATE_MEANINGS: Record<
       "--box のないブラウザテストの行き先（any: ここかテスト用マシンの先に空いた枠、local: ここだけ）",
     browser_host_only:
       "ブラウザテストをこのマシンに残すプロジェクトとラベルのパターン",
+    route_agents:
+      "エージェントのテスト、型チェック、ブラウザテストを順番待ちに通す（1 はい、0 いいえ: そのまま実行して数える）",
+    route_commands:
+      "Den のエージェント用フックが順番待ちに通すプログラム（カンマ区切り）",
   },
 };
 

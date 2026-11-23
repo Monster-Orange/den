@@ -1279,6 +1279,18 @@
     "set.server.gate_host_only": "ここに残すブラウザテスト",
     "set.server.gate_host_only.d":
       "カンマ区切りで <プロジェクト>、label:<パターン>(* は任意の文字列)。これらのブラウザテストはテストマシンに行きません。たとえばレイアウトのテストや macOS の WebKit。空なら、なしです。__DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    "set.server.gate_route_agents": "エージェントの重い実行を順番待ちに通す",
+    "set.server.gate_route_agents.d":
+      "オンなら、エージェントの単独のテスト、型チェック、ブラウザテストはほかと同じく順番待ちの枠を使います。オフなら、そのまま実行して下で数えます。__DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_route_commands": "順番待ちに通すプログラム",
+    "set.server.gate_route_commands.d":
+      'カンマ区切りのプログラム名、または npm test と npm run test*(* は任意の末尾)。空なら jest, vitest, tsc, playwright, npm test, npm run test*。__DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    "set.server.gate_outside": "今日、順番待ちの外で実行されたもの",
+    "set.server.gate_outside.d":
+      "今日、順番待ちの枠を使わなかったエージェントのテスト、型チェック、ブラウザテスト。複数の部分からなるコマンドか、順番待ちに通す設定がオフの場合です。記録するのはプログラムとエージェントだけで、引数は記録しません。",
+    "set.ui.outsideNone": "今日はありません。",
+    "set.ui.outsideRuns": "{n} 回",
+    "set.ui.outsideFailed": "順番待ちの記録を読めませんでした。",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
