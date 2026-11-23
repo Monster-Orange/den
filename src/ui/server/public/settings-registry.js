@@ -3305,6 +3305,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { swap_hold_gb: v } }),
   },
   {
+    // Issue 1349: a failed memory reading's last good value stands this long.
+    id: "server.gate_memory_reading_keep_seconds",
+    category: "server",
+    label: "If a memory reading fails, keep the last one for (seconds)",
+    description:
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.memory_reading_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.memoryReadingKeepSeconds ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { memory_reading_keep_seconds: v } }),
+  },
+  {
     // Issue 1274: doctor warns over this share of RAM promised to VMs.
     id: "server.gate_vm_memory_share",
     category: "server",

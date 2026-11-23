@@ -263,6 +263,11 @@ export interface GateSettings {
    */
   swapHoldGb: number;
   /**
+   * Issue 1349: after a failed memory reading the last good one stands this
+   * long; past it the reading is unknown, and an unknown reading holds.
+   */
+  memoryReadingKeepSeconds: number;
+  /**
    * Issue 1274: doctor warns when what running VMs promise is over this
    * share of the machine's RAM (1: more than it has).
    */
@@ -359,6 +364,7 @@ export const GATE_DEFAULTS: GateSettings = {
   // Issue 1274: three watchdog resets on 11-22 came with the compressor full.
   memoryFreeMinPercent: 10,
   swapHoldGb: 8,
+  memoryReadingKeepSeconds: 30,
   vmMemoryShare: 1,
   overrunMarginMinutes: 15,
   overrunBellMultiple: 2,
@@ -673,50 +679,79 @@ export function startHold(
 /** Issue 1274: why new runs here wait on memory. */
 export interface MemoryHold {
   why: "memory";
-  /** Free memory now, percent. */
+  /** Free memory now, percent (NaN when unavailable). */
   free: number;
   /** memoryFreeMinPercent. */
   limit: number;
+  /** Issue 1349: the reading couldn't be taken; an unknown reading holds. */
+  unavailable?: true;
 }
+
+/**
+ * Issue 1349: a machine reading (free memory, swap). A number; NaN when it
+ * should be read and couldn't be (unknown: it holds); null when this
+ * platform has none (not measured: memory holds don't apply, and says so).
+ */
+export type MachineReading = number | null;
+
+/** Issue 1349: what the view, the CLI, the chip and doctor say for null. */
+export const MEMORY_NOT_MEASURED_WORDS =
+  "memory isn't measured on this platform: memory holds don't apply";
 
 /**
  * Issue 1274: free memory (`free`, percent) is under memoryFreeMinPercent
  * (0: off) while a run here is going. With none going the next one
- * starts: the hold slows the line, never stops it. Absent: no hold (or no
- * reading).
+ * starts: the hold slows the line, never stops it. Absent: no hold, or
+ * not measured here (null). Issue 1349: an unknown reading (NaN) holds.
  */
 export function memoryHold(
   entries: GateEntry[],
   s: Partial<Pick<GateSettings, "memoryFreeMinPercent">>,
-  free: number | undefined,
+  free: MachineReading | undefined,
 ): MemoryHold | undefined {
-  if (free === undefined || !Number.isFinite(free)) return undefined;
+  if (free === undefined || free === null) return undefined;
   const limit = s.memoryFreeMinPercent ?? GATE_DEFAULTS.memoryFreeMinPercent;
-  if (!(limit > 0) || free >= limit) return undefined;
+  if (!(limit > 0)) return undefined;
   const localGoing = entries.some((e) => e.grantedAt && !e.box && !e.remote);
+  // Issue 1349: unknown holds, never grants.
+  if (!Number.isFinite(free))
+    return localGoing
+      ? { why: "memory", free: NaN, limit, unavailable: true }
+      : undefined;
+  if (free >= limit) return undefined;
   return localGoing ? { why: "memory", free, limit } : undefined;
 }
 
 /** Issue 1274: why new runs here wait on swap. */
 export interface SwapHold {
   why: "swap";
+  /** Swap in use now, GB (NaN when unavailable). */
   usedGb: number;
   limitGb: number;
+  /** Issue 1349: the reading couldn't be taken; an unknown reading holds. */
+  unavailable?: true;
 }
 
 /**
  * Issue 1274: swap in use (`usedGb`) is over swapHoldGb (0: off) while a
- * run here is going. Absent: no hold (or no reading).
+ * run here is going. Absent: no hold, or not measured here (null). Issue
+ * 1349: an unknown reading (NaN) holds.
  */
 export function swapHold(
   entries: GateEntry[],
   s: Partial<Pick<GateSettings, "swapHoldGb">>,
-  usedGb: number | undefined,
+  usedGb: MachineReading | undefined,
 ): SwapHold | undefined {
-  if (usedGb === undefined || !Number.isFinite(usedGb)) return undefined;
+  if (usedGb === undefined || usedGb === null) return undefined;
   const limitGb = s.swapHoldGb ?? GATE_DEFAULTS.swapHoldGb;
-  if (!(limitGb > 0) || usedGb <= limitGb) return undefined;
+  if (!(limitGb > 0)) return undefined;
   const localGoing = entries.some((e) => e.grantedAt && !e.box && !e.remote);
+  // Issue 1349: unknown holds, never grants.
+  if (!Number.isFinite(usedGb))
+    return localGoing
+      ? { why: "swap", usedGb: NaN, limitGb, unavailable: true }
+      : undefined;
+  if (usedGb <= limitGb) return undefined;
   return localGoing ? { why: "swap", usedGb, limitGb } : undefined;
 }
 

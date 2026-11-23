@@ -55,6 +55,16 @@ fills. `gate settings --swap-hold-gb N` sets it (0: off);
 Gate pop-up show a run waiting on memory or swap, this machine's free memory
 and swap, and what running VMs reserve.
 
+An unknown memory reading holds, never grants. If free memory or swap should
+be readable here and the read fails, the last good reading stands for
+`memory_reading_keep_seconds` (default 30; `gate settings
+--memory-reading-keep-seconds N`). After that, new runs here wait while another
+run here is going, with the reason "memory reading unavailable". The server
+takes one reading when it starts, before it serves, and reads again in the
+background after that. Its requests never wait for `sysctl`. On a platform with
+no reading (neither macOS nor Linux), memory isn't measured, and memory holds
+don't apply. `gate status`, the Gate pop-up and `den doctor` say so.
+
 `den doctor` lists the VMs here (OrbStack machines, and Docker's VM when it
 isn't OrbStack's) with the memory and cpus each reserves, and warns when
 running VMs promise more than `vm_memory_share` × the machine's RAM

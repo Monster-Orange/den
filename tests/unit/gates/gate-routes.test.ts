@@ -103,6 +103,7 @@ describe("gate-slot routes", () => {
       maxStartWaitMinutes: 10,
       reapGraceSeconds: 10,
       memoryFreeMinPercent: 10,
+      memoryReadingKeepSeconds: 30,
       swapHoldGb: 8,
       vmMemoryShare: 1,
       localBrowserSlots: 1,
