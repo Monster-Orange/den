@@ -34,6 +34,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/fixture-grant.integration.test.ts": [
+      "src/shared/test-install-grant.ts",
+      "src/ui/server/index.ts"
+    ],
     "tests/unit/server/test-operator-edge.integration.test.ts": [
       "src/shared/test-operator.ts",
       "src/ui/server/index.ts",
@@ -2887,6 +2891,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/shared/test-install-grant.ts", "src/ui/server/index.ts"],
+      "run": ["tests/unit/server/fixture-grant.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/shared/fixture-person.ts"],
       "run": ["tests/unit/server/fixture-person.integration.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -3672,7 +3681,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/test-person.ts", "src/ui/cli/test-person.ts"],
+      "when": [
+        "src/shared/test-person.ts",
+        "src/ui/cli/test-person.ts",
+        "src/ui/server/test-person-held.ts"
+      ],
       "run": ["tests/unit/server/test-person.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },

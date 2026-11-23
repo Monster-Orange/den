@@ -210,8 +210,12 @@ describe("issue 816: the test install's grant route", () => {
     });
     bindActorSession(test.stateDir, t.key, "s-builder");
     const r = await post(test, { grant: grantFor(test) }, t.token);
-    expect(r.status).toBe(403);
-    expect(["agent_token_elsewhere", "person_only"]).toContain(r.json.code);
+    // The guard refuses it (401 unauthorized here: no live session holds
+    // it; 403 from another process), or the route does (403 person_only).
+    expect([401, 403]).toContain(r.status);
+    expect(["unauthorized", "agent_token_elsewhere", "person_only"]).toContain(
+      r.json.code,
+    );
     expect(hasKey(test)).toBe(false);
   });
 

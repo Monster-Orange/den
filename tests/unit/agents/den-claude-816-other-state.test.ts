@@ -17,6 +17,10 @@ import { stateDirDenyRules } from "../../../src/shared/agents/den-claude.js";
 const persona: Persona = {
   id: "planner",
   role: "Writes stories.",
+  description: "Writes stories.",
+  category: "engineering",
+  allowedCommands: [],
+  origin: "builtin",
   prompt: "You plan the work.",
   standing: true,
   tools: [],
