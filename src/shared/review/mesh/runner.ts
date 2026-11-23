@@ -192,13 +192,20 @@ export class ReviewRunner {
       if (!t.start) {
         if (t.why === "draft" || t.why === "base_denied") continue;
         this.seen.set(key, pr.head);
-        if (t.why === "fork_waits_for_person")
+        if (t.why === "fork_waits_for_person") {
+          this.d.notify({
+            kind: "review_waiting",
+            text: `A PR from a fork waits for your "Review this": ${pr.url}`,
+            link: pr.url,
+            vars: { pr: pr.url },
+          });
           await this.finish(
             pr,
             pr.head,
             "awaiting_human",
             'A PR from a fork waits for a person\'s "Review this".',
           );
+        }
         continue;
       }
       this.seen.set(key, pr.head);
@@ -410,6 +417,12 @@ export class ReviewRunner {
         );
       await this.editStatus(live, "outdated");
       await this.d.endLeg(live.agent!, live.dir ?? "");
+      this.d.notify({
+        kind: "review_outdated",
+        text: `Den review of ${live.pr.url} is outdated: the PR moved during the review. The new head gets its own.`,
+        link: live.pr.url,
+        vars: { pr: live.pr.url },
+      });
       return { ok: true, outcome: "outdated" };
     }
     const s = this.d.settings();

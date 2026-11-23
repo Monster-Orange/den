@@ -5917,6 +5917,28 @@ async function handleRequest(
     });
     return;
   }
+  // Issue 476: a review leg hands its findings to Den (MCP review_submit).
+  if (guard.ok && pathname === "/api/agents/self/review-submit") {
+    const { handleReviewRoutes } = await import("./review-routes.js");
+    const { reviewRunner } = await import("./review-mesh-service.js");
+    const { recordAction } = await import("./audit.js");
+    await handleReviewRoutes(req, res, pathname, {
+      runner: () => ({
+        submit: async (who, sub) => {
+          const r = await reviewRunner();
+          return r ? r.submit(who, sub) : { ok: false, why: "unknown_leg" };
+        },
+      }),
+      audit: (a) =>
+        recordAction(null, {
+          verb: "review_submit",
+          detail: `${a.repo}#${a.pr} from ${a.agent ?? "no agent token"}`,
+          outcome: "refused",
+          reason: a.why,
+        }),
+    });
+    return;
+  }
   // The shared GitHub watcher: an agent's own watches (MCP github_watch).
   if (guard.ok && isGithubWatchPath(pathname)) {
     const { githubWatcher } = await import("./github-watch-service.js");
@@ -10942,6 +10964,12 @@ void CRASH_GATE.then(() =>
           stateDir: getStateDir(),
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
+      );
+    // Issue 476: the reviewer's loop (off until reviews.enabled).
+    void hubChecked
+      .then(() => import("./review-mesh-service.js"))
+      .then((m) =>
+        m.startReviewMesh({ log: (l) => serverLog(`  ${l}`, "warn") }),
       );
     // The shared GitHub watcher: one loop for every agent's watches; a
     // finished one is typed at its agent's prompt (the relayed path).

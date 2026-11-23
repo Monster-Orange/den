@@ -421,6 +421,7 @@ describe("a head that moved during the review", () => {
     expect(JSON.stringify(first.output)).toMatch(/outdated/i);
     expect(JSON.stringify(first.output)).toMatch(/no verdict/i);
     expect(s.gh.statusBodies(1)[0]).toContain("outdated");
+    expect(s.bell.some((b) => b.kind === "review_outdated")).toBe(true);
   });
 
   it("a new push seen by the watcher ends the old leg and reviews the new head", async () => {
@@ -491,6 +492,7 @@ describe("every path finishes the check", () => {
       status: "completed",
       conclusion: "action_required",
     });
+    expect(s.bell.some((b) => b.kind === "review_waiting")).toBe(true);
   });
 
   it("a draft gets no check and no review until it leaves draft", async () => {
