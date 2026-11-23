@@ -474,7 +474,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
-    ackHeld: () => ackHeldOn,
+    ackHeld: () => deliveryAckHeld(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),
@@ -537,6 +537,24 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
 }
 
 /**
+ * Issue 750 step 4: what Hub's whoami lists, kept for the loop: the inbox
+ * kinds its feed carries (#65), and whether an agent whose Hub tools
+ * failed gets a `held` ack (deliveries.ack_held) or `queued` (an older
+ * Hub, or no answer). Reads only whoami: hub.groups never changes it.
+ */
+export function noteWhoami(
+  w: { features?: readonly string[] } | null | undefined,
+): void {
+  feedCarries = feedKinds(w?.features);
+  ackHeldOn = toolsHeldAck(w?.features).state === "held";
+}
+
+/** Issue 750 step 4: whether the loop acks `held` (else `queued`). */
+export function deliveryAckHeld(): boolean {
+  return ackHeldOn;
+}
+
+/**
  * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
  * a held Allow, a permission prompt or an ask_human question waiting for
  * their person (never typed into then); an idle one is not among them.
@@ -563,8 +581,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
-      feedCarries = feedKinds(w.features);
-      ackHeldOn = toolsHeldAck(w.features).state === "held";
+      noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {
