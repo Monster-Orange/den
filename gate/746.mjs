@@ -8,13 +8,13 @@
 // a held write the check didn't make.
 //
 // Two stub agents, gate-746-allow-<run> and gate-746-deny-<run>, each ask
-// through the bed's scoped MCP server (`mcp --actor agent:<id> --call
-// agent_mode`, with the agent's own token file) to clear their own mode.
+// from inside their own session (the stub's /sh runs `mcp --actor
+// agent:<id> --call agent_mode` with the session's own token) to clear
+// their own mode.
 // Setup first gives each its own strictest mode (ask), so the clear is a real
 // held write. Harmless on a stub; removed in teardown. The fixture's click is
 // refused by design (issue 810): the check proves it reaches Den, comes back
 // as that refusal, and leaves the request pending.
-import * as os from "os";
 import * as path from "path";
 
 export const issue = 746;
@@ -120,48 +120,64 @@ export async function setup(ctx) {
   return { made, ready, own };
 }
 
-/**
- * The stub's own token file, as its session finds it (actor-token.ts
- * actorTokenDir): the bed's state dir is DEN_GATE_HOME, else ~/.den-gate,
- * as Den reads it (paths.ts getStateDir). Only the path is passed, never
- * the token. With it the ask is the agent's, not the bed's person's, so the
- * per-asker waiting cap (5) counts this agent alone (dev.6: the person's
- * 5 leftover requests refused the deny ask).
- */
-function tokenFile(ctx, id) {
-  if (!ctx.listBed(`state:actor-token/${id}`)?.includes("token")) return null;
-  const home =
-    process.env.DEN_GATE_HOME ||
-    path.join(process.env.HOME || os.homedir(), ".den-gate");
-  return path.join(home, "actor-token", id, "token");
-}
+/** Single-quote `s` for /bin/sh. */
+const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
-/** One agent asks to clear its own mode, with its own token; the call returns at its timeout. */
-function ask(ctx, id) {
+/**
+ * One agent asks to clear its own mode, from inside its own session: the
+ * stub's /sh runs the CLI as one of the agent's processes, with its own
+ * env and token (DEN_ACTOR_TOKEN), so Den places the caller in the token's
+ * session. The bed asking with the agent's token is refused by design
+ * (agent_token_elsewhere: an agent token works only from its own agent's
+ * processes; dev.7).
+ *
+ * The held write waits for the person (minutes), and /sh holds the stub
+ * until its command ends: an alarm ends the CLI after ASK_S seconds. The
+ * request is on file by then; ending the asker leaves it pending. It stays
+ * in the foreground on purpose: a backgrounded child outlives its shell,
+ * leaves the session's process tree, and Den refuses it.
+ */
+const ASK_S = 8;
+async function ask(ctx, id) {
   const project = projectOf(ctx, id);
   if (!project) return { project, code: null, err: "no project in its record" };
-  const file = tokenFile(ctx, id);
-  if (!file)
-    return { project, code: null, err: "the stub has no token file of its own" };
-  const r = ctx.cli(
-    [
-      "mcp",
-      "--workspace",
-      project,
-      "--actor",
-      `agent:${id}`,
-      "--call",
-      "agent_mode",
-      JSON.stringify({ agent: id, ask: true, note: NOTE }),
-    ],
-    { timeout: 15000, env: { DEN_ACTOR_TOKEN_FILE: file } },
-  );
+  const bed = ctx.o?.bed;
+  if (!bed) return { project, code: null, err: "the bed's folder is unknown" };
+  const cmd = [
+    "cd",
+    q(bed),
+    "&&",
+    "perl -e 'alarm shift; exec @ARGV or die'",
+    String(ASK_S),
+    q(path.join(bed, "bin/den-gate")),
+    "mcp --workspace",
+    q(project),
+    "--actor",
+    q(`agent:${id}`),
+    "--call agent_mode",
+    q(JSON.stringify({ agent: id, ask: true, note: NOTE })),
+  ].join(" ");
+  const r = await ctx.agent(id).sh(cmd, (ASK_S + 20) * 1000);
   return {
     project,
-    code: r.code,
+    // 142 is the alarm (128 + SIGALRM): the ask was made and still waits.
+    code: r.status,
     err: (r.err || "").slice(-300),
     out: (r.out || "").slice(-300),
   };
+}
+
+/**
+ * This run's own requests, withdrawn at the end. Issue 1293 adds the
+ * asker's CLI withdraw; until it lands this asks nothing, and removing the
+ * stub (its token ends) ends its requests as before.
+ */
+const MINE = new Set();
+async function withdrawMine(ctx) {
+  const out = [];
+  for (const rid of MINE)
+    out.push({ rid, withdrawn: false, why: "issue 1293" });
+  return out;
 }
 
 export async function run(ctx, s) {
@@ -172,15 +188,17 @@ export async function run(ctx, s) {
   // Requests an earlier run left waiting (the fixture can't decide them and
   // nobody else is there to) name the same agents: pick this run's by id.
   const before = heldIds(ctx);
-  const asked = {
-    allow: ask(ctx, IDS.allow),
-    deny: ask(ctx, IDS.deny),
-  };
-  const after = heldIds(ctx);
+  // Both stubs at once: each /sh holds only its own stub.
+  const [a1, a2] = await Promise.all([ask(ctx, IDS.allow), ask(ctx, IDS.deny)]);
+  const asked = { allow: a1, deny: a2 };
   const mine = {};
-  for (const [rid, { agent }] of after)
-    if (!before.has(rid))
-      for (const w of ["allow", "deny"]) if (agent === IDS[w]) mine[w] = rid;
+  await ctx.until(async () => {
+    for (const [rid, { agent }] of heldIds(ctx))
+      if (!before.has(rid))
+        for (const w of ["allow", "deny"]) if (agent === IDS[w]) mine[w] = rid;
+    return !!(mine.allow && mine.deny);
+  }, 10000);
+  for (const rid of Object.values(mine)) MINE.add(rid);
   // Each new held write opens the Allow pop-up first: put it off, so the
   // decision is made in the bell.
   const later = page.locator("#den-ap-later");
@@ -284,6 +302,7 @@ export function expect(cells) {
 }
 
 export async function teardown(ctx) {
+  await withdrawMine(ctx);
   for (const id of Object.values(IDS))
     if (ctx.agent(id).state()) ctx.agent(id).remove();
 }
