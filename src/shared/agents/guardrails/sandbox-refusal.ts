@@ -89,7 +89,7 @@ export function setuidRefusalNote(prog: string): string {
 
 /** What the agent is told when Docker's socket was refused. */
 export const DOCKER_REFUSAL_NOTE =
-  "Den's agent sandbox refused Docker's socket: outside daemons' sockets are refused, since reaching Docker's is full control of the machine (issue 1326). This is the sandbox, not the machine. Don't retry it or work around it (no other socket path or DOCKER_HOST). If this agent's work needs Docker, tell your person: they can turn this agent's sandbox off.";
+  "Den's agent sandbox refused Docker's socket: outside daemons' sockets are refused, since reaching Docker's is full control of the machine (issue 1326). This is the sandbox, not the machine. Don't retry it or work around it (no other socket path or DOCKER_HOST). If this agent's work needs Docker, tell your person. Docker is full control of the machine, so only they decide whether this agent runs without its sandbox, which lifts every other limit too.";
 
 /** File tools: a success of theirs is never a refusal (issue 1326). */
 const FILE_TOOLS = new Set([

@@ -79,7 +79,10 @@ describe("issue 1326: Docker in the sandbox", () => {
       const note = noteFor(error)!;
       expect(note).toMatch(/Docker/);
       expect(note).toMatch(/daemons' sockets/);
-      expect(note).toMatch(/sandbox off/);
+      // The remedy only with its cost: no sandbox lifts every limit.
+      expect(note).toMatch(/without its sandbox/);
+      expect(note).toMatch(/full control of the machine/);
+      expect(note).toMatch(/every other limit/);
       expect(note).toMatch(/person/);
       // Never the install-wide socket list.
       expect(note).not.toMatch(/sandbox_sockets/);
