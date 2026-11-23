@@ -2791,7 +2791,7 @@
     "ag.clear": "Clear stopped",
     "ag.noResume": "{runtime} can't resume a conversation",
     "ag.noResumeNone":
-      "{runtime} can't resume {id}: it reported no resume command",
+      "{runtime} can't resume {id}: it reported no conversation to resume",
     // Session rotation (den#4).
     "ag.rot.ready": "Ready to relaunch ({why})",
     "ag.rot.due": "Handoff due ({why})",
@@ -3666,7 +3666,7 @@
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.noHub": "{n} agents started without Hub",
-    "bell.m.fresh": "{n} agents started fresh: no resume command Den could run",
+    "bell.m.fresh": "{n} agents started fresh: no conversation Den could resume",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
       "{name} ended without Den asking (exit {code}): {why}",
@@ -3725,8 +3725,7 @@
       "While you were logged out ({min} min), these agents stopped: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
     "bell.m.noHub.one": "{n} agent started without Hub",
-    "bell.m.fresh.one":
-      "{n} agent started fresh: no resume command Den could run",
+    "bell.m.fresh.one": "{n} agent started fresh: no conversation Den could resume",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
     "bell.m.notAtPrompt":

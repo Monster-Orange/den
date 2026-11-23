@@ -1,21 +1,21 @@
 /**
  * Issue 785: an agent reports how to resume its conversation, with its own
- * token: POST /api/agents/self/resume-command { argv, cwd, seq }.
+ * token: POST /api/agents/self/resume-command { conversation, cwd, seq }.
  *
- * Any runtime whose resume comes from that report (Codex, Gemini, Grok)
- * says it here; Den keeps the newest by sequence on the agent's record
- * and checks it again before it ever runs it. A command that breaks a
- * rule (resume-command.ts) is refused and logged, by its reason only:
- * its words may hold something private.
+ * Only the conversation's id: Den builds the command from the runtime's
+ * own template (resume-command.ts), so a report can't change what the
+ * agent starts as. Den keeps the newest by sequence on the agent's
+ * record. One that breaks a rule is refused and logged by its reason
+ * only, never its words.
  */
 import type * as http from "http";
 import { readRecord, writeRecord } from "../../shared/agents/records.js";
 import {
   acceptResumeReport,
-  resumeCommandProblem,
+  resumeReportProblem,
   type ResumeReport,
 } from "../../shared/agents/resume-command.js";
-import { getRuntime, withSessionPath } from "../../shared/agents/runtimes.js";
+import { getRuntime } from "../../shared/agents/runtimes.js";
 import { agentPrincipalOf, type AgentPrincipal } from "./request-guard.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 
@@ -23,8 +23,6 @@ export const RESUME_REPORT_PATH = "/api/agents/self/resume-command";
 
 export interface ResumeReportDeps {
   stateDir: () => string;
-  /** The env agents' sessions start from (their PATH: withSessionPath). */
-  env: () => NodeJS.ProcessEnv;
   log: (line: string) => void;
   /** Tests: the agent the request is from. */
   principal?: (req: http.IncomingMessage) => AgentPrincipal | null;
@@ -83,21 +81,31 @@ export async function handleResumeReportRoutes(
       res,
       400,
       "not_reported",
-      `${rec.runtime} resumes by its own conversation id: there is nothing to report`,
+      `${rec.runtime} has no resume command that takes a reported conversation: there is nothing to report`,
     );
   const b = await jsonBody(req);
   if (!b) return refuse(res, 400, "bad_body", "a JSON object");
+  const extra = Object.keys(b).filter(
+    (k) => k !== "conversation" && k !== "cwd" && k !== "seq",
+  );
+  if (extra.length) {
+    d.log(`agent ${id}: resume report refused: unknown field ${extra[0]}`);
+    return refuse(
+      res,
+      400,
+      "unknown_field",
+      `${extra[0]}: unknown field (a report takes conversation, cwd and seq)`,
+    );
+  }
   const report: ResumeReport = {
-    argv: b.argv as string[],
+    conversation: b.conversation as string,
     cwd: b.cwd as string,
     seq: b.seq as number,
   };
-  const problem = resumeCommandProblem(report, {
-    pathEnv: withSessionPath(d.env()).PATH ?? "",
-  });
+  const problem = resumeReportProblem(report);
   if (problem) {
-    d.log(`agent ${id}: resume command refused: ${problem}`);
-    return refuse(res, 400, "refused_command", problem);
+    d.log(`agent ${id}: resume report refused: ${problem}`);
+    return refuse(res, 400, "refused_report", problem);
   }
   const prev = rec.resumeReport;
   if (!acceptResumeReport(prev, report)) {
@@ -107,7 +115,7 @@ export async function handleResumeReportRoutes(
   writeRecord(d.stateDir(), {
     ...rec,
     resumeReport: {
-      argv: [...report.argv],
+      conversation: report.conversation,
       cwd: report.cwd,
       seq: report.seq,
       at: (d.now?.() ?? new Date()).toISOString(),

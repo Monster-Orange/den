@@ -366,7 +366,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     ]);
     expect(
       await row(p, "lookout").locator(".agr").getAttribute("title"),
-    ).toContain("codex can't resume lookout: it reported no resume command");
+    ).toContain("codex can't resume lookout: it reported no conversation to resume");
     await p.context().close();
   }, 60_000);
 

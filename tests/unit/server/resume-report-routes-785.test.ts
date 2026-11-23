@@ -1,7 +1,8 @@
 /**
- * Issue 785, slice 3: an agent reports its resume command with its own
- * token (POST /api/agents/self/resume-command), whatever its runtime:
- * checked strictly, the newest kept, a refused one logged and kept out.
+ * Issue 785: an agent reports the conversation to resume with its own
+ * token (POST /api/agents/self/resume-command { conversation, cwd, seq }):
+ * only an id, held to a strict pattern, the newest kept, a refused one
+ * logged by its reason and never kept. Its startup command can't change.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -36,11 +37,8 @@ async function setup(principal: unknown, runtime = "codex") {
   tmps.push(dir);
   const stateDir = path.join(dir, "state");
   const cwd = path.join(dir, "north");
-  const bin = path.join(dir, "bin");
   fs.mkdirSync(stateDir, { recursive: true });
   fs.mkdirSync(cwd);
-  fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, "codex"), "#!/bin/sh\n", { mode: 0o755 });
   writeRecord(stateDir, {
     id: "coder",
     persona: "planner",
@@ -59,7 +57,6 @@ async function setup(principal: unknown, runtime = "codex") {
       new URL(req.url!, "http://x").pathname,
       {
         stateDir: () => stateDir,
-        env: () => ({ PATH: bin }),
         principal: () => principal as never,
         log: (l) => logs.push(l),
         now: () => new Date("2026-11-22T10:00:00.000Z"),
@@ -85,70 +82,88 @@ async function setup(principal: unknown, runtime = "codex") {
     };
   };
   const close = () => new Promise((r) => server.close(r));
-  return { post, close, stateDir, cwd, logs };
+  const kept = () => readRecord(stateDir, "coder")?.resumeReport;
+  return { post, close, cwd, logs, kept };
 }
 
 describe("issue 785: POST /api/agents/self/resume-command", () => {
-  it("an agent's report is kept on its record, newest by sequence", async () => {
+  it("an agent's conversation id is kept on its record, newest by sequence", async () => {
     const t = await setup(agentOf("coder"));
     try {
-      const a = await t.post({
-        argv: ["codex", "resume", "s-9"],
-        cwd: t.cwd,
-        seq: 2,
-      });
+      const a = await t.post({ conversation: "s-9", cwd: t.cwd, seq: 2 });
       expect(a).toEqual({
         status: 200,
         body: { ok: true, kept: true, seq: 2 },
       });
-      expect(readRecord(t.stateDir, "coder")?.resumeReport).toEqual({
-        argv: ["codex", "resume", "s-9"],
+      expect(t.kept()).toEqual({
+        conversation: "s-9",
         cwd: t.cwd,
         seq: 2,
         at: "2026-11-22T10:00:00.000Z",
       });
       // An older or equal one is ignored; the newest stays.
       for (const seq of [1, 2]) {
-        const old = await t.post({
-          argv: ["codex", "resume", "old"],
-          cwd: t.cwd,
-          seq,
-        });
+        const old = await t.post({ conversation: "old", cwd: t.cwd, seq });
         expect(old).toEqual({
           status: 200,
           body: { ok: true, kept: false, seq: 2 },
         });
       }
-      expect(readRecord(t.stateDir, "coder")?.resumeReport?.argv).toEqual([
-        "codex",
-        "resume",
-        "s-9",
-      ]);
-      const newer = await t.post({
-        argv: ["codex", "resume", "s-10"],
-        cwd: t.cwd,
-        seq: 3,
-      });
+      expect(t.kept()?.conversation).toBe("s-9");
+      const newer = await t.post({ conversation: "s-10", cwd: t.cwd, seq: 3 });
       expect(newer.body).toMatchObject({ kept: true, seq: 3 });
     } finally {
       await t.close();
     }
   });
 
-  it("a command that breaks a rule is refused (400), logged without its words, and not kept", async () => {
+  it("a whole command, or extra words, in place of an id: refused, never kept", async () => {
     const t = await setup(agentOf("coder"));
     try {
-      const bad = await t.post({
-        argv: ["codex", "resume", "--token=sk-secret'x"],
+      // A command of its own (the old shape): an unknown field.
+      const cmd = await t.post({
+        argv: ["bash", "-c", "id"],
+        conversation: "s-1",
         cwd: t.cwd,
         seq: 1,
       });
-      expect(bad.status).toBe(400);
-      expect(bad.body).toMatchObject({ ok: false, code: "refused_command" });
-      expect(String(bad.body.error)).toMatch(/apostrophe/);
-      expect(readRecord(t.stateDir, "coder")?.resumeReport).toBeUndefined();
+      expect(cmd.status).toBe(400);
+      expect(cmd.body).toMatchObject({ code: "unknown_field" });
+      // Words in the id: a flag, a second argument, a shell.
+      for (const conversation of [
+        "--dangerously-bypass-approvals-and-sandbox",
+        "s-1 --yolo",
+        "bash -c id",
+        ["s-1", "--yolo"],
+      ]) {
+        const r = await t.post({ conversation, cwd: t.cwd, seq: 1 });
+        expect(r.status).toBe(400);
+        expect(r.body).toMatchObject({ code: "refused_report" });
+      }
+      expect(t.kept()).toBeUndefined();
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("a space, quote, slash or control character in the id: refused and logged by its reason, never its words", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      for (const conversation of [
+        "a b",
+        "sk-secret'x",
+        'a"b',
+        "a/b",
+        "a\nb",
+        "a\u001b",
+      ]) {
+        const r = await t.post({ conversation, cwd: t.cwd, seq: 1 });
+        expect(r.status).toBe(400);
+        expect(String(r.body.error)).toMatch(/conversation id must be/);
+      }
+      expect(t.kept()).toBeUndefined();
       expect(t.logs.join("\n")).toMatch(
-        /coder.*resume command refused: a word has an apostrophe/,
+        /agent coder: resume report refused: its conversation id must be/,
       );
       expect(t.logs.join("\n")).not.toMatch(/sk-secret/);
     } finally {
@@ -160,7 +175,7 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
     const t = await setup(null);
     try {
       expect(
-        (await t.post({ argv: ["codex"], cwd: t.cwd, seq: 1 })).status,
+        (await t.post({ conversation: "s", cwd: t.cwd, seq: 1 })).status,
       ).toBe(403);
       expect((await t.post(undefined, "GET")).status).toBe(405);
     } finally {
@@ -173,7 +188,7 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
       const t = await setup(p);
       try {
         expect(
-          (await t.post({ argv: ["codex"], cwd: t.cwd, seq: 1 })).status,
+          (await t.post({ conversation: "s", cwd: t.cwd, seq: 1 })).status,
         ).toBe(404);
       } finally {
         await t.close();
@@ -181,14 +196,16 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
     }
   });
 
-  it("a runtime that resumes by its own id (den-claude) has nothing to report: 400", async () => {
-    const t = await setup(agentOf("coder"), "den-claude");
-    try {
-      const r = await t.post({ argv: ["claude"], cwd: t.cwd, seq: 1 });
-      expect(r.status).toBe(400);
-      expect(r.body).toMatchObject({ code: "not_reported" });
-    } finally {
-      await t.close();
+  it("a runtime with no resume template (den-claude, grok): nothing to report, 400", async () => {
+    for (const runtime of ["den-claude", "grok"]) {
+      const t = await setup(agentOf("coder"), runtime);
+      try {
+        const r = await t.post({ conversation: "s", cwd: t.cwd, seq: 1 });
+        expect(r.status).toBe(400);
+        expect(r.body).toMatchObject({ code: "not_reported" });
+      } finally {
+        await t.close();
+      }
     }
   });
 });

@@ -240,7 +240,7 @@ describe("Resume keeps the conversation, the folder and the scope", () => {
     });
   });
 
-  it("a runtime with no resume command reported (codex) shows why, and Resume is refused (issue 785)", async () => {
+  it("a runtime whose agent reported no session (codex) shows why, and Resume is refused (issue 785)", async () => {
     const r = await rig();
     writeRecord(r.stateDir, {
       id: "coder",
@@ -257,11 +257,11 @@ describe("Resume keeps the conversation, the folder and the scope", () => {
     expect(row).toMatchObject({
       state: "stopped",
       resumable: false,
-      noResume: "codex can't resume coder: it reported no resume command",
+      noResume: "codex can't resume coder: it reported no conversation to resume",
     });
     expect(await agents(r, "resume", "coder")).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /codex can't resume coder: it reported no resume command/,
+      /codex can't resume coder: it reported no conversation to resume/,
     );
     expect(r.made).toHaveLength(0);
   });

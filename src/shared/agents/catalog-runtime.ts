@@ -18,7 +18,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { configuredRuntimeBin } from "../den-config.js";
 import { entryDirs, type CatalogEntry } from "./catalog.js";
-import { findOnPath } from "../cli-command.js";
 import { resumeCommandFor } from "./resume-command.js";
 import {
   LaunchError,
@@ -107,28 +106,39 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
         ],
       };
     },
-    // Issue 785: it resumes with the command its agent reported, checked
-    // again now and only in the folder it was reported for; its first word
-    // runs from PATH. Null (nothing to resume) when there is none or it
-    // fails a rule: resumeRefusal says why before this is reached.
-    reportedResume: true,
-    resume(input) {
-      const pathEnv = input.env.PATH ?? "";
-      const got = resumeCommandFor(input.resumeReport, input.worktree, {
-        pathEnv,
-      });
-      if ("problem" in got) return null;
-      const [first, ...rest] = got.argv;
-      const bin = findOnPath(first!, pathEnv);
-      if (!bin) return null;
-      return {
-        argv: [bin, ...rest],
-        env: {},
-        warnings: [
-          `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,
-        ],
-      };
-    },
+    // Issue 785: an entry with a resume template resumes the conversation
+    // its agent reported: the template's words, the binary Den launches
+    // for it, the id in its slot. Nothing else the agent wrote is used.
+    // Null (nothing to resume) when the report fails: resumeRefusal says
+    // why before this is reached.
+    ...(e.resume
+      ? {
+          reportedResume: true as const,
+          resume(input: Parameters<NonNullable<Runtime["resume"]>>[0]) {
+            let bin = input.bin;
+            if (!bin) {
+              const d = detect(input.env);
+              if (!d.available || !d.path)
+                throw new LaunchError(`${e.id}: ${d.why ?? "not found"}`);
+              bin = d.path;
+            }
+            const got = resumeCommandFor(
+              input.resumeReport,
+              input.worktree,
+              e.resume!.argv,
+              bin,
+            );
+            if ("problem" in got) return null;
+            return {
+              argv: got.argv,
+              env: {},
+              warnings: [
+                `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,
+              ],
+            };
+          },
+        }
+      : {}),
     approvals: "terminal",
     scrubEnv: [],
     // Issue 664: the repo has no capture of what these draw at their

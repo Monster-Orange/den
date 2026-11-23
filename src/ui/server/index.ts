@@ -6382,7 +6382,6 @@ async function handleRequest(
       await import("./resume-report-routes.js");
     await handleResumeReportRoutes(req, res, pathname, {
       stateDir: () => getStateDir(),
-      env: () => process.env,
       log: (line) => serverLog(line, "warn"),
     });
     return;

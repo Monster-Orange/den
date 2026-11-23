@@ -257,7 +257,6 @@ import {
   LaunchError,
   runtimeIds,
   syncConfiguredRuntimes,
-  withSessionPath,
   type AgentMcp,
   type LaunchInput,
   type LaunchOutput,
@@ -1375,18 +1374,19 @@ export function isStoppedState(st: string): boolean {
  * Why `rec` can't be resumed (AG-14.2), or null when it can be: its
  * runtime can't resume a conversation, or has no token to resume with.
  */
-export function resumeRefusal(
-  rec: AgentRecord,
-  env: NodeJS.ProcessEnv = process.env,
-): string | null {
+export function resumeRefusal(rec: AgentRecord): string | null {
   const rt = getRuntime(rec.runtime);
   if (!rt?.resume) return `${rec.runtime} can't resume a conversation`;
   // Issue 785: the command its agent reported, checked as it would run.
   if (rt.reportedResume) {
-    // The PATH its session gets (the login shell's and the runtimes' dirs).
-    const got = resumeCommandFor(rec.resumeReport, rec.cwd, {
-      pathEnv: withSessionPath(env).PATH ?? "",
-    });
+    // Its runtime's template with the session it reported ("{bin}": the
+    // binary is found when it launches).
+    const got = resumeCommandFor(
+      rec.resumeReport,
+      rec.cwd,
+      rt.catalog?.resume?.argv,
+      "{bin}",
+    );
     return "problem" in got
       ? `${rec.runtime} can't resume ${rec.id}: ${got.problem}`
       : null;
@@ -1396,12 +1396,8 @@ export function resumeRefusal(
 }
 
 /** Whether `rec` may be resumed now, in `rowState`. */
-function canResume(
-  rec: AgentRecord,
-  st: string,
-  env?: NodeJS.ProcessEnv,
-): boolean {
-  return isStoppedState(st) && resumeRefusal(rec, env) === null;
+function canResume(rec: AgentRecord, st: string): boolean {
+  return isStoppedState(st) && resumeRefusal(rec) === null;
 }
 
 /** Why a rotated agent isn't resumed: its conversation ended there (den#4). */
@@ -1416,8 +1412,6 @@ export function agentRows(
   stateDir?: string,
   /** D28: each agent's effective rotation settings (policyResolver). */
   policyOf?: (rec: AgentRecord) => RotationPolicy | undefined,
-  /** Issue 785: the agents' session env (PATH for a reported resume). */
-  env?: NodeJS.ProcessEnv,
 ): AgentRow[] {
   const bySession = new Map(records.map((r) => [r.session.id, r]));
   const rows: AgentRow[] = [];
@@ -1428,11 +1422,10 @@ export function agentRows(
     // A rotated conversation is not resumed: it relaunches from its handoff.
     // D28: under on_due off, its conversation goes on: Resume stays.
     const resumable =
-      canResume(rec, st, env) && !(rot?.ready && rot.onDue !== "off");
+      canResume(rec, st) && !(rot?.ready && rot.onDue !== "off");
     const why =
       isStoppedState(st) && !resumable
-        ? (resumeRefusal(rec, env) ??
-          (rot?.ready ? rotatedRefusal(rec, rot) : null))
+        ? (resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null))
         : null;
     const named = stateDir ? agentSessionName(rec, stateDir) : undefined;
     return {
@@ -1587,13 +1580,7 @@ export async function listAgents(
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
   noteEnded(d.stateDir(), sessions, records);
-  const rows = agentRows(
-    sessions,
-    records,
-    d.stateDir(),
-    policyResolver(d),
-    d.env,
-  );
+  const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
   await addMcpStale(d, rows);
@@ -6411,7 +6398,7 @@ export async function resumeAgent(
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
     // AG-14.2: never a resume that would start a new conversation instead.
-    const why = resumeRefusal(rec, d.env);
+    const why = resumeRefusal(rec);
     if (why)
       throw refused(why, [
         `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
@@ -6486,13 +6473,9 @@ export async function resumeAgent(
         sessionLabel: peerName,
         worktree: rec.cwd,
         ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
-        // Issue 785: a reported resume runs its first word from the
-        // session's PATH, as resumeRefusal checked it.
-        ...(rt.reportedResume
-          ? {
-              env: withSessionPath(input.env),
-              ...(rec.resumeReport ? { resumeReport: rec.resumeReport } : {}),
-            }
+        // Issue 785: the session its agent reported (Codex, Gemini).
+        ...(rt.reportedResume && rec.resumeReport
+          ? { resumeReport: rec.resumeReport }
           : {}),
       };
       // 0.4.8: the runtime's own resume first, whenever this token was
@@ -8357,7 +8340,7 @@ export async function markInterrupted(
       ? rec.resumeOnRestart !== false
       : !!p && resumesOnRestart(rec, p);
     if (!wants) return false;
-    const refusal = resumeRefusal(rec, d.env);
+    const refusal = resumeRefusal(rec);
     if (refusal && getRuntime(rec.runtime)?.reportedResume)
       why.set(rec.id, refusal);
     return !refusal || why.has(rec.id);
@@ -8612,8 +8595,7 @@ export async function resumeInterrupted(
   for (const rec of recs) {
     const rot = rotationOf(d, rec);
     const why =
-      resumeRefusal(rec, d.env) ??
-      (rot?.ready ? rotatedRefusal(rec, rot) : null);
+      resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
       failed.push({ agent: rec.id, why });
       continue;

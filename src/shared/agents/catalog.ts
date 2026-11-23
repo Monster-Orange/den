@@ -66,6 +66,7 @@
  */
 import * as path from "path";
 import { RULE_SETS } from "./detect/index.js";
+import { resumeTemplateProblem } from "./resume-command.js";
 
 export interface CatalogIdentity {
   /** A case-insensitive pattern the version command's output matches. */
@@ -111,6 +112,12 @@ export interface CatalogEntry {
   version: { args: string[]; identity: CatalogIdentity };
   dirs: string[];
   launch: { argv: string[] };
+  /**
+   * Issue 785: how it resumes a conversation: "{bin}" (the binary Den
+   * launches for it) first and the conversation's id in one "{conversation}"
+   * word. The agent reports only that id. Unset: it can't resume.
+   */
+  resume?: { argv: string[] };
   /** What Shift+Enter sends (AG-4b); unset: "esc-cr". */
   softNewline?: SoftNewline;
   /** The adapter reads a session name, from a source this stable. */
@@ -151,6 +158,7 @@ const ENTRY_KEYS = [
   "version",
   "dirs",
   "launch",
+  "resume",
   "softNewline",
   "sessionName",
   "titleFromOsc",
@@ -232,6 +240,9 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["$CODEX_INSTALL_DIR", "~/.local/bin", "{system}"],
     launch: { argv: ["{bin}"] },
+    // Issue 785: `codex resume <SESSION_ID>` (codex-rs/cli: the resume
+    // subcommand) continues that conversation.
+    resume: { argv: ["{bin}", "resume", "{conversation}"] },
     // The composer's insert_newline is Ctrl+J (codex-rs/tui keymap): a
     // plain terminal's Shift+Enter and Alt+Enter submit (openai/codex#20580).
     softNewline: "lf",
@@ -258,6 +269,9 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["{system}"],
     launch: { argv: ["{bin}"] },
+    // Issue 785: `gemini --resume <session id>` (docs/cli/session-management.md)
+    // continues that session.
+    resume: { argv: ["{bin}", "--resume", "{conversation}"] },
     // https://geminicli.com/docs/reference/keyboard-shortcuts: Alt+Enter
     // (ESC CR), Ctrl+J and Shift+Enter insert a newline.
     softNewline: "esc-cr",
@@ -551,6 +565,26 @@ export function validateCatalogEntry(
     throw new Error(
       `${where}.launch.argv[0]: must be "{bin}" (the path Den found)`,
     );
+  // Issue 785: its resume template, held to resumeTemplateProblem's rules.
+  let resume: CatalogEntry["resume"];
+  if (raw.resume !== undefined) {
+    const r = raw.resume;
+    if (!isMapping(r) || Object.keys(r).some((k) => k !== "argv"))
+      throw new Error(`${where}.resume: must be a mapping { argv: [...] }`);
+    const words = list(
+      `${where}.resume.argv`,
+      r.argv,
+      (x, at) => {
+        if (typeof x === "string" && x.length <= 200 && !/[\0\n]/.test(x))
+          return x;
+        throw new Error(`${at}: must be an argument of up to 200 characters`);
+      },
+      { min: 2, max: 16 },
+    );
+    const problem = resumeTemplateProblem(words);
+    if (problem) throw new Error(`${where}.resume.argv: ${problem}`);
+    resume = { argv: words };
+  }
   const traits: Pick<
     CatalogEntry,
     "softNewline" | "sessionName" | "titleFromOsc" | "screenRules"
@@ -609,6 +643,7 @@ export function validateCatalogEntry(
     version: { args, identity },
     dirs,
     launch: { argv },
+    ...(resume ? { resume } : {}),
     ...traits,
     ...(signIn ? { signIn } : {}),
     ...(accountName ? { accountName } : {}),

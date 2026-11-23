@@ -780,7 +780,7 @@ function stoppedTip(r) {
 /**
  * Why a stopped agent can't resume, in the person's language where Den
  * knows the words: its runtime can't resume at all, or (issue 785) it
- * reported no resume command. Any other reason (reported for another
+ * reported no conversation to resume. Any other reason (reported for another
  * folder, not on PATH, a rule it broke) is the server's own.
  */
 function noResumeText(r) {
@@ -789,7 +789,7 @@ function noResumeText(r) {
     return t("ag.noResume", { runtime: r.runtime });
   if (
     why ===
-    `${r.runtime} can't resume ${r.agent}: it reported no resume command`
+    `${r.runtime} can't resume ${r.agent}: it reported no conversation to resume`
   )
     return t("ag.noResumeNone", { runtime: r.runtime, id: r.agent });
   return why;

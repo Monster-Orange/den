@@ -1,114 +1,84 @@
 /**
- * Issue 785, slice 1: a runtime's reported resume command, checked
- * strictly before Den ever runs it, and the newest report kept.
- *
- *   - the first word is a plain command found on PATH;
- *   - no apostrophes and no control characters;
- *   - at most 64 arguments and 8 KiB;
- *   - the working folder is part of its identity: a command reported for
- *     one folder never resumes in another;
- *   - a higher sequence replaces a lower one; an older or equal one is
- *     ignored.
+ * Issue 785: an agent reports only its conversation's id (with the folder
+ * and a rising sequence); Den builds the resume command itself from its
+ * runtime's own template and the binary it already launches for it. So
+ * nothing an agent writes reaches its startup command but that one id,
+ * held to a strict pattern: no flag, no space, no quote, no slash.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
   acceptResumeReport,
-  RESUME_LIMITS,
-  resumeCommandProblem,
+  resumeArgv,
   resumeCommandFor,
+  resumeReportProblem,
+  resumeTemplateProblem,
   type ResumeReport,
 } from "../../../src/shared/agents/resume-command.js";
 
-const PATH_ENV = "/opt/tools/bin:/usr/bin";
-const onPath = new Set(["/opt/tools/bin/codex", "/usr/bin/gemini"]);
-const deps = {
-  pathEnv: PATH_ENV,
-  isExecutable: (f: string) => onPath.has(f),
-};
+const CODEX = ["{bin}", "resume", "{conversation}"];
+const BIN = "/opt/tools/bin/codex";
 const report = (o: Partial<ResumeReport> = {}): ResumeReport => ({
-  argv: ["codex", "resume", "019a-77"],
+  conversation: "019a-77f2.c:1_x",
   cwd: "/work/north",
   seq: 1,
   ...o,
 });
 
-describe("issue 785: a reported resume command is checked strictly", () => {
-  it("a plain command on PATH, in an absolute folder: no problem", () => {
-    expect(resumeCommandProblem(report(), deps)).toBeNull();
+describe("issue 785: what an agent may report", () => {
+  it("an id of letters, digits and . _ : -, starting with a letter or digit", () => {
+    expect(resumeReportProblem(report())).toBeNull();
+    expect(resumeReportProblem(report({ conversation: "a" }))).toBeNull();
     expect(
-      resumeCommandProblem(
-        report({ argv: ["gemini", "--resume", "latest"] }),
-        deps,
-      ),
+      resumeReportProblem(report({ conversation: "a".repeat(128) })),
     ).toBeNull();
   });
 
-  it("the first word must be a plain command: no path, no shell", () => {
-    for (const first of ["/opt/tools/bin/codex", "./codex", "sh -c", ""])
+  it("refused: a space, a quote, a slash, a control character, a shell sign", () => {
+    for (const conversation of [
+      "a b",
+      "it's",
+      'a"b',
+      "a/b",
+      "..\\b",
+      "a\nb",
+      "a\u001b[31m",
+      "a\u0000",
+      "a;rm",
+      "$(id)",
+      "a`b`",
+      "a|b",
+    ])
+      expect(resumeReportProblem(report({ conversation }))).toMatch(
+        /conversation id must be/,
+      );
+  });
+
+  it("refused: an id that would read as a flag, or is empty or too long", () => {
+    for (const conversation of [
+      "--dangerously-bypass-approvals-and-sandbox",
+      "-c",
+      ".hidden",
+      "",
+      "a".repeat(129),
+    ])
+      expect(resumeReportProblem(report({ conversation }))).toMatch(
+        /conversation id must be/,
+      );
+  });
+
+  it("refused: words in place of an id (a command, a list)", () => {
+    for (const conversation of [["codex", "resume"], 7, null, undefined])
       expect(
-        resumeCommandProblem(report({ argv: [first, "resume"] }), deps),
-      ).toMatch(/not a plain command/);
+        resumeReportProblem(report({ conversation: conversation as never })),
+      ).toMatch(/conversation id must be/);
   });
 
-  it("the first word must be on PATH", () => {
-    expect(
-      resumeCommandProblem(report({ argv: ["grok", "--resume"] }), deps),
-    ).toMatch(/grok is not on PATH/);
-  });
-
-  it("no apostrophes, in any word", () => {
-    expect(
-      resumeCommandProblem(report({ argv: ["codex", "resume", "it's"] }), deps),
-    ).toMatch(/apostrophe/);
-  });
-
-  it("no control characters, in any word (newline, escape, NUL, DEL)", () => {
-    for (const bad of ["a\nb", "a\u001b[31m", "a\u0000", "a\u007f"])
-      expect(
-        resumeCommandProblem(report({ argv: ["codex", bad] }), deps),
-      ).toMatch(/control character/);
-  });
-
-  it(`at most ${RESUME_LIMITS.maxArgs} arguments`, () => {
-    const at = ["codex", ...Array(RESUME_LIMITS.maxArgs).fill("x")];
-    expect(resumeCommandProblem(report({ argv: at }), deps)).toBeNull();
-    expect(resumeCommandProblem(report({ argv: [...at, "x"] }), deps)).toMatch(
-      /more than 64 arguments/,
-    );
-  });
-
-  it(`at most ${RESUME_LIMITS.maxBytes} bytes in all`, () => {
-    // "codex" (5) + one space + the rest: exactly the limit, then one over.
-    const fill = "y".repeat(RESUME_LIMITS.maxBytes - 6);
-    expect(
-      resumeCommandProblem(report({ argv: ["codex", fill] }), deps),
-    ).toBeNull();
-    expect(
-      resumeCommandProblem(report({ argv: ["codex", fill + "y"] }), deps),
-    ).toMatch(/over 8 KiB/);
-    // Bytes, not characters: three-byte characters count three.
-    const wide = "あ".repeat(Math.ceil((RESUME_LIMITS.maxBytes - 6) / 3) + 1);
-    expect(
-      resumeCommandProblem(report({ argv: ["codex", wide] }), deps),
-    ).toMatch(/over 8 KiB/);
-  });
-
-  it("not a list of words, or an empty one: refused", () => {
-    for (const argv of [[], "codex resume", [1, 2], null])
-      expect(
-        resumeCommandProblem(report({ argv: argv as never }), deps),
-      ).toMatch(/a list of words/);
-  });
-
-  it("its folder must be absolute", () => {
-    expect(resumeCommandProblem(report({ cwd: "work/north" }), deps)).toMatch(
+  it("its folder must be absolute; its sequence a whole number above 0", () => {
+    expect(resumeReportProblem(report({ cwd: "work/north" }))).toMatch(
       /folder/,
     );
-  });
-
-  it("its sequence must be a whole number above 0", () => {
     for (const seq of [0, -1, 1.5, NaN, "2" as never])
-      expect(resumeCommandProblem(report({ seq }), deps)).toMatch(/sequence/);
+      expect(resumeReportProblem(report({ seq }))).toMatch(/sequence/);
   });
 });
 
@@ -122,34 +92,104 @@ describe("issue 785: the newest report is kept", () => {
   });
 });
 
-describe("issue 785: the folder is part of its identity", () => {
+describe("issue 785: Den builds the command from its runtime's template", () => {
+  it("the runtime's binary first, the id in its one slot, nothing else", () => {
+    expect(resumeArgv(CODEX, BIN, "019a")).toEqual([BIN, "resume", "019a"]);
+  });
+
+  it("a template: {bin} first, exactly one {conversation} on its own", () => {
+    expect(resumeTemplateProblem(CODEX)).toBeNull();
+    expect(
+      resumeTemplateProblem(["{bin}", "--resume", "{conversation}"]),
+    ).toBeNull();
+    for (const bad of [
+      ["codex", "resume", "{conversation}"],
+      ["{bin}", "resume"],
+      ["{bin}", "{conversation}", "{conversation}"],
+      ["{bin}", "--id={conversation}"],
+      [],
+    ])
+      expect(resumeTemplateProblem(bad)).not.toBeNull();
+  });
+
   it("resumes only in the folder it was reported for", () => {
-    expect(resumeCommandFor(report(), "/work/north", deps)).toEqual({
-      argv: ["codex", "resume", "019a-77"],
+    expect(resumeCommandFor(report(), "/work/north", CODEX, BIN)).toEqual({
+      argv: [BIN, "resume", "019a-77f2.c:1_x"],
     });
-    // The same folder, written another way.
-    expect(resumeCommandFor(report(), "/work/north/", deps)).toEqual({
-      argv: ["codex", "resume", "019a-77"],
+    expect(resumeCommandFor(report(), "/work/north/", CODEX, BIN)).toEqual({
+      argv: [BIN, "resume", "019a-77f2.c:1_x"],
     });
-    expect(resumeCommandFor(report(), "/work/south", deps)).toEqual({
+    expect(resumeCommandFor(report(), "/work/south", CODEX, BIN)).toEqual({
       problem: expect.stringMatching(
         /reported for \/work\/north, not \/work\/south/,
       ),
     });
   });
 
-  it("checked again when it runs: a command gone from PATH is refused", () => {
-    expect(
-      resumeCommandFor(report(), "/work/north", {
-        ...deps,
-        isExecutable: () => false,
-      }),
-    ).toEqual({ problem: expect.stringMatching(/codex is not on PATH/) });
+  it("whatever was reported, the command is the template's: a bad id is refused, never passed", () => {
+    for (const conversation of ["--yolo", "x --yolo", "bash -c id"]) {
+      const got = resumeCommandFor(
+        report({ conversation }),
+        "/work/north",
+        CODEX,
+        BIN,
+      );
+      expect(got).toEqual({
+        problem: expect.stringMatching(/conversation id must be/),
+      });
+    }
   });
 
-  it("none reported: says so", () => {
-    expect(resumeCommandFor(undefined, "/work/north", deps)).toEqual({
-      problem: "it reported no resume command",
+  it("none reported, or no template: says so", () => {
+    expect(resumeCommandFor(undefined, "/work/north", CODEX, BIN)).toEqual({
+      problem: "it reported no conversation to resume",
     });
+    expect(resumeCommandFor(report(), "/work/north", undefined, BIN)).toEqual({
+      problem: "its runtime has no resume command",
+    });
+  });
+});
+
+describe("issue 785: a catalog entry's resume template", () => {
+  it("Codex and Gemini declare one; Grok none (it can't resume)", async () => {
+    const { BUILTIN_CATALOG } =
+      await import("../../../src/shared/agents/catalog.js");
+    const of = (id: string) => BUILTIN_CATALOG.find((e) => e.id === id);
+    expect(of("codex")?.resume).toEqual({ argv: CODEX });
+    expect(of("gemini")?.resume).toEqual({
+      argv: ["{bin}", "--resume", "{conversation}"],
+    });
+    expect(of("grok")?.resume).toBeUndefined();
+    for (const e of BUILTIN_CATALOG)
+      if (e.resume) expect(resumeTemplateProblem(e.resume.argv)).toBeNull();
+  });
+
+  it("an added entry's template is held to the same rules", async () => {
+    const { BUILTIN_CATALOG, validateCatalog } =
+      await import("../../../src/shared/agents/catalog.js");
+    const codex = BUILTIN_CATALOG.find((e) => e.id === "codex")!;
+    const entry = (resume: unknown) => ({
+      id: "acme-cli",
+      vendor: "Acme",
+      name: "Acme CLI",
+      bins: ["acme"],
+      version: { args: ["--version"], identity: { output: "acme" } },
+      dirs: [],
+      launch: codex.launch,
+      resume,
+    });
+    expect(
+      validateCatalog(
+        [entry({ argv: ["{bin}", "resume", "{conversation}"] })],
+        "t",
+      )[0]?.resume,
+    ).toEqual({ argv: ["{bin}", "resume", "{conversation}"] });
+    for (const bad of [
+      { argv: ["sh", "-c", "{conversation}"] },
+      { argv: ["{bin}", "--id={conversation}"] },
+      { argv: ["{bin}", "resume"] },
+      { argv: ["{bin}", "{conversation}"], extra: 1 },
+    ])
+      expect(() => validateCatalog([entry(bad)], "t")).toThrow(/resume/);
   });
 });
