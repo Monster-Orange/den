@@ -11,6 +11,10 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  ACCOUNT_PREFS_MAX_KB_DEFAULT,
+  handleAccountPrefsRoute,
+} from "./account-prefs.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   COACH_ROUTES,
@@ -2626,6 +2630,29 @@ function startSession(
  * else web.owner_github (recorded from gh at `web up`), with the display
  * name kept beside each. Files only: no gh call here. Null: none known.
  */
+/**
+ * Issue 784: whose own settings a request reads and writes. A browser
+ * signed in with GitHub: that login. The install's owner otherwise (a
+ * local browser, a paired device, the person's own token). An agent's
+ * token or call: nobody (refused).
+ */
+function accountPersonKey(
+  req: http.IncomingMessage,
+  g: {
+    principal?: { kind: string } | null;
+    session?: { key: string } | null;
+  } | null,
+): string | null {
+  if (!g || g.principal?.kind === "agent" || auditActorOf(req)) return null;
+  if (g.principal?.kind === "person-browser" && g.session) {
+    const rec = webSessions.list().find((x) => x.key === g.session!.key);
+    if (rec?.via === "github" && rec.login)
+      return `gh:${rec.login.toLowerCase()}`;
+  }
+  const owner = ownerIdentity()?.login;
+  return owner ? `gh:${owner.toLowerCase()}` : "local:owner";
+}
+
 function ownerIdentity(): {
   login: string;
   name?: string;
@@ -6448,6 +6475,26 @@ async function handleRequest(
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
+    })
+  )
+    return;
+  // Issue 784: a person's own settings (attention, sounds, keys, layout).
+  if (
+    await handleAccountPrefsRoute(req, res, pathname, {
+      stateDir: getStateDir,
+      personKey: (r) => accountPersonKey(r, guard.ok ? guard : null),
+      maxKb: () => {
+        let n: unknown;
+        try {
+          n = (readUserConfig() as { account_prefs_max_kb?: unknown })
+            .account_prefs_max_kb;
+        } catch {
+          n = undefined;
+        }
+        return Number.isInteger(n) && (n as number) > 0
+          ? (n as number)
+          : ACCOUNT_PREFS_MAX_KB_DEFAULT;
+      },
     })
   )
     return;
