@@ -109,6 +109,13 @@ const OK = {
 };
 
 describe("issue 750: without Hub's groups, one line and no group UI", () => {
+  it("hub.groups off, or a Hub with no groups: no line, no switch, no group view", () => {
+    const off = { state: "off" };
+    expect(groupsLineHtml(off, t)).toBe("");
+    expect(groupsOffered(off)).toBe(false);
+    expect(viewSwitchHtml(off, "group", t)).toBe("");
+  });
+
   it("no Hub connected: Groups come with Den Hub, with Connect Den Hub", () => {
     const read = { state: "none" };
     expect(groupsOffered(read)).toBe(false);

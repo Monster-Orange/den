@@ -202,13 +202,15 @@ kept, and `<cli> notifications list` still lists it.
 
 Groups are a Den Hub feature. Den never stores or computes them: it reads them from Hub with the install's token, `GET <hub>/api/groups`, and keeps them in memory for `hub.groups_cache_seconds`.
 
+Turn them on with `hub.groups: true`. It's off by default. While it's off, or while Hub has no groups list (it answers 404), the Agents page shows nothing about groups and Den logs nothing about them.
+
 - **By group.** The Agents page can show your agents by group, each group's lead first. Agents in no group sit under "Not in a group". A group's header opens it in Hub.
 - **Message group.** This opens Hub's own composer in a new tab, and you send with your own Hub sign-in. Den never sends to a group itself.
 - **Reached.** A group message reaches each member through Den's usual delivery. Hub shows each member's state from Den's answer:
   - The agent got it: Reached.
   - It's stopped: waiting.
   - Its Hub tools didn't load: held, with the reason `hub_tools_unavailable`. Hub shows "Can't reach Hub", with Restart. An older Hub that doesn't list `deliveries.ack_held` gets `queued` with the same reason.
-- **When there are no groups.** Den shows one quiet line and no group view in these cases:
+- **When there are no groups.** With `hub.groups` on, Den shows one quiet line and no group view in these cases:
   - No Hub is connected.
   - Hub answers 403 `groups_not_in_plan` (groups aren't in the company's plan).
   - Hub answers 403 `install_refused` (the install's person is a guest in the company). A 403 with no code, from an older Hub, reads the same way.
@@ -248,6 +250,7 @@ user file wins.
 | `hub.mcp_retry_attempts`              | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                                                |
 | `hub.tools_check_seconds`             | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                                                |
 | `hub.tools_restart`                   | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.                                    |
+| `hub.groups`                          | `false`            | Den reads Hub's groups for the Agents page. Off: nothing about groups shows, and Den doesn't ask Hub.                                                            |
 | `hub.groups_cache_seconds`            | `30` (at least 5)  | How long the Agents page keeps Hub's groups in memory before it reads them again. Den stores no groups.                                                          |
 
 Two more keys touch Hub:

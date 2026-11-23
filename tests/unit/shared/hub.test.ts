@@ -76,6 +76,7 @@ describe("readHubConfig", () => {
       toolsCheckSeconds: 300,
       toolsRestart: true,
       groupsCacheSeconds: 30,
+      groups: false,
     });
   });
 
@@ -269,6 +270,16 @@ describe("hub.allow_tools", () => {
     expect(() =>
       readHubConfig({ hub: { url, allow_tools: "no" } }, {}, noSecrets),
     ).toThrow(/hub\.allow_tools must be true or false/);
+  });
+
+  it("issue 750: hub.groups is off by default; true turns it on; junk is refused", () => {
+    expect(readHubConfig({ hub: { url } }, {}, noSecrets)?.groups).toBe(false);
+    expect(
+      readHubConfig({ hub: { url, groups: true } }, {}, noSecrets)?.groups,
+    ).toBe(true);
+    expect(() =>
+      readHubConfig({ hub: { url, groups: "yes" } }, {}, noSecrets),
+    ).toThrow(/hub\.groups must be true or false/);
   });
 
   it("Settings' POST sets it in user.yml, null clears it, junk is refused", () => {

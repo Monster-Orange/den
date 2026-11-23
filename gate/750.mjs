@@ -18,6 +18,7 @@ export const clauses = [
   "no Hub connected: only the line Groups come with Den Hub, with Connect Den Hub, and no group UI",
   "403 groups_not_in_plan and a guest's 403 each show their own line, and no group UI",
   "Den reads the bed's own Hub for groups",
+  "hub.groups off (the default): the page's groups read answers off, and Hub isn't asked",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000;
@@ -281,6 +282,18 @@ export function expect(cells) {
       skip: "needs-hub-groups",
       detail: `the bed's Hub: ${real}`,
     });
+  // The bed runs with hub.groups at its default (off): nothing new.
+  rows.push(
+    real === "off"
+      ? { clause: clauses[7], ok: true, detail: "the bed's Den: off" }
+      : {
+          clause: clauses[7],
+          ok: null,
+          skip: "needs-hub-groups-off",
+          why: "the bed's Den has hub.groups on",
+          detail: `the bed's Den: ${real}`,
+        },
+  );
   return rows;
 }
 

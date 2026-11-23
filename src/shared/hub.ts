@@ -195,6 +195,11 @@ export interface HubConfig {
    * reads them again. Den stores no groups.
    */
   groupsCacheSeconds: number;
+  /**
+   * Issue 750 hub.groups (default false): whether Den reads Hub's groups
+   * for the agents page. Off: nothing new on the page, Hub never asked.
+   */
+  groups: boolean;
 }
 
 type RawHub =
@@ -224,6 +229,7 @@ type RawHub =
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
       groups_cache_seconds?: unknown;
+      groups?: unknown;
     }
   | undefined;
 
@@ -378,6 +384,13 @@ export function readHubConfig(
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
   const groupsCache = secs(h.groups_cache_seconds, "groups_cache_seconds", 30);
+  const groupsOn = h.groups;
+  if (
+    groupsOn !== undefined &&
+    groupsOn !== null &&
+    typeof groupsOn !== "boolean"
+  )
+    throw new Error("hub.groups must be true or false");
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
@@ -419,6 +432,7 @@ export function readHubConfig(
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
     groupsCacheSeconds: groupsCache,
+    groups: groupsOn === true,
   };
 }
 

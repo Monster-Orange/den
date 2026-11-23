@@ -20,13 +20,14 @@
  *   0.2.29), or with no code (an older Hub): a guest (the token's person
  *   is a guest in the company). A 403 with any other code isn't about
  *   groups: not shown. Den reads the `code`, never the error's words. No
- *   answer, a 5xx (or an older Hub's 404): not shown.
+ *   answer, or a 5xx: not shown. A Hub with no groups route (404 or 405)
+ *   is "absent": Den shows nothing new, as with hub.groups off.
  *   A member's agent_id may be another person's agent: Den marks as its
  *   own only one whose install and person are this Den's (`here`).
  *
  *   Hub's group pages (confirm with Hub):
  *     <hub>/<company>/groups/<slug>                 the group (Open)
- *     <hub>/<company>/groups/<slug>?compose=1[&to=<slug>/<role>]
+ *     <hub>/<company>/groups/<slug>?compose=1[&to=<role>]
  *                                                   Hub's composer, to
  *                                                   <slug>/all by default
  *   Den never sends to a group itself. What reached each member is Den's
@@ -92,7 +93,9 @@ export type GroupsRead =
   /** 401: the token isn't taken. */
   | { state: "rejected" }
   /** No answer, or a 5xx: "Can't reach Den Hub". */
-  | { state: "unreachable" };
+  | { state: "unreachable" }
+  /** A Hub with no groups route (404 or 405): shown as off. */
+  | { state: "absent" };
 
 const MAX_GROUPS = 200;
 const MAX_MEMBERS = 200;
@@ -229,7 +232,8 @@ export function groupComposeUrl(
     to.startsWith(`${slug}/`) &&
     ROLE.test(to.slice(slug.length + 1)) &&
     to !== `${slug}/all`;
-  return `${page}?compose=1${own ? `&to=${encodeURIComponent(to)}` : ""}`;
+  // Hub's composer takes the role alone (&to=<role>); all is its default.
+  return `${page}?compose=1${own ? `&to=${encodeURIComponent(to.slice(slug.length + 1))}` : ""}`;
 }
 
 /**
@@ -283,7 +287,9 @@ export async function fetchHubGroups(
       // Another refusal (not about groups): no groups, never the guest line.
       return { state: "unreachable" };
     }
-    // No answer, a 5xx, or a Hub with no such route (404): not shown.
+    // A Hub with no groups route yet: nothing to show, nothing wrong.
+    if (e.status === 404 || e.status === 405) return { state: "absent" };
+    // No answer, or a 5xx: not shown.
     return { state: "unreachable" };
   }
 }

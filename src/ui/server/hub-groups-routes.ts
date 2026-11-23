@@ -14,9 +14,11 @@
  * hub.groups_cache_seconds; `?fresh=1` (Try again) reads Hub now.
  *
  *   → { ok, state: "ok", rule, groups, hub, groupsUrl }
+ *     { ok, state: "off" }                  hub.groups off (the default),
+ *                                           or Hub has no groups route
  *     { ok, state: "none" }                 no Hub connected
  *     { ok, state: "unavailable", hub }     403 groups_not_in_plan
- *     { ok, state: "refused" }              any other 403 (a guest)
+ *     { ok, state: "refused" }              403 install_refused (a guest)
  *     { ok, state: "rejected" | "unreachable" }
  */
 import type * as http from "http";
@@ -41,6 +43,8 @@ export interface HubGroupsDeps {
   self: () => Promise<{ install?: string; login?: string }>;
   /** hub.groups_cache_seconds. */
   cacheSeconds: () => number;
+  /** hub.groups (default off): whether Den reads Hub's groups at all. */
+  enabled: () => boolean;
   /** The in-memory copy, by Hub URL (never written anywhere). */
   cache: Map<
     string,
@@ -67,6 +71,12 @@ export async function hubGroupsRoute(
   if (method !== "GET" && method !== "HEAD") {
     res.setHeader("Allow", "GET");
     sendJson(res, { ok: false, error: "use GET" }, 405);
+    return true;
+  }
+  // hub.groups off (the default): nothing new on the page, Hub not asked.
+  if (!d.enabled()) {
+    d.cache.clear();
+    sendJson(res, { ok: true, state: "off" });
     return true;
   }
   const hub = await d.hub().catch(() => null);
@@ -98,6 +108,11 @@ export async function hubGroupsRoute(
       ? read.groups.team
       : "";
   const home = companyUrl(hub.url, company);
+  // A Hub with no groups route: the same as off.
+  if (read.state === "absent") {
+    sendJson(res, { ok: true, state: "off" });
+    return true;
+  }
   if (read.state !== "ok") {
     sendJson(res, {
       ok: true,
@@ -163,6 +178,7 @@ export async function defaultHubGroupsDeps(): Promise<HubGroupsDeps> {
       };
     },
     cacheSeconds: () => cfg?.groupsCacheSeconds ?? 30,
+    enabled: () => cfg?.groups === true,
     cache: memory,
   };
 }

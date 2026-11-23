@@ -206,6 +206,13 @@ describe("issue 750: fetchHubGroups against a stub Hub", () => {
     });
   });
 
+  it("a Hub with no groups route (404 or 405): absent, not unreachable", async () => {
+    for (const status of [404, 405]) {
+      const hub = await stubHub(() => [status, { error: "not_found" }]);
+      expect(await fetchHubGroups(hub.url, "t")).toEqual({ state: "absent" });
+    }
+  });
+
   it("401: the token isn't taken; Hub down or a 5xx: unreachable", async () => {
     const hub = await stubHub(() => [401, { error: "invalid_token" }]);
     expect((await fetchHubGroups(hub.url, "t")).state).toBe("rejected");
@@ -261,7 +268,8 @@ describe("issue 750: Message group opens Hub's composer", () => {
         "web-delivery/review",
       ),
     ).toBe(
-      "https://hub.example.test/acme/groups/web-delivery?compose=1&to=web-delivery%2Freview",
+      // Hub's composer takes the role alone: &to=<role> (or all).
+      "https://hub.example.test/acme/groups/web-delivery?compose=1&to=review",
     );
     // Another group's address, or a bad one: the default.
     expect(

@@ -103,11 +103,33 @@ const deps = (
   company: () => "acme",
   self: async () => ({ install: "Bench", login: "pat" }),
   cacheSeconds: () => 30,
+  enabled: () => true,
   cache: new Map(),
   ...o,
 });
 
 describe("issue 750: GET /api/hub/groups", () => {
+  it("hub.groups off (the default): state off, and Hub is never asked", async () => {
+    const hub = await stubHub(() => [200, GROUPS]);
+    const r = await call(deps({ url: hub.url, enabled: () => false }));
+    expect(r.json).toEqual({ ok: true, state: "off" });
+    expect(hub.calls()).toBe(0);
+    // No Hub connected and off: still off (no "Groups come with Den Hub").
+    expect(
+      (await call(deps({ url: null, enabled: () => false }))).json,
+    ).toEqual({ ok: true, state: "off" });
+  });
+
+  it("a Hub with no groups route (404, or 405): state off, nothing alarming, kept in memory", async () => {
+    for (const status of [404, 405]) {
+      const hub = await stubHub(() => [status, { error: "not_found" }]);
+      const d = deps({ url: hub.url });
+      expect((await call(d)).json).toEqual({ ok: true, state: "off" });
+      await call(d);
+      expect(hub.calls()).toBe(1);
+    }
+  });
+
   it("no Hub connected: state none, nothing asked", async () => {
     const r = await call(deps({ url: null }));
     expect(r.json).toEqual({ ok: true, state: "none" });
