@@ -93,6 +93,15 @@ describe("redactSecrets (secret-shaped values)", () => {
     expect(redactSecrets("sk_live_abcdefghijklmnop1234")).toBe(REDACTED);
   });
 
+  it("Den's own embed key (den_ek_), even inside a path", () => {
+    const key = "den_ek_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v";
+    expect(redactSecrets(key)).toBe(REDACTED);
+    expect(redactSecrets(`open /h/.den/keys/${key}.json failed`)).toBe(
+      `open /h/.den/keys/${REDACTED}.json failed`,
+    );
+    expect(redactSecrets("den_ek_short")).toBe("den_ek_short");
+  });
+
   it("private-key blocks, whole or cut off", () => {
     const block = [
       "-----BEGIN RSA PRIVATE KEY-----",

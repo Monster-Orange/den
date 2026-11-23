@@ -80,7 +80,7 @@ export const SECRET_PATTERNS: readonly Pattern[] = [
   },
   {
     name: "well-known token prefix",
-    re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|[sr]k_(?:live|test)_[A-Za-z0-9]{10,}|sk-[A-Za-z0-9_-]{20,})/g,
+    re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|[sr]k_(?:live|test)_[A-Za-z0-9]{10,}|sk-[A-Za-z0-9_-]{20,}|den_ek_[A-Za-z0-9_-]{20,})/g,
     replace: REDACTED,
   },
   {
