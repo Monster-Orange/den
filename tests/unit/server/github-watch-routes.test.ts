@@ -211,6 +211,6 @@ describe("issue 1270: a project's agents.watch_repos", () => {
     });
     expect(gh.calls.length).toBeGreaterThan(0);
     for (const path of gh.calls)
-      expect(path.startsWith("/repos/shared/pipeline/")).toBe(true);
+      expect(path.startsWith("repos/shared/pipeline/")).toBe(true);
   });
 });
