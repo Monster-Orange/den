@@ -82,7 +82,10 @@ import {
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import {
+  GATE_CHECKOUT_ENV,
   GATE_STORE_ENV,
+  checkoutOf,
+  checkoutTag,
   cleanRun,
   realDocker,
   storeTag,
@@ -949,6 +952,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     throw new GateUsage("--reason goes with --priority release");
   const s = d.store;
   const actor = d.env[AGENT_ACTOR_ENV]?.trim();
+  // Issue 1289: the checkout this run is in (its kept containers' owner).
+  const checkout = checkoutTag(checkoutOf(d.cwd));
   let e: GateEntry | null;
   try {
     e = s.ask({
@@ -959,6 +964,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       estimateMin,
       agent: isAgentEnv(d.env),
       project: path.basename(d.cwd),
+      checkout,
       ...(actor ? { actor } : {}),
       ...(priority ? { priority: { reason } } : {}),
       ...(where ? { where } : {}),
@@ -1053,6 +1059,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
       // Issue 1263: the store's tag, for a throwaway container's labels.
       [GATE_STORE_ENV]: storeTag(s.dir),
+      // Issue 1289: the checkout's tag, for a kept container's label.
+      [GATE_CHECKOUT_ENV]: checkout,
     };
     // Issue 1048: a cpu run here uses its share of the cores, no more.
     if (kind === "cpu" && !e.box)
@@ -1104,7 +1112,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     release();
     // Issue 1263: the run's throwaway containers go with its slot (a box
     // run's are on the box, swept there). Never fails the run.
-    if (d.docker && !onBox) await cleanRun(s, id, d.docker);
+    if (d.docker && !onBox) await cleanRun(s, id, d.docker, checkout);
   }
 }
 
