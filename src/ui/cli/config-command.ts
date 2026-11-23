@@ -71,6 +71,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // Issue 796: agents' read-only page views, and how long one lasts.
   "web.agent_view": ["web_agent_view", "on"],
   "web.agent_view_minutes": ["web_agent_view", "minutes"],
+  "web.sessions_lock_wait_ms": ["web_sessions", "lock_wait_ms"],
   // den#156: the Agents list's waits for the terminal host.
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.

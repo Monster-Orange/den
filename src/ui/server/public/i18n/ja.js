@@ -1746,6 +1746,10 @@
     "set.access.agent_view_minutes": "エージェントの閲覧時間 (分)",
     "set.access.agent_view_minutes.d":
       "エージェントの読み取り専用の閲覧が続く時間。過ぎると終わります。 __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.sessions_lock_wait":
+      "サインインがサインインファイルを待つ時間 (ミリ秒)",
+    "set.access.sessions_lock_wait.d":
+      "別のコマンドがサインインファイルを変更している間、サインインが待つ時間。過ぎると、もう一度試すよう求めます。 __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
     "set.access.test_installs_here":
       "このコンピューター上のテスト用インストール",
     "set.access.test_install": "テスト用インストール",

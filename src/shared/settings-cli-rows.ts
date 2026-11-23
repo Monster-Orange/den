@@ -27,6 +27,8 @@
  *   web_agent_view: { on?: boolean, minutes? }
  *                                     user.yml web.agent_view,
  *                                     web.agent_view_minutes (issue 796)
+ *   web_sessions: { lock_wait_ms? }   user.yml web.sessions_lock_wait_ms
+ *                                     (issue 1299)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agents_resume: { batch?, gap_seconds?, load_ceiling?, max_wait_seconds? }
@@ -80,6 +82,7 @@ import {
 } from "./report-shots.js";
 import {
   AGENT_VIEW_RANGE,
+  SESSIONS_LOCK_WAIT_RANGE,
   PAIR_LIMITS,
   WEB_WAIT_RANGE,
 } from "./web-session.js";
@@ -117,6 +120,8 @@ export const PERSON_ONLY_SETTINGS = [
   "web_pairing",
   // Issue 796: whether agents may view this Den's pages, read-only.
   "web_agent_view",
+  // Issue 1299: how long a sessions write waits for another's lock.
+  "web_sessions",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -345,6 +350,15 @@ const WEB_PAIRING: Record<string, Limit> = {
 /** Issue 796: how long an agent's read-only view lasts (agent-view.ts). */
 const WEB_AGENT_VIEW: Record<string, Limit> = {
   minutes: { key: "agent_view_minutes", ...AGENT_VIEW_RANGE, int: true },
+};
+
+/** Issue 1299: how long a sessions write waits for another's lock. */
+const WEB_SESSIONS: Record<string, Limit> = {
+  lock_wait_ms: {
+    key: "sessions_lock_wait_ms",
+    ...SESSIONS_LOCK_WAIT_RANGE,
+    int: true,
+  },
 };
 
 const AGENTS_LIST: Record<string, Limit> = {
@@ -784,6 +798,14 @@ export function patchCliRows(
       "web",
       WEB_AGENT_VIEW,
       viewRest,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "web_sessions",
+      "web",
+      WEB_SESSIONS,
+      body.web_sessions,
       apply,
     ) ??
     patchBlock(

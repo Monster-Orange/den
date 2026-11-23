@@ -2098,6 +2098,21 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
   },
   {
+    // Issue 1299: how long a sign-in waits while another process writes
+    // the sign-ins file, before it says "try again".
+    id: "access.sessions_lock_wait",
+    category: "access",
+    label: "Sign-in waits for the sign-ins file, in ms",
+    description:
+      "How long a sign-in waits while another command changes the sign-ins file, then it asks to try again. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+    keywords: ["sign-in", "lock", "wait", "busy", "web.sessions_lock_wait_ms"],
+    scope: "user",
+    keys: ["web_sessions.lock_wait_ms"],
+    control: { type: "number", min: 0, max: 30000, step: 100, unit: "ms" },
+    read: (ctx) => ctx.data.web_sessions?.lockWaitMs ?? 2000,
+    write: (v, ctx) => ctx.post({ web_sessions: { lock_wait_ms: v } }),
+  },
+  {
     id: "access.machine_name",
     category: "access",
     label: "Machine name",

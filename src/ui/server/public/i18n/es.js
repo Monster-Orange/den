@@ -1804,6 +1804,10 @@
       "Duración de la vista de un agente, en minutos",
     "set.access.agent_view_minutes.d":
       "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.sessions_lock_wait":
+      "Espera al archivo de accesos al entrar, en ms",
+    "set.access.sessions_lock_wait.d":
+      "Cuánto espera la entrada mientras otro comando cambia el archivo de accesos; después pide intentarlo de nuevo. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
     "set.access.test_installs_here": "Instalaciones de prueba en esta máquina",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",

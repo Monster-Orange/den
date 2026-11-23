@@ -282,6 +282,11 @@ async function startFlow(
 }
 
 /** Whether `pathname` is one of these routes' (index.ts dispatches them here). */
+/** The sign-in poll: a GET that signs in (session-writes.ts, issue 1299). */
+export function isGithubSigninPoll(pathname: string): boolean {
+  return SIGNIN_PATH.test(pathname);
+}
+
 export function isGithubRoute(pathname: string): boolean {
   return /^\/api\/(github\/|web\/owner(\/|$)|web\/pair$)/.test(pathname);
 }
@@ -374,12 +379,16 @@ export async function handleGithubRoutes(
       return true;
     }
     if (v.state === "ok") {
-      const who = deps.flows.claim(v.id, "signin");
+      // Issue 1299: sign in before the flow is spent. A refused sign-in
+      // (the sessions file busy or unreadable) throws with the flow kept,
+      // so the next poll signs in. Nothing awaits in between.
+      const who = deps.flows.identity(v.id, "signin");
       if (!who) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
       const s = deps.signIn(req, "github", v.login, who.name);
+      deps.flows.claim(v.id, "signin");
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
       // The approval key goes to this answer only (web-session.ts).

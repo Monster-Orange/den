@@ -53,6 +53,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 796: agents' read-only page views.
   web_agent_view: { on: true, minutes: true },
+  // Issue 1299: how long a sessions write waits for another's lock.
+  web_sessions: { lock_wait_ms: true },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
@@ -300,6 +302,8 @@ describe("the settings inventory (R21)", () => {
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        // Issue 1299: how long a sessions write waits for another's lock.
+        "web_sessions.lock_wait_ms",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
         "gate_slots.browser_box_default",
