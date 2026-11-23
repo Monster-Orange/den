@@ -3538,6 +3538,10 @@
       "Bringing in {agent} stopped: the conversation is still open, and Den can't tell which terminal holds it. Close it there, then allow it again.",
     "bell.m.importWontClose":
       "Bringing in {agent} stopped: its terminal (pid {pid}) didn't close, so nothing was brought in. Close it there, then allow it again.",
+    "bell.m.importHolderChanged":
+      "Bringing in {agent} stopped: another terminal (pid {pid}) holds it now, so nothing was closed. Close it there, then allow it again.",
+    "bell.m.importRestarted":
+      "Den restarted while bringing in {agent}, so the hand-over stopped and nothing was closed. Allow the import again.",
     "bell.m.importImportFailed":
       "Bringing in {agent} failed after its terminal closed: {reason}",
     "bell.m.noHub": "{n} agents started without Hub",

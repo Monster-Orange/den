@@ -4,7 +4,10 @@
  * key per case so each language says it as a sentence.
  */
 import { describe, expect, it } from "@jest/globals";
-import { noteImportStopped } from "../../../src/ui/server/agent-routes.js";
+import {
+  noteDroppedHandovers,
+  noteImportStopped,
+} from "../../../src/ui/server/agent-routes.js";
 import type { HandoverFailCode } from "../../../src/shared/agents/import-handover.js";
 
 function store() {
@@ -17,6 +20,7 @@ describe("issue 159: the bell's note when a hand-over stops", () => {
     "noHandoff",
     "unknownHolder",
     "wontClose",
+    "holderChanged",
     "importFailed",
   ];
 
@@ -48,4 +52,22 @@ describe("issue 159: the bell's note when a hand-over stops", () => {
       ]);
     },
   );
+
+  it("a restart dropped a waiting hand-over: one note each, the restarted key, nothing closed", () => {
+    const s = store();
+    noteDroppedHandovers(s as never, [
+      { agent: "planner", session: "c1", project: "north" },
+    ]);
+    expect(s.items).toEqual([
+      expect.objectContaining({
+        scope: "workspace/north",
+        subject: "record:import-c1",
+        text: expect.stringMatching(/restarted.*nothing was closed/),
+        msg: {
+          key: "bell.m.importRestarted",
+          vars: { session: "c1", agent: "planner" },
+        },
+      }),
+    ]);
+  });
 });

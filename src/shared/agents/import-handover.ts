@@ -71,7 +71,10 @@ export type HandoverFailCode =
   | "noHandoff"
   | "unknownHolder"
   | "wontClose"
-  | "importFailed";
+  | "holderChanged"
+  | "importFailed"
+  /** Den's server restarted during the wait: the hand-over was dropped. */
+  | "restarted";
 
 export interface HandoverFailure {
   code: HandoverFailCode;
@@ -122,6 +125,7 @@ export async function handOver(
     return { ok: false, error };
   };
   try {
+    // The holder the Allow saw: the only process Den may ever close.
     const pid = s.holder();
     // 2. The hand-off and the turn's end, or the terminal's own exit.
     const until = s.now() + o.waitMs;
@@ -136,21 +140,30 @@ export async function handOver(
         );
       await s.sleep(o.pollMs);
     }
-    // 3. One writer at a time: close the terminal, and wait for it.
+    // 3. One writer at a time: close the terminal, and wait for it. The
+    // holder is read again now: Den closes it only when it is still the
+    // one the Allow saw (a pid can be reused, a conversation reopened).
     if (s.stillOpen()) {
-      if (pid === null)
+      const now = s.holder();
+      if (now === null)
         return failed(
           "unknownHolder",
           `Bringing in conversation ${o.session} as agent ${o.agent} stopped: it is still open, and Den can't tell which terminal holds it. Close it there, then allow the import again.`,
         );
-      s.close(pid);
+      if (now !== pid)
+        return failed(
+          "holderChanged",
+          `Bringing in conversation ${o.session} as agent ${o.agent} stopped: another terminal (pid ${now}) holds it now, so nothing was closed. Close it there, then allow the import again.`,
+          { pid: now },
+        );
+      s.close(now);
       const by = s.now() + o.closeWaitMs;
       while (s.stillOpen()) {
         if (s.now() >= by)
           return failed(
             "wontClose",
-            `Bringing in conversation ${o.session} as agent ${o.agent} stopped: its terminal (pid ${pid}) didn't close, so nothing was brought in. Close it there, then allow the import again.`,
-            { pid },
+            `Bringing in conversation ${o.session} as agent ${o.agent} stopped: its terminal (pid ${now}) didn't close, so nothing was brought in. Close it there, then allow the import again.`,
+            { pid: now },
           );
         await s.sleep(Math.min(o.pollMs, 500));
       }

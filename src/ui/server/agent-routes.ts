@@ -2105,6 +2105,27 @@ export function noteImportStopped(
 }
 
 /**
+ * Issue 159: the hand-overs a restart dropped (agent-ops.ts
+ * sweepHandovers), told once each. Nothing was closed: the conversation is
+ * still open in its terminal.
+ */
+export function noteDroppedHandovers(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  dropped: readonly { agent: string; session: string; project: string }[],
+): void {
+  for (const h of dropped)
+    noteImportStopped(
+      store,
+      {
+        code: "restarted",
+        text: `Den restarted while bringing in conversation ${h.session} as agent ${h.agent}, so the hand-over stopped and nothing was closed. Allow the import again.`,
+        vars: { session: h.session, agent: h.agent },
+      },
+      h.project,
+    );
+}
+
+/**
  * Issue 563: the bell's one note that the terminal host restarted on the
  * installed version: the agents that resumed, and that open terminals
  * ended. Issue 597: and the agents it cut mid-turn (told to carry on).

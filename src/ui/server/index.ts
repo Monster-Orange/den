@@ -1403,6 +1403,7 @@ import {
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
+  noteDroppedHandovers,
   noteImportStopped,
   refreshTerminalHost,
   startAgentUpkeep,
@@ -1432,6 +1433,7 @@ import {
   runPersonaUpdate,
   runProjectMode,
   runAgentImport,
+  sweepHandovers,
   personaLookup,
   hubUpstream,
   policyResolver,
@@ -10878,6 +10880,15 @@ const CRASH_GATE: Promise<void> = (() => {
 void CRASH_GATE.then(() =>
   startAgentUpkeep((line) => serverLog(line, "lifecycle")),
 );
+// Issue 159: hand-overs a restart dropped are told in the bell, once.
+try {
+  noteDroppedHandovers(
+    notificationDeps().store,
+    sweepHandovers(agentWebDeps()),
+  );
+} catch {
+  /* best effort: the next import still works */
+}
 // Sign-in: this server is one of Den's own processes while it runs.
 try {
   registerDenProcess(getStateDir(), "server");

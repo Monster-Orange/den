@@ -78,13 +78,22 @@ function world(
     busyUntil?: number;
     hookFails?: boolean;
     importFails?: boolean;
+    /** Who holds it at time t, overriding pid (the runtime's record). */
+    holderAt?: (t: number) => number | null;
   } = {},
 ) {
   let t = 0;
   let alive = o.pid !== null;
   const log: string[] = [];
   const steps: HandoverSteps = {
-    holder: () => (alive ? (o.pid === undefined ? 4242 : o.pid) : null),
+    holder: () =>
+      o.holderAt
+        ? o.holderAt(t)
+        : alive
+          ? o.pid === undefined
+            ? 4242
+            : o.pid
+          : null,
     stillOpen: () => alive,
     turnBusy: () =>
       o.busyUntil !== undefined && t < o.busyUntil ? true : false,
@@ -201,6 +210,31 @@ describe("issue 159: after the Allow, Den does every step", () => {
     const w = world({ writesAt: 0 });
     await handOver(opts({ hook: undefined }), w.steps);
     expect(w.log.some((l) => l.startsWith("hook"))).toBe(false);
+  });
+
+  it("the holder changed during the wait (reopened in another terminal): nothing is closed, it stops", async () => {
+    const w = world({
+      writesAt: 0,
+      holderAt: (t) => (t < 2_000 ? 4242 : 5151),
+    });
+    // The hand-off is in at once but the turn runs until 3 s: the holder
+    // is read again at the close, and it is no longer the Allow's.
+    const r = await handOver(opts(), {
+      ...w.steps,
+      turnBusy: () => w.steps.now() < 3_000,
+    });
+    expect(r.ok).toBe(false);
+    expect(w.log.some((l) => l.startsWith("close"))).toBe(false);
+    expect(w.log).not.toContain("import");
+    expect(w.log.at(-1)).toMatch(/^fail: holderChanged: /);
+  });
+
+  it("still open but no holder at the close: nothing is closed, it stops (unknownHolder)", async () => {
+    const w = world({ writesAt: 0, pid: null });
+    const r = await handOver(opts(), { ...w.steps, stillOpen: () => true });
+    expect(r.ok).toBe(false);
+    expect(w.log.some((l) => l.startsWith("close"))).toBe(false);
+    expect(w.log.at(-1)).toMatch(/^fail: unknownHolder: /);
   });
 
   it("a bring-in that fails after the close tells the person, with the reason", async () => {

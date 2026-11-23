@@ -121,6 +121,7 @@ import {
 } from "../../shared/agents/helpers-cleared.js";
 import { createHash } from "crypto";
 import { spawn } from "child_process";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -4525,10 +4526,13 @@ export interface ImportRequest {
 
 /** The persona's id, else the first `<persona>-<n>` no agent has. */
 function freeId(d: AgentsResolved, persona: string): string {
-  if (!readRecord(d.stateDir(), persona)) return persona;
+  // Issue 159: an id a waiting hand-over holds is taken too.
+  const free = (id: string) =>
+    !readRecord(d.stateDir(), id) && !reservedFor(d, id);
+  if (free(persona)) return persona;
   for (let n = 2; n < 1000; n++) {
     const id = `${persona.slice(0, 58)}-${n}`;
-    if (!readRecord(d.stateDir(), id)) return id;
+    if (free(id)) return id;
   }
   throw refused(`no free agent id for ${persona}: give one with --id`);
 }
@@ -4549,14 +4553,77 @@ export interface HandoverHooks {
   done?: (r: HandoverResult) => void;
 }
 
-/** A pid still running (signal 0); false when gone or not ours to ask. */
-function pidAlive(pid: number): boolean {
+/**
+ * Issue 159: a waiting hand-over's marker in the agent's folder. It
+ * reserves the agent id across the wait, refuses a second hand-over of the
+ * same conversation, and outlives a restart (sweepHandovers).
+ */
+export const HANDOVER_MARKER = "handoff.md.reserved";
+
+/** Hand-overs this process runs (agent ids): a marker of no other is stale. */
+const handingOver = new Set<string>();
+
+interface HandoverMark {
+  session: string;
+  project: string;
+  persona: string;
+  at: string;
+}
+
+function readMark(file: string): HandoverMark | null {
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
+    const v = JSON.parse(fs.readFileSync(file, "utf-8")) as HandoverMark;
+    return typeof v?.session === "string" && typeof v.project === "string"
+      ? v
+      : null;
+  } catch {
+    return null;
   }
+}
+
+/** The waiting hand-over agent id `id` is reserved for, if one is. */
+function reservedFor(d: AgentsResolved, id: string): HandoverMark | null {
+  return readMark(path.join(agentFilesDir(d.stateDir(), id), HANDOVER_MARKER));
+}
+
+/** Every marker: agent id, and what it waits for. */
+function handoverMarks(
+  d: AgentsResolved,
+): { id: string; mark: HandoverMark }[] {
+  const root = path.dirname(agentFilesDir(d.stateDir(), "x"));
+  let ids: string[];
+  try {
+    ids = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return ids.flatMap((id) => {
+    const mark = readMark(path.join(root, id, HANDOVER_MARKER));
+    return mark ? [{ id, mark }] : [];
+  });
+}
+
+/**
+ * Issue 159: the hand-overs a restart dropped (a marker no running
+ * hand-over owns): each is told once (the server's bell) and its marker
+ * removed, so its id is free again. The conversation is untouched.
+ */
+export function sweepHandovers(
+  d: AgentsResolved,
+): { agent: string; session: string; project: string }[] {
+  const out: { agent: string; session: string; project: string }[] = [];
+  for (const { id, mark } of handoverMarks(d)) {
+    if (handingOver.has(id)) continue;
+    try {
+      fs.rmSync(path.join(agentFilesDir(d.stateDir(), id), HANDOVER_MARKER), {
+        force: true,
+      });
+    } catch {
+      continue;
+    }
+    out.push({ agent: id, session: mark.session, project: mark.project });
+  }
+  return out;
 }
 
 /** Issue 159: the org config's import hook, sh -c, with DEN_IMPORT_*. */
@@ -4676,24 +4743,51 @@ function startHandover(
   a: { project: string; session: string; persona: string; runtime?: string },
   open: { pid: number | null },
   o: HandoverHooks,
-): {
-  ok: true;
-  id: string;
-  project: string;
-  persona: string;
-  handover: "waiting";
-  handoff: string;
-  next: string;
-} {
+):
+  | {
+      ok: true;
+      id: string;
+      project: string;
+      persona: string;
+      handover: "waiting";
+      handoff: string;
+      next: string;
+    }
+  | { ok: false; error: string } {
   const runtime = a.runtime ?? DEFAULT_RUNTIME_ID;
   const rt = getRuntime(runtime);
+  // One hand-over per conversation: a second Allow starts nothing.
+  const waiting = handoverMarks(d).find((m) => m.mark.session === a.session);
+  if (waiting)
+    return {
+      ok: false,
+      error: `a hand-over for this conversation is already waiting (agent ${waiting.id}); nothing more was started`,
+    };
   const id = freeId(d, a.persona);
   const folder = agentFilesDir(d.stateDir(), id);
-  fs.mkdirSync(folder, { recursive: true });
+  fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
   const file = handoffFile(folder);
   // An old hand-off (an earlier agent's of the same id) is never this one.
   if (fs.existsSync(file))
     fs.renameSync(file, `${file}.before-import-${Date.now()}`);
+  // The id stays this hand-over's until it ends (freeId reads the marker).
+  const marker = path.join(folder, HANDOVER_MARKER);
+  const mark: HandoverMark = {
+    session: a.session,
+    project: a.project,
+    persona: a.persona,
+    at: new Date().toISOString(),
+  };
+  writeFileAtomic(marker, `${JSON.stringify(mark)}\n`, { mode: 0o600 });
+  handingOver.add(id);
+  const release = () => {
+    handingOver.delete(id);
+    try {
+      fs.rmSync(marker, { force: true });
+    } catch {
+      /* gone already */
+    }
+  };
   const settings = d.agentsConfig().import ?? {
     handoffWaitMs: IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT * 60_000,
   };
@@ -4715,12 +4809,14 @@ function startHandover(
     )?.open ?? false;
   let closed = false;
   void handOver(opts, {
-    holder: () => open.pid ?? holderNow(),
-    // A known holder: open while it runs (its last write is its own).
-    // None known: open while written lately.
+    // Always the runtime's record, read again: never a pid kept from the
+    // Allow (it can be reused, or the conversation reopened elsewhere).
+    holder: holderNow,
+    // A holder at the Allow: open while the record says one holds it (its
+    // last write is its own). None then: open while written lately too.
     stillOpen: () =>
       open.pid !== null
-        ? pidAlive(open.pid) || holderNow() !== null
+        ? holderNow() !== null
         : holderNow() !== null || writtenLately(),
     turnBusy: () => rt?.turnBusy?.(a.session, d.env) ?? null,
     handoff: () => readHandoff(folder),
@@ -4758,7 +4854,10 @@ function startHandover(
     fail: (f) => o.fail?.(f),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     now: () => Date.now(),
-  }).then((r) => o.done?.(r));
+  }).then((r) => {
+    release();
+    o.done?.(r);
+  });
   return {
     ok: true,
     id,
