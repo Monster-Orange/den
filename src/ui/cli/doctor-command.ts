@@ -1891,6 +1891,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       // Issue 1274: memory VMs promise, against the machine's RAM.
       const vm = await gateVmRows();
       if (vm.lines.length) r.checks.push(vm.check);
+      // Issue 1263: throwaway containers left over from gate runs.
+      r.checks.push((await throwawayRows()).check);
       // The shared GitHub watcher: calls left, reset, watches, interval.
       const gw = await githubWatchRow();
       if (gw.check) r.checks.push(gw.check);
@@ -2034,6 +2036,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // Issue 1274: memory VMs promise, against the machine's RAM.
   for (const l of (await gateVmRows()).lines) console.log(l);
+  // Issue 1263: throwaway containers left over from gate runs.
+  {
+    const tw = await throwawayRows();
+    if (tw.lines.length) {
+      console.log(`Throwaway containers: ${tw.check.detail}`);
+      for (const l of tw.lines) console.log(l);
+    }
+  }
   // The shared GitHub watcher: calls left, reset, watches, interval.
   for (const l of (await githubWatchRow()).lines) console.log(l);
   {
@@ -2202,6 +2212,22 @@ async function gateBoxRows() {
       lines: [] as string[],
       check: { id: "gate_boxes", status: "ok" as const, detail: "" },
     };
+  }
+}
+
+/** Issue 1263: doctor reads docker's throwaway containers; removes none. */
+async function throwawayRows() {
+  const { throwawayLines } = await import("./doctor-throwaway.js");
+  const { listThrowaway, realDocker, storeTag } =
+    await import("../../shared/gates/ephemeral.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    const store = new GateStore();
+    const list = await listThrowaway(realDocker(10_000));
+    const live = new Set(store.list().map((e) => e.id));
+    return throwawayLines(list, live, storeTag(store.dir));
+  } catch {
+    return throwawayLines(null, new Set());
   }
 }
 

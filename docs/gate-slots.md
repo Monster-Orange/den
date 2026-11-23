@@ -684,9 +684,10 @@ are in Settings › Server, or
 
 ## Runs inside a held slot
 
-`gate run` gives its command three variables: `DEN_GATE_SLOT` (the
+`gate run` gives its command these variables: `DEN_GATE_SLOT` (the
 slot's id), `DEN_GATE_SLOT_KIND` (`cpu` or `browser`) and
-`DEN_GATE_SLOT_BOX` (`local`, or the test box it runs on). A `gate run`
+`DEN_GATE_SLOT_BOX` (`local`, or the test box it runs on), plus
+`DEN_GATE_STORE` (see "Throwaway containers go with their run"). A `gate run`
 started from inside that command, of the same kind and on the same place,
 runs inside the held slot at once: no second entry, no wait behind its
 own slot. It must run under the slot's run (its process or a child of
@@ -701,3 +702,39 @@ runs.
 A project's own lock helper can read the same variables: when
 `DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
 held slot and should not lock again.
+
+## Throwaway containers go with their run
+
+A test that starts a container of its own (a database, a cache) labels it
+so the gate can remove it when the run ends. Add the labels from
+`ephemeralLabels(process.env)` (in `src/shared/gates/ephemeral.ts`) to
+`docker run`:
+
+| Label            | Value                                                      |
+| ---------------- | ---------------------------------------------------------- |
+| `den.ephemeral`  | `1`: a throwaway container, never a service                |
+| `den.gate.run`   | the run's slot id (`DEN_GATE_SLOT`), inside a gate run     |
+| `den.gate.store` | the slot store's tag (`DEN_GATE_STORE`), inside a gate run |
+
+`gate run` gives its command both values, so a helper in any language can
+add `--label den.ephemeral=1 --label den.gate.run=$DEN_GATE_SLOT --label
+den.gate.store=$DEN_GATE_STORE` (the last two only when `DEN_GATE_SLOT` is
+set).
+
+Who removes them:
+
+- `gate run`, as soon as its command ends and its slot is given back.
+- Den's server: any throwaway container whose run has no live slot (taken
+  back, lapsed, ended by a person, or killed before it could clean up). It
+  looks when a slot has ended, once at start (so a container Docker brings
+  back after a restart goes), and every 10 minutes otherwise. Each docker
+  call has a 5-second limit, and after a failure it waits longer each time.
+  A container goes only when two looks at least a minute apart both found
+  its run ended, and never when the slots can't be read for sure.
+
+Only a container with all three labels, from this machine's slot store, is
+ever removed. One started outside a gate run (no run label) is never
+removed: `den doctor` lists it. The slot log records each removal with the
+count and the image names, never a command line or environment.
+`gate status` (and `--json`, as `removed`) shows the last day's removals,
+and `den doctor` warns about any left over from an ended run.

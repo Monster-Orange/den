@@ -329,6 +329,7 @@ import {
   checkGatePatch,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import { realDocker } from "../../shared/gates/ephemeral.js";
 import {
   gateBoxOps,
   gateRunnerTokenOp,
@@ -11378,6 +11379,9 @@ void CRASH_GATE.then(() =>
       .then((m) =>
         m.startGateNotices({
           store: gates,
+          // Issue 1263: throwaway test containers whose run ended (one
+          // look at start: containers Docker brought back after a restart).
+          docker: realDocker(),
           install: path.resolve(getStateDir()),
           projectOf: (agent) =>
             readAgentRecord(getStateDir(), agent)?.workspace ?? null,

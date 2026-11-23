@@ -299,7 +299,9 @@ export type GateEvent =
   | "yielded"
   // Issue 867: a waiter's run is gone, its place kept; and taken back.
   | "waiter-gone"
-  | "reattached";
+  | "reattached"
+  // Issue 1263: a run's throwaway containers removed after its slot ended.
+  | "containers-removed";
 
 /** Issue 963: one key's change: the value in effect before and after. */
 export interface GateSettingChange {
@@ -400,6 +402,9 @@ export interface GateEventRow {
   machine?: string;
   /** Issue 1033: why a run that could go to a box stays here. */
   hostWhy?: string;
+  /** Issue 1263: containers-removed: how many, and their image names. */
+  count?: number;
+  images?: string[];
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -932,6 +937,34 @@ export class GateStore {
     return at;
   }
 
+  /**
+   * Issue 1263: logs that run `id`'s throwaway containers were removed. The
+   * slot is gone by then, so its kind, asker and label come from its last
+   * row. Image names only: never a command line or environment.
+   */
+  noteContainersRemoved(
+    id: string,
+    r: { count: number; images: string[] },
+  ): void {
+    this.locked(() => {
+      const last = this.events()
+        .filter((x) => x.id === id)
+        .at(-1);
+      fs.mkdirSync(this.dir, { recursive: true });
+      const row: GateEventRow = {
+        at: new Date(this.now()).toISOString(),
+        event: "containers-removed",
+        id,
+        kind: last?.kind ?? (id.startsWith("browser-") ? "browser" : "cpu"),
+        who: last?.who ?? "",
+        label: last?.label ?? "",
+        count: r.count,
+        images: r.images,
+      };
+      fs.appendFileSync(this.eventsFile, JSON.stringify(row) + "\n");
+    });
+  }
+
   /** The runs' rows (issue 963: never a settings change). */
   events(): GateEventRow[] {
     return this.logRows().filter(
@@ -1119,6 +1152,42 @@ export class GateStore {
       }
     }
     return out;
+  }
+
+  /**
+   * Issue 1263: the ids of every slot (held or waiting), read strictly for a
+   * sweep that removes containers: null when the slots can't be read for
+   * sure (the folder unreadable or missing, a file unreadable or not JSON),
+   * so "can't read" is never taken for "nothing is live". A file gone
+   * between the listing and its read is a slot that just ended. Settles
+   * first, as list() does.
+   */
+  liveIds(): Set<string> | null {
+    this.list();
+    let names: string[];
+    try {
+      names = fs.readdirSync(this.slots).filter((n) => n.endsWith(".json"));
+    } catch {
+      return null;
+    }
+    const ids = new Set<string>();
+    for (const n of names) {
+      let text: string;
+      try {
+        text = fs.readFileSync(path.join(this.slots, n), "utf-8");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        return null;
+      }
+      try {
+        const e = JSON.parse(text) as Partial<GateEntry>;
+        if (typeof e.id !== "string") return null;
+        ids.add(e.id);
+      } catch {
+        return null;
+      }
+    }
+    return ids;
   }
 
   private file(id: string) {
