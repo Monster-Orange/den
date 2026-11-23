@@ -1436,8 +1436,11 @@ hub:
   than the watcher's first run, and comments Hub already delivered, are
   passed over. Hub has no ack for inbox items, so none is sent. While
   Hub doesn't answer the wait doubles, up to
-  `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
-  turns it off.
+  `hub.inbox_backoff_max_seconds` (default 600), plus up to a quarter
+  more by chance. The whole install reads at most
+  `hub.inbox_reads_per_second` (default 2), and each agent at most once
+  per poll, counted from when its last read ended. An agent's Stop hook
+  reuses Hub's answer for 30 s. `hub.inbox_watch: false` turns it off.
 - Hub's tool changes reach a resumed agent (0.4.52, issue 193). An agent
   resumed on the same conversation keeps the tool list its client read
   when that conversation began, so it doesn't know a parameter Hub added
@@ -1835,6 +1838,7 @@ and the guide to making your own
   (greys only, dashed, outline, one face) ships in the UI kit as
   `themes/sketch.css`, so a page with the kit and no Den server can link
   it after `tokens.css`.
+
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -6051,7 +6055,7 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
 - Held past `overrun_bell_multiple` times its estimate (default 2; `gate
-  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
   the bell's Needs you: who holds it, what it runs, since when and its
   estimate, with End for the person. When an agent holds it, Den types one
   line at that agent's prompt, once per slot, to release it with
