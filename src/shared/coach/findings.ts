@@ -63,16 +63,43 @@ export interface CoachApply {
   reversible: string;
 }
 
-/** Issue 110: the held write that applies finding `kind` on row `a`. */
+/** A persona's or project's name, as Apply may put it in a held write. */
+const APPLY_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * Issue 110: the held write that applies a finding, built here in code
+ * from its kind and its row's persona and project. POST /api/coach/apply
+ * calls it again on the stored finding and never trusts a stored `apply`:
+ * the report file can be written by anything that runs as this user.
+ * undefined for a kind with no Apply, or a name that isn't a plain name.
+ */
+export function coachApplyFor(
+  f: { kind: string; persona?: unknown; workspace?: unknown },
+  /** Whether Den has that project; the held write names it only then. */
+  projectExists?: (ws: string) => boolean,
+): CoachApply | undefined {
+  const { persona, workspace } = f;
+  if (
+    f.kind !== "subagent_opus" ||
+    typeof persona !== "string" ||
+    typeof workspace !== "string" ||
+    !APPLY_NAME_RE.test(persona) ||
+    !APPLY_NAME_RE.test(workspace)
+  )
+    return undefined;
+  return {
+    action: "persona_update",
+    args:
+      !projectExists || projectExists(workspace)
+        ? { id: persona, project: workspace, subagentModel: "sonnet" }
+        : { id: persona, subagentModel: "sonnet" },
+    change: `Set ${persona}'s subagent model to Sonnet.`,
+    reversible: `Set it back in ${persona}'s persona.`,
+  };
+}
+
 function applyOf(kind: FindingKind, a: CoachAgentRow): CoachApply | undefined {
-  if (kind === "subagent_opus" && a.persona)
-    return {
-      action: "persona_update",
-      args: { id: a.persona, project: a.workspace, subagentModel: "sonnet" },
-      change: `Set ${a.persona}'s subagent model to Sonnet.`,
-      reversible: `Set it back in ${a.persona}'s persona.`,
-    };
-  return undefined;
+  return coachApplyFor({ kind, persona: a.persona, workspace: a.workspace });
 }
 
 const MB = 1024 * 1024;

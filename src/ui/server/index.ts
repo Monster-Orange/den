@@ -33,6 +33,7 @@ import {
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
+  coachApplyFor,
   openFindings,
   readDismissals,
 } from "../../shared/coach/findings.js";
@@ -3879,6 +3880,15 @@ function coachRouteDeps(): CoachRouteDeps {
   };
 }
 
+/** Issue 110: whether Den has project `ws` (Apply names it only then). */
+function coachProjectExists(ws: string): boolean {
+  try {
+    return Object.hasOwn(readWorkspacesFile().workspaces ?? {}, ws);
+  } catch {
+    return false;
+  }
+}
+
 /** Issue 110: a held write's state, as its Coach finding's row shows it. */
 function coachHeldState(approval: string): ApplyState {
   try {
@@ -3894,11 +3904,19 @@ function coachApplyState(id: string): ApplyState | null {
   return link ? coachHeldState(link.approval) : null;
 }
 
-/** Issue 110: each finding with its Apply's state (`applied`), when it has one. */
-function withApplyState<T extends { id: string }>(open: T[]) {
+/**
+ * Issue 110: each finding with its Apply rebuilt in code (a stored one is
+ * never shown) and its Apply's state (`applied`), when it has one.
+ */
+function withApplyState<
+  T extends { id: string; kind: string; apply?: unknown },
+>(open: T[]) {
   const links = readApplyLinks(getStateDir());
-  return open.map((f) =>
-    Object.hasOwn(links, f.id)
+  return open.map((raw) => {
+    const { apply: _stored, ...rest } = raw;
+    const apply = coachApplyFor(raw, coachProjectExists);
+    const f = { ...rest, ...(apply ? { apply } : {}) };
+    return Object.hasOwn(links, f.id)
       ? {
           ...f,
           applied: {
@@ -3907,8 +3925,8 @@ function withApplyState<T extends { id: string }>(open: T[]) {
             at: links[f.id].at,
           },
         }
-      : f,
-  );
+      : f;
+  });
 }
 
 /** Issue 110: what Coach Apply's route needs from this server. */
@@ -3928,6 +3946,7 @@ function coachApplyDeps(): CoachApplyDeps {
     stateOf: coachHeldState,
     ask: (req, body) => askHeld(req, approvalDeps(), body),
     link: (id, approval, at) => linkApply(getStateDir(), id, approval, at),
+    projectExists: coachProjectExists,
   };
 }
 

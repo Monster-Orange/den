@@ -37,6 +37,8 @@ const isLink = (v: unknown): v is ApplyLink =>
   typeof (v as ApplyLink).approval === "string" &&
   typeof (v as ApplyLink).at === "string";
 
+const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 /** Every finding's link; {} when none, or the file is unreadable. */
 export function readApplyLinks(stateDir: string): Record<string, ApplyLink> {
   let raw: unknown;
@@ -46,9 +48,12 @@ export function readApplyLinks(stateDir: string): Record<string, ApplyLink> {
     return {};
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, ApplyLink> = {};
+  // No prototype, and no key that could be one: a hand-edited file can't
+  // set one (Reviewer B, issue 110).
+  const out: Record<string, ApplyLink> = Object.create(null);
   for (const [id, v] of Object.entries(raw as Record<string, unknown>))
-    if (isLink(v)) out[id] = { approval: v.approval, at: v.at };
+    if (!BAD_KEYS.has(id) && isLink(v))
+      out[id] = { approval: v.approval, at: v.at };
   return out;
 }
 
@@ -65,6 +70,7 @@ export function linkApply(
   approval: string,
   at: string,
 ): void {
+  if (BAD_KEYS.has(id)) return;
   const links = readApplyLinks(stateDir);
   links[id] = { approval, at };
   fs.mkdirSync(path.dirname(appliesFile(stateDir)), { recursive: true });

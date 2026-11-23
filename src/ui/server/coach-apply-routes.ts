@@ -21,9 +21,18 @@
  */
 import type * as http from "http";
 import type { ApplyLink, ApplyState } from "../../shared/coach/applies.js";
-import type { CoachFinding } from "../../shared/coach/findings.js";
+import {
+  coachApplyFor,
+  type CoachFinding,
+} from "../../shared/coach/findings.js";
 
 export const COACH_APPLY_ROUTES = ["/api/coach/apply"] as const;
+
+/**
+ * Finding ids whose Apply is asking now: a second Apply at the same
+ * moment is refused, as one waiting is (Builder 2, issue 110).
+ */
+const asking = new Set<string>();
 
 export interface CoachApplyDeps {
   sendJson: (res: http.ServerResponse, body: unknown, status?: number) => void;
@@ -50,6 +59,8 @@ export interface CoachApplyDeps {
     body: { action: string; args: Record<string, string>; note: string },
   ) => Promise<{ status: number; body: Record<string, unknown> }>;
   link: (id: string, approval: string, at: string) => void;
+  /** Whether Den has project `ws` (the held write names it only then). */
+  projectExists?: (ws: string) => boolean;
   now?: () => number;
 }
 
@@ -108,12 +119,15 @@ export async function handleCoachApplyRoute(
     answer(404, "not_found", "No open Coach finding has that id.");
     return true;
   }
-  if (!f.apply) {
+  // Rebuilt in code from the finding's kind and names: a stored `apply`
+  // (the report file) is never trusted (Reviewer B, issue 110).
+  const apply = coachApplyFor(f, d.projectExists);
+  if (!apply) {
     answer(404, "no_apply", "This finding has no change to apply.");
     return true;
   }
   const was = d.linkOf(id);
-  if (was && d.stateOf(was.approval) === "waiting") {
+  if (asking.has(id) || (was && d.stateOf(was.approval) === "waiting")) {
     answer(
       409,
       "apply_waiting",
@@ -121,10 +135,25 @@ export async function handleCoachApplyRoute(
     );
     return true;
   }
+  asking.add(id);
+  try {
+    return await askAndLink(req, res, id, apply, d);
+  } finally {
+    asking.delete(id);
+  }
+}
+
+async function askAndLink(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  id: string,
+  apply: NonNullable<ReturnType<typeof coachApplyFor>>,
+  d: CoachApplyDeps,
+): Promise<boolean> {
   const r = await d.ask(req, {
-    action: f.apply.action,
-    args: { ...f.apply.args },
-    note: `Coach: ${f.apply.change}`,
+    action: apply.action,
+    args: { ...apply.args },
+    note: `Coach: ${apply.change}`,
   });
   const approval = typeof r.body.id === "string" ? r.body.id : null;
   if (r.status !== 202 || r.body.ok !== true || !approval) {
