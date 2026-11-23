@@ -99,6 +99,27 @@ describe("issue 577: a failed push keeps Den's words apart from git's", () => {
   });
 });
 
+describe("issue 577: git's push output never carries a secret into the bell", () => {
+  it("a remote URL with a token in it is redacted in to.out and why", async () => {
+    const r = root();
+    const token = "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2";
+    const step = await commitPin("1.2.3", {
+      ...r,
+      git: fakeGit({
+        push: {
+          code: 1,
+          out: `fatal: unable to access 'https://x-access-token:${token}@github.com/o/r.git/'`,
+        },
+      }),
+    });
+    expect(step.did).toBe("push_failed");
+    const s = step as Extract<PinStep, { did: "push_failed" }>;
+    expect(s.to?.out).not.toContain(token);
+    expect(s.why).not.toContain(token);
+    expect(s.to?.out).toContain("fatal: unable to access");
+  });
+});
+
 describe("issue 577: the bell's pin notes are keys with vars", () => {
   const T = "Den";
   it("a failed push: bell.m.pinPushFailedTo, git's output in {out}", () => {
