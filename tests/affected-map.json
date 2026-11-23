@@ -2179,6 +2179,11 @@
       "why": "tests that run scripts/shard-plan.cjs"
     },
     {
+      "when": ["scripts/state-writes-gate.mjs"],
+      "run": ["tests/unit/test-infra/state-writes-gate.test.ts"],
+      "why": "tests that run scripts/state-writes-gate.mjs"
+    },
+    {
       "when": ["scripts/typecheck-tests.mjs"],
       "run": ["tests/unit/test-infra/typecheck-tests.test.ts"],
       "why": "tests that run scripts/typecheck-tests.mjs"
