@@ -1360,12 +1360,14 @@ import { handleHubProxy } from "./hub-proxy-routes.js";
 import {
   noteHubMcpCall,
   noteHubMcpInit,
+  noteHubMcpTools,
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
   refreshTerminalHost,
   startAgentUpkeep,
   terminalHostRefreshing,
+  startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
 import { hostRestartOp } from "./host-restart-held.js";
@@ -1462,6 +1464,7 @@ import {
 import { product } from "../../shared/product.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -1968,7 +1971,7 @@ const NAMED = new NamedAddressWatch({
   // For doctor: whether it is proven, and when it last answered as this Den.
   onChange: (st) => {
     try {
-      fs.writeFileSync(
+      writeFileAtomic(
         path.join(getStateDir(), ADDRESS_PROOF_FILE),
         JSON.stringify({
           proven: st.proven,
@@ -8957,6 +8960,9 @@ async function handleRequest(
     await handleHubProxy(req, res, pathname, {
       upstream: (who) => hubUpstream(agentWebDeps(), who),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
+      // Issue 749: a tool listing that failed leaves it without Hub's tools.
+      onMcpToolsList: (agentId, o) =>
+        noteHubMcpTools(getStateDir(), agentId, o),
       // 0.4.48: Hub turned the token down through an agent's call: let the
       // next call read it again (at most once a minute), as Den's own
       // status check does; and the agent's note says how its calls go.
@@ -10717,6 +10723,10 @@ try {
     "lifecycle",
   );
 }
+// Issue 163: back from a logout the server ran through: who ran meanwhile.
+void CRASH_GATE.then(() =>
+  startLogoutWatch((line) => serverLog(line, "lifecycle")),
+);
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());

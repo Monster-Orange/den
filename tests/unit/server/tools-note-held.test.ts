@@ -5,8 +5,10 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  TOOLS_LIST_FAILED_SUBJECT,
   TOOLS_NOTE_HELD_SUBJECT,
   clearToolsNotesHeld,
+  toolsListFailedNote,
   toolsNoteHeldNote,
 } from "../../../src/ui/server/update-check.js";
 
@@ -46,5 +48,31 @@ describe("the tools note waits: after Den restarts", () => {
     };
     expect(clearToolsNotesHeld(store as never)).toBe(2);
     expect(items.map((n) => n.subject)).toEqual(["record:something-else"]);
+  });
+});
+
+describe("issue 749: Hub's tools still didn't load after Den's one restart", () => {
+  it("one bell item per agent, in its project, with the error, keyed for every language", () => {
+    const added: Record<string, unknown>[] = [];
+    toolsListFailedNote(
+      {
+        add: (n: unknown) => void added.push(n as Record<string, unknown>),
+      } as never,
+      "Acme",
+      "planner",
+      "north",
+      "listing Hub's tools failed (hub (500): Internal Server Error)",
+    );
+    expect(added).toEqual([
+      expect.objectContaining({
+        subject: `${TOOLS_LIST_FAILED_SUBJECT}:planner`,
+        scope: "workspace/north",
+        link: "/agents",
+        msg: { key: "bell.m.toolsListFailed", vars: { agent: "planner" } },
+      }),
+    ]);
+    expect(String(added[0].text)).toBe(
+      "planner can't use Hub's tools: listing Hub's tools failed (hub (500): Internal Server Error). Acme restarted it once; restart it from Agents once Hub is fixed",
+    );
   });
 });
