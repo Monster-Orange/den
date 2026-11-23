@@ -1,17 +1,26 @@
 /* eslint-env browser */
 // Live check for issue 898: on an iPad the project drop-down's checkmark
-// wrapped onto a line of its own. Each cell opens the Services page signed in
-// as the bed's person, in a touch context of its own at iPad sizes (the
-// cell's browser, the page's own sign-in), opens the project picker and
-// measures the checked row (the project in view, or All projects). Read only
-// (issue 898): opens the picker's menu, which only changes the view; it
-// never picks a project.
+// wrapped onto a line of its own. Setup makes a throwaway project with a long
+// name, activates it and puts it in view, so it is the checked row. Each cell
+// opens the Services page signed in as the bed's person, in a touch context
+// of its own at iPad sizes (the cell's browser, the page's own sign-in),
+// opens the project picker and measures that row. Teardown puts the person's
+// view back, deactivates the project and deletes it.
 export const issue = 898;
 export const items = [898];
-export const readOnly = true;
 export const clauses = [
   "on an iPad (touch, portrait and landscape) the drop-down's checked row is one line, its ✓ at the end of that line",
+  "a long project name is cut short with an ellipsis instead of wrapping",
 ];
+
+/** Long enough that no iPad-width row holds it on one line. */
+export const LONG_NAME = "Gate 898 a project whose name runs well past the row";
+
+const json = (method, body) => ({
+  method,
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
 export const matrix = { browsers: ["webkit", "chromium"], widths: [1280] };
 export const timeoutMs = 120000;
 
@@ -45,11 +54,43 @@ async function touchPage(ctx, width, height) {
   return p;
 }
 
-export async function setup() {
-  return {};
+export async function setup(ctx) {
+  const s = { viewWas: (await ctx.api("/api/scope"))?.scope ?? "all" };
+  const made = await ctx.api(
+    "/api/workspaces/create",
+    json("POST", { name: LONG_NAME }),
+  );
+  if (!made?.slug) {
+    s.error = `couldn't make the long-named project: ${JSON.stringify(made).slice(0, 160)}`;
+    return s;
+  }
+  s.slug = made.slug;
+  await ctx.api(
+    "/api/workspaces",
+    json("POST", { name: s.slug, action: "activate" }),
+  );
+  const view = await ctx.api("/api/scope", json("POST", { scope: s.slug }));
+  if (view?.scope !== s.slug)
+    s.error = `couldn't put it in view: ${JSON.stringify(view).slice(0, 160)}`;
+  return s;
 }
 
-export async function run(ctx) {
+export async function teardown(ctx, s) {
+  if (s?.viewWas)
+    await ctx.api("/api/scope", json("POST", { scope: s.viewWas }));
+  if (!s?.slug) return;
+  await ctx.api(
+    "/api/workspaces",
+    json("POST", { name: s.slug, action: "deactivate" }),
+  );
+  await ctx.api(
+    "/api/workspaces",
+    json("DELETE", { name: s.slug, agents: "stop" }),
+  );
+}
+
+export async function run(ctx, s) {
+  if (s?.error) return [{ tag: ctx.browser, error: s.error }];
   const out = [];
   for (const [w, h] of SIZES) {
     const tag = `${ctx.browser}-${w}x${h}`;
@@ -66,8 +107,14 @@ export async function run(ctx) {
         const cs = getComputedStyle(row);
         const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
         const after = getComputedStyle(row, "::after");
+        const lab = row.firstElementChild;
+        const ls = getComputedStyle(lab);
         return {
-          text: row.firstElementChild.textContent,
+          text: lab.textContent,
+          // Cut short: the label's text is wider than its box, with an ellipsis.
+          cut: lab.scrollWidth > lab.clientWidth,
+          ellipsis: ls.textOverflow === "ellipsis",
+          nowrap: ls.whiteSpace === "nowrap",
           rowH: Math.round(r.height * 10) / 10,
           padY: parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom),
           line: Math.round(line * 10) / 10,
@@ -105,16 +152,17 @@ export function expect(cells) {
     r.rowH < r.line * 1.5 + r.padY &&
     r.parts.every((h) => h < r.line * 1.5) &&
     r.labelRight < r.rowRight - 8;
+  const cut = (r) =>
+    good(r) && r.text === LONG_NAME && r.cut && r.ellipsis && r.nowrap;
   const say = (r) =>
     r.error
       ? `${r.tag}: ${r.error}`
-      : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
+      : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row${r.cut ? ", cut short" : ""}${r.ellipsis ? " with an ellipsis" : ""}) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
+  const ok = (f) => all.length > 0 && all.every(f);
+  const detail = all.map(say).join("; ");
+  const evidence = all.map((r) => `${r.tag}.png`);
   return [
-    {
-      clause: clauses[0],
-      ok: all.length > 0 && all.every(good),
-      detail: all.map(say).join("; "),
-      evidence: all.map((r) => `${r.tag}.png`),
-    },
+    { clause: clauses[0], ok: ok(good), detail, evidence },
+    { clause: clauses[1], ok: ok(cut), detail, evidence },
   ];
 }

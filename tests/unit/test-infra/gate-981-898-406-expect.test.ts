@@ -69,9 +69,13 @@ describe("issue 981's live check", () => {
 });
 
 describe("issue 898's live check", () => {
-  const row = (fixed: boolean) => ({
+  const LONG = "Gate 898 a project whose name runs well past the row";
+  const row = (fixed: boolean, text = LONG) => ({
     tag: "webkit-820x1180",
-    text: "a-project-whose-name-is-far-too-long-for-the-menu-row",
+    text,
+    cut: fixed,
+    ellipsis: fixed,
+    nowrap: fixed,
     rowH: fixed ? 44 : 64,
     padY: 20,
     line: 18,
@@ -85,14 +89,34 @@ describe("issue 898's live check", () => {
     coarse: true,
   });
 
-  it("before the fix (the row two lines, the mark absolute): the clause fails", () => {
-    expect(rows(898, [cell("webkit", [row(false)])])[0].ok).toBe(false);
+  it("before the fix (the long name wraps to two lines, the mark absolute): both clauses fail", () => {
+    const r = rows(898, [cell("webkit", [row(false)])]);
+    expect(r.map((x) => x.ok)).toEqual([false, false]);
   });
 
-  it("with the fix: the clause passes, and says how long the label was against the row", () => {
-    const [r] = rows(898, [cell("webkit", [row(true)])]);
-    expect(r.ok).toBe(true);
-    expect(r.detail).toContain("label 420px of a 300px row");
+  it("with the fix: both pass, and the detail says the long label was cut short", () => {
+    const r = rows(898, [cell("webkit", [row(true)])]);
+    expect(r.map((x) => x.ok)).toEqual([true, true]);
+    expect(r[1].detail).toContain(
+      "label 420px of a 300px row, cut short with an ellipsis",
+    );
+  });
+
+  it("a short checked row proves the line but not the cut: the long-name clause fails", () => {
+    const r = rows(898, [
+      cell("webkit", [{ ...row(true, "All active (8)"), cut: false }]),
+    ]);
+    expect(r.map((x) => x.ok)).toEqual([true, false]);
+  });
+
+  it("the long-named project couldn't be made: both clauses fail with the reason", () => {
+    const r = rows(898, [
+      cell("webkit", [
+        { tag: "webkit", error: "couldn't make the long-named project" },
+      ]),
+    ]);
+    expect(r.map((x) => x.ok)).toEqual([false, false]);
+    expect(r[0].detail).toContain("couldn't make the long-named project");
   });
 });
 
