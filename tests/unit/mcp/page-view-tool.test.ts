@@ -7,6 +7,7 @@ import { describe, expect, it } from "@jest/globals";
 import { assertAllowedRequest, type DenApi } from "../../../src/ui/mcp/api.js";
 import { callTool, toolsFor } from "../../../src/ui/mcp/tools.js";
 import type { ResolvedMcpConfig } from "../../../src/shared/den-config.js";
+import { AGENT_VIEW_LINK_NOTE } from "../../../src/shared/agent-view-note.js";
 
 const cfg = (): ResolvedMcpConfig => ({
   actions: [],
@@ -23,6 +24,8 @@ describe("issue 1243: page_view says its link is the agent's own", () => {
     expect(d).toMatch(/your own browser on this machine/);
     expect(d).toMatch(/never give it to a person/i);
     expect(d).toMatch(/web\.url/);
+    // One text: the description carries the answer's note, word for word.
+    expect(d).toContain(AGENT_VIEW_LINK_NOTE);
   });
 
   it("the answer's note reaches the agent beside the url, unchanged", async () => {
