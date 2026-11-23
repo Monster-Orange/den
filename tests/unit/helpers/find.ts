@@ -10,8 +10,10 @@
  *   "Delete project" })`, `{ dialogClosed }`, `{ row }`. A wait ends as soon
  *   as the state holds; one that runs out says which state, how long, and
  *   Playwright's reason.
- * - A request settled: `settled(page, "/api/agents", () => button.click())`
- *   arms the wait before the action, so a fast response is never missed.
+ * - A request settled: `settled(page, "/api/agents", () => button.click(),
+ *   { method: "POST" })` arms the wait before the action, so a fast response
+ *   is never missed; the path is exact and the method keeps a background
+ *   poll from settling it.
  *
  * Timeouts default to the suite's wait (browserWaitMs: DEN_BROWSER_WAIT_MS,
  * 20 s unset), which allows for a remote browser's round trips.
@@ -27,6 +29,12 @@ export interface FindLocator {
   }): Promise<void>;
 }
 
+/** What settled uses of a Playwright Response. */
+export interface FindResponse {
+  url(): string;
+  request(): { method(): string };
+}
+
 /** What these helpers use of a Playwright Page (a Page satisfies it). */
 export interface FindPage {
   getByRole(
@@ -35,9 +43,9 @@ export interface FindPage {
   ): FindLocator;
   getByLabel(label: string | RegExp, opts: { exact: boolean }): FindLocator;
   waitForResponse(
-    match: (r: { url(): string }) => boolean,
+    match: (r: FindResponse) => boolean,
     opts: { timeout: number },
-  ): Promise<{ url(): string }>;
+  ): Promise<FindResponse>;
 }
 
 /** An element by its role and accessible name, matched exactly. */
@@ -109,18 +117,29 @@ export async function waitFor(
 }
 
 /**
- * Runs `action` and waits for the first response whose URL contains `url`
- * (or matches it), armed before the action. Returns that response.
+ * Runs `action` and waits for the first response to it, armed before the
+ * action. A string is the exact path (`/api/agents` never matches
+ * `/api/agents/stale`, and the query is ignored); a RegExp is tested against
+ * the whole URL, for anything looser. `method` ("POST", any case) keeps a
+ * background poll to the same path from settling it. Returns the response.
  */
-export async function settled<R extends { url(): string }>(
+export async function settled<R extends FindResponse = FindResponse>(
   page: FindPage,
   url: string | RegExp,
   action: () => Promise<unknown>,
-  opts: { timeout?: number } = {},
+  opts: { timeout?: number; method?: string } = {},
 ): Promise<R> {
   const timeout = opts.timeout ?? browserWaitMs();
-  const match = (r: { url(): string }) =>
-    typeof url === "string" ? r.url().includes(url) : url.test(r.url());
+  const method = opts.method?.toUpperCase();
+  const match = (r: FindResponse) => {
+    if (method && r.request().method().toUpperCase() !== method) return false;
+    if (typeof url !== "string") return url.test(r.url());
+    try {
+      return new URL(r.url()).pathname === url;
+    } catch {
+      return false;
+    }
+  };
   const waiting = page.waitForResponse(match, { timeout });
   // Never an unhandled rejection while the action runs.
   waiting.catch(() => undefined);
@@ -129,7 +148,7 @@ export async function settled<R extends { url(): string }>(
     return (await waiting) as R;
   } catch (e) {
     throw new Error(
-      `waited ${timeout} ms for a response from ${String(url)}: ${firstLine(e)}`,
+      `waited ${timeout} ms for a ${method ? `${method} ` : ""}response from ${String(url)}: ${firstLine(e)}`,
     );
   }
 }

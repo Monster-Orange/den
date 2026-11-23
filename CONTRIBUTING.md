@@ -65,8 +65,11 @@ right way the short way, in Chromium and WebKit alike:
 import { byLabel, byRole, settled, waitFor } from "../helpers/find.js";
 
 await byLabel(page, "Project name").fill("billing");
-await settled(page, "/api/projects", () =>
-  byRole(page, "button", "Add project").click(),
+await settled(
+  page,
+  "/api/projects",
+  () => byRole(page, "button", "Add project").click(),
+  { method: "POST" },
 );
 await waitFor(page, { row: "billing" });
 await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
@@ -74,8 +77,14 @@ await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
 
 `byRole` and `byLabel` match the name exactly. `waitFor` ends as soon as the
 state holds, and one that runs out says which state and how long it waited.
-`settled` arms the wait before the action, so a fast response is never
-missed. Timeouts default to the suite's wait (`DEN_BROWSER_WAIT_MS`).
+`{ row }` is ARIA role=row (a table row, or an element with `role="row"`);
+many of Den's list rows are buttons, so `byRole(page, "button", name)` finds
+those. `settled` arms the wait before the action, so a fast response is
+never missed. A string is the exact path (`/api/agents` never matches
+`/api/agents/stale`; the query is ignored), and `method` keeps a background
+poll to the same path from settling it; a RegExp matches the whole URL, for
+anything looser. Timeouts default to the suite's wait
+(`DEN_BROWSER_WAIT_MS`).
 
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as

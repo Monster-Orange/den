@@ -68,8 +68,11 @@ for (const engine of ["chromium", "webkit"])
       if (!b) return;
       const p = await open(b);
       await byLabel(p, "Project name").fill("billing");
-      const r = await settled(p, "/api/projects", () =>
-        byRole(p, "button", "Add project").click(),
+      const r = await settled(
+        p,
+        "/api/projects",
+        () => byRole(p, "button", "Add project").click(),
+        { method: "POST" },
       );
       expect(r.url()).toBe(`${ORIGIN}/api/projects`);
       await waitFor(p, { row: "billing" });
