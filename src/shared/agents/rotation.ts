@@ -583,7 +583,8 @@ export function parseDeferTime(
   } else if (/^\d{4}-\d{2}-\d{2}T/.test(v) && Number.isFinite(Date.parse(v))) {
     at = new Date(Date.parse(v));
   }
-  if (!at || at.getTime() <= now.getTime())
+  // A huge +N or year is no time at all (an Invalid Date): refused too.
+  if (!at || !Number.isFinite(at.getTime()) || at.getTime() <= now.getTime())
     throw new Error(
       `put off until takes ${DEFER_WORDS} (got ${JSON.stringify(raw)})`,
     );
