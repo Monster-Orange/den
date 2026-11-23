@@ -44,6 +44,12 @@ export interface AgentLaunchSpec {
   cwd: string;
   /** The session's env beyond the launcher's: never a secret. */
   env: Record<string, string>;
+  /**
+   * The env name the runtime reads its sign-in token from (the catalog's:
+   * CLAUDE_CODE_OAUTH_TOKEN for Claude Code). A name only: the token itself
+   * comes on the terminal.
+   */
+  tokenEnv?: string;
 }
 
 function checkSpec(s: AgentLaunchSpec): void {
@@ -58,6 +64,10 @@ function checkSpec(s: AgentLaunchSpec): void {
   if (typeof s.cwd !== "string" || !path.isAbsolute(s.cwd))
     throw new Error(
       `launch files: the working folder must be absolute (got ${JSON.stringify(s.cwd)})`,
+    );
+  if (s.tokenEnv !== undefined && !ENV_NAME_RE.test(s.tokenEnv))
+    throw new Error(
+      `launch files: the token's env name "${s.tokenEnv}" is not an env name`,
     );
   for (const [k, v] of Object.entries(s.env)) {
     if (!ENV_NAME_RE.test(k) || typeof v !== "string")
@@ -99,7 +109,7 @@ export function writeAgentLaunch(agentsDir: string, s: AgentLaunchSpec): void {
   // 2750: the person (its owner) writes; the login only reads.
   writeFileAtomic(
     file,
-    `${JSON.stringify({ agentId: s.agentId, argv: s.argv, cwd: s.cwd, env: s.env }, null, 2)}\n`,
+    `${JSON.stringify({ agentId: s.agentId, argv: s.argv, cwd: s.cwd, env: s.env, ...(s.tokenEnv ? { tokenEnv: s.tokenEnv } : {}) }, null, 2)}\n`,
     { mode: FILE_MODE },
   );
 }
@@ -178,6 +188,7 @@ export function readAgentLaunch(
     argv: raw.argv,
     cwd: raw.cwd,
     env: raw.env ?? {},
+    ...(raw.tokenEnv !== undefined ? { tokenEnv: raw.tokenEnv } : {}),
   };
   checkSpec(s);
   if (s.agentId !== agentId)
