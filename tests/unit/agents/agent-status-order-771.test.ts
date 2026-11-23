@@ -10,8 +10,10 @@ import { describe, expect, it } from "@jest/globals";
 import {
   agentStatus,
   fromTerm,
+  type AgentStatus,
   type Detection,
 } from "../../../src/shared/agents/detect/index.js";
+import type { StatusState } from "../../../src/shared/sessions/bell.js";
 
 const screen = (
   state: Detection["state"],
@@ -28,13 +30,14 @@ const T0 = "2026-11-23T04:00:00.000Z";
 const T1 = "2026-11-23T04:00:05.000Z";
 
 describe("fromTerm: 7501's five states onto Den's three", () => {
-  it.each([
+  const cases: [StatusState, AgentStatus, boolean][] = [
     ["working", "working", false],
     ["blocked", "blocked", false],
     ["error", "blocked", false],
     ["idle", "idle", false],
     ["done", "idle", true],
-  ] as const)("%s is %s (finished %s)", (state, status, finished) => {
+  ];
+  it.each(cases)("%s is %s (finished %s)", (state, status, finished) => {
     expect(fromTerm(state)).toEqual({ status, finished });
   });
 });
