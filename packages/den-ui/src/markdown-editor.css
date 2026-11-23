@@ -10,7 +10,7 @@
   flex-direction: column;
   min-width: 0;
   background: var(--raised);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius);
   transition: border-color var(--dur-fast) var(--ease);
 }
@@ -37,7 +37,7 @@
   align-items: center;
   gap: 2px;
   padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
 }
 .md-toolbar-sep {
   width: 1px;
@@ -183,7 +183,7 @@
   font-size: 1.1em;
 }
 .md-quote {
-  border-left: 3px solid var(--border-strong);
+  border-left: 3px var(--edge-style, solid) var(--border-strong);
   padding-left: 10px !important;
   color: var(--muted);
 }

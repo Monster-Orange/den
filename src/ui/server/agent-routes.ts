@@ -748,7 +748,14 @@ export async function handleAgentRoutes(
     } catch {
       editions = null;
     }
-    const out = { ...st, ...(editions ? { editions } : {}) };
+    // Issue 869: Hub refused this Den's address when it was last told.
+    const tell = await import("../../shared/hub-den-url.js");
+    const denUrl = tell.denUrlTellProblem(tell.readDenUrlTell(getStateDir()));
+    const out = {
+      ...st,
+      ...(editions ? { editions } : {}),
+      ...(denUrl ? { denUrl } : {}),
+    };
     sendJson(res, last ? { ...out, connect: last } : out);
     return true;
   }
