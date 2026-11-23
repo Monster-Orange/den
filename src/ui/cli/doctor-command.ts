@@ -1633,7 +1633,7 @@ export function signingLines(
         "",
         `${title} doctor: agents' commit signing`,
         "",
-        "  signing  ⚠  not signed: no agents.git.signing_key (agents' commits and Den's pin commits are unsigned)",
+        "  signing  ℹ  not signed: no agents.git.signing_key (agents' commits and Den's pin commits are unsigned)",
         `           fix: ${fix}`,
       ],
       problem: false,

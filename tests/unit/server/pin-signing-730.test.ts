@@ -100,6 +100,10 @@ describe("1. doctor: a row for agent commit signing, set or not", () => {
     expect(text).toMatch(/agents' commit signing/);
     expect(text).toMatch(/not signed: no agents\.git\.signing_key/);
     expect(text).toMatch(/agent_signing_key_create/);
+    // A fresh install's doctor shows no warning (no-secrets-store's rule):
+    // said as information, with the fix; the setup list still offers it.
+    expect(text).toMatch(/signing  ℹ  not signed/);
+    expect(text).not.toMatch(/⚠/);
     expect(r.checks[0]).toMatchObject({ status: "warn" });
     expect(r.problem).toBe(false);
   });
