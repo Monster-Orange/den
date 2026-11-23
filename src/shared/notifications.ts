@@ -557,6 +557,25 @@ export class NotificationStore {
     return n;
   }
 
+  /**
+   * Issue 1339: mark these ids read in one read and one write (Mark all
+   * read marked each entry with its own whole-file rewrite). Ids that
+   * aren't there are skipped; how many changed.
+   */
+  markReadMany(ids: Iterable<string>): number {
+    const want = new Set(ids);
+    if (!want.size) return 0;
+    const f = this.read();
+    let n = 0;
+    for (const x of f.items)
+      if (!x.read && want.has(x.id)) {
+        x.read = true;
+        n++;
+      }
+    if (n) this.write(f);
+    return n;
+  }
+
   /** Remove the read ones (of `w`, default all); how many went. */
   clearRead(w: Which = { all: true }): number {
     const f = this.read();

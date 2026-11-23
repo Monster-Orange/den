@@ -2716,6 +2716,8 @@
     "bell.undo": "元に戻す",
     "bell.undoMsg": "「{kind}」を表示しなくなりました。",
     "bell.clearRead": "既読を消去",
+    "bell.marking": "既読にしています…",
+    "bell.clearing": "消去しています…",
     "bell.read": "既読にする",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
