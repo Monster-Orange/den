@@ -15,6 +15,7 @@
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** The launcher's map, `<PREFIX>_TEST_RESOLVE` (profile readEnv). */
 export const TEST_RESOLVE_ENV_KEY = "TEST_RESOLVE";
@@ -97,7 +98,8 @@ export function writeTestResolveState(
     else {
       // The server writes this at start, before it makes its state folder.
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(p, JSON.stringify(s) + "\n", { mode: 0o600 });
+      // Issue 786: written whole (a temp file, flushed, then renamed).
+      writeFileAtomic(p, JSON.stringify(s) + "\n", { mode: 0o600 });
     }
   } catch {
     /* doctor just says nothing */

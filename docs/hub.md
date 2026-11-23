@@ -190,8 +190,10 @@ Three switches in Settings › Hub turn them on or off:
   agent finished the Hub comments it was given.
 - **Projects need your pick:** Den can't tell which Hub project fits a project. Hub's decisions follow
   this switch too.
-- **Shared with you:** an agent shared a doc or mock with you. The switch is ready; Den doesn't show
-  these yet.
+- **Shared with you:** someone on Hub, a person or an agent, shared a doc or mock with you. Den writes
+  the words itself in your language ("kim shared Pricing mock with you", plus their note), from the
+  item's name, title and sharer. A click opens it on your connected Hub; a link anywhere else opens
+  Hub's home instead.
 
 All three are on by default. A switch that is off hides the item and its count. The item is still
 kept, and `<cli> notifications list` still lists it.

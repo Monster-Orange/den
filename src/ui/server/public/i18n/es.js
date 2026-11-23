@@ -1940,6 +1940,9 @@
     "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",
     "ag.mcp.dropsTip":
       "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.failed": "Las herramientas de Hub no cargaron",
+    "ag.mcp.failedTip":
+      "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -2629,6 +2632,11 @@
     "bell.m.vschedExpire.one":
       'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.shared": "{actor} compartió {title} contigo",
+    "bell.m.sharedNote": "{actor} compartió {title} contigo: {note}",
+    "bell.m.sharedAgent": "El agente {actor} compartió {title} contigo",
+    "bell.m.sharedAgentNote":
+      "El agente {actor} compartió {title} contigo: {note}",
     "bell.m.heldLapsed":
       "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLapsedAsk":
@@ -2656,6 +2664,10 @@
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.ranLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes trabajaron: {names}",
+    "bell.m.stoppedLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
@@ -2715,6 +2727,8 @@
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
+    "bell.m.toolsListFailed":
+      "{agent} no puede usar las herramientas de Hub: no se pudieron listar otra vez después de que __DEN_TITLE__ lo reiniciara una vez. Reinícialo desde Agentes cuando Hub esté arreglado",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":
