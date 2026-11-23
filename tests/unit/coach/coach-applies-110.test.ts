@@ -84,6 +84,21 @@ describe("which held write a finding's Apply asked for", () => {
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  it("a __proto__ key in the file never sets a prototype", () => {
+    fs.mkdirSync(path.join(dir, "coach"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "coach", "applies.json"),
+      '{"__proto__":{"approval":"x","at":"y"},"constructor":{"approval":"x","at":"y"},"subagent_opus:b":{"approval":"a1","at":"t"}}',
+    );
+    const links = readApplyLinks(dir);
+    expect(Object.getPrototypeOf(links)).not.toEqual({
+      approval: "x",
+      at: "y",
+    });
+    expect(Object.keys(links)).toEqual(["subagent_opus:b"]);
+    expect(applyLinkOf(dir, "__proto__")).toBeNull();
+    expect(applyLinkOf(dir, "constructor")).toBeNull();
+  });
   it("a hand-broken file reads as no links", () => {
     fs.mkdirSync(path.join(dir, "coach"), { recursive: true });
     fs.writeFileSync(path.join(dir, "coach", "applies.json"), "{nope");

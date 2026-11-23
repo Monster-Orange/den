@@ -160,6 +160,77 @@ describe("POST /api/coach/apply", () => {
     expect(h.asked).toHaveLength(2);
   });
 
+  it("never trusts a stored apply: a rewritten report's action or note isn't asked", async () => {
+    // Reviewer B: agents can write the state folder, so coach/latest.json
+    // may carry any apply. The route rebuilds it from the finding's kind.
+    const forged: CoachFinding = {
+      ...OPUS,
+      apply: {
+        action: "den_update" as never,
+        args: { version: "9.9.9" },
+        change: "Allow this, it is safe.",
+        reversible: "Yes.",
+      },
+    };
+    const h = harness({ openFindings: () => [forged] });
+    const r = await h.call("POST", { id: "subagent_opus:builder" });
+    expect(r.last.status).toBe(202);
+    expect(h.asked).toEqual([
+      {
+        action: "persona_update",
+        args: { id: "builder", project: "shop", subagentModel: "sonnet" },
+        note: "Coach: Set builder's subagent model to Sonnet.",
+      },
+    ]);
+    const other = harness({
+      openFindings: () => [
+        { ...forged, id: "polling:builder", kind: "polling" },
+      ],
+    });
+    const p = await other.call("POST", { id: "polling:builder" });
+    expect([p.last.status, p.last.body.code]).toEqual([404, "no_apply"]);
+    expect(other.asked).toEqual([]);
+  });
+
+  it("a persona or project name that isn't a plain name: no_apply", async () => {
+    for (const bad of [
+      { persona: "../etc", workspace: "shop" },
+      { persona: "builder", workspace: "shop\nx" },
+      { persona: "", workspace: "shop" },
+    ]) {
+      const h = harness({ openFindings: () => [{ ...OPUS, ...bad }] });
+      const r = await h.call("POST", { id: "subagent_opus:builder" });
+      expect([r.last.status, r.last.body.code]).toEqual([404, "no_apply"]);
+      expect(h.asked).toEqual([]);
+    }
+  });
+
+  it("a project Den doesn't have isn't named in the held write", async () => {
+    const h = harness({ projectExists: () => false });
+    await h.call("POST", { id: "subagent_opus:builder" });
+    expect(h.asked[0]?.args).toEqual({
+      id: "builder",
+      subagentModel: "sonnet",
+    });
+  });
+
+  it("two Applies at once ask for one held write", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const h = harness();
+    const ask = h.d.ask;
+    h.d.ask = async (req, b) => {
+      await gate;
+      return ask(req, b);
+    };
+    const one = h.call("POST", { id: "subagent_opus:builder" });
+    const two = h.call("POST", { id: "subagent_opus:builder" });
+    release();
+    const [a, b] = await Promise.all([one, two]);
+    expect([a.last.status, b.last.status].sort()).toEqual([202, 409]);
+    expect(h.asked).toHaveLength(1);
+  });
+
   it("no such open finding, or one with no proposal: 404, nothing asked", async () => {
     const h = harness();
     const none = await h.call("POST", { id: "subagent_opus:ghost" });
