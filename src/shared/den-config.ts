@@ -618,6 +618,11 @@ export interface UserConfig {
      */
     sandbox?: unknown;
     /**
+     * Issue 159: `{ hook }`, the command Den runs after closing the old
+     * terminal of a conversation it brings in. Only here.
+     */
+    import?: unknown;
+    /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
      */
@@ -2040,11 +2045,11 @@ export interface ResolvedAgentsConfig {
    */
   rotationWaitMs?: number;
   /**
-   * Issue 159: agents.import, `{ handoff_wait_minutes, hook }`. After the
-   * person allows bringing in a conversation still open in a terminal, Den
-   * waits up to handoffWaitMs (default 30 min) for its hand-off, then
-   * closes that terminal, runs `hook` if set (sh -c, with DEN_IMPORT_*),
-   * and continues the conversation as a Den agent.
+   * Issue 159: agents.import. After the person allows bringing in a
+   * conversation still open in a terminal, Den waits up to handoffWaitMs
+   * (the org config's handoff_wait_minutes, default 30) for its hand-off,
+   * then closes that terminal, runs `hook` if set (user.yml only; sh -c,
+   * with DEN_IMPORT_*), and continues the conversation as a Den agent.
    */
   import?: ImportSettings;
   /**
@@ -2085,7 +2090,11 @@ export interface ImportSettings {
 /** Issue 159: the default wait for a conversation's hand-off, in minutes. */
 export const IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT = 30;
 
-/** `agents.import` (issue 159) checked; a bad key or value throws naming it. */
+/**
+ * The org config's `agents.import` (issue 159): `handoff_wait_minutes`. The
+ * hook is refused here: the org config may sit in a repo agents edit, and
+ * the hook runs on a person's Allow. A bad key or value throws naming it.
+ */
 export function importBlock(v: unknown): ImportSettings {
   const out: ImportSettings = {
     handoffWaitMs: IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT * 60_000,
@@ -2093,7 +2102,7 @@ export function importBlock(v: unknown): ImportSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.import: must be a mapping ({ handoff_wait_minutes: <n>, hook: <command> }) (got ${JSON.stringify(v)})`,
+      `agents.import: must be a mapping ({ handoff_wait_minutes: <n> }) (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "handoff_wait_minutes") {
@@ -2102,18 +2111,51 @@ export function importBlock(v: unknown): ImportSettings {
           `agents.import.handoff_wait_minutes: must be a number of minutes above 0 (got ${JSON.stringify(x)})`,
         );
       out.handoffWaitMs = Math.round(x * 60_000);
-    } else if (k === "hook") {
-      if (typeof x !== "string" || !x.trim() || /[\r\n]/.test(x))
-        throw new Error(
-          `agents.import.hook: must be one command line (got ${JSON.stringify(x)})`,
-        );
-      out.hook = x;
-    } else
+    } else if (k === "hook")
+      throw new Error(USER_YML_ONLY("agents.import.hook"));
+    else
       throw new Error(
-        `agents.import.${k}: unknown key (takes handoff_wait_minutes, hook)`,
+        `agents.import.${k}: unknown key (takes handoff_wait_minutes)`,
       );
   }
   return out;
+}
+
+/** A key only user.yml takes (agents can't write it). */
+const USER_YML_ONLY = (key: string) =>
+  `${key}: set it in config/local/user.yml, which agents can't write`;
+
+/**
+ * user.yml's `agents.import` (issue 159): `hook`, the one command Den runs
+ * after closing a conversation's old terminal. Per machine, and only here.
+ */
+export function applyUserImport(
+  out: ResolvedAgentsConfig,
+  userAgents: unknown,
+): void {
+  if (!isMapping(userAgents)) return;
+  const v = userAgents.import;
+  if (v === undefined || v === null) return;
+  if (!isMapping(v))
+    throw new Error(
+      `agents.import: must be a mapping ({ hook: <command> }) (got ${JSON.stringify(v)})`,
+    );
+  for (const [k, x] of Object.entries(v)) {
+    if (k !== "hook")
+      throw new Error(
+        `agents.import.${k}: unknown key in user.yml (takes hook; handoff_wait_minutes goes in den.yml)`,
+      );
+    if (typeof x !== "string" || !x.trim() || /[\r\n]/.test(x))
+      throw new Error(
+        `agents.import.hook: must be one command line (got ${JSON.stringify(x)})`,
+      );
+    out.import = {
+      ...(out.import ?? {
+        handoffWaitMs: IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT * 60_000,
+      }),
+      hook: x,
+    };
+  }
 }
 
 /** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
@@ -2253,6 +2295,11 @@ export function readAgentsConfig(
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => applyUserSandbox(out, u.agents),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
+  // Issue 159: the import hook is per machine, from user.yml only.
+  asConfigError(
+    () => applyUserImport(out, u.agents),
     path.relative(ROOT, USER_CONFIG_PATH),
   );
   // A signing key is per machine: user.yml's agents.git wins.

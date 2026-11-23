@@ -3046,7 +3046,7 @@
     "ap.det.agent_import.handover":
       "If it is still open in a terminal, Den asks it for its hand-off, closes that terminal, then continues it here. Refused if an agent already continues it.",
     "ap.det.agent_import.hook":
-      "Then Den runs this project's import hook: {hook}",
+      "Then Den runs this machine's import hook: {hook}",
     "ap.det.approval_policy.now": "Now: {v}.",
     "ap.det.approval_policy.nowNone": "Now: none.",
     "ap.det.approval_policy.then": "Then: {v}.",

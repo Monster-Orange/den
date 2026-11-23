@@ -4091,17 +4091,35 @@ import -w <ws>` lists them too.
   refuses an open conversation: there, the person closes it.
 
   ```yaml
+  # den.yml (the org config)
   agents:
     import:
       handoff_wait_minutes: 30 # how long Den waits for the hand-off (above 0)
+  ```
+
+  ```yaml
+  # config/local/user.yml (this machine; agents can't write it)
+  agents:
+    import:
       hook: "my-lanes forget $DEN_IMPORT_PID" # optional; sh -c, 60 s at most
   ```
 
-  The hook runs after the old terminal closed and before the bring-in,
-  with `DEN_IMPORT_SESSION`, `DEN_IMPORT_AGENT`, `DEN_IMPORT_PROJECT` and,
-  when Den knew the terminal's process, `DEN_IMPORT_PID`. The Allow names
-  the command. A hook that fails is noted; the conversation still comes in.
-
+  The hook is per machine and only in user.yml: the org config may sit in
+  a repo agents edit, and the hook runs on a person's Allow (the org
+  config's `agents.import.hook` is refused, naming user.yml). It runs after
+  the old terminal closed and before the bring-in, with
+  `DEN_IMPORT_SESSION`, `DEN_IMPORT_AGENT`, `DEN_IMPORT_PROJECT` and, when
+  Den knew the terminal's process, `DEN_IMPORT_PID`. The Allow names the
+  command. A hook that fails is noted; the conversation still comes in.
+- **Only the terminal the Allow saw is closed.** At the close, Den reads
+  again which process holds the conversation (the runtime's own record)
+  and closes it only if it is still the one the Allow saw. Another one (it
+  was reopened elsewhere), or none while it still looks open, stops the
+  hand-over with a bell line, and nothing is closed.
+- **One hand-over per conversation.** A marker in the new agent's folder
+  reserves its id for the wait and refuses a second Allow for the same
+  conversation. If Den restarts during the wait, the hand-over stops: at
+  start, Den removes the marker and tells the person in the bell.
 - The agent's id is the persona's, or `<persona>-2`, `-3`… when that is
   taken; `--id` sets one. An existing agent is never overwritten.
 - Only den-claude can bring one in for now. Other runtimes say "<runtime>

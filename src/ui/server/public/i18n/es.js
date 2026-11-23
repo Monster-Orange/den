@@ -2141,7 +2141,7 @@
     "ap.det.agent_import.handover":
       "Si sigue abierta en una terminal, Den le pide su traspaso, cierra esa terminal y la continúa aquí. Se rechaza si un agente ya la continúa.",
     "ap.det.agent_import.hook":
-      "Después Den ejecuta el hook de importación de este proyecto: {hook}",
+      "Después Den ejecuta el hook de importación de esta máquina: {hook}",
     "ap.det.approval_policy.now": "Ahora: {v}.",
     "ap.det.approval_policy.nowNone": "Ahora: ninguna.",
     "ap.det.approval_policy.then": "Después: {v}.",

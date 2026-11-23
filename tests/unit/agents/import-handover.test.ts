@@ -29,13 +29,25 @@ describe("agents.import (issue 159)", () => {
     expect(AGENTS_RESERVED_KEYS).toContain("import");
   });
 
-  it("set: the wait in ms and the hook as written", () => {
-    expect(
-      read({ handoff_wait_minutes: 5, hook: "lanes forget $DEN_IMPORT_PID" }),
-    ).toEqual({
+  it("set: the wait in ms from the org config; the hook only from user.yml, which agents can't write", () => {
+    expect(read({ handoff_wait_minutes: 5 })).toEqual({
       handoffWaitMs: 5 * 60_000,
+    });
+    expect(
+      readAgentsConfig(
+        {} as DenConfig,
+        {
+          agents: { import: { hook: "lanes forget $DEN_IMPORT_PID" } },
+        } as never,
+      ).import,
+    ).toEqual({
+      handoffWaitMs: 30 * 60_000,
       hook: "lanes forget $DEN_IMPORT_PID",
     });
+    // In the org config (a repo agents may edit), the hook is refused.
+    expect(() => read({ hook: "lanes forget" })).toThrow(
+      /agents\.import\.hook: set it in config\/local\/user\.yml/,
+    );
   });
 
   it("a bad value or key fails naming it", () => {
@@ -43,8 +55,18 @@ describe("agents.import (issue 159)", () => {
       expect(() => read({ handoff_wait_minutes: bad })).toThrow(
         /agents\.import\.handoff_wait_minutes: /,
       );
+    const user = (v: unknown) =>
+      readAgentsConfig(
+        {} as DenConfig,
+        {
+          agents: { import: v },
+        } as never,
+      ).import;
     for (const bad of [3, "", "  ", "a\nb"])
-      expect(() => read({ hook: bad })).toThrow(/agents\.import\.hook: /);
+      expect(() => user({ hook: bad })).toThrow(/agents\.import\.hook: /);
+    expect(() => user({ handoff_wait_minutes: 5 })).toThrow(
+      /agents\.import\.handoff_wait_minutes: unknown key/,
+    );
     expect(() => read({ other: 1 })).toThrow(
       /agents\.import\.other: unknown key/,
     );

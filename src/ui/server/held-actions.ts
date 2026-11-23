@@ -214,7 +214,7 @@ export interface HeldActionDeps {
   /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
   webUrlSet?: HeldAction;
   /**
-   * Issue 159: agents.import.hook from the org config, named on the
+   * Issue 159: agents.import.hook from user.yml (this machine), named on the
    * agent_import Allow (it runs on that Allow).
    */
   importHook?: () => string | undefined;
@@ -834,7 +834,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           ...(hook
             ? [
                 line(
-                  `Then Den runs this project's import hook: ${hook}`,
+                  `Then Den runs this machine's import hook: ${hook}`,
                   "ap.det.agent_import.hook",
                   { hook },
                 ),

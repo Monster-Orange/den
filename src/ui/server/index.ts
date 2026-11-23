@@ -4646,7 +4646,7 @@ function approvalDeps(): ApprovalDeps {
     // Issue 565: an agent files a report as the page does (public: Allow).
     report: reportHeld(reportRouteDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
-    // Issue 159: the org config's import hook, named on the Allow.
+    // Issue 159: this machine's import hook (user.yml), named on the Allow.
     importHook: () => readAgentsConfig().import?.hook,
     // Issue 159: one still open is handed over after the Allow; a stop
     // reaches the person in the bell.

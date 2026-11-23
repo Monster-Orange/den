@@ -2083,7 +2083,7 @@
     "ap.det.agent_import.handover":
       "まだターミナルで開いている場合、Den は引き継ぎを書くよう頼み、そのターミナルを閉じてから、ここで続けます。すでにエージェントが続けている場合は拒否されます。",
     "ap.det.agent_import.hook":
-      "その後、Den はこのプロジェクトの取り込みフックを実行します: {hook}",
+      "その後、Den はこのマシンの取り込みフックを実行します: {hook}",
     "ap.det.approval_policy.now": "現在: {v}。",
     "ap.det.approval_policy.nowNone": "現在: なし。",
     "ap.det.approval_policy.then": "変更後: {v}。",
