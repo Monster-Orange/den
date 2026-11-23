@@ -39,6 +39,10 @@
     "count": 1,
     "reason": "temp file: allowed_signers in a mkdtemp folder removed after the check"
   },
+  "src/shared/agents/sandbox.ts": {
+    "count": 1,
+    "reason": "an empty locked gate file, created once with wx so it never overwrites one (bwrap binds only what exists)"
+  },
   "src/shared/environment-manager/workspace-manager.ts": {
     "count": 2,
     "reason": "the setup marker in the person's repo, and a temp setup script"
@@ -80,8 +84,8 @@
     "reason": "temp .command scripts in the OS temp folder, removed after Terminal opens them"
   },
   "src/ui/server/sudo-store.ts": {
-    "count": 3,
-    "reason": "the sudo shim's files in a per-process temp folder, never state"
+    "count": 4,
+    "reason": "the sudo shim's files and its pid file in a per-process temp folder, never state"
   },
   "src/ui/server/update-watch.mjs": {
     "count": 1,

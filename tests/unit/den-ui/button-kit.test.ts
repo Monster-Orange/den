@@ -99,7 +99,7 @@ describe("button.css", () => {
     // and issue 673: the second product's shipped button lays its words
     // and icon out in a row, 6px apart, as Den's error page did.
     expect(rule(".den-btn")).toBe(
-      "border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;",
+      "border: 1px var(--edge-style, solid) var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;",
     );
     // A row of its own must not undo [hidden].
     expect(rule(".den-btn[hidden]")).toBe("display: none;");
@@ -108,23 +108,26 @@ describe("button.css", () => {
     expect(
       rule('.den-btn.danger, .den-btn.danger:not([aria-busy="true"]):hover'),
     ).toBe(
-      "color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border));",
+      // Issue 1137: and its edge's width and style, as tokens.
+      "color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); border-width: var(--danger-edge-width, 1px); border-style: var(--danger-edge-style, var(--edge-style, solid));",
     );
     // Issue 699: a held button (aria-busy) has no hover change.
     expect(rule('.den-btn:not([aria-busy="true"]):hover')).toBe(
       "border-color: var(--border-strong);",
     );
     expect(rule(".den-btn.primary")).toBe(
-      "background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent);",
+      "background: var(--primary-bg, var(--accent-fill)); border-color: var(--primary-border, var(--accent-fill)); color: var(--primary-text, var(--on-accent));",
     );
     expect(rule(".den-btn.sm")).toBe("padding: 2px 9px; font-size: 12.5px;");
     expect(rule('.den-btn:disabled, a.den-btn[aria-disabled="true"]')).toBe(
-      "opacity: 0.6; cursor: default;",
+      // Issue 1137: the opacity and label colour are tokens (today's values).
+      "opacity: var(--btn-disabled-opacity, 0.6); cursor: default; color: var(--btn-disabled-text, var(--text));",
     );
     // The link drawn as a button: the base already lays it out (673).
     expect(rule("a.den-btn")).toBeNull();
     expect(rule(".den-btn:focus-visible")).toBe(
-      "outline: 2px solid var(--accent); outline-offset: 2px;",
+      // Issue 1137: the ring's colour and offset are tokens (today's values).
+      "outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: var(--focus-offset, 2px);",
     );
   });
 

@@ -30,6 +30,7 @@ import type {
   DeviceFlows,
   FlowView,
 } from "./device-flows.js";
+import { browserTagFor } from "./device-flows.js";
 
 /**
  * D17: who may claim a Den that has no owner yet.
@@ -85,6 +86,10 @@ export interface GithubRouteDeps {
   flows: DeviceFlows;
   /** The configured client id ("" when none). */
   clientId: () => string;
+  /** Issue 362: the address a request came from, when the guard knows it. */
+  client?: (req: http.IncomingMessage) => string | undefined;
+  /** Whether the request came over https (the edge's proven header). */
+  https?: (req: http.IncomingMessage) => boolean;
   /** The app issued an expiring token (its token expiry is on): a misconfiguration. */
   tokensExpire?: () => boolean;
   cli: string;
@@ -240,7 +245,7 @@ async function startFlow(
   deps: GithubRouteDeps,
   res: http.ServerResponse,
   purpose: "signin" | "link",
-  meta: { local?: boolean } = {},
+  meta: { local?: boolean; client?: string; browser?: string } = {},
 ): Promise<void> {
   let r;
   try {
@@ -338,7 +343,18 @@ export async function handleGithubRoutes(
       );
       return true;
     }
-    await startFlow(deps, res, "signin", { local });
+    const client = deps.client?.(req);
+    // A start replaces only this browser's own pending sign-in.
+    const tag = browserTagFor(
+      req.headers.cookie,
+      deps.flows,
+      deps.https?.(req) === true,
+    );
+    if (tag.setCookie) res.setHeader("Set-Cookie", tag.setCookie);
+    await startFlow(deps, res, "signin", {
+      local,
+      ...(client ? { client, browser: tag.tag } : {}),
+    });
     return true;
   }
   const s = SIGNIN_PATH.exec(pathname);

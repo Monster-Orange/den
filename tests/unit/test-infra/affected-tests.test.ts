@@ -719,13 +719,15 @@ describe("ci.yml (issue 398)", () => {
     expect(pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    // Issue 843: and the fast static checks.
+    expect(ci.jobs["pr-shards"].needs).toEqual(["fast", "pr"]);
     const text = runs(pr);
+    // Issue 843: the words gate and the kit copies run once, in `fast`,
+    // which the pr job waits for.
+    expect(ci.jobs.pr.needs).toEqual(["fast"]);
     for (const gate of [
       "npm run typecheck",
-      "scripts/words-gate.mjs",
       "npm run lint",
-      "gate:den-ui",
       "scripts/org-name-gate.mjs",
       "scripts/org-name-commits.mjs",
       "scripts/dist-smoke.sh",
@@ -760,13 +762,23 @@ describe("ci.yml (issue 398)", () => {
     }
   });
 
-  // Only checks and dist-smoke may name DEN_SELF_HOSTED
-  // (ci-runner-guard.test.ts); the pull-request jobs stay GitHub-hosted.
-  it("the pr jobs run GitHub-hosted", () => {
-    expect([ci.jobs.pr["runs-on"], ci.jobs["pr-shards"]["runs-on"]]).toEqual([
-      "ubuntu-latest",
-      "ubuntu-latest",
-    ]);
+  // Issue 1226: pr and pr-shards may use the self-hosted runners (every
+  // event is checked in ci-runner-guard.test.ts). A fork's pull request
+  // never does, and with the switch off they fall back to GitHub-hosted.
+  it("the pr jobs fall back to GitHub-hosted, and a fork's PR never leaves it", () => {
+    for (const job of ["pr", "pr-shards"]) {
+      const on = String(ci.jobs[job]["runs-on"]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining("|| 'ubuntu-latest'"),
+      ]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining(
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        ),
+      ]);
+    }
   });
 });
 

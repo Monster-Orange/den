@@ -158,3 +158,60 @@ describe("it is never silent", () => {
     expect(added).toEqual([]);
   });
 });
+
+describe("issue 786: a broken file's text never reaches backup's notes (security review)", () => {
+  const SECRET = "den_at_SECRETTOKENxyz0123456789";
+
+  it.each([
+    ["a bare token", SECRET],
+    ["a token in a cut-off object", `{"tokens":{"${SECRET}":`],
+    ["a short broken file", `{"k":"${SECRET.slice(0, 9)}"`],
+  ])("%s: the note says not valid JSON, with none of the text", (_n, text) => {
+    const s = fs.mkdtempSync(path.join(os.tmpdir(), "den-786-why-"));
+    try {
+      const file = path.join(s, "actor-tokens.json");
+      fs.writeFileSync(file, text, { mode: 0o600 });
+      const r = readStateJson(s, file);
+      expect(r.ok).toBe(false);
+      const notes = fs.readFileSync(
+        path.join(s, "backup", "kept.json"),
+        "utf8",
+      );
+      for (const part of [SECRET, SECRET.slice(0, 9), "den_at", '"k"'])
+        expect(notes).not.toContain(part);
+      expect(readKept(s)[0]!.why).toMatch(
+        /^not valid JSON( \(at position \d+\))?$/,
+      );
+    } finally {
+      fs.rmSync(s, { recursive: true, force: true });
+    }
+  });
+
+  it("whatever a caller passes, only a fixed reason is kept", () => {
+    const s = fs.mkdtempSync(path.join(os.tmpdir(), "den-786-why-"));
+    try {
+      const file = path.join(s, "a.json");
+      fs.writeFileSync(file, "x");
+      const k = keepUnreadable(
+        s,
+        file,
+        `Unexpected token 'd', "${SECRET}" is not valid JSON`,
+      );
+      expect(k!.why).toBe("not valid JSON");
+      fs.writeFileSync(file, "x");
+      expect(
+        keepUnreadable(
+          s,
+          file,
+          "EACCES: permission denied, open '/x/den_at_y'",
+        )!.why,
+      ).toBe("can't be read (EACCES)");
+      fs.writeFileSync(file, "x");
+      expect(keepUnreadable(s, file, `odd "${SECRET}"`)!.why).toBe(
+        "can't be read",
+      );
+    } finally {
+      fs.rmSync(s, { recursive: true, force: true });
+    }
+  });
+});

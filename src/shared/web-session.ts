@@ -289,6 +289,14 @@ export interface WebAuthConfig {
   /** `web.test_install` in user.yml: ignored there (warned at start). */
   testInstallInUser?: true;
   /**
+   * Issue 1210: `web.fixture_person: { name, login }`, from the distribution
+   * config only: an invented name and login the rail shows for the fixture
+   * person on a test install. Never a real person's; never in the audit.
+   */
+  fixturePerson?: FixturePersonName;
+  /** `web.fixture_person` ignored (in user.yml, or a wrong value), with why. */
+  fixturePersonIgnored?: { file: string; why: string };
+  /**
    * Issue 810: `web.fixture_session_minutes` (user.yml over the
    * distribution's): how long a fixture person's session lasts.
    */
@@ -312,6 +320,45 @@ export const AGENT_VIEW_RANGE = { min: 1, max: 60 } as const;
 export const FIXTURE_SESSION_MINUTES = 60;
 /** Its bounds, in minutes. */
 export const FIXTURE_SESSION_RANGE = { min: 1, max: 24 * 60 } as const;
+
+/** Issue 1210: the fixture person's invented name and login. */
+export interface FixturePersonName {
+  name: string;
+  login: string;
+}
+
+/** `web.fixture_person`'s name: at most this many characters. */
+export const FIXTURE_PERSON_NAME_MAX = 64;
+
+/**
+ * Issue 1210: `web.fixture_person` from one file, or why it is ignored. A
+ * wrong value never throws: on an install that isn't a test install it must
+ * do nothing, so it is warned about at start instead.
+ */
+export function parseFixturePerson(
+  v: unknown,
+): { person: FixturePersonName } | { why: string } | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "object" || Array.isArray(v))
+    return { why: "must be a map with name and login" };
+  const o = v as Record<string, unknown>;
+  const name = typeof o.name === "string" ? o.name.trim() : "";
+  const login = typeof o.login === "string" ? o.login.trim() : "";
+  if (!name) return { why: "needs a name" };
+  if (name.length > FIXTURE_PERSON_NAME_MAX)
+    return {
+      why: `name must be at most ${FIXTURE_PERSON_NAME_MAX} characters`,
+    };
+  if (
+    name.includes("@") ||
+    [...name].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f)
+  )
+    return { why: "name must be one line, with no @" };
+  if (!login) return { why: "needs a login" };
+  if (!GITHUB_NAME.test(login))
+    return { why: "login must be letters, digits and dashes, at most 39" };
+  return { person: { name, login } };
+}
 
 /** A GitHub login (or org name): letters, digits, single dashes, ≤ 39. */
 const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -400,6 +447,20 @@ function ignoredSessionKeys(
     : [`web.session (${file})`];
 }
 
+/**
+ * Issue 1210: doctor's line when web.fixture_person is set on an install
+ * that isn't marked a test install (it does nothing there), or null.
+ */
+export function fixturePersonOffInstallWarning(
+  cfg: WebAuthConfig,
+): string | null {
+  return cfg.fixturePerson && !cfg.testInstall
+    ? "web.fixture_person is set, but this install isn't marked " +
+        "web.test_install: true, so it does nothing here. Remove it, or " +
+        "mark the test install by hand."
+    : null;
+}
+
 /** The start-up warning for the ignored keys, or null when there are none. */
 export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
   const lines: string[] = [];
@@ -418,6 +479,12 @@ export function ignoredConfigWarning(cfg: WebAuthConfig): string | null {
     lines.push(
       "web.test_install (config/local/user.yml): ignored. A test install is marked " +
         "by hand in the distribution config only; remove it here.",
+    );
+  if (cfg.fixturePersonIgnored)
+    lines.push(
+      `web.fixture_person (${cfg.fixturePersonIgnored.file}): ignored, ` +
+        `${cfg.fixturePersonIgnored.why}. It is set by hand in the distribution ` +
+        "config only, next to web.test_install.",
     );
   if (cfg.plainHttpInDistribution)
     lines.push(
@@ -567,8 +634,20 @@ export function readWebAuthConfig(
     throw new Error(
       `web.agent_view_minutes must be a whole number of minutes from ${AGENT_VIEW_RANGE.min} to ${AGENT_VIEW_RANGE.max}, got ${JSON.stringify(avMin)}`,
     );
+  const fxUser = parseFixturePerson(user.fixture_person);
+  const fxTeam = parseFixturePerson(team.fixture_person);
+  const fixturePersonIgnored = fxUser
+    ? {
+        file: "config/local/user.yml",
+        why: "a test install's settings are not read from this file",
+      }
+    : fxTeam && "why" in fxTeam
+      ? { file: configFile, why: fxTeam.why }
+      : undefined;
   return {
     testInstall: testMark === true,
+    ...(fxTeam && "person" in fxTeam ? { fixturePerson: fxTeam.person } : {}),
+    ...(fixturePersonIgnored ? { fixturePersonIgnored } : {}),
     agentView: av !== false,
     agentViewMinutes: typeof avMin === "number" ? avMin : AGENT_VIEW_MINUTES,
     fixtureSessionMinutes:

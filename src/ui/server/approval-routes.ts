@@ -117,6 +117,8 @@ export interface HeldAction {
   check(
     args: Record<string, unknown>,
     who?: HeldAsker,
+    /** The check again before the run, at the person's Allow. */
+    o?: { again?: boolean },
   ): Promise<HeldCheck> | HeldCheck;
   /** Runs it from checked args; answers like the CLI's --json ({ ok, … }). */
   run(args: Record<string, unknown>, asked?: AskedBy): Promise<unknown>;
@@ -151,7 +153,7 @@ export function createApprovalQueue(
     run: async (action, args, asked) => {
       const a = actions[action];
       if (!a) return { ok: false, error: `no action ${action}` };
-      const again = await a.check({ ...args });
+      const again = await a.check({ ...args }, undefined, { again: true });
       if (!again.ok) return { ok: false, error: again.error };
       return a.run(again.args, asked);
     },

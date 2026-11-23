@@ -153,6 +153,8 @@ export const KIT_FILES: readonly string[] = [
   "fonts.css",
   "tokens.css",
   "base.css",
+  // Issue 788: the sketch theme (greys, dashed edges, outline buttons).
+  "themes/sketch.css",
   "busy.js",
   "busy-words.js",
   // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
@@ -184,6 +186,9 @@ export const KIT_FILES: readonly string[] = [
   "setting-field.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  // Issue 789: a preview in a sandboxed frame, and the script inside it.
+  "preview.js",
+  "preview-frame.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",

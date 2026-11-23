@@ -65,6 +65,25 @@ function stamp(d: Date): string {
  * file is gone, is outside `stateDir`, or can't be moved (then it stays
  * where it is: never worse than before).
  */
+/**
+ * Why a file couldn't be read, with none of its text. Node's JSON.parse
+ * messages quote the file (a short one whole), and a state file may hold
+ * a token or a key: only a fixed reason is kept, with the position at
+ * most, or the error code of a read that failed.
+ */
+export function safeWhy(message: string): string {
+  if (
+    /JSON|Unexpected|Unterminated|Expected|Bad control|Bad escaped/.test(
+      message,
+    )
+  ) {
+    const at = /position (\d+)/.exec(message);
+    return `not valid JSON${at ? ` (at position ${at[1]})` : ""}`;
+  }
+  const code = /\b(E[A-Z]{2,})\b/.exec(message);
+  return code ? `can't be read (${code[1]})` : "can't be read";
+}
+
 export function keepUnreadable(
   stateDir: string,
   file: string,
@@ -93,7 +112,7 @@ export function keepUnreadable(
     file: rel.split(path.sep).join("/"),
     saved,
     at: now.toISOString(),
-    why: why.replace(/\s+/g, " ").trim().slice(0, 200),
+    why: safeWhy(why),
   };
   try {
     writeNotes(root, [...readKept(root), k].slice(-KEEP_NOTES));

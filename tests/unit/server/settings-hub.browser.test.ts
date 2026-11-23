@@ -115,6 +115,18 @@ function startHub(): Promise<void> {
         mcp_url: `${hub.url}/mcp`,
       });
     }
+    // Issue 646: Connect's review asks Hub for each project's suggestions
+    // and the company's projects; this Hub has one project, none suggested.
+    if (u.pathname === "/api/projects/suggest") {
+      if (!bearer || hub.revoked)
+        return json(res, 401, { error: "unauthorized" });
+      return json(res, 200, {
+        suggestions: [],
+        projects: [
+          { project_id: "proj_acme1", slug: "acme-web", name: "Acme Web" },
+        ],
+      });
+    }
     if (u.pathname === "/connect/revoke" && req.method === "POST") {
       if (!bearer || hub.revoked)
         return json(res, 401, { error: "unauthorized" });
@@ -274,6 +286,9 @@ describe("#267: Settings › Hub, a section of its own, with Hub's address", () 
       return r.abort();
     });
     expect(await hubText(p)).toMatch(/Example Co/);
+    // Issue 646 (mock v2, 1b): connected, the address waits behind Hub address….
+    expect(await p.isVisible("#hub-addr")).toBe(false);
+    await p.click('[data-hub-action="address"]');
     expect(await p.inputValue("#hub-addr")).toBe("https://hub.example.com");
     await p.fill("#hub-addr", "https://other.example.com/");
     await p.click('[data-hub-action="save-url"]');
@@ -321,7 +336,8 @@ describe("Settings › Hub (HUB-1.7)", () => {
       allowTools: true,
     });
     await p.waitForSelector('[data-hub-state="connected"]');
-    const text = await p.$eval("[data-hub]", (el) => el.textContent ?? "");
+    // Issue 646 (mock v2, 1b): the company first, then the list.
+    const text = await hubText(p);
     for (const t of [
       "https://hub.example.test",
       "Connected",
@@ -333,7 +349,7 @@ describe("Settings › Hub (HUB-1.7)", () => {
       expect(text).toContain(t);
     // D51: like the rail's Hub, a plain link: this tab, no new window.
     expect(
-      await p.$eval('[data-hub] a[href*="/c/acme-co"]', (a) => [
+      await p.$eval('[data-hub-co] a[href*="/c/acme-co"]', (a) => [
         a.getAttribute("target"),
         a.getAttribute("href"),
       ]),
@@ -621,8 +637,9 @@ describe("Settings › Hub (HUB-1.7)", () => {
     expect(asked.state.length).toBeGreaterThanOrEqual(8);
     expect(asked.install).toMatch(/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/);
     // Back in Settings, with words and the company.
+    // Issue 646 (mock v2, 1c): one line naming the company and its Hub.
     expect(await p.textContent("[data-hub-flash]")).toMatch(
-      /Connected to Hub \(Acme Co\)/,
+      /Connected to Acme Co \(/,
     );
     const text = await hubText(p);
     for (const t of ["Acme Co", "member", "pat", "den on test-box"])

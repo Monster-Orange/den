@@ -64,6 +64,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_hold_load: true,
     // Issue 1048: new cpu runs wait over this × the cores.
     load_hold_per_core: true,
+    // Issue 1132: the start ceiling, its wait limit, leftovers' grace.
+    max_start_load: true,
+    max_start_wait_minutes: true,
+    reap_grace_seconds: true,
+    // Issue 1274: memory free under which new runs here wait; VM share.
+    memory_free_min_percent: true,
+    vm_memory_share: true,
+    swap_hold_gb: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -83,6 +91,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     mcp_renew_minutes: true,
     mcp_lapse_minutes: true,
     mcp_grace_minutes: true,
+    // Issue 867: a gone waiter keeps its place this long.
+    waiter_return_minutes: true,
     // Issue 625: test boxes' check and recheck.
     box_check_timeout_seconds: true,
     box_recheck_seconds: true,
@@ -106,8 +116,17 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     hub_screenshot_max_mb: true,
     hub_timeout_seconds: true,
   },
+  // Issue 707: the server's warning lines on disk, capped.
+  server_log: { max_mb: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // Issue 1129: the restart queue.
+  agents_resume: {
+    batch: true,
+    gap_seconds: true,
+    load_ceiling: true,
+    max_wait_seconds: true,
+  },
   // issue_write: which roles write GitHub issues, and how many an hour.
   agent_issue_writes: { roles: true, per_hour: true },
   // Issue 278: agents stuck compacting; instruction size.
@@ -240,6 +259,8 @@ describe("the settings inventory (R21)", () => {
         "machine_name",
         // SRV-P6: whether Den updates itself without asking.
         "server_agent_self_update",
+        // Issue 1225: whether services that were up come back after a restart.
+        "restore_services_on_boot",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",
@@ -294,19 +315,26 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots_beside_release_browser",
         "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
+        "gate_slots.max_start_load",
+        "gate_slots.max_start_wait_minutes",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
+        "gate_slots.memory_free_min_percent",
         "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
         "gate_slots.priority_max",
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
+        "gate_slots.reap_grace_seconds",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.swap_hold_gb",
+        "gate_slots.vm_memory_share",
+        "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
@@ -315,6 +343,8 @@ describe("the settings inventory (R21)", () => {
         "reports.screenshot_max_mb",
         "reports.hub_screenshot_max_mb",
         "reports.hub_timeout_seconds",
+        // Issue 707: the server's warning lines on disk, capped.
+        "server_log.max_mb",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
         // issue_write: which roles write GitHub issues, and how many an hour.
@@ -381,6 +411,11 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        // Issue 1129: the restart queue.
+        "agents_resume.batch",
+        "agents_resume.gap_seconds",
+        "agents_resume.load_ceiling",
+        "agents_resume.max_wait_seconds",
       ].sort(),
     );
   });

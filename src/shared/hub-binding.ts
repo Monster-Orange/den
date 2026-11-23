@@ -292,6 +292,36 @@ export function listPreviousHubs(stateDir: string): ArchivedHub[] {
   return out;
 }
 
+/**
+ * Issue 646: the link project `ws` had on the last earlier Hub that it had
+ * one on (Connect's review says "was linked to … on …"), or null.
+ */
+export function previousLinkOf(
+  stateDir: string,
+  ws: string,
+): { name: string; origin: string; company?: string } | null {
+  for (const a of listPreviousHubs(stateDir).reverse()) {
+    if (!a.projects.includes(ws) || !a.from) continue;
+    const v = readJson(path.join(a.dir, "from.json")) as {
+      links?: Record<string, { name?: unknown; slug?: unknown }>;
+    } | null;
+    const l = v?.links?.[ws];
+    const name =
+      typeof l?.name === "string" && l.name
+        ? l.name
+        : typeof l?.slug === "string"
+          ? l.slug
+          : "";
+    if (!name) continue;
+    return {
+      name: name.slice(0, 200),
+      origin: a.from.origin,
+      ...(a.from.company ? { company: a.from.company } : {}),
+    };
+  }
+  return null;
+}
+
 export interface UnrevokedToken {
   id: string;
   url: string;

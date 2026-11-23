@@ -75,6 +75,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // Issue 1129: the restart queue (agents.resume.*).
+  "agents.resume.batch": ["agents_resume", "batch"],
+  "agents.resume.gap_seconds": ["agents_resume", "gap_seconds"],
+  "agents.resume.load_ceiling": ["agents_resume", "load_ceiling"],
+  "agents.resume.max_wait_seconds": ["agents_resume", "max_wait_seconds"],
   // issue_write: which roles write GitHub issues ([planner, sde]), and the
   // install's writes an hour.
   "agents.issue_writes": ["agent_issue_writes", "roles"],
@@ -87,6 +92,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "reports.screenshot_keep_days": ["reports", "screenshot_keep_days"],
   "reports.screenshot_max_mb": ["reports", "screenshot_max_mb"],
   "reports.hub_screenshot_max_mb": ["reports", "hub_screenshot_max_mb"],
+  // Issue 707: the server's warning lines on disk, capped.
+  "server_log.max_mb": ["server_log", "max_mb"],
   "reports.hub_timeout_seconds": ["reports", "hub_timeout_seconds"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [
@@ -151,6 +158,8 @@ function sessionsValue(name: string): number | undefined {
  */
 const DOTTED_SWITCH: Record<string, string> = {
   "agents.keep_running_after_logout": "keep_running_after_logout",
+  // Issue 1225: whether services that were up come back after a restart.
+  "services.restore_on_boot": "restore_services_on_boot",
 };
 
 /** Every key `config` accepts, aliases too. */

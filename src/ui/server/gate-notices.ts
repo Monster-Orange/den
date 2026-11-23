@@ -15,6 +15,7 @@
  * and reads the slot log's new rows.
  */
 import type { NotificationStore } from "../../shared/notifications.js";
+import { ThrowawaySweeper, type Docker } from "../../shared/gates/ephemeral.js";
 import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
 import type { GateStore, GateEventRow } from "../../shared/gates/store.js";
 import { gateOverrunWaiting } from "./gate-overrun-bell.js";
@@ -31,6 +32,11 @@ export interface GateNoticeDeps {
   log?: (line: string) => void;
   /** The clock (tests); default Date.now. */
   now?: () => number;
+  /**
+   * Issue 1263: the docker CLI, for the throwaway-container sweeper (absent:
+   * no sweep). The tick starts it and never waits on it.
+   */
+  docker?: Docker;
 }
 
 /** How often the server looks, ms. */
@@ -38,6 +44,15 @@ export const GATE_NOTICE_MS = 10_000;
 
 const agentOf = (actor: string | undefined) =>
   actor?.startsWith("agent:") ? actor.slice("agent:".length) : null;
+
+/** Issue 1263: the log events that end a slot. */
+const ENDS = new Set<string>([
+  "released",
+  "taken-back-gone",
+  "taken-back-lapsed",
+  "taken-back-revoked",
+  "ended-early",
+]);
 
 const mins = (n: number) => `${Math.max(1, Math.round(n))} min`;
 
@@ -52,7 +67,14 @@ export class GateNotices {
    */
   private toldOverrun = new Set<string>();
 
-  constructor(private readonly d: GateNoticeDeps) {}
+  /** Issue 1263: removes throwaway containers whose run has ended. */
+  private readonly sweeper?: ThrowawaySweeper;
+  /** The sweeper's last look, for tests. */
+  sweeping: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly d: GateNoticeDeps) {
+    if (d.docker) this.sweeper = new ThrowawaySweeper(d.store, d.docker, d.now);
+  }
 
   /** Start reading at the log's end: rows from before are not told again. */
   start(): void {
@@ -64,6 +86,13 @@ export class GateNotices {
     store.list(); // settles: passes on the unclaimed, takes back the lapsed
     const { rows, next } = store.eventsFrom(this.from);
     this.from = next;
+    // Issue 1263: a slot ended: its run's throwaway containers may be left.
+    // Never awaited here, so a slow docker never holds up the notices.
+    if (this.sweeper) {
+      const ended = rows.some((r) => ENDS.has(r.event));
+      if (this.sweeper.due(ended))
+        this.sweeping = this.sweeper.tick(ended).catch(() => []);
+    }
     const out = this.pending.splice(0);
     for (const r of rows) {
       if (!r.install || r.install !== this.d.install) continue;
