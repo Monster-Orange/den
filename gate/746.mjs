@@ -62,6 +62,22 @@ function decideLines(ctx, rid) {
   return out;
 }
 
+/** The held writes waiting now: id → the agent it names (held-writes.json). */
+function heldIds(ctx) {
+  try {
+    const j = JSON.parse(ctx.readBed("state:held-writes.json") || "{}");
+    const list = Array.isArray(j)
+      ? j
+      : (j.items ?? j.requests ?? Object.values(j));
+    const out = new Map();
+    for (const x of list)
+      if (x && typeof x.id === "string") out.set(x.id, x.args?.agent ?? null);
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
 /** The request's state as the signed-in page reads it, or its status. */
 async function stateOf(ctx, rid) {
   const r = await ctx.fetch(`/api/approvals/${encodeURIComponent(rid)}`);
@@ -127,10 +143,18 @@ export async function run(ctx, s) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await ctx.goto(page, "/");
+  // Requests an earlier run left waiting (the fixture can't decide them and
+  // nobody else is there to) name the same agents: pick this run's by id.
+  const before = heldIds(ctx);
   const asked = {
     allow: ask(ctx, IDS.allow),
     deny: ask(ctx, IDS.deny),
   };
+  const after = heldIds(ctx);
+  const mine = {};
+  for (const [rid, agent] of after)
+    if (!before.has(rid))
+      for (const w of ["allow", "deny"]) if (agent === IDS[w]) mine[w] = rid;
   // Each new held write opens the Allow pop-up first: put it off, so the
   // decision is made in the bell.
   const later = page.locator("#den-ap-later");
@@ -140,7 +164,9 @@ export async function run(ctx, s) {
     if (await later.isVisible().catch(() => false)) await later.click();
     await page.locator("#den-bell").click();
     // Each agent asks about itself, so its id names one row.
-    const row = page.locator("[data-ap-row]").filter({ hasText: id });
+    const row = mine[which]
+      ? page.locator(`[data-ap-row="${mine[which]}"]`)
+      : page.locator("[data-ap-row]").filter({ hasText: id }).last();
     const rowMs = await ctx.until(
       async () => (await row.count()) > 0 && (await row.isVisible()),
       20000,
