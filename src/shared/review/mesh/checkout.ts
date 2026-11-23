@@ -16,8 +16,9 @@
  *
  * Read-only files are a convenience only: the leg runs as this user, who
  * can undo a chmod, and gh keeps its login outside the environment. The
- * guard is the leg's launch (den-claude REVIEW_LEG_DENY, user-only
- * settings, Den's server limited to review_submit) under the "ask" intent.
+ * guard is the leg's launch: Claude Code's restricted mode (no shell, no
+ * settings files but Den's, file tools confined to the leg's folder), Den's
+ * server limited to review_submit, and REVIEW_LEG_DENY as a second layer.
  */
 import { execFileSync } from "child_process";
 import * as fs from "fs";
