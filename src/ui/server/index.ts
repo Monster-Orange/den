@@ -6376,6 +6376,17 @@ async function handleRequest(
     });
     return;
   }
+  // Issue 785: an agent reports how to resume its conversation (its token).
+  if (guard.ok && pathname === "/api/agents/self/resume-command") {
+    const { handleResumeReportRoutes } =
+      await import("./resume-report-routes.js");
+    await handleResumeReportRoutes(req, res, pathname, {
+      stateDir: () => getStateDir(),
+      env: () => process.env,
+      log: (line) => serverLog(line, "warn"),
+    });
+    return;
+  }
   // The shared GitHub watcher: an agent's own watches (MCP github_watch).
   if (guard.ok && isGithubWatchPath(pathname)) {
     const { githubWatcher } = await import("./github-watch-service.js");
