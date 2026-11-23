@@ -1721,8 +1721,8 @@
           // ws.hubChipCo ("{company} · {name}"): the company in its own
           // span; the rest (" · <project>") in the span a phone hides.
           const co = wsT("ws.hubChipCo", "{company} · {name}");
-          const rest = `<span class="ws-hub-pj">${escHtml(fill(co.replace("{company}", ""), v))}</span>`;
-          const coSpan = `<span class="ws-hub-co">${escHtml(m.company)}</span>`;
+          const rest = `<span class="ws-hub-pj" data-hub-pj>${escHtml(fill(co.replace("{company}", ""), v))}</span>`;
+          const coSpan = `<span class="ws-hub-co" data-hub-co>${escHtml(m.company)}</span>`;
           const text = m.company
             ? co.indexOf("{company}") <= co.indexOf("{name}")
               ? coSpan + rest
