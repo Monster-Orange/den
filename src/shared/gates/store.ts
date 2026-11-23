@@ -34,6 +34,7 @@
  * Nothing here takes a live holder's slot. Issue 1132: the one thing it
  * stops is what a run left in its own process group once its slot ended.
  */
+import { execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -45,6 +46,7 @@ import {
   type GroupState,
   type RecordedProcessGroup,
 } from "../process/process-group.js";
+import { peekVms, readVms, type VmReading } from "./vms.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
@@ -86,11 +88,13 @@ import {
   gone,
   lapsed,
   mcpLapsed,
+  memoryHold,
   overrun,
   passedBy,
   priorityIds,
   queueOrder,
   queuePlace,
+  swapHold,
   unclaimed,
   type GateEntry,
   type GateKind,
@@ -135,6 +139,12 @@ export type GateSettingsPatch = {
   max_start_wait_minutes?: number | null;
   /** Issue 1132: seconds from TERM to KILL for a run's leftovers. */
   reap_grace_seconds?: number | null;
+  /** Issue 1274: new runs here wait under this free memory, % (0: off). */
+  memory_free_min_percent?: number | null;
+  /** Issue 1274: new runs here wait over this much swap in use, GB (0: off). */
+  swap_hold_gb?: number | null;
+  /** Issue 1274: doctor warns over this share of RAM promised to VMs. */
+  vm_memory_share?: number | null;
   overrun_margin_minutes?: number | null;
   /** Issue 993: held past this many times its estimate: the bell. */
   overrun_bell_multiple?: number | null;
@@ -210,6 +220,12 @@ export const GATE_LIMITS: Record<
   max_start_load: { min: 0, max: 1024, int: false },
   max_start_wait_minutes: { min: 0, max: 24 * 60, int: true },
   reap_grace_seconds: { min: 0, max: 600, int: true },
+  // Issue 1274: percent of memory free; 0 turns the hold off.
+  memory_free_min_percent: { min: 0, max: 90, int: false },
+  // Issue 1274: GB of swap in use; 0 turns the hold off.
+  swap_hold_gb: { min: 0, max: 1024, int: false },
+  // Issue 1274: a share of RAM (1: all of it); above 1 allows overcommit.
+  vm_memory_share: { min: 0.1, max: 4, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 993: 1 is "as soon as it passes its estimate".
   overrun_bell_multiple: { min: 1, max: 100, int: false },
@@ -309,7 +325,9 @@ export type GateEvent =
   // ceiling, and one that started anyway past the wait limit.
   | "stopped-leftovers"
   | "start-held"
-  | "started-busy";
+  | "started-busy"
+  // Issue 1263: a run's throwaway containers removed after its slot ended.
+  | "containers-removed";
 
 /** Issue 963: one key's change: the value in effect before and after. */
 export interface GateSettingChange {
@@ -383,6 +401,14 @@ export interface GateEventRow {
   passed?: string[];
   /** waits: when it may expect to start (ISO). */
   expectedStart?: string;
+  /**
+   * Issue 1274: waits: the reading that holds it here (free memory under
+   * the floor, or swap over it), when one does.
+   */
+  held?: {
+    memory?: { free: number; limit: number };
+    swap?: { usedGb: number; limitGb: number };
+  };
   /** ended-early: who ended it; priority: who asked (agent or person). */
   by?: string;
   /** Issue 621: a runner's slot: the runner token's name. */
@@ -402,8 +428,15 @@ export interface GateEventRow {
   machine?: string;
   /** Issue 1033: why a run that could go to a box stays here. */
   hostWhy?: string;
-  /** Issue 1132: stopped-leftovers: how many, and the command's name. */
+  /**
+   * Issue 1263: containers-removed: how many, and their image names.
+   * Issue 1132: stopped-leftovers: how many processes.
+   */
   count?: number;
+  images?: string[];
+  /** Issue 1289: the run's checkout tag. */
+  checkout?: string;
+  /** Issue 1132: stopped-leftovers: the command's name (count above). */
   cmd?: string;
   /** Issue 1132: stopped-leftovers: the signal (TERM, or KILL after it). */
   signal?: "TERM" | "KILL";
@@ -411,6 +444,15 @@ export interface GateEventRow {
   load?: number;
   limit?: number;
 }
+
+/** Issue 1289: the log events that end a slot. */
+export const SLOT_ENDS: ReadonlySet<GateEvent> = new Set<GateEvent>([
+  "released",
+  "taken-back-gone",
+  "taken-back-lapsed",
+  "taken-back-revoked",
+  "ended-early",
+]);
 
 /**
  * Issue 1132: why a run's leftovers were stopped: its command ended, its
@@ -519,6 +561,17 @@ export interface GateStoreOpts {
   cores?: () => number;
   /** Issue 1132: process groups (default process-group.ts and kill); tests fake it. */
   groups?: GroupOps;
+  /** Issue 1274: free memory, percent (default realFreeMemory). */
+  free?: () => number;
+  /** Issue 1274: swap in use, GB (default realSwapUsedGb). */
+  swap?: () => number;
+  /**
+   * Issue 1274: a fixed VM reading (tests). Without it: null with
+   * DEN_GATE_VMS=0 (the test setup), else read in the background.
+   */
+  vms?: () => VmReading | null;
+  /** Issue 1274: the background VM reader (default readVmsAsync). */
+  vmsAsync?: (share: number) => Promise<VmReading>;
 }
 
 /**
@@ -529,6 +582,118 @@ export interface GateStoreOpts {
 export function realLoad(env: NodeJS.ProcessEnv = process.env): number {
   const fixed = Number((env.DEN_GATE_LOAD5 ?? "").trim() || NaN);
   return Number.isFinite(fixed) ? fixed : (os.loadavg()[1] ?? 0);
+}
+
+/**
+ * Issue 1274: Linux's free memory, percent: MemAvailable over MemTotal from
+ * /proc/meminfo. NaN when either is missing.
+ */
+export function freePercentFromMeminfo(text: string): number {
+  const kb = (k: string) => {
+    const m = new RegExp(`^${k}:\\s+(\\d+)\\s*kB`, "m").exec(text);
+    return m ? Number(m[1]) : NaN;
+  };
+  const total = kb("MemTotal");
+  const avail = kb("MemAvailable");
+  return total > 0 && Number.isFinite(avail)
+    ? Math.round((avail / total) * 1000) / 10
+    : NaN;
+}
+
+/**
+ * Issue 1274: this machine's free memory, percent. DEN_GATE_FREE_MEM fixes
+ * the reading (the test setup sets 100, so a full machine never holds an
+ * unrelated test's slot; a drill can set it low). macOS: the kernel's own
+ * free level (kern.memorystatus_level, what memory_pressure prints);
+ * Linux: MemAvailable. NaN: unread (no hold).
+ */
+export function realFreeMemory(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_FREE_MEM ?? "").trim() || NaN);
+  if (Number.isFinite(fixed)) return fixed;
+  // Read at most every 2 s: the store asks on every pass.
+  const now = Date.now();
+  if (freeCache && now - freeCache.at < 2_000) return freeCache.value;
+  const value = readFreeMemory();
+  freeCache = { at: now, value };
+  return value;
+}
+
+let freeCache: { at: number; value: number } | undefined;
+
+const gb1 = (bytes: number) => Math.round((bytes / 1024 ** 3) * 10) / 10;
+
+/** Issue 1274: macOS `sysctl vm.swapusage`'s used, GB (NaN: unread). */
+export function swapGbFromSysctl(text: string): number {
+  const m = /used\s*=\s*([\d.]+)([KMG])/.exec(text);
+  if (!m) return NaN;
+  const mult = { K: 1024, M: 1024 ** 2, G: 1024 ** 3 }[m[2] as "K" | "M" | "G"];
+  return gb1(Number(m[1]) * mult);
+}
+
+/** Issue 1274: Linux swap in use, GB, from /proc/meminfo (NaN: unread). */
+export function swapGbFromMeminfo(text: string): number {
+  const kb = (k: string) => {
+    const m = new RegExp(`^${k}:\\s+(\\d+)\\s*kB`, "m").exec(text);
+    return m ? Number(m[1]) : NaN;
+  };
+  const total = kb("SwapTotal");
+  const free = kb("SwapFree");
+  return Number.isFinite(total) && Number.isFinite(free)
+    ? gb1((total - free) * 1024)
+    : NaN;
+}
+
+let swapCache: { at: number; value: number } | undefined;
+
+/**
+ * Issue 1274: swap in use here, GB. DEN_GATE_SWAP_GB fixes it (the test
+ * setup sets 0). Read at most every 2 s. NaN: unread (no hold).
+ */
+export function realSwapUsedGb(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_SWAP_GB ?? "").trim() || NaN);
+  if (Number.isFinite(fixed)) return fixed;
+  const now = Date.now();
+  if (swapCache && now - swapCache.at < 2_000) return swapCache.value;
+  let value = NaN;
+  try {
+    if (process.platform === "darwin")
+      value = swapGbFromSysctl(
+        execFileSync("/usr/sbin/sysctl", ["-n", "vm.swapusage"], {
+          encoding: "utf-8",
+          timeout: 2_000,
+          stdio: ["ignore", "pipe", "ignore"],
+        }),
+      );
+    else if (process.platform === "linux")
+      value = swapGbFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
+  } catch {
+    value = NaN;
+  }
+  swapCache = { at: now, value };
+  return value;
+}
+
+function readFreeMemory(): number {
+  try {
+    if (process.platform === "darwin") {
+      const out = execFileSync(
+        "/usr/sbin/sysctl",
+        ["-n", "kern.memorystatus_level"],
+        {
+          encoding: "utf-8",
+          timeout: 2_000,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
+      const n = Number(out.trim());
+      return Number.isFinite(n) && n >= 0 && n <= 100 ? n : NaN;
+    }
+    if (process.platform === "linux")
+      return freePercentFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
+  } catch {
+    /* unread */
+  }
+  return NaN;
 }
 
 /** Issue 1048: this machine's cores. */
@@ -592,6 +757,12 @@ export class GateStore {
   private readonly readLoad: () => number;
   private readonly readCores: () => number;
   private readonly groups: GroupOps;
+  private readonly readFree: () => number;
+  private readonly readSwap: () => number;
+  private readonly fixedVms: (() => VmReading | null) | undefined;
+  private readonly vmsAsync:
+    | ((share: number) => Promise<VmReading>)
+    | undefined;
   readonly platform: NodeJS.Platform;
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
@@ -606,6 +777,55 @@ export class GateStore {
     this.readLoad = o.load ?? (() => realLoad());
     this.readCores = o.cores ?? realCores;
     this.groups = o.groups ?? realGroups;
+    this.readFree = o.free ?? (() => realFreeMemory());
+    this.readSwap = o.swap ?? (() => realSwapUsedGb());
+    this.fixedVms = o.vms;
+    this.vmsAsync = o.vmsAsync;
+  }
+
+  /** Issue 1274: swap in use here now, GB (NaN: unread). */
+  swapUsedGb(): number {
+    try {
+      const n = this.readSwap();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
+  }
+
+  /**
+   * Issue 1274: what VMs here reserve, never waiting (the Gate page's
+   * request reads this): the last background reading; null: none yet.
+   */
+  vms(): VmReading | null {
+    try {
+      if (this.fixedVms) return this.fixedVms();
+      if (process.env.DEN_GATE_VMS === "0") return null;
+      return peekVms(this.settings().vmMemoryShare, this.vmsAsync);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Issue 1274: the same, read now (gate status and doctor; not a server). */
+  vmsNow(): VmReading | null {
+    try {
+      if (this.fixedVms) return this.fixedVms();
+      if (process.env.DEN_GATE_VMS === "0") return null;
+      return readVms(this.settings().vmMemoryShare);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Issue 1274: this machine's free memory now, percent (NaN: unread). */
+  freeMemory(): number {
+    try {
+      const n = this.readFree();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
   }
 
   /** Issue 1048: this machine's cores (at least 1). */
@@ -682,6 +902,12 @@ export class GateStore {
           "reap_grace_seconds",
           GATE_DEFAULTS.reapGraceSeconds,
         ),
+        memoryFreeMinPercent: num(
+          "memory_free_min_percent",
+          GATE_DEFAULTS.memoryFreeMinPercent,
+        ),
+        vmMemoryShare: num("vm_memory_share", GATE_DEFAULTS.vmMemoryShare),
+        swapHoldGb: num("swap_hold_gb", GATE_DEFAULTS.swapHoldGb),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -834,10 +1060,53 @@ export class GateStore {
       ...(e.mcp ? { actor: e.actor, install: e.mcp.install } : {}),
       ...(e.box ? { box: e.box } : {}),
       ...(cls ? { class: cls } : {}),
+      ...(e.checkout ? { checkout: e.checkout } : {}),
       ...row,
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
     return at;
+  }
+
+  /**
+   * Issue 1263: logs that run `id`'s throwaway containers were removed. The
+   * slot is gone by then, so its kind, asker and label come from its last
+   * row. Image names only: never a command line or environment.
+   */
+  noteContainersRemoved(
+    id: string,
+    r: { count: number; images: string[] },
+  ): void {
+    this.locked(() => {
+      const last = this.events()
+        .filter((x) => x.id === id)
+        .at(-1);
+      fs.mkdirSync(this.dir, { recursive: true });
+      const row: GateEventRow = {
+        at: new Date(this.now()).toISOString(),
+        event: "containers-removed",
+        id,
+        kind: last?.kind ?? (id.startsWith("browser-") ? "browser" : "cpu"),
+        who: last?.who ?? "",
+        label: last?.label ?? "",
+        count: r.count,
+        images: r.images,
+      };
+      fs.appendFileSync(this.eventsFile, JSON.stringify(row) + "\n");
+    });
+  }
+
+  /**
+   * Issue 1289: when a slot from `checkout` last ended (ms), or null when
+   * the log has none.
+   */
+  lastEndFor(checkout: string): number | null {
+    let last: number | null = null;
+    for (const r of this.events()) {
+      if (r.checkout !== checkout || !SLOT_ENDS.has(r.event)) continue;
+      const t = Date.parse(r.at);
+      if (Number.isFinite(t) && (last === null || t > last)) last = t;
+    }
+    return last;
   }
 
   /** The runs' rows (issue 963: never a settings change). */
@@ -1029,6 +1298,54 @@ export class GateStore {
     return out;
   }
 
+  /**
+   * Issue 1263: the ids of every slot (held or waiting), read strictly for a
+   * sweep that removes containers: null when the slots can't be read for
+   * sure (the folder unreadable or missing, a file unreadable or not JSON),
+   * so "can't read" is never taken for "nothing is live". A file gone
+   * between the listing and its read is a slot that just ended. Settles
+   * first, as list() does.
+   */
+  liveIds(): Set<string> | null {
+    const all = this.liveSlots();
+    return all && new Set(all.map((e) => e.id));
+  }
+
+  /**
+   * Issue 1289: liveIds' strict read, with each slot's checkout tag. Null
+   * when the slots can't be read for sure.
+   */
+  liveSlots(): { id: string; checkout?: string }[] | null {
+    this.list();
+    let names: string[];
+    try {
+      names = fs.readdirSync(this.slots).filter((n) => n.endsWith(".json"));
+    } catch {
+      return null;
+    }
+    const out: { id: string; checkout?: string }[] = [];
+    for (const n of names) {
+      let text: string;
+      try {
+        text = fs.readFileSync(path.join(this.slots, n), "utf-8");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        return null;
+      }
+      try {
+        const e = JSON.parse(text) as Partial<GateEntry>;
+        if (typeof e.id !== "string") return null;
+        out.push({
+          id: e.id,
+          ...(typeof e.checkout === "string" ? { checkout: e.checkout } : {}),
+        });
+      } catch {
+        return null;
+      }
+    }
+    return out;
+  }
+
   private file(id: string) {
     if (!/^[a-z0-9-]{1,64}$/.test(id)) throw new Error(`not a slot id: ${id}`);
     return path.join(this.slots, `${id}.json`);
@@ -1137,6 +1454,8 @@ export class GateStore {
       caps.caps,
       this.load(),
       this.cores(),
+      this.freeMemory(),
+      this.swapUsedGb(),
     )) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
@@ -1335,6 +1654,8 @@ export class GateStore {
     hostWhy?: string;
     /** Issue 1033: a default pick's boxes (the others can't serve it). */
     onlyBoxes?: string[];
+    /** Issue 1289: the run's checkout tag (12 hex characters). */
+    checkout?: string;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -1353,6 +1674,9 @@ export class GateStore {
         kind: o.kind,
         who: o.who.slice(0, 200),
         ...(o.project ? { project: o.project.slice(0, 120) } : {}),
+        ...(o.checkout && /^[0-9a-f]{12}$/.test(o.checkout)
+          ? { checkout: o.checkout }
+          : {}),
         label: o.label.slice(0, 120),
         pid: o.pid,
         askedAt: new Date(this.now()).toISOString(),
@@ -1405,14 +1729,32 @@ export class GateStore {
           .filter((x) => x.kind === now.kind && !x.grantedAt && x.priority?.at)
           .map((x) => x.id),
       });
-    if (!now.grantedAt)
+    if (!now.grantedAt) {
+      // Issue 1274: the slot log keeps the reading that holds a run here.
+      const set = this.settings();
+      const mem = memoryHold(all, set, this.freeMemory());
+      const sw = swapHold(all, set, this.swapUsedGb());
+      const here = !now.where || now.where === "local" || now.where === "any";
+      const held =
+        here && (mem || sw)
+          ? {
+              ...(mem
+                ? { memory: { free: Math.round(mem.free), limit: mem.limit } }
+                : {}),
+              ...(sw
+                ? { swap: { usedGb: sw.usedGb, limitGb: sw.limitGb } }
+                : {}),
+            }
+          : undefined;
       this.record(now, {
         event: "waits",
         behind: all.filter((x) => x.grantedAt).map((x) => x.id),
         expectedStart: new Date(
-          expectedStart(all, e.id, this.now(), this.settings()),
+          expectedStart(all, e.id, this.now(), set),
         ).toISOString(),
+        ...(held ? { held } : {}),
       });
+    }
     return now;
   }
 

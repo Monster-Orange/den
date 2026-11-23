@@ -158,6 +158,8 @@ function sessionsValue(name: string): number | undefined {
  */
 const DOTTED_SWITCH: Record<string, string> = {
   "agents.keep_running_after_logout": "keep_running_after_logout",
+  // Issue 1225: whether services that were up come back after a restart.
+  "services.restore_on_boot": "restore_services_on_boot",
 };
 
 /** Every key `config` accepts, aliases too. */

@@ -59,6 +59,14 @@ import {
   readTestResolveState,
   testResolveDoctorLine,
 } from "../../shared/test-resolve.js";
+import { listDaemons } from "../../shared/environment-manager/service-runner.js";
+import {
+  containerRuntimeOnPath,
+  readLastRestore,
+  restoreDoctorLine,
+  runtimeMissingDoctorLine,
+  servicesRestoreOnBoot,
+} from "../../shared/environment-manager/restore-on-boot.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
@@ -1888,6 +1896,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
+      // Issue 1274: memory VMs promise, against the machine's RAM.
+      const vm = await gateVmRows();
+      if (vm.lines.length) r.checks.push(vm.check);
+      // Issue 1263: throwaway containers left over from gate runs.
+      r.checks.push((await throwawayRows()).check);
       // The shared GitHub watcher: calls left, reset, watches, interval.
       const gw = await githubWatchRow();
       if (gw.check) r.checks.push(gw.check);
@@ -2029,6 +2042,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await serverLogRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
+  // Issue 1274: memory VMs promise, against the machine's RAM.
+  for (const l of (await gateVmRows()).lines) console.log(l);
+  // Issue 1263: throwaway containers left over from gate runs.
+  {
+    const tw = await throwawayRows();
+    if (tw.lines.length) {
+      console.log(`Throwaway containers: ${tw.check.detail}`);
+      for (const l of tw.lines) console.log(l);
+    }
+  }
   // The shared GitHub watcher: calls left, reset, watches, interval.
   for (const l of (await githubWatchRow()).lines) console.log(l);
   {
@@ -2097,6 +2120,30 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   {
     const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
     if (tr) console.log(tr);
+  }
+  // Issue 1225: what the last restore after a restart brought back, or that
+  // the setting is off.
+  {
+    let enabled = true;
+    try {
+      enabled = servicesRestoreOnBoot();
+    } catch {
+      /* a bad value: doctor's config check says so */
+    }
+    const rl = restoreDoctorLine({
+      enabled,
+      last: readLastRestore(getStateDir()),
+    });
+    if (rl) console.log(rl);
+    try {
+      const rm = runtimeMissingDoctorLine({
+        runtime: await containerRuntimeOnPath(),
+        records: listDaemons(),
+      });
+      if (rm) console.log(rm);
+    } catch {
+      /* no service records to read: nothing to say */
+    }
   }
   for (const l of pushContactLines(
     readWebUrl(),
@@ -2167,6 +2214,26 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 
 /** Issue 726: doctor's rows for state from an earlier Hub. */
 /** Issue 625: the machine's test boxes (never checked from here). */
+/**
+ * Issue 1274: the VMs here and what they promise. DEN_GATE_VMS=0 skips the
+ * reading (the test setup sets it: a test never reads this machine's VMs).
+ */
+async function gateVmRows() {
+  const none = {
+    lines: [] as string[],
+    check: { id: "gate_vms", status: "ok" as const, detail: "" },
+  };
+  if (process.env.DEN_GATE_VMS === "0") return none;
+  try {
+    const { vmLines } = await import("./doctor-vms.js");
+    const { readVms } = await import("../../shared/gates/vms.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return vmLines(readVms(new GateStore().settings().vmMemoryShare));
+  } catch {
+    return none;
+  }
+}
+
 async function gateBoxRows() {
   const { boxLines } = await import("./doctor-boxes.js");
   const { GateStore } = await import("../../shared/gates/store.js");
@@ -2177,6 +2244,26 @@ async function gateBoxRows() {
       lines: [] as string[],
       check: { id: "gate_boxes", status: "ok" as const, detail: "" },
     };
+  }
+}
+
+/** Issue 1263: doctor reads docker's throwaway containers; removes none. */
+async function throwawayRows() {
+  const { throwawayLines } = await import("./doctor-throwaway.js");
+  const { listThrowaway, realDocker, storeTag } =
+    await import("../../shared/gates/ephemeral.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    const store = new GateStore();
+    const list = await listThrowaway(realDocker(10_000));
+    const all = store.list();
+    const live = new Set(all.map((e) => e.id));
+    const checkouts = new Set(
+      all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
+    );
+    return throwawayLines(list, live, storeTag(store.dir), checkouts);
+  } catch {
+    return throwawayLines(null, new Set());
   }
 }
 

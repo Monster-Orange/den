@@ -2393,6 +2393,18 @@
       "Hold new unit test runs over this load per core",
     "set.server.gate_load_hold_per_core.d":
       "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Hold new runs here under this much free memory (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "New test runs on this machine (unit and browser, release ones too) wait while its free memory is under this percent, but only while another run here is going: with none going, the next one starts. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "Hold new runs here over this much swap in use (GB)",
+    "set.server.gate_swap_hold_gb.d":
+      "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_vm_memory_share":
+      "Warn when VMs promise more than this share of memory",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor warns when the memory that running VMs (OrbStack machines, Docker's VM) have reserved adds up to more than this share of the machine's RAM. 1 is all of it; under 1 warns sooner. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Machine load that holds unit test runs during a release browser run",
     "set.server.gate_cpu_hold_load.d":
@@ -2634,6 +2646,9 @@
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.restore_services": "Bring back services after a restart",
+    "set.server.restore_services.d":
+      "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "Agents restarted at a time",
     "set.agents.resume_batch.d":
       "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
@@ -3788,6 +3803,12 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.serviceBack": "Brought back 1 service after the restart.",
+    "bell.m.servicesBack": "Brought back {n} services after the restart.",
+    "bell.m.serviceBackFailed":
+      "Brought back 1 service after the restart. Not brought back: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Brought back {n} services after the restart. Not brought back: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
     "bell.m.toolsListFailed":
@@ -4101,6 +4122,16 @@
     "gate.onBox": "on box {box}",
     "gate.anyBox": "here or on a test box",
     "gate.boxesH": "Test boxes",
+    "gate.swapHold":
+      "waiting: this machine has {used} GB of swap in use, over {limit} GB, while another run here is going; it starts once swap drops or that run ends",
+    "gate.swapUsed": "Swap in use: {used} GB",
+    "gate.memoryHold":
+      "waiting: this machine has {free}% of its memory free, under {limit}%, while another run here is going; it starts once memory frees or that run ends",
+    "gate.freeMemory": "This machine: {free}% of memory free",
+    "gate.vms": "VMs here promise {promised} GB of {limit} GB allowed",
+    "gate.vmsOver":
+      "VMs here promise {promised} GB, over the {limit} GB allowed: the machine can run out of memory",
+    "gate.vmsNotCounted": "{runtime}: not counted (couldn't read it)",
     "gate.boxSlots": "{box}: {held} of {n} browser slots in use",
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",

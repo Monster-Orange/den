@@ -1207,6 +1207,18 @@
       "Esperar nuevas pruebas unitarias por encima de esta carga por núcleo",
     "set.server.gate_load_hold_per_core.d":
       "Las nuevas pruebas unitarias esperan mientras la carga media de 5 minutos de esta máquina supere este número de veces sus núcleos, pero solo mientras otra prueba unitaria se ejecuta: si no hay ninguna, la siguiente empieza con cualquier carga. Las pruebas de versión y las que ya se ejecutan nunca esperan. Cada prueba unitaria recibe también su parte de los núcleos en DEN_GATE_WORKERS. 0 desactiva la espera. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Esperar nuevas pruebas aquí con menos memoria libre que esta (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "Las nuevas pruebas en esta máquina (unitarias y de navegador, también las de versión) esperan mientras su memoria libre esté por debajo de este porcentaje, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "Esperar nuevas pruebas aquí con más intercambio en uso que esto (GB)",
+    "set.server.gate_swap_hold_gb.d":
+      "Las nuevas pruebas en esta máquina esperan mientras el intercambio en uso supere estos GB, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Una máquina puede mostrar mucha memoria libre mientras el intercambio se llena. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_vm_memory_share":
+      "Avisar cuando las máquinas virtuales reserven más que esta parte de la memoria",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor avisa cuando la memoria reservada por las máquinas virtuales en marcha (máquinas de OrbStack, la máquina virtual de Docker) supera esta parte de la RAM de la máquina. 1 es toda; por debajo de 1 avisa antes. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
     "set.server.gate_cpu_hold_load.d":
@@ -1464,6 +1476,10 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.restore_services":
+      "Volver a iniciar los servicios después de un reinicio",
+    "set.server.restore_services.d":
+      "Activado, después de que la máquina o __DEN_TITLE__ se reinicie, los servicios que estaban activos vuelven a iniciarse solos, unos pocos a la vez. Un servicio que detuviste sigue detenido. La campana dice cuáles volvieron. __DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "Agentes reiniciados a la vez",
     "set.agents.resume_batch.d":
       "Tras un reinicio, o cuando cambian las herramientas de Hub, los agentes se reinician de este número en este número; primero los que estaban trabajando. 0 reinicia todos a la vez. __DEN_CLI__ config agents.resume.batch=4",
@@ -2891,6 +2907,14 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.serviceBack":
+      "Se volvió a iniciar 1 servicio después del reinicio.",
+    "bell.m.servicesBack":
+      "Se volvieron a iniciar {n} servicios después del reinicio.",
+    "bell.m.serviceBackFailed":
+      "Se volvió a iniciar 1 servicio después del reinicio. No se pudieron iniciar: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Se volvieron a iniciar {n} servicios después del reinicio. No se pudieron iniciar: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.toolsListFailed":
@@ -3209,6 +3233,17 @@
     "gate.onBox": "en la máquina de pruebas {box}",
     "gate.anyBox": "aquí o en una máquina de pruebas",
     "gate.boxesH": "Máquinas de pruebas",
+    "gate.swapHold":
+      "esperando: esta máquina usa {used} GB de intercambio, más de {limit} GB, mientras se ejecuta otra prueba aquí; empieza cuando baje el intercambio o termine esa prueba",
+    "gate.swapUsed": "Intercambio en uso: {used} GB",
+    "gate.memoryHold":
+      "esperando: esta máquina tiene {free}% de memoria libre, menos del {limit}%, mientras se ejecuta otra prueba aquí; empieza cuando se libere memoria o termine esa prueba",
+    "gate.freeMemory": "Esta máquina: {free}% de memoria libre",
+    "gate.vms":
+      "Las máquinas virtuales aquí reservan {promised} GB de {limit} GB permitidos",
+    "gate.vmsOver":
+      "Las máquinas virtuales aquí reservan {promised} GB, más de los {limit} GB permitidos: la máquina puede quedarse sin memoria",
+    "gate.vmsNotCounted": "{runtime}: sin contar (no se pudo leer)",
     "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",

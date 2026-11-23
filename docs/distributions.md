@@ -1436,8 +1436,11 @@ hub:
   than the watcher's first run, and comments Hub already delivered, are
   passed over. Hub has no ack for inbox items, so none is sent. While
   Hub doesn't answer the wait doubles, up to
-  `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
-  turns it off.
+  `hub.inbox_backoff_max_seconds` (default 600), plus up to a quarter
+  more by chance. The whole install reads at most
+  `hub.inbox_reads_per_second` (default 2), and each agent at most once
+  per poll, counted from when its last read ended. An agent's Stop hook
+  reuses Hub's answer for 30 s. `hub.inbox_watch: false` turns it off.
 - Hub's tool changes reach a resumed agent (0.4.52, issue 193). An agent
   resumed on the same conversation keeps the tool list its client read
   when that conversation began, so it doesn't know a parameter Hub added
@@ -1835,6 +1838,7 @@ and the guide to making your own
   (greys only, dashed, outline, one face) ships in the UI kit as
   `themes/sketch.css`, so a page with the kit and no Den server can link
   it after `tokens.css`.
+
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -3129,7 +3133,7 @@ to one project for one agent:
 (agent:<id>; no grants); "<other>" is another project`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
   says how to get more: a person adds `<other>` to `agents.<id>.grants` in
-  the org config and restarts the agent; an agent can't grant itself one. A
+  `config/local/user.yml` and restarts the agent; an agent can't grant itself one. A
   refused call is recorded in the activity trail, read tools included.
 - **Says so.** Every scoped answer (`status`, `services`, `applications`,
   `graph`, `stacks`, `workspaces`) carries a `scope` block: the project
@@ -3163,7 +3167,7 @@ to one project for one agent:
 agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
 - **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
-  when the org config's `agents.<id>.grants` lists it; otherwise the server
+  when `agents.<id>.grants` in `config/local/user.yml` lists it; otherwise the server
   exits 2 (an agent can't grant itself one). A call naming a granted
   project is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
@@ -3210,13 +3214,21 @@ refusal, a failed action, the web server down).
 
 ### Config
 
-Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
-tools are registered. Actions are opt-in, by name:
+Without `mcp.actions` in `config/local/user.yml`, only the read tools are
+registered. Actions widen what agents may do, so they are opt-in, by name,
+in that file only (an agent's sandbox can't write it):
 
 ```yaml
+# config/local/user.yml
 mcp:
   actions:
     [service_up, service_down, service_restart, workspace_sync, run_tests]
+```
+
+The rest of the `mcp:` block stays in the org config (`config/<name>.yml`):
+
+```yaml
+mcp:
   run_tests:
     envs: [local] # the default; production is refused even if listed
   logs:
@@ -3227,6 +3239,11 @@ mcp:
 An unknown action or environment name is an error, so a typo never turns a
 guard off; so is an `approvals` that isn't `true` or `false`. See
 [Onboarding writes, held for the person](#onboarding-writes-held-for-the-person).
+
+Migrating (issue 1072): Den no longer reads `mcp.actions` or
+`agents.<id>.grants` from the org config. `<cli> agents doctor` names each
+one still there ("Settings read from config/local only"). Move them to
+`config/local/user.yml`. A later release refuses them in the org config.
 
 ### Tools
 
@@ -6051,7 +6068,7 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
 - Held past `overrun_bell_multiple` times its estimate (default 2; `gate
-  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
   the bell's Needs you: who holds it, what it runs, since when and its
   estimate, with End for the person. When an agent holds it, Den types one
   line at that agent's prompt, once per slot, to release it with

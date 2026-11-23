@@ -1176,6 +1176,18 @@
       "コアあたりこの負荷を超えたら新しい単体テストを待たせる",
     "set.server.gate_load_hold_per_core.d":
       "このマシンの 5 分間の平均負荷がコア数のこの倍数を超えている間、新しい単体テストは待ちます。ただし待つのは別の単体テストが動いている間だけで、動いているものがなければ負荷にかかわらず次が始まります。リリース用の実行とすでに動いている実行は待ちません。各単体テストには DEN_GATE_WORKERS でコアの割り当て分も渡します。0 で待たせません。__DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "空きメモリがこの割合 (%) を下回ったらこのマシンの新しい実行を待たせる",
+    "set.server.gate_memory_free_min_percent.d":
+      "このマシンの空きメモリがこの割合を下回っている間、新しいテスト (単体テストとブラウザーテスト、リリース用も含む) は待ちます。ただし待つのはこのマシンで別の実行が動いている間だけで、動いているものがなければ次が始まります。テスト用マシンは引き続き実行を受け付けます。0 で待たせません。__DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "スワップ使用量がこの値 (GB) を超えたらこのマシンの新しい実行を待たせる",
+    "set.server.gate_swap_hold_gb.d":
+      "このマシンのスワップ使用量がこの GB を超えている間、新しいテストは待ちます。ただし待つのはこのマシンで別の実行が動いている間だけで、動いているものがなければ次が始まります。空きメモリが十分に見えてもスワップが埋まっていくことがあります。テスト用マシンは引き続き実行を受け付けます。0 で待たせません。__DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_vm_memory_share":
+      "仮想マシンがメモリのこの割合を超えて予約したら警告する",
+    "set.server.gate_vm_memory_share.d":
+      "動いている仮想マシン (OrbStack のマシン、Docker の仮想マシン) が予約したメモリの合計が、このマシンの RAM のこの割合を超えると doctor が警告します。1 は全量で、1 未満にすると早めに警告します。__DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "リリース用ブラウザーテスト中に単体テストを待たせるマシン負荷",
     "set.server.gate_cpu_hold_load.d":
@@ -1417,6 +1429,9 @@
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.restore_services": "再起動後にサービスを再開する",
+    "set.server.restore_services.d":
+      "オンにすると、マシンまたは __DEN_TITLE__ の再起動後、動いていたサービスが数件ずつ自動で再開します。あなたが停止したサービスは停止したままです。再開したものはベルでお知らせします。__DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "一度に再起動するエージェント数",
     "set.agents.resume_batch.d":
       "再起動のあと、または Hub のツールが変わったとき、エージェントはこの数ずつ再起動します。作業中だったものが先です。0 にするとすべて同時に再起動します。__DEN_CLI__ config agents.resume.batch=4",
@@ -2792,6 +2807,12 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
     "bell.m.updatedSecurity":
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.serviceBack": "再起動後、1 件のサービスを再開しました。",
+    "bell.m.servicesBack": "再起動後、{n} 件のサービスを再開しました。",
+    "bell.m.serviceBackFailed":
+      "再起動後、1 件のサービスを再開しました。再開できなかったもの: {failed}。",
+    "bell.m.servicesBackFailed":
+      "再起動後、{n} 件のサービスを再開しました。再開できなかったもの: {failed}。",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.toolsListFailed":
@@ -3098,6 +3119,17 @@
     "gate.onBox": "テストマシン {box} で",
     "gate.anyBox": "ここかテストマシンで",
     "gate.boxesH": "テストマシン",
+    "gate.swapHold":
+      "待機中: このマシンのスワップ使用量は {used} GB で {limit} GB を超えており、このマシンで別の実行が動いています。スワップが減るかその実行が終わると始まります",
+    "gate.swapUsed": "スワップ使用量: {used} GB",
+    "gate.memoryHold":
+      "待機中: このマシンの空きメモリは {free}% で {limit}% を下回っており、このマシンで別の実行が動いています。メモリが空くかその実行が終わると始まります",
+    "gate.freeMemory": "このマシン: 空きメモリ {free}%",
+    "gate.vms":
+      "ここの仮想マシンが予約したメモリは {promised} GB (許容 {limit} GB)",
+    "gate.vmsOver":
+      "ここの仮想マシンが {promised} GB を予約し、許容の {limit} GB を超えています。メモリが足りなくなるおそれがあります",
+    "gate.vmsNotCounted": "{runtime}: 数えていません (読み取れませんでした)",
     "gate.boxSlots": "{box}: ブラウザスロット {n} 個中 {held} 個使用中",
     "gate.boxHeld": "{box}: 保留中のため飛ばします ({reason})",
     "gate.boxDown": "{box}: 応答がないため飛ばします ({reason})",

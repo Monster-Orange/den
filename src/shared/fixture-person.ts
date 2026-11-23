@@ -322,6 +322,12 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/report\/drafts$/],
   ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
+  // Issue 1215: a live check's own project (fixture-projects.ts narrows
+  // these to create, activate, deactivate and delete, on its own projects,
+  // on a test install).
+  ["POST", /^\/api\/workspaces\/create$/],
+  ["POST", /^\/api\/workspaces$/],
+  ["DELETE", /^\/api\/workspaces$/],
 ];
 
 /**

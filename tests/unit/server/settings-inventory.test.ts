@@ -68,6 +68,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     max_start_load: true,
     max_start_wait_minutes: true,
     reap_grace_seconds: true,
+    // Issue 1274: memory free under which new runs here wait; VM share.
+    memory_free_min_percent: true,
+    vm_memory_share: true,
+    swap_hold_gb: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -255,6 +259,8 @@ describe("the settings inventory (R21)", () => {
         "machine_name",
         // SRV-P6: whether Den updates itself without asking.
         "server_agent_self_update",
+        // Issue 1225: whether services that were up come back after a restart.
+        "restore_services_on_boot",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",
@@ -314,6 +320,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
+        "gate_slots.memory_free_min_percent",
         "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
@@ -325,6 +332,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.swap_hold_gb",
+        "gate_slots.vm_memory_share",
         "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
