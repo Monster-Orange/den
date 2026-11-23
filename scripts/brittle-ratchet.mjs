@@ -26,12 +26,15 @@
  * turn: they share no baseline to race on.
  *
  *   node scripts/brittle-ratchet.mjs --base <ref> [--root dir] [--files glob]… [--json]
- *   node scripts/brittle-ratchet.mjs --report [--root dir] [--files glob]… [--json]
+ *   node scripts/brittle-ratchet.mjs --report [--since <ref>] [--root dir] [--files glob]… [--json]
  *
  *   --base      the branch the change goes into (a pull request's base sha,
  *               or origin/main). Needs the history back to the merge base:
  *               a shallow clone without it is an error (exit 2), never a pass.
  *   --report    totals per kind, and per file, of the files as they are now.
+ *   --since     with --report (issue 841, the weekly numbers): also count
+ *               every matching file at <ref>, print each kind then -> now,
+ *               and name the files whose count went down or up.
  *               Never fails (a push to main; the weekly numbers).
  *   --files     a glob relative to --root (** any folders, * any name part);
  *               repeat for more. Default: tests/**\/*.browser.* and gate/*.mjs
@@ -498,6 +501,48 @@ export function judge(root, base, globs) {
   return { mergeBase: mb, files, failures, lower };
 }
 
+/**
+ * Issue 841: counts every matching file at `rev` and as it is now, with
+ * the files whose total went down or up: { totals, files, since, down, up }.
+ */
+export function reportSince(root, rev, globs) {
+  const git = gitIn(root);
+  const commit = git("rev-parse", "--verify", "--quiet", `${rev}^{commit}`);
+  if (commit.status !== 0)
+    throw new GitError(`--since ${rev}: no such commit here`);
+  const sha = commit.stdout.trim();
+  const ls = git("ls-tree", "-r", "-z", "--name-only", sha);
+  if (ls.status !== 0)
+    throw new GitError(`git ls-tree ${sha}: ${ls.stderr.trim()}`);
+  const res = globs.map(globRe);
+  const was = {};
+  for (const f of ls.stdout.split("\0").filter(Boolean).sort()) {
+    if (!res.some((x) => x.test(f))) continue;
+    const hits = scan(showAt(root, sha, f));
+    const row = {};
+    for (const k of KINDS) if (hits[k].length) row[k] = hits[k].length;
+    if (Object.keys(row).length) was[f] = row;
+  }
+  const now = report(root, globs);
+  const sum = (row) => KINDS.reduce((n, k) => n + (row?.[k] ?? 0), 0);
+  const down = [];
+  const up = [];
+  for (const file of [
+    ...new Set([...Object.keys(was), ...Object.keys(now.files)]),
+  ].sort()) {
+    const before = sum(was[file]);
+    const after = sum(now.files[file]);
+    if (after < before) down.push({ file, before, after });
+    else if (after > before) up.push({ file, before, after });
+  }
+  return {
+    ...now,
+    since: { ref: rev, commit: sha, totals: totals(was), files: was },
+    down,
+    up,
+  };
+}
+
 /** Counts every matching file as it is now: { totals, files }. */
 export function report(root, globs) {
   const files = {};
@@ -512,7 +557,7 @@ export function report(root, globs) {
 
 const REPLACED = new Set(["--baseline", "--update", "--init"]);
 const USAGE =
-  "usage: brittle-ratchet.mjs --base <ref> | --report [--root dir] [--files glob]… [--json]";
+  "usage: brittle-ratchet.mjs --base <ref> | --report [--since <ref>] [--root dir] [--files glob]… [--json]";
 
 function parseArgs(argv) {
   const o = { files: [], json: false, report: false };
@@ -526,6 +571,7 @@ function parseArgs(argv) {
     else if (a === "--files") o.files.push(val());
     else if (a === "--base") o.base = val();
     else if (a === "--report") o.report = true;
+    else if (a === "--since") o.since = val();
     else if (a === "--json") o.json = true;
     else if (REPLACED.has(a))
       throw new Error(
@@ -542,6 +588,8 @@ function parseArgs(argv) {
     );
   if (o.base && o.report)
     throw new Error("--base <ref> and --report don't go together");
+  if (o.since !== undefined && !o.report)
+    throw new Error("--since <ref> goes with --report");
   return o;
 }
 
@@ -556,6 +604,41 @@ function main(argv) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(o.root ?? path.join(here, ".."));
   const globs = o.files.length ? o.files : DEFAULT_FILES;
+
+  if (o.report && o.since !== undefined) {
+    let r;
+    try {
+      r = reportSince(root, o.since, globs);
+    } catch (e) {
+      if (!(e instanceof GitError)) throw e;
+      console.error(`brittle-ratchet: ${e.message}`);
+      return 2;
+    }
+    if (o.json) console.log(JSON.stringify(r, null, 2));
+    else {
+      const n = (x) => Object.keys(x).length;
+      const files = (c) => `${c} file${c === 1 ? "" : "s"}`;
+      console.log(
+        `brittle-ratchet: since ${o.since} (${r.since.commit.slice(0, 12)}): ${files(n(r.files))} with brittle patterns, was ${n(r.since.files)}`,
+      );
+      for (const k of KINDS) {
+        const d = r.totals[k] - r.since.totals[k];
+        console.log(
+          `  ${k.padEnd(15)} ${r.since.totals[k]} -> ${r.totals[k]} (${d > 0 ? "+" : ""}${d})`,
+        );
+      }
+      for (const [list, word] of [
+        [r.down, "down"],
+        [r.up, "up"],
+      ]) {
+        if (!list.length) continue;
+        console.log(`${files(list.length)} went ${word}:`);
+        for (const f of list)
+          console.log(`  ${f.file}: ${f.before} -> ${f.after}`);
+      }
+    }
+    return 0;
+  }
 
   if (o.report) {
     const r = report(root, globs);

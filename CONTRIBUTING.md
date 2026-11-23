@@ -56,7 +56,10 @@ each file the change touched at its merge base and at HEAD, and fails only
 when a count goes up; files the change didn't touch are never judged, and
 there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
-totals per kind and never fails.
+totals per kind and never fails. `--report --since <ref>` prints each kind
+then and now, and the files that went down or up; the `brittle-weekly`
+workflow posts it each Monday against the week before, in its run summary
+(issue 841).
 
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as

@@ -1,0 +1,33 @@
+# Issue 841 (clause 4): each week, the brittle-pattern counts in browser
+# tests and live checks (scripts/brittle-ratchet.mjs, issue 839) against the
+# last commit of a week before, with the files that shrank, in the run's
+# summary. It only reports: it never fails on a count.
+name: brittle-weekly
+on:
+  schedule:
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.13.0"
+      - name: Brittle patterns, this week against last
+        run: |
+          since=$(git rev-list -1 --before="7 days ago" HEAD)
+          since=${since:-$(git rev-list --max-parents=0 HEAD | tail -n 1)}
+          {
+            echo "## Brittle patterns in browser tests and live checks"
+            echo
+            echo '```'
+            node scripts/brittle-ratchet.mjs --report --since "$since"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
