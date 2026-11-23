@@ -1149,23 +1149,32 @@ describe("issue 169: >_ names the person's terminal app", () => {
         language,
       ),
     ).toBe(200);
-  const btn = ".ws-item .ws-term-btn";
+  /** The project's >_ (the ⋯ menu's item has role=menuitem). */
+  const btn = "button[data-open-term]:not([role])";
+  /** The page's own text for an i18n key, in its language now. */
+  const tx = (p: Page, key: string, vars: Record<string, unknown> = {}) =>
+    p.evaluate(
+      ([k, v]) =>
+        (
+          window as unknown as {
+            denShell: { t: (k: string, v: object) => string };
+          }
+        ).denShell.t(k as string, v as object),
+      [key, vars] as const,
+    );
 
-  it.each([
-    ["en", "Open in Ghostty"],
-    ["es", "Abrir en Ghostty"],
-    ["ja", "Ghosttyで開く"],
-  ])(
-    "%s: the project's >_ and a repo's ⋯ item say %s",
-    async (lang, said) => {
+  it.each([["en"], ["es"], ["ja"]])(
+    "%s: the project's >_ and a repo's ⋯ item name the terminal app",
+    async (lang) => {
       if (!browser) return;
       const p = await open("main", "/", undefined, ghostty);
       try {
         await setLang(p, lang);
         await p.reload();
-        await p.waitForSelector("#repo-table tbody tr.repo", {
+        await p.waitForSelector("#repo-table tbody tr[data-repo]", {
           timeout: 15_000,
         });
+        const said = await tx(p, "pj.openTermIn", { app: "Ghostty" });
         await p.waitForFunction(
           ([sel, want]) =>
             document.querySelector(sel as string)?.getAttribute("title") ===
@@ -1194,15 +1203,14 @@ describe("issue 169: >_ names the person's terminal app", () => {
     if (!browser) return;
     const p = await open();
     await p.waitForSelector(btn);
-    expect(await p.$eval(btn, (b) => b.getAttribute("title"))).toBe(
-      "Open in terminal",
-    );
+    const said = await tx(p, "pj.openTerm");
+    expect(await p.$eval(btn, (b) => b.getAttribute("title"))).toBe(said);
     const more =
       '#repo-table tr.repo[data-repo="queue"] [data-action="toggle-svc-menu"]';
     await p.click(more, { timeout: 8_000 });
     const item = "#svc-menu-queue [role=menuitem][data-open-term]";
     await p.waitForSelector(item, { timeout: 8_000 });
-    expect((await p.textContent(item))?.trim()).toBe(">_ Open in terminal");
+    expect((await p.textContent(item))?.trim()).toBe(`>_ ${said}`);
     await p.context().close();
   }, 30_000);
 });
