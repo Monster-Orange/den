@@ -204,8 +204,14 @@ export function initAlerts(win = window) {
     wait: (ms) => new Promise((r) => win.setTimeout(r, ms)),
   };
   let lastPrefs = { desktop: true, sound: false, tab_count: true };
-  // Issue 774 row 7b: the stream, where this browser can get push.
-  if (typeof win.EventSource === "function" && pushSupported(win)) {
+  // Issue 774 row 7b: the stream, only where this browser has a push
+  // subscription (or once it subscribes here). Without one there is no
+  // push for this tab to beat, and the poll shows the alerts: a page's
+  // load opens nothing and writes nothing (R21).
+  let streaming = false;
+  const openStream = () => {
+    if (streaming) return;
+    streaming = true;
     const post = async (path, body) => {
       try {
         const r = await win.fetch(path, {
@@ -229,6 +235,12 @@ export function initAlerts(win = window) {
     };
     doc.addEventListener("visibilitychange", () => void st.presence());
     win.addEventListener("pagehide", () => es.close());
+  };
+  if (typeof win.EventSource === "function" && pushSupported(win)) {
+    void pushSubscription(win).then((sub) => {
+      if (sub) openStream();
+    });
+    win.addEventListener("den:push-on", openStream);
   }
   const tick = async () => {
     if (busy) return;
@@ -322,6 +334,12 @@ export async function pushOn(api, send, win = window) {
     subscription: typeof sub.toJSON === "function" ? sub.toJSON() : sub,
   });
   if (!kept) throw new Error("subscribe refused");
+  // Issue 774 row 7b: this page's alert stream opens now (initAlerts).
+  try {
+    win.dispatchEvent(new win.Event("den:push-on"));
+  } catch {
+    /* the next page opens it */
+  }
   return "ok";
 }
 

@@ -47,6 +47,15 @@ const NO_SHELL: Record<string, number> = {
   "embed-page.js": 2,
 };
 
+/**
+ * Writes no person makes, so no button and no pop-up: alerts.js's tab
+ * posts its presence and acks a streamed alert on the alert stream (issue
+ * 774 row 7b), only where this browser has a push subscription. Held
+ * exactly: a new write there, or a write gone, changes this number.
+ */
+const BACKGROUND: Record<string, number> = {
+  "alerts.js": 1,
+};
 const WRITE =
   /api\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
 const BUSY_HEADERS = /\{\s*headers\s*,?\s*\}/;
@@ -86,7 +95,7 @@ describe("BUSY-1: writes go through the working pop-up", () => {
     }
     // A higher number: put the new button on denShell.busyAction. A lower
     // one: lower LEFT to match (the list only shrinks).
-    expect(now).toEqual({ ...LEFT, ...NO_SHELL });
+    expect(now).toEqual({ ...LEFT, ...NO_SHELL, ...BACKGROUND });
   });
 
   it("a script exempt for having no shell really has none", () => {
