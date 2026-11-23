@@ -768,6 +768,11 @@
       "src/ui/cli/hub-link-command.ts",
       "src/ui/cli/index.ts",
       "src/shared/agents/sandbox.ts"
+    ],
+    "tests/unit/server/status-not-colour-1137.browser.test.ts": [
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/bell.js",
+      "packages/den-ui/src/shell.css"
     ]
   },
   "subjectless": [],
@@ -841,6 +846,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1297,6 +1303,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1410,6 +1417,7 @@
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
@@ -1495,6 +1503,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1611,6 +1620,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1905,6 +1915,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
@@ -2052,6 +2063,7 @@
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
         "tests/unit/server/hub-change.test.ts",
+        "tests/unit/server/hub-connect-648.test.ts",
         "tests/unit/server/hub-connect-review.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/request-path-sync.integration.test.ts",
@@ -2076,6 +2088,7 @@
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
         "tests/unit/server/whats-new-dialog.browser.test.ts",
+        "tests/unit/test-infra/release-promote.test.ts",
         "tests/unit/version-sync.test.ts"
       ],
       "why": "tests that read the changelog"
@@ -2092,7 +2105,8 @@
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/keep-running-routes.test.ts",
-        "tests/unit/shared/managed-repos-org.test.ts"
+        "tests/unit/shared/managed-repos-org.test.ts",
+        "tests/unit/test-infra/release-promote.test.ts"
       ],
       "why": "tests that read examples/"
     },
@@ -2166,7 +2180,10 @@
     },
     {
       "when": ["scripts/kit-version.mjs"],
-      "run": ["tests/unit/scripts/kit-version.test.ts"],
+      "run": [
+        "tests/unit/scripts/kit-version.test.ts",
+        "tests/unit/test-infra/release-promote-workflow.test.ts"
+      ],
       "why": "tests that run scripts/kit-version.mjs"
     },
     {
@@ -2199,7 +2216,10 @@
     },
     {
       "when": ["scripts/release-ancestry.sh"],
-      "run": ["tests/unit/scripts/release-ancestry.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-ancestry.test.ts",
+        "tests/unit/test-infra/release-promote-workflow.test.ts"
+      ],
       "why": "tests that run scripts/release-ancestry.sh"
     },
     {
@@ -2212,13 +2232,32 @@
       "why": "tests that run scripts/release-dry-run.mjs"
     },
     {
+      "when": ["scripts/release-promote.sh"],
+      "run": [
+        "tests/unit/test-infra/release-promote-workflow.test.ts",
+        "tests/unit/test-infra/release-promote.test.ts"
+      ],
+      "why": "tests that run scripts/release-promote.sh"
+    },
+    {
+      "when": ["scripts/release-record.mjs"],
+      "run": ["tests/unit/test-infra/release-promote-workflow.test.ts"],
+      "why": "tests that run scripts/release-record.mjs"
+    },
+    {
       "when": ["scripts/release-tree-check.mjs"],
-      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "run": [
+        "tests/unit/test-infra/release-promote-workflow.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/release-tree-check.mjs"
     },
     {
       "when": ["scripts/release-tree.sh"],
-      "run": ["tests/unit/scripts/release-tree.test.ts"],
+      "run": [
+        "tests/unit/scripts/release-tree.test.ts",
+        "tests/unit/test-infra/release-promote-workflow.test.ts"
+      ],
       "why": "tests that run scripts/release-tree.sh"
     },
     {
@@ -3608,6 +3647,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/server/hub-connect-review.ts"],
+      "run": ["tests/unit/server/settings-hub-review.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/server/hub-address.ts", "src/ui/server/hub-connect.ts"],
       "run": ["tests/unit/server/settings-hub.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -3659,11 +3703,6 @@
     {
       "when": ["src/shared/fixture-person.ts"],
       "run": ["tests/unit/server/shell-poll-in-flight.browser.test.ts"],
-      "why": "starts Den as a process: its subject"
-    },
-    {
-      "when": ["src/ui/server/hub-connect-review.ts"],
-      "run": ["tests/unit/server/settings-hub-review.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -3724,6 +3763,15 @@
         "src/ui/server/agent-routes.ts"
       ],
       "run": ["tests/unit/server/start-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/shell.css",
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/bell.js"
+      ],
+      "run": ["tests/unit/server/status-not-colour-1137.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
