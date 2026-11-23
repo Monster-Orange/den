@@ -318,13 +318,13 @@ export interface Runtime {
   /**
    * Issue 785: whether a reported conversation is one this agent may
    * resume, by the runtime's own session record (Codex: a main thread that
-   * ran in `cwd`). `env` is Den's own. None: the report's checks only.
+   * started after the agent was created, in its folder). Never blocks.
+   * None: the report's checks only.
    */
   reportedConversationOk?(
     conversation: string,
-    cwd: string,
-    env: NodeJS.ProcessEnv,
-  ): boolean;
+    check: import("./session-files.js").CodexCheck,
+  ): Promise<boolean>;
   /**
    * Issue 785: its conversation id is Den's, and a fresh start takes a
    * new one (Gemini refuses an id whose session file exists).
@@ -335,7 +335,12 @@ export interface Runtime {
    * (den-claude: its transcript file). Only ever a fast path: false may
    * just mean it isn't written yet.
    */
-  conversationExists?(token: string, env?: NodeJS.ProcessEnv): boolean;
+  conversationExists?(
+    token: string,
+    env?: NodeJS.ProcessEnv,
+    /** Issue 785: the store's accepted owners (issue 988's runAs). */
+    uids?: readonly number[],
+  ): boolean;
   /**
    * AG-17.1, bring in a conversation: the runtime's own recent
    * conversations that ran in `cwd` or a folder inside it, newest first,

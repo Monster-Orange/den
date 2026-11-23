@@ -311,7 +311,7 @@ describe("issue 785: a Codex sub-agent's thread never resumes", () => {
     });
     expect(await agents(r, "resume", "coder")).toBe(1);
     expect(r.err.join("\n")).toMatch(
-      /codex can't resume coder: its conversation is not a main thread of codex in .*north/,
+      /codex can't resume coder: its conversation is not a main thread of codex that began in .*north after the agent was created/,
     );
     expect(r.made).toHaveLength(0);
   });
@@ -335,7 +335,7 @@ describe("issue 785: a Codex sub-agent's thread never resumes", () => {
     expect(found.startedFresh).toEqual([
       {
         agent: "coder",
-        why: `codex can't resume coder: its conversation is not a main thread of codex in ${r.wsDir("north")}`,
+        why: `codex can't resume coder: its conversation is not a main thread of codex that began in ${r.wsDir("north")} after the agent was created`,
       },
     ]);
     const runs = r.made.map((p) => [p.file, p.args]);
@@ -432,5 +432,72 @@ describe("issue 785: a Gemini agent resumes under Den's id", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.args[0]).toBe("--session-id");
     expect(runs[0]!.args[1]).not.toBe(SESSION);
+  });
+});
+
+describe("issue 785 with 988: an agent's own login, only from a record Den trusts", () => {
+  it("runAs on a record another login could write: never honoured; Resume starts fresh under a new id", async () => {
+    const r = await rig();
+    const bin = geminiOnPath(r);
+    geminiAgent(r);
+    // The store runAs names holds a reply; Den's own env has none.
+    geminiSession(r, [{ id: "m2", type: "gemini", content: "Planned." }]);
+    r.deps.env = { ...r.deps.env, GEMINI_CLI_HOME: path.join(r.dir, "none") };
+    const rec = readRecord(r.stateDir, "g1")!;
+    writeRecord(r.stateDir, {
+      ...rec,
+      runAs: {
+        login: "den-agents-p",
+        uid: process.getuid!(),
+        home: "/nowhere",
+        env: { GEMINI_CLI_HOME: path.join(r.dir, "gemini-home") },
+      },
+    } as never);
+    // Den writes records 0600; another login made this one group-writable.
+    fs.chmodSync(path.join(r.stateDir, "agents", "g1.json"), 0o664);
+    expect(await agents(r, "resume", "g1")).toBe(0);
+    const runs = r.made.filter((p) => p.file === bin);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.args[0]).toBe("--session-id");
+    expect(runs[0]!.args[1]).not.toBe(SESSION);
+  });
+
+  it("runAs on Den's own record: its home's store is read", async () => {
+    const r = await rig();
+    const bin = geminiOnPath(r);
+    geminiAgent(r, { interrupted: true });
+    geminiSession(r, [{ id: "m2", type: "gemini", content: "Planned." }]);
+    const rec = readRecord(r.stateDir, "g1")!;
+    // Den's env points elsewhere: only runAs finds the store.
+    r.deps.env = { ...r.deps.env, GEMINI_CLI_HOME: path.join(r.dir, "none") };
+    writeRecord(r.stateDir, {
+      ...rec,
+      runAs: {
+        login: "den-agents-p",
+        uid: process.getuid!(),
+        home: "/nowhere",
+        env: { GEMINI_CLI_HOME: path.join(r.dir, "gemini-home") },
+      },
+    } as never);
+    fs.chmodSync(path.join(r.stateDir, "agents", "g1.json"), 0o600);
+    const found = await markInterrupted(resolveAgentsDeps(r.deps), {
+      restoreAll: true,
+    });
+    expect(found.resumed).toEqual(["g1"]);
+    expect(r.made.map((p) => [p.file, p.args])).toContainEqual([
+      bin,
+      ["--resume", SESSION],
+    ]);
+  });
+
+  it("a resume keeps when the agent was created", async () => {
+    const r = await rig();
+    codexOnPath(r);
+    coder(r, { conversation: "019a-77", cwd: r.wsDir("north"), seq: 3 });
+    codexSession(r, "019a-77", r.wsDir("north"));
+    expect(await agents(r, "resume", "coder")).toBe(0);
+    const rec = readRecord(r.stateDir, "coder")!;
+    expect(rec.createdAt).toBe("2026-11-06T09:30:00.000Z");
+    expect(rec.startedAt).not.toBe("2026-11-06T09:30:00.000Z");
   });
 });

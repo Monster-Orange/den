@@ -20,7 +20,18 @@ import * as path from "path";
 import {
   codexMainThread,
   geminiResumable,
+  sessionStoreOf,
 } from "../../../src/shared/agents/session-files.js";
+
+const UID = process.getuid!();
+/** The agent was created before its sessions began (09:00 that day). */
+const CREATED = "2026-11-22T09:00:00.000Z";
+const main = (id: string, cwd: string, home: string, notBefore = CREATED) =>
+  codexMainThread(id, {
+    store: { env: { CODEX_HOME: home }, uids: [UID] },
+    cwd,
+    notBefore,
+  });
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -70,12 +81,12 @@ function codexHome(
 }
 
 describe("issue 785: a Codex thread resumes only as a main thread in its own folder", () => {
-  it("a main thread in the agent's folder: yes", () => {
+  it("a main thread in the agent's folder: yes", async () => {
     const { home } = codexHome({});
-    expect(codexMainThread(THREAD, "/work/north", home)).toBe(true);
+    expect(await main(THREAD, "/work/north", home)).toBe(true);
   });
 
-  it("a sub-agent's thread: no (parent, sub-agent source, or a root other than itself)", () => {
+  it("a sub-agent's thread: no (parent, sub-agent source, or a root other than itself)", async () => {
     for (const meta of [
       { parent_thread_id: THREAD, id: CHILD, session_id: THREAD },
       { id: CHILD, session_id: THREAD },
@@ -87,35 +98,31 @@ describe("issue 785: a Codex thread resumes only as a main thread in its own fol
       },
     ]) {
       const { home } = codexHome(meta, { thread: CHILD });
-      expect(codexMainThread(CHILD, "/work/north", home)).toBe(false);
+      expect(await main(CHILD, "/work/north", home)).toBe(false);
     }
   });
 
-  it("another folder, no file, a file naming another thread, or no store: no", () => {
-    expect(codexMainThread(THREAD, "/work/south", codexHome({}).home)).toBe(
+  it("another folder, no file, a file naming another thread, or no store: no", async () => {
+    expect(await main(THREAD, "/work/south", codexHome({}).home)).toBe(false);
+    expect(await main(CHILD, "/work/north", codexHome({}).home)).toBe(false);
+    expect(
+      await main(THREAD, "/work/north", codexHome({ id: CHILD }).home),
+    ).toBe(false);
+    expect(await main(THREAD, "/work/north", path.join(tmp(), "none"))).toBe(
       false,
     );
-    expect(codexMainThread(CHILD, "/work/north", codexHome({}).home)).toBe(
-      false,
-    );
-    expect(
-      codexMainThread(THREAD, "/work/north", codexHome({ id: CHILD }).home),
-    ).toBe(false);
-    expect(
-      codexMainThread(THREAD, "/work/north", path.join(tmp(), "none")),
-    ).toBe(false);
   });
 
-  it("malformed, or a first line past the cap: no, never a throw", () => {
+  it("malformed, or a first line past the cap: no, never a throw", async () => {
     for (const line of ["{not json", "[]", '{"type":"session_meta"}']) {
       const { home } = codexHome(line);
-      expect(codexMainThread(THREAD, "/work/north", home)).toBe(false);
+      expect(await main(THREAD, "/work/north", home)).toBe(false);
     }
     const { home } = codexHome({ base_instructions: "x".repeat(1_100_000) });
-    expect(codexMainThread(THREAD, "/work/north", home)).toBe(false);
+    expect(await main(THREAD, "/work/north", home)).toBe(false);
   });
 
-  it("a link, as the file or a folder on the way: no", () => {
+  it("a link, as the file or a folder on the way: no", async () => {
     const real = codexHome({});
     const home = tmp();
     fs.mkdirSync(path.join(home, "sessions", "2026", "11"), {
@@ -125,18 +132,18 @@ describe("issue 785: a Codex thread resumes only as a main thread in its own fol
       path.dirname(real.file),
       path.join(home, "sessions", "2026", "11", "22"),
     );
-    expect(codexMainThread(THREAD, "/work/north", home)).toBe(false);
+    expect(await main(THREAD, "/work/north", home)).toBe(false);
     const home2 = tmp();
     const day = path.join(home2, "sessions", "2026", "11", "22");
     fs.mkdirSync(day, { recursive: true });
     fs.symlinkSync(real.file, path.join(day, path.basename(real.file)));
-    expect(codexMainThread(THREAD, "/work/north", home2)).toBe(false);
+    expect(await main(THREAD, "/work/north", home2)).toBe(false);
   });
 
-  it("an id that isn't a conversation id is never looked for", () => {
+  it("an id that isn't a conversation id is never looked for", async () => {
     const { home } = codexHome({});
-    expect(codexMainThread("../../etc", "/work/north", home)).toBe(false);
-    expect(codexMainThread("*", "/work/north", home)).toBe(false);
+    expect(await main("../../etc", "/work/north", home)).toBe(false);
+    expect(await main("*", "/work/north", home)).toBe(false);
   });
 });
 
@@ -224,5 +231,113 @@ describe("issue 785: a Gemini session resumes only once it holds a reply", () =>
     );
     expect(geminiResumable(SESSION, { GEMINI_CLI_HOME: home })).toBe(false);
     expect(geminiResumable("../x", real.env)).toBe(false);
+  });
+});
+
+describe("issue 785: only a Codex session the agent began counts (security review)", () => {
+  it("a session from before the agent was created (the person's own, same folder): no", async () => {
+    const { home } = codexHome({});
+    expect(
+      await main(THREAD, "/work/north", home, "2026-11-22T11:00:00.000Z"),
+    ).toBe(false);
+    // A minute of slack for clocks.
+    expect(
+      await main(THREAD, "/work/north", home, "2026-11-22T10:00:30.000Z"),
+    ).toBe(true);
+  });
+
+  it("no creation time: no", async () => {
+    const { home } = codexHome({});
+    expect(
+      await codexMainThread(THREAD, {
+        store: { env: { CODEX_HOME: home }, uids: [UID] },
+        cwd: "/work/north",
+        notBefore: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("day folders from before the agent's creation are not even listed", async () => {
+    const { home } = codexHome({}, { day: "2026/10/01" });
+    fs.chmodSync(path.join(home, "sessions", "2026", "10"), 0o000);
+    try {
+      expect(
+        await main(THREAD, "/work/north", home, "2026-10-01T09:00:00.000Z"),
+      ).toBe(false);
+      expect(await main(THREAD, "/work/north", home)).toBe(false);
+    } finally {
+      fs.chmodSync(path.join(home, "sessions", "2026", "10"), 0o755);
+    }
+    expect(
+      await main(THREAD, "/work/north", home, "2026-10-01T09:00:00.000Z"),
+    ).toBe(true);
+  });
+
+  it("a first line past agents.resume_first_line_max_bytes: no; under it: yes", async () => {
+    const { home } = codexHome({ base_instructions: "x".repeat(20_000) });
+    const check = (firstLineMaxBytes: number) =>
+      codexMainThread(THREAD, {
+        store: { env: { CODEX_HOME: home }, uids: [UID] },
+        cwd: "/work/north",
+        notBefore: CREATED,
+        firstLineMaxBytes,
+      });
+    expect(await check(8192)).toBe(false);
+    expect(await check(64 * 1024)).toBe(true);
+  });
+});
+
+describe("issue 785 with 988: the store is the agent's own login's", () => {
+  it("runAs from a trusted record: its home and uid; Den's env is not used", () => {
+    const store = sessionStoreOf(
+      {
+        runAs: {
+          uid: 4242,
+          home: "/opt/den/p/home",
+          env: { CODEX_HOME: "/opt/den/p/codex" },
+        },
+      },
+      { HOME: "/home/person", CODEX_HOME: "/home/person/.codex" },
+      true,
+    );
+    expect(store).toEqual({
+      env: { HOME: "/opt/den/p/home", CODEX_HOME: "/opt/den/p/codex" },
+      uids: [UID, 4242],
+    });
+  });
+
+  it("runAs from a record an agent could have written, or malformed: none (it starts fresh)", () => {
+    const runAs = { uid: 4242, home: "/opt/den/p/home" };
+    expect(sessionStoreOf({ runAs }, {}, false)).toBeNull();
+    expect(
+      sessionStoreOf({ runAs: { ...runAs, home: "rel" } }, {}, true),
+    ).toBeNull();
+    expect(
+      sessionStoreOf(
+        { runAs: { ...runAs, env: { CODEX_HOME: "x" } } },
+        {},
+        true,
+      ),
+    ).toBeNull();
+    expect(sessionStoreOf({}, { HOME: "/h" }, false)).toEqual({
+      env: { HOME: "/h" },
+      uids: [UID],
+    });
+  });
+
+  it("a Codex store under the agent's login's home is found from runAs", async () => {
+    const { home } = codexHome({});
+    const store = sessionStoreOf(
+      { runAs: { uid: UID, home: "/nowhere", env: { CODEX_HOME: home } } },
+      { HOME: "/home/person" },
+      true,
+    )!;
+    expect(
+      await codexMainThread(THREAD, {
+        store,
+        cwd: "/work/north",
+        notBefore: CREATED,
+      }),
+    ).toBe(true);
   });
 });

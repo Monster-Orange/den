@@ -2528,6 +2528,12 @@
     "set.agents.pane_reconnect_wait": "Longest wait between tries",
     "set.agents.pane_reconnect_wait.d":
       "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.resume_first_line": "Resume check read limit",
+    "set.agents.resume_first_line.d":
+      "How much of a runtime's conversation file __DEN_TITLE__ reads to check a conversation an agent reports (Codex's first line, which carries its instructions). A longer line can't resume, and the agent starts fresh. __DEN_CLI__ config agents.resume_first_line_max_bytes=1048576",
+    "set.agents.resume_report_gap": "Resume report gap",
+    "set.agents.resume_report_gap.d":
+      "The fewest seconds between two checked conversation reports from one agent. A sooner one is answered too soon, and the agent's next turn reports again. __DEN_CLI__ config agents.resume_report_min_seconds=5",
     "set.agents.shell_path_wait": "Shell PATH wait",
     "set.agents.shell_path_wait.d":
       "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",

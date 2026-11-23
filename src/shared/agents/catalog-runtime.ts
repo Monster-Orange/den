@@ -26,9 +26,9 @@ import {
   resumeCommandFor,
 } from "./resume-command.js";
 import {
-  codexHomeOf,
   codexMainThread,
   geminiResumable,
+  type CodexCheck,
 } from "./session-files.js";
 import {
   LaunchError,
@@ -168,9 +168,8 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
             ? {
                 reportedConversationOk: (
                   conversation: string,
-                  cwd: string,
-                  env: NodeJS.ProcessEnv,
-                ) => codexMainThread(conversation, cwd, codexHomeOf(env)),
+                  check: CodexCheck,
+                ) => codexMainThread(conversation, check),
               }
             : {}),
           ...(e.id === "gemini" && denIdStart(e)
@@ -178,7 +177,8 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
                 conversationExists: (
                   token: string,
                   env: NodeJS.ProcessEnv = process.env,
-                ) => geminiResumable(token, env),
+                  uids?: readonly number[],
+                ) => geminiResumable(token, env, uids),
               }
             : {}),
           resume(input: Parameters<NonNullable<Runtime["resume"]>>[0]) {

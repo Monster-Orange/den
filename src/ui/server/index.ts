@@ -268,6 +268,7 @@ import {
   shellPathTimeoutMs,
   agentsResume,
   agentsShellPathTimeoutSeconds,
+  resumeReportLimits,
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
@@ -5940,6 +5941,13 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    agents_resume_report: (() => {
+      const l = resumeReportLimits(() => user);
+      return {
+        first_line_max_bytes: l.firstLineMaxBytes,
+        min_seconds: l.minSeconds,
+      };
+    })(),
     agents_shell: (() => {
       try {
         return {
@@ -9931,6 +9939,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_resume_report?: unknown;
           agents_resume?: unknown;
           agent_issue_writes?: unknown;
           agent_context?: unknown;
@@ -9999,6 +10008,7 @@ async function handleRequest(
             web_agent_view: body.web_agent_view,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_resume_report: body.agents_resume_report,
             agents_resume: body.agents_resume,
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
