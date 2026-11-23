@@ -1176,6 +1176,14 @@
       "コアあたりこの負荷を超えたら新しい単体テストを待たせる",
     "set.server.gate_load_hold_per_core.d":
       "このマシンの 5 分間の平均負荷がコア数のこの倍数を超えている間、新しい単体テストは待ちます。ただし待つのは別の単体テストが動いている間だけで、動いているものがなければ負荷にかかわらず次が始まります。リリース用の実行とすでに動いている実行は待ちません。各単体テストには DEN_GATE_WORKERS でコアの割り当て分も渡します。0 で待たせません。__DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "空きメモリがこの割合 (%) を下回ったらこのマシンの新しい実行を待たせる",
+    "set.server.gate_memory_free_min_percent.d":
+      "このマシンの空きメモリがこの割合を下回っている間、新しいテスト (単体テストとブラウザーテスト、リリース用も含む) は待ちます。ただし待つのはこのマシンで別の実行が動いている間だけで、動いているものがなければ次が始まります。テスト用マシンは引き続き実行を受け付けます。0 で待たせません。__DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_vm_memory_share":
+      "仮想マシンがメモリのこの割合を超えて予約したら警告する",
+    "set.server.gate_vm_memory_share.d":
+      "動いている仮想マシン (OrbStack のマシン、Docker の仮想マシン) が予約したメモリの合計が、このマシンの RAM のこの割合を超えると doctor が警告します。1 は全量で、1 未満にすると早めに警告します。__DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "リリース用ブラウザーテスト中に単体テストを待たせるマシン負荷",
     "set.server.gate_cpu_hold_load.d":

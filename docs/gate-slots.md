@@ -39,6 +39,21 @@ over 3 × 18 cores (54), while another unit test run is going; it starts once
 the load drops or that run ends". 0 turns it off; `gate settings
 --load-hold-per-core N` sets it.
 
+Issue 1274: a new run on this machine (cpu or browser, release ones too)
+also waits while its free memory is under `memory_free_min_percent`
+(default 10), but only while another run here is going. Test boxes still
+take their runs. The reason reads "waiting: this machine has 6% of its
+memory free, under 10%, while another run here is going". macOS reads the
+kernel's free level (what `memory_pressure` prints); Linux reads
+MemAvailable. 0 turns it off; `gate settings --memory-free-min-percent N`
+sets it. `DEN_GATE_FREE_MEM` fixes the reading for tests and drills.
+
+`den doctor` lists the VMs here (OrbStack machines, and Docker's VM when it
+isn't OrbStack's) with the memory and cpus each reserves, and warns when
+running VMs promise more than `vm_memory_share` × the machine's RAM
+(default 1: more than it has). A runtime it can't read is "not counted".
+`gate settings --vm-memory-share N` sets the share (0.1 to 4).
+
 `DEN_GATE_LOAD5` is a test override: when set, the gate reads that number as
 the 5-minute load instead of the machine's, for both holds (issues 1009 and
 1048). Den's test setup sets it to 0, so a busy machine never holds a test's

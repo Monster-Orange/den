@@ -2393,6 +2393,14 @@
       "Hold new unit test runs over this load per core",
     "set.server.gate_load_hold_per_core.d":
       "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Hold new runs here under this much free memory (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "New test runs on this machine (unit and browser, release ones too) wait while its free memory is under this percent, but only while another run here is going: with none going, the next one starts. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_vm_memory_share":
+      "Warn when VMs promise more than this share of memory",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor warns when the memory that running VMs (OrbStack machines, Docker's VM) have reserved adds up to more than this share of the machine's RAM. 1 is all of it; under 1 warns sooner. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Machine load that holds unit test runs during a release browser run",
     "set.server.gate_cpu_hold_load.d":

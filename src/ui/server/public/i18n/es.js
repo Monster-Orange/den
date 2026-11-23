@@ -1207,6 +1207,14 @@
       "Esperar nuevas pruebas unitarias por encima de esta carga por núcleo",
     "set.server.gate_load_hold_per_core.d":
       "Las nuevas pruebas unitarias esperan mientras la carga media de 5 minutos de esta máquina supere este número de veces sus núcleos, pero solo mientras otra prueba unitaria se ejecuta: si no hay ninguna, la siguiente empieza con cualquier carga. Las pruebas de versión y las que ya se ejecutan nunca esperan. Cada prueba unitaria recibe también su parte de los núcleos en DEN_GATE_WORKERS. 0 desactiva la espera. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Esperar nuevas pruebas aquí con menos memoria libre que esta (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "Las nuevas pruebas en esta máquina (unitarias y de navegador, también las de versión) esperan mientras su memoria libre esté por debajo de este porcentaje, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_vm_memory_share":
+      "Avisar cuando las máquinas virtuales reserven más que esta parte de la memoria",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor avisa cuando la memoria reservada por las máquinas virtuales en marcha (máquinas de OrbStack, la máquina virtual de Docker) supera esta parte de la RAM de la máquina. 1 es toda; por debajo de 1 avisa antes. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
     "set.server.gate_cpu_hold_load.d":
