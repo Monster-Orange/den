@@ -85,6 +85,8 @@ export interface GithubRouteDeps {
   flows: DeviceFlows;
   /** The configured client id ("" when none). */
   clientId: () => string;
+  /** Issue 362: the address a request came from, when the guard knows it. */
+  client?: (req: http.IncomingMessage) => string | undefined;
   /** The app issued an expiring token (its token expiry is on): a misconfiguration. */
   tokensExpire?: () => boolean;
   cli: string;
@@ -240,7 +242,7 @@ async function startFlow(
   deps: GithubRouteDeps,
   res: http.ServerResponse,
   purpose: "signin" | "link",
-  meta: { local?: boolean } = {},
+  meta: { local?: boolean; client?: string } = {},
 ): Promise<void> {
   let r;
   try {
@@ -338,7 +340,11 @@ export async function handleGithubRoutes(
       );
       return true;
     }
-    await startFlow(deps, res, "signin", { local });
+    const client = deps.client?.(req);
+    await startFlow(deps, res, "signin", {
+      local,
+      ...(client ? { client } : {}),
+    });
     return true;
   }
   const s = SIGNIN_PATH.exec(pathname);
