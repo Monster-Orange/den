@@ -146,15 +146,27 @@ export type ReadyState = "waiting" | "ready" | "refused";
 /**
  * Den's host: watches a session's output for its marker. `show` is what
  * reaches the transcript (never a marker); `ready` once its own marker
- * came; `refused` for another nonce's or a second one (the launch ends,
- * no token written).
+ * came; `refused` for another nonce's or a second one, before or after
+ * the token was written (the launch ends; nothing more is written). The
+ * nonce shows in `ps` (the launcher's argv), so it is good for one write.
  */
 export function watchReady(nonce: string): {
   feed: (chunk: string) => { show: string; state: ReadyState };
+  /**
+   * True once, when its own marker came and nothing was refused: the host
+   * writes the token then, and never again for this nonce (single use).
+   */
+  take: () => boolean;
 } {
   let state: ReadyState = "waiting";
   let held = "";
+  let taken = false;
   return {
+    take() {
+      if (state !== "ready" || taken) return false;
+      taken = true;
+      return true;
+    },
     feed(chunk) {
       let text = held + chunk;
       held = "";

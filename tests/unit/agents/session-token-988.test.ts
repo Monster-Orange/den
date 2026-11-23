@@ -122,6 +122,23 @@ describe("issue 988: Den's host waits for its marker", () => {
     expect(w2.feed(readyMarker(N)).state).toBe("refused");
   });
 
+  it("the token is written once: take() says yes once; a replayed marker after it gets nothing", () => {
+    const w = watchReady(N);
+    expect(w.take()).toBe(false);
+    w.feed(readyMarker(N));
+    expect(w.take()).toBe(true);
+    expect(w.take()).toBe(false);
+    // The same nonce again (argv shows it in ps): refused, nothing written.
+    expect(w.feed(`x${readyMarker(N)}`)).toEqual({ show: "x", state: "refused" });
+    expect(w.take()).toBe(false);
+  });
+
+  it("refused before the write: take() never says yes", () => {
+    const w = watchReady(N);
+    w.feed(readyMarker(N) + readyMarker(N));
+    expect(w.take()).toBe(false);
+  });
+
   it("nonces are fresh and hex", () => {
     const a = newLaunchNonce();
     expect(a).toMatch(/^[0-9a-f]{32}$/);
