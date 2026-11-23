@@ -196,6 +196,7 @@ import {
   sandboxSetByPerson,
 } from "../../shared/agents/sandbox-rollout.js";
 import * as os from "os";
+import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -3621,6 +3622,12 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 816: test installs announced on this computer.
+    otherStateDirs: listAnnounced(announceDir(), {
+      ownStateDir: d.stateDir(),
+    }).map((a) => a.stateDir),
+    // ...and where they announce, for those announced after this launch.
+    testAnnounceDir: announceDir(),
     personConfigDir: path.join(d.distRoot(), "config", "local"),
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),

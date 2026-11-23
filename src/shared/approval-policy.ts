@@ -208,6 +208,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
   },
+  test_person_setup: {
+    risk: "critical",
+    why: "gives a test install on this computer its test person, which its live checks sign in as: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+  },
   approval_policy: {
     risk: "critical",
     why: "changes the approval policy itself: a person's only",

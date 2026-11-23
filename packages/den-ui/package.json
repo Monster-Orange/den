@@ -43,6 +43,8 @@
     "./panel-fold.css": "./src/panel-fold.css",
     "./switch": "./src/switch.js",
     "./switch.css": "./src/switch.css",
+    "./preview": "./src/preview.js",
+    "./preview-frame": "./src/preview-frame.js",
     "./filter-bar": "./src/filter-bar.js",
     "./filter-bar.css": "./src/filter-bar.css",
     "./bulk-bar": "./src/bulk-bar.js",

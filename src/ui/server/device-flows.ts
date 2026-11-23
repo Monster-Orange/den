@@ -93,6 +93,8 @@ interface Flow extends FlowView {
   local: boolean;
   /** When a finished flow is forgotten. */
   forgetAt?: number;
+  /** Issue 362: the address that started it, when known. */
+  client?: string;
   cancel?: () => void;
 }
 
@@ -108,10 +110,18 @@ const defaultSchedule: Schedule = (fn, ms) => {
 export const FINISHED_KEEP_MS = 60_000;
 /** The most pending flows at once (SEC-2a: "rate-limit concurrent device flows"). */
 export const MAX_PENDING_FLOWS = 3;
+/**
+ * Issue 362: new flows a minute from one address, by default (the
+ * pairing requests' own number, web.pair_requests_per_minute).
+ */
+export const MAX_FLOWS_PER_CLIENT_MINUTE = 30;
 const MAX_ERRORS = 5;
 
 export class DeviceFlows {
   private readonly flows = new Map<string, Flow>();
+  /** Issue 362: when each address started its flows this minute. */
+  private readonly started = new Map<string, number[]>();
+  private readonly perClient: number | (() => number);
   private readonly client: GithubDeviceClient;
   private readonly clientId: () => string;
   private readonly now: () => number;
@@ -128,6 +138,8 @@ export class DeviceFlows {
     now?: () => number;
     schedule?: Schedule;
     max?: number;
+    /** Issue 362: new flows a minute from one address (a Setting). */
+    perClient?: number | (() => number);
     /** The floor between polls (GitHub's interval is never shortened). */
     minIntervalMs?: number;
     /**
@@ -143,6 +155,7 @@ export class DeviceFlows {
     this.now = opts.now ?? Date.now;
     this.schedule = opts.schedule ?? defaultSchedule;
     this.max = opts.max ?? MAX_PENDING_FLOWS;
+    this.perClient = opts.perClient ?? MAX_FLOWS_PER_CLIENT_MINUTE;
     this.minIntervalMs = opts.minIntervalMs ?? 1000;
   }
 
@@ -153,15 +166,42 @@ export class DeviceFlows {
   }
 
   /**
-   * Start a flow with GitHub. `busy` past the cap; `no_client_id` when none
-   * is configured; a GitHub failure throws (its message names no secret).
+   * Start a flow with GitHub. `busy` past the cap, or when its address
+   * started its number this minute; `no_client_id` when none is
+   * configured; a GitHub failure throws (its message names no secret).
+   * Issue 362: an address holds one pending flow; its next replaces it
+   * (a page reloaded), so one address can't fill every slot.
    */
   async start(
     purpose: FlowPurpose,
-    meta: { local?: boolean } = {},
+    meta: { local?: boolean; client?: string } = {},
   ): Promise<FlowView | { error: "busy" | "no_client_id" }> {
     const clientId = this.clientId();
     if (!clientId) return { error: "no_client_id" };
+    const who = meta.client ? String(meta.client).slice(0, 64) : "";
+    if (who) {
+      const now = this.now();
+      // Addresses with no start this minute are forgotten.
+      for (const [a, ts] of this.started)
+        if (!ts.some((t) => now - t < 60_000)) this.started.delete(a);
+      const made = (this.started.get(who) ?? []).filter(
+        (t) => now - t < 60_000,
+      );
+      const cap =
+        typeof this.perClient === "function"
+          ? this.perClient()
+          : this.perClient;
+      if (made.length >= cap) {
+        this.started.set(who, made);
+        return { error: "busy" };
+      }
+      this.started.set(who, [...made, now]);
+      for (const [fid, f] of this.flows)
+        if (f.client === who && f.state === "pending") {
+          f.cancel?.();
+          this.flows.delete(fid);
+        }
+    }
     if (this.pending() >= this.max) return { error: "busy" };
     // Held as pending while GitHub answers, so a burst can't pass the cap.
     const id = randomBytes(24).toString("base64url");
@@ -176,6 +216,7 @@ export class DeviceFlows {
       intervalMs: this.minIntervalMs,
       errors: 0,
       local: meta.local === true,
+      ...(who ? { client: who } : {}),
     };
     this.flows.set(id, placeholder);
     let code;
