@@ -337,6 +337,8 @@ import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import {
   GateStore,
   checkGatePatch,
+  serverFreeMemory,
+  serverSwapUsedGb,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import { realDocker } from "../../shared/gates/ephemeral.js";
@@ -5770,7 +5772,20 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 let gateStore: GateStore | undefined;
 // Issue 1339: the server's store never waits on the gate-slot lock on its
 // one thread (lockWaitMs 0); its callers wait by timer, with gateLocked.
-const gates = () => (gateStore ??= new GateStore({ lockWaitMs: 0 }));
+// Issue 1349: and its swap and free-memory readings never start a process
+// synchronously (read in the background, the last value meanwhile).
+const gates = (): GateStore => {
+  if (gateStore) return gateStore;
+  // Issue 1349: a failed reading's last good value stands for the setting.
+  const keepMs = () =>
+    (gateStore?.settings().memoryReadingKeepSeconds ?? 30) * 1000;
+  gateStore = new GateStore({
+    lockWaitMs: 0,
+    swap: serverSwapUsedGb({ keepMs }),
+    free: serverFreeMemory({ keepMs }),
+  });
+  return gateStore;
+};
 
 /**
  * Issue 163 (b): the Settings row's view of the agents' sign-in token:
@@ -11419,6 +11434,13 @@ try {
 void CRASH_GATE.then(() =>
   startLogoutWatch((line) => serverLog(line, "lifecycle")),
 );
+// Issue 1349: the gate store (and its one primed memory reading) is made
+// before the server serves, so its first settle is never on an unknown.
+try {
+  gates();
+} catch (e) {
+  serverLog(`gate store: ${(e as Error).message}`, "lifecycle");
+}
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());
