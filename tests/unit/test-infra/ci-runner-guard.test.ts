@@ -39,15 +39,14 @@ const GUARD =
 // The jobs that may use the box in the day (their Node 22 leg only).
 const BOX_JOBS = ["checks", "dist-smoke"];
 
-// Issue 1226: the pull-request jobs, any Node, for a merge-queue run or a
-// pull request whose head branch lives here; a fork's stays hosted.
+// Issue 1226: the pull-request jobs, any Node, for a pull request whose
+// head branch lives here. A fork's, a merge-queue run and a run by hand stay
+// GitHub-hosted.
 const PR_GUARD =
   "${{ (vars.DEN_SELF_HOSTED == 'on' && " +
-  "(github.event_name == 'merge_group' || " +
-  "github.event.pull_request.head.repo.full_name == github.repository)) && " +
+  "github.event.pull_request.head.repo.full_name == github.repository) && " +
   LABELS +
   " || 'ubuntu-latest' }}";
-// den-ui-nav stays hosted: its browser image is pinned to linux/amd64.
 const PR_BOX_JOBS = ["pr", "pr-shards"];
 const guardOf = (job: string) =>
   BOX_JOBS.includes(job)
@@ -249,7 +248,7 @@ describe("CI's self-hosted runner guard", () => {
     ]);
   });
 
-  it("pull-request jobs: a same-repo PR or the merge queue goes to the box, any Node; a fork's never", () => {
+  it("pull-request jobs: a same-repo PR goes to the box, any Node; a fork's and the merge queue never", () => {
     const on = {
       DEN_SELF_HOSTED: "on",
       DEN_SELF_HOSTED_LABELS: '["self-hosted","devbox"]',
@@ -263,13 +262,14 @@ describe("CI's self-hosted runner guard", () => {
           github: prEvent(REPO),
         }),
       ).toEqual(box);
+      // A merge-queue run builds whatever was queued: GitHub-hosted.
       expect(
         evaluate(PR_GUARD, {
           vars: on,
           matrix: { node },
           github: { event_name: "merge_group", repository: REPO, event: {} },
         }),
-      ).toEqual(box);
+      ).toBe("ubuntu-latest");
       expect(
         evaluate(PR_GUARD, {
           vars: on,

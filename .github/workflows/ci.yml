@@ -41,12 +41,13 @@ jobs:
   # Where each job runs. Issue 398: the Node 22 legs of the fast gates
   # (checks) and of the install smoke (dist-smoke) may use the self-hosted
   # runners. Issue 1226: so may the pull-request jobs (pr, pr-shards), any
-  # Node, for a merge-queue run or a pull request whose head branch lives
-  # here. den-ui-nav stays GitHub-hosted (its browser image is pinned to
+  # Node, for a pull request whose head branch lives here; a merge-queue run
+  # (it builds whatever was queued) and a run by hand stay GitHub-hosted.
+  # den-ui-nav stays GitHub-hosted (its browser image is pinned to
   # linux/amd64). Every other job is always GitHub-hosted. The guards send
   # a job to a self-hosted runner only when the DEN_SELF_HOSTED repo
-  # variable is 'on' and the code came from this repo (a push, a merge-queue
-  # run, or a pull request whose head branch lives here). The runner's
+  # variable is 'on' and the code came from this repo (a push, or a pull
+  # request whose head branch lives here). The runner's
   # labels come from DEN_SELF_HOSTED_LABELS, a JSON array such as
   # ["self-hosted","devbox"]; unset, ["self-hosted","den-wsl"]. A fork's pull request always runs GitHub-hosted, so
   # code from outside never reaches the box. The variable is the off switch:
@@ -277,7 +278,7 @@ jobs:
   pr:
     needs: [fast]
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && github.event.pull_request.head.repo.full_name == github.repository) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -434,7 +435,7 @@ jobs:
   pr-shards:
     needs: [fast, pr]
     if: needs.pr.outputs.shards != '[]'
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && (github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && github.event.pull_request.head.repo.full_name == github.repository) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       DEN_TEST_WORKERS: "2"
