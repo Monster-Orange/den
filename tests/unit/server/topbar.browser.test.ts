@@ -562,6 +562,8 @@ describe("the ⌘K palette (R17)", () => {
       "Logs of shop/db ACTION",
       // #80 (0.4.45): a fuzzy match, last ("Sh…o…p" in its label).
       "Show up to this many helpers under an agent SETTING",
+      // Issue 1166: fuzzy too ("s…h…o…p" in "minutes with no progress").
+      "GitHub watch: minutes with no progress SETTING",
       // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
       "Report screenshots, kept for SETTING",
       // Issue 403: and its size limit, looser still (…p in "kept").
