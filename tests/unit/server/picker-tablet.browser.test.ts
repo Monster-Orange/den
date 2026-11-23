@@ -280,6 +280,14 @@ async function pick(p: Page, name: string) {
 // (iPad Safari's larger text), with touch (an iPad) and with a mouse. At
 // 720 px and below the picker moves into the bar's More menu, a different
 // row.
+/**
+ * A row's height when its words are one line: the line plus its padding.
+ * On a touch screen a menu row is a 44px target (issue 302), so a row of
+ * one short line is 44px there, which is still one line.
+ */
+const oneLine = (row: { line: number; padY: number; coarse: boolean }) =>
+  Math.max(row.line * 1.5 + row.padY, row.coarse ? 44.5 : 0);
+
 describe.each([
   [820, 1180, 1, true],
   [1024, 1366, 1, true],
@@ -332,7 +340,7 @@ describe.each([
         }
         // One line: the row is one line plus its padding, never a second
         // line for the mark or for a part beside the name.
-        expect(row.rowH).toBeLessThan(row.line * 1.5 + row.padY);
+        expect(row.rowH).toBeLessThan(oneLine(row));
         for (const part of row.parts)
           expect(part.h).toBeLessThan(row.line * 1.5);
         // The mark has room at the right of the label.
@@ -413,7 +421,7 @@ describe.each([
           );
         }
         expect(row.markPos).toBe("static");
-        expect(row.rowH).toBeLessThan(row.line * 1.5 + row.padY);
+        expect(row.rowH).toBeLessThan(oneLine(row));
         for (const part of row.parts)
           expect(part.h).toBeLessThan(row.line * 1.5);
         expect(row.labelRight).toBeLessThan(row.rowRight - 8);

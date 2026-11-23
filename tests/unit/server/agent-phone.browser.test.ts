@@ -642,19 +642,16 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       await p.locator(back("scout")).tap();
       await p.locator(row("scout")).waitFor({ state: "visible" });
       await shot(p, engine, `1-list-${width}`);
-      // The mock's frame 1: plain rows. The count, never the address; no
-      // desktop hint, no Reorder, no drag handles.
+      // The mock's frame 1: the count, never the address; no desktop
+      // hint. Reorder stays: ordering on a phone shipped (issues 96 and
+      // 226), and a mock frame never takes it away.
       const counted = `${words("ag.sub.agents", { n: 2 })} · ${words("ag.sub.waiting", { w: 0 })} · `;
       expect(
         (await p.locator("#ag-count").textContent())?.slice(0, counted.length),
       ).toBe(counted);
-      for (const sel of [
-        "#ag-url",
-        "#agl-hint",
-        '#agl [data-act="reorder"]',
-        "#agl [data-grip]",
-      ])
+      for (const sel of ["#ag-url", "#agl-hint"])
         expect([sel, await shown(p, sel)]).toEqual([sel, null]);
+      expect(await shown(p, '#agl [data-act="reorder"]')).not.toBeNull();
       expect(await shown(p, PANE("scout"))).toBeNull();
       expect(await p.locator("#den-dock").isVisible()).toBe(true);
       const after = new URL(p.url());
