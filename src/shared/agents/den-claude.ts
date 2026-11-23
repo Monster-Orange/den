@@ -72,11 +72,15 @@ import {
   hookCommands,
   mergeHooks,
   sandboxRefusalHooks,
+  type GateRouteArgs,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { distributionBin } from "../cli-command.js";
+import { getDistRoot, getEngineRoot } from "../paths.js";
+import { gateDir } from "../gates/store.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -621,6 +625,7 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          gateRouteArgs(),
         ),
         !!input.apiOnly,
       )
@@ -1082,3 +1087,19 @@ export const denClaude: Runtime = {
   // catalog entry's sign-in data.
   signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };
+
+/**
+ * Issue 1264: this install's CLI and the gate's settings file, for the
+ * PreToolUse hook to route an agent's heavy runs through the gate; none
+ * when the install's CLI can't be found (no routing then).
+ */
+export function gateRouteArgs(): GateRouteArgs | undefined {
+  try {
+    const cli = distributionBin(product().cli, getDistRoot(), getEngineRoot());
+    return cli
+      ? { cli, settings: path.join(gateDir(), "settings.json") }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
