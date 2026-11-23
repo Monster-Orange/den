@@ -20,6 +20,7 @@ import {
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention } from "./attention.js";
+import { noteActivity } from "../../shared/agents/activity.js";
 import { AlertFeed } from "./alert-feed.js";
 import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
 import { uiLanguage } from "./ui-language.js";
@@ -299,6 +300,10 @@ export function notificationDeps(): {
     store,
     outputMark,
     nameOf,
+    // Issue 1129: a resume after a restart starts the working ones first.
+    activity: (id, working) => {
+      noteActivity(getStateDir(), id, working);
+    },
     hooked: (id) =>
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
     endedAsking,

@@ -25,6 +25,11 @@ scrubSecretEnv();
 // machine never holds an unrelated test's slot. Den processes tests start
 // inherit it.
 process.env.DEN_GATE_LOAD5 = "0";
+// Issue 1274: the same for free memory: every test reads 100%.
+process.env.DEN_GATE_FREE_MEM = "100";
+process.env.DEN_GATE_SWAP_GB = "0";
+// ...and doctor never reads this machine's VMs (doctor-vms.ts).
+process.env.DEN_GATE_VMS = "0";
 
 // No test reads the developer's own state dir: its web.secret would put a
 // real person token on a test server's request (SEC-1a). A suite that needs
@@ -44,6 +49,14 @@ if (!process.env.DEN_GATE_DIR)
     os.tmpdir(),
     `den-test-${process.pid}`,
     "gate-slots",
+  );
+
+// Issue 728: nor registers in, or reads, this user's real install registry.
+if (!process.env.DEN_INSTALLS_DIR)
+  process.env.DEN_INSTALLS_DIR = path.join(
+    os.tmpdir(),
+    `den-test-${process.pid}`,
+    "installs",
   );
 
 // No test asks this machine's login shell for its PATH (its startup files

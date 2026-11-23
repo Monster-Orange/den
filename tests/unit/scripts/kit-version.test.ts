@@ -219,8 +219,10 @@ describe("the workflows run the rule", () => {
     // the base commit is in the history only with all of it
     expect(checkout?.with?.["fetch-depth"]).toBe(0);
     const decide = job.steps.find((s) => s.id === "ui");
+    // Main's own copy decides (issue 922): a job that can publish never
+    // runs the promoted tree's scripts.
     expect(decide?.run?.trim()).toBe(
-      'node scripts/kit-version.mjs >> "$GITHUB_OUTPUT"',
+      'node .release-main/scripts/kit-version.mjs >> "$GITHUB_OUTPUT"',
     );
     // no step of its own decides to skip: "on npm already" only comes from the script
     for (const s of job.steps) {

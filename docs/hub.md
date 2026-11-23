@@ -42,8 +42,21 @@ Everything happens in **Settings › Hub**. Nobody copies a token or edits a fil
 5. Hub sends you back to Settings › Hub, connected. Settings shows your company, your role, who
    signed in and this install's name in Hub (`<cli> on <machine>`).
 
-Connect also links each project here to its Hub project. Where Den can't tell which one fits, it asks
-you. See [Projects and Hub projects](#projects-and-hub-projects).
+Connect also proposes a Hub project for each project here, and you link them all with one press. See
+[Projects and Hub projects](#projects-and-hub-projects).
+
+**The right company.** Connect sends Hub the repos of this Den's projects (`repos=<owner/repo>,…`, at
+most 50). Hub ranks the companies you may connect to by them, with your own sign-in: one that holds
+those repos first. When one company clearly fits, Hub picks it for you to confirm. Nothing about which
+company holds which repos reaches anyone but you. An older Hub ignores the list. Connected, Settings ›
+Hub shows the company. **Switch company** runs the same Connect to pick another one.
+
+**One review.** Back from Hub, Settings › Hub shows a row per project: the Hub project it gets and why
+(the same repo, then the same name), or "Create <name>" when none fits. A project that was linked on
+another Hub says so on its row. **Change** opens a list of the company's Hub projects in the row, with
+a search and the suggestion on top. **Connect and link all** links every row at once. All the new
+projects go to Hub as one plan: an owner presses Apply once in Hub, and Den links each one by itself.
+The review then says what was linked, and opens Hub's plan page for the new ones.
 
 The token Hub gives this install is kept in this install's secrets store (a 1Password item or a
 Doppler key, when the install keeps secrets there). Otherwise it is kept in a file only you can read,
@@ -143,9 +156,10 @@ shows Hub's name for it.
 Den links to a Hub project by its hidden ID, so renaming the project or its short name in Hub doesn't
 break the link.
 
-**Connect links them.** After Connect, Den links each project whose match is clear: one Hub project
-with the same repos, or, when none has its repos, one with the same name. Connect's message says how
-many it linked and how many need your pick.
+**Connect proposes, you link.** After Connect, nothing is linked yet. Settings › Hub's review proposes
+a Hub project for each project: one with the same repos, or, when none has its repos, one with the
+same name. Connect's message, and the bell, say how many wait. Press **Connect and link all** to link
+them.
 
 **"Den can't tell which fits."** When two Hub projects share a project's repos, or its repos and its
 name point to different ones, Den doesn't guess. The bell says "N projects need your pick". Settings ›
@@ -216,6 +230,7 @@ user file wins.
 | `hub.inbox_watch`                     | `true`             | Den reads Hub's inbox and types new items into their agents. `false`: it doesn't.                                                                                |
 | `hub.inbox_poll_seconds`              | `30` (at least 5)  | How often Den reads Hub's inbox.                                                                                                                                 |
 | `hub.inbox_backoff_max_seconds`       | `600` (at least 5) | The longest wait between inbox reads while Hub doesn't answer.                                                                                                   |
+| `hub.inbox_reads_per_second`          | `2` (above 0)      | The most inbox reads Den makes a second, for all its agents together. Each agent is read at most once per poll.                                                  |
 | `hub.delivery_poll_seconds`           | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                                                  |
 | `hub.delivery_alert_minutes`          | `15` (`0`: off)    | Minutes with no good read of Hub's comments before doctor warns and the bell says they aren't arriving.                                                          |
 | `hub.delivery_stream_silence_seconds` | `75` (`0`: off)    | No bytes on the comment stream this long (three of Hub's 25 s keep-alives), and Den reopens it.                                                                  |
@@ -255,6 +270,10 @@ with no good read.
 
 When connected, it also has a row per project (linked to which Hub project, or not linked) and a row
 on Den Hub's GitHub access. A Hub that is down never fails doctor: agents still run.
+
+Each link records the Hub and company it was made on. A link to another Hub, or to another company on
+this one, counts as not linked: Den sends Hub no project for it, and doctor fails its row (`✗`),
+naming where it points. Link it again in Settings › Hub's review.
 
 ## Troubleshooting
 

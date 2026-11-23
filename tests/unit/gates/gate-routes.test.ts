@@ -98,6 +98,13 @@ describe("gate-slot routes", () => {
       // Issue 1009: cores × 4 / 3 on the machine the test runs on.
       cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
       loadHoldPerCore: 3,
+      // Issue 1132: cores × 1.5 on the machine the test runs on.
+      maxStartLoad: GATE_DEFAULTS.maxStartLoad,
+      maxStartWaitMinutes: 10,
+      reapGraceSeconds: 10,
+      memoryFreeMinPercent: 10,
+      swapHoldGb: 8,
+      vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       overrunBellMultiple: 2,
@@ -113,6 +120,7 @@ describe("gate-slot routes", () => {
       browserBoxDefault: "any",
       browserHostOnly: "",
       remoteRenewSeconds: 30,
+      waiterReturnMinutes: 10,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,

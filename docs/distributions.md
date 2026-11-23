@@ -1436,8 +1436,11 @@ hub:
   than the watcher's first run, and comments Hub already delivered, are
   passed over. Hub has no ack for inbox items, so none is sent. While
   Hub doesn't answer the wait doubles, up to
-  `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
-  turns it off.
+  `hub.inbox_backoff_max_seconds` (default 600), plus up to a quarter
+  more by chance. The whole install reads at most
+  `hub.inbox_reads_per_second` (default 2), and each agent at most once
+  per poll, counted from when its last read ended. An agent's Stop hook
+  reuses Hub's answer for 30 s. `hub.inbox_watch: false` turns it off.
 - Hub's tool changes reach a resumed agent (0.4.52, issue 193). An agent
   resumed on the same conversation keeps the tool list its client read
   when that conversation began, so it doesn't know a parameter Hub added
@@ -1823,6 +1826,19 @@ and the guide to making your own
   text in `accent-text`. Two colors are optional in each mode: `info`
   (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
   checked when a theme sets them; unset, the UI kit's defaults hold.
+- `shape` (optional): `radius`, `radius-button` and `density`, and two
+  keys for how the kit draws edges and buttons:
+  - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
+    Added in 0.4.88.
+  - `buttons`: `filled` (the default) or `outline`. With `outline`, the
+    primary and danger buttons have no fill: a `border-strong` edge and
+    `text` words, danger in `bad`. Added in 0.4.88.
+
+  A theme that sets neither draws as before. The built-in `sketch` theme
+  (greys only, dashed, outline, one face) ships in the UI kit as
+  `themes/sketch.css`, so a page with the kit and no Den server can link
+  it after `tokens.css`.
+
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -2973,6 +2989,15 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
+A service starts the web server with `--silent`, so `web.log` stops at the
+start banner. While it runs that way, the server's warning lines (Hub
+deliveries held or typed, among others) also go to `logs/server.log` in Den's
+state folder, so they are still there after a restart. `server_log.max_mb` in
+`user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
+size it moves to `server.log.1`, replacing the one there, and starts again.
+The lines are the server's own log lines, which carry no tokens. Doctor names
+the file and its size (`server_log`).
+
 `web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
 server keeps an idle connection open. It sits above the page's own poll and
 a proxy's usual idle time, so a client never reuses a connection the server
@@ -3108,7 +3133,7 @@ to one project for one agent:
 (agent:<id>; no grants); "<other>" is another project`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
   says how to get more: a person adds `<other>` to `agents.<id>.grants` in
-  the org config and restarts the agent; an agent can't grant itself one. A
+  `config/local/user.yml` and restarts the agent; an agent can't grant itself one. A
   refused call is recorded in the activity trail, read tools included.
 - **Says so.** Every scoped answer (`status`, `services`, `applications`,
   `graph`, `stacks`, `workspaces`) carries a `scope` block: the project
@@ -3142,7 +3167,7 @@ to one project for one agent:
 agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
 - **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
-  when the org config's `agents.<id>.grants` lists it; otherwise the server
+  when `agents.<id>.grants` in `config/local/user.yml` lists it; otherwise the server
   exits 2 (an agent can't grant itself one). A call naming a granted
   project is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
@@ -3189,13 +3214,21 @@ refusal, a failed action, the web server down).
 
 ### Config
 
-Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
-tools are registered. Actions are opt-in, by name:
+Without `mcp.actions` in `config/local/user.yml`, only the read tools are
+registered. Actions widen what agents may do, so they are opt-in, by name,
+in that file only (an agent's sandbox can't write it):
 
 ```yaml
+# config/local/user.yml
 mcp:
   actions:
     [service_up, service_down, service_restart, workspace_sync, run_tests]
+```
+
+The rest of the `mcp:` block stays in the org config (`config/<name>.yml`):
+
+```yaml
+mcp:
   run_tests:
     envs: [local] # the default; production is refused even if listed
   logs:
@@ -3206,6 +3239,11 @@ mcp:
 An unknown action or environment name is an error, so a typo never turns a
 guard off; so is an `approvals` that isn't `true` or `false`. See
 [Onboarding writes, held for the person](#onboarding-writes-held-for-the-person).
+
+Migrating (issue 1072): Den no longer reads `mcp.actions` or
+`agents.<id>.grants` from the org config. `<cli> agents doctor` names each
+one still there ("Settings read from config/local only"). Move them to
+`config/local/user.yml`. A later release refuses them in the org config.
 
 ### Tools
 
@@ -4951,6 +4989,79 @@ the server audits their calls as the agent, from the token, never from a
 header (agent headers without the token are recorded as an unverified
 claim).
 
+**Den's state is read-only to an agent's session** (issue 936). An agent
+runs as you, so each agent's session starts inside the OS sandbox:
+`sandbox-exec` on macOS, `bwrap` (bubblewrap) on Linux. Inside it:
+
+- Den's state folder and the install's `config/local` (where `user.yml`
+  is) can't be written. The agent can't change its own record, its mode or
+  the settings. Den's server does the writing an agent asks for: its MCP
+  server is a client of the server.
+- The gate store's settings (the machine's gate settings and test boxes)
+  can't be written. Its slot queue can, so `gate run` and the MCP slot
+  tools work as before.
+- The agent's own token can be read. Den's other files are read only
+  where the agent's tools need them.
+- On macOS, unix sockets can't be reached, except the system's own and
+  the agents' message sockets (and the SSH agent's, when the session has
+  one). On Linux, the sockets in your tmux and runtime folders
+  (`XDG_RUNTIME_DIR`) and the container engines' sockets are hidden;
+  sockets elsewhere can still be reached. On both, the terminal host's
+  socket can't be reached. A session started there
+  would run outside the sandbox. So `<cli> agents list`, `start` and
+  `stop` don't work from an agent's shell. An agent starts another with
+  the `agent_create` tool.
+- The agent's own folder (`<state>/agent-files/<id>`) stays writable:
+  `handoff.md`, its notes, the hooks' counts. The launch files Den writes
+  there (its Claude settings, its MCP config) don't.
+
+The start line and `<cli> agents doctor` name every agent that runs
+outside the sandbox, and why: no `bwrap` on this Linux machine, an agent
+from before the sandbox, or the setting below. A write the sandbox
+refuses shows the agent a plain reason and what to use instead (a Den
+hook after each tool, for personas with Den's hooks on), never only a
+permission error.
+
+The sandbox is on for every agent started new. An agent that existed
+before your Den had the sandbox keeps starting as before until you turn
+it on: Den asks once, as a held write in the bell (Turn on), and
+`<cli> agents doctor` warns "Sandbox is off for N agents". Turn on sets
+`agents.sandbox: on` in `config/local/user.yml`; each of those agents goes
+into the sandbox at its next start, and one you set to `off` stays off.
+
+The sandbox is on by default. To turn it off, for every agent or for one,
+set it in `config/local/user.yml` (agents can't write that file). Den
+refuses this setting in the distribution's config, since agents may edit
+that file:
+
+```yaml
+agents:
+  sandbox: on # or off, or required
+  sandbox_sockets: [/var/run/some-tool] # more socket folders it may reach
+  some-agent:
+    sandbox: off # this agent's sessions start outside it
+```
+
+With `required`, an agent whose sandbox can't apply on this machine
+doesn't start: the start says why. On Linux, Den runs `bwrap` once to
+check it works here, not only that it is installed.
+
+This first slice covers Den's state. It doesn't limit what a session can
+reach over the network on this machine, or files outside Den's state that
+you can write. Agents' messages to each other's sessions stay open inside
+it, so an agent can ask another session, which may run outside a sandbox,
+to act for it. Later slices do, when an agent runs as its own OS user.
+
+Migrating: nothing to do. Agents you start after the update run in the
+sandbox; your existing agents keep running as before until you Allow
+Turn on (or set `agents.sandbox: on`). On Linux, install `bubblewrap`
+(`bwrap`) first; without it agents start outside the sandbox and doctor
+says so, unless you set `agents.sandbox: required`.
+
+On macOS a program inside the sandbox can't start a sandbox of its own,
+so Claude Code's own Bash sandbox setting doesn't work in an agent's
+session. Den's sandbox covers that session.
+
 **The token counts only from the agent's own processes.** For each
 connection, Den finds the process on the other end (macOS: `lsof`;
 Linux: `/proc`). It then checks that process runs inside the agent's
@@ -5957,7 +6068,7 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
 - Held past `overrun_bell_multiple` times its estimate (default 2; `gate
-  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
   the bell's Needs you: who holds it, what it runs, since when and its
   estimate, with End for the person. When an agent holds it, Den types one
   line at that agent's prompt, once per slot, to release it with

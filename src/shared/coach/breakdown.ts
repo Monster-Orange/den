@@ -10,7 +10,9 @@
  * compared per day only. Every run names its window.
  *
  * It keeps counts only: never a file name, a title, a prompt or a
- * command. It reads files on this machine and sends nothing anywhere. A
+ * command. The one exception is slice T-c's evidence (asks.ts): an
+ * agent's own asks and messages, each cut to 300 characters with secrets
+ * taken out, so a person can check a finding. It reads files on this machine and sends nothing anywhere. A
  * counted run calls no model, and its cost says so.
  */
 import * as fs from "fs";
@@ -21,6 +23,7 @@ import { weeklyMetrics, type UsageMetrics } from "../usage/report.js";
 import { sourceFor, type UsageSource } from "../usage/sources.js";
 import type { TranscriptStats } from "../usage/transcript.js";
 import type { CoachFinding } from "./findings.js";
+import { askMetrics, type AskMetrics, type AskStats } from "./asks.js";
 import type { ConversationWhy } from "../agents/conversation-history.js";
 
 const DAY_MS = 86_400_000;
@@ -86,6 +89,11 @@ export interface CoachAgentRow {
   current?: { compactions: number; after: number };
   /** The size on disk of the window's transcripts, in bytes. */
   transcriptBytes?: number;
+  /**
+   * Slice T-c: its asks to a person and its messages to other agents, when
+   * its usage source reads them (asks.ts).
+   */
+  asks?: { metrics: AskMetrics; stats?: AskStats };
 }
 
 export interface CoachReport {
@@ -142,6 +150,8 @@ export interface CoachOptions {
   env?: NodeJS.ProcessEnv;
   /** The rotation limit (agents.rotate.after_compactions, default 3). */
   after?: number;
+  /** R12's longest sentence, in words (agents.coach.findings.sentence_words). */
+  sentenceWords?: number;
 }
 
 /** Transcripts read at once: many agents, each with many, would run out of file handles. */
@@ -233,6 +243,21 @@ export async function coachBreakdown(
     row.metrics = metrics;
     row.perDay = perDayOf(metrics, o.days);
     row.models = modelsOf(stats);
+    if (src.asks) {
+      const read = src.asks;
+      const asks = await mapLimited(
+        files.filter((f) => !/[\\/]subagents[\\/]/.test(f)),
+        MINE_AT_ONCE,
+        (f) => read(f, { since, maxWords: o.sentenceWords }),
+      );
+      const merged: AskStats = {
+        asks: asks.flatMap((a) => a.asks),
+        sends: asks.flatMap((a) => a.sends),
+        received: asks.flatMap((a) => a.received),
+        prompts: asks.flatMap((a) => a.prompts ?? []),
+      };
+      row.asks = { metrics: askMetrics(asks, o.days), stats: merged };
+    }
     all.push(...stats);
   }
   const totals = { ...weeklyMetrics(all, undefined, o.after), rotations };

@@ -50,7 +50,11 @@ export type TokenCaller = "ok" | "elsewhere" | "unknown";
  */
 export type PeerMiss = LookupMiss | "waiting" | "gone";
 
-type PeerAnswer = number | null | { miss: LookupMiss };
+/**
+ * Issue 1131: several, with each process's line of parents when the lookup
+ * had them (two processes on one connection: a helper and its parent).
+ */
+type PeerAnswer = number | null | { miss: LookupMiss; lines?: number[][] };
 
 export interface BindingDeps {
   /**
@@ -70,6 +74,10 @@ interface Peer {
   miss?: LookupMiss;
   /** Issue 609: the caller closed its end. */
   gone?: boolean;
+  /** Issue 1131: several processes on the connection, each one's line. */
+  several?: number[][];
+  /** Issue 1131: one more try of the lookup (peerSettled's retry). */
+  again?: () => Promise<void>;
   done: Promise<void>;
 }
 
@@ -99,8 +107,32 @@ export function watchPeer(sock: Socket, d: BindingDeps = {}): void {
     else {
       peer.pid = null;
       peer.miss = v?.miss ?? "none";
+      if (v?.miss === "several" && Array.isArray(v.lines) && v.lines.length)
+        peer.several = v.lines;
     }
   };
+  // One try: the fake's answer, or the real lookup's (with its line).
+  const once = async (): Promise<PeerAnswer> => {
+    if (d.peer) {
+      try {
+        return await d.peer(from, to);
+      } catch {
+        return { miss: "failed" };
+      }
+    }
+    try {
+      const f = await loopbackPeerFind(from, to);
+      if ("line" in f) {
+        peer.line = f.line;
+        return f.line[0];
+      }
+      return f;
+    } catch {
+      return { miss: "failed" };
+    }
+  };
+  // Issue 1131: an agent's request may ask for another try (peerSettled).
+  peer.again = async () => answer(await once());
   if (d.peer) {
     let v: PeerAnswer | Promise<PeerAnswer>;
     try {
@@ -113,15 +145,7 @@ export function watchPeer(sock: Socket, d: BindingDeps = {}): void {
     else answer(v);
     return;
   }
-  peer.done = loopbackPeerFind(from, to).then(
-    (f) => {
-      if ("line" in f) {
-        peer.pid = f.line[0];
-        peer.line = f.line;
-      } else answer(f);
-    },
-    () => answer({ miss: "failed" }),
-  );
+  peer.done = once().then(answer, () => answer({ miss: "failed" }));
 }
 
 /**
@@ -153,16 +177,44 @@ export async function peerSettled(
   if (!sock || !isLoopbackAddress(sock.remoteAddress)) return;
   watchPeer(sock, d);
   const peer = PEERS.get(sock);
-  if (!peer || peer.pid !== undefined) return;
-  let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
-    peer.done,
-    new Promise<void>((r) => {
-      timer = setTimeout(r, Math.max(0, waitMs));
-      timer.unref?.();
-    }),
-  ]);
-  clearTimeout(timer);
+  if (!peer || typeof peer.pid === "number") return;
+  const until = Date.now() + Math.max(0, waitMs);
+  const within = (p: Promise<void>, ms: number) => {
+    let timer: NodeJS.Timeout | undefined;
+    return Promise.race([
+      p,
+      new Promise<void>((r) => {
+        timer = setTimeout(r, Math.max(0, ms));
+        timer.unref?.();
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+  if (peer.pid === undefined) await within(peer.done, until - Date.now());
+  // Issue 1131: no connection found yet (a busy machine's lookup): try
+  // again within the same wait, backing off. Only an agent's request
+  // waits here, so other callers cost no extra lookups. A later answer is
+  // judged as a first one would be; a timeout, a failure or several is
+  // final.
+  let pause = 50;
+  while (
+    peer.pid === null &&
+    peer.miss === "none" &&
+    peer.again &&
+    !peer.gone &&
+    Date.now() + pause < until
+  ) {
+    await new Promise<void>((r) => setTimeout(r, pause).unref?.());
+    pause = Math.min(pause * 2, 1_000);
+    peer.miss = undefined;
+    peer.pid = undefined;
+    await within(peer.again(), until - Date.now());
+    if (peer.pid === undefined) {
+      // The try outlived the wait: unplaced, as before.
+      peer.pid = null;
+      peer.miss = "none";
+      break;
+    }
+  }
 }
 
 /** The pid on the other end of this request's connection, once found. */
@@ -187,13 +239,33 @@ export function tokenCaller(
   d: BindingDeps = {},
 ): TokenCaller {
   if (!isLoopbackAddress(req.socket?.remoteAddress)) return "elsewhere";
-  if (!root || root <= 0) return "unknown";
+  // A root of init (1) would hold every line on the machine (a bad or
+  // stale record): it places nothing.
+  if (!root || root <= 1) return "unknown";
   const pid = callerPid(req, d);
-  if (pid === null) return "unknown";
+  if (pid === null) return severalCaller(req, root, d);
   const line = PEERS.get(req.socket)?.line;
   // Its parents as they were when it connected (it may be gone now).
   if (line && !d.descends && line.includes(root)) return "ok";
   return (d.descends ?? descendsFrom)(pid, root) ? "ok" : "elsewhere";
+}
+
+/**
+ * Issue 1131: several processes on the agent's connection. Accepted only
+ * when every one of them runs inside the agent's session (its root on each
+ * line, or `descends` for each); one outside, or no lines: unknown, and
+ * refused as before. Never wider than a single caller's check.
+ */
+function severalCaller(
+  req: http.IncomingMessage,
+  root: number,
+  d: BindingDeps,
+): TokenCaller {
+  const lines = PEERS.get(req.socket)?.several;
+  if (!lines || lines.length < 2) return "unknown";
+  const inside = (l: number[]) =>
+    l.length > 0 && (d.descends ? d.descends(l[0], root) : l.includes(root));
+  return lines.every(inside) ? "ok" : "unknown";
 }
 
 /**
