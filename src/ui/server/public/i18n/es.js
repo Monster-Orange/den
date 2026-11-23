@@ -1448,7 +1448,7 @@
       "Cuánto espera el siguiente grupo de reinicios de agentes después de que empieza uno. __DEN_CLI__ config agents.resume.gap_seconds=30",
     "set.agents.resume_load": "Carga que detiene los reinicios",
     "set.agents.resume_load.d":
-      "Mientras la carga de 1 minuto del equipo supere este valor, el siguiente grupo de reinicios de agentes espera. 0: sin límite. Por defecto es el número de núcleos × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+      "Mientras la carga de 1 minuto de la máquina supere este valor, el siguiente grupo de reinicios de agentes espera. 0: sin límite. Por defecto es el número de núcleos × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
     "set.agents.resume_max_wait": "Espera máxima de un reinicio por la carga",
     "set.agents.resume_max_wait.d":
       "Cuando un agente ha esperado este tiempo, su grupo se reinicia aunque la carga siga alta, de unos pocos en unos pocos como antes. 0: la carga puede detener los reinicios mientras siga alta. __DEN_CLI__ config agents.resume.max_wait_seconds=600",

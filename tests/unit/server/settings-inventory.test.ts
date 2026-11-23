@@ -108,6 +108,13 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // Issue 1129: the restart queue.
+  agents_resume: {
+    batch: true,
+    gap_seconds: true,
+    load_ceiling: true,
+    max_wait_seconds: true,
+  },
   // issue_write: which roles write GitHub issues, and how many an hour.
   agent_issue_writes: { roles: true, per_hour: true },
   // Issue 278: agents stuck compacting; instruction size.
@@ -381,6 +388,11 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        // Issue 1129: the restart queue.
+        "agents_resume.batch",
+        "agents_resume.gap_seconds",
+        "agents_resume.load_ceiling",
+        "agents_resume.max_wait_seconds",
       ].sort(),
     );
   });
