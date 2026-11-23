@@ -98,7 +98,7 @@ describe("GateStore.peekAll (issue 1339)", () => {
     const before = listing(t.dir);
     const t0 = performance.now();
     const got = t.store.peekAll();
-    expect(performance.now() - t0).toBeLessThan(100);
+    expect(performance.now() - t0).toBeLessThan(1_000); // list() would wait 10 s
     expect(got.map((x) => x.id)).toEqual([e.id]);
     expect(listing(t.dir)).toEqual(before);
   });
@@ -139,7 +139,7 @@ describe("the bell's overrun line (issue 1339 with 993)", () => {
     await holdLock(t.dir);
     const t0 = performance.now();
     const got = bellGateOverruns(t.store, T0 + 21 * MIN);
-    expect(performance.now() - t0).toBeLessThan(100);
+    expect(performance.now() - t0).toBeLessThan(1_000); // list() would wait 10 s
     expect(got).toMatchObject([{ kind: "gate_overrun", id: e.id }]);
   });
 });

@@ -1218,6 +1218,10 @@
       "Esperar nuevas pruebas aquí con más intercambio en uso que esto (GB)",
     "set.server.gate_swap_hold_gb.d":
       "Las nuevas pruebas en esta máquina esperan mientras el intercambio en uso supere estos GB, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Una máquina puede mostrar mucha memoria libre mientras el intercambio se llena. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "Si falla una lectura de memoria, conservar la última durante (segundos)",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "Cuando no se puede leer la memoria libre o el swap, la última lectura válida vale durante estos segundos. Después, la lectura es desconocida, y una lectura desconocida retiene las nuevas ejecuciones aquí mientras otra está en marcha. 0 retiene al instante. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
     "set.server.gate_vm_memory_share":
       "Avisar cuando las máquinas virtuales reserven más que esta parte de la memoria",
     "set.server.gate_vm_memory_share.d":
@@ -3310,6 +3314,11 @@
     "gate.swapUsed": "Intercambio en uso: {used} GB",
     "gate.memoryHold":
       "esperando: esta máquina tiene {free}% de memoria libre, menos del {limit}%, mientras se ejecuta otra prueba aquí; empieza cuando se libere memoria o termine esa prueba",
+    "gate.memoryUnavailableHold":
+      "esperando: lectura de memoria no disponible, mientras otra ejecución está en marcha aquí; empieza cuando vuelva una lectura o termine esa ejecución",
+    "gate.memoryUnavailable": "Esta máquina: lectura de memoria no disponible",
+    "gate.memoryNotMeasured":
+      "Esta máquina: la memoria no se mide en esta plataforma: las retenciones por memoria no se aplican",
     "gate.freeMemory": "Esta máquina: {free}% de memoria libre",
     "gate.vms":
       "Las máquinas virtuales aquí reservan {promised} GB de {limit} GB permitidos",

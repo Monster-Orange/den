@@ -1187,6 +1187,10 @@
       "スワップ使用量がこの値 (GB) を超えたらこのマシンの新しい実行を待たせる",
     "set.server.gate_swap_hold_gb.d":
       "このマシンのスワップ使用量がこの GB を超えている間、新しいテストは待ちます。ただし待つのはこのマシンで別の実行が動いている間だけで、動いているものがなければ次が始まります。空きメモリが十分に見えてもスワップが埋まっていくことがあります。テスト用マシンは引き続き実行を受け付けます。0 で待たせません。__DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "メモリの読み取りに失敗したとき、最後の値を保つ時間（秒）",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "空きメモリやスワップを読み取れないとき、最後の正しい値をこの秒数だけ使います。その後は不明となり、不明な値は、ここで別の実行が進んでいる間、新しい実行を待たせます。0 ですぐに待たせます。__DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
     "set.server.gate_vm_memory_share":
       "仮想マシンがメモリのこの割合を超えて予約したら警告する",
     "set.server.gate_vm_memory_share.d":
@@ -3190,6 +3194,11 @@
     "gate.swapUsed": "スワップ使用量: {used} GB",
     "gate.memoryHold":
       "待機中: このマシンの空きメモリは {free}% で {limit}% を下回っており、このマシンで別の実行が動いています。メモリが空くかその実行が終わると始まります",
+    "gate.memoryUnavailableHold":
+      "待機中：メモリを読み取れません。ここで別の実行が進んでいる間は待ちます。読み取りが戻るか、その実行が終わると始まります",
+    "gate.memoryUnavailable": "このマシン：メモリを読み取れません",
+    "gate.memoryNotMeasured":
+      "このマシン：このプラットフォームではメモリを測りません。メモリによる待機は適用されません",
     "gate.freeMemory": "このマシン: 空きメモリ {free}%",
     "gate.vms":
       "ここの仮想マシンが予約したメモリは {promised} GB (許容 {limit} GB)",
