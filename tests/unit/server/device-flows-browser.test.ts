@@ -26,6 +26,7 @@ function rig() {
     },
     poll: async () => ({ kind: "pending" }),
     user: async () => ({ id: 1, login: "octo" }),
+    orgMember: async () => "not_member" as const,
   };
   return new DeviceFlows({
     client,
