@@ -74,7 +74,11 @@ describe("issue 816: announced test installs' state folders", () => {
   });
 
   it("none announced: the rules are the agent's own only", () => {
-    expect(deny(input())).toEqual(stateDirDenyRules("/home/someone/.acme"));
+    // Issue 362: the agent's own settings and MCP files are denied too.
+    const files = input().filesDir!;
+    expect(deny(input()).filter((r) => !r.includes(files))).toEqual(
+      stateDirDenyRules("/home/someone/.acme"),
+    );
   });
 });
 
