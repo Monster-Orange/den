@@ -228,11 +228,10 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     );
     expect(await meta("reviewer")).toMatch(/^Claude Code · (now|\d+ min)$/);
     // Done's line: the page's own "finished {ago}" words.
-    const finished = await p.evaluate(
-      () =>
-        (
-          window as unknown as { denMessages: { en: Record<string, string> } }
-        ).denMessages.en["ag.meta.finished"].split("{ago}")[0],
+    const finished = await p.evaluate(() =>
+      (
+        window as unknown as { denMessages: { en: Record<string, string> } }
+      ).denMessages.en["ag.meta.finished"].replace(/\{ago\}.*/, ""),
     );
     expect(
       (await meta("builder")).startsWith(`Claude Code · ${finished}`),
