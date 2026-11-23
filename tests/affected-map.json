@@ -784,6 +784,7 @@
   "rules": [
     {
       "when": [
+        "src/ui/server/public/agent-groups.js",
         "src/ui/server/public/agent-helpers.js",
         "src/ui/server/public/agent-order.js",
         "src/ui/server/public/agents-page.js",
@@ -2009,6 +2010,7 @@
         "tests/unit/server/busy-writes-ratchet.test.ts",
         "tests/unit/server/held-review-keys-205.test.ts",
         "tests/unit/server/i18n.test.ts",
+        "tests/unit/server/page-imports-served.test.ts",
         "tests/unit/server/product-tokens.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/public-tokens-parse.test.ts",
@@ -2068,6 +2070,7 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/agent-groups-view.test.ts",
         "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/hub-connect-648.test.ts",
         "tests/unit/server/hub-connect-review.test.ts",
@@ -2078,6 +2081,7 @@
         "tests/unit/server/update-security.test.ts",
         "tests/unit/shared/github-watch/watcher.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
+        "tests/unit/shared/hub-groups.test.ts",
         "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",

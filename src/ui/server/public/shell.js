@@ -3019,6 +3019,25 @@
       "Den was updated to {to} after this agent started, so its Den tools still run {from}'s code. Restart loads {to}'s, at its next idle, on the same conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
+    "ag.by.label": "Show the list",
+    "ag.by.project": "By project",
+    "ag.by.group": "By group",
+    "ag.grp.noHub": "Groups come with Den Hub.",
+    "ag.grp.connect": "Connect Den Hub",
+    "ag.grp.notInPlan": "Groups aren't in this company's Den Hub plan.",
+    "ag.grp.openHub": "Open Hub",
+    "ag.grp.guest":
+      "You're a guest in this Hub company, so its groups aren't shown here.",
+    "ag.grp.unreachable": "Can't reach Den Hub, so groups aren't shown.",
+    "ag.grp.retry": "Try again",
+    "ag.grp.noGroups": "No groups yet",
+    "ag.grp.openGroups": "Open Groups in Hub",
+    "ag.grp.lead": "Lead: {name}",
+    "ag.grp.open": "Open {group} in Hub",
+    "ag.grp.message": "Message group",
+    "ag.grp.messageName": "Message {group} in Hub",
+    "ag.grp.empty": "None of its members run on this Den.",
+    "ag.grp.notIn": "Not in a group",
     "ag.mcp.restarting":
       "{id} restarts at its next idle, in the same conversation.",
     "ag.det.label": "Details for {id}",
@@ -3790,6 +3809,10 @@
       "{name}: {n} messages wait for {m} min. Waiting: Den couldn't read the agent's state in time",
     "bell.m.held.unread.one":
       "{name}: {n} message waits for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.held.hub_tools":
+      "{name}: {n} messages wait for {m} min. Waiting: its Hub tools didn't load; restart it",
+    "bell.m.held.hub_tools.one":
+      "{name}: {n} message waits for {m} min. Waiting: its Hub tools didn't load; restart it",
     "bell.m.hubNoAnswer":
       "{name}: {n} Hub comments typed in, no answer yet after {m} min",
     "bell.m.hubNoAnswer.one":

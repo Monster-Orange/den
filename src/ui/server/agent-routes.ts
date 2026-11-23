@@ -676,6 +676,11 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 750: this install's groups from Hub, for the By group view.
+  if (pathname === "/api/hub/groups") {
+    const m = await import("./hub-groups-routes.js");
+    return m.hubGroupsRoute(req, res, await m.defaultHubGroupsDeps());
+  }
   // Issue 646: Connect's one review: a row per project, Connect and link all.
   if (pathname === "/api/hub/connect-review") {
     const [rv, audit, guard] = await Promise.all([
