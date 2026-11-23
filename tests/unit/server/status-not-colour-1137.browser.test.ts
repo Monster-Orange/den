@@ -60,8 +60,9 @@ afterAll(async () => {
 /**
  * In the page: each shown status dot with no word beside it, as its
  * classes and its row's HTML. A word is visible text in the dot's row (its
- * parent, up to three levels, not counting the dot), or an aria-label or
- * title on the dot or that row.
+ * parent, up to three levels, below <body>, not counting the dot), or an
+ * aria-label or title on the dot or that row. The walk stops at <body>:
+ * the whole page's text is no word for one dot.
  */
 const LONE_DOTS_JS = `(() => {
   const lone = [];
@@ -69,7 +70,11 @@ const LONE_DOTS_JS = `(() => {
     if (!d.checkVisibility()) continue;
     let ok = !!(d.getAttribute("aria-label") || d.getAttribute("title"));
     let el = d.parentElement;
-    for (let i = 0; i < 3 && el && !ok; i++, el = el.parentElement) {
+    for (
+      let i = 0;
+      i < 3 && el && el !== document.body && !ok;
+      i++, el = el.parentElement
+    ) {
       if (el.getAttribute("aria-label") || el.getAttribute("title")) ok = true;
       const words = [...el.childNodes]
         .filter((n) => n !== d)
