@@ -430,3 +430,25 @@ describe("issue 765: the most a rotation can be put off (a setting)", () => {
     ).toBe(false);
   });
 });
+
+// Slice C: doctor says when the cap in user.yml is wrong (Den uses 168 h).
+import {
+  deprecatedKeys,
+  rotationDeferMaxBad,
+} from "../../../src/ui/cli/doctor-command.js";
+
+describe("issue 765: doctor flags a wrong agents.rotation_defer_max_hours", () => {
+  it("names the value and the 168 h Den uses instead; quiet when unset or right", () => {
+    const of = (v: unknown) => () =>
+      ({ agents: { rotation_defer_max_hours: v } }) as never;
+    expect(rotationDeferMaxBad(of("7d"))).toEqual([
+      'config/local/user.yml: agents.rotation_defer_max_hours is "7d", not a number of hours from 1 to 8760: Den uses 168 h (7 days) until it is fixed',
+    ]);
+    expect(rotationDeferMaxBad(of(0))).toHaveLength(1);
+    expect(rotationDeferMaxBad(of(24))).toEqual([]);
+    expect(rotationDeferMaxBad(() => ({}) as never)).toEqual([]);
+    expect(deprecatedKeys(of("7d")).join("\n")).toMatch(
+      /rotation_defer_max_hours is "7d"/,
+    );
+  });
+});

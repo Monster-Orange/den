@@ -35,6 +35,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readUserConfig,
+  ROTATION_DEFER_MAX_HOURS,
   readServerAgentConfig,
   type UserConfig,
   readMcpConfig,
@@ -1688,6 +1689,7 @@ export function deprecatedKeys(
 ): string[] {
   return [
     ...userYmlOrgKeys(readUser),
+    ...rotationDeferMaxBad(readUser),
     ...collapseDoneKey(),
     ...teamSelfUpdateKey(),
   ];
@@ -1724,6 +1726,32 @@ export function teamSelfUpdateKey(
       ];
     return [
       `${file}: server_agent.self_update does nothing there: it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on its own Allow`,
+    ];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Issue 765: a wrong agents.rotation_defer_max_hours in user.yml. Putting
+ * off falls back to the default quietly, so doctor says so: a person who
+ * typed "7d" learns the cap is not what they set.
+ */
+export function rotationDeferMaxBad(
+  read: () => { agents?: unknown } = readUserConfig,
+): string[] {
+  try {
+    const a = read().agents as
+      | { rotation_defer_max_hours?: unknown }
+      | undefined;
+    const v = a?.rotation_defer_max_hours;
+    if (v === undefined || v === null) return [];
+    const { min, max } = ROTATION_DEFER_MAX_HOURS;
+    if (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max)
+      return [];
+    const d = ROTATION_DEFER_MAX_HOURS.default;
+    return [
+      `config/local/user.yml: agents.rotation_defer_max_hours is ${JSON.stringify(v)}, not a number of hours from ${min} to ${max}: Den uses ${d} h (${d / 24} days) until it is fixed`,
     ];
   } catch {
     return [];
