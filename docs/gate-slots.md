@@ -187,6 +187,29 @@ says so on its last line, and a `gate run --priority release` says it is
 taken as an ordinary run.
 A CI runner may ask for it too (see below; `priority_runners`).
 
+## A waiting run keeps its place across a restart
+
+A Den restart (or its window closing) can end a `gate run` while it waits.
+Its place in line is kept for `waiter_return_minutes` (default 10):
+
+- `gate status` shows it as `run gone, place kept until <time>`. It's
+  never given a slot while it's gone, so the next live run starts instead.
+- The same run asking again (same kind, label, repo and asker, and the
+  same `--box` choice) takes its place back: `gate: back in your place
+(<id>)`. A different run goes to the end of the line as usual.
+- If it doesn't come back in time, the place is let go. The slot log
+  records `taken-back-gone` with reason `waiter-gone`, and the next time
+  that run asks, it prints `gate: your earlier place (asked <time>) was let
+go at <time>`.
+
+Only a hang-up or terminate signal (SIGHUP, SIGTERM) keeps the place.
+Ctrl-C (SIGINT) and SIGQUIT give it back at once. A holder whose run ends
+frees its slot at once, as before. Agents' MCP asks and CI runners keep
+their own leases.
+
+Change it in Settings › Server, or with `den gate settings
+--waiter-return-minutes N` (0: a gone waiter loses its place at once).
+
 ## Let one waiting run go ahead of yours
 
 ```sh

@@ -844,7 +844,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2896,6 +2896,33 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "web_url_set",
+    title: "Propose this install's address",
+    description:
+      "Issue 869: when this install's address (web.url) is wrong or missing, propose the right one instead of asking the person to type a command. Check it first: the name answers (curl it) and an edge route sends it to this Den (edge_status). Den checks it answers as this Den, at the ask and again at the Allow; an address that doesn't is never written. On the person's Allow it is saved as confirmed, the way Settings' address saves it, takes effect without a restart, and Den tells the connected Hub. Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      url: z
+        .string()
+        .describe(
+          "The address other machines open, e.g. https://den.example.com (never localhost)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("web_url_set", ctx.scope);
+      return askPerson(
+        "web_url_set",
+        "web_url_set",
+        { url: str(a.url) },
+        a,
+        ctx,
+      );
     },
   },
   {
