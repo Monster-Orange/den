@@ -127,6 +127,12 @@ export interface LaunchInput {
    */
   personConfigDir?: string;
   /**
+   * Issue 728: the folders holding the edge's private keys (its CA's and
+   * its TLS key), from the resolved edge config; denied like stateDir's
+   * credential files.
+   */
+  edgeKeyDirs?: string[];
+  /**
    * Issue 810: the distribution config file (it holds the test-install
    * mark), denied to the agent's edits with personConfigDir.
    */
