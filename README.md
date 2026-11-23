@@ -133,7 +133,8 @@ didn't see is refused. The guard routes pages: it doesn't stop the test's own co
 ## Docs
 
 [Reference](docs/reference.md) (configuration, manifests, strategies, CLI) · [Distributions](docs/distributions.md) ·
-[Den Hub](docs/hub.md) (connect an install to Hub) · [Changelog](CHANGELOG.md)
+[Den Hub](docs/hub.md) (connect an install to Hub) · [Move an install](docs/move-install.md) (to another machine) ·
+[Changelog](CHANGELOG.md)
 
 Found a bug or have an idea? Press the Report button on any page or pop-up in Den. It sends a screenshot, the page
 and the Den version to the install's feedback repo, and shows whether that repo is private or public. An agent can't press it yet: a `den report` command and agent tool
