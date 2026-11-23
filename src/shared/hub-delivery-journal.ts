@@ -7,6 +7,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export type JournalOutcome =
   | "received" // Den took it from Hub (or made it, an inbox item)
@@ -58,7 +59,7 @@ export function appendJournal(
       const kept = lines.slice(Math.ceil(lines.length / 2));
       const text = () => kept.join("\n") + (kept.length ? "\n" : "");
       while (kept.length && bytes(text()) + n > maxBytes / 2) kept.shift();
-      fs.writeFileSync(file, text() + line, { mode: 0o600 });
+      writeFileAtomic(file, text() + line, { mode: 0o600 });
     } else fs.appendFileSync(file, line, { mode: 0o600 });
     fs.chmodSync(file, 0o600);
   } catch {

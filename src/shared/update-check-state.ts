@@ -5,6 +5,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** What one update-check pass did. */
 export type UpdateTick =
@@ -46,9 +47,7 @@ export const updateCheckFile = (stateDir: string): string =>
 export function writeCheckState(stateDir: string, s: CheckState): void {
   const p = updateCheckFile(stateDir);
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-  const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(s) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(p, JSON.stringify(s) + "\n", { mode: 0o600 });
 }
 
 export function readCheckState(stateDir: string): CheckState | null {
