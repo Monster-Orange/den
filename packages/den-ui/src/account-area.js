@@ -420,10 +420,10 @@ export function accountAreaHtml(d = {}) {
   const t = (iso, style) => timeHtml(iso, { style, now: d.now }) || "";
 
   let rail =
-    `<div class="den-aa-find"><input type="search" class="den-aa-search" id="${esc(id)}-q"` +
+    `<div class="den-aa-find"><input type="search" class="den-aa-search" data-aa-search id="${esc(id)}-q"` +
     ` aria-label="${esc(kitT(lang, "kit.aa.search"))}" placeholder="${esc(kitT(lang, "kit.aa.search"))}"` +
     ` aria-controls="${esc(id)}-panes" autocomplete="off"><kbd aria-hidden="true">/</kbd></div>` +
-    `<select class="den-aa-select" aria-label="${esc(kitT(lang, "kit.aa.section"))}">` +
+    `<select class="den-aa-select" data-aa-select aria-label="${esc(kitT(lang, "kit.aa.section"))}">` +
     sections
       .map(
         (s) =>
@@ -458,7 +458,7 @@ export function accountAreaHtml(d = {}) {
 
   return (
     `<div class="den-aa" id="${esc(id)}" data-aa-current="${current ?? ""}" lang="${esc(lang)}">` +
-    `<nav class="den-aa-rail" aria-label="${esc(kitT(lang, "kit.aa.sections"))}">${rail}</nav>` +
+    `<nav class="den-aa-rail" data-aa-rail aria-label="${esc(kitT(lang, "kit.aa.sections"))}">${rail}</nav>` +
     `<div class="den-aa-panes" id="${esc(id)}-panes">` +
     `<p class="den-aa-found" role="status" aria-live="polite"></p>${panes}</div></div>`
   );
@@ -568,7 +568,11 @@ export function mountAccountArea(el, opts = {}) {
     find("");
     show(pane.dataset.aaPane);
     row.classList.add("den-aa-flash");
-    setTimeout(() => row.classList.remove("den-aa-flash"), FLASH_MS);
+    row.setAttribute("data-aa-flash", "");
+    setTimeout(() => {
+      row.classList.remove("den-aa-flash");
+      row.removeAttribute("data-aa-flash");
+    }, FLASH_MS);
     row.scrollIntoView?.({ block: "nearest" });
     (row.querySelector("button, a[href]") || row).focus?.();
   }
@@ -757,10 +761,11 @@ export function openAccountArea(opts = {}) {
   const lang = opts.lang || document.documentElement.lang?.slice(0, 2) || "en";
   const d = document.createElement("dialog");
   d.className = "den-aa-dlg";
+  d.setAttribute("data-aa-dlg", "");
   d.setAttribute("aria-label", kitT(lang, "kit.aa.title"));
   d.innerHTML =
     `<div class="den-aa-top"><h2 class="den-aa-title">${esc(kitT(lang, "kit.aa.title"))}</h2>` +
-    `<button type="button" class="den-aa-x" aria-label="${esc(kitT(lang, "kit.aa.close"))}">✕</button></div>` +
+    `<button type="button" class="den-aa-x" data-aa-x aria-label="${esc(kitT(lang, "kit.aa.close"))}">✕</button></div>` +
     `<div class="den-aa-host"></div>`;
   document.body.append(d);
   const area = mountAccountArea(d.querySelector(".den-aa-host"), {

@@ -23,6 +23,7 @@ import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { kitT } from "../../../packages/den-ui/src/strings.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -152,8 +153,9 @@ async function done(p: Page) {
   await p.context().close();
 }
 
+const CONFIRM = 'dialog[data-dk-kind="confirm"][open]';
 const shown = (p: Page) =>
-  p.$$eval(".den-aa-pane:not([hidden])", (els) =>
+  p.$$eval("[data-aa-pane]:not([hidden])", (els) =>
     els.map((e) => (e as HTMLElement).dataset.aaPane),
   );
 const acts = (p: Page) =>
@@ -164,13 +166,15 @@ describe("issue 310: the Account area in a browser", () => {
     if (skip()) return;
     const p = await open({ query: "?x=1&account=devices" });
     expect(await shown(p)).toEqual(["devices"]);
-    await p.click('.den-aa-row[data-aa-section="access"]');
+    await p.click('[data-aa-section="access"]');
     expect(await shown(p)).toEqual(["access"]);
     expect(new URL(p.url()).searchParams.get("account")).toBe("access");
     expect(new URL(p.url()).searchParams.get("x")).toBe("1");
     // A desktop has no ✕ (the mock's A1–A4): Escape closes it.
-    await p.locator(".den-aa-dlg").press("Escape");
-    await p.waitForFunction(() => !document.querySelector("dialog.den-aa-dlg"));
+    await p.locator("[data-aa-dlg]").press("Escape");
+    await p.waitForFunction(
+      () => !document.querySelector("dialog[data-aa-dlg]"),
+    );
     expect(new URL(p.url()).searchParams.get("account")).toBeNull();
     expect(new URL(p.url()).searchParams.get("x")).toBe("1");
     await done(p);
@@ -179,56 +183,54 @@ describe("issue 310: the Account area in a browser", () => {
   it('"/" goes to search; a search shows only matching rows; Escape clears first, then closes', async () => {
     if (skip()) return;
     const p = await open();
-    await p.focus('.den-aa-row[data-aa-section="profile"]');
+    await p.focus('[data-aa-section="profile"]');
     await p.keyboard.press("/");
     expect(
       await p.evaluate(() =>
-        document.activeElement?.classList.contains("den-aa-search"),
+        document.activeElement?.hasAttribute("data-aa-search"),
       ),
     ).toBe(true);
     await p.keyboard.type("linux");
     expect(await shown(p)).toEqual(["devices"]);
-    const visible = await p.$$eval(".den-aa-item:not([hidden]) b", (els) =>
+    const visible = await p.$$eval("[data-aa-find]:not([hidden]) b", (els) =>
       els.map((e) => e.textContent?.trim()),
     );
     expect(visible).toEqual(["Chrome on Linux"]);
     await p.keyboard.press("Escape");
-    expect(await p.inputValue(".den-aa-search")).toBe("");
+    expect(await p.inputValue("[data-aa-search]")).toBe("");
     expect(await shown(p)).toEqual(["profile"]);
-    expect(await p.isVisible("dialog.den-aa-dlg")).toBe(true);
+    expect(await p.isVisible("dialog[data-aa-dlg]")).toBe(true);
     await p.keyboard.press("Escape");
-    await p.waitForFunction(() => !document.querySelector("dialog.den-aa-dlg"));
+    await p.waitForFunction(
+      () => !document.querySelector("dialog[data-aa-dlg]"),
+    );
     await done(p);
   }, 60_000);
 
   it("Enter opens the first hit's section and flashes its row", async () => {
     if (skip()) return;
     const p = await open();
-    await p.fill(".den-aa-search", "laptop");
-    await p.press(".den-aa-search", "Enter");
+    await p.fill("[data-aa-search]", "laptop");
+    await p.press("[data-aa-search]", "Enter");
     expect(await shown(p)).toEqual(["access"]);
-    expect(await p.inputValue(".den-aa-search")).toBe("");
-    expect(await p.locator(".den-aa-flash").count()).toBe(1);
+    expect(await p.inputValue("[data-aa-search]")).toBe("");
+    expect(await p.locator("[data-aa-flash]").count()).toBe(1);
     await done(p);
   }, 60_000);
 
   it("Sign out everywhere asks first: Cancel sends nothing, the danger button sends it", async () => {
     if (skip()) return;
     const p = await open();
-    await p.click('.den-aa-pane:not([hidden]) [data-aa-act="sign-out-all"]');
-    await p.waitForSelector("dialog.dk-confirm[open]");
-    expect(await p.textContent("dialog.dk-confirm")).toContain(
-      "Sign out everywhere?",
-    );
+    await p.click('[data-aa-pane]:not([hidden]) [data-aa-act="sign-out-all"]');
+    await p.waitForSelector(CONFIRM);
+    expect(await p.textContent(CONFIRM)).toContain(kitT("en", "kit.aa.allQ"));
     await p.keyboard.press("Escape");
-    await p.waitForFunction(
-      () => !document.querySelector("dialog.dk-confirm[open]"),
-    );
+    await p.waitForSelector(CONFIRM, { state: "detached" });
     expect(await acts(p)).toEqual([]);
-    expect(await p.isVisible("dialog.den-aa-dlg")).toBe(true);
-    await p.click('.den-aa-pane:not([hidden]) [data-aa-act="sign-out-all"]');
-    await p.waitForSelector("dialog.dk-confirm[open]");
-    await p.click("dialog.dk-confirm .dk-danger");
+    expect(await p.isVisible("dialog[data-aa-dlg]")).toBe(true);
+    await p.click('[data-aa-pane]:not([hidden]) [data-aa-act="sign-out-all"]');
+    await p.waitForSelector(CONFIRM);
+    await p.click(`${CONFIRM} [data-dk="ok"]`);
     await p.waitForFunction(
       () => (window as unknown as { acts: unknown[] }).acts.length === 1,
     );
@@ -239,20 +241,18 @@ describe("issue 310: the Account area in a browser", () => {
   it("Unlink GitHub asks first too: Cancel sends nothing, the danger button sends it", async () => {
     if (skip()) return;
     const p = await open({ query: "?account=access" });
-    const u = '.den-aa-pane:not([hidden]) [data-aa-act="unlink"]';
+    const u = '[data-aa-pane]:not([hidden]) [data-aa-act="unlink"]';
     await p.click(u);
-    await p.waitForSelector("dialog.dk-confirm[open]");
-    expect(await p.textContent("dialog.dk-confirm")).toContain(
-      "Unlink GitHub?",
+    await p.waitForSelector(CONFIRM);
+    expect(await p.textContent(CONFIRM)).toContain(
+      kitT("en", "kit.aa.unlinkQ"),
     );
     await p.keyboard.press("Escape");
-    await p.waitForFunction(
-      () => !document.querySelector("dialog.dk-confirm[open]"),
-    );
+    await p.waitForSelector(CONFIRM, { state: "detached" });
     expect(await acts(p)).toEqual([]);
     await p.click(u);
-    await p.waitForSelector("dialog.dk-confirm[open]");
-    await p.click("dialog.dk-confirm .dk-danger");
+    await p.waitForSelector(CONFIRM);
+    await p.click(`${CONFIRM} [data-dk="ok"]`);
     await p.waitForFunction(
       () => (window as unknown as { acts: unknown[] }).acts.length === 1,
     );
@@ -263,18 +263,15 @@ describe("issue 310: the Account area in a browser", () => {
   it("390: Sign out everywhere asks in a bottom sheet, danger first and Cancel below (mock B3)", async () => {
     if (skip()) return;
     const p = await open({ width: 390, query: "?account=devices" });
-    await p.click('.den-aa-pane:not([hidden]) [data-aa-act="sign-out-all"]');
-    const q = p.locator("dialog.dk-confirm[open]");
+    await p.click('[data-aa-pane]:not([hidden]) [data-aa-act="sign-out-all"]');
+    const q = p.locator(CONFIRM);
     await q.waitFor();
     const box = (await q.boundingBox())!;
     const vh = p.viewportSize()!.height;
     expect(Math.round(box.y + box.height)).toBe(vh);
     expect(Math.round(box.width)).toBe(390);
-    const danger = (await q.locator(".dk-danger").boundingBox())!;
-    const cancel = (await q
-      .locator('[data-dk="cancel"], .dk-btn:not(.dk-danger)')
-      .first()
-      .boundingBox())!;
+    const danger = (await q.locator('[data-dk="ok"]').boundingBox())!;
+    const cancel = (await q.locator('[data-dk="cancel"]').boundingBox())!;
     expect(danger.y + danger.height).toBeLessThanOrEqual(cancel.y);
     expect(Math.round(danger.width)).toBe(Math.round(cancel.width));
     expect(danger.height).toBeGreaterThanOrEqual(44);
@@ -285,8 +282,8 @@ describe("issue 310: the Account area in a browser", () => {
   it("1280: the same question stays a centred dialog", async () => {
     if (skip()) return;
     const p = await open({ width: 1280, query: "?account=devices" });
-    await p.click('.den-aa-pane:not([hidden]) [data-aa-act="sign-out-all"]');
-    const q = p.locator("dialog.dk-confirm[open]");
+    await p.click('[data-aa-pane]:not([hidden]) [data-aa-act="sign-out-all"]');
+    const q = p.locator(CONFIRM);
     await q.waitFor();
     const box = (await q.boundingBox())!;
     expect(box.width).toBeLessThan(1280);
@@ -298,7 +295,7 @@ describe("issue 310: the Account area in a browser", () => {
   it("a waiting request: Approve waits for the whole code, sends it cleaned, and a redraw keeps it", async () => {
     if (skip()) return;
     const p = await open({ query: "?account=devices" });
-    const f = '.den-aa-code[data-aa-code-for="r1"]';
+    const f = '[data-aa-code-for="r1"]';
     const go = '[data-aa-act="approve"][data-aa-id="r1"]';
     expect(await p.isDisabled(go)).toBe(true);
     await p.fill(f, "k7q 4");
@@ -330,16 +327,16 @@ describe("issue 310: the Account area in a browser", () => {
   it("flow(): the host's next step shows in place, and stays through a redraw", async () => {
     if (skip()) return;
     const p = await open({ query: "?account=access" });
-    const slot = '.den-aa-pane:not([hidden]) [data-aa-flow="pair"]';
+    const slot = '[data-aa-pane]:not([hidden]) [data-aa-flow="pair"]';
     expect(await p.isVisible(slot)).toBe(false);
     await p.evaluate(() =>
       (
         window as unknown as {
           area: { area: { flow(n: string, h: string): void } };
         }
-      ).area.area.flow("pair", '<b id="fx">Scan it</b>'),
+      ).area.area.flow("pair", '<b id="fx">QR</b>'),
     );
-    expect(await p.textContent(`${slot} #fx`)).toBe("Scan it");
+    expect(await p.textContent(`${slot} #fx`)).toBe("QR");
     await p.evaluate(() =>
       (
         window as unknown as { area: { area: { update(d: object): void } } }
@@ -381,10 +378,10 @@ describe("issue 310: the Account area in a browser", () => {
   it("1280: 960 wide, at most 760 tall, a 240 px rail", async () => {
     if (skip()) return;
     const p = await open();
-    const box = await p.locator("dialog.den-aa-dlg").boundingBox();
+    const box = await p.locator("dialog[data-aa-dlg]").boundingBox();
     expect(Math.round(box!.width)).toBe(960);
     expect(box!.height).toBeLessThanOrEqual(760);
-    const rail = await p.locator(".den-aa-rail").boundingBox();
+    const rail = await p.locator("[data-aa-rail]").boundingBox();
     expect(Math.round(rail!.width)).toBe(240);
     await done(p);
   }, 60_000);
@@ -392,22 +389,22 @@ describe("issue 310: the Account area in a browser", () => {
   it("1280: no ✕ on a desktop (the mock's A1–A4 have none); Escape still closes", async () => {
     if (skip()) return;
     const p = await open({ width: 1280 });
-    expect(await p.isVisible(".den-aa-x")).toBe(false);
+    expect(await p.isVisible("[data-aa-x]")).toBe(false);
     await p.keyboard.press("Escape");
-    await p.waitForFunction(() => !document.querySelector("dialog.den-aa-dlg"));
+    await p.waitForFunction(
+      () => !document.querySelector("dialog[data-aa-dlg]"),
+    );
     await done(p);
   }, 60_000);
 
   it("390: the select shows, the rail rows don't, no sideways scroll, 44 px", async () => {
     if (skip()) return;
     const p = await open({ width: 390 });
-    expect(await p.isVisible(".den-aa-select")).toBe(true);
-    expect(await p.isVisible('.den-aa-row[data-aa-section="profile"]')).toBe(
-      false,
-    );
-    const sel = await p.locator(".den-aa-select").boundingBox();
+    expect(await p.isVisible("[data-aa-select]")).toBe(true);
+    expect(await p.isVisible('[data-aa-section="profile"]')).toBe(false);
+    const sel = await p.locator("[data-aa-select]").boundingBox();
     expect(sel!.height).toBeGreaterThanOrEqual(44);
-    await p.selectOption(".den-aa-select", "devices");
+    await p.selectOption("[data-aa-select]", "devices");
     expect(await shown(p)).toEqual(["devices"]);
     expect(
       await p.evaluate(
