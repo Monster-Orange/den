@@ -1835,6 +1835,7 @@ and the guide to making your own
   (greys only, dashed, outline, one face) ships in the UI kit as
   `themes/sketch.css`, so a page with the kit and no Den server can link
   it after `tokens.css`.
+
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -4076,6 +4077,31 @@ import -w <ws>` lists them too.
   process (same pid, same start time) that has the conversation open
   refuses bring-in and every resume: "This conversation is open in another
   process (pid N). Close it first." Den's own sessions don't count.
+- **One Allow, then Den does the rest (issue 159).** When an agent asks
+  with `agent_import` and the person allows it, a conversation still open
+  in a terminal is not refused. The answer tells it where to write its
+  hand-off (the new agent's `handoff.md`, with the usual five headings)
+  and to end its turn. Den then waits for that hand-off and for the turn
+  to end (or for the terminal to close by itself), closes the terminal
+  (SIGTERM; one writer at a time), runs `agents.import.hook` if set,
+  continues the conversation as the Den agent, and types a line into it
+  saying so. Nothing is closed without a hand-off or the terminal's own
+  exit. If it stops (no hand-off in time, a terminal that won't close, a
+  bring-in that fails), the bell says why. The CLI's `agents import` still
+  refuses an open conversation: there, the person closes it.
+
+  ```yaml
+  agents:
+    import:
+      handoff_wait_minutes: 30 # how long Den waits for the hand-off (above 0)
+      hook: "my-lanes forget $DEN_IMPORT_PID" # optional; sh -c, 60 s at most
+  ```
+
+  The hook runs after the old terminal closed and before the bring-in,
+  with `DEN_IMPORT_SESSION`, `DEN_IMPORT_AGENT`, `DEN_IMPORT_PROJECT` and,
+  when Den knew the terminal's process, `DEN_IMPORT_PID`. The Allow names
+  the command. A hook that fails is noted; the conversation still comes in.
+
 - The agent's id is the persona's, or `<persona>-2`, `-3`… when that is
   taken; `--id` sets one. An existing agent is never overwritten.
 - Only den-claude can bring one in for now. Other runtimes say "<runtime>
@@ -6051,7 +6077,7 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
 - Held past `overrun_bell_multiple` times its estimate (default 2; `gate
-  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
   the bell's Needs you: who holds it, what it runs, since when and its
   estimate, with End for the person. When an agent holds it, Den types one
   line at that agent's prompt, once per slot, to release it with

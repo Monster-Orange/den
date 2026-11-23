@@ -120,8 +120,15 @@ import {
   writeClearedAt,
 } from "../../shared/agents/helpers-cleared.js";
 import { createHash } from "crypto";
+import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  handOver,
+  handoverAsk,
+  type HandoverFailure,
+  type HandoverResult,
+} from "../../shared/agents/import-handover.js";
 import {
   AGENTS_RESERVED_KEYS,
   configuredRuntimeBin,
@@ -132,6 +139,7 @@ import {
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
   ROTATION_WAIT_MINUTES_DEFAULT,
+  IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
@@ -4507,6 +4515,12 @@ export interface ImportRequest {
    * folder it started in (the person's explicit ask).
    */
   outside?: string;
+  /**
+   * Issue 159: Den closed the terminal that held it (the hand-over), so a
+   * write in the last minute is that terminal's last, not another writer.
+   * A live holder is still refused.
+   */
+  closed?: boolean;
 }
 
 /** The persona's id, else the first `<persona>-<n>` no agent has. */
@@ -4519,19 +4533,106 @@ function freeId(d: AgentsResolved, persona: string): string {
   throw refused(`no free agent id for ${persona}: give one with --id`);
 }
 
+/** Issue 159: how often a hand-over looks at the conversation again. */
+const HANDOVER_POLL_MS = 2_000;
+/** Issue 159: how long a closed terminal has to exit. */
+const HANDOVER_CLOSE_WAIT_MS = 30_000;
+/** Issue 159: how long the import hook may run. */
+const IMPORT_HOOK_TIMEOUT_MS = 60_000;
+
+/** Issue 159: what a hand-over is told along the way. */
+export interface HandoverHooks {
+  pollMs?: number;
+  /** The person is told why it stopped (the bell). */
+  fail?: (f: HandoverFailure) => void;
+  /** The hand-over ended (the server's audit; tests). */
+  done?: (r: HandoverResult) => void;
+}
+
+/** A pid still running (signal 0); false when gone or not ours to ask. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Issue 159: the org config's import hook, sh -c, with DEN_IMPORT_*. */
+function runImportHook(
+  hook: string,
+  env: NodeJS.ProcessEnv,
+  vars: Record<string, string>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (r: { ok: true } | { ok: false; error: string }) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn("/bin/sh", ["-c", hook], {
+        env: { ...env, ...vars },
+        stdio: "ignore",
+      });
+    } catch (e) {
+      resolve({ ok: false, error: (e as Error).message });
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      end({
+        ok: false,
+        error: `still running after ${IMPORT_HOOK_TIMEOUT_MS / 1000} s`,
+      });
+    }, IMPORT_HOOK_TIMEOUT_MS);
+    timer.unref?.();
+    child.on("error", (e) => end({ ok: false, error: e.message }));
+    child.on("exit", (code, sig) =>
+      end(
+        code === 0
+          ? { ok: true }
+          : { ok: false, error: sig ? `ended by ${sig}` : `exit ${code}` },
+      ),
+    );
+  });
+}
+
 /**
  * Issue 160: agent_import as a held write runs it (after the person's
  * Allow, or the approval policy's): importAgent, answered like the CLI's
  * --json ({ ok, … }), never thrown.
+ *
+ * Issue 159: a conversation still open in a terminal is no longer
+ * refused. The answer asks it for its hand-off (where, and to end its
+ * turn), and Den does the rest in the background (import-handover.ts):
+ * it closes that terminal once the hand-off is in, runs agents.import.hook,
+ * continues the conversation as the agent and tells it so. A failure
+ * reaches the person through `o.fail`.
  */
 export async function runAgentImport(
   d: AgentsResolved,
   a: { project: string; session: string; persona: string; runtime?: string },
+  o: HandoverHooks = {},
 ): Promise<
-  | { ok: true; id: string; project: string; persona: string }
+  | {
+      ok: true;
+      id: string;
+      project: string;
+      persona: string;
+      handover?: "waiting";
+      handoff?: string;
+      next?: string;
+    }
   | { ok: false; error: string }
 > {
   try {
+    const open = openHolder(d, a);
+    if (open) return startHandover(d, a, open, o);
     const s = await importAgent(d, {
       workspace: a.project,
       session: a.session,
@@ -4549,6 +4650,124 @@ export async function runAgentImport(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/**
+ * Issue 159: the conversation is one of the project's, no agent continues
+ * it, and it is still open: its holder's pid (null when only its last
+ * write says so). Null when it isn't open (importAgent decides the rest).
+ */
+function openHolder(
+  d: AgentsResolved,
+  a: { project: string; session: string; runtime?: string },
+): { pid: number | null } | null {
+  const runtime = a.runtime ?? DEFAULT_RUNTIME_ID;
+  const c = listConversations(d, a.project, runtime).conversations.find(
+    (x) => x.id === a.session,
+  );
+  if (!c || c.agent) return null;
+  const pid = getRuntime(runtime)?.openPid?.(c.id, d.env) ?? null;
+  return pid !== null || c.open ? { pid } : null;
+}
+
+/** Issue 159: answer with the ask, and hand over in the background. */
+function startHandover(
+  d: AgentsResolved,
+  a: { project: string; session: string; persona: string; runtime?: string },
+  open: { pid: number | null },
+  o: HandoverHooks,
+): {
+  ok: true;
+  id: string;
+  project: string;
+  persona: string;
+  handover: "waiting";
+  handoff: string;
+  next: string;
+} {
+  const runtime = a.runtime ?? DEFAULT_RUNTIME_ID;
+  const rt = getRuntime(runtime);
+  const id = freeId(d, a.persona);
+  const folder = agentFilesDir(d.stateDir(), id);
+  fs.mkdirSync(folder, { recursive: true });
+  const file = handoffFile(folder);
+  // An old hand-off (an earlier agent's of the same id) is never this one.
+  if (fs.existsSync(file))
+    fs.renameSync(file, `${file}.before-import-${Date.now()}`);
+  const settings = d.agentsConfig().import ?? {
+    handoffWaitMs: IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT * 60_000,
+  };
+  const opts = {
+    session: a.session,
+    agent: id,
+    project: a.project,
+    persona: a.persona,
+    handoffPath: file,
+    waitMs: settings.handoffWaitMs,
+    closeWaitMs: HANDOVER_CLOSE_WAIT_MS,
+    pollMs: o.pollMs ?? HANDOVER_POLL_MS,
+    ...(settings.hook ? { hook: settings.hook } : {}),
+  };
+  const holderNow = () => rt?.openPid?.(a.session, d.env) ?? null;
+  const writtenLately = () =>
+    listConversations(d, a.project, runtime).conversations.find(
+      (x) => x.id === a.session,
+    )?.open ?? false;
+  let closed = false;
+  void handOver(opts, {
+    holder: () => open.pid ?? holderNow(),
+    // A known holder: open while it runs (its last write is its own).
+    // None known: open while written lately.
+    stillOpen: () =>
+      open.pid !== null
+        ? pidAlive(open.pid) || holderNow() !== null
+        : holderNow() !== null || writtenLately(),
+    turnBusy: () => rt?.turnBusy?.(a.session, d.env) ?? null,
+    handoff: () => readHandoff(folder),
+    close: (pid) => {
+      closed = true;
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* gone already */
+      }
+    },
+    runHook: (vars) => runImportHook(settings.hook ?? "", d.env, vars),
+    importNow: async () => {
+      try {
+        const s = await importAgent(d, {
+          workspace: a.project,
+          session: a.session,
+          persona: a.persona,
+          id,
+          ...(a.runtime ? { runtime: a.runtime } : {}),
+          // Its last write was the terminal's that just ended.
+          ...(closed || open.pid === null ? { closed: true } : {}),
+        });
+        return s.early
+          ? { ok: false, error: `agent ${s.rec.id} exited at once` }
+          : { ok: true, id: s.rec.id };
+      } catch (e) {
+        return {
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    },
+    tell: (agent, text) => typeIntoAgent(d, agent, text),
+    fail: (f) => o.fail?.(f),
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    now: () => Date.now(),
+  }).then((r) => o.done?.(r));
+  return {
+    ok: true,
+    id,
+    project: a.project,
+    persona: a.persona,
+    handover: "waiting",
+    handoff: file,
+    next: handoverAsk(opts),
+  };
 }
 
 /**
@@ -4639,7 +4858,7 @@ export async function importAgent(
       code: "open_elsewhere",
       status: 409,
     });
-  if (c.open)
+  if (c.open && !req.closed)
     throw new AgentError(OPEN_ELSEWHERE_MESSAGE, { code: "open_elsewhere" });
   if (!fs.statSync(c.cwd, { throwIfNoEntry: false })?.isDirectory())
     throw refused(`${where}: the folder it ran in, ${c.cwd}, is gone`);

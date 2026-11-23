@@ -213,6 +213,11 @@ export interface HeldActionDeps {
   terminalHostRestart?: HeldOp;
   /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
   webUrlSet?: HeldAction;
+  /**
+   * Issue 159: agents.import.hook from the org config, named on the
+   * agent_import Allow (it runs on that Allow).
+   */
+  importHook?: () => string | undefined;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -793,6 +798,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const runtime = str(a.runtime);
       if (runtime !== undefined && !NAME_RE.test(runtime))
         return { ok: false, error: "runtime must be a runtime id" };
+      // Issue 159: the org config's import hook runs on this Allow.
+      let hook: string | undefined;
+      try {
+        hook = d.importHook?.();
+      } catch {
+        hook = undefined;
+      }
       return {
         ok: true,
         args: { project, session, persona, ...(runtime ? { runtime } : {}) },
@@ -814,10 +826,20 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
             "ap.det.agent_import.goesOn",
           ),
+          // Issue 159: Den does every step after the Allow.
           line(
-            "Refused if it is still open in another terminal, or an agent already continues it.",
-            "ap.det.agent_import.refused",
+            "If it is still open in a terminal, Den asks it for its hand-off, closes that terminal, then continues it here. Refused if an agent already continues it.",
+            "ap.det.agent_import.handover",
           ),
+          ...(hook
+            ? [
+                line(
+                  `Then Den runs this project's import hook: ${hook}`,
+                  "ap.det.agent_import.hook",
+                  { hook },
+                ),
+              ]
+            : []),
         ]),
       };
     },

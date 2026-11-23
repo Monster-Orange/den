@@ -1403,6 +1403,7 @@ import {
 } from "../../shared/agents/hub-mcp-connect.js";
 import {
   handleAgentRoutes,
+  noteImportStopped,
   refreshTerminalHost,
   startAgentUpkeep,
   terminalHostRefreshing,
@@ -4643,7 +4644,14 @@ function approvalDeps(): ApprovalDeps {
     // Issue 565: an agent files a report as the page does (public: Allow).
     report: reportHeld(reportRouteDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
-    agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 159: the org config's import hook, named on the Allow.
+    importHook: () => readAgentsConfig().import?.hook,
+    // Issue 159: one still open is handed over after the Allow; a stop
+    // reaches the person in the bell.
+    agentImport: (a) =>
+      runAgentImport(agentWebDeps(), a, {
+        fail: (f) => noteImportStopped(notificationDeps().store, f, a.project),
+      }),
     // Issue 160: an agent closes a stale or superseded pull request after
     // a Hub note (auto unless the repo is watched or pinned).
     prClose: async ({ repo, pr, comment }) => {

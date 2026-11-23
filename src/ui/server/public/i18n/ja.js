@@ -2080,8 +2080,10 @@
       "プロジェクト: {project}。ペルソナ: {persona}。ランタイム: {runtime}。",
     "ap.det.agent_import.goesOn":
       "会話は Den のエージェントとして、動いていたフォルダーで、Den のトークン・フック・ガードのもとで続きます。",
-    "ap.det.agent_import.refused":
-      "別のターミナルでまだ開いているか、すでにエージェントが続けている場合は断られます。",
+    "ap.det.agent_import.handover":
+      "まだターミナルで開いている場合、Den は引き継ぎを書くよう頼み、そのターミナルを閉じてから、ここで続けます。すでにエージェントが続けている場合は拒否されます。",
+    "ap.det.agent_import.hook":
+      "その後、Den はこのプロジェクトの取り込みフックを実行します: {hook}",
     "ap.det.approval_policy.now": "現在: {v}。",
     "ap.det.approval_policy.nowNone": "現在: なし。",
     "ap.det.approval_policy.then": "変更後: {v}。",
@@ -2571,6 +2573,14 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.importNoHandoff":
+      "{agent} の取り込みを止めました: {minutes} 分以内に引き継ぎが届かなかったため、何も閉じていません。会話に {file} を書くよう伝えてから、もう一度許可してください。",
+    "bell.m.importUnknownHolder":
+      "{agent} の取り込みを止めました: 会話はまだ開いていて、どのターミナルが使っているか Den には分かりません。そこで閉じてから、もう一度許可してください。",
+    "bell.m.importWontClose":
+      "{agent} の取り込みを止めました: ターミナル (pid {pid}) が閉じなかったため、何も取り込んでいません。そこで閉じてから、もう一度許可してください。",
+    "bell.m.importImportFailed":
+      "ターミナルが閉じた後、{agent} の取り込みに失敗しました: {reason}",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":

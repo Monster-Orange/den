@@ -2082,6 +2082,29 @@ export function noteStartedWithoutHub(
 }
 
 /**
+ * Issue 159: the bell's note when bringing a conversation in stopped after
+ * the Allow (import-handover.ts): one key per case, so each language says
+ * it as a sentence.
+ */
+export function noteImportStopped(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  f: import("../../shared/agents/import-handover.js").HandoverFailure,
+  project: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `record:import-${String(f.vars.session ?? "")}`,
+    scope: `workspace/${project}`,
+    text: f.text,
+    msg: {
+      key: `bell.m.import${f.code[0].toUpperCase()}${f.code.slice(1)}`,
+      vars: f.vars,
+    },
+    link: "/agents",
+  });
+}
+
+/**
  * Issue 563: the bell's one note that the terminal host restarted on the
  * installed version: the agents that resumed, and that open terminals
  * ended. Issue 597: and the agents it cut mid-turn (told to carry on).

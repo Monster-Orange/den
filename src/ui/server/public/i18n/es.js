@@ -1310,8 +1310,7 @@
     "set.server.report_screenshot_days": "Capturas de informes, se guardan",
     "set.server.report_screenshot_days.d":
       "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
-    "set.server.server_log_max":
-      "Registro de avisos, tamaño máximo",
+    "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
@@ -2138,8 +2137,10 @@
       "Proyecto: {project}. Persona: {persona}. Motor: {runtime}.",
     "ap.det.agent_import.goesOn":
       "La conversación sigue como un agente de Den, en la carpeta donde se ejecutaba, con el token, los hooks y las protecciones de Den.",
-    "ap.det.agent_import.refused":
-      "Se rechaza si sigue abierta en otra terminal, o si un agente ya la continúa.",
+    "ap.det.agent_import.handover":
+      "Si sigue abierta en una terminal, Den le pide su traspaso, cierra esa terminal y la continúa aquí. Se rechaza si un agente ya la continúa.",
+    "ap.det.agent_import.hook":
+      "Después Den ejecuta el hook de importación de este proyecto: {hook}",
     "ap.det.approval_policy.now": "Ahora: {v}.",
     "ap.det.approval_policy.nowNone": "Ahora: ninguna.",
     "ap.det.approval_policy.then": "Después: {v}.",
@@ -2634,6 +2635,14 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
+    "bell.m.importNoHandoff":
+      "Se detuvo la incorporación de {agent}: no llegó ningún traspaso en {minutes} min, así que no se cerró nada. Pide a la conversación que escriba {file} y vuelve a permitirlo.",
+    "bell.m.importUnknownHolder":
+      "Se detuvo la incorporación de {agent}: la conversación sigue abierta y Den no sabe qué terminal la tiene. Ciérrala allí y vuelve a permitirlo.",
+    "bell.m.importWontClose":
+      "Se detuvo la incorporación de {agent}: su terminal (pid {pid}) no se cerró, así que no se incorporó nada. Ciérrala allí y vuelve a permitirlo.",
+    "bell.m.importImportFailed":
+      "La incorporación de {agent} falló después de cerrarse su terminal: {reason}",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":

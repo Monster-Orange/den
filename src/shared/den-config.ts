@@ -1917,6 +1917,8 @@ export const AGENTS_RESERVED_KEYS = [
   "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
   "exited_shell_minutes",
+  // Issue 159: bringing a conversation in (its hand-off wait, its hook).
+  "import",
   // AG-DROP: files dropped onto an agent's terminal.
   "uploads",
   // 0.4.46: engines the api_only guardrail treats as Docker's.
@@ -2038,6 +2040,14 @@ export interface ResolvedAgentsConfig {
    */
   rotationWaitMs?: number;
   /**
+   * Issue 159: agents.import, `{ handoff_wait_minutes, hook }`. After the
+   * person allows bringing in a conversation still open in a terminal, Den
+   * waits up to handoffWaitMs (default 30 min) for its hand-off, then
+   * closes that terminal, runs `hook` if set (sh -c, with DEN_IMPORT_*),
+   * and continues the conversation as a Den agent.
+   */
+  import?: ImportSettings;
+  /**
    * Issue 926: agents.unasked_exit_window_minutes (default 10). An agent
    * whose session ends without Den asking (not exit 0) is brought back
    * once; a second such exit within this window is told, not brought
@@ -2064,6 +2074,46 @@ export interface ResolvedAgentsConfig {
   roles?: RolesConfig;
   /** den#3: agents.subagents and agents.claude_ai_connectors, defaults applied. */
   subagents?: SubagentSettings;
+}
+
+/** Issue 159: agents.import with its defaults. */
+export interface ImportSettings {
+  handoffWaitMs: number;
+  hook?: string;
+}
+
+/** Issue 159: the default wait for a conversation's hand-off, in minutes. */
+export const IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT = 30;
+
+/** `agents.import` (issue 159) checked; a bad key or value throws naming it. */
+export function importBlock(v: unknown): ImportSettings {
+  const out: ImportSettings = {
+    handoffWaitMs: IMPORT_HANDOFF_WAIT_MINUTES_DEFAULT * 60_000,
+  };
+  if (v === undefined || v === null) return out;
+  if (!isMapping(v))
+    throw new Error(
+      `agents.import: must be a mapping ({ handoff_wait_minutes: <n>, hook: <command> }) (got ${JSON.stringify(v)})`,
+    );
+  for (const [k, x] of Object.entries(v)) {
+    if (k === "handoff_wait_minutes") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x <= 0)
+        throw new Error(
+          `agents.import.handoff_wait_minutes: must be a number of minutes above 0 (got ${JSON.stringify(x)})`,
+        );
+      out.handoffWaitMs = Math.round(x * 60_000);
+    } else if (k === "hook") {
+      if (typeof x !== "string" || !x.trim() || /[\r\n]/.test(x))
+        throw new Error(
+          `agents.import.hook: must be one command line (got ${JSON.stringify(x)})`,
+        );
+      out.hook = x;
+    } else
+      throw new Error(
+        `agents.import.${k}: unknown key (takes handoff_wait_minutes, hook)`,
+      );
+  }
+  return out;
 }
 
 /** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
@@ -2317,6 +2367,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   if (raw.sandbox !== undefined)
     throw new Error(SANDBOX_IN_USER_YML("agents.sandbox"));
   out.sandbox = true;
+  out.import = importBlock(raw.import);
   // agents.git, unless it is an agent called git (a block with grants).
   const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;
   out.git = gitSigningBlock(gitBlock);

@@ -3043,8 +3043,10 @@
       "Project: {project}. Persona: {persona}. Runtime: {runtime}.",
     "ap.det.agent_import.goesOn":
       "The conversation goes on as a Den agent, in the folder it ran in, under Den's token, hooks and guards.",
-    "ap.det.agent_import.refused":
-      "Refused if it is still open in another terminal, or an agent already continues it.",
+    "ap.det.agent_import.handover":
+      "If it is still open in a terminal, Den asks it for its hand-off, closes that terminal, then continues it here. Refused if an agent already continues it.",
+    "ap.det.agent_import.hook":
+      "Then Den runs this project's import hook: {hook}",
     "ap.det.approval_policy.now": "Now: {v}.",
     "ap.det.approval_policy.nowNone": "Now: none.",
     "ap.det.approval_policy.then": "Then: {v}.",
@@ -3530,6 +3532,14 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. Terminals that ended: {terminals}. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
+    "bell.m.importNoHandoff":
+      "Bringing in {agent} stopped: no hand-off came in {minutes} min, so nothing was closed. Ask the conversation to write {file}, then allow it again.",
+    "bell.m.importUnknownHolder":
+      "Bringing in {agent} stopped: the conversation is still open, and Den can't tell which terminal holds it. Close it there, then allow it again.",
+    "bell.m.importWontClose":
+      "Bringing in {agent} stopped: its terminal (pid {pid}) didn't close, so nothing was brought in. Close it there, then allow it again.",
+    "bell.m.importImportFailed":
+      "Bringing in {agent} failed after its terminal closed: {reason}",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
