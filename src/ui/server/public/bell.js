@@ -186,7 +186,7 @@ function rowHtml(n, fold) {
   const alert = !n.read && n.msg?.key === "bell.m.vschedFail";
   return (
     // Issue 187: a row that opens on a click looks it (the pointer).
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}"${alert ? ' role="alert"' : ""}>` +
+    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}" data-read="${n.read ? "true" : "false"}"${alert ? ' role="alert"' : ""}>` +
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" || alert ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
