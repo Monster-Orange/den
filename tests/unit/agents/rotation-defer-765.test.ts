@@ -18,6 +18,10 @@ import {
   writeRotation,
 } from "../../../src/shared/agents/rotation.js";
 import type { AgentRecord } from "../../../src/shared/agents/records.js";
+import {
+  deprecatedKeys,
+  rotationDeferMaxBad,
+} from "../../../src/ui/cli/doctor-command.js";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -432,10 +436,6 @@ describe("issue 765: the most a rotation can be put off (a setting)", () => {
 });
 
 // Slice C: doctor says when the cap in user.yml is wrong (Den uses 168 h).
-import {
-  deprecatedKeys,
-  rotationDeferMaxBad,
-} from "../../../src/ui/cli/doctor-command.js";
 
 describe("issue 765: doctor flags a wrong agents.rotation_defer_max_hours", () => {
   it("names the value and the 168 h Den uses instead; quiet when unset or right", () => {

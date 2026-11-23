@@ -35,6 +35,7 @@ import {
   readAgentsConfig,
   readDenConfig,
   readUserConfig,
+  agentsRotationDeferMaxHours,
   ROTATION_DEFER_MAX_HOURS,
   readServerAgentConfig,
   type UserConfig,
@@ -1740,21 +1741,23 @@ export function teamSelfUpdateKey(
 export function rotationDeferMaxBad(
   read: () => { agents?: unknown } = readUserConfig,
 ): string[] {
+  let cfg: UserConfig;
   try {
-    const a = read().agents as
-      | { rotation_defer_max_hours?: unknown }
-      | undefined;
-    const v = a?.rotation_defer_max_hours;
-    if (v === undefined || v === null) return [];
-    const { min, max } = ROTATION_DEFER_MAX_HOURS;
-    if (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max)
-      return [];
-    const d = ROTATION_DEFER_MAX_HOURS.default;
+    cfg = read() as UserConfig;
+  } catch {
+    return [];
+  }
+  // One rule: the reader's own (agentsRotationDeferMaxHours) decides.
+  try {
+    agentsRotationDeferMaxHours(() => cfg);
+    return [];
+  } catch {
+    const v = (cfg.agents as { rotation_defer_max_hours?: unknown })
+      .rotation_defer_max_hours;
+    const { min, max, default: d } = ROTATION_DEFER_MAX_HOURS;
     return [
       `config/local/user.yml: agents.rotation_defer_max_hours is ${JSON.stringify(v)}, not a number of hours from ${min} to ${max}: Den uses ${d} h (${d / 24} days) until it is fixed`,
     ];
-  } catch {
-    return [];
   }
 }
 

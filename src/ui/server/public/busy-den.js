@@ -69,7 +69,6 @@ export const DEN_ACTIONS = {
       failure: "busy.delProjF",
     },
   },
-  // Issue 144: a person ends a gate slot early (the run goes on).
   // Issue 765: Stop putting an agent's rotation off.
   "rot-undefer": {
     who: "__DEN_TITLE__",
@@ -80,6 +79,7 @@ export const DEN_ACTIONS = {
       failure: "busy.undeferF",
     },
   },
+  // Issue 144: a person ends a gate slot early (the run goes on).
   "gate-end": {
     who: "__DEN_TITLE__",
     autoClose: true,
