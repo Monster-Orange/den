@@ -127,30 +127,29 @@ interface Look {
 /** The rail, each foot entry's box, and the last group item's box. */
 const look = (p: Page): Promise<Look> =>
   p.evaluate(() => {
-    const rail = document.querySelector(".den-rail") as HTMLElement;
+    const rail = document.getElementById("den-rail") as HTMLElement;
     const rr = rail.getBoundingClientRect();
-    const grow = rail.querySelector(".den-rail-grow") as HTMLElement;
-    // Every entry after the spacer, in document order: the foot.
-    const foot = [...rail.querySelectorAll(".den-ni, .den-acct, a, button")]
-      .filter(
-        (el) =>
-          grow.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
-      )
-      .filter((el) => !el.parentElement?.closest(".den-ni, .den-acct"))
+    // The foot: the rail's own entries outside its groups (role="group"),
+    // in document order; an entry inside another is part of it.
+    const entry = "a, button";
+    const foot = [...rail.querySelectorAll(entry)]
+      .filter((el) => !el.closest('[role="group"]'))
+      .filter((el) => !el.parentElement?.closest(entry))
       // Hidden here (the drawer has no Collapse): no box to keep in view.
       .filter((el) => el.getClientRects().length > 0)
       .map((el) => {
         const r = el.getBoundingClientRect();
+        const d = (el as HTMLElement).dataset;
         return {
           name:
-            (el as HTMLElement).dataset.nav ??
-            (el as HTMLElement).dataset.act ??
-            el.className,
+            d.nav ??
+            d.act ??
+            ("denReport" in d ? "report" : el.tagName.toLowerCase()),
           top: r.top,
           bottom: r.bottom,
         };
       });
-    const items = [...rail.querySelectorAll(".den-rail-group .den-ni")];
+    const items = [...rail.querySelectorAll('[role="group"] [data-nav]')];
     const lr = items[items.length - 1].getBoundingClientRect();
     return {
       vh: window.innerHeight,
@@ -168,7 +167,7 @@ const look = (p: Page): Promise<Look> =>
 const scrollGroupsToEnd = (p: Page) =>
   p.evaluate(() => {
     for (const el of document.querySelectorAll<HTMLElement>(
-      ".den-rail, .den-rail *",
+      "#den-rail, #den-rail *",
     ))
       if (el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight;
   });
@@ -230,7 +229,7 @@ describe.each(["chromium", "webkit"])(
         );
         // The click scrolled the rail to Collapse: start from the top.
         await p.evaluate(() => {
-          (document.querySelector(".den-rail") as HTMLElement).scrollTop = 0;
+          (document.getElementById("den-rail") as HTMLElement).scrollTop = 0;
         });
         const l = await look(p);
         expect(l.rail.scrolls).toBe(true);
@@ -245,14 +244,14 @@ describe.each(["chromium", "webkit"])(
       if (!b()) return;
       const p = await open(b(), { width: 390 });
       try {
-        await p.click(".den-menu-btn");
+        await p.click("#den-menu-btn");
         await p.waitForFunction(() =>
           document.body.classList.contains("den-rail-open"),
         );
         const l = await look(p);
         footInView(l);
         // The drawer's own Report ends the foot, in view with it.
-        expect(l.foot[l.foot.length - 1].name).toContain("den-rb");
+        expect(l.foot[l.foot.length - 1].name).toBe("report");
       } finally {
         await p.context().close();
       }
