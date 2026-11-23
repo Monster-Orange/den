@@ -746,6 +746,43 @@ export class GateYieldRefused extends Error {}
 /** Issue 621: a runner token has as many slots as it may. */
 export class GateFullError extends Error {}
 
+/**
+ * Issue 1339: the gate-slot lock is held by another process past this
+ * store's lockWaitMs (at once, for the server's store: lockWaitMs 0).
+ */
+export class GateLockBusy extends Error {
+  constructor(lock: string) {
+    super(`the gate-slot lock (${lock}) stayed held`);
+    this.name = "GateLockBusy";
+  }
+}
+
+/** Issue 1339: gateLocked's defaults: the CLI's wait, in 25 ms looks. */
+export const GATE_LOCK_WAIT_MS = 10_000;
+export const GATE_LOCK_STEP_MS = 25;
+
+/**
+ * Issue 1339: `fn` (one GateStore call that takes the lock, on a store
+ * with lockWaitMs 0), tried again every `stepMs` while another process
+ * holds the lock, up to `waitMs`; then GateLockBusy. The wait is a timer,
+ * so the server's other requests run meanwhile; the CLI's store keeps its
+ * synchronous wait.
+ */
+export async function gateLocked<T>(
+  fn: () => T,
+  o: { waitMs?: number; stepMs?: number } = {},
+): Promise<T> {
+  const until = Date.now() + (o.waitMs ?? GATE_LOCK_WAIT_MS);
+  for (;;) {
+    try {
+      return fn();
+    } catch (e) {
+      if (!(e instanceof GateLockBusy) || Date.now() >= until) throw e;
+    }
+    await new Promise((r) => setTimeout(r, o.stepMs ?? GATE_LOCK_STEP_MS));
+  }
+}
+
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
@@ -1240,17 +1277,21 @@ export class GateStore {
         break;
       } catch (e) {
         if ((e as { code?: string }).code !== "EEXIST") throw e;
+        let tookBack = false;
         try {
           if (
             Date.now() - fs.statSync(lock).mtimeMs > 30_000 ||
             this.holderGone(lock)
-          )
+          ) {
             fs.rmSync(lock, { recursive: true, force: true });
+            tookBack = true;
+          }
         } catch {
           /* someone else took it back */
         }
-        if (Date.now() > until)
-          throw new Error(`the gate-slot lock (${lock}) stayed held`);
+        if (tookBack) continue;
+        // Issue 1339: with lockWaitMs 0 (the server's), busy at once.
+        if (Date.now() >= until) throw new GateLockBusy(lock);
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
       }
     }
@@ -2436,7 +2477,7 @@ export class GateStore {
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
       );
       if (!want.length) {
-        this.locked(() => this.settle());
+        await gateLocked(() => this.locked(() => this.settle()));
         return;
       }
       const found = await Promise.all(
@@ -2461,19 +2502,21 @@ export class GateStore {
           }
         }),
       );
-      const no = this.locked(() => {
-        const st = readBoxStates(this.dir);
-        const at = new Date(this.now()).toISOString();
-        for (const { n, r } of found)
-          st[n] = {
-            state: r.state,
-            ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
-            at,
-          };
-        writeBoxStates(this.dir, st);
-        this.settle();
-        return found.some((f) => f.r.state !== "open");
-      });
+      const no = await gateLocked(() =>
+        this.locked(() => {
+          const st = readBoxStates(this.dir);
+          const at = new Date(this.now()).toISOString();
+          for (const { n, r } of found)
+            st[n] = {
+              state: r.state,
+              ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
+              at,
+            };
+          writeBoxStates(this.dir, st);
+          this.settle();
+          return found.some((f) => f.r.state !== "open");
+        }),
+      );
       if (!no) return;
     }
   }
