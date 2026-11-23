@@ -61,7 +61,7 @@ import {
 } from "../../shared/web-session.js";
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
 import { redactSecrets } from "../../shared/redact.js";
-import { keepUnreadable } from "../../shared/state-backup.js";
+import { keepUnreadable, safeWhy } from "../../shared/state-backup.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** The header an anonymous asker reads its own request with. */
@@ -562,7 +562,7 @@ export class ApprovalQueue {
       if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return;
       return this.loadFailed(
         file,
-        `the file can't be read (${String((e as Error)?.message ?? e)})`,
+        `the file ${safeWhy(String((e as Error)?.message ?? e))}`,
       );
     }
     let doc: {
@@ -578,7 +578,7 @@ export class ApprovalQueue {
     } catch (e) {
       return this.loadFailed(
         file,
-        `the file is broken (${String((e as Error)?.message ?? e)})`,
+        `the file is broken (${safeWhy(String((e as Error)?.message ?? e))})`,
       );
     }
     if (
