@@ -169,6 +169,12 @@ Held (each waits for the person's Allow):
 - `service_try`: start one service and say how it went.
 - `agent_create`: start an agent in a project.
 - `agent_folder`: move an agent to another repo or folder of its project.
+- `agent_prompt`: type one message into another agent of the same project,
+  and wait for its answer if you ask. A target that may do more than the
+  caller (a looser mode, a grant the caller lacks) waits for the person's
+  own Allow.
+- `agent_wait`: read whether an agent is working, idle, needs the person,
+  or is done. It changes nothing.
 - `project_mode`: set a project's mode. A change that lets agents do more
   without asking runs only on the person's own Allow, never by itself.
   Agents with a mode of their own keep it: the Allow names them, and the
