@@ -72,6 +72,11 @@ export interface AgentRecord {
   stoppedAt?: string;
   /** Set when a resume started its current session. */
   resumedAt?: string;
+  /**
+   * Issue 1223: the Den version its current session started on: its Den
+   * tools (MCP) keep that code until it restarts.
+   */
+  denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
   /**

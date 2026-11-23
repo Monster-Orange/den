@@ -2860,6 +2860,9 @@
     "ag.mcp.failed": "Hub's tools didn't load",
     "ag.mcp.failedTip":
       "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.den": "Den {to}'s tools arrive on restart",
+    "ag.mcp.denTip":
+      "Den was updated to {to} after this agent started, so its Den tools still run {from}'s code. Restart loads {to}'s, at its next idle, on the same conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
