@@ -39,9 +39,9 @@ export async function run(ctx) {
     }
   });
   const entry = await ctx.page.evaluate(() => {
-    const lbl = document
+    const [lbl] = document
       .getElementById("den-ident")
-      .getElementsByClassName("den-acct")[0];
+      .getElementsByClassName("den-acct");
     const cs = (e) => getComputedStyle(e);
     const lines = [...lbl.children].filter((c) => cs(c).display !== "none");
     return lines.map((c) => {
