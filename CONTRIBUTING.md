@@ -417,9 +417,17 @@ trusted publishing (no token anywhere):
   `package.json` and its `package-lock.json` entry together):
   `scripts/kit-version.mjs` fails the PR's checks and the release's den-ui
   job otherwise, since npm already has the old version.
-- A push to `main` whose `package.json` version is not on npm yet is the
-  release: the gates, the tarball and its SHA256SUMS, the tag `v<version>`,
-  `npm publish` with provenance, and a GitHub release.
+- A release publishes the exact tree of the dev tag that passed its test
+  bed, never `main`'s HEAD (issue 922; docs/releasing.md). Start
+  `release.yml` by hand, from `main`, with `promote` set to the release's version commit
+  on its release branch: its parent is the signed dev tag, whose commit has
+  the bed's PASS (the `release/bed` commit status). Then the gates, the
+  tarball (with `release.json`) and its SHA256SUMS (naming the dev tag and
+  its commit), the tag `v<version>` on that commit, `npm publish` with
+  provenance, and a GitHub release.
+- A push to `main` publishes nothing, so `main` takes merges at any time.
+  Merge the release branch into `main` after the release: `v<version>`
+  already tags its version commit, so nothing publishes again.
 - The gates run on both ends of the supported Node range, the lowest that
   `engines` allows and the Node installs run, and both must pass. The
   tarball is built on the lowest. `ci.yml` runs the same matrix on every
@@ -434,8 +442,8 @@ trusted publishing (no token anywhere):
 - Tag each tarball handed to a gate `v<version>-dev.N` on the commit it
   was packed from, and push the tag. The release job checks that every
   such tag of the version is in the release commit's history
-  (`scripts/release-ancestry.sh`): a candidate that passed its gate but
-  never merged stops the release.
+  (`scripts/release-ancestry.sh`): a candidate of the same version that
+  passed its gate but isn't in the promoted commit stops the release.
 - Every pushed dev tag starts the release's dry run
   (`.github/workflows/release-dry-run.yml`, issue 615). It applies the
   release commit's edits to the runner's copy only

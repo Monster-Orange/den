@@ -254,6 +254,13 @@ describe("the pick in the bell", () => {
       // No pick waiting: nothing happens.
       pickDone(store, 1);
       expect(store.list()).toEqual([]);
+      // Issue 646: an item that opens Connect's review keeps that link.
+      store.add({ ...pickNote(3), link: "/settings#agents.hub" });
+      pickDone(store, 1);
+      expect(pick()[0]).toMatchObject({
+        link: "/settings#agents.hub",
+        msg: { vars: { n: 2 } },
+      });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -38,6 +38,7 @@
     "THIRD_PARTY_NOTICES",
     "README.md",
     "CHANGELOG.md",
+    "release.json",
     "docs/",
     "!docs/images/",
     "skills/"

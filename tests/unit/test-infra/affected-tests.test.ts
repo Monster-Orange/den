@@ -762,13 +762,23 @@ describe("ci.yml (issue 398)", () => {
     }
   });
 
-  // Only checks and dist-smoke may name DEN_SELF_HOSTED
-  // (ci-runner-guard.test.ts); the pull-request jobs stay GitHub-hosted.
-  it("the pr jobs run GitHub-hosted", () => {
-    expect([ci.jobs.pr["runs-on"], ci.jobs["pr-shards"]["runs-on"]]).toEqual([
-      "ubuntu-latest",
-      "ubuntu-latest",
-    ]);
+  // Issue 1226: pr and pr-shards may use the self-hosted runners (every
+  // event is checked in ci-runner-guard.test.ts). A fork's pull request
+  // never does, and with the switch off they fall back to GitHub-hosted.
+  it("the pr jobs fall back to GitHub-hosted, and a fork's PR never leaves it", () => {
+    for (const job of ["pr", "pr-shards"]) {
+      const on = String(ci.jobs[job]["runs-on"]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining("|| 'ubuntu-latest'"),
+      ]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining(
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        ),
+      ]);
+    }
   });
 });
 
