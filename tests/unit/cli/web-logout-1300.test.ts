@@ -39,6 +39,10 @@ import {
 } from "../../../src/shared/web-session.js";
 import { ensureWebSecret } from "../../../src/shared/web-secret.js";
 import { AUDIT_FILE } from "../../../src/shared/audit-file.js";
+import {
+  DEN_PROCS_DIR,
+  registerDenProcess,
+} from "../../../src/shared/den-procs.js";
 
 let tmp = "";
 const servers: http.Server[] = [];
@@ -197,5 +201,59 @@ describe("no server: the state files, under the lock", () => {
     expect(
       (fs.statSync(path.join(tmp, AUDIT_FILE)).mode & 0o777).toString(8),
     ).toBe("600");
+  });
+});
+
+describe("refused on the port, but is a Den server running? (its own record)", () => {
+  it("a live server bound to another address: logout changes nothing and says why", async () => {
+    const one = store().create({ userAgent: "one" }).session.key;
+    // The server's record (den-procs), as it writes at start: pid 1 always
+    // runs. It listens elsewhere (DEN_BIND_HOST), so loopback refuses.
+    registerDenProcess(tmp, "server", 1);
+    const a = io();
+    expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
+      1,
+    );
+    expect(a.o.err).toMatch(/a Den server is running here \(pid 1\)/);
+    expect(a.o.err).toMatch(/nothing was changed/i);
+    expect(keys()).toEqual([one]);
+  });
+
+  it("--all with a live server elsewhere: no session ended, no secret rotated", async () => {
+    const one = store().create({ userAgent: "one" }).session.key;
+    registerDenProcess(tmp, "server", 1);
+    const secret = fs.readFileSync(path.join(tmp, "web.secret"), "utf-8");
+    const a = io();
+    expect(
+      await cmdWebLogout(["--all", "--port", String(await freePort())], a.io),
+    ).toBe(1);
+    expect(keys()).toEqual([one]);
+    expect(fs.readFileSync(path.join(tmp, "web.secret"), "utf-8")).toBe(secret);
+  });
+
+  it("records that can't be read: can't tell, so it changes nothing", async () => {
+    const one = store().create({ userAgent: "one" }).session.key;
+    fs.mkdirSync(path.join(tmp, DEN_PROCS_DIR), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, DEN_PROCS_DIR, "server-77.json"),
+      "{not json",
+    );
+    const a = io();
+    expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
+      1,
+    );
+    expect(a.o.err).toMatch(/nothing was changed/i);
+    expect(keys()).toEqual([one]);
+  });
+
+  it("a server record whose pid is gone, or another role's: it writes", async () => {
+    store().create({ userAgent: "one" });
+    registerDenProcess(tmp, "server", 2147483646);
+    registerDenProcess(tmp, "runner", 1);
+    const a = io();
+    expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
+      0,
+    );
+    expect(keys()).toEqual([]);
   });
 });
