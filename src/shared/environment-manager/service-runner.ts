@@ -84,6 +84,7 @@ import {
   stopProcessGroup,
   type RecordedProcessGroup,
 } from "../process/process-group.js";
+import { writeFileAtomic } from "../atomic-write.js";
 // Re-export so existing callers don't need to change their import path.
 export type { ServiceHealthResult };
 export { checkServiceHealth, checkCatalogHealth };
@@ -268,16 +269,10 @@ function saveDaemonsFile(filePath: string): void {
     (d) => ({ ...d, startedAt: d.startedAt.toISOString() }),
   );
   const file: DaemonsFile = { denPid: process.pid, daemons: records };
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs.writeFileSync(tmp, JSON.stringify(file, null, 2) + "\n", "utf-8");
-    fs.renameSync(tmp, filePath);
+    writeFileAtomic(filePath, JSON.stringify(file, null, 2) + "\n");
   } catch {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore cleanup failure */
-    }
+    /* best effort: the registry in memory still holds them */
   }
 }
 
