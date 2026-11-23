@@ -235,16 +235,10 @@ export async function run(ctx, s) {
         'dialog[open] button, [role="dialog"] button, [role="alertdialog"] button',
       )
       .filter({ hasText: /^(OK|Close|Done|Got it)$/i });
-    if (
-      await open
-        .first()
-        .isVisible()
-        .catch(() => false)
-    )
-      await open
-        .first()
-        .click()
-        .catch(() => {});
+    // Every such button still showing, by what it is (never by position).
+    for (const b of await open.all().catch(() => []))
+      if (await b.isVisible().catch(() => false))
+        await b.click().catch(() => {});
     seen[which] = { rowMs, rid, status, code, state, audit };
   }
   return { ready: s.ready, own: s.own, asked, seen, errors };
