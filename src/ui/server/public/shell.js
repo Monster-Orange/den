@@ -1974,6 +1974,9 @@
     "err.signin.codeExpired": "This code expired.",
     "err.signin.codeDenied": "This computer was denied on {host}.",
     "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
+    "err.signin.pairStartLead":
+      "Sign in with a code from a browser already signed in to {name}, on {host} or another computer.",
+    "err.signin.pairStart": "Sign in from another computer",
     "err.signin.newCode": "Get a new code",
     "err.signin.youreIn": "You're in.",
     "err.signin.expiredLead":
@@ -3074,14 +3077,19 @@
     "pair.aDevice": "A browser",
     "pair.local": "on this computer, via localhost",
     "pair.help":
-      "Type the code shown on that computer's screen. Allow only a computer you are signing in yourself.",
+      "Typing it proves you are at that computer. Allow only a computer you are signing in yourself.",
     "pair.allow": "Allow",
     "pair.allowed": "That computer is signed in.",
     "pair.ended":
       "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
     "pair.expired": "That code expired. Nothing was allowed.",
     "pair.close": "Close",
-    "pair.codeLabel": "Code on that computer's screen",
+    "pair.from": "From {client}, opened {host}, at {time}.",
+    "pair.fromNamed": "From {name} ({client}), opened {host}, at {time}.",
+    "pair.unknownAddr": "an address Den couldn't see",
+    "pair.unexpected":
+      "If you didn't just try to sign in on another computer, Deny.",
+    "pair.codeLabel": "Type the code that computer shows",
     "pair.age": "Asked {n} min ago.",
     "pair.ageNow": "Asked just now.",
     "pair.fromLogin": "From the web login run at {time}.",
@@ -9355,10 +9363,14 @@
       '<form method="dialog" autocomplete="off">' +
       '<h2 id="den-pair-h"></h2>' +
       '<p class="den-ap-what" id="den-pair-what"></p>' +
+      '<p class="help" id="den-pair-from"></p>' +
       '<p class="help" id="den-pair-when"></p>' +
-      '<label for="den-pair-code-in" id="den-pair-code-label"></label>' +
-      '<input id="den-pair-code-in" class="den-pair-code" autofocus autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" ' +
-      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px">' +
+      '<p class="help den-ap-who" id="den-pair-unexpected"></p>' +
+      // Issue 1333: an empty box with a visible edge, and no example code
+      // in it (a grey "K7Q-42M" read as the code itself).
+      '<label for="den-pair-code-in" id="den-pair-code-label" style="display:block;font-weight:600;margin-top:8px"></label>' +
+      '<input id="den-pair-code-in" class="den-pair-code" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" ' +
+      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px;border:1px solid var(--line-strong, var(--line, currentColor));border-radius:6px;background:var(--bg, transparent);color:inherit">' +
       '<p class="help" id="den-pair-help"></p>' +
       '<p class="err" id="den-pair-err" role="alert" hidden></p>' +
       '<div class="btns">' +
@@ -9465,6 +9477,23 @@
         ? t("pair.local")
         : w.client || "",
     });
+    // Issue 1333: where it came from (its address, and mesh name when it
+    // has one), the Den address it opened, and when.
+    var addr = w.client || t("pair.unknownAddr");
+    var time = localTime(w.createdAt) || "";
+    $("den-pair-from").textContent = w.clientName
+      ? t("pair.fromNamed", {
+          name: w.clientName,
+          client: addr,
+          host: w.host || location.host,
+          time: time,
+        })
+      : t("pair.from", {
+          client: addr,
+          host: w.host || location.host,
+          time: time,
+        });
+    $("den-pair-unexpected").textContent = t("pair.unexpected");
     $("den-pair-when").textContent = prWhen(w);
     $("den-pair-code-label").textContent = t("pair.codeLabel");
     $("den-pair-code-label").hidden = false;
@@ -9479,7 +9508,8 @@
     $("den-pair-allow").hidden = false;
     $("den-pair-allow").disabled = true;
     if (!d.open) d.showModal();
-    $("den-pair-code-in").focus();
+    // Issue 1333: Deny first; Allow waits for a typed code.
+    $("den-pair-deny").focus();
   }
   function prPoll() {
     // One ask at a time; refused once (a session that may not read it, as

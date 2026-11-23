@@ -134,6 +134,11 @@ async function signedOut(
   });
   const r = await page.goto(`${edge()}/settings`);
   expect(r?.status()).toBe(401);
+  // Issue 1333: the page asks for a code only on its button.
+
+  await page.waitForSelector("#den-pair-start, #den-pair-code");
+
+  if (await page.$("#den-pair-start")) await page.click("#den-pair-start");
   await page.waitForSelector("#den-pair-code", { timeout: 15_000 });
   const code = ((await page.textContent("#den-pair-code")) ?? "").trim();
   expect(code).toMatch(/^[0-9A-Z]{3}-[0-9A-Z]{3}$/);

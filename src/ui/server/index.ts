@@ -616,9 +616,15 @@ import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
 import {
   CREATE_REFUSED,
+  denAddressOf,
   handlePairRoutes,
   isPairRoute,
 } from "./pair-routes.js";
+import {
+  meshNameOf,
+  pairEventDetail,
+  SIGNIN_REQUEST_VERB,
+} from "./signin-request-log.js";
 import { mayWriteSessions } from "./session-writes.js";
 import {
   cliCommand,
@@ -2488,6 +2494,12 @@ function noteExpiringToken(): void {
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
 /** Issue 819: the new-device limits are Settings, read when used. */
 const PAIRS = new PairRequests({
+  // Issue 1333: each request's start and end, in the activity trail.
+  onEvent: (e) =>
+    void recordAction(null, {
+      verb: SIGNIN_REQUEST_VERB,
+      detail: pairEventDetail(e),
+    }),
   unseenMs: pairUnseenMs(),
   perClient: () => webAuthNow().pairRequestsPerMinute,
   maxAttempts: () => webAuthNow().approveAttempts,
@@ -3225,8 +3237,13 @@ function sendPairing(
   const r = PAIRS.tryCreate({
     userAgent: req.headers["user-agent"],
     client,
+    host: denAddressOf(req),
     ...(link ? { link: link.nonce, linkAt: link.startedAt } : {}),
   });
+  if (r.ok && client)
+    void meshNameOf(client).then((n) => {
+      if (n) PAIRS.setClientName(r.ref, n);
+    });
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   if (!r.ok)
@@ -6603,6 +6620,7 @@ async function handleRequest(
         const g = checkRequest(r, GUARD, product().cli, product().title);
         return g.ok ? g.client : undefined;
       },
+      clientName: (c) => meshNameOf(c),
       approver: deviceApproverRefusal,
       linkEnded: (link, how, r) => {
         if (how === "denied") return LOGIN_WAITS.denied(link);
