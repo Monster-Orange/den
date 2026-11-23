@@ -9,6 +9,9 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
+  agentSandboxPolicy,
+  bwrapArgs,
+  defaultSessionTmpBase,
   makeSessionTmp,
   removeSessionTmp,
   sandboxFor,
@@ -25,6 +28,46 @@ function bwrapWorks(): boolean {
   return spawnSync("bwrap", ["--dev-bind", "/", "/", "true"]).status === 0;
 }
 const itLinux = bwrapWorks() ? it : it.skip;
+
+describe("issue 1331: where session temp folders go", () => {
+  it("macOS: /tmp; elsewhere: <state>/tmp", () => {
+    expect(defaultSessionTmpBase("/s", "darwin")).toBe("/tmp");
+    expect(defaultSessionTmpBase("/s", "linux")).toBe(path.join("/s", "tmp"));
+  });
+
+  it("bwrap hides the state dir, then binds back only the session's own folder", () => {
+    const root = fs.realpathSync(fs.mkdtempSync("/tmp/d1331-"));
+    try {
+      const stateDir = path.join(root, "state");
+      for (const d of ["agents", "agent-files/a1"])
+        fs.mkdirSync(path.join(stateDir, d), { recursive: true });
+      fs.mkdirSync(path.join(root, "root", "config", "local"), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(root, "gate"));
+      const tmpBase = defaultSessionTmpBase(stateDir, "linux");
+      const mine = makeSessionTmp(tmpBase);
+      const theirs = makeSessionTmp(tmpBase);
+      const a = bwrapArgs(
+        agentSandboxPolicy({
+          stateDir,
+          distRoot: path.join(root, "root"),
+          gateDir: path.join(root, "gate"),
+          agentId: "a1",
+          sessionTmp: mine,
+        } as never),
+      );
+      const at = (...xs: string[]) =>
+        a.findIndex((_, i) => xs.every((x, j) => a[i + j] === x));
+      const hidden = at("--tmpfs", fs.realpathSync(stateDir));
+      expect(hidden).toBeGreaterThan(-1);
+      expect(at("--bind", mine, mine)).toBeGreaterThan(hidden);
+      expect(a).not.toContain(theirs);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("issue 1331: on Linux, a session's temp folder keeps other sessions out", () => {
   itLinux(

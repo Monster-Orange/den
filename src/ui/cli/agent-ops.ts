@@ -394,6 +394,7 @@ import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   type AgentSandboxInput,
   localProofDirs,
+  defaultSessionTmpBase,
   makeSessionTmp,
   removeSessionTmp,
   sandboxFor,
@@ -1016,15 +1017,14 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             ),
           },
         )),
-    // macOS only until issue 1331 keeps other sessions out of one on Linux
-    // too (there /tmp is shared, and sockets were never refused).
+    // Issue 1331: on every platform, in a base no other session reaches.
     sessionTmp:
       d.sessionTmp ??
       (() =>
-        process.platform === "darwin"
-          ? makeSessionTmp(d.sessionTmpBase)
-          : undefined),
-    sessionTmpBase: d.sessionTmpBase ?? "/tmp",
+        makeSessionTmp(
+          d.sessionTmpBase ?? defaultSessionTmpBase(base.stateDir()),
+        )),
+    sessionTmpBase: d.sessionTmpBase ?? defaultSessionTmpBase(base.stateDir()),
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
       d.serverAgentFolder ??
@@ -1623,7 +1623,7 @@ export function noteEnded(
   sessions: SessionInfo[],
   records: AgentRecord[],
   /** Issue 1325: where session temp folders are made (AgentsDeps). */
-  sessionTmpBase = "/tmp",
+  sessionTmpBase = defaultSessionTmpBase(stateDir),
 ): void {
   const byId = new Map(sessions.map((s) => [s.ref.id, s]));
   for (const rec of records) {

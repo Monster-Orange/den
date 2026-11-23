@@ -170,6 +170,20 @@ export const SOCKET_PATH_MAX = 104;
 const SOCKET_NAME_ROOM = 24;
 
 /**
+ * Issue 1331: where Den makes session temp folders. macOS: /tmp (the
+ * profile denies each session every other session's folder there).
+ * Elsewhere (bwrap): <state>/tmp, inside the state dir that the wrap hides
+ * behind an empty tmpfs, so only the session's own folder, bound back, is
+ * there for it.
+ */
+export function defaultSessionTmpBase(
+  stateDir: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === "darwin" ? "/tmp" : path.join(stateDir, "tmp");
+}
+
+/**
  * Issue 1325: a new private temp folder for one session, <base>/den-XXXXXX:
  * made by this process (0700, its own uid), short enough that a socket
  * in it fits macOS's 104 bytes. Throws when it can't be made so.
