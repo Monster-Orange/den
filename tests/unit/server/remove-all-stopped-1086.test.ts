@@ -70,6 +70,22 @@ describe("issue 1086: Remove all stopped (N), on the stopped list's own header",
     expect(f).toMatch(/removedToast\(/);
   });
 
+  // Review: a summary is itself a button; a button inside it is a button
+  // inside a button, and the D37 summary branch took its click. The button
+  // sits beside the summary, in a row around the group; the summary stays
+  // the group's first child, so it still opens and closes it.
+  it("the button is never inside the summary; the summary says only Stopped (N) and is the group's first child", () => {
+    const g = fn(PAGE, "function stoppedGroupHtml(");
+    const sum = g.match(/<summary[^`]*?<\/summary>/)?.[0] ?? "";
+    expect(sum).not.toBe("");
+    expect(sum).not.toMatch(/rmAll|<button/);
+    expect(g).toMatch(/data-stopped[^`]*`\s*\+\s*`<summary/);
+    // The row around the group holds the button, before the details.
+    expect(g).toMatch(
+      /<div class="agstw" data-stopped-row>`\s*\+\s*rmAll\s*\+/,
+    );
+  });
+
   it("the list's click sends remove-stopped there, and the summary does not toggle", () => {
     expect(PAGE).toMatch(
       /which === "remove-stopped"\)\s*\{\s*e\.preventDefault\(\);\s*return void removeAllStopped\(act\);/,

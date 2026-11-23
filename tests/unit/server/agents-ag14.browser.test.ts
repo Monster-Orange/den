@@ -231,7 +231,10 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     expect(await group.getAttribute("open")).not.toBeNull();
     // Issue 1086: Remove all stopped (N) is on the group's own header,
     // the kit's small size, counting the stopped agents.
-    const all = group.locator('summary [data-act="remove-stopped"]');
+    // Beside the summary, never in it (a summary is itself a button).
+    const all = p.locator(
+      '#agl [data-stopped-row] > [data-act="remove-stopped"]',
+    );
     expect(await all.isVisible()).toBe(true);
     expect(
       await all.evaluate(
@@ -974,10 +977,60 @@ describe("after a restart (AG-14.3)", () => {
 });
 
 describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () => {
+  // Review: never a button inside the summary (itself a button). The
+  // summary's name is Stopped (N) alone and it still opens and closes the
+  // group, by click and by Enter; the button, reached by Tab, opens its
+  // confirm with Enter and leaves the group as it was.
+  it("beside the summary, not in it: the summary still toggles (click, Enter); Tab to the button and Enter asks, the group unchanged", async () => {
+    if (skip()) return;
+    const p = await open("north");
+    const group = p.locator("#agl details[data-stopped]");
+    const sum = group.locator("> summary");
+    await group.waitFor();
+    expect(await sum.locator("button").count()).toBe(0);
+    expect(
+      await p.locator("#agl details[data-stopped] > summary button").count(),
+    ).toBe(0);
+    // Its name: the count alone, no button's words in it.
+    const n = await p
+      .locator('#agl [data-stopped-row] > [data-act="remove-stopped"]')
+      .getAttribute("data-n");
+    expect(await sum.textContent()).not.toContain(`(${n})${n}`);
+    expect(
+      ((await sum.textContent()) ?? "").match(/\(\d+\)/g) ?? [],
+    ).toHaveLength(1);
+    const isOpen = () => group.evaluate((d) => (d as HTMLDetailsElement).open);
+    const was = await isOpen();
+    await sum.click();
+    expect(await isOpen()).toBe(!was);
+    await sum.focus();
+    await p.keyboard.press("Enter");
+    expect(await isOpen()).toBe(was);
+    // Tab: the button comes just before the group in the page's order,
+    // so Shift+Tab from the summary reaches it; Enter asks, the group
+    // stays as it was.
+    await sum.focus();
+    await p.keyboard.press("Shift+Tab");
+    expect(
+      await p.evaluate(
+        () => (document.activeElement as HTMLElement | null)?.dataset.act,
+      ),
+    ).toBe("remove-stopped");
+    await p.keyboard.press("Enter");
+    const ask = p.locator('dialog[open][data-dk-kind="confirm"]');
+    await ask.waitFor();
+    expect(await isOpen()).toBe(was);
+    await ask.locator('[data-dk="cancel"]').click();
+    await ask.waitFor({ state: "detached" });
+    await p.context().close();
+  }, 60_000);
+
   it("one confirm names the count; its Remove is busy until the server answers; every stopped agent goes, never a running one, with Undo", async () => {
     if (skip()) return;
     const p = await open("north");
-    const all = p.locator('#agl summary [data-act="remove-stopped"]');
+    const all = p.locator(
+      '#agl [data-stopped-row] > [data-act="remove-stopped"]',
+    );
     const n = Number(await all.getAttribute("data-n"));
     expect(n).toBeGreaterThan(0);
     // The stopped agents in view, and no running one among what it counts.

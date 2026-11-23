@@ -119,7 +119,9 @@ describe("?ws= for a workspace that isn't active", () => {
     const req = p.waitForRequest(
       (r) => new URL(r.url()).pathname === "/api/agents/clear-stopped",
     );
-    await p.locator('#agl summary [data-act="remove-stopped"]').click();
+    await p
+      .locator('#agl [data-stopped-row] > [data-act="remove-stopped"]')
+      .click();
     await p
       .locator('dialog[open][data-dk-kind="confirm"] [data-dk="ok"]')
       .click();

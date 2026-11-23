@@ -1338,14 +1338,17 @@ function stoppedGroupHtml(rows) {
   const wsTag = new Set(rows.map((r) => r.workspace)).size > 1;
   // Issue 1086: Remove all stopped (N), on this list's own header: stopped
   // agents only (an exited shell is the Terminals page's), shown only when
-  // one is stopped.
+  // one is stopped. Beside the summary, never in it (a summary is itself a
+  // button): a row around the group holds it, drawn on the summary's line.
   const agents = rows.filter(isStopped).length;
   const rmAll = agents
     ? `<button type="button" class="den-btn sm" data-act="remove-stopped" data-n="${agents}">${esc(t("ag.rmAll", { n: agents }))}</button>`
     : "";
   return (
+    `<div class="agstw" data-stopped-row>` +
+    rmAll +
     `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
-    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span>${rmAll}</summary>` +
+    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
     reorderStoppedHtml(rows) +
     rows
       .map((r) =>
@@ -1359,7 +1362,7 @@ function stoppedGroupHtml(rows) {
             ),
       )
       .join("") +
-    `</details>`
+    `</details></div>`
   );
 }
 
