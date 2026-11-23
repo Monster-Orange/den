@@ -236,7 +236,8 @@ export async function teardown(_ctx, state) {
 }
 
 export function expect(cells) {
-  const r = (Array.isArray(cells) ? cells[0]?.result : cells) ?? {};
+  const c = Array.isArray(cells) ? cells.find((x) => x?.result) : null;
+  const r = (c ? c.result : cells) ?? {};
   if (!r.ownDir && r.statusCode !== 0)
     return clauses.map((clause) => ({
       clause,
