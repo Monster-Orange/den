@@ -308,11 +308,27 @@ export async function commitPin(
         why: "the distribution's checkout is on no branch (detached HEAD)",
       };
 
+    // Issue 1195: the remote branch's tip, fetched once per pass.
+    let tipRead: Promise<RemoteTip | null> | undefined;
+    const tipOf = () => (tipRead ??= remoteTip(d.git, up));
+
     // A commit an earlier pass made (its push or its pull request failed).
     let sha =
       same?.state === "push_failed" || same?.state === "branch_pushed"
         ? same.sha
         : undefined;
+    // Issue 1195: a pin whose push failed, built on a tip the remote has
+    // since moved past, is built again on the new tip (its push would only
+    // ever be refused). A checkout's branch that took it steps back first.
+    if (sha && same?.state === "push_failed") {
+      const t = await tipOf();
+      const parent = await d.git(["rev-parse", "--verify", "-q", `${sha}^`]);
+      if (t?.fresh && parent.code === 0 && parent.out.trim() !== t.sha) {
+        const h = await d.git(["rev-parse", "HEAD"]);
+        if (h.code === 0 && h.out.trim() === sha) await stepBack(d.git, sha);
+        sha = undefined;
+      }
+    }
     const branch = same?.branch ?? pinBranch(version);
     if (!sha) {
       const files = PIN_FILES.filter((f) =>
@@ -358,11 +374,23 @@ export async function commitPin(
       }
       // Issue 1195: the pin goes on the branch's tip on the remote, fetched
       // now, never local HEAD: commits not pushed yet never ride along.
-      const tip = await remoteTip(d.git, up);
-      if (!tip)
+      const t = await tipOf();
+      if (!t)
         return failCommit(
           `can't reach ${up.remote} to find the tip of ${up.branch}, and it was never fetched`,
         );
+      const tip = t.sha;
+      // Issue 1195: a checkout with commits the remote doesn't have: a push
+      // of the pin alone would leave it ahead with the pin files dirty, so
+      // the pin goes to a pull request, and says why. (A check that fails
+      // counts as ahead.)
+      if (mode === "push") {
+        const a = await d.git(["merge-base", "--is-ancestor", "HEAD", tip]);
+        if (a.code !== 0) {
+          mode = "pr";
+          via = "ahead";
+        }
+      }
       const subject = `Den ${version}: pin the distribution to Den ${version}`;
       const body =
         "Den committed this pin itself after its update to this version was verified.";
@@ -459,27 +487,38 @@ export async function commitPin(
   }
 }
 
+/** The remote branch's tip, and whether it was fetched just now. */
+interface RemoteTip {
+  sha: string;
+  fresh: boolean;
+}
+
+/** Issue 1195: Den's own ref for the fetched tip (never FETCH_HEAD). */
+const PIN_TIP_REF = "refs/den/pin-tip";
+
 /**
  * Issue 1195: the tip of the branch the pin goes to, on the remote:
- * fetched now, or the last one fetched when the remote can't be reached.
- * null when there is neither (a pin built on local HEAD could carry
- * commits that were never pushed).
+ * fetched now into Den's own ref (FETCH_HEAD is shared with every other
+ * fetch in the checkout, so another fetch could swap it for another
+ * branch), or the last one fetched when the remote can't be reached. null
+ * when there is neither (a pin built on local HEAD could carry commits
+ * that were never pushed).
  */
 async function remoteTip(
   git: GitRun,
   up: { remote: string; branch: string },
-): Promise<string | null> {
+): Promise<RemoteTip | null> {
   const f = await git([
     "fetch",
     "--quiet",
     "--no-tags",
     up.remote,
-    `refs/heads/${up.branch}`,
+    `+refs/heads/${up.branch}:${PIN_TIP_REF}`,
   ]);
-  const ref =
-    f.code === 0 ? "FETCH_HEAD" : `refs/remotes/${up.remote}/${up.branch}`;
+  const fresh = f.code === 0;
+  const ref = fresh ? PIN_TIP_REF : `refs/remotes/${up.remote}/${up.branch}`;
   const r = await git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]);
-  return r.code === 0 && r.out.trim() ? r.out.trim() : null;
+  return r.code === 0 && r.out.trim() ? { sha: r.out.trim(), fresh } : null;
 }
 
 /**
@@ -748,6 +787,15 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
         { why: step.why },
       );
     case "pr": {
+      if (step.via === "ahead") {
+        const n = pullNumber(step.url) ?? "";
+        return item(
+          `${t} updated to ${v}: the checkout has commits not pushed, so its pin went to a pull request; opened #${n} (${step.branch})`,
+          "bell.m.pinPrAhead",
+          { branch: step.branch, n },
+          step.url,
+        );
+      }
       if (step.via) {
         const n = pullNumber(step.url) ?? "";
         return item(

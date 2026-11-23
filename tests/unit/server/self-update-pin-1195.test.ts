@@ -18,9 +18,12 @@ import * as os from "os";
 import * as path from "path";
 import {
   commitPin,
+  pinBellMessage,
   pinGit,
   readPinRecord,
+  type GitRun,
 } from "../../../src/ui/server/pin-commit.js";
+import { pinDoctorText } from "../../../src/shared/pin-record.js";
 
 let tmp: string;
 let remote: string;
@@ -123,24 +126,109 @@ const shape = (cwd: string, rev: string) => ({
 });
 
 describe("issue 1195: the pin commit is built on the remote's tip, never local HEAD", () => {
-  it("push mode, a commit not pushed yet: the pin's only parent is the remote tip, and only the pin goes out", async () => {
+  it("push mode, a checkout ahead of the remote: the pin goes to a pull request, built on the remote tip, and says why", async () => {
     const tip = git(remote, "rev-parse", "main");
     const local = unpushedWork();
     newPin();
 
-    const step = await commitPin("1.1.0", deps());
+    const step = await commitPin("1.1.0", deps({ gh: fakeGh() }));
 
-    expect(step).toMatchObject({ did: "pushed" });
-    const pushed = git(remote, "rev-parse", "main");
-    expect(shape(remote, pushed)).toEqual({
+    expect(step).toMatchObject({
+      did: "pr",
+      branch: "den/pin-1.1.0",
+      via: "ahead",
+    });
+    // Nothing went onto the branch itself.
+    expect(git(remote, "rev-parse", "main")).toBe(tip);
+    expect(shape(remote, "den/pin-1.1.0")).toEqual({
       parents: [tip],
       files: ["package-lock.json", "package.json"],
     });
-    // The person's work never left the machine.
+    // The person's work never left the machine; their branch is as it was.
     expect(() => git(remote, "cat-file", "-e", local)).toThrow();
-    expect(() => git(remote, "show", "main:work.md")).toThrow();
-    // Their branch stays where it was, their work on it.
     expect(git(root, "rev-parse", "HEAD")).toBe(local);
+    // Said, in the bell and in doctor.
+    expect(pinBellMessage(step, "Den")).toMatchObject({
+      key: "bell.m.pinPrAhead",
+      vars: { n: "9", branch: "den/pin-1.1.0" },
+    });
+    expect(pinDoctorText(readPinRecord(stateDir))).toBe(
+      "pin 1.1.0: the checkout has commits not pushed, so the pin went to a pull request; opened #9 (https://example.invalid/acme/dist/pull/9)",
+    );
+  });
+
+  it("another fetch rewriting FETCH_HEAD meanwhile never moves the pin onto another branch", async () => {
+    // A branch on the remote with work nobody reviewed.
+    const other = path.join(tmp, "other");
+    git(tmp, "clone", "-q", remote, other);
+    git(other, "checkout", "-q", "-b", "feature");
+    fs.writeFileSync(path.join(other, "feature.md"), "unreviewed\n");
+    git(other, "add", "feature.md");
+    git(other, "commit", "-q", "-m", "unreviewed feature");
+    git(other, "push", "-q", "origin", "feature");
+    const feature = git(remote, "rev-parse", "feature");
+    git(root, "fetch", "-q", "origin", "feature");
+    const tip = git(remote, "rev-parse", "main");
+    newPin();
+    // Right after Den's own fetch, something else (an IDE, an agent)
+    // fetches the feature branch: FETCH_HEAD now names it.
+    const real = pinGit(root, { env });
+    const racing: GitRun = async (args, extra) => {
+      const r = await real(args, extra);
+      if (args[0] === "fetch")
+        fs.writeFileSync(
+          path.join(root, ".git", "FETCH_HEAD"),
+          `${feature}\t\tbranch 'feature' of ${remote}\n`,
+        );
+      return r;
+    };
+
+    const step = await commitPin("1.1.0", deps({ git: racing }));
+
+    expect(step).toMatchObject({ did: "pushed" });
+    expect(shape(remote, "main")).toEqual({
+      parents: [tip],
+      files: ["package-lock.json", "package.json"],
+    });
+    expect(() => git(remote, "show", "main:feature.md")).toThrow();
+  });
+
+  it("a pin built on a stale tip is built again once the remote has moved", async () => {
+    newPin();
+    // Offline: the last tip fetched is used, and the push fails.
+    git(root, "remote", "set-url", "origin", path.join(tmp, "offline.git"));
+    const first = await commitPin("1.1.0", deps());
+    expect(first).toMatchObject({ did: "push_failed" });
+    // Meanwhile someone else pushes to the branch.
+    const other = path.join(tmp, "other");
+    git(tmp, "clone", "-q", remote, other);
+    fs.writeFileSync(path.join(other, "notes.md"), "someone else\n");
+    git(other, "add", "notes.md");
+    git(other, "commit", "-q", "-m", "someone else's change");
+    git(other, "push", "-q", "origin", "main");
+    const tip = git(remote, "rev-parse", "main");
+
+    // Back online: the next pass builds the pin again on the new tip.
+    git(root, "remote", "set-url", "origin", remote);
+    const again = await commitPin("1.1.0", deps());
+
+    expect(again).toMatchObject({ did: "pushed" });
+    expect(shape(remote, "main")).toEqual({
+      parents: [tip],
+      files: ["package-lock.json", "package.json"],
+    });
+    expect(git(remote, "show", "main:notes.md")).toBe("someone else");
+    // The checkout's branch, which took the first pin commit, isn't left
+    // on a commit the remote never got.
+    expect(() =>
+      git(
+        root,
+        "merge-base",
+        "--is-ancestor",
+        "HEAD",
+        "refs/remotes/origin/main",
+      ),
+    ).not.toThrow();
   });
 
   it("pr mode, a commit not pushed yet: den/pin-<version> and the pull request hold only the pin", async () => {
