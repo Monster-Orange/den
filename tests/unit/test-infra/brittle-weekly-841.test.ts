@@ -108,6 +108,8 @@ describe("the weekly brittle report (issue 841)", () => {
     expect(r.out).toMatch(/2 files went down/);
     expect(r.out).toContain("tests/a.browser.test.ts: 3 -> 1");
     expect(r.out).toMatch(/1 file went up/);
+    // Like with like: both sides are counted with this script's patterns.
+    expect(r.out).toMatch(/both counted with this script's patterns/);
   });
 
   it("--since alone, or an unknown ref, is refused", () => {
@@ -133,6 +135,7 @@ describe("the weekly brittle report (issue 841)", () => {
           "runs-on": string;
           steps: {
             run?: string;
+            shell?: string;
             uses?: string;
             with?: Record<string, unknown>;
           }[];
@@ -156,5 +159,10 @@ describe("the weekly brittle report (issue 841)", () => {
     expect(step?.run).toMatch(/--before[= ]"?7 days ago/);
     expect(step?.run).toMatch(/--report --since/);
     expect(step?.run).toContain("GITHUB_STEP_SUMMARY");
+    // Piped into tee: a report that crashes still fails the run (bash's
+    // -eo pipefail), never a green run with an error in the summary.
+    expect(
+      step?.shell === "bash" || /set -o pipefail/.test(step?.run ?? ""),
+    ).toBe(true);
   });
 });

@@ -621,6 +621,9 @@ function main(argv) {
       console.log(
         `brittle-ratchet: since ${o.since} (${r.since.commit.slice(0, 12)}): ${files(n(r.files))} with brittle patterns, was ${n(r.since.files)}`,
       );
+      console.log(
+        "  (then and now are both counted with this script's patterns)",
+      );
       for (const k of KINDS) {
         const d = r.totals[k] - r.since.totals[k];
         console.log(
