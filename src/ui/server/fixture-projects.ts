@@ -7,8 +7,10 @@
  * never on an install that isn't a test install. Agents' tokens are
  * refused these routes everywhere (request-guard.ts AGENT_PERSON_WRITES).
  *
- * The projects it made are listed in the state folder
- * (src/shared/fixture-projects-store.ts).
+ * A project is its own only when its record carries `fixture_made: true`,
+ * which only the server's fixture create writes (createWorkspace's
+ * fixtureMade option): a seed, a person's create, the CLI or a hand edit
+ * never does, so a name it once used is never its own again.
  */
 import { FIXTURE_LABEL } from "../../shared/fixture-person.js";
 
@@ -30,8 +32,8 @@ export interface FixtureProjectAsk {
   op: FixtureProjectOp;
   /** The project's slug (for create: the slug it would get). */
   slug: string;
-  /** The projects the fixture person made (fixtureProjects()). */
-  mine: readonly string[];
+  /** The project's record carries the fixture person's marker. */
+  fixtureMade: boolean;
   /** Delete's clean-up flags. */
   flags?: {
     cleanupDirectory?: boolean;
@@ -79,7 +81,7 @@ export function fixtureProjectRefusal(
       `The ${FIXTURE_LABEL} may create, activate, deactivate and delete its own projects: not ${a.op}.`,
     );
   if (a.op === "create") return null;
-  if (!a.mine.includes(a.slug))
+  if (!a.fixtureMade)
     return no(
       "fixture_not_its_project",
       `The ${FIXTURE_LABEL} may change only the projects it made: "${a.slug}" isn't one.`,
@@ -119,9 +121,3 @@ export function fixtureTestInstall(): boolean {
 export function setFixtureTestInstall(fn: () => boolean): void {
   testInstallNow = fn;
 }
-
-export {
-  fixtureProjects,
-  forgetFixtureProject,
-  rememberFixtureProject,
-} from "../../shared/fixture-projects-store.js";

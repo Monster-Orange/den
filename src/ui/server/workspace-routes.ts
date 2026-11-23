@@ -108,7 +108,7 @@ import {
   workspaceSlug,
 } from "../../shared/workspace-name.js";
 import { redactRemote } from "../../shared/environment-manager/git-remote.js";
-import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { getDistRoot } from "../../shared/paths.js";
 import { recordRemovedFromWorkspace } from "../../shared/environment-manager/default-workspace.js";
 import { getSudoEnv, prewarmSudo, watchSudo } from "./sudo-store.js";
 import {
@@ -118,9 +118,7 @@ import {
 import { recordAction } from "./audit.js";
 import {
   fixtureProjectRefusal,
-  fixtureProjects,
   fixtureTestInstall,
-  rememberFixtureProject,
   type FixtureProjectAsk,
   type FixtureProjectOp,
 } from "./fixture-projects.js";
@@ -446,14 +444,15 @@ function auditProject(
 function fixtureProjectRefused(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  ask: Omit<FixtureProjectAsk, "testInstall" | "claimed" | "mine">,
+  ask: Omit<FixtureProjectAsk, "testInstall" | "claimed" | "fixtureMade">,
 ): boolean {
   if (principalOf(req) !== FIXTURE_PRINCIPAL) return false;
   const refusal = fixtureProjectRefusal({
     ...ask,
     testInstall: fixtureTestInstall(),
     claimed: !fixturePersonOf(req),
-    mine: fixtureProjects(getStateDir()),
+    fixtureMade:
+      readWorkspacesFile().workspaces[ask.slug]?.fixture_made === true,
   });
   if (!refusal) return false;
   auditProject(req, ask.op, ask.slug, refusal);
@@ -816,9 +815,13 @@ export async function handleWorkspaceRoutes(
         })
       )
         return;
-      const slug = createWorkspace(name, { services: {} });
-      if (principalOf(req) === FIXTURE_PRINCIPAL)
-        rememberFixtureProject(getStateDir(), slug);
+      // Issue 1215: the fixture person's own project carries its marker
+      // (only here, and only past fixtureProjectRefused: a test install).
+      const slug = createWorkspace(
+        name,
+        { services: {} },
+        { fixtureMade: principalOf(req) === FIXTURE_PRINCIPAL },
+      );
       auditProject(req, "create", slug);
       return sendJson(res, { ok: true, name: name.trim(), slug });
     } catch (e) {

@@ -30,8 +30,7 @@ import type {
 } from "../types/index.js";
 import { readManifest } from "../manifest/read-manifest.js";
 import { depService } from "../manifest/deps.js";
-import { getDistRoot, getStateDir } from "../paths.js";
-import { forgetFixtureProject } from "../fixture-projects-store.js";
+import { getDistRoot } from "../paths.js";
 import { readCatalog } from "./catalog.js";
 import { auditConfig, callerName } from "../config-audit.js";
 import { noteLinksSeen } from "../hub-links-seen.js";
@@ -609,7 +608,14 @@ export function setActiveWorkspace(name: string): void {
  * the name kept when it differs. Returns the slug. Throws what
  * workspaceNameRefusal says, so nothing is made the next step refuses.
  */
-export function createWorkspace(name: string, config: WorkspaceConfig): string {
+export function createWorkspace(
+  name: string,
+  config: WorkspaceConfig,
+  opts: {
+    /** Issue 1215: the server's fixture create, on a test install, only. */
+    fixtureMade?: boolean;
+  } = {},
+): string {
   const file = readWorkspacesFile();
   const refusal = workspaceNameRefusal(name, file.workspaces);
   if (refusal) throw new Error(refusal);
@@ -619,11 +625,16 @@ export function createWorkspace(name: string, config: WorkspaceConfig): string {
   const reserved =
     reservedWorkspaceError(slug) ?? reservedWorkspaceError(typed);
   if (reserved) throw new Error(reserved);
-  file.workspaces[slug] = typed === slug ? config : { ...config, name: typed };
+  // Issue 1215: the fixture person's marker only when the server's
+  // fixture create asks for it, never copied from a config passed in.
+  const { fixture_made: _never, ...rest } = config;
+  void _never;
+  const record: WorkspaceConfig = {
+    ...rest,
+    ...(opts.fixtureMade ? { fixture_made: true as const } : {}),
+  };
+  file.workspaces[slug] = typed === slug ? record : { ...record, name: typed };
   writeWorkspacesFile(file);
-  // Issue 1215: a new project is never the fixture person's until the
-  // server's fixture create says so (fixture-projects-store.ts).
-  forgetFixtureProject(getStateDir(), slug);
   return slug;
 }
 
@@ -643,8 +654,6 @@ export function renameWorkspace(slug: string, name: string): void {
 }
 
 export function deleteWorkspaceConfig(name: string): void {
-  // Issue 1215: a deleted project's slug is no longer the fixture person's.
-  forgetFixtureProject(getStateDir(), name);
   const file = readWorkspacesFile();
   delete file.workspaces[name];
   file.active = file.active.filter((n) => n !== name);

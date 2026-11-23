@@ -698,6 +698,32 @@ describe("the fixture person's own projects (issue 1215)", () => {
     expect([d.status, d.json.code]).toEqual([403, "fixture_not_its_project"]);
   });
 
+  it("a project added by hand under a name it once used is never its own", async () => {
+    const f = await fixtureSignIn(test);
+    const c = await call(test, "POST", "/api/workspaces/create", f.headers, {
+      name: "fx-1215-hand",
+    });
+    expect(c.status).toBe(200);
+    const file = path.join(test.root, "config", "local", "workspaces.yml");
+    const edit = (fn: (w: Record<string, unknown>) => void) => {
+      const doc = yaml.parse(fs.readFileSync(file, "utf-8")) as {
+        workspaces: Record<string, unknown>;
+        active?: string[];
+      };
+      fn(doc.workspaces);
+      doc.active = (doc.active ?? []).filter((n) => n in doc.workspaces);
+      fs.writeFileSync(file, yaml.stringify(doc));
+    };
+    // Removed by hand, then added back by hand: a person's project now.
+    edit((w) => delete w["fx-1215-hand"]);
+    edit((w) => (w["fx-1215-hand"] = { services: {} }));
+    const d = await call(test, "DELETE", "/api/workspaces", f.headers, {
+      name: "fx-1215-hand",
+    });
+    expect([d.status, d.json.code]).toEqual([403, "fixture_not_its_project"]);
+    edit((w) => delete w["fx-1215-hand"]);
+  });
+
   it("can't rename, focus, or remove clones with its own project", async () => {
     const f = await fixtureSignIn(test);
     await call(test, "POST", "/api/workspaces/create", f.headers, {
