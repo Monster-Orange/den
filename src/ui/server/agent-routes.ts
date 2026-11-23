@@ -728,7 +728,13 @@ export async function handleAgentRoutes(
     } catch {
       editions = null;
     }
-    const out = { ...st, ...(editions ? { editions } : {}) };
+    // Issue 578: the "What is Hub?" page for the running version.
+    const { hubDocsUrl } = await import("../../shared/docs-link.js");
+    const out = {
+      ...st,
+      ...(editions ? { editions } : {}),
+      docsUrl: hubDocsUrl(),
+    };
     sendJson(res, last ? { ...out, connect: last } : out);
     return true;
   }

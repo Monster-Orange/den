@@ -3605,6 +3605,8 @@
     "set.ui.hub.teams": "un Hub compartido en {host}.",
     "set.ui.hub.ent":
       "tu propio entorno de ejecución aislado, en tu propio dominio o en un subdominio propio de {domain}.",
+    // Issue 578: Settings › Hub's docs link.
+    "set.ui.hub.what": "¿Qué es Hub?",
     "set.ui.hub.talk": "Habla con nosotros",
     "set.ui.hub.connected": "Conectado",
     "set.ui.hub.rejected": "Token no aceptado",

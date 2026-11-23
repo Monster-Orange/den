@@ -5642,7 +5642,22 @@ function hubAddressHtml(b) {
   );
 }
 
+/**
+ * Issue 578: Settings › Hub's "What is Hub?" link: the published docs page
+ * for the running version (b.docsUrl, from GET /api/hub), in a new tab.
+ * Only an https address is linked.
+ */
+function hubDocsHtml(b) {
+  const url = b && b.docsUrl;
+  if (typeof url !== "string" || !/^https:\/\//.test(url)) return "";
+  return `<p class="set-note"><a data-hub-docs href="${escR(url)}" target="_blank" rel="noopener noreferrer">${escR(L("set.ui.hub.what", "What is Hub?"))} ↗</a></p>`;
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
+  return hubDocsHtml(b) + hubBodyHtml(b, flash, t);
+}
+
+function hubBodyHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
     ? b.state || (b.connected ? "connected" : "no_token")

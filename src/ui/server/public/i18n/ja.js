@@ -3500,6 +3500,8 @@
     "set.ui.hub.teams": "{host} の共有 Hub。",
     "set.ui.hub.ent":
       "あなた専用の独立したランタイムを、あなた自身のドメイン、または {domain} 上の専用サブドメインで。",
+    // Issue 578: Settings › Hub's docs link.
+    "set.ui.hub.what": "Hub とは？",
     "set.ui.hub.talk": "お問い合わせ",
     "set.ui.hub.connected": "接続済み",
     "set.ui.hub.rejected": "トークンが受け付けられません",

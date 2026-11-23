@@ -1076,6 +1076,8 @@
     "set.ui.hub.teams": "a shared Hub at {host}.",
     "set.ui.hub.ent":
       "your own isolated runtime, at your own domain or a unique subdomain on {domain}.",
+    // Issue 578: Settings › Hub's docs link.
+    "set.ui.hub.what": "What is Hub?",
     "set.ui.hub.talk": "Talk to us",
     "set.ui.hub.connected": "Connected",
     "set.ui.hub.rejected": "Token not accepted",
