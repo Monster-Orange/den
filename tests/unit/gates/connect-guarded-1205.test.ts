@@ -242,4 +242,20 @@ describe("issue 1205: connectGuarded returns a guarded browser", () => {
     const ctx = (await b.newContext()) as unknown as FakeCtx;
     expect(ctx.handlers).toHaveLength(0);
   });
+
+  it("if guarding fails after the connect, the browser is closed and the error thrown", async () => {
+    let closed = 0;
+    // No newContext: guardBrowser cannot wrap it, so guarding throws.
+    const broken = { close: () => Promise.resolve(void closed++) };
+    await expect(
+      connectGuarded(
+        { connect: () => Promise.resolve(broken as never) },
+        "ws://b1.test:3000",
+        {},
+        BOX,
+        () => {},
+      ),
+    ).rejects.toThrow();
+    expect(closed).toBe(1);
+  });
 });
