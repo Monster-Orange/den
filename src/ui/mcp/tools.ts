@@ -829,7 +829,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_rotation_defer, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2831,6 +2831,46 @@ const APPROVAL_TOOLS: DenTool[] = [
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
       return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
+    },
+  },
+  {
+    name: "agent_rotation_defer",
+    title: "Put an agent's rotation off until a time",
+    description:
+      "Issue 765: keep an agent (`agent`, its id) in its conversation past its rotation until `until`: +30m, +2h, +1d, HH:MM, an ISO time, or off to stop putting it off. Before that time nothing rotates it (compactions or a merged pull request); after it, the normal rule applies again. The time is fixed when you ask, so a late Allow never moves it. A project's agent asks for its own project's agents, itself too; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      until: z.string().describe("+30m, +2h, +1d, HH:MM, an ISO time, or off"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg(
+        "agent_rotation_defer",
+        a,
+        "agent",
+        "the agent's id",
+      );
+      const until = needArg(
+        "agent_rotation_defer",
+        a,
+        "until",
+        "+30m, +2h, +1d, HH:MM, an ISO time, or off",
+      );
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_rotation_defer",
+        "agent_rotation_defer",
+        { agent, until, project },
+        a,
+        ctx,
+      );
     },
   },
   {

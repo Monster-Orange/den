@@ -3039,6 +3039,14 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.do.agent_rotation_defer": "Put {agent}'s rotation off until {until}",
+    "ap.do.agent_rotation_defer.clear": "Stop putting {agent}'s rotation off",
+    "ap.det.agent_rotation_defer.until":
+      "Until {until}, nothing rotates it: it keeps its conversation.",
+    "ap.det.agent_rotation_defer.off":
+      "Its rotation is no longer put off: the normal rule applies at once.",
+    "ap.det.agent_rotation_defer.after":
+      "After that, the normal rule applies: it rotates when due.",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",

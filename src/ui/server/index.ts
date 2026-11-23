@@ -1362,6 +1362,7 @@ import {
   checkAgentCreate,
   checkAgentFolder,
   checkAgentMode,
+  checkAgentRotationDefer,
   checkPersonaCreate,
   checkPersonaUpdate,
   checkProjectMode,
@@ -1374,6 +1375,7 @@ import {
   createAgent,
   runAgentFolder,
   runAgentMode,
+  runAgentRotationDefer,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
@@ -4623,6 +4625,11 @@ function approvalDeps(): ApprovalDeps {
         ),
       log: (line) => serverLog(line, "lifecycle"),
     }),
+    // Issue 765: put an agent's rotation off until a time.
+    agentRotationDefer: {
+      check: (a, who) => checkAgentRotationDefer(agentWebDeps(), a, who),
+      run: (a) => runAgentRotationDefer(agentWebDeps(), a),
+    },
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
       run: (a) =>

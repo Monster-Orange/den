@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { localDateTime } from "../../shared/local-time.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -305,6 +306,8 @@ import {
   type RotationInfo,
   type RotationPolicy,
   deferRotation,
+  isDeferred,
+  parseDeferTime,
 } from "../../shared/agents/rotation.js";
 import {
   binSettingKey,
@@ -5923,6 +5926,121 @@ export async function runAgentMode(
     mode: c.params.to,
     restarts,
   };
+}
+
+export interface AgentRotationDeferArgs {
+  agent: string;
+  project: string;
+  /** The time to come (ISO 8601), fixed when asked; null: off. */
+  until: string | null;
+}
+
+/**
+ * Issue 765: checks an agent_rotation_defer ask: put agent `agent`'s
+ * rotation off until `until` (+2h, HH:MM, an ISO time), or `off` (null).
+ * The time is fixed when asked, so a late Allow never moves it. A
+ * project's agent asks for its own project's agents (itself too); Den's
+ * agent for any. Putting it off keeps an agent in its session past its
+ * rotation, so it widens: held for the person's Allow.
+ */
+export function checkAgentRotationDefer(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+  now: Date = new Date(),
+): HeldOpCheck<AgentRotationDeferArgs> {
+  const no = (error: string): HeldOpCheck<AgentRotationDeferArgs> => ({
+    ok: false,
+    error,
+  });
+  const str = (k: string): string | undefined => {
+    const v = raw[k];
+    if (v === undefined || v === null || v === "") return undefined;
+    if (typeof v !== "string") throw usage(`${k} must be text`);
+    return v.trim();
+  };
+  try {
+    const id = str("agent");
+    if (!id) return no("agent is required (the agent's id)");
+    const when = str("until");
+    if (!when)
+      return no(
+        "until is required: +30m, +2h, +1d, HH:MM, an ISO time, or off",
+      );
+    const rec = agentRecord(d, id, str("project"));
+    if (
+      who.project &&
+      !isServerScope(who.project) &&
+      who.project !== rec.workspace
+    )
+      return no(
+        `${who.agent ?? "this agent"} works in project ${who.project}: it can ask for that project's agents only, not ${id} in project ${rec.workspace}`,
+      );
+    const at = parseDeferTime(when, now);
+    const shown = rec.displayName ?? id;
+    const files = agentFilesDir(d.stateDir(), rec.id);
+    const was = readRotation(files);
+    const wasOff = !(was && isDeferred(was, now) && was.deferredUntil);
+    if (!at && wasOff)
+      return no(`${id}'s rotation is not put off: nothing to undo`);
+    const shownAt = at ? localDateTime(at) : "";
+    return {
+      ok: true,
+      summary: at
+        ? `Put ${shown}'s rotation off until ${shownAt}`
+        : `Stop putting ${shown}'s rotation off`,
+      params: { agent: shown, ...(at ? { until: shownAt } : { clears: "1" }) },
+      ...review([
+        agentLine(shown, id, rec.workspace),
+        at
+          ? rl(
+              `Until ${shownAt}, nothing rotates it: it keeps its conversation.`,
+              "ap.det.agent_rotation_defer.until",
+              { until: shownAt },
+            )
+          : rl(
+              "Its rotation is no longer put off: the normal rule applies at once.",
+              "ap.det.agent_rotation_defer.off",
+            ),
+        ...(at
+          ? [
+              rl(
+                "After that, the normal rule applies: it rotates when due.",
+                "ap.det.agent_rotation_defer.after",
+              ),
+            ]
+          : []),
+      ]),
+      args: {
+        agent: id,
+        project: rec.workspace,
+        until: at ? at.toISOString() : null,
+      },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 765: on Allow, puts it off (or stops), as the ask fixed it. */
+export async function runAgentRotationDefer(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  now: Date = new Date(),
+): Promise<
+  | { ok: true; agent: string; project: string; until: string | null }
+  | { ok: false; error: string }
+> {
+  const c = checkAgentRotationDefer(
+    d,
+    { ...raw, until: raw.until === null ? "off" : raw.until },
+    {},
+    now,
+  );
+  if (!c.ok) return c;
+  const { agent, project, until } = c.args;
+  deferAgentRotation(d, agent, project, until ? new Date(until) : null);
+  return { ok: true, agent, project, until };
 }
 
 /**

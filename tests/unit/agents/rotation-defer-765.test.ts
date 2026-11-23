@@ -251,3 +251,79 @@ describe("issue 765: POST /api/workspaces/:ws/agents/:id/defer", () => {
     expect(readRotation(filesOf(r, "be-dev"))?.deferredUntil).toBeUndefined();
   });
 });
+
+// Slice B: an agent asks (agent_rotation_defer), held for the person's Allow.
+import {
+  checkAgentRotationDefer,
+  resolveAgentsDeps,
+  runAgentRotationDefer,
+} from "../../../src/ui/cli/agent-ops.js";
+import { HELD_WRITE_RISK } from "../../../src/shared/approval-policy.js";
+import { heldActions } from "../../../src/ui/server/held-actions.js";
+
+describe("issue 765: agent_rotation_defer (the held ask)", () => {
+  it("fixes the time when asked, says what it does, and on Allow puts it off", async () => {
+    const r = await rig();
+    await started(r);
+    const d = resolveAgentsDeps(r.deps);
+    const asked = new Date();
+    const c = checkAgentRotationDefer(
+      d,
+      { agent: "be-dev", until: "+2h" },
+      { agent: "be-dev", project: "north" },
+      asked,
+    );
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    const until = new Date(asked.getTime() + 2 * H).toISOString();
+    expect(c.args).toEqual({ agent: "be-dev", project: "north", until });
+    expect(c.summary).toMatch(/^Put be-dev's rotation off until /);
+    expect(c.details.join("\n")).toMatch(/nothing rotates it/);
+    // A late Allow runs the stored args: the time doesn't move.
+    const ran = await runAgentRotationDefer(
+      d,
+      c.args as unknown as Record<string, unknown>,
+      new Date(asked.getTime() + 30 * 60_000),
+    );
+    expect(ran).toEqual({ ok: true, agent: "be-dev", project: "north", until });
+    expect(readRotation(filesOf(r, "be-dev"))?.deferredUntil).toBe(until);
+    // off: stops it, said as a clear.
+    const off = checkAgentRotationDefer(d, { agent: "be-dev", until: "off" });
+    expect(off.ok && off.params).toEqual({ agent: "be-dev", clears: "1" });
+    await runAgentRotationDefer(d, off.ok ? (off.args as never) : {});
+    expect(readRotation(filesOf(r, "be-dev"))?.deferredUntil).toBeUndefined();
+  }, 30_000);
+
+  it("refuses: no time, a past time, off with nothing put off, another project's agent", async () => {
+    const r = await rig();
+    await started(r);
+    const d = resolveAgentsDeps(r.deps);
+    const err = (
+      raw: Record<string, unknown>,
+      who: { agent?: string; project?: string } = {},
+    ) => {
+      const c = checkAgentRotationDefer(d, raw, who);
+      return c.ok ? "" : c.error;
+    };
+    expect(err({ agent: "be-dev" })).toMatch(/until is required/);
+    expect(
+      err({ agent: "be-dev", until: new Date(Date.now() - H).toISOString() }),
+    ).toMatch(/a time to come/);
+    expect(err({ agent: "be-dev", until: "off" })).toMatch(/nothing to undo/);
+    expect(
+      err({ agent: "be-dev", until: "+1h" }, { agent: "x", project: "south" }),
+    ).toMatch(/can ask for that project's agents only/);
+    expect(readRotation(filesOf(r, "be-dev"))?.deferredUntil).toBeUndefined();
+  }, 30_000);
+
+  it("it widens: held for the person's Allow, and the server knows it", () => {
+    expect(HELD_WRITE_RISK.agent_rotation_defer?.risk).toBe("widens");
+    expect(Object.keys(heldActions({}))).toContain("agent_rotation_defer");
+    expect(
+      heldActions({}).agent_rotation_defer.check({ agent: "a", until: "+1h" }),
+    ).toEqual({
+      ok: false,
+      error: "this Den can't put an agent's rotation off here",
+    });
+  });
+});

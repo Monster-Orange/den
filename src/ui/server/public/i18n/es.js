@@ -2165,6 +2165,16 @@
       "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
     "ap.det.agent_mode.stopped":
       "Está detenido: su próximo arranque es en {mode}.",
+    "ap.do.agent_rotation_defer":
+      "Aplazar la rotación de {agent} hasta {until}",
+    "ap.do.agent_rotation_defer.clear":
+      "Dejar de aplazar la rotación de {agent}",
+    "ap.det.agent_rotation_defer.until":
+      "Hasta {until}, nada lo rota: conserva su conversación.",
+    "ap.det.agent_rotation_defer.off":
+      "Su rotación ya no está aplazada: la regla normal se aplica de inmediato.",
+    "ap.det.agent_rotation_defer.after":
+      "Después, se aplica la regla normal: rota cuando le toque.",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",

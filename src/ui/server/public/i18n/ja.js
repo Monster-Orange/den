@@ -2111,6 +2111,16 @@
     "ap.det.agent_mode.running":
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
+    "ap.do.agent_rotation_defer":
+      "{agent} のローテーションを {until} まで延期する",
+    "ap.do.agent_rotation_defer.clear":
+      "{agent} のローテーションの延期をやめる",
+    "ap.det.agent_rotation_defer.until":
+      "{until} までは何もローテーションしません。会話はそのまま続きます。",
+    "ap.det.agent_rotation_defer.off":
+      "ローテーションの延期をやめました。通常のルールがすぐに適用されます。",
+    "ap.det.agent_rotation_defer.after":
+      "その後は通常のルールが適用され、期限が来ればローテーションします。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",

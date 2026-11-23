@@ -114,6 +114,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
   },
+  agent_rotation_defer: {
+    risk: "widens",
+    why: "keeps an agent in its conversation past its rotation, until a time",
+  },
   project_mcp_add: {
     risk: "critical",
     why: "gives a project's agents new tools, and sends a bearer to a new address",
