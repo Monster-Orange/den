@@ -1430,6 +1430,7 @@ import {
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
+import { loggedPath } from "./logged-path.js";
 import {
   lastRunsByRepo,
   recordRunEnd,
@@ -2519,18 +2520,6 @@ function machineNameSetting(user: {
   } catch {
     return null;
   }
-}
-
-/**
- * A path as the request log writes it: a sign-in poll's id is its
- * credential (SEC-2a: the code request's, a GitHub flow's), so it shows
- * as `:id`.
- */
-function loggedPath(pathname: string): string {
-  return pathname.replace(
-    /^(\/api\/(?:signin\/code|github\/signin|web\/owner\/link))\/[^/]+$/,
-    "$1/:id",
-  );
 }
 
 /**
