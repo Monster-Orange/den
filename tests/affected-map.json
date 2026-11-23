@@ -2169,6 +2169,11 @@
       "why": "tests that run scripts/shard-plan.cjs"
     },
     {
+      "when": ["scripts/shard-times-refresh.mjs"],
+      "run": ["tests/unit/test-infra/shard-times-refresh.test.ts"],
+      "why": "tests that run scripts/shard-times-refresh.mjs"
+    },
+    {
       "when": ["scripts/state-writes-gate.mjs"],
       "run": ["tests/unit/test-infra/state-writes-gate.test.ts"],
       "why": "tests that run scripts/state-writes-gate.mjs"
