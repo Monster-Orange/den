@@ -176,6 +176,10 @@ Held (each waits for the person's Allow):
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `agent_sandbox_set`: turn one agent's sandbox off or back on, with a
+  reason. Off runs only on the person's own Allow, and the Review says so
+  when an agent asks for itself; back on follows the policy. Den restarts
+  a running agent after its turn, on the same conversation.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.
