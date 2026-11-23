@@ -2136,7 +2136,7 @@ async function tokenRefusalRow(): Promise<{
 }> {
   const { tokenRefusalLines, readRefusalEntries } =
     await import("./doctor-token-refusals.js");
-  const { AUDIT_FILE } = await import("../server/audit.js");
+  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
   return tokenRefusalLines(
     readBrand().name,
     readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
