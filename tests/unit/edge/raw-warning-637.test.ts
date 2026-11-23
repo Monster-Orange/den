@@ -129,3 +129,21 @@ describe("issue 637: doctor says when Den last swept", () => {
     );
   });
 });
+
+describe("issue 637: the sweep runs but isn't emptying the file", () => {
+  it("fresh heartbeat, a part line last written 11 s ago: warns", () => {
+    sweepAccessLog(dir, on);
+    const raw = accessPaths(dir).raw;
+    // The edge died mid-write: a line with no newline, so no sweep takes it.
+    fs.appendFileSync(raw, line(1).trimEnd());
+    sweepAccessLog(dir, on);
+    const now = sweptAt() + 1_000;
+    fs.utimesSync(raw, new Date(now - 11_000), new Date(now - 11_000));
+    const w = rawAccessWarning(dir, now);
+    expect(w).toMatch(/the sweep runs but isn't emptying it/);
+    expect(w).toMatch(/last written 11 s ago/);
+    // Still being written (a busy edge): no warning.
+    fs.utimesSync(raw, new Date(now - 500), new Date(now - 500));
+    expect(rawAccessWarning(dir, now)).toBeNull();
+  });
+});
