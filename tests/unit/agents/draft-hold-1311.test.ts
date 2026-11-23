@@ -234,6 +234,20 @@ describe("issue 1311: a draft holds what Den types", () => {
     clearDraft(sid);
   }, 30_000);
 
+  it("an old draft erased out of Den's sight, then a fresh key, against an empty line: held", async () => {
+    const { r, sid } = await planner(box("half a sen"));
+    key(sid, "half a sen");
+    key(sid, "\x17"); // Ctrl-W: Den can't count what it took
+    r.made[0].emit(box(""));
+    await settle();
+    await new Promise((res) => setTimeout(res, ECHO_MS + 100));
+    key(sid, "x"); // typing again; its echo isn't on the screen yet
+    const d = resolveAgentsDeps(r.deps);
+    expect(await agentInputState(d, "planner", new Set(), 200)).toBe("busy");
+    expect(draftPending(sid)).toBe(true);
+    clearDraft(sid);
+  }, 30_000);
+
   it("no draft: typed as today", async () => {
     const { r } = await planner(box(""));
     const d = resolveAgentsDeps(r.deps);

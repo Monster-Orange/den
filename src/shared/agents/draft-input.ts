@@ -19,6 +19,8 @@ interface Draft {
   chars: number;
   /** When it began (ms). */
   since: number;
+  /** When its last character was typed or pasted (ms). */
+  lastKeyAt: number;
   /** The last printable character typed (a backslash before Enter). */
   last: string;
   /** Inside a bracketed paste. */
@@ -59,17 +61,18 @@ export const ECHO_MS = 500;
 
 /**
  * An empty input line on a screen read at `readAt` (ms): session
- * `sessionId`'s draft goes only when it began before that read by at least
- * ECHO_MS. A draft begun later, or just before (its echo may not be drawn
- * yet), stays. True when there is no draft now.
+ * `sessionId`'s draft goes only when its last key came before that read by
+ * at least ECHO_MS. A key typed later, or just before (its echo may not be
+ * drawn yet), keeps it, however old the draft. True when there is no draft
+ * now.
  */
 export function clearDraftSeenEmpty(
   sessionId: string,
   readAt: number,
 ): boolean {
-  const since = draftSince(sessionId);
-  if (since === undefined) return true;
-  if (since > readAt - ECHO_MS) return false;
+  const d = drafts.get(sessionId);
+  if (!d || !draftPending(sessionId)) return true;
+  if (d.lastKeyAt > readAt - ECHO_MS) return false;
   clearDraft(sessionId);
   return true;
 }
@@ -94,7 +97,7 @@ export function noteInput(sessionId: string, bytes: Buffer): void {
   let d = drafts.get(sessionId);
   const draft = (): Draft => {
     if (!d) {
-      d = { chars: 0, since: Date.now(), last: "", paste: false };
+      d = { chars: 0, since: now, lastKeyAt: now, last: "", paste: false };
       drafts.set(sessionId, d);
     }
     return d;
@@ -123,6 +126,7 @@ export function noteInput(sessionId: string, bytes: Buffer): void {
     if (d?.paste) {
       if (ch !== "\r" && ch !== "\n") d.chars++;
       d.last = ch;
+      d.lastKeyAt = now;
       continue;
     }
     const code = ch.codePointAt(0)!;
@@ -151,6 +155,7 @@ export function noteInput(sessionId: string, bytes: Buffer): void {
       const x = draft();
       x.chars++;
       x.last = ch;
+      x.lastKeyAt = now;
     }
     // Other control keys (Tab, Ctrl-W, …): Den can't say what they did.
   }
