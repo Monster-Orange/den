@@ -312,51 +312,80 @@ describe("issue 1316: a refused GPG signing gets its own note", () => {
   });
 });
 
-/** A key the person set by hand, in a folder of the state dir. */
-function keyUnderState(stateDir: string) {
-  const dir = path.join(stateDir, "git-signing");
-  fs.mkdirSync(dir, { recursive: true });
-  const key = path.join(dir, "den-agents_ed25519");
+/** A key the person set by hand at `rel` in the state dir. */
+function keyInState(stateDir: string, rel: string) {
+  const key = path.join(stateDir, rel);
+  fs.mkdirSync(path.dirname(key), { recursive: true });
   spawnSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key]);
   return key;
 }
+const OWN_KEY = path.join("agent-signing", "mine", "den-agents_ed25519");
+/** State files that hold secrets, and a folder of the person's own. */
+const NOT_A_KEY_PLACE = [
+  "push-vapid.json",
+  path.join("hub", "unrevoked", "x.token"),
+  path.join("backup", "y.bad"),
+  "web.secret",
+  path.join("git-signing", "den-agents_ed25519"),
+];
 
-describe("issue 1316: agents.git.signing_key under the state dir", () => {
-  it("its key and .pub are read back as exact files; a hidden file, a folder or a link never", () => {
+describe("issue 1316: agents.git.signing_key in the state dir", () => {
+  it("only under agent-signing/ is it read back; every other state file is refused, and why", () => {
     const ins = install();
-    const key = keyUnderState(ins.stateDir);
-    fs.writeFileSync(path.join(ins.stateDir, "web.secret"), "s\n");
-    fs.mkdirSync(path.join(ins.stateDir, "actor-token", "a2"), { recursive: true });
-    fs.writeFileSync(path.join(ins.stateDir, "actor-token", "a2", "token"), "t\n");
-    fs.symlinkSync(path.join(ins.stateDir, "web.secret"), path.join(base, "link"));
-    const asked = [
-      key,
-      `${key}.pub`,
-      path.join(ins.stateDir, "web.secret"),
-      path.join(ins.stateDir, "actor-token", "a2", "token"),
-      path.join(ins.stateDir, "git-signing"),
-      path.join(base, "link"),
-    ];
-    const p = agentSandboxPolicy({ ...ins, readableFiles: asked });
+    const key = keyInState(ins.stateDir, OWN_KEY);
+    const bad = NOT_A_KEY_PLACE.map((r) => keyInState(ins.stateDir, r));
+    fs.symlinkSync(key, path.join(base, "link"));
+    const p = agentSandboxPolicy({
+      ...ins,
+      readableFiles: [key, `${key}.pub`, ...bad, path.join(ins.stateDir, "hub"), path.join(base, "link")],
+    });
     const real = (f: string) => fs.realpathSync(f);
     expect(p.readableFiles).toContain(real(key));
     expect(p.readableFiles).toContain(real(`${key}.pub`));
-    for (const f of asked.slice(2)) {
+    for (const f of bad) {
       expect(p.readableFiles).not.toContain(real(f));
-      expect(p.readable).not.toContain(real(f));
+      expect(sandboxHidesFile(f, ins)).toMatch(/is in Den's state folder, hidden from agents: put the key in .*agent-signing/);
     }
-    expect(sandboxHidesFile(asked[2], ins)).toMatch(/Den's private files/);
-    expect(sandboxHidesFile(asked[3], ins)).toMatch(/Den's private files/);
-    expect(sandboxHidesFile(asked[4], ins)).toMatch(/not a file/);
-    expect(sandboxHidesFile(asked[5], ins)).toMatch(/is a link/);
+    expect(sandboxHidesFile(path.join(ins.stateDir, "hub"), ins)).toMatch(/not a file/);
+    expect(sandboxHidesFile(path.join(base, "link"), ins)).toMatch(/is a link/);
     expect(signingReadFiles({ signingKey: key })).toEqual([key, `${key}.pub`]);
     expect(signingReadFiles({ off: true })).toEqual([]);
   });
 
-  onMac("a key under state signs in the real sandbox; a sibling private file and its folder stay unreadable", () => {
+  it("outside state: never in an edge's key folder or another install's state (a * matches one name)", () => {
+    const ins = install();
+    const other = path.join(base, "other-state");
+    const edge = path.join(base, "share", "acme", "edge");
+    const outside = path.join(base, "keys");
+    const k1 = keyInState(other, "k");
+    const k2 = keyInState(edge, path.join("ca", "k"));
+    const k3 = keyInState(outside, "k");
+    const i = { ...ins, keyRefusedDirs: [other, path.join(base, "share", "*", "edge")] };
+    expect(sandboxHidesFile(k1, i)).toMatch(/hidden from agents/);
+    expect(sandboxHidesFile(k2, i)).toMatch(/hidden from agents/);
+    expect(sandboxHidesFile(k3, i)).toBeNull();
+    const p = agentSandboxPolicy({ ...i, readableFiles: [k1, k2, k3] });
+    expect(p.readableFiles).toEqual(expect.arrayContaining([fs.realpathSync(k3)]));
+    expect(p.readableFiles).not.toContain(fs.realpathSync(k1));
+    expect(p.readableFiles).not.toContain(fs.realpathSync(k2));
+  });
+
+  onMac("named as signing_key, a state secret stays unreadable in the real sandbox", () => {
+    const ins = install();
+    const bad = NOT_A_KEY_PLACE.map((r) => keyInState(ins.stateDir, r));
+    const box = sandboxFor(
+      ["/bin/sh", "-c", bad.map((f, n) => `cat ${f} >/dev/null 2>&1; echo f${n}=$?`).join("; ")],
+      { ...ins, readableFiles: bad.flatMap((f) => [f, `${f}.pub`]) },
+      { platform: "darwin", on: true },
+    );
+    const out = spawnSync(box.argv[0], box.argv.slice(1), { encoding: "utf8" }).stdout;
+    bad.forEach((_, n) => expect(out).toMatch(new RegExp(`^f${n}=[1-9]`, "m")));
+  });
+
+  onMac("a key under agent-signing/ signs in the real sandbox; a private sibling and its folder stay unreadable", () => {
     const p = person(true);
     const ins = install();
-    const key = keyUnderState(ins.stateDir);
+    const key = keyInState(ins.stateDir, OWN_KEY);
     fs.writeFileSync(path.join(ins.stateDir, "push-vapid.json"), "private\n");
     const git = gitSigningBlock({ signing_key: key });
     const s = resolveAgentSigning({ git, stateDir: ins.stateDir, cwd: p.repo, env: p.env });
@@ -364,48 +393,57 @@ describe("issue 1316: agents.git.signing_key under the state dir", () => {
     const script = [
       "git commit -q --allow-empty -m t; echo commit=$?",
       `cat ${ins.stateDir}/push-vapid.json >/dev/null 2>&1; echo sibling=$?`,
-      `ls ${path.dirname(key)} >/dev/null 2>&1; echo folder=$?`,
+      `ls ${ins.stateDir} >/dev/null 2>&1; echo state=$?`,
       `echo x >> ${key} 2>/dev/null; echo write=$?`,
     ].join("; ");
     const box = sandboxFor(["/bin/sh", "-c", script], input, { platform: "darwin", on: true });
     const env = { ...p.env, ...agentGitEnv(s), ...box.env };
     const out = spawnSync(box.argv[0], box.argv.slice(1), { cwd: p.repo, env, encoding: "utf8" });
     expect(out.stdout).toMatch(/^commit=0$/m);
-    for (const k of ["sibling", "folder", "write"])
+    for (const k of ["sibling", "state", "write"])
       expect(out.stdout).toMatch(new RegExp(`^${k}=[1-9]`, "m"));
     expect(fs.existsSync(p.marker)).toBe(false);
-    // Without the read-back, the same commit fails (the report on issue 1316).
-    const bare = sandboxFor(["git", "commit", "-q", "--allow-empty", "-m", "u"], ins, {
-      platform: "darwin",
-      on: true,
-    });
-    const r = spawnSync(bare.argv[0], bare.argv.slice(1), {
+  });
+
+  onMac("a key elsewhere in state: the commit fails in the sandbox, and doctor says why", () => {
+    const p = person(true);
+    const ins = install();
+    const key = keyInState(ins.stateDir, path.join("git-signing", "den-agents_ed25519"));
+    const git = gitSigningBlock({ signing_key: key });
+    const s = resolveAgentSigning({ git, stateDir: ins.stateDir, cwd: p.repo, env: p.env });
+    const box = sandboxFor(
+      ["git", "commit", "-q", "--allow-empty", "-m", "u"],
+      { ...ins, readableFiles: signingReadFiles(git) },
+      { platform: "darwin", on: true },
+    );
+    const r = spawnSync(box.argv[0], box.argv.slice(1), {
       cwd: p.repo,
-      env: { ...p.env, ...agentGitEnv(s), ...bare.env },
+      env: { ...p.env, ...agentGitEnv(s), ...box.env },
       encoding: "utf8",
     });
     expect(r.status).not.toBe(0);
+    const o = { stateDir: ins.stateDir, distRoot: ins.distRoot, env: p.env, on: true, tmp: base };
+    const d = signingInSandbox({ signingKey: key }, o);
+    expect(d.ok).toBe(false);
+    expect(d.detail).toMatch(/agents can't read their signing key: .*is in Den's state folder.*agent-signing/);
   });
 
-  onMac("doctor checks inside the sandbox: a key under state passes; one naming a hidden file fails, saying so", () => {
+  onMac("doctor checks inside the sandbox: a key under agent-signing/ passes; each state secret fails, naming why", () => {
     const p = person(true);
     const ins = install();
-    const key = keyUnderState(ins.stateDir);
     const o = { stateDir: ins.stateDir, distRoot: ins.distRoot, env: p.env, on: true, tmp: base };
-    expect(signingInSandbox({ signingKey: key }, o)).toMatchObject({ ok: true });
-    // A secret named as the key: hidden, and doctor says why.
-    const secret = path.join(ins.stateDir, "web.secret");
-    fs.copyFileSync(key, secret);
-    fs.copyFileSync(`${key}.pub`, `${secret}.pub`);
-    const r = signingInSandbox({ signingKey: secret }, o);
-    expect(r.ok).toBe(false);
-    expect(r.detail).toMatch(/agents can't read their signing key: .*Den's private files/);
+    expect(signingInSandbox({ signingKey: keyInState(ins.stateDir, OWN_KEY) }, o)).toMatchObject({ ok: true });
+    for (const r of NOT_A_KEY_PLACE) {
+      const d = signingInSandbox({ signingKey: keyInState(ins.stateDir, r) }, o);
+      expect([r, d.ok]).toEqual([r, false]);
+      expect(d.detail).toMatch(/is in Den's state folder, hidden from agents/);
+    }
   });
 
   onMac("doctor's sandboxed check fails where the session would (the key unreadable there)", () => {
     const p = person(true);
     const ins = install();
-    const key = keyUnderState(ins.stateDir);
+    const key = keyInState(ins.stateDir, path.join("git-signing", "k"));
     const r = checkAgentSigning(
       { signingKey: key },
       {
@@ -437,11 +475,11 @@ describe("issue 1316: a key folder missing a file", () => {
 describe("issue 1316: Den's launch passes the key's files to the sandbox", () => {
   it("agentSandboxInput carries readableFiles; none when unset", () => {
     const ins = install();
-    const key = keyUnderState(ins.stateDir);
+    const key = keyInState(ins.stateDir, OWN_KEY);
     const o = { stateDir: ins.stateDir, distRoot: ins.distRoot, env: { HOME: base }, agentId: "a1" };
-    expect(
-      agentSandboxInput({ ...o, readableFiles: signingReadFiles({ signingKey: key }) }).readableFiles,
-    ).toEqual([key, `${key}.pub`]);
+    const withKey = agentSandboxInput({ ...o, readableFiles: signingReadFiles({ signingKey: key }) });
+    expect(withKey.readableFiles).toEqual([key, `${key}.pub`]);
+    expect(Array.isArray(withKey.keyRefusedDirs)).toBe(true);
     expect("readableFiles" in agentSandboxInput(o)).toBe(false);
   });
 });

@@ -148,6 +148,12 @@ export interface AgentSandboxInput {
    * (sandboxHidesFile says why).
    */
   readableFiles?: string[];
+  /**
+   * Issue 1316: folders a readableFiles entry may never be in (the edge's
+   * key folders, other installs' state folders): issue 728 denies them.
+   * A `*` segment matches any one name.
+   */
+  keyRefusedDirs?: string[];
 }
 
 /**
@@ -211,15 +217,32 @@ export function realPath(p: string): string {
   }
 }
 
+/** `f` is `d` or inside it; a `*` segment of `d` matches any one name. */
+function isUnder(f: string, d: string): boolean {
+  if (!d.includes("*")) {
+    const r = realPath(d);
+    return f === r || f.startsWith(r + path.sep);
+  }
+  const esc = path
+    .resolve(d)
+    .split("*")
+    .map((x) => x.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
+    .join("[^/]+");
+  // The sandbox is macOS's and Linux's only: "/" separates.
+  return new RegExp(`^${esc}(?:/|$)`).test(f);
+}
+
 /**
  * Issue 1316: why the sandbox won't let a session read `file` that a
  * setting names (a signing key), or null when it will. Only a plain file
- * (not a link, not a folder), never one of the hidden files, an agent's
- * token, the sessions socket, or a file in a denied folder.
+ * (not a link, not a folder). In the state dir, only one under
+ * <state>/agent-signing/: an allow rule, so no secret Den keeps there (or
+ * adds later) can be named. Outside it, never a file in a denied folder,
+ * the edge's key folders or another install's state folder.
  */
 export function sandboxHidesFile(
   file: string,
-  i: Pick<AgentSandboxInput, "stateDir" | "deniedDirs">,
+  i: Pick<AgentSandboxInput, "stateDir" | "deniedDirs" | "keyRefusedDirs">,
 ): string | null {
   let st: fs.Stats;
   try {
@@ -231,14 +254,12 @@ export function sandboxHidesFile(
   if (!st.isFile()) return `${file} is not a file`;
   const f = realPath(file);
   const state = realPath(i.stateDir);
-  const under = (d: string) => f === d || f.startsWith(d + path.sep);
-  if (
-    HIDDEN_FILES.some((h) => f === path.join(state, h)) ||
-    under(path.join(state, "actor-token")) ||
-    f === path.join(state, "sessions.sock") ||
-    (i.deniedDirs ?? []).some((d) => under(realPath(d)))
-  )
-    return `${file} is one of Den's private files, hidden from agents`;
+  if (isUnder(f, state))
+    return isUnder(f, path.join(state, SESSION_SIGNING_DIR))
+      ? null
+      : `${file} is in Den's state folder, hidden from agents: put the key in ${path.join(state, SESSION_SIGNING_DIR)}/ or outside the state folder`;
+  if ([...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) => isUnder(f, d)))
+    return `${file} is in a folder hidden from agents (Den's local proof, an edge's keys or another install's state)`;
   return null;
 }
 

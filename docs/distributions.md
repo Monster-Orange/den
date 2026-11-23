@@ -4966,7 +4966,11 @@ read-only to them). The start line that made it prints the `gh` line below.
 
 A key of your own is per machine, so it usually goes in
 `config/local/user.yml`; the org config can set one too, and user.yml's
-wins:
+wins. Agents read that key and its `.pub` in their sandbox as single
+files, never their folder. Keep it outside Den's state folder, or inside it
+only under `<state>/agent-signing/`: anywhere else in the state folder, and
+in an edge's key folders or another install's state folder, agents can't
+read it, and `<cli> doctor` says so.
 
 ```yaml
 agents:

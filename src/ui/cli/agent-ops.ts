@@ -891,6 +891,29 @@ function defaultMcpServer(cli: string): {
  * state, the distribution, the gate store, the socket folders allowed, and
  * the folders no session reads (the machine's local proof).
  */
+/**
+ * Issue 1316: where a signing key agents read may never be: what issue 728
+ * denies outside the state folder (this install's edge key folders, the
+ * other installs' state folders and their edges').
+ */
+function signingKeyRefusedDirs(
+  stateDir: string,
+  distRoot: string,
+  env: NodeJS.ProcessEnv,
+): string[] {
+  const out = [...edgeKeyDirs(distRoot)];
+  try {
+    for (const o of listOtherInstalls(
+      registryDir({ ...process.env, ...env }),
+      { ownStateDir: stateDir, home: { ...process.env, ...env }.HOME },
+    ))
+      out.push(o.stateDir, ...o.edgeKeyDirs);
+  } catch {
+    /* no registry: nothing more to refuse */
+  }
+  return [...new Set(out)];
+}
+
 export function agentSandboxInput(o: {
   stateDir: string;
   distRoot: string;
@@ -909,7 +932,12 @@ export function agentSandboxInput(o: {
     agentId: o.agentId,
     env: o.env,
     socketsAllowed: o.sockets ?? [],
-    ...(o.readableFiles?.length ? { readableFiles: o.readableFiles } : {}),
+    ...(o.readableFiles?.length
+      ? {
+          readableFiles: o.readableFiles,
+          keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
+        }
+      : {}),
     deniedDirs: localProofDirs(
       o.env,
       o.platform ?? process.platform,
