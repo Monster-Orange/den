@@ -72,11 +72,15 @@ import {
   hookCommands,
   mergeHooks,
   sandboxRefusalHooks,
+  type GateRouteArgs,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { distributionBin, shellQuote } from "../cli-command.js";
+import { getDistRoot, getEngineRoot } from "../paths.js";
+import { gateDir } from "../gates/store.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -638,6 +642,8 @@ function common(input: LaunchInput): {
   const inbox = inboxBase
     ? { base: inboxBase, ...(call ? { call } : {}) }
     : undefined;
+  // Issue 1264: the hook routes heavy runs through the gate (guardrails on).
+  const gate = input.persona.guardrails?.hooks ? gateRouteArgs() : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -656,6 +662,7 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          gate,
         ),
         !!input.apiOnly,
       )
@@ -699,6 +706,7 @@ function common(input: LaunchInput): {
       : [];
   const allow = [
     ...allowRules(input.allow ?? []),
+    ...gateAllowRules(gate?.cli, input.allow ?? []),
     ...(den?.allow ?? []),
     ...hubAllow,
   ];
@@ -1117,3 +1125,38 @@ export const denClaude: Runtime = {
   // catalog entry's sign-in data.
   signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };
+
+/**
+ * Issue 1264: allow rules for the gated form of each command the agent is
+ * already allowed (`<cli> gate run --kind cpu|browser -- <command>`), so a
+ * run the hook routes still runs without asking. Only those commands, never
+ * the gate on its own. The words match the hook's (gate-route.mjs
+ * gatePrefix, pretooluse.mjs gateRewrite); a test checks both agree.
+ */
+export function gateAllowRules(
+  cli: string | undefined,
+  commands: readonly string[],
+): string[] {
+  if (!cli) return [];
+  return ["cpu", "browser"].flatMap((kind) =>
+    allowRules(
+      commands.map((c) => `${shellQuote(cli)} gate run --kind ${kind} -- ${c}`),
+    ),
+  );
+}
+
+/**
+ * Issue 1264: this install's CLI and the gate's settings file, for the
+ * PreToolUse hook to route an agent's heavy runs through the gate; none
+ * when the install's CLI can't be found (no routing then).
+ */
+export function gateRouteArgs(): GateRouteArgs | undefined {
+  try {
+    const cli = distributionBin(product().cli, getDistRoot(), getEngineRoot());
+    return cli
+      ? { cli, settings: path.join(gateDir(), "settings.json") }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
