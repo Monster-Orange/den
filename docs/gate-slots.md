@@ -187,6 +187,29 @@ says so on its last line, and a `gate run --priority release` says it is
 taken as an ordinary run.
 A CI runner may ask for it too (see below; `priority_runners`).
 
+## A waiting run keeps its place across a restart
+
+A Den restart (or its window closing) can end a `gate run` while it waits.
+Its place in line is kept for `waiter_return_minutes` (default 10):
+
+- `gate status` shows it as `run gone, place kept until <time>`. It's
+  never given a slot while it's gone, so the next live run starts instead.
+- The same run asking again (same kind, label, repo and asker, and the
+  same `--box` choice) takes its place back: `gate: back in your place
+(<id>)`. A different run goes to the end of the line as usual.
+- If it doesn't come back in time, the place is let go. The slot log
+  records `taken-back-gone` with reason `waiter-gone`, and the next time
+  that run asks, it prints `gate: your earlier place (asked <time>) was let
+go at <time>`.
+
+Only a hang-up or terminate signal (SIGHUP, SIGTERM) keeps the place.
+Ctrl-C (SIGINT) and SIGQUIT give it back at once. A holder whose run ends
+frees its slot at once, as before. Agents' MCP asks and CI runners keep
+their own leases.
+
+Change it in Settings › Server, or with `den gate settings
+--waiter-return-minutes N` (0: a gone waiter loses its place at once).
+
 ## Let one waiting run go ahead of yours
 
 ```sh
@@ -610,10 +633,14 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
   that connects with `exposeNetwork: "<loopback>"`. The gate hands a box
   run `DEN_PW_WS` (the box's Playwright server) and `DEN_PW_EXPOSE`
   (`<loopback>`); on this machine it adds neither. Den's own browser
-  helper reads both. Another product's client either connects with
-  pw-guard's `connectGuarded(chromium, process.env.DEN_PW_WS)`, which
-  reads `DEN_PW_EXPOSE` itself, or passes it:
-  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`.
+  helper reads both. Another product's client connects with pw-guard's
+  `connectGuarded(chromium, process.env.DEN_PW_WS)`, which reads
+  `DEN_PW_EXPOSE` itself and returns the browser already guarded by
+  `DEN_GATE_ALLOW` (issue 1205): with no allow list nothing loads, so it
+  never reaches this machine unguarded. A client that connects itself,
+  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`,
+  must call `guardBrowser` on the result. Guarding twice is harmless:
+  a second guard can only narrow what loads.
   A box run (`DEN_GATE_SLOT_BOX` is a box's name) that connects through
   pw-guard without it is told once: `box run without exposeNetwork
 <loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE

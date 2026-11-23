@@ -123,7 +123,7 @@ body.den-has-shell > #den-content {
      menu still drops below it. */
   will-change: transform;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
   min-width: 0;
   color: var(--text);
 }
@@ -372,7 +372,7 @@ body.den-has-shell > #den-content {
   gap: 6px;
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: var(--radius-button, 4px);
   background: transparent;
   color: var(--text);
@@ -403,7 +403,7 @@ body.den-has-shell > #den-content {
   justify-content: flex-start;
   margin-top: auto;
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px var(--edge-style, solid) var(--border);
 }
 .den-report-off [data-den-report] {
   display: none !important;
@@ -453,7 +453,7 @@ body.den-has-shell > #den-content {
   flex-direction: column;
   padding: 10px 8px;
   background: var(--surface);
-  border-right: 1px solid var(--border);
+  border-right: 1px var(--edge-style, solid) var(--border);
   overflow-y: auto;
   z-index: 15;
   color: var(--text);
@@ -780,7 +780,7 @@ body.den-has-shell .den-upd {
   font-size: 10px;
   padding: 2px 8px;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   color: var(--muted);
   background: none;
   cursor: pointer;
@@ -916,7 +916,7 @@ body.den-has-shell .den-upd {
   align-items: center;
   gap: 8px;
   background: var(--sunken);
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: var(--radius-button);
   padding: 5px 10px;
   color: var(--faint);
@@ -947,7 +947,7 @@ body.den-has-shell .den-upd {
 .den-search kbd,
 .den-top .den-rb kbd {
   font: 11px var(--mono);
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 0 5px;
@@ -984,7 +984,7 @@ body.den-has-shell .den-upd {
   overflow: auto;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: 10px;
   box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);
   /* On <body>: its own font, not a page's default (a serif). */
@@ -1003,7 +1003,7 @@ body.den-has-shell .den-upd {
   gap: 8px;
   align-items: center;
   padding: 4px 12px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
 }
 .den-bell-hd h2 {
   font-size: 13px;
@@ -1044,7 +1044,7 @@ body.den-has-shell .den-upd {
 }
 /* Issue 101: Needs you, then Earlier, each under a quiet heading. */
 .den-bell-sec + .den-bell-sec {
-  border-top: 1px solid var(--border);
+  border-top: 1px var(--edge-style, solid) var(--border);
 }
 .den-bell-sech {
   margin: 0;
@@ -1162,7 +1162,7 @@ body.den-has-shell .den-upd {
   position: fixed;
   z-index: 45;
   background: var(--raised);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: 10px;
   box-shadow: var(--shadow);
   padding: 6px;
@@ -1245,7 +1245,7 @@ body.den-has-shell .den-upd {
   margin: 0 0 4px;
   -webkit-appearance: none;
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   background: var(--bg);
   color: var(--text);
   border-radius: var(--radius-button);

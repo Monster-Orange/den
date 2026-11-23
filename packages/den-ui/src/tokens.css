@@ -59,6 +59,17 @@
   --tap: 44px;
   --tap-min: 36px;
 
+  /* Issue 788: edges and the filled buttons, as a theme's shape sets them
+     (edge: solid | dashed, buttons: filled | outline). These defaults draw
+     what the kit always drew; the sketch theme sets dashed and outline. */
+  --edge-style: solid;
+  --primary-bg: var(--accent-fill);
+  --primary-border: var(--accent-fill);
+  --primary-text: var(--on-accent);
+  --danger-bg: var(--bad);
+  --danger-border: var(--bad);
+  --danger-text: var(--on-accent);
+
   /* Veils behind a pop-up, the same in both modes: the ☰ drawer's and the
      status drawer's scrim, What's new's overlay, the Report form's backdrop. */
   --kit-scrim: rgb(0 0 0 / 0.35);
