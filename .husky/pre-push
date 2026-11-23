@@ -11,7 +11,9 @@
 # scripts/fast-checks.json: version sync, the words gate, the colour and kit
 # tokens, i18n parity…), over the checked-out tree, in seconds.
 # DEN_PREPUSH_FAST=0 skips them.
-root="${DEN_ROOT:-$(git rev-parse --show-toplevel)}"
+# The gates come from the checkout being pushed. DEN_HOOK_ROOT points them
+# elsewhere (tests only). Never DEN_ROOT: Den sets that to a distribution.
+root="${DEN_HOOK_ROOT:-$(git rev-parse --show-toplevel)}"
 zero=0000000000000000000000000000000000000000
 
 if [ "${DEN_PREPUSH_FAST:-1}" != "0" ]; then
