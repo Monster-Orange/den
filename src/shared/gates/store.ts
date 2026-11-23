@@ -92,6 +92,10 @@ import {
   type GateSettings,
 } from "./rules.js";
 
+/**
+ * The gate is one queue per machine, shared by every install and
+ * distribution here, so its folder is always "den", never the product name.
+ */
 export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
   const set = env.DEN_GATE_DIR?.trim();
   if (set) return path.resolve(set);

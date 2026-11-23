@@ -700,44 +700,51 @@ export function gateRunnerEntryOp(d: {
           (x) =>
             x.repo.toLowerCase() === e.repo.toLowerCase() && x.box === e.box,
         );
-      const vars = {
-        repo: e.repo,
-        box: e.box,
-        n: String(e.slots),
-        labels: e.labels.join(", "),
-        variable: e.routing_variable,
-        owner: e.owner,
-      };
+      const repo = e.repo;
+      const box = e.box;
+      const n = String(e.slots);
+      const labels = e.labels.join(", ");
+      const variable = e.routing_variable;
+      const owner = e.owner;
       return {
         ok: true,
         personOnly: true,
         args: { ...e },
         summary: `let ${e.repo}'s CI jobs run on the test box ${e.box}`,
         params: { repo: e.repo, box: e.box },
-        details: [
-          `${had ? "Changes the entry that lets" : "Lets"} ${e.repo}'s CI jobs with the labels ${e.labels.join(", ")} run on the test box ${e.box}, at most ${e.slots} at a time.`,
+        ...reviewLines([
+          had
+            ? line(
+                `Changes the entry that lets ${repo}'s CI jobs with the labels ${labels} run on the test box ${box}, at most ${n} at a time.`,
+                "ap.det.gate_runner_entry_set.change",
+                { repo, labels, box, n },
+              )
+            : line(
+                `Lets ${repo}'s CI jobs with the labels ${labels} run on the test box ${box}, at most ${n} at a time.`,
+                "ap.det.gate_runner_entry_set.reach",
+                { repo, labels, box, n },
+              ),
           e.heavy
-            ? `Each job takes one of ${e.box}'s gate slots, so it never runs beside another heavy job there.`
-            : `Its jobs are light: they take no gate slot on ${e.box}.`,
-          `The repo variable ${e.routing_variable} sends its jobs to the box, or back to hosted runners. ${e.owner} answers for it.`,
-          "You can remove it any time in Settings, under CI runner entries.",
-        ],
-        detailKeys: [
-          {
-            key: had
-              ? "ap.det.gate_runner_entry_set.change"
-              : "ap.det.gate_runner_entry_set.reach",
-            vars,
-          },
-          {
-            key: e.heavy
-              ? "ap.det.gate_runner_entry_set.heavy"
-              : "ap.det.gate_runner_entry_set.light",
-            vars,
-          },
-          { key: "ap.det.gate_runner_entry_set.route", vars },
-          { key: "ap.det.gate_runner_entry_set.remove" },
-        ],
+            ? line(
+                `Each job takes one of ${box}'s gate slots, so it never runs beside another heavy job there.`,
+                "ap.det.gate_runner_entry_set.heavy",
+                { box },
+              )
+            : line(
+                `Its jobs are light: they take no gate slot on ${box}.`,
+                "ap.det.gate_runner_entry_set.light",
+                { box },
+              ),
+          line(
+            `The repo variable ${variable} sends its jobs to the box, or back to hosted runners. ${owner} answers for it.`,
+            "ap.det.gate_runner_entry_set.route",
+            { variable, owner },
+          ),
+          line(
+            "You can remove it any time in Settings, under CI runner entries.",
+            "ap.det.gate_runner_entry_set.remove",
+          ),
+        ]),
       };
     },
     run(a, asked) {

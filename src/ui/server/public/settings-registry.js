@@ -1910,7 +1910,7 @@ function drawRunnerEntries(host, ctx) {
                 `<span class="set-note mono">${escHtml(x.labels.join(", "))}</span>` +
                 `<span class="set-note">${escHtml(L("set.ui.reVarIs", "variable {v}", { v: x.routing_variable }))}</span>` +
                 `<span class="set-note">${escHtml(L("set.ui.reOwnerIs", "owner {who}", { who: x.owner }))}</span>` +
-                `<button type="button" class="btn sm" data-re-repo="${escHtml(x.repo)}" data-re-box="${escHtml(x.box)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `<button type="button" class="den-btn sm" data-re-repo="${escHtml(x.repo)}" data-re-box="${escHtml(x.box)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
                 `</li>`,
             )
             .join("") +
