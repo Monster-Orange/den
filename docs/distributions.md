@@ -5041,6 +5041,12 @@ runs as you, so each agent's session starts inside the OS sandbox:
   would run outside the sandbox. So `<cli> agents list`, `start` and
   `stop` don't work from an agent's shell. An agent starts another with
   the `agent_create` tool.
+- Programs that run as root (setuid: `ps`, `top`, `sudo`) can't start, and
+  Docker's socket, like every outside daemon's, is refused. `sudo` is
+  refused inside a session on purpose: an agent never runs as root. Agents
+  use `pgrep`/`pkill` and Den's status tools; an agent whose work needs
+  Docker runs with its own sandbox off (`agents.<id>.sandbox: off`), never
+  with Docker's socket added to `agents.sandbox_sockets` for every agent.
 - The agent's own folder (`<state>/agent-files/<id>`) stays writable:
   `handoff.md`, its notes, the hooks' counts. The launch files Den writes
   there (its Claude settings, its MCP config) don't.
