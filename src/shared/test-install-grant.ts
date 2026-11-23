@@ -21,6 +21,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 import { product } from "./product.js";
 
 export const TEST_ANNOUNCE_ENV_KEY = "TEST_ANNOUNCE";
@@ -83,10 +84,9 @@ export function announceTestInstall(
     pid: o.pid,
     startedAt: (o.now ?? new Date()).toISOString(),
   };
-  const file = path.join(dir, `${id}.json`);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(body) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(path.join(dir, `${id}.json`), JSON.stringify(body) + "\n", {
+    mode: 0o600,
+  });
 }
 
 /** Remove it (set up, no longer a test install, or exiting). */
