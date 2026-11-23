@@ -86,7 +86,13 @@ local or remote.
 
 `gate run` follows the process that started it. If that process is gone
 (a test run stopped under `make`, say), a waiting `gate run` gives its place
-back and exits; a holding one stops its command, whose end frees the slot.
+back and exits; a holding one stops its command with SIGTERM, whose end frees
+the slot, and with SIGKILL 10 s later if it's still running. A run meant to
+outlive what started it (`nohup … &` from a shell that then exits, `setsid`,
+a wrapper that starts it and leaves) says so with `--detached`, or
+`DEN_GATE_DETACHED=1` in its environment, and its starter isn't followed. A
+command an agent starts in the background keeps its shell as its starter
+while it runs, so it needs neither.
 
 The slot is given back the moment the command ends, however it ends: its
 own exit, or any signal (Ctrl-C, `kill`, a hang-up). A signal sent to

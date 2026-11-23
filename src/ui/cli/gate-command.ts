@@ -21,6 +21,8 @@
  *       starts itself); also read from DEN_PW_WS, HUB_PW_WEBKIT_WS,
  *       E2E_WEBKIT_WS. On macOS a browser run without one is refused
  *       (gates/browser-container.ts; a Setting)
+ *       --detached (or DEN_GATE_DETACHED=1): issue 752, a run meant to
+ *       outlive what started it; its parent isn't followed
  *   status [--json]          who holds, who waits, overruns, test boxes
  *   box <list|add|remove|enable|disable>  the test boxes (a person's)
  *   end <id>                 a person ends a slot early (refused for an
@@ -121,6 +123,8 @@ export const GATE_HELP = {
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
+    "    --detached (or DEN_GATE_DETACHED=1): it outlives what started it",
+    "    (nohup, setsid); otherwise it leaves when its starter is gone",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
@@ -349,6 +353,18 @@ export function realParentAlive(
 
 /** Issue 752: how often gate run looks for its parent, ms. */
 const PARENT_CHECK_MS = 2_000;
+
+/**
+ * Issue 752: an orphaned holder's command that ignores SIGTERM (a hung
+ * browser run) gets SIGKILL this long after it, so it can't keep the slot.
+ */
+export const ORPHAN_KILL_GRACE_MS = 10_000;
+
+/**
+ * Issue 752: a run meant to outlive what started it (`nohup … &`, setsid, a
+ * wrapper that execs and leaves) says so, and its parent isn't followed.
+ */
+export const GATE_DETACHED_ENV = "DEN_GATE_DETACHED";
 
 export function realGateDeps(): GateDeps {
   return {
@@ -656,6 +672,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--base-url": true,
     "--pw-version": true,
     "--browser-endpoint": true,
+    "--detached": false,
   });
   if (!rest || pos.length === 0)
     throw new GateUsage("gate run needs -- <command> [args]");
@@ -908,7 +925,10 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   });
   // Issue 752: an orphan follows its parent out. Waiting, it gives its
   // place back; holding, it stops its command, whose end frees the slot.
-  const parentAlive = d.parentAlive ?? (() => true);
+  // A detached run (--detached, or DEN_GATE_DETACHED=1) isn't followed.
+  const detached =
+    f["--detached"] === true || d.env[GATE_DETACHED_ENV]?.trim() === "1";
+  const parentAlive = detached ? () => true : (d.parentAlive ?? (() => true));
   const orphaned = (): boolean => {
     if (parentAlive()) return false;
     d.err(`gate: the process that started ${id} is gone; leaving the queue`);
@@ -985,10 +1005,21 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: ${label} is past its estimate (${queueMinOf(now)} min${now.padded ? `, measured; ${now.estimateMin} min was given` : ""}); it is not stopped, and the slot stays its own until it ends`,
       );
     });
-    let left = false;
+    // A command that ignores TERM gets KILL after the grace.
+    let termAt: number | undefined;
+    let ended = false;
+    void child.done.then(() => (ended = true));
     const watch = d.every(PARENT_CHECK_MS, () => {
-      if (left || !orphaned()) return;
-      left = true;
+      if (termAt !== undefined) {
+        if (!ended && d.now() - termAt >= ORPHAN_KILL_GRACE_MS) {
+          d.err(`gate: ${label} ignored SIGTERM; sending SIGKILL`);
+          child?.kill("SIGKILL");
+          termAt = Infinity;
+        }
+        return;
+      }
+      if (!orphaned()) return;
+      termAt = d.now();
       child?.kill("SIGTERM");
     });
     try {

@@ -20,6 +20,7 @@ import {
   cmdGate,
   type GateDeps,
   type GateRun,
+  ORPHAN_KILL_GRACE_MS,
 } from "../../../src/ui/cli/gate-command.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
 import { callTool, type ToolContext } from "../../../src/ui/mcp/tools.js";
@@ -77,6 +78,96 @@ function deps(over: Partial<GateDeps> = {}) {
   };
   return { d, beats };
 }
+
+describe("issue 752 review: a detached run, and a holder that ignores TERM", () => {
+  // Five looks while waiting; the queue as it stood at the fifth, and what
+  // gate run returned (it ends itself with an error after that).
+  const waitOnce = async (args: string[], env: NodeJS.ProcessEnv = {}) => {
+    const t = deps({ parentAlive: () => false, env });
+    t.d.store.ask({
+      kind: "browser",
+      who: "w",
+      label: "holder",
+      pid: 7,
+      estimateMin: 5,
+    });
+    let ticks = 0;
+    let labels: string[] = [];
+    t.d.sleep = () => {
+      if (++ticks < 5) return Promise.resolve();
+      labels = t.d.store.list().map((e) => e.label);
+      return Promise.reject(new Error("still waiting"));
+    };
+    const r = await cmdGate(
+      [
+        "run",
+        "--kind",
+        "browser",
+        "--browser-endpoint",
+        "self",
+        ...args,
+        "--",
+        "x",
+      ],
+      t.d,
+    );
+    return { r, ticks, labels };
+  };
+
+  it("--detached: a run whose parent is gone keeps its place (nohup, setsid, a wrapper that leaves)", async () => {
+    const w = await waitOnce(["--detached", "--label", "mine"]);
+    // Still in line at the fifth look: it never left.
+    expect(w.ticks).toBe(5);
+    expect(w.labels).toEqual(["holder", "mine"]);
+  });
+
+  it("DEN_GATE_DETACHED=1 does the same; any other value still follows the parent", async () => {
+    expect(
+      (await waitOnce(["--label", "mine"], { DEN_GATE_DETACHED: "1" })).labels,
+    ).toEqual(["holder", "mine"]);
+    const followed = await waitOnce(["--label", "mine"], {
+      DEN_GATE_DETACHED: "no",
+    });
+    // It left at the first look (129, SIGHUP's code), never reaching five.
+    expect(followed.r).toBe(129);
+    expect(followed.ticks).toBe(1);
+  });
+
+  it("an orphaned holder whose command ignores TERM gets KILL after the grace", async () => {
+    const t = deps({ parentAlive: () => false });
+    let clock = 1_000_000;
+    t.d.now = () => clock;
+    let end: (c: number) => void = () => {};
+    const killed: NodeJS.Signals[] = [];
+    t.d.exec = () => ({
+      pid: 5151,
+      // It traps TERM: only KILL ends it.
+      kill: (s) => {
+        killed.push(s);
+        if (s === "SIGKILL") end(137);
+      },
+      done: new Promise<number>((r) => (end = r)),
+    });
+    const going = cmdGate(
+      ["run", "--kind", "browser", "--browser-endpoint", "self", "--", "x"],
+      t.d,
+    );
+    for (let i = 0; i < 50 && t.beats.length === 0; i++)
+      await new Promise((r) => setImmediate(r));
+    const beat = () => {
+      for (const b of [...t.beats]) b();
+    };
+    beat();
+    expect(killed).toEqual(["SIGTERM"]);
+    clock += ORPHAN_KILL_GRACE_MS - 1;
+    beat();
+    expect(killed).toEqual(["SIGTERM"]);
+    clock += 2;
+    beat();
+    expect(killed).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(await going).toBe(137);
+  });
+});
 
 describe("gate run follows its parent (issue 752)", () => {
   it("a waiter whose parent is gone leaves the queue and exits", async () => {
