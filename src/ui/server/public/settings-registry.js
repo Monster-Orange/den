@@ -2159,7 +2159,7 @@ export function testInstallsHereHtml(installs, t = (_k, en) => en) {
       .map(
         (i) =>
           `<li><span>${escHtml(t("set.ui.testInstallsOne", "{where} (test install {id})", { where: i.where, id: i.id }))}</span> ` +
-          `<button type="button" class="btn sm" data-test-install-setup="${escHtml(i.id)}">${escHtml(t("set.ui.testPersonSetUp", "Set up test person"))}</button></li>`,
+          `<button type="button" class="den-btn sm" data-test-install-setup="${escHtml(i.id)}">${escHtml(t("set.ui.testPersonSetUp", "Set up test person"))}</button></li>`,
       )
       .join("") +
     `</ul>`
