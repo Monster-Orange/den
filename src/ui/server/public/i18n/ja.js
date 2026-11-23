@@ -1888,6 +1888,9 @@
     "ag.mcp.failed": "Hub のツールを読み込めませんでした",
     "ag.mcp.failedTip":
       "このエージェントは起動時に Hub のツールを読み込めませんでした（{error}）。そのため Hub からは連絡できません。再起動しても会話は続き、ターンの終わりを待ちます。",
+    "ag.mcp.den": "再起動で Den {to} のツールが入ります",
+    "ag.mcp.denTip":
+      "このエージェントの開始後に Den が {to} に更新されたため、Den のツールはまだ {from} のコードで動いています。再起動すると、次のアイドル時に同じ会話のまま {to} のツールを読み込みます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
@@ -1955,6 +1958,14 @@
       "プロジェクト {where} のペルソナ {id} を変更: {fields}",
     "ap.do.den_pin_commit":
       "ディストリビューションの固定バージョンを Den {version} でコミット",
+    "ap.do.den_sandbox_on":
+      "それより前に起動した {count} 個のエージェントでエージェント サンドボックスをオンにする (それぞれ次の起動時)",
+    "ap.det.den_sandbox_on.sets":
+      "config/local/user.yml に agents.sandbox: on を設定します。",
+    "ap.det.den_sandbox_on.next":
+      "各エージェントは次の起動時にサンドボックスに入ります。いま動いているエージェントはそのまま続きます。",
+    "ap.det.den_sandbox_on.off":
+      "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
@@ -2976,6 +2987,12 @@
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
+    "busy.allowW": "許可しています…",
+    "busy.allowS": "許可しました。",
+    "busy.allowF": "許可できませんでした。",
+    "busy.denyW": "拒否しています…",
+    "busy.denyS": "拒否しました。",
+    "busy.denyF": "拒否できませんでした。",
     "busy.rmSvcW": "{name} を外しています…",
     "busy.rmSvcS": "{name} を外しました。",
     "busy.rmSvcF": "{name} を外せませんでした。",

@@ -2860,6 +2860,9 @@
     "ag.mcp.failed": "Hub's tools didn't load",
     "ag.mcp.failedTip":
       "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.den": "Den {to}'s tools arrive on restart",
+    "ag.mcp.denTip":
+      "Den was updated to {to} after this agent started, so its Den tools still run {from}'s code. Restart loads {to}'s, at its next idle, on the same conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
@@ -2925,6 +2928,13 @@
     "ap.do.persona_update.project":
       "Change the persona {id} in project {where}: {fields}",
     "ap.do.den_pin_commit": "Commit the distribution's pin to Den {version}",
+    "ap.do.den_sandbox_on":
+      "Turn on the agent sandbox for {count} agents started before it (each at its next start)",
+    "ap.det.den_sandbox_on.sets":
+      "Sets agents.sandbox: on in config/local/user.yml.",
+    "ap.det.den_sandbox_on.next":
+      "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
+    "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
@@ -3969,6 +3979,12 @@
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
+    "busy.allowW": "Allowing…",
+    "busy.allowS": "Allowed.",
+    "busy.allowF": "Couldn't allow it.",
+    "busy.denyW": "Denying…",
+    "busy.denyS": "Denied.",
+    "busy.denyF": "Couldn't deny it.",
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",
@@ -6534,9 +6550,14 @@
           ? id.owner
           : null;
     // Issue 406: GitHub has no name: Hub's, when Hub's login is the same one.
+    // Issue 1210: never for the fixture person (via "fixture"): its login is
+    // invented, and a match would show a real person's name on a test
+    // install. kind "github" with via "fixture" is display only: no
+    // decision anywhere reads this identity as a GitHub sign-in.
     var h = state.hub;
     var hubName =
       gh &&
+      id.via !== "fixture" &&
       h &&
       h.state === "connected" &&
       typeof h.name === "string" &&

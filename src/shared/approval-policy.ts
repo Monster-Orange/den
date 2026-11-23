@@ -170,6 +170,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "routine",
     why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",
   },
+  den_sandbox_on: {
+    risk: "routine",
+    why: "puts agents from before the agent sandbox into it: it narrows what they may do",
+  },
   service_try: { risk: "routine", why: "starts a service locally" },
   verify_run: {
     risk: "critical",

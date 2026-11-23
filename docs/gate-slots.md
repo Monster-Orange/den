@@ -633,10 +633,14 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
   that connects with `exposeNetwork: "<loopback>"`. The gate hands a box
   run `DEN_PW_WS` (the box's Playwright server) and `DEN_PW_EXPOSE`
   (`<loopback>`); on this machine it adds neither. Den's own browser
-  helper reads both. Another product's client either connects with
-  pw-guard's `connectGuarded(chromium, process.env.DEN_PW_WS)`, which
-  reads `DEN_PW_EXPOSE` itself, or passes it:
-  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`.
+  helper reads both. Another product's client connects with pw-guard's
+  `connectGuarded(chromium, process.env.DEN_PW_WS)`, which reads
+  `DEN_PW_EXPOSE` itself and returns the browser already guarded by
+  `DEN_GATE_ALLOW` (issue 1205): with no allow list nothing loads, so it
+  never reaches this machine unguarded. A client that connects itself,
+  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`,
+  must call `guardBrowser` on the result. Guarding twice is harmless:
+  a second guard can only narrow what loads.
   A box run (`DEN_GATE_SLOT_BOX` is a box's name) that connects through
   pw-guard without it is told once: `box run without exposeNetwork
 <loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE

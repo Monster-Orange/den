@@ -6,8 +6,23 @@
 # per-user file ~/.config/den-dev/org-names.txt; with none the hook passes
 # quietly, so a machine without the list can still push. Git worktrees share
 # this hook. DEN_PREPUSH_FILES=0 skips the file check (messages only).
-root="${DEN_ROOT:-$(git rev-parse --show-toplevel)}"
+#
+# Issue 843: first, the fast static checks CI's first job runs (the list in
+# scripts/fast-checks.json: version sync, the words gate, the colour and kit
+# tokens, i18n parity…), over the checked-out tree, in seconds.
+# DEN_PREPUSH_FAST=0 skips them.
+# The gates come from the checkout being pushed. DEN_HOOK_ROOT points them
+# elsewhere (tests only). Never DEN_ROOT: Den sets that to a distribution.
+root="${DEN_HOOK_ROOT:-$(git rev-parse --show-toplevel)}"
 zero=0000000000000000000000000000000000000000
+
+if [ "${DEN_PREPUSH_FAST:-1}" != "0" ]; then
+  # </dev/null: the refs on this hook's stdin are for the loop below.
+  if ! node "$root/scripts/fast-checks.mjs" </dev/null >&2; then
+    echo "pre-push: a fast check failed (see above). Fix it, then push again (DEN_PREPUSH_FAST=0 skips them)." >&2
+    exit 1
+  fi
+fi
 
 node --input-type=module -e "
   const { orgPatterns } = await import('$root/scripts/org-names.js');

@@ -71,6 +71,7 @@ import {
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  sandboxRefusalHooks,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
@@ -657,7 +658,11 @@ function common(input: LaunchInput): {
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
   const hooks = mergeHooks(
-    baseHooks,
+    // Issue 936: a refused write in the sandbox says why, with Den's hooks
+    // (a persona with den_hooks: false gets none of them).
+    input.persona.guardrails?.hooks
+      ? mergeHooks(baseHooks, sandboxRefusalHooks())
+      : baseHooks,
     input.attention
       ? attentionHooks(
           input.attention.base,

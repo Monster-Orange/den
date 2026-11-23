@@ -13,6 +13,8 @@ import * as path from "path";
 import {
   GUARDRAILS_DIR,
   guardrailHooks,
+  mergeHooks,
+  sandboxRefusalHooks,
   hookCommands,
   sharedInstructions,
 } from "../../../src/shared/agents/guardrails.js";
@@ -59,12 +61,16 @@ function input(persona: Persona, stateDir?: string): LaunchInput {
 
 /** The hooks a launch of `id` carries: its rotation counted in its files dir (den#4). */
 const agentHooks = (id: string) =>
-  guardrailHooks(
-    GUARDRAILS_DIR,
-    hookCommands(GUARDRAILS_DIR, process.execPath, {
-      files: path.join(root, "files", id),
-      after: 3,
-    }),
+  mergeHooks(
+    guardrailHooks(
+      GUARDRAILS_DIR,
+      hookCommands(GUARDRAILS_DIR, process.execPath, {
+        files: path.join(root, "files", id),
+        after: 3,
+      }),
+    ),
+    // Issue 936: the sandbox's refusal note rides with Den's hooks.
+    sandboxRefusalHooks(),
   );
 
 function launch(persona: Persona, stateDir?: string) {
@@ -95,6 +101,8 @@ describe("a default-pack persona's launch", () => {
       { matcher?: string; hooks: { type: string; command: string }[] }[]
     >;
     expect(Object.keys(hooks).sort()).toEqual([
+      "PostToolUse",
+      "PostToolUseFailure",
       "PreCompact",
       "PreToolUse",
       "SessionStart",

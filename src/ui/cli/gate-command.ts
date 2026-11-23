@@ -48,6 +48,11 @@ import { spawn } from "child_process";
 import * as os from "os";
 import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
+import {
+  personServerFor,
+  throughServer,
+  type PersonServer,
+} from "./person-server.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
@@ -195,6 +200,33 @@ export interface GateDeps {
   lang?: UiLanguage;
   /** Issue 928: whether process `pid` runs under `root` (default: ps). */
   descends?: (pid: number, root: number) => boolean;
+  /** Issue 989: the running server (default: this install's). */
+  server?: PersonServer;
+}
+
+/**
+ * Issue 989: a person's change sent to the running server: true when it
+ * made it, false when it refused (said here), null with no server (the
+ * CLI changes the store itself, as before).
+ */
+async function viaServer(
+  d: GateDeps,
+  where: string,
+  p: string,
+  body: unknown,
+): Promise<boolean | null> {
+  try {
+    const r = await throughServer(
+      d.server ?? personServerFor(),
+      "POST",
+      p,
+      body,
+    );
+    return r === null ? null : true;
+  } catch (e) {
+    d.err(`${where}: ${(e as Error).message}; nothing was changed`);
+    return false;
+  }
 }
 
 /** Issue 928: how often a nested run checks its slot still holds. */
@@ -1014,7 +1046,7 @@ function status(args: string[], d: GateDeps): number {
  * [--off] [--recheck-seconds N]` (adds or replaces); `box remove <name>`;
  * `box enable|disable <name>`. Changing them is a person's.
  */
-function boxCmd(args: string[], d: GateDeps): number {
+async function boxCmd(args: string[], d: GateDeps): Promise<number> {
   const [verb, ...rest] = args;
   if (verb === "list" || verb === undefined) {
     const boxes = d.store.boxes();
@@ -1070,6 +1102,24 @@ function boxCmd(args: string[], d: GateDeps): number {
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
   if (verb === "enable" || verb === "disable") {
+    const via = await viaServer(
+      d,
+      `gate box ${verb}`,
+      "/api/gate-slots/boxes/enable",
+      {
+        name,
+        enabled: verb === "enable",
+      },
+    );
+    if (via === false) return 1;
+    if (via) {
+      d.out(
+        verb === "enable"
+          ? `Box ${name} turned on.`
+          : `Box ${name} turned off: no new slots and no contact. Its running slots finish.`,
+      );
+      return 0;
+    }
     const b = d.store.setBoxEnabled(name, verb === "enable");
     if (!b) {
       d.err(`gate box ${verb}: no box ${name}`);
@@ -1083,7 +1133,16 @@ function boxCmd(args: string[], d: GateDeps): number {
     return 0;
   }
   if (verb === "remove") {
-    if (!d.store.removeBox(name)) {
+    const via = await viaServer(
+      d,
+      "gate box remove",
+      "/api/gate-slots/boxes/remove",
+      {
+        name,
+      },
+    );
+    if (via === false) return 1;
+    if (!via && !d.store.removeBox(name)) {
       d.err(`gate box remove: no box ${name}`);
       return 1;
     }
@@ -1109,20 +1168,32 @@ function boxCmd(args: string[], d: GateDeps): number {
     ...(f["--off"] ? { enabled: false } : {}),
   });
   if (!c.ok) throw new GateUsage(c.error);
-  d.store.setBox(c.box);
+  const via = await viaServer(d, "gate box add", "/api/gate-slots/boxes", {
+    box: c.box,
+  });
+  if (via === false) return 1;
+  if (!via) d.store.setBox(c.box);
   d.out(
     `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A browser run with --base-url takes it when it is free (gate settings --browser-box-default local: only with --box).`,
   );
   return 0;
 }
 
-function end(args: string[], d: GateDeps): number {
+async function end(args: string[], d: GateDeps): Promise<number> {
   if (isAgentEnv(d.env))
     throw new GateUsage(
       "gate end: only a person can end a slot early (this is an agent)",
     );
   const [id, extra] = flags(args, {}).pos;
   if (!id || extra) throw new GateUsage("gate end needs one <id>");
+  if (/^[a-z0-9-]{1,64}$/.test(id)) {
+    const via = await viaServer(d, "gate end", "/api/gate-slots/end", { id });
+    if (via === false) return 1;
+    if (via) {
+      d.out(`Ended ${id}. Whoever ran it was not stopped; its slot is free.`);
+      return 0;
+    }
+  }
   if (
     !/^[a-z0-9-]{1,64}$/.test(id) ||
     !d.store.endEarly(id, whoAsks(d.env, d.cwd))
@@ -1288,9 +1359,9 @@ export async function cmdGate(
       case "status":
         return status(args.slice(1), d);
       case "end":
-        return end(args.slice(1), d);
+        return await end(args.slice(1), d);
       case "box":
-        return boxCmd(args.slice(1), d);
+        return await boxCmd(args.slice(1), d);
       case "yield":
         return yieldPlace(args.slice(1), d);
       case "settings":
