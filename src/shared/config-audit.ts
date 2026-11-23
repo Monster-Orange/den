@@ -24,6 +24,7 @@ export interface ConfigAuditRow {
     | "hub-link"
     | "agents"
     | "web-url"
+    | "hub-den-url"
     | "test-person-setup";
   detail: string;
   /** Set when it never happened: refused, or still busy. */

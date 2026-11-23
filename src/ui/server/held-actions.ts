@@ -98,6 +98,10 @@
  *                     announced on this computer (test-person-held.ts):
  *                     one grant and that install's bearer, sent once over
  *                     loopback at the Allow. The person's own Allow only
+ *   web_url_set       issue 869: Den's own agent proposes this install's
+ *                     address (web-url-held.ts); it must answer as this
+ *                     Den at the ask and at the Allow, and saves as
+ *                     Settings does. The person's own Allow
  */
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
@@ -208,6 +212,8 @@ export interface HeldActionDeps {
   gateBoxRemove?: HeldOp;
   /** Issue 731: host_restart (host-restart-held.ts hostRestartOp). */
   terminalHostRestart?: HeldOp;
+  /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
+  webUrlSet?: HeldAction;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -277,6 +283,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_remove",
   "host_restart",
   "test_person_setup",
+  "web_url_set",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -1036,6 +1043,17 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         ok: false,
         error: "this Den can't set up test installs here",
       }),
+    },
+    web_url_set: d.webUrlSet ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set its address here",
+      }),
+      run: () =>
+        Promise.resolve({
+          ok: false,
+          error: "this Den can't set its address here",
+        }),
     },
   };
 }
