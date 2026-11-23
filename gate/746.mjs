@@ -98,6 +98,7 @@ function stateOf(ctx, rid) {
 }
 
 export async function setup(ctx) {
+  MINE.clear();
   const made = [];
   for (const id of Object.values(IDS)) {
     ctx.agent(id).start("tester");
