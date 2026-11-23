@@ -2853,6 +2853,7 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     .map((r) => ({ id: r.id, dir: r.sessionTmp! }));
   const leftoverTmp = leftoverSessionTmps(
     recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
+    d.sessionTmpBase,
   );
   return {
     fromBefore: fromBefore.length,
