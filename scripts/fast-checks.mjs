@@ -69,6 +69,9 @@ const jest = join(
   "jest.js",
 );
 const cache = process.env.DEN_FAST_JEST_CACHE;
+// A test that runs the pre-push hook must never start these checks again from
+// inside them (a hook test that reached the real list re-ran it forever).
+process.env.DEN_PREPUSH_FAST = "0";
 
 const failed = (
   await Promise.all([

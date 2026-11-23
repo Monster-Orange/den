@@ -228,7 +228,7 @@ describe("issue 843: the fast static checks", () => {
         cwd: ROOT,
         input: "",
         encoding: "utf-8",
-        env: { PATH: process.env.PATH ?? "", DEN_ROOT: dir, ...env },
+        env: { PATH: process.env.PATH ?? "", DEN_HOOK_ROOT: dir, ...env },
       });
 
     it("a failing fast check stops the push", () => {
