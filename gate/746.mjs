@@ -13,9 +13,13 @@
 // so the clear is a real held write. Harmless on a stub; removed in teardown.
 export const issue = 746;
 export const items = [746];
+// The fixture person may never decide what waits for a person (issue 810),
+// so on the bed each click must reach Den and come back as that refusal,
+// with nothing run. Before the fix both buttons threw in the page and sent
+// nothing at all; the decide itself is the Allow pop-up's, unchanged.
 export const clauses = [
-  "Allow in the bell's Needs you row runs the held write",
-  "Deny in the bell's Needs you row denies it, and nothing runs",
+  "Allow in the bell's Needs you row sends the decision to Den (the fixture person's refusal is the answer; nothing runs)",
+  "Deny in the bell's Needs you row sends the decision to Den (the fixture person's refusal is the answer; nothing runs)",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 180000;
@@ -41,8 +45,16 @@ function decideLines(ctx, rid) {
     if (!line.includes(rid)) continue;
     try {
       const e = JSON.parse(line);
-      if (e.verb === "approval-decide" && e.detail.endsWith(`[${rid}]`))
-        out.push({ detail: e.detail, actor: e.actor, outcome: e.outcome });
+      if (
+        e.verb === "approval-decide" &&
+        (e.detail === rid || e.detail.endsWith(`[${rid}]`))
+      )
+        out.push({
+          detail: e.detail,
+          actor: e.actor,
+          outcome: e.outcome,
+          reason: e.reason,
+        });
     } catch {
       /* a line being written */
     }
@@ -77,7 +89,10 @@ export async function setup(ctx) {
   const own = {};
   for (const id of made) {
     const r = ctx.cli(["agents", "permission", id, "ask"], { timeout: 15000 });
-    own[id] = r.code === 0 ? "ask" : `failed (${r.code}): ${`${r.out || ""} ${r.err || ""}`.replace(/\s+/g, " ").trim().slice(-160)}`;
+    own[id] =
+      r.code === 0
+        ? "ask"
+        : `failed (${r.code}): ${`${r.out || ""} ${r.err || ""}`.replace(/\s+/g, " ").trim().slice(-160)}`;
   }
   return { made, ready, own };
 }
@@ -141,39 +156,63 @@ export async function run(ctx, s) {
       { timeout: 15000 },
     );
     await row.locator(`[data-bell="${which}"]`).click();
-    const status = (await answered.catch(() => null))?.status() ?? null;
-    const want = which === "allow" ? "done" : "denied";
+    const res = await answered.catch(() => null);
+    const status = res?.status() ?? null;
+    let code = null;
+    try {
+      code = (await res?.json())?.code ?? null;
+    } catch {
+      code = null;
+    }
+    // Nothing ran: the request still waits for a person.
     let state = await stateOf(ctx, rid);
-    const stateMs = await ctx.until(async () => {
+    await ctx.until(async () => {
       state = await stateOf(ctx, rid);
-      return state === want;
-    }, 15000);
+      return state === "pending";
+    }, 5000);
     const audit = decideLines(ctx, rid);
     await ctx.shot(`746-${which}`);
-    await page.keyboard.press("Escape");
-    seen[which] = { rowMs, rid, status, state, stateMs, audit };
+    // The refusal's dialog covers the page: close it before the next row.
+    for (let i = 0; i < 3; i++) await page.keyboard.press("Escape");
+    const open = page
+      .locator(
+        'dialog[open] button, [role="dialog"] button, [role="alertdialog"] button',
+      )
+      .filter({ hasText: /^(OK|Close|Done|Got it)$/i });
+    if (
+      await open
+        .first()
+        .isVisible()
+        .catch(() => false)
+    )
+      await open
+        .first()
+        .click()
+        .catch(() => {});
+    seen[which] = { rowMs, rid, status, code, state, audit };
   }
   return { ready: s.ready, own: s.own, asked, seen, errors };
 }
 
 function row(r, which, clause) {
   const v = r.seen[which] || {};
-  const verb = which === "allow" ? "allow" : "deny";
-  const want = which === "allow" ? "done" : "denied";
   const line = (v.audit || []).find(
-    (a) => a.detail.startsWith(`${verb} agent_mode`) && a.outcome !== "refused",
+    (a) => a.outcome === "refused" && a.reason === "fixture_cannot_approve",
   );
   const ok =
     v.rowMs !== null &&
-    v.status === 200 &&
-    v.state === want &&
+    v.rowMs !== undefined &&
+    v.status === 403 &&
+    v.code === "fixture_cannot_approve" &&
+    v.state === "pending" &&
     !!line &&
     r.errors.length === 0;
+  const a = r.asked[which] || {};
   return {
     clause,
     ok,
     evidence: [`746-${which}`],
-    detail: `${FIXTURE}. ${IDS[which]} asked (running ${r.ready?.[IDS[which]] ?? "?"}, own mode ${r.own?.[IDS[which]] ?? "?"}, cli ${r.asked[which].code}, project ${r.asked[which].project}${r.asked[which].code ? `, said "${`${r.asked[which].out || ""} ${r.asked[which].err || ""}`.replace(/\s+/g, " ").trim().slice(-240)}"` : ""}); bell row ${v.rowMs === null ? "never showed" : `after ${v.rowMs} ms`}, request ${v.rid ?? "none"}; ${which} answered ${v.status}; state ${v.state ?? "?"}${v.stateMs !== null && v.stateMs !== undefined ? "" : " (not " + want + " in time)"}; audit ${line ? `"${line.detail}"` : "no approval-decide line"}; page errors ${r.errors.length ? r.errors.join(" | ") : "none"}`,
+    detail: `${FIXTURE}. ${IDS[which]} asked (running ${r.ready?.[IDS[which]] ?? "?"}, own mode ${r.own?.[IDS[which]] ?? "?"}, cli ${a.code}, project ${a.project}${a.code ? `, said "${`${a.out || ""} ${a.err || ""}`.replace(/\s+/g, " ").trim().slice(-240)}"` : ""}); bell row ${v.rowMs === null || v.rowMs === undefined ? "never showed" : `after ${v.rowMs} ms`}, request ${v.rid ?? "none"}; ${which} reached Den: ${v.status ?? "no request sent"}${v.code ? ` ${v.code}` : ""}; state ${v.state ?? "?"}; audit ${line ? `refused (${line.reason})` : "no refused approval-decide line"}; page errors ${r.errors.length ? r.errors.join(" | ") : "none"}`,
   };
 }
 
