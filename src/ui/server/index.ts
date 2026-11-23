@@ -6108,11 +6108,7 @@ async function handleRequest(
   // sign-in, a sign-out, a revoke) waits here, on timers, while another
   // process holds its lock; every other request is served meanwhile. Its
   // write then never waits (a lock taken in between: 503 "try again").
-  if (
-    (req.method !== "GET" && req.method !== "HEAD") ||
-    pathname === "/auth" ||
-    pathname.startsWith("/auth/")
-  )
+  if ((req.method !== "GET" && req.method !== "HEAD") || pathname === "/auth")
     await webSessions.whenFree(sessionsLockWait());
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);
