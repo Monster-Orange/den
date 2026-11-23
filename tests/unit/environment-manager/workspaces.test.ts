@@ -32,6 +32,13 @@ const mockReadManifest = readManifest as MockedFunction<typeof readManifest>;
 // catalog-driven and require no fs mocking.
 
 jest.mock("fs");
+// Issue 786: workspaces.yml is written through atomic-write, which may load
+// before this mock and keep the real fs (it then wrote a real file). Routed
+// to the mocked fs here; atomic-write's own test covers the temp and rename.
+jest.mock("../../../src/shared/atomic-write.js", () => ({
+  writeFileAtomic: (file: string, data: string) =>
+    (jest.requireMock("fs") as typeof import("fs")).writeFileSync(file, data),
+}));
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 
@@ -333,17 +340,15 @@ describe("readWorkspacesFile / writeWorkspacesFile", () => {
     expect(parsed.active).toEqual(["default"]);
   });
 
-  it("writeWorkspacesFile removes the temp file when the atomic rename fails", async () => {
+  it("writeWorkspacesFile writes workspaces.yml whole, and a failed write throws", async () => {
     const { writeWorkspacesFile } =
       await import("../../../src/shared/environment-manager/workspaces.js");
 
-    let tmpPath = "";
+    let target = "";
     mockFs.mkdirSync.mockReturnValue(undefined);
     mockFs.writeFileSync.mockImplementation((...args: unknown[]) => {
-      tmpPath = args[0] as string;
-    });
-    mockFs.renameSync.mockImplementation(() => {
-      throw new Error("EACCES: rename failed");
+      target = args[0] as string;
+      throw new Error("ENOSPC: write failed");
     });
 
     const file: WorkspacesFile = {
@@ -352,9 +357,8 @@ describe("readWorkspacesFile / writeWorkspacesFile", () => {
       workspaces: { default: { services: {} } },
     };
 
-    expect(() => writeWorkspacesFile(file)).toThrow("rename failed");
-    expect(tmpPath).toContain(".tmp");
-    expect(mockFs.unlinkSync).toHaveBeenCalledWith(tmpPath);
+    expect(() => writeWorkspacesFile(file)).toThrow("write failed");
+    expect(path.basename(target)).toBe("workspaces.yml");
   });
 });
 

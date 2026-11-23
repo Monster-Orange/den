@@ -78,10 +78,10 @@ describe("issue 669: the confirm frame", () => {
     const html = dialogHtml(CONFIRM);
     expect(html.match(/<form [^>]*method="dialog"/g)?.length).toBe(1);
     expect(html).toMatch(
-      /<button type="submit" class="dk-btn" value="cancel" data-dk="cancel" formnovalidate>Cancel<\/button>/,
+      /<button type="submit" class="den-btn dk-btn" value="cancel" data-dk="cancel" formnovalidate>Cancel<\/button>/,
     );
     expect(html).toMatch(
-      /<button type="submit" class="dk-btn dk-danger" value="yes" data-dk="yes">Yes, unlink<\/button>/,
+      /<button type="submit" class="den-btn dk-btn danger dk-danger" value="yes" data-dk="yes">Yes, unlink<\/button>/,
     );
     expect(html).not.toContain("<script");
     expect(html).not.toMatch(/\son[a-z]+=/);
@@ -93,7 +93,7 @@ describe("issue 669: the confirm frame", () => {
       report: "<button data-den-report>R</button>",
     });
     expect(html).toMatch(
-      /<div class="dk-ft"><button data-den-report>R<\/button><button type="submit" class="dk-btn" value="cancel"/,
+      /<div class="dk-ft"><button data-den-report>R<\/button><button type="submit" class="den-btn dk-btn" value="cancel"/,
     );
   });
 
@@ -117,7 +117,7 @@ describe("issue 669: the confirm frame", () => {
     expect(html).toContain('class="dk-dlg dk-confirm hubp-dlg"');
     expect(html).toContain('data-state="confirm"');
     expect(html).toContain(
-      '<a class="dk-btn" href="/t/waiting?x=1&amp;y=2">Back</a>',
+      '<a class="den-btn dk-btn" href="/t/waiting?x=1&amp;y=2">Back</a>',
     );
     expect(html).toContain('data-rd="go"');
   });
@@ -156,7 +156,7 @@ describe("issue 670: the large dialog frame", () => {
     );
     // Close works with no script: a submit of its own method=dialog form.
     expect(html).toMatch(
-      /<form class="dk-x-f" method="dialog"><button type="submit" class="dk-btn dk-x" value="close" data-dk="close">Close<\/button><\/form>/,
+      /<form class="dk-x-f" method="dialog"><button type="submit" class="den-btn dk-btn dk-x" value="close" data-dk="close">Close<\/button><\/form>/,
     );
     expect(html).toContain(
       '<div class="dk-body" id="helpers-body"><ol><li>one</li></ol></div>',

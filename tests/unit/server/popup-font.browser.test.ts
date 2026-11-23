@@ -8,8 +8,9 @@
  * theme's --mono and is left out.
  *
  * The pop-ups: What's new (on its own the first time a version is unseen,
- * then from the version chip), a Yes/No question (the kit's confirm), and
- * Local Dev's "turn off auto-start" question. Each on the Agents page and
+ * then from the version chip), a Yes/No question (the kit's confirm),
+ * Local Dev's "turn off auto-start" question, and Projects' Add Service
+ * (issue 806). Each on the Agents page and
  * on Settings, whose <body> has no font of its own (the font is on the
  * page's main, #den-content): a pop-up put in <body> that sets no font of
  * its own drew in the browser's serif there, which is what the owner saw.
@@ -373,6 +374,21 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       }
       await p.locator(pop).first().waitFor();
       expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
+      await p.context().close();
+    }, 60_000);
+
+    // Issue 806: Projects' Add Service, on the kit's dialog.
+    it("Projects' Add Service", async () => {
+      if (!browser) return;
+      const p = await pageOn(theme, "/local-dev?ws=default");
+      await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
+      await p.keyboard.press("Escape");
+      await p.locator(WHATS_NEW).waitFor({ state: "detached" });
+      await p.locator("[data-add-svc]").click();
+      const pop = "dialog#add-svc-dlg[open]";
+      await p.locator(pop).waitFor();
+      expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
+      await p.keyboard.press("Escape");
       await p.context().close();
     }, 60_000);
   });
