@@ -407,6 +407,21 @@ describe("issue 1289 (5): doctor", () => {
     expect(r.check.detail).toMatch(/2 kept \(stopped\)/);
   });
 
+  it("its fix never tells a person to remove a kept container", () => {
+    const r = throwawayLines(
+      [
+        { ...row("c1", { mode: "remove", state: "running", checkout: null }) },
+        row("k1", {}),
+      ],
+      new Set(),
+      "aaaaaaaaaaaa",
+      new Set(),
+    );
+    expect(r.check.status).toBe("warn");
+    expect(r.check.fix).toMatch(/docker rm -f the left-over ids/);
+    expect(r.check.fix).toMatch(/docker stop the kept ones/);
+  });
+
   it("lists, never warns about, a kept container running with no run from its checkout", () => {
     const r = throwawayLines(
       [

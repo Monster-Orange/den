@@ -65,7 +65,7 @@ export function throwawayLines(
         id,
         status: "warn",
         detail: `${left.length} left over from ended gate runs${keptNote}`,
-        fix: "start Den (it removes left-over ones and stops idle kept ones within minutes), or docker rm -f the ids listed",
+        fix: "start Den (it removes left-over ones and stops idle kept ones within minutes), or docker rm -f the left-over ids and docker stop the kept ones",
       },
     };
   return {
