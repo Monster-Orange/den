@@ -1,9 +1,10 @@
 # Issue 845: the measured test times the shards are planned from
 # (tests/shard-times.json), refreshed weekly from the full-suite runs of what
 # lands on main (the staging pull request from next/queue), with each
-# shard's p90 checked: the slowest at most 20% over the fastest. The
-# refreshed file is kept as an artifact for a pull request; this workflow
-# only reads.
+# shard's p90 checked: the slowest at most --limit-pct over the fastest. The
+# refreshed file is kept as an artifact for a pull request. Only the report
+# job writes: on a red scheduled week it opens or comments the one "Shard
+# balance" issue with the table.
 name: shard-times
 on:
   schedule:
@@ -27,7 +28,13 @@ jobs:
       - name: Refresh the times and check the balance
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/shard-times-refresh.mjs --branch next/queue --runs 5 --summary "$GITHUB_STEP_SUMMARY" --check
+        run: |
+          # The step's shell stops at the first error (bash -e): keep the
+          # status, show the table, then fail with it.
+          status=0
+          node scripts/shard-times-refresh.mjs --branch next/queue --runs 5 --limit-pct 20 --summary shard-balance.md --check || status=$?
+          cat shard-balance.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          exit $status
       - name: The refreshed times file
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -35,3 +42,34 @@ jobs:
           name: shard-times
           path: tests/shard-times.json
           retention-days: 30
+      - name: The balance table, for the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-balance
+          path: shard-balance.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # A red scheduled week tells someone: the one open "Shard balance" issue,
+  # opened or commented, with the table (as ci.yml's nightly report does).
+  report:
+    needs: [refresh]
+    if: ${{ github.event_name == 'schedule' && failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      actions: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Shard balance"
+          gh run download "$GITHUB_RUN_ID" -n shard-balance -D . 2>/dev/null || true
+          body="The weekly shard-times check failed: $RUN_URL"
+          if [ -s shard-balance.md ]; then body="$body"$'\n\n'"$(cat shard-balance.md)"; fi
+          n=$(gh issue list --state open --search "in:title $title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

@@ -132,6 +132,18 @@ describe("issue 845 clause 1: each shard's p90 within 20% of the others", () => 
     ).toMatchObject({ ok: false, spreadPct: 20.3, slowest: "2" });
   });
 
+  it("the limit is --limit-pct (default 20); a bad value is refused, naming the flag", () => {
+    expect(call<number>("limitPct", [])).toBe(20);
+    expect(call<number>("limitPct", ["--limit-pct", "15"])).toBe(15);
+    for (const bad of ["0", "-5", "abc", ""])
+      expect(
+        String(call<unknown>("limitPctOrError", ["--limit-pct", bad])),
+      ).toContain("--limit-pct");
+    expect(
+      call<{ ok: boolean }>("balance", { "1": 400, "2": 460 }, 10),
+    ).toMatchObject({ ok: false, spreadPct: 15 });
+  });
+
   it("fewer than two shards measured: nothing to compare, never a pass", () => {
     expect(call<{ ok: boolean | null }>("balance", { "1": 400 })).toMatchObject(
       {
@@ -178,6 +190,35 @@ describe("issue 845 clause 1: refreshed from main's runs, every week", () => {
     expect(wf.permissions).toEqual({ contents: "read", actions: "read" });
   });
 
+  it("a red week opens or comments the one Shard balance issue, from its own job", () => {
+    const wf = load() as Wf & {
+      jobs: Record<
+        string,
+        {
+          needs?: string[] | string;
+          if?: string;
+          permissions?: Record<string, string>;
+        }
+      >;
+    };
+    const [name, job] =
+      Object.entries(wf.jobs).find(([, j]) =>
+        j.steps.some((s) => (s.run ?? "").includes("gh issue create")),
+      ) ?? [];
+    expect(name).toBeDefined();
+    expect([job!.needs].flat()).toContain("refresh");
+    expect(job!.if).toMatch(/failure\(\)/);
+    // issues: write on this job only.
+    expect(job!.permissions).toEqual({ issues: "write", actions: "read" });
+    for (const [n, j] of Object.entries(wf.jobs))
+      if (n !== name) expect(j.permissions?.issues).toBeUndefined();
+    const run = job!.steps.map((s) => s.run ?? "").join("\n");
+    expect(run).toMatch(/title="Shard balance"/);
+    expect(run).toMatch(/gh issue comment/);
+    // The summary table goes in the body.
+    expect(run).toMatch(/shard-balance\.md/);
+  });
+
   it("refreshes from the staging branch's runs, checks the balance, and keeps the new file", () => {
     const steps = stepsOf(load());
     const run = steps.find((s) =>
@@ -185,6 +226,12 @@ describe("issue 845 clause 1: refreshed from main's runs, every week", () => {
     );
     expect(run?.run).toMatch(/--branch next\/queue/);
     expect(run?.run).toMatch(/--check/);
+    // bash -e stops at a failing command: the status is kept with ||, so
+    // the table still reaches the summary before the step fails.
+    expect(run?.run).toMatch(/--check \|\| status=\$\?/);
+    // Tunable without a code change: the runs and the limit are flags.
+    expect(run?.run).toMatch(/--runs \d+/);
+    expect(run?.run).toMatch(/--limit-pct \d+/);
     expect(run?.run).toMatch(/GITHUB_STEP_SUMMARY/);
     const up = steps.find((s) =>
       (s.uses ?? "").startsWith("actions/upload-artifact@"),

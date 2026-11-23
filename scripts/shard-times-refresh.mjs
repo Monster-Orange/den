@@ -12,12 +12,12 @@
  *   move it); a file the runs never measured keeps its old time; a file no
  *   longer in the repo drops out. CI's absolute paths become repo paths.
  * - Each shard's p90 comes from its job's seconds over the runs (nearest
- *   rank). Balanced: the slowest shard's p90 is at most 20% over the
- *   fastest's. --check exits 1 when it isn't.
+ *   rank). Balanced: the slowest shard's p90 is at most --limit-pct
+ *   (20) over the fastest's. --check exits 1 when it isn't.
  *
  *   node scripts/shard-times-refresh.mjs --branch next/queue [--runs 5]
- *     [--min-shards 6] [--out tests/shard-times.json] [--summary <file>]
- *     [--check]
+ *     [--min-shards 6] [--limit-pct 20] [--out tests/shard-times.json]
+ *     [--summary <file>] [--check]
  *
  * Reads GitHub with `gh` (GH_TOKEN in CI): run lists, artifacts and jobs.
  */
@@ -106,7 +106,7 @@ export function balance(p90s, limitPct = 20) {
 }
 
 /** The summary: the runs used, each shard's p90, and the verdict. */
-export function summaryMarkdown(runIds, p90s, verdict, changed) {
+export function summaryMarkdown(runIds, p90s, verdict, changed, limit = 20) {
   const lines = [
     "### Shard times (issue 845)",
     "",
@@ -123,7 +123,7 @@ export function summaryMarkdown(runIds, p90s, verdict, changed) {
     "",
     verdict.ok === null
       ? "**Balance:** fewer than two shards measured; nothing compared."
-      : `**Balance:** ${verdict.ok ? "ok" : "over the limit"}: shard ${verdict.slowest}'s p90 is ${verdict.spreadPct}% over shard ${verdict.fastest}'s (limit 20%).`,
+      : `**Balance:** ${verdict.ok ? "ok" : "over the limit"}: shard ${verdict.slowest}'s p90 is ${verdict.spreadPct}% over shard ${verdict.fastest}'s (limit ${limit}%).`,
     "",
   ];
   return lines.join("\n");
@@ -160,6 +160,25 @@ function shardSeconds(repo, id) {
   return out;
 }
 
+/** The balance limit, percent: --limit-pct, 20 when not given. */
+export function limitPct(argv) {
+  const i = argv.indexOf("--limit-pct");
+  if (i < 0) return 20;
+  const raw = String(argv[i + 1] ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(raw) || Number(raw) <= 0)
+    throw new Error("--limit-pct must be a number above 0");
+  return Number(raw);
+}
+
+/** limitPct, or its error's message (for the tests' child Node). */
+export function limitPctOrError(argv) {
+  try {
+    return limitPct(argv);
+  } catch (e) {
+    return e.message;
+  }
+}
+
 function arg(argv, name, dflt) {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : dflt;
@@ -169,11 +188,18 @@ export function main(argv) {
   const branch = arg(argv, "--branch", "");
   const want = Number(arg(argv, "--runs", "5"));
   const minShards = Number(arg(argv, "--min-shards", "6"));
+  let limit;
+  try {
+    limit = limitPct(argv);
+  } catch (e) {
+    console.error(e.message);
+    return 2;
+  }
   const out = arg(argv, "--out", path.join(ROOT, "tests", "shard-times.json"));
   const summary = arg(argv, "--summary", "");
   if (!branch || !(want > 0) || !(minShards > 1)) {
     console.error(
-      "usage: shard-times-refresh.mjs --branch <name> [--runs 5] [--min-shards 6] [--out file] [--summary file] [--check]",
+      "usage: shard-times-refresh.mjs --branch <name> [--runs 5] [--min-shards 6] [--limit-pct 20] [--out file] [--summary file] [--check]",
     );
     return 2;
   }
@@ -250,8 +276,8 @@ export function main(argv) {
   ).length;
   fs.writeFileSync(out, JSON.stringify(next, null, 2) + "\n");
   const p90s = shardP90s(shards);
-  const verdict = balance(p90s);
-  const md = summaryMarkdown(used, p90s, verdict, changed);
+  const verdict = balance(p90s, limit);
+  const md = summaryMarkdown(used, p90s, verdict, changed, limit);
   console.log(md);
   if (summary) fs.appendFileSync(summary, md);
   return argv.includes("--check") && verdict.ok === false ? 1 : 0;
