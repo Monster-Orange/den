@@ -1962,6 +1962,7 @@
         "tests/unit/server/product-tokens.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/public-tokens-parse.test.ts",
+        "tests/unit/server/report-popups-static.test.ts",
         "tests/unit/server/sec1a-request-checks.integration.test.ts",
         "tests/unit/server/shell.test.ts",
         "tests/unit/server/times-chosen-zone-668.test.ts",
