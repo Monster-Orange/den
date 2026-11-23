@@ -7,10 +7,11 @@
  * touched. The last case checks setup.ts installed it on the real fs: a
  * write to this checkout's own config/local throws.
  */
-import { afterAll, describe, expect, it } from "@jest/globals";
+import { afterAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import {
   guardedWrites,
   installWriteGuard,
@@ -36,7 +37,7 @@ function rig() {
     scratch,
   ])
     fs.mkdirSync(d, { recursive: true });
-  const roots: WriteGuardRoots = { home, checkout, temp: [scratch] };
+  const roots: WriteGuardRoots = { checkout, temp: [scratch] };
   const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
   const refused: string[] = [];
   installWriteGuard(f, roots, (p) => void refused.push(p));
@@ -119,6 +120,82 @@ describe("the write guard (issue 1356)", () => {
         "x",
       ),
     ).toThrow(/outside its temp folders/);
+  });
+});
+
+describe("the write guard is an allow-list (issue 1356)", () => {
+  it("refuses a state folder outside the home: another user's, a shared folder, another volume", () => {
+    const r = rig();
+    for (const p of [
+      "/Users/Shared/x",
+      "/Users/someone-else/.den/web.secret",
+      "/Volumes/x/.den/state.json",
+      "/Library/LaunchDaemons/x.plist",
+      "/opt/den/state/x",
+    ])
+      expect(() => r.f.writeFileSync(p, "x")).toThrow(
+        /outside its temp folders/,
+      );
+    expect(r.refused).toHaveLength(5);
+  });
+
+  it("lets /dev/null through, and a root a suite names", () => {
+    const r = rig();
+    r.f.writeFileSync("/dev/null", "x");
+    const extra = path.join(tmp, "named-root");
+    fs.mkdirSync(extra, { recursive: true });
+    const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+    const refused: string[] = [];
+    installWriteGuard(
+      f,
+      { checkout: r.checkout, temp: [], allow: [extra] },
+      (p) => void refused.push(p),
+    );
+    f.writeFileSync(path.join(extra, "a"), "x");
+    expect(() => f.writeFileSync(path.join(r.home, "a"), "x")).toThrow(
+      /outside its temp folders/,
+    );
+    expect(refused).toEqual([path.join(r.home, "a")]);
+    expect(r.refused).toEqual([]);
+  });
+
+  it("reads a file: URL as its path, escapes and all", () => {
+    const r = rig();
+    const p = path.join(r.other, "config", "local", "my file.yml");
+    expect(() => r.f.writeFileSync(pathToFileURL(p), "x")).toThrow(
+      /config\/local\/my file\.yml/,
+    );
+  });
+});
+
+describe("one refusal list per worker (issue 1356)", () => {
+  it("a later test file's load of the guard sees a refusal made through the first load's wrappers", () => {
+    const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+    const r = rig();
+    type M = typeof import("../../write-guard.js");
+    let first: M | undefined;
+    let second: M | undefined;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      first = require("../../write-guard") as M;
+    });
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      second = require("../../write-guard") as M;
+    });
+    expect(first).not.toBe(second);
+    const roots = { checkout: r.checkout, temp: [r.scratch] };
+    first!.installWriteGuard(f, roots);
+    second!.installWriteGuard(f, roots); // already guarded: a no-op
+    const start = second!.guardedWrites().length;
+    const file = path.join(r.home, ".den", "swallowed");
+    try {
+      f.writeFileSync(file, "x");
+    } catch {
+      /* a writer that swallows the error */
+    }
+    expect(second!.guardedWrites().slice(start)).toEqual([file]);
+    second!.guardedWrites().splice(start);
   });
 });
 

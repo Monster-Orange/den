@@ -1,38 +1,47 @@
 /**
  * Issue 1356: no test writes a real install's config or state. tests/setup.ts
- * installs this on the real fs for every test file. A write is refused at the
- * call (it throws, and the test file fails at its end too, should the writer
- * swallow the error) when it targets
+ * installs this on the real fs for every test file. It is an allow-list: a
+ * write (it throws at the call, and the test file fails at its end too,
+ * should the writer swallow the error) may reach only
  *
- *   - any config/local folder outside the temp folders (another checkout's,
- *     reached through a symlinked node_modules, or this checkout's own);
- *   - anything under the person's home outside the checkout under test and
- *     the temp folders: Den's state folders (~/.den and every install's), the
- *     install registry, other checkouts.
+ *   - the temp folders (os.tmpdir(), /tmp, $TMPDIR);
+ *   - the checkout under test, except any config/local in it (coverage,
+ *     fixtures);
+ *   - /dev (/dev/null);
+ *   - a root a suite names in WriteGuardRoots.allow.
  *
- * The temp folders (os.tmpdir(), /tmp, $TMPDIR) always pass, and so does the
- * checkout under test outside its config/local (coverage, fixtures). Child
- * processes aren't covered: their own sandbox and env (DEN_HOME, …) are.
+ * Everything else is refused: any other config/local (another checkout's,
+ * reached through a linked node_modules), ~/.den and every install's state
+ * folder wherever it lives (another volume, another OS user's home,
+ * /Users/Shared), the install registry, /Library. Child processes aren't
+ * covered: their own sandbox and env (DEN_HOME, …) are.
  */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { fileURLToPath } from "url";
 
 export interface WriteGuardRoots {
-  /** The person's home, as it was when the run started. */
-  home: string;
-  /** The checkout under test. */
+  /** The checkout under test (its config/local stays refused). */
   checkout: string;
   /** Folders every write may reach. */
   temp: string[];
+  /** Other folders a suite needs, named one by one. */
+  allow?: string[];
 }
 
 const GUARDED = Symbol.for("den.writeGuard");
-const refusals: string[] = [];
+const REFUSALS = Symbol.for("den.writeGuard.refusals");
 
-/** The refusals so far in this worker (setup.ts fails the file on any). */
+/**
+ * The refusals so far in this worker (setup.ts fails each file on its own).
+ * One list per worker, on globalThis: the fs module, and so the wrappers
+ * installed on it, outlive a test file, while jest loads this module afresh
+ * for each.
+ */
 export function guardedWrites(): string[] {
-  return refusals;
+  const g = globalThis as unknown as Record<symbol, string[] | undefined>;
+  return (g[REFUSALS] ??= []);
 }
 
 /** A path's real form, for one that may not exist yet (its nearest folder). */
@@ -65,12 +74,13 @@ function hasConfigLocal(p: string): boolean {
 export function refusedWrite(p: string, roots: WriteGuardRoots): boolean {
   const real = realish(p);
   if (roots.temp.some((t) => inside(real, t))) return false;
+  if (inside(real, "/dev")) return false;
+  if ((roots.allow ?? []).some((a) => inside(real, realish(a)))) return false;
   if (hasConfigLocal(real)) return true;
-  if (inside(real, roots.checkout)) return false;
-  return inside(real, roots.home);
+  return !inside(real, roots.checkout);
 }
 
-/** This run's roots: the real home, the checkout, the temp folders. */
+/** This run's roots: the checkout and the temp folders. */
 export function writeGuardRoots(): WriteGuardRoots {
   const r = (p: string) => {
     try {
@@ -83,7 +93,6 @@ export function writeGuardRoots(): WriteGuardRoots {
     .filter(Boolean)
     .map(r);
   return {
-    home: r(os.homedir()),
     // tests/ sits in the checkout (never in node_modules, which may be a
     // link into another checkout).
     checkout: r(
@@ -158,7 +167,7 @@ const writesFlags = (f: unknown) =>
 function pathOf(a: unknown): string | null {
   if (typeof a === "string") return a;
   if (Buffer.isBuffer(a)) return a.toString();
-  if (a instanceof URL && a.protocol === "file:") return a.pathname;
+  if (a instanceof URL && a.protocol === "file:") return fileURLToPath(a);
   return null;
 }
 
@@ -169,7 +178,7 @@ function pathOf(a: unknown): string | null {
 export function installWriteGuard(
   fsObj: typeof fs,
   roots: WriteGuardRoots,
-  onRefused: (p: string) => void = (p) => void refusals.push(p),
+  onRefused: (p: string) => void = (p) => void guardedWrites().push(p),
 ): void {
   const mod = fsObj as unknown as Record<string | symbol, unknown>;
   if (mod[GUARDED]) return;
