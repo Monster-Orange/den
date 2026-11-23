@@ -205,6 +205,18 @@ describe("issue 646: after Connect, nothing links before the press (the approved
     expect(f.links.size).toBe(0);
   });
 
+  it("issue 1334: Connect's review never offers an empty project, nor counts it", async () => {
+    const f = fake({
+      projects: () => ["default", "north", "south"],
+      empty: (ws) => ws === "default" || ws === "south",
+    });
+    f.suggest.default = [{ ...P.web, why: "name" }];
+    expect((await reviewRows(f.d)).rows.map((r) => r.project)).toEqual([
+      "north",
+    ]);
+    expect(await reviewCount(f.d)).toEqual({ review: 1 });
+  });
+
   it("Hub not answering: cannot; every project linked: none to review", async () => {
     expect(await reviewCount(fake({ choices: async () => null }).d)).toEqual({
       cannot: true,

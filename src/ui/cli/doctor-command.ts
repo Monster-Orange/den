@@ -887,6 +887,9 @@ async function hubDeliveryDoctor(): Promise<
  * the command that shows Hub's suggestions and links one; with two or
  * more unlinked, one more line names `hub link --suggested`. Doctor doesn't
  * ask Hub for the suggestions itself: one call per project is too slow.
+ * Issue 1334: an empty project (no repos, services or agents, often the
+ * built-in `default`) is ✓ "nothing to link", never a warning: an agent
+ * reading Doctor would ask the person for a link nobody needs.
  */
 export function hubProjectLines(
   connected: boolean,
@@ -902,6 +905,8 @@ export function hubProjectLines(
       origin: string;
       company?: string;
     };
+    /** Issue 1334: no repos, no services, no agents. */
+    empty?: boolean;
   }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
@@ -926,7 +931,13 @@ export function hubProjectLines(
   }
   if (!connected || !projects.length) return { lines, checks };
   projects = projects.filter((p) => p.link || !p.lost);
-  for (const { ws, link } of projects) {
+  for (const { ws, link, empty } of projects) {
+    if (!link && empty) {
+      const detail = `${ws}: empty, nothing to link`;
+      lines.push(`  hub project  ✓  ${detail}`);
+      checks.push({ id: `hub:project:${ws}`, status: "ok", detail });
+      continue;
+    }
     const name = link
       ? link.name === link.slug
         ? link.slug
@@ -947,7 +958,7 @@ export function hubProjectLines(
     });
   }
   // #68: two or more unlinked: one place links every suggestion at once.
-  const unlinked = projects.filter((p) => !p.link).length;
+  const unlinked = projects.filter((p) => !p.link && !p.empty).length;
   if (unlinked > 1)
     lines.push(
       `  hub project  ⚠  ${unlinked} projects aren't linked. See what Hub suggests for each, and link them in one go: \`${cli} hub link --suggested\``,
@@ -1097,10 +1108,13 @@ async function projectsWithHubProject(): Promise<
       origin: string;
       company?: string;
     };
+    empty: boolean;
   }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
+  const { emptyProjectTest } = await import("../../shared/empty-project.js");
+  const { listRecords } = await import("../../shared/agents/records.js");
   const { hubProjectOf, hubLinkElsewhere } =
     await import("../../shared/hub-project-link.js");
   const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
@@ -1108,6 +1122,11 @@ async function projectsWithHubProject(): Promise<
     const file = readWorkspacesFile();
     const all = file.workspaces;
     const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
+    // Issue 1334: an empty project has nothing to link.
+    const isEmpty = emptyProjectTest(
+      () => file,
+      () => listRecords(getStateDir()),
+    );
     return Object.keys(all).map((ws) => {
       const was = lost.get(ws);
       // Issue 646: a link to another Hub or company isn't this one's.
@@ -1115,6 +1134,7 @@ async function projectsWithHubProject(): Promise<
       return {
         ws,
         link: hubProjectOf(ws, () => file),
+        empty: isEmpty(ws),
         ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
         ...(e?.hub
           ? {
