@@ -2,7 +2,8 @@
  * Issue 750: gate/750.mjs checks the bed's own groups read through Den. A
  * read that fails (no person token, a network error) says why in the
  * skipped row, never a bare "null". The module is plain JavaScript, so it
- * runs in a child node, as the bed runs it. Invented names only.
+ * runs in a child node, as the bed runs it. Its rows are the 7th and 8th
+ * (the real-Hub leg's four follow them). Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
@@ -18,7 +19,7 @@ function verdict(result: Record<string, unknown>): Row[] {
   const js = `
     const g = await import("./gate/750.mjs");
     const rows = g.expect([{ cell: {}, result: ${JSON.stringify(result)} }]);
-    process.stdout.write(JSON.stringify(rows.slice(-2)));
+    process.stdout.write(JSON.stringify(rows.slice(6, 8)));
   `;
   const r = spawnSync("node", ["--input-type=module", "-e", js], {
     cwd: process.cwd(),
