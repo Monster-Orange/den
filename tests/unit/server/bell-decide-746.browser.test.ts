@@ -12,7 +12,7 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import type { Browser, Page } from "playwright";
+import type { Browser, Locator, Page } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
@@ -161,15 +161,14 @@ async function page(signIn: boolean): Promise<Page> {
   return p;
 }
 
-/** Wait until `id` is in `want` (jest has no expect.poll). */
-async function until(id: string, want: string): Promise<string> {
-  const end = Date.now() + 15_000;
-  let s = await stateOf(id);
-  while (s !== want && Date.now() < end) {
-    await new Promise((r) => setTimeout(r, 200));
-    s = await stateOf(id);
-  }
-  return s;
+/** Click `which` in the row and wait for the bell's decide answer. */
+async function decide(p: Page, row: Locator, which: "allow" | "deny") {
+  const answered = p.waitForResponse(
+    (r) => r.url().includes("/decide") && r.request().method() === "POST",
+    { timeout: 15_000 },
+  );
+  await row.locator(`[data-bell="${which}"]`).click();
+  expect((await answered).status()).toBe(200);
 }
 
 /** Put off the Allow pop-up, then open the bell at the request's row. */
@@ -189,8 +188,8 @@ describe("the bell's Allow and Deny (issue 746)", () => {
     const p = await page(true);
     const id = await ask("workspace_create", { name: "bellweb" });
     const row = await bellRow(p, id);
-    await row.locator('[data-bell="allow"]').click();
-    expect(await until(id, "done")).toBe("done");
+    await decide(p, row, "allow");
+    expect(await stateOf(id)).toBe("done");
     expect(await workspaces()).toContain("bellweb");
     expect(errors).toEqual([]);
     await p.context().close();
@@ -201,8 +200,8 @@ describe("the bell's Allow and Deny (issue 746)", () => {
     const p = await page(true);
     const id = await ask("workspace_create", { name: "bellnope" });
     const row = await bellRow(p, id);
-    await row.locator('[data-bell="deny"]').click();
-    expect(await until(id, "denied")).toBe("denied");
+    await decide(p, row, "deny");
+    expect(await stateOf(id)).toBe("denied");
     expect(await workspaces()).not.toContain("bellnope");
     expect(errors).toEqual([]);
     await p.context().close();
