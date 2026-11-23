@@ -14,6 +14,7 @@
 import { randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** The request header the edge adds (Den deletes it once read). */
 export const EDGE_PROOF_HEADER = "x-den-edge-proof";
@@ -37,9 +38,7 @@ function writeProof(stateDir: string): string {
   const p = randomBytes(32).toString("hex");
   const f = edgeProofFile(stateDir);
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, p + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, f);
+  writeFileAtomic(f, p + "\n", { mode: 0o600 });
   return p;
 }
 

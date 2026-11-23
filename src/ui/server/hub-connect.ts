@@ -55,6 +55,7 @@ import {
   secretsStatus,
   type SecretRef,
 } from "../../shared/secrets/index.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** How long a started connect waits for Hub to send the person back. */
 export const CONNECT_TTL_MS = 10 * 60_000;
@@ -186,10 +187,7 @@ export function hubTokenFile(stateDir = getStateDir()): string {
 function writeTokenFile(file: string, token: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   fs.chmodSync(path.dirname(file), 0o700);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${token}\n`, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, `${token}\n`, { mode: 0o600 });
 }
 
 /**

@@ -1,0 +1,94 @@
+{
+  "src/pillars/journeys/report/junit.ts": {
+    "count": 1,
+    "reason": "test tooling: a journeys run's JUnit report in its report folder"
+  },
+  "src/pillars/journeys/report/results.ts": {
+    "count": 1,
+    "reason": "test tooling: a journeys run's results file in its report folder"
+  },
+  "src/pillars/journeys/runner.ts": {
+    "count": 1,
+    "reason": "test tooling: a journey's transcript in its report folder"
+  },
+  "src/pillars/journeys/sandbox.ts": {
+    "count": 2,
+    "reason": "test tooling: hook and permission files in a throwaway sandbox"
+  },
+  "src/pillars/security/run.ts": {
+    "count": 1,
+    "reason": "test tooling: security reports under the distribution's reports folder"
+  },
+  "src/pillars/smoke/global-teardown.ts": {
+    "count": 1,
+    "reason": "test tooling: the smoke run's hand-off file in its run folder"
+  },
+  "src/pillars/smoke/setup-global.ts": {
+    "count": 1,
+    "reason": "test tooling: the smoke run's manifest in its run folder"
+  },
+  "src/scripts/configure-aws-profiles.ts": {
+    "count": 1,
+    "reason": "developer script: config/local in the checkout, run by hand"
+  },
+  "src/scripts/register-repos.ts": {
+    "count": 1,
+    "reason": "developer script: config/local in the checkout, run by hand"
+  },
+  "src/shared/agents/git-signing.ts": {
+    "count": 1,
+    "reason": "temp file: allowed_signers in a mkdtemp folder removed after the check"
+  },
+  "src/shared/environment-manager/workspace-manager.ts": {
+    "count": 2,
+    "reason": "the setup marker in the person's repo, and a temp setup script"
+  },
+  "src/shared/gates/store.ts": {
+    "count": 1,
+    "reason": "a lock folder's pid note: a lost write is covered by the 30 s rule"
+  },
+  "src/shared/hub-files.ts": {
+    "count": 2,
+    "reason": "hub pull: files written into the folder the person names, not state"
+  },
+  "src/shared/results/result-writer.ts": {
+    "count": 1,
+    "reason": "test results: the index is written to a temp file and renamed, async"
+  },
+  "src/shared/verify/pin.ts": {
+    "count": 1,
+    "reason": "a pin note inside a temp folder that is renamed into place whole"
+  },
+  "src/ui/cli/create.ts": {
+    "count": 2,
+    "reason": "new files in the person's new repo, created exclusively (wx)"
+  },
+  "src/ui/cli/init.ts": {
+    "count": 1,
+    "reason": "the manifest in the person's repo, written once by init"
+  },
+  "src/ui/cli/repo-command.ts": {
+    "count": 1,
+    "reason": "a side-car manifest in the person's repo, created exclusively (wx)"
+  },
+  "src/ui/cli/theme-command.ts": {
+    "count": 1,
+    "reason": "a new theme's manifest in the person's repo"
+  },
+  "src/ui/server/index.ts": {
+    "count": 2,
+    "reason": "temp .command scripts in the OS temp folder, removed after Terminal opens them"
+  },
+  "src/ui/server/sudo-store.ts": {
+    "count": 3,
+    "reason": "the sudo shim's files in a per-process temp folder, never state"
+  },
+  "src/ui/server/update-watch.mjs": {
+    "count": 1,
+    "reason": "runs alone with no Den modules (npm is replacing them); its own temp, flush and rename"
+  },
+  "src/ui/server/workspace-routes.ts": {
+    "count": 2,
+    "reason": "the setup-pending marker in the person's repo: its content is never read"
+  }
+}

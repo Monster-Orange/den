@@ -12,7 +12,7 @@
  * session started from the caller's shell is scrubbed with.
  */
 import { isCredentialEnv } from "../src/shared/secret-env";
-import { AGENT_ACTOR_ENV } from "../src/shared/sessions/env";
+import { AGENT_ACTOR_ENV } from "../src/shared/sessions/env-names";
 
 /** Whether a variable looks like a credential, by name or by value. */
 export const isSecretEnv = isCredentialEnv;
