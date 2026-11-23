@@ -223,8 +223,10 @@ function isUnder(f: string, d: string): boolean {
     const r = realPath(d);
     return f === r || f.startsWith(r + path.sep);
   }
-  const esc = path
-    .resolve(d)
+  // The part before the first `*` on its real path (a linked data folder).
+  const abs = path.resolve(d);
+  const cut = abs.lastIndexOf("/", abs.indexOf("*"));
+  const esc = (realPath(abs.slice(0, cut) || "/") + abs.slice(cut))
     .split("*")
     .map((x) => x.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
     .join("[^/]+");

@@ -364,6 +364,11 @@ describe("issue 1316: agents.git.signing_key in the state dir", () => {
     expect(sandboxHidesFile(k1, i)).toMatch(/hidden from agents/);
     expect(sandboxHidesFile(k2, i)).toMatch(/hidden from agents/);
     expect(sandboxHidesFile(k3, i)).toBeNull();
+    // A linked data folder: the * pattern is matched on its real path.
+    fs.symlinkSync(path.join(base, "share"), path.join(base, "share-link"));
+    expect(
+      sandboxHidesFile(k2, { ...ins, keyRefusedDirs: [path.join(base, "share-link", "*", "edge")] }),
+    ).toMatch(/hidden from agents/);
     const p = agentSandboxPolicy({ ...i, readableFiles: [k1, k2, k3] });
     expect(p.readableFiles).toEqual(expect.arrayContaining([fs.realpathSync(k3)]));
     expect(p.readableFiles).not.toContain(fs.realpathSync(k1));
