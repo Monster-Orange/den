@@ -62,6 +62,10 @@ export interface ThemeManifest {
     radius?: string;
     "radius-button"?: string;
     density?: "compact" | "comfortable";
+    /** Issue 788 (0.4.88): edges solid (unset) or dashed. */
+    edge?: "solid" | "dashed";
+    /** Issue 788 (0.4.88): primary and danger buttons filled (unset) or outline. */
+    buttons?: "filled" | "outline";
   };
   mark?: {
     svg?: string;

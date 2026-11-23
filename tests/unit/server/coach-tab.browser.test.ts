@@ -149,21 +149,21 @@ describe("the Coach tab", () => {
       p.locator("#sa-tab-terminal").getAttribute("aria-selected"),
     ).resolves.toBe("true");
     await p.locator("#sa-tab-coach").click();
-    await p.locator("table.co-table:not(.co-ftable)").waitFor();
+    await p.locator('[data-note="coach-table"]').waitFor();
     expect(new URL(p.url()).searchParams.get("tab")).toBe("coach");
     expect(await p.locator("#sa-body").isHidden()).toBe(true);
     const names = await p
-      .locator("table.co-table:not(.co-ftable) tbody td:first-child b")
-      .allTextContents();
+      .locator('[data-note="coach-table"] tr[data-agent]')
+      .evaluateAll((rs) => rs.map((r) => r.getAttribute("data-agent")));
     expect(names).toEqual(["builder", "tester"]);
     await p.locator('[data-act="coach-sort"][data-key="agent"]').click();
     await expect(
       p.locator("th[aria-sort]").getAttribute("aria-sort"),
     ).resolves.toBe("ascending");
     // A click anywhere on the row opens its detail.
-    await p.locator('tr[data-agent="tester"] td').nth(4).click();
-    await p.locator(".co-det").waitFor();
-    await p.locator(".co-close").click();
+    await p.locator('tr[data-agent="tester"]').click();
+    await p.locator('[data-note="coach-detail"]').waitFor();
+    await p.locator('[data-note="coach-close"]').click();
     await expect(
       p.evaluate(() => document.activeElement?.getAttribute("data-agent")),
     ).resolves.toBe("tester");
@@ -177,43 +177,50 @@ describe("the Coach tab", () => {
       1440,
       true,
     );
-    const btn = p.locator('.co-ftable [data-act="coach-dismiss"]');
+    const btn = p.locator(
+      '[data-note="coach-findings-table"] [data-act="coach-dismiss"]',
+    );
     await btn.click();
     await expect(btn.getAttribute("aria-busy")).resolves.toBe("true");
     expect(await btn.isDisabled()).toBe(true);
     release();
-    const toast = p.locator(".den-toast.den-toast-act");
+    const toast = p.locator('[data-toast="action"]');
     await toast.waitFor();
-    await expect(toast.locator(".den-tmsg").textContent()).resolves.toContain(
-      "tester polls a lot",
-    );
+    // The finding's own title (co.f.polling.t), with its agent's name.
+    await expect(
+      toast.locator("[data-toast-msg]").textContent(),
+    ).resolves.toContain("tester");
     // About 8 s, held while the pointer is on it (Den Design, issue 52).
     await toast.hover();
     await p.clock.runFor(12_000);
     expect(await toast.isVisible()).toBe(true);
-    expect(await p.locator(".co-fnone").count()).toBe(1);
+    expect(await p.locator('[data-note="coach-no-findings"]').count()).toBe(1);
     expect(posts[0]).toBe('dismiss {"id":"polling:tester"}');
-    await toast.locator(".den-tbtn").click();
-    await p.locator(".co-ftable").waitFor();
+    await toast.locator("[data-toast-btn]").click();
+    await p.locator('[data-note="coach-findings-table"]').waitFor();
     expect(posts[1]).toBe('undismiss {"id":"polling:tester"}');
-    expect(await p.locator(".den-toast").count()).toBe(0);
+    expect(await p.locator("[data-toast]").count()).toBe(0);
     // Dismissed again and left alone, the toast goes after about 8 s.
-    await p.locator('.co-ftable [data-act="coach-dismiss"]').click();
+    await p
+      .locator('[data-note="coach-findings-table"] [data-act="coach-dismiss"]')
+      .click();
     await toast.waitFor();
     await p.mouse.move(0, 0);
     await p.clock.runFor(9_000);
-    expect(await p.locator(".den-toast").count()).toBe(0);
+    expect(await p.locator("[data-toast]").count()).toBe(0);
     await p.context().close();
   });
 
   it("a phone shows cards, never the table, and a full-width Dismiss", async () => {
     if (!browser) return;
     const { p } = await open("/server-agent?tab=coach", 390);
-    await p.locator(".co-cards").waitFor();
-    expect(
-      await p.locator("table.co-table:not(.co-ftable)").first().isVisible(),
-    ).toBe(false);
-    const box = await p.locator(".co-fdis-wide").first().boundingBox();
+    await p.locator('[data-note="coach-cards"]').waitFor();
+    expect(await p.locator('[data-note="coach-table"]').isVisible()).toBe(
+      false,
+    );
+    const box = await p
+      .locator('[data-note="coach-finding-cards"] [data-act="coach-dismiss"]')
+      .boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
     const doc = await p.evaluate(() => ({
       sw: document.documentElement.scrollWidth,
