@@ -56,7 +56,9 @@ describe("issue 728: doctor's same-login rows", () => {
     const r = rows(own);
     const s = check(r, "shared_user");
     expect(s.status).toBe("warn");
-    expect(s.detail).toMatch(/1 other install runs as this login on this computer/);
+    expect(s.detail).toMatch(
+      /1 other install runs as this login on this computer/,
+    );
     expect(r.lines.join("\n")).not.toContain("other-install");
   });
 
@@ -103,5 +105,52 @@ describe("issue 728: doctor's same-login rows", () => {
     const s = check(rows(own), "uncovered_files");
     expect(s.detail).toContain("loose/k00");
     expect(s.detail).toMatch(/and 5 more/);
+  });
+
+  it("a walk stopped at its cap never says every file is covered", () => {
+    const own = install("own");
+    registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
+    for (let i = 0; i < 5; i++) put(own, `logs/l${i}`, 0o644);
+    const s = check(
+      sharedUserLines("Den", {
+        stateDir: own,
+        registry: reg(),
+        home: root,
+        maxEntries: 3,
+      }),
+      "uncovered_files",
+    );
+    expect(s.status).toBe("warn");
+    expect(s.detail).toMatch(/checked the first 3 entries only/);
+  });
+
+  it("a walk stopped at its depth never says every file is covered", () => {
+    const own = install("own");
+    registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
+    put(own, "a/b/c/d/e.txt", 0o644);
+    const s = check(
+      sharedUserLines("Den", {
+        stateDir: own,
+        registry: reg(),
+        home: root,
+        maxDepth: 2,
+      }),
+      "uncovered_files",
+    );
+    expect(s.status).toBe("warn");
+    expect(s.detail).toMatch(/2 folders deep only/);
+  });
+
+  it("a name that could carry a token is never printed", () => {
+    const own = install("own");
+    registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
+    const hex = "ab".repeat(20);
+    put(own, `loose/key-${hex}.json`);
+    put(own, "loose/odd name=secret!");
+    const s = check(rows(own), "uncovered_files");
+    expect(s.detail).toContain("loose/key-<id>.json");
+    expect(s.detail).not.toContain(hex);
+    expect(s.detail).not.toContain("secret!");
+    expect(s.detail).toContain("loose/<name>");
   });
 });

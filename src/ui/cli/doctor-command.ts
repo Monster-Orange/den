@@ -1681,7 +1681,14 @@ export function edgeRotationLines(
  */
 export function sharedUserLines(
   title: string,
-  o: { stateDir?: string; registry?: string; home?: string } = {},
+  o: {
+    stateDir?: string;
+    registry?: string;
+    home?: string;
+    /** The walk's caps (default 20,000 entries, 8 folders deep). */
+    maxEntries?: number;
+    maxDepth?: number;
+  } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
   const reg = o.registry ?? registryDir();
@@ -1700,15 +1707,27 @@ export function sharedUserLines(
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home),
   );
-  const loose = uncoveredSecretFiles(stateDir, rules);
+  const maxEntries = o.maxEntries ?? 20000;
+  const maxDepth = o.maxDepth ?? 8;
+  const walked = uncoveredSecretFiles(stateDir, rules, maxEntries, maxDepth);
+  const loose = walked.files.map(safeShownPath);
+  const partial = walked.capped
+    ? `checked the first ${maxEntries} entries only`
+    : walked.deep
+      ? `checked ${maxDepth} folders deep only`
+      : "";
+  const looseWarn = loose.length > 0 || !!partial;
   const SHOWN = 10;
-  const looseDetail = loose.length
+  const listed = loose.length
     ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
         .slice(0, SHOWN)
         .join(
           ", ",
         )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
-    : "agents' deny rules cover every 0600 file in the state folder";
+    : partial
+      ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
+      : "agents' deny rules cover every 0600 file in the state folder";
+  const looseDetail = partial ? `${listed} (${partial})` : listed;
   const mark = (ok: boolean) => (ok ? "✓" : "⚠");
   return {
     lines: [
@@ -1717,7 +1736,7 @@ export function sharedUserLines(
       "",
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(registered)}  ${regDetail}`,
-      `  0600 files  ${mark(!loose.length)}  ${looseDetail}`,
+      `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
     ],
     checks: [
       { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
@@ -1728,7 +1747,7 @@ export function sharedUserLines(
       },
       {
         id: "uncovered_files",
-        status: loose.length ? "warn" : "ok",
+        status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
       },
     ],
@@ -1737,15 +1756,20 @@ export function sharedUserLines(
 
 /**
  * The 0600 regular files under `stateDir` no Read rule covers, relative to
- * it and sorted. Never follows a link; stops at a bounded walk.
+ * it and sorted. Never follows a link; a bounded walk, which says whether
+ * it stopped at its entry cap (`capped`) or skipped deeper folders (`deep`).
  */
-function uncoveredSecretFiles(stateDir: string, rules: string[]): string[] {
-  const MAX_ENTRIES = 20000;
-  const MAX_DEPTH = 8;
+function uncoveredSecretFiles(
+  stateDir: string,
+  rules: string[],
+  maxEntries: number,
+  maxDepth: number,
+): { files: string[]; capped: boolean; deep: boolean } {
   const out: string[] = [];
   let seen = 0;
+  let capped = false;
+  let deep = false;
   const walk = (dir: string, depth: number): void => {
-    if (depth > MAX_DEPTH) return;
     let names: fs.Dirent[] = [];
     try {
       names = fs.readdirSync(dir, { withFileTypes: true });
@@ -1753,10 +1777,15 @@ function uncoveredSecretFiles(stateDir: string, rules: string[]): string[] {
       return;
     }
     for (const e of names) {
-      if (++seen > MAX_ENTRIES) return;
+      if (++seen > maxEntries) {
+        capped = true;
+        return;
+      }
       const p = path.join(dir, e.name);
-      if (e.isDirectory()) walk(p, depth + 1);
-      else if (e.isFile()) {
+      if (e.isDirectory()) {
+        if (depth >= maxDepth) deep = true;
+        else walk(p, depth + 1);
+      } else if (e.isFile()) {
         try {
           if ((fs.lstatSync(p).mode & 0o777) !== 0o600) continue;
         } catch {
@@ -1764,10 +1793,26 @@ function uncoveredSecretFiles(stateDir: string, rules: string[]): string[] {
         }
         if (!readRulesCover(rules, p)) out.push(path.relative(stateDir, p));
       }
+      if (capped) return;
     }
   };
   walk(path.resolve(stateDir), 0);
-  return out.sort();
+  return { files: out.sort(), capped, deep };
+}
+
+/**
+ * A state-folder path as doctor may print it (its output gets pasted into
+ * reports): a run of over 32 hex characters becomes <id>, and a segment
+ * not of [A-Za-z0-9._-]{1,64} becomes <name>, so no token in a name shows.
+ */
+function safeShownPath(rel: string): string {
+  return rel
+    .split(path.sep)
+    .map((seg) => {
+      const s = seg.replace(/[0-9A-Fa-f]{33,}/g, "<id>");
+      return /^(?:[A-Za-z0-9._-]|<id>){1,64}$/.test(s) ? s : "<name>";
+    })
+    .join("/");
 }
 
 /**
