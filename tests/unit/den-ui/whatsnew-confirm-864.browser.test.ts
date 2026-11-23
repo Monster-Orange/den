@@ -151,7 +151,7 @@ for (const engine of ENGINES)
       await p.evaluate(() => (window as unknown as W).kit.openWhatsNew());
       await p.evaluate(() => (window as unknown as W).ask("askConfirm"));
       await settle(p);
-      await p.click('dialog.dk-confirm[open] [value="ok"]');
+      await p.click('dialog[data-dk-kind="confirm"][open] [value="ok"]');
       await settle(p);
       expect(await p.evaluate(() => (window as unknown as W).answer)).toBe(
         true,
