@@ -66,6 +66,7 @@ import {
   agentsCount,
   legacyAgentIds,
 } from "../../shared/agents/sandbox-rollout.js";
+import { readSandboxNotes } from "../../shared/agents/sandbox-set.js";
 import {
   gatherApiOnly,
   readApiOnlyAudit,
@@ -2752,6 +2753,11 @@ export interface SandboxReport {
   tmp?: { id: string; dir: string }[];
   /** Issue 1325: session temp folders no agent's record names (left over). */
   leftoverTmp?: string[];
+  /**
+   * Issue 1328: agents whose own sandbox is off (agents.<id>.sandbox), with
+   * when, why and who asked when agent_sandbox_set turned it off.
+   */
+  turnedOff?: { id: string; at?: string; why?: string; by?: string }[];
 }
 
 /**
@@ -2854,7 +2860,20 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
   const leftoverTmp = leftoverSessionTmps(
     recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
   );
+  // Issue 1328: every agent whose own sandbox is off, and the note.
+  let own: Record<string, { sandbox?: boolean }> = {};
+  try {
+    own = d.agentsConfig().agents ?? {};
+  } catch {
+    /* a bad config is its own row */
+  }
+  const notes = readSandboxNotes(d.stateDir());
+  const turnedOff = Object.entries(own)
+    .filter(([, a]) => a.sandbox === false)
+    .map(([id]) => ({ id, ...(notes[id] ?? {}) }))
+    .sort((a, b) => a.id.localeCompare(b.id));
   return {
+    ...(turnedOff.length ? { turnedOff } : {}),
     fromBefore: fromBefore.length,
     ...(tmp.length ? { tmp } : {}),
     ...(leftoverTmp.length ? { leftoverTmp } : {}),
@@ -2878,6 +2897,13 @@ export function sandboxLines(r: SandboxReport): string[] {
   if (r.fromBefore)
     out.push(
       `  ⚠ Sandbox is off for ${agentsCount(r.fromBefore)} (started before it): Allow Turn on in the bell, or set agents.sandbox: on in config/local/user.yml`,
+    );
+  // Issue 1328: a person's choice, said as such (not a ⚠ to ask about).
+  for (const x of r.turnedOff ?? [])
+    out.push(
+      x.at
+        ? `  ℹ ${x.id}: sandbox off since ${new Date(x.at).toLocaleString()}, asked by ${x.by ?? "a person"}: ${x.why || "no reason noted"}`
+        : `  ℹ ${x.id}: sandbox off (set in config/local/user.yml, no reason noted)`,
     );
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)

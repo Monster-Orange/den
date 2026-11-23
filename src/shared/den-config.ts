@@ -1162,6 +1162,49 @@ export function setUserSandboxOn(): void {
   } as UserConfig);
 }
 
+/**
+ * Issue 1328: `agents.<id>.sandbox: on|off` in user.yml, for the held write
+ * agent_sandbox_set. Only that key changes: comments, the order and every
+ * other key stay (the file is edited as a YAML document, never rewritten
+ * from its values).
+ */
+export function setUserAgentSandbox(id: string, on: boolean): void {
+  if (!AGENT_KEY_RE.test(id) || AGENTS_RESERVED_KEYS.includes(id))
+    throw new Error(
+      `setUserAgentSandbox: ${JSON.stringify(id)} is not an agent id`,
+    );
+  let raw = "";
+  try {
+    raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  let doc: yaml.Document;
+  if (raw.trim()) {
+    doc = yaml.parseDocument(raw);
+    if (doc.errors.length)
+      throw new Error(`config/local/user.yml: ${doc.errors[0]!.message}`);
+  } else {
+    doc = new yaml.Document({});
+    doc.commentBefore =
+      " Per-engineer preferences — gitignored, never committed";
+  }
+  // An empty key (`agents:`) reads as a null scalar: the same as none.
+  const empty = (n: unknown) =>
+    n === undefined || n === null || (yaml.isScalar(n) && n.value == null);
+  const agents = doc.get("agents", true);
+  if (empty(agents)) doc.set("agents", doc.createNode({}));
+  else if (!yaml.isMap(agents))
+    throw new Error("config/local/user.yml: agents must be a mapping");
+  const block = doc.getIn(["agents", id], true);
+  if (empty(block)) doc.setIn(["agents", id], doc.createNode({}));
+  else if (!yaml.isMap(block))
+    throw new Error(`config/local/user.yml: agents.${id} must be a mapping`);
+  doc.setIn(["agents", id, "sandbox"], on ? "on" : "off");
+  fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString());
+}
+
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
   try {

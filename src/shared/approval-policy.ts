@@ -114,6 +114,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
   },
+  agent_sandbox_set: {
+    risk: "widens",
+    why: "an agent out of the sandbox can write Den's own files (issue 1328); back in only narrows",
+  },
   project_mcp_add: {
     risk: "critical",
     why: "gives a project's agents new tools, and sends a bearer to a new address",

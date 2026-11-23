@@ -252,6 +252,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
@@ -1371,6 +1372,12 @@ import {
   sandboxOnHeldOp,
 } from "../../shared/agents/sandbox-rollout.js";
 import {
+  checkAgentSandboxSet,
+  runAgentSandboxSet,
+  writeSandboxNote,
+  type SandboxSetDeps,
+} from "../../shared/agents/sandbox-set.js";
+import {
   approvalsView,
   patchApprovals,
   pinsAsWatched,
@@ -1464,6 +1471,7 @@ import {
   agentInputState,
   checkAgentCreate,
   checkAgentFolder,
+  agentRecord,
   checkAgentMode,
   checkPersonaCreate,
   checkPersonaUpdate,
@@ -1476,6 +1484,7 @@ import {
   runProjectMcpUpdate,
   createAgent,
   runAgentFolder,
+  restartAgent,
   runAgentMode,
   runPersonaCreate,
   runPersonaUpdate,
@@ -5183,6 +5192,8 @@ function approvalDeps(): ApprovalDeps {
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
     },
+    // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
+    agentSandbox: agentSandboxHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5370,6 +5381,36 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * expired: its item goes). Issue 742: the queue is made at the start, so
  * what waited before a restart is read back and shows in the bell.
  */
+/**
+ * Issue 1328: agent_sandbox_set on this install: the agent's record, the
+ * resolved agents config, the one user.yml key, the note in the state
+ * folder, and Restart after its turn (the conversation kept).
+ */
+function agentSandboxHeldOp() {
+  const deps = (): SandboxSetDeps => ({
+    record: (id, project) => agentRecord(agentWebDeps(), id, project),
+    agentsConfig: () => readAgentsConfig(),
+    write: (id, on) => setUserAgentSandbox(id, on),
+    note: (id, n) => writeSandboxNote(getStateDir(), id, n),
+    restart: (id, project) =>
+      restartAgent(agentWebDeps(), id, project, "after-turn").catch((e) => {
+        serverLog(
+          `  ⚠ agent_sandbox_set: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
+          "warn",
+        );
+      }),
+    now: () => new Date().toISOString(),
+  });
+  return {
+    check: (
+      a: Record<string, unknown>,
+      who?: { agent?: string; project?: string },
+    ) => checkAgentSandboxSet(deps(), a, who),
+    run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
 /** Issue 936: den_sandbox_on, counting the agents from before it now. */
 function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
   return sandboxOnHeldOp({

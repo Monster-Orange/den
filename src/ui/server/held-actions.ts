@@ -45,6 +45,10 @@
  *                     its project's (agent-ops.ts checkAgentMode,
  *                     runAgentMode); a running one restarts after its turn
  *                     on the same conversation. The person's Allow only
+ *   agent_sandbox_set issue 1328: turn one agent's sandbox off or on
+ *                     (agents/sandbox-set.ts): only agents.<id>.sandbox in
+ *                     user.yml; a running one restarts after its turn on
+ *                     the same conversation. Off is the person's own Allow
  *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
@@ -210,6 +214,8 @@ export interface HeldActionDeps {
   projectMcpUpdate?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 1328: agent_sandbox_set's check and write (agents/sandbox-set.ts). */
+  agentSandbox?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
@@ -699,6 +705,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.agentMode,
     "this Den can't change an agent's mode here",
   );
+  const agentSandbox = op(
+    d.agentSandbox,
+    "this Den can't change an agent's sandbox here",
+  );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
   const appKeyCreate = op(
     d.appKeys?.create,
@@ -1062,6 +1072,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     hub_link: hubLink,
     agent_folder: agentFolder,
     agent_mode: agentMode,
+    agent_sandbox_set: agentSandbox,
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,
