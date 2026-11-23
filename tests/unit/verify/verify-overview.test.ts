@@ -209,3 +209,71 @@ describe("issue 209: the overview", () => {
     expect(e.envs[0].answer).toBe("nothing");
   });
 });
+
+// Issue 211: the All environments board (S1b) needs, per check and
+// environment, its recent results (the panel's strip), its mark, and the
+// commit and run its latest result came from (a scan not re-run says
+// "scanned at <commit>", not "passed").
+describe("issue 211: what the board needs", () => {
+  const mk = (runId: string, state: "passed" | "failed", endedAt: string) =>
+    run({
+      runId,
+      endedAt,
+      verdict: state,
+      modules: [
+        {
+          id: "shop:api/orders",
+          name: "api/orders",
+          repo: "shop",
+          layer: "api",
+          kind: "integration",
+          mark: "declared",
+          state,
+          ms: 10,
+        },
+      ],
+    });
+
+  it("recent: the last results on each environment, oldest first, at most 10", () => {
+    const many = Array.from({ length: 12 }, (_, n) =>
+      mk(
+        `r${n}`,
+        n === 11 ? "failed" : "passed",
+        `2026-11-15T${String(10 + n).padStart(2, "0")}:00:00Z`,
+      ),
+    ).reverse(); // newest first, as listRunRecords gives them
+    const o = verifyOverview({
+      project: "north",
+      envs: ["local", "staging"],
+      modules: shop.modules,
+      layers: shop.layers,
+      latest: {},
+      runs: [
+        ...many,
+        // A run still going never counts.
+        {
+          ...mk("r-going", "passed", ""),
+          verdict: "running",
+          endedAt: undefined,
+        },
+      ],
+    });
+    const api = o.checks.find((c) => c.module === "api/orders")!;
+    expect(api.recent.staging).toHaveLength(10);
+    expect(api.recent.staging.at(-1)).toBe("failed");
+    expect(api.recent.staging.slice(0, 9).every((s) => s === "passed")).toBe(
+      true,
+    );
+    expect(api.recent.local).toEqual([]);
+  });
+
+  it("carries each check's mark, and where its latest result came from", () => {
+    const api = ov.checks.find((c) => c.module === "api/orders")!;
+    expect(api.mark).toBe(
+      shop.modules.find((m) => m.name === "api/orders")!.mark,
+    );
+    expect(api.from.staging).toEqual({ commit: "e4f5a6b", runId: "r-stage" });
+    expect(api.from.local).toEqual({ commit: "a1b2c3d" });
+    expect(api.from.production).toBeUndefined();
+  });
+});

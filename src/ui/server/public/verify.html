@@ -594,6 +594,216 @@
           min-height: 44px;
         }
       }
+      /* Issue 211: the tabs, and S1b the All environments board. */
+      .vf-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        border-bottom: 1px solid var(--border);
+        margin: 0 0 14px;
+      }
+      .vf-tab {
+        font: 500 13px var(--sans);
+        background: none;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: var(--muted);
+        padding: 8px 10px;
+        min-height: 40px;
+        cursor: pointer;
+      }
+      .vf-tab[aria-pressed="true"] {
+        color: var(--accent-text);
+        border-bottom-color: var(--accent);
+      }
+      .vf-stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      @media (min-width: 1000px) {
+        .vf-stage.vf-open {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+        }
+      }
+      .vf-board {
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-rows: auto repeat(var(--rows, 3), minmax(68px, auto));
+        grid-template-columns: max-content;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+      .vf-bcol {
+        display: contents;
+      }
+      .vf-beh {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        min-width: 0;
+        padding-bottom: 4px;
+      }
+      .vf-beh b {
+        font: 600 14px var(--sans);
+      }
+      .vf-plan {
+        font-size: 13px;
+      }
+      .vf-bl {
+        align-self: center;
+        font: 600 13px var(--mono);
+        padding-inline-end: 4px;
+      }
+      .vf-cell {
+        --c: var(--faint);
+        font: inherit;
+        text-align: start;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        border: 1px solid var(--border);
+        border-inline-start: 4px solid var(--c);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: inherit;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      .vf-cell:hover {
+        border-color: var(--border-strong);
+        border-inline-start-color: var(--c);
+      }
+      .vf-cell[aria-expanded="true"] {
+        box-shadow: 0 0 0 2px var(--accent-text);
+      }
+      .vf-cell.vf-empty {
+        border-style: dashed;
+        cursor: default;
+        --c: var(--border-strong);
+      }
+      .vf-t-ok {
+        --c: var(--ok);
+      }
+      .vf-t-bad {
+        --c: var(--bad);
+      }
+      .vf-t-warn {
+        --c: var(--warn);
+      }
+      .vf-cell .vf-st,
+      .vf-pmeta .vf-st {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        font: 500 14px var(--sans);
+      }
+      .vf-cn,
+      .vf-k {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .vf-cl {
+        display: none;
+        font: 600 12px var(--mono);
+        color: var(--muted);
+      }
+      .vf-panel {
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+        background: var(--surface);
+        min-width: 0;
+      }
+      .vf-ph {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .vf-ph h2 {
+        margin: 0;
+        font: 600 14px var(--sans);
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .vf-pmeta {
+        margin: 0;
+        padding: 10px 14px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        align-items: center;
+      }
+      .vf-plist {
+        list-style: none;
+        margin: 0;
+        padding: 6px 14px 12px;
+      }
+      .vf-pr {
+        display: grid;
+        gap: 4px;
+        padding: 8px 0;
+        border-top: 1px solid var(--border);
+      }
+      .vf-pr:first-child {
+        border-top: 0;
+      }
+      .vf-pra {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      .vf-pra code {
+        overflow-wrap: anywhere;
+      }
+      .vf-strip {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        font-size: 12px;
+      }
+      .vf-strip i {
+        font-style: normal;
+        color: var(--c);
+        min-width: 0.9em;
+        text-align: center;
+      }
+      @media (max-width: 700px) {
+        /* One block per environment, its layers as rows: no sideways scroll. */
+        .vf-board {
+          display: block;
+        }
+        .vf-bcol {
+          display: grid;
+          gap: 6px;
+          margin-bottom: 16px;
+        }
+        .vf-blabels {
+          display: none;
+        }
+        .vf-beh {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+        .vf-cl {
+          display: block;
+        }
+        .vf-panel {
+          position: fixed;
+          inset: 0;
+          z-index: 50;
+          border-radius: 0;
+          border: 0;
+          overflow: auto;
+        }
+      }
     </style>
   </head>
   <body>
