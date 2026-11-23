@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function writeJson(file, v) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600, flush: true });
   fs.renameSync(tmp, file);
 }
 

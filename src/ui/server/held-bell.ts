@@ -102,6 +102,11 @@ export interface HeldWaiting {
   agent?: string;
   since: string;
   expiresAt: string;
+  /**
+   * Issue 746: the summary's parts, so the page words it in its language
+   * as the Allow dialog does (shell.js apWhat); `what` is the fallback.
+   */
+  params?: Approval["params"];
   /** Its Allow card's details lines, for the row's Review (as the dialog). */
   details?: readonly string[];
   /** One per details line: its message key and words (null: as is). */
@@ -124,6 +129,7 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       ...(a.agent ? { agent: a.agent } : {}),
       since: new Date(a.requestedAt).toISOString(),
       expiresAt: new Date(a.expiresAt).toISOString(),
+      ...(a.params ? { params: a.params } : {}),
       ...(a.details?.length ? { details: a.details } : {}),
       ...(a.details?.length && a.detailKeys?.length
         ? { detailKeys: a.detailKeys }
@@ -180,9 +186,17 @@ export async function heldLapsed(a: Approval, d: LapsedDeps): Promise<string> {
       text: a.agent
         ? `${a.agent}'s request lapsed unanswered: ${what}. Nothing ran; the agent was told to ask again.`
         : `A request lapsed unanswered: ${what}. Nothing ran.`,
-      msg: a.agent
-        ? { key: "bell.m.heldLapsed", vars: { name: a.agent, what } }
-        : { key: "bell.m.heldLapsedAsk", vars: { what } },
+      // The action and params let the page word `what` in its language
+      // (shell.js apWhat); `what` stays, the English fallback.
+      msg: {
+        key: a.agent ? "bell.m.heldLapsed" : "bell.m.heldLapsedAsk",
+        vars: {
+          ...(a.agent ? { name: a.agent } : {}),
+          what,
+          action: a.action,
+          ...(a.params ? { params: JSON.stringify(a.params) } : {}),
+        },
+      },
       link: heldLink(a.agent, project),
     });
   } catch {
