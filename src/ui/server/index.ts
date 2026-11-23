@@ -230,6 +230,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
@@ -1315,7 +1316,15 @@ import {
   issueWriteSettings,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
+import {
+  listRecords as listAgentRecords,
+  readRecord as readAgentRecord,
+} from "../../shared/agents/records.js";
+import {
+  askSandboxOn,
+  legacyAgentIds,
+  sandboxOnHeldOp,
+} from "../../shared/agents/sandbox-rollout.js";
 import {
   approvalsView,
   patchApprovals,
@@ -4805,6 +4814,8 @@ function approvalDeps(): ApprovalDeps {
     },
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    // Issue 936: the rollout's Turn on, for agents from before the sandbox.
+    sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -4988,6 +4999,36 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * expired: its item goes). Issue 742: the queue is made at the start, so
  * what waited before a restart is read back and shows in the bell.
  */
+/** Issue 936: den_sandbox_on, counting the agents from before it now. */
+function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
+  return sandboxOnHeldOp({
+    count: () =>
+      legacyAgentIds(listAgentRecords(getStateDir()), readAgentsConfig())
+        .length,
+    turnOn: () => setUserSandboxOn(),
+  });
+}
+
+/**
+ * Issue 936, the rollout: Den asks once, as a held write in the bell, to
+ * turn the sandbox on for agents from before it; then each hour, should
+ * the person have let it lapse. Best effort.
+ */
+function startSandboxOnAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      void askSandboxOn(ap.queue, sandboxOnServerOp()).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      /* no queue here: doctor still says it */
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
+}
+
 function startHeldWritesBell(): void {
   let shown = true;
   try {
@@ -10915,6 +10956,8 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    // Issue 936: Turn on the agent sandbox for agents from before it.
+    startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.

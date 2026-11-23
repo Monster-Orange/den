@@ -2029,6 +2029,14 @@
       "Cambiar la persona {id} en el proyecto {where}: {fields}",
     "ap.do.den_pin_commit":
       "Confirmar la versión fijada de la distribución en Den {version}",
+    "ap.do.den_sandbox_on":
+      "Activar el entorno aislado de agentes para {count} agentes iniciados antes (cada uno en su próximo inicio)",
+    "ap.det.den_sandbox_on.sets":
+      "Pone agents.sandbox: on en config/local/user.yml.",
+    "ap.det.den_sandbox_on.next":
+      "Cada agente entra en el entorno aislado en su próximo inicio; uno que ya está en marcha sigue así.",
+    "ap.det.den_sandbox_on.off":
+      "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
