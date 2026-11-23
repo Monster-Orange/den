@@ -431,6 +431,11 @@ export function findingWords(f, th = {}) {
       pct: e.sends ? Math.round((e.sends_no_reply / e.sends) * 100) : 0,
       line: th.sends_no_reply_pct,
     }),
+    skipped_lead: () => ({
+      n: e.sends_skipped_lead,
+      m: e.sends_cross,
+      line: th.skipped_lead,
+    }),
     repeat_ask: () => ({ n: e.judged_yes }),
     trivial_ask: () => ({ n: e.judged_yes }),
     relay: () => ({ n: e.judged_yes }),

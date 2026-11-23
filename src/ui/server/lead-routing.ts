@@ -13,9 +13,10 @@
  */
 import { listRecords, type AgentRecord } from "../../shared/agents/records.js";
 import { getStateDir } from "../../shared/paths.js";
+import { LEAD_ROLES } from "../../shared/agents/lead-roles.js";
 
-/** The persona roles that lead a project's agents. */
-export const LEAD_ROLES: readonly string[] = ["lead", "orchestrator"];
+/** The persona roles that lead a project's agents (shared with the Coach). */
+export { LEAD_ROLES };
 
 /** An agent as lead routing sees it. */
 export interface LeadCandidate {

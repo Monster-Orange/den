@@ -52,6 +52,21 @@ export interface CoachDeps {
   records?: (stateDir: string) => AgentRecord[];
   source?: (runtime: string) => UsageSource | undefined;
   rotateAfter?: () => number;
+  /** Issue 113: an agent's persona role (default: its persona's, as Den resolves it). */
+  roleOf?: (rec: AgentRecord) => string | undefined;
+}
+
+/** Issue 113: each agent's persona role, as Den resolves personas; none on error. */
+async function personaRoles(): Promise<
+  ((rec: AgentRecord) => string | undefined) | undefined
+> {
+  try {
+    const ops = await import("./agent-ops.js");
+    const find = ops.personaLookup(ops.resolveAgentsDeps({}));
+    return (rec) => find(rec)?.role;
+  } catch {
+    return undefined;
+  }
 }
 
 class CoachUsageError extends Error {}
@@ -149,6 +164,10 @@ export async function cmdCoach(
         ...(deps.records ? { records: deps.records } : {}),
         ...(deps.source ? { source: deps.source } : {}),
         ...(deps.rotateAfter ? { rotateAfter: deps.rotateAfter } : {}),
+        ...(await (async () => {
+          const roleOf = deps.roleOf ?? (await personaRoles());
+          return roleOf ? { roleOf } : {};
+        })()),
       });
       if (json) out(JSON.stringify(r, null, 2));
       else

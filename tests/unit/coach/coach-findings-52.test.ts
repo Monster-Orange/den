@@ -268,6 +268,8 @@ describe("agents.coach.findings settings", () => {
       sends_no_reply_pct: 50,
       min_sends: 5,
       sentence_words: 25,
+      // Issue 113: messages that went around another project's lead.
+      skipped_lead: 1,
     });
     expect(checkCoachConfig(undefined).findings).toEqual(FINDING_DEFAULTS);
     expect(COACH_DEFAULTS.findings).toEqual(FINDING_DEFAULTS);

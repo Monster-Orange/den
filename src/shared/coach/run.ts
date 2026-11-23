@@ -8,6 +8,7 @@ import { readAgentsConfig } from "../den-config.js";
 import type { UsageSource } from "../usage/sources.js";
 import { coachBreakdown, type CoachReport } from "./breakdown.js";
 import { coachFindings } from "./findings.js";
+import type { OrgAgent } from "./lead-skips.js";
 import type { CoachSettings } from "./settings.js";
 import {
   judgeSpentSince,
@@ -28,6 +29,36 @@ export interface CoachRunOptions {
   progress?: (done: number, total: number) => void;
   /** Slice T-d's model call (default: the runtime's CLI). */
   judgeRun?: ModelRun;
+  /**
+   * Issue 113: an agent's persona role (lead, orchestrator, …), so the run
+   * knows who leads which project. Without it, skipped_lead isn't found.
+   */
+  roleOf?: (rec: AgentRecord) => string | undefined;
+}
+
+/**
+ * Issue 113: this Den's agents as the Coach sees who leads what. A stopped
+ * agent is still a name a message went to, but leads nothing.
+ */
+export function orgOf(
+  records: readonly AgentRecord[],
+  roleOf: (rec: AgentRecord) => string | undefined,
+): OrgAgent[] {
+  return records.map((r) => {
+    let role: string | undefined;
+    if (!r.stoppedAt)
+      try {
+        role = roleOf(r);
+      } catch {
+        role = undefined;
+      }
+    return {
+      id: r.id,
+      workspace: r.workspace,
+      ...(r.displayName ? { name: r.displayName } : {}),
+      ...(role ? { role } : {}),
+    };
+  });
 }
 
 /** agents.rotate.after_compactions, as `usage` reads it; 3 on error. */
@@ -60,7 +91,11 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     sentenceWords: o.settings.findings.sentence_words,
     ...(o.progress ? { progress: o.progress } : {}),
   });
-  report.findings = coachFindings(report, o.settings.findings);
+  report.findings = coachFindings(
+    report,
+    o.settings.findings,
+    o.roleOf ? orgOf(records, o.roleOf) : undefined,
+  );
   const now = Date.parse(report.ranAt);
   const judged = await judgeReport(report, o.settings.judge, o.judgeRun, {
     spentToday: judgeSpentSince(o.stateDir, now - 86_400_000),

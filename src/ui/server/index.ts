@@ -1313,7 +1313,10 @@ import {
   issueWriteSettings,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
+import {
+  readRecord as readAgentRecord,
+  type AgentRecord,
+} from "../../shared/agents/records.js";
 import {
   approvalsView,
   patchApprovals,
@@ -3950,6 +3953,12 @@ function coachRouteDeps(): CoachRouteDeps {
         stateDir: getStateDir(),
         settings: coachSettingsNow(),
         ...(progress ? { progress } : {}),
+        // Issue 113: who leads which project, from each agent's persona
+        // (one lookup a run: it keeps each project's personas).
+        roleOf: (
+          (find) => (rec: AgentRecord) =>
+            find(rec)?.role
+        )(personaLookup(agentWebDeps())),
       }),
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),

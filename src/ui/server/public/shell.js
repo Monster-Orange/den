@@ -4000,6 +4000,9 @@
     "co.f.msg_no_reply.t": "{agent}'s messages get no reply",
     "co.f.msg_no_reply.why":
       "{pct}% of its {n} messages to other agents got no reply, past the line of {line}%. Check it sends to the agent that owns the answer, and that the other agent reads its messages.",
+    "co.f.skipped_lead.t": "{agent} goes around a project's lead",
+    "co.f.skipped_lead.why":
+      "{n} of its {m} messages to another project's agents didn't go to that project's lead, at or past the line of {line}. Across projects, asks go to the lead, who answers or forwards them.",
     "co.f.repeat_ask.t": "{agent} left you asking again",
     "co.f.repeat_ask.why":
       "{n} of your prompts asked again for something asked before, as the cheap model judged them. Something you asked for may not have been done.",

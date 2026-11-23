@@ -1310,8 +1310,7 @@
     "set.server.report_screenshot_days": "Capturas de informes, se guardan",
     "set.server.report_screenshot_days.d":
       "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
-    "set.server.server_log_max":
-      "Registro de avisos, tamaño máximo",
+    "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
@@ -3110,6 +3109,9 @@
     "co.f.msg_no_reply.t": "Los mensajes de {agent} no reciben respuesta",
     "co.f.msg_no_reply.why":
       "El {pct}% de sus {n} mensajes a otros agentes no tuvo respuesta, por encima del límite del {line}%. Comprueba que escribe al agente que tiene la respuesta y que ese agente lee sus mensajes.",
+    "co.f.skipped_lead.t": "{agent} se salta al líder de un proyecto",
+    "co.f.skipped_lead.why":
+      "{n} de sus {m} mensajes a agentes de otro proyecto no fueron a su líder, en o por encima del límite de {line}. Entre proyectos, las preguntas van al líder, que las responde o las reenvía.",
     "co.f.repeat_ask.t": "{agent} hizo que volvieras a pedirlo",
     "co.f.repeat_ask.why":
       "{n} de tus mensajes volvieron a pedir algo ya pedido, según el modelo barato. Puede que algo que pediste no se hiciera.",

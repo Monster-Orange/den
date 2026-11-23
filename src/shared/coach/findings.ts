@@ -16,6 +16,11 @@
  *   msg_repeat    it sends other agents the same text again and again
  *   msg_no_reply  most of its sends to other agents get no reply
  *
+ * Issue 113 (AGENT-ORG), when the run knows this Den's agents and their
+ * roles (`org`; a saved report doesn't, so it isn't found again there):
+ *   skipped_lead  it messaged another project's agents around that
+ *                 project's lead (lead-skips.ts), with the lead named
+ *
  * Thresholds are agents.coach.findings (settings.ts). Dismiss records
  * who and when, and a reason when one is given (mock v4 asks for none;
  * `coach/dismissed.json`, 0600); a dismissed finding stays out of the open
@@ -29,6 +34,7 @@ import { writePrivate } from "../agents/records.js";
 import type { CoachAgentRow, CoachReport, CoachWindow } from "./breakdown.js";
 import type { FindingThresholds } from "./settings.js";
 import { replied, sendKey } from "./asks.js";
+import { leadSkips, type OrgAgent } from "./lead-skips.js";
 
 export type FindingKind =
   | "subagent_opus"
@@ -40,6 +46,8 @@ export type FindingKind =
   | "ask_wait"
   | "msg_repeat"
   | "msg_no_reply"
+  // Issue 113, counted with the run's org (lead-skips.ts).
+  | "skipped_lead"
   // Slice T-d, judged on the cheap model (judge.ts).
   | "repeat_ask"
   | "trivial_ask"
@@ -84,6 +92,7 @@ function findingsOf(
   a: CoachAgentRow,
   t: FindingThresholds,
   window: CoachWindow,
+  org?: readonly OrgAgent[],
 ): CoachFinding[] {
   const who = `${a.agent} (${a.workspace})`;
   const out: CoachFinding[] = [];
@@ -106,6 +115,7 @@ function findingsOf(
       ...(samples ? { samples: samples.slice(0, MAX_SAMPLES) } : {}),
     });
   asksFindings(a, t, who, add);
+  if (org) leadFindings(a, t, who, add, org);
   if (!a.metrics) return out;
   const subCalls = Object.values(a.models?.subagent ?? {}).reduce(
     (n, c) => n + c,
@@ -234,12 +244,50 @@ function asksFindings(
     );
 }
 
-/** Every counted finding in `report`, agent by agent. */
+/**
+ * Issue 113: its messages to another project's agents that went around
+ * that project's lead. The proposal names each lead, so the agent (or its
+ * persona) knows where such asks go.
+ */
+function leadFindings(
+  a: CoachAgentRow,
+  t: FindingThresholds,
+  who: string,
+  add: Add,
+  org: readonly OrgAgent[],
+): void {
+  const sends = a.asks?.stats?.sends;
+  if (!sends?.length || t.skipped_lead <= 0) return;
+  const me = org.find((o) => o.id === a.agent) ?? {
+    id: a.agent,
+    workspace: a.workspace,
+  };
+  const r = leadSkips(sends, me, org);
+  if (r.skipped.length < t.skipped_lead) return;
+  const leads = Object.entries(r.leads)
+    .sort(([x], [y]) => x.localeCompare(y))
+    .map(([ws, lead]) => `${ws}'s lead is ${lead}`)
+    .join("; ");
+  add(
+    "skipped_lead",
+    `${who} sent ${r.skipped.length} of its ${r.cross} messages to another project's agents around that project's lead.`,
+    { sends_cross: r.cross, sends_skipped_lead: r.skipped.length },
+    `Send asks for another project to its lead, who answers or forwards them (${leads}).`,
+    r.skipped.map((s) => sample(s.at, `to ${s.to}: ${s.text}`)),
+  );
+}
+
+/**
+ * Every counted finding in `report`, agent by agent. `org` is this Den's
+ * agents with their roles, for the findings that need to know who leads
+ * which project (issue 113); without it those aren't found.
+ */
 export function coachFindings(
   report: CoachReport,
   t: FindingThresholds,
+  org?: readonly OrgAgent[],
 ): CoachFinding[] {
-  return report.agents.flatMap((a) => findingsOf(a, t, report.window));
+  return report.agents.flatMap((a) => findingsOf(a, t, report.window, org));
 }
 
 export interface Dismissal {

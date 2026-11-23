@@ -46,6 +46,11 @@ export interface FindingThresholds {
   min_sends: number;
   /** R12: a sentence in an ask of more words than this is long. */
   sentence_words: number;
+  /**
+   * Issue 113: messages to another project's agents that went around that
+   * project's lead, this many or more (0: never shown).
+   */
+  skipped_lead: number;
 }
 
 export const FINDING_DEFAULTS: Readonly<FindingThresholds> = Object.freeze({
@@ -61,6 +66,7 @@ export const FINDING_DEFAULTS: Readonly<FindingThresholds> = Object.freeze({
   sends_no_reply_pct: 50,
   min_sends: 5,
   sentence_words: 25,
+  skipped_lead: 1,
 });
 
 /** Slice T-d: the judged findings, on the cheap model. */
