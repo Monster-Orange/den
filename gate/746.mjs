@@ -7,10 +7,16 @@
 // two held writes this check made itself. Never the person's identity, never
 // a held write the check didn't make.
 //
-// Two stub agents, gate-746-allow and gate-746-deny, each ask through the
-// bed's scoped MCP server (`mcp --actor agent:<id> --call agent_mode`) to
-// clear their own mode. Setup first gives each its own strictest mode (ask),
-// so the clear is a real held write. Harmless on a stub; removed in teardown.
+// Two stub agents, gate-746-allow-<run> and gate-746-deny-<run>, each ask
+// through the bed's scoped MCP server (`mcp --actor agent:<id> --call
+// agent_mode`, with the agent's own token file) to clear their own mode.
+// Setup first gives each its own strictest mode (ask), so the clear is a real
+// held write. Harmless on a stub; removed in teardown. The fixture's click is
+// refused by design (issue 810): the check proves it reaches Den, comes back
+// as that refusal, and leaves the request pending.
+import * as os from "os";
+import * as path from "path";
+
 export const issue = 746;
 export const items = [746];
 // The fixture person may never decide what waits for a person (issue 810),
@@ -25,7 +31,11 @@ export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 180000;
 
 const FIXTURE = "decided by test fixture (Vision ruling 11-22)";
-const IDS = { allow: "gate-746-allow", deny: "gate-746-deny" };
+// New names each run: a request an earlier run left waiting (the fixture
+// can't decide it) never shares a row or the per-agent waiting cap with this
+// run's (dev.5: two rows per name; dev.6: "already has 5 requests waiting").
+const TAG = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const IDS = { allow: `gate-746-allow-${TAG}`, deny: `gate-746-deny-${TAG}` };
 const NOTE = "Issue 746 live check: the test fixture decides this in the bell.";
 
 /** The stub agent's project, from its record. */
@@ -46,8 +56,10 @@ function decideLines(ctx, rid) {
     try {
       const e = JSON.parse(line);
       if (
-        e.verb === "approval-decide" &&
-        (e.detail === rid || e.detail.endsWith(`[${rid}]`))
+        (e.verb === "approval-decide" &&
+          (e.detail === rid || e.detail.endsWith(`[${rid}]`))) ||
+        (e.verb === "fixture-scope" &&
+          e.detail === `/api/approvals/${rid}/decide`)
       )
         out.push({
           detail: e.detail,
@@ -62,7 +74,7 @@ function decideLines(ctx, rid) {
   return out;
 }
 
-/** The held writes waiting now: id → the agent it names (held-writes.json). */
+/** The held writes on file: id → { agent, state } (held-writes.json). */
 function heldIds(ctx) {
   try {
     const j = JSON.parse(ctx.readBed("state:held-writes.json") || "{}");
@@ -71,23 +83,18 @@ function heldIds(ctx) {
       : (j.items ?? j.requests ?? Object.values(j));
     const out = new Map();
     for (const x of list)
-      if (x && typeof x.id === "string") out.set(x.id, x.args?.agent ?? null);
+      if (x && typeof x.id === "string")
+        out.set(x.id, { agent: x.args?.agent ?? null, state: x.state ?? null });
     return out;
   } catch {
     return new Map();
   }
 }
 
-/** The request's state as the signed-in page reads it, or its status. */
-async function stateOf(ctx, rid) {
-  const r = await ctx.fetch(`/api/approvals/${encodeURIComponent(rid)}`);
-  if (r.status !== 200) return `status ${r.status}`;
-  try {
-    const b = typeof r.body === "string" ? JSON.parse(r.body) : r.body;
-    return b?.state ?? "none";
-  } catch {
-    return "unreadable";
-  }
+/** The request's state on file (GET /api/approvals/<id> is the asker's or the person's, not the fixture's). */
+function stateOf(ctx, rid) {
+  const h = heldIds(ctx).get(rid);
+  return h ? (h.state ?? "none") : "not on file";
 }
 
 export async function setup(ctx) {
@@ -113,10 +120,29 @@ export async function setup(ctx) {
   return { made, ready, own };
 }
 
-/** One agent asks to clear its own mode; the call returns at its timeout. */
+/**
+ * The stub's own token file, as its session finds it (actor-token.ts
+ * actorTokenDir): the bed's state dir is DEN_GATE_HOME, else ~/.den-gate,
+ * as Den reads it (paths.ts getStateDir). Only the path is passed, never
+ * the token. With it the ask is the agent's, not the bed's person's, so the
+ * per-asker waiting cap (5) counts this agent alone (dev.6: the person's
+ * 5 leftover requests refused the deny ask).
+ */
+function tokenFile(ctx, id) {
+  if (!ctx.listBed(`state:actor-token/${id}`)?.includes("token")) return null;
+  const home =
+    process.env.DEN_GATE_HOME ||
+    path.join(process.env.HOME || os.homedir(), ".den-gate");
+  return path.join(home, "actor-token", id, "token");
+}
+
+/** One agent asks to clear its own mode, with its own token; the call returns at its timeout. */
 function ask(ctx, id) {
   const project = projectOf(ctx, id);
   if (!project) return { project, code: null, err: "no project in its record" };
+  const file = tokenFile(ctx, id);
+  if (!file)
+    return { project, code: null, err: "the stub has no token file of its own" };
   const r = ctx.cli(
     [
       "mcp",
@@ -128,7 +154,7 @@ function ask(ctx, id) {
       "agent_mode",
       JSON.stringify({ agent: id, ask: true, note: NOTE }),
     ],
-    { timeout: 15000 },
+    { timeout: 15000, env: { DEN_ACTOR_TOKEN_FILE: file } },
   );
   return {
     project,
@@ -152,7 +178,7 @@ export async function run(ctx, s) {
   };
   const after = heldIds(ctx);
   const mine = {};
-  for (const [rid, agent] of after)
+  for (const [rid, { agent }] of after)
     if (!before.has(rid))
       for (const w of ["allow", "deny"]) if (agent === IDS[w]) mine[w] = rid;
   // Each new held write opens the Allow pop-up first: put it off, so the
@@ -164,9 +190,13 @@ export async function run(ctx, s) {
     if (await later.isVisible().catch(() => false)) await later.click();
     await page.locator("#den-bell").click();
     // Each agent asks about itself, so its id names one row.
-    const row = mine[which]
-      ? page.locator(`[data-ap-row="${mine[which]}"]`)
-      : page.locator("[data-ap-row]").filter({ hasText: id }).last();
+    // Only this run's own request: never an older row with the same words.
+    if (!mine[which]) {
+      seen[which] = { rowMs: null, rid: null, noAsk: true };
+      await page.keyboard.press("Escape");
+      continue;
+    }
+    const row = page.locator(`[data-ap-row="${mine[which]}"]`);
     const rowMs = await ctx.until(
       async () => (await row.count()) > 0 && (await row.isVisible()),
       20000,
@@ -191,9 +221,9 @@ export async function run(ctx, s) {
       code = null;
     }
     // Nothing ran: the request still waits for a person.
-    let state = await stateOf(ctx, rid);
+    let state = stateOf(ctx, rid);
     await ctx.until(async () => {
-      state = await stateOf(ctx, rid);
+      state = stateOf(ctx, rid);
       return state === "pending";
     }, 5000);
     const audit = decideLines(ctx, rid);
@@ -220,16 +250,21 @@ export async function run(ctx, s) {
   return { ready: s.ready, own: s.own, asked, seen, errors };
 }
 
+// Issue 810: the fixture person never decides. Den refuses the decide route
+// at the fixture's scope (fixture_scope), or, past it, at the approver check
+// (fixture_cannot_approve); either is the answer this check wants.
+const REFUSALS = ["fixture_scope", "fixture_cannot_approve"];
+
 function row(r, which, clause) {
   const v = r.seen[which] || {};
   const line = (v.audit || []).find(
-    (a) => a.outcome === "refused" && a.reason === "fixture_cannot_approve",
+    (a) => a.outcome === "refused" && REFUSALS.includes(a.reason),
   );
   const ok =
     v.rowMs !== null &&
     v.rowMs !== undefined &&
     v.status === 403 &&
-    v.code === "fixture_cannot_approve" &&
+    REFUSALS.includes(v.code) &&
     v.state === "pending" &&
     !!line &&
     r.errors.length === 0;
@@ -238,7 +273,7 @@ function row(r, which, clause) {
     clause,
     ok,
     evidence: [`746-${which}`],
-    detail: `${FIXTURE}. ${IDS[which]} asked (running ${r.ready?.[IDS[which]] ?? "?"}, own mode ${r.own?.[IDS[which]] ?? "?"}, cli ${a.code}, project ${a.project}${a.code ? `, said "${`${a.out || ""} ${a.err || ""}`.replace(/\s+/g, " ").trim().slice(-240)}"` : ""}); bell row ${v.rowMs === null || v.rowMs === undefined ? "never showed" : `after ${v.rowMs} ms`}, request ${v.rid ?? "none"}; ${which} reached Den: ${v.status ?? "no request sent"}${v.code ? ` ${v.code}` : ""}; state ${v.state ?? "?"}; audit ${line ? `refused (${line.reason})` : "no refused approval-decide line"}; page errors ${r.errors.length ? r.errors.join(" | ") : "none"}`,
+    detail: `${FIXTURE}. ${IDS[which]} asked (running ${r.ready?.[IDS[which]] ?? "?"}, own mode ${r.own?.[IDS[which]] ?? "?"}, cli ${a.code}, project ${a.project}${a.code ? `, said "${`${a.out || ""} ${a.err || ""}`.replace(/\s+/g, " ").trim().slice(-240)}"` : ""}); bell row ${v.rowMs === null || v.rowMs === undefined ? "never showed" : `after ${v.rowMs} ms`}, request ${v.rid ?? (v.noAsk ? "none: this run's ask made no held write" : "none")}; ${which} reached Den: ${v.status ?? "no request sent"}${v.code ? ` ${v.code}` : ""}; state ${v.state ?? "?"}; audit ${line ? `refused (${line.reason})` : "no refused approval-decide line"}; page errors ${r.errors.length ? r.errors.join(" | ") : "none"}`,
   };
 }
 
