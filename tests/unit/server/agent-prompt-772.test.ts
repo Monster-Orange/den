@@ -14,6 +14,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   AgentPrompts,
   type AgentPromptDeps,
+  promptStateOf,
   type PromptState,
 } from "../../../src/ui/server/agent-prompt.js";
 
@@ -235,5 +236,42 @@ describe("772: the parent hears once when its child needs attention or ends", ()
     r.state.set("b", "needs");
     r.p.tick();
     expect(r.notes).toEqual([]);
+  });
+});
+
+describe("772: the state the server reads (promptStateOf)", () => {
+  const seen = (latest: boolean, isSeen: boolean) => ({
+    latest: () => (latest ? { at: "x" } : null),
+    isSeen: () => isSeen,
+  });
+  const base = {
+    rec: { id: "b" },
+    waiting: new Map<string, string>(),
+    working: new Map<string, number>(),
+    seen: seen(false, false),
+    viewer: "agent:a",
+  };
+  it("stopped or unknown: not running (null)", () => {
+    expect(promptStateOf({ ...base, rec: null })).toBeNull();
+    expect(
+      promptStateOf({ ...base, rec: { id: "b", stoppedAt: "2026-11-22" } }),
+    ).toBeNull();
+  });
+  it("a wait first (but not for its own input), then a turn, then unseen work", () => {
+    expect(
+      promptStateOf({
+        ...base,
+        waiting: new Map([["b", "permission"]]),
+        working: new Map([["b", 1]]),
+      }),
+    ).toBe("needs");
+    expect(promptStateOf({ ...base, waiting: new Map([["b", "input"]]) })).toBe(
+      "idle",
+    );
+    expect(promptStateOf({ ...base, working: new Map([["b", 1]]) })).toBe(
+      "working",
+    );
+    expect(promptStateOf({ ...base, seen: seen(true, false) })).toBe("done");
+    expect(promptStateOf({ ...base, seen: seen(true, true) })).toBe("idle");
   });
 });

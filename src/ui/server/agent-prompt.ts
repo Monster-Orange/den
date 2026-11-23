@@ -27,6 +27,7 @@ import {
 } from "../../shared/review-lines.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { checkInstruction } from "../cli/agent-ops.js";
+import { agentSeenSubject } from "../../shared/seen-mark.js";
 import type { HeldAsker, HeldCheck } from "./approval-routes.js";
 
 /** An agent's state as agent_wait names it ("needs" is Blocked). */
@@ -45,6 +46,34 @@ export interface AgentPromptDeps {
   note(to: { agent: string; project: string }, text: string): void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * An agent's state from what the server holds now: its record (stopped:
+ * not running, null), the attention checks' waits and turns, and the seen
+ * marks (Done: work `viewer` hasn't seen). The same rule as agentStateOf
+ * (agent-state.ts) and the kit's attentionState: a need first, then a
+ * turn under way, then unseen work.
+ */
+export function promptStateOf(o: {
+  rec: { id: string; stoppedAt?: string } | null;
+  waiting: ReadonlyMap<string, string>;
+  working: ReadonlyMap<string, number>;
+  seen: {
+    latest(subject: string): unknown;
+    isSeen(m: { subject: string; person: string }): boolean;
+  };
+  viewer: string;
+}): PromptState | null {
+  if (!o.rec || o.rec.stoppedAt) return null;
+  const id = o.rec.id;
+  const why = o.waiting.get(id);
+  if (why && why !== "input") return "needs";
+  if (o.working.has(id)) return "working";
+  const subject = agentSeenSubject(id);
+  if (o.seen.latest(subject) && !o.seen.isSeen({ subject, person: o.viewer }))
+    return "done";
+  return "idle";
 }
 
 /** How long a prompted agent has to start (or ask its person). */

@@ -45,6 +45,9 @@
  *                     its project's (agent-ops.ts checkAgentMode,
  *                     runAgentMode); a running one restarts after its turn
  *                     on the same conversation. The person's Allow only
+ *   agent_prompt      issue 772: type one message into an agent of the
+ *                     same project (agent-prompt.ts); never a Blocked one,
+ *                     never twice
  *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
@@ -192,6 +195,8 @@ export interface HeldActionDeps {
   projectMcpUpdate?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
+  /** Issue 772: agent_prompt's check and typing (agent-prompt.ts). */
+  agentPrompt?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
@@ -644,6 +649,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't change an agent's mode here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
+  const agentPrompt = op(d.agentPrompt, "this Den can't prompt agents here");
   const appKeyCreate = op(
     d.appKeys?.create,
     "this Den can't make app keys here",
@@ -1002,6 +1008,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     hub_link: hubLink,
     agent_folder: agentFolder,
     agent_mode: agentMode,
+    agent_prompt: agentPrompt,
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,

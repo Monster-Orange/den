@@ -160,6 +160,10 @@ export const HELD_WRITE_RISK: Readonly<
     why: "starts an agent in the project's mode or a stricter one",
   },
   agent_folder: { risk: "routine", why: "moves an agent within its project" },
+  agent_prompt: {
+    risk: "routine",
+    why: "types one message into an agent of the same project; never into a dialog, never twice",
+  },
   workspace_create: { risk: "routine", why: "adds an empty project" },
   repo_add: {
     risk: "critical",
