@@ -236,15 +236,49 @@ describe("issue 1182: POST /api/verify/import and /api/verify/remove", () => {
   });
   afterAll(() => new Promise((r) => server.close(r)));
 
-  const post = (p: string, body: unknown, agent?: string) =>
+  const post = (
+    p: string,
+    body: unknown,
+    agent?: string,
+    extra: Record<string, string> = {},
+  ) =>
     fetch(`${base}${p}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         ...(agent ? { "x-test-agent": agent } : {}),
+        ...extra,
       },
       body: JSON.stringify(body),
     });
+
+  it("a person's session carrying an agent's claim is refused too, and nothing is kept", async () => {
+    const claim = {
+      "x-den-actor": "agent",
+      "x-den-mcp-client": "jest",
+      "x-den-mcp-agent": "agent:lead",
+      "x-den-mcp-workspace": "north",
+    };
+    const v = parseGateVerdict(verdict("v9.9.9-dev.9"), IMPORT_DEFAULTS);
+    if (!v.ok) throw new Error(v.error);
+    writeRunRecord(st, importRecord("north", "bed", v.verdict));
+    const before = snap(st);
+    const imp = await post(
+      "/api/verify/import",
+      { project: "north", env: "bed", text: verdict("v9.9.9-dev.10") },
+      undefined,
+      claim,
+    );
+    expect(imp.status).toBe(403);
+    const rm = await post(
+      "/api/verify/remove",
+      { project: "north", run: "v9.9.9-dev.9" },
+      undefined,
+      claim,
+    );
+    expect(rm.status).toBe(403);
+    expect(snap(st)).toBe(before);
+  });
 
   it("an agent is refused, and nothing is written", async () => {
     const before = snap(st);

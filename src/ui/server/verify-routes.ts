@@ -509,7 +509,9 @@ async function verifyPersonWrite(
     sendJson(res, { ok: false, error }, status);
     return true as const;
   };
-  if (agentPrincipalOf(req))
+  // An agent's token, or a person's session carrying an agent's claim, as
+  // every person-only handler checks (not request-guard alone).
+  if (agentPrincipalOf(req) || auditActorOf(req))
     return refuse(
       403,
       "Only a person can change Verify's results (this is an agent)",
