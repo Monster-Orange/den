@@ -1,0 +1,85 @@
+/**
+ * #176: what the self-update's pin step did for a version
+ * (<state>/server-agent/update/pin.json). Written by the running Den
+ * (src/ui/server/pin-commit.ts), read by it and by doctor (the CLI).
+ */
+import * as fs from "fs";
+import * as path from "path";
+
+/**
+ * Issue 1189: why a pin set to push went to a pull request: the branch's
+ * rules need one ("rules"), or a push was rejected by one ("rejected").
+ */
+export type PinVia = "rules" | "rejected";
+
+export interface PinRecord {
+  version: string;
+  state:
+    | "pushed"
+    | "push_failed"
+    | "commit_failed"
+    | "clean"
+    | "held"
+    | "branch_pushed"
+    | "pr_opened";
+  sha?: string;
+  /** pr: the pin's own branch, and the pull request's address. */
+  branch?: string;
+  url?: string;
+  why?: string;
+  /** Issue 1189: set to push, it went to a pull request, and why. */
+  via?: PinVia;
+  /** The bell has said this failure already. */
+  noted?: boolean;
+  at: string;
+}
+
+export const pinRecordFile = (stateDir: string): string =>
+  path.join(stateDir, "server-agent", "update", "pin.json");
+
+export function readPinRecord(stateDir: string): PinRecord | null {
+  try {
+    const r = JSON.parse(
+      fs.readFileSync(pinRecordFile(stateDir), "utf8"),
+    ) as PinRecord;
+    return typeof r?.version === "string" && typeof r.state === "string"
+      ? r
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A pull request's number from its address, or null. */
+export const pullNumber = (url: string | undefined): string | null =>
+  url?.match(/\/pull\/(\d+)/)?.[1] ?? null;
+
+/**
+ * Doctor's words for the pin step, or null when there is nothing to say
+ * (pushed, nothing to commit, no record). Issue 1189: a fallback to a
+ * pull request always says why.
+ */
+export function pinDoctorText(r: PinRecord | null): string | null {
+  if (!r) return null;
+  const v = r.version;
+  const need =
+    r.via === "rules" || r.via === "rejected"
+      ? "the branch needs a pull request; "
+      : "";
+  switch (r.state) {
+    case "pr_opened": {
+      const n = pullNumber(r.url);
+      return `pin ${v}: ${need}opened ${n ? `#${n} ` : ""}(${r.url ?? r.branch ?? ""})`;
+    }
+    case "branch_pushed":
+      return `pin ${v}: ${need}its branch ${r.branch ?? ""} is pushed, but no pull request yet (${r.why ?? ""})`;
+    case "push_failed":
+      return `pin ${v}: committed (${(r.sha ?? "").slice(0, 12)}), the push failed; tried again at the next check (${r.why ?? ""})`;
+    case "commit_failed":
+      return `pin ${v}: not committed; tried again at the next check (${r.why ?? ""})`;
+    case "held":
+      return `pin ${v}: waits for the person's Allow`;
+    default:
+      return null;
+  }
+}

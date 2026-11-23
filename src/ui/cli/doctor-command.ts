@@ -131,6 +131,11 @@ import {
   type OnboardDeps,
 } from "./doctor-onboard.js";
 import { printJson } from "./json-out.js";
+import {
+  pinDoctorText,
+  readPinRecord,
+  type PinRecord,
+} from "../../shared/pin-record.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
 import {
   formatWhere,
@@ -1463,6 +1468,8 @@ export function selfUpdateLines(
     >;
     state: () => CheckState | null;
     orgFile: string;
+    /** Issue 1189: the pin step's record (pin.json); default the state dir's. */
+    pin?: () => PinRecord | null;
   } = {
     config: () => readServerAgentConfig(),
     state: () => readCheckState(getStateDir()),
@@ -1478,12 +1485,21 @@ export function selfUpdateLines(
       detail: `self_update: unknown, the config can't be read: ${(e as Error).message}`,
     };
   }
+  // Issue 1189: what the self-update's pin step did last, when it says
+  // something (a pull request it fell back to, a push that waits).
+  let pin: string | null = null;
+  try {
+    pin = pinDoctorText((d.pin ?? (() => readPinRecord(getStateDir())))());
+  } catch {
+    pin = null;
+  }
   return {
     lines: [
       "",
       `${title} doctor: New versions`,
       "",
       `  self_update  ${r.status === "ok" ? "✓" : "⚠"}  ${r.detail}`,
+      ...(pin ? [`  pin          ·  ${pin}`] : []),
     ],
     check: { id: "self_update", status: r.status, detail: r.detail },
   };
