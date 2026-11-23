@@ -122,6 +122,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   server_log: { max_mb: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // Issue 1311: how long messages wait on a draft before the bell says so.
+  agents_draft: { hold_max_minutes: true },
   // Issue 1129: the restart queue.
   agents_resume: {
     batch: true,
@@ -351,6 +353,8 @@ describe("the settings inventory (R21)", () => {
         "server_log.max_mb",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
+        // Issue 1311: how long messages wait on a draft before the bell says so.
+        "agents_draft.hold_max_minutes",
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",

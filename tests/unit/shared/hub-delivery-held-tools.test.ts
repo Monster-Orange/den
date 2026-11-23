@@ -52,7 +52,12 @@ const dv = (id: string) => ({
   created_at: "2026-11-20T18:00:00Z",
 });
 
-function setup(o: { ackHeld: boolean; tools: boolean | null }) {
+function setup(o: {
+  ackHeld: boolean;
+  tools: boolean | null;
+  /** Issue 1311: its person's draft holds it. */
+  draft?: boolean;
+}) {
   const acks: { id: string; state: string; reason?: unknown }[] = [];
   const typed: string[] = [];
   const st = { tools: o.tools, ackHeld: o.ackHeld };
@@ -68,7 +73,8 @@ function setup(o: { ackHeld: boolean; tools: boolean | null }) {
   const loop = new DeliveryLoop({
     hub,
     agents: {
-      state: async () => "idle",
+      state: async () => (o.draft ? "busy" : "idle"),
+      why: async () => (o.draft ? "draft" : null),
       type: async (_a, text) => {
         typed.push(text);
         return true;
@@ -177,5 +183,24 @@ describe("issue 750: an agent whose Hub tools failed to load", () => {
     expect(s.of("d1")).toEqual([
       { id: "d1", state: "held", reason: "hub_tools_unavailable" },
     ]);
+  });
+
+  it("issue 1311: a draft too: Hub's wait on its tools, only Den's own count as waiting on the draft", async () => {
+    const s = setup({ ackHeld: true, tools: false, draft: true });
+    await s.loop.take(dv("d1"));
+    await s.loop.takeLocal({
+      ...(await import("../../../src/shared/hub-delivery")).parseDelivery(
+        dv("x"),
+      )!,
+      id: `${EMBED_PREFIX}m1`,
+      text: "a message from a web app",
+    });
+    await s.loop.pump();
+    expect(s.typed).toEqual([]);
+    expect(s.of("d1")).toEqual([
+      { id: "d1", state: "held", reason: "hub_tools_unavailable" },
+    ]);
+    // The pane says 1 waits on the draft: the relayed message, not Hub's.
+    expect(s.loop.waitingOnDraft("ag-1")).toBe(1);
   });
 });

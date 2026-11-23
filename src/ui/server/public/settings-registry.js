@@ -4861,6 +4861,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
   },
   {
+    // Issue 1311: messages held on a person's unsent draft; the bell after this.
+    id: "agents.draft_hold_max",
+    category: "agents",
+    label: "Draft hold before the bell",
+    description:
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    keywords: [
+      "draft",
+      "typing",
+      "hold",
+      "wait",
+      "message",
+      "bell",
+      "terminal",
+    ],
+    scope: "user",
+    keys: ["agents_draft.hold_max_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.agents_draft?.hold_max_minutes ?? 30,
+    write: (v, ctx) => ctx.post({ agents_draft: { hold_max_minutes: v } }),
+  },
+  {
     id: "agents.list_refresh_wait",
     category: "agents",
     label: "Agents list wait",

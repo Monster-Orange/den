@@ -1378,6 +1378,9 @@
     "set.agents.shell_path_wait": "Espera al PATH del shell",
     "set.agents.shell_path_wait.d":
       "Cuánto espera __DEN_TITLE__ a que tu shell diga su PATH al buscar las CLI de agentes: el PATH que recibe un shell nuevo, con sus archivos de inicio. Pasado este tiempo, busca en los lugares habituales. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "Espera por un borrador antes del aviso",
+    "set.agents.draft_hold_max.d":
+      "Mientras tienes un mensaje sin enviar escrito en la terminal de un agente, __DEN_TITLE__ retiene lo que escribiría allí y nunca envía tu borrador. Pasado este tiempo, la campana avisa de que hay mensajes esperando. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -2915,6 +2918,10 @@
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
     "bell.m.held.unread.one":
       "{name}: {n} mensaje espera desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.held.draft":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: le estás escribiendo un mensaje; entran cuando lo envíes o lo borres",
+    "bell.m.held.draft.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: le estás escribiendo un mensaje; entra cuando envíes o borres el tuyo",
     "bell.m.held.hub_tools":
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: sus herramientas de Hub no se cargaron; reinícialo",
     "bell.m.held.hub_tools.one":
@@ -3015,6 +3022,12 @@
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
     "ag.hub.notAtPrompt":
       "En espera: el agente no está en su indicador de entrada",
+    "ag.draftWaiting":
+      "{n} mensajes en espera: se envían después de tu borrador",
+    "ag.draftWaiting.one":
+      "{n} mensaje en espera: se envía después de tu borrador",
+    "ag.draftWaitingTip":
+      "Den los retiene mientras escribes aquí. Envía o borra tu mensaje y entran, en orden.",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",

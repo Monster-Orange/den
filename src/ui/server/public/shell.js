@@ -2552,6 +2552,9 @@
     "set.agents.shell_path_wait": "Shell PATH wait",
     "set.agents.shell_path_wait.d":
       "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "Draft hold before the bell",
+    "set.agents.draft_hold_max.d":
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -3809,6 +3812,10 @@
       "{name}: {n} messages wait for {m} min. Waiting: Den couldn't read the agent's state in time",
     "bell.m.held.unread.one":
       "{name}: {n} message waits for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.held.draft":
+      "{name}: {n} messages wait for {m} min. Waiting: you're typing a message to it; they go once you send or clear it",
+    "bell.m.held.draft.one":
+      "{name}: {n} message waits for {m} min. Waiting: you're typing a message to it; it goes once you send or clear yours",
     "bell.m.held.hub_tools":
       "{name}: {n} messages wait for {m} min. Waiting: its Hub tools didn't load; restart it",
     "bell.m.held.hub_tools.one":
@@ -3905,6 +3912,10 @@
       "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
     "ag.hub.notAtPrompt": "Waiting: the agent isn't at its prompt",
+    "ag.draftWaiting": "{n} messages waiting: sent after your draft",
+    "ag.draftWaiting.one": "{n} message waiting: sent after your draft",
+    "ag.draftWaitingTip":
+      "Den holds these while you type here. Send or clear your message, and they go in, in order.",
     "tx.asked": "Asked",
     "tx.result": "Result",
     "tx.error": "Error",

@@ -2437,6 +2437,16 @@ function barFind(bar, k) {
   return bar.querySelectorAll("button, a, [tabindex]")[k.at] ?? null;
 }
 
+/**
+ * Issue 1311: "N messages waiting" on a pane whose person is typing a
+ * message: Den holds its own until theirs is sent or cleared.
+ */
+function draftWaitingTag(p) {
+  const n = p.draftWaiting ?? 0;
+  if (n <= 0) return "";
+  return `<span class="tagx" role="status" data-draft-waiting="${n}" title="${esc(t("ag.draftWaitingTip"))}">${esc(t("ag.draftWaiting", { n }))}</span>`;
+}
+
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
@@ -2505,7 +2515,8 @@ function paintBar(p) {
     whereTag(r, true) +
     linkTag(r) +
     subagentTag(r) +
-    signInTag(r);
+    signInTag(r) +
+    draftWaitingTag(p);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     // Issue 168: the agent's letter tile, in its project's colour.
@@ -2863,6 +2874,13 @@ function paneText(p, msg) {
     if (st.focusOnOpen === p.id) {
       if (p.exited) st.focusOnOpen = null;
       else focusTerm(p.id, st.claimOnOpen, { ifIdle: st.focusIfIdle });
+    }
+  } else if (msg?.type === "waiting") {
+    // Issue 1311: messages held while the person's draft is on the line.
+    const n = Number.isInteger(msg.n) && msg.n > 0 ? msg.n : 0;
+    if (n !== (p.draftWaiting ?? 0)) {
+      p.draftWaiting = n;
+      paintBar(p);
     }
   } else if (msg?.type === "viewers") {
     // D54: the view that sized the PTY went away: this one, alone now,

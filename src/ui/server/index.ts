@@ -277,6 +277,7 @@ import {
   shellPathTimeoutMs,
   agentsResume,
   agentsShellPathTimeoutSeconds,
+  agentsDraftHoldMaxMinutes,
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
@@ -6025,6 +6026,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    // Issue 1311: how long messages wait on a draft before the bell says so.
+    agents_draft: (() => {
+      try {
+        return {
+          hold_max_minutes: agentsDraftHoldMaxMinutes(() => user),
+        };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 1225: services.restore_on_boot (0.4.46), on unless set false.
     restore_services_on_boot: (() => {
       try {
@@ -10035,6 +10046,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_draft?: unknown;
           agents_resume?: unknown;
           restore_services_on_boot?: unknown;
           agent_issue_writes?: unknown;
@@ -10105,6 +10117,7 @@ async function handleRequest(
             web_sessions: body.web_sessions,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_draft: body.agents_draft,
             agents_resume: body.agents_resume,
             restore_services_on_boot: body.restore_services_on_boot,
             agent_issue_writes: body.agent_issue_writes,

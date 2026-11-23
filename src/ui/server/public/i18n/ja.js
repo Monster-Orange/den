@@ -1334,6 +1334,9 @@
     "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
     "set.agents.shell_path_wait.d":
       "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、新しいシェルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "下書き中の保留から通知まで",
+    "set.agents.draft_hold_max.d":
+      "エージェントのターミナルに未送信のメッセージを入力している間、__DEN_TITLE__ はそこへ入力する予定のものを保留し、あなたの下書きを送信することはありません。この時間を過ぎると、ベルが待機中のメッセージを知らせます。__DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -2817,6 +2820,8 @@
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den があなたが誰かを Hub にまだ問い合わせています",
     "bell.m.held.unread":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den がエージェントの状態を時間内に読めませんでした",
+    "bell.m.held.draft":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: あなたがメッセージを入力中です。送るか消すと入ります",
     "bell.m.held.hub_tools":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Hub のツールが読み込まれていません。再起動してください",
     "bell.m.hubNoAnswer":
@@ -2905,6 +2910,10 @@
       "指示ファイルが {size} あり、コンテキストの {share}% を超えています。最も大きいのは {path} ({big}) です。",
     "ag.hub.queued": "Hub のコメント {n} 件が待っています",
     "ag.hub.notAtPrompt": "待機中: エージェントが入力プロンプトにいません",
+    "ag.draftWaiting":
+      "{n} 件のメッセージが待機中: あなたの下書きの後に送られます",
+    "ag.draftWaitingTip":
+      "ここで入力している間、Den はこれらを保留します。メッセージを送るか消すと、順番に入ります。",
     "tx.asked": "依頼",
     "tx.result": "結果",
     "tx.error": "エラー",
