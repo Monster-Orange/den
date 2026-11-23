@@ -477,7 +477,10 @@ async function decideHeld(el, decision) {
   let j = null;
   try {
     j = shell?.busyAction
-      ? await shell.busyAction(`decide-${decision}`, run, { button: el })
+      ? await shell.busyAction(`decide-${decision}`, run, {
+          button: el,
+          toastFast: false,
+        })
       : await run({});
   } catch (err) {
     shell?.errorToast?.(err);
