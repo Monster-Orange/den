@@ -299,6 +299,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       pairRequestsPerMinute: 30,
       approveAttempts: 10,
       approveWindowSeconds: 30,
+      signinAskCooldownMinutes: 10,
       // D16: a sign-in link lasts 5 minutes unless set.
       loginLinkTtlMs: 5 * 60_000,
       // Issue 810: not a test install unless a person marks it by hand.

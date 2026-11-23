@@ -19,6 +19,7 @@
  * reads it at start.
  */
 import type * as http from "http";
+import { line, reviewLines } from "../../shared/review-lines.js";
 import type { HeldAction, HeldCheck } from "./approval-routes.js";
 import type { ApprovalQueue, AskedBy } from "./approvals.js";
 
@@ -50,26 +51,27 @@ export function githubSetupHeld(d: GithubSetupDeps): HeldAction {
           ok: false,
           error: "Sign in with GitHub already has a client id on this Den",
         };
-      const details = [
-        `Sets ${d.setting} to Den's own GitHub App (its public client id) in ${d.file}.`,
-        "Den restarts; agents and terminals carry on where they were.",
-        "Then Sign in with GitHub shows on the sign-in page, from any computer.",
-      ];
       return {
         ok: true,
         personOnly: true,
         args: {},
         summary: "turn on Sign in with GitHub",
         params: {},
-        details,
-        detailKeys: [
-          {
-            key: "ap.det.github_signin_setup.set",
-            vars: { setting: d.setting, file: d.file },
-          },
-          { key: "ap.det.github_signin_setup.restart" },
-          { key: "ap.det.github_signin_setup.then" },
-        ],
+        ...reviewLines([
+          line(
+            `Sets ${d.setting} to Den's own GitHub App (its public client id) in ${d.file}.`,
+            "ap.det.github_signin_setup.set",
+            { setting: d.setting, file: d.file },
+          ),
+          line(
+            "Den restarts; agents and terminals carry on where they were.",
+            "ap.det.github_signin_setup.restart",
+          ),
+          line(
+            "Then Sign in with GitHub shows on the sign-in page, from any computer.",
+            "ap.det.github_signin_setup.then",
+          ),
+        ]),
       };
     },
     async run(_a, asked) {
@@ -175,15 +177,16 @@ export async function handleGithubSetupAsk(
     return true;
   }
   const address = d.askerAddress?.(req);
-  const details = [...(checked.details ?? [])];
-  const detailKeys = [...(checked.detailKeys ?? [])];
-  if (address) {
-    details.push(`Asked from ${address}.`);
-    detailKeys.push({
-      key: "ap.det.github_signin_setup.from",
-      vars: { address },
-    });
-  }
+  // The asker's address, so the person can tell whose browser asked.
+  const from = address
+    ? reviewLines([
+        line(`Asked from ${address}.`, "ap.det.github_signin_setup.from", {
+          address,
+        }),
+      ])
+    : { details: [], detailKeys: [] };
+  const details = [...(checked.details ?? []), ...from.details];
+  const detailKeys = [...(checked.detailKeys ?? []), ...from.detailKeys];
   try {
     const a = d.queue.request({
       actor: SIGNIN_PAGE_ACTOR,
