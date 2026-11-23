@@ -1048,7 +1048,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     const recorded = s.get(id);
     const mine = {
       id,
-      kind,
+      kind: e.kind,
       who: e.who,
       label: e.label,
       ...(recorded?.group !== undefined
