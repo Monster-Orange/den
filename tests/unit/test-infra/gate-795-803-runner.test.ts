@@ -7,6 +7,9 @@
  *
  * GATE_CLI_ROOT points the CLI at another checkout (an older Den) to see a
  * check fail where the feature is missing.
+ *
+ * Subject (what a change to reruns it): src/ui/cli/gate-command.ts,
+ * src/shared/gates/store.ts and src/shared/gates/classes.ts.
  */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
