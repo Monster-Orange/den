@@ -2404,6 +2404,10 @@
       "Hold new runs here over this much swap in use (GB)",
     "set.server.gate_swap_hold_gb.d":
       "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "If a memory reading fails, keep the last one for (seconds)",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
     "set.server.gate_vm_memory_share":
       "Warn when VMs promise more than this share of memory",
     "set.server.gate_vm_memory_share.d":
@@ -4176,6 +4180,11 @@
     "gate.swapUsed": "Swap in use: {used} GB",
     "gate.memoryHold":
       "waiting: this machine has {free}% of its memory free, under {limit}%, while another run here is going; it starts once memory frees or that run ends",
+    "gate.memoryUnavailableHold":
+      "waiting: memory reading unavailable, while another run here is going; it starts once a reading comes back or that run ends",
+    "gate.memoryUnavailable": "This machine: memory reading unavailable",
+    "gate.memoryNotMeasured":
+      "This machine: memory isn't measured on this platform: memory holds don't apply",
     "gate.freeMemory": "This machine: {free}% of memory free",
     "gate.vms": "VMs here promise {promised} GB of {limit} GB allowed",
     "gate.vmsOver":

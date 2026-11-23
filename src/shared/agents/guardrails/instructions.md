@@ -69,6 +69,13 @@ role from it in a fresh conversation. Use these headings, each filled in:
 
 Write it plainly. Explain every ID in it, as in a hand-back.
 
+### Your sandbox
+
+Inside your sandbox, `ps`, `top`, `sudo` and other setuid programs can't
+start, and Docker's socket is refused: that is the sandbox, not a broken
+machine. Use `pgrep`/`pkill` or Den's status tools; if the work needs root
+or Docker, tell your person.
+
 ### Commits
 
 Commit with git. Den signs your commits with the agents' own SSH key when

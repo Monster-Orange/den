@@ -543,9 +543,9 @@ export function assign(
   load?: number,
   cores?: number,
   /** Issue 1274: this machine's free memory, percent. */
-  freeMem?: number,
+  freeMem?: number | null,
   /** Issue 1274: swap in use here, GB. */
-  swapGb?: number,
+  swapGb?: number | null,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);

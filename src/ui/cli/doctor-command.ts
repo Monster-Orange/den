@@ -21,6 +21,7 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { MEMORY_NOT_MEASURED_WORDS } from "../../shared/gates/rules.js";
 import { fixturePersonPath } from "../../shared/fixture-person.js";
 import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
@@ -2487,6 +2488,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   ).lines)
     console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
+  // Issue 1349: the gate's memory guard is off on a platform it can't read.
+  {
+    const g = await import("../../shared/gates/store.js");
+    for (const l of memoryMeasureLines(g.realFreeMemory(), g.realSwapUsedGb()))
+      console.log(l);
+  }
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
@@ -2678,4 +2685,18 @@ async function repoRootRows() {
   const { repoRootLines, defaultRepoRoots } =
     await import("./doctor-repo-roots.js");
   return repoRootLines(await defaultRepoRoots(), { stateDir: getStateDir() });
+}
+
+/**
+ * Issue 1349: doctor's line when this platform has no free-memory or swap
+ * reading: the gate's memory holds are off here, and the person should see
+ * that, not a healthy-looking number.
+ */
+export function memoryMeasureLines(
+  free: number | null,
+  swap: number | null,
+): string[] {
+  return free === null && swap === null
+    ? [`Gate slots: ${MEMORY_NOT_MEASURED_WORDS}.`]
+    : [];
 }

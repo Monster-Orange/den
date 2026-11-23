@@ -74,6 +74,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     memory_free_min_percent: true,
     vm_memory_share: true,
     swap_hold_gb: true,
+    // Issue 1349: a failed reading's last good value stands this long.
+    memory_reading_keep_seconds: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -327,6 +329,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
         "gate_slots.memory_free_min_percent",
+        "gate_slots.memory_reading_keep_seconds",
         "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
