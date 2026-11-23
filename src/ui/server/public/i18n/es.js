@@ -1269,6 +1269,10 @@
       "Turno de un agente: margen tras su estimación, en minutos",
     "set.server.gate_mcp_grace.d":
       "Un turno sin renovar se mantiene hasta pasar su estimación en este tiempo. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_waiter_return":
+      "Una prueba en espera conserva su lugar este tiempo después de terminar, en minutos",
+    "set.server.gate_waiter_return.d":
+      "Cuando una prueba en espera termina sin ceder su lugar (un reinicio, o su ventana cerrada), su lugar en la fila se conserva este tiempo. Si se ejecuta de nuevo, recupera su lugar. Después, el lugar se libera y la prueba lo dice la próxima vez que pide turno. 0: se libera al instante. __DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "Clases de turno, de mayor a menor",
     "set.server.gate_class_order.d":
       "Separadas por comas, por ejemplo release, lane, other. Una ejecución en espera de una clase mayor empieza antes; dentro de una clase, por orden de llegada. Una ejecución que tiene su turno nunca se detiene. Vacío: orden de llegada para todas. __DEN_CLI__ gate settings --class-order release,lane,other",
@@ -1306,6 +1310,9 @@
     "set.server.report_screenshot_days": "Capturas de informes, se guardan",
     "set.server.report_screenshot_days.d":
       "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.server_log_max": "Registro de avisos, tamaño máximo",
+    "set.server.server_log_max.d":
+      "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
       "Capturas de informes, la más grande guardada",
     "set.server.report_screenshot_max.d":
@@ -1939,6 +1946,9 @@
     "ag.mcp.failed": "Las herramientas de Hub no cargaron",
     "ag.mcp.failedTip":
       "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
+    "ag.mcp.den": "Las herramientas de Den {to} llegan al reiniciar",
+    "ag.mcp.denTip":
+      "Den se actualizó a {to} después de que este agente empezara, así que sus herramientas de Den siguen con el código de {from}. Reiniciar carga las de {to}, en su próxima pausa, en la misma conversación.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -2006,6 +2016,14 @@
       "Cambiar la persona {id} en el proyecto {where}: {fields}",
     "ap.do.den_pin_commit":
       "Confirmar la versión fijada de la distribución en Den {version}",
+    "ap.do.den_sandbox_on":
+      "Activar el entorno aislado de agentes para {count} agentes iniciados antes (cada uno en su próximo inicio)",
+    "ap.det.den_sandbox_on.sets":
+      "Pone agents.sandbox: on en config/local/user.yml.",
+    "ap.det.den_sandbox_on.next":
+      "Cada agente entra en el entorno aislado en su próximo inicio; uno que ya está en marcha sigue así.",
+    "ap.det.den_sandbox_on.off":
+      "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
@@ -2049,6 +2067,18 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.web_url_set": "Hacer de {url} la dirección de este Den",
+    "ap.det.web_url_set.newHost":
+      "Host nuevo: {host} no es esta máquina ni una dirección que Den sirve. El inicio de sesión y todos los enlaces pasarán por él.",
+    "ap.det.web_url_set.now": "Ahora: {from}.",
+    "ap.det.web_url_set.nowUnconfirmed": "Ahora: {from} (sin confirmar).",
+    "ap.det.web_url_set.none": "Ahora: no hay dirección.",
+    "ap.det.web_url_set.answers":
+      "{url} responde ahora como este Den: Den le pidió un token de un solo uso, a través de su nombre.",
+    "ap.det.web_url_set.saves":
+      "Se guarda como confirmada, igual que la guarda Ajustes; vale sin reiniciar, y Den se lo dice al Hub conectado.",
+    "set.ui.hub.denUrlRefused":
+      "Hub no aceptó la dirección de este Den ({url}): {why}",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":
@@ -3060,6 +3090,12 @@
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
+    "busy.allowW": "Permitiendo…",
+    "busy.allowS": "Permitido.",
+    "busy.allowF": "No se pudo permitir.",
+    "busy.denyW": "Rechazando…",
+    "busy.denyS": "Rechazado.",
+    "busy.denyF": "No se pudo rechazar.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",

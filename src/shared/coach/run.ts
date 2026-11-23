@@ -30,6 +30,15 @@ function rotateLimit(): number {
   }
 }
 
+/**
+ * Keep only the findings' samples: the asks, messages and prompts each
+ * row's stats hold are read for findings, then dropped, so no saved
+ * report or route holds more text than the samples.
+ */
+export function stripEvidence(report: CoachReport): void {
+  for (const a of report.agents) if (a.asks) delete a.asks.stats;
+}
+
 /** Run the Coach and save its report; the report. */
 export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
   const records = (o.records ?? listRecords)(o.stateDir);
@@ -39,8 +48,10 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     days: o.settings.window_days,
     ...(o.source ? { source: o.source } : {}),
     after: (o.rotateAfter ?? rotateLimit)(),
+    sentenceWords: o.settings.findings.sentence_words,
   });
   report.findings = coachFindings(report, o.settings.findings);
+  stripEvidence(report);
   writeCoachReport(o.stateDir, report, o.settings.keep_runs);
   return report;
 }

@@ -9,7 +9,7 @@
   max-width: 100%;
   max-height: calc(100vh - 32px);
   padding: 0;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 12px;
   background: var(--raised, var(--surface, var(--bg)));
   color: var(--text);
@@ -66,7 +66,7 @@
   gap: 6px;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 999px;
   font-size: 13px;
   cursor: pointer;
@@ -83,7 +83,7 @@
 .fb-b textarea {
   font: 13px var(--sans);
   padding: 7px 9px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
@@ -102,7 +102,7 @@
   font-size: 13px;
 }
 .fb-b details {
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: 6px;
   padding: 6px 8px;
   font-size: 13px;
@@ -118,7 +118,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   display: inline-grid;
   place-items: center;
   font: 11px var(--mono);
@@ -143,7 +143,7 @@
 }
 .fb-pill {
   font: 11px var(--mono);
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 999px;
   padding: 1px 8px;
 }
@@ -181,7 +181,7 @@
   min-height: 40px;
   padding: 0 14px;
   border-radius: 0.2rem;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -206,7 +206,7 @@
   flex: none;
 }
 .fb-shot {
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: 6px;
   overflow: hidden;
   background: var(--sunken, var(--bg));
@@ -227,7 +227,7 @@
   width: 5em;
   font: 13px var(--sans);
   padding: 4px 6px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
@@ -258,7 +258,7 @@
   min-height: 32px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -281,7 +281,7 @@
   gap: 10px;
   align-items: center;
   padding: 8px 2px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
   font-size: 13px;
 }
 .fb-row:last-child {
@@ -304,7 +304,7 @@
   min-height: 32px;
   padding: 0 10px;
   border-radius: 0.2rem;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -325,7 +325,7 @@
   min-height: 32px;
   padding: 0 10px;
   border-radius: 0.2rem;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);

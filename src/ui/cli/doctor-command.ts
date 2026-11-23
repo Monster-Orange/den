@@ -1846,6 +1846,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 1131: agents' refused calls in the last hour.
+      r.checks.push((await tokenRefusalRow()).check);
+      // Issue 707: the server's warning lines on disk.
+      r.checks.push((await serverLogRow()).check);
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
@@ -1986,6 +1990,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  for (const l of (await tokenRefusalRow()).lines) console.log(l);
+  for (const l of (await serverLogRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // The shared GitHub watcher: calls left, reset, watches, interval.
@@ -2153,6 +2159,20 @@ async function previousHubRows(): Promise<
   return previousHubDoctor(getStateDir(), url);
 }
 
+/** Issue 1131: agents' refused calls in the last hour, from the audit. */
+async function tokenRefusalRow(): Promise<{
+  lines: string[];
+  check: OnboardCheck;
+}> {
+  const { tokenRefusalLines, readRefusalEntries } =
+    await import("./doctor-token-refusals.js");
+  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
+  return tokenRefusalLines(
+    readBrand().name,
+    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
+  );
+}
+
 /** Issue 701: doctor's held Hub comments, from Den's held file. */
 async function heldHubLines(): Promise<
   ReturnType<typeof import("./doctor-hub-held.js").heldLines>
@@ -2169,6 +2189,29 @@ async function heldHubLines(): Promise<
     now: Date.now(),
     bellMinutes,
   });
+}
+
+/** Issue 707: doctor's row for the server's warning lines on disk. */
+async function serverLogRow() {
+  const { serverLogLines, serverLogFacts } =
+    await import("./doctor-server-log.js");
+  const { serverLogPath, serverLogMaxBytes } =
+    await import("../../shared/server-log-file.js");
+  let user: unknown = null;
+  try {
+    const { readUserConfig } = await import("../../shared/den-config.js");
+    user = readUserConfig();
+  } catch {
+    /* a bad user.yml: its own row says so; the default here */
+  }
+  return serverLogLines(
+    readBrand().name,
+    serverLogFacts(
+      serverLogPath(getStateDir()),
+      serverLogMaxBytes(user),
+      product().cli,
+    ),
+  );
 }
 
 /** Issue 583: doctor's repo roots row, for this install's projects. */

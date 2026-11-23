@@ -5,6 +5,7 @@
  * Main entry point for the interactive CLI
  */
 
+import { sandboxErrorHint } from "../../shared/agents/sandbox.js";
 import { notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { getStateDir } from "../../shared/paths.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -262,6 +263,41 @@ import { DEN_BANNER_LINES, DEN_DIVIDER } from "../../shared/banner.js";
 import { product } from "../../shared/product.js";
 import { AGENT_SETUP_LINE } from "../../shared/agent-setup.js";
 import { ExitRequested, printJson, quietStdout } from "./json-out.js";
+import { personServerFor } from "./person-server.js";
+import {
+  seedResetRefusal,
+  workspacePersonRefusal,
+  workspaceViaServer,
+  type WorkspaceVerb,
+} from "./workspace-person.js";
+
+/**
+ * Issue 989: a person's project change, through the running server. True
+ * when it is done (by the server, or refused and said); false when no
+ * server listens and the caller changes the projects file itself.
+ */
+async function workspaceThroughServer(
+  verb: WorkspaceVerb,
+  name: string,
+  done: string,
+): Promise<boolean> {
+  const a = await workspaceViaServer(verb, name, personServerFor());
+  if (a.kind === "unanswered") return false;
+  if (a.kind === "refused") {
+    console.log(chalk.red(`\n  ${a.error}; nothing was changed.\n`));
+    process.exitCode = 1;
+  } else console.log(chalk.green(`\n  ✓ ${done}\n`));
+  return true;
+}
+
+/** Issue 989: an agent's session can't change projects; said, exit 1. */
+function refuseAgentWorkspace(verb: WorkspaceVerb): boolean {
+  const why = workspacePersonRefusal(verb);
+  if (!why) return false;
+  console.log(chalk.red(`\n  ${why}\n`));
+  process.exitCode = 1;
+  return true;
+}
 const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, and project orchestration`;
 
 /**
@@ -855,6 +891,7 @@ class DenCLI {
           durationMs: stopTimer(),
         });
         console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
+        printSandboxHint(error);
         process.exit(1);
       }
       return;
@@ -1297,6 +1334,7 @@ class DenCLI {
         reason: telemetryReason(error),
       });
       console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
+      printSandboxHint(error);
       process.exit(1);
     }
   }
@@ -3043,6 +3081,13 @@ class DenCLI {
     reset = false,
     via: "init" | "workspace seed" = "workspace seed",
   ): Promise<boolean> {
+    // Issue 989: an agent's --reset is refused before anything.
+    const early = seedResetRefusal({ reset, willReset: false, via });
+    if (early) {
+      console.error(chalk.red(`\n  ❌ ${early}.\n`));
+      process.exitCode = 1;
+      return false;
+    }
     const bps = blueprintWorkspaces();
     if (bps.length === 0) {
       if (reason === "init") {
@@ -3067,6 +3112,13 @@ class DenCLI {
       return false;
     }
     const willReset = defaultWorkspaceHasServices();
+    // Issue 989: nor may an agent reset by the prompt, terminal or not.
+    const byPrompt = seedResetRefusal({ reset, willReset, via });
+    if (byPrompt) {
+      console.error(chalk.red(`\n  ❌ ${byPrompt}.\n`));
+      process.exitCode = 1;
+      return false;
+    }
     const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
     // A reset replaces every entry, dev-managed checkouts included. On a TTY
     // the user is asked (default No); without one there is nobody to ask, so
@@ -4845,6 +4897,15 @@ class DenCLI {
           );
           return;
         }
+        if (refuseAgentWorkspace("activate")) return;
+        if (
+          await workspaceThroughServer(
+            "activate",
+            name,
+            `Activated project: ${chalk.bold(name)}`,
+          )
+        )
+          break;
         activateWorkspace(name);
         console.log(
           chalk.green(`\n  ✓ Activated project: ${chalk.bold(name)}\n`),
@@ -4859,6 +4920,16 @@ class DenCLI {
           );
           return;
         }
+        if (refuseAgentWorkspace("deactivate")) return;
+        // The server releases its shared services too.
+        if (
+          await workspaceThroughServer(
+            "deactivate",
+            name,
+            `Deactivated project: ${chalk.bold(name)}`,
+          )
+        )
+          break;
         deactivateWorkspace(name);
         // Release AFTER the workspace has left active[] so shared services see
         // the post-deactivation owner set (design decision 5).
@@ -4955,6 +5026,15 @@ class DenCLI {
           console.log(chalk.yellow(`\n  ${refusal}.\n`));
           return;
         }
+        if (refuseAgentWorkspace("create")) return;
+        if (
+          await workspaceThroughServer(
+            "create",
+            name,
+            `Created project: ${chalk.bold(name)}`,
+          )
+        )
+          break;
         const slug = createWorkspace(name, { services: {} });
         console.log(
           chalk.green(
@@ -4975,6 +5055,7 @@ class DenCLI {
           );
           return;
         }
+        if (refuseAgentWorkspace("delete")) return;
         // D71: its agents first, so a refusal never follows a Yes.
         const kept = workspaceAgentsRefusal(name);
         if (kept) {
@@ -4999,6 +5080,14 @@ class DenCLI {
             false,
           ));
         if (!confirmed) return;
+        if (
+          await workspaceThroughServer(
+            "delete",
+            name,
+            `Deleted project: ${name}`,
+          )
+        )
+          break;
         deleteWorkspaceDirectory(name);
         deleteWorkspaceConfig(name);
         console.log(chalk.green(`\n  ✓ Deleted project: ${name}\n`));
@@ -5210,13 +5299,18 @@ class DenCLI {
     // ignored (the distribution's web.allow_plain_http_remote: only
     // config/local/user.yml counts) is flagged, as `web up` says it.
     {
-      const { ignoredConfigWarning, readWebAuthConfig } =
-        await import("../../shared/web-session.js");
+      const {
+        fixturePersonOffInstallWarning,
+        ignoredConfigWarning,
+        readWebAuthConfig,
+      } = await import("../../shared/web-session.js");
       try {
-        const w = ignoredConfigWarning(
-          readWebAuthConfig(getDistRoot(), product().configFile),
-        );
-        if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
+        const cfg = readWebAuthConfig(getDistRoot(), product().configFile);
+        for (const w of [
+          ignoredConfigWarning(cfg),
+          fixturePersonOffInstallWarning(cfg),
+        ])
+          if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
       } catch (e) {
         console.error(chalk.red(`\n  ✗  web: ${(e as Error).message}`));
         process.exitCode = 1;
@@ -5641,4 +5735,15 @@ function workspaceAgentsRefusal(name: string): string | null {
     `Move ${ids.length === 1 ? "it" : "them"} first (${cli} agents move <id> -w <project>), ` +
     `or stop and remove ${ids.length === 1 ? "it" : "them"} (${cli} agents stop <id>, ${cli} agents rm <id>).`
   );
+}
+
+/** Issue 936: inside an agent's sandbox, say why a write was refused. */
+function printSandboxHint(error: unknown): void {
+  const hint = sandboxErrorHint(
+    error,
+    process.env,
+    product().cli,
+    process.argv.slice(2),
+  );
+  if (hint) console.error(chalk.yellow(hint));
 }
