@@ -262,7 +262,8 @@ const st = {
   // does; a link that opens the page only puts the keyboard there).
   claimOnOpen: false,
   // Issue 1315: a person picked a pane (a tab, a row) while the page was
-  // still opening its ?open= panes: their pick stays in front.
+  // still opening its ?open= panes: their pick stays in front. Cleared
+  // once start-up has opened them.
   picked: false,
   keyPane: null,
   // #80: ?open= ids of other projects' sessions, left out of this
@@ -6221,6 +6222,8 @@ export async function mountAgentsPage(root) {
     st.cur = frontAsked;
     paintLayout();
   }
+  // Issue 1315: start-up's panes are open; later picks are plain picks.
+  st.picked = false;
   if (st.hiddenOpen.length) {
     // #80: the tabs were another project's: this project's agent instead.
     if (!linkedAgentAsked()) await paneFollowsProject();

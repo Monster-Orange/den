@@ -404,6 +404,34 @@ describe("project colours (issue 168)", () => {
     }
   }, 60_000);
 
+  it("issue 1315: once every pane is open, picks and ?front= work as before", async () => {
+    if (skip()) return;
+    const p = await open(agentsUrl());
+    try {
+      const tab = (id: string) => `#agr [role="tab"][data-id="${sid[id]}"]`;
+      const inFront = (id: string) =>
+        p.waitForSelector(`${tab(id)}[aria-selected="true"]`);
+      // Start-up done: both panes open, the last one in front.
+      await p.waitForSelector(`#agr .pane[data-id="${sid.planner}"] .xterm`, {
+        state: "attached",
+      });
+      await p.waitForSelector(`#agr .pane[data-id="${sid.builder}"] .xterm`, {
+        state: "attached",
+      });
+      await inFront("builder");
+      // Picks after start-up move the front each time.
+      await p.click(tab("planner"));
+      await inFront("planner");
+      await p.click(tab("builder"));
+      await inFront("builder");
+      // A later link with ?front= puts that pane in front.
+      await p.goto(`${s!.base}${agentsUrl()}&front=${sid.planner}`);
+      await inFront("planner");
+    } finally {
+      await p.context().close();
+    }
+  }, 60_000);
+
   it("no page errors", () => {
     expect(errors).toEqual([]);
   });
