@@ -495,7 +495,7 @@ describe("D44: Restart keeps the conversation and never cuts a turn", () => {
 });
 
 describe("D44: the routes", () => {
-  async function api(r: Rig) {
+  async function api(r: Rig, extra: Record<string, unknown> = {}) {
     const server = http.createServer((req, res) => {
       jsonApiErrors(res, newRequestId());
       const p = new URL(req.url ?? "/", "http://localhost").pathname;
@@ -514,6 +514,7 @@ describe("D44: the routes", () => {
       void handleAgentRoutes(req, res, p, {
         agents: r.deps,
         personaWait: { pollMs: 20 },
+        ...extra,
       }).then((handled) => {
         if (!handled) {
           res.writeHead(404);
@@ -562,6 +563,22 @@ describe("D44: the routes", () => {
     expect((all.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
       "planner",
     ]);
+  });
+
+  it("issue 1223: a bare restart-stale goes through the restart queue", async () => {
+    const { r } = await startedBeforeHub();
+    const jobs: { id: string; why: string }[] = [];
+    const call = await api(r, {
+      restartQueue: () => ({
+        add: (j: { id: string; why: string; run: () => Promise<unknown> }) => {
+          jobs.push({ id: j.id, why: j.why });
+          return j.run();
+        },
+      }),
+    });
+    const go = await call("POST", "/api/agents/restart-stale", {});
+    expect(go.status).toBe(202);
+    expect(jobs).toEqual([{ id: "planner", why: "tools" }]);
   });
 
   it("stale lists it; restart-stale restarts it at its next idle (202), the same conversation", async () => {

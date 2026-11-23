@@ -5,7 +5,7 @@
  * a time, under the load ceiling), shows how far it got, and keeps an
  * agent that failed listed with its reason while the others finish.
  */
-import { describe, expect, it } from "@jest/globals";
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
 import { ToolsRestarts } from "../../../src/shared/agents/tools-restarts.js";
 
@@ -113,5 +113,123 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
     t.start(three);
     expect(t.start(three)).toEqual([]);
     expect(adds).toEqual(["ana", "bo", "cy"]);
+  });
+});
+
+describe("issue 1223: the bell draws it", () => {
+  const g = globalThis as unknown as { window?: unknown };
+  const had = g.window;
+  beforeAll(() => {
+    g.window = {
+      denShell: {
+        t: (k: string, v?: Record<string, unknown>) =>
+          `[${k}${v ? `:${Object.values(v).join("|")}` : ""}]`,
+      },
+    };
+  });
+  afterAll(() => {
+    g.window = had;
+  });
+  const needs = async (w: object) => {
+    const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel({ groups: [], waiting: [w], unread: 0 });
+    if (!("sections" in p)) throw new Error("the bell has no sections");
+    return p.sections.needs as string;
+  };
+
+  it("one row naming 3, with Restart 3 agents", async () => {
+    const html = await needs({
+      kind: "tools_old",
+      id: "tools-old",
+      n: 3,
+      agents: three.map((a) => ({ agent: a.id, workspace: a.workspace })),
+    });
+    expect(html.match(/data-kind="tools_old"/g)).toHaveLength(1);
+    expect(html).toContain("[bell.to.row:3]");
+    expect(html).toContain('data-bell="tools-restart" data-n="3"');
+    expect(html).toContain("[bell.to.restart:3]");
+  });
+
+  it("while it runs, the button says how far it got; a failed one says why", async () => {
+    const html = await needs({
+      kind: "tools_old",
+      id: "tools-old",
+      n: 1,
+      agents: [
+        { agent: "bo", workspace: "north", reason: "bo exited at once" },
+      ],
+      restarting: { done: 1, total: 3 },
+    });
+    expect(html).toMatch(
+      /data-bell="tools-restart" disabled aria-busy="true">\[bell\.to\.restarting:1\|3\]/,
+    );
+    expect(html).toContain("[bell.to.failed:bo|bo exited at once]");
+  });
+});
+
+describe("issue 1223: GET /api/notifications lists the row", () => {
+  it("follows the gate rows; gone when there is none", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const http = await import("http");
+    const { NotificationStore } =
+      await import("../../../src/shared/notifications.js");
+    const { handleNotificationRoutes } =
+      await import("../../../src/ui/server/notification-routes.js");
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-1223n-"));
+    let row: object | null = {
+      kind: "tools_old",
+      id: "tools-old",
+      n: 3,
+      agents: [],
+    };
+    const attention = {
+      waitingNow: () => new Map(),
+      waitingDetail: () => null,
+    } as unknown as Parameters<typeof handleNotificationRoutes>[3]["attention"];
+    const server = http.createServer((req, res) => {
+      void handleNotificationRoutes(req, res, "/api/notifications", {
+        store: new NotificationStore(stateDir),
+        attention,
+        toolsOld: () => row as never,
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const { port } = server.address() as { port: number };
+    const get = async () =>
+      (
+        (await (
+          await fetch(`http://127.0.0.1:${port}/api/notifications`)
+        ).json()) as { waiting: { kind: string; n?: number }[] }
+      ).waiting;
+    try {
+      expect(await get()).toEqual([row]);
+      row = null;
+      expect(await get()).toEqual([]);
+    } finally {
+      await new Promise((r) => server.close(r));
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("issue 1223: the server keeps the stale list for the bell", () => {
+  it("asks in the background once it's old; the next read has it", async () => {
+    const { toolsOldRow, resetToolsOld, STALE_TTL_MS } =
+      await import("../../../src/ui/server/tools-old-service.js");
+    resetToolsOld();
+    const d = { stateDir: () => "/tmp/den-1223-svc" };
+    let asks = 0;
+    const ask = async () => (asks++, three);
+    expect(toolsOldRow(d, ask, Date.now())).toBeNull();
+    await flush();
+    expect(toolsOldRow(d, ask, Date.now())?.n).toBe(3);
+    // Within the TTL: not asked again.
+    expect(asks).toBe(1);
+    toolsOldRow(d, ask, Date.now() + STALE_TTL_MS);
+    await flush();
+    expect(asks).toBe(2);
+    resetToolsOld();
   });
 });
