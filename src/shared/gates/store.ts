@@ -1861,6 +1861,30 @@ export class GateStore {
   }
 
   /**
+   * Issue 1339: the live slots as their files stand, with no lock and no
+   * settle (each file is written whole, so a plain read is safe). For a
+   * reader on the server's one thread, the bell's refresh: list() waits on
+   * the machine-wide lock synchronously, up to lockWaitMs, and while a gate
+   * run held it the whole server stood still. What list() would take back
+   * (a gone run, a lapsed lease, a waiter whose run is gone) isn't shown;
+   * the next locked call takes it back.
+   */
+  peekAll(): GateEntry[] {
+    const s = this.settings();
+    const now = this.now();
+    return this.readAll().filter((e) => {
+      if (lapsed(e, now) || mcpLapsed(e, s, now)) return false;
+      if (!e.orphanedAt && !gone(e, this.alive)) return true;
+      // Issue 867: a waiter whose run is gone keeps its place a while.
+      return (
+        keptWaiter(e, s) &&
+        now - (e.orphanedAt ? Date.parse(e.orphanedAt) : now) <=
+          s.waiterReturnMinutes * 60_000
+      );
+    });
+  }
+
+  /**
    * Issue 621: one slot as its file stands, with no lock and no settle: a
    * waiting ask's cheap look between its locked renews.
    */
