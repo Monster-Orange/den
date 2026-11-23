@@ -182,9 +182,26 @@ export interface DoctorRow {
   warnings: string[];
   /** #63: what's healthy and worth saying (a ✓ line each). */
   notes?: string[];
+  /**
+   * Issue 1334: nothing uses it yet (an implicit default no one chose,
+   * no source found, no agents). Unavailable then is "not in use yet",
+   * ok, never a ⚠ an agent would turn into a question.
+   */
+  idle?: true;
 }
 
-type Selector = (env: NodeJS.ProcessEnv) => DoctorRow;
+/** What a row may need beyond the env (issue 1334). */
+export interface DoctorRowsOpts {
+  /** How many agents this install has (records); default: read them. */
+  agents?: () => number;
+}
+
+type Selector = (
+  env: NodeJS.ProcessEnv,
+  o: Required<DoctorRowsOpts>,
+) => DoctorRow;
+
+const idleIf = (b: boolean): { idle?: true } => (b ? { idle: true } : {});
 
 const SELECTORS: Record<string, Selector> = {
   secrets(env) {
@@ -213,6 +230,7 @@ const SELECTORS: Record<string, Selector> = {
       // The implicit default is used only when a secret is asked for.
       problem: !st.detect.available && !st.implicit,
       warnings: [],
+      ...idleIf(st.implicit && !st.detect.available),
     };
   },
   tls(env) {
@@ -262,7 +280,7 @@ const SELECTORS: Record<string, Selector> = {
   // Agents' terminals (AG-3a). Only den-pty exists, so it is the implicit
   // choice; unavailable is never a problem (nothing needs a session until
   // one is started, and `sessions start` says why).
-  [SESSION_BACKEND_KIND](env) {
+  [SESSION_BACKEND_KIND](env, o) {
     const d = getStrategy(SESSION_BACKEND_KIND, DEN_PTY_ID)?.detect(env) ?? {
       available: false,
       reason: "not registered",
@@ -275,12 +293,14 @@ const SELECTORS: Record<string, Selector> = {
       reason: d.reason,
       problem: false,
       warnings: [],
+      // Issue 1334: no agents yet, so no terminal is needed yet.
+      ...idleIf(!d.available && o.agents() === 0),
     };
   },
   // Agents' CLIs (AG-2a): the default runtime, chosen per persona or agent,
   // so it is implicit and its absence is never a problem (`agents start`
   // says why it can't run).
-  [RUNTIME_KIND](env) {
+  [RUNTIME_KIND](env, o) {
     const d = getStrategy(RUNTIME_KIND, DEFAULT_RUNTIME_ID)?.detect(env) ?? {
       available: false,
       reason: "not registered",
@@ -293,6 +313,8 @@ const SELECTORS: Record<string, Selector> = {
       reason: d.reason,
       problem: false,
       warnings: [],
+      // Issue 1334: no agents yet, so no agent CLI is needed yet.
+      ...idleIf(!d.available && o.agents() === 0),
     };
   },
 };
@@ -301,14 +323,32 @@ const SELECTORS: Record<string, Selector> = {
  * One row per registered kind (secrets, then tls, then any other kind in
  * registration order). Never spawns, never throws.
  */
-export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
+export function doctorRows(
+  env: NodeJS.ProcessEnv = process.env,
+  opts: DoctorRowsOpts = {},
+): DoctorRow[] {
+  let counted: number | undefined;
+  const o: Required<DoctorRowsOpts> = {
+    agents:
+      opts.agents ??
+      (() => {
+        if (counted === undefined)
+          try {
+            counted = listRecords(getStateDir()).length;
+          } catch {
+            // Can't tell: count one, so nothing hides behind an error.
+            counted = 1;
+          }
+        return counted;
+      }),
+  };
   const kinds = strategyKinds();
   const ordered = [
     ...Object.keys(SELECTORS).filter((k) => kinds.includes(k)),
     ...kinds.filter((k) => !(k in SELECTORS)),
   ];
   const rows = ordered.map(
-    (kind) => SELECTORS[kind]?.(env) ?? everyStrategyRow(kind, env),
+    (kind) => SELECTORS[kind]?.(env, o) ?? everyStrategyRow(kind, env),
   );
   const op = onePasswordTokenRow(env);
   if (op) rows.splice(rows.findIndex((r) => r.kind === "secrets") + 1, 0, op);
@@ -344,6 +384,8 @@ function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
           .join("; ") || undefined,
     problem: false,
     warnings: [],
+    // Issue 1334: no source found yet (no transcripts): nothing to fix.
+    ...idleIf(!available),
   };
 }
 
@@ -389,7 +431,9 @@ export function formatDoctor(rows: DoctorRow[], title: string): string[] {
     const sel = selOf(r);
     const state = r.available
       ? chalk.green("✓ available")
-      : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
+      : r.idle
+        ? chalk.dim("– not in use yet")
+        : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
     lines.push(
       `  ${r.kind.padEnd(width)}  ${sel.padEnd(selWidth)} ${state}${r.reason ? `: ${r.reason}` : ""}`,
     );
@@ -492,10 +536,10 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
     id: `strategy:${r.kind}`,
     status: r.problem
       ? "fail"
-      : !r.available || r.warnings.length
+      : (!r.available && !r.idle) || r.warnings.length
         ? "warn"
         : "ok",
-    detail: `${sel} ${r.available ? "available" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    detail: `${sel} ${r.available ? "available" : r.idle ? "not in use yet, unavailable" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
   };
 }
 
@@ -1341,6 +1385,8 @@ function fixtureLineNow(): string | null {
  * Secure. Without one it lives on the host the person uses (localhost
  * here), and browsers share a host's cookies across its ports: other apps
  * opened on that host could see it. A warning, with what to set.
+ * Issue 1334: with no address at all, the Address row already asks for
+ * one; this row says so (ℹ, ok) instead of a second ⚠ to ask about.
  */
 export function sessionHostLines(
   w: import("../../shared/web-url.js").WebUrl | null,
@@ -1349,10 +1395,17 @@ export function sessionHostLines(
   cli: string,
   lastAnswered: string | null = null,
 ): { lines: string[]; check: OnboardCheck } {
-  const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  if (!w) {
+    const detail = `no address yet: the Address row says what to set. Until one is set, the sign-in lives on localhost here`;
+    return {
+      lines: ["", `${title} doctor: Sign-in`, "", `  sign-in  ℹ  ${detail}`],
+      check: { id: "signin_host", status: "ok", detail },
+    };
+  }
+  const named = w.url.startsWith("https:") && works ? w.url : null;
   // When an https address stopped answering as this Den, say when.
   const since =
-    !named && w?.url.startsWith("https:") && lastAnswered
+    !named && w.url.startsWith("https:") && lastAnswered
       ? `${w.url} last answered as this ${title} at ${new Date(lastAnswered).toLocaleString()}; `
       : "";
   const detail = named
@@ -1365,7 +1418,7 @@ export function sessionHostLines(
       "",
       // An https address that doesn't reach this Den yet: "!", as the
       // address check beside it says it (not an install-wide ⚠).
-      `  sign-in  ${named ? "✓" : w?.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
+      `  sign-in  ${named ? "✓" : w.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
     ],
     check: {
       id: "signin_host",
@@ -1433,17 +1486,37 @@ export async function doctorAddress(
   return { state, edge: isEdgeAddress(w.url, domains) };
 }
 
+/** Issue 1334: phones and browsers with push on; unknown on an error. */
+async function pushSubscriptionCount(): Promise<number | undefined> {
+  try {
+    const { PushSubscriptions } = await import("../server/web-push.js");
+    return new PushSubscriptions(getStateDir()).list().length;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Issue 367: the contact push alerts give the push services. With an
  * https address (web.url) they get it; without one, a mailto fallback
  * some refuse, so a phone may get no push: warn, and say what to set.
+ * Issue 1334: `subscriptions` is how many phones or browsers have push
+ * on. None: nothing is lost yet, so ℹ and ok. Unknown (left out): warn.
  */
 export function pushContactLines(
   w: import("../../shared/web-url.js").WebUrl | null,
   title: string,
   cli: string,
+  subscriptions?: number,
 ): { lines: string[]; check: OnboardCheck } {
   const c = pushContact(w?.url);
+  if (!c.accepted && subscriptions === 0) {
+    const detail = `no phone has push alerts on yet. When one does, it needs an https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK})`;
+    return {
+      lines: ["", `${title} doctor: Push alerts`, "", `  push  ℹ  ${detail}`],
+      check: { id: "push_contact", status: "ok", detail },
+    };
+  }
   const detail = c.accepted
     ? `push services are given ${c.subject} as the contact`
     : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
@@ -2138,7 +2211,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
     }
     r.checks.push(
-      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+      pushContactLines(
+        readWebUrl(),
+        readBrand().name,
+        product().cli,
+        await pushSubscriptionCount(),
+      ).check,
     );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
@@ -2314,6 +2392,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readWebUrl(),
     readBrand().name,
     product().cli,
+    await pushSubscriptionCount(),
   ).lines)
     console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);

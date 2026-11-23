@@ -48,12 +48,25 @@ describe("issue 367: the contact push services are given", () => {
       null,
       { url: "http://den.example.com", confirmed: true },
     ]) {
-      const r = pushContactLines(w, "Acme", "acme");
+      const r = pushContactLines(w, "Acme", "acme", 1);
       expect(r.check).toMatchObject({ id: "push_contact", status: "warn" });
       expect(r.check.detail).toMatch(/may not reach phones/);
       expect(r.check.detail).toContain(PUSH_CONTACT_FALLBACK);
       expect(r.check.detail).toMatch(/acme web url https:\/\//);
       expect(r.lines.join("\n")).toContain(r.check.detail);
+    }
+  });
+
+  it("issue 1334: no https address and no phone with push on: ℹ ok, nothing to set yet", () => {
+    for (const w of [
+      null,
+      { url: "http://den.example.com", confirmed: true },
+    ]) {
+      const r = pushContactLines(w, "Acme", "acme", 0);
+      expect(r.check).toMatchObject({ id: "push_contact", status: "ok" });
+      expect(r.check.settings).toBeUndefined();
+      expect(r.check.detail).toContain("no phone has push alerts on");
+      expect(r.lines.join("\n")).toContain("  push  ℹ  ");
     }
   });
 });
