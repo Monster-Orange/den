@@ -71,7 +71,7 @@ describe("issue 1326: setuid programs in the sandbox", () => {
 
 describe("issue 1326: Docker in the sandbox", () => {
   it.each([
-    "permission denied while trying to connect to the docker API at unix:///Users/me/.orbstack/run/docker.sock",
+    "permission denied while trying to connect to the docker API at unix:///home/me/.docker/run/docker.sock",
     'Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.24/containers/json": dial unix /var/run/docker.sock: connect: permission denied',
   ])(
     "says outside daemons' sockets are refused, and the person can turn the agent's sandbox off",
