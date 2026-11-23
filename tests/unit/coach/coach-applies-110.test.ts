@@ -13,6 +13,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   applyLinkOf,
+  applyViewOf,
   applyStateOf,
   linkApply,
   readApplyLinks,
@@ -126,5 +127,58 @@ describe("the row's state follows its held write", () => {
   it("lost, or a held write Den no longer knows: failed", () => {
     expect(applyStateOf({ state: "lost" })).toBe("failed");
     expect(applyStateOf(null)).toBe("failed");
+  });
+});
+
+describe("what the row's line says once decided (mock v3)", () => {
+  const at = Date.parse("2026-11-23T00:02:00.000Z");
+  it("waiting: the state only", () => {
+    expect(applyViewOf({ state: "pending" }, "Pat")).toEqual({
+      state: "waiting",
+    });
+  });
+  it("applied: who allowed it (the owner's name) and when", () => {
+    expect(
+      applyViewOf(
+        { state: "done", decidedBy: "s1", decidedAt: at, result: { ok: true } },
+        "Pat",
+      ),
+    ).toEqual({
+      state: "applied",
+      decidedAt: "2026-11-23T00:02:00.000Z",
+      by: "Pat",
+    });
+  });
+  it("no name known, or decided by Den itself: no name", () => {
+    expect(
+      applyViewOf({ state: "denied", decidedBy: "s1", decidedAt: at }),
+    ).toEqual({ state: "denied", decidedAt: "2026-11-23T00:02:00.000Z" });
+    expect(
+      applyViewOf(
+        { state: "denied", decidedBy: "auto:x", decidedAt: at },
+        "Pat",
+      ).by,
+    ).toBeUndefined();
+  });
+  it("failed: the run's reason, with secrets taken out and kept short", () => {
+    const v = applyViewOf(
+      {
+        state: "done",
+        decidedBy: "s1",
+        decidedAt: at,
+        result: {
+          ok: false,
+          error: `persona file is locked; token ghp_${"a".repeat(36)} ${"x".repeat(400)}`,
+        },
+      },
+      "Pat",
+    );
+    expect(v.state).toBe("failed");
+    expect(v.reason).toMatch(/^persona file is locked/);
+    expect(v.reason).not.toMatch(/ghp_a{36}/);
+    expect(v.reason!.length).toBeLessThanOrEqual(200);
+  });
+  it("a held write Den no longer knows: failed, with no reason", () => {
+    expect(applyViewOf(null, "Pat")).toEqual({ state: "failed" });
   });
 });

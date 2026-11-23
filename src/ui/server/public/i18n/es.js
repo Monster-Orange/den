@@ -3053,6 +3053,43 @@
     "co.f.col.finding": "Hallazgo",
     "co.f.col.agent": "Agente",
     "co.f.col.why": "Por qué lo dice el Coach",
+    "co.ap.apply": "Aplicar",
+    "co.ap.proposed": "Cambio propuesto: {change}",
+    "co.ap.change.subagent_opus":
+      "Poner el modelo de subagentes de {persona} en Sonnet.",
+    "co.ap.rev.subagent_opus":
+      "Sí: vuelve a cambiarlo en la persona de {persona}.",
+    "co.ap.now.subagent_opus":
+      "El modelo de subagentes de {persona} ahora es Sonnet.",
+    "co.ap.none": "Coach no tiene un cambio que proponer para este.",
+    "co.ap.waiting": "Esperando Permitir",
+    "co.ap.waiting.line":
+      "Aún no ha cambiado nada. Una persona debe permitirlo en la campana.",
+    "co.ap.openBell": "Abrir la campana",
+    "co.ap.applied": "Aplicado",
+    "co.ap.applied.by":
+      "Permitido por {by}, {when}. {now} Coach lo revisará en la próxima ejecución.",
+    "co.ap.applied.at":
+      "Permitido {when}. {now} Coach lo revisará en la próxima ejecución.",
+    "co.ap.denied": "Denegado",
+    "co.ap.denied.by":
+      "Denegado por {by}, {when}. No se cambió nada. El hallazgo sigue.",
+    "co.ap.denied.at": "Denegado {when}. No se cambió nada. El hallazgo sigue.",
+    "co.ap.failed": "Falló",
+    "co.ap.failed.line": "No se pudo aplicar: {reason}. No se cambió nada.",
+    "co.ap.failed.none": "No se pudo aplicar. No se cambió nada.",
+    "co.ap.again": "Aplicar de nuevo",
+    "co.ap.retry": "Reintentar",
+    "co.ap.fail": "No se pudo pedir aplicar “{title}”. Inténtalo de nuevo.",
+    "co.ap.live.waiting": "“{title}”: esperando Permitir.",
+    "co.ap.live.applied": "“{title}”: aplicado.",
+    "co.ap.live.denied": "“{title}”: denegado. No se cambió nada.",
+    "co.ap.live.failed": "“{title}”: falló. No se cambió nada.",
+    "bell.coach.asks": "El agente de __DEN_TITLE__ pide cambiar {persona}",
+    "bell.coach.from": "Del hallazgo de Coach “{title}”.",
+    "bell.coach.change": "Cambio",
+    "bell.coach.why": "Por qué",
+    "bell.coach.rev": "Reversible",
     "co.f.dismiss": "Descartar",
     "co.f.undo": "Deshacer",
     "co.f.toast": "Descartado “{title}”.",

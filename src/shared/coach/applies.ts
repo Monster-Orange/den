@@ -17,6 +17,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { writePrivate } from "../agents/records.js";
+import { redactSecrets } from "../redact.js";
 
 export interface ApplyLink {
   /** The held write's id (POST /api/approvals). */
@@ -90,4 +91,42 @@ export function applyStateOf(
   if (a.state === "denied" || a.state === "expired" || a.state === "withdrawn")
     return "denied";
   return "failed";
+}
+
+/** What a finding's row says about its Apply (mock v3's ending lines). */
+export interface ApplyView {
+  state: ApplyState;
+  /** When a person decided it, ISO. */
+  decidedAt?: string;
+  /** Who allowed or denied it: the owner's name, when Den knows it. */
+  by?: string;
+  /** Failed: the run's reason, secrets taken out, at most 200 characters. */
+  reason?: string;
+}
+
+const MAX_REASON = 200;
+
+/**
+ * A held write as its finding's row shows it. `owner`: the owner's name
+ * (only a person decides a persona_update; Den's own "auto:" isn't one).
+ */
+export function applyViewOf(
+  a: {
+    state: string;
+    result?: unknown;
+    decidedBy?: string;
+    decidedAt?: number;
+  } | null,
+  owner?: string,
+): ApplyView {
+  const state = applyStateOf(a);
+  if (!a || state === "waiting") return { state };
+  const v: ApplyView = { state };
+  if (typeof a.decidedAt === "number" && Number.isFinite(a.decidedAt))
+    v.decidedAt = new Date(a.decidedAt).toISOString();
+  if (owner && a.decidedBy && !a.decidedBy.startsWith("auto:")) v.by = owner;
+  const err = (a.result as { error?: unknown } | undefined)?.error;
+  if (state === "failed" && typeof err === "string" && err.trim())
+    v.reason = redactSecrets(err.trim()).slice(0, MAX_REASON);
+  return v;
 }

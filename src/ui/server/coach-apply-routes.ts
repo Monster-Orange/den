@@ -28,6 +28,31 @@ import {
 
 export const COACH_APPLY_ROUTES = ["/api/coach/apply"] as const;
 
+/** Issue 110: the bell card's Coach block (approvals.ts CoachAsk). */
+export interface CoachAskBlock {
+  finding: string;
+  kind: string;
+  persona: string;
+  vars: Record<string, string | number>;
+}
+
+/** The finding's numbers the bell words it with, as the Coach tab does. */
+function coachAskFor(
+  f: CoachFinding,
+  persona: string,
+  line: number | undefined,
+): CoachAskBlock {
+  const num = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  const vars: Record<string, string | number> = { agent: f.agent };
+  const n = num(f.evidence?.subagent_opus_pct);
+  const calls = num(f.evidence?.subagent_calls);
+  if (n !== undefined) vars.n = n;
+  if (calls !== undefined) vars.calls = calls;
+  if (num(line) !== undefined) vars.line = line as number;
+  return { finding: f.id, kind: f.kind, persona, vars };
+}
+
 /**
  * Finding ids whose Apply is asking now: a second Apply at the same
  * moment is refused, as one waiting is (Builder 2, issue 110).
@@ -57,7 +82,10 @@ export interface CoachApplyDeps {
   ask: (
     req: http.IncomingMessage,
     body: { action: string; args: Record<string, string>; note: string },
+    opts: { coach: CoachAskBlock },
   ) => Promise<{ status: number; body: Record<string, unknown> }>;
+  /** The line a finding of `kind` passed (the Coach's settings). */
+  lineOf?: (kind: string) => number | undefined;
   link: (id: string, approval: string, at: string) => void;
   /** Whether Den has project `ws` (the held write names it only then). */
   projectExists?: (ws: string) => boolean;
@@ -137,7 +165,7 @@ export async function handleCoachApplyRoute(
   }
   asking.add(id);
   try {
-    return await askAndLink(req, res, id, apply, d);
+    return await askAndLink(req, res, f, apply, d);
   } finally {
     asking.delete(id);
   }
@@ -146,15 +174,20 @@ export async function handleCoachApplyRoute(
 async function askAndLink(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  id: string,
+  f: CoachFinding,
   apply: NonNullable<ReturnType<typeof coachApplyFor>>,
   d: CoachApplyDeps,
 ): Promise<boolean> {
-  const r = await d.ask(req, {
-    action: apply.action,
-    args: { ...apply.args },
-    note: `Coach: ${apply.change}`,
-  });
+  const id = f.id;
+  const r = await d.ask(
+    req,
+    {
+      action: apply.action,
+      args: { ...apply.args },
+      note: `Coach: ${apply.change}`,
+    },
+    { coach: coachAskFor(f, apply.args.id, d.lineOf?.(f.kind)) },
+  );
   const approval = typeof r.body.id === "string" ? r.body.id : null;
   if (r.status !== 202 || r.body.ok !== true || !approval) {
     d.sendJson(res, r.body, r.status === 202 ? 500 : r.status);

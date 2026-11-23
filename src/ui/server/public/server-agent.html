@@ -583,6 +583,45 @@
         justify-content: center;
         min-height: 44px;
       }
+      /* Issue 110 (mock v3): the change in words, Apply's states. */
+      .co-fchg {
+        margin: 4px 0 0;
+        color: var(--text);
+      }
+      .co-apl {
+        margin: 6px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .co-fact > * + * {
+        margin-left: 6px;
+      }
+      .co-chip {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .co-chip.wait {
+        color: var(--warn);
+        border-color: var(--warn);
+      }
+      .co-chip.ok {
+        color: var(--ok);
+      }
+      .co-chip.bad {
+        color: var(--bad);
+        border-color: var(--bad);
+      }
+      .co-fc .co-fdis-wide + .co-fdis-wide {
+        margin-top: 8px;
+      }
+      .co-fc .co-chip {
+        margin-top: 8px;
+      }
       .co-fnone {
         border: 1px dashed var(--border-strong, var(--border));
         border-radius: var(--radius);

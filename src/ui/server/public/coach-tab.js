@@ -19,7 +19,12 @@
  *                 the agent, why Coach says so (the numbers and the line
  *                 passed), each with Dismiss (dots in the button; no
  *                 reason asked; an Undo toast above the heading); "N
- *                 dismissed · Show" lists them, each with Undo; no Apply
+ *                 dismissed · Show" lists them, each with Undo
+ *   apply         (issue 110, mock v3) a finding with a proposal says its
+ *                 change in words and has Apply beside Dismiss (dots in
+ *                 the button); the row then follows its held write:
+ *                 Waiting for Allow (Open the bell), Applied, Denied
+ *                 (Apply again) or Failed (Try again); a change is read out
  *
  * Every word is a page key (co.*) in en, es and ja. Agents' words never
  * show here; names are escaped, and every number and date follows the
@@ -27,6 +32,7 @@
  */
 
 const sh = () => globalThis.window?.denShell;
+const doc = () => globalThis.document;
 const t = (key, vars) => sh()?.t?.(key, vars) ?? key;
 const esc = (s) =>
   String(s ?? "").replace(
@@ -464,6 +470,107 @@ function words(f, th) {
   return { title: t(w.title, w.vars), why: t(w.why, w.vars) };
 }
 
+/** Issue 110: a finding's change and what is true after it, as words. */
+function applyVars(f) {
+  return { persona: f?.apply?.args?.id ?? f?.persona ?? f?.agent ?? "" };
+}
+
+/** The decided line's time, in the person's time zone. */
+function decidedWhen(a) {
+  return a?.decidedAt ? when(a.decidedAt) : "";
+}
+
+/**
+ * Issue 110 (mock v3): a finding's Apply part. `line` goes under the
+ * reason (the change, or what the held write did); `chip` and `buttons`
+ * go where Dismiss was. `wide`: the phone's full-width buttons.
+ */
+function applyParts(f, wide) {
+  const dismiss = `<button type="button" class="den-btn ${wide ? "co-fdis-wide" : "sm co-fdis"}" data-act="coach-dismiss" data-id="${esc(f.id)}">${esc(t("co.f.dismiss"))}</button>`;
+  const apply = (label) =>
+    `<button type="button" class="den-btn primary ${wide ? "co-fdis-wide" : "sm co-fap"}" data-act="coach-apply" data-id="${esc(f.id)}">${esc(t(label))}</button>`;
+  if (!f.apply) return { line: "", none: true, chip: "", buttons: dismiss };
+  const v = applyVars(f);
+  const proposed = `<p class="co-fchg">${esc(t("co.ap.proposed", { change: t(`co.ap.change.${f.kind}`, v) }))}</p>`;
+  const a = f.applied;
+  const chip = (cls, key) =>
+    `<span class="co-chip ${cls}">${esc(t(key))}</span>`;
+  const note = (text) => `<p class="co-apl">${text}</p>`;
+  const w = { by: a?.by ?? "", when: decidedWhen(a) };
+  switch (a?.state) {
+    case "waiting":
+      return {
+        line:
+          proposed +
+          note(
+            `${esc(t("co.ap.waiting.line"))} <button type="button" class="co-link" data-act="coach-bell">${esc(t("co.ap.openBell"))}</button>`,
+          ),
+        chip: chip("wait", "co.ap.waiting"),
+        buttons: "",
+      };
+    case "applied":
+      return {
+        line:
+          proposed +
+          note(
+            esc(
+              t(a.by ? "co.ap.applied.by" : "co.ap.applied.at", {
+                ...w,
+                now: t(`co.ap.now.${f.kind}`, v),
+              }),
+            ),
+          ),
+        chip: chip("ok", "co.ap.applied"),
+        buttons: "",
+      };
+    case "denied":
+      return {
+        line:
+          proposed +
+          note(esc(t(a.by ? "co.ap.denied.by" : "co.ap.denied.at", w))),
+        chip: chip("bad", "co.ap.denied"),
+        buttons: apply("co.ap.again") + dismiss,
+      };
+    case "failed":
+      return {
+        line:
+          proposed +
+          note(
+            esc(
+              a.reason
+                ? t("co.ap.failed.line", { reason: a.reason })
+                : t("co.ap.failed.none"),
+            ),
+          ),
+        chip: chip("bad", "co.ap.failed"),
+        buttons: apply("co.ap.retry") + dismiss,
+      };
+    default:
+      return {
+        line: proposed,
+        chip: "",
+        buttons: apply("co.ap.apply") + dismiss,
+      };
+  }
+}
+
+/**
+ * Issue 110: what to read out when a finding's Apply state changed between
+ * two GETs (the newest change), or "".
+ */
+export function applyLiveText(before = [], after = [], th = {}) {
+  const was = new Map(
+    (before ?? []).map((f) => [f.id, f.applied?.state ?? null]),
+  );
+  let out = "";
+  for (const f of after ?? []) {
+    const s = f.applied?.state ?? null;
+    if (s && was.has(f.id) && was.get(f.id) !== s)
+      out = t(`co.ap.live.${s}`, { title: words(f, th).title });
+  }
+  return out;
+}
+
 const kindOf = (id) => String(id).split(":")[0];
 const agentOf = (id) => String(id).slice(String(id).indexOf(":") + 1);
 
@@ -485,8 +592,6 @@ function findingsSection(data, rows, o) {
   if (!list.length)
     html += `<div class="co-fnone" data-note="coach-no-findings">${esc(t("co.f.none"))}</div>`;
   else {
-    const btn = (f, cls) =>
-      `<button type="button" class="den-btn ${cls}" data-act="coach-dismiss" data-id="${esc(f.id)}">${esc(t("co.f.dismiss"))}</button>`;
     html +=
       `<div class="co-tw co-ftw"><table class="co-table co-ftable"><thead><tr>` +
       `<th scope="col">${esc(t("co.f.col.finding"))}</th><th scope="col">${esc(t("co.f.col.agent"))}</th>` +
@@ -495,9 +600,11 @@ function findingsSection(data, rows, o) {
       list
         .map((f) => {
           const w = words(f, th);
+          const p = applyParts(f, false);
+          const why = p.none ? `${w.why} ${t("co.ap.none")}` : w.why;
           return (
             `<tr class="co-fr" data-id="${esc(f.id)}"><td><b>${esc(w.title)}</b></td><td>${esc(f.agent)}</td>` +
-            `<td class="co-fwhy">${esc(w.why)}</td><td>${btn(f, "sm co-fdis")}</td></tr>`
+            `<td class="co-fwhy">${esc(why)}${p.line}</td><td class="co-fact">${p.chip}${p.buttons}</td></tr>`
           );
         })
         .join("") +
@@ -507,13 +614,22 @@ function findingsSection(data, rows, o) {
         .map((f) => {
           const w = words(f, th);
           const first = w.why.split(/(?<=[.。])\s*/)[0];
+          const p = applyParts(f, true);
+          const why = p.none ? `${first} ${t("co.ap.none")}` : first;
           return (
-            `<div class="co-fc"><b>${esc(w.title)}</b>` +
-            `<small>${esc(f.agent)} · ${esc(first)}</small>${btn(f, "co-fdis-wide")}</div>`
+            `<div class="co-fc" data-id="${esc(f.id)}"><b>${esc(w.title)}</b>` +
+            `<small>${esc(f.agent)} · ${esc(why)}</small>${p.line}${p.chip}${p.buttons}</div><!--fc-->`
           );
         })
         .join("") +
       `</div>`;
+  }
+  if (o.applyFailed) {
+    const f = list.find((x) => x.id === o.applyFailed) ?? {
+      id: o.applyFailed,
+      kind: kindOf(o.applyFailed),
+    };
+    html += `<p class="co-fail" role="alert">${esc(t("co.ap.fail", { title: words(f, th).title }))}</p>`;
   }
   if (o.dismissFailed) {
     const f = list.find((x) => x.id === o.dismissFailed) ?? {
@@ -547,10 +663,11 @@ function findingsSection(data, rows, o) {
 
 /**
  * The whole tab's HTML for `data` (GET /api/coach) and the view `o`:
- * { sort, perDay, open, dismissedOpen, dismissFailed }.
+ * { sort, perDay, open, dismissedOpen, dismissFailed, applyFailed }.
  */
 export function coachTabView(data, o = {}) {
   const view = {
+    applyFailed: o.applyFailed ?? null,
     sort: o.sort ?? DEFAULT_SORT,
     perDay: !!o.perDay,
     open: o.open ?? null,
@@ -580,6 +697,7 @@ export function coachTabView(data, o = {}) {
 // ── mounting ───────────────────────────────────────────────────────────
 
 const view = {
+  applyFailed: null,
   sort: DEFAULT_SORT,
   perDay: false,
   open: null,
@@ -588,10 +706,18 @@ const view = {
 };
 let data = null;
 let el = null;
+/** The tab's content, repainted; `live` stays, so a change is read out. */
+let body = null;
+let live = null;
 let again = null;
 const RECHECK_MS = 3000;
 
+/** Issue 110: a finding's Apply waits for a person's Allow. */
+const anyWaiting = (d) =>
+  (d?.findings ?? []).some((f) => f.applied?.state === "waiting");
+
 async function load() {
+  const before = data?.findings ?? [];
   try {
     data = await sh().api("GET", "/api/coach");
   } catch (e) {
@@ -599,14 +725,24 @@ async function load() {
     return;
   }
   paint();
+  // Issue 110: waiting, denied, applied or failed is read out.
+  const said = applyLiveText(
+    before,
+    data?.findings ?? [],
+    data?.settings?.findings ?? {},
+  );
+  if (said && live) live.textContent = said;
   clearTimeout(again);
   // While a run goes, look again for its progress; stop when it ends.
-  if (data?.running && !document.hidden) again = setTimeout(load, RECHECK_MS);
+  // Issue 110: while an Apply waits, look again, so an Allow or a Deny
+  // from the bell shows without a reload.
+  if ((data?.running || anyWaiting(data)) && !document.hidden)
+    again = setTimeout(load, RECHECK_MS);
 }
 
 function paint(focus) {
   if (!el || !data) return;
-  el.innerHTML = coachTabView(data, view);
+  body.innerHTML = coachTabView(data, view);
   el.setAttribute("aria-busy", "false");
   if (focus === "detail") el.querySelector(".co-det")?.focus();
   else if (focus) el.querySelector(focus)?.focus();
@@ -676,6 +812,25 @@ async function dismiss(button) {
   paint(`[data-act="coach-dismiss"][data-id="${CSS.escape(id)}"]`);
 }
 
+/**
+ * Issue 110: Apply asks for the finding's change as a held write. Dots in
+ * the button while Den asks; then the row says Waiting for Allow. Nothing
+ * changes until a person allows it in the bell.
+ */
+async function applyFinding(button) {
+  const id = button.dataset.id;
+  if (await write("coach-apply", "/api/coach/apply", { id }, button)) {
+    view.applyFailed = null;
+    await load();
+    el.querySelector(
+      `tr[data-id="${CSS.escape(id)}"] [data-act="coach-bell"]`,
+    )?.focus();
+    return;
+  }
+  view.applyFailed = id;
+  paint(`[data-act="coach-apply"][data-id="${CSS.escape(id)}"]`);
+}
+
 /** Take a dismissal back; focus goes to its Dismiss again. */
 async function undo(id, button) {
   if (await write("coach-undismiss", "/api/coach/undismiss", { id }, button)) {
@@ -711,6 +866,8 @@ function onClick(e) {
   if (act === "coach-run" && !a.disabled) void runNow(a);
   else if (act === "coach-counts") void setCounts(a.dataset.v);
   else if (act === "coach-dismiss" && !a.disabled) void dismiss(a);
+  else if (act === "coach-apply" && !a.disabled) void applyFinding(a);
+  else if (act === "coach-bell") doc().getElementById("den-bell")?.click();
   else if (act === "coach-undismiss" && !a.disabled) void undo(a.dataset.id, a);
   else if (act === "coach-dismissed-toggle") {
     view.dismissedOpen = !view.dismissedOpen;
@@ -740,6 +897,15 @@ function onKey(e) {
 export async function mountCoachTab(root) {
   if (el) return load();
   el = root;
+  el.innerHTML =
+    `<div class="co-body"></div>` +
+    `<p class="co-sr" aria-live="polite" data-note="coach-apply-live"></p>`;
+  body = el.querySelector(".co-body");
+  live = el.querySelector("[data-note=coach-apply-live]");
+  // Issue 110: an Allow from the bell (on this page) shows at once.
+  globalThis.window?.addEventListener?.("den:approval-done", () => {
+    if (anyWaiting(data)) void load();
+  });
   el.addEventListener("click", onClick);
   el.addEventListener("keydown", onKey);
   try {

@@ -316,6 +316,8 @@ export async function askHeld(
   req: http.IncomingMessage,
   deps: ApprovalRouteDeps,
   body: Record<string, unknown> | null,
+  /** Issue 110: Den's own callers only (never from a request's body). */
+  opts: { coach?: unknown } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const agent = agentPrincipalOf(req);
   const refused = (status: number, code: string, error: string) => ({
@@ -422,6 +424,7 @@ export async function askHeld(
       ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
       ...(checked.choices?.length ? { choices: checked.choices } : {}),
       note: typeof body.note === "string" ? body.note : undefined,
+      ...(opts.coach ? { coach: opts.coach } : {}),
     });
   } catch (e) {
     return refused(429, "too_many_waiting", (e as Error).message);

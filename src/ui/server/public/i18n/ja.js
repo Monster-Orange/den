@@ -2947,6 +2947,46 @@
     "co.f.col.finding": "内容",
     "co.f.col.agent": "エージェント",
     "co.f.col.why": "Coach がそう言う理由",
+    "co.ap.apply": "適用",
+    "co.ap.proposed": "提案する変更: {change}",
+    "co.ap.change.subagent_opus":
+      "{persona} のサブエージェントのモデルを Sonnet にします。",
+    "co.ap.rev.subagent_opus": "はい: {persona} のペルソナで元に戻せます。",
+    "co.ap.now.subagent_opus":
+      "{persona} のサブエージェントのモデルは Sonnet になりました。",
+    "co.ap.none": "この指摘には Coach が提案する変更はありません。",
+    "co.ap.waiting": "許可待ち",
+    "co.ap.waiting.line":
+      "まだ何も変わっていません。ベルで人が許可する必要があります。",
+    "co.ap.openBell": "ベルを開く",
+    "co.ap.applied": "適用済み",
+    "co.ap.applied.by":
+      "{by} が {when} に許可しました。{now} Coach が次の実行で確認します。",
+    "co.ap.applied.at":
+      "{when} に許可されました。{now} Coach が次の実行で確認します。",
+    "co.ap.denied": "拒否",
+    "co.ap.denied.by":
+      "{by} が {when} に拒否しました。何も変わっていません。指摘は残ります。",
+    "co.ap.denied.at":
+      "{when} に拒否されました。何も変わっていません。指摘は残ります。",
+    "co.ap.failed": "失敗",
+    "co.ap.failed.line":
+      "適用できませんでした: {reason}。何も変わっていません。",
+    "co.ap.failed.none": "適用できませんでした。何も変わっていません。",
+    "co.ap.again": "もう一度適用",
+    "co.ap.retry": "再試行",
+    "co.ap.fail":
+      "「{title}」の適用を依頼できませんでした。もう一度お試しください。",
+    "co.ap.live.waiting": "「{title}」: 許可待ちです。",
+    "co.ap.live.applied": "「{title}」: 適用されました。",
+    "co.ap.live.denied": "「{title}」: 拒否されました。何も変わっていません。",
+    "co.ap.live.failed": "「{title}」: 失敗しました。何も変わっていません。",
+    "bell.coach.asks":
+      "__DEN_TITLE__ エージェントが {persona} の変更を依頼しています",
+    "bell.coach.from": "Coach の指摘「{title}」から。",
+    "bell.coach.change": "変更",
+    "bell.coach.why": "理由",
+    "bell.coach.rev": "元に戻せるか",
     "co.f.dismiss": "閉じる",
     "co.f.undo": "元に戻す",
     "co.f.toast": "「{title}」を閉じました。",

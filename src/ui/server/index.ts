@@ -21,6 +21,8 @@ import { runCoach } from "../../shared/coach/run.js";
 import {
   applyLinkOf,
   applyStateOf,
+  applyViewOf,
+  type ApplyView,
   linkApply,
   readApplyLinks,
   type ApplyState,
@@ -3906,6 +3908,19 @@ function coachHeldState(approval: string): ApplyState {
   }
 }
 
+/** Issue 110: a held write as its finding's row says it (mock v3). */
+function coachHeldView(approval: string): ApplyView {
+  try {
+    const owner = ownerIdentity();
+    return applyViewOf(
+      approvalDeps().queue.get(approval),
+      owner?.name || owner?.login,
+    );
+  } catch {
+    return { state: "failed" };
+  }
+}
+
 /** Issue 110: finding `id`'s Apply state, or null when it was never applied. */
 function coachApplyState(id: string): ApplyState | null {
   const link = applyLinkOf(getStateDir(), id);
@@ -3928,7 +3943,7 @@ function withApplyState<
       ? {
           ...f,
           applied: {
-            state: coachHeldState(links[f.id].approval),
+            ...coachHeldView(links[f.id].approval),
             approval: links[f.id].approval,
             at: links[f.id].at,
           },
@@ -3952,9 +3967,14 @@ function coachApplyDeps(): CoachApplyDeps {
       ),
     linkOf: (id) => applyLinkOf(getStateDir(), id),
     stateOf: coachHeldState,
-    ask: (req, body) => askHeld(req, approvalDeps(), body),
+    ask: (req, body, o) => askHeld(req, approvalDeps(), body, o),
     link: (id, approval, at) => linkApply(getStateDir(), id, approval, at),
     projectExists: coachProjectExists,
+    // The line the finding passed, for the bell's Why (mock v3).
+    lineOf: (kind) =>
+      kind === "subagent_opus"
+        ? coachSettingsNow().findings.subagent_opus_pct
+        : undefined,
   };
 }
 
