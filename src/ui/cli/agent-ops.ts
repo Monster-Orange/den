@@ -8266,6 +8266,11 @@ export interface RestartFound {
   /** 0.4.46: resumed though Hub didn't answer in time (no Hub tools). */
   withoutHub: string[];
   /**
+   * Issue 785: ones whose runtime resumes from a reported command (Codex,
+   * Gemini, Grok) that had none Den could run: started fresh, with why.
+   */
+  startedFresh: { agent: string; why: string }[];
+  /**
    * Issue 163: agents whose session is still running: they kept running
    * through whatever stopped the web server (its host outlived it).
    */
@@ -8325,6 +8330,7 @@ export async function markInterrupted(
     resumed: [],
     failed: [],
     withoutHub: [],
+    startedFresh: [],
     kept: [],
   };
   const now = new Date().toISOString();
@@ -8341,12 +8347,20 @@ export async function markInterrupted(
   }
   if (opts.autoResume === false || !marked.length) return found;
   const find = personaLookup(d);
+  // Issue 785: one whose runtime resumes from its reported command, with
+  // none Den can run, starts fresh instead (its newest handoff first), and
+  // the result says why.
+  const why = new Map<string, string>();
   const due = marked.filter((rec) => {
     const p = find(rec);
     const wants = opts.restoreAll
       ? rec.resumeOnRestart !== false
       : !!p && resumesOnRestart(rec, p);
-    return wants && !resumeRefusal(rec, d.env);
+    if (!wants) return false;
+    const refusal = resumeRefusal(rec, d.env);
+    if (refusal && getRuntime(rec.runtime)?.reportedResume)
+      why.set(rec.id, refusal);
+    return !refusal || why.has(rec.id);
   });
   if (!due.length) return found;
   const hubAnswered = opts.hubUp
@@ -8354,11 +8368,15 @@ export async function markInterrupted(
     : true;
   // den#4: a rotated one relaunches from its handoff instead.
   const bring = (rec: AgentRecord) =>
-    rotationOf(d, rec)?.ready
-      ? relaunchAgent(d, rec.id)
-      : resumeAgent(d, rec.id);
+    why.has(rec.id)
+      ? startFresh(d, rec.id, rec.workspace)
+      : rotationOf(d, rec)?.ready
+        ? relaunchAgent(d, rec.id)
+        : resumeAgent(d, rec.id);
   const note = (rec: AgentRecord, r: { early?: unknown }) => {
     if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+    else if (why.has(rec.id))
+      found.startedFresh.push({ agent: rec.id, why: why.get(rec.id)! });
     else {
       found.resumed.push(rec.id);
       if (!hubAnswered) found.withoutHub.push(rec.id);

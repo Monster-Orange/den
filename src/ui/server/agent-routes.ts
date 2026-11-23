@@ -2091,6 +2091,27 @@ async function hubAnswers(): Promise<(() => Promise<boolean>) | null> {
 }
 
 /** 0.4.46: the bell's "N agents started without Hub" (one item, updated). */
+/**
+ * Issue 785: the bell's one note that agents started fresh after a
+ * restart: their runtime resumes from a command it reports, and none Den
+ * could run was on file (the log says why for each).
+ */
+export function noteStartedFresh(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  ids: readonly string[],
+): void {
+  const n = ids.length;
+  if (!n) return;
+  store.add({
+    kind: "service",
+    subject: "record:agents-started-fresh",
+    scope: "workspace/den-server",
+    text: `${n} agent${n === 1 ? "" : "s"} started fresh: no resume command Den could run`,
+    msg: { key: "bell.m.fresh", vars: { n } },
+    link: "/agents",
+  });
+}
+
 export function noteStartedWithoutHub(
   store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
   ids: readonly string[],
@@ -2649,6 +2670,21 @@ export function startAgentUpkeep(
           const { notificationDeps } =
             await import("./notification-service.js");
           noteStartedWithoutHub(notificationDeps().store, f.withoutHub);
+        } catch {
+          /* the bell is best effort */
+        }
+      }
+      // Issue 785: started fresh, no resume command Den could run: why.
+      if (f.startedFresh.length) {
+        for (const x of f.startedFresh)
+          log(`  ⚠ agent ${x.agent} started fresh: ${x.why}`);
+        try {
+          const { notificationDeps } =
+            await import("./notification-service.js");
+          noteStartedFresh(
+            notificationDeps().store,
+            f.startedFresh.map((x) => x.agent),
+          );
         } catch {
           /* the bell is best effort */
         }

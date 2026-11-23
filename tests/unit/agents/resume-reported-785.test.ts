@@ -9,6 +9,7 @@ import * as path from "path";
 import { writeRecord } from "../../../src/shared/agents/records.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
+  markInterrupted,
   resolveAgentsDeps,
   resumeRefusal,
 } from "../../../src/ui/cli/agent-ops.js";
@@ -112,5 +113,79 @@ describe("issue 785: a Codex agent resumes with the command it reported", () => 
         resolveAgentsDeps(r.deps).env,
       ),
     ).toBe("codex can't resume coder: nosuchcli-785 is not on PATH");
+  });
+});
+
+describe("issue 785: after a restart or crash", () => {
+  /** A Codex agent whose session went with the host (interrupted). */
+  function interrupted(r: Rig, id: string, report?: Record<string, unknown>) {
+    writeRecord(r.stateDir, {
+      id,
+      persona: "planner",
+      runtime: "codex",
+      workspace: "north",
+      cwd: r.wsDir("north"),
+      session: { backend: "den-pty", id: `gone-${id}` },
+      sessionName: `acme-north:${id}`,
+      startedAt: "2026-11-22T09:00:00.000Z",
+      launched: true,
+      ...(report ? { resumeReport: report } : {}),
+    } as never);
+  }
+
+  it("one with a good report resumes with it; one with none starts fresh, saying why", async () => {
+    const r = await rig();
+    const bin = codexOnPath(r);
+    interrupted(r, "coder", {
+      argv: ["codex", "resume", "019a-77"],
+      cwd: r.wsDir("north"),
+      seq: 1,
+    });
+    interrupted(r, "tester");
+    const found = await markInterrupted(resolveAgentsDeps(r.deps), {
+      restoreAll: true,
+    });
+    expect(found.interrupted.sort()).toEqual(["coder", "tester"]);
+    expect(found.resumed).toEqual(["coder"]);
+    expect(found.startedFresh).toEqual([
+      {
+        agent: "tester",
+        why: "codex can't resume tester: it reported no resume command",
+      },
+    ]);
+    expect(found.failed).toEqual([]);
+    const runs = r.made.map((p) => [p.file, p.args]);
+    expect(runs).toContainEqual([bin, ["resume", "019a-77"]]);
+    // The fresh one: Codex's own launch, not a resume.
+    expect(
+      runs.filter(([f, a]) => f === bin && (a as string[])[0] !== "resume"),
+    ).toHaveLength(1);
+  });
+});
+
+describe("issue 785: the bell says who started fresh", () => {
+  it("one note: how many, with the Agents page; none, no note", async () => {
+    const { noteStartedFresh } =
+      await import("../../../src/ui/server/agent-routes.js");
+    const added: Record<string, unknown>[] = [];
+    const store = { add: (n: unknown) => (added.push(n as never), null) };
+    noteStartedFresh(store, ["tester", "lookout"]);
+    expect(added).toEqual([
+      expect.objectContaining({
+        kind: "service",
+        subject: "record:agents-started-fresh",
+        text: "2 agents started fresh: no resume command Den could run",
+        msg: { key: "bell.m.fresh", vars: { n: 2 } },
+        link: "/agents",
+      }),
+    ]);
+    noteStartedFresh(store, ["tester"]);
+    expect(added[1]).toMatchObject({
+      text: "1 agent started fresh: no resume command Den could run",
+      // The page picks the .one form itself when n is 1.
+      msg: { key: "bell.m.fresh", vars: { n: 1 } },
+    });
+    noteStartedFresh(store, []);
+    expect(added).toHaveLength(2);
   });
 });

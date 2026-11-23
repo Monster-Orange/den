@@ -2765,6 +2765,8 @@
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.fresh":
+      "{n} agentes empezaron de nuevo: ningún comando para reanudar que Den pudiera ejecutar",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":
       "{name} terminó sin que Den lo pidiera (salida {code}): {why}",
@@ -2826,6 +2828,8 @@
       "Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
+    "bell.m.fresh.one":
+      "{n} agente empezó de nuevo: ningún comando para reanudar que Den pudiera ejecutar",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
     "bell.m.notAtPrompt":
