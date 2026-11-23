@@ -9096,7 +9096,12 @@ async function handleRequest(
                 // GitHub identity, never the owner's. It may be someone
                 // else's device.
               },
-        ...(webSessions.takeWelcome(g.session.key)
+        // The welcome is spent only by the shell's own identity request
+        // (?welcome=1): any other caller of this route (Settings' signed-in
+        // row, a page's own check) only reads, so it can't win the race and
+        // lose the person's toast (0.4.87 dry run).
+        ...(url.searchParams.get("welcome") === "1" &&
+        webSessions.takeWelcome(g.session.key)
           ? {
               justSignedIn: true,
               product: product().title,

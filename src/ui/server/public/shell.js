@@ -8695,7 +8695,9 @@
     if (fresh) csrf.token = null;
     if (csrf.token) return Promise.resolve(csrf.token);
     if (!csrf.pending)
-      csrf.pending = rawFetch("/api/session", {
+      // ?welcome=1: this request alone spends the after-sign-in welcome
+      // (the toast below); every other /api/session caller only reads.
+      csrf.pending = rawFetch("/api/session?welcome=1", {
         cache: "no-store",
         credentials: "same-origin",
       })
