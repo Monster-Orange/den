@@ -116,8 +116,17 @@ describe("the rule", () => {
     // Issue 1198: "any" with none declared waits for a box only (a box's
     // browser is a container); it never lands on this machine.
     expect(
-      browserSlotCheck({ kind: "browser", where: "any", ...mac() }),
+      browserSlotCheck({
+        kind: "browser",
+        where: "any",
+        boxCouldServe: true,
+        ...mac(),
+      }),
     ).toEqual({ ok: true, boxesOnly: true });
+    // No box could ever take it: refused at once, as before.
+    expect(
+      browserSlotCheck({ kind: "browser", where: "any", ...mac() }),
+    ).toMatchObject({ ok: false, code: "browser_needs_container" });
   });
 
   it.each([

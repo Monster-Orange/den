@@ -209,6 +209,29 @@ function versionSkip(
     : "";
 }
 
+/**
+ * Issue 1198: whether any test box could ever take a run (set, not turned
+ * off, and serving its Playwright version): a run that may take a box
+ * only waits for one when this is true, else it is refused at once.
+ */
+export function boxCouldServe(
+  boxes: GateBox[],
+  pwVersion: string | undefined,
+  only?: string[],
+): boolean {
+  return boxes.some(
+    (b) =>
+      b.enabled !== false &&
+      (!only || only.includes(b.name)) &&
+      !versionSkip(
+        pwVersion,
+        b.playwright_endpoints
+          ? { versions: Object.keys(b.playwright_endpoints) }
+          : { version: b.playwright_version },
+      ),
+  );
+}
+
 /** Issue 1033: a version's major.minor ("1.61.2" → "1.61"). */
 const majorMinor = (v: string) =>
   v.split("-")[0]!.split(".").slice(0, 2).join(".");

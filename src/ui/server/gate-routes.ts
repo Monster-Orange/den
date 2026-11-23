@@ -57,7 +57,11 @@ import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import { checkBox, type GateBox } from "../../shared/gates/boxes.js";
+import {
+  boxCouldServe,
+  checkBox,
+  type GateBox,
+} from "../../shared/gates/boxes.js";
 import {
   browserSlotCheck,
   browserSlotRefusal,
@@ -401,6 +405,11 @@ async function handleRunnerRoute(
       ...(typeof where === "string" ? { where } : {}),
       platform: store.platform,
       requiresContainer: store.settings().browserRequiresContainer,
+      // Issue 1198: a runner's "any" waits only for a box that could
+      // ever take it (its Playwright version isn't known here).
+      ...(where === "any"
+        ? { boxCouldServe: boxCouldServe(store.boxes(), undefined) }
+        : {}),
     });
     if (!verdict.ok)
       return sendJson(

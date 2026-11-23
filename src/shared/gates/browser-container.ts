@@ -102,6 +102,11 @@ export interface BrowserSlotAsk {
   platform: NodeJS.Platform;
   /** The Setting; absent: the platform's default. */
   requiresContainer?: boolean;
+  /**
+   * Issue 1198: some test box could take it (boxCouldServe). "any" with no
+   * browser of its own waits for a box only when one could.
+   */
+  boxCouldServe?: boolean;
 }
 
 export type BrowserSlotVerdict =
@@ -122,7 +127,8 @@ export function browserSlotCheck(a: BrowserSlotAsk): BrowserSlotVerdict {
   if (!requires) return { ok: true };
   // Issue 1198: one that may take a box (whose browser is a container)
   // waits for a box, never this machine.
-  if (a.where === "any") return { ok: true, boxesOnly: true };
+  if (a.where === "any" && a.boxCouldServe)
+    return { ok: true, boxesOnly: true };
   return { ok: false, code: "browser_needs_container" };
 }
 

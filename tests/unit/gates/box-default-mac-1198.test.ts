@@ -242,3 +242,34 @@ describe("issue 1198: a CI runner's ask for any machine, with no browser of its 
     expect(now.grantedAt).toBeUndefined();
   });
 });
+
+describe("issue 1198: with no box that could ever take it, it is refused at once", () => {
+  function bareMac() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gate1198b-"));
+    tmps.push(dir);
+    return new GateStore({
+      platform: "darwin",
+      dir,
+      alive: () => true,
+      now: () => T0,
+      probe: () => Promise.resolve({ state: "open" }),
+    });
+  }
+
+  it("--box any with no boxes set: refused with the container words, never a silent wait", async () => {
+    const t = deps(bareMac());
+    expect(await cmdGate(run(["--box", "any", ...BASE]), t.d)).toBe(2);
+    expect(t.err.join("\n")).toMatch(/must use a browser in a container/);
+    expect(t.d.store.list()).toEqual([]);
+  });
+
+  it("--box any when no box serves its Playwright version: refused", async () => {
+    const store = macStore();
+    const t = deps(store);
+    const args = run(["--box", "any", ...BASE]).map((x) =>
+      x === "1.48.0" ? "9.9.9" : x,
+    );
+    expect(await cmdGate(args, t.d)).toBe(2);
+    expect(t.err.join("\n")).toMatch(/must use a browser in a container/);
+  });
+});

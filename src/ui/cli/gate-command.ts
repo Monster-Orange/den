@@ -73,6 +73,7 @@ import {
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
 import {
+  boxCouldServe,
   boxEnv,
   checkBox,
   defaultPlace,
@@ -801,6 +802,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     ...(where ? { where } : {}),
     platform: d.store.platform,
     requiresContainer: d.store.settings().browserRequiresContainer,
+    // Issue 1198: "any" with none of its own waits only for a box that
+    // could ever take it; else it is refused at once.
+    ...(where === "any"
+      ? {
+          boxCouldServe: boxCouldServe(
+            d.store.boxes(),
+            pwFlag ?? playwrightVersion(d.cwd),
+            onlyBoxes,
+          ),
+        }
+      : {}),
   });
   if (!verdict.ok)
     throw new GateUsage(
