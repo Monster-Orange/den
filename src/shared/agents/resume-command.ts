@@ -76,6 +76,28 @@ export function resumeArgv(
   );
 }
 
+/**
+ * True when `conversation` is another agent's: another record reported it,
+ * or resumes by it (a Claude agent's id). An agent can't take a
+ * conversation that isn't its own.
+ */
+export function conversationHeldElsewhere(
+  rec: { id: string },
+  conversation: string,
+  records: readonly {
+    id: string;
+    resumeToken?: string;
+    resumeReport?: { conversation?: unknown };
+  }[],
+): boolean {
+  return records.some(
+    (o) =>
+      o.id !== rec.id &&
+      (o.resumeReport?.conversation === conversation ||
+        o.resumeToken === conversation),
+  );
+}
+
 /** True when `next` should replace `prev`: a higher sequence, or none yet. */
 export function acceptResumeReport(
   prev: ResumeReport | undefined,

@@ -1287,6 +1287,18 @@ export function agentPrincipalOf(
   return null;
 }
 
+/**
+ * Issue 785: the agent a request's own actor token proves, and only that:
+ * never an agent's read-only view (issue 796), for a write the agent
+ * itself must make.
+ */
+export function agentTokenPrincipalOf(
+  req: http.IncomingMessage,
+): AgentPrincipal | null {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "agent" ? p : null;
+}
+
 /** Issue 796: the agent an agent's view stands for (agentRefusal's shape). */
 export function viewAgent(v: {
   agent: string;

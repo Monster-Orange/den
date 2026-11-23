@@ -52,7 +52,10 @@
  */
 import type { RestartQueue } from "../../shared/agents/restart-queue.js";
 import { readActivity } from "../../shared/agents/activity.js";
-import { resumeCommandFor } from "../../shared/agents/resume-command.js";
+import {
+  conversationHeldElsewhere,
+  resumeCommandFor,
+} from "../../shared/agents/resume-command.js";
 import {
   denToolsOld,
   type DenToolsOld,
@@ -1374,7 +1377,11 @@ export function isStoppedState(st: string): boolean {
  * Why `rec` can't be resumed (AG-14.2), or null when it can be: its
  * runtime can't resume a conversation, or has no token to resume with.
  */
-export function resumeRefusal(rec: AgentRecord): string | null {
+export function resumeRefusal(
+  rec: AgentRecord,
+  /** Issue 785: every agent's record: a conversation must be its own. */
+  others: readonly AgentRecord[] = [],
+): string | null {
   const rt = getRuntime(rec.runtime);
   if (!rt?.resume) return `${rec.runtime} can't resume a conversation`;
   // Issue 785: the command its agent reported, checked as it would run.
@@ -1387,17 +1394,23 @@ export function resumeRefusal(rec: AgentRecord): string | null {
       rt.catalog?.resume?.argv,
       "{bin}",
     );
-    return "problem" in got
-      ? `${rec.runtime} can't resume ${rec.id}: ${got.problem}`
-      : null;
+    if ("problem" in got)
+      return `${rec.runtime} can't resume ${rec.id}: ${got.problem}`;
+    if (conversationHeldElsewhere(rec, rec.resumeReport!.conversation, others))
+      return `${rec.runtime} can't resume ${rec.id}: its conversation is also another agent's`;
+    return null;
   }
   if (!rec.resumeToken) return `${rec.id} has no conversation to resume`;
   return null;
 }
 
 /** Whether `rec` may be resumed now, in `rowState`. */
-function canResume(rec: AgentRecord, st: string): boolean {
-  return isStoppedState(st) && resumeRefusal(rec) === null;
+function canResume(
+  rec: AgentRecord,
+  st: string,
+  others: readonly AgentRecord[],
+): boolean {
+  return isStoppedState(st) && resumeRefusal(rec, others) === null;
 }
 
 /** Why a rotated agent isn't resumed: its conversation ended there (den#4). */
@@ -1422,10 +1435,11 @@ export function agentRows(
     // A rotated conversation is not resumed: it relaunches from its handoff.
     // D28: under on_due off, its conversation goes on: Resume stays.
     const resumable =
-      canResume(rec, st) && !(rot?.ready && rot.onDue !== "off");
+      canResume(rec, st, records) && !(rot?.ready && rot.onDue !== "off");
     const why =
       isStoppedState(st) && !resumable
-        ? (resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null))
+        ? (resumeRefusal(rec, records) ??
+          (rot?.ready ? rotatedRefusal(rec, rot) : null))
         : null;
     const named = stateDir ? agentSessionName(rec, stateDir) : undefined;
     return {
@@ -6398,7 +6412,7 @@ export async function resumeAgent(
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
     // AG-14.2: never a resume that would start a new conversation instead.
-    const why = resumeRefusal(rec);
+    const why = resumeRefusal(rec, listRecords(d.stateDir()));
     if (why)
       throw refused(why, [
         `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
@@ -8334,13 +8348,14 @@ export async function markInterrupted(
   // none Den can run, starts fresh instead (its newest handoff first), and
   // the result says why.
   const why = new Map<string, string>();
+  const all = listRecords(d.stateDir());
   const due = marked.filter((rec) => {
     const p = find(rec);
     const wants = opts.restoreAll
       ? rec.resumeOnRestart !== false
       : !!p && resumesOnRestart(rec, p);
     if (!wants) return false;
-    const refusal = resumeRefusal(rec);
+    const refusal = resumeRefusal(rec, all);
     if (refusal && getRuntime(rec.runtime)?.reportedResume)
       why.set(rec.id, refusal);
     return !refusal || why.has(rec.id);
@@ -8595,7 +8610,8 @@ export async function resumeInterrupted(
   for (const rec of recs) {
     const rot = rotationOf(d, rec);
     const why =
-      resumeRefusal(rec) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null);
+      resumeRefusal(rec, recs) ??
+      (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
       failed.push({ agent: rec.id, why });
       continue;

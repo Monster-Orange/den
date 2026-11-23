@@ -195,4 +195,41 @@ describe("issue 785: a catalog entry's resume template", () => {
     ])
       expect(() => validateCatalog([entry(bad)], "t")).toThrow(/resume/);
   });
+
+  it("a template keeps every word its launch has: a resume is never wider than a launch", async () => {
+    const { validateCatalog } =
+      await import("../../../src/shared/agents/catalog.js");
+    const entry = (launch: string[], resume: string[]) => ({
+      id: "acme-cli",
+      vendor: "Acme",
+      name: "Acme CLI",
+      bins: ["acme"],
+      version: { args: ["--version"], identity: { output: "acme" } },
+      dirs: [],
+      launch: { argv: launch },
+      resume: { argv: resume },
+    });
+    expect(() =>
+      validateCatalog(
+        [
+          entry(
+            ["{bin}", "--sandbox", "read-only"],
+            ["{bin}", "resume", "{conversation}"],
+          ),
+        ],
+        "t",
+      ),
+    ).toThrow(/keeps every word of launch.argv/);
+    expect(
+      validateCatalog(
+        [
+          entry(
+            ["{bin}", "--sandbox", "read-only"],
+            ["{bin}", "--sandbox", "read-only", "resume", "{conversation}"],
+          ),
+        ],
+        "t",
+      )[0]?.resume?.argv,
+    ).toEqual(["{bin}", "--sandbox", "read-only", "resume", "{conversation}"]);
+  });
 });

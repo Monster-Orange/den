@@ -183,3 +183,20 @@ describe("issue 785: the bell says who started fresh", () => {
     expect(added).toHaveLength(2);
   });
 });
+
+describe("issue 785: a conversation is this agent's own (security review)", () => {
+  it("one another agent's record also holds: Resume refused; after a restart it starts fresh", async () => {
+    const r = await rig();
+    codexOnPath(r);
+    const report = { conversation: "019a-77", cwd: r.wsDir("north"), seq: 1 };
+    coder(r, report);
+    coder(r, { ...report, seq: 9 }, { id: "other" });
+    const got = await row(r);
+    expect(got?.resumable).toBe(false);
+    expect(got?.noResume).toBe(
+      "codex can't resume coder: its conversation is also another agent's",
+    );
+    expect(await agents(r, "resume", "coder")).toBe(1);
+    expect(r.made).toHaveLength(0);
+  });
+});

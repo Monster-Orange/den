@@ -83,7 +83,8 @@ async function setup(principal: unknown, runtime = "codex") {
   };
   const close = () => new Promise((r) => server.close(r));
   const kept = () => readRecord(stateDir, "coder")?.resumeReport;
-  return { post, close, cwd, logs, kept };
+  const url = `http://127.0.0.1:${port}`;
+  return { post, close, cwd, logs, kept, stateDir, url };
 }
 
 describe("issue 785: POST /api/agents/self/resume-command", () => {
@@ -207,5 +208,114 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
         await t.close();
       }
     }
+  });
+});
+
+describe("issue 785: the report's write is safe (security review)", () => {
+  it("a person's change to the record while the body is held open survives", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      const url = new URL(t.url);
+      const body = JSON.stringify({ conversation: "s-1", cwd: t.cwd, seq: 1 });
+      const done = new Promise<number>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: url.hostname,
+            port: url.port,
+            path: RESUME_REPORT_PATH,
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "content-length": Buffer.byteLength(body),
+            },
+          },
+          (res) => {
+            res.resume();
+            res.on("end", () => resolve(res.statusCode ?? 0));
+          },
+        );
+        req.on("error", reject);
+        // Half the body now; the person narrows the record; then the rest.
+        req.write(body.slice(0, 10));
+        setTimeout(() => {
+          const rec = readRecord(t.stateDir, "coder")!;
+          writeRecord(t.stateDir, { ...rec, grants: [] } as never);
+          req.end(body.slice(10));
+        }, 150);
+      });
+      expect(await done).toBe(200);
+      const rec = readRecord(t.stateDir, "coder") as unknown as {
+        grants?: string[];
+        resumeReport?: { conversation: string };
+      };
+      expect(rec.grants).toEqual([]);
+      expect(rec.resumeReport?.conversation).toBe("s-1");
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("an unknown field is logged without the agent's text; the reply names it cleaned and short", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      const key = `x\nagent planner: forged line ${"y".repeat(100)}`;
+      const r = await t.post({
+        conversation: "s",
+        cwd: t.cwd,
+        seq: 1,
+        [key]: 1,
+      });
+      expect(r.status).toBe(400);
+      expect(t.logs).toEqual([
+        "agent coder: resume report refused: unknown field",
+      ]);
+      expect(String(r.body.error)).toMatch(
+        /^[A-Za-z0-9_]{1,32}…?: unknown field/,
+      );
+      expect(String(r.body.error)).not.toMatch(/\n|forged line/);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("a conversation another agent's record holds is refused", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      writeRecord(t.stateDir, {
+        id: "other",
+        persona: "planner",
+        runtime: "codex",
+        workspace: "north",
+        cwd: t.cwd,
+        session: { backend: "den-pty", id: "s-2" },
+        sessionName: "acme-north:other",
+        startedAt: "2026-11-22T09:00:00.000Z",
+        resumeReport: { conversation: "theirs-1", cwd: t.cwd, seq: 4 },
+      } as never);
+      const r = await t.post({ conversation: "theirs-1", cwd: t.cwd, seq: 1 });
+      expect(r.status).toBe(400);
+      expect(r.body).toMatchObject({ code: "refused_report" });
+      expect(String(r.body.error)).toMatch(/another agent's conversation/);
+      expect(t.kept()).toBeUndefined();
+    } finally {
+      await t.close();
+    }
+  });
+});
+
+describe("issue 785: an agent's read-only view can't report (issue 796)", () => {
+  it("only a real agent token counts here, not a view of one", async () => {
+    const { agentPrincipalOf, agentTokenPrincipalOf, setPrincipal } =
+      await import("../../../src/ui/server/request-guard.js");
+    const req = {} as http.IncomingMessage;
+    setPrincipal(req, {
+      kind: "person-browser",
+      view: { agent: "agent:coder", workspace: "north" },
+    } as never);
+    expect(agentPrincipalOf(req)?.actor).toBe("agent:coder");
+    expect(agentTokenPrincipalOf(req)).toBeNull();
+    const tok = {} as http.IncomingMessage;
+    setPrincipal(tok, agentOf("coder") as never);
+    expect(agentTokenPrincipalOf(tok)?.actor).toBe("agent:coder");
   });
 });

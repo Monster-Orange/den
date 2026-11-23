@@ -583,6 +583,17 @@ export function validateCatalogEntry(
     );
     const problem = resumeTemplateProblem(words);
     if (problem) throw new Error(`${where}.resume.argv: ${problem}`);
+    // A resume is never wider than a launch: every launch word after
+    // {bin} (a sandbox flag, say) is in the template too.
+    const left = [...words.slice(1)];
+    for (const w of argv.slice(1)) {
+      const at = left.indexOf(w);
+      if (at < 0)
+        throw new Error(
+          `${where}.resume.argv: keeps every word of launch.argv (${JSON.stringify(w)} is missing)`,
+        );
+      left.splice(at, 1);
+    }
     resume = { argv: words };
   }
   const traits: Pick<
