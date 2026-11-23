@@ -9,10 +9,28 @@
  * folder.
  */
 
-/** A short, one-line view of what the command printed. */
+/**
+ * Anything secret-shaped, masked before it reaches the bed's note: a value
+ * after a secret-named key or an auth scheme, and every run of 20 or more
+ * token characters (stricter than Den's own redact list, so it can't drift
+ * behind it; it costs only a long word in an error note).
+ */
+export function maskTokens(text) {
+  return String(text ?? "")
+    .replace(/\b(Bearer|Basic|Token)\s+\S+/gi, "$1 [REDACTED]")
+    .replace(
+      /\b(token|secret|password|passwd|api[_-]?key|authorization|cookie)(["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;&'"}\]]+)/gi,
+      "$1$2[REDACTED]",
+    )
+    .replace(/[A-Za-z0-9_\-.~+/=]{20,}/g, "[REDACTED]");
+}
+
+/** A short, one-line view of what the command printed, masked. */
 const said = (r) =>
-  JSON.stringify(String(r?.out ?? "").slice(0, 200)) +
-  (r?.err ? `; stderr ${JSON.stringify(String(r.err).slice(0, 200))}` : "");
+  JSON.stringify(maskTokens(String(r?.out ?? "").slice(0, 200))) +
+  (r?.err
+    ? `; stderr ${JSON.stringify(maskTokens(String(r.err).slice(0, 200)))}`
+    : "");
 
 /**
  * The parsed JSON a `ctx.cli([..., "--json"])` result printed. Throws when

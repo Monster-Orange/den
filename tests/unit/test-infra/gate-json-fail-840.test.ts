@@ -84,3 +84,26 @@ describe("doctor --json with no checks", () => {
     expect(setupWith(335, DOCTOR_OK, 1).error).toBeUndefined();
   });
 });
+
+describe("the error note never carries a token (issue 840 review)", () => {
+  it.each([
+    ["a bare token", "token sk-ant-oat01-ABCDEFGHIJKLMNOPQRSTUVWX broken {"],
+    ["a key=value secret", 'password=hunter2-hunter2 and {"x":'],
+    ["a bearer header", "Authorization: Bearer abc.def.ghi-jkl {"],
+    [
+      "a long store reference",
+      "op://Vault/Item/ABCDEFGHIJKLMNOPQRSTUVWXYZ012345 {",
+    ],
+  ])("%s in output that isn't JSON is masked in the error", (_k, out) => {
+    const r = setupWith(339, out);
+    expect(r.error).toContain("did not print JSON");
+    expect(r.error).toContain("[REDACTED]");
+    for (const secret of [
+      "sk-ant-oat01-ABCDEFGHIJKLMNOPQRSTUVWX",
+      "hunter2-hunter2",
+      "abc.def.ghi-jkl",
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+    ])
+      expect(r.error).not.toContain(secret);
+  });
+});
