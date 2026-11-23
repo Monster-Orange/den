@@ -141,3 +141,50 @@ describe("issue 639: reading the start in ticks", () => {
     }
   });
 });
+
+describe("issue 639: the ticks survive the service record", () => {
+  it("groupOf hands a stored record's ticks to the check", async () => {
+    const { groupOf } =
+      await import("../../../src/shared/environment-manager/service-runner.js");
+    expect(
+      groupOf({ pgid: 4242, pgidStartedAt: "s", pgidLinuxStart: START }),
+    ).toEqual({ pgid: 4242, startedAt: "s", linuxStart: START });
+    // An older record, or a bad stored value: no ticks, lstart decides.
+    expect(groupOf({ pgid: 4242, pgidStartedAt: "s" })).toEqual({
+      pgid: 4242,
+      startedAt: "s",
+    });
+    expect(
+      groupOf({
+        pgid: 4242,
+        pgidStartedAt: "s",
+        pgidLinuxStart: { ticks: 5 } as unknown as LinuxStart,
+      }),
+    ).toEqual({ pgid: 4242, startedAt: "s" });
+  });
+
+  it("boot restore checks a record with its ticks", async () => {
+    const { servicesToRestore } =
+      await import("../../../src/shared/environment-manager/restore-on-boot.js");
+    const seen: unknown[] = [];
+    await servicesToRestore(
+      [
+        {
+          address: "web.app",
+          pgid: 4242,
+          pgidStartedAt: "s",
+          pgidLinuxStart: START,
+          workspaces: [],
+        } as never,
+      ],
+      {
+        running: null,
+        groupState: async (g) => {
+          seen.push(g);
+          return { state: "ours", members: [4242] };
+        },
+      },
+    );
+    expect(seen).toEqual([{ pgid: 4242, startedAt: "s", linuxStart: START }]);
+  });
+});
