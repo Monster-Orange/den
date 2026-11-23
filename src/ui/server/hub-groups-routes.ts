@@ -14,53 +14,32 @@
  * hub.groups_cache_seconds; `?fresh=1` (Try again) reads Hub now.
  *
  *   → { ok, state: "ok", rule, groups, hub, groupsUrl }
- *     { ok, state: "off" }                  hub.groups off (the default),
- *                                           or Hub has no groups route
- *     { ok, state: "none" }                 no Hub connected
+ *     { ok, state: "off" }                  hub.groups off; or auto (the
+ *                                           default) with no Hub, a Hub
+ *                                           whose whoami lacks groups.read,
+ *                                           or no whoami answer; or Hub
+ *                                           has no groups route; auto's
+ *                                           off for groups.read adds
+ *                                           why: "hub-lacks-groups-read"
+ *     { ok, state: "none" }                 hub.groups on, no Hub connected
  *     { ok, state: "unavailable", hub }     403 groups_not_in_plan
  *     { ok, state: "refused" }              403 install_refused (a guest)
  *     { ok, state: "rejected" | "unreachable" }
  */
 import type * as http from "http";
 import {
-  fetchHubGroups,
-  groupComposeUrl,
-  groupHubUrl,
-  isGroupSlug,
-  isOwnAgent,
-  type GroupsRead,
-} from "../../shared/hub-groups.js";
+  groupsView,
+  type HubGroupsDeps,
+} from "../../shared/hub-groups-view.js";
 import { sendJson } from "./http-helpers.js";
 
+export {
+  defaultHubGroupsDeps,
+  groupsView,
+  type HubGroupsDeps,
+} from "../../shared/hub-groups-view.js";
+
 export const HUB_GROUPS_PATH = "/api/hub/groups";
-
-export interface HubGroupsDeps {
-  /** Den's Hub connection now, or null with none. */
-  hub: () => Promise<{ url: string; token: string } | null>;
-  /** The company's slug from Den's Hub binding, or null when not known. */
-  company: () => string | null;
-  /** Who this install is on Hub (whoami), for `here`; {} when not known. */
-  self: () => Promise<{ install?: string; login?: string }>;
-  /** hub.groups_cache_seconds. */
-  cacheSeconds: () => number;
-  /** hub.groups (default off): whether Den reads Hub's groups at all. */
-  enabled: () => boolean;
-  /** The in-memory copy, by Hub URL (never written anywhere). */
-  cache: Map<
-    string,
-    { at: number; read: GroupsRead; self: { install?: string; login?: string } }
-  >;
-  now?: () => number;
-}
-
-/** One copy for this server: the page's last read, per Hub. */
-const memory: HubGroupsDeps["cache"] = new Map();
-
-/** The company's page in Hub: <hub>/<company>. */
-function companyUrl(hubUrl: string, company: string): string | null {
-  const g = groupHubUrl(hubUrl, company, "x");
-  return g ? g.replace(/\/groups\/x$/, "") : null;
-}
 
 export async function hubGroupsRoute(
   req: http.IncomingMessage,
@@ -73,112 +52,7 @@ export async function hubGroupsRoute(
     sendJson(res, { ok: false, error: "use GET" }, 405);
     return true;
   }
-  // hub.groups off (the default): nothing new on the page, Hub not asked.
-  if (!d.enabled()) {
-    d.cache.clear();
-    sendJson(res, { ok: true, state: "off" });
-    return true;
-  }
-  const hub = await d.hub().catch(() => null);
-  if (!hub) {
-    d.cache.clear();
-    sendJson(res, { ok: true, state: "none" });
-    return true;
-  }
   const fresh = /[?&]fresh=1(&|$)/.test(req.url ?? "");
-  const now = (d.now ?? Date.now)();
-  const kept = d.cache.get(hub.url);
-  let read: GroupsRead;
-  let self: { install?: string; login?: string };
-  if (!fresh && kept && now - kept.at < d.cacheSeconds() * 1000) {
-    read = kept.read;
-    self = kept.self;
-  } else {
-    read = await fetchHubGroups(hub.url, hub.token);
-    self = read.state === "ok" ? await d.self().catch(() => ({})) : {};
-    d.cache.clear();
-    // Only an answer is kept: a Hub that didn't answer is asked again.
-    if (read.state !== "unreachable")
-      d.cache.set(hub.url, { at: now, read, self });
-  }
-  const own = d.company();
-  const company = isGroupSlug(own)
-    ? own
-    : read.state === "ok"
-      ? read.groups.team
-      : "";
-  const home = companyUrl(hub.url, company);
-  // A Hub with no groups route: the same as off.
-  if (read.state === "absent") {
-    sendJson(res, { ok: true, state: "off" });
-    return true;
-  }
-  if (read.state !== "ok") {
-    sendJson(res, {
-      ok: true,
-      state: read.state,
-      ...(read.state === "unavailable" ? { hub: home ?? hub.url } : {}),
-    });
-    return true;
-  }
-  sendJson(res, {
-    ok: true,
-    state: "ok",
-    rule: read.groups.rule,
-    hub: home ?? hub.url,
-    groupsUrl: home ? `${home}/groups` : null,
-    groups: read.groups.groups.map((g) => ({
-      ...g,
-      lead: g.lead
-        ? { ...g.lead, ...(isOwnAgent(g.lead, self) ? { here: true } : {}) }
-        : null,
-      members: g.members.map((m) =>
-        isOwnAgent(m, self) ? { ...m, here: true } : m,
-      ),
-      open: groupHubUrl(hub.url, company, g.slug),
-      compose: groupComposeUrl(hub.url, company, g.slug),
-    })),
-  });
+  sendJson(res, await groupsView(d, { fresh }));
   return true;
-}
-
-/** The deps on this install: Den's Hub config, token and binding. */
-export async function defaultHubGroupsDeps(): Promise<HubGroupsDeps> {
-  const [hub, binding, paths] = await Promise.all([
-    import("../../shared/hub.js"),
-    import("../../shared/hub-binding.js"),
-    import("../../shared/paths.js"),
-  ]);
-  const cfg = (() => {
-    try {
-      return hub.readHubConfig();
-    } catch {
-      return null;
-    }
-  })();
-  const token = async () => (cfg ? hub.readHubToken(cfg) : null);
-  return {
-    hub: async () => {
-      const t = await token();
-      return cfg && t ? { url: cfg.url, token: t } : null;
-    },
-    company: () => {
-      const b = binding.readHubBinding(paths.getStateDir());
-      return b && cfg && b.origin === binding.hubOrigin(cfg.url)
-        ? (b.company ?? null)
-        : null;
-    },
-    self: async () => {
-      const t = await token();
-      if (!cfg || !t) return {};
-      const w = await hub.hubWhoami(cfg.url, t);
-      return {
-        ...(w.install ? { install: w.install } : {}),
-        ...(w.login ? { login: w.login } : {}),
-      };
-    },
-    cacheSeconds: () => cfg?.groupsCacheSeconds ?? 30,
-    enabled: () => cfg?.groups === true,
-    cache: memory,
-  };
 }

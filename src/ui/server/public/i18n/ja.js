@@ -1680,6 +1680,15 @@
     "set.agents.hub_delivery_loop": "Hub のデリバリーループ",
     "set.agents.hub_delivery_loop.d":
       "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
+    "set.agents.hub_groups": "Hub のグループ",
+    "set.agents.hub_groups.d":
+      "エージェントページに Hub のグループを表示するか（「プロジェクト別」の横の「グループ別」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+    "set.agents.hub_groups.o.auto": "自動",
+    "set.agents.hub_groups.o.on": "オン",
+    "set.agents.hub_groups.o.off": "オフ",
+    "set.agents.hub_groups_cache": "グループの保持時間",
+    "set.agents.hub_groups_cache.d":
+      "Den が Hub のグループのコピーをメモリに保持し、次に Hub にたずねるまでの時間: 5〜3600 秒。エージェントページの「再試行」ですぐに Hub にたずねます。__DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop":
       "Hub のデリバリーループ: このプロジェクト",
     "set.workspace.hub_delivery_loop.d":
