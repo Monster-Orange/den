@@ -18,6 +18,7 @@ import {
   type CoachRouteDeps,
 } from "./coach-routes.js";
 import { runCoach } from "../../shared/coach/run.js";
+import { coachPrefs, patchCoach } from "./coach-settings-pref.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
@@ -3785,6 +3786,17 @@ function coachSettingsNow(): CoachSettings {
     return readAgentsConfig().coach ?? { ...COACH_DEFAULTS };
   } catch {
     return { ...COACH_DEFAULTS };
+  }
+}
+
+/** Issue 52: the Coach's Settings rows, with `user` as user.yml. */
+function coachRows(user: UserConfig) {
+  try {
+    return coachPrefs(
+      readAgentsConfig(undefined, user).coach ?? { ...COACH_DEFAULTS },
+    );
+  } catch {
+    return coachPrefs({ ...COACH_DEFAULTS });
   }
 }
 
@@ -9209,6 +9221,9 @@ async function handleRequest(
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
   //   coach_counts: total | per_day, the Coach tab's "Show counts as"
   //     (issue 52, user.yml agents.coach_counts); null clears it
+  //   coach: { enabled, window_days, judge: { enabled } }, the Coach's
+  //     Settings rows (issue 52, user.yml agents.coach, a person's write;
+  //     coach-settings-pref.ts); null clears one
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
   //     badge shows (#80, user.yml agents.helpers_shown); null clears it
   //   bell_kinds: {switch: true | false | null}, the bell's kinds (bell
@@ -9278,6 +9293,7 @@ async function handleRequest(
         shell: shellPrefs(user.shell, pinProjects()),
         agents_layout: agentsLayout(user),
         coach_counts: coachCounts(user),
+        coach: coachRows(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
@@ -9371,6 +9387,7 @@ async function handleRequest(
           machine_name?: unknown;
           agents_layout?: unknown;
           coach_counts?: unknown;
+          coach?: unknown;
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
@@ -9575,6 +9592,19 @@ async function handleRequest(
           const c = patchCoachCounts(user, body.coach_counts);
           if (!c.ok) return send400(res, c.error);
         }
+        // Issue 52: the Coach's rows; judging sends samples to the model
+        // provider, so turning it on or off is audited.
+        let judgeAudit: string | null = null;
+        if (body.coach !== undefined) {
+          const was = coachRows(user).judge.enabled;
+          const c = patchCoach(user, body.coach);
+          if (!c.ok) return send400(res, c.error);
+          const now = coachRows(user).judge.enabled;
+          if (was !== now)
+            judgeAudit = now
+              ? "Coach judging turned on: samples go to the model provider"
+              : "Coach judging turned off";
+        }
         // #80: how many running helpers an open badge shows.
         if (body.agents_helpers_shown !== undefined) {
           const h = patchHelpersShown(user, body.agents_helpers_shown);
@@ -9729,6 +9759,12 @@ async function handleRequest(
           }
         }
         writeUserConfig(user);
+        if (judgeAudit)
+          void recordAction(
+            auditActorOf(req),
+            { verb: "coach-judge", detail: judgeAudit },
+            principalOf(req),
+          );
         if (hubSaved) {
           const saved = hubSaved;
           const m = await import("./hub-change.js");
@@ -9780,6 +9816,7 @@ async function handleRequest(
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
           coach_counts: coachCounts(user),
+          coach: coachRows(user),
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),

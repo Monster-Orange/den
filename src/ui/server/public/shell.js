@@ -1230,6 +1230,15 @@
       "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
     "set.agents.coach_counts.o.total": "Total",
     "set.agents.coach_counts.o.per_day": "Per day",
+    "set.agents.coach_enabled": "Coach",
+    "set.agents.coach_enabled.d":
+      "On, Coach can run: it reads how this machine's agents used tokens and writes a report with findings. It reads only this Den's own agents and changes nothing. Counting sends nothing off this machine; judging, below, is its own switch.",
+    "set.agents.coach_window_days": "Coach window, in days",
+    "set.agents.coach_window_days.d":
+      "How many days back each Coach run reads, 1 to 90.",
+    "set.agents.coach_judge": "Coach judging, on the cheap model",
+    "set.agents.coach_judge.d":
+      "On, each Coach run also judges short samples (asks, messages and prompts, with secrets taken out) on the agent runtime's cheap model, within a token budget. The samples go to that model provider, with the runtime's own context, which includes the email it is signed in with. Off by default. Only you can turn it on, here or in your own config, never an agent.",
     "set.agents.helpers_shown": "Show up to this many helpers under an agent",
     "set.agents.helpers_shown.d":
       "More open in Show all. The badge always counts every running helper.",

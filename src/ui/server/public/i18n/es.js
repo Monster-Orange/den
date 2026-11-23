@@ -3883,6 +3883,15 @@
       "Total muestra los recuentos del periodo; Por día los divide entre sus días. Los porcentajes y las medias no cambian. El interruptor de la pestaña Coach también lo cambia.",
     "set.agents.coach_counts.o.total": "Total",
     "set.agents.coach_counts.o.per_day": "Por día",
+    "set.agents.coach_enabled": "Coach",
+    "set.agents.coach_enabled.d":
+      "Activado, Coach puede ejecutarse: lee cómo usaron tokens los agentes de esta máquina y escribe un informe con hallazgos. Solo lee los agentes de este Den y no cambia nada. El recuento no envía nada fuera de esta máquina; el juicio, abajo, tiene su propio interruptor.",
+    "set.agents.coach_window_days": "Ventana de Coach, en días",
+    "set.agents.coach_window_days.d":
+      "Cuántos días atrás lee cada ejecución de Coach, de 1 a 90.",
+    "set.agents.coach_judge": "Juicio de Coach, con el modelo económico",
+    "set.agents.coach_judge.d":
+      "Activado, cada ejecución de Coach también juzga muestras breves (preguntas, mensajes e indicaciones, sin secretos) con el modelo económico del entorno del agente, dentro de un presupuesto de tokens. Las muestras van a ese proveedor de modelos, con el contexto propio del entorno, que incluye el correo con el que ha iniciado sesión. Desactivado por defecto. Solo tú puedes activarlo, aquí o en tu propia configuración, nunca un agente.",
     "set.agents.helpers_shown":
       "Mostrar hasta este número de ayudantes bajo un agente",
     "set.agents.helpers_shown.d":

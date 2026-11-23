@@ -90,6 +90,9 @@ import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
+  // Issue 52: the Coach's on/off, window and judging; judging sends
+  // samples to the model provider, so only a person switches it.
+  "coach",
   "agents_default_mode",
   "local_dev",
   "cli_tabs",

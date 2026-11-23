@@ -35,6 +35,8 @@ function acceptedFields(): string[] {
 
 /** Fields that widen agents' power or name a program Den runs. */
 const MUST_BE_PERSON = [
+  // Issue 52: Coach judging sends samples to the model provider.
+  "coach",
   "hub_allow_tools",
   // Issue 158: an agent never drops the loop from its own instructions.
   "hub_delivery_loop",

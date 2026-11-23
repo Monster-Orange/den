@@ -607,7 +607,13 @@ export interface UserConfig {
      * provider, so an agent writing the distribution's config can't switch
      * it on (as issue 1072 does for settings that widen an agent's reach).
      */
-    coach?: { judge?: { enabled?: unknown } | null } | null;
+    coach?: {
+      /** Issue 52, Settings › Agents: Coach on or off, over the distribution's. */
+      enabled?: unknown;
+      /** ...and its window in days (1–90). */
+      window_days?: unknown;
+      judge?: { enabled?: unknown } | null;
+    } | null;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
     /**
@@ -2125,8 +2131,15 @@ export function readAgentsConfig(
     path.relative(ROOT, USER_CONFIG_PATH),
   );
   out.coach = out.coach ?? checkCoachConfig(undefined);
+  // Issue 52, Settings › Agents: the person's on/off and window (user.yml)
+  // count over the distribution's; checked as the distribution's are.
+  const mineCoach = asConfigError(
+    () => userCoach(u),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
   out.coach = {
     ...out.coach,
+    ...mineCoach,
     judge: { ...out.coach.judge, enabled: judgeOn === true },
   };
   // A signing key is per machine: user.yml's agents.git wins.
@@ -2139,6 +2152,22 @@ export function readAgentsConfig(
     if (g) out.git = g;
   }
   return out;
+}
+
+/** user.yml's agents.coach.enabled and window_days, those that are set. */
+function userCoach(u: UserConfig): { enabled?: boolean; window_days?: number } {
+  const m = u.agents?.coach;
+  if (!m) return {};
+  const set: Record<string, unknown> = {};
+  if (m.enabled !== undefined && m.enabled !== null) set.enabled = m.enabled;
+  if (m.window_days !== undefined && m.window_days !== null)
+    set.window_days = m.window_days;
+  if (!Object.keys(set).length) return {};
+  const c = checkCoachConfig(set);
+  return {
+    ...("enabled" in set ? { enabled: c.enabled } : {}),
+    ...("window_days" in set ? { window_days: c.window_days } : {}),
+  };
 }
 
 /** user.yml's agents.coach.judge.enabled: true, false or unset (false). */

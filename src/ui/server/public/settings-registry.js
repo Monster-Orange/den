@@ -4662,6 +4662,61 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.coach_counts ?? "total",
     write: (v, ctx) => ctx.post({ coach_counts: v }),
   },
+  {
+    // Issue 52: the Coach's Settings rows (user.yml agents.coach).
+    id: "agents.coach_enabled",
+    category: "agents",
+    label: "Coach",
+    description:
+      "On, Coach can run: it reads how this machine's agents used tokens and writes a report with findings. It reads only this Den's own agents and changes nothing. Counting sends nothing off this machine; judging, below, is its own switch.",
+    keywords: [
+      "coach",
+      "usage",
+      "tokens",
+      "report",
+      "findings",
+      "agents.coach.enabled",
+    ],
+    scope: "user",
+    keys: ["coach.enabled"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.coach?.enabled === true,
+    write: (v, ctx) => ctx.post({ coach: { enabled: !!v } }),
+  },
+  {
+    // Issue 52: the Coach's Settings rows (user.yml agents.coach).
+    id: "agents.coach_window_days",
+    category: "agents",
+    label: "Coach window, in days",
+    description: "How many days back each Coach run reads, 1 to 90.",
+    keywords: ["coach", "window", "days", "agents.coach.window_days"],
+    scope: "user",
+    keys: ["coach.window_days"],
+    control: { type: "number", min: 1, max: 90, step: 1 },
+    read: (ctx) => ctx.data.coach?.window_days ?? 7,
+    write: (v, ctx) => ctx.post({ coach: { window_days: v } }),
+  },
+  {
+    // Issue 52: the Coach's Settings rows (user.yml agents.coach).
+    id: "agents.coach_judge",
+    category: "agents",
+    label: "Coach judging, on the cheap model",
+    description:
+      "On, each Coach run also judges short samples (asks, messages and prompts, with secrets taken out) on the agent runtime's cheap model, within a token budget. The samples go to that model provider, with the runtime's own context, which includes the email it is signed in with. Off by default. Only you can turn it on, here or in your own config, never an agent.",
+    keywords: [
+      "coach",
+      "judge",
+      "judging",
+      "model",
+      "samples",
+      "agents.coach.judge.enabled",
+    ],
+    scope: "user",
+    keys: ["coach.judge.enabled"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.coach?.judge?.enabled === true,
+    write: (v, ctx) => ctx.post({ coach: { judge: { enabled: !!v } } }),
+  },
   ...bellRows(),
   {
     id: "agents.helpers_shown",

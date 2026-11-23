@@ -3774,6 +3774,15 @@
       "合計は期間の件数を、1 日あたりは日数で割った件数を表示します。割合と平均は変わりません。Coach タブの切り替えでも変えられます。",
     "set.agents.coach_counts.o.total": "合計",
     "set.agents.coach_counts.o.per_day": "1 日あたり",
+    "set.agents.coach_enabled": "Coach",
+    "set.agents.coach_enabled.d":
+      "オンにすると Coach を実行できます。このマシンのエージェントのトークン使用状況を読み、指摘を含むレポートを書きます。この Den のエージェントだけを読み、何も変更しません。集計はこのマシンの外に何も送りません。下の判定は別のスイッチです。",
+    "set.agents.coach_window_days": "Coach の期間（日数）",
+    "set.agents.coach_window_days.d":
+      "Coach の各実行が何日前までを読むか。1〜90。",
+    "set.agents.coach_judge": "Coach の判定（安価なモデル）",
+    "set.agents.coach_judge.d":
+      "オンにすると、Coach の各実行で短いサンプル（質問、メッセージ、プロンプト。秘密情報は除去）を、エージェントのランタイムの安価なモデルでトークン予算内に判定します。サンプルはそのモデル提供元に送られ、ランタイム自身のコンテキスト（サインインしているメールアドレスを含む）も一緒に送られます。既定はオフ。オンにできるのはあなただけです（ここか自分の設定で）。エージェントにはできません。",
     "set.agents.helpers_shown": "エージェントの下に表示するヘルパーの最大数",
     "set.agents.helpers_shown.d":
       "残りは「すべて表示」で見られます。バッジは、動作中のヘルパーをすべて数えます。",

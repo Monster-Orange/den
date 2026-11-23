@@ -168,6 +168,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
+  // Issue 52: the Coach's rows (user.yml agents.coach; a person's write).
+  coach: { enabled: true, window_days: true, "judge.enabled": true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -249,6 +251,9 @@ describe("the settings inventory (R21)", () => {
         "terminal",
         // MODE-5: what only `config` could change.
         "cli_tabs",
+        "coach.enabled",
+        "coach.judge.enabled",
+        "coach.window_days",
         "coach_counts",
         "local_dev",
         "log_window_lines",
