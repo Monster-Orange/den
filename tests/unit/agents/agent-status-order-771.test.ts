@@ -63,6 +63,19 @@ describe("agentStatus: hook, then 7501, then screen", () => {
     ).toBe("blocked");
   });
 
+  it.each(["working", "idle", "done"] as const)(
+    "a matched screen blocked wins over a newer 7501 %s (a 7501 never lowers it)",
+    (state) => {
+      expect(
+        agentStatus({
+          term: { state, at: T1 },
+          screen: screen("blocked"),
+          screenAt: T0,
+        }),
+      ).toBe("blocked");
+    },
+  );
+
   it("a 7501 gives way to a different matched screen state after it", () => {
     expect(
       agentStatus({

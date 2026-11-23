@@ -102,16 +102,45 @@ describe("Attention.statuses (issue 771)", () => {
     expect(store.list().map((n) => n.kind)).toEqual(["finished"]);
   });
 
-  it("the same status again does nothing; one first seen long ago is kept as status but makes no row", async () => {
+  it("the same status again does nothing", async () => {
     const { store, a } = mk();
-    await a.statuses([st("ag-1", "blocked", clock - 60_000)]);
-    expect(a.statusNow().get("ag-1")).toBe("blocked");
-    expect(a.waitingNow().size).toBe(0);
-    expect(store.list()).toEqual([]);
     const now = st("ag-1", "done");
     await a.statuses([now]);
     await a.statuses([now]);
     expect(store.list()).toHaveLength(1);
+  });
+
+  it("first seen long ago (after a restart): blocked and error still raise a waiting; done raises nothing", async () => {
+    const { store, a } = mk();
+    await a.statuses([st("ag-1", "blocked", clock - 30_000)]);
+    expect([...a.waitingNow()]).toEqual([["ag-1", "input"]]);
+    await a.statuses([st("ag-2", "error", clock - 30_000)]);
+    expect(a.waitingNow().has("ag-2")).toBe(true);
+    await a.statuses([st("ag-3", "done", clock - 30_000)]);
+    expect(a.statusNow().get("ag-3")).toBe("done");
+    expect(store.list().filter((n) => n.subject === "agent:ag-3")).toEqual([]);
+  });
+
+  it.each(["working", "idle", "done"])(
+    "a 7501 never lowers a waiting it didn't raise: a bell's waiting stays after state=%s",
+    async (state) => {
+      const { a } = mk();
+      await a.event("ag-1", "web", { event: "waiting", why: "permission" });
+      expect(a.waitingNow().get("ag-1")).toBe("permission");
+      clock += 1000;
+      await a.statuses([st("ag-1", state)]);
+      expect(a.waitingNow().get("ag-1")).toBe("permission");
+    },
+  );
+
+  it("a bell's waiting that a 7501 blocked then repeats is still not the 7501's to clear", async () => {
+    const { a } = mk();
+    await a.event("ag-1", "web", { event: "waiting", why: "permission" });
+    clock += 1000;
+    await a.statuses([st("ag-1", "blocked")]);
+    clock += 1000;
+    await a.statuses([st("ag-1", "working")]);
+    expect(a.waitingNow().get("ag-1")).toBe("permission");
   });
 
   it("applies only to the agent it names", async () => {

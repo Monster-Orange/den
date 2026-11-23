@@ -238,6 +238,12 @@ interface Waiting {
   byHook: boolean;
   /** Issue 771: said by OSC 7501; cleared by its next status, not its output. */
   byStatus?: boolean;
+  /**
+   * Issue 771: raised by OSC 7501 alone. Only such a waiting may a later
+   * 7501 lower: anything printed in the terminal can say one, so a 7501
+   * never clears a bell's, a screen's or a hook's waiting.
+   */
+  fromStatus?: boolean;
   /** Issue 609: the hash of the asked tool's input (attention-hook.ts). */
   input?: string;
   /** Issue 101: the lead its question went to, instead of its person. */
@@ -548,6 +554,7 @@ export class Attention {
       workspace,
       byHook: hooked,
       byStatus: ev.status === true || cur?.byStatus === true,
+      fromStatus: ev.status === true && (!cur || cur.fromStatus === true),
       input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
       ...(ev.why === "asked" && ev.turn ? { turn: true } : {}),
@@ -857,12 +864,16 @@ export class Attention {
 
   /**
    * Issue 771: the statuses agents' own terminals said (OSC 7501). Each
-   * new one becomes the agent's status; blocked or error marks it waiting
+   * new one becomes the agent's status. Blocked or error marks it waiting
    * for its person (kept until its next status, its person typing, or it
-   * ending; its output moving doesn't clear it), working or idle ends a
-   * wait (not an ask: Den holds that question), done ends its turn. One
-   * first seen more than 10 s old is history: the status only. An
-   * unknown state is ignored.
+   * ending; its output moving doesn't clear it). It only ever raises
+   * attention toward the person: working or idle ends a wait, and done
+   * ends its turn, only when a 7501 alone raised that wait. A bell's,
+   * a screen's or a hook's waiting stays, since anything printed in the
+   * terminal can say a 7501. One first seen more than 10 s old (Den
+   * restarted) still raises blocked or error, as its row shows them; an
+   * old done or a lowering one is the status only. An unknown state is
+   * ignored.
    */
   async statuses(list: readonly StatusReport[]): Promise<void> {
     for (const r of list) {
@@ -873,10 +884,15 @@ export class Attention {
       this.statusSeen.set(r.agent, key);
       this.status.set(r.agent, r.state);
       this.statusAt.set(r.agent, r.at);
-      if (prev === undefined && this.now() - Date.parse(r.at) > 10_000)
+      const raises = r.state === "blocked" || r.state === "error";
+      if (
+        !raises &&
+        prev === undefined &&
+        this.now() - Date.parse(r.at) > 10_000
+      )
         continue;
       const w = this.waiting.get(r.agent);
-      if (r.state === "blocked" || r.state === "error") {
+      if (raises) {
         if (w) w.byStatus = true;
         else
           await this.event(r.agent, r.workspace, {
@@ -884,9 +900,11 @@ export class Attention {
             why: "input",
             status: true,
           });
+      } else if (w && !w.fromStatus) {
+        continue;
       } else if (r.state === "done") {
         await this.event(r.agent, r.workspace, { event: "finished" });
-      } else if (w && w.why !== "asked") this.clear(r.agent);
+      } else if (w) this.clear(r.agent);
     }
   }
 

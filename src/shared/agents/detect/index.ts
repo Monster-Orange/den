@@ -87,8 +87,10 @@ function said(screen: Detection | undefined): AgentStatus | undefined {
 /**
  * An agent's status, in one order (issues 770 and 771): its hook (Claude
  * with Den's hooks on), then a status its own terminal said with OSC 7501,
- * then the screen's reading. A 7501 gives way once the screen, read after
- * it, shows a different matched state; a screen that says nothing (no
+ * then the screen's reading. A 7501 only ever raises: a matched screen
+ * blocked wins over it whatever the times (anything printed in the
+ * terminal can say a 7501). Otherwise it gives way once the screen, read
+ * after it, shows a different matched state; a screen that says nothing (no
  * rule matched, a transcript viewer, unknown) never drops it. Undefined
  * when nothing says: the caller keeps what it has (the bell, output
  * stopped).
@@ -107,6 +109,9 @@ export function agentStatus(input: {
     const later =
       input.screenAt !== undefined &&
       Date.parse(input.screenAt) > Date.parse(input.term.at);
+    // A 7501 only ever raises: a matched screen blocked wins over it
+    // whatever the times, and only a later screen lowers a 7501 blocked.
+    if (seen === "blocked") return seen;
     if (!seen || seen === t || !later) return t;
   }
   return seen;
