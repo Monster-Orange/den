@@ -481,10 +481,16 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
  * Issue 728: the state dir's folders that hold credentials: each agent's
  * token file (an agent's own reaches its MCP server and the CLI through
  * DEN_ACTOR_TOKEN_FILE, never through these tools), and Hub's token with
- * the old ones kept for a retried revoke. agent-files/ (an agent's MCP
- * config and settings, no secret) stays readable.
+ * the old ones kept for a retried revoke. Issue 786: backup/, the copies
+ * of state files Den couldn't read (token and key files among them).
+ * agent-files/ (an agent's MCP config and settings, no secret) stays
+ * readable.
  */
-export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
+export const STATE_CREDENTIAL_DIRS: readonly string[] = [
+  "actor-token",
+  "hub",
+  "backup",
+];
 
 /**
  * Issue 728: a path as given (resolved) and by its real path, when a
