@@ -201,6 +201,10 @@ Held (each waits for the person's Allow):
 - `pr_close`: close a stale or superseded pull request after a Hub note,
   with a comment saying why. It runs at once unless the person watches or
   pinned the repo.
+- `hub_token_forget`: forget a kept Hub token whose record is gone (doctor
+  names it by id). Ask only once the person says they revoked this
+  install's token on that Hub's tokens page. It always waits for their
+  Allow, and Den never retries such a token itself.
 - `report`: report an issue with Den, as the Report button does (with no
   title it lists the destinations and who can see each). To a public
   destination it waits for the person's Allow; to a private one the

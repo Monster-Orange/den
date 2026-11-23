@@ -221,6 +221,10 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it",
   },
+  hub_token_forget: {
+    risk: "critical",
+    why: "deletes a kept Hub token: only once the person revoked it at its Hub",
+  },
   pr_close: {
     risk: "routine",
     kind: "auto",

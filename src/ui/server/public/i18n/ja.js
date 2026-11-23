@@ -1456,6 +1456,8 @@
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
     "ap.do.approval_policy.project":
       "プロジェクト {where} の承認ポリシーを {to} に変更",
+    "ap.do.hub_token_forget":
+      "保存している Hub トークン {id} を忘れる（その Hub で取り消し済み）",
     "ap.do.pr_close": "{repo} のプルリクエスト {pr} を閉じる: {comment}",
     "set.agents.default_mode": "エージェントのモード: Den 全体の既定",
     "set.agents.default_mode.d":
@@ -2235,6 +2237,10 @@
     "ap.det.approval_policy.thenNone": "変更後: なし。",
     "ap.det.approval_policy.person":
       "承認ポリシーを「許可」なしで変えられるのは人だけです。エージェントは必ず確認を求めます。",
+    "ap.det.hub_token_forget.what":
+      "トークン ID: {id}、保存日時 {at}。記録がないため、どの Hub のものか Den にはわかりません。",
+    "ap.det.hub_token_forget.revoked":
+      "その Hub のトークンページでこのインストールのトークンを取り消してから許可してください。Den はコピーを削除し、後から取り消せなくなります。",
     "ap.det.pr_close.what": "リポジトリ: {repo}。プルリクエスト: {pr}。",
     "ap.det.pr_close.comment": "Den は次のコメントを付けて閉じます: {comment}",
     "ap.det.pr_close.nothing": "何もマージされず、ブランチも削除されません。",

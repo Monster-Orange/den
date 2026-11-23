@@ -396,3 +396,54 @@ export function dropUnrevoked(stateDir: string, id: string): void {
       force: true,
     });
 }
+
+/** A kept token whose record is gone or unreadable: which Hub is unknown. */
+export interface OrphanToken {
+  /** The record's id (the token file's name), never the token. */
+  id: string;
+  /** ISO 8601: when the token file was written. */
+  at: string;
+}
+
+/**
+ * The kept tokens with no record Den can read, oldest first. Den can't
+ * retry them (it doesn't know their Hub), so doctor names them for a
+ * person to revoke at that Hub (a follow-up to issue 786).
+ */
+export function readOrphanTokens(stateDir: string): OrphanToken[] {
+  const dir = unrevokedDir(stateDir);
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const known = new Set(readUnrevoked(stateDir).map((u) => u.id));
+  const out: OrphanToken[] = [];
+  for (const n of names) {
+    const id = n.endsWith(".token") ? n.slice(0, -".token".length) : "";
+    if (!ID_RE.test(id) || known.has(id)) continue;
+    try {
+      const st = fs.lstatSync(path.join(dir, n));
+      if (st.isFile()) out.push({ id, at: st.mtime.toISOString() });
+    } catch {
+      /* gone meanwhile */
+    }
+  }
+  return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/**
+ * A person revoked orphan `id` at its Hub: forget the kept token. Only an
+ * orphan: a token with its record is Den's to retry, never removed here.
+ */
+export function forgetOrphanToken(stateDir: string, id: string): boolean {
+  if (!ID_RE.test(id)) return false;
+  if (!readOrphanTokens(stateDir).some((o) => o.id === id)) return false;
+  const dir = unrevokedDir(stateDir);
+  fs.rmSync(path.join(dir, `${id}.token`), { force: true });
+  // A record that isn't one (no Hub named) goes too; a broken one is in
+  // backup already.
+  fs.rmSync(path.join(dir, `${id}.json`), { force: true });
+  return true;
+}

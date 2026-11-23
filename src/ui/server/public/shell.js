@@ -2673,6 +2673,8 @@
       "Change the approval policy for every project to {to}",
     "ap.do.approval_policy.project":
       "Change project {where}'s approval policy to {to}",
+    "ap.do.hub_token_forget":
+      "Forget the kept Hub token {id}, revoked at its Hub",
     "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
@@ -3210,6 +3212,10 @@
     "ap.det.approval_policy.thenNone": "Then: none.",
     "ap.det.approval_policy.person":
       "Only a person changes the approval policy without an Allow: an agent always asks.",
+    "ap.det.hub_token_forget.what":
+      "Token id: {id}, kept {at}. Its record is gone, so Den doesn't know which Hub it is for.",
+    "ap.det.hub_token_forget.revoked":
+      "Allow only once you have revoked this install's token on that Hub's tokens page: Den deletes its copy and can't revoke it later.",
     "ap.det.pr_close.what": "Repo: {repo}. Pull request: {pr}.",
     "ap.det.pr_close.comment": "Den closes it with this comment: {comment}",
     "ap.det.pr_close.nothing": "Nothing is merged and no branch is deleted.",
