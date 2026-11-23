@@ -26,6 +26,8 @@
  * page's language and the person's time zone.
  */
 
+import { formatTime } from "/kit/time.js";
+
 const sh = () => globalThis.window?.denShell;
 const t = (key, vars) => sh()?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -40,10 +42,6 @@ const esc = (s) =>
 /** The page's language, for Intl. */
 const lang = () =>
   sh()?.lang?.() || globalThis.document?.documentElement?.lang || undefined;
-/** The person's time zone (the shell sets it on <html>), or the browser's. */
-const tz = () =>
-  globalThis.document?.documentElement?.getAttribute?.("data-den-tz") ||
-  undefined;
 
 function fmtNum(n, opts) {
   try {
@@ -53,28 +51,16 @@ function fmtNum(n, opts) {
   }
 }
 
-function fmtDate(iso, opts) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  try {
-    return new Intl.DateTimeFormat(lang(), { ...opts, timeZone: tz() }).format(
-      d,
-    );
-  } catch {
-    return d.toISOString().slice(0, 16).replace("T", " ");
-  }
-}
+/**
+ * A date-time in the person's chosen zone and the page's language, by the
+ * kit's own formatter (T1: public/ never formats a date itself).
+ */
+const fmtDate = (iso, style) => formatTime(iso, { style }) || "";
 
 /** "Nov 22, 9:14 AM": a run or a conversation. */
-export const when = (iso) =>
-  fmtDate(iso, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+export const when = (iso) => fmtDate(iso, "datetime");
 /** "Nov 22": a window's end. */
-const day = (iso) => fmtDate(iso, { month: "short", day: "numeric" });
+const day = (iso) => fmtDate(iso, "date");
 
 /**
  * The table's columns, in the mock's order. `count`: Per day shows its
