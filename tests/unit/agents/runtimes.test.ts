@@ -450,6 +450,37 @@ describe("den-claude launch", () => {
     }
   });
 
+  it("issue 728: the edge folder's proof, Traefik file and stack secrets are denied", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const edge = path.join(path.dirname(state), "share", "acme", "edge");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+            edgeKeyDirs: [edge],
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    for (const f of [
+      "den-edge-proof",
+      "dynamic/edge.yml",
+      "stacks/db/generated.env",
+      "ca/rootCA-key.pem",
+      "certs/edge-key.pem",
+    ]) {
+      const abs = path.join(edge, f);
+      expect([f, readDenied(deny, abs)]).toEqual([f, true]);
+      expect([f, denied(deny, `cat ${abs}`)]).toEqual([f, true]);
+    }
+    // Edit too: Traefik reloads dynamic/, and ca/ and certs/ carry TLS.
+    expect(deny).toContain(`Edit(/${edge}/**)`);
+  });
+
   it("issue 728: the install registry is denied to Read, Edit and Bash", () => {
     const state = path.join(tmp(), ".acme");
     const filesDir = path.join(state, "agent-files", "planner");

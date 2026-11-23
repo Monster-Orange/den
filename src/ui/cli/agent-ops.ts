@@ -102,7 +102,7 @@ import {
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
+import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
 import {
   listOtherInstalls,
   registerInstall,
@@ -3628,6 +3628,12 @@ function launchInput(
   // Issue 728: this install registers itself (its server does at start too),
   // then reads the others.
   const ownEdgeKeys = edgeKeyDirs(d.distRoot());
+  // ...narrowed where the edge folder holds this install's own folders.
+  const ownEdgeDeny = narrowEdgeDirs(ownEdgeKeys, [
+    path.resolve(d.stateDir()),
+    path.resolve(d.distRoot()),
+    path.resolve(dir),
+  ]);
   const reg = registryDir({ ...process.env, ...d.env });
   const others = (() => {
     try {
@@ -3671,7 +3677,7 @@ function launchInput(
     // Issue 728: the edge's key folders, wherever its config puts them, and
     // the other installs' edges'.
     edgeKeyDirs: [
-      ...new Set([...ownEdgeKeys, ...others.flatMap((o) => o.edgeKeyDirs)]),
+      ...new Set([...ownEdgeDeny, ...others.flatMap((o) => o.edgeKeyDirs)]),
     ],
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
