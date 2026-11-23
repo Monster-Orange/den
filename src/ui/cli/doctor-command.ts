@@ -54,7 +54,7 @@ import { localDateTime } from "../../shared/local-time.js";
 import {
   readRestartsWaiting,
   type RestartsWaiting,
-} from "../server/restart-queue-service.js";
+} from "../../shared/agents/restarts-waiting.js";
 import {
   readTestResolveState,
   testResolveDoctorLine,
