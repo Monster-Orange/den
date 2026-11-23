@@ -2,7 +2,7 @@
 // Live check for issue 406: the rail's account entry shows two lines, as
 // Hub's does: the person's name, then @login. Each cell opens the Services
 // page signed in as the bed's person and reads the entry (#den-ident
-// .den-acct) and what Den knows of the person (/api/session). Read only
+// den-acct) and what Den knows of the person (/api/session). Read only
 // (issue 406): reads one page and the session.
 export const issue = 406;
 export const items = [406];
@@ -21,7 +21,14 @@ export async function setup() {
 export async function run(ctx) {
   const tag = `${ctx.browser}-${ctx.width}`;
   await ctx.goto(ctx.page, "/services");
-  await ctx.page.waitForSelector("#den-ident .den-acct", { timeout: 20000 });
+  // The entry's label: the kit's account block inside #den-ident.
+  await ctx.page.waitForFunction(
+    () =>
+      document.getElementById("den-ident")?.getElementsByClassName("den-acct")
+        .length > 0,
+    undefined,
+    { timeout: 20000 },
+  );
   await ctx.page.evaluate(() => document.fonts.ready.then(() => true));
   const session = await ctx.page.evaluate(async () => {
     const r = await fetch("/api/session", { cache: "no-store" });
@@ -32,7 +39,9 @@ export async function run(ctx) {
     }
   });
   const entry = await ctx.page.evaluate(() => {
-    const lbl = document.querySelector("#den-ident .den-acct");
+    const lbl = document
+      .getElementById("den-ident")
+      .getElementsByClassName("den-acct")[0];
     const cs = (e) => getComputedStyle(e);
     const lines = [...lbl.children].filter((c) => cs(c).display !== "none");
     return lines.map((c) => {
