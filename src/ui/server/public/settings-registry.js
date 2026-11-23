@@ -5134,7 +5134,7 @@ export const DEN_SETTINGS = [
       "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
     keywords: ["hub", "groups", "group", "team", "lead", "agents", "by group"],
     scope: "user",
-    keys: ["hub.groups"],
+    keys: ["hub_groups.mode"],
     control: seg([
       { value: "auto", label: "Auto" },
       { value: "on", label: "On" },
@@ -5153,7 +5153,7 @@ export const DEN_SETTINGS = [
       "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
     keywords: ["hub", "groups", "cache", "seconds", "memory", "refresh"],
     scope: "user",
-    keys: ["hub.groups_cache_seconds"],
+    keys: ["hub_groups.cache_seconds"],
     control: { type: "number", min: 5, max: 3600, step: 1, unit: "s" },
     read: (ctx) => ctx.data.hub_groups?.cache_seconds ?? 30,
     write: (v, ctx) => ctx.post({ hub_groups: { cache_seconds: v } }),

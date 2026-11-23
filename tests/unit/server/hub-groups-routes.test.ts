@@ -160,8 +160,11 @@ describe("issue 750: GET /api/hub/groups", () => {
   it("auto, a Hub without groups.read: off, and its groups are never asked for", async () => {
     const hub = await stubHub(() => [200, GROUPS]);
     const a = auto(hub.url, ["deliveries.ack_held"]);
-    expect((await call(a.d)).json).toEqual({ ok: true, state: "off" });
-    await call(a.d);
+    // Off, saying why: Hub doesn't list groups.read (a check can tell a
+    // Hub without groups from a Den that never asks).
+    const why = { ok: true, state: "off", why: "hub-lacks-groups-read" };
+    expect((await call(a.d)).json).toEqual(why);
+    expect((await call(a.d)).json).toEqual(why);
     expect(hub.calls()).toBe(0);
     // That answer is kept like any other.
     expect(a.whoami()).toBe(1);

@@ -101,8 +101,11 @@ export type GroupsRead =
   | { state: "rejected" }
   /** No answer, or a 5xx: "Can't reach Den Hub". */
   | { state: "unreachable" }
-  /** A Hub with no groups route (404 or 405): shown as off. */
-  | { state: "absent" };
+  /**
+   * A Hub with no groups route (404 or 405): shown as off. `noFeature`:
+   * not asked, as hub.groups auto found no groups.read in Hub's whoami.
+   */
+  | { state: "absent"; noFeature?: true };
 
 const MAX_GROUPS = 200;
 const MAX_MEMBERS = 200;

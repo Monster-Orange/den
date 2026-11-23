@@ -18,7 +18,9 @@
  *                                           default) with no Hub, a Hub
  *                                           whose whoami lacks groups.read,
  *                                           or no whoami answer; or Hub
- *                                           has no groups route
+ *                                           has no groups route; auto's
+ *                                           off for groups.read adds
+ *                                           why: "hub-lacks-groups-read"
  *     { ok, state: "none" }                 hub.groups on, no Hub connected
  *     { ok, state: "unavailable", hub }     403 groups_not_in_plan
  *     { ok, state: "refused" }              403 install_refused (a guest)
@@ -74,32 +76,26 @@ function companyUrl(hubUrl: string, company: string): string | null {
   return g ? g.replace(/\/groups\/x$/, "") : null;
 }
 
-export async function hubGroupsRoute(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
+/**
+ * The groups read's answer (the route's body; `den hub groups` prints
+ * it). `fresh`: read Hub now, past the copy in memory.
+ */
+export async function groupsView(
   d: HubGroupsDeps,
-): Promise<true> {
-  const method = (req.method ?? "GET").toUpperCase();
-  if (method !== "GET" && method !== "HEAD") {
-    res.setHeader("Allow", "GET");
-    sendJson(res, { ok: false, error: "use GET" }, 405);
-    return true;
-  }
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<Record<string, unknown>> {
   // hub.groups off: nothing new on the page, Hub not asked.
   const mode = d.mode();
   if (mode === "off") {
     d.cache.clear();
-    sendJson(res, { ok: true, state: "off" });
-    return true;
+    return { ok: true, state: "off" };
   }
   const hub = await d.hub().catch(() => null);
   if (!hub) {
     d.cache.clear();
     // Auto with no Hub: nothing about groups. On: the Connect line.
-    sendJson(res, { ok: true, state: mode === "auto" ? "off" : "none" });
-    return true;
+    return { ok: true, state: mode === "auto" ? "off" : "none" };
   }
-  const fresh = /[?&]fresh=1(&|$)/.test(req.url ?? "");
   const now = (d.now ?? Date.now)();
   const kept = d.cache.get(hub.url);
   let read: GroupsRead;
@@ -114,13 +110,12 @@ export async function hubGroupsRoute(
     const w = await d.self().catch(() => null);
     d.cache.clear();
     if (!w) {
-      sendJson(res, { ok: true, state: "off" });
-      return true;
+      return { ok: true, state: "off" };
     }
     self = { install: w.install, login: w.login };
     read = w.features?.includes(GROUPS_FEATURE)
       ? await fetchHubGroups(hub.url, hub.token)
-      : { state: "absent" };
+      : { state: "absent", noFeature: true };
     if (read.state !== "unreachable")
       d.cache.set(hub.url, { at: now, read, self });
   } else {
@@ -140,18 +135,20 @@ export async function hubGroupsRoute(
   const home = companyUrl(hub.url, company);
   // A Hub with no groups route: the same as off.
   if (read.state === "absent") {
-    sendJson(res, { ok: true, state: "off" });
-    return true;
+    return {
+      ok: true,
+      state: "off",
+      ...(read.noFeature ? { why: "hub-lacks-groups-read" } : {}),
+    };
   }
   if (read.state !== "ok") {
-    sendJson(res, {
+    return {
       ok: true,
       state: read.state,
       ...(read.state === "unavailable" ? { hub: home ?? hub.url } : {}),
-    });
-    return true;
+    };
   }
-  sendJson(res, {
+  return {
     ok: true,
     state: "ok",
     rule: read.groups.rule,
@@ -168,7 +165,22 @@ export async function hubGroupsRoute(
       open: groupHubUrl(hub.url, company, g.slug),
       compose: groupComposeUrl(hub.url, company, g.slug),
     })),
-  });
+  };
+}
+
+export async function hubGroupsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  d: HubGroupsDeps,
+): Promise<true> {
+  const method = (req.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    res.setHeader("Allow", "GET");
+    sendJson(res, { ok: false, error: "use GET" }, 405);
+    return true;
+  }
+  const fresh = /[?&]fresh=1(&|$)/.test(req.url ?? "");
+  sendJson(res, await groupsView(d, { fresh }));
   return true;
 }
 

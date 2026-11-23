@@ -1,7 +1,9 @@
 /**
- * Issue 750: gate/750.mjs's real-Hub leg. Its four rows pass only on what
+ * Issue 750: gate/750.mjs's real-Hub leg. Its five rows pass only on what
  * Hub itself shows: clause 3 on the exact reason Den sent for a held
- * member, clause 4 on Hub's groups request count staying at zero. A leg
+ * member, clause 4 on Hub's groups request count staying at zero, clause
+ * 5 on auto reading the group (a named skip while the test Hub's whoami
+ * lists no groups.read, as Den says). A leg
  * whose harness lacks a piece skips every row by name; a product failure
  * (Connect, config, agents, Hub identity, a thrown error) fails them. The module is plain
  * JavaScript, so it runs in a child node, as the bed runs it. Invented
@@ -21,7 +23,7 @@ function rows(hubLeg: unknown): Row[] {
   const js = `
     const g = await import("./gate/750.mjs");
     const rows = g.expect([{ cell: {}, result: { tag: "chromium-1280", real: "off", hubLeg: ${JSON.stringify(hubLeg)} } }]);
-    process.stdout.write(JSON.stringify(rows.slice(-4)));
+    process.stdout.write(JSON.stringify(rows.slice(8)));
   `;
   const r = spawnSync("node", ["--input-type=module", "-e", js], {
     cwd: process.cwd(),
@@ -52,12 +54,13 @@ const good = {
   thread: "t1",
   held: { state: "held", reason: "hub_tools_unavailable" },
   off: { state: "off", requests: 0, onRequests: 1 },
+  auto: { state: "ok", why: null, found: true },
 };
 
 describe("issue 750: the real-Hub leg", () => {
-  it("adds four real-Hub rows, all passing on a good leg", () => {
+  it("adds five real-Hub rows, all passing on a good leg", () => {
     const r = rows(good);
-    expect(r).toHaveLength(4);
+    expect(r).toHaveLength(5);
     for (const x of r) {
       expect(x.clause).toMatch(/^real Hub: /);
       expect(x.ok).toBe(true);
@@ -129,9 +132,9 @@ describe("issue 750: the real-Hub leg", () => {
       clause: expect.stringMatching(/^real Hub: Message group/),
     });
   });
-  it("a product failure before the read fails all four rows, never skips", () => {
+  it("a product failure before the read fails all five rows, never skips", () => {
     const r = rows({ fail: "connect", why: "connect start 500: boom" });
-    expect(r).toHaveLength(4);
+    expect(r).toHaveLength(5);
     for (const x of r) {
       expect(x.ok).toBe(false);
       expect(x.skip).toBeUndefined();
@@ -139,7 +142,7 @@ describe("issue 750: the real-Hub leg", () => {
     }
   });
 
-  it("an error thrown before the read fails all four rows", () => {
+  it("an error thrown before the read fails all five rows", () => {
     for (const x of rows({
       fixture: "allowed by test fixture",
       error: "boom",
@@ -161,7 +164,7 @@ describe("issue 750: the real-Hub leg", () => {
   it("clause 4 fails when turning groups off failed", () => {
     const r = rows({
       ...good,
-      off: { fail: "config", why: "hub.groups=false: 1" },
+      off: { fail: "config", why: "hub.groups=off: 1" },
     });
     expect(r[3]).toMatchObject({ ok: false });
     expect(r[3].skip).toBeUndefined();
@@ -193,5 +196,28 @@ describe("issue 750: the real-Hub leg", () => {
       expect(x.ok).toBe(false);
       expect(x.detail).toContain("error: boom");
     }
+  });
+
+  it("clause 5: auto skips by name while the test Hub lacks groups.read", () => {
+    const r = rows({
+      ...good,
+      auto: { state: "off", why: "hub-lacks-groups-read", found: false },
+    });
+    expect(r[4]).toMatchObject({ ok: null, skip: "needs-hub-groups-read" });
+  });
+
+  it("clause 5 fails when auto reads off with no reason, or misses the group", () => {
+    for (const auto of [
+      { state: "off", why: null, found: false },
+      { state: "ok", why: null, found: false },
+      { state: null, error: "hub groups: 2: usage", found: false },
+      { fail: "config", why: "hub.groups=auto: 1" },
+    ]) {
+      const x = rows({ ...good, auto })[4];
+      expect(x.ok).toBe(false);
+      expect(x.skip).toBeUndefined();
+    }
+    // Cut short before auto: it fails, never passes.
+    expect(rows({ ...good, auto: undefined })[4].ok).toBe(false);
   });
 });
