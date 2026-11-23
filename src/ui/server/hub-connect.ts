@@ -775,7 +775,9 @@ export class HubConnect {
           try {
             had = this.deps.linkOf?.(l.key) ?? null;
           } catch {
-            had = null;
+            // Can't tell what it's linked to: never write over it (fail closed).
+            skipped.push({ key: l.key, why: "failed" });
+            continue;
           }
           if (had && had.id !== l.project.id) {
             skipped.push({ key: l.key, why: "person" });

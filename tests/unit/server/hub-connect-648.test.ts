@@ -226,6 +226,22 @@ describe("issue 648 security: links only for this Hub, never over another link",
     expect(r?.words?.grant).toEqual({ fallback: "rebind" });
   });
 
+  it("reading a project's link throws: that project is skipped as failed, never written", async () => {
+    const f = hc(ALL, {
+      linkOf: (ws) => {
+        if (ws === "north") throw new Error("workspaces.yml unreadable");
+        return null;
+      },
+    });
+    const r = await f.finish(f.start());
+    expect(f.links.has("north")).toBe(false);
+    expect(r?.words?.grant).toEqual({
+      linked: 2,
+      created: 1,
+      skipped: [{ key: "north", why: "failed" }],
+    });
+  });
+
   it("a project linked to another Hub project keeps its link and waits for the review; the same id is confirmed", async () => {
     const theirs = { id: "p_mine", slug: "mine", name: "Mine" };
     const same = { id: "p_docs", slug: "docs", name: "Docs" };
