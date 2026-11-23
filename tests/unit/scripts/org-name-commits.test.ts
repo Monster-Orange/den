@@ -207,6 +207,44 @@ describe("pre-push hook", () => {
     expect(r.status).toBe(0);
   });
 
+  describe("as an agent runs it: no DEN_HOOK_ROOT, DEN_ROOT set elsewhere (issue 1252)", () => {
+    let scripts: string;
+    const agentPush = (lines: string) =>
+      spawnSync("sh", [hook, "origin", "git@example.com:x/y.git"], {
+        cwd: repo,
+        input: lines,
+        encoding: "utf-8",
+        env: {
+          PATH: process.env.PATH ?? "",
+          DEN_ROOT: path.join(dir, "a-distribution"),
+          DEN_PREPUSH_FILES: "0",
+          DEN_ORG_NAMES_FILE: names,
+        },
+      });
+
+    beforeAll(() => {
+      // The checkout's top level carries the gates, as a real clone does.
+      scripts = path.join(repo, "scripts");
+      fs.mkdirSync(scripts, { recursive: true });
+      for (const f of ["org-names.js", "org-name-commits.mjs"]) {
+        fs.copyFileSync(path.join(ROOT, "scripts", f), path.join(scripts, f));
+      }
+    });
+    afterAll(() => fs.rmSync(scripts, { recursive: true, force: true }));
+
+    it("refuses a commit that names an org", () => {
+      const r = agentPush(`refs/heads/x ${bad} refs/heads/x ${base}\n`);
+      expect(r.stderr).not.toContain("can't be read");
+      expect(r.status).toBe(1);
+      expect(`${r.stdout}${r.stderr}`.toLowerCase()).not.toContain("zorblax");
+    });
+
+    it("lets a clean commit through", () => {
+      const r = agentPush(`refs/heads/x ${clean} refs/heads/x ${base}\n`);
+      expect(r.status).toBe(0);
+    });
+  });
+
   it("fails closed when a names file is set but missing", () => {
     const r = push(`refs/heads/x ${clean} refs/heads/x ${base}\n`, {
       DEN_ORG_NAMES_FILE: path.join(dir, "missing.txt"),
