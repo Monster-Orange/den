@@ -161,7 +161,9 @@ async function ask(ctx, id) {
   const r = await ctx.agent(id).sh(cmd, (ASK_S + 20) * 1000);
   return {
     project,
-    // 142 is the alarm (128 + SIGALRM): the ask was made and still waits.
+    // null when the alarm ended it (the shell hands its last command to
+    // perl, so SIGALRM ends the shell too, with no exit status); the ask
+    // was made and still waits.
     code: r.status,
     err: (r.err || "").slice(-300),
     out: (r.out || "").slice(-300),
