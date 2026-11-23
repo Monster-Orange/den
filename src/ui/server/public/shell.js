@@ -2850,6 +2850,9 @@
     "ag.mcp.reloading": "Restarting to load Hub's tools",
     "ag.mcp.reloadingTip":
       "Hub's tools changed. Den restarts this agent at its next idle so it can use them. It keeps its conversation.",
+    "ag.mcp.failed": "Hub's tools didn't load",
+    "ag.mcp.failedTip":
+      "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.mcp.restarting":
@@ -3586,6 +3589,11 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.shared": "{actor} shared {title} with you",
+    "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
+    "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
+    "bell.m.sharedAgentNote":
+      "The agent {actor} shared {title} with you: {note}",
     "bell.m.heldLapsed":
       "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
     "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
@@ -3611,6 +3619,10 @@
     "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
       "While __DEN_TITLE__ was away, {kept} kept running and {back} came back: {names}",
+    "bell.m.ranLoggedOut":
+      "While you were logged out ({min} min), these agents ran: {names}",
+    "bell.m.stoppedLoggedOut":
+      "While you were logged out ({min} min), these agents stopped: {names}",
     "bell.m.keepOffer": "Keep agents running after logout: Apply",
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
@@ -3670,6 +3682,8 @@
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
+    "bell.m.toolsListFailed":
+      "{agent} can't use Hub's tools: listing them failed again after __DEN_TITLE__ restarted it once. Restart it from Agents once Hub is fixed",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ is back; its note to {agent} waits until you answer {agent} in its terminal",
     "bell.m.restartedWhileWorking":

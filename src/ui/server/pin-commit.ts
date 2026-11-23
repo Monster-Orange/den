@@ -36,6 +36,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
 import type { Ran } from "./den-update.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export const PIN_FILES = ["package.json", "package-lock.json"] as const;
 
@@ -129,9 +130,7 @@ export function readPinRecord(stateDir: string): PinRecord | null {
 function writePinRecord(stateDir: string, r: PinRecord): void {
   const p = pinRecordFile(stateDir);
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-  const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(r) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(p, JSON.stringify(r) + "\n", { mode: 0o600 });
 }
 
 const tail = (s: string) =>

@@ -163,8 +163,8 @@ export class FileFeedStore implements FeedStore {
     const seq = Math.max(this.lastSeq(), this.meta.read) + 1;
     const h = kh(key);
     const f = `${seq}-${h}-${ev.bytes === null ? "x" : ev.bytes}.json`;
-    fs.writeFileSync(path.join(this.dir, f), JSON.stringify({ seq, ...ev }), {
-      flag: "wx",
+    writeFileAtomic(path.join(this.dir, f), JSON.stringify({ seq, ...ev }), {
+      exclusive: true,
       mode: 0o600,
     });
     this.seqs.push(seq);
