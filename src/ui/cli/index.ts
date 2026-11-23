@@ -266,6 +266,7 @@ import { ExitRequested, printJson, quietStdout } from "./json-out.js";
 import { personServerFor } from "./person-server.js";
 import {
   seedResetRefusal,
+  seedResetViaServer,
   workspacePersonRefusal,
   workspaceViaServer,
   type WorkspaceVerb,
@@ -3177,6 +3178,25 @@ class DenCLI {
       }
     }
 
+    // Issue 1182: a reset goes through the running server (a person's,
+    // audited); with none listening the CLI resets as before.
+    if (willReset) {
+      const via = await seedResetViaServer(personServerFor());
+      if (via.kind === "refused") {
+        console.error(chalk.red(`\n  ❌ ${via.error}; nothing was changed.\n`));
+        process.exitCode = 1;
+        return false;
+      }
+      if (via.kind === "done") {
+        console.log(
+          chalk.green(
+            `  ✓ ${plural(via.seeded.length, "project")} reset to the blueprint (${via.seeded.map((w) => w.name).join(", ")}). ` +
+              `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
+          ),
+        );
+        return true;
+      }
+    }
     if (multi) {
       const seeded = seedBlueprintWorkspaces();
       const focus = readWorkspacesFile().focus;

@@ -47,9 +47,11 @@
  *           resumes the standing personas and those with
  *           `resume_on_restart: true`.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import { readActivity } from "../../shared/agents/activity.js";
 import {
   denToolsOld,
   type DenToolsOld,
@@ -100,6 +102,12 @@ import {
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
+import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
+import {
+  listOtherInstalls,
+  registerInstall,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
@@ -132,6 +140,7 @@ import {
   shellPathTimeoutMs,
   configuredRuntimeCatalog,
   readAgentsConfig,
+  readMcpConfig,
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
@@ -194,6 +203,7 @@ import {
   sandboxSetByPerson,
 } from "../../shared/agents/sandbox-rollout.js";
 import * as os from "os";
+import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -405,6 +415,8 @@ export interface AgentsDeps extends SessionsDeps {
    * read-only to it). Default: sandboxFor with the person's setting.
    */
   agentSandbox?: AgentSandboxFn;
+  /** Issue 1072: mcp.actions in the distribution's config, not read. */
+  mcpNotReadFromOrg?: () => string[];
   distRoot?: () => string;
   /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
   serverAgentFolder?: () => string;
@@ -547,6 +559,7 @@ export interface AgentsResolved extends Resolved {
   server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
+  mcpNotReadFromOrg: () => string[];
   distRoot: () => string;
   serverAgentFolder: () => string;
   workspaceDir: (ws: string) => string;
@@ -899,6 +912,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     ...base,
     server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    mcpNotReadFromOrg:
+      d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
     agentSandbox:
       d.agentSandbox ??
       ((argv, agentId) =>
@@ -3610,6 +3625,32 @@ function launchInput(
     { id, persona: persona.id, workspace: ws, cwd: dir },
     persona,
   ).afterCompactions;
+  // Issue 728: this install registers itself (its server does at start too),
+  // then reads the others.
+  const ownEdgeKeys = edgeKeyDirs(d.distRoot());
+  // ...narrowed where the edge folder holds this install's own folders.
+  const ownEdgeDeny = narrowEdgeDirs(ownEdgeKeys, [
+    path.resolve(d.stateDir()),
+    path.resolve(d.distRoot()),
+    path.resolve(dir),
+  ]);
+  const reg = registryDir({ ...process.env, ...d.env });
+  const others = (() => {
+    try {
+      registerInstall(reg, {
+        stateDir: d.stateDir(),
+        edgeKeyDirs: ownEdgeKeys,
+      });
+    } catch {
+      /* listed at its server's next start */
+    }
+    return listOtherInstalls(reg, {
+      ownStateDir: d.stateDir(),
+      home: { ...process.env, ...d.env }.HOME,
+      // No entry may deny this install's own checkout or workspace.
+      protect: [d.distRoot(), dir],
+    });
+  })();
   return {
     persona,
     workspace: { name: ws, dir },
@@ -3619,7 +3660,25 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 816: test installs announced on this computer; issue 728: the
+    // other installs registered for this OS user, any distribution's.
+    otherStateDirs: [
+      ...new Set([
+        ...listAnnounced(announceDir(), { ownStateDir: d.stateDir() }).map(
+          (a) => a.stateDir,
+        ),
+        ...others.map((o) => o.stateDir),
+      ]),
+    ],
+    // ...and where they announce, for those announced after this launch.
+    testAnnounceDir: announceDir(),
+    installRegistryDir: reg,
     personConfigDir: path.join(d.distRoot(), "config", "local"),
+    // Issue 728: the edge's key folders, wherever its config puts them, and
+    // the other installs' edges'.
+    edgeKeyDirs: [
+      ...new Set([...ownEdgeDeny, ...others.flatMap((o) => o.edgeKeyDirs)]),
+    ],
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
@@ -8266,6 +8325,12 @@ export async function markInterrupted(
     /** agents.restore_hub_wait_seconds, in ms. */
     hubWaitMs?: number;
     hubPollMs?: number;
+    /**
+     * Issue 1129: the restart queue they go through (agents.resume): a
+     * batch at a time, the ones that were working first. None: all at
+     * once, as before.
+     */
+    queue?: RestartQueue;
   } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
@@ -8301,19 +8366,46 @@ export async function markInterrupted(
   const hubAnswered = opts.hubUp
     ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
     : true;
+  // den#4: a rotated one relaunches from its handoff instead.
+  const bring = (rec: AgentRecord) =>
+    rotationOf(d, rec)?.ready
+      ? relaunchAgent(d, rec.id)
+      : resumeAgent(d, rec.id);
+  const note = (rec: AgentRecord, r: { early?: unknown }) => {
+    if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+    else {
+      found.resumed.push(rec.id);
+      if (!hubAnswered) found.withoutHub.push(rec.id);
+    }
+  };
+  const failed = (rec: AgentRecord, e: unknown) =>
+    found.failed.push({ agent: rec.id, why: (e as Error).message });
+  if (opts.queue) {
+    // Issue 1129: a batch at a time; the ones working when Den stopped first.
+    const activity = readActivity(d.stateDir());
+    const q = opts.queue;
+    await Promise.all(
+      due.map((rec) =>
+        q
+          .add({
+            id: rec.id,
+            why: "resume",
+            working: activity[rec.id]?.working === true,
+            run: () => bring(rec),
+          })
+          .then(
+            (r) => note(rec, r as { early?: unknown }),
+            (e) => failed(rec, e),
+          ),
+      ),
+    );
+    return found;
+  }
   for (const rec of due) {
     try {
-      // den#4: a rotated one relaunches from its handoff instead.
-      const r = rotationOf(d, rec)?.ready
-        ? await relaunchAgent(d, rec.id)
-        : await resumeAgent(d, rec.id);
-      if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else {
-        found.resumed.push(rec.id);
-        if (!hubAnswered) found.withoutHub.push(rec.id);
-      }
+      note(rec, await bring(rec));
     } catch (e) {
-      found.failed.push({ agent: rec.id, why: (e as Error).message });
+      failed(rec, e);
     }
   }
   return found;

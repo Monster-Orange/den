@@ -73,8 +73,11 @@ describe("readHubConfig", () => {
       inboxWatch: true,
       inboxPollSeconds: 30,
       inboxBackoffMaxSeconds: 600,
+      inboxReadsPerSecond: 2,
       toolsCheckSeconds: 300,
       toolsRestart: true,
+      groupsCacheSeconds: 30,
+      groups: false,
     });
   });
 
@@ -250,6 +253,27 @@ describe("issue 166: the inbox watcher's settings", () => {
       readHubConfig({ hub: { url, inbox_poll_seconds: 1 } }, {}, noSecrets),
     ).toThrow(/hub\.inbox_poll_seconds must be a number, at least 5/);
   });
+
+  it("2026-11-22: reads at most 2 a second for the install unless set; 0 or text throws", () => {
+    expect(
+      readHubConfig({ hub: { url } }, {}, noSecrets)!.inboxReadsPerSecond,
+    ).toBe(2);
+    expect(
+      readHubConfig(
+        { hub: { url } },
+        { hub: { inbox_reads_per_second: 0.5 } },
+        noSecrets,
+      )!.inboxReadsPerSecond,
+    ).toBe(0.5);
+    for (const bad of [0, -1, "fast"])
+      expect(() =>
+        readHubConfig(
+          { hub: { url, inbox_reads_per_second: bad } },
+          {},
+          noSecrets,
+        ),
+      ).toThrow(/hub\.inbox_reads_per_second must be a number above 0/);
+  });
 });
 
 describe("hub.allow_tools", () => {
@@ -268,6 +292,16 @@ describe("hub.allow_tools", () => {
     expect(() =>
       readHubConfig({ hub: { url, allow_tools: "no" } }, {}, noSecrets),
     ).toThrow(/hub\.allow_tools must be true or false/);
+  });
+
+  it("issue 750: hub.groups is off by default; true turns it on; junk is refused", () => {
+    expect(readHubConfig({ hub: { url } }, {}, noSecrets)?.groups).toBe(false);
+    expect(
+      readHubConfig({ hub: { url, groups: true } }, {}, noSecrets)?.groups,
+    ).toBe(true);
+    expect(() =>
+      readHubConfig({ hub: { url, groups: "yes" } }, {}, noSecrets),
+    ).toThrow(/hub\.groups must be true or false/);
   });
 
   it("Settings' POST sets it in user.yml, null clears it, junk is refused", () => {

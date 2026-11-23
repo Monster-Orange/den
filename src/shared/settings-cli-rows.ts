@@ -27,8 +27,13 @@
  *   web_agent_view: { on?: boolean, minutes? }
  *                                     user.yml web.agent_view,
  *                                     web.agent_view_minutes (issue 796)
+ *   web_sessions: { lock_wait_ms? }   user.yml web.sessions_lock_wait_ms
+ *                                     (issue 1299)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   agents_resume: { batch?, gap_seconds?, load_ceiling?, max_wait_seconds? }
+ *                                     user.yml agents.resume.* (issue 1129:
+ *                                     the restart queue)
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
@@ -64,6 +69,9 @@
  *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
+ *   restore_services_on_boot: boolean | null
+ *                                     user.yml services.restore_on_boot
+ *                                     (issue 1225; 0.4.46's switch)
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
@@ -74,11 +82,13 @@ import {
 } from "./report-shots.js";
 import {
   AGENT_VIEW_RANGE,
+  SESSIONS_LOCK_WAIT_RANGE,
   PAIR_LIMITS,
   WEB_WAIT_RANGE,
 } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
+  AGENTS_RESUME_LIMITS,
   HELD_WAIT_MINUTES,
   SESSIONS_SETTINGS_KEYS,
   SHELL_PATH_TIMEOUT,
@@ -110,6 +120,8 @@ export const PERSON_ONLY_SETTINGS = [
   "web_pairing",
   // Issue 796: whether agents may view this Den's pages, read-only.
   "web_agent_view",
+  // Issue 1299: how long a sessions write waits for another's lock.
+  "web_sessions",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
@@ -120,6 +132,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_log",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // Issue 1129: how many agents restart at a time, and how far apart.
+  "agents_resume",
   // issue_write: which roles write GitHub issues, and how many an hour.
   "agent_issue_writes",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
@@ -143,6 +157,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_agent_self_update",
   // Issue 163: whether Den runs as LaunchDaemons that outlive a logout.
   "keep_running_after_logout",
+  // Issue 1225: whether services that were up come back after a restart.
+  "restore_services_on_boot",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
   "embed",
   // Issue 172: whether, and when, the person is alerted outside the bell.
@@ -336,6 +352,15 @@ const WEB_AGENT_VIEW: Record<string, Limit> = {
   minutes: { key: "agent_view_minutes", ...AGENT_VIEW_RANGE, int: true },
 };
 
+/** Issue 1299: how long a sessions write waits for another's lock. */
+const WEB_SESSIONS: Record<string, Limit> = {
+  lock_wait_ms: {
+    key: "sessions_lock_wait_ms",
+    ...SESSIONS_LOCK_WAIT_RANGE,
+    int: true,
+  },
+};
+
 const AGENTS_LIST: Record<string, Limit> = {
   host_timeout_seconds: {
     key: "host_timeout_seconds",
@@ -360,6 +385,11 @@ const AGENTS_SHELL: Record<string, Limit> = {
     int: false,
   },
 };
+
+/** Issue 1129: user.yml agents.resume.* (den-config.ts agentsResume). */
+const AGENTS_RESUME: Record<string, Limit> = Object.fromEntries(
+  Object.entries(AGENTS_RESUME_LIMITS).map(([k, l]) => [k, { key: k, ...l }]),
+);
 
 /** issue_write: user.yml agents.issue_writes_per_hour (issue-write.ts). */
 const AGENT_ISSUE_WRITES: Record<string, Limit> = {
@@ -486,14 +516,26 @@ function patchBlock(
     if (e) return e;
   }
   apply.push(() => {
-    const b = isObj(user[block]) ? { ...user[block] } : {};
+    // "agents.resume": a block inside another; the outer one stays.
+    const [outer, inner] = block.split(".", 2) as [string, string?];
+    const host: Record<string, unknown> = inner
+      ? isObj(user[outer])
+        ? { ...user[outer] }
+        : {}
+      : user;
+    const name = inner ?? outer;
+    const b = isObj(host[name]) ? { ...host[name] } : {};
     for (const [k, v] of Object.entries(value)) {
       const key = limits[k]!.key;
       if (v === null) delete b[key];
       else b[key] = v;
     }
-    if (Object.keys(b).length) user[block] = b;
-    else delete user[block];
+    if (Object.keys(b).length) host[name] = b;
+    else delete host[name];
+    if (inner) {
+      if (Object.keys(host).length) user[outer] = host;
+      else delete user[outer];
+    }
   });
   return null;
 }
@@ -577,6 +619,22 @@ export function patchCliRows(
       else a.keep_running_after_logout = keep;
       if (Object.keys(a).length) user.agents = a;
       else delete user.agents;
+    });
+  }
+  // Issue 1225: services.restore_on_boot; the other services keys stay.
+  const restore = body.restore_services_on_boot;
+  if (restore !== undefined) {
+    if (restore !== null && typeof restore !== "boolean")
+      return {
+        ok: false,
+        error: "restore_services_on_boot is true, false or null",
+      };
+    apply.push(() => {
+      const sv = isObj(user.services) ? { ...user.services } : {};
+      if (restore === null) delete sv.restore_on_boot;
+      else sv.restore_on_boot = restore;
+      if (Object.keys(sv).length) user.services = sv;
+      else delete user.services;
     });
   }
   const lines = body.log_window_lines;
@@ -744,6 +802,14 @@ export function patchCliRows(
     ) ??
     patchBlock(
       user,
+      "web_sessions",
+      "web",
+      WEB_SESSIONS,
+      body.web_sessions,
+      apply,
+    ) ??
+    patchBlock(
+      user,
       "panes_reconnect",
       "panes",
       panes,
@@ -774,6 +840,14 @@ export function patchCliRows(
       "agents",
       AGENTS_SHELL,
       body.agents_shell,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agents_resume",
+      "agents.resume",
+      AGENTS_RESUME,
+      body.agents_resume,
       apply,
     ) ??
     patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply) ??

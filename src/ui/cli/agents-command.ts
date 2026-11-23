@@ -59,7 +59,7 @@
  *   handoff-check <id|file|->  (den#4) the handoff check (handoff.ts), like
  *           handback-check.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
@@ -1380,10 +1380,7 @@ function files(args: string[], d: AgentsResolved): number {
  * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
  * workspace's agents start with when the start names none.
  */
-async function permission(
-  args: string[],
-  d: AgentsResolved,
-): Promise<number> {
+async function permission(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
   const ws = workspaceFlag(where, p);
@@ -1494,7 +1491,12 @@ function startedLine(
 }
 
 /** Issue 989: an agent's own route on the server, in its project. */
-function agentRoute(d: AgentsResolved, id: string, ws: string | undefined, verb: string): string {
+function agentRoute(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  verb: string,
+): string {
   const rec = agentRecord(d, id, ws);
   return `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(rec.id)}/${verb}`;
 }
@@ -1636,7 +1638,7 @@ function rename(args: string[], d: AgentsResolved): number {
  * a stopped agent's folder, a repo of its project or a folder in it. A
  * conversation belongs to its folder, so its next start is a new one.
  */
-function folder(args: string[], d: AgentsResolved): number {
+async function folder(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents folder";
   personOnly(where, d, "an agent's folder");
   const p = parseArgs(where, args, {
@@ -1651,10 +1653,23 @@ function folder(args: string[], d: AgentsResolved): number {
   const dir = str(p, "--folder");
   if ((repo === undefined) === (dir === undefined))
     throw new UsageError(`${where} needs --repo <repo> or --folder <path>`);
-  const rec = setAgentFolder(d, id, workspaceFlag(where, p), {
+  const to = {
     ...(repo !== undefined ? { repo: checkRepoName(repo) } : {}),
     ...(dir !== undefined ? { folder: dir } : {}),
-  });
+  };
+  const ws = workspaceFlag(where, p);
+  // Issue 1182: the running server changes it, audited as the person; with
+  // none listening the CLI changes the record as before.
+  const json = await askServer(d, agentRoute(d, id, ws, "folder"), to);
+  if (json === "refused") return 1;
+  const rec =
+    json === null
+      ? setAgentFolder(d, id, ws, to)
+      : {
+          cwd: String(json.cwd ?? ""),
+          repo: typeof json.repo === "string" ? json.repo : undefined,
+          project: typeof json.project === "string" ? json.project : undefined,
+        };
   d.out(
     `agent ${id} now works in ${rec.cwd}${rec.repo ? ` (${rec.project} › ${rec.repo})` : ""}; its next start is a new conversation there`,
   );
@@ -2205,6 +2220,22 @@ async function accountsCmd(
           return 0;
         }
       }
+      // Issue 1182: the running server removes it, audited as the person;
+      // with none listening the CLI removes it as before.
+      const json = await askServer(d, "/api/agents/accounts/remove", {
+        runtime: runtimeId,
+        account: acct.id,
+      });
+      if (json === "refused") return 1;
+      if (json !== null) {
+        d.out(
+          `✓ removed ${String(json.removed ?? label(acct))}` +
+            (typeof json.store === "string"
+              ? `; its token is gone from ${json.store}`
+              : ""),
+        );
+        return 0;
+      }
       const name = A.accountRefName(runtimeId, acct.id);
       const r = await A.removeAccount({
         runtimeId,
@@ -2669,6 +2700,13 @@ async function doctor(
     for (const l of sandboxLines(sandbox)) d.out(l);
     d.out("");
   }
+  // Issue 1072: widening keys in the distribution's config, not read.
+  const notRead = notReadFromOrg(d);
+  const skipped = notAgentBlocks(d);
+  if (notRead.length || skipped.length) {
+    for (const l of notReadLines(notRead, skipped)) d.out(l);
+    d.out("");
+  }
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
@@ -2709,6 +2747,50 @@ export interface SandboxReport {
   outside: { id: string; project: string; reason: string }[];
   /** The rollout: agents from before the sandbox, not turned on yet. */
   fromBefore: number;
+}
+
+/** Issue 1072: the widening keys Den no longer reads from the org config. */
+export function notReadFromOrg(d: AgentsResolved): string[] {
+  const out: string[] = [];
+  try {
+    out.push(...(d.agentsConfig().notReadFromOrg ?? []));
+  } catch {
+    /* a bad config is its own row */
+  }
+  try {
+    out.push(...d.mcpNotReadFromOrg());
+  } catch {
+    /* a bad config is its own row */
+  }
+  return out;
+}
+
+export function notReadLines(
+  keys: string[],
+  skipped: { id: string; keys: string[] }[] = [],
+): string[] {
+  return [
+    "Settings read from config/local only",
+    ...keys.map(
+      (k) =>
+        `  ${k} is in the distribution's config, which Den no longer reads for it: move it to config/local/user.yml`,
+    ),
+    ...skipped.map(
+      (b) =>
+        `  agents.${b.id} in config/local/user.yml is not an agent block (keys: ${b.keys.join(", ")}), so Den skips it: an agent's block takes grants and sandbox only`,
+    ),
+  ];
+}
+
+/** Issue 1072: user.yml blocks that look like an agent's but aren't. */
+export function notAgentBlocks(
+  d: AgentsResolved,
+): { id: string; keys: string[] }[] {
+  try {
+    return d.agentsConfig().notAgentBlocks ?? [];
+  } catch {
+    return []; /* a bad config is its own row */
+  }
 }
 
 export function sandboxReport(d: AgentsResolved): SandboxReport {
@@ -2837,7 +2919,7 @@ export async function cmdAgents(
           return link(rest, d, "add");
         case "folder":
           await loadAgentWorkspaces(deps);
-          return folder(rest, d);
+          return await folder(rest, d);
         case "unlink":
           await loadAgentWorkspaces(deps);
           return link(rest, d, "remove");

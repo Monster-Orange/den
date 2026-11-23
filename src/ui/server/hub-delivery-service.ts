@@ -16,6 +16,7 @@ import type { AgentsResolved } from "../cli/agent-ops.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
+  toolsHeldAck,
   SeenDeliveries,
   writeDeliveryHealth,
   type Delivery,
@@ -35,6 +36,7 @@ import {
   type AgentRecord,
 } from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import { hubToolsFailed } from "../../shared/agents/hub-mcp-connect.js";
 import {
   feedKinds,
   InboxWatcher,
@@ -71,6 +73,8 @@ let ownerAskedAt = 0;
 let ownerWanted: () => void = () => undefined;
 /** #65: the inbox kinds Hub's feed carries (whoami features). */
 let feedCarries: ReadonlySet<string> = new Set();
+/** Issue 750: Hub takes the `held` ack (whoami lists deliveries.ack_held). */
+let ackHeldOn = false;
 interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
@@ -231,6 +235,7 @@ async function inboxSettings(): Promise<InboxSettings> {
         on: c.inboxWatch,
         pollSeconds: c.inboxPollSeconds,
         backoffMaxSeconds: c.inboxBackoffMaxSeconds,
+        readsPerSecond: c.inboxReadsPerSecond,
       };
   } catch {
     /* doctor says so; the defaults meanwhile */
@@ -414,6 +419,11 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       type: (id, text) => ops.typeIntoAgent(d, id, text),
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
       why: (id) => heldWhyOf(ops, d, id, (x) => o.waitingWhy?.(x) ?? null),
+      // Issue 750: its Hub tools failed to load (issue 749's record).
+      hubTools: (id) => {
+        const rec = readRecord(getStateDir(), id);
+        return rec && hubToolsFailed(getStateDir(), rec) ? false : null;
+      },
     },
     // Issue 701: the person's comment answers the agent's question.
     answered: (agent) => {
@@ -465,6 +475,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
+    ackHeld: () => deliveryAckHeld(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),
@@ -527,6 +538,24 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
 }
 
 /**
+ * Issue 750 step 4: what Hub's whoami lists, kept for the loop: the inbox
+ * kinds its feed carries (#65), and whether an agent whose Hub tools
+ * failed gets a `held` ack (deliveries.ack_held) or `queued` (an older
+ * Hub, or no answer). Reads only whoami: hub.groups never changes it.
+ */
+export function noteWhoami(
+  w: { features?: readonly string[] } | null | undefined,
+): void {
+  feedCarries = feedKinds(w?.features);
+  ackHeldOn = toolsHeldAck(w?.features).state === "held";
+}
+
+/** Issue 750 step 4: whether the loop acks `held` (else `queued`). */
+export function deliveryAckHeld(): boolean {
+  return ackHeldOn;
+}
+
+/**
  * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
  * a held Allow, a permission prompt or an ask_human question waiting for
  * their person (never typed into then); an idle one is not among them.
@@ -553,7 +582,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
-      feedCarries = feedKinds(w.features);
+      noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {
@@ -564,8 +593,10 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
     if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
   };
   // A new connection may be a different person: never keep the old one.
+  // Issue 750: nor the old Hub's features (until it says, `queued`).
   owner = null;
   loop?.ownerReset();
+  ackHeldOn = false;
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);

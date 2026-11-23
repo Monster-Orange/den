@@ -25,11 +25,13 @@ import {
   type Persona,
 } from "../../../src/shared/agents/personas.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
+import { gateRouteArgs } from "../../../src/shared/agents/den-claude.js";
 import {
   getRuntime,
   type LaunchInput,
 } from "../../../src/shared/agents/runtimes.js";
 import { readAgentsConfig } from "../../../src/shared/den-config.js";
+import { ownFilesDenyRules } from "../../../src/shared/agents/den-claude.js";
 
 const root = fs.realpathSync(
   fs.mkdtempSync(path.join(os.tmpdir(), "den-guard-")),
@@ -63,10 +65,20 @@ const agentHooks = (id: string) =>
   mergeHooks(
     guardrailHooks(
       GUARDRAILS_DIR,
-      hookCommands(GUARDRAILS_DIR, process.execPath, {
-        files: path.join(root, "files", id),
-        after: 3,
-      }),
+      hookCommands(
+        GUARDRAILS_DIR,
+        process.execPath,
+        {
+          files: path.join(root, "files", id),
+          after: 3,
+        },
+        [],
+        true,
+        undefined,
+        undefined,
+        // Issue 1264: this install's CLI and the gate's settings.
+        gateRouteArgs(),
+      ),
     ),
     // Issue 936: the sandbox's refusal note rides with Den's hooks.
     sandboxRefusalHooks(),
@@ -124,7 +136,15 @@ describe("a default-pack persona's launch", () => {
   it("writes the settings file for the hooks even with no state dir", () => {
     const l = launch(planner);
     expect(l.argv).toContain("--settings");
+    const files = path.join(root, "files", "planner");
     expect(l.settings).toEqual({
+      // Issue 362: the files it was launched with are denied to its edits.
+      permissions: {
+        deny: ownFilesDenyRules([
+          path.join(files, "settings.json"),
+          path.join(files, "mcp.json"),
+        ]),
+      },
       hooks: agentHooks("planner"),
       disableClaudeAiConnectors: true,
     });

@@ -164,6 +164,11 @@ export interface HubConfig {
    */
   inboxBackoffMaxSeconds: number;
   /**
+   * hub.inbox_reads_per_second (default 2, more than 0): the most inbox
+   * reads the whole install makes a second, however many agents it has.
+   */
+  inboxReadsPerSecond: number;
+  /**
    * 0.4.46 hub.mcp_retry_seconds (default 30, at least 5): how often Den
    * asks whether Hub answers again, for agents that started without its
    * tools (ui/cli/mcp-reconnect.ts).
@@ -189,6 +194,17 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
+  /**
+   * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
+   * the agents page's copy of Hub's groups is kept in memory before Den
+   * reads them again. Den stores no groups.
+   */
+  groupsCacheSeconds: number;
+  /**
+   * Issue 750 hub.groups (default false): whether Den reads Hub's groups
+   * for the agents page. Off: nothing new on the page, Hub never asked.
+   */
+  groups: boolean;
 }
 
 type RawHub =
@@ -213,10 +229,13 @@ type RawHub =
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
+      inbox_reads_per_second?: unknown;
       mcp_retry_seconds?: unknown;
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      groups_cache_seconds?: unknown;
+      groups?: unknown;
     }
   | undefined;
 
@@ -368,8 +387,24 @@ export function readHubConfig(
     "inbox_backoff_max_seconds",
     600,
   );
+  const rps = h.inbox_reads_per_second;
+  if (
+    rps !== undefined &&
+    rps !== null &&
+    !(typeof rps === "number" && Number.isFinite(rps) && rps > 0)
+  )
+    throw new Error("hub.inbox_reads_per_second must be a number above 0");
+  const inboxReads = typeof rps === "number" ? rps : 2;
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
+  const groupsCache = secs(h.groups_cache_seconds, "groups_cache_seconds", 30);
+  const groupsOn = h.groups;
+  if (
+    groupsOn !== undefined &&
+    groupsOn !== null &&
+    typeof groupsOn !== "boolean"
+  )
+    throw new Error("hub.groups must be true or false");
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
@@ -406,10 +441,13 @@ export function readHubConfig(
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,
+    inboxReadsPerSecond: inboxReads,
     mcpRetrySeconds: retry,
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    groupsCacheSeconds: groupsCache,
+    groups: groupsOn === true,
   };
 }
 
@@ -839,7 +877,7 @@ const personName = (v: unknown): string | undefined => {
 };
 
 /** One JSON call to Hub, bounded; its answer, or a HubCallError. */
-async function hubCall(
+export async function hubCall(
   url: string,
   init: RequestInit,
   opts: { timeoutMs?: number; fetch?: FetchFn },
@@ -882,6 +920,9 @@ async function hubCall(
       "forbidden",
       `${said ?? "Hub refused this install"}: ask an admin of the company on Hub`,
       str(body.error),
+      // Issue 750: Hub's answer too (its `code`, e.g. groups_not_in_plan).
+      403,
+      body,
     );
   if (res.status >= 400 && res.status < 500)
     throw new HubCallError(
@@ -1167,6 +1208,83 @@ export async function hubPlanCreate(
       ...(link && /^https?:\/\//.test(link) ? { url: link } : {}),
     };
   }
+}
+
+/**
+ * Issue 646: ask Hub for several new projects as ONE plan an owner applies
+ * once in Hub (Connect's review): POST <url>/api/projects/plan with
+ * {changes: [{op: "create", slug, name}, …], reason}, the same path as one
+ * create (issue 271). Slugs skip `taken` and each other. One name: the
+ * same as hubPlanCreate (a taken slug is re-picked).
+ */
+export async function hubPlanCreates(
+  url: string,
+  token: string,
+  ask: { names: string[]; reason: string; taken?: readonly string[] },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{
+  held: string;
+  state: string;
+  url?: string;
+  made: { name: string; slug: string }[];
+}> {
+  const names = ask.names.map((n) => n.replace(/\s+/g, " ").trim());
+  if (!names.length) throw new Error("no projects to create");
+  if (names.some((n) => !n || n.length > HUB_PROJECT_NAME_MAX))
+    throw new Error(
+      `name: 1 to ${HUB_PROJECT_NAME_MAX} characters, as Hub takes it`,
+    );
+  if (names.length === 1) {
+    const one = await hubPlanCreate(
+      url,
+      token,
+      { name: names[0]!, reason: ask.reason, taken: ask.taken },
+      opts,
+    );
+    return {
+      held: one.held,
+      state: one.state,
+      ...(one.url ? { url: one.url } : {}),
+      made: [{ name: one.name, slug: one.slug }],
+    };
+  }
+  const reason = ask.reason.replace(/\s+/g, " ").trim();
+  if (!reason) throw new Error("say why: Hub's owner reads the reason");
+  const taken = [...(ask.taken ?? [])];
+  const made = names.map((name) => {
+    const slug = hubSlugFor(name, taken);
+    taken.push(slug);
+    return { name, slug };
+  });
+  const b = await hubCall(
+    `${url}/api/projects/plan`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        changes: made.map((m) => ({
+          op: "create",
+          slug: m.slug,
+          name: m.name,
+        })),
+        reason,
+      }),
+    },
+    opts,
+  );
+  const held = str(b.held);
+  if (!held) throw new HubCallError("refused", "Hub held no change for it");
+  const link = str(b.url);
+  return {
+    held,
+    state: str(b.state) ?? "pending",
+    ...(link && /^https?:\/\//.test(link) ? { url: link } : {}),
+    made,
+  };
 }
 
 /** What Den reads of a plan's outcome (issue 271). */
@@ -1480,6 +1598,11 @@ export interface HubGrant {
   /** Hub's canonical origin: kept as hub.url. */
   hubUrl?: string;
   mcpUrl?: string;
+  /**
+   * Issue 648: what Hub's one approval did with the projects Den sent
+   * (checked by parseGrantReview; unread here).
+   */
+  review?: unknown;
 }
 
 /** Trade the one-time code for the install's token, server to server. */
@@ -1520,6 +1643,7 @@ export async function hubExchange(
     },
     ...(str(b.hub_url) ? { hubUrl: str(b.hub_url)!.replace(/\/+$/, "") } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
+    ...(b.review !== undefined ? { review: b.review } : {}),
   };
 }
 

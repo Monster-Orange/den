@@ -186,6 +186,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentFolder,
   setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
@@ -281,7 +282,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|file|say|order))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|folder|file|say|order))?$/;
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
@@ -675,6 +676,31 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 750: this install's groups from Hub, for the By group view.
+  if (pathname === "/api/hub/groups") {
+    const m = await import("./hub-groups-routes.js");
+    return m.hubGroupsRoute(req, res, await m.defaultHubGroupsDeps());
+  }
+  // Issue 646: Connect's one review: a row per project, Connect and link all.
+  if (pathname === "/api/hub/connect-review") {
+    const [rv, audit, guard] = await Promise.all([
+      import("./hub-connect-review.js"),
+      import("./audit.js"),
+      import("./request-guard.js"),
+    ]);
+    return rv.hubReviewRoute(
+      req,
+      res,
+      await rv.defaultHubReviewDeps((line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+      ),
+      `Settings › Hub, Connect's review (${guard.principalOf(req) ?? "person"})`,
+    );
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");
@@ -844,6 +870,7 @@ export async function handleAgentRoutes(
     | "compacting-clear"
     | "link"
     | "move"
+    | "folder"
     | "restart"
     | "file"
     | "say"
@@ -1055,6 +1082,13 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can move an agent", {
         status: 403,
       });
+    // Issue 1182: an agent asks for a folder with the held write
+    // agent_folder; this route is the person's.
+    if (verb === "folder" && (agent || actor))
+      throw new AgentError(
+        "only a person can change an agent's folder (an agent asks with agent_folder)",
+        { status: 403 },
+      );
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
     if (verb === "say" && !personOrOperator(req, "agent-say"))
@@ -1479,6 +1513,33 @@ export async function handleAgentRoutes(
             ? { note: FRESH_NOTE }
             : {},
       );
+    } else if (verb === "folder") {
+      // Issue 1182: {repo} or {folder}: a stopped agent's folder.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "repo" && k !== "folder")
+          throw new AgentError(
+            `${k}: unknown field (folder takes repo or folder)`,
+            { usage: true },
+          );
+      const repo = typeof body.repo === "string" ? body.repo : undefined;
+      const folder = typeof body.folder === "string" ? body.folder : undefined;
+      if ((repo === undefined) === (folder === undefined))
+        throw new AgentError("folder takes repo or folder, one of them", {
+          usage: true,
+        });
+      const rec = setAgentFolder(d, id!, ws, {
+        ...(repo !== undefined ? { repo } : {}),
+        ...(folder !== undefined ? { folder } : {}),
+      });
+      what = `set ${rec.id}'s folder to ${rec.cwd} in ${ws}`;
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        cwd: rec.cwd,
+        ...(rec.repo ? { repo: rec.repo, project: rec.project } : {}),
+      });
     } else if (verb === "move") {
       // D72: {to, when}: to another workspace, same conversation.
       const body = await jsonBody(req);
@@ -1529,7 +1590,13 @@ export async function handleAgentRoutes(
       sendJson(res, { ok: true, removed });
     } else {
       // D28: a due agent under auto relaunches from its handoff instead.
-      const r = await resumeOrRelaunch(d, id!, ws);
+      // Issue 1129: one waiting in the restart queue leaves it and starts
+      // now, ahead of the rest (a person opened it); never twice.
+      const run = () => resumeOrRelaunch(d, id!, ws);
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const r = (await (restartQueue().openNow(id!, run) ?? run())) as Awaited<
+        ReturnType<typeof resumeOrRelaunch>
+      >;
       if (r.kind === "relaunched") {
         what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
         audit(what, r.s.early ? "exited at once" : undefined);
@@ -2605,9 +2672,15 @@ export function startAgentUpkeep(
         log(`  ⚠ ${(e as Error).message}`);
       }
       const hubUp = await hubAnswers();
+      // Issue 1129: a batch at a time (agents.resume), never all at once.
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const { notificationDeps: bell } =
+        await import("./notification-service.js");
+      const queue = restartQueue({ log, store: () => bell().store });
       const f = await markInterrupted(d, {
         restoreAll,
         ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+        queue,
       });
       if (f.withoutHub.length) {
         log(

@@ -203,12 +203,16 @@ export async function handlePairRoutes(
       return true;
     }
     if (v.state === "approved") {
+      // Issue 1299: sign in first. A refused sign-in (the sessions file
+      // busy or unreadable) throws with the approval kept, so the next
+      // poll signs in. Nothing awaits between get() and claim(), so the
+      // claim cannot be lost after the session is made.
+      const s = deps.signIn(req);
       const claimed = deps.pairs.claim(p[1]);
       if (!claimed) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      const s = deps.signIn(req);
       if (claimed.link) deps.linkEnded?.(claimed.link, "signed-in", req);
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
