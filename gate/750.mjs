@@ -95,22 +95,28 @@ export async function run(ctx, s) {
     // ── With groups: By group ──
     await ctx.goto(p, "/agents");
     await p
-      .locator('.den-grph[data-group="g750-group"]')
+      .locator('[data-group="g750-group"] > [data-group="g750-group"]')
       .waitFor({ timeout: 20000 })
       .catch(() => {});
     await p
-      .locator(`[data-group="g750-group"] .agst [data-act="tools-restart"]`)
+      .locator(
+        `[data-group="g750-group"] [data-agent] [data-act="tools-restart"]`,
+      )
       .waitFor({ timeout: 10000 })
       .catch(() => {});
     out.groups = await p.evaluate((agent) => {
-      const g = document.querySelector('.agg[data-group="g750-group"]');
-      const h = g?.querySelector(".den-grph");
-      const name = h?.querySelector("a.den-grph-name");
-      const act = h?.querySelector("a.den-grph-act");
+      // The group's section holds its kit header; both carry data-group.
+      const h = document.querySelector(
+        '[data-group="g750-group"] > [data-group="g750-group"]',
+      );
+      const g = h?.parentElement;
+      // The header's name link has a title; Message group, an aria-label.
+      const name = h?.querySelector("a[title]");
+      const act = h?.querySelector("a[aria-label]");
       const sw = document.querySelector("[data-by-switch]");
-      const none = document.querySelector(".agg[data-group-none]");
-      const row = g?.querySelector(".agst, .agr");
-      const wrap = g?.querySelector(`.agst[data-agent="${agent}"]`);
+      const none = document.querySelector("[data-group-none]");
+      const row = g?.querySelector("button[data-id]");
+      const wrap = g?.querySelector(`div[data-agent="${agent}"][data-ws]`);
       return {
         switch: sw
           ? [...sw.querySelectorAll("button[data-by]")].map((b) => [
@@ -118,24 +124,22 @@ export async function run(ctx, s) {
               b.getAttribute("aria-pressed"),
             ])
           : null,
-        lead: h?.querySelector(".den-grph-lead")?.textContent?.trim() ?? null,
-        leadMark: !!h?.querySelector(".den-grph-lead .den-grph-mark"),
+        lead: h?.querySelector("[data-lead]")?.textContent?.trim() ?? null,
+        leadMark: !!h?.querySelector('[data-lead] [aria-hidden="true"]'),
         nameHref: name?.getAttribute("href") ?? null,
         nameTarget: name?.getAttribute("target") ?? null,
         actHref: act?.getAttribute("href") ?? null,
         actTarget: act?.getAttribute("target") ?? null,
         actText: act?.textContent?.trim() ?? null,
         memberRow: !!row && (row.textContent ?? "").length > 0,
-        memberInGroup: !!g?.querySelector(`.agr`) && !!wrap,
+        memberInGroup: !!g?.querySelector("button[data-id]") && !!wrap,
         notInGroup: none
-          ? (none.querySelector(".wsh")?.textContent ?? "").trim()
+          ? (none.firstElementChild?.textContent ?? "").trim()
           : null,
         unreach:
           wrap?.querySelector('[data-mcp-failed="hub"]')?.textContent?.trim() ??
           null,
-        restart: !!wrap?.querySelector(
-          '.agacts button[data-act="tools-restart"]',
-        ),
+        restart: !!wrap?.querySelector('button[data-act="tools-restart"]'),
         sideScroll:
           document.documentElement.scrollWidth >
           document.documentElement.clientWidth + 1,
@@ -153,20 +157,21 @@ export async function run(ctx, s) {
       groups = body;
       await ctx.goto(p, "/agents");
       await p
-        .locator(".agnote[data-note^='groups-']")
+        .locator("[data-note^='groups-']")
         .waitFor({ timeout: 15000 })
         .catch(() => {});
       lines[k] = await p.evaluate(() => {
-        const n = document.querySelector(".agnote[data-note^='groups-']");
+        const n = document.querySelector("[data-note^='groups-']");
         return {
           note: n?.getAttribute("data-note") ?? null,
           text: n?.textContent?.trim() ?? null,
           link: n?.querySelector("a")?.getAttribute("href") ?? null,
           linkText: n?.querySelector("a")?.textContent?.trim() ?? null,
           groupUi: document.querySelectorAll(
-            "[data-by-switch], .den-grph, .den-grph-act",
+            "[data-by-switch], [data-group], [data-group-none]",
           ).length,
-          byProject: document.querySelectorAll(".wsg[data-ws]").length,
+          byProject: document.querySelectorAll("div[data-ws]:not([data-agent])")
+            .length,
         };
       });
       await ctx.shotOf(p, `line-${k}-${tag}`);
