@@ -158,7 +158,10 @@ describe("issue 785: a catalog entry's resume template", () => {
     const { BUILTIN_CATALOG } =
       await import("../../../src/shared/agents/catalog.js");
     const of = (id: string) => BUILTIN_CATALOG.find((e) => e.id === id);
-    expect(of("codex")?.resume).toEqual({ argv: CODEX });
+    // Codex's notify is Den's report command (codex-notify-785.test.ts).
+    expect(of("codex")?.resume).toEqual({
+      argv: ["{bin}", "-c", "notify={report}", "resume", "{conversation}"],
+    });
     // Gemini's id is Den's own (gemini-den-conversation-785.test.ts).
     expect(of("gemini")?.resume).toEqual({
       argv: ["{bin}", "--resume", "{conversation}"],
@@ -171,9 +174,8 @@ describe("issue 785: a catalog entry's resume template", () => {
   });
 
   it("an added entry's template is held to the same rules", async () => {
-    const { BUILTIN_CATALOG, validateCatalog } =
+    const { validateCatalog } =
       await import("../../../src/shared/agents/catalog.js");
-    const codex = BUILTIN_CATALOG.find((e) => e.id === "codex")!;
     const entry = (resume: unknown) => ({
       id: "acme-cli",
       vendor: "Acme",
@@ -181,7 +183,7 @@ describe("issue 785: a catalog entry's resume template", () => {
       bins: ["acme"],
       version: { args: ["--version"], identity: { output: "acme" } },
       dirs: [],
-      launch: codex.launch,
+      launch: { argv: ["{bin}"] },
       resume,
     });
     expect(

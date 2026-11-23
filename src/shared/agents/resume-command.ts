@@ -79,7 +79,31 @@ export function resumeStartProblem(words: readonly string[]): string | null {
   if (slots.length !== 1 || !words.includes("{conversation}"))
     return 'exactly one "{conversation}", a word of its own';
   if (words.some((w) => w.includes("{bin}"))) return 'no "{bin}"';
+  if (words.some((w) => w.includes("{report}"))) return 'no "{report}"';
   return null;
+}
+
+/** The words Den's notify program runs, after Den's own CLI. */
+export const REPORT_WORDS = ["agents", "report-resume", "--notify-json"];
+
+/** A TOML basic string: JSON's escapes, and DEL escaped too. */
+function tomlString(s: string): string {
+  return JSON.stringify(s).replace(/\x7f/g, "\\u007f");
+}
+
+/**
+ * `argv` with "{report}" (in at most one word) filled with Den's notify
+ * program as a TOML array, `denCli` then REPORT_WORDS, each its own
+ * string. Null when a word needs it and `denCli` is unknown.
+ */
+export function fillReport(
+  argv: readonly string[],
+  denCli: readonly string[] | undefined,
+): string[] | null {
+  if (!argv.some((w) => w.includes("{report}"))) return [...argv];
+  if (!denCli?.length) return null;
+  const toml = `[${[...denCli, ...REPORT_WORDS].map(tomlString).join(",")}]`;
+  return argv.map((w) => w.split("{report}").join(toml));
 }
 
 /** The template's words: the binary first, the id in its slot. */

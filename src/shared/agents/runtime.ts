@@ -170,6 +170,11 @@ export interface LaunchInput {
    * runtime whose resume comes from that report (reportedResume).
    */
   resumeReport?: ResumeReport;
+  /**
+   * Issue 785: Den's own CLI, as the agent's MCP server runs it: what a
+   * catalog "{report}" names (Codex's notify program).
+   */
+  denCli?: string[];
   /** The CLI detect found (a setting, the login PATH, …); else searched again. */
   bin?: string;
   /**

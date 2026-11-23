@@ -248,10 +248,16 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
       identity: { output: "codex", package: "@openai/codex" },
     },
     dirs: ["$CODEX_INSTALL_DIR", "~/.local/bin", "{system}"],
-    launch: { argv: ["{bin}"] },
+    // Issue 785: its notify, for this launch only (`-c`, codex-rs
+    // utils/cli/src/config_override.rs), is Den's own report command: after
+    // each turn Codex runs it with the turn's JSON (hooks/src/legacy_notify.rs).
+    // It replaces a notify of the person's own, for Den's agents only.
+    launch: { argv: ["{bin}", "-c", "notify={report}"] },
     // Issue 785: `codex resume <SESSION_ID>` (codex-rs/cli: the resume
     // subcommand) continues that conversation.
-    resume: { argv: ["{bin}", "resume", "{conversation}"] },
+    resume: {
+      argv: ["{bin}", "-c", "notify={report}", "resume", "{conversation}"],
+    },
     // The composer's insert_newline is Ctrl+J (codex-rs/tui keymap): a
     // plain terminal's Shift+Enter and Alt+Enter submit (openai/codex#20580).
     softNewline: "lf",
@@ -650,6 +656,22 @@ export function validateCatalogEntry(
       argv: words,
       ...(denId ? { conversation: "den" as const, start } : {}),
     };
+  }
+  // Issue 785: "{report}" (Den's own notify program) in one word at most,
+  // and only where the agent reports its conversation.
+  {
+    const count = (ws: readonly string[]) =>
+      ws.filter((w) => w.includes("{report}")).length;
+    const inLaunch = count(argv);
+    const inResume = resume ? count(resume.argv) : 0;
+    if (inLaunch > 1 || inResume > 1)
+      throw new Error(
+        `${where}: "{report}" goes in one word of a command at most`,
+      );
+    if ((inLaunch || inResume) && (!resume || resume.conversation === "den"))
+      throw new Error(
+        `${where}: "{report}" only where its agent reports its conversation (a resume template, not conversation "den")`,
+      );
   }
   const traits: Pick<
     CatalogEntry,

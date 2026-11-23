@@ -101,7 +101,12 @@ describe("issue 785: a Codex agent resumes the conversation it reported", () => 
     expect(await agents(r, "resume", "coder")).toBe(0);
     const p = r.made[r.made.length - 1];
     expect(p.file).toBe(bin);
-    expect(p.args).toEqual(["resume", "019a-77"]);
+    expect(p.args).toEqual([
+      "-c",
+      'notify=["/dist/bin/acme","agents","report-resume","--notify-json"]',
+      "resume",
+      "019a-77",
+    ]);
   });
 
   it("a record that carries words beside the id: only the id is used", async () => {
@@ -116,7 +121,13 @@ describe("issue 785: a Codex agent resumes the conversation it reported", () => 
     codexSession(r, "019a-77", r.wsDir("north"));
     expect(await agents(r, "resume", "coder")).toBe(0);
     const p = r.made[r.made.length - 1];
-    expect([p.file, ...p.args]).toEqual([bin, "resume", "019a-77"]);
+    expect([p.file, ...p.args]).toEqual([
+      bin,
+      "-c",
+      'notify=["/dist/bin/acme","agents","report-resume","--notify-json"]',
+      "resume",
+      "019a-77",
+    ]);
   });
 
   it("an id that would read as a flag: refused; its startup command never changes", async () => {
@@ -186,10 +197,18 @@ describe("issue 785: after a restart or crash", () => {
     ]);
     expect(found.failed).toEqual([]);
     const runs = r.made.map((p) => [p.file, p.args]);
-    expect(runs).toContainEqual([bin, ["resume", "019a-77"]]);
+    expect(runs).toContainEqual([
+      bin,
+      [
+        "-c",
+        'notify=["/dist/bin/acme","agents","report-resume","--notify-json"]',
+        "resume",
+        "019a-77",
+      ],
+    ]);
     // The fresh one: Codex's own launch, not a resume.
     expect(
-      runs.filter(([f, a]) => f === bin && (a as string[])[0] !== "resume"),
+      runs.filter(([f, a]) => f === bin && !(a as string[]).includes("resume")),
     ).toHaveLength(1);
   });
 });

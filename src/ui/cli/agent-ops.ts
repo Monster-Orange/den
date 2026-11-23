@@ -3679,6 +3679,11 @@ function launchInput(
     worktree: dir,
     ...(model ? { model } : {}),
     mcp: agentMcp(d, ws, id, grants),
+    // Issue 785: Den's own CLI, for a runtime's notify ({report}).
+    denCli: (() => {
+      const c = d.mcpServer().command;
+      return Array.isArray(c) ? [...c] : [c];
+    })(),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
     // Issue 816: test installs announced on this computer.

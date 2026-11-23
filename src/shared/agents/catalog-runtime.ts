@@ -21,6 +21,7 @@ import { configuredRuntimeBin } from "../den-config.js";
 import { entryDirs, type CatalogEntry } from "./catalog.js";
 import {
   CONVERSATION_ID,
+  fillReport,
   resumeArgv,
   resumeCommandFor,
 } from "./resume-command.js";
@@ -85,6 +86,23 @@ function denIdStart(e: CatalogEntry): readonly string[] | undefined {
   return e.resume?.conversation === "den" ? e.resume.start : undefined;
 }
 
+/**
+ * Issue 785: `argv` with "{report}" filled with Den's own notify program,
+ * or a LaunchError when Den's CLI is not known.
+ */
+function withReport(
+  e: CatalogEntry,
+  argv: string[],
+  denCli: readonly string[] | undefined,
+): string[] {
+  const out = fillReport(argv, denCli);
+  if (!out)
+    throw new LaunchError(
+      `${e.id}: Den's own command is not known, so its notify can't be set`,
+    );
+  return out;
+}
+
 /** The launch argv: the entry's template, "{bin}" the path found. */
 export function launchArgv(e: CatalogEntry, bin: string): string[] {
   return e.launch.argv.map((a) => a.split("{bin}").join(bin));
@@ -123,7 +141,7 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
         : undefined;
       return {
         argv: [
-          ...launchArgv(e, bin),
+          ...withReport(e, launchArgv(e, bin), input.denCli),
           ...(den && id
             ? den.map((w) => (w === "{conversation}" ? id : w))
             : []),
@@ -189,7 +207,7 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
                 );
             if ("problem" in got) return null;
             return {
-              argv: got.argv,
+              argv: withReport(e, got.argv, input.denCli),
               env: {},
               warnings: [
                 `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,

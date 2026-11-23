@@ -507,7 +507,12 @@ describe("launch", () => {
       runtime: "codex",
     });
     const pty = r.made.at(-1)!;
-    expect([pty.file, ...pty.args]).toEqual([codex]);
+    // Issue 785: with Den's own notify, for this launch only.
+    expect([pty.file, ...pty.args]).toEqual([
+      codex,
+      "-c",
+      'notify=["/dist/bin/acme","agents","report-resume","--notify-json"]',
+    ]);
     expect(pty.opts.cwd).toBe(r.wsDir("north"));
     expect(s.rec.runtime).toBe("codex");
     expect(s.warnings.join("\n")).toMatch(
