@@ -15,16 +15,20 @@
  *
  * The run's own Playwright setup calls these, with what Den handed it:
  *
- *   import { allowFromEnv, connectGuarded, guardBrowser, pinLoopbackNames }
+ *   import { connectGuarded, pinLoopbackNames }
  *   pinLoopbackNames();
- *   const allow = allowFromEnv(process.env);   // DEN_GATE_ALLOW
- *   guardBrowser(await connectGuarded(chromium, process.env.DEN_PW_WS),
- *     allow, (url) => console.error(`blocked: ${url}`));
+ *   const browser = await connectGuarded(chromium, process.env.DEN_PW_WS);
  *
  * Issue 1033: connectGuarded connects with exposeNetwork from
  * DEN_PW_EXPOSE (the gate hands a box run "<loopback>"), so the box's
  * browser reaches this machine's ports. A box run that connects without
  * it is told once (warnBoxExpose).
+ *
+ * Issue 1205: the connect is guarded. When it exposes this machine's
+ * network, the browser comes back already guarded by DEN_GATE_ALLOW (no
+ * list: nothing loads), each block reported. A browser connected another
+ * way needs guardBrowser; guarding twice is harmless (a second guard can
+ * only narrow what loads).
  */
 import dns from "dns";
 
@@ -149,6 +153,48 @@ export interface ContextLike {
   ): Promise<unknown>;
 }
 
+/** One guard: its allow list, who hears its blocks, the run's own ports. */
+interface Guard {
+  allow: string[];
+  onBlock: (url: string) => void;
+  ownPorts?: { has(port: number): boolean };
+}
+
+/**
+ * Routes one context through every guard in `guards` (read at each
+ * request, so a guard added later counts): a URL loads only when each
+ * allows it, and each guard that refuses it hears of it.
+ */
+async function routeThrough<C extends ContextLike>(
+  ctx: C,
+  guards: Guard[],
+): Promise<C> {
+  const refusedBy = (url: string) =>
+    guards.filter((g) => !allowedUrl(url, g.allow, g.ownPorts));
+  await ctx.route("**/*", async (route) => {
+    const url = route.request().url();
+    const no = refusedBy(url);
+    if (!no.length) {
+      await route.continue();
+      return;
+    }
+    for (const g of no) g.onBlock(url);
+    await route.abort("blockedbyclient");
+  });
+  if (typeof ctx.routeWebSocket === "function")
+    await ctx.routeWebSocket(/.*/, (ws) => {
+      const url = ws.url();
+      const no = refusedBy(url);
+      if (!no.length) {
+        ws.connectToServer();
+        return;
+      }
+      for (const g of no) g.onBlock(url);
+      ws.close();
+    });
+  return ctx;
+}
+
 /** Guards one browser context: anything else is stopped and reported. */
 export async function guardContext<C extends ContextLike>(
   ctx: C,
@@ -156,45 +202,57 @@ export async function guardContext<C extends ContextLike>(
   onBlock: (url: string) => void = () => {},
   ownPorts?: { has(port: number): boolean },
 ): Promise<C> {
-  await ctx.route("**/*", async (route) => {
-    const url = route.request().url();
-    if (allowedUrl(url, allow, ownPorts)) {
-      await route.continue();
-      return;
-    }
-    onBlock(url);
-    await route.abort("blockedbyclient");
-  });
-  if (typeof ctx.routeWebSocket === "function")
-    await ctx.routeWebSocket(/.*/, (ws) => {
-      const url = ws.url();
-      if (allowedUrl(url, allow, ownPorts)) {
-        ws.connectToServer();
-        return;
-      }
-      onBlock(url);
-      ws.close();
-    });
-  return ctx;
+  return routeThrough(ctx, [{ allow, onBlock, ownPorts }]);
 }
 
-/** Every context the browser makes is guarded (service workers off). */
-export function guardBrowser<
-  B extends { newContext(o?: Record<string, unknown>): Promise<ContextLike> },
->(
+/** Where a guarded browser keeps its guards (issue 1205). */
+const GUARDS = Symbol.for("den.gate.pwGuards");
+
+type GuardableBrowser = {
+  newContext(o?: Record<string, unknown>): Promise<ContextLike>;
+  newPage?(o?: Record<string, unknown>): Promise<unknown>;
+};
+
+/**
+ * Every context the browser makes is guarded (service workers off),
+ * newPage's own one too. Issue 1205: guarding a browser again adds this
+ * guard beside the first, and never loosens it: a URL loads only when
+ * every guard allows it, one route per context. The same allow list and
+ * reporter again changes nothing.
+ */
+export function guardBrowser<B extends GuardableBrowser>(
   browser: B,
   allow: string[],
   onBlock: (url: string) => void = () => {},
   ownPorts?: { has(port: number): boolean },
 ): B {
+  const held = browser as B & { [GUARDS]?: Guard[] };
+  const guards = held[GUARDS];
+  if (guards) {
+    const key = [...allow].sort().join(",");
+    const same = guards.some(
+      (g) => [...g.allow].sort().join(",") === key && g.onBlock === onBlock,
+    );
+    if (!same) guards.push({ allow: [...allow], onBlock, ownPorts });
+    return browser;
+  }
+  const list: Guard[] = [{ allow: [...allow], onBlock, ownPorts }];
+  Object.defineProperty(held, GUARDS, { value: list });
   const make = browser.newContext.bind(browser);
   browser.newContext = async (o: Record<string, unknown> = {}) =>
-    guardContext(
-      await make({ ...o, serviceWorkers: "block" }),
-      allow,
-      onBlock,
-      ownPorts,
-    );
+    routeThrough(await make({ ...o, serviceWorkers: "block" }), list);
+  // Playwright's browser.newPage makes its own context, not through
+  // newContext: give it a guarded one, closed with the page.
+  if (typeof browser.newPage === "function")
+    browser.newPage = async (o?: Record<string, unknown>) => {
+      const ctx = (await browser.newContext(o)) as ContextLike & {
+        newPage(): Promise<{ once?(e: "close", f: () => void): unknown }>;
+        close?(): Promise<unknown>;
+      };
+      const page = await ctx.newPage();
+      page.once?.("close", () => void ctx.close?.().catch(() => {}));
+      return page;
+    };
   return browser;
 }
 
@@ -297,19 +355,50 @@ export function warnBoxExpose(
   return true;
 }
 
+/** Issue 1205: what connectGuarded guards an exposed browser with. */
+export interface ConnectGuard {
+  /** The host:ports pages may load; DEN_GATE_ALLOW when not given. */
+  allow?: string[];
+  /** Hears each refused URL; a "pw-guard: refused <url>" line when not given. */
+  onBlock?: (url: string) => void;
+  /** The ports a "host:*" entry covers; the run's own (ownPorts) when not given. */
+  ownPorts?: { has(port: number): boolean };
+}
+
 /**
  * Issue 1033: connects to the run's Playwright server with exposeNetwork
  * from DEN_PW_EXPOSE (connectOptions), saying once if a box run still
  * goes without it.
+ *
+ * Issue 1205: when the connection exposes this machine's network (any
+ * exposeNetwork), the browser comes back already guarded (guardBrowser):
+ * pages load only DEN_GATE_ALLOW's host:ports (or `guard.allow`), each
+ * block is reported, and with no allow list nothing loads. It never
+ * reaches this machine unguarded. Not exposed: the browser as given.
  */
-export async function connectGuarded<O extends { exposeNetwork?: string }, B>(
+export async function connectGuarded<
+  O extends { exposeNetwork?: string },
+  B extends GuardableBrowser,
+>(
   type: { connect(ws: string, o: O): Promise<B> },
   ws: string,
   o?: O,
   env: NodeJS.ProcessEnv = process.env,
   say?: (line: string) => void,
+  guard: ConnectGuard = {},
 ): Promise<B> {
   const opts = connectOptions(env, o);
   warnBoxExpose(env, opts, say);
-  return type.connect(ws, opts);
+  const browser = await type.connect(ws, opts);
+  if (!opts.exposeNetwork?.trim()) return browser;
+  const tell = say ?? ((l: string) => console.error(l));
+  // Loaded here, not at the top: own-ports watches every listen in the
+  // process, which only a run that exposes its loopback needs.
+  const own = guard.ownPorts ?? (await import("./own-ports.js")).ownPorts();
+  return guardBrowser(
+    browser,
+    guard.allow ?? allowFromEnv(env),
+    guard.onBlock ?? ((url) => tell(`pw-guard: refused ${url}`)),
+    own,
+  );
 }
