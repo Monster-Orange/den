@@ -128,6 +128,11 @@ import {
 } from "../../shared/edge/address-check.js";
 import { localDateTime } from "../../shared/local-time.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import {
+  personServerFor,
+  throughServer,
+  type PersonServer,
+} from "./person-server.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
   action: "up" | "down" | "restart" | "open";
@@ -2866,6 +2871,8 @@ export async function cmdWebOwner(
     client?: GithubDeviceClient;
     sleep?: (ms: number) => Promise<void>;
     clientId?: string;
+    /** Issue 989: the running server (default: this install's). */
+    server?: PersonServer;
   } = stdIo,
 ): Promise<number> {
   const usage = `Usage: ${product().cli} web owner [link|show|unlink] [--json]\n`;
@@ -2905,6 +2912,42 @@ export async function cmdWebOwner(
           : `No owner is linked. Run \`${cli} web owner link\`.\n`,
       );
     return 0;
+  }
+  // Issue 989: the running server links and unlinks the owner when it
+  // answers (a person's grant there); its refusal is final. No server:
+  // the CLI does it here, as before.
+  const server = io.server ?? personServerFor(stateDir);
+  const ask = async (
+    method: "GET" | "POST",
+    p: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown> | null | "refused"> => {
+    try {
+      return await throughServer(server, method, p, body);
+    } catch (e) {
+      io.err(`${cli}: ${(e as Error).message}\n`);
+      return "refused";
+    }
+  };
+  if (sub === "unlink") {
+    const answer = await ask("POST", "/api/web/owner/unlink", {});
+    if (answer === "refused") return 1;
+    if (answer) {
+      const login = typeof answer.was === "string" ? answer.was : null;
+      if (asJson) io.out(`${JSON.stringify({ unlinked: login }, null, 2)}\n`);
+      else
+        io.out(
+          login
+            ? `Unlinked @${login}. Signed-in browsers stay signed in (\`${cli} web logout\` ends them).\n`
+            : "No owner was linked.\n",
+        );
+      return 0;
+    }
+  }
+  if (sub === "link") {
+    const started = await ask("POST", "/api/web/owner/link", {});
+    if (started === "refused") return 1;
+    if (started) return linkThroughServer(started, ask, io, asJson);
   }
   if (sub === "unlink") {
     const was = clearWebOwner(stateDir);
@@ -2980,6 +3023,60 @@ export async function cmdWebOwner(
         "the token was not kept. Sign in with GitHub from your other devices now works.\n",
     );
   return 0;
+}
+
+/** How often `web owner link` asks the server for the flow's outcome. */
+const LINK_POLL_MS = 2_000;
+
+/**
+ * Issue 989: `web owner link` through the server: it runs GitHub's device
+ * flow and keeps the owner; the CLI shows the code and asks for the
+ * outcome until it is approved, refused or expired.
+ */
+async function linkThroughServer(
+  started: Record<string, unknown>,
+  ask: (
+    method: "GET" | "POST",
+    p: string,
+  ) => Promise<Record<string, unknown> | null | "refused">,
+  io: CliIo & { sleep?: (ms: number) => Promise<void> },
+  asJson: boolean,
+): Promise<number> {
+  const cli = product().cli;
+  const id = typeof started.id === "string" ? started.id : "";
+  if (!id) {
+    io.err(`${cli}: the web app didn't start a link; run it again\n`);
+    return 1;
+  }
+  io.out(
+    `Open ${String(started.verificationUri ?? GITHUB_DEVICE_PAGE)} and enter this code:\n\n    ${String(started.userCode)}\n\n` +
+      "Waiting for you to approve it on GitHub (it asks for no permissions)…\n",
+  );
+  const sleep =
+    io.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (;;) {
+    await sleep(LINK_POLL_MS);
+    const v = await ask("GET", `/api/web/owner/link/${encodeURIComponent(id)}`);
+    if (v === "refused") return 1;
+    if (v === null) {
+      io.err(`${cli}: the web app stopped answering; run it again\n`);
+      return 1;
+    }
+    if (v.state === "pending") continue;
+    if (v.state === "ok") {
+      const login = String(v.login ?? "");
+      if (asJson) io.out(`${JSON.stringify({ owner: { login } }, null, 2)}\n`);
+      else
+        io.out(
+          `Linked @${login} as this Den's owner; the token was not kept. Sign in with GitHub from your other devices now works.\n`,
+        );
+      return 0;
+    }
+    io.err(
+      `${cli}: ${String(v.error ?? `the link ended (${String(v.state)})`)}\n`,
+    );
+    return 1;
+  }
 }
 
 // ── Issue 810: the fixture person (live checks on a test install) ──────────

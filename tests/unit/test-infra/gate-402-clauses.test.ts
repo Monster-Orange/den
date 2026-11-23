@@ -31,11 +31,11 @@ const BEFORE = [
   { item: "blog", project: null },
 ];
 
-function runGate(policy: string) {
+function runGate(policy: string, persons: unknown[] = []) {
   const js = `
     const g = await import("./gate/402.mjs");
     const { fakeBed } = await import("./tests/fixtures/gate402-fake-den.mjs");
-    const bed = fakeBed({ policy: ${JSON.stringify(policy)} });
+    const bed = fakeBed({ policy: ${JSON.stringify(policy)}, persons: ${JSON.stringify(persons)} });
     bed.seed(${JSON.stringify(BEFORE)});
     await bed.ctx.api("/api/scope", { method: "POST", body: JSON.stringify({ scope: "south" }) });
     let error = null, result = null, rows = null, state = null;
@@ -81,6 +81,21 @@ describe("gate/402.mjs: the pin is (project or none, item)", () => {
     expect((r.rows ?? []).filter((x) => x.ok !== true)).toEqual([]);
     expect(r.scope).toBe("south");
     expect(r.pins).toEqual(BEFORE);
+  });
+
+  it("the person already has pins, which a fixture save never removes (issue 946): every clause still passes, and their pins stay", () => {
+    // As on the bed: old id-only pins in the person's user.yml, one of an
+    // item the check would otherwise test (shop/db, north's alone).
+    const persons = ["shop/db", "common"];
+    const r = runGate("good", persons);
+    expect(r.error).toBeNull();
+    expect((r.rows ?? []).filter((x) => x.ok !== true)).toEqual([]);
+    expect(r.pins).toEqual(
+      expect.arrayContaining([
+        { item: "shop/db", project: "north" },
+        { item: "common", project: null },
+      ]),
+    );
   });
 
   it("0.4.66's model (ids only, the item's own project) fails clauses 2, 3 and 5", () => {
