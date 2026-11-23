@@ -371,11 +371,12 @@ describe.each(ENGINES)(
       await phoneShot(p, engine, "5-reorder-375");
       // Each row's words, its mode tag too, end 8px before its Up.
       const clear = await p.evaluate(() =>
-        [...document.querySelectorAll("#agl .agord")].map((w) => {
-          const up = w.querySelector('[data-act="ord-up"]')!;
+        [...document.querySelectorAll('#agl [data-act="ord-up"]')].map((up) => {
+          // The row: Up's own [data-agent]; its words, the first child.
+          const words = up.closest("[data-agent]")!.firstElementChild!;
           const left = up.getBoundingClientRect().left;
           const right = Math.max(
-            ...[...w.querySelectorAll(".agord-r *")].map(
+            ...[...words.querySelectorAll("*")].map(
               (e) => e.getBoundingClientRect().right,
             ),
           );
