@@ -69,7 +69,8 @@ describe("issue 981's live check", () => {
 });
 
 describe("issue 898's live check", () => {
-  const LONG = "Gate 898 a project whose name runs well past the row";
+  const LONG =
+    "Gate 898 a project whose name runs well past the row on any iPad";
   const row = (fixed: boolean, text = LONG) => ({
     tag: "webkit-820x1180",
     text,
@@ -99,7 +100,7 @@ describe("issue 898's live check", () => {
     const r = rows(898, [cell("webkit", [row(true)])]);
     expect(r.map((x) => x.ok)).toEqual([true, true]);
     expect(r[1].detail).toContain(
-      "label 420px of a 300px row, cut short with an ellipsis",
+      "label 420px of a 300px row; cut short; ellipsis; nowrap",
     );
   });
 
@@ -108,6 +109,12 @@ describe("issue 898's live check", () => {
       cell("webkit", [{ ...row(true, "All active (8)"), cut: false }]),
     ]);
     expect(r.map((x) => x.ok)).toEqual([true, false]);
+  });
+
+  it("the bed's name fits the row (as ed96400d's run found): the FAIL says the name was never cut", () => {
+    const r = rows(898, [cell("webkit", [{ ...row(true), cut: false }])]);
+    expect(r.map((x) => x.ok)).toEqual([true, false]);
+    expect(r[1].detail).toMatch(/^the name fits, so it was never cut\. /);
   });
 
   it("the bed has no long-named project: both clauses are not run (needs-long-project), never failed", () => {

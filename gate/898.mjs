@@ -15,9 +15,13 @@ export const clauses = [
   "a long project name is cut short with an ellipsis instead of wrapping",
 ];
 
-/** The bed's long-named project: no iPad-width row holds it on one line. */
+/**
+ * The bed's long-named project: 64 characters, Den's longest name. At iPad
+ * widths the picker's label box is about 340px; 52 characters (338px) fit,
+ * so the name is the longest Den allows.
+ */
 export const BED_LONG_NAME =
-  "Gate 898 a project whose name runs well past the row";
+  "Gate 898 a project whose name runs well past the row on any iPad";
 
 const json = (method, body) => ({
   method,
@@ -158,7 +162,7 @@ export function expect(cells) {
   const say = (r) =>
     r.error
       ? `${r.tag}: ${r.error}`
-      : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row${r.cut ? ", cut short" : ""}${r.ellipsis ? " with an ellipsis" : ""}) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
+      : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row; ${r.cut ? "cut short" : "fits, not cut"}; ${r.ellipsis ? "ellipsis" : "no ellipsis"}; ${r.nowrap ? "nowrap" : "wraps"}) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
   const ok = (f) => all.length > 0 && all.every(f);
   const skip = all.find((r) => r.skip)?.skip;
   if (skip)
@@ -169,9 +173,26 @@ export function expect(cells) {
       detail: `the bed has no active project named "${BED_LONG_NAME}"`,
     }));
   const detail = all.map(say).join("; ");
+  // Which of the long-name conditions a row missed, so a FAIL says why.
+  const missed = (r) =>
+    r.error
+      ? []
+      : [
+          r.text !== r.want && "not the bed's long-named project",
+          !r.cut && "the name fits, so it was never cut",
+          !r.ellipsis && "no ellipsis",
+          !r.nowrap && "it may wrap",
+          !good(r) && "the row isn't one line with ✓ at its end",
+        ].filter(Boolean);
+  const why = [...new Set(all.flatMap(missed))];
   const evidence = all.map((r) => `${r.tag}.png`);
   return [
     { clause: clauses[0], ok: ok(good), detail, evidence },
-    { clause: clauses[1], ok: ok(cut), detail, evidence },
+    {
+      clause: clauses[1],
+      ok: ok(cut),
+      detail: why.length ? `${why.join("; ")}. ${detail}` : detail,
+      evidence,
+    },
   ];
 }
