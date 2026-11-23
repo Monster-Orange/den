@@ -26,6 +26,8 @@
  *   /api/verify/runs/:id/modules/:module/findings?project=
  *                                       a scan's findings and threshold
  */
+import * as fs from "fs";
+import * as path from "path";
 import type * as http from "http";
 import {
   moduleChanges,
@@ -62,6 +64,7 @@ import {
 } from "../../shared/verify/settings.js";
 import {
   listRunRecords,
+  moduleResultsDir,
   recentRuns,
   readRunRecord,
   type RunActor,
@@ -410,6 +413,49 @@ const decoded = (v: string): string | null => {
 const RUN_PATH =
   /^\/api\/verify\/runs\/([A-Za-z0-9][A-Za-z0-9._-]{0,79})(\/report)?$/;
 
+/**
+ * Issue 212: the commits between a failing range's last good run and its
+ * first bad one, in the module's repo (at most `max`); [] when there is no
+ * such range or git can't say.
+ */
+function commitsBetween(
+  d: VerifyServerDeps,
+  project: string,
+  module: string,
+  h: ReturnType<typeof moduleHistory>,
+  max: number,
+): { commit: string; subject: string }[] {
+  const from = h.firstFailing?.lastGood?.commit;
+  const to = h.firstFailing?.firstBad.commit;
+  const git = d.git ?? realGit;
+  if (!from || !to || from === to || !git.between) return [];
+  const mods = modulesOf(d, project);
+  const m = mods.ok
+    ? mods.modules.find((x) => x.id === module || x.name === module)
+    : undefined;
+  if (!m) return [];
+  return git.between(m.repoPath, from, to, max) ?? [];
+}
+
+/** Issue 212: the SARIF file a module's run wrote, or null. */
+function sarifFile(
+  stateDir: string,
+  project: string,
+  runId: string,
+  moduleId: string,
+): string | null {
+  try {
+    const dir = moduleResultsDir(stateDir, project, runId, moduleId);
+    const f = fs
+      .readdirSync(dir)
+      .filter((x) => /\.sarif(\.json)?$/i.test(x))
+      .sort()[0];
+    return f ? path.join(dir, f) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Issue 209: the page's reads (GET); false when `pathname` is none of them. */
 function handleVerifyReads(
   req: http.IncomingMessage,
@@ -460,14 +506,19 @@ function handleVerifyReads(
       );
       return true;
     }
+    // Every run of the project: another environment's or module's runs
+    // must never push this module's own out of the window.
+    const h = moduleHistory(
+      listRunRecords(stateDir, p.project, Number.MAX_SAFE_INTEGER),
+      module,
+      env,
+      { ...s, historyLimit: limit },
+    );
     sendJson(res, {
       ok: true,
-      ...moduleHistory(
-        listRunRecords(stateDir, p.project, Math.max(limit, s.flakyWindow) * 4),
-        module,
-        env,
-        { ...s, historyLimit: limit },
-      ),
+      project: p.project,
+      ...h,
+      commits: commitsBetween(deps, p.project, module, h, limit),
     });
     return true;
   }
@@ -493,14 +544,17 @@ function handleVerifyReads(
     }
     sendJson(res, {
       ok: true,
+      project: p.project,
       runId: rec.runId,
       module: m.name,
+      moduleId: m.id,
       state: m.state,
       commit: rec.commit ?? null,
       failOn: m.findings.failOn,
       counts: m.findings.counts,
       findings: m.findings.list,
       report: !!m.tail?.length,
+      sarif: !!sarifFile(stateDir, p.project, rec.runId, m.id),
     });
     return true;
   }
@@ -542,6 +596,33 @@ function handleVerifyReads(
     return true;
   }
   const name = q.get("module") ?? "";
+  // Issue 212: "Open report (SARIF)", the file the scan wrote, as it is.
+  if (q.get("kind") === "sarif") {
+    const m = rec.modules.find((x) => x.name === name || x.id === name);
+    const file = m ? sarifFile(stateDir, p.project, rec.runId, m.id) : null;
+    let body: Buffer | null = null;
+    try {
+      body = file ? fs.readFileSync(file) : null;
+    } catch {
+      body = null;
+    }
+    if (!body) {
+      sendJson(
+        res,
+        { ok: false, error: `run ${rec.runId} kept no SARIF for "${name}"` },
+        404,
+      );
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": "application/sarif+json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "sandbox",
+      "Cache-Control": "no-store",
+    });
+    res.end(body);
+    return true;
+  }
   const tail = rec.modules.find((m) => m.name === name || m.id === name)?.tail;
   if (!tail?.length) {
     sendJson(

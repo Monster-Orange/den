@@ -74,6 +74,16 @@ export interface GitProbe {
    * not; null when git can't say (the commit is gone): counts as changed.
    */
   changedSince(repoPath: string, commit: string): string[] | null;
+  /**
+   * Issue 212: the commits after `from` up to and including `to`, oldest
+   * first, at most `max`; null when git can't say (either commit is gone).
+   */
+  between?(
+    repoPath: string,
+    from: string,
+    to: string,
+    max: number,
+  ): { commit: string; subject: string }[] | null;
 }
 
 function git(repoPath: string, args: string[]): string {
@@ -103,7 +113,34 @@ export const realGit: GitProbe = {
       return null;
     }
   },
+  between(repoPath, from, to, max) {
+    // Commit ids only (never options): both come from Den's own records.
+    if (!COMMIT_RE.test(from) || !COMMIT_RE.test(to)) return null;
+    try {
+      return git(repoPath, [
+        "log",
+        `--max-count=${Math.max(1, Math.floor(max))}`,
+        "--format=%h%x09%s",
+        `${from}..${to}`,
+        "--",
+      ])
+        .split("\n")
+        .filter(Boolean)
+        .reverse()
+        .map((l) => {
+          const tab = l.indexOf("\t");
+          return {
+            commit: l.slice(0, tab),
+            subject: l.slice(tab + 1).slice(0, 200),
+          };
+        });
+    } catch {
+      return null;
+    }
+  },
 };
+
+const COMMIT_RE = /^[0-9a-f]{4,64}$/;
 
 /** A watch glob as a regular expression: `**` any folders, `*` and `?` in one. */
 export function globRegExp(glob: string): RegExp {

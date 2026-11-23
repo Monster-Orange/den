@@ -116,6 +116,24 @@ export function writeRunRecord(stateDir: string, rec: RunRecord): void {
   }
 }
 
+/**
+ * The folder a run gives one module for what it writes (DEN_RESULTS_DIR):
+ * its reports, such as a scan's SARIF. Beside the run's record.
+ */
+export function moduleResultsDir(
+  stateDir: string,
+  project: string,
+  runId: string,
+  moduleId: string,
+): string {
+  if (!RUN_RE.test(runId)) throw new Error(`"${runId}" is not a run's id`);
+  return path.join(
+    runsDir(stateDir, project),
+    runId,
+    moduleId.replace(/[^A-Za-z0-9._-]+/g, "_"),
+  );
+}
+
 /** One run's record, or null (no such run, or not one of ours). */
 export function readRunRecord(
   stateDir: string,

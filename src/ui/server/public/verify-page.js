@@ -16,6 +16,14 @@
  *       run and needs you; each check as one row; ?why=<env> adds a
  *       clauses table per check. A runner's text is untrusted: esc() only
  *
+ *   212 S5 a module's history (?history=<module>&env=<env>): since when it
+ *       fails, a strip of runs oldest first (each opens its report), the
+ *       first failing range with its commits, and the flaky mark with
+ *       every attempt; an imported run is named by its tag
+ *   212 S6 a scan's findings (?findings=<run>&module=<module>): the answer,
+ *       the threshold between the severities, each finding with the
+ *       version that fixes it, and the SARIF report
+ *
  * Reads GET /api/verify/overview (verify-routes.ts). The views are pure
  * (HTML from that JSON), so tests need no server. Words come from the
  * shell's catalog ("v.*"); environment and module names stay as they are.
@@ -483,7 +491,12 @@ export function allChecks(ov, open) {
         order
           .map(
             (e) =>
-              `<td data-l="${esc(envName(e))}">${stateTag(c.states?.[e])}</td>`,
+              `<td data-l="${esc(envName(e))}">${
+                // Issue 212: a state that ran opens its history there.
+                c.states?.[e] && c.states[e] !== "off" && c.states[e] !== "none"
+                  ? `<a class="vf-hlink" href="${esc(historyHref(c.module, e))}" data-nav aria-label="${esc(t("v.h_t", { m: c.module, e: envName(e) }))}">${stateTag(c.states[e])}</a>`
+                  : stateTag(c.states?.[e])
+              }</td>`,
           )
           .join("") +
         `</tr>`,
@@ -556,7 +569,9 @@ export function whyView(ov, env) {
         f.report && f.runId
           ? `<a class="den-btn vf-report" href="${esc(reportHref(ov.project, f))}" target="_blank" rel="noopener">${esc(t("v.b_report"))}</a>`
           : `<span class="vf-muted">${esc(t("v.no_report"))}</span>`;
-      return `<li><span class="vf-line">${stateTag(f.state)} ${esc(line)}</span><div class="vf-sub">${rep}</div></li>`;
+      // Issue 212: since when (S5).
+      const hist = `<a class="den-btn" href="${esc(historyHref(f.module, e.env))}" data-nav>${esc(t("v.b_hist"))}</a>`;
+      return `<li><span class="vf-line">${stateTag(f.state)} ${esc(line)}</span><div class="vf-sub">${rep}${hist}</div></li>`;
     })
     .join("");
   const groups = new Map();
@@ -585,6 +600,224 @@ export function whyView(ov, env) {
       ? `<p class="vf-meta" data-part="meta">${esc(metaLine(e.run))}</p>`
       : "") +
     `<section class="vf-card vf-why-card" role="alert"><h2>${esc(t("v.why_t"))}</h2><ol class="vf-why">${fails}${waits}${rest}</ol></section>`
+  );
+}
+
+// ── Issue 212: History (S5) and Security findings (S6) ───────────────────
+
+/** S5's address for a module on an environment. */
+function historyHref(module, env) {
+  return `?history=${encodeURIComponent(module)}&env=${encodeURIComponent(env)}`;
+}
+
+/** A run's own report (its kept output), opened in a new tab. */
+function runReportHref(project, runId, module, kind) {
+  return (
+    `/api/verify/runs/${encodeURIComponent(runId)}/report?project=${encodeURIComponent(project)}&module=${encodeURIComponent(module)}` +
+    (kind ? `&kind=${kind}` : "")
+  );
+}
+
+/** A run in a history strip: ↻ when it passed only after a retry. */
+function runMark(r) {
+  if (r.state === "passed" && r.retried) return { mark: "↻", tone: "warn" };
+  const s = STATE[r.state] ?? STATE.none;
+  return { mark: s.mark, tone: s.tone };
+}
+
+/** S5's answer: since when it fails, or how long it has passed. */
+function historySay(h) {
+  const runs = h.runs ?? [];
+  const last = runs.at(-1);
+  const m = h.name ?? h.module;
+  if (!last) return "";
+  let streak = 0;
+  for (let i = runs.length - 1; i >= 0 && runs[i].state === last.state; i--)
+    streak++;
+  if (last.state === "passed") return t("v.h_pass", { m, n: streak });
+  const before = runs.length - streak;
+  let passed = 0;
+  for (let i = before - 1; i >= 0 && runs[i].state === "passed"; i--) passed++;
+  if (!passed) return t("v.h_failall", { m });
+  const b = h.firstFailing?.firstBad?.commit ?? t("v.h_nocommit");
+  const a = h.firstFailing?.lastGood?.commit;
+  const k = h.commits?.length ?? 0;
+  return k && a
+    ? t("v.h_fail_k", { m, n: passed, b, k, a })
+    : t("v.h_fail", { m, n: passed, b });
+}
+
+/**
+ * S5: one module's history on one environment, from
+ * GET /api/verify/modules/:module/history.
+ */
+export function historyView(h) {
+  const m = h.name ?? h.module;
+  const env = envName(h.env);
+  const back = `<p class="vf-back" data-part="back"><a href="?">${esc(t("v.back"))}</a></p>`;
+  const head = `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.h_t", { m, e: env }))}</h2></div>${h.flaky?.flaky ? stateTagOf("flaky") : ""}</div>`;
+  const runs = h.runs ?? [];
+  if (!runs.length)
+    return `${back}${head}<section class="vf-card"><p class="vf-say">${esc(t("v.board.nohist"))}</p></section>`;
+  const label = t("v.h_strip", { n: runs.length, e: env });
+  const strip =
+    `<div class="vf-hstrip" role="group" aria-label="${esc(label)}">` +
+    runs
+      .map((r) => {
+        const k = runMark(r);
+        const word = r.retried
+          ? t("v.s_flaky")
+          : t((STATE[r.state] ?? STATE.none).word);
+        const name = t(r.tag ? "v.h_run_tag" : "v.h_run", {
+          s: word,
+          c: r.commit ?? t("v.h_nocommit"),
+          g: r.tag ?? "",
+          t: when(r.endedAt),
+        });
+        return `<a class="vf-hrun vf-${k.tone}" data-vf-run="${esc(r.runId)}" href="${esc(runReportHref(h.project, r.runId, h.module))}" target="_blank" rel="noopener" aria-label="${esc(name)}" title="${esc(name)}"><span aria-hidden="true">${k.mark}</span></a>`;
+      })
+      .join("") +
+    `</div>`;
+  const tags = runs.some((r) => r.tag)
+    ? `<p class="vf-meta">${esc(
+        t("v.h_tags", {
+          g: runs
+            .filter((r) => r.tag)
+            .map((r) => r.tag)
+            .join(", "),
+        }),
+      )}</p>`
+    : "";
+  const ff = h.firstFailing;
+  const range = ff
+    ? `<dl class="vf-dl"><dt>${esc(t("v.h_range"))}</dt><dd>` +
+      (ff.lastGood?.commit
+        ? `<code>${esc(ff.lastGood.commit)}</code> … `
+        : "") +
+      `<code>${esc(ff.firstBad.commit ?? t("v.h_nocommit"))}</code></dd></dl>` +
+      (h.commits?.length
+        ? `<ul class="vf-commits">${h.commits.map((c) => `<li><code>${esc(c.commit)}</code> ${esc(c.subject)}</li>`).join("")}</ul>`
+        : "") +
+      `<div class="vf-btns"><a class="den-btn primary" href="${esc(runReportHref(h.project, ff.firstBad.runId, h.module))}" target="_blank" rel="noopener">${esc(t("v.h_open"))}</a></div>`
+    : "";
+  const scanned = [...runs].reverse().find((r) => r.findings);
+  const finds = scanned
+    ? `<p class="vf-meta"><a href="?findings=${encodeURIComponent(scanned.runId)}&amp;module=${encodeURIComponent(h.module)}" data-nav>${esc(t("v.b_findings"))}</a></p>`
+    : "";
+  const tries = runs
+    .filter((r) => r.retried && r.attempts?.length)
+    .map(
+      (r) =>
+        `<li>${esc(t("v.fl_run", { c: r.tag ?? r.commit ?? t("v.h_nocommit"), t: when(r.endedAt) }))}<ol>` +
+        r.attempts
+          .map(
+            (a, i) =>
+              `<li>${esc(t("v.fl_try", { i: i + 1, s: t((STATE[a] ?? STATE.none).word) }))}</li>`,
+          )
+          .join("") +
+        `</ol></li>`,
+    )
+    .join("");
+  const flaky = h.flaky?.flaky
+    ? `<section class="vf-card vf-flaky"><h3>${esc(t("v.fl_t", { m, e: env }))}</h3>` +
+      `<p class="vf-say">${esc(t("v.fl_a", { n: h.flaky.retried, w: h.flaky.window }))}</p>` +
+      (tries
+        ? `<details class="vf-tries"><summary>${esc(t("v.fl_btn"))}</summary><ul>${tries}</ul></details>`
+        : "") +
+      `</section>`
+    : "";
+  return (
+    back +
+    head +
+    `<section class="vf-card"><p class="vf-say">${esc(historySay(h))}</p>${strip}` +
+    `<p class="vf-meta">${esc(label)}</p><p class="vf-meta">${esc(t("v.h_lg"))}</p>${tags}${range}${finds}</section>` +
+    flaky
+  );
+}
+
+/** The flaky mark as a tag: ↻ and its word, never colour alone. */
+function stateTagOf(kind) {
+  return kind === "flaky"
+    ? `<span class="vf-st vf-warn"><span class="vf-mk" aria-hidden="true">↻</span>${esc(t("v.s_flaky"))}</span>`
+    : stateTag(kind);
+}
+
+const SEVS = ["critical", "high", "medium", "low"];
+
+/**
+ * S6: one scan's findings in one run, with the threshold that decides,
+ * from GET /api/verify/runs/:id/modules/:module/findings.
+ */
+export function findingsView(f) {
+  const m = f.module;
+  const back = `<p class="vf-back" data-part="back"><a href="?">${esc(t("v.back"))}</a></p>`;
+  const th = SEVS.includes(f.failOn) ? f.failOn : "high";
+  const thWord = t(`v.sv_${th}`);
+  const at = SEVS.indexOf(th);
+  const counts = f.counts ?? {};
+  const failing = SEVS.slice(0, at + 1).reduce(
+    (n, s) => n + (counts[s] ?? 0),
+    0,
+  );
+  const head = `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.sc_t", { m }))}</h2></div>${badge(failing ? "failed" : "ready", failing ? "v.s_failed" : "v.s_passed")}</div>`;
+  const say = failing
+    ? t("v.sc_bad", { m, n: failing, th: thWord })
+    : t("v.sc_ok", { m, th: thWord });
+  const sev = (s) =>
+    `<div class="vf-sev"><span>${esc(t(`v.sv_${s}`))}</span><b>${counts[s] ?? 0}</b></div>`;
+  const scale =
+    `<section class="vf-card vf-sevs">` +
+    SEVS.map(
+      (s, i) =>
+        sev(s) +
+        (i === at
+          ? `<div class="vf-thr">${esc(t("v.sc_th", { th: thWord }))}</div>`
+          : ""),
+    ).join("") +
+    `</section>`;
+  const list = f.findings ?? [];
+  const groups = SEVS.map((s, i) => {
+    const n = counts[s] ?? 0;
+    if (!n) return "";
+    const items = list.filter((x) => x.severity === s);
+    const title = t(i > at ? "v.sc_below" : "v.sc_group", {
+      n,
+      sev: t(`v.sv_${s}`),
+    });
+    return (
+      `<section class="vf-card"><h3>${esc(title)}</h3>` +
+      (items.length
+        ? `<ul class="vf-finds">` +
+          items
+            .map((x) =>
+              x.package
+                ? `<li><code>${esc(x.version ? `${x.package} ${x.version}` : x.package)}</code>` +
+                  (x.fixedIn
+                    ? ` · ${esc(t("v.fix"))} <code>${esc(x.fixedIn)}</code>`
+                    : "") +
+                  `</li>`
+                : `<li><code>${esc(x.rule)}</code> ${esc(x.message)}</li>`,
+            )
+            .join("") +
+          `</ul>`
+        : "") +
+      `</section>`
+    );
+  }).join("");
+  const rep = f.sarif
+    ? `<p><a class="vf-lk" href="${esc(runReportHref(f.project, f.runId, f.moduleId ?? m, "sarif"))}" target="_blank" rel="noopener">${esc(t("v.rep_sarif"))}</a></p>`
+    : "";
+  return (
+    back +
+    head +
+    `<section class="vf-card"><p class="vf-say">${esc(say)}</p>` +
+    (f.commit
+      ? `<p class="vf-meta">${esc(t("v.sc_commit", { c: f.commit }))}</p>`
+      : "") +
+    `</section>` +
+    scale +
+    groups +
+    rep
   );
 }
 
@@ -904,6 +1137,8 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
   const params = () => new URLSearchParams(globalThis.location?.search ?? "");
   let ov = null;
   let sv = null;
+  /** Issue 212: the open S5 or S6 view's answer, by its address. */
+  let dv = null;
   let open = null;
   let note = "";
   /** `opts.headers`: the working pop-up's (its request id), on a write. */
@@ -922,7 +1157,13 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
   };
   const draw = () => {
     const q = params();
-    if (q.get("schedules")) {
+    const detail = detailUrl(q);
+    if (detail) {
+      if (dv?.url !== detail) return void loadDetail(detail);
+      root.innerHTML = q.get("history")
+        ? historyView(dv.body)
+        : findingsView(dv.body);
+    } else if (q.get("schedules")) {
       if (!sv) return void loadSchedules();
       root.innerHTML = schedulesView(sv, { open, note });
     } else {
@@ -944,6 +1185,28 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
     try {
       ov = await getJson("/api/verify/overview");
       draw();
+    } catch {
+      failed();
+    }
+  };
+  /** Issue 212: what ?history= or ?findings= reads, or null. */
+  const detailUrl = (q) => {
+    const proj = ov?.project
+      ? `project=${encodeURIComponent(ov.project)}&`
+      : "";
+    if (q.get("history"))
+      return `/api/verify/modules/${encodeURIComponent(q.get("history"))}/history?${proj}env=${encodeURIComponent(q.get("env") ?? "local")}`;
+    if (q.get("findings") && q.get("module"))
+      return `/api/verify/runs/${encodeURIComponent(q.get("findings"))}/modules/${encodeURIComponent(q.get("module"))}/findings${proj ? `?${proj.slice(0, -1)}` : ""}`;
+    return null;
+  };
+  const loadDetail = async (url) => {
+    root.setAttribute("aria-busy", "true");
+    root.innerHTML = loadingView();
+    try {
+      dv = { url, body: await getJson(url) };
+      draw();
+      root.querySelector(".vf-head h2")?.focus?.();
     } catch {
       failed();
     }
@@ -999,7 +1262,12 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
   root.addEventListener("click", (ev) => {
     const el = ev.target instanceof globalThis.Element ? ev.target : null;
     if (el?.closest("[data-retry]")) {
-      void (params().get("schedules") ? loadSchedules() : load());
+      const detail = detailUrl(params());
+      void (detail
+        ? loadDetail(detail)
+        : params().get("schedules")
+          ? loadSchedules()
+          : load());
       return;
     }
     const b = el?.closest(
@@ -1031,7 +1299,9 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
       else void act("run", b.getAttribute("data-sch-run"), b);
       return;
     }
-    const a = el?.closest("a[data-why], a[data-sched-open], .vf-back a");
+    const a = el?.closest(
+      "a[data-why], a[data-sched-open], a[data-nav], .vf-back a",
+    );
     if (!a || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
     ev.preventDefault();
     globalThis.history?.pushState(null, "", a.getAttribute("href"));
@@ -1052,6 +1322,11 @@ export async function mountVerify(root, { fetchImpl = globalThis.fetch } = {}) {
     } else root.querySelector(".vf-head h2")?.focus?.();
   };
   globalThis.addEventListener?.("popstate", draw);
-  await (params().get("schedules") ? loadSchedules() : load());
+  const first = detailUrl(params());
+  await (first
+    ? loadDetail(first)
+    : params().get("schedules")
+      ? loadSchedules()
+      : load());
   if (globalThis.location?.hash) focusTarget();
 }

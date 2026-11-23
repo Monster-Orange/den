@@ -250,6 +250,85 @@ describe("issue 212: a module's history and a scan's findings", () => {
     });
   });
 
+  it("history: the commits between the last good run and the first bad one, from git", async () => {
+    let head = "aaa1111";
+    const git = {
+      head: () => head,
+      changedSince: () => [],
+      between: (repoPath: string, from: string, to: string, max: number) =>
+        repoPath === "/repos/shop" && from === "aaa1111" && to === "ccc3333"
+          ? [
+              { commit: "bbb2222", subject: "orders: add discount codes" },
+              { commit: "ccc3333", subject: "api: update database driver" },
+            ].slice(0, max)
+          : null,
+    };
+    const west: VerifyServerDeps = {
+      ...sdeps,
+      git,
+      projectExists: (p) => p === "west",
+    };
+    const ask = {
+      project: "west",
+      env: "local",
+      scope: "all",
+      modules: ["api/orders"],
+    };
+    await runVerify({ ...west, runCmd: async () => ({ exitCode: 0 }) }, ask);
+    head = "ccc3333";
+    await runVerify({ ...west, runCmd: async () => ({ exitCode: 1 }) }, ask);
+    const prev = { ...sdeps };
+    Object.assign(sdeps, west);
+    try {
+      await serveWith(async (base) => {
+        const h = (await (
+          await fetch(
+            `${base}/api/verify/modules/${encodeURIComponent("api/orders")}/history?project=west&env=local`,
+          )
+        ).json()) as {
+          firstFailing: { lastGood: { commit: string } };
+          commits: { commit: string; subject: string }[];
+        };
+        expect(h.firstFailing.lastGood.commit).toBe("aaa1111");
+        expect(h.commits.map((c) => c.commit)).toEqual(["bbb2222", "ccc3333"]);
+      });
+    } finally {
+      Object.assign(sdeps, prev);
+    }
+  });
+
+  it("history: many runs of other modules never push a module's own runs out", async () => {
+    const east: VerifyServerDeps = {
+      ...sdeps,
+      projectExists: (p) => p === "east",
+      runCmd: async () => ({ exitCode: 0 }),
+    };
+    const ask = (m: string) => ({
+      project: "east",
+      env: "local",
+      scope: "all",
+      modules: [m],
+    });
+    for (let i = 0; i < 3; i++) await runVerify(east, ask("api/orders"));
+    // More than the old read window (4 x the flaky window, 40 runs).
+    for (let i = 0; i < 45; i++) await runVerify(east, ask("code/deps"));
+    const prev = { ...sdeps };
+    Object.assign(sdeps, east);
+    try {
+      await serveWith(async (base) => {
+        const h = (await (
+          await fetch(
+            `${base}/api/verify/modules/${encodeURIComponent("api/orders")}/history?project=east&env=local&limit=1`,
+          )
+        ).json()) as { runs: unknown[] };
+        // limit 1: the newest of its 3 runs, found behind 45 others.
+        expect(h.runs).toHaveLength(1);
+      });
+    } finally {
+      Object.assign(sdeps, prev);
+    }
+  });
+
   it("findings: by severity, with the threshold; 404 for a module that wrote none", async () => {
     const r = (await runVerify(
       {
@@ -284,7 +363,28 @@ describe("issue 212: a module's history and a scan's findings", () => {
         failOn: "high",
         counts: { critical: 0, high: 0, medium: 1, low: 0 },
         findings: [{ rule: "R-1", severity: "medium" }],
+        // What the page needs for its report link (S6).
+        project: "south",
+        moduleId: "shop:code/deps",
+        sarif: true,
       });
+      // "Open report (SARIF)": the file the scan wrote, served as it is.
+      const rep = await fetch(
+        `${base}/api/verify/runs/${r.runId}/report?project=south&module=${encodeURIComponent("shop:code/deps")}&kind=sarif`,
+      );
+      expect(rep.status).toBe(200);
+      expect(rep.headers.get("content-type")).toMatch(
+        /^application\/sarif\+json/,
+      );
+      expect(rep.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(((await rep.json()) as { runs: unknown[] }).runs).toHaveLength(1);
+      expect(
+        (
+          await fetch(
+            `${base}/api/verify/runs/${r.runId}/report?project=south&module=${encodeURIComponent("web/none")}&kind=sarif`,
+          )
+        ).status,
+      ).toBe(404);
       expect(
         (
           await fetch(

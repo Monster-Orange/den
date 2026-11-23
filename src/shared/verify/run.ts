@@ -16,7 +16,6 @@
  */
 import { spawn } from "child_process";
 import * as fs from "fs";
-import * as path from "path";
 import { NOTHING_RAN_EXIT } from "../run-outcome.js";
 import {
   readLatest,
@@ -26,7 +25,12 @@ import {
 } from "./changes.js";
 import type { VerifyModule } from "./config.js";
 import type { VerifyPlan } from "./plan.js";
-import { writeRunRecord, type ModuleRecord, type RunActor } from "./records.js";
+import {
+  moduleResultsDir,
+  writeRunRecord,
+  type ModuleRecord,
+  type RunActor,
+} from "./records.js";
 import {
   guardProbe,
   methodRules,
@@ -258,13 +262,11 @@ export async function runPlan(
         };
       } else r = await smoke(m, plan.env, d.probe, d.smokeMethod);
     } else {
-      const resultsDir = path.join(
+      const resultsDir = moduleResultsDir(
         d.stateDir,
-        "verify",
         plan.project,
-        "runs",
         runId,
-        m.id.replace(/[^A-Za-z0-9._-]+/g, "_"),
+        m.id,
       );
       const tries = 1 + Math.max(0, d.retries ?? 0);
       const attempts: ModuleState[] = [];

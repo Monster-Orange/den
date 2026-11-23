@@ -80,7 +80,6 @@ const shop = readVerifyModules({
   repo: "shop",
   repoPath: "/repos/shop",
   manifest: {
-    name: "shop",
     verify: {
       modules: {
         "api/orders": { kind: "integration", cmd: "make contract" },
@@ -202,7 +201,12 @@ describe("T11: the flaky mark", () => {
       rec(n, "passed", n === 2 || n === 4 ? passRetry : undefined),
     );
     const h = moduleHistory(runs, "api/orders", "local", settings);
-    expect(h.flaky).toEqual({ flaky: true, retried: 2, window: 10 });
+    expect(h.flaky).toEqual({
+      flaky: true,
+      retried: 2,
+      window: 10,
+      minRetries: 2,
+    });
   });
 
   it("1 doesn't", () => {
@@ -393,5 +397,72 @@ describe("T13: a scan against the threshold", () => {
       state: "failed",
       findings: { failOn: "medium" },
     });
+  });
+});
+
+describe("S5 for the page: what each run in the strip says", () => {
+  it("an imported run is labelled by its tag; a run whose scan kept findings says so", () => {
+    const imported: RunRecord = {
+      ...rec(1, "passed"),
+      runId: "v0.4.85-dev.3",
+      source: "import",
+    };
+    const scanned = rec(2, "failed");
+    scanned.modules[0] = {
+      ...scanned.modules[0],
+      findings: {
+        counts: { critical: 0, high: 1, medium: 0, low: 0 },
+        failOn: "high",
+        list: [],
+      },
+    };
+    const h = moduleHistory(
+      [imported, scanned, rec(3, "passed", ["failed", "passed"])],
+      "shop:api/orders",
+      "local",
+      DEFAULT_VERIFY_SETTINGS,
+    );
+    expect(h.name).toBe("api/orders");
+    expect(h.runs.map((r) => [r.tag, r.findings, r.retried])).toEqual([
+      ["v0.4.85-dev.3", undefined, undefined],
+      [undefined, true, undefined],
+      [undefined, undefined, true],
+    ]);
+  });
+});
+
+describe("a finding's package and the version that fixes it", () => {
+  it("read from the result's properties, when the scanner writes them", () => {
+    const dir = fs.mkdtempSync(path.join(stateDir, "pkg-"));
+    fs.writeFileSync(
+      path.join(dir, "deps.sarif.json"),
+      sarif([
+        {
+          ruleId: "CVE-7",
+          level: "warning",
+          message: { text: "yaml-lite: a crafted file loops" },
+          properties: {
+            packageName: "yaml-lite",
+            installedVersion: "0.9.3",
+            fixedVersion: "0.9.5",
+          },
+        },
+        {
+          ruleId: "CVE-8",
+          level: "warning",
+          message: { text: "image-resize" },
+          properties: { PkgName: "image-resize", FixedVersion: "2.2.1" },
+        },
+        { ruleId: "R-9", level: "note", message: { text: "plain" } },
+      ]),
+    );
+    const f = readSarifFindings(dir)!;
+    expect(
+      f.findings.map((x) => [x.rule, x.package, x.version, x.fixedIn]),
+    ).toEqual([
+      ["CVE-7", "yaml-lite", "0.9.3", "0.9.5"],
+      ["CVE-8", "image-resize", undefined, "2.2.1"],
+      ["R-9", undefined, undefined, undefined],
+    ]);
   });
 });

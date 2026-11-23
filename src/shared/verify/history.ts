@@ -26,11 +26,19 @@ export interface HistoryRun {
   state: ModuleState;
   /** Each attempt's state, when the module ran more than once. */
   attempts?: ModuleState[];
+  /** Passed only after a retry (it counts toward the flaky mark). */
+  retried?: true;
+  /** Issue 441: an imported run's tag (its run id), the strip's label. */
+  tag?: string;
+  /** A scan's findings were kept for this run (S6 opens them). */
+  findings?: true;
   endedAt: string;
 }
 
 export interface ModuleHistory {
   module: string;
+  /** The module's name (`<layer>/<name>`), as the page shows it. */
+  name: string;
   env: string;
   /** Oldest first, at most `verify.history.limit`. */
   runs: HistoryRun[];
@@ -38,11 +46,16 @@ export interface ModuleHistory {
     lastGood: { runId: string; commit: string | null } | null;
     firstBad: { runId: string; commit: string | null };
   } | null;
-  flaky: { flaky: boolean; retried: number; window: number };
+  flaky: {
+    flaky: boolean;
+    retried: number;
+    window: number;
+    minRetries: number;
+  };
 }
 
-const passedAfterRetry = (r: HistoryRun) =>
-  r.state === "passed" && (r.attempts?.length ?? 0) > 1;
+const passedAfterRetry = (state: ModuleState, attempts?: ModuleState[]) =>
+  state === "passed" && (attempts?.length ?? 0) > 1;
 
 /** `records`: the project's runs, in any order. */
 export function moduleHistory(
@@ -51,24 +64,31 @@ export function moduleHistory(
   env: string,
   s: Pick<VerifySettings, "historyLimit" | "flakyWindow" | "flakyMinRetries">,
 ): ModuleHistory {
+  let name = module;
   const all: HistoryRun[] = [...records]
     .filter((r) => r.env === env)
     .sort((a, b) => a.endedAt.localeCompare(b.endedAt))
     .flatMap((r) => {
       const m = r.modules.find((x) => x.name === module || x.id === module);
       if (!m) return [];
+      name = m.name;
       return [
         {
           runId: r.runId,
           commit: r.commit ?? null,
           state: m.state,
           ...(m.attempts ? { attempts: m.attempts } : {}),
+          ...(passedAfterRetry(m.state, m.attempts)
+            ? { retried: true as const }
+            : {}),
+          ...(r.source === "import" ? { tag: r.runId } : {}),
+          ...(m.findings ? { findings: true as const } : {}),
           endedAt: r.endedAt,
         },
       ];
     });
   const window = all.slice(-s.flakyWindow);
-  const retried = window.filter(passedAfterRetry).length;
+  const retried = window.filter((r) => r.retried).length;
   let firstFailing: ModuleHistory["firstFailing"] = null;
   const last = all.at(-1);
   if (last && last.state !== "passed") {
@@ -83,6 +103,7 @@ export function moduleHistory(
   }
   return {
     module,
+    name,
     env,
     runs: all.slice(-s.historyLimit),
     firstFailing,
@@ -90,6 +111,7 @@ export function moduleHistory(
       flaky: retried >= s.flakyMinRetries,
       retried,
       window: s.flakyWindow,
+      minRetries: s.flakyMinRetries,
     },
   };
 }
@@ -102,6 +124,10 @@ export interface Finding {
   message: string;
   /** The first location's file, when the scan names one. */
   file?: string;
+  /** A dependency scan's package, its version, and the one that fixes it. */
+  package?: string;
+  version?: string;
+  fixedIn?: string;
 }
 
 export interface ScanFindings {
@@ -142,6 +168,24 @@ type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {};
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/**
+ * The property names dependency scanners use for a finding's package, its
+ * installed version and the version that fixes it (SARIF leaves these to
+ * each tool). The first one present wins.
+ */
+const PACKAGE_KEYS = ["packageName", "package", "PkgName", "pkgName"];
+const VERSION_KEYS = ["installedVersion", "InstalledVersion", "version"];
+const FIXED_KEYS = ["fixedVersion", "FixedVersion", "fixedIn", "fixVersion"];
+
+/** The first of `keys` that holds a short text, cut to 200 characters. */
+function firstText(o: Obj, keys: readonly string[]): string | undefined {
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v.trim().slice(0, 200);
+  }
+  return undefined;
+}
 
 /**
  * The findings in every SARIF file (`*.sarif`, `*.sarif.json`) in `dir`,
@@ -189,11 +233,18 @@ export function readSarifFindings(dir: string): ScanFindings | null {
         const file = obj(
           obj(obj(arr(res.locations)[0]).physicalLocation).artifactLocation,
         ).uri;
+        const props = obj(res.properties);
+        const pkg = firstText(props, PACKAGE_KEYS);
+        const version = firstText(props, VERSION_KEYS);
+        const fixedIn = firstText(props, FIXED_KEYS);
         findings.push({
           rule: rule || "(no rule)",
           severity: sev,
           message: String(obj(res.message).text ?? "").slice(0, 300),
           ...(typeof file === "string" ? { file } : {}),
+          ...(pkg ? { package: pkg } : {}),
+          ...(version ? { version } : {}),
+          ...(fixedIn ? { fixedIn } : {}),
         });
       }
     }
