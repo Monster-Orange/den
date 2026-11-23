@@ -5,7 +5,7 @@
 // this module answers /api/hub/groups at the page's network with groups
 // naming the bed's own stub agent, as the unit tests' stub Hub does; and
 // it marks that agent's row as one whose Hub tools failed to load (the
-// /api/sessions answer, read from the bed, with hubUnreachable set). The
+// /api/sessions answer, read from the bed, with issue 749's mcpFailed). The
 // Den side drawn from them is the bed's own page. Its routes live on a
 // page of the module's own, closed after. The real Hub read is checked on
 // its own, and skipped while the bed's Hub has no groups route.
@@ -14,7 +14,7 @@ export const clauses = [
   "By group beside By project: each group's kit header with its lead marked, opening the group in Hub (a new tab)",
   "Message group opens Hub's composer for <group>/all in a new tab",
   "this Den's agents sit under their group, the rest under Not in a group",
-  "an agent whose Hub tools failed to load shows Can't reach Hub on its row, with Restart",
+  "an agent whose Hub tools failed to load shows issue 749's tag on its row in the group view",
   "no Hub connected: only the line Groups come with Den Hub, with Connect Den Hub, and no group UI",
   "403 groups_not_in_plan and a guest's 403 each show their own line, and no group UI",
   "Den reads the bed's own Hub for groups",
@@ -84,7 +84,10 @@ export async function run(ctx, s) {
         return r.fulfill({ response: res });
       }
       for (const x of b?.sessions ?? [])
-        if (x.agent === AGENT && x.state === "running") x.hubUnreachable = true;
+        if (x.agent === AGENT && x.state === "running")
+          x.mcpFailed = [
+            { server: "hub", error: "hub (503)", at: new Date().toISOString() },
+          ];
       return r.fulfill({ response: res, json: b });
     });
 
@@ -95,7 +98,7 @@ export async function run(ctx, s) {
       .waitFor({ timeout: 20000 })
       .catch(() => {});
     await p
-      .locator(`[data-group="g750-group"] [data-hub-unreachable]`)
+      .locator(`[data-group="g750-group"] [data-mcp-failed="hub"]`)
       .waitFor({ timeout: 10000 })
       .catch(() => {});
     out.groups = await p.evaluate((agent) => {
@@ -127,9 +130,8 @@ export async function run(ctx, s) {
           ? (none.querySelector(".wsh")?.textContent ?? "").trim()
           : null,
         unreach:
-          wrap?.querySelector("[data-hub-unreachable]")?.textContent?.trim() ??
+          wrap?.querySelector('[data-mcp-failed="hub"]')?.textContent?.trim() ??
           null,
-        restart: !!wrap?.querySelector('button[data-act="tools-restart"]'),
         sideScroll:
           document.documentElement.scrollWidth >
           document.documentElement.clientWidth + 1,
@@ -228,8 +230,8 @@ export function expect(cells) {
     },
     {
       clause: clauses[3],
-      ok: all((r) => !!g(r).unreach && g(r).restart),
-      detail: say((r) => `tag "${g(r).unreach}", Restart ${g(r).restart}`),
+      ok: all((r) => !!g(r).unreach),
+      detail: say((r) => `tag "${g(r).unreach}"`),
       evidence: shots("by-group"),
     },
     {
