@@ -13,7 +13,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import {
   launcherScript,
@@ -23,9 +22,11 @@ import {
   osUserPaths,
   readOsUserFacts,
   removePlan,
+  runPlan,
   setupPlan,
   sudoersLine,
   type OsUserLayout,
+  type PlanRunner,
 } from "../../../src/shared/agents/os-user.js";
 
 const E2E =
@@ -87,6 +88,27 @@ function facts() {
   });
 }
 
+const TEXT = {
+  launcher: launcherScript({
+    person: PERSON,
+    user: n.user,
+    home: p.home,
+    runtime: layout.runtime,
+  }),
+  sudoers: `${sudoersLine({ person: PERSON, user: n.user, launcher: p.launcher })}\n`,
+};
+/** sudo, as root here: stdin in, stdout back (runPlan compares it). */
+const rootRun: PlanRunner = (argv, stdin) => {
+  const r = spawnSync(argv[0]!, argv.slice(1), {
+    encoding: "utf-8",
+    env: SYSTEM_ENV,
+    input: stdin ?? "",
+  });
+  return r.status === 0
+    ? { ok: true, stdout: r.stdout ?? "" }
+    : { ok: false, error: (r.stderr || `exit ${r.status}`).trim() };
+};
+
 d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
   it("setup runs, and doctor (reading as the person) finds it all as it should be", () => {
     expect(root(["useradd", "--create-home", PERSON]).status).toBe(0);
@@ -100,28 +122,7 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
       'echo "WHO $(id -un)"; echo "ARGS $*"; echo "HOME $HOME"\n',
       { mode: 0o755 },
     );
-    const stage = fs.mkdtempSync(path.join(os.tmpdir(), "den-os-user-"));
-    const staged = {
-      launcher: path.join(stage, "launch"),
-      sudoers: path.join(stage, "sudoers"),
-    };
-    fs.writeFileSync(
-      staged.launcher,
-      launcherScript({
-        person: PERSON,
-        user: n.user,
-        home: p.home,
-        runtime: layout.runtime,
-      }),
-    );
-    fs.writeFileSync(
-      staged.sudoers,
-      `${sudoersLine({ person: PERSON, user: n.user, launcher: p.launcher })}\n`,
-    );
-    for (const s of setupPlan(layout, staged)) {
-      const r = root(s.argv);
-      if (r.status !== 0) throw new Error(`${s.argv.join(" ")}: ${r.stderr}`);
-    }
+    expect(runPlan(setupPlan(layout, TEXT), rootRun)).toEqual({ ok: true });
     const c = osUserCheck({ on: true, layout }, facts());
     expect(c.problems).toEqual([]);
     expect(c.status).toBe("ok");
@@ -164,6 +165,35 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
     const pw = root(["getent", "passwd", n.user]).stdout.trim().split(":");
     expect(pw[6]).toBe(layout.noLogin);
     expect(pw[5]).toBe(p.home);
+  });
+
+  it("the agents' login can't move its home or plant anything in root's folder", () => {
+    expect(as(n.user, ["mv", p.home, `${p.dir}/h2`]).status).not.toBe(0);
+    expect(as(n.user, ["ln", "-s", STATE, `${p.dir}/x`]).status).not.toBe(0);
+    // The agent files folder is sticky: it can't remove the person's files.
+    const mine = path.join(p.agents, "person-file");
+    expect(as(PERSON, ["touch", mine]).status).toBe(0);
+    expect(as(n.user, ["rm", "-f", mine]).status).not.toBe(0);
+    expect(fs.existsSync(mine)).toBe(true);
+  });
+
+  it("a re-run is safe: it keeps the login, and refuses (changing nothing) when a path it writes is a link", () => {
+    expect(
+      runPlan(setupPlan(layout, TEXT, { user: true, group: true }), rootRun),
+    ).toEqual({ ok: true });
+    // A link planted where setup writes (only root could, here): refused.
+    fs.rmSync(p.home, { recursive: true });
+    fs.symlinkSync(STATE, p.home);
+    const before = fs.statSync(STATE);
+    const r = runPlan(
+      setupPlan(layout, TEXT, { user: true, group: true }),
+      rootRun,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/is a link/);
+    const after = fs.statSync(STATE);
+    expect([after.uid, after.mode]).toEqual([before.uid, before.mode]);
+    fs.rmSync(p.home);
   });
 
   it("pin 5: remove leaves no login, group, rule or folder, and doctor proves it", () => {

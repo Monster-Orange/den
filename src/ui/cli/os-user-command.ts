@@ -1,10 +1,10 @@
 /**
- * Issue 988, part 1: `agents os-user setup | remove | check`.
+ * Issue 988, part 1: `agents os-login setup | remove | check`.
  *
  *   setup   shows every step and its command, asks, then runs each with
- *           sudo (a failure stops it), and sets agents.os_user: on
+ *           sudo (a failure stops it), and sets agents.os_login: on
  *   remove  shows and asks the same, runs every step (a thing already gone
- *           is fine), sets agents.os_user: off, and checks nothing is left
+ *           is fine), sets agents.os_login: off, and checks nothing is left
  *   check   doctor's row for it
  *
  * A person's commands: an agent's session is refused before anything is
@@ -25,10 +25,12 @@ import {
   osUserPaths,
   readOsUserFacts,
   removePlan,
+  runPlan,
   setupPlan,
   sudoersLine,
   type OsUserFacts,
   type OsUserLayout,
+  type PlanRunner,
   type PlanStep,
 } from "../../shared/agents/os-user.js";
 import {
@@ -43,13 +45,9 @@ export interface OsUserCommandDeps {
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
   layout: () => Promise<OsUserLayout>;
-  /** Writes the launcher and the rule where sudo installs them from. */
-  stage: (files: { launcher: string; sudoers: string }) => {
-    launcher: string;
-    sudoers: string;
-  };
   confirm: (question: string) => Promise<boolean>;
-  sudo: (argv: string[]) => { ok: boolean; error?: string };
+  /** Runs `argv` with sudo, `stdin` on its stdin; its stdout comes back. */
+  sudo: PlanRunner;
   facts: () => OsUserFacts;
   setOn: (on: boolean) => void;
   on: () => boolean;
@@ -60,9 +58,9 @@ export interface OsUserCommandDeps {
 
 const HELP = (cli: string) =>
   [
-    `${cli} agents os-user setup    make the agents user (shows each step, then asks)`,
-    `${cli} agents os-user remove   remove it, and check nothing is left`,
-    `${cli} agents os-user check    how it stands (doctor's row)`,
+    `${cli} agents os-login setup    make the agents' login (shows each step, then asks)`,
+    `${cli} agents os-login remove   remove it, and check nothing is left`,
+    `${cli} agents os-login check    how it stands (doctor's row)`,
   ].join("\n");
 
 function show(d: OsUserCommandDeps, steps: PlanStep[]): void {
@@ -111,7 +109,9 @@ export async function cmdOsUser(
       user: n.user,
       launcher: p.launcher,
     });
-    const staged = d.stage({
+    // Root gets both from here, on stdin: nothing it installs is ever in a
+    // file your login (or an agent running as it) could change.
+    const text = {
       launcher: launcherScript({
         person: l.person,
         user: n.user,
@@ -119,30 +119,36 @@ export async function cmdOsUser(
         runtime: l.runtime,
       }),
       sudoers: `${rule}\n`,
+    };
+    const f = d.facts();
+    const steps = setupPlan(l, text, {
+      user: f.user.exists,
+      group: f.group.exists,
     });
-    const steps = setupPlan(l, staged);
     d.out(
       `Agents will run as ${n.user}, which can't read Den's state or your files. These ${steps.length} steps run with sudo:`,
     );
     show(d, steps);
-    d.out(`The sudo rule: ${rule}`);
-    d.out(`The launcher, to read first: ${staged.launcher}`);
+    d.out(`The sudo rule:`);
+    d.out(`  ${rule}`);
+    d.out(`The launcher (${p.launcher}):`);
+    for (const line of text.launcher.trimEnd().split("\n"))
+      d.out(`  | ${line}`);
     if (!(await d.confirm(`Run these ${steps.length} steps with sudo?`))) {
       d.err("Nothing was changed.");
       return 1;
     }
-    for (const [i, s] of steps.entries()) {
-      const r = d.sudo(s.argv);
-      if (!r.ok && !s.optional) {
-        d.err(
-          `Step ${i + 1} failed (${s.argv.join(" ")}): ${r.error ?? "it failed"}. The steps before it stay; \`${d.cli} agents os-user remove\` undoes them.`,
-        );
-        return 1;
-      }
+    const r = runPlan(steps, d.sudo);
+    if (!r.ok) {
+      const s = steps[r.index]!;
+      d.err(
+        `Step ${r.index + 1} failed (${s.argv.join(" ")}): ${r.error}. The steps before it stay; \`${d.cli} agents os-login remove\` undoes them.`,
+      );
+      return 1;
     }
     d.setOn(true);
     d.out(
-      `✓ ${n.user} is set up, and agents.os_user is on. \`${d.cli} agents os-user check\` checks it.`,
+      `✓ ${n.user} is set up, and agents.os_login is on. \`${d.cli} agents os-login check\` checks it.`,
     );
     return 0;
   }
@@ -156,7 +162,7 @@ export async function cmdOsUser(
     return 1;
   }
   for (const s of steps) {
-    const r = d.sudo(s.argv);
+    const r = d.sudo(s.argv, s.stdin);
     if (!r.ok)
       d.out(
         `  (${s.argv.join(" ")}: ${r.error ?? "failed"}; it may be gone already)`,
@@ -169,9 +175,31 @@ export async function cmdOsUser(
     return 1;
   }
   d.out(
-    `✓ Removed: nothing is left (no ${n.user}, no ${n.group}, no sudo rule, no ${p.dir}), and agents.os_user is off.`,
+    `✓ Removed: nothing is left (no ${n.user}, no ${n.group}, no sudo rule, no ${p.dir}), and agents.os_login is off.`,
   );
   return 0;
+}
+
+/**
+ * On macOS, the ids for the login and the group: the ones they already
+ * have (a re-run), else a free id in the system range (401–499).
+ */
+function macIds(person: string): { uid: number; gid: number } {
+  const n = osUserNames("darwin", person);
+  const read = (rec: string, key: string) => {
+    const r = spawnSync("dscl", [".", "-read", rec, key], {
+      encoding: "utf-8",
+    });
+    const v = Number(
+      new RegExp(`^${key}:\\s*(\\d+)`, "m").exec(r.stdout ?? "")?.[1],
+    );
+    return r.status === 0 && Number.isFinite(v) ? v : null;
+  };
+  const uid = read(`/Users/${n.user}`, "UniqueID");
+  const gid = read(`/Groups/${n.group}`, "PrimaryGroupID");
+  if (uid !== null && gid !== null) return { uid, gid };
+  const free = freeSystemIds();
+  return { uid: uid ?? free.uid, gid: gid ?? free.gid };
 }
 
 /** On macOS, a uid and gid in the system range (400–499) that no user or group has. */
@@ -222,16 +250,10 @@ export function defaultOsUserDeps(cli: string): OsUserCommandDeps {
     env: process.env,
     layout: async () => ({
       ...machineLayout(platform),
-      ...(platform === "darwin" ? { ids: freeSystemIds() } : {}),
+      ...(platform === "darwin"
+        ? { ids: macIds(machineLayout(platform).person) }
+        : {}),
     }),
-    stage: (files) => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-os-user-"));
-      const launcher = path.join(dir, "den-agent-launch");
-      const sudoers = path.join(dir, "sudoers");
-      fs.writeFileSync(launcher, files.launcher, { mode: 0o644 });
-      fs.writeFileSync(sudoers, files.sudoers, { mode: 0o644 });
-      return { launcher, sudoers };
-    },
     confirm: async (q) => {
       const rl = createInterface({
         input: process.stdin,
@@ -243,10 +265,16 @@ export function defaultOsUserDeps(cli: string): OsUserCommandDeps {
         rl.close();
       }
     },
-    sudo: (argv) => {
-      const r = spawnSync("sudo", ["--", ...argv], { stdio: "inherit" });
+    sudo: (argv, stdin) => {
+      // stdout comes back (a read-back is compared); sudo asks for the
+      // password on the terminal itself, not on stdin.
+      const r = spawnSync("sudo", ["--", ...argv], {
+        input: stdin ?? "",
+        stdio: ["pipe", "pipe", "inherit"],
+        encoding: "utf-8",
+      });
       return r.status === 0
-        ? { ok: true }
+        ? { ok: true, stdout: r.stdout ?? "" }
         : { ok: false, error: r.error?.message ?? `exit ${r.status}` };
     },
     facts: () =>
@@ -282,13 +310,13 @@ export function osUserDoctorRow(
   return {
     line: `${mark} Agents' own login: ${c.detail}`,
     check: {
-      id: "agents-os-user",
+      id: "agents-os-login",
       status: c.status,
       detail: c.detail,
       ...(c.status === "fail" && !d.on()
-        ? { fix: `${cli} agents os-user remove` }
+        ? { fix: `${cli} agents os-login remove` }
         : c.status === "fail"
-          ? { fix: `${cli} agents os-user setup` }
+          ? { fix: `${cli} agents os-login setup` }
           : {}),
     },
     problem: c.status === "fail",
