@@ -3885,7 +3885,7 @@
     "set.agents.coach_counts.o.per_day": "Por día",
     "set.agents.coach_enabled": "Coach",
     "set.agents.coach_enabled.d":
-      "Activado, Coach puede ejecutarse: lee cómo usaron tokens los agentes de esta máquina y escribe un informe con hallazgos. Solo lee los agentes de este Den y no cambia nada. El recuento no envía nada fuera de esta máquina; el juicio, abajo, tiene su propio interruptor.",
+      "Activado, Coach puede ejecutarse: lee cómo usaron tokens los agentes de esta máquina y escribe un informe con hallazgos. Solo lee los agentes de este __DEN_TITLE__ y no cambia nada. El recuento no envía nada fuera de esta máquina; el juicio, abajo, tiene su propio interruptor.",
     "set.agents.coach_window_days": "Ventana de Coach, en días",
     "set.agents.coach_window_days.d":
       "Cuántos días atrás lee cada ejecución de Coach, de 1 a 90.",

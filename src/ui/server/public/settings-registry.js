@@ -4668,7 +4668,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Coach",
     description:
-      "On, Coach can run: it reads how this machine's agents used tokens and writes a report with findings. It reads only this Den's own agents and changes nothing. Counting sends nothing off this machine; judging, below, is its own switch.",
+      "On, Coach can run: it reads how this machine's agents used tokens and writes a report with findings. It reads only this __DEN_TITLE__'s own agents and changes nothing. Counting sends nothing off this machine; judging, below, is its own switch.",
     keywords: [
       "coach",
       "usage",

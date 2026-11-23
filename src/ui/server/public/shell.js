@@ -1232,7 +1232,7 @@
     "set.agents.coach_counts.o.per_day": "Per day",
     "set.agents.coach_enabled": "Coach",
     "set.agents.coach_enabled.d":
-      "On, Coach can run: it reads how this machine's agents used tokens and writes a report with findings. It reads only this Den's own agents and changes nothing. Counting sends nothing off this machine; judging, below, is its own switch.",
+      "On, Coach can run: it reads how this machine's agents used tokens and writes a report with findings. It reads only this __DEN_TITLE__'s own agents and changes nothing. Counting sends nothing off this machine; judging, below, is its own switch.",
     "set.agents.coach_window_days": "Coach window, in days",
     "set.agents.coach_window_days.d":
       "How many days back each Coach run reads, 1 to 90.",

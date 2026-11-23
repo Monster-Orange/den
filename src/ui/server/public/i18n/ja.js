@@ -3776,7 +3776,7 @@
     "set.agents.coach_counts.o.per_day": "1 日あたり",
     "set.agents.coach_enabled": "Coach",
     "set.agents.coach_enabled.d":
-      "オンにすると Coach を実行できます。このマシンのエージェントのトークン使用状況を読み、指摘を含むレポートを書きます。この Den のエージェントだけを読み、何も変更しません。集計はこのマシンの外に何も送りません。下の判定は別のスイッチです。",
+      "オンにすると Coach を実行できます。このマシンのエージェントのトークン使用状況を読み、指摘を含むレポートを書きます。この __DEN_TITLE__ のエージェントだけを読み、何も変更しません。集計はこのマシンの外に何も送りません。下の判定は別のスイッチです。",
     "set.agents.coach_window_days": "Coach の期間（日数）",
     "set.agents.coach_window_days.d":
       "Coach の各実行が何日前までを読むか。1〜90。",
