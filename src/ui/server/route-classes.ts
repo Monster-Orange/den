@@ -738,6 +738,14 @@ export const ROUTES: readonly RouteEntry[] = [
     "HUB-1.5: Den Hub: its URL, connected or not, the team and the install's label (never the token)",
   ),
   R(
+    "/api/hub/work",
+    "issue 754: what Hub knows about the work of the asked projects (needs you, building, blocked, visions), live from Hub, kept in memory only",
+  ),
+  R(
+    "/api/hub/agents-current",
+    "issue 754: each asked agent's current Hub item (working on, or last on) and its vision, live from Hub, kept in memory only",
+  ),
+  R(
     "/api/hub/github",
     "H5: how many of the company's GitHub repos Den Hub's GitHub App can read, live from Hub, with Hub's github.com install or change link",
   ),

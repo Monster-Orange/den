@@ -1613,6 +1613,12 @@
           pickProjectColour,
         } from "/project-colour-picker.js";
         import { agentsSectionHtml, mountAgents } from "/agents-section.js";
+        import {
+          ensureHubWorkCss,
+          hubWorkCardHtml,
+          loadHubWork,
+        } from "/hub-work.js";
+        import { viewScope } from "/view-scope.js";
         // issue 133: Den's own dialogs, in the page's language, never the
         // browser's confirm(), prompt() or alert().
         import { askConfirm, askText, tell } from "/dialog-den.js";
@@ -2103,6 +2109,27 @@
         // workspaces. The selected workspace's header (name, badges, its
         // actions, Open in Graph →, ⋯) and one repo table (R24d). The
         // Graph page (R22) is this file at /graph: the graph alone.
+        /**
+         * Issue 754: the Work in Hub card above the project's services and
+         * agents: this project, or with "All projects" picked, one row per
+         * project in view. No Hub (or Hub said no): one quiet line to
+         * Connect. Den only reads it; nothing is kept.
+         */
+        async function fillHubWork(wsName) {
+          const slot = document.getElementById("hub-work-slot");
+          if (!slot) return;
+          const view = await viewScope();
+          const names =
+            view.scope === "all" && view.inView.length > 1
+              ? view.inView
+              : [wsName];
+          const answer = await loadHubWork(names);
+          if (!slot.isConnected) return;
+          for (const p of answer?.projects ?? [])
+            p.name = projectLabel(wsData, p.project);
+          ensureHubWorkCss();
+          slot.innerHTML = hubWorkCardHtml(answer);
+        }
         async function renderContent(wsName) {
           const content = document.getElementById("content");
           const ws = wsData?.workspaces?.[wsName];
@@ -2284,11 +2311,13 @@
           <span class="form-msg" id="add-msg"></span>
         </div>
         <div class="content-body ws-agents-only">
+          <div id="hub-work-slot"></div>
           ${agentsSectionHtml(wsName)}
         </div>
         `
             : `
         <div class="content-body">
+          <div id="hub-work-slot"></div>
           <div class="tbl-tools">
             <label>${escHtml(pT("pj.find", "Find"))} <input type="search" class="tbl-find" id="tbl-find" placeholder="${escHtml(pT("pj.findPh", "repo, service…"))}" autocomplete="off" value="${escHtml(_tblQuery)}"></label>
             <span class="tbl-muted" id="tbl-group-l">${escHtml(pT("pj.groupBy", "Group by"))}</span>
@@ -2345,6 +2374,7 @@
           _tbl = { wsName, ws, svcList, depsMap, repoRank, appTree };
           renderTable();
           mountAgents(wsName);
+          void fillHubWork(wsName);
 
           // Pre-fetch GitHub org repos so the Add Service modal loads instantly
           fetch("/api/github/repos")
