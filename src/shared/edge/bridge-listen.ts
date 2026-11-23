@@ -23,6 +23,7 @@ import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { isDockerBridgeAddress } from "../../ui/server/request-guard.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export type BridgeListen = "auto" | "off";
 
@@ -134,9 +135,7 @@ export function writeBridgeState(
   now = new Date(),
 ): void {
   const file = bridgeStateFile(stateDir);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ ...o, at: now.toISOString() }));
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify({ ...o, at: now.toISOString() }));
 }
 
 export function readBridgeState(

@@ -9,6 +9,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** One test run, as its lines describe it. */
 export interface RunEntry {
@@ -92,11 +93,9 @@ function append(stateDir: string, line: Line): void {
     const text = fs.readFileSync(file, "utf-8");
     const lines = text.split("\n").filter(Boolean);
     if (lines.length > MAX_LINES) {
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, `${lines.slice(-KEEP_LINES).join("\n")}\n`, {
+      writeFileAtomic(file, `${lines.slice(-KEEP_LINES).join("\n")}\n`, {
         mode: 0o600,
       });
-      fs.renameSync(tmp, file);
     }
   } catch {
     /* no history: the column says "—" */
