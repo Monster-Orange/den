@@ -58,6 +58,27 @@ there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
 totals per kind and never fails.
 
+### What runs first
+
+The static checks that fail most often run first, in seconds: version
+sync, the words gate, the colour and kit tokens, i18n parity, the
+settings inventory, the pop-up and dialog ratchets, and the kit-copy
+check. The list is `scripts/fast-checks.json`; one script runs it:
+
+```bash
+node scripts/fast-checks.mjs          # about 10 s
+node scripts/fast-checks.mjs --list   # what it runs
+```
+
+In CI it is the `fast` job, under a minute. The test jobs and shards wait
+for it, so one of these failing shows in a minute or two, not after a
+ten-minute shard. The `pre-push` hook runs the same list before the
+org-name checks. `DEN_PREPUSH_FAST=0` skips it for one push, as a hatch
+for a person only: agents and lanes never set it (the same rule as never
+using `--no-verify`), and CI's `fast` job runs the same list anyway. A check
+belongs on the list only when it reads the repo and nothing else (no
+server, browser, Docker or network) and takes seconds.
+
 On a busy machine, fewer jest workers means fewer flakes from load:
 `DEN_TEST_WORKERS` sets how many (a number, or a percentage such as
 `50%`). Unset, jest picks its own. `npm run preflight` uses 8 unless it is
@@ -396,9 +417,17 @@ trusted publishing (no token anywhere):
   `package.json` and its `package-lock.json` entry together):
   `scripts/kit-version.mjs` fails the PR's checks and the release's den-ui
   job otherwise, since npm already has the old version.
-- A push to `main` whose `package.json` version is not on npm yet is the
-  release: the gates, the tarball and its SHA256SUMS, the tag `v<version>`,
-  `npm publish` with provenance, and a GitHub release.
+- A release publishes the exact tree of the dev tag that passed its test
+  bed, never `main`'s HEAD (issue 922; docs/releasing.md). Start
+  `release.yml` by hand, from `main`, with `promote` set to the release's version commit
+  on its release branch: its parent is the signed dev tag, whose commit has
+  the bed's PASS (the `release/bed` commit status). Then the gates, the
+  tarball (with `release.json`) and its SHA256SUMS (naming the dev tag and
+  its commit), the tag `v<version>` on that commit, `npm publish` with
+  provenance, and a GitHub release.
+- A push to `main` publishes nothing, so `main` takes merges at any time.
+  Merge the release branch into `main` after the release: `v<version>`
+  already tags its version commit, so nothing publishes again.
 - The gates run on both ends of the supported Node range, the lowest that
   `engines` allows and the Node installs run, and both must pass. The
   tarball is built on the lowest. `ci.yml` runs the same matrix on every
@@ -413,8 +442,8 @@ trusted publishing (no token anywhere):
 - Tag each tarball handed to a gate `v<version>-dev.N` on the commit it
   was packed from, and push the tag. The release job checks that every
   such tag of the version is in the release commit's history
-  (`scripts/release-ancestry.sh`): a candidate that passed its gate but
-  never merged stops the release.
+  (`scripts/release-ancestry.sh`): a candidate of the same version that
+  passed its gate but isn't in the promoted commit stops the release.
 - Every pushed dev tag starts the release's dry run
   (`.github/workflows/release-dry-run.yml`, issue 615). It applies the
   release commit's edits to the runner's copy only

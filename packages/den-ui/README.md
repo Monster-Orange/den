@@ -567,6 +567,28 @@ never converted to HTML and back).
   either builder is not used. Words: `kit.fold.panel`, `kit.fold.show`,
   `kit.fold.hidden` and `kit.badge.*`, in en, es and ja. Show or hide each
   with the `hidden` attribute.
+- `src/preview.js`, `src/preview-frame.js` (exports `./preview`,
+  `./preview-frame`): a page or a component as a preview (issue 789),
+  in a frame that is `sandbox="allow-scripts"` (an opaque origin: the
+  previewed page's scripts can't reach the host's DOM, cookies or
+  storage), at a width (Hub's frames are 390, 768 and 1440; it scales
+  down to fit, never up) and a theme. The width, theme and mode change
+  with no reload. `kitBase` is where the kit is served (`/kit/` in Den,
+  `/static/den-ui/` in Hub). The frame's CSP lets only the kit's own files
+  load (from `origin` + `kitBase`; `origin` defaults to the host page's)
+  and blocks every network call and form post, so a previewed page can't
+  call out or load from another site. Its own inline scripts and styles
+  still run. The opaque origin keeps the host's cookies out only while
+  they are `SameSite=Lax` or `Strict`, as Den's are.
+
+      import { mountPreview } from "@monster-orange/den-ui/preview";
+      const pv = mountPreview(el, { html, width: 1440, theme: "sketch" });
+      pv.setWidth(390); pv.setTheme(null, "dark"); pv.destroy();
+
+- `src/themes/sketch.css` (export `./themes/sketch.css`): the sketch
+  theme's tokens (issue 788: greys, dashed edges, outline buttons, one
+  face), built from `src/themes/sketch/den-theme.json`. Link it after
+  `tokens.css`.
 - `src/switch.js`, `src/switch.css` (exports `./switch`, `./switch.css`):
   a labelled on/off control (issue 551).
 

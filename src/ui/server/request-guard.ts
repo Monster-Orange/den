@@ -711,7 +711,9 @@ export function checkRequest(
         status: 403,
         code: "agent_token_elsewhere",
         error:
-          "This agent token works only from its own agent's processes, and this call came from another process. Nothing ran.",
+          // Issue 1131: what to do. A busy machine can make Den miss the
+          // agent's own process; the token is never in this text.
+          `This agent token works only from its own agent's processes, and ${title} couldn't tell this call came from one of them. Nothing ran. If it came from this agent's own tools, try the call again (a busy machine can cause this); if it keeps happening, run \`${cli} doctor\` and restart the agent from Agents.`,
       };
     if (proved === "revoked")
       return {
@@ -1053,6 +1055,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/disconnect",
   "/api/hub/sync",
   "/api/hub/link-suggestions",
+  "/api/hub/connect-review",
   "/api/hub/names-check",
   // Issue 144: ending a gate slot early is a person's.
   "/api/gate-slots/end",

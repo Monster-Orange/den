@@ -50,6 +50,11 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
+import { localDateTime } from "../../shared/local-time.js";
+import {
+  readRestartsWaiting,
+  type RestartsWaiting,
+} from "../../shared/agents/restarts-waiting.js";
 import {
   readTestResolveState,
   testResolveDoctorLine,
@@ -406,6 +411,23 @@ export function approvalsLines(read: () => boolean): {
       problem: true,
     };
   }
+}
+
+/**
+ * Issue 1129: agents waiting in the restart queue, as doctor prints them.
+ * Informational: the queue starts them a few at a time on its own.
+ */
+export function restartsWaitingLines(
+  read: () => RestartsWaiting | null,
+): string[] {
+  const w = read();
+  if (!w || w.waiting <= 0) return [];
+  const names = w.ids.slice(0, 5).join(", ");
+  const more = w.ids.length > 5 ? ` and ${w.ids.length - 5} more` : "";
+  return [
+    "",
+    `  ℹ ${w.waiting} agent${w.waiting === 1 ? "" : "s"} waiting to restart, a few at a time (as of ${localDateTime(w.at)}): ${names}${more}`,
+  ];
 }
 
 /** Informational lines after the rows: never a failure. */
@@ -846,11 +868,27 @@ export function hubProjectLines(
     link: { slug: string; name: string } | null;
     /** 0.4.44: the link it had, when it lost it with no unlink asked. */
     lost?: { slug: string; at: string };
+    /** Issue 646: its link points at another Hub or company. */
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
   }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  // Issue 646: a link to another Hub fails, connected or not.
+  for (const { ws, link, elsewhere: e } of projects) {
+    if (link || !e) continue;
+    const where = `${e.origin.replace(/^https?:\/\//, "")}${e.company ? ` (company ${e.company})` : ""}`;
+    const detail = `${ws}: linked to Hub project ${e.name} on ${where}, not the connected Hub, so Den sends Hub no project for it. Link it again: Settings › Hub, Connect's project review`;
+    lines.push(`  hub project  ✗  ${detail}`);
+    checks.push({ id: `hub:project:${ws}`, status: "fail", detail });
+  }
+  projects = projects.filter((p) => p.link || !p.elsewhere);
   // 0.4.44: a lost link warns even with Hub down: the config lost it.
   for (const { ws, link, lost } of projects) {
     if (link || !lost) continue;
@@ -1026,22 +1064,41 @@ async function projectsWithHubProject(): Promise<
     ws: string;
     link: { slug: string; name: string } | null;
     lost?: { slug: string; at: string };
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
   }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
-  const { parseHubProjectLink } =
+  const { hubProjectOf, hubLinkElsewhere } =
     await import("../../shared/hub-project-link.js");
   const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
   try {
-    const all = readWorkspacesFile().workspaces;
+    const file = readWorkspacesFile();
+    const all = file.workspaces;
     const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
-    return Object.entries(all).map(([ws, c]) => {
+    return Object.keys(all).map((ws) => {
       const was = lost.get(ws);
+      // Issue 646: a link to another Hub or company isn't this one's.
+      const e = hubLinkElsewhere(ws, () => file);
       return {
         ws,
-        link: parseHubProjectLink(c?.hub_project),
+        link: hubProjectOf(ws, () => file),
         ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
+        ...(e?.hub
+          ? {
+              elsewhere: {
+                slug: e.slug,
+                name: e.name,
+                origin: e.hub.origin,
+                ...(e.hub.company ? { company: e.hub.company } : {}),
+              },
+            }
+          : {}),
       };
     });
   } catch {
@@ -1824,6 +1881,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 1131: agents' refused calls in the last hour.
+      r.checks.push((await tokenRefusalRow()).check);
       // Issue 707: the server's warning lines on disk.
       r.checks.push((await serverLogRow()).check);
       // Issue 625: the test boxes, and why one is skipped.
@@ -1933,6 +1992,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
   const held = approvalsLines(() => readMcpConfig().approvals);
   for (const l of held.lines) console.log(l);
+  // Issue 1129: agents the restart queue still holds.
+  for (const l of restartsWaitingLines(() =>
+    readRestartsWaiting(getStateDir()),
+  ))
+    console.log(l);
   // D17: who can connect GitHub to this instance from the browser.
   const owner = await ownerCheck();
   console.log("");
@@ -1961,6 +2025,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  for (const l of (await tokenRefusalRow()).lines) console.log(l);
   for (const l of (await serverLogRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
@@ -2127,6 +2192,20 @@ async function previousHubRows(): Promise<
     /* a bad hub block: its own row says so */
   }
   return previousHubDoctor(getStateDir(), url);
+}
+
+/** Issue 1131: agents' refused calls in the last hour, from the audit. */
+async function tokenRefusalRow(): Promise<{
+  lines: string[];
+  check: OnboardCheck;
+}> {
+  const { tokenRefusalLines, readRefusalEntries } =
+    await import("./doctor-token-refusals.js");
+  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
+  return tokenRefusalLines(
+    readBrand().name,
+    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
+  );
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */

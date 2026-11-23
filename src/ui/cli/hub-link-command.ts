@@ -19,6 +19,11 @@ import {
 } from "../../shared/hub-project-link.js";
 import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import { product } from "../../shared/product.js";
+import {
+  personServerFor,
+  throughServer,
+  type PersonServer,
+} from "./person-server.js";
 
 export const HUB_LINK_USAGE =
   "hub link -p <project> [<hub project> | --none] [--json] | hub link --suggested [--json]";
@@ -44,6 +49,8 @@ export interface HubLinkDeps {
   projects?: () => string[] | Promise<string[]>;
   /** This install's page for `path`, or null when its address isn't set. */
   link?: (path: string) => string | null;
+  /** Issue 989: the running server (default: this install's). */
+  server?: PersonServer;
 }
 
 async function defaultProjects(): Promise<string[]> {
@@ -136,6 +143,35 @@ export async function cmdHubLink(
   const read = deps.read ?? ((w: string) => hubProjectOf(w));
   const write = deps.write ?? setHubProject;
   const now = read(ws);
+
+  // Issue 989: a link or --none goes to the running server (a person's
+  // ask there), which picks the Hub project and records it; its refusal
+  // is final. With no server, the CLI does it here, as before.
+  if (none || hubTyped !== undefined) {
+    let answer: Record<string, unknown> | null;
+    try {
+      answer = await throughServer(
+        deps.server ?? personServerFor(),
+        "PUT",
+        `/api/workspaces/${encodeURIComponent(ws)}/hub-project`,
+        { hub: none ? null : hubTyped },
+      );
+    } catch (e) {
+      err(`${where}: ${(e as Error).message}; nothing was changed`);
+      return 1;
+    }
+    if (answer) {
+      const hub = (answer.hub ?? null) as HubProjectLink | null;
+      if (json) out(JSON.stringify({ ok: true, project: ws, hub }));
+      else
+        out(
+          hub
+            ? `✓ ${ws} is linked to Hub project ${label(hub)}.`
+            : `✓ ${ws} is no longer linked to a Hub project${now ? ` (was ${label(now)})` : ""}. Hub files its agents' work in Unfiled.`,
+        );
+      return 0;
+    }
+  }
 
   if (none) {
     write(ws, null, `${cli} hub link --none`);

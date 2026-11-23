@@ -28,6 +28,7 @@ import {
   renderThemeTokens,
 } from "../../../src/ui/server/theme-runtime.js";
 import { KIT_FILES } from "../../../src/ui/server/ui-assets.js";
+import { declOf, propsOf, resolve } from "./kit-css.js";
 
 const ROOT = path.resolve(__dirname, "../../..");
 // The schema is read from the engine root: this checkout's, whichever
@@ -37,44 +38,6 @@ const KIT = path.join(ROOT, "packages/den-ui/src");
 const SKETCH_DIR = path.join(KIT, "themes/sketch");
 const read = (p: string) => fs.readFileSync(p, "utf8");
 const json = (p: string) => JSON.parse(read(p)) as ThemeManifest;
-
-/** The custom properties a CSS block sets, by name (the first block that has it). */
-function propsOf(css: string, selector: RegExp): Record<string, string> {
-  const out: Record<string, string> = {};
-  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const m of bare.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-    if (!selector.test(m[1].trim())) continue;
-    for (const d of m[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g))
-      if (!(d[1] in out)) out[d[1]] = d[2].trim();
-  }
-  return out;
-}
-
-/** var() substitution, with fallbacks, as a browser resolves it. */
-function resolve(value: string, vars: Record<string, string>): string {
-  let v = value;
-  for (let i = 0; i < 10; i++) {
-    const next = v.replace(
-      /var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g,
-      (_m, name: string, fb?: string) => vars[name] ?? (fb ?? "").trim(),
-    );
-    if (next === v) break;
-    v = next;
-  }
-  return v;
-}
-
-/** One declaration's value in a rule whose selector list names `sel`. */
-function declOf(css: string, sel: string, prop: string): string | null {
-  const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const m of bare.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-    const sels = m[1].split(",").map((s) => s.trim());
-    if (!sels.includes(sel)) continue;
-    const d = new RegExp(`(?:^|;|\\s)${prop}\\s*:\\s*([^;]+);`).exec(m[2]);
-    if (d) return d[1].trim();
-  }
-  return null;
-}
 
 /** What `theme` draws for the kit's primary button and a bordered edge. */
 function drawn(theme: ThemeManifest, mode: "light" | "dark") {
@@ -142,10 +105,12 @@ describe("issue 788: themes without the new keys draw as before", () => {
   it("every kit border that was solid reads --edge-style, falling back to solid", () => {
     for (const f of fs.readdirSync(KIT).filter((f) => f.endsWith(".css"))) {
       const css = read(path.join(KIT, f));
-      expect({ f, left: css.match(/\bsolid var\(--border/g) ?? [] }).toEqual({
-        f,
-        left: [],
-      });
+      // Issue 1137: a row divider stays solid (marked so in the CSS).
+      const left = css
+        .split("\n")
+        .filter((l) => /\bsolid var\(--border/.test(l))
+        .filter((l) => !l.includes("issue 1137: a row divider stays solid"));
+      expect({ f, left }).toEqual({ f, left: [] });
       for (const m of css.matchAll(/var\(--edge-style([^)]*)\)/g))
         expect({ f, use: m[0] }).toEqual({
           f,

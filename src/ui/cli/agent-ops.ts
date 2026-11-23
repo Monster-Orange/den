@@ -50,6 +50,12 @@
  * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import { readActivity } from "../../shared/agents/activity.js";
+import {
+  denToolsOld,
+  type DenToolsOld,
+} from "../../shared/agents/den-tools-version.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -176,7 +182,7 @@ import {
   peerSessionName,
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { engineVersion, getDistRoot } from "../../shared/paths.js";
 import {
   operatorStubArgv,
   operatorStubEnv,
@@ -191,6 +197,7 @@ import {
   sandboxSetByPerson,
 } from "../../shared/agents/sandbox-rollout.js";
 import * as os from "os";
+import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -364,6 +371,7 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   type AgentSandboxInput,
@@ -390,6 +398,11 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
+  /**
+   * Issue 989: this install's server, called with the person token. A
+   * test gives one that answers null (no server) unless it asks for one.
+   */
+  server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
   /**
    * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
@@ -536,6 +549,8 @@ export interface AgentsDeps extends SessionsDeps {
 export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
 
 export interface AgentsResolved extends Resolved {
+  /** Issue 989: this install's server, for person-only verbs. */
+  server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
   mcpNotReadFromOrg: () => string[];
@@ -889,6 +904,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
     ...base,
+    server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     mcpNotReadFromOrg:
       d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
@@ -1658,6 +1674,17 @@ export function resumesOnRestart(rec: AgentRecord, p?: Persona): boolean {
 export interface McpStale {
   adds: string[];
   drops: string[];
+  /** Issue 1223: its Den tools are an older Den's. */
+  den?: DenToolsOld;
+}
+
+/** Issue 1223: Hub's change and its Den tools' age, in one; or none. */
+export function withDenTools(
+  st: McpStale | undefined,
+  den: DenToolsOld | undefined,
+): McpStale | undefined {
+  if (!den) return st;
+  return { ...(st ?? { adds: [], drops: [] }), den };
 }
 
 /** How long what Hub gives agents now is trusted (the token read is slow). */
@@ -1764,9 +1791,13 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
   const url = await hubNow(d);
   const waiting = d.hubProblem() !== null;
   for (const r of running) {
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, {
-      waiting,
-    });
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, { waiting }),
+      (() => {
+        const rec = readRecord(d.stateDir(), r.agent);
+        return rec ? denToolsOld(rec, r.startedAt, d.stateDir()) : undefined;
+      })(),
+    );
     if (st) r.mcpStale = st;
     const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
     const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
@@ -1789,10 +1820,14 @@ export async function staleAgents(
   }
   const out: { id: string; workspace: string; stale: McpStale }[] = [];
   for (const rec of listRecords(d.stateDir())) {
-    if (!live.some((s) => sessionOf([s], rec))) continue;
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
-      waiting: d.hubProblem() !== null,
-    });
+    const s = sessionOf(live, rec);
+    if (!s) continue;
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
+        waiting: d.hubProblem() !== null,
+      }),
+      denToolsOld(rec, s.startedAt ?? rec.startedAt, d.stateDir()),
+    );
     if (st) out.push({ id: rec.id, workspace: rec.workspace, stale: st });
   }
   return out;
@@ -3431,6 +3466,10 @@ async function startSession(
     grants: [...launch.grants],
     ...extra,
   };
+  // Issue 1223: the Den its tools start on (they keep its code).
+  const denV = engineVersion();
+  if (denV) rec.denVersion = denV;
+  else delete rec.denVersion;
   // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
   delete rec.endedAt;
@@ -3589,6 +3628,12 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 816: test installs announced on this computer.
+    otherStateDirs: listAnnounced(announceDir(), {
+      ownStateDir: d.stateDir(),
+    }).map((a) => a.stateDir),
+    // ...and where they announce, for those announced after this launch.
+    testAnnounceDir: announceDir(),
     personConfigDir: path.join(d.distRoot(), "config", "local"),
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
@@ -8236,6 +8281,12 @@ export async function markInterrupted(
     /** agents.restore_hub_wait_seconds, in ms. */
     hubWaitMs?: number;
     hubPollMs?: number;
+    /**
+     * Issue 1129: the restart queue they go through (agents.resume): a
+     * batch at a time, the ones that were working first. None: all at
+     * once, as before.
+     */
+    queue?: RestartQueue;
   } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
@@ -8271,19 +8322,46 @@ export async function markInterrupted(
   const hubAnswered = opts.hubUp
     ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
     : true;
+  // den#4: a rotated one relaunches from its handoff instead.
+  const bring = (rec: AgentRecord) =>
+    rotationOf(d, rec)?.ready
+      ? relaunchAgent(d, rec.id)
+      : resumeAgent(d, rec.id);
+  const note = (rec: AgentRecord, r: { early?: unknown }) => {
+    if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+    else {
+      found.resumed.push(rec.id);
+      if (!hubAnswered) found.withoutHub.push(rec.id);
+    }
+  };
+  const failed = (rec: AgentRecord, e: unknown) =>
+    found.failed.push({ agent: rec.id, why: (e as Error).message });
+  if (opts.queue) {
+    // Issue 1129: a batch at a time; the ones working when Den stopped first.
+    const activity = readActivity(d.stateDir());
+    const q = opts.queue;
+    await Promise.all(
+      due.map((rec) =>
+        q
+          .add({
+            id: rec.id,
+            why: "resume",
+            working: activity[rec.id]?.working === true,
+            run: () => bring(rec),
+          })
+          .then(
+            (r) => note(rec, r as { early?: unknown }),
+            (e) => failed(rec, e),
+          ),
+      ),
+    );
+    return found;
+  }
   for (const rec of due) {
     try {
-      // den#4: a rotated one relaunches from its handoff instead.
-      const r = rotationOf(d, rec)?.ready
-        ? await relaunchAgent(d, rec.id)
-        : await resumeAgent(d, rec.id);
-      if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else {
-        found.resumed.push(rec.id);
-        if (!hubAnswered) found.withoutHub.push(rec.id);
-      }
+      note(rec, await bring(rec));
     } catch (e) {
-      found.failed.push({ agent: rec.id, why: (e as Error).message });
+      failed(rec, e);
     }
   }
   return found;

@@ -568,6 +568,8 @@ describe("the ⌘K palette (R17)", () => {
       "Report screenshots, largest kept SETTING",
       // Issue 1048: fuzzy too ("s…h…o…p" in "this load per").
       "Hold new unit test runs over this load per core SETTING",
+      // Issue 816: fuzzy too ("s…h…o…p" in "installs on this computer").
+      "Test installs on this computer SETTING",
     ]);
     await p.keyboard.press("ArrowDown");
     expect(await p.getAttribute(q, "aria-activedescendant")).toBe(
