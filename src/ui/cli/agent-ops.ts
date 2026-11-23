@@ -778,11 +778,15 @@ function defaultDenBase(): string {
 export async function hubUpstream(
   d: AgentsResolved,
   who: { agentId: string; workspace: string; session: string },
-): Promise<{
-  base: string;
-  mcpUrl: string;
-  headers: Record<string, string>;
-} | null> {
+): Promise<
+  | {
+      base: string;
+      mcpUrl: string;
+      headers: Record<string, string>;
+    }
+  | { refused: "agent_removed" }
+  | null
+> {
   const h = await d.hub().catch(() => null);
   if (!h) return null;
   const { hubHeaders } = await import("../../shared/hub.js");
@@ -794,8 +798,10 @@ export async function hubUpstream(
   }
   let name = who.agentId;
   let linked: string | undefined;
+  let hadRecord = false;
   try {
     const rec = readRecord(d.stateDir(), who.agentId);
+    hadRecord = !!rec;
     name = rec?.displayName || name;
     linked = rec?.project;
   } catch {
@@ -815,6 +821,17 @@ export async function hubUpstream(
       { id: who.agentId, name, workspace: who.workspace },
     )
     .catch(() => null);
+  // Issue 1222: removed while its token was asked for (its new token was
+  // revoked, issue 249): this call is refused, never sent on the install's.
+  if (hadRecord) {
+    let still = true;
+    try {
+      still = !!readRecord(d.stateDir(), who.agentId);
+    } catch {
+      /* unreadable is not removed */
+    }
+    if (!still) return { refused: "agent_removed" };
+  }
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
