@@ -128,6 +128,12 @@ describe("issue 1325: the session's own temp folder", () => {
     // its own allowed back after.
     const lines = prof.split("\n");
     expect(lines).toContain("(deny file-link (vnode-type SOCKET))");
+    // No counted repeat ({6}, {1,64}) in any of the profile's regexes:
+    // Seatbelt compiles one but doesn't match it (the macOS run found a
+    // write let through).
+    const regexes = prof.match(/#"[^"]*"/g) ?? [];
+    expect(regexes.length).toBeGreaterThan(0);
+    expect(regexes.filter((r) => /\{\d+(,\d*)?\}/.test(r))).toEqual([]);
     const denyOthers = lines.findIndex((x) =>
       x.includes(`/den-${"[A-Za-z0-9]".repeat(6)}(/|$)`),
     );

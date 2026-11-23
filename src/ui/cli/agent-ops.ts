@@ -1016,7 +1016,14 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             ),
           },
         )),
-    sessionTmp: d.sessionTmp ?? (() => makeSessionTmp(d.sessionTmpBase)),
+    // macOS only until issue 1331 keeps other sessions out of one on Linux
+    // too (there /tmp is shared, and sockets were never refused).
+    sessionTmp:
+      d.sessionTmp ??
+      (() =>
+        process.platform === "darwin"
+          ? makeSessionTmp(d.sessionTmpBase)
+          : undefined),
     sessionTmpBase: d.sessionTmpBase ?? "/tmp",
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
