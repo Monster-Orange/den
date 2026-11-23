@@ -112,3 +112,94 @@ describe("bellAfter (issue 1339)", () => {
     expect(ids(before.groups, false)).toEqual(["a", "b"]);
   });
 });
+
+/** Two projects: north and south, each with unread Updates. */
+const inScope = (scope: string, n: ReturnType<typeof item>) => ({
+  ...n,
+  scope,
+});
+const twoScopes = () => ({
+  unread: 2,
+  groups: [
+    {
+      scope: "workspace/south",
+      subjects: [
+        {
+          subject: "agent:a",
+          items: [inScope("workspace/south", item("a", "waiting"))],
+        },
+      ],
+    },
+    ...groups(item("b", "waiting")),
+  ],
+  updates: {
+    count: 3,
+    unread: 3,
+    groups: [
+      {
+        scope: "workspace/south",
+        subjects: [
+          {
+            subject: "agent:d",
+            items: [inScope("workspace/south", item("d", "service"))],
+          },
+          {
+            subject: "agent:g",
+            items: [inScope("workspace/south", item("g", "service"))],
+          },
+        ],
+      },
+      ...groups(item("e", "service")),
+    ],
+  },
+  older: {
+    count: 1,
+    groups: [
+      {
+        scope: "workspace/south",
+        subjects: [
+          {
+            subject: "agent:f",
+            items: [inScope("workspace/south", item("f", "waiting"))],
+          },
+        ],
+      },
+    ],
+  },
+});
+
+describe("a project's Mark read (issue 1339)", () => {
+  it("running: its button busy in itself; the others and the heading's wait", async () => {
+    const { bellPanel, bellAfter } =
+      await import("../../../src/ui/server/public/bell.js");
+    const p = bellPanel(bellAfter(twoScopes(), "scope", "workspace/south"), {
+      busy: "scope:workspace/south",
+      updates: true,
+    });
+    const html = JSON.stringify(p);
+    expect(html).toContain(
+      'data-bell=\\"scope\\" data-scope=\\"workspace/south\\" disabled aria-busy=\\"true\\">[bell.marking]',
+    );
+    expect(html).toContain(
+      'data-bell=\\"scope\\" data-scope=\\"workspace/north\\" disabled aria-busy=\\"true\\">[bell.read]',
+    );
+    expect(p.actions).toMatch(
+      /data-bell="all" disabled aria-busy="true">\[bell\.markAll\]/,
+    );
+  });
+
+  it("bellAfter: that project's rows read everywhere, the others as they were, the counts to match", async () => {
+    const { bellAfter } = await import("../../../src/ui/server/public/bell.js");
+    const before = twoScopes();
+    const b = bellAfter(before, "scope", "workspace/south");
+    expect(ids(b.groups, false)).toEqual(["b"]);
+    expect(ids(b.updates.groups, false)).toEqual(["e"]);
+    expect(ids(b.updates.groups)).toEqual(["d", "g", "e"]);
+    expect(ids(b.older.groups, false)).toEqual([]);
+    expect(b.unread).toBe(1);
+    expect(b.updates.unread).toBe(1);
+    expect(b.updates.count).toBe(3);
+    // What a failed POST goes back to.
+    expect(ids(before.updates.groups, false)).toEqual(["d", "g", "e"]);
+  });
+});
