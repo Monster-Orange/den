@@ -2979,6 +2979,17 @@
     },
     {
       "when": [
+        "src/shared/hub-agent-tokens.ts",
+        "src/ui/server/hub-connect.ts",
+        "src/ui/server/hub-proxy-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/hub-agent-tokens-security.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/shared/agents/guardrails/attention-hook.ts",
         "src/ui/server/hub-approval.ts"
       ],

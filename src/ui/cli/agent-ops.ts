@@ -8011,11 +8011,12 @@ async function removeRecords(
     for (const rec of recs) {
       const s = sessionOf(sessions, rec);
       revokeAgentTokens(d.stateDir(), rec.id);
-      // Issue 249: its Hub token too, on Hub.
-      await d.hubAgentUnbind(rec.id).catch(() => undefined);
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
-      if (removeRecord(d.stateDir(), rec.id))
-        out.push({ agent: rec.id, workspace: rec.workspace });
+      const moved = removeRecord(d.stateDir(), rec.id);
+      // Issue 249: its Hub token too, on Hub; after the record is gone, so
+      // a mint that lands meanwhile sees no agent and revokes its token.
+      await d.hubAgentUnbind(rec.id).catch(() => undefined);
+      if (moved) out.push({ agent: rec.id, workspace: rec.workspace });
     }
     purgeRemoved(d.stateDir());
     return out;
@@ -8078,8 +8079,9 @@ export async function pruneStopped(
   });
   for (const r of old) {
     revokeAgentTokens(d.stateDir(), r.id);
-    await d.hubAgentUnbind(r.id).catch(() => undefined);
     removeRecord(d.stateDir(), r.id);
+    // Issue 249: after the record is gone (see removeRecords).
+    await d.hubAgentUnbind(r.id).catch(() => undefined);
   }
   purgeRemoved(d.stateDir(), 0, now);
   return old.map((r) => r.id);

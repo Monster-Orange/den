@@ -556,6 +556,41 @@ describe("Remove (AG-14.1b)", () => {
   });
 });
 
+describe("issue 249: a removed agent's Hub token is unbound after its record is gone", () => {
+  // A mint in flight checks the record after it stores the token: the
+  // record must be gone before the unbind reads the store, or a mint that
+  // lands between them leaves a live token for a removed agent.
+  it("remove and prune each unbind with the record already moved aside", async () => {
+    const r = await rig();
+    await prompted(r);
+    await agents(r, "stop", "planner");
+    r.made[0].exit(0);
+    await settle();
+    const seen: Record<string, boolean> = {};
+    const file = (id: string) => path.join(r.stateDir, "agents", `${id}.json`);
+    const d = resolveAgentsDeps({
+      ...r.deps,
+      hubAgentUnbind: async (id: string) => {
+        seen[id] = fs.existsSync(file(id));
+      },
+    });
+    await removeAgent(d, "planner");
+    expect(seen).toEqual({ planner: false });
+    writeRecord(r.stateDir, {
+      ...(JSON.parse(
+        fs.readFileSync(
+          path.join(r.stateDir, "removed-agents", "planner.json"),
+          "utf-8",
+        ),
+      ) as Parameters<typeof writeRecord>[1]),
+      id: "old1",
+      stoppedAt: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+    });
+    await pruneStopped(d, 7, Date.now());
+    expect(seen).toEqual({ planner: false, old1: false });
+  });
+});
+
 describe("agents.remove_stopped_after (user.yml)", () => {
   it("reads never (the default), 1d and 7d, and refuses anything else naming the key", () => {
     expect(configuredRemoveStoppedAfter(() => ({}))).toBe(0);

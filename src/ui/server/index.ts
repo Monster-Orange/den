@@ -10974,6 +10974,23 @@ void CRASH_GATE.then(() =>
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
+    // Issue 249: agent-token revokes Hub didn't answer are tried again now
+    // and every hub.agent_token_revoke_retry_seconds, with the install's
+    // token (a forced Disconnect's go on issue 726's record instead).
+    void hubChecked
+      .then(() => import("../../shared/hub-agent-tokens.js"))
+      .then((m) =>
+        m.startAgentTokenRevokeRetry(
+          async () => {
+            const { readHubConfig, readHubToken } =
+              await import("../../shared/hub.js");
+            const cfg = readHubConfig();
+            const token = cfg ? await readHubToken(cfg) : null;
+            return cfg && token ? { url: cfg.url, token } : null;
+          },
+          (l) => serverLog(`  [hub] ${l}`, "warn"),
+        ),
+      );
   }),
 );
 

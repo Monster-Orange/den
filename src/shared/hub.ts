@@ -201,6 +201,12 @@ export interface HubConfig {
    */
   agentTokenRetrySeconds: number;
   /**
+   * Issue 249 hub.agent_token_revoke_retry_seconds (default 600, at least
+   * 5): how often Den tries again a revoke Hub didn't answer (a removed
+   * agent's token), besides at each start.
+   */
+  agentTokenRevokeRetrySeconds: number;
+  /**
    * Issue 249 hub.agent_token_max_age_days (default 30; 0: never): an
    * agent's token older than this is replaced at its next Hub call, with
    * no person act: Den mints the new one and uses it from then on. Den
@@ -238,6 +244,7 @@ type RawHub =
       tools_restart?: unknown;
       agent_tokens?: unknown;
       agent_token_retry_seconds?: unknown;
+      agent_token_revoke_retry_seconds?: unknown;
       agent_token_max_age_days?: unknown;
     }
   | undefined;
@@ -407,6 +414,11 @@ export function readHubConfig(
     "agent_token_retry_seconds",
     600,
   );
+  const revokeRetry = secs(
+    h.agent_token_revoke_retry_seconds,
+    "agent_token_revoke_retry_seconds",
+    600,
+  );
   const maxAge = h.agent_token_max_age_days;
   if (
     maxAge !== undefined &&
@@ -455,6 +467,7 @@ export function readHubConfig(
     toolsRestart: tr !== false,
     agentTokens: agentTok !== false,
     agentTokenRetrySeconds: agentRetry,
+    agentTokenRevokeRetrySeconds: revokeRetry,
     agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
   };
 }

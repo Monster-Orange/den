@@ -18,6 +18,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 import type { NotificationStore } from "./notifications.js";
 
 /** Hub's mint refusal (403): the install's grant doesn't cover agents. */
@@ -45,13 +46,11 @@ const markOf = (stateDir: string) =>
 export function markAgentsNotCovered(stateDir: string, url: string): void {
   const f = markOf(stateDir);
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(
-    tmp,
+  writeFileAtomic(
+    f,
     JSON.stringify({ hubUrl: url, at: new Date().toISOString() }) + "\n",
     { mode: 0o600 },
   );
-  fs.renameSync(tmp, f);
 }
 
 /** Whether Hub `url` said this install's grant doesn't cover agents. */

@@ -15,6 +15,7 @@ import * as path from "path";
 import type { AddressInfo } from "net";
 import {
   hubMintAgentToken,
+  hubRevoke,
   hubRevokeAgentToken,
   HubCallError,
   readHubConfig,
@@ -28,6 +29,11 @@ import {
   type AgentHubTokenSettings,
 } from "../../../src/shared/hub-agent-tokens.js";
 import { hubAgentTokenLines } from "../../../src/ui/cli/doctor-command.js";
+import {
+  readUnrevoked,
+  recordUnrevoked,
+} from "../../../src/shared/hub-binding.js";
+import { retryUnrevoked } from "../../../src/ui/server/hub-change.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
 import {
   agentsNotCovered,
@@ -136,6 +142,20 @@ async function fakeHub(mode: { v: Mode } = { v: "ok" }) {
           replaces.delete(id);
         }
         return json(200, { agent: live.get(id) });
+      }
+      if (
+        req.url === "/connect/revoke" &&
+        req.method === "POST" &&
+        body.token_id === undefined &&
+        mode.v !== "norevoke"
+      ) {
+        // Hub 0.2.10: a bare revoke ends the bearer token itself (an agent
+        // token carries its install, so it may).
+        const own = tokens.get(String(req.headers.authorization).slice(7));
+        if (own) {
+          end(own);
+          return json(200, { revoked: true });
+        }
       }
       if (req.headers.authorization !== `Bearer ${INSTALL}`) {
         const asAgent = tokens.has(String(req.headers.authorization).slice(7));
@@ -383,18 +403,24 @@ describe("issue 249: the server's store of agent tokens", () => {
     expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_1");
   });
 
-  it("a token Hub no longer takes (401 on a call) is dropped, and the next call mints a new one", async () => {
+  it("a token Hub no longer takes (401 on a call) is dropped; the next mint waits hub.agent_token_retry_seconds", async () => {
     const hub = await fakeHub();
     const stateDir = tmp();
+    let now = 1_000_000;
     const b = new HubAgentTokens({
       stateDir: () => stateDir,
       settings: settings(),
+      now: () => now,
     });
     const h = { url: hub.url, token: INSTALL };
     const a = { id: "ada", name: "Ada", workspace: "north" };
     expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_1");
     b.rejected("ada");
     expect(b.bound("ada")).toBe(false);
+    // Within the retry wait it uses the install's token (no mint storm);
+    // after it, a new one.
+    expect(await b.tokenFor(h, a)).toBeNull();
+    now += 601_000;
     expect(await b.tokenFor(h, a)).toBe("hubi_TESTONLY_agent_2");
   });
 
@@ -908,6 +934,110 @@ describe("issue 249: Hub's mint refusals, by their error value", () => {
   });
 });
 
+describe("issue 249: no live token left behind (security review)", () => {
+  it("two 401s in a row: one mint, not two (Hub refusing new tokens is no mint storm)", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings(),
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    await b.tokenFor(h, a);
+    b.rejected("ada");
+    expect(await b.tokenFor(h, a)).toBeNull();
+    b.rejected("ada");
+    expect(await b.tokenFor(h, a)).toBeNull();
+    expect(hub.seen.filter((x) => x.url === "/connect/agent")).toHaveLength(1);
+  });
+
+  it("a forced Disconnect keeps each token Hub couldn't revoke on the unrevoked record (doctor, and the retry at each start revokes it)", async () => {
+    const mode = { v: "ok" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings(),
+      unrevoked: (u) => void recordUnrevoked(stateDir, u),
+    });
+    const h = { url: hub.url, token: INSTALL };
+    await b.tokenFor(h, { id: "ada", name: "Ada", workspace: "north" });
+    const kept = readAgentHubToken(stateDir, "ada")!;
+    mode.v = "down";
+    expect(await b.unbindAll(h, { force: true })).toEqual({
+      revoked: 0,
+      failed: 1,
+    });
+    // Forgotten as the agent's, but on record, by id: doctor names it.
+    expect(readAgentHubToken(stateDir, "ada")).toBeNull();
+    const recs = readUnrevoked(stateDir);
+    expect(recs).toHaveLength(1);
+    expect(recs[0].why).toContain("ada");
+    expect(recs[0].why).toContain(kept.tokenId);
+    expect(JSON.stringify(recs)).not.toContain(kept.token);
+    expect(hub.live.size).toBe(1);
+    // The next start's retry revokes it (a token revokes itself on Hub).
+    mode.v = "ok";
+    expect(
+      await retryUnrevoked({
+        stateDir: () => stateDir,
+        revoke: (u, t) => hubRevoke(u, t),
+      }),
+    ).toBe(1);
+    expect(hub.live.size).toBe(0);
+    expect(readUnrevoked(stateDir)).toEqual([]);
+  });
+
+  it("a revoke left pending is retried (at start and on hub.agent_token_revoke_retry_seconds), not only at an Undo or a Disconnect", async () => {
+    const mode = { v: "ok" as Mode };
+    const hub = await fakeHub(mode);
+    const stateDir = tmp();
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings(),
+    });
+    const h = { url: hub.url, token: INSTALL };
+    await b.tokenFor(h, { id: "ada", name: "Ada", workspace: "north" });
+    mode.v = "down";
+    expect(await b.unbind(h, "ada")).toEqual({ revoked: false, pending: true });
+    expect(await b.retryPending(h)).toEqual({ revoked: 0, failed: 1 });
+    mode.v = "ok";
+    expect(await b.retryPending(h)).toEqual({ revoked: 1, failed: 0 });
+    expect(hub.live.size).toBe(0);
+    expect(readAgentHubToken(stateDir, "ada")).toBeNull();
+    expect(
+      readAgentTokenProblems(stateDir).filter((p) => p.agentId === "ada"),
+    ).toEqual([]);
+  });
+
+  it("an agent removed while its first mint is in flight: the new token is revoked at once, never stored", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    let exists = true;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const b = new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings(),
+      agentExists: () => exists,
+      mint: async (url, token, a) => {
+        await gate;
+        return hubMintAgentToken(url, token, a);
+      },
+    });
+    const h = { url: hub.url, token: INSTALL };
+    const going = b.tokenFor(h, { id: "ada", name: "Ada", workspace: "north" });
+    // Removed meanwhile: nothing stored yet, so its unbind revokes nothing.
+    exists = false;
+    expect(await b.unbind(h, "ada")).toEqual({ revoked: false });
+    release();
+    expect(await going).toBeNull();
+    expect(readAgentHubToken(stateDir, "ada")).toBeNull();
+    expect(hub.live.size).toBe(0);
+  });
+});
+
 describe("issue 249: the settings, with permissive defaults", () => {
   it("hub.agent_tokens on, retry every 600 s, rotation every 30 days (0: never)", () => {
     const c = readHubConfig(
@@ -918,6 +1048,8 @@ describe("issue 249: the settings, with permissive defaults", () => {
     expect(c?.agentTokens).toBe(true);
     expect(c?.agentTokenRetrySeconds).toBe(600);
     expect(c?.agentTokenMaxAgeDays).toBe(30);
+    expect(c?.agentTokenRevokeRetrySeconds).toBe(600);
+    expect(agentHubTokenSettingsOf(c!).revokeRetrySeconds).toBe(600);
   });
 
   it("bad values name their key", () => {
@@ -934,6 +1066,13 @@ describe("issue 249: the settings, with permissive defaults", () => {
     expect(rd({ agent_token_max_age_days: -1 })).toThrow(
       "hub.agent_token_max_age_days",
     );
-    expect(rd({ agent_token_max_age_days: 0 })().agentTokenMaxAgeDays).toBe(0);
+    expect(rd({ agent_token_max_age_days: 0 })()?.agentTokenMaxAgeDays).toBe(0);
+    expect(rd({ agent_token_revoke_retry_seconds: 1 })).toThrow(
+      "hub.agent_token_revoke_retry_seconds",
+    );
+    expect(
+      rd({ agent_token_revoke_retry_seconds: 60 })()
+        ?.agentTokenRevokeRetrySeconds,
+    ).toBe(60);
   });
 });

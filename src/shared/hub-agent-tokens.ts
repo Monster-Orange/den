@@ -37,7 +37,9 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { AGENT_ID_RE } from "./agents/records.js";
+import { writeFileAtomic } from "./atomic-write.js";
+import { AGENT_ID_RE, readRecord } from "./agents/records.js";
+import { recordUnrevoked } from "./hub-binding.js";
 import { SERVER_AGENT_ID, isServerScope } from "./agents/server-agent.js";
 import {
   HubCallError,
@@ -77,6 +79,8 @@ export interface AgentHubTokenSettings {
   retrySeconds: number;
   /** 0: never too old. */
   maxAgeDays: number;
+  /** hub.agent_token_revoke_retry_seconds: how often a waiting revoke is tried again. */
+  revokeRetrySeconds?: number;
 }
 
 /** The server's folder of agent Hub tokens. */
@@ -124,10 +128,7 @@ function writeAgentHubToken(stateDir: string, t: AgentHubToken): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.chmodSync(dir, 0o700);
   fs.chmodSync(path.dirname(dir), 0o700);
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(t) + "\n", { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, f);
+  writeFileAtomic(f, JSON.stringify(t) + "\n", { mode: 0o600 });
 }
 
 function dropAgentHubToken(stateDir: string, id: string): void {
@@ -191,9 +192,7 @@ function noteAgentTokenProblem(
     else if (id in all) delete all[id];
     else return;
     fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
-    const tmp = `${f}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(all) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, f);
+    writeFileAtomic(f, JSON.stringify(all) + "\n", { mode: 0o600 });
   } catch {
     /* doctor's record is best effort */
   }
@@ -237,6 +236,18 @@ export interface HubAgentTokensDeps {
   onNotCovered?: (url: string) => void;
   /** A line for the server's log (never a token). */
   log?: (line: string) => void;
+  /**
+   * A forced Disconnect: a token Hub couldn't revoke goes on issue 726's
+   * record (hub-binding recordUnrevoked): doctor lists it, and each start's
+   * retry revokes it with that token itself (Hub's bare /connect/revoke
+   * takes an agent token: it carries its install). Absent: kept pending.
+   */
+  unrevoked?: (u: { url: string; why: string; token: string }) => void;
+  /**
+   * Whether agent `id` still exists. A mint that lands after its agent was
+   * removed is revoked at once and never stored. Absent: always.
+   */
+  agentExists?: (id: string) => boolean;
 }
 
 /** Hub as the caller has it now: its address and the install's token. */
@@ -284,6 +295,39 @@ export class HubAgentTokens {
       p,
       new Date(this.now()).toISOString(),
     );
+  }
+
+  /**
+   * A token Hub couldn't revoke: kept, marked revokePending (never used),
+   * with a doctor row naming the agent and the token id. retryPending
+   * revokes it when Hub answers (at start, and on a timer).
+   */
+  private keepPending(
+    url: string,
+    agentId: string,
+    agentName: string,
+    t: { tokenId: string; token: string; at?: string },
+    reason: string,
+  ): void {
+    try {
+      writeAgentHubToken(this.deps.stateDir(), {
+        agentId,
+        agentName,
+        hubUrl: url,
+        tokenId: t.tokenId,
+        token: t.token,
+        at: t.at ?? new Date(this.now()).toISOString(),
+        revokePending: true,
+      });
+    } catch (e) {
+      this.log(
+        `couldn't keep agent ${agentId}'s Hub token ${t.tokenId} to revoke later: ${(e as Error)?.message ?? e}`,
+      );
+    }
+    this.problem(agentId, {
+      what: "revoke",
+      detail: `Hub couldn't revoke its token ${t.tokenId} (${reason}): kept, never used, tried again until Hub takes it`,
+    });
   }
 
   private revokeOne(hub: HubInstall, tokenId: string): Promise<boolean> {
@@ -450,6 +494,21 @@ export class HubAgentTokens {
       this.failedUntil.set(a.id, this.now() + s.retrySeconds * 1000);
       return usable?.token ?? null;
     }
+    // Removed while the mint was in flight: its unbind found nothing to
+    // revoke, so this one goes now, and is never used.
+    if (this.deps.agentExists && !this.deps.agentExists(a.id)) {
+      dropAgentHubToken(stateDir, a.id);
+      const gone = await this.revokeOne(hub, g.tokenId).then(
+        () => true,
+        () => false,
+      );
+      this.log(
+        `${gone ? "revoked" : "couldn't revoke"} agent ${a.id}'s new Hub token ${g.tokenId} (reason: agent removed during its mint)`,
+      );
+      if (!gone)
+        this.keepPending(hub.url, a.id, name, g, "removed during its mint");
+      return null;
+    }
     this.problem(a.id, null);
     this.log(
       `${usable ? "rotated" : "minted"} agent ${a.id}'s Hub token ${g.tokenId}: stored under ${agentHubTokenDir(stateDir)}`,
@@ -464,13 +523,19 @@ export class HubAgentTokens {
     const t = readAgentHubToken(stateDir, id);
     if (t && !t.revokePending) {
       dropAgentHubToken(stateDir, id);
+      // No mint storm: the next mint waits the retry time; meanwhile the
+      // install's token, as before agent tokens.
+      this.failedUntil.set(
+        id,
+        this.now() + this.deps.settings().retrySeconds * 1000,
+      );
       this.log(
-        `Hub answered 401 to agent ${id}'s token ${t.tokenId}: dropped here, the next call mints a new one`,
+        `Hub answered 401 to agent ${id}'s token ${t.tokenId}: dropped here, a new one is minted after the retry wait`,
       );
       this.problem(id, {
         what: "rejected",
         status: 401,
-        detail: `Hub answered 401 to its token ${t.tokenId} (Den didn't revoke it): the next call mints a new one`,
+        detail: `Hub answered 401 to its token ${t.tokenId} (Den didn't revoke it): a new one is minted after the retry wait`,
       });
     }
   }
@@ -526,6 +591,35 @@ export class HubAgentTokens {
   }
 
   /**
+   * Revokes still waiting (an agent removed while Hub didn't answer): try
+   * each of this Hub's again with the install's token. The server runs it
+   * at start and every hub.agent_token_revoke_retry_seconds, so a removed
+   * agent's token doesn't live on Hub until an Undo or a Disconnect.
+   */
+  async retryPending(
+    hub: HubInstall,
+  ): Promise<{ revoked: number; failed: number }> {
+    const stateDir = this.deps.stateDir();
+    let revoked = 0;
+    let failed = 0;
+    for (const t of listAgentHubTokens(stateDir)) {
+      if (!t.revokePending || t.hubUrl !== hub.url) continue;
+      const r = await this.revokeEvery(hub, t);
+      if (r.failed) {
+        failed += 1;
+        continue;
+      }
+      revoked += 1;
+      dropAgentHubToken(stateDir, t.agentId);
+      this.problem(t.agentId, null);
+      this.log(
+        `revoked agent ${t.agentId}'s Hub token ${t.tokenId} (reason: a revoke left waiting, tried again)`,
+      );
+    }
+    return { revoked, failed };
+  }
+
+  /**
    * Disconnect: revoke every agent token this Hub minted, each by its id,
    * and forget them here. One Hub couldn't revoke stays (marked) unless
    * `force`; another Hub's are forgotten. Hub 0.2.11 ends all of an
@@ -549,10 +643,29 @@ export class HubAgentTokens {
         `${r.failed ? "couldn't revoke" : "revoked"} agent ${t.agentId}'s Hub token ${t.tokenId} (reason: disconnect)`,
       );
       if (r.revoked) revoked += 1;
-      if (!r.failed || opts.force) dropAgentHubToken(stateDir, t.agentId);
+      if (!r.failed) dropAgentHubToken(stateDir, t.agentId);
       else {
         failed += 1;
-        writeAgentHubToken(stateDir, { ...t, revokePending: true });
+        if (opts.force && this.deps.unrevoked) {
+          // The install's token goes too, so the retry can't use it: on
+          // issue 726's record (by id; doctor lists it), revoked at each
+          // start with the agent's token itself.
+          try {
+            this.deps.unrevoked({
+              url: hub.url,
+              why: `agent ${t.agentId}'s Hub token ${t.tokenId}: Hub couldn't revoke it at a forced disconnect`,
+              token: t.token,
+            });
+            dropAgentHubToken(stateDir, t.agentId);
+            this.problem(t.agentId, null);
+            continue;
+          } catch {
+            /* kept pending below: doctor still names it */
+          }
+        }
+        // Kept, marked, never used: doctor names it, and retryPending
+        // revokes it once Hub answers.
+        this.keepPending(hub.url, t.agentId, t.agentName, t, "disconnect");
       }
     }
     this.failedUntil.clear();
@@ -604,6 +717,7 @@ export const AGENT_HUB_TOKEN_DEFAULTS: AgentHubTokenSettings = {
   enabled: true,
   retrySeconds: 600,
   maxAgeDays: 30,
+  revokeRetrySeconds: 600,
 };
 
 /** The settings from hub.* as read (readHubConfig), defaults for the rest. */
@@ -611,7 +725,10 @@ export function agentHubTokenSettingsOf(
   c: Partial<
     Pick<
       HubConfig,
-      "agentTokens" | "agentTokenRetrySeconds" | "agentTokenMaxAgeDays"
+      | "agentTokens"
+      | "agentTokenRetrySeconds"
+      | "agentTokenMaxAgeDays"
+      | "agentTokenRevokeRetrySeconds"
     >
   >,
 ): AgentHubTokenSettings {
@@ -620,6 +737,9 @@ export function agentHubTokenSettingsOf(
     retrySeconds:
       c.agentTokenRetrySeconds ?? AGENT_HUB_TOKEN_DEFAULTS.retrySeconds,
     maxAgeDays: c.agentTokenMaxAgeDays ?? AGENT_HUB_TOKEN_DEFAULTS.maxAgeDays,
+    revokeRetrySeconds:
+      c.agentTokenRevokeRetrySeconds ??
+      AGENT_HUB_TOKEN_DEFAULTS.revokeRetrySeconds,
   };
 }
 
@@ -650,5 +770,53 @@ export function serverHubAgentTokens(
     stateDir: () => getStateDir(),
     settings: agentHubTokenSettings,
     onNotCovered: (url) => serverNotCovered?.(url),
+    unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
+    agentExists: (id) => {
+      try {
+        return !!readRecord(getStateDir(), id);
+      } catch {
+        return true; // unreadable is not removed: the token stays
+      }
+    },
   }));
+}
+
+let revokeTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Issue 249: retry the revokes still waiting, once now (server start) and
+ * every hub.agent_token_revoke_retry_seconds after, with the install's
+ * token as `hub` reads it then. Not connected: nothing to try with.
+ */
+export function startAgentTokenRevokeRetry(
+  hub: () => Promise<HubInstall | null>,
+  log: (line: string) => void = () => {},
+): void {
+  if (revokeTimer) return;
+  const store = serverHubAgentTokens();
+  let busy = false;
+  let last = 0;
+  const beat = () => {
+    const every =
+      (agentHubTokenSettings().revokeRetrySeconds ??
+        AGENT_HUB_TOKEN_DEFAULTS.revokeRetrySeconds!) * 1000;
+    if (busy || (last && Date.now() - last < every)) return;
+    if (!listAgentHubTokens(getStateDir()).some((t) => t.revokePending)) {
+      last = Date.now();
+      return;
+    }
+    busy = true;
+    last = Date.now();
+    hub()
+      .then((h) => (h ? store.retryPending(h) : null))
+      .catch((e) =>
+        log(
+          `issue 249: retrying waiting revokes: ${String((e as Error)?.message ?? e).slice(0, 200)}`,
+        ),
+      )
+      .finally(() => (busy = false));
+  };
+  beat();
+  revokeTimer = setInterval(beat, 5000);
+  revokeTimer.unref();
 }

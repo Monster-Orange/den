@@ -77,6 +77,7 @@ describe("readHubConfig", () => {
       toolsRestart: true,
       agentTokens: true,
       agentTokenRetrySeconds: 600,
+      agentTokenRevokeRetrySeconds: 600,
       agentTokenMaxAgeDays: 30,
     });
   });
