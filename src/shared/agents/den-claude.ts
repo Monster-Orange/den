@@ -483,6 +483,21 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
 export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
 
 /**
+ * Issue 728: a path as given (resolved) and by its real path, when a
+ * symlink makes them differ, so a deny rule binds both spellings.
+ */
+export function bothSpellings(p: string): string[] {
+  const given = path.resolve(p);
+  let real = given;
+  try {
+    real = fs.realpathSync(given);
+  } catch {
+    /* not there yet: its given spelling only */
+  }
+  return real === given ? [given] : [given, real];
+}
+
+/**
  * Issue 728: rules denying an agent's Read and Bash tools the files in
  * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
  * naming the path in each shell spelling, and the readers by name. For the
@@ -802,21 +817,33 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 728: this install's own folders by their
+                    // given and their real paths (a symlink in either).
                     ...(input.stateDir
-                      ? stateDirDenyRules(input.stateDir, input.env?.HOME)
+                      ? bothSpellings(input.stateDir).flatMap((d) =>
+                          stateDirDenyRules(d, input.env?.HOME),
+                        )
                       : []),
                     // Issue 728: the edge's key folders.
                     ...credentialDirRules(
-                      input.edgeKeyDirs ?? [],
+                      (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
                       input.env?.HOME,
                     ),
-                    // Issue 816: announced test installs'.
+                    // Issue 816: announced test installs'; issue 728:
+                    // the other installs in the install registry.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>
                       stateDirDenyRules(d, input.env?.HOME),
                     ),
                     ...(input.testAnnounceDir
                       ? announceDirDenyRules(
                           input.testAnnounceDir,
+                          input.env?.HOME,
+                        )
+                      : []),
+                    // Issue 728: the install registry, as 816's folder.
+                    ...(input.installRegistryDir
+                      ? announceDirDenyRules(
+                          input.installRegistryDir,
                           input.env?.HOME,
                         )
                       : []),

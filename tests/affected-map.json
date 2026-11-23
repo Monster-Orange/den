@@ -2035,6 +2035,7 @@
         "tests/unit/agents/den-claude-deny.test.ts",
         "tests/unit/agents/file-deny.test.ts",
         "tests/unit/agents/guardrails-pretooluse.test.ts",
+        "tests/unit/agents/other-installs-728.test.ts",
         "tests/unit/agents/personas.test.ts",
         "tests/unit/agents/project-mcp-edit.test.ts",
         "tests/unit/agents/runtimes.test.ts",
