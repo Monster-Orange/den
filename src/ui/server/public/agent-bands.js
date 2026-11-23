@@ -15,7 +15,7 @@
  *                            Move up/down: its project's, in its band
  *   markHtml(state)          the mark: !, a tick, a halo, a ring
  *   chipHtml(r, seenNow?)    the chip: "Needs you · permission", "Done", …
- *   tagHtml(r, {all, name})  the project tag (All projects), "Server"
+ *   tagHtml(r, {all, name, pc})  the project tag (All projects), "Server"
  *   attnSub(rows, scope)     the sub-line: each state above zero
  *   railNeeds(rows)          the rail's count: Needs you only
  *   sinceShort(iso, now?)    "3 min", "2 h": Needs you's and Working's time
@@ -155,12 +155,15 @@ export function chipHtml(r, seenNow) {
  * @param {BandRow} r
  * @param {{ all?: boolean, name?: (workspace: string) => string }} [opts]
  */
-export function tagHtml(r, { all = false, name } = {}) {
+export function tagHtml(r, { all = false, name, pc } = {}) {
   if (r.server || r.workspace === SERVER_WS)
     return `<span class="ptag" data-ptag="server">${esc(t("ag.tag.server"))}</span>`;
   if (!all) return "";
   const n = typeof name === "function" ? name(r.workspace) : r.workspace;
-  return `<span class="ptag" data-ptag="project">${esc(n)}</span>`;
+  // Issue 168: the tag wears its project's colour, as the row does.
+  const c = typeof pc === "function" ? pc(r.workspace) : "";
+  const at = c ? ` data-pc="${esc(c)}"` : "";
+  return `<span class="ptag" data-ptag="project"${at}>${esc(n)}</span>`;
 }
 
 /**

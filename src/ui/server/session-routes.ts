@@ -389,6 +389,8 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
+  /** Issue 773: the runtime's name for people ("Claude Code"). */
+  runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
@@ -674,6 +676,10 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
+      // Issue 773: its name for people, for the row's second line.
+      ...(getRuntime(rec.runtime)?.label
+        ? { runtimeLabel: getRuntime(rec.runtime)?.label }
+        : {}),
       ...(rec.model ? { model: rec.model } : {}),
       // den#3: its subagents' model and where it came from.
       ...(r.subagentModel

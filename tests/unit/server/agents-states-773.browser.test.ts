@@ -224,10 +224,10 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
         "",
       );
     expect(await meta("planner")).toMatch(
-      /^[Cc]laude · asks to run a command · (now|\d+ min)$/,
+      /^Claude Code · asks to run a command · (now|\d+ min)$/,
     );
-    expect(await meta("reviewer")).toMatch(/^[Cc]laude · (now|\d+ min)$/);
-    expect(await meta("builder")).toMatch(/^[Cc]laude · finished /);
+    expect(await meta("reviewer")).toMatch(/^Claude Code · (now|\d+ min)$/);
+    expect(await meta("builder")).toMatch(/^Claude Code · finished /);
     // Mock v3's rows and list: 9px 12px 9px 10px, gap 2px 10px, a
     // hairline on top of every row; the list 380 px at 1280.
     const css = await row("scribe").evaluate((el) => {

@@ -154,6 +154,17 @@ describe("issue 773 Project picker and Server agent: the tag", () => {
     expect(tagHtml(ag("a", "idle"), { all: false })).toBe("");
   });
 
+  it("issue 168: the project tag wears its project's colour", async () => {
+    const { tagHtml } = await mod();
+    expect(
+      tagHtml(ag("a", "idle"), {
+        all: true,
+        name: () => "Acme",
+        pc: () => "pink",
+      }),
+    ).toBe('<span class="ptag" data-ptag="project" data-pc="pink">Acme</span>');
+  });
+
   it("the server agent is tagged Server, in every view", async () => {
     const { tagHtml } = await mod();
     const srv = ag("den-server-agent", "idle", {
