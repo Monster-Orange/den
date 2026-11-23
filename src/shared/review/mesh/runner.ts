@@ -30,6 +30,7 @@
 import type { GhGet, GhResponse, GhSend } from "../../github-watch/gh-http.js";
 import type { UsageLeftReader } from "../../usage/left.js";
 import type { MatchedRule, ReviewPr } from "../rules.js";
+import { scrubLegText } from "./post.js";
 import { claimMarker, claimWinner, parseClaims } from "./claim.js";
 import { ReviewLegs, type LegRefusal } from "./legs.js";
 import { limitsSkip } from "./limits.js";
@@ -387,18 +388,36 @@ export class ReviewRunner {
 
   async submit(
     who: { agent: string | undefined; verified: boolean },
-    sub: Submission,
+    raw: Submission,
   ): Promise<{ ok: true; outcome: Outcome } | { ok: false; why: LegRefusal }> {
-    const a = this.legs.accept(who, sub, this.d.now());
+    const a = this.legs.accept(who, raw, this.d.now());
     if (!a.ok) {
       this.d.audit({
         why: a.why,
         agent: who.agent,
-        repo: sub.repo,
-        pr: sub.pr,
+        repo: raw.repo,
+        pr: raw.pr,
       });
       return a;
     }
+    // Everything the leg wrote is scrubbed before it reaches GitHub, the
+    // author agent or the bell. A finding whose path held a secret loses
+    // its line (its path is never posted) and goes in the verdict instead.
+    const tainted = raw.findings.filter((f) => scrubLegText(f.path) !== f.path);
+    const sub: Submission = {
+      ...raw,
+      verdict:
+        scrubLegText(raw.verdict) +
+        (tainted.length
+          ? `\n\n${tainted.length} finding(s) named a path that held a secret; Den left the path out:\n` +
+            tainted
+              .map((f) => `- ${scrubLegText(f.body).slice(0, 2000)}`)
+              .join("\n")
+          : ""),
+      findings: raw.findings
+        .filter((f) => !tainted.includes(f))
+        .map((f) => ({ ...f, body: scrubLegText(f.body) })),
+    };
     const key = `${sub.repo}#${sub.pr}`;
     const live = this.live.get(key);
     if (!live || live.leg !== a.leg.id)

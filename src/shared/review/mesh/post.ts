@@ -6,6 +6,7 @@
  * carries a hidden marker so later rounds can track it. The check summary
  * shows depth, model, tokens or cost, and finding counts (RV-8 item 15).
  */
+import { redactSecrets } from "../../redact.js";
 export interface Who {
   agent: string;
   install: string;
@@ -73,4 +74,20 @@ export function checkSummary(o: {
     `Findings: ${o.findings.blocking} blocking, ${o.findings.other} other`,
   );
   return lines.join("\n");
+}
+
+/**
+ * Den's own token kinds (den_at_, den_sk_, den_ek_, den_gr_ …). redact.ts
+ * covers every kind once issue 52's widening lands; the review path covers
+ * them now either way.
+ */
+const DEN_TOKEN_RE = /\bden_[a-z]{2}_[A-Za-z0-9_-]{20,}/g;
+
+/**
+ * A leg's own words, scrubbed of secrets before Den posts them. A leg
+ * reads untrusted PR content (a fork's, after a person's "Review this"),
+ * so an injected leg could try to publish a token it read.
+ */
+export function scrubLegText(text: string): string {
+  return redactSecrets(text).replace(DEN_TOKEN_RE, "[REDACTED]");
 }

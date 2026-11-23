@@ -374,6 +374,36 @@ describe("claim → review → hand back", () => {
     expect(s.ended).toEqual(["rev-1"]);
   });
 
+  it("scrubs secrets a leg may have read before anything reaches GitHub (fork content is untrusted)", async () => {
+    const s = setup();
+    s.gh.pr({ number: 1 });
+    await s.runner.tick();
+    const gh = "ghp_" + "a".repeat(36);
+    const den = "den_at_" + "b".repeat(32);
+    const sub = submission(s.started[0]);
+    sub.verdict = `Leaked ${gh} and ${den}.`;
+    sub.findings = [
+      { ...findings[0], body: `token ${den} here`, path: "src/a.ts" },
+      { ...findings[1], body: `and ${gh}` },
+    ];
+    expect(
+      await s.runner.submit({ agent: "rev-1", verified: true }, sub),
+    ).toMatchObject({ ok: true });
+    const posted = JSON.stringify(s.gh.reviews[0].body);
+    expect(posted).not.toContain(gh);
+    expect(posted).not.toContain(den);
+    expect(posted).toContain("[REDACTED]");
+    // The check's summary and the hand-back carry the verdict too.
+    const all = JSON.stringify([
+      [...s.gh.checks.values()],
+      [...s.gh.comments.values()],
+      s.relayed,
+      s.bell,
+    ]);
+    expect(all).not.toContain(gh);
+    expect(all).not.toContain(den);
+  });
+
   it("an author who isn't an agent here gets it in the person's notifications", async () => {
     const s = setup({ author: null });
     s.gh.pr({ number: 1 });
