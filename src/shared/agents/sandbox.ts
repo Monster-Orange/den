@@ -100,6 +100,14 @@ export const SESSION_READ_FILES: readonly string[] = [
   path.join("hub", "inbox-watch.json"),
   path.join("hub", "tools-seen.json"),
 ];
+/**
+ * Issue 1316: the agents' own SSH signing key, its .pub and allowed_signers
+ * (git-signing.ts AGENT_SIGNING_DIR). Its private key is a secret every
+ * agent of this install signs with, so readable; never writable (the state
+ * dir is read-only), so no agent swaps it or plants another. Nothing else
+ * of the person's is in it.
+ */
+export const SESSION_SIGNING_DIR = "agent-signing";
 /** Folders whose names a session lists (not their files). */
 export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
 /**
@@ -133,6 +141,19 @@ export interface AgentSandboxInput {
   socketsAllowed?: string[];
   /** The env the session starts from (its SSH agent, its runtime dir). */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Issue 1316: single files the session reads wherever they are, the
+   * state dir too (agents.git.signing_key and its .pub). Exact paths,
+   * never their folder; one the sandbox hides stays hidden
+   * (sandboxHidesFile says why).
+   */
+  readableFiles?: string[];
+  /**
+   * Issue 1316: folders a readableFiles entry may never be in (the edge's
+   * key folders, other installs' state folders): issue 728 denies them.
+   * A `*` segment matches any one name.
+   */
+  keyRefusedDirs?: string[];
 }
 
 /**
@@ -196,6 +217,52 @@ export function realPath(p: string): string {
   }
 }
 
+/** `f` is `d` or inside it; a `*` segment of `d` matches any one name. */
+function isUnder(f: string, d: string): boolean {
+  if (!d.includes("*")) {
+    const r = realPath(d);
+    return f === r || f.startsWith(r + path.sep);
+  }
+  const esc = path
+    .resolve(d)
+    .split("*")
+    .map((x) => x.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
+    .join("[^/]+");
+  // The sandbox is macOS's and Linux's only: "/" separates.
+  return new RegExp(`^${esc}(?:/|$)`).test(f);
+}
+
+/**
+ * Issue 1316: why the sandbox won't let a session read `file` that a
+ * setting names (a signing key), or null when it will. Only a plain file
+ * (not a link, not a folder). In the state dir, only one under
+ * <state>/agent-signing/: an allow rule, so no secret Den keeps there (or
+ * adds later) can be named. Outside it, never a file in a denied folder,
+ * the edge's key folders or another install's state folder.
+ */
+export function sandboxHidesFile(
+  file: string,
+  i: Pick<AgentSandboxInput, "stateDir" | "deniedDirs" | "keyRefusedDirs">,
+): string | null {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(file);
+  } catch {
+    return `${file} doesn't exist`;
+  }
+  if (st.isSymbolicLink()) return `${file} is a link: name the file itself`;
+  if (!st.isFile()) return `${file} is not a file`;
+  const f = realPath(file);
+  const state = realPath(i.stateDir);
+  if (isUnder(f, state))
+    return isUnder(f, path.join(state, SESSION_SIGNING_DIR))
+      ? null
+      : `${file} is in Den's state folder, hidden from agents: put the key in ${path.join(state, SESSION_SIGNING_DIR)}/ or outside the state folder`;
+  if ([...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) => isUnder(f, d)))
+    return `${file} is in a folder hidden from agents (Den's local proof, an edge's keys or another install's state)`;
+  return null;
+}
+
 export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
   if (!SAFE_ID.test(i.agentId) || i.agentId === "." || i.agentId === "..")
     throw new Error(`sandbox: agent id "${i.agentId}" is not a plain name`);
@@ -227,8 +294,14 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
       path.join(tokensDir, i.agentId),
       ...SESSION_READ_DIRS.map((f) => path.join(state, f)),
       ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
+      path.join(state, SESSION_SIGNING_DIR),
     ],
-    readableFiles: SESSION_READ_FILES.map((f) => path.join(state, f)),
+    readableFiles: [
+      ...SESSION_READ_FILES.map((f) => path.join(state, f)),
+      ...(i.readableFiles ?? [])
+        .filter((f) => sandboxHidesFile(f, i) === null)
+        .map(realPath),
+    ],
     listable: SESSION_LIST_DIRS.map((f) => path.join(state, f)),
     hidden: HIDDEN_FILES.map((f) => path.join(state, f)),
     ownTokenDir: path.join(tokensDir, i.agentId),

@@ -274,7 +274,13 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
-import { agentGitEnv } from "../../shared/agents/git-signing.js";
+import {
+  agentGitEnv,
+  resolveAgentSigning,
+  signingKeyAddLine,
+  signingReadFiles,
+  type AgentSigning,
+} from "../../shared/agents/git-signing.js";
 import {
   mcpLoadFailures,
   noteHubMcpInit,
@@ -421,6 +427,8 @@ export interface AgentsDeps extends SessionsDeps {
    * read-only to it). Default: sandboxFor with the person's setting.
    */
   agentSandbox?: AgentSandboxFn;
+  /** Issue 1316: the key an agent working in `cwd` signs commits with. */
+  agentSigning?: (cwd: string) => AgentSigning | undefined;
   /** Issue 1072: mcp.actions in the distribution's config, not read. */
   mcpNotReadFromOrg?: () => string[];
   distRoot?: () => string;
@@ -565,6 +573,8 @@ export interface AgentsResolved extends Resolved {
   server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
+  /** Issue 1316: the key an agent working in `cwd` signs commits with. */
+  agentSigning: (cwd: string) => AgentSigning | undefined;
   mcpNotReadFromOrg: () => string[];
   distRoot: () => string;
   serverAgentFolder: () => string;
@@ -887,6 +897,29 @@ function defaultMcpServer(cli: string): {
  * state, the distribution, the gate store, the socket folders allowed, and
  * the folders no session reads (the machine's local proof).
  */
+/**
+ * Issue 1316: where a signing key agents read may never be: what issue 728
+ * denies outside the state folder (this install's edge key folders, the
+ * other installs' state folders and their edges').
+ */
+function signingKeyRefusedDirs(
+  stateDir: string,
+  distRoot: string,
+  env: NodeJS.ProcessEnv,
+): string[] {
+  const out = [...edgeKeyDirs(distRoot)];
+  try {
+    for (const o of listOtherInstalls(
+      registryDir({ ...process.env, ...env }),
+      { ownStateDir: stateDir, home: { ...process.env, ...env }.HOME },
+    ))
+      out.push(o.stateDir, ...o.edgeKeyDirs);
+  } catch {
+    /* no registry: nothing more to refuse */
+  }
+  return [...new Set(out)];
+}
+
 export function agentSandboxInput(o: {
   stateDir: string;
   distRoot: string;
@@ -895,6 +928,8 @@ export function agentSandboxInput(o: {
   sockets?: string[];
   platform?: NodeJS.Platform;
   home?: string;
+  /** Issue 1316: agents.git.signing_key's files, read wherever they are. */
+  readableFiles?: string[];
 }): AgentSandboxInput {
   return {
     stateDir: o.stateDir,
@@ -903,6 +938,12 @@ export function agentSandboxInput(o: {
     agentId: o.agentId,
     env: o.env,
     socketsAllowed: o.sockets ?? [],
+    ...(o.readableFiles?.length
+      ? {
+          readableFiles: o.readableFiles,
+          keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
+        }
+      : {}),
     deniedDirs: localProofDirs(
       o.env,
       o.platform ?? process.platform,
@@ -920,6 +961,15 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     mcpNotReadFromOrg:
       d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
+    agentSigning:
+      d.agentSigning ??
+      ((cwd) =>
+        resolveAgentSigning({
+          git: (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+          stateDir: base.stateDir(),
+          cwd,
+          env: base.env,
+        })),
     agentSandbox:
       d.agentSandbox ??
       ((argv, agentId) =>
@@ -932,6 +982,9 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             agentId,
             sockets: (d.agentsConfig ?? (() => readAgentsConfig()))()
               .sandboxSockets,
+            readableFiles: signingReadFiles(
+              (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+            ),
           }),
           {
             on: sandboxSetting(
@@ -3395,6 +3448,7 @@ async function startSession(
   info: SessionInfo;
   signInWarning?: string;
   sandboxWarning?: string;
+  signingWarning?: string;
 }> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
@@ -3413,6 +3467,8 @@ async function startSession(
   let info: SessionInfo;
   let box: SandboxWrap;
   let legacy = false;
+  let signing: AgentSigning | undefined;
+  let signingWarning: string | undefined;
   try {
     // #70: the token in a file of the agent's own; the env names the file.
     const tokenFile = writeActorTokenFile(
@@ -3420,6 +3476,16 @@ async function startSession(
       launch.rec.id,
       minted.token,
     );
+    // Issue 1316: its commits signed with the agents' own SSH key, never
+    // the person's GPG (the sandbox refuses gpg's agent socket). Before
+    // the sandbox: bwrap binds only the folders that exist.
+    try {
+      signing = d.agentSigning(launch.rec.cwd);
+      if (signing?.made)
+        signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
+    } catch (e) {
+      signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
+    }
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     // An agent from before the sandbox starts outside it until the person
     // turns it on (the rollout, sandbox-rollout.ts).
@@ -3455,8 +3521,8 @@ async function startSession(
             launch.rec.id,
             tokenFile,
             launch.binDir ? [launch.binDir] : [],
-            // agents.git.signing_key: its commits signed with that key.
-            { ...agentGitEnv(d.agentsConfig().git), ...box.env },
+            // agents.git (issue 1316): its commits signed with its key.
+            { ...agentGitEnv(signing), ...box.env },
             signIn.env,
           ),
           cols: (tty && d.stdout.columns) || 80,
@@ -3515,6 +3581,7 @@ async function startSession(
       : {
           sandboxWarning: `${rec.id} runs outside the agent sandbox (Den's state is writable to it): ${box.reason ?? "no sandbox here"}`,
         }),
+    ...(signingWarning ? { signingWarning } : {}),
   };
 }
 
@@ -4219,7 +4286,8 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
-      const { rec, info, signInWarning, sandboxWarning } = await startSession(
+      const { rec, info, signInWarning, sandboxWarning, signingWarning } =
+        await startSession(
         d,
         c,
         {
@@ -4305,6 +4373,7 @@ export async function startAgent(
           ...sized,
           ...(signInWarning ? [signInWarning] : []),
           ...(sandboxWarning ? [sandboxWarning] : []),
+          ...(signingWarning ? [signingWarning] : []),
         ],
         early,
       };
@@ -6591,6 +6660,7 @@ export async function resumeAgent(
           info,
           signInWarning,
           sandboxWarning,
+          signingWarning,
         } = await startSession(
           d,
           c,
@@ -6620,7 +6690,15 @@ export async function resumeAgent(
           asFresh ? {} : { resumedAt: new Date().toISOString() },
         );
         const early = await exitedAtOnce(d, c, info);
-        return { out, next, info, early, signInWarning, sandboxWarning };
+        return {
+          out,
+          next,
+          info,
+          early,
+          signInWarning,
+          sandboxWarning,
+          signingWarning,
+        };
       };
       let fresh = !known && Boolean(token);
       let newConversation = false;
@@ -6687,6 +6765,7 @@ export async function resumeAgent(
           ...(r.out.warnings ?? []),
           ...(r.signInWarning ? [r.signInWarning] : []),
           ...(r.sandboxWarning ? [r.sandboxWarning] : []),
+          ...(r.signingWarning ? [r.signingWarning] : []),
         ],
         early: r.early,
         fresh,

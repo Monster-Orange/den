@@ -39,7 +39,7 @@ import {
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 import {
   gitSigningBlock,
-  type AgentGitSettings,
+  type AgentGitBlock,
 } from "./agents/git-signing.js";
 
 import { product } from "./product.js";
@@ -2172,8 +2172,8 @@ export interface ResolvedAgentsConfig {
   rotate?: RotateSettings;
   /** D28: agents.rotate as written, the org scope. */
   rotateOrg?: OrgRotate;
-  /** agents.git: the key agents Den starts sign commits with (unset: none). */
-  git?: AgentGitSettings;
+  /** agents.git: signing off, or the key agents sign with (unset: the default, issue 1316). */
+  git?: AgentGitBlock;
   /** agents.helpers (D32) with its defaults. */
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */

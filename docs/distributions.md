@@ -4916,7 +4916,7 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. the distribution's: `GIT_CONFIG_*` when `agents.git.signing_key` is set
+4. the distribution's: `GIT_CONFIG_*` when agents sign commits
    ([Agents' commit signing](#agents-commit-signing));
 5. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
@@ -4941,19 +4941,49 @@ adds a note to run `<cli> doctor --probe`.
 
 ### Agents' commit signing
 
-Agents Den starts can sign their git commits with an SSH key of their own.
-A key is per machine, so it usually goes in `config/local/user.yml`; the
-org config can set one too, and user.yml's wins:
+Agents Den starts sign their git commits with an SSH key of their own,
+never with yours. The agent sandbox keeps your GPG agent out of their reach,
+so a commit your git would sign with GPG can't be signed by an agent.
+
+Which key, at each agent start:
+
+| `agents.git`              | Your git signs commits | The agent signs with                   |
+| ------------------------- | ---------------------- | -------------------------------------- |
+| `signing: off`            | either                 | nothing (git as it is)                 |
+| `signing_key: <path>`     | either                 | that key                               |
+| unset                     | yes                    | the install's own key (made once)      |
+| unset                     | no                     | nothing: nothing changes               |
+
+"Your git signs commits" is `commit.gpgsign` as your git sees it in the
+agent's folder: the repo's own config, then your `~/.gitconfig`.
+
+The install's own key is an ed25519 key with no passphrase in
+`<state>/agent-signing/key/` (`id_ed25519`, its `.pub` and an
+`allowed_signers` file). Den makes it at the first agent start that needs
+it, once, even when two starts race. Every agent of the install can read
+it in its sandbox; none can change, move or replace it (Den's state is
+read-only to them). The start line that made it prints the `gh` line below.
+
+A key of your own is per machine, so it usually goes in
+`config/local/user.yml`; the org config can set one too, and user.yml's
+wins. Agents read that key and its `.pub` in their sandbox as single
+files, never their folder. Keep it outside Den's state folder, or inside it
+only under `<state>/agent-signing/`: anywhere else in the state folder, and
+in an edge's key folders or another install's state folder, agents can't
+read it, and `<cli> doctor` says so.
 
 ```yaml
 agents:
   git:
+    signing: on # or off: agents' commits are left as git makes them
     signing_key: ~/.ssh/den_agents # absolute, or ~/; no passphrase
 ```
 
 Each agent gets it as git's own `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
 `GIT_CONFIG_VALUE_n` in its environment: `gpg.format ssh`,
-`user.signingkey <the key>`, `commit.gpgsign true`. These sit above every
+`user.signingkey <the key>`, `commit.gpgsign true`, and for the install's
+own key `gpg.ssh.allowedSignersFile` (so `git log --show-signature`
+verifies). These sit above every
 config file and write none, so your `~/.gitconfig` (and your own GPG or SSH
 signing) is never changed, and nothing you run yourself signs with the
 agents' key. An agent can't type a passphrase, so make the key without one:
