@@ -1210,7 +1210,9 @@ describe("issue 989: in the agent sandbox, with no server", () => {
           timeout: 60_000,
         });
         expect(r.status).not.toBe(0);
-        expect(`${r.stdout}${r.stderr}`).toMatch(/EPERM|EROFS|not permitted|read-only file system/);
+        expect(`${r.stdout}${r.stderr}`).toMatch(
+          /EPERM|EROFS|not permitted|read-only file system/,
+        );
         expect(`${r.stdout}${r.stderr}`).not.toMatch(/Created project/);
         expect(fs.existsSync(wsFile(l))).toBe(false);
       } finally {
