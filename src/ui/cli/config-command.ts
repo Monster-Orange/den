@@ -36,7 +36,7 @@ const KEY_ALIASES: Record<string, ConfigKey> = {
  * panes.reconnect_max_failures=20`): the Settings field and its limit, so
  * the same checks hold here as on the page.
  */
-const DOTTED: Record<string, [field: string, limit: string]> = {
+export const DOTTED: Record<string, [field: string, limit: string]> = {
   "panes.reconnect_seconds": ["panes_reconnect", "seconds"],
   "panes.reconnect_max_seconds": ["panes_reconnect", "max_seconds"],
   "panes.reconnect_max_failures": ["panes_reconnect", "max_failures"],
@@ -75,6 +75,8 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // Issue 765: the furthest off a rotation can be put.
+  "agents.rotation_defer_max_hours": ["agents_rotation", "defer_max_hours"],
   // issue_write: which roles write GitHub issues ([planner, sde]), and the
   // install's writes an hour.
   "agents.issue_writes": ["agent_issue_writes", "roles"],

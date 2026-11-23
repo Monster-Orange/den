@@ -29,6 +29,9 @@
  *                                     web.agent_view_minutes (issue 796)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
+ *   agents_rotation: { defer_max_hours? }
+ *                                     user.yml agents.rotation_defer_max_hours
+ *                                     (issue 765)
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
@@ -77,6 +80,7 @@ import {
 } from "./web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
+  ROTATION_DEFER_MAX_HOURS,
   HELD_WAIT_MINUTES,
   SESSIONS_SETTINGS_KEYS,
   SHELL_PATH_TIMEOUT,
@@ -114,6 +118,8 @@ export const PERSON_ONLY_SETTINGS = [
   "reports",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // Issue 765: the furthest off a rotation can be put.
+  "agents_rotation",
   // issue_write: which roles write GitHub issues, and how many an hour.
   "agent_issue_writes",
   // Issue 278: when an agent counts as stuck compacting, and whether Den
@@ -339,6 +345,16 @@ const AGENTS_SHELL: Record<string, Limit> = {
     key: "shell_path_timeout_seconds",
     min: SHELL_PATH_TIMEOUT.min,
     max: SHELL_PATH_TIMEOUT.max,
+    int: false,
+  },
+};
+
+/** Issue 765: user.yml agents.rotation_defer_max_hours (den-config.ts). */
+const AGENTS_ROTATION: Record<string, Limit> = {
+  defer_max_hours: {
+    key: "rotation_defer_max_hours",
+    min: ROTATION_DEFER_MAX_HOURS.min,
+    max: ROTATION_DEFER_MAX_HOURS.max,
     int: false,
   },
 };
@@ -738,6 +754,14 @@ export function patchCliRows(
       "agents",
       AGENTS_SHELL,
       body.agents_shell,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agents_rotation",
+      "agents",
+      AGENTS_ROTATION,
+      body.agents_rotation,
       apply,
     ) ??
     patchBlock(user, "feedback", "feedback", FEEDBACK, body.feedback, apply) ??

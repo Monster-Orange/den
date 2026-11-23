@@ -106,6 +106,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // Issue 765: the furthest off a rotation can be put.
+  agents_rotation: { defer_max_hours: true },
   // issue_write: which roles write GitHub issues, and how many an hour.
   agent_issue_writes: { roles: true, per_hour: true },
   // Issue 278: agents stuck compacting; instruction size.
@@ -312,6 +314,8 @@ describe("the settings inventory (R21)", () => {
         "reports.hub_timeout_seconds",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
+        // Issue 765: the furthest off a rotation can be put.
+        "agents_rotation.defer_max_hours",
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",

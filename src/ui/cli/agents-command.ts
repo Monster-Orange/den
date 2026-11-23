@@ -118,6 +118,7 @@ import {
   resumeOrRelaunch,
   keepAgentConversation,
   deferAgentRotation,
+  rotationDeferMaxMs,
   setAgentResumeOnRestart,
   askForHandoff,
   rotationSettings,
@@ -1051,7 +1052,7 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
       );
     let until: Date | null;
     try {
-      until = parseDeferTime(raw);
+      until = parseDeferTime(raw, new Date(), rotationDeferMaxMs());
     } catch (e) {
       throw new UsageError(`${where}: ${(e as Error).message}`);
     }

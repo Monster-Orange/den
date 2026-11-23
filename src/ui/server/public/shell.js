@@ -2462,6 +2462,9 @@
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.agents.rotation_defer_max": "Longest a rotation can be put off",
+    "set.agents.rotation_defer_max.d":
+      "The furthest off a person, or an agent's ask they Allow, can put an agent's rotation, in hours. 168 is 7 days. __DEN_CLI__ config agents.rotation_defer_max_hours=168",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
       "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",

@@ -562,6 +562,8 @@ const DEFER_WORDS =
 export function parseDeferTime(
   raw: string,
   now: Date = new Date(),
+  /** The furthest off it may be (ms), agents.rotation_defer_max_hours. */
+  maxMs?: number,
 ): Date | null {
   const v = raw.trim();
   if (v === "off") return null;
@@ -588,6 +590,12 @@ export function parseDeferTime(
     throw new Error(
       `put off until takes ${DEFER_WORDS} (got ${JSON.stringify(raw)})`,
     );
+  if (maxMs !== undefined && at.getTime() - now.getTime() > maxMs) {
+    const h = Math.round(maxMs / 3_600_000);
+    throw new Error(
+      `put off until ${JSON.stringify(raw)} is beyond agents.rotation_defer_max_hours (${h} h): at most until ${new Date(now.getTime() + maxMs).toISOString()}`,
+    );
+  }
   return at;
 }
 

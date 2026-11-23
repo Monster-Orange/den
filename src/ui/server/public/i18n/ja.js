@@ -1385,6 +1385,9 @@
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.agents.rotation_defer_max": "ローテーションを延期できる最長時間",
+    "set.agents.rotation_defer_max.d":
+      "人が、または人が許可したエージェントの依頼が、エージェントのローテーションを延期できる最長時間（時間単位）。168 は 7 日です。__DEN_CLI__ config agents.rotation_defer_max_hours=168",
     "set.agents.issue_writes": "GitHub の issue を書けるロール",
     "set.agents.issue_writes.d":
       "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",

@@ -235,6 +235,7 @@ import {
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
   agentsShellPathTimeoutSeconds,
+  agentsRotationDeferMaxHours,
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
@@ -5461,6 +5462,14 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    // Issue 765: the furthest off a rotation can be put.
+    agents_rotation: (() => {
+      try {
+        return { defer_max_hours: agentsRotationDeferMaxHours(() => user) };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 415: how long Report keeps, and waits for, a repo's
     // visibility (feedback.*), their defaults when unset.
     feedback: (() => {
@@ -9389,6 +9398,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_rotation?: unknown;
           agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
@@ -9454,6 +9464,7 @@ async function handleRequest(
             web_agent_view: body.web_agent_view,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_rotation: body.agents_rotation,
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,

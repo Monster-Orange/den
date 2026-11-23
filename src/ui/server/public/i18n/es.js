@@ -1429,6 +1429,9 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.agents.rotation_defer_max": "Tiempo máximo para aplazar una rotación",
+    "set.agents.rotation_defer_max.d":
+      "Lo más lejos que una persona, o la solicitud de un agente que permita, puede aplazar la rotación de un agente, en horas. 168 son 7 días. __DEN_CLI__ config agents.rotation_defer_max_hours=168",
     "set.agents.issue_writes": "Quién escribe issues de GitHub",
     "set.agents.issue_writes.d":
       "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",

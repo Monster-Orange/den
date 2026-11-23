@@ -133,6 +133,8 @@ import {
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
   ROTATION_WAIT_MINUTES_DEFAULT,
+  ROTATION_DEFER_MAX_HOURS,
+  agentsRotationDeferMaxHours,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
   setUserRuntimeBin,
@@ -5928,6 +5930,18 @@ export async function runAgentMode(
   };
 }
 
+/**
+ * Issue 765: agents.rotation_defer_max_hours in ms, read at each use; its
+ * default when user.yml can't be read.
+ */
+export function rotationDeferMaxMs(): number {
+  try {
+    return agentsRotationDeferMaxHours() * 3_600_000;
+  } catch {
+    return ROTATION_DEFER_MAX_HOURS.default * 3_600_000;
+  }
+}
+
 export interface AgentRotationDeferArgs {
   agent: string;
   project: string;
@@ -5976,7 +5990,7 @@ export function checkAgentRotationDefer(
       return no(
         `${who.agent ?? "this agent"} works in project ${who.project}: it can ask for that project's agents only, not ${id} in project ${rec.workspace}`,
       );
-    const at = parseDeferTime(when, now);
+    const at = parseDeferTime(when, now, rotationDeferMaxMs());
     const shown = rec.displayName ?? id;
     const files = agentFilesDir(d.stateDir(), rec.id);
     const was = readRotation(files);

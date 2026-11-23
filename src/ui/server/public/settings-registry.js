@@ -4360,6 +4360,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
+    // Issue 765: the furthest off a rotation can be put (user.yml
+    // agents.rotation_defer_max_hours).
+    id: "agents.rotation_defer_max",
+    category: "agents",
+    label: "Longest a rotation can be put off",
+    description:
+      "The furthest off a person, or an agent's ask they Allow, can put an agent's rotation, in hours. 168 is 7 days. __DEN_CLI__ config agents.rotation_defer_max_hours=168",
+    keywords: ["rotation", "defer", "put off", "rotate", "handoff", "longest"],
+    scope: "user",
+    keys: ["agents_rotation.defer_max_hours"],
+    control: { type: "number", min: 1, max: 8760, step: 1, unit: "h" },
+    read: (ctx) => ctx.data.agents_rotation?.defer_max_hours ?? 168,
+    write: (v, ctx) => ctx.post({ agents_rotation: { defer_max_hours: v } }),
+  },
+  {
     // issue_write: which persona roles write GitHub issues in their
     // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",

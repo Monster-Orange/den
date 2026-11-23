@@ -258,6 +258,14 @@ describe("issue 765: POST /api/workspaces/:ws/agents/:id/defer", () => {
       (await call({ until: new Date(Date.now() - H).toISOString() })).status,
     ).toBe(400);
     expect((await call({ until: 5 })).status).toBe(400);
+    // Past agents.rotation_defer_max_hours (168 h unset): refused, naming it.
+    const far = await call({
+      until: new Date(Date.now() + 8 * 24 * H).toISOString(),
+    });
+    expect(far.status).toBe(400);
+    expect(JSON.stringify(far.json)).toMatch(
+      /agents\.rotation_defer_max_hours/,
+    );
     expect((await call({ when: until })).status).toBe(400);
     const off = await call({ until: null });
     expect(off.json).toMatchObject({ ok: true, deferredUntil: null });
@@ -331,12 +339,94 @@ describe("issue 765: agent_rotation_defer (the held ask)", () => {
 
   it("it widens: held for the person's Allow, and the server knows it", () => {
     expect(HELD_WRITE_RISK.agent_rotation_defer?.risk).toBe("widens");
-    expect(Object.keys(heldActions({}))).toContain("agent_rotation_defer");
+    expect(Object.keys(heldActions({} as never))).toContain(
+      "agent_rotation_defer",
+    );
     expect(
-      heldActions({}).agent_rotation_defer.check({ agent: "a", until: "+1h" }),
+      heldActions({} as never).agent_rotation_defer.check({
+        agent: "a",
+        until: "+1h",
+      }),
     ).toEqual({
       ok: false,
       error: "this Den can't put an agent's rotation off here",
     });
+  });
+});
+
+// Fix 2: how far off it may go, a setting (agents.rotation_defer_max_hours).
+import {
+  agentsRotationDeferMaxHours,
+  AGENTS_RESERVED_KEYS,
+} from "../../../src/shared/den-config.js";
+import * as cliRows from "../../../src/shared/settings-cli-rows.js";
+import { DOTTED } from "../../../src/ui/cli/config-command.js";
+import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
+
+describe("issue 765: the most a rotation can be put off (a setting)", () => {
+  const cap = 7 * 24 * H;
+  it("parseDeferTime: at the cap is fine, a minute past is refused, naming the setting", () => {
+    expect(parseDeferTime("+7d", now, cap)?.getTime()).toBe(
+      now.getTime() + cap,
+    );
+    expect(() => parseDeferTime("+10081m", now, cap)).toThrow(
+      /agents\.rotation_defer_max_hours \(168 h\)/,
+    );
+  });
+
+  it("agents.rotation_defer_max_hours: 168 when unset; 1 to 8760; a wrong value refused naming it", () => {
+    const cfg = (agents: Record<string, unknown> | undefined) => () =>
+      ({ agents }) as never;
+    expect(agentsRotationDeferMaxHours(cfg(undefined))).toBe(168);
+    expect(
+      agentsRotationDeferMaxHours(cfg({ rotation_defer_max_hours: 24 })),
+    ).toBe(24);
+    for (const bad of [0, 8761, "24"])
+      expect(() =>
+        agentsRotationDeferMaxHours(cfg({ rotation_defer_max_hours: bad })),
+      ).toThrow(/agents\.rotation_defer_max_hours/);
+    expect(AGENTS_RESERVED_KEYS).toContain("rotation_defer_max_hours");
+  });
+
+  it("the CLI and the held ask refuse past it", async () => {
+    const r = await rig();
+    await started(r);
+    expect(await agents(r, "rotate", "be-dev", "--defer", "+8d")).toBe(2);
+    expect(r.err.join("\n")).toMatch(/agents\.rotation_defer_max_hours/);
+    const c = checkAgentRotationDefer(resolveAgentsDeps(r.deps), {
+      agent: "be-dev",
+      until: "+8d",
+    });
+    expect(c.ok ? "" : c.error).toMatch(/agents\.rotation_defer_max_hours/);
+    expect(readRotation(filesOf(r, "be-dev"))?.deferredUntil).toBeUndefined();
+  }, 30_000);
+
+  it("is in Settings (Agents) and config, a person's only, written to user.yml", () => {
+    const row = (
+      DEN_SETTINGS as { keys?: string[]; category?: string; control?: object }[]
+    ).find((s) => s.keys?.includes("agents_rotation.defer_max_hours"));
+    expect(row).toMatchObject({
+      category: "agents",
+      control: { type: "number", min: 1, max: 8760, unit: "h" },
+    });
+    expect(DOTTED["agents.rotation_defer_max_hours"]).toEqual([
+      "agents_rotation",
+      "defer_max_hours",
+    ]);
+    expect(cliRows.PERSON_ONLY_SETTINGS).toContain("agents_rotation");
+    const user: Record<string, unknown> = { agents: { resume: { batch: 2 } } };
+    expect(
+      cliRows.patchCliRows(user, {
+        agents_rotation: { defer_max_hours: 24 },
+      }),
+    ).toEqual({ ok: true });
+    expect(user.agents).toEqual({
+      resume: { batch: 2 },
+      rotation_defer_max_hours: 24,
+    });
+    expect(
+      cliRows.patchCliRows(user, { agents_rotation: { defer_max_hours: 0 } })
+        .ok,
+    ).toBe(false);
   });
 });

@@ -179,6 +179,7 @@ import {
   resumeOrRelaunch,
   keepAgentConversation,
   deferAgentRotation,
+  rotationDeferMaxMs,
   setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
@@ -1203,7 +1204,10 @@ export async function handleAgentRoutes(
         });
       let until: Date | null;
       try {
-        until = raw === null ? null : parseDeferTime(raw);
+        until =
+          raw === null
+            ? null
+            : parseDeferTime(raw, new Date(), rotationDeferMaxMs());
       } catch (e) {
         throw new AgentError((e as Error).message, { usage: true });
       }

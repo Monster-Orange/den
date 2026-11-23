@@ -635,6 +635,7 @@ export interface UserConfig {
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
      */
     shell_path_timeout_seconds?: unknown;
+    rotation_defer_max_hours?: unknown;
     /**
      * issue_write: the persona roles that write GitHub issues in their
      * project's repos (a list), and the install's writes an hour
@@ -962,6 +963,30 @@ export const SHELL_PATH_TIMEOUT = { default: 10, min: 1, max: 120 } as const;
  * waits for the login and the interactive shell's PATH: 10 when unset,
  * 1 to 120. A wrong value throws, naming the key.
  */
+/**
+ * Issue 765: agents.rotation_defer_max_hours (user.yml): the furthest off
+ * a rotation can be put, in hours. 168 (7 days) when unset, 1 to 8760.
+ */
+export const ROTATION_DEFER_MAX_HOURS = { default: 168, min: 1, max: 8760 };
+
+/** Issue 765: agents.rotation_defer_max_hours; a wrong value throws, naming it. */
+export function agentsRotationDeferMaxHours(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.rotation_defer_max_hours;
+  if (v === undefined || v === null) return ROTATION_DEFER_MAX_HOURS.default;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v >= ROTATION_DEFER_MAX_HOURS.min &&
+    v <= ROTATION_DEFER_MAX_HOURS.max
+  )
+    return v;
+  throw new Error(
+    `agents.rotation_defer_max_hours must be a number from ${ROTATION_DEFER_MAX_HOURS.min} to ${ROTATION_DEFER_MAX_HOURS.max} (user.yml; got ${JSON.stringify(v)})`,
+  );
+}
+
 export function agentsShellPathTimeoutSeconds(
   read: () => UserConfig = readUserConfig,
 ): number {
@@ -1885,6 +1910,8 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  // Issue 765: the furthest off a rotation can be put (user.yml).
+  "rotation_defer_max_hours",
 ];
 
 /**
