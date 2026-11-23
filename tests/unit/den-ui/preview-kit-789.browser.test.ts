@@ -32,12 +32,17 @@ try { localStorage.getItem("x"); out.push("storage:open"); } catch (e) { out.pus
 document.getElementById("probe").textContent = out.join(" ");
 </script>`;
 
+// INSIDE has a "</script>" of its own: written raw into the host's script,
+// it would end that script early. Each "<" as a JSON \u escape keeps
+// the string whole.
+const INSIDE_JS = JSON.stringify(INSIDE).replace(/</g, "\\u003c");
+
 const HOST = `<!doctype html><html><head><title>host-secret</title></head>
 <body><div id="host" style="width: 600px"></div>
 <script type="module">
 import { mountPreview } from "/kit/preview.js";
 window.pv = mountPreview(document.getElementById("host"), {
-  html: ${JSON.stringify(INSIDE)}, width: 1440, height: 600,
+  html: ${INSIDE_JS}, width: 1440, height: 600,
 });
 window.pvReady = true;
 </script></body></html>`;
