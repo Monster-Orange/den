@@ -57,6 +57,9 @@ describe("issue 785: what an agent may report", () => {
     for (const conversation of [
       "--dangerously-bypass-approvals-and-sandbox",
       "-c",
+      "-",
+      "+x",
+      "+",
       ".hidden",
       "",
       "a".repeat(129),
