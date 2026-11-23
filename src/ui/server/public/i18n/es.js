@@ -1324,7 +1324,7 @@
     "set.server.gate_route_agents":
       "Las ejecuciones pesadas de los agentes pasan por la cola",
     "set.server.gate_route_agents.d":
-      "Activado, una prueba, comprobación de tipos o prueba de navegador de un agente toma un turno de la cola como cualquier otra. Desactivado, se ejecuta tal cual y se cuenta abajo. __DEN_CLI__ gate settings --route-agents 1",
+      "Activado, una prueba, comprobación de tipos o prueba de navegador de un agente toma un turno de la cola como cualquier otra. Desactivado, se ejecuta tal cual y aparece en el recuento de abajo. __DEN_CLI__ gate settings --route-agents 1",
     "set.server.gate_route_commands": "Programas que pasan por la cola",
     "set.server.gate_route_commands.d":
       'Nombres de programas separados por comas, o npm test y npm run test* (* vale por cualquier final). Vacío: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
