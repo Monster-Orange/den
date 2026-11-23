@@ -176,3 +176,45 @@ describe("hub_token_forget: a held write the person Allows", () => {
     ).toMatchObject({ ok: false });
   });
 });
+
+describe("the doctor row says where to look", () => {
+  const orphan = { id: "0123456789ab", at: "2026-11-20T10:00:00.000Z" };
+  const archived = (origin: string) =>
+    ({
+      at: "2026-11-01T00:00:00.000Z",
+      dir: "/state/hub/previous/x",
+      projects: [],
+      from: { url: `${origin}/`, origin },
+    }) as never;
+
+  it("names the earlier Hubs this install was on, each once", () => {
+    const r = previousHubLines({
+      current: null,
+      bound: null,
+      previous: [
+        archived("https://one.example.test"),
+        archived("https://two.example.test"),
+        archived("https://one.example.test"),
+      ],
+      unrevoked: [],
+      orphans: [orphan],
+    });
+    const d = r.checks.find((c) => c.id === "hub:orphan-token")!.detail;
+    expect(d).toMatch(
+      /earlier Hubs this install was on: https:\/\/one\.example\.test, https:\/\/two\.example\.test/,
+    );
+  });
+
+  it("none known: it doesn't guess", () => {
+    const r = previousHubLines({
+      current: null,
+      bound: null,
+      previous: [],
+      unrevoked: [],
+      orphans: [orphan],
+    });
+    expect(
+      r.checks.find((c) => c.id === "hub:orphan-token")!.detail,
+    ).not.toMatch(/earlier Hubs this install was on/);
+  });
+});

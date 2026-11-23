@@ -70,9 +70,18 @@ export function previousHubLines(o: {
     });
   const orphans = o.orphans ?? [];
   if (orphans.length) {
+    // Where to look: the earlier Hubs this install's archive names.
+    const earlier = [
+      ...new Set(
+        o.previous.map((p) => p.from?.origin).filter((x): x is string => !!x),
+      ),
+    ];
+    const look = earlier.length
+      ? ` (earlier Hubs this install was on: ${earlier.join(", ")})`
+      : "";
     const rows = orphans.map(
       (t) =>
-        `a Hub token Den kept to revoke later has lost its record (id ${t.id}, kept ${t.at}), so Den doesn't know which Hub it is for and leaves it alone. Revoke this install's token on that Hub's tokens page, then have Den's agent forget it (hub_token_forget, id ${t.id}; you Allow it)`,
+        `a Hub token Den kept to revoke later has lost its record (id ${t.id}, kept ${t.at}), so Den doesn't know which Hub it is for and leaves it alone. Revoke this install's token on that Hub's tokens page${look}, then have Den's agent forget it (hub_token_forget, id ${t.id}; you Allow it)`,
     );
     for (const r of rows) lines.push(`  hub token  ⚠  ${r}`);
     checks.push({
