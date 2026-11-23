@@ -10,6 +10,8 @@
  *                     cpu_slots_beside_release_browser (its follow-up),
  *                     cpu_hold_load (issue 1009),
  *                     load_hold_per_core (issue 1048),
+ *                     max_start_load, max_start_wait_minutes,
+ *                     reap_grace_seconds (issue 1132),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -21,14 +23,18 @@
  *                     issue 795: yielded (the entry and the one let ahead);
  *                     issue 867: waiter-gone, reattached, and a gone
  *                     waiter taken back with reason "waiter-gone"
+ *   leftovers.json    issue 1132: process groups of runs whose slot ended,
+ *                     stopped (TERM, then KILL after the grace) until empty
  *   dropped.json      issue 867: places taken back from gone waiters, until
  *                     their asker asks again (told once) or a day passes
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
  * a runner whose lease lapsed), at once, and records it; it flags (once) a holder past its estimate plus the margin.
- * Nothing here kills a process or takes a live holder's slot.
+ * Nothing here takes a live holder's slot. Issue 1132: the one thing it
+ * stops is what a run left in its own process group once its slot ended.
  */
+import { execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -118,6 +124,12 @@ export type GateSettingsPatch = {
   cpu_hold_load?: number | null;
   /** Issue 1048: cpu asks wait over this many times the cores (0: off). */
   load_hold_per_core?: number | null;
+  /** Issue 1132: no run starts at or over this 5-minute load (0: off). */
+  max_start_load?: number | null;
+  /** Issue 1132: held that long, a run starts anyway (0: no limit). */
+  max_start_wait_minutes?: number | null;
+  /** Issue 1132: seconds from TERM to KILL for a run's leftovers. */
+  reap_grace_seconds?: number | null;
   overrun_margin_minutes?: number | null;
   /** Issue 993: held past this many times its estimate: the bell. */
   overrun_bell_multiple?: number | null;
@@ -189,6 +201,10 @@ export const GATE_LIMITS: Record<
   cpu_hold_load: { min: 0, max: 1024, int: false },
   // Issue 1048: a multiple of the cores; 0 turns the hold off.
   load_hold_per_core: { min: 0, max: 64, int: false },
+  // Issue 1132: a 5-minute load average (total); 0 turns the ceiling off.
+  max_start_load: { min: 0, max: 1024, int: false },
+  max_start_wait_minutes: { min: 0, max: 24 * 60, int: true },
+  reap_grace_seconds: { min: 0, max: 600, int: true },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 993: 1 is "as soon as it passes its estimate".
   overrun_bell_multiple: { min: 1, max: 100, int: false },
@@ -283,7 +299,12 @@ export type GateEvent =
   | "yielded"
   // Issue 867: a waiter's run is gone, its place kept; and taken back.
   | "waiter-gone"
-  | "reattached";
+  | "reattached"
+  // Issue 1132: what a gone run left was stopped; a run held by the load
+  // ceiling, and one that started anyway past the wait limit.
+  | "stopped-leftovers"
+  | "start-held"
+  | "started-busy";
 
 /** Issue 963: one key's change: the value in effect before and after. */
 export interface GateSettingChange {
@@ -376,7 +397,80 @@ export interface GateEventRow {
   machine?: string;
   /** Issue 1033: why a run that could go to a box stays here. */
   hostWhy?: string;
+  /** Issue 1132: stopped-leftovers: how many, and the command's name. */
+  count?: number;
+  cmd?: string;
+  /** Issue 1132: stopped-leftovers: the signal (TERM, or KILL after it). */
+  signal?: "TERM" | "KILL";
+  /** Issue 1132: start-held, started-busy: the load and the ceiling. */
+  load?: number;
+  limit?: number;
 }
+
+/**
+ * Issue 1132: why a run's leftovers were stopped: its command ended, its
+ * folder was deleted, its parent went away, or gate run itself was gone.
+ */
+export type LeftoverReason = "ended" | "folder-gone" | "parent-gone" | "gone";
+
+/** Issue 1132: a process group whose slot ended, until it is empty. */
+interface Leftover {
+  group: number;
+  id: string;
+  kind: GateKind;
+  who: string;
+  label: string;
+  cmd: string;
+  reason: LeftoverReason;
+  endedAt: string;
+  termAt?: string;
+  killAt?: string;
+}
+
+/** Issue 1132: what the store may do to a process group (tests fake it). */
+export interface GroupOps {
+  /** The processes in group `group` now (none: it is empty). */
+  members(group: number): number[];
+  signal(group: number, signal: "SIGTERM" | "SIGKILL"): void;
+}
+
+/**
+ * Issue 1132: process groups, by pgrep -g (macOS and Linux). A group that
+ * holds this process is never ours to stop: it reads as empty.
+ */
+export const realGroups: GroupOps = {
+  members(group) {
+    if (!(Number.isInteger(group) && group > 1)) return [];
+    let out = "";
+    try {
+      out = execFileSync("pgrep", ["-g", String(group)], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5_000,
+      });
+    } catch (e) {
+      // pgrep exits 1 when none match; anything else, read it as empty.
+      out = String((e as { stdout?: unknown }).stdout ?? "");
+    }
+    const pids = out
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 1);
+    return pids.includes(process.pid) ? [] : pids;
+  },
+  signal(group, signal) {
+    if (!(Number.isInteger(group) && group > 1)) return;
+    try {
+      process.kill(-group, signal);
+    } catch {
+      /* already gone */
+    }
+  },
+};
+
+/** Issue 1132: a group not empty this long after its slot ended is let go. */
+const LEFTOVER_KEEP_MS = 60 * 60_000;
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
 const byOf = (e: GateEntry): string =>
@@ -414,6 +508,8 @@ export interface GateStoreOpts {
   load?: () => number;
   /** Issue 1048: the machine's cores (default os.availableParallelism). */
   cores?: () => number;
+  /** Issue 1132: process groups (default pgrep and kill); tests fake it. */
+  groups?: GroupOps;
 }
 
 /**
@@ -486,6 +582,7 @@ export class GateStore {
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
   private readonly readCores: () => number;
+  private readonly groups: GroupOps;
   readonly platform: NodeJS.Platform;
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
@@ -499,6 +596,7 @@ export class GateStore {
     this.probe = o.probe ?? realBoxProbe;
     this.readLoad = o.load ?? (() => realLoad());
     this.readCores = o.cores ?? realCores;
+    this.groups = o.groups ?? realGroups;
   }
 
   /** Issue 1048: this machine's cores (at least 1). */
@@ -565,6 +663,15 @@ export class GateStore {
         loadHoldPerCore: num(
           "load_hold_per_core",
           GATE_DEFAULTS.loadHoldPerCore,
+        ),
+        maxStartLoad: num("max_start_load", GATE_DEFAULTS.maxStartLoad),
+        maxStartWaitMinutes: num(
+          "max_start_wait_minutes",
+          GATE_DEFAULTS.maxStartWaitMinutes,
+        ),
+        reapGraceSeconds: num(
+          "reap_grace_seconds",
+          GATE_DEFAULTS.reapGraceSeconds,
         ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
@@ -969,6 +1076,8 @@ export class GateStore {
         }
       }
       this.remove(e.id);
+      // Issue 1132: what a gone run left in its group is stopped below.
+      if (!lapse) this.noteGroup(e, "gone");
       const why = !lapse && e.orphanedAt ? "waiter-gone" : undefined;
       this.record(e, {
         event: lapse ? "taken-back-lapsed" : "taken-back-gone",
@@ -1050,6 +1159,7 @@ export class GateStore {
       this.write(e);
       this.record(e, { event: "overdue", ...this.heldFor(e, now) });
     }
+    this.sweep(s, now);
     return [
       ...entries.filter((e) => e.grantedAt).sort(byAsked),
       ...queueOrder(entries, s, now),
@@ -1484,25 +1594,237 @@ export class GateStore {
   }
 
   /** gate run's command: the slot stays while it runs. */
-  setRunPid(id: string, runPid: number): void {
+  /**
+   * The command gate run started. Issue 1132: with `group`, the process
+   * group it leads (stopped when the slot ends), and the command's name.
+   */
+  setRunPid(
+    id: string,
+    runPid: number,
+    o: { group?: number; cmd?: string } = {},
+  ): void {
     this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return;
       e.runPid = runPid;
+      if (o.group !== undefined && o.group > 1) e.group = o.group;
+      if (o.cmd) e.cmd = path.basename(o.cmd).slice(0, 60);
       this.write(e);
     });
   }
 
-  /** The holder is done (or the waiter gives up). */
-  release(id: string): boolean {
+  /**
+   * The holder is done (or the waiter gives up). Issue 1132: what its run
+   * left in its process group is stopped (TERM now, KILL after the grace),
+   * unless `reap` is false; `reason` says why it ended, when not plainly.
+   */
+  release(
+    id: string,
+    o: { reason?: Exclude<LeftoverReason, "gone">; reap?: boolean } = {},
+  ): boolean {
     return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return false;
       this.remove(id);
-      this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
+      this.record(e, {
+        event: "released",
+        ...this.heldFor(e, this.now()),
+        ...(o.reason && o.reason !== "ended" ? { reason: o.reason } : {}),
+      });
+      if (o.reap !== false) this.noteGroup(e, o.reason ?? "ended");
       this.settle();
       return true;
     });
+  }
+
+  /**
+   * Issue 1132: stop what is left in `e`'s group, its slot already ended
+   * (gate run, after a command whose slot it gave back early). Returns
+   * whether anything of it is still being stopped.
+   */
+  reap(
+    e: Pick<GateEntry, "id" | "kind" | "who" | "label" | "group" | "cmd">,
+    reason: LeftoverReason,
+  ): boolean {
+    return this.locked(() => {
+      this.noteGroup(e, reason);
+      this.sweep(this.settings(), this.now());
+      return this.readLeftovers().some((l) => l.id === e.id);
+    });
+  }
+
+  /**
+   * Issue 1132: one pass over the groups of ended slots (any store does it
+   * as it reads the queue). Returns whether entry `id`'s group is still
+   * being stopped.
+   */
+  stopLeftovers(id?: string): boolean {
+    return this.locked(() => {
+      this.sweep(this.settings(), this.now());
+      return id !== undefined && this.readLeftovers().some((l) => l.id === id);
+    });
+  }
+
+  /** Issue 1132: the slot log's stopped-leftovers rows, newest last. */
+  stoppedLeftovers(sinceMs: number): GateEventRow[] {
+    return this.events().filter(
+      (r) => r.event === "stopped-leftovers" && Date.parse(r.at) >= sinceMs,
+    );
+  }
+
+  /**
+   * Issue 1132: records that a run's leftovers were stopped: how many, the
+   * command's name and the run's label, never arguments or environment.
+   */
+  noteStopped(o: {
+    id: string;
+    kind: GateKind;
+    who: string;
+    label: string;
+    cmd: string;
+    count: number;
+    reason: LeftoverReason;
+    signal?: "TERM" | "KILL";
+  }): void {
+    const { id, kind, who, label, cmd, count, reason, signal } = o;
+    this.record(
+      { id, kind, who, label } as GateEntry,
+      {
+        event: "stopped-leftovers",
+        count,
+        cmd,
+        reason,
+        signal: signal ?? "TERM",
+      },
+    );
+  }
+
+  /**
+   * Issue 1132: a granted run whose command waits for the load to drop
+   * under the ceiling (recorded once), or no longer waits (absent).
+   */
+  setStartHold(id: string, hold?: { load: number; limit: number }): void {
+    this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e) return;
+      if (!hold) {
+        if (!e.startHold) return;
+        delete e.startHold;
+        this.write(e);
+        return;
+      }
+      const load = Math.round(hold.load * 10) / 10;
+      const first = !e.startHold;
+      e.startHold = {
+        load,
+        limit: hold.limit,
+        since: e.startHold?.since ?? new Date(this.now()).toISOString(),
+      };
+      this.write(e);
+      if (first)
+        this.record(e, { event: "start-held", load, limit: hold.limit });
+    });
+  }
+
+  /** Issue 1132: past the wait limit, a held run starts anyway: busy. */
+  startedBusy(id: string, hold: { load: number; limit: number }): void {
+    this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e) return;
+      delete e.startHold;
+      this.write(e);
+      this.record(e, {
+        event: "started-busy",
+        load: Math.round(hold.load * 10) / 10,
+        limit: hold.limit,
+      });
+    });
+  }
+
+  private get leftoversFile(): string {
+    return path.join(this.dir, "leftovers.json");
+  }
+
+  private readLeftovers(): Leftover[] {
+    try {
+      const v = JSON.parse(fs.readFileSync(this.leftoversFile, "utf-8"));
+      return Array.isArray(v) ? (v as Leftover[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private writeLeftovers(all: Leftover[]): void {
+    if (!all.length && !fs.existsSync(this.leftoversFile)) return;
+    fs.mkdirSync(this.dir, { recursive: true });
+    writeFileAtomic(this.leftoversFile, JSON.stringify(all));
+  }
+
+  /** Issue 1132: an ended slot's group, to be stopped. Call under the lock. */
+  private noteGroup(
+    e: Pick<GateEntry, "id" | "kind" | "who" | "label" | "group" | "cmd">,
+    reason: LeftoverReason,
+  ): void {
+    if (!(e.group !== undefined && e.group > 1) || e.group === process.pid)
+      return;
+    const all = this.readLeftovers();
+    if (all.some((l) => l.group === e.group)) return;
+    all.push({
+      group: e.group,
+      id: e.id,
+      kind: e.kind,
+      who: e.who,
+      label: e.label,
+      cmd: e.cmd ?? "",
+      reason,
+      endedAt: new Date(this.now()).toISOString(),
+    });
+    this.writeLeftovers(all);
+  }
+
+  /**
+   * Issue 1132: each ended slot's group: TERM what is in it (recorded with
+   * the count), KILL what is still there after the grace, and forget it
+   * once it is empty (or after an hour). Call under the lock.
+   */
+  private sweep(s: GateSettings, now: number): void {
+    const all = this.readLeftovers();
+    if (!all.length) return;
+    const at = new Date(now).toISOString();
+    const keep: Leftover[] = [];
+    let changed = false;
+    for (const l of all) {
+      const pids = this.groups.members(l.group);
+      if (!pids.length || now - Date.parse(l.endedAt) > LEFTOVER_KEEP_MS) {
+        changed = true;
+        continue;
+      }
+      const row = {
+        id: l.id,
+        kind: l.kind,
+        who: l.who,
+        label: l.label,
+        cmd: l.cmd,
+        count: pids.length,
+        reason: l.reason,
+      };
+      if (!l.termAt) {
+        this.groups.signal(l.group, "SIGTERM");
+        this.noteStopped({ ...row, signal: "TERM" });
+        l.termAt = at;
+        changed = true;
+      } else if (
+        !l.killAt &&
+        now - Date.parse(l.termAt) >= s.reapGraceSeconds * 1000
+      ) {
+        this.groups.signal(l.group, "SIGKILL");
+        this.noteStopped({ ...row, signal: "KILL" });
+        l.killAt = at;
+        changed = true;
+      }
+      keep.push(l);
+    }
+    if (changed) this.writeLeftovers(keep);
   }
 
   /**

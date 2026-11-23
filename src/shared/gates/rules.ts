@@ -76,6 +76,19 @@ export interface GateEntry {
   pid: number;
   /** The command gate run started: the slot stays while it still runs. */
   runPid?: number;
+  /**
+   * Issue 1132: the process group gate run started its command in (the
+   * command leads it). When the slot ends, whatever is left in it is
+   * stopped; nothing outside it ever is.
+   */
+  group?: number;
+  /** Issue 1132: the command's name (never its arguments), for the log. */
+  cmd?: string;
+  /**
+   * Issue 1132: granted, but its command waits for the machine's load to
+   * drop under gates.max_start_load: the load seen, the ceiling, since.
+   */
+  startHold?: { load: number; limit: number; since: string };
   /** When it asked (ISO); the queue's order. */
   askedAt: string;
   /**
@@ -205,6 +218,27 @@ export interface GateSettings {
    * waits. 0 turns it off.
    */
   loadHoldPerCore: number;
+  /**
+   * Issue 1132: a granted run doesn't start its command while this
+   * machine's 5-minute load average (the total, not per core) is at or
+   * over this; it waits, saying why. Every kind, release runs too. 0 turns
+   * it off. Default cores × 1.5 (27 on 18 cores), under where the machine
+   * stalls: an 18-core machine reset twice at a 5-minute load of about 34.
+   * It is not cpu_hold_load (issue 1009), which holds only cpu asks and
+   * only while a release browser run holds a slot.
+   */
+  maxStartLoad: number;
+  /**
+   * Issue 1132 (issue 460's wait limit): a run held by maxStartLoad this
+   * many minutes starts anyway, and its record says it started busy. 0:
+   * it waits for the load however long.
+   */
+  maxStartWaitMinutes: number;
+  /**
+   * Issue 1132: seconds between TERM and KILL for what a run left in its
+   * process group when its slot ended.
+   */
+  reapGraceSeconds: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
   /**
@@ -266,6 +300,15 @@ export interface GateSettings {
   browserHostOnly: string;
 }
 
+/**
+ * Issue 1132: the default start ceiling, cores × 1.5 (27 on 18 cores), so
+ * it holds below where the machine stalls (about 34 on 18 cores).
+ */
+export function maxStartLoadDefault(): number {
+  const cores = os.availableParallelism?.() ?? os.cpus().length;
+  return Math.round(Math.max(1, cores) * 1.5);
+}
+
 /** Issue 1009: the default hold load, cores × 4 / 3 (24 on 18 cores). */
 export function cpuHoldLoadDefault(): number {
   const cores = os.availableParallelism?.() ?? os.cpus().length;
@@ -278,9 +321,13 @@ export const GATE_DEFAULTS: GateSettings = {
   cpuSlotsBesideReleaseBrowser: 0,
   localBrowserSlots: 1,
   cpuHoldLoad: cpuHoldLoadDefault(),
-  // Issue 1048 (Vision 11-22): 3 × cores. At 1.5 (27 on 18 cores) the
-  // build machine's normal load of about 40 would hold every new run.
+  // Issue 1048 (Vision 11-22): 3 × cores. (Issue 1132: a load of about
+  // 40 on 18 cores is not normal; the machine reset at about 34. The
+  // start ceiling, maxStartLoad, now holds every run below that.)
   loadHoldPerCore: 3,
+  maxStartLoad: maxStartLoadDefault(),
+  maxStartWaitMinutes: 10,
+  reapGraceSeconds: 10,
   overrunMarginMinutes: 15,
   overrunBellMultiple: 2,
   remoteRenewSeconds: 30,
@@ -575,6 +622,20 @@ export function loadHold(
   return load > coreLimit && cpuGoing
     ? { why: "cores", load, limit: coreLimit, perCore, cores }
     : undefined;
+}
+
+/**
+ * Issue 1132: why a granted run's command may not start now: the 5-minute
+ * load is at or over maxStartLoad (0: off). Absent: it may (or no load
+ * was read).
+ */
+export function startHold(
+  s: Partial<Pick<GateSettings, "maxStartLoad">>,
+  load: number | undefined,
+): { load: number; limit: number } | undefined {
+  if (load === undefined || !Number.isFinite(load)) return undefined;
+  const limit = s.maxStartLoad ?? GATE_DEFAULTS.maxStartLoad;
+  return limit > 0 && load >= limit ? { load, limit } : undefined;
 }
 
 /** Issue 1048: a cpu slot's worker cap: its share of the cores, at least 2. */

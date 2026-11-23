@@ -3205,6 +3205,48 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { cpu_hold_load: v } }),
   },
   {
+    // Issue 1132: the start ceiling, its wait limit, and leftovers' grace.
+    id: "server.gate_max_start_load",
+    category: "server",
+    label: "Machine load at which no test run starts",
+    description:
+      "While this machine's 5-minute load average is at or above this (the total, not per core), a test run that has its slot waits before it starts its command, and says why. It stays under where the machine stalls: the default is the machine's cores × 1.5. 0 turns it off. __DEN_CLI__ gate settings --max-start-load 27",
+    keywords: ["gate", "slot", "tests", "queue", "load", "ceiling", "cores"],
+    scope: "user",
+    keys: ["gate_slots.max_start_load"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.maxStartLoad ?? 0,
+    write: (v, ctx) => ctx.post({ gate_slots: { max_start_load: v } }),
+  },
+  {
+    // Issue 1132: the start ceiling, its wait limit, and leftovers' grace.
+    id: "server.gate_max_start_wait_minutes",
+    category: "server",
+    label: "Minutes a run waits for the load",
+    description:
+      "A run held by the load starts anyway after this many minutes, and its record says it started on a busy machine. The default is 10. 0 means it waits however long. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
+    keywords: ["gate", "slot", "tests", "queue", "load", "wait", "busy"],
+    scope: "user",
+    keys: ["gate_slots.max_start_wait_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.maxStartWaitMinutes ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { max_start_wait_minutes: v } }),
+  },
+  {
+    // Issue 1132: the start ceiling, its wait limit, and leftovers' grace.
+    id: "server.gate_reap_grace_seconds",
+    category: "server",
+    label: "Seconds before leftovers are killed",
+    description:
+      "When a test run ends, or its folder is deleted, whatever it started that is still running is asked to stop, then killed after this many seconds. Nothing outside the run is touched. The default is 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
+    keywords: ["gate", "slot", "tests", "queue", "leftovers", "processes", "stop"],
+    scope: "user",
+    keys: ["gate_slots.reap_grace_seconds"],
+    control: { type: "number", min: 0, max: 600, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.reapGraceSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { reap_grace_seconds: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",

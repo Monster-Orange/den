@@ -9,6 +9,9 @@
  * stopped. Issue 715: a release run with priority says so, and why. The queue is a dialog on the body, so Report finds it.
  * Issue 795: a waiting run that let another go ahead says which, until it starts.
  * Issue 803: with classes set, each run's class, and a wait for its window.
+ * Issue 1132: a run whose command waits for the load to drop under the
+ * start ceiling says so; what was stopped of ended runs (last hour) shows
+ * under the queue.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -31,12 +34,28 @@ const esc = (s) =>
 export const gateTime = (iso) => formatTime(iso, { style: "time" });
 const hm = gateTime;
 
+/** Issue 1132: a granted run held by the start ceiling, in words ("" if not). */
+export function startHoldWords(s, t) {
+  return s.startHold
+    ? t("gate.startHold", {
+        load: String(s.startHold.load),
+        limit: String(s.startHold.limit),
+      })
+    : "";
+}
+
+/** Issue 1132: what was stopped of an ended run, in words. */
+export function leftoverWords(l, t) {
+  return t("gate.leftovers", { n: l.count, cmd: l.cmd, label: l.label });
+}
+
 export function startGateChip(o) {
   const { button, t } = o;
   const kind = (k) =>
     t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
   let slots = [];
   let boxes = [];
+  let leftovers = [];
   let pop = null;
   let release = null;
   let timer = 0;
@@ -131,6 +150,11 @@ export function startGateChip(o) {
       (hold
         ? '<div class="gate-pri" data-gate-load-hold>' + esc(hold) + "</div>"
         : "") +
+      (s.startHold
+        ? '<div class="gate-pri" data-gate-start-hold>' +
+          esc(startHoldWords(s, t)) +
+          "</div>"
+        : "") +
       // Issue 999: a padded estimate, and what the queue uses instead.
       (s.padded && s.expected
         ? '<div class="gate-pri" data-gate-padded>' +
@@ -196,6 +220,20 @@ export function startGateChip(o) {
           esc(t("gate.boxesH")) +
           '</h3><ul class="gate-ul">' +
           boxes.map(boxHtml).join("") +
+          "</ul>"
+        : "") +
+      (leftovers.length
+        ? '<h3 class="gate-h">' +
+          esc(t("gate.leftoversH")) +
+          '</h3><ul class="gate-ul" data-gate-leftovers>' +
+          leftovers
+            .map(
+              (l) =>
+                '<li class="gate-box">' +
+                esc(hm(l.at) + " · " + leftoverWords(l, t)) +
+                "</li>",
+            )
+            .join("") +
           "</ul>"
         : "");
   }
@@ -267,6 +305,7 @@ export function startGateChip(o) {
         const body = await r.json();
         slots = body.slots ?? [];
         boxes = body.boxes ?? [];
+        leftovers = body.leftovers ?? [];
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();
       }

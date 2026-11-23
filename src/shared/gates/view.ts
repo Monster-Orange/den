@@ -74,6 +74,21 @@ export interface GateSlotView {
     perCore?: number;
     cores?: number;
   };
+  /**
+   * Issue 1132: granted, but its command waits for the machine's load to
+   * drop under gates.max_start_load: the load seen, the ceiling, since.
+   */
+  startHold?: { load: number; limit: number; since: string };
+}
+
+/** Issue 1132: what was stopped of an ended run (the last hour). */
+export interface GateLeftoverView {
+  at: string;
+  id: string;
+  label: string;
+  cmd: string;
+  count: number;
+  reason: string;
 }
 
 /**
@@ -219,6 +234,7 @@ export function gateView(store: GateStore, now = Date.now()) {
           },
         }
       : {}),
+    ...(e.grantedAt && e.startHold ? { startHold: e.startHold } : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,
@@ -233,5 +249,23 @@ export function gateView(store: GateStore, now = Date.now()) {
           ).toISOString(),
         }),
   }));
-  return { settings, slots, boxes: gateBoxesView(store, slots) };
+  // Issue 1132: leftovers stopped in the last hour (the TERM row: KILL
+  // after it is the same run's).
+  const leftovers: GateLeftoverView[] = store
+    .stoppedLeftovers(now - 60 * 60_000)
+    .filter((r) => r.signal !== "KILL")
+    .map((r) => ({
+      at: r.at,
+      id: r.id,
+      label: r.label,
+      cmd: r.cmd ?? "",
+      count: r.count ?? 0,
+      reason: r.reason ?? "ended",
+    }));
+  return {
+    settings,
+    slots,
+    boxes: gateBoxesView(store, slots),
+    leftovers,
+  };
 }
