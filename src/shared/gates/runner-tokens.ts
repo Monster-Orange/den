@@ -17,6 +17,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const RUNNER_TOKEN_PREFIX = "den_gr_";
 const TOKEN_RE = /^den_gr_([0-9a-f]{16})_[A-Za-z0-9_-]{43}$/;
@@ -113,11 +114,9 @@ export class RunnerTokens {
 
   private write(tokens: Stored[]): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify({ tokens }, null, 2)}\n`, {
+    writeFileAtomic(this.file, `${JSON.stringify({ tokens }, null, 2)}\n`, {
       mode: 0o600,
     });
-    fs.renameSync(tmp, this.file);
   }
 
   /**

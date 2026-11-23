@@ -51,6 +51,10 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
+  readTestResolveState,
+  testResolveDoctorLine,
+} from "../../shared/test-resolve.js";
+import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
@@ -1844,6 +1848,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (rr.problem) r.ok = false;
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 707: the server's warning lines on disk.
+      r.checks.push((await serverLogRow()).check);
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
@@ -1979,6 +1985,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of roots.lines) console.log(l);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  for (const l of (await serverLogRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // The shared GitHub watcher: calls left, reset, watches, interval.
@@ -2044,6 +2051,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       console.log(l);
     const fx = fixtureLineNow();
     if (fx) console.log(fx);
+  }
+  // Issue 1073: the test install's name map, used or ignored.
+  {
+    const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
+    if (tr) console.log(tr);
   }
   for (const l of pushContactLines(
     readWebUrl(),
@@ -2157,6 +2169,29 @@ async function heldHubLines(): Promise<
     now: Date.now(),
     bellMinutes,
   });
+}
+
+/** Issue 707: doctor's row for the server's warning lines on disk. */
+async function serverLogRow() {
+  const { serverLogLines, serverLogFacts } =
+    await import("./doctor-server-log.js");
+  const { serverLogPath, serverLogMaxBytes } =
+    await import("../../shared/server-log-file.js");
+  let user: unknown = null;
+  try {
+    const { readUserConfig } = await import("../../shared/den-config.js");
+    user = readUserConfig();
+  } catch {
+    /* a bad user.yml: its own row says so; the default here */
+  }
+  return serverLogLines(
+    readBrand().name,
+    serverLogFacts(
+      serverLogPath(getStateDir()),
+      serverLogMaxBytes(user),
+      product().cli,
+    ),
+  );
 }
 
 /** Issue 583: doctor's repo roots row, for this install's projects. */

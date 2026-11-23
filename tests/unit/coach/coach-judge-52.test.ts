@@ -212,6 +212,37 @@ describe("judgeReport: the model judges within the budget", () => {
 });
 
 describe("judging sends no secrets", () => {
+  it("takes a Den token (den_at_) out of a sample before it reaches the provider", async () => {
+    // Reviewer B, PR 1220: T-d lands before the tab, so the redactor's
+    // Den token kinds must be on this slice too.
+    const token = `den_at_${"A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"}`;
+    const r = report(
+      row("a1", {
+        asks: [
+          {
+            at: t0,
+            tool: "ask_human",
+            text: `1. Use ${token} for the deploy?`,
+            problems: [],
+          },
+        ],
+        sends: [],
+        received: [],
+        prompts: [
+          { at: t0 - DAY, text: `Deploy with ${token} please.` },
+          { at: t0, text: `I asked again: deploy with ${token}.` },
+        ],
+      }),
+    );
+    const inputs: string[] = [];
+    await judgeReport(r, { ...JUDGE_DEFAULTS, enabled: true }, async (p) => {
+      inputs.push(p);
+      return { text: "[]", tokens: 1 };
+    });
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const p of inputs) expect(p).not.toContain(token);
+  });
+
   it("takes a planted token out of every sample before the model's input", async () => {
     const token = `ghp_${"Z".repeat(36)}`;
     const r = report(

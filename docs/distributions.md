@@ -675,6 +675,20 @@ that a container existed, running or not).
 `service`, with both forms at once, or with a key of another type (`cmd`,
 `url`), and says which.
 
+### How often the checks run
+
+An open page checks health every 5 seconds while it is in view, and every
+60 seconds while its tab is hidden. Back in view, it checks at once. A
+hidden page's poll says so, and the server keeps its last answer for the
+slow interval: with no page in view, the checks run at most once a minute.
+Both are Settings (Settings > Server), or in `user.yml`:
+
+```yaml
+health_poll:
+  visible_seconds: 5 # 2 to 300
+  hidden_seconds: 60 # 10 to 3600
+```
+
 ### The Environments page
 
 The Environments page lists every service's row at once, each cell pulsing
@@ -1809,6 +1823,18 @@ and the guide to making your own
   text in `accent-text`. Two colors are optional in each mode: `info`
   (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
   checked when a theme sets them; unset, the UI kit's defaults hold.
+- `shape` (optional): `radius`, `radius-button` and `density`, and two
+  keys for how the kit draws edges and buttons:
+  - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
+    Added in 0.4.88.
+  - `buttons`: `filled` (the default) or `outline`. With `outline`, the
+    primary and danger buttons have no fill: a `border-strong` edge and
+    `text` words, danger in `bad`. Added in 0.4.88.
+
+  A theme that sets neither draws as before. The built-in `sketch` theme
+  (greys only, dashed, outline, one face) ships in the UI kit as
+  `themes/sketch.css`, so a page with the kit and no Den server can link
+  it after `tokens.css`.
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -2828,6 +2854,21 @@ set keeps its mode, because switching needs sudo; its web server offers it
 once in the bell ("Keep agents running after logout: Apply"), Settings
 shows the offer, and `doctor` names it. An explicit off stays off.
 
+`doctor`'s **survives logout** row answers it in one word: `yes`, or `no`
+with why (no service, login mode, turned off, the job not loaded, or a
+host started in your login) and the fix in words. A login install says
+"this install stops its agents at logout (login mode)" and points to
+Apply.
+
+**Back from a logout.** Under `always` the web server runs through a
+logout, so it watches who owns the console (`/dev/console`: you while
+logged in, root at the login window) every `ui.console_check_seconds`
+(user.yml, 30). When you come back after longer than
+`ui.restart_wait_seconds` (90), the bell says "While you were logged out
+(N min), these agents ran: <names>", linked to the Agents page. Agents
+that stopped meanwhile get a second note, "While you were logged out (N
+min), these agents stopped: <names>", also when nothing else ran.
+
 **Agents' sign-in under `always`.** A LaunchDaemon started after a logout
 isn't assumed to reach the login keychain, and the CLI's interactive
 sign-in expires on its own. So agents started under `always` sign in with
@@ -2943,6 +2984,15 @@ its label. `logs` may start with `~/`; a relative path is under the
 distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
+
+A service starts the web server with `--silent`, so `web.log` stops at the
+start banner. While it runs that way, the server's warning lines (Hub
+deliveries held or typed, among others) also go to `logs/server.log` in Den's
+state folder, so they are still there after a restart. `server_log.max_mb` in
+`user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
+size it moves to `server.log.1`, replacing the one there, and starts again.
+The lines are the server's own log lines, which carry no tokens. Doctor names
+the file and its size (`server_log`).
 
 `web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
 server keeps an idle connection open. It sits above the page's own poll and

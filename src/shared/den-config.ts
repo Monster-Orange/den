@@ -373,6 +373,11 @@ export interface UserConfig {
    */
   held_writes?: { wait_minutes?: unknown };
   /**
+   * Issue 1022: how often the page polls health, visible (default 5 s, 2
+   * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
+   */
+  health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
+  /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
    */
@@ -399,7 +404,12 @@ export interface UserConfig {
    * request_memory_seconds: replaced by requests.keep_minutes in 0.4.48;
    * still read until 0.4.49 when that is unset.
    */
-  ui?: { restart_wait_seconds?: number; request_memory_seconds?: number };
+  ui?: {
+    restart_wait_seconds?: number;
+    request_memory_seconds?: number;
+    /** Issue 163 (default 30): how often the console owner is looked at. */
+    console_check_seconds?: number;
+  };
   /**
    * UK-2: the working pop-up's request ledger. keep_minutes (default 15):
    * how long Den remembers how a write sent from the pop-up ended, so Try
@@ -520,6 +530,11 @@ export interface UserConfig {
    * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
    * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
    */
+  /**
+   * Issue 707: the server's warning lines on disk while it runs as a
+   * service (<state>/logs/server.log): `max_mb` (20), then it rotates once.
+   */
+  server_log?: { max_mb?: unknown };
   reports?: {
     screenshot_keep_days?: unknown;
     screenshot_max_mb?: unknown;
@@ -781,6 +796,22 @@ export function uiRestartWaitSeconds(
     return Number.isFinite(v) && v > 0 ? v : 90;
   } catch {
     return 90;
+  }
+}
+
+/**
+ * Issue 163 ui.console_check_seconds (user.yml, 30): how often the web
+ * server looks at who owns the console, to say on the person's return
+ * which agents ran while they were logged out. A positive number, else 30.
+ */
+export function uiConsoleCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  try {
+    const v = Number(read().ui?.console_check_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 30;
+  } catch {
+    return 30;
   }
 }
 
