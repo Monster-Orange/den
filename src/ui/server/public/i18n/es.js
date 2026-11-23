@@ -92,22 +92,22 @@
     "v.b_findings": "Hallazgos de seguridad",
     "v.h_t": "Historial: {m} en {e}",
     "v.h_pass": "{m} pasó sus últimas {n} ejecuciones.",
-    "v.h_pass.one": "{m} pasó su última ejecución.",
+    "v.h_pass.one": "{m} pasó su última ejecución ({n}).",
     "v.h_failall": "{m} falló en todas las ejecuciones mostradas.",
     "v.h_fail":
       "{m} pasó {n} ejecuciones seguidas y luego falló. Falló por primera vez en {b}.",
     "v.h_fail.one":
-      "{m} pasó 1 ejecución y luego falló. Falló por primera vez en {b}.",
+      "{m} pasó {n} ejecución y luego falló. Falló por primera vez en {b}.",
     "v.h_fail_k":
       "{m} pasó {n} ejecuciones seguidas y luego falló. Falló por primera vez en {b}, dentro de {k} commits después de {a}.",
     "v.h_fail_k.one":
-      "{m} pasó 1 ejecución y luego falló. Falló por primera vez en {b}, dentro de {k} commits después de {a}.",
+      "{m} pasó {n} ejecución y luego falló. Falló por primera vez en {b}, dentro de {k} commits después de {a}.",
     "v.h_strip":
       "Últimas {n} ejecuciones en {e}, de la más antigua a la más reciente.",
-    "v.h_strip.one": "La última ejecución en {e}.",
+    "v.h_strip.one": "Última ejecución en {e} ({n}).",
     "v.h_lg": "✓ pasó   ✕ falló   ↻ pasó tras un reintento",
     "v.h_run": "{s} en {c}, {t}",
-    "v.h_run_tag": "{s}, {g}, {t}",
+    "v.h_run_tag": "{s}, etiqueta {g}, {t}",
     "v.h_tags": "Las ejecuciones importadas se nombran por su etiqueta: {g}.",
     "v.h_nocommit": "sin commit",
     "v.h_range": "Primer rango con fallo",
@@ -125,18 +125,18 @@
       "{m} se puede publicar: no hay hallazgos de nivel {th} o peor. El límite es {th}.",
     "v.sc_bad": "{m} no se puede publicar: {n} hallazgos de nivel {th} o peor.",
     "v.sc_bad.one":
-      "{m} no se puede publicar: 1 hallazgo de nivel {th} o peor.",
+      "{m} no se puede publicar: {n} hallazgo de nivel {th} o peor.",
     "v.sc_th": "Falla con {th} o peor",
     "v.sv_critical": "crítico",
     "v.sv_high": "alto",
     "v.sv_medium": "medio",
     "v.sv_low": "bajo",
     "v.sc_group": "{n} hallazgos de nivel {sev}",
-    "v.sc_group.one": "1 hallazgo de nivel {sev}",
+    "v.sc_group.one": "{n} hallazgo de nivel {sev}",
     "v.sc_below":
       "{n} hallazgos de nivel {sev}. No hacen fallar la comprobación.",
     "v.sc_below.one":
-      "1 hallazgo de nivel {sev}. No hace fallar la comprobación.",
+      "{n} hallazgo de nivel {sev}. No hace fallar la comprobación.",
     "v.fix": "Corregido en",
     "v.sc_commit": "Commit analizado: {c}.",
     "v.rep_sarif": "Abrir informe (SARIF)",

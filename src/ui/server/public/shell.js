@@ -211,11 +211,11 @@
     "v.h_failall": "{m} failed in every run shown.",
     "v.h_fail":
       "{m} passed {n} runs in a row, then failed. It first failed at {b}.",
-    "v.h_fail.one": "{m} passed 1 run, then failed. It first failed at {b}.",
+    "v.h_fail.one": "{m} passed {n} run, then failed. It first failed at {b}.",
     "v.h_fail_k":
       "{m} passed {n} runs in a row, then failed. It first failed at {b}, within {k} commits after {a}.",
     "v.h_fail_k.one":
-      "{m} passed 1 run, then failed. It first failed at {b}, within {k} commits after {a}.",
+      "{m} passed {n} run, then failed. It first failed at {b}, within {k} commits after {a}.",
     "v.h_strip": "Last {n} runs on {e}, oldest first.",
     "v.h_strip.one": "The last run on {e}.",
     "v.h_lg": "✓ passed   ✕ failed   ↻ passed after a retry",
@@ -237,16 +237,16 @@
     "v.sc_ok":
       "{m} is safe to ship: no findings at {th} or worse. The limit is {th}.",
     "v.sc_bad": "{m} is not safe to ship: {n} findings at {th} or worse.",
-    "v.sc_bad.one": "{m} is not safe to ship: 1 finding at {th} or worse.",
+    "v.sc_bad.one": "{m} is not safe to ship: {n} finding at {th} or worse.",
     "v.sc_th": "Fails at {th} or worse",
     "v.sv_critical": "critical",
     "v.sv_high": "high",
     "v.sv_medium": "medium",
     "v.sv_low": "low",
     "v.sc_group": "{n} {sev} findings",
-    "v.sc_group.one": "1 {sev} finding",
+    "v.sc_group.one": "{n} {sev} finding",
     "v.sc_below": "{n} {sev} findings. They do not fail the check.",
-    "v.sc_below.one": "1 {sev} finding. It does not fail the check.",
+    "v.sc_below.one": "{n} {sev} finding. It does not fail the check.",
     "v.fix": "Fixed in",
     "v.sc_commit": "Scanned commit {c}.",
     "v.rep_sarif": "Open report (SARIF)",
