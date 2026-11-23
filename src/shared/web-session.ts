@@ -308,6 +308,12 @@ export interface WebAuthConfig {
   agentView: boolean;
   /** Issue 796: `web.agent_view_minutes`: how long an agent's view lasts. */
   agentViewMinutes: number;
+  /**
+   * Issue 1299: `web.sessions_lock_wait_ms` (user.yml over the
+   * distribution's): how long a write to the sessions file waits for
+   * another process's lock before it is refused ("try again").
+   */
+  sessionsLockWaitMs: number;
 }
 
 /** Issue 796: `web.agent_view_minutes`' default (agent-view.ts). */
@@ -633,6 +639,18 @@ export function readWebAuthConfig(
     throw new Error(
       `web.agent_view_minutes must be a whole number of minutes from ${AGENT_VIEW_RANGE.min} to ${AGENT_VIEW_RANGE.max}, got ${JSON.stringify(avMin)}`,
     );
+  const lockWait = user.sessions_lock_wait_ms ?? team.sessions_lock_wait_ms;
+  if (
+    lockWait !== undefined &&
+    lockWait !== null &&
+    (typeof lockWait !== "number" ||
+      !Number.isInteger(lockWait) ||
+      lockWait < SESSIONS_LOCK_WAIT_RANGE.min ||
+      lockWait > SESSIONS_LOCK_WAIT_RANGE.max)
+  )
+    throw new Error(
+      `web.sessions_lock_wait_ms must be a whole number of milliseconds from ${SESSIONS_LOCK_WAIT_RANGE.min} to ${SESSIONS_LOCK_WAIT_RANGE.max}, got ${JSON.stringify(lockWait)}`,
+    );
   const fxUser = parseFixturePerson(user.fixture_person);
   const fxTeam = parseFixturePerson(team.fixture_person);
   const fixturePersonIgnored = fxUser
@@ -649,6 +667,8 @@ export function readWebAuthConfig(
     ...(fixturePersonIgnored ? { fixturePersonIgnored } : {}),
     agentView: av !== false,
     agentViewMinutes: typeof avMin === "number" ? avMin : AGENT_VIEW_MINUTES,
+    sessionsLockWaitMs:
+      typeof lockWait === "number" ? lockWait : SESSIONS_LOCK_WAIT_MS,
     fixtureSessionMinutes:
       typeof fxMin === "number" ? fxMin : FIXTURE_SESSION_MINUTES,
     ...(user.test_install !== undefined
@@ -959,8 +979,120 @@ export function webSessionsPath(stateDir: string = getStateDir()): string {
 const empty = (): StoreFile => ({ v: 1, sessions: {}, usedCodes: {} });
 
 /**
+ * Issue 1299: what went wrong with the sessions file. "unreadable": a read
+ * failed and writes wait; "moved-aside": a damaged file was set aside and
+ * every browser signs in again.
+ */
+export type SessionStoreProblem = "unreadable" | "moved-aside";
+
+/**
+ * Issue 1299: the sessions file couldn't be read or locked just now (too
+ * many open files under load, another process writing it), so a write was
+ * refused rather than saving over every other session.
+ */
+export class SessionStoreUnreadable extends Error {
+  constructor(readonly code: string) {
+    super(`Couldn't read the sign-ins just now (${code}); try again`);
+    this.name = "SessionStoreUnreadable";
+  }
+}
+
+/**
+ * Issue 1299 (shared with issue 1300): held while any process writes the
+ * sessions file; it holds the holder's pid. A lock whose pid no longer
+ * runs is taken over.
+ */
+export const WEB_SESSIONS_LOCK = "web-sessions.lock";
+
+/** Issue 1299: `web.sessions_lock_wait_ms`' default. */
+export const SESSIONS_LOCK_WAIT_MS = 2000;
+/** Its bounds, in ms (0: never wait). */
+export const SESSIONS_LOCK_WAIT_RANGE = { min: 0, max: 30_000 } as const;
+
+/** Issue 1300: another running process holds the sessions lock. */
+export class WebSessionsBusy extends Error {
+  constructor(readonly holder: number) {
+    super(
+      `the sign-ins file is in use by another process${holder ? ` (pid ${holder})` : ""}; nothing was changed. Try again.`,
+    );
+    this.name = "WebSessionsBusy";
+  }
+}
+
+/** Issue 1300: a lock with no pid in it this old was left by a crash. */
+const LOCK_UNREAD_STALE_MS = 5_000;
+/** Issue 1299: how often a writer looks again at a held lock. */
+const LOCK_POLL_MS = 10;
+
+/** Whether `pid` runs (EPERM: it runs, as another user). */
+function pidRuns(pid: number): boolean {
+  if (!(Number.isInteger(pid) && pid > 0)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Issue 1299 review: unlinks a stale lock only when it is still the file
+ * `seen` described (same inode and modified time): two writers that both
+ * found it stale never delete the lock the first of them took since.
+ */
+export function lockUnlinkIfUnchanged(file: string, seen: fs.Stats): boolean {
+  try {
+    const now = fs.statSync(file);
+    if (now.ino !== seen.ino || now.mtimeMs !== seen.mtimeMs) return false;
+    fs.unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Who holds the sessions lock: free (no file, or a holder that left it
+ * behind) or held by a running process. `seen` is the file as looked at.
+ */
+function lockHolder(file: string): {
+  free: boolean;
+  holder: number;
+  seen?: fs.Stats;
+} {
+  let seen: fs.Stats;
+  try {
+    seen = fs.statSync(file);
+  } catch {
+    return { free: true, holder: 0 };
+  }
+  let holder = 0;
+  try {
+    holder = Number(fs.readFileSync(file, "utf-8").trim()) || 0;
+  } catch {
+    return { free: true, holder: 0 };
+  }
+  const live = holder !== 0 && holder !== process.pid && pidRuns(holder);
+  // No pid yet: a holder between making it and writing it, unless it is
+  // older than that takes (one that died there).
+  const young =
+    holder === 0 && Date.now() - seen.mtimeMs <= LOCK_UNREAD_STALE_MS;
+  return { free: !live && !young, holder, seen };
+}
+
+/** Blocks this thread `ms` (the CLI's writer waiting a few ms for the lock). */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** A field that's there but isn't a plain object (null, a list, a number). */
+const notRecord = (x: unknown): boolean =>
+  x !== undefined && !(x && typeof x === "object" && !Array.isArray(x));
+
+/**
  * The browser sessions, server-side. The file is re-read when it changes
- * (the CLI edits it while the server is down), written atomically, 0600.
+ * (the CLI edits it while the server is down), written atomically, 0600,
+ * each write under web-sessions.lock from a fresh read (issue 1299).
  */
 export class WebSessionStore {
   private cache: { key: string; data: StoreFile } | null = null;
@@ -968,6 +1100,12 @@ export class WebSessionStore {
   private readonly secret: () => Buffer | null;
   private readonly now: () => number;
 
+  /** Issue 1299: why the last read failed; set, every write is refused. */
+  private unreadable: string | null = null;
+  /** Issue 1299: told when a read fails or a bad file is moved aside. */
+  private readonly onProblem?: (msg: string, kind: SessionStoreProblem) => void;
+  /** Issue 1299: how long a write waits for another process's lock (ms). */
+  private readonly lockWaitMs: () => number;
   /** Issue 1295: told what ended and why, after each end. */
   private readonly onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
 
@@ -977,11 +1115,25 @@ export class WebSessionStore {
     now?: () => number;
     /** Issue 1295: told what ended and why (the activity trail). */
     onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
+    /** Issue 1299: told when a read fails (the server log); never contents. */
+    onProblem?: (msg: string, kind: SessionStoreProblem) => void;
+    /** Issue 1299: web.sessions_lock_wait_ms (default 2000). */
+    lockWaitMs?: () => number;
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
     this.secret = opts.secret;
     this.now = opts.now ?? Date.now;
     this.onEnd = opts.onEnd;
+    this.onProblem = opts.onProblem;
+    this.lockWaitMs = opts.lockWaitMs ?? (() => SESSIONS_LOCK_WAIT_MS);
+  }
+
+  private problem(msg: string, kind: SessionStoreProblem): void {
+    try {
+      this.onProblem?.(msg, kind);
+    } catch {
+      /* the log is best effort */
+    }
   }
 
   /** Issue 1295: tells onEnd; a listener's failure never undoes the end. */
@@ -998,6 +1150,7 @@ export class WebSessionStore {
     return webSessionsPath(this.stateDir());
   }
 
+  /** The file's key for the cache; null when there is none (or any error). */
   private statKey(): string | null {
     try {
       const s = fs.statSync(this.file());
@@ -1007,38 +1160,220 @@ export class WebSessionStore {
     }
   }
 
+  /** Issue 1299: a read that failed: no sessions now, and writes wait. */
+  private failedRead(code: string): StoreFile {
+    if (this.unreadable !== code)
+      this.problem(
+        `sign-ins file couldn't be read (${code}); sign-in waits until it can`,
+        "unreadable",
+      );
+    this.unreadable = code;
+    return empty();
+  }
+
   private load(): StoreFile {
-    const key = this.statKey();
-    if (key === null) return empty();
-    if (this.cache?.key === key) return this.cache.data;
-    let data = empty();
+    // Issue 1299: only a missing file is a fresh store; any other stat
+    // error is a read that failed.
+    let key: string;
     try {
-      const raw = JSON.parse(
-        fs.readFileSync(this.file(), "utf-8"),
-      ) as Partial<StoreFile>;
-      data = {
-        v: 1,
-        sessions:
-          raw.sessions && typeof raw.sessions === "object" ? raw.sessions : {},
-        usedCodes:
-          raw.usedCodes && typeof raw.usedCodes === "object"
-            ? raw.usedCodes
-            : {},
-      };
-    } catch {
-      /* unreadable or malformed: no sessions */
+      const st = fs.statSync(this.file());
+      key = `${st.ino}:${st.size}:${st.mtimeMs}`;
+    } catch (e) {
+      const code = String((e as NodeJS.ErrnoException).code ?? "stat failed");
+      if (code !== "ENOENT") return this.failedRead(code);
+      this.unreadable = null;
+      return empty();
     }
+    if (this.cache?.key === key) return this.cache.data;
+    // Issue 1299: a read that fails is never cached, and every write is
+    // refused until a read works: a write now would save over every
+    // session the file holds.
+    let text: string;
+    try {
+      text = fs.readFileSync(this.file(), "utf-8");
+    } catch (e) {
+      return this.failedRead(
+        String((e as NodeJS.ErrnoException).code ?? "read failed"),
+      );
+    }
+    this.unreadable = null;
+    let raw: Partial<StoreFile> | null = null;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      // Issue 1299 review: a valid object of the wrong shape (a newer
+      // version's, sessions null or a list) is damage too: read as empty,
+      // the next write would save over every session.
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        !("v" in parsed && (parsed as { v: unknown }).v !== 1) &&
+        !notRecord((parsed as { sessions?: unknown }).sessions) &&
+        !notRecord((parsed as { usedCodes?: unknown }).usedCodes)
+      )
+        raw = parsed as Partial<StoreFile>;
+    } catch {
+      /* not JSON */
+    }
+    if (raw === null) {
+      // Read whole (writes are atomic renames) but not valid: it can't be
+      // made sense of, so it's kept aside for a person and the store
+      // starts empty rather than refusing sign-in for good.
+      const aside = `${this.file()}.bad-${this.now()}`;
+      try {
+        fs.renameSync(this.file(), aside);
+      } catch (e) {
+        const code = String(
+          (e as NodeJS.ErrnoException).code ?? "rename failed",
+        );
+        this.unreadable = code;
+        this.problem(
+          `sign-ins file is not valid and couldn't be moved aside (${code})`,
+          "unreadable",
+        );
+        return empty();
+      }
+      this.problem(
+        `sign-ins file was not valid; moved aside to ${path.basename(aside)}`,
+        "moved-aside",
+      );
+      this.cache = null;
+      return empty();
+    }
+    const data: StoreFile = {
+      v: 1,
+      sessions:
+        raw.sessions && typeof raw.sessions === "object" ? raw.sessions : {},
+      usedCodes:
+        raw.usedCodes && typeof raw.usedCodes === "object" ? raw.usedCodes : {},
+    };
     this.cache = { key, data };
     return data;
   }
 
   private save(data: StoreFile): void {
+    if (this.unreadable !== null)
+      throw new SessionStoreUnreadable(this.unreadable);
     const dir = this.stateDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = this.file();
     writeFileAtomic(file, `${JSON.stringify(data)}\n`, { mode: 0o600 });
     const key = this.statKey();
     this.cache = key ? { key, data } : null;
+  }
+
+  /**
+   * Issue 1299: every write. Under web-sessions.lock, re-reads the file
+   * (never a copy from before the lock), lets `change` edit it, and saves
+   * when it says so. Refused (SessionStoreUnreadable, nothing changed)
+   * when the file can't be read or another running process keeps the
+   * lock past web.sessions_lock_wait_ms.
+   */
+  private write<R>(
+    change: (data: StoreFile) => { save: boolean; value: R },
+    waitMs = this.waitMs(),
+  ): R {
+    let release: () => void;
+    try {
+      release = this.lock(waitMs);
+    } catch (e) {
+      const code =
+        e instanceof WebSessionsBusy
+          ? "EBUSY"
+          : String((e as NodeJS.ErrnoException).code ?? "lock failed");
+      if (code !== "EBUSY") this.failedRead(code);
+      throw new SessionStoreUnreadable(code);
+    }
+    try {
+      this.cache = null;
+      const data = structuredClone(this.load());
+      if (this.unreadable !== null)
+        throw new SessionStoreUnreadable(this.unreadable);
+      const r = change(data);
+      if (r.save) this.save(data);
+      return r.value;
+    } finally {
+      release();
+    }
+  }
+
+  /** web.sessions_lock_wait_ms, within its bounds. */
+  private waitMs(): number {
+    let ms: number;
+    try {
+      ms = this.lockWaitMs();
+    } catch {
+      return SESSIONS_LOCK_WAIT_MS;
+    }
+    if (!Number.isFinite(ms)) return SESSIONS_LOCK_WAIT_MS;
+    return Math.min(
+      SESSIONS_LOCK_WAIT_RANGE.max,
+      Math.max(SESSIONS_LOCK_WAIT_RANGE.min, ms),
+    );
+  }
+
+  /**
+   * Issue 1299 (issue 1300's lock): takes web-sessions.lock (O_EXCL, its
+   * pid in it); returns its release. A running holder is waited for up to
+   * `waitMs`, then WebSessionsBusy; a lock its holder left behind (that
+   * pid no longer runs, or no pid after LOCK_UNREAD_STALE_MS) is taken
+   * over.
+   */
+  /**
+   * Issue 1299 review: for the server, before a write. Resolves true once
+   * the sessions lock is free (or its holder left it behind), false when
+   * a running holder still keeps it after `waitMs`. Waits on timers, so
+   * every other request is served meanwhile; the write then takes the
+   * lock without waiting.
+   */
+  async whenFree(waitMs: number): Promise<boolean> {
+    const file = path.join(this.stateDir(), WEB_SESSIONS_LOCK);
+    const until = Date.now() + Math.max(0, waitMs);
+    for (;;) {
+      if (lockHolder(file).free) return true;
+      if (Date.now() >= until) return false;
+      await new Promise((r) =>
+        setTimeout(r, Math.min(LOCK_POLL_MS, Math.max(1, until - Date.now()))),
+      );
+    }
+  }
+
+  lock(waitMs = 0): () => void {
+    const dir = this.stateDir();
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, WEB_SESSIONS_LOCK);
+    const until = Date.now() + waitMs;
+    let tookOver = false;
+    for (;;) {
+      try {
+        const fd = fs.openSync(file, "wx", 0o600);
+        try {
+          fs.writeSync(fd, `${process.pid}\n`);
+        } finally {
+          fs.closeSync(fd);
+        }
+        return () => {
+          try {
+            if (Number(fs.readFileSync(file, "utf-8").trim()) === process.pid)
+              fs.unlinkSync(file);
+          } catch {
+            /* already gone */
+          }
+        };
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+      const h = lockHolder(file);
+      if (!h.free || tookOver) {
+        if (Date.now() >= until) throw new WebSessionsBusy(h.holder);
+        sleepSync(Math.min(LOCK_POLL_MS, Math.max(1, until - Date.now())));
+        tookOver = false;
+        continue;
+      }
+      // Left behind: take it over, unless it changed since it was read.
+      tookOver = true;
+      if (h.seen) lockUnlinkIfUnchanged(file, h.seen);
+    }
   }
 
   private keyOf(id: string): string | null {
@@ -1066,13 +1401,13 @@ export class WebSessionStore {
    */
   consumeCode(nonce: string, expiresAt: number): boolean {
     const now = this.now();
-    const data = structuredClone(this.load());
-    this.prune(data, now);
     const h = createHash("sha256").update(nonce).digest("hex");
-    if (data.usedCodes[h] !== undefined) return false;
-    data.usedCodes[h] = expiresAt;
-    this.save(data);
-    return true;
+    return this.write((data) => {
+      this.prune(data, now);
+      if (data.usedCodes[h] !== undefined) return { save: false, value: false };
+      data.usedCodes[h] = expiresAt;
+      return { save: true, value: true };
+    });
   }
 
   /** A new session: its id (the cookie's value) and record. */
@@ -1125,10 +1460,11 @@ export class WebSessionStore {
       welcome: true,
       approveKeyHash: approveKeyHash(approveKey),
     };
-    const data = structuredClone(this.load());
-    this.prune(data, now);
-    data.sessions[key] = rec;
-    this.save(data);
+    this.write((data) => {
+      this.prune(data, now);
+      data.sessions[key] = rec;
+      return { save: true, value: null };
+    });
     return { id, session: { key, ...rec }, approveKey };
   }
 
@@ -1146,19 +1482,25 @@ export class WebSessionStore {
     if (!rec) return null;
     const now = this.now();
     if (now - rec.lastSeenAt >= TOUCH_EVERY_MS) {
-      const next = structuredClone(data);
-      next.sessions[key] = { ...rec, lastSeenAt: now };
-      this.trySave(next);
-      return { key, ...next.sessions[key] };
+      // Under the lock from a fresh read: a session ended meanwhile (by
+      // another process) is never written back.
+      this.tryWrite((d) => {
+        if (!d.sessions[key]) return false;
+        d.sessions[key] = { ...d.sessions[key], lastSeenAt: now };
+        return true;
+      });
+      return { key, ...rec, lastSeenAt: now };
     }
     return { key, ...rec };
   }
 
-  private trySave(data: StoreFile): void {
+  /** A write that may fail (a read-only state dir, the lock busy): the caller still answers. */
+  private tryWrite(change: (data: StoreFile) => boolean): void {
     try {
-      this.save(data);
+      // Best effort: never waits for a held lock (issue 1299 review).
+      this.write((d) => ({ save: change(d), value: null }), 0);
     } catch {
-      /* a read-only state dir: the lookup still answers */
+      /* the lookup still answers */
     }
   }
 
@@ -1167,11 +1509,12 @@ export class WebSessionStore {
    * after its sign-in, and never again (the flag is cleared).
    */
   takeWelcome(key: string): boolean {
-    const data = this.load();
-    if (!data.sessions[key]?.welcome) return false;
-    const next = structuredClone(data);
-    delete next.sessions[key].welcome;
-    this.trySave(next);
+    if (!this.load().sessions[key]?.welcome) return false;
+    this.tryWrite((d) => {
+      if (!d.sessions[key]?.welcome) return false;
+      delete d.sessions[key].welcome;
+      return true;
+    });
     return true;
   }
 
@@ -1180,12 +1523,11 @@ export class WebSessionStore {
    * test person (SessionRecord.testOperator). False: no such session.
    */
   markTestOperator(key: string): boolean {
-    const data = this.load();
-    if (!data.sessions[key]) return false;
-    const next = structuredClone(data);
-    next.sessions[key].testOperator = true;
-    this.save(next);
-    return true;
+    return this.write((d) => {
+      if (!d.sessions[key]) return { save: false, value: false };
+      d.sessions[key].testOperator = true;
+      return { save: true, value: true };
+    });
   }
 
   /** Every session, newest first. */
@@ -1197,24 +1539,26 @@ export class WebSessionStore {
 
   /** End the session with this key, saying why (issue 1295). */
   end(key: string, why: SessionEndWhy): boolean {
-    const data = structuredClone(this.load());
-    const r = data.sessions[key];
-    if (!r) return false;
-    delete data.sessions[key];
-    this.save(data);
-    this.told([{ key, ...r }], why);
+    const gone = this.write((d) => {
+      const r = d.sessions[key];
+      if (!r) return { save: false, value: null };
+      delete d.sessions[key];
+      return { save: true, value: { key, ...r } };
+    });
+    if (!gone) return false;
+    this.told([gone], why);
     return true;
   }
 
   /** End every session `which` picks, in one write. Returns their keys. */
   endWhere(which: (s: SessionView) => boolean, why: SessionEndWhy): string[] {
-    const data = structuredClone(this.load());
-    const ended = Object.entries(data.sessions)
-      .map(([key, r]) => ({ key, ...r }))
-      .filter((v) => which(v));
-    if (ended.length === 0) return [];
-    for (const v of ended) delete data.sessions[v.key];
-    this.save(data);
+    const ended = this.write((d) => {
+      const picked = Object.entries(d.sessions)
+        .map(([key, r]) => ({ key, ...r }))
+        .filter((v) => which(v));
+      for (const v of picked) delete d.sessions[v.key];
+      return { save: picked.length > 0, value: picked };
+    });
     this.told(ended, why);
     return ended.map((v) => v.key);
   }
@@ -1242,13 +1586,14 @@ export class WebSessionStore {
 
   /** End every browser session; how many there were. */
   endAll(why: SessionEndWhy): number {
-    const data = structuredClone(this.load());
-    const ended = Object.entries(data.sessions).map(([key, r]) => ({
-      key,
-      ...r,
-    }));
-    data.sessions = {};
-    this.save(data);
+    const ended = this.write((d) => {
+      const all = Object.entries(d.sessions).map(([key, r]) => ({
+        key,
+        ...r,
+      }));
+      d.sessions = {};
+      return { save: true, value: all };
+    });
     this.told(ended, why);
     return ended.length;
   }
