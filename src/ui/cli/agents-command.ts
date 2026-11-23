@@ -807,9 +807,16 @@ export function staleLines(
 ): string[] {
   if (!stale.length) return ["Agents' tools     all current"];
   const say = (x: McpStale) =>
-    x.adds.length
-      ? `${x.adds.join(", ")} tools arrive on restart`
-      : `${x.drops.join(", ")} tools go on restart`;
+    [
+      ...(x.adds.length
+        ? [`${x.adds.join(", ")} tools arrive on restart`]
+        : []),
+      ...(x.drops.length ? [`${x.drops.join(", ")} tools go on restart`] : []),
+      // Issue 1223: its Den tools are an older Den's.
+      ...(x.den
+        ? [`its Den tools are ${x.den.from}'s; ${x.den.to}'s arrive on restart`]
+        : []),
+    ].join("; ");
   return [
     `Agents' tools     ${stale.length} running ${stale.length === 1 ? "agent started" : "agents started"} before the change:`,
     ...stale.map((a) => `  ${a.id} (${a.workspace}): ${say(a.stale)}`),

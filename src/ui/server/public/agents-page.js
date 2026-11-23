@@ -1035,7 +1035,10 @@ function rowHtml(r) {
   // Issue 278: compacting repeatedly: why, Stop, and Clear.
   const callout =
     r.kind === "agent"
-      ? rotCalloutHtml(r) + modeApplyHtml(r) + compactingHtml(r)
+      ? rotCalloutHtml(r) +
+        modeApplyHtml(r) +
+        toolsRestartHtml(r) +
+        compactingHtml(r)
       : "";
   // D32: the helpers it started in its own session, under it. #80: only
   // once its badge is opened (closed by default, the agent in front too).
@@ -2194,16 +2197,31 @@ function mcpStaleTag(r, withButton) {
   if (fx) {
     const tip = t("ag.mcp.failedTip", { error: String(fx.error ?? "") });
     tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
-  } else {
-    if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
+  } else if (sx?.adds?.length || sx?.drops?.length) {
     const k = sx.adds?.length ? "adds" : "drops";
     tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
-  }
+  } else if (sx?.den) {
+    // Issue 1223: its Den tools are an older Den's (Den updated since).
+    const v = { from: String(sx.den.from), to: String(sx.den.to) };
+    tag = `<span class="tagx warn" data-mcp-stale="den" title="${esc(t("ag.mcp.denTip", v))}">${esc(t("ag.mcp.den", v))}</span>`;
+  } else return "";
   if (!withButton) return tag;
-  return (
-    `<span class="agstale">${tag}` +
-    `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${esc(t("ag.mcp.restartName", { id: r.agent }))}" title="${esc(t("ag.mcp.restartName", { id: r.agent }))}">${esc(t("ag.mcp.restart"))}</button></span>`
-  );
+  return `<span class="agstale">${tag}${toolsRestartButton(r)}</span>`;
+}
+
+/** D44: Restart for its tools (at its next idle, same conversation). */
+function toolsRestartButton(r) {
+  const name = esc(t("ag.mcp.restartName", { id: r.agent }));
+  return `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${name}" title="${name}">${esc(t("ag.mcp.restart"))}</button>`;
+}
+
+/**
+ * Issue 1223: under a row whose tools are out of date, its Restart (the
+ * pane bar's has it beside the tag); none while Den restarts it already.
+ */
+function toolsRestartHtml(r) {
+  if (r?.toolsRestarting || !mcpStaleTag(r, false)) return "";
+  return toolsRestartButton(r);
 }
 
 /**
@@ -5837,6 +5855,8 @@ export async function mountAgentsPage(root) {
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
+      // Issue 1223: the row's Restart for its tools, as the pane bar's.
+      else if (which === "tools-restart") void restartForTools(r, act);
       // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
       else if (which === "stop")
         void oneAtATime(r, "stop", () => stopAgentNow(r, act));
