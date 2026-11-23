@@ -49,7 +49,7 @@ export const safeHref = (u) => {
   return /^https?:\/\/[^\s]/i.test(s) ? s : "";
 };
 const note = (text, bad) =>
-  `<p class="den-aa-note${bad ? " bad" : ""}"${bad ? ' role="alert"' : ""}>${esc(text)}</p>`;
+  `<p class="den-aa-note${bad ? " bad" : ""}" data-aa-note${bad ? ' role="alert"' : ""}>${esc(text)}</p>`;
 const same = (a, b) =>
   String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase();
 

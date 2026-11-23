@@ -23,6 +23,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
+import { kitT } from "../../../packages/den-ui/src/strings.js";
 
 jest.setTimeout(60_000);
 
@@ -74,10 +75,10 @@ async function open(e: (typeof ENGINES)[number]): Promise<Page> {
   return ctx.newPage();
 }
 
-const area = (p: Page) => p.locator("dialog.den-aa-dlg[open]");
+const area = (p: Page) => p.locator("dialog[data-aa-dlg][open]");
 const shown = (p: Page) =>
   p.evaluate(() =>
-    Array.from(document.querySelectorAll(".den-aa-pane"))
+    Array.from(document.querySelectorAll("[data-aa-pane]"))
       .filter((x) => !(x as HTMLElement).hidden)
       .map((x) => x.getAttribute("data-aa-pane")),
   );
@@ -99,10 +100,10 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     // cross-link to Settings.
     expect(
       await p
-        .locator(".den-aa-row")
+        .locator("[data-aa-section]")
         .evaluateAll((els) => els.map((x) => x.textContent?.trim())),
     ).toEqual(["Profile", "Access and security", "Devices and sessions"]);
-    expect(await p.getAttribute(".den-aa-cross", "href")).toBe(
+    expect(await p.getAttribute("[data-aa-cross]", "href")).toBe(
       "/settings#access",
     );
     // Esc closes it and takes the section out of the address.
@@ -119,8 +120,8 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     await area(p).waitFor({ timeout: 20_000 });
     expect(await shown(p)).toEqual(["devices"]);
     const mine = p
-      .locator('.den-aa-pane[data-aa-pane="devices"] .den-aa-item')
-      .filter({ hasText: "This device" });
+      .locator('[data-aa-pane="devices"] [data-aa-find]')
+      .filter({ hasText: kitT("en", "kit.aa.thisDevice") });
     expect(await mine.count()).toBe(1);
     await p.context().close();
   });
@@ -132,24 +133,35 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     const p = await open(e);
     await p.goto(`${s.base}/logs?account=devices`);
     await area(p).waitFor({ timeout: 20_000 });
-    const row = p
-      .locator('.den-aa-pane[data-aa-pane="devices"] .den-aa-item')
-      .filter({ hasNotText: "This device" })
-      .first();
-    const name = (await row.locator("b").first().textContent())!.trim();
+    // Another device: the first sign-out button's id, and its row.
+    const [id] = await p
+      .locator('[data-aa-pane="devices"] [data-aa-act="sign-out-device"]')
+      .evaluateAll((els) => els.map((x) => x.getAttribute("data-aa-id")));
+    const row = p.locator('[data-aa-pane="devices"] [data-aa-find]').filter({
+      has: p.locator(`[data-aa-act="sign-out-device"][data-aa-id="${id}"]`),
+    });
+    const name = (await row.locator("b").textContent())!.trim();
     const before = await p
-      .locator(
-        '.den-aa-pane[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
-      )
+      .locator('[data-aa-pane="devices"] [data-aa-act="sign-out-device"]')
       .count();
     await row.locator('[data-aa-act="sign-out-device"]').click();
-    const toast = p.locator(".den-toast");
+    const toast = p.getByRole("status").filter({ hasText: name });
     await toast.waitFor({ timeout: 10_000 });
-    expect((await toast.textContent())?.trim()).toBe(`Signed out ${name}.`);
+    expect((await toast.textContent())?.trim()).toBe(
+      await p.evaluate(
+        (n) =>
+          (
+            window as unknown as {
+              denShell: { t: (k: string, v?: object) => string };
+            }
+          ).denShell.t("busy.signOutDeviceS", { device: n }),
+        name,
+      ),
+    );
     await p.waitForFunction(
       (n) =>
         document.querySelectorAll(
-          '.den-aa-pane[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
+          '[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
         ).length === n,
       before - 1,
     );
@@ -172,11 +184,17 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     );
     await p.goto(`${s.base}/logs?account=access`);
     await area(p).waitFor({ timeout: 20_000 });
-    const pane = p.locator('.den-aa-pane[data-aa-pane="access"]');
+    const pane = p.locator('[data-aa-pane="access"]');
     await pane.locator('[data-aa-act="pair"]').click();
     const slot = pane.locator('[data-aa-flow="pair"]');
-    await slot.locator(".den-aa-note").waitFor();
-    expect(await slot.textContent()).toContain("No edge hostname");
+    await slot.locator("[data-aa-note]").waitFor();
+    expect(await slot.textContent()).toContain(
+      await p.evaluate(() =>
+        (
+          window as unknown as { denShell: { t: (k: string) => string } }
+        ).denShell.t("acct.noEdge"),
+      ),
+    );
     expect(await slot.locator("a").getAttribute("href")).toBe(
       "/settings#access.edge",
     );
@@ -191,7 +209,7 @@ describe.each(ENGINES)("issue 310 in %s: Den's Account area", (e) => {
     await p.goto(`${s.base}/settings#access`);
     const link = p.locator("#set-account-link");
     await link.waitFor({ timeout: 20_000 });
-    expect((await link.textContent())?.trim()).toBe("Your account →");
+    expect((await link.textContent())?.trim()).toBe(kitT("en", "kit.aa.yours"));
     await link.click();
     await area(p).waitFor({ timeout: 10_000 });
     expect(await shown(p)).toEqual(["profile"]);

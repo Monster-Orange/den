@@ -439,7 +439,7 @@ export function accountAreaHtml(d = {}) {
       `>${esc(kitT(lang, TITLE[s]))}</a>`;
   rail += `<div class="den-aa-grow"></div>`;
   if (d.settingsHref)
-    rail += `<a class="den-aa-cross" href="${esc(d.settingsHref)}">${esc(kitT(lang, "kit.aa.cross"))}</a>`;
+    rail += `<a class="den-aa-cross" data-aa-cross href="${esc(d.settingsHref)}">${esc(kitT(lang, "kit.aa.cross"))}</a>`;
 
   const body = {
     profile: () => profilePane(d.profile, lang, t),
