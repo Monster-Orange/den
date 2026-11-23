@@ -217,6 +217,9 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
   it("#320: signed in with GitHub, the page withdraws its own code before it goes, even if its pagehide never runs", async () => {
     if (skip()) return;
     const { ctx, p } = await edgePage();
+    // Issue 1333: the page asks for a code only on its button.
+    await p.waitForSelector("#den-pair-start, #den-pair-code");
+    if (await p.$("#den-pair-start")) await p.click("#den-pair-start");
     // The page's own code is waiting, as on any signed-out page.
     await p.waitForSelector("#den-pair-code");
     // The landing never answers: the page never unloads, so no pagehide.

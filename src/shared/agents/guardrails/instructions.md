@@ -6,6 +6,9 @@
 - Never name an issue or an ID without saying what it is. Write "#5 (the
   hooks issue)" or "the plain-writing rule (R12)", never a bare "#5" or "R12".
 - Ask each decision as a numbered yes/no question. One question per number.
+- A Doctor ⚠ isn't by itself a reason to ask the person. Check what the row
+  is about first. Ask only when it needs their decision and the thing it
+  names is in use: an empty project needs no Hub link.
 - No caveat sections. Leave out anything the person doesn't need in order to
   act.
 

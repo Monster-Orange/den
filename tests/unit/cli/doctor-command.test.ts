@@ -524,6 +524,72 @@ describe("hubProjectLines (H5)", () => {
     expect(r.lines[2]).toContain("`acme hub link --suggested`");
     expect(r.checks).toHaveLength(2);
   });
+
+  it("issue 1334: an empty unlinked project (the built-in default) is ✓ nothing to link, never ⚠ or a link command", () => {
+    const r = hubProjectLines(
+      true,
+      [{ ws: "default", link: null, empty: true }],
+      "acme",
+    );
+    expect(r.checks).toEqual([
+      {
+        id: "hub:project:default",
+        status: "ok",
+        detail: "default: empty, nothing to link",
+      },
+    ]);
+    expect(r.lines).toEqual([
+      "  hub project  ✓  default: empty, nothing to link",
+    ]);
+    expect(r.lines.join("\n")).not.toContain("hub link");
+  });
+
+  it("issue 1334: a project with a repo and no link still warns; empties don't count toward --suggested", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        { ws: "default", link: null, empty: true },
+        { ws: "shop", link: null, empty: false },
+      ],
+      "acme",
+    );
+    expect(r.checks.map((c) => [c.id, c.status])).toEqual([
+      ["hub:project:default", "ok"],
+      ["hub:project:shop", "warn"],
+    ]);
+    // One unlinked that matters: no "in one go" line.
+    expect(r.lines).toHaveLength(2);
+    expect(r.lines[1]).toContain("`acme hub link -p shop`");
+  });
+
+  it("issue 1334: an empty project linked is still ✓ linked, and a lost link on one still warns", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        {
+          ws: "default",
+          link: { slug: "home", name: "home" },
+          empty: true,
+        },
+      ],
+      "acme",
+    );
+    expect(r.checks[0]).toMatchObject({ status: "ok" });
+    expect(r.checks[0].detail).toContain("linked to Hub project home");
+    const lost = hubProjectLines(
+      true,
+      [
+        {
+          ws: "default",
+          link: null,
+          empty: true,
+          lost: { slug: "home", at: "2026-11-12T10:00:00.000Z" },
+        },
+      ],
+      "acme",
+    );
+    expect(lost.checks[0]).toMatchObject({ status: "warn" });
+  });
 });
 
 describe("hubGithubLines (H5)", () => {
