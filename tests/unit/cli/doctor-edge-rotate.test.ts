@@ -45,6 +45,12 @@ describe("issue 728: doctor's edge rotation rows", () => {
     expect(r.checks[0].detail).toMatch(/next start/);
   });
 
+  it("an edge never started (no proof): nothing to rotate, ok", () => {
+    const r = rows();
+    expect(r.checks[0]).toMatchObject({ id: "edge_rotate", status: "ok" });
+    expect(r.checks[0].detail).toMatch(/has no proof yet, nothing to rotate/);
+  });
+
   it("rotated: ok, with when", () => {
     proof();
     marker("2026-11-23T08:00:00.000Z");

@@ -1482,11 +1482,14 @@ export function edgeRotationLines(
   )();
   if (!dir || !fs.existsSync(dir)) return { lines: [], checks: [] };
   const at = edgeProofRotation({ stateDir: dir }).rotatedAt;
-  const rotate = at
-    ? `the edge's proof was rotated once, at ${at}, after agents lost read access to the edge's state folder`
-    : `the edge's proof hasn't been rotated since agents lost read access to the edge's state folder: ${title} rotates it once at its next start (people stay signed in)`;
+  const none = !at && readEdgeProof(dir) === null;
+  const rotate = none
+    ? "the edge has no proof yet, nothing to rotate"
+    : at
+      ? `the edge's proof was rotated once, at ${at}, after agents lost read access to the edge's state folder`
+      : `the edge's proof hasn't been rotated since agents lost read access to the edge's state folder: ${title} rotates it once at its next start (people stay signed in)`;
   const checks: OnboardCheck[] = [
-    { id: "edge_rotate", status: at ? "ok" : "warn", detail: rotate },
+    { id: "edge_rotate", status: at || none ? "ok" : "warn", detail: rotate },
   ];
   const since = at ? Date.parse(at) : Infinity;
   const projects = (
@@ -1536,7 +1539,7 @@ export function edgeRotationLines(
       "",
       `${title} doctor: Edge secrets`,
       "",
-      `  edge rotate  ${at ? "✓" : "⚠"}  ${rotate}`,
+      `  edge rotate  ${at || none ? "✓" : "⚠"}  ${rotate}`,
       `  stack secrets  ${named.length ? "⚠" : "✓"}  ${stacks}`,
     ],
     checks,

@@ -120,8 +120,9 @@ export function edgeProofRotation(cfg: Pick<EdgeConfig, "stateDir">): {
  * the edge is set up here) rewritten with it, which Traefik reloads by
  * itself: nothing restarts and sessions are kept (until Traefik reloads,
  * a few seconds, edge requests aren't proved, so a page loaded then asks to
- * sign in). No proof yet: nothing to
- * rotate (none is made), but marked, so a proof made later isn't rotated.
+ * sign in). No proof yet (an edge never started here): nothing is
+ * written, not even the marker; a proof made later is made after agents
+ * lost read access, and one that turns up unmarked is rotated once.
  * The proof (0600, renamed in whole) comes first, edge.yml next, the marker
  * last: a crash between them fails closed (edge requests stop proving, so
  * people sign in), the next start's syncEdgeProof puts the current proof in
@@ -134,20 +135,17 @@ export function rotateEdgeProofOnce(
   now: Date = new Date(),
 ): "rotated" | "done" | "no-edge" {
   if (edgeProofRotation(cfg).rotatedAt) return "done";
-  const had = readEdgeProof(cfg.stateDir) !== null;
-  if (had) {
-    const proof = rotateEdgeProof(cfg.stateDir);
-    const file = path.join(cfg.stateDir, "dynamic", GENERATED);
-    if (fs.existsSync(file))
-      writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
-  }
-  fs.mkdirSync(cfg.stateDir, { recursive: true, mode: 0o700 });
+  if (readEdgeProof(cfg.stateDir) === null) return "no-edge";
+  const proof = rotateEdgeProof(cfg.stateDir);
+  const file = path.join(cfg.stateDir, "dynamic", GENERATED);
+  if (fs.existsSync(file))
+    writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
   writeFileAtomic(
     path.join(cfg.stateDir, ROTATED),
-    JSON.stringify({ at: now.toISOString(), rotated: had }) + "\n",
+    JSON.stringify({ at: now.toISOString(), rotated: true }) + "\n",
     { mode: 0o600 },
   );
-  return had ? "rotated" : "no-edge";
+  return "rotated";
 }
 
 /**

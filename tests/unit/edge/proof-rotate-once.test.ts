@@ -75,10 +75,20 @@ describe("issue 728: the edge's proof is rotated once", () => {
     expect(fs.existsSync(edgeYml())).toBe(false);
   });
 
-  it("no proof ever made: nothing to rotate, nothing made, marked so a later proof isn't rotated", () => {
+  it("no proof ever made: nothing to rotate, and nothing written (no proof, no marker)", () => {
     expect(rotateEdgeProofOnce(cfg(), new Set([7000]), now)).toBe("no-edge");
     expect(readEdgeProof(dir)).toBeNull();
-    expect(rotateEdgeProofOnce(cfg(), new Set([7000]), now)).toBe("done");
+    expect(fs.readdirSync(dir)).toEqual([]);
+    expect(edgeProofRotation(cfg())).toEqual({ rotatedAt: null });
+  });
+});
+
+describe("issue 728: no edge folder at all", () => {
+  it("nothing written: no folder made, no marker", () => {
+    const gone = path.join(dir, "not-set-up");
+    const c = { ...(cfg() as object), stateDir: gone } as never;
+    expect(rotateEdgeProofOnce(c, new Set([7000]), now)).toBe("no-edge");
+    expect(fs.existsSync(gone)).toBe(false);
   });
 });
 
