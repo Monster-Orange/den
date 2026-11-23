@@ -178,6 +178,25 @@ describe("gloss: what explains an ID", () => {
     expect(bareIds("#5 ships.\nIt is #5 (the hooks issue).")).toEqual(["#5"]);
   });
 
+  it("skips ID-shaped parts of file paths and links (issue 1021)", () => {
+    // mkdtemp's random suffix can be all capitals and digits.
+    expect(bareIds("its handoff is /tmp/den-agents-AB1234/x.md.")).toEqual([]);
+    expect(bareIds("see /tmp/x-AB1234/handoff.md (the file)")).toEqual([]);
+    expect(bareIds("wrote ./out/R12/notes.md and ~/w/KB-4/a.md")).toEqual([]);
+    // Links were already skipped; kept so a path rule never undoes that.
+    expect(bareIds("see https://x.example/issues/AB12/R3 now")).toEqual([]);
+    // A real bare ID next to a path still counts.
+    expect(bareIds("AG-14 is in /tmp/x-AB1234/handoff.md")).toEqual(["AG-14"]);
+    expect(bareIds("(/tmp/x-AB1234/a.md) and R3")).toEqual(["R3"]);
+    // IDs joined by a slash are IDs, not a path.
+    expect(bareIds("#12/#13 and AG-14/KB-4.1")).toEqual([
+      "#12",
+      "#13",
+      "AG-14",
+      "KB-4.1",
+    ]);
+  });
+
   it("finds both ID shapes, and skips code, links and the Branch part", () => {
     expect(bareIds("AG-14 and KB-4.1 and #12 and R3")).toEqual([
       "AG-14",

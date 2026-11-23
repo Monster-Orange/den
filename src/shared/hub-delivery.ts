@@ -37,6 +37,12 @@ export interface Delivery {
    * whether it is an edit request is Den's own owner check (SEC-3).
    */
   intent?: "edit" | "info";
+  /** A held decision's outcome, when Hub sends it (P0-D2). */
+  decision?: "allowed" | "denied";
+  /** The held write a held decision is about, when Hub sends it. */
+  heldId?: string;
+  /** Hub's held.state: whether an allowed change landed. */
+  heldState?: "applied" | "failed" | "refused";
   agent: string;
   project: string;
   thread: { kind: string; id: string; url: string; artifact?: string };
@@ -66,6 +72,12 @@ export const LOCAL_PREFIX = "inbox:";
  * with its app key). Den's own, like an inbox item: never acked to Hub.
  */
 export const EMBED_PREFIX = `${LOCAL_PREFIX}embed:`;
+
+/**
+ * Issue 459: an app feed's pointer (Den's own, like a relayed message).
+ * The loop keeps these ids in a seen store of their own.
+ */
+export const FEED_PREFIX = `${EMBED_PREFIX}feed:`;
 
 /** Issue 334: a relayed message as the delivery loop holds it. */
 export function embedDelivery(m: {
@@ -160,6 +172,9 @@ export function deliveryRaw(d: Delivery): Record<string, unknown> {
     ...(d.kind ? { kind: d.kind } : {}),
     ...(d.version !== undefined ? { version: d.version } : {}),
     ...(d.intent ? { intent: d.intent } : {}),
+    ...(d.decision ? { decision: d.decision } : {}),
+    ...(d.heldId ? { held_id: d.heldId } : {}),
+    ...(d.heldState ? { held: { state: d.heldState } } : {}),
     agent: d.agent,
     project: d.project,
     thread: d.thread,
@@ -238,7 +253,24 @@ export function parseDelivery(v: unknown): Delivery | null {
     body: s(r.body, MAX_BODY),
     createdAt: line(s(r.created_at, 64)),
     ...(r.intent === "edit" || r.intent === "info" ? { intent: r.intent } : {}),
+    ...(r.decision === "allowed" || r.decision === "denied"
+      ? { decision: r.decision }
+      : {}),
   };
+  // Hub's held_id, else its held.id; held.state when it is one Hub sends.
+  const held =
+    r.held && typeof r.held === "object"
+      ? (r.held as Record<string, unknown>)
+      : null;
+  const hid = typeof r.held_id === "string" ? r.held_id : held?.id;
+  if (typeof hid === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(hid))
+    d.heldId = hid;
+  if (
+    held?.state === "applied" ||
+    held?.state === "failed" ||
+    held?.state === "refused"
+  )
+    d.heldState = held.state;
   const rw = readReplyWith(r.reply_with);
   if (rw) d.replyWith = rw;
   const f = r.forwarded as Record<string, unknown> | undefined;
@@ -262,6 +294,139 @@ export function stripLookalikes(body: string): string {
     .split(/\r?\n/)
     .filter((l) => !LOOKALIKE.test(l))
     .join("\n");
+}
+
+/** Hub's info note on an approval, until it sends kinds (P0-D2). */
+const APPROVED_COMMENT = /\bapproved v(\d+) of\b/i;
+/**
+ * Without Hub's decision field, a held decision says yes only in an exact
+ * form: its whole text (quoted lines aside) is "Allowed", "Approved" or
+ * "Applied", or one of its lines is "Decision: allowed". Words anywhere
+ * else ("approved by nobody", "Allowed: false") are no yes.
+ */
+const HELD_YES_BODY = /^(allowed|approved|applied)\.?$/i;
+const HELD_YES_LINE = /^decision:\s*allowed\.?$/i;
+function heldSaysYes(body: string): boolean {
+  const lines = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith(">"));
+  if (lines.length === 1 && HELD_YES_BODY.test(lines[0])) return true;
+  return lines.some((l) => HELD_YES_LINE.test(l));
+}
+
+/**
+ * P0-D2: how a held decision was decided, from Hub's decision field:
+ * allowed, allowed but its apply failed, or denied. Undefined without
+ * the field.
+ */
+export function heldOutcome(
+  d: Delivery,
+): "allowed" | "failed" | "denied" | undefined {
+  if (d.kind !== "held" || !d.decision) return undefined;
+  if (d.decision === "denied") return "denied";
+  // Hub's held.state; its words only when Hub sends no held block.
+  if (d.heldState) return d.heldState === "applied" ? "allowed" : "failed";
+  return /\bfail(ed|s|ure)?\b/i.test(d.body) ? "failed" : "allowed";
+}
+/** A held write's id, as Hub names it. */
+const HELD_ID =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+/**
+ * P0-D2: whether `d` is the owner's approval: kind "approve", a held
+ * decision that didn't say no (kind "held"), or, until Hub sends kinds,
+ * Hub's own "approved vN of" info note (intent "info"), on the version the
+ * delivery names when it names one. Someone else's never is, and neither
+ * is an owner's comment that only says the words.
+ */
+export function isApproval(d: Delivery, o: DeliveryOwner | null): boolean {
+  if (!o || !isOwner(d.author, o)) return false;
+  if (d.kind === "approve") return true;
+  if (d.kind === "held") {
+    // Hub's field: the person answered, yes or no; its question goes.
+    if (d.decision) return true;
+    return heldSaysYes(d.body);
+  }
+  if (d.kind && d.kind !== "comment") return false;
+  if (d.intent !== "info") return false;
+  const m = APPROVED_COMMENT.exec(d.body);
+  if (!m) return false;
+  return d.version === undefined || Number(m[1]) === d.version;
+}
+
+/**
+ * P0-D2: the version an approval is of: Hub's field, or its info note's
+ * vN; undefined when it names none.
+ */
+export function approvalVersion(d: Delivery): number | undefined {
+  if (d.version !== undefined) return d.version;
+  const m = d.intent === "info" ? APPROVED_COMMENT.exec(d.body) : null;
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * Whether `d` could be an approval once Den knows its person: what the
+ * early list keeps (P0-D2).
+ */
+export function mayBeApproval(d: Delivery): boolean {
+  if (d.author.kind !== "person") return false;
+  if (d.kind === "approve" || d.kind === "held") return true;
+  return (
+    (!d.kind || d.kind === "comment") &&
+    d.intent === "info" &&
+    APPROVED_COMMENT.test(d.body)
+  );
+}
+
+/**
+ * P0-D2: what a question names when it is about this approval: its link,
+ * its thread, and any held id Hub's text gives. Never the doc's title: a
+ * question that mentions a title may be about something else. Short ones
+ * (under 6 characters) are left out: they would match by chance.
+ */
+/** P0-D4: the held write ids Hub's text names, lower case, each once. */
+export function heldIdsIn(body: string): string[] {
+  return [...new Set((body.match(HELD_ID) ?? []).map((m) => m.toLowerCase()))];
+}
+
+export function approvalKeys(d: Delivery): string[] {
+  // Hub's decision field names its held write: that id alone matches.
+  if (d.kind === "held" && d.decision && d.heldId) return [d.heldId];
+  const keys = [d.thread.url, d.thread.id, d.heldId ?? ""];
+  for (const m of d.body.match(HELD_ID) ?? []) keys.push(m.toLowerCase());
+  return [...new Set(keys.map((k) => k.trim()).filter((k) => k.length >= 6))];
+}
+
+/**
+ * P0-D2: what Den types into another agent whose question names an
+ * approval's link: who decided what, and where. Den's own words.
+ */
+export function approvalNoticeText(d: Delivery, o: DeliveryOwner): string {
+  const art = d.thread.artifact ? `"${line(d.thread.artifact)}"` : "a Hub doc";
+  const ver = d.version !== undefined ? `, version ${d.version}` : "";
+  const out = heldOutcome(d);
+  const what =
+    out === "denied"
+      ? "said no to a held change on"
+      : out
+        ? "allowed a held change on"
+        : d.kind === "held"
+          ? "decided a held change on"
+          : "approved";
+  const link = d.thread.url || "(no link)";
+  return [
+    `from: Den (this install · via: Hub decision ${link})`,
+    `${d.author.name} (${who(d.author, o)}) ${what} ${art}${ver}. Link: ${link}`,
+    ...(out === "failed"
+      ? [
+          "The change didn't land: Hub failed or refused to apply it. Check it before you rely on it.",
+        ]
+      : out === "denied"
+        ? ["They said no: don't go ahead with it."]
+        : []),
+    "Your open question named it, so Den cleared it from the bell. Read the decision as information, then carry on.",
+  ].join("\n");
 }
 
 /** Whether `a` is the install's own person in Hub. */
@@ -415,9 +580,23 @@ export class SseReader {
   private data: string[] = [];
   lastId: string | null = null;
   private readonly max: number;
+  private readonly overflow: (() => void) | undefined;
+  /** Issue 459: the most data one event holds (its data: lines together). */
+  private readonly maxEvent: number;
+  private eventBytes = 0;
+  private eventOver = false;
 
-  constructor(o: { maxBuffer?: number } = {}) {
+  /**
+   * `onOverflow` (issue 459): a line longer than `maxBuffer`, or an event
+   * whose data: lines together pass `maxEvent`, was skipped, so whoever
+   * reads can say so (never dropped without a word).
+   */
+  constructor(
+    o: { maxBuffer?: number; maxEvent?: number; onOverflow?: () => void } = {},
+  ) {
     this.max = o.maxBuffer ?? 1024 * 1024;
+    this.maxEvent = o.maxEvent ?? Infinity;
+    this.overflow = o.onOverflow;
   }
 
   feed(chunk: string): SseEvent[] {
@@ -436,6 +615,7 @@ export class SseReader {
     }
     if (this.buf.length > this.max) {
       this.buf = "";
+      if (!this.skipping) this.overflow?.();
       this.skipping = true;
     }
     return out;
@@ -443,6 +623,15 @@ export class SseReader {
 
   private line(l: string, out: SseEvent[]): void {
     if (l === "") {
+      const over = this.eventOver;
+      this.eventOver = false;
+      this.eventBytes = 0;
+      if (over) {
+        this.id = undefined;
+        this.event = "";
+        this.data = [];
+        return;
+      }
       if (this.data.length) {
         out.push({
           id: this.id,
@@ -461,8 +650,18 @@ export class SseReader {
     const field = i < 0 ? l : l.slice(0, i);
     let value = i < 0 ? "" : l.slice(i + 1);
     if (value.startsWith(" ")) value = value.slice(1);
-    if (field === "data") this.data.push(value);
-    else if (field === "event") this.event = value;
+    if (field === "data") {
+      if (this.eventOver) return;
+      this.eventBytes += value.length + 1;
+      if (this.eventBytes > this.maxEvent) {
+        // Issue 459: an event past its cap: its data goes, it is said.
+        this.eventOver = true;
+        this.data = [];
+        this.overflow?.();
+        return;
+      }
+      this.data.push(value);
+    } else if (field === "event") this.event = value;
     else if (field === "id" && !value.includes("\0")) this.id = value;
   }
 }

@@ -1,12 +1,14 @@
 /**
  * SEC-2a "Seeing that you're signed in", in a real browser:
  *  - the rail footer's identity chip: the kit's "Local" when Den knows no
- *    GitHub identity (on localhost, or a browser signed in with a one-time
- *    link through the edge, from another machine); never device words.
+ *    GitHub identity (on localhost, or a browser that opened a one-time
+ *    link through the edge, from another machine, and was approved from a
+ *    signed-in browser: issue 819); never device words.
  *    The GitHub login is sec2a-signin's. It
  *    opens Settings › Access, and has the rail's own item metrics;
  *  - a toast on the first page load after the sign-in, once;
- *  - Linked devices lists the one-time-link sign-in, marked This device.
+ *  - Linked devices lists that sign-in (approved with a code), marked
+ *    This device.
  *
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. No link
  * or cookie is printed.
@@ -18,8 +20,8 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
+import { signIn, signedIn } from "./helpers/signed-in.js";
 import { signInUrl } from "./helpers/den-auth.js";
-import { signIn } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
@@ -180,7 +182,7 @@ describe("the identity chip", () => {
     await ctx.close();
   }, 60_000);
 
-  it("signed in with a one-time link from another machine, no GitHub identity known: the kit's Local, never device words; a toast the first time only; Linked devices marks This device", async () => {
+  it("a one-time link from another machine, approved from a signed-in browser, no GitHub identity known: the kit's Local, never device words; a toast the first time only; Linked devices marks This device", async () => {
     if (skip()) return;
     const ctx = await browser!.newContext({
       viewport: { width: 1280, height: 900 },
@@ -189,11 +191,33 @@ describe("the identity chip", () => {
     await seeWhatsNew(ctx);
     const p = await ctx.newPage();
     const origin = `http://${EDGE}:${port}`;
+    // Issue 819: the link opens the pairing screen; a person's signed-in
+    // browser approves its code; the page signs itself in and goes on.
     const r = await p.goto(signInUrl(stateDir, origin, "/settings#access"));
-    expect(r?.status()).toBe(200);
+    expect(r?.status()).toBe(401);
+    await p.waitForSelector("#den-pair-code");
+    const code = ((await p.textContent("#den-pair-code")) ?? "").trim();
+    const me = await signedIn(stateDir, `http://localhost:${port}`);
+    const ok = await fetch(`http://localhost:${port}/api/web/approve`, {
+      method: "POST",
+      headers: {
+        ...me.headers,
+        "x-den-approve-key": me.approveKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    });
+    expect(ok.status).toBe(200);
+    // It goes on to the link's next, not back to the spent link.
+    await p.waitForURL((u) => u.pathname === "/settings", { timeout: 20_000 });
     // The first load after the sign-in: the toast, once.
-    await p.waitForSelector(".den-toast");
-    expect((await p.textContent(".den-toast"))?.trim()).toBe(
+    // Read the toast's text in the same step that sees it: a toast can
+    // close between a wait and a later read.
+    const toast = await p.waitForFunction(() => {
+      const t = document.querySelector(".den-toast")?.textContent?.trim();
+      return t || null;
+    });
+    expect(await toast.jsonValue()).toBe(
       `This device is signed in to Den on ${SHORT}`,
     );
     expect(await chip(p)).toEqual({
@@ -207,7 +231,7 @@ describe("the identity chip", () => {
     await row.waitFor();
     expect(await row.count()).toBe(1);
     expect((await row.textContent())?.replace(/\s+/g, " ")).toMatch(
-      /Chrome on \w+ · This device.*signed in with a one-time link · created just now · from 203\.0\.113\.7 \(Chrome on \w+\) · last seen just now.*Revoke/,
+      /Chrome on \w+ · This device.*approved with a code · created just now · from 203\.0\.113\.7 \(Chrome on \w+\) · last seen just now.*Revoke/,
     );
     // A reload: the chip again, and no toast.
     await p.reload();

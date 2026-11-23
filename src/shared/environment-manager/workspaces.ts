@@ -352,22 +352,10 @@ export function writeWorkspacesFile(
       ]),
     ),
   };
-  // Write to a temp file then atomically rename, so a crash or a concurrent
-  // den process can never observe a half-written workspaces.yml.
-  const tmp = path.join(dir, `.workspaces.${process.pid}.tmp`);
-  try {
-    fs.writeFileSync(tmp, yaml.stringify(out), "utf-8");
-    fs.renameSync(tmp, WORKSPACES_PATH);
-    auditWorkspacesWrite(before, out, by);
-  } catch (err) {
-    // Don't leave an orphaned temp file behind when the write/rename fails.
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore cleanup failure */
-    }
-    throw err;
-  }
+  // Written whole (atomic-write), so a crash or a concurrent den process
+  // can never observe a half-written workspaces.yml.
+  writeFileAtomic(WORKSPACES_PATH, yaml.stringify(out));
+  auditWorkspacesWrite(before, out, by);
 }
 
 /** workspaces.yml as it is on disk now (for the audit's diff); {} if none. */
@@ -1163,6 +1151,33 @@ export function workspaceMcpServersRaw(
 ): unknown {
   try {
     return read().workspaces[ws]?.agents?.mcp_servers ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Issue 158: project `ws`'s entry as written, or undefined (none, or unreadable). */
+export function workspaceEntryRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws] ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Issue 459: workspace `ws`'s `agents.event_feeds` as written (checked
+ * where it is used); undefined when unset or the file can't be read.
+ */
+export function workspaceEventFeedsRaw(
+  ws: string,
+  read: () => WorkspacesFile = readWorkspacesFile,
+): unknown {
+  try {
+    return read().workspaces[ws]?.agents?.event_feeds ?? undefined;
   } catch {
     return undefined;
   }

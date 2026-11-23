@@ -13,6 +13,9 @@ export const clauses = [
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 120000;
 
+// Read only (issue 845): reads doctor and Settings › Project's MCP server list.
+export const readOnly = true;
+
 export async function setup(ctx) {
   const d = ctx.cli(["doctor"]);
   const lines = String(d.out + d.err)

@@ -29,7 +29,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -110,7 +110,7 @@ async function model(ctx: BrowserContext, noDvh: boolean): Promise<void> {
 
 async function agentsPage(ctx: BrowserContext): Promise<Page> {
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents");
   await p.waitForFunction(() => "denShell" in window, undefined, {
     timeout: 20_000,
   });
@@ -145,7 +145,8 @@ async function open(p: Page, k: string): Promise<string> {
         title: "Remove it?",
         message: kind === "confirm" ? "It goes." : "A long line. ".repeat(900),
       });
-      return ".dk-dlg";
+      // The question itself: What's new (issue 793) is a .dk-dlg too.
+      return '.dk-dlg[data-dk-kind="confirm"]';
     }
     if (kind === "busy") {
       void kit.busyAction("save", () => new Promise(() => {}));

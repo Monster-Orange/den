@@ -100,6 +100,24 @@ export function openerOf(hint) {
   return null;
 }
 
+/**
+ * Issue 793: a page's own focus while a kit pop-up is open (a field that
+ * came in under it). The page behind a modal can't take focus, so the
+ * field is kept here and gets it when the pop-up closes, in place of
+ * what opened the pop-up. With no pop-up open it is focused at once.
+ */
+let wanted = null;
+export function focusWhenFree(el) {
+  if (!el) return;
+  const modal =
+    typeof document !== "undefined" &&
+    [...document.querySelectorAll("dialog.dk-dlg[open]")].find(
+      (d) => d.matches(":modal") && !d.contains(el),
+    );
+  if (modal) wanted = el;
+  else el.focus?.();
+}
+
 /** Focus `el` again (no scroll), when it is still there and focusable. */
 export function focusBack(el) {
   if (!focusable(el)) return false;
@@ -199,12 +217,14 @@ function attrsOf(o) {
  * plain one (no kind) never validates the form: it is a way out.
  */
 function actionHtml(a) {
+  // Issue 673: the kit's one button (button.css); dk-btn, dk-primary and
+  // dk-danger stay as the dialog's hooks.
   const cls =
-    "dk-btn" +
+    "den-btn dk-btn" +
     (a.kind === "primary"
-      ? " dk-primary"
+      ? " primary dk-primary"
       : a.kind === "danger"
-        ? " dk-danger"
+        ? " danger dk-danger"
         : "") +
     (a.className ? ` ${a.className}` : "");
   if (a.href != null)
@@ -263,7 +283,7 @@ function panelInner(spec, ids) {
       ? `<span class="dk-sub" id="${esc(ids.sub)}">${esc(spec.subtitle)}</span>`
       : "") +
     `<span class="dk-acts">${actionsHtml(spec.headActions)}` +
-    `<form class="dk-x-f" method="dialog"><button type="submit" class="dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
+    `<form class="dk-x-f" method="dialog"><button type="submit" class="den-btn dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
     `</span></div>` +
     `<div class="dk-body" id="${esc(ids.body)}"${attrsOf(spec.bodyAttrs)}>${spec.body ?? ""}</div>` +
     (spec.foot ?? "") +
@@ -436,6 +456,7 @@ export function mountDialog(target, o = {}) {
   let opener = null;
   let settle = null;
   let gone = false;
+  let shown = false;
   const handle = { dialog: d, show, close, closed: Promise.resolve("") };
 
   function close(value = "cancel") {
@@ -455,8 +476,17 @@ export function mountDialog(target, o = {}) {
       opener = openerOf(from ?? o.opener);
       d.returnValue = "";
       handle.closed = new Promise((r) => (settle = r));
+      shown = true;
       if (typeof d.showModal === "function") d.showModal();
       else d.setAttribute("open", "");
+      // A modal the page's own style hides would leave the page dead
+      // under nothing to see: it closes at once, and the keyboard stays
+      // where it was.
+      if (getComputedStyle(d).display === "none") {
+        opener = null;
+        close("cancel");
+        return handle;
+      }
     }
     const first = startOf(d, o.focus);
     first?.focus?.();
@@ -482,10 +512,13 @@ export function mountDialog(target, o = {}) {
       const at = document.activeElement;
       const first = all[0];
       const last = all[all.length - 1];
-      if (e.shiftKey && (at === first || !d.contains(at))) {
+      // Anything not a stop (a focused heading, say) counts as outside:
+      // Shift+Tab from it goes round to the last stop, never out.
+      const inside = all.includes(at);
+      if (e.shiftKey && (at === first || !inside)) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && (at === last || !d.contains(at))) {
+      } else if (!e.shiftKey && (at === last || !inside)) {
         e.preventDefault();
         first.focus();
       }
@@ -504,19 +537,36 @@ export function mountDialog(target, o = {}) {
       }
     }
   });
-  d.addEventListener("close", () => {
+  // Issue 793: what a close does runs once per showing, as soon as the
+  // dialog is closed (its open attribute goes, seen in a microtask), not
+  // only at the close event, which the browser fires a task later: so a
+  // pop-up's state and focus are right the moment it is shut.
+  const finish = () => {
+    if (!shown || d.open) return;
+    shown = false;
     const value = d.returnValue || "cancel";
     o.onClose?.(value, d);
     const s = settle;
     settle = null;
     s?.(value);
-    focusBack(opener);
+    // The page's own field, if one wanted the keyboard meanwhile (issue
+    // 793), else what opened it.
+    const w = wanted;
+    wanted = null;
+    if (!(w && focusBack(w))) focusBack(opener);
     opener = null;
     if (remove) {
       gone = true;
+      watch?.disconnect();
       d.remove();
     }
-  });
+  };
+  d.addEventListener("close", finish);
+  const watch =
+    typeof MutationObserver === "function"
+      ? new MutationObserver(finish)
+      : null;
+  watch?.observe(d, { attributes: true, attributeFilter: ["open"] });
   if (o.show !== false) show();
   return handle;
 }

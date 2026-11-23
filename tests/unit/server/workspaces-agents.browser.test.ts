@@ -20,7 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -92,7 +92,7 @@ async function open(ws: string): Promise<Page> {
   const p = await ctx.newPage();
   // SEC-1b: Start and Resume are shell-grade, so the browser signs in as a
   // person does, through a one-time /auth link (never a bypass).
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/?ws=${ws}`);
   await p.waitForSelector(
     `#agents-section[data-ws="${ws}"] #agent-table tbody tr:not(.tbl-none), #agents-section[data-ws="${ws}"] #agent-table tbody tr.tbl-none td:not(:empty)`,
     { timeout: 20_000 },

@@ -2,16 +2,29 @@
 # packaged-install smoke (dist-smoke), and the org-name gate (no org's names, hosts or accounts in this public repo; the
 # patterns live in the DEN_ORG_NAMES secret, never in the repo).
 #
-# Issue 398: a push to main runs everything on both Nodes (checks, tests,
-# den-ui-nav, dist-smoke). A pull request runs on both Nodes too: the pr
-# job (the same checks and dist-smoke, then the tests the change affects:
-# scripts/affected-tests.mjs), and pr-shards when that subset is large.
+# Issue 996: the tests run once, on the pull request. A pull request runs
+# on both Nodes: the pr job (the checks and dist-smoke, then the tests the
+# change affects: scripts/affected-tests.mjs), and pr-shards when that
+# subset is large. A push to main runs the fast checks only (lint, types,
+# the org-name gates), as a tripwire: main's tree is a pull request's tested
+# tree, and release.yml publishes only a tree that was tested
+# (scripts/release-tree-check.mjs). The whole suite on both Nodes (tests,
+# den-ui-nav, dist-smoke) still runs when started by hand
+# (workflow_dispatch).
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  # A merge queue's run tests the base and the pull request together: the
+  # tree that lands. pr and pr-shards run on it as on a pull request.
+  merge_group:
+  workflow_dispatch:
+  # Issue 998: pull requests run on Node 24 only; Node 22 runs here, nightly,
+  # on main (nightly-node22), and a red night opens or updates one issue.
+  schedule:
+    - cron: "0 9 * * *"
 
 permissions:
   contents: read
@@ -19,7 +32,7 @@ permissions:
 # A newer push to the same pull request cancels the older run: only the
 # newest commit's result counts, and the old run held runner slots other
 # PRs were queued for. Pushes to main are never cancelled (each main
-# commit gets its full run).
+# commit gets its checks).
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -44,7 +57,7 @@ jobs:
   # lowest Node that package.json's engines allows, and the Node installs
   # run (24.13, the one den#84's V8 crash was seen on). Both block a merge.
   checks:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -67,10 +80,21 @@ jobs:
       # org, user, session… (company, install, project, person, agent).
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
       # Issue 95: Den keeps no copy of a UI kit component (den-ui's
       # shell, version chip, What's new, update pill, Report, working
       # pop-up); a copy passes only when DIVERGE.md names it with a reason.
       - run: npm run -s gate:den-ui
+      # Issue 839: the brittle-pattern totals per kind, for the log. Report
+      # only: a pull request is judged against its merge base (the pr job),
+      # so nothing a merge race leaves on main can fail here.
+      - run: node scripts/brittle-ratchet.mjs --report
+      # A change to the UI kit (packages/den-ui) bumps its version: with the
+      # version already on npm, the release would skip publishing it
+      # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
+      - run: node scripts/kit-version.mjs
       - name: Org-name gate
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
@@ -79,6 +103,8 @@ jobs:
       # a PR's base..head, a push's before..after. Needs the full history
       # (fetch-depth above). Messages already on main are not rewritten.
       - name: Org-name gate, commit messages
+        # a run by hand has no range of new commits
+        if: github.event_name != 'workflow_dispatch'
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
           RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -90,7 +116,7 @@ jobs:
   # took 17–20 min against a 20-min limit and was cut off; six parts and a
   # 30-min limit leave room.
   tests:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Two jest workers per shard (the DEN_TEST_WORKERS setting): with
@@ -152,7 +178,7 @@ jobs:
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
   den-ui-nav:
     needs: [pr]
-    if: ${{ !cancelled() && (github.event_name == 'push' || needs.pr.outputs.nav == 'true') }}
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.nav == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -186,7 +212,7 @@ jobs:
   # tarball (create acme), install the tarball into it, then run its CLI, make
   # targets and web server from node_modules. See scripts/dist-smoke.sh.
   dist-smoke:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
@@ -214,17 +240,18 @@ jobs:
   # tests are left out of the blocking steps and run in a last step that
   # can't block.
   pr:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        node: ["22.13.0", "24.13.0"] # as checks: the supported range's ends
-    # Both Nodes pick the same subset (a diff and file lists), so either
-    # one's outputs will do.
+        # Issue 998: Node 24 only, the Node installs run. Node 22 runs
+        # nightly on main (nightly-node22).
+        node: ["24.13.0"]
     outputs:
       shards: ${{ steps.select.outputs.shards }}
+      shard_count: ${{ steps.select.outputs.shard_count }}
       nav: ${{ steps.select.outputs.nav }}
     env:
       DEN_TEST_WORKERS: "2"
@@ -232,7 +259,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The words gate and the subset diff against the base commit.
+          # The words gate, the subset and the brittle ratchet diff against
+          # the base commit.
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -242,7 +270,19 @@ jobs:
       - run: npm run typecheck
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
       - run: npm run -s gate:den-ui
+      # Issue 839: a browser test or live check this change touches never
+      # gains a fixed sleep, a positional pick, a class selector or an
+      # English-text assert, counted at the merge base and at HEAD (needs
+      # the fetch-depth: 0 above). Untouched files are never judged.
+      - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
+      # A change to the UI kit (packages/den-ui) bumps its version: with the
+      # version already on npm, the release would skip publishing it
+      # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
+      - run: node scripts/kit-version.mjs
       - name: Org-name gate
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
@@ -250,28 +290,69 @@ jobs:
       - name: Org-name gate, commit messages
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
-          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
-          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
       - run: bash scripts/dist-smoke.sh
       - name: Pick the tests this change affects
         id: select
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt --summary "$GITHUB_STEP_SUMMARY"
+          # Issue 996: the merge queue, and a change to package.json's version
+          # (a dev-tag or release commit), run the whole suite: a release may
+          # be cut from what they tested.
+          if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then
+            echo ALL > affected.txt
+            echo "The whole suite: a merge-queue run, or a change to package.json's version (issue 996)." >> "$GITHUB_STEP_SUMMARY"
+          fi
           # Large: everything, more than 150 files, or more than 30 browser
           # specs (they take most of the time: ~30 s each against ~2 s).
           n=$(grep -c . affected.txt)
           b=$(grep -c '\.browser\.test\.ts$' affected.txt || true)
           if [ "$(head -1 affected.txt)" = ALL ] || [ "$n" -gt 150 ] || [ "$b" -gt 30 ]; then
-            echo 'shards=[1,2,3,4,5,6]' >> "$GITHUB_OUTPUT"
+            # Issue 998: as many shards as the measured times need for each
+            # to stay under the limit (scripts/shard-plan.cjs), at least six.
+            if [ "$(head -1 affected.txt)" = ALL ]; then
+              npx jest --listTests | sed "s#^$PWD/##" | sort > plan-files.txt
+            else
+              cp affected.txt plan-files.txt
+            fi
+            count=$(node scripts/shard-plan.cjs --files plan-files.txt --count)
+            node scripts/shard-plan.cjs --files plan-files.txt --summary >> "$GITHUB_STEP_SUMMARY"
+            echo "shards=$(seq -s, 1 "$count" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
+            echo "shard_count=$count" >> "$GITHUB_OUTPUT"
           else
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
           fi
           if grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
             echo 'nav=true' >> "$GITHUB_OUTPUT"
           fi
+      # Issue 996: what this run tests, for the release (scripts/release-tree-check.mjs):
+      # the tree checked out here (a pull request's merge with its base, or
+      # the merge queue's commit), whether it is the whole suite, the attempt
+      # and the event. It counts only when the whole run is green.
+      # Issue 998: on the Node the pr matrix runs (Node 24 only).
+      - name: What this run tests
+        if: matrix.node == '24.13.0'
+        run: |
+          # "all" whenever the run tests the whole suite: the selection was ALL
+          # (a shared file, the merge queue, a version change). A large subset
+          # over the pr job's limits runs only its own files, in shards: still
+          # "affected".
+          sel=affected
+          if [ "$(head -1 affected.txt)" = ALL ]; then sel=all; fi
+          printf '{"tree":"%s","selection":"%s","attempt":%s,"event":"%s"}\n' \
+            "$(git rev-parse 'HEAD^{tree}')" "$sel" "${{ github.run_attempt }}" "$GITHUB_EVENT_NAME" > tested.json
+          cat tested.json
+      - if: matrix.node == '24.13.0'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested
+          path: tested.json
+          if-no-files-found: error
+          retention-days: 90
       - if: steps.select.outputs.shards == '[]'
         id: pw
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
@@ -316,9 +397,9 @@ jobs:
         run: npx jest --forceExit --passWithNoTests
 
   # A large subset (all the tests, more than 150 files or 30 browser
-  # specs), in four parts side by side on each Node. Each part picks the
-  # same subset again (a diff and jest's file lists: seconds) and runs its
-  # share of it.
+  # specs), in parts side by side on Node 24. Each part picks the same
+  # subset again (a diff and jest's file lists: seconds), plans the split by
+  # measured time (issue 998) and runs its share of it.
   pr-shards:
     needs: [pr]
     if: needs.pr.outputs.shards != '[]'
@@ -330,7 +411,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["22.13.0", "24.13.0"]
+        node: ["24.13.0"] # issue 998, as pr
         shard: ${{ fromJSON(needs.pr.outputs.shards) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -343,11 +424,19 @@ jobs:
       - run: npm ci
       - name: Pick the tests this change affects
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
-          # ALL: no file list, jest runs every test.
-          if [ "$(head -1 affected.txt)" = ALL ]; then : > affected.txt; fi
+          # Issue 996: as the pr job picks (the merge queue, a version change).
+          if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then echo ALL > affected.txt; fi
+          # ALL: every test file, listed, so the plan can split them.
+          if [ "$(head -1 affected.txt)" = ALL ]; then
+            npx jest --listTests | sed "s#^$PWD/##" | sort > affected.txt
+          fi
+          # Issue 998: this shard's files from the plan (scripts/shard-plan.cjs,
+          # by measured time). The same input gives every shard the same plan.
+          node scripts/shard-plan.cjs --files affected.txt --shard ${{ matrix.shard }} > shard.txt
+          echo "shard ${{ matrix.shard }} of ${{ needs.pr.outputs.shard_count }}: $(grep -c . shard.txt || true) files"
       - id: pw
         run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -360,10 +449,13 @@ jobs:
       - name: Playwright's browsers and system packages (scripts/ci-pw-install.sh)
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
+      # An empty shard.txt runs nothing: jest with no files would run them all.
       - env:
           DEN_TEST_DOCKER: skip
           DEN455_SHOTS: ${{ runner.temp }}/den455-shots
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests "${files[@]}"
+        run: |
+          [ -s shard.txt ] || { echo "no files in this shard"; exit 0; }
+          mapfile -t files < shard.txt && npm test -- --passWithNoTests --json --outputFile="$RUNNER_TEMP/times-skip.json" "${files[@]}"
       # Issue 455: the address banner's and Edge card's screenshots (only
       # address-banner.browser.test.ts writes them, when DEN455_SHOTS is
       # set), for design review. Nothing when that suite didn't run here.
@@ -377,10 +469,113 @@ jobs:
           retention-days: 7
       - env:
           DEN_TEST_DOCKER: only
-        run: mapfile -t files < affected.txt && npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests "${files[@]}"
+        run: |
+          [ -s shard.txt ] || { echo "no files in this shard"; exit 0; }
+          mapfile -t files < shard.txt && npm test -- --passWithNoTests --json --outputFile="$RUNNER_TEMP/times-only.json" "${files[@]}"
+      # Issue 998: each file's measured time, to refresh tests/shard-times.json
+      # (node scripts/shard-plan.cjs --merge tests/shard-times.json <files>).
+      - name: Test times
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shard-times-${{ matrix.shard }}
+          path: ${{ runner.temp }}/times-*.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Quarantined tests (never blocks)
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           DEN_TEST_QUARANTINE: only
-        run: npx jest --forceExit --shard=${{ matrix.shard }}/6 --passWithNoTests
+        run: npx jest --forceExit --shard=${{ matrix.shard }}/${{ needs.pr.outputs.shard_count }} --passWithNoTests
+
+  # Issue 998: what a pull request ran on Node 22 before it went Node 24
+  # only, nightly on main: the fast gates and the install smoke.
+  nightly-node22-checks:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The words gate diffs against a base commit (scripts/words-base.txt).
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node scripts/words-gate.mjs
+      - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
+      - run: npm run -s gate:den-ui
+      - name: Org-name gate
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+        run: node scripts/org-name-gate.mjs
+      - run: bash scripts/dist-smoke.sh
+
+  # Issue 998: Node 22, the lowest Node engines allows, nightly on main, in
+  # six parts. Pull requests run on Node 24 only.
+  nightly-node22:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEN_TEST_WORKERS: "2"
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.13.0"]
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - id: pw
+        run: bash scripts/ci-pw-install.sh version >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/den-apt
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}-apt
+          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+      - name: Playwright's browsers and system packages
+        timeout-minutes: 15
+        run: bash scripts/ci-pw-install.sh
+      - run: npm test -- --shard=${{ matrix.shard }}/6
+        env:
+          DEN_TEST_DOCKER: skip
+      - run: npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests
+        env:
+          DEN_TEST_DOCKER: only
+
+  # A red night opens one issue, or adds a comment to the open one.
+  nightly-node22-report:
+    needs: [nightly-node22-checks, nightly-node22]
+    if: ${{ github.event_name == 'schedule' && failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly: Node 22 tests fail"
+          n=$(gh issue list --state open --search "in:title $title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          body="The nightly Node 22 run on main failed: $RUN_URL"
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

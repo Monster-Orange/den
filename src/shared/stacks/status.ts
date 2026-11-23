@@ -24,8 +24,10 @@ import {
 } from "./namespace.js";
 import { projectName } from "./render.js";
 import {
+  projectOwnership,
   rejoinEdgeNetworks,
   stackHealth,
+  stackOwner,
   type StackContext,
 } from "./runtime.js";
 
@@ -107,6 +109,67 @@ export function loadStackContext(denWorkspace?: string | null): StackContext {
   };
 }
 
+/** D53: a Compose project name two of Den's stacks, or something else, use. */
+export interface ProjectClash {
+  project: string;
+  /** Den's stacks rendering to it: `<stack> (<den workspace>)`. */
+  stacks: string[];
+  /** Running containers in it no listed stack started. */
+  foreign: string[];
+}
+
+/**
+ * D53: every Compose project name the focused and active workspaces' stacks
+ * render to that is not theirs alone: two stacks with different checkouts
+ * (stack "a-b" in namespace "c" and "a" in "b-c" are both "a-b-c"), or a
+ * project already running containers Den didn't start for it. Workspaces
+ * sharing a namespace on one checkout are one stack, not a clash.
+ */
+export function stackProjectClashes(
+  contexts: StackContext[] = allStackContexts(),
+  ownership: typeof projectOwnership = projectOwnership,
+): ProjectClash[] {
+  const by = new Map<
+    string,
+    { owners: Set<string>; stacks: Set<string>; foreign: Set<string> }
+  >();
+  for (const ctx of contexts)
+    for (const st of Object.values(ctx.stacks)) {
+      const project = projectName(st.name, ctx.workspace);
+      const e = by.get(project) ?? {
+        owners: new Set(),
+        stacks: new Set(),
+        foreign: new Set(),
+      };
+      by.set(project, e);
+      e.owners.add(stackOwner(ctx, st));
+      e.stacks.add(`${st.name} (${ctx.denWorkspace ?? ctx.workspace})`);
+      const o = ownership(ctx, st);
+      for (const f of o.foreign) e.foreign.add(f);
+    }
+  const out: ProjectClash[] = [];
+  for (const [project, e] of [...by].sort(([a], [b]) => a.localeCompare(b))) {
+    // Two stacks: each one's containers are foreign to the other; the
+    // clash says it all.
+    const foreign = e.owners.size > 1 ? [] : [...e.foreign].sort();
+    if (e.owners.size > 1 || foreign.length)
+      out.push({ project, stacks: [...e.stacks].sort(), foreign });
+  }
+  return out;
+}
+
+/** The focused and active workspaces' stack contexts (unreadable: skipped). */
+export function allStackContexts(): StackContext[] {
+  const contexts: StackContext[] = [];
+  for (const ws of new Set([null, ...getActiveWorkspaces()]))
+    try {
+      contexts.push(loadStackContext(ws));
+    } catch {
+      /* unreadable */
+    }
+  return contexts;
+}
+
 /**
  * After edge up: the edge back on the routed networks of every running
  * stack it routes (rejoinEdgeNetworks), across the focused and active
@@ -116,14 +179,7 @@ export function loadStackContext(denWorkspace?: string | null): StackContext {
 export function rejoinRunningStacks(
   onLine: (line: string) => void = console.log,
 ): string[] {
-  const contexts: StackContext[] = [];
-  for (const ws of new Set([null, ...getActiveWorkspaces()]))
-    try {
-      contexts.push(loadStackContext(ws));
-    } catch {
-      /* unreadable: nothing of it to rejoin */
-    }
-  return rejoinEdgeNetworks(contexts, onLine);
+  return rejoinEdgeNetworks(allStackContexts(), onLine);
 }
 
 /**

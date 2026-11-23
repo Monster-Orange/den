@@ -20,6 +20,7 @@ import { BellScanner } from "./bell.js";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { registerDenProcess } from "../den-procs.js";
 import { DEFAULT_SCROLLBACK_BYTES, ScrollbackLog } from "./ring-buffer.js";
 import { MAX_SOCKET_PATH, sessionPaths, type SessionPaths } from "./paths.js";
 import {
@@ -45,6 +46,7 @@ import {
   type SessionInfo,
   type SessionPool,
 } from "./types.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const BACKEND_ID = "den-pty";
 
@@ -439,6 +441,8 @@ export class SessionHost {
             name: rec.name,
             pid: rec.pid,
             startedAt: rec.startedAt,
+            // Issue 482: its folder (the Terminals list says it).
+            ...(typeof rec.cwd === "string" ? { cwd: rec.cwd } : {}),
             exited: true,
             ...(typeof rec.exitCode === "number"
               ? { exitCode: rec.exitCode }
@@ -497,11 +501,9 @@ export class SessionHost {
       // Whole or not at all: a reader (an agent token's check) never sees
       // it half-written.
       const file = path.join(this.paths.dir, `${s.info.ref.id}.json`);
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(rec, null, 2) + "\n", {
+      writeFileAtomic(file, JSON.stringify(rec, null, 2) + "\n", {
         mode: 0o600,
       });
-      fs.renameSync(tmp, file);
     } catch (e) {
       this.log(
         `could not save session ${s.info.ref.id}: ${(e as Error).message}`,
@@ -800,6 +802,8 @@ export class SessionHost {
         name,
         pid: pty.pid,
         startedAt: new Date().toISOString(),
+        // Issue 482: its folder (the Terminals list says it).
+        cwd,
         ...(this.launchd ? { launchd: this.launchd } : {}),
       },
       cwd,
@@ -986,6 +990,12 @@ export async function runSessionHost(
   }
   // No terminal to hang up on: it was started detached.
   process.on("SIGHUP", () => undefined);
+  // Sign-in: the session host is one of Den's own processes while it runs.
+  try {
+    registerDenProcess(opts.stateDir, "sessions-host");
+  } catch (e) {
+    log(`could not record the session host's pid: ${(e as Error).message}`); // words-ok: the host's own log
+  }
   log(`session host ${process.pid} listening on ${host.paths.socket}`);
   host.watchStateDir(opts.stateDirCheckMs ?? 10_000, () => {
     log(`its state dir ${opts.stateDir} is gone: stopping`);

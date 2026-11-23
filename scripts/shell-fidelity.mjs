@@ -78,10 +78,21 @@ let TOKEN = process.env.DEN_WEB_TOKEN ?? null;
 async function postSettings(body) {
   if (!TOKEN) {
     const { execFileSync } = await import("child_process");
-    TOKEN = execFileSync(args.cli ?? "den", ["web", "token", "--print"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
+    // Sign-in: the token is printed only in a terminal (script(1); macOS
+    // and util-linux spell it differently).
+    const cmd = [args.cli ?? "den", "web", "token", "--print"];
+    const shown = execFileSync(
+      "script",
+      process.platform === "darwin"
+        ? ["-q", "/dev/null", ...cmd]
+        : [
+            "-qec",
+            cmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+            "/dev/null",
+          ],
+      { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    TOKEN = /den_pt_[A-Za-z0-9_-]+/.exec(shown)?.[0] ?? "";
   }
   const r = await fetch(`${REAL}/api/settings`, {
     method: "POST",

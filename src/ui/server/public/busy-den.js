@@ -14,7 +14,7 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * remove-service, remove-mcp, gate-end. Waits for
+ * add-service, remove-service, remove-mcp, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -49,6 +49,16 @@ export const DEN_ACTIONS = {
       failure: "busy.ordF",
     },
   },
+  // Issue 168: a project's colour, saved from its colour picker.
+  "project-colour": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pcW",
+      success: "busy.pcS",
+      failure: "busy.pcF",
+    },
+  },
   // Issue 133: the Projects and Services pages' confirm actions.
   "delete-project": {
     who: "__DEN_TITLE__",
@@ -76,6 +86,16 @@ export const DEN_ACTIONS = {
       working: "busy.rmSvcW",
       success: "busy.rmSvcS",
       failure: "busy.rmSvcF",
+    },
+  },
+  // Issue 806: Add Service's Add (it says the result in its own dialog).
+  "add-service": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.addSvcW",
+      success: "busy.addSvcS",
+      failure: "busy.addSvcF",
     },
   },
   // Issue 352: Settings › Project › Agents' extra MCP servers › Remove.
@@ -164,6 +184,25 @@ export const DEN_ACTIONS = {
       failure: "busy.termF",
     },
   },
+  // Issue 214: a schedule's standing Allow, and Run now (Verify › Schedules).
+  "schedule-allow": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.schAllowW",
+      success: "busy.schAllowS",
+      failure: "busy.schAllowF",
+    },
+  },
+  "schedule-run": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.schRunW",
+      success: "busy.schRunS",
+      failure: "busy.schRunF",
+    },
+  },
   "restart-agent": {
     who: "Den",
     autoClose: true,
@@ -190,6 +229,25 @@ export const DEN_ACTIONS = {
       working: "sa.fresh.w",
       success: "sa.fresh.done",
       failure: "sa.fresh.fail",
+    },
+  },
+  // Issue 172: Settings › Notifications › Devices that get push.
+  "push-test": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pushTestW",
+      success: "busy.pushTestS",
+      failure: "busy.pushTestF",
+    },
+  },
+  "push-forget": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.pushForgetW",
+      success: "busy.pushForgetS",
+      failure: "busy.pushForgetF",
     },
   },
   "sign-out-all": {
@@ -278,6 +336,16 @@ export const DEN_ACTIONS = {
       working: "busy.edgeW",
       success: "busy.edgeS",
       failure: "busy.edgeF",
+    },
+  },
+  // Issue 810: Settings › Access › Set up test person.
+  "test-person": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.testPersonW",
+      success: "busy.testPersonS",
+      failure: "busy.testPersonF",
     },
   },
   "keep-running": {
@@ -401,3 +469,9 @@ export function busyAction(name, run, opts = {}) {
   setUp();
   return kitBusy(name, run, opts);
 }
+
+/**
+ * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
+ * own words: holdDots(button), then holdDots(button, false).
+ */
+export { holdDots } from "/kit/busy.js";

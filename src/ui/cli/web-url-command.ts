@@ -163,7 +163,7 @@ export async function cmdWebUrl(
   if (json) io.out(`${JSON.stringify({ ok: true, url, confirmed: true })}\n`);
   else
     io.out(
-      `✓ This install's address is ${url}. Restart the web server to use it everywhere: ${cli} web restart\n`,
+      `✓ This install's address is ${url}. It's in use now: sign-in links and the address check use it.\n`,
     );
   return 0;
 }

@@ -48,8 +48,9 @@ import {
   type RunResult,
 } from "../../shared/verify/run.js";
 import { verifyOverview } from "../../shared/verify/overview.js";
+import { readImportSettings } from "../../shared/verify/imports.js";
 import {
-  listRunRecords,
+  recentRuns,
   readRunRecord,
   type RunActor,
 } from "../../shared/verify/records.js";
@@ -79,7 +80,40 @@ export interface VerifyServerDeps {
   git?: GitProbe;
   runCmd?: RunDeps["runCmd"];
   probe?: RunDeps["probe"];
+  /** Issue 441: the org config's `verify:` block (read per request). */
+  verifyConfig?: () => unknown;
 }
+
+/**
+ * Issue 441: the environments whose results are imported. A bad block, or a
+ * name the org already uses, touches only them: the error is returned, never
+ * thrown, so the org's own environments still answer and plan.
+ */
+function importedEnvs(d: VerifyServerDeps): { envs: string[]; error?: string } {
+  let listed: string[];
+  try {
+    listed = readImportSettings(d.verifyConfig?.()).environments;
+  } catch (e) {
+    return { envs: [], error: (e as Error).message };
+  }
+  const org = d.environments?.() ?? ["local"];
+  const taken = listed.filter((e) => org.includes(e));
+  const envs = listed.filter((e) => !org.includes(e));
+  return taken.length
+    ? {
+        envs,
+        error: taken
+          .map(
+            (e) =>
+              `"${e}" is one of Den's own environments: verify.environments can't name it`,
+          )
+          .join("; "),
+      }
+    : { envs };
+}
+
+/** The runs the overview reads (its activity and answers). */
+const RECENT_RUNS = 50;
 
 export interface VerifyRunArgs {
   project: string;
@@ -91,7 +125,7 @@ export interface VerifyRunArgs {
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-type Who = { agent?: string; project?: string };
+export type Who = { agent?: string; project?: string };
 type PlanOf =
   | { ok: true; plan: VerifyPlan; modules: VerifyModule[] }
   | { ok: false; error: string };
@@ -99,7 +133,11 @@ type PlanOf =
 type ProjectOf = { ok: true; project: string } | { ok: false; error: string };
 
 /** The project an ask is about: the agent's own, the one named, or the focused one. */
-function projectOf(d: VerifyServerDeps, raw: unknown, who: Who): ProjectOf {
+export function projectOf(
+  d: VerifyServerDeps,
+  raw: unknown,
+  who: Who,
+): ProjectOf {
   const no = (error: string): ProjectOf => ({ ok: false, error });
   if (raw !== undefined && typeof raw !== "string")
     return no("project must be text");
@@ -120,7 +158,7 @@ type ModulesOf =
   | { ok: false; error: string };
 
 /** Every module the project's repos declare, and their layers. */
-function modulesOf(d: VerifyServerDeps, project: string): ModulesOf {
+export function modulesOf(d: VerifyServerDeps, project: string): ModulesOf {
   const envs = d.environments?.();
   const modules: VerifyModule[] = [];
   const layers: Record<string, string[]> = {};
@@ -146,6 +184,8 @@ export function verifyPlanOf(
   d: VerifyServerDeps,
   raw: Record<string, unknown>,
   who: Who = {},
+  /** Issue 214: Den's own schedule loop; never from a request's body. */
+  opts: { trigger?: "schedule" } = {},
 ): PlanOf {
   const no = (error: string): PlanOf => ({ ok: false, error });
   const p = projectOf(d, raw.project, who);
@@ -154,6 +194,12 @@ export function verifyPlanOf(
   const env = raw.env === undefined ? "local" : raw.env;
   if (typeof env !== "string" || !NAME_RE.test(env))
     return no("env is an environment's name, like local or staging");
+  // Issue 441: Den runs nothing on an imported environment.
+  const imported = importedEnvs(d).envs;
+  if (imported.includes(env))
+    return no(
+      `"${env}" is an imported environment: Den runs nothing there; its results come from \`verify import\``,
+    );
   const envs = d.environments?.();
   if (envs && !envs.includes(env))
     return no(
@@ -185,6 +231,7 @@ export function verifyPlanOf(
       modules,
       layers,
       changes: moduleChanges(modules, latest, d.git ?? realGit),
+      ...(opts.trigger ? { trigger: opts.trigger } : {}),
     });
     return { ok: true, plan, modules };
   } catch (e) {
@@ -205,6 +252,11 @@ function cantLine(c: CantRunModule, env: string): [string, DetailKey] {
       return [
         `${c.name} can't run on production yet: opting in to production comes in a later Den.`,
         { key: "ap.vr.cant.production", vars: { module: c.name } },
+      ];
+    case "production-declared":
+      return [
+        `${c.name} is left out of a scheduled production run: Den can't keep a command read-only, so only smoke checks and code scans run there.`,
+        { key: "ap.vr.cant.production-declared", vars: { module: c.name } },
       ];
     case "adapter-later":
       return [
@@ -357,16 +409,24 @@ function handleVerifyReads(
       sendJson(res, { ok: false, error: mods.error }, 400);
       return true;
     }
-    const envs = deps.environments?.() ?? ["local"];
+    const { envs: imported, error: importError } = importedEnvs(deps);
+    const org = deps.environments?.() ?? ["local"];
+    // Issue 441: the imported environments after the org's own.
+    const envs = [...org, ...imported];
+    // The newest 50 runs, and each imported environment's newest import
+    // however old (many local runs must not hide it), read newest first.
+    const { runs } = recentRuns(stateDir, p.project, RECENT_RUNS, imported);
     sendJson(res, {
       ok: true,
+      ...(importError ? { importError } : {}),
       ...verifyOverview({
         project: p.project,
         envs,
+        imported,
         modules: mods.modules,
         layers: mods.layers,
         latest: readLatest(stateDir, p.project),
-        runs: listRunRecords(stateDir, p.project),
+        runs,
       }),
     });
     return true;
@@ -399,7 +459,7 @@ function handleVerifyReads(
   return true;
 }
 
-async function bodyOf(
+export async function bodyOf(
   req: http.IncomingMessage,
 ): Promise<Record<string, unknown> | null> {
   try {

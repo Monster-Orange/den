@@ -15,7 +15,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -106,14 +107,33 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
     p.on("framenavigated", (f) => {
       if (f === p.mainFrame()) leaving.delete(p);
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, path));
+    await signInPage(p, s!.stateDir, s!.base, path);
     return p;
+  }
+
+  /**
+   * Issue 640: the pane's live connection is open. The pane draws before
+   * its socket opens, and a key typed before then is dropped; a remote
+   * browser (DEN_PW_WS) opens it later than a local one. The shell's
+   * prompt in the pane came over that socket. Only the pane counts: a tab
+   * or a list row with the same id can hold a "$" of its own.
+   */
+  async function connected(p: Page, id: string) {
+    await p.waitForFunction(
+      (i) =>
+        [...document.querySelectorAll(`section[data-id="${i}"]`)].some((el) =>
+          (el.textContent ?? "").includes("$"),
+        ),
+      id,
+      { timeout: 20_000 },
+    );
   }
 
   /** A person types in shell `id`, on a machine of its own, then leaves. */
   async function typeIn(id: string) {
-    const p = await open(`/agents?open=${id}`);
+    const p = await open(`/terminals?open=${id}`);
     await p.waitForSelector(`.pane[data-id="${id}"] .xterm-screen`);
+    await connected(p, id);
     await p.click(`.pane[data-id="${id}"] .xterm-screen`);
     const pty = ptys.get(id)!;
     const before = pty.writes.length;
@@ -243,8 +263,9 @@ describe.each(["chromium", "webkit"] as const)("issue 448 in %s", (name) => {
   it("(c) a shell that ends while the page is open never opens", async () => {
     if (skip() || !south1) return;
     // The page lists south1 running and in front; it ends while open.
-    const p = await open(`/agents?project=south&open=${south1}`);
+    const p = await open(`/terminals?project=south&open=${south1}`);
     await p.waitForSelector(`.pane[data-id="${south1}"] .xterm-screen`);
+    await connected(p, south1);
     await p.click(`.pane[data-id="${south1}"] .xterm-screen`);
     await p.keyboard.type("x");
     await endShell(south1);

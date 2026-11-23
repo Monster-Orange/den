@@ -45,6 +45,7 @@
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import type * as http from "http";
+import * as os from "os";
 import * as path from "path";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
 import {
@@ -68,6 +69,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
+import { mcpLoadFailures } from "../../shared/agents/hub-mcp-connect.js";
 import {
   readCompacting,
   readInstructionCheck,
@@ -98,6 +100,7 @@ import {
   readSessionsConfig,
 } from "../../shared/den-config.js";
 import { stopSession } from "../../shared/sessions/stop.js";
+import { forgetOperatorShell } from "../../shared/test-operator.js";
 import { hubTokenProblem } from "../../shared/hub.js";
 import {
   agentRows,
@@ -120,6 +123,7 @@ import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  operatorActOf,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -397,6 +401,8 @@ export interface ListedSession {
   /** D59: whether it resumes on its own after a restart, all told. */
   resumesOnRestart?: boolean;
   cwd?: string;
+  /** Issue 482: a shell's cwd with the home folder as ~ (its row says it). */
+  folder?: string;
   /** running, stopping, exited (<code>), stopped, interrupted (AG-14). */
   state: string;
   exited: boolean;
@@ -441,6 +447,8 @@ export interface ListedSession {
   helpers?: AgentRow["helpers"];
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
+  /** Issue 749: MCP servers whose tools failed to load in its session. */
+  mcpFailed?: AgentRow["mcpFailed"];
   /** Issue 193: Den is restarting it to load Hub's new tools. */
   toolsRestarting?: true;
   /**
@@ -522,6 +530,13 @@ export async function leaveExitedShells(
     }
   }
   return sessions.filter((s) => !gone.has(s.ref.id));
+}
+
+/** Issue 482: `dir` with the home folder written as ~ (a row's folder). */
+export function homeTilde(dir: string, home = os.homedir()): string {
+  if (!home || home === "/") return dir;
+  if (dir === home) return "~";
+  return dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir;
 }
 
 /** The list, from the host's sessions and the agent records. */
@@ -711,6 +726,11 @@ export function listedSessions(
         });
         return st ? { mcpStale: st } : {};
       })(),
+      ...(() => {
+        if (r.state !== "running") return {};
+        const failed = mcpLoadFailures(d.stateDir(), rec);
+        return failed.length ? { mcpFailed: failed } : {};
+      })(),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),
@@ -750,6 +770,9 @@ export function listedSessions(
       startedAt: s.startedAt,
       // Issue 448: when a person last typed in it (the rail's Terminal).
       ...(s.inputAt ? { inputAt: s.inputAt } : {}),
+      // Issue 482: its folder, and the same with the home folder as ~ (the
+      // Terminals list's row).
+      ...(s.cwd ? { cwd: s.cwd, folder: homeTilde(s.cwd) } : {}),
       attachable: true,
     });
   }
@@ -939,6 +962,39 @@ async function ioRefusal(
 }
 
 /** The served session `target` names, or why there is none. */
+/**
+ * Issue 814: the test operator attaches only to a live shell it started,
+ * named by that shell's exact host id, that no agent's record owns (a
+ * name an agent reused never counts). A shell that ended is forgotten.
+ * Null for anyone else's request, or when it may attach.
+ */
+function operatorAttachRefusal(
+  req: http.IncomingMessage,
+  s: SessionInfo,
+  target: string,
+  d: Resolved,
+): { status: number; error: string; code: string } | null {
+  if (!operatorActOf(req)) return null;
+  if (
+    listRecords(d.stateDir()).some(
+      (r) => r.session?.id === s.ref.id || r.sessionName === s.name,
+    )
+  )
+    return {
+      status: 403,
+      error: `${s.name} is an agent's terminal, not a test terminal.`,
+      code: "agent_session",
+    };
+  if (s.exited) forgetOperatorShell(s.ref.id);
+  if (s.exited || s.ref.id !== target)
+    return {
+      status: 403,
+      error: "The test operator opens only its own test terminals.",
+      code: "fixture_scope",
+    };
+  return null;
+}
+
 async function servedTarget(
   target: string,
   d: Resolved,
@@ -1228,6 +1284,7 @@ async function handleClose(
     const still = (await c.list()).find((x) => x.ref.id === s.ref.id);
     if (still?.exited) await c.forget(s.ref.id);
     audit(`${s.name}: ${result}`);
+    if (operatorActOf(req)) forgetOperatorShell(s.ref.id);
     sendJson(res, { ok: true, result, forgotten: !!still?.exited || !still });
   } catch (e) {
     refuse(503, `the session host: ${(e as Error).message}`, "session_host"); // words-ok: "session host" as the other errors here
@@ -1277,7 +1334,12 @@ export async function sendSessionHttp(
     } catch {
       /* as given */
     }
-    const why = await ioRefusal(target, resolve(deps));
+    const rd = resolve(deps);
+    let why = await ioRefusal(target, rd);
+    if (!why && operatorActOf(req)) {
+      const f = await servedTarget(target, rd);
+      why = "s" in f ? operatorAttachRefusal(req, f.s, target, rd) : f;
+    }
     if (why) {
       sendJson(
         res,
@@ -1371,6 +1433,11 @@ export async function handleSessionUpgrade(
   if (!info) {
     client.close();
     return refuse(404, `no session "${target}" here`, "not_found");
+  }
+  const opWhy = operatorAttachRefusal(req, info, target, d);
+  if (opWhy) {
+    client.close();
+    return refuse(opWhy.status, opWhy.error, opWhy.code);
   }
   if (socket.destroyed) {
     client.close();

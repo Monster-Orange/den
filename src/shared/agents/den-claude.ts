@@ -423,26 +423,19 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const abs = path.resolve(stateDir);
   const secret = path.join(abs, "web.secret");
   const sessions = path.join(abs, "sessions");
-  const spellings = (p: string): string[] => {
-    const out = [p];
-    if (home) {
-      const h = path.resolve(home);
-      if (p.startsWith(h + path.sep)) {
-        const rel = p.slice(h.length + 1);
-        out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
-      }
-    }
-    for (const x of [...out])
-      if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
-    return [...new Set(out)];
-  };
+  const spellings = (p: string) => shellSpellings(p, home);
+  // Issue 810: the fixture person's key, as the web secret.
+  const fixtureKey = path.join(abs, "fixture-person.key");
   const targets = [
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
+    ...spellings(fixtureKey).map((p) => `${p}*`),
   ];
   return [
     `Read(/${secret})`,
     `Read(/${sessions}/**)`,
+    `Read(/${fixtureKey})`,
+    `Edit(/${fixtureKey})`,
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),
     // The common readers by name too, should a version match a leading
@@ -451,8 +444,38 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
+    ...SIGN_IN_DENY_RULES,
   ];
 }
+
+/**
+ * A path as a shell may write it from `home`: as is, `~/…`, `$HOME/…`,
+ * `${HOME}/…`, and with each space backslash-escaped.
+ */
+function shellSpellings(p: string, home?: string): string[] {
+  const out = [p];
+  if (home) {
+    const h = path.resolve(home);
+    if (p.startsWith(h + path.sep)) {
+      const rel = p.slice(h.length + 1);
+      out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
+    }
+  }
+  for (const x of [...out])
+    if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
+  return [...new Set(out)];
+}
+
+/**
+ * Sign-in: the commands that print a person's sign-in link, claim link or
+ * token, whatever the CLI's name or path: an agent's Bash tool doesn't run
+ * them. The CLI and the server also check where they run (person-here.ts).
+ */
+export const SIGN_IN_DENY_RULES: readonly string[] = [
+  "Bash(*web login*)",
+  "Bash(*web claim-link*)",
+  "Bash(*web token*)",
+];
 
 /**
  * Review M4 (0.4.46): edits denied under the person's own config folder
@@ -462,9 +485,25 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
  * covers file writes under Edit(path) rules and warns that a Write(path)
  * rule never matches, so Den writes the Edit rule only.
  */
-export function personConfigDenyRules(dir: string): string[] {
+export function personConfigDenyRules(
+  dir: string,
+  distConfigFile?: string,
+  home?: string,
+): string[] {
   const abs = path.resolve(dir);
-  return [`Edit(/${abs}/**)`];
+  // Issue 810: the distribution config holds the test-install mark, which
+  // only a person sets by hand: denied to Edit, and to any shell command
+  // naming it (the state-dir rules' shape).
+  const dist = distConfigFile ? path.resolve(distConfigFile) : null;
+  return [
+    `Edit(/${abs}/**)`,
+    ...(dist
+      ? [
+          `Edit(/${dist})`,
+          ...shellSpellings(dist, home).map((t) => `Bash(*${t}*)`),
+        ]
+      : []),
+  ];
 }
 
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
@@ -652,7 +691,11 @@ function common(input: LaunchInput): {
         input.agentId,
         input.workspace.name,
         input.mcp.name,
-      ) + (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : ""),
+        input.webUrl ?? null,
+      ) +
+        (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
+        // Issue 158: the Hub delivery loop, after the Hub line.
+        (input.mcp.hub?.loop ? `\n\n${input.mcp.hub.loop}` : ""),
     ],
     files: {
       [file]: mcpConfigJson(input.mcp),
@@ -675,7 +718,11 @@ function common(input: LaunchInput): {
                                     )
                                   : []),
                                 ...(input.personConfigDir
-                                  ? personConfigDenyRules(input.personConfigDir)
+                                  ? personConfigDenyRules(
+                                      input.personConfigDir,
+                                      input.distConfigFile,
+                                      input.env?.HOME,
+                                    )
                                   : []),
                               ],
                             }

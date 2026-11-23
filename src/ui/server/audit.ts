@@ -19,6 +19,8 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
+import { auditVia } from "../../shared/test-person.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
@@ -33,6 +35,12 @@ export interface AuditEntry {
    * sets; absent for a call without one.
    */
   principal?: string;
+  /**
+   * Issue 636: "test-person" for a row made by a request that came by a
+   * test bed's test-person path (the CLI acting as the person; the guard
+   * lets the path in only there). Absent otherwise.
+   */
+  via?: "test-person";
   /**
    * SEC-1c: what the caller's x-den-actor headers claimed, when no actor
    * token proved it (unverified is then set). A label, never the actor.
@@ -124,15 +132,11 @@ function persist(entry: AuditEntry): void {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     if (fileLines + 1 > RING_MAX * 2) {
       // Compact to the ring (which already holds this entry).
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(
-        tmp,
+      writeFileAtomic(
+        file,
         ring.map((e) => JSON.stringify(e)).join("\n") + "\n",
-        {
-          mode: 0o600,
-        },
+        { mode: 0o600 },
       );
-      fs.renameSync(tmp, file);
       fileLines = ring.length;
       return;
     }
@@ -171,10 +175,12 @@ export function recordAction(
 ): AuditEntry {
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
+  const via = auditVia();
   const entry: AuditEntry = {
     ts: new Date().toISOString(),
     actor: verified ? "agent" : "user",
     ...(principal ? { principal } : {}),
+    ...(via ? { via } : {}),
     ...(claim
       ? {
           claimed: {
@@ -221,7 +227,8 @@ export function recordAction(
       : action.detail;
   sink?.(
     `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
-      (principal && !verified ? ` · as ${principal}` : ""),
+      (principal && !verified ? ` · as ${principal}` : "") +
+      (via ? " · by the test-person path" : ""),
     actor,
   );
   return entry;

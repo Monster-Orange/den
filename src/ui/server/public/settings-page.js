@@ -360,7 +360,7 @@ export async function mountSettings(deps) {
     body.innerHTML = list.length
       ? list.map(drawSection).join("")
       : `<div class="empty" id="set-empty"><b>${esc(L("set.ui.noMatch", { q: state.q }))}</b>` +
-        ` <button type="button" class="btn sm" data-clear>${esc(L("set.ui.clearSearch"))}</button></div>`;
+        ` <button type="button" class="den-btn sm" data-clear>${esc(L("set.ui.clearSearch"))}</button></div>`;
     for (const { rows } of list) for (const r of rows) wireRow(r);
     if (keep) body.querySelector(`[data-focus-key="${keep}"]`)?.focus();
   }
@@ -499,7 +499,10 @@ export async function mountSettings(deps) {
           ? `<span class="set-unit" aria-hidden="true">${esc(c.unit)}</span>`
           : "");
     } else if (t === "text") {
-      ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}" ${desc}>`;
+      // Issue 158: a field may stop at the server's limit.
+      const ml = r.control.maxLength;
+      const max = Number.isInteger(ml) ? ` maxlength="${ml}"` : "";
+      ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}"${max} ${desc}>`;
     } else if (t === "toggle") {
       ctl = `<input type="checkbox" class="set-check" id="${cid}" data-focus-key="${id}"${v ? " checked" : ""} ${desc}>`;
       // Bell v6: a switch may say what being off means (waiting).
@@ -538,9 +541,9 @@ export async function mountSettings(deps) {
             .map(
               (p, i) =>
                 `<div class="it" role="listitem"><span class="nm den-mono">${esc(p)}</span>` +
-                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="-1" data-focus-key="pin-up-${esc(p)}"${i === 0 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveUp", { name: p }))}">↑</button>` +
-                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="1" data-focus-key="pin-down-${esc(p)}"${i === pins.length - 1 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveDown", { name: p }))}">↓</button>` +
-                `<button type="button" class="btn sm" data-pin-remove="${esc(p)}" data-focus-key="pin-x-${esc(p)}" aria-label="${esc(L("set.ui.unpinX", { name: p }))}">${esc(L("act.unpin"))}</button></div>`,
+                `<button type="button" class="den-btn sm" data-pin-move="${esc(p)}" data-d="-1" data-focus-key="pin-up-${esc(p)}"${i === 0 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveUp", { name: p }))}">↑</button>` +
+                `<button type="button" class="den-btn sm" data-pin-move="${esc(p)}" data-d="1" data-focus-key="pin-down-${esc(p)}"${i === pins.length - 1 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveDown", { name: p }))}">↓</button>` +
+                `<button type="button" class="den-btn sm" data-pin-remove="${esc(p)}" data-focus-key="pin-x-${esc(p)}" aria-label="${esc(L("set.ui.unpinX", { name: p }))}">${esc(L("act.unpin"))}</button></div>`,
             )
             .join("") +
           "</div>"
@@ -586,9 +589,9 @@ export async function mountSettings(deps) {
           const sameGroup = (j) => items[j] && items[j].group === n.group;
           return (
             `<div class="it${off ? " off" : ""}" role="listitem"><span class="nm">${esc(name)} <span class="set-grp">· ${esc(gl(n.group))}</span>${tag(n.from)}</span>` +
-            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="-1" data-focus-key="nav-up-${esc(n.id)}"${sameGroup(i - 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveUp", { name }))}">↑</button>` +
-            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="1" data-focus-key="nav-down-${esc(n.id)}"${sameGroup(i + 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveDown", { name }))}">↓</button>` +
-            `<button type="button" class="btn sm" data-hide="${esc(n.id)}" data-focus-key="nav-hide-${esc(n.id)}" aria-pressed="${off}" aria-label="${esc(L(off ? "set.ui.showX" : "set.ui.hideX", { name }))}">${esc(L(off ? "set.ui.show" : "set.ui.hide"))}</button></div>`
+            `<button type="button" class="den-btn sm" data-move="${esc(n.id)}" data-d="-1" data-focus-key="nav-up-${esc(n.id)}"${sameGroup(i - 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveUp", { name }))}">↑</button>` +
+            `<button type="button" class="den-btn sm" data-move="${esc(n.id)}" data-d="1" data-focus-key="nav-down-${esc(n.id)}"${sameGroup(i + 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveDown", { name }))}">↓</button>` +
+            `<button type="button" class="den-btn sm" data-hide="${esc(n.id)}" data-focus-key="nav-hide-${esc(n.id)}" aria-pressed="${off}" aria-label="${esc(L(off ? "set.ui.showX" : "set.ui.hideX", { name }))}">${esc(L(off ? "set.ui.show" : "set.ui.hide"))}</button></div>`
           );
         })
         .join("") +

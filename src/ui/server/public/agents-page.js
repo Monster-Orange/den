@@ -95,14 +95,31 @@ import {
   runtimeOptions,
   wireQuarantine,
 } from "/agent-start.js";
-import { projectLabel } from "/workspace-picker.js";
+import {
+  PROJECT_COLOURS_KEY,
+  projectColour,
+  projectLabel,
+} from "/workspace-picker.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
-import { startFailText, terminalFailText } from "/pty-refusal.js";
+import {
+  belongsOn,
+  lastUsedProject,
+  movedNoteHtml,
+  newTerminalChoices,
+  terminalGroups,
+  terminalRowHtml,
+  terminalsCountText,
+} from "/terminals-list.js";
+import {
+  startFailTail,
+  startFailText,
+  terminalFailText,
+} from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
@@ -305,8 +322,19 @@ export function deepLinkOf(pathname, search) {
   return { ws, agent, context, href: `/agents?${q.toString()}` };
 }
 
+/**
+ * Issue 482: which page this is: "terminal" (the Terminals page, served
+ * from this file at /terminals) or "agents". Each lists its own kind.
+ */
+const PAGE =
+  typeof document !== "undefined" &&
+  document.getElementById?.("den-shell")?.dataset?.page === "terminal"
+    ? "terminal"
+    : "agents";
+
 /** D73: the panes this browser has open, so a Terminal link adds a tab. */
-const OPEN_KEY = "den-agents-open";
+// Issue 482: each page keeps its own.
+const OPEN_KEY = PAGE === "terminal" ? "den-terminals-open" : "den-agents-open";
 
 function rememberedOpen() {
   try {
@@ -376,6 +404,7 @@ function writeUrl() {
   u.searchParams.delete("service");
   u.searchParams.delete("agent");
   u.searchParams.delete("terminal");
+  u.searchParams.delete("fresh");
   const s = u.searchParams.toString().replace(/%2C/gi, ",");
   history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
   paintSub();
@@ -534,13 +563,36 @@ function projName(ws) {
   return projectLabel(st.projects, ws);
 }
 
+/**
+ * Issue 168: ` data-pc="<colour>"` for what belongs to project `ws` (its
+ * agents' rows, tabs and pane inherit its colour), or "" for none (the
+ * server agent: neutral grey). The colour is in CSS (shell.js, --pc).
+ */
+function pcAttr(ws) {
+  const c = projectColour(st.projects, ws);
+  return c ? ` data-pc="${esc(c)}"` : "";
+}
+
+/**
+ * Issue 168: an agent's letter tile, in its project's colour. The letter
+ * is drawn by CSS (data-l), so the row's and the bar's text stay the
+ * agent's name alone, as screen readers and copies read it.
+ */
+function tileHtml(name) {
+  const ch = [...String(name ?? "").trim()][0] ?? "";
+  return ch
+    ? `<span class="agtile" data-l="${esc(ch.toLocaleUpperCase())}" aria-hidden="true"></span>`
+    : "";
+}
+
 /** Workspace `ws` as a link to it on Workspaces. */
 function wsLinkHtml(ws) {
   // ON-6: the server agent belongs to no workspace: its group is "Server".
   if (ws === SERVER_WS)
     return `<span class="wslink" data-server>${esc(t("ag.server"))}</span>`;
   const name = projName(ws);
-  return `<a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
+  // Issue 168: its colour beside its name, never colour alone.
+  return `<span class="den-pc"${pcAttr(ws)} aria-hidden="true"></span><a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
 }
 
 /**
@@ -628,6 +680,12 @@ function rotMessage(r) {
   const rot = r.rotation;
   const why = rotationWhy(rot);
   const auto = rot.onDue === "auto" && !rot.fellBack;
+  // Issue 914: its turn is over, but background work it started still runs.
+  if (rot.waiting > 0)
+    return t(rot.waiting === 1 ? "ag.rc.waiting.one" : "ag.rc.waiting", {
+      why,
+      n: rot.waiting,
+    });
   if (rot.relaunchWanted && !rot.ready) return t("ag.rc.wanted", { why });
   if (auto && !isStopped(r))
     return t(rot.ready ? "ag.rc.autoReady" : "ag.rc.autoAsk", { why });
@@ -753,13 +811,13 @@ function stoppedHtml(r, wsTag = false) {
   return (
     `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
     // D45: a click (or Enter) opens its details, with Resume in them.
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}" data-details=""` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"${pcAttr(r.workspace)} data-details=""` +
     ` aria-haspopup="dialog" aria-expanded="${agd.r?.id === r.id}"` +
     ` title="${esc(stoppedTip(r))}"` +
     ` aria-label="${esc(t("ag.det.label", { id: `${r.workspace} / ${name}` }))}">` +
     gripHtml(r) +
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
+    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
     `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
     (at ? `<span class="when">${at}</span>` : "") +
     `</button>` +
@@ -782,10 +840,10 @@ function exitedShellHtml(r, wsTag = false) {
   const label = r.label || r.name;
   return (
     `<div class="agst agst1" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"${pcAttr(r.workspace)}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${label}` }))}">` +
     `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
+    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
     `<span class="stchip">${esc(stoppedChip(r))}</span>` +
     `</button>` +
     `<span class="agacts"><button type="button" class="den-btn sm" data-act="remove-shell" aria-label="${esc(t("ag.removeShell", { id: label }))}">${esc(t("ag.remove"))}</button></span>` +
@@ -958,12 +1016,12 @@ function rowHtml(r) {
       ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"${pcAttr(r.workspace)}` +
     ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
     ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + (said ? ` · ${said}` : ""))}">` +
     gripHtml(r) +
     `<span class="den-dot ${r.waiting ? "warn" : stateTone(r)}" aria-hidden="true"></span>` +
-    `<span class="nm">${nm}</span>${right}` +
+    `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
     (chip
       ? `<span class="agl2">${chip}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}</span>`
       : meta
@@ -1080,7 +1138,9 @@ function paintList() {
   }
   // ON-6: the server agent's group, "Server", first, whatever the view.
   // D71: agents whose workspace was deleted, under its old name.
-  const orphans = st.data.sessions.filter((s) => s.orphan);
+  const orphans = st.data.sessions.filter(
+    (s) => s.orphan && belongsOn(PAGE, s),
+  );
   const shown = [
     ...new Set([
       ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
@@ -1141,10 +1201,12 @@ function paintList() {
           : "") +
         ` · <button type="button" class="lnk" data-act="review">${esc(t("ag.review"))}</button></div>`,
     );
-  // D37: running ones (and plain sessions) under their workspace; the
-  // agents that aren't running in one "Stopped (n)" group at the bottom.
+  // Issue 482: the Agents page says once where the shells went.
+  if (PAGE !== "terminal") notes.push(movedNote());
+  // D37: running ones under their workspace; the agents that aren't
+  // running in one "Stopped (n)" group at the bottom.
   const inView = shown.flatMap((ws) =>
-    st.data.sessions.filter((s) => s.workspace === ws),
+    st.data.sessions.filter((s) => s.workspace === ws && belongsOn(PAGE, s)),
   );
   const stopped = inView.filter(inStopped);
   const groups = shown
@@ -1154,16 +1216,18 @@ function paintList() {
     }))
     .filter((g) => g.rows.length > 0);
   const body =
-    groups.length || stopped.length
-      ? groups
-          .map(
-            (g) =>
-              `<div class="wsg" data-ws="${esc(g.ws)}"><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
-              g.rows.map((r) => reorderRowHtml(g, r)).join("") +
-              `</div>`,
-          )
-          .join("") + stoppedGroupHtml(stopped)
-      : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
+    PAGE === "terminal"
+      ? terminalsBodyHtml()
+      : groups.length || stopped.length
+        ? groups
+            .map(
+              (g) =>
+                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
+                g.rows.map((r) => reorderRowHtml(g, r)).join("") +
+                `</div>`,
+            )
+            .join("") + stoppedGroupHtml(stopped)
+        : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
   setList(
     el,
     notes.join("") +
@@ -1171,10 +1235,80 @@ function paintList() {
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
   const clear = st.root.querySelector("#ag-clear");
-  if (clear) clear.hidden = !visibleRows().some(inStopped);
+  if (clear)
+    clear.hidden = PAGE === "terminal" || !visibleRows().some(inStopped);
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
+}
+
+/**
+ * Issue 482: the Terminals page's list: Running, then Exited, each by
+ * last used, newest first; under All projects each row names its
+ * project. Empty: says so, and how to open one.
+ */
+function terminalsBodyHtml() {
+  const used = shellUsed();
+  const { running, exited } = terminalGroups(visibleRows(), used);
+  if (!running.length && !exited.length)
+    return (
+      `<div class="none tmnone"><strong>${esc(t("tm.none"))}</strong>` +
+      `<span>${esc(t("tm.noneP", { scope: st.scopeLabel }))}</span></div>`
+    );
+  const view = viewWorkspaces();
+  const showProject = view.length !== 1;
+  const row = (r) =>
+    terminalRowHtml(r, {
+      t,
+      when: agoPlain,
+      showProject,
+      open: st.open.includes(r.id),
+      current: r.id === st.cur,
+      used,
+    });
+  const group = (key, list) =>
+    list.length
+      ? `<div class="wsg tmg" data-tm="${key}"><div class="wsh"><span>${esc(t(`tm.${key}`, { n: list.length }))}</span></div>` +
+        list.map(row).join("") +
+        `</div>`
+      : "";
+  return group("running", running) + group("exited", exited);
+}
+
+/** Issue 482: the Agents page's note, once per browser (until dismissed). */
+const MOVED_KEY = "den-terminals-moved-seen";
+
+function movedSeen() {
+  try {
+    return localStorage.getItem(MOVED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markMovedSeen() {
+  try {
+    localStorage.setItem(MOVED_KEY, "1");
+  } catch {
+    /* none: shown again on the next load */
+  }
+}
+
+function movedNote() {
+  if (movedSeen()) return "";
+  const view = viewWorkspaces();
+  const n = (st.data?.sessions ?? []).filter(
+    (s) => s.kind === "session" && view.includes(s.workspace),
+  ).length;
+  return movedNoteHtml(n, t);
+}
+
+/** Issue 482: the Terminals page, in the project in view. */
+function terminalsHref() {
+  const view = viewWorkspaces();
+  return view.length === 1
+    ? `/terminals?project=${encodeURIComponent(view[0])}`
+    : "/terminals";
 }
 
 const STOPPED_OPEN_KEY = "den-agents-stopped-open";
@@ -1234,6 +1368,8 @@ function stoppedGroupHtml(rows) {
  */
 function inView(s) {
   if (!s) return false;
+  // Issue 482: a shell is on the Terminals page, an agent on Agents.
+  if (!belongsOn(PAGE, s)) return false;
   if (s.server || s.workspace === SERVER_WS || s.orphan) return true;
   return viewWorkspaces().includes(s.workspace);
 }
@@ -1253,7 +1389,9 @@ function hideOtherProjects() {
     return r && !inView(r);
   });
   if (!out.length) return;
-  st.hiddenOpen = [...new Set([...st.hiddenOpen, ...out])];
+  // Issue 482: the other page's kind leaves quietly (it is on its page).
+  const other = out.filter((id) => belongsOn(PAGE, rowOf(id)));
+  st.hiddenOpen = [...new Set([...st.hiddenOpen, ...other])];
   for (const id of out)
     if (st.panes.has(id)) closePane(id, { quiet: true });
     else st.open = st.open.filter((x) => x !== id);
@@ -1337,6 +1475,12 @@ async function paneFollowsProject() {
   if (st.open.length) return;
   const view = viewWorkspaces();
   if (view.length !== 1) return;
+  // Issue 482: the Terminals page: the project's terminal used last.
+  if (PAGE === "terminal") {
+    const sh = latestShell(visibleRows(), view[0], shellUsed());
+    if (sh) await openPane(sh.id);
+    return;
+  }
   const latest = visibleRows()
     .filter(
       (r) => r.kind === "agent" && !isStopped(r) && r.workspace === view[0],
@@ -1372,15 +1516,15 @@ function paintSub() {
 
   const waiting = rows.filter((r) => r.waiting).length;
   const count = st.root.querySelector("#ag-count");
-  if (count) count.textContent = subText(rows, waiting, st.scopeLabel);
+  if (count)
+    count.textContent =
+      PAGE === "terminal"
+        ? terminalsCountText(rows.length, st.scopeLabel, t)
+        : subText(rows, waiting, st.scopeLabel);
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
-  // 0.4.45: the rail lights by the pane in front, not the address (which
-  // drops ?terminal= once used): a shell lights Terminal, else Agents.
-  const front = st.cur ? rowOf(st.cur) : null;
-  window.denShell?.setRailLit?.(
-    front && front.kind === "session" ? "terminal" : null,
-  );
+  // Issue 482: the rail lights the page's own item (Terminals or Agents):
+  // each page holds only its own kind.
 }
 
 /**
@@ -1474,9 +1618,12 @@ async function refreshOnce() {
         .then((x) => (x.ok ? x.json() : null))
         .then((d) => {
           if (!d) return false;
-          const was = JSON.stringify(st.projects?.workspaces ?? null);
+          // Issue 168: a colour change repaints too, not only a name.
+          const key = (x) =>
+            JSON.stringify([x?.workspaces ?? null, x?.projectColours ?? null]);
+          const was = key(st.projects);
           st.projects = d;
-          return JSON.stringify(d.workspaces ?? null) !== was;
+          return key(d) !== was;
         })
         .catch(() => false);
       // At most 3 s: a slow answer paints the slugs, then the names.
@@ -1758,7 +1905,7 @@ function paintTabs(strip) {
         r?.kind === "agent" ? ` title="${esc(t("ag.renameTip"))}"` : "";
       return (
         `<span class="agtab-w" data-id="${esc(id)}">` +
-        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="Delete"${rename}>` +
+        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}"${r ? pcAttr(r.workspace) : ""} aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="Delete"${rename}>` +
         `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
         `<span class="den-sr"${r?.waiting ? "" : " hidden"}>${esc(r?.waiting ? waitingText(r) : t("ag.waiting"))}: </span>` +
         `<span class="tn">${esc(w.name)}</span><span class="tm mono">${esc(w.meta)}</span></button>` +
@@ -1781,7 +1928,7 @@ function paintLayout() {
     delete box.dataset.layout;
     delete box.dataset.ws;
     const view = st.data ? viewWorkspaces() : [];
-    box.innerHTML = `<div>${esc(view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
+    box.innerHTML = `<div>${esc(PAGE === "terminal" ? t("tm.empty") : view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
     return;
   }
   const layout = shownLayout();
@@ -2032,16 +2179,26 @@ function apiOnlyTag(r) {
 /**
  * D44: a running agent whose MCP servers are out of date (Hub connected or
  * disconnected since it launched): a tag, and on the pane bar Restart (at
- * its next idle, same conversation).
+ * its next idle, same conversation). Issue 749: so does one whose session
+ * failed to load a server's tools, with the error in the tag's title.
  */
 function mcpStaleTag(r, withButton) {
   // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
   if (r?.kind === "agent" && r.toolsRestarting)
     return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  const sx = r?.kind === "agent" && !isStopped(r) ? r.mcpStale : null;
-  if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
-  const k = sx.adds?.length ? "adds" : "drops";
-  const tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  const live = r?.kind === "agent" && !isStopped(r);
+  // Issue 749: its session didn't get a server's tools (the error says why).
+  const fx = live && Array.isArray(r.mcpFailed) ? r.mcpFailed[0] : null;
+  const sx = live ? r.mcpStale : null;
+  let tag;
+  if (fx) {
+    const tip = t("ag.mcp.failedTip", { error: String(fx.error ?? "") });
+    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
+  } else {
+    if (!sx || !(sx.adds?.length || sx.drops?.length)) return "";
+    const k = sx.adds?.length ? "adds" : "drops";
+    tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
+  }
   if (!withButton) return tag;
   return (
     `<span class="agstale">${tag}` +
@@ -2273,6 +2430,8 @@ function paintBar(p) {
     signInTag(r);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
+    // Issue 168: the agent's letter tile, in its project's colour.
+    (r?.kind === "agent" ? tileHtml(name) : "") +
     `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
     (r && isStopped(r)
       ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
@@ -2312,18 +2471,16 @@ function paintBar(p) {
         })
       : t("ag.toName", { name });
     if (to.textContent !== said) to.textContent = said;
-    to.style.setProperty("--ws-h", String(wsHue(ws)));
   }
+  // Issue 168: the pane's band and To line in its project's colour (the
+  // server agent's: none, neutral grey).
+  const pc = projectColour(st.projects, ws);
+  if (pc) {
+    if (p.el.dataset.pc !== pc) p.el.dataset.pc = pc;
+  } else if (p.el.dataset.pc) delete p.el.dataset.pc;
   // Tabs: the tab's × closes it; the pane's bar has none.
   const x = bar.querySelector('[data-act="close"]');
   if (x) x.hidden = shownLayout() === "tabs";
-}
-
-/** A project's colour (0.4.44): a hue from its name, the same everywhere. */
-export function wsHue(ws) {
-  let h = 0;
-  for (const c of String(ws ?? "")) h = (h * 31 + c.codePointAt(0)) % 360;
-  return h;
 }
 
 function send(p, obj) {
@@ -3411,7 +3568,8 @@ function wireOrder(agl) {
 
 // ── the double-click fix: one action per agent at a time ───────────────
 // Held while the server answers. Every redraw (the list's poll, a pane's
-// header) paints the agent's buttons disabled, the pressed one "Working…",
+// header) paints the agent's buttons disabled, the pressed one held with
+// the kit's dots (issue 698),
 // so a second click can't send it again; the server answers a repeat
 // with the first result anyway. Success clears it; an error is shown and
 // the buttons come back.
@@ -3432,7 +3590,10 @@ async function oneAtATime(r, verb, fn) {
   }
 }
 
-/** Paint every busy agent's buttons: disabled, the pressed one "Working…". */
+/** Each pressed button held with dots here, with its release. */
+const dotsHeld = new WeakMap();
+
+/** Paint every busy agent's buttons: disabled, the pressed one's dots. */
 function paintBusy() {
   const root = st.root;
   if (!root) return;
@@ -3450,13 +3611,14 @@ function paintBusy() {
     if (verb) {
       if (!b.disabled) b.disabled = true;
       b.setAttribute("aria-busy", verb === b.dataset.act ? "true" : "false");
-      if (verb === b.dataset.act && b.dataset.busyWas === undefined) {
-        b.dataset.busyWas = b.textContent;
-        b.textContent = t("ag.working");
-      }
-    } else if (b.dataset.busyWas !== undefined) {
-      b.textContent = b.dataset.busyWas;
-      delete b.dataset.busyWas;
+      // Issue 698: the kit's dots in place of the label (a redrawn
+      // button too), never words of its own.
+      if (verb === b.dataset.act && !dotsHeld.has(b))
+        dotsHeld.set(b, window.denShell?.holdDots?.(b) ?? (() => {}));
+    } else if (dotsHeld.has(b)) {
+      const release = dotsHeld.get(b);
+      dotsHeld.delete(b);
+      void release();
       b.removeAttribute("aria-busy");
       b.disabled = false;
     }
@@ -3693,6 +3855,52 @@ async function removeShell(r, button) {
   await refresh();
 }
 
+/**
+ * Issue 482: Restart on an exited terminal: a new one in the same folder
+ * (its project's when the host didn't say), in front; the exited one is
+ * removed, so the list keeps one row for it.
+ */
+async function restartShell(r, button) {
+  if (!exitedShell(r)) return;
+  const url = `/api/workspaces/${encodeURIComponent(r.workspace)}/sessions`;
+  // One request (the pop-up's id runs once): the server starts the new
+  // one, then forgets the exited one it replaces.
+  const body = { ...(r.cwd ? { cwd: r.cwd } : {}), replaces: r.id };
+  const out = await window.denShell.busyAction(
+    "open-terminal",
+    (headers) => api("POST", url, body, { headers }),
+    { button },
+  );
+  const id = out?.session?.id;
+  if (!id) return;
+  if (st.panes.has(r.id)) closePane(r.id, { quiet: true });
+  await refresh();
+  await bringShell(id);
+}
+
+/**
+ * Issue 482: the Terminals page's New terminal: one click in a project;
+ * under All projects a small picker of projects, the one used last first
+ * (its first item, where the keyboard starts).
+ */
+async function newTerminal(button) {
+  const view = viewWorkspaces();
+  if (view.length === 1) return void openTerminal(view[0], { fresh: true });
+  const choices = newTerminalChoices(
+    st.data?.workspaces ?? [],
+    st.data?.sessions ?? [],
+    shellUsed(),
+  );
+  if (!choices.length) return void openTerminal("", { fresh: true });
+  window.denShell?.openMenu?.(button, {
+    label: t("tm.pick"),
+    items: choices.map((ws) => ({
+      label: ws,
+      onSelect: () => void openTerminal(ws, { fresh: true }),
+    })),
+  });
+}
+
 /** Clear stopped: every stopped agent and exited shell in view (AG-14.1b). */
 async function clearStopped(button) {
   const workspaces = [
@@ -3880,6 +4088,16 @@ function agoText(iso) {
   const ms = Date.now() - Date.parse(iso);
   if (!Number.isFinite(ms)) return "";
   return timeHtml(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
+}
+
+/**
+ * Issue 482: agoText as plain text, for a time inside a translated
+ * sentence ("Last used 3 minutes ago"), in the person's zone.
+ */
+function agoPlain(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return formatTime(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
 }
 
 /** The folder a conversation ran in, inside the workspace's when it is. */
@@ -4618,6 +4836,18 @@ function showStartError(err) {
     return;
   }
   el.textContent = startFailText(err, t);
+  // Issue 89: it exited at once: the lines it printed, as it printed them.
+  const tail = startFailTail(err);
+  if (tail.length) {
+    const h = document.createElement("span");
+    h.className = "ag-tail-h";
+    h.textContent = t("ag.start.lastLines");
+    const pre = document.createElement("code");
+    pre.className = "ag-tail den-mono";
+    pre.dataset.startTail = "";
+    pre.textContent = tail.join("\n");
+    el.append(h, pre);
+  }
   // AG-10.10: that agent is running: offer to open it.
   const running = err?.data?.running;
   if (running?.sessionId) {
@@ -4755,8 +4985,8 @@ async function submitStart(form) {
   const bad = sd.extras.find((c) => commandProblem(c));
   if (sd.pid !== PLAIN && bad)
     return showStartError(new Error(t("pe.badCmd", { c: bad })));
+  // Issue 698: busyAction holds Go with the kit's dots.
   go.disabled = true;
-  go.textContent = t("ag.starting");
   // BUSY-1: the working pop-up while Den starts it; the dialog keeps the
   // error too.
   const plain = sd.pid === PLAIN;
@@ -4794,6 +5024,11 @@ async function submitStart(form) {
   async function startedOk(r) {
     if (plain) {
       dlg.close?.();
+      // Issue 482: a terminal opens on the Terminals page.
+      if (PAGE !== "terminal" && r?.session?.id)
+        return void location.assign(
+          `/terminals?project=${encodeURIComponent(ws)}&open=${encodeURIComponent(r.session.id)}`,
+        );
       await refresh();
       if (r?.session?.id) await openPane(r.session.id);
       return;
@@ -4822,8 +5057,10 @@ async function submitPersonaChange(when) {
   if (sd.model) body.model = sd.model;
   if (sd.model && sd.ver) body.version = sd.ver;
   if (when) body.when = when;
+  // Issue 698: the kit's dots on Go until the answer; the dialog says
+  // what happened.
+  const release = window.denShell?.holdDots?.(go) ?? (async () => {});
   go.disabled = true;
-  go.textContent = t("ag.pc.going");
   $d("#ag-err").hidden = true;
   try {
     const r = await api(
@@ -4853,6 +5090,7 @@ async function submitPersonaChange(when) {
     if (err?.code === "busy") showBusy();
     else showStartError(err);
   } finally {
+    await release();
     go.textContent = goLabel();
     if (dlg.open) paintRuntime(false);
   }
@@ -4886,8 +5124,9 @@ async function submitBringIn(ws) {
   const c = bringPick();
   const p = curPersona();
   if (!c || !p) return;
+  // Issue 698: the kit's dots on Go until the answer.
+  const release = window.denShell?.holdDots?.(go) ?? (async () => {});
   go.disabled = true;
-  go.textContent = t("ag.bring.going");
   try {
     const r = await api(
       "POST",
@@ -4912,6 +5151,7 @@ async function submitBringIn(ws) {
     // Still open elsewhere, or taken since: the list says so now.
     await fillConversations(ws);
   } finally {
+    await release();
     go.textContent = t("ag.bring.go");
     if (dlg.open) paintRuntime(false);
   }
@@ -5069,6 +5309,21 @@ function wireDocument() {
       else if (!p.sock) p.conn ? p.conn.nudge() : void connect(p);
     void refresh();
   });
+  // Issue 168: a colour chosen here, or in another tab, repaints at once.
+  window.addEventListener("den:project-colours", (e) => {
+    const d = e.detail;
+    if (!st.projects || !d?.slug) return;
+    const next = { ...(st.projects.projectColours ?? {}) };
+    if (d.picked) next[d.slug] = d.picked;
+    else delete next[d.slug];
+    st.projects = { ...st.projects, projectColours: next };
+    repaintNames();
+  });
+  window.addEventListener("storage", (e) => {
+    if (e.key !== PROJECT_COLOURS_KEY) return;
+    st.projectsAt = 0;
+    void refresh();
+  });
   window.addEventListener("den:appearance", () => {
     for (const p of st.panes.values())
       if (p.term) p.term.options.theme = termTheme();
@@ -5100,9 +5355,17 @@ function translateStatic(root) {
     const el = root.querySelector(sel);
     if (el) el.textContent = t(key);
   };
-  set("#ag-h", "n.agents");
-  set("#ag-start", "ag.start");
-  set("#ag-bring", "ag.bring");
+  // Issue 482: the Terminals page: its title, New terminal, and none of
+  // the agents' own buttons.
+  const term = PAGE === "terminal";
+  set("#ag-h", term ? "n.terminal" : "n.agents");
+  set("#ag-start", term ? "ag.newShell" : "ag.start");
+  if (term)
+    for (const id of ["#ag-bring", "#ag-clear"]) {
+      const b = root.querySelector(id);
+      if (b) b.hidden = true;
+    }
+  if (!term) set("#ag-bring", "ag.bring");
   set("#ag-conv-t", "ag.bring.conv");
   set("#ag-conv-ot", "ag.bring.outside");
   set("#ag-clear", "ag.clear");
@@ -5207,6 +5470,8 @@ const agd = {
   release: null,
 };
 
+// Issue 1085: its actions are the kit's small row-action size (den-btn sm),
+// as the stopped rows' own: Remove is never the one large button.
 function detailsHtml(r, det) {
   const name = displayName(r);
   const rot = rotationOf(r);
@@ -5230,9 +5495,9 @@ function detailsHtml(r, det) {
     ? `<div class="den-svp-line"><span class="tagx warn">${esc(t("ag.det.handoffDue", { why: rotationWhy(r.rotation) }))}</span></div>`
     : "";
   const first = r.resumable
-    ? `<button type="button" class="den-btn primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
-      `<button type="button" class="den-btn" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
-    : `<button type="button" class="den-btn primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
+    ? `<button type="button" class="den-btn sm primary" data-agd="resume">${esc(t("ag.resume"))}</button>` +
+      `<button type="button" class="den-btn sm" data-agd="fresh">${esc(t("ag.fresh"))}</button>`
+    : `<button type="button" class="den-btn sm primary" data-agd="fresh">${esc(t("ag.fresh"))}</button>`;
   return (
     `<div class="den-svp-h"><div class="den-svp-t"><span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
     `<b title="${esc(name)}">${esc(name)}</b>` +
@@ -5240,10 +5505,10 @@ function detailsHtml(r, det) {
     `<div class="den-svp-meta">${r.persona ? `<span>${esc(r.persona)}</span>` : ""}` +
     (runtime ? `<span class="den-svp-ms">${esc(runtime)}</span>` : "") +
     `</div></div>` +
-    `<div class="den-svp-acts">${first}<button type="button" class="den-btn" data-agd="remove">${esc(t("ag.remove"))}</button>` +
+    `<div class="den-svp-acts">${first}<button type="button" class="den-btn sm" data-agd="remove">${esc(t("ag.remove"))}</button>` +
     // Its session ended but is still there: its output, in its pane.
     (r.attachable
-      ? `<button type="button" class="den-btn" data-agd="open">${esc(t("ag.det.output"))}</button>`
+      ? `<button type="button" class="den-btn sm" data-agd="open">${esc(t("ag.det.output"))}</button>`
       : "") +
     `</div>` +
     sec(
@@ -5455,6 +5720,8 @@ export async function mountAgentsPage(root) {
   const q0 = new URLSearchParams(location.search);
   const termWs =
     q0.get("terminal") === "1" ? q0.get("project") || q0.get("ws") || "" : null;
+  // Issue 482: New terminal on a project's page: a new one, never a reuse.
+  const freshAsked = q0.get("fresh") === "1";
   // #80: read before the panes open (each writes the address).
   const frontAsked = q0.get("front");
   const wanted =
@@ -5540,6 +5807,20 @@ export async function mountAgentsPage(root) {
         if (r && act.getAttribute("aria-disabled") !== "true")
           void moveDir(r, which === "ord-up" ? "up" : "down", false);
         return;
+      }
+      // Issue 482: Restart an exited terminal; the Agents page's note.
+      if (which === "restart-shell")
+        return void restartShell(
+          rowOf(act.closest(".agst")?.dataset.shell),
+          act,
+        );
+      if (which === "open-terminals") {
+        markMovedSeen();
+        return void location.assign(terminalsHref());
+      }
+      if (which === "dismiss-moved") {
+        markMovedSeen();
+        return void paintList();
       }
       if (which === "remove-shell")
         return void removeShell(
@@ -5716,7 +5997,9 @@ export async function mountAgentsPage(root) {
       });
     }
   });
-  root.querySelector("#ag-start").addEventListener("click", () => {
+  root.querySelector("#ag-start").addEventListener("click", (e) => {
+    // Issue 482: on the Terminals page it is New terminal.
+    if (PAGE === "terminal") return void newTerminal(e.currentTarget);
     void openStart();
   });
   root.querySelector("#ag-bring")?.addEventListener("click", () => {
@@ -5814,8 +6097,22 @@ export async function mountAgentsPage(root) {
   paintLayout();
   // An id the list no longer has (removed, another distribution's) is
   // dropped from the URL rather than opened onto a refusal.
+  // Issue 482: a link that opens only the other page's kind (an older
+  // /agents?open=<a shell>) goes to that page, with its tabs.
+  if (st.data && q0.get("open")) {
+    const known = wanted.filter((id) => rowOf(id));
+    const away = known.filter((id) => !belongsOn(PAGE, rowOf(id)));
+    if (away.length && away.length === known.length) {
+      const to = PAGE === "terminal" ? "/agents" : "/terminals";
+      // The same query (its project, layout and tabs).
+      location.replace(`${to}${location.search}`);
+      return;
+    }
+  }
   if (!st.signedOut && st.data?.io?.allowed !== false)
     for (const id of wanted) {
+      // Issue 482: the other page's kind is on that page.
+      if (st.data && rowOf(id) && !belongsOn(PAGE, rowOf(id))) continue;
       // #80: another project's session stays out of this view's tabs.
       if (st.data && rowOf(id) && !inView(rowOf(id))) {
         if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
@@ -5841,7 +6138,7 @@ export async function mountAgentsPage(root) {
   const linkedAgent = new URLSearchParams(location.search).get("agent");
   writeUrl();
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
-  if (termWs !== null) await openTerminal(termWs);
+  if (termWs !== null) await openTerminal(termWs, { fresh: freshAsked });
   if (startAsked) void openStart();
 }
 
@@ -5870,7 +6167,8 @@ async function openTerminal(asked = "", { fresh = false } = {}) {
     (st.scope && st.scope !== "all" && all.includes(st.scope)
       ? st.scope
       : (fresh ? null : latestShell(visibleRows(), null, used)?.workspace) ||
-        all[0]);
+        // Issue 482: none running: the project a terminal was used in last.
+        lastUsedProject(st.data?.sessions ?? [], used, all));
   if (!ws) {
     window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
     return;
@@ -5971,10 +6269,11 @@ function openComposer(r, text) {
     const c = makeComposer({
       t,
       name,
+      holds: true,
       // BUSY-1: Send goes through the working pop-up. A quick refusal
       // comes back to the composer, which says it; the pop-up closed
       // after a failure resolves null, and the text stays in the box.
-      send: async ({ text: said }) => {
+      send: async ({ text: said, button }) => {
         const out = await window.denShell.busyAction(
           "send-message",
           (headers) =>
@@ -5985,6 +6284,7 @@ function openComposer(r, text) {
               { headers },
             ),
           {
+            button,
             vars: { name },
             quietFail: true,
             inlineError: true,

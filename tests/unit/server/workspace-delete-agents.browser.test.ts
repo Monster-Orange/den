@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { readRecord } from "../../../src/shared/agents/records.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -50,7 +50,7 @@ afterAll(async () => {
 async function page(): Promise<Page> {
   const ctx = await browser!.newContext({ reducedMotion: "reduce" });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents");
   await p.waitForFunction(() =>
     Boolean((window as never as { denShell?: unknown }).denShell),
   );

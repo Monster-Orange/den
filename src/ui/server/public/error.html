@@ -32,8 +32,8 @@
     <title>__DEN_TITLE__ · Error</title>
     <style>
       /* The error page (R26a, 0.3.0-dev.38): the prototype's (den-shell.html)
-         page header (.ph), empty-state box (.empty) and buttons (.btn),
-         ported as they are; --r is --radius, --r-btn is --radius-button. */
+         page header (.ph) and empty-state box (.empty), ported as they
+         are (buttons: the kit's, issue 673); --r is --radius, --r-btn is --radius-button. */
       *,
       *::before,
       *::after {
@@ -119,30 +119,8 @@
       .empty .lead {
         color: var(--text);
       }
-      /* .btn */
-      .btn {
-        border: 1px solid var(--border);
-        background: var(--surface);
-        color: var(--text);
-        border-radius: var(--radius-button);
-        padding: 6px 12px;
-        cursor: pointer;
-        font: 500 14px/1.45 var(--sans);
-        white-space: nowrap;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .btn:hover {
-        border-color: var(--border-strong);
-      }
-      .btn.primary {
-        background: var(--accent-fill);
-        border-color: var(--accent-fill);
-        color: var(--on-accent);
-      }
-      .btn kbd {
+      /* Buttons are the kit's .den-btn (issue 673); the search's ⌘K in it. */
+      #den-err-search kbd {
         font: 11px var(--mono);
         color: var(--faint);
       }
@@ -232,7 +210,7 @@
       }
       /* The signed-out page (SEC-2a): a command and its copy button on one
          line, the numbered steps, and "Other ways" collapsed. The
-         prototype's tokens and sizes only (pre.code, .btn, .lead). */
+         prototype's tokens and sizes only (pre.code, .lead). */
       .den-cmd {
         display: flex;
         gap: 8px;
@@ -253,13 +231,13 @@
         letter-spacing: 0.12em;
         text-align: center;
       }
-      .btn.den-copy {
+      .den-copy {
         padding: 6px 8px;
         align-self: stretch;
         color: var(--muted);
       }
-      .btn.den-copy:hover,
-      .btn.den-copy.done {
+      .den-copy:hover,
+      .den-copy.done {
         color: var(--text);
       }
       .den-copied:empty {
@@ -306,6 +284,32 @@
         font-size: 28px;
         letter-spacing: 0.12em;
         margin: 8px 0 12px;
+      }
+      /* Issue 868: the ways in this install has, each with its state. */
+      ul.den-methods {
+        list-style: none;
+        margin: 0 0 16px;
+        padding: 0;
+      }
+      ul.den-methods li {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-button);
+        padding: 8px 12px;
+        margin: 0 0 8px;
+      }
+      ul.den-methods li p {
+        margin: 4px 0 0;
+      }
+      ul.den-methods code {
+        overflow-wrap: anywhere;
+      }
+      .den-method-state {
+        color: var(--muted);
+        font: 500 12px/1.45 var(--sans);
+        margin-left: 6px;
+      }
+      .den-method-state.ok {
+        color: var(--ok, var(--text));
       }
       details.den-other {
         margin: 0 0 16px;

@@ -28,6 +28,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { AGENT_ACTOR_RE, WORKSPACE_NAME_RE } from "./agent-actor.js";
 import { sessionPaths } from "./sessions/paths.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const ACTOR_TOKEN_PREFIX = "den_at_";
 /** The agent's session carries its token here (AG spec §5a-env). */
@@ -40,6 +41,12 @@ export const ACTOR_TOKEN_ENV = "DEN_ACTOR_TOKEN";
 export const ACTOR_TOKEN_FILE_ENV = "DEN_ACTOR_TOKEN_FILE";
 /** A person's token in an env: never forwarded to any session. */
 export const PERSON_TOKEN_ENV = "DEN_PERSON_TOKEN";
+/**
+ * Issue 636: the tag a CLI on a test bed's test-person path leaves the
+ * processes it starts (test-person.ts). A person's credential for a
+ * session: no agent's session ever gets it.
+ */
+export const TEST_PERSON_ENV = "DEN_TEST_PERSON";
 export const ACTOR_TOKENS_FILE = "actor-tokens.json";
 
 const TOKEN_RE = /^den_at_[A-Za-z0-9_-]{43}$/;
@@ -98,10 +105,7 @@ function load(stateDir: string): StoreFile {
 function save(stateDir: string, data: StoreFile): void {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const file = actorTokensPath(stateDir);
-  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
 }
 
 /**
@@ -236,6 +240,22 @@ export function lookupActorToken(
   return load(stateDir).tokens[actorTokenKey(token)] ?? null;
 }
 
+/**
+ * Issue 810: the root pids of every agent session with a token here whose
+ * session hasn't ended (revoked or not: a revoked agent still runs): a
+ * process under one of them is an agent's, whatever its env says.
+ */
+export function agentSessionRoots(stateDir: string): number[] {
+  const out = new Set<number>();
+  for (const rec of Object.values(load(stateDir).tokens)) {
+    const id = rec.session.id;
+    if (!id || sessionState(stateDir, id) === "ended") continue;
+    const pid = sessionPid(stateDir, id);
+    if (pid) out.add(pid);
+  }
+  return [...out];
+}
+
 /** #70: the pid the session host recorded for session `id` (its root process), or null. */
 export function sessionPid(stateDir: string, id: string): number | null {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return null;
@@ -330,7 +350,7 @@ export function isPersonCredentialEnv(
   name: string,
   value: string | undefined,
 ): boolean {
-  if (name === PERSON_TOKEN_ENV) return true;
+  if (name === PERSON_TOKEN_ENV || name === TEST_PERSON_ENV) return true;
   if (value === undefined) return false;
   const v = value.trim();
   if (v.includes(PERSON_PREFIX)) return true;
@@ -359,9 +379,7 @@ export function writeActorTokenFile(
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.chmodSync(dir, 0o700);
   const file = path.join(dir, "token");
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, token + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, token + "\n", { mode: 0o600 });
   return file;
 }
 

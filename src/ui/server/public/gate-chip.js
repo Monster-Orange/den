@@ -7,6 +7,8 @@
  * an agent). End early asks first (the kit's dialog), then goes through
  * the working pop-up. Ending a slot frees it; the run itself is not
  * stopped. Issue 715: a release run with priority says so, and why. The queue is a dialog on the body, so Report finds it.
+ * Issue 795: a waiting run that let another go ahead says which, until it starts.
+ * Issue 803: with classes set, each run's class, and a wait for its window.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -34,6 +36,7 @@ export function startGateChip(o) {
   const kind = (k) =>
     t(k === "browser" ? "gate.kind.browser" : "gate.kind.cpu");
   let slots = [];
+  let boxes = [];
   let pop = null;
   let release = null;
   let timer = 0;
@@ -61,10 +64,23 @@ export function startGateChip(o) {
   }
 
   function lineHtml(s) {
-    const when = s.granted
-      ? t("gate.holds", { kind: kind(s.kind), at: hm(s.expectedEnd) }) +
-        (s.overrun ? " · " + t("gate.over") : "")
-      : t("gate.waits", { kind: kind(s.kind), at: hm(s.expectedStart) });
+    const when =
+      (s.granted
+        ? t("gate.holds", { kind: kind(s.kind), at: hm(s.expectedEnd) }) +
+          (s.overrun ? " · " + t("gate.over") : "")
+        : t("gate.waits", { kind: kind(s.kind), at: hm(s.expectedStart) })) +
+      // Issue 625: the test box a slot is on, or may go to.
+      (s.box
+        ? " · " + t("gate.onBox", { box: s.box })
+        : s.where === "any"
+          ? " · " + t("gate.anyBox")
+          : s.where
+            ? " · " + t("gate.onBox", { box: s.where })
+            : "");
+    // Issue 625 clause 11: a box this run can't use, and why.
+    const skips = (s.skips || [])
+      .map((x) => t("gate.boxSkip", { box: x.box, reason: x.reason }))
+      .join(" · ");
     // Issue 715: a release run a person waits on, and why.
     const pri = s.priority
       ? t(
@@ -74,6 +90,30 @@ export function startGateChip(o) {
           { reason: s.priority.reason },
         )
       : "";
+    // Issue 795: the waiting runs it let go just ahead of it.
+    const ylds = (s.yieldedTo ?? [])
+      .map((id) => slots.find((x) => x.id === id)?.label ?? id)
+      .join(", ");
+    const yld = ylds ? t("gate.yielded", { to: ylds }) : "";
+    // Issue 803: its class (from settings), and a wait for its window.
+    const cls = s.class
+      ? t("gate.class", { name: s.class }) +
+        (s.window ? " · " + t("gate.window", { window: s.window }) : "")
+      : "";
+    // Issues 1009, 1048: a cpu run held by the machine's load.
+    const hold = !s.loadHold
+      ? ""
+      : s.loadHold.why === "cores"
+        ? t("gate.loadHoldCores", {
+            load: String(s.loadHold.load),
+            limit: String(s.loadHold.limit),
+            perCore: String(s.loadHold.perCore),
+            cores: String(s.loadHold.cores),
+          })
+        : t("gate.loadHold", {
+            load: String(s.loadHold.load),
+            limit: String(s.loadHold.limit),
+          });
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -85,9 +125,61 @@ export function startGateChip(o) {
       esc(when) +
       "</div>" +
       (pri ? '<div class="gate-pri">' + esc(pri) + "</div>" : "") +
+      (skips ? '<div class="gate-pri">' + esc(skips) + "</div>" : "") +
+      (yld ? '<div class="gate-pri">' + esc(yld) + "</div>" : "") +
+      (cls ? '<div class="gate-pri">' + esc(cls) + "</div>" : "") +
+      (hold
+        ? '<div class="gate-pri" data-gate-load-hold>' + esc(hold) + "</div>"
+        : "") +
+      // Issue 999: a padded estimate, and what the queue uses instead.
+      (s.padded && s.expected
+        ? '<div class="gate-pri" data-gate-padded>' +
+          esc(
+            t("gate.padded", {
+              est: s.estimate?.minutes ?? "?",
+              usual: s.expected.minutes,
+            }),
+          ) +
+          "</div>"
+        : "") +
       '<button type="button" class="den-btn sm" data-gate-end>' +
       esc(t("gate.end")) +
       "</button></li>"
+    );
+  }
+
+  /** Issue 625: a test box: its slots held, or why it is skipped. */
+  function boxHtml(b) {
+    // Turned off, or outside its window (shown in this viewer's time).
+    const text =
+      b.state === "off"
+        ? t("gate.boxOff", { box: b.name })
+        : b.state === "window"
+          ? t("gate.boxClosed", {
+              box: b.name,
+              time: b.opensAt ? gateTime(b.opensAt) : b.opens || "",
+            })
+          : b.state === "held" ||
+              b.state === "unreachable" ||
+              b.state === "low" ||
+              b.state === "unknown"
+            ? t(
+                b.state === "held"
+                  ? "gate.boxHeld"
+                  : b.state === "low"
+                    ? "gate.boxLow"
+                    : b.state === "unknown"
+                      ? "gate.boxMemUnknown"
+                      : "gate.boxDown",
+                { box: b.name, reason: b.reason || "" },
+              )
+            : t("gate.boxSlots", { box: b.name, held: b.held, n: b.slots });
+    return (
+      '<li class="gate-box" data-gate-box="' +
+      esc(b.name) +
+      '">' +
+      esc(text) +
+      "</li>"
     );
   }
 
@@ -98,7 +190,14 @@ export function startGateChip(o) {
       "</h2>" +
       (slots.length
         ? '<ul class="gate-ul">' + slots.map(lineHtml).join("") + "</ul>"
-        : '<p class="gate-none">' + esc(t("gate.none")) + "</p>");
+        : '<p class="gate-none">' + esc(t("gate.none")) + "</p>") +
+      (boxes.length
+        ? '<h3 class="gate-h">' +
+          esc(t("gate.boxesH")) +
+          '</h3><ul class="gate-ul">' +
+          boxes.map(boxHtml).join("") +
+          "</ul>"
+        : "");
   }
 
   async function endIt(li, btn) {
@@ -165,7 +264,9 @@ export function startGateChip(o) {
       });
       if (r.ok) {
         const before = JSON.stringify(slots);
-        slots = (await r.json()).slots ?? [];
+        const body = await r.json();
+        slots = body.slots ?? [];
+        boxes = body.boxes ?? [];
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();
       }
