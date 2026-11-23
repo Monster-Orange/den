@@ -87,9 +87,9 @@ describe("issue 988: the session reads the token", () => {
 
   it("not a terminal, or a nonce that isn't Den's shape: refused before any marker", async () => {
     const said: string[] = [];
-    await expect(readTokenLine(new PassThrough(), (t) => said.push(t), opts)).rejects.toThrow(
-      /not a terminal/,
-    );
+    await expect(
+      readTokenLine(new PassThrough(), (t) => said.push(t), opts),
+    ).rejects.toThrow(/not a terminal/);
     await expect(
       readTokenLine(tty().s, (t) => said.push(t), { ...opts, nonce: "short" }),
     ).rejects.toThrow(/nonce/);
@@ -101,7 +101,10 @@ describe("issue 988: Den's host waits for its marker", () => {
   it("strips the marker from the output and says ready once", () => {
     const w = watchReady(N);
     expect(w.feed("hello")).toEqual({ show: "hello", state: "waiting" });
-    expect(w.feed(`a${readyMarker(N)}b`)).toEqual({ show: "ab", state: "ready" });
+    expect(w.feed(`a${readyMarker(N)}b`)).toEqual({
+      show: "ab",
+      state: "ready",
+    });
     expect(w.feed("later")).toEqual({ show: "later", state: "ready" });
   });
 
@@ -129,7 +132,10 @@ describe("issue 988: Den's host waits for its marker", () => {
     expect(w.take()).toBe(true);
     expect(w.take()).toBe(false);
     // The same nonce again (argv shows it in ps): refused, nothing written.
-    expect(w.feed(`x${readyMarker(N)}`)).toEqual({ show: "x", state: "refused" });
+    expect(w.feed(`x${readyMarker(N)}`)).toEqual({
+      show: "x",
+      state: "refused",
+    });
     expect(w.take()).toBe(false);
   });
 

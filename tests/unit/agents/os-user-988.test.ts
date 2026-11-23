@@ -153,7 +153,9 @@ describe("issue 988 (pin 3): the launcher", () => {
   it("execs the registered runtime with the agent id, and nothing else", () => {
     const r = run("scout", NONCE);
     expect(r.status).toBe(0);
-    expect(r.stdout.split("\n")[0]).toBe(`ARGS [agents] [session] [scout] [${NONCE}]`);
+    expect(r.stdout.split("\n")[0]).toBe(
+      `ARGS [agents] [session] [scout] [${NONCE}]`,
+    );
   });
 
   it("scrubs the environment to its allowlist", () => {

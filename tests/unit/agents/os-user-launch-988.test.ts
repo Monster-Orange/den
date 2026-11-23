@@ -167,15 +167,19 @@ describe("issue 988: nothing from the login's home or the caller's folder is loa
   );
 
   it("starts in the login's home, loads no module from there or the caller's folder, and takes no NODE_OPTIONS", () => {
-    const r = spawnSync("/bin/sh", [launcher, "scout", "0123456789abcdef0123456789abcdef"], {
-      cwd: caller,
-      encoding: "utf-8",
-      env: {
-        NODE_OPTIONS: `--require ${path.join(caller, "evil.cjs")}`,
-        NODE_PATH: path.join(caller, "node_modules"),
-        npm_config_node_options: "--require ./evil.cjs",
+    const r = spawnSync(
+      "/bin/sh",
+      [launcher, "scout", "0123456789abcdef0123456789abcdef"],
+      {
+        cwd: caller,
+        encoding: "utf-8",
+        env: {
+          NODE_OPTIONS: `--require ${path.join(caller, "evil.cjs")}`,
+          NODE_PATH: path.join(caller, "node_modules"),
+          npm_config_node_options: "--require ./evil.cjs",
+        },
       },
-    });
+    );
     expect(r.status).toBe(0);
     expect(r.stdout).toContain(`CWD ${home}`);
     expect(r.stdout).toContain("DEP none");

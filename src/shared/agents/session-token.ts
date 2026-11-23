@@ -188,7 +188,9 @@ export function watchReady(nonce: string): {
         show += text.slice(0, at);
         text = text.slice(at + MARK_LEN);
         state =
-          state === "waiting" && got === readyMarker(nonce) ? "ready" : "refused";
+          state === "waiting" && got === readyMarker(nonce)
+            ? "ready"
+            : "refused";
       }
       // A tail that could start a marker is held for the next chunk.
       for (let k = Math.min(MARK_HEAD.length - 1, text.length); k > 0; k--)

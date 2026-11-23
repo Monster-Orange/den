@@ -129,20 +129,54 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
   });
 
   it("pin 1: the person runs the launcher as the agents' login, and nothing else", () => {
-    const ok = as(PERSON, ["sudo", "-n", "-u", n.user, p.launcher, "scout", "0123456789abcdef0123456789abcdef"]);
+    const ok = as(PERSON, [
+      "sudo",
+      "-n",
+      "-u",
+      n.user,
+      p.launcher,
+      "scout",
+      "0123456789abcdef0123456789abcdef",
+    ]);
     expect(ok.status).toBe(0);
     expect(ok.stdout).toContain(`WHO ${n.user}`);
-    expect(ok.stdout).toContain("ARGS agents session scout 0123456789abcdef0123456789abcdef");
+    expect(ok.stdout).toContain(
+      "ARGS agents session scout 0123456789abcdef0123456789abcdef",
+    );
     expect(ok.stdout).toContain(`HOME ${p.home}`);
     expect(
       as(PERSON, ["sudo", "-n", "-u", n.user, "/bin/sh", "-c", "id"]).status,
     ).not.toBe(0);
     expect(
-      as(PERSON, ["sudo", "-n", "-u", "root", p.launcher, "scout", "0123456789abcdef0123456789abcdef"]).status,
+      as(PERSON, [
+        "sudo",
+        "-n",
+        "-u",
+        "root",
+        p.launcher,
+        "scout",
+        "0123456789abcdef0123456789abcdef",
+      ]).status,
     ).not.toBe(0);
-    expect(as(PERSON, ["sudo", "-n", p.launcher, "scout", "0123456789abcdef0123456789abcdef"]).status).not.toBe(0);
     expect(
-      as(PERSON, ["sudo", "-n", "-u", n.user, p.launcher, "../x", "0123456789abcdef0123456789abcdef"]).status,
+      as(PERSON, [
+        "sudo",
+        "-n",
+        p.launcher,
+        "scout",
+        "0123456789abcdef0123456789abcdef",
+      ]).status,
+    ).not.toBe(0);
+    expect(
+      as(PERSON, [
+        "sudo",
+        "-n",
+        "-u",
+        n.user,
+        p.launcher,
+        "../x",
+        "0123456789abcdef0123456789abcdef",
+      ]).status,
     ).not.toBe(0);
   });
 
