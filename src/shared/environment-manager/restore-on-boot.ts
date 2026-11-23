@@ -18,6 +18,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import type { RestartQueue } from "../agents/restart-queue.js";
 import { readUserConfig, type UserConfig } from "../den-config.js";
 import {
   processGroupState,
@@ -393,4 +394,21 @@ export function restoreDoctorLine(o: {
   return s && o.last
     ? `Services after the last restart (${o.last.at}): ${s.text}`
     : null;
+}
+
+/**
+ * Issue 1225: a project's Up through the restart queue (issue 1129), so
+ * services come back a few at a time and under its load ceiling, beside
+ * the agents. One job per project: `service:<project>`.
+ */
+export function throughQueue(
+  q: Pick<RestartQueue, "add">,
+  exec: (workspace: string, addresses: string[]) => Promise<number>,
+): (workspace: string, addresses: string[]) => Promise<number> {
+  return async (ws, addrs) =>
+    (await q.add({
+      id: `service:${ws}`,
+      why: "services",
+      run: () => exec(ws, addrs),
+    })) as number;
 }

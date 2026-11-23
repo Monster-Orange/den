@@ -67,6 +67,9 @@
  *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
+ *   restore_services_on_boot: boolean | null
+ *                                     user.yml services.restore_on_boot
+ *                                     (issue 1225; 0.4.46's switch)
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
@@ -149,6 +152,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_agent_self_update",
   // Issue 163: whether Den runs as LaunchDaemons that outlive a logout.
   "keep_running_after_logout",
+  // Issue 1225: whether services that were up come back after a restart.
+  "restore_services_on_boot",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
   "embed",
   // Issue 172: whether, and when, the person is alerted outside the bell.
@@ -600,6 +605,22 @@ export function patchCliRows(
       else a.keep_running_after_logout = keep;
       if (Object.keys(a).length) user.agents = a;
       else delete user.agents;
+    });
+  }
+  // Issue 1225: services.restore_on_boot; the other services keys stay.
+  const restore = body.restore_services_on_boot;
+  if (restore !== undefined) {
+    if (restore !== null && typeof restore !== "boolean")
+      return {
+        ok: false,
+        error: "restore_services_on_boot is true, false or null",
+      };
+    apply.push(() => {
+      const sv = isObj(user.services) ? { ...user.services } : {};
+      if (restore === null) delete sv.restore_on_boot;
+      else sv.restore_on_boot = restore;
+      if (Object.keys(sv).length) user.services = sv;
+      else delete user.services;
     });
   }
   const lines = body.log_window_lines;

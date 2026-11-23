@@ -209,6 +209,8 @@ import {
 import { reapDeadDaemons } from "./daemon-reaper.js";
 import { runningDockerNamesAsync } from "../../shared/environment-manager/opctl.js";
 import { restoreNote } from "./restore-note.js";
+import { servicesRestoreOnBoot } from "../../shared/environment-manager/restore-on-boot.js";
+import { queueConfig, restartQueue } from "./restart-queue-service.js";
 import {
   heldManifestsDir,
   readManifest,
@@ -5624,6 +5626,14 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    // Issue 1225: services.restore_on_boot (0.4.46), on unless set false.
+    restore_services_on_boot: (() => {
+      try {
+        return servicesRestoreOnBoot(() => user);
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 1129: the restart queue (agents.resume.*).
     agents_resume: (() => {
       try {
@@ -9574,6 +9584,7 @@ async function handleRequest(
           agents_list?: unknown;
           agents_shell?: unknown;
           agents_resume?: unknown;
+          restore_services_on_boot?: unknown;
           agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
@@ -9642,6 +9653,7 @@ async function handleRequest(
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agents_resume: body.agents_resume,
+            restore_services_on_boot: body.restore_services_on_boot,
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
@@ -10546,7 +10558,17 @@ void (async () => {
     enabled: true,
     isActive: (ws) => isWorkspaceActive(ws),
     forget: unregisterDaemon,
-    exec: upInProcess,
+    // Issue 1225: through the restart queue (issue 1129), a few at a time
+    // and under its load ceiling, beside the agents.
+    exec: m.throughQueue(
+      restartQueue({
+        log: (line) => serverLog(line, "lifecycle"),
+        store: () => notificationDeps().store,
+      }),
+      upInProcess,
+    ),
+    // The queue's gap: how long a service has to settle before its check.
+    settleMs: queueConfig().gapMs,
     // Issue 1225: a service that dies once started is tried again.
     stillDown: async (_ws, addrs) =>
       m.stillDownOf(addrs, {

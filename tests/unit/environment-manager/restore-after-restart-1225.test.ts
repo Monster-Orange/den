@@ -30,9 +30,12 @@ import {
   restoreSummary,
   shouldWaitForContainers,
   stillDownOf,
+  throughQueue,
   waitForContainers,
   writeLastRestore,
 } from "../../../src/shared/environment-manager/restore-on-boot.js";
+import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
+import { agentsWaitingOf } from "../../../src/ui/server/restart-queue-service.js";
 import type { DaemonRecord } from "../../../src/shared/environment-manager/service-runner.js";
 
 const groupOnly = {
@@ -217,5 +220,55 @@ describe("issue 1225: doctor says what the last restore did", () => {
 
   it("on, and nothing restored yet: no line", () => {
     expect(restoreDoctorLine({ enabled: true, last: null })).toBeNull();
+  });
+});
+
+describe("issue 1225: services come back through the restart queue (issue 1129)", () => {
+  it("a few at a time: with batch 2, the third project waits a gap", async () => {
+    const events: string[] = [];
+    let t = 0;
+    const q = new RestartQueue({
+      config: () => ({ batch: 2, gapMs: 30_000, loadCeiling: 0 }),
+      load: () => 0,
+      now: () => t,
+      sleep: async (ms) => {
+        events.push(`wait ${ms}`);
+        t += ms;
+      },
+    });
+    const r = await restoreServicesOnBoot(
+      new Map([
+        ["harbor", ["kiosk/web"]],
+        ["meadow", ["ledger/api"]],
+        ["summit", ["atlas/ui"]],
+      ]),
+      {
+        enabled: true,
+        isActive: () => true,
+        forget: () => undefined,
+        exec: throughQueue(q, async (ws) => {
+          events.push(`up ${ws}`);
+          return 0;
+        }),
+        log: () => undefined,
+      },
+    );
+    expect(r.brought).toEqual(["kiosk/web", "ledger/api", "atlas/ui"]);
+    expect(events).toEqual([
+      "up harbor",
+      "up meadow",
+      "wait 30000",
+      "up summit",
+    ]);
+    expect(q.waiting()).toEqual([]);
+  });
+
+  it("a service job is not counted as an agent waiting", () => {
+    expect(
+      agentsWaitingOf([
+        { id: "planner", why: "resume" },
+        { id: "service:harbor", why: "services" },
+      ]),
+    ).toEqual(["planner"]);
   });
 });

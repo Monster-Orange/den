@@ -2512,6 +2512,9 @@
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.restore_services": "Bring back services after a restart",
+    "set.server.restore_services.d":
+      "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "Agents restarted at a time",
     "set.agents.resume_batch.d":
       "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
