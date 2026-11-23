@@ -400,13 +400,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const isNew = !d.workspaceExists(ws);
       const folder = shown(where.dir, rules.home);
       // Issue 577: each Review line beside its key, as issue 205's are.
+      const title = d.title?.() ?? "Den";
       const manifestFile = draft.manifest?.file
         ? path.basename(draft.manifest.file)
         : "";
       const services = draft.services?.join(", ") ?? "";
       const review = reviewLines([
         line(
-          `Folder: ${folder} (your checkout; Den never changes the repo).`,
+          `Folder: ${folder} (your checkout; ${title} never changes the repo).`,
           "ap.det.repo_add.folder",
           { folder },
         ),
@@ -425,12 +426,12 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             )
           : manifestFile
             ? line(
-                `Manifest: a side-car Den writes in this distribution's manifests/ folder (${manifestFile}):`,
+                `Manifest: a side-car ${title} writes in this distribution's manifests/ folder (${manifestFile}):`,
                 "ap.det.repo_add.manifestSide",
                 { file: manifestFile },
               )
             : line(
-                `Manifest: a side-car Den writes in this distribution's manifests/ folder:`,
+                `Manifest: a side-car ${title} writes in this distribution's manifests/ folder:`,
                 "ap.det.repo_add.manifestSideNew",
               ),
         ...(draft.draft

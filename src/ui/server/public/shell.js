@@ -3041,14 +3041,14 @@
       "Runs the service's local \"up\", as the Services page's Start does.",
     // Issue 577: repo add's Review lines.
     "ap.det.repo_add.folder":
-      "Folder: {folder} (your checkout; Den never changes the repo).",
+      "Folder: {folder} (your checkout; __DEN_TITLE__ never changes the repo).",
     "ap.det.repo_add.project": "Project: {project}.",
     "ap.det.repo_add.projectNew": "Project: {project} (new).",
     "ap.det.repo_add.manifestRepo": "Manifest: the repo's own ({file}).",
     "ap.det.repo_add.manifestSide":
-      "Manifest: a side-car Den writes in this distribution's manifests/ folder ({file}):",
+      "Manifest: a side-car __DEN_TITLE__ writes in this distribution's manifests/ folder ({file}):",
     "ap.det.repo_add.manifestSideNew":
-      "Manifest: a side-car Den writes in this distribution's manifests/ folder:",
+      "Manifest: a side-car __DEN_TITLE__ writes in this distribution's manifests/ folder:",
     "ap.det.repo_add.yaml": "  {line}",
     "ap.det.repo_add.services": "Services: {services}.",
     "ap.det.repo_add.noServices":

@@ -266,6 +266,12 @@ function reviewPairs(): { pairs: Pair[]; unpaired: string[] } {
         for (const s of e.templateSpans) {
           const x = norm(s.expression.getText(sf));
           const name = [...vars].find(([, v]) => v === x)?.[0];
+          // Issue 577: `${title}` is the product's title, which the
+          // catalogs write __DEN_TITLE__ (white-label), not a var.
+          if (!name && x === "title") {
+            out += `__DEN_TITLE__${s.literal.text}`;
+            continue;
+          }
           if (!name) return { text: null, why: `\${${x}} is in no var` };
           out += `{${name}}${s.literal.text}`;
         }

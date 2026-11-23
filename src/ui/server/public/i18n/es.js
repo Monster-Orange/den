@@ -2136,14 +2136,14 @@
       'Ejecuta el "up" local del servicio, como hace Iniciar en la página Servicios.',
     // Issue 577: repo add's Review lines.
     "ap.det.repo_add.folder":
-      "Carpeta: {folder} (tu copia; Den nunca cambia el repo).",
+      "Carpeta: {folder} (tu copia; __DEN_TITLE__ nunca cambia el repo).",
     "ap.det.repo_add.project": "Proyecto: {project}.",
     "ap.det.repo_add.projectNew": "Proyecto: {project} (nuevo).",
     "ap.det.repo_add.manifestRepo": "Manifiesto: el propio del repo ({file}).",
     "ap.det.repo_add.manifestSide":
-      "Manifiesto: uno aparte que Den escribe en la carpeta manifests/ de esta distribución ({file}):",
+      "Manifiesto: uno aparte que __DEN_TITLE__ escribe en la carpeta manifests/ de esta distribución ({file}):",
     "ap.det.repo_add.manifestSideNew":
-      "Manifiesto: uno aparte que Den escribe en la carpeta manifests/ de esta distribución:",
+      "Manifiesto: uno aparte que __DEN_TITLE__ escribe en la carpeta manifests/ de esta distribución:",
     "ap.det.repo_add.yaml": "  {line}",
     "ap.det.repo_add.services": "Servicios: {services}.",
     "ap.det.repo_add.noServices":

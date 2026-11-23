@@ -2080,15 +2080,15 @@
       "サービスのローカルの「up」を、サービスのページの「開始」と同じように実行します。",
     // Issue 577: repo add's Review lines.
     "ap.det.repo_add.folder":
-      "フォルダー: {folder} (あなたのチェックアウト。Den がリポジトリを変えることはありません)。",
+      "フォルダー: {folder} (あなたのチェックアウト。__DEN_TITLE__ がリポジトリを変えることはありません)。",
     "ap.det.repo_add.project": "プロジェクト: {project}。",
     "ap.det.repo_add.projectNew": "プロジェクト: {project} (新規)。",
     "ap.det.repo_add.manifestRepo":
       "マニフェスト: リポジトリ自身のもの ({file})。",
     "ap.det.repo_add.manifestSide":
-      "マニフェスト: Den がこのディストリビューションの manifests/ フォルダーに書く別ファイル ({file}):",
+      "マニフェスト: __DEN_TITLE__ がこのディストリビューションの manifests/ フォルダーに書く別ファイル ({file}):",
     "ap.det.repo_add.manifestSideNew":
-      "マニフェスト: Den がこのディストリビューションの manifests/ フォルダーに書く別ファイル:",
+      "マニフェスト: __DEN_TITLE__ がこのディストリビューションの manifests/ フォルダーに書く別ファイル:",
     "ap.det.repo_add.yaml": "  {line}",
     "ap.det.repo_add.services": "サービス: {services}。",
     "ap.det.repo_add.noServices":
@@ -3895,7 +3895,7 @@
     "set.distribution.brand.d":
       "brand.name: ページ、CLI のバナー、ヘルプに表示される名前です。",
     "set.distribution.github_org.d":
-      "github_org: Den がリポジトリをクローンし一覧表示する組織です。", // words-ok: the en string's own word, translated
+      "github_org: __DEN_TITLE__ がリポジトリをクローンし一覧表示する組織です。", // words-ok: the en string's own word, translated
     "set.distribution.hub_github.d":
       "会社の GitHub リポジトリのうち Den Hub が読めるものの数を、Hub にその場で問い合わせて表示します。Den Hub は会社の GitHub App のインストールを通じてのみリポジトリを読みます。ボタンを押すと GitHub が開き、App のインストールやリポジトリの変更ができます。戻ってくると、Den はプロジェクトを再び Hub に送り、リポジトリは自動でリンクされます。",
     "set.distribution.orgs.d":

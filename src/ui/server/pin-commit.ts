@@ -29,6 +29,7 @@
  *      routine). When it says ask, Den holds the commit for the person's
  *      Allow, once per version, and commits nothing until then.
  */
+import { redactSecrets } from "../../shared/redact.js";
 import { refusal, type RefusalKey } from "../../shared/held-refusal-words.js";
 import type { DetailKey } from "../../shared/review-lines.js";
 import { execFile } from "child_process";
@@ -377,6 +378,9 @@ function pushFailed(
   branch?: string,
 ): PinStep {
   const first = !(same?.state === "push_failed" && same.noted);
+  // Issue 577: git's output goes into the bell and the audit on its own;
+  // a remote URL with a token in it never does.
+  to = { ...to, out: redactSecrets(to.out) };
   const why = `git push to ${to.remote} ${to.branch}: ${to.out}`;
   writePinRecord(d.stateDir, {
     version,
