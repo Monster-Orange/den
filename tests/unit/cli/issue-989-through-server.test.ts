@@ -838,6 +838,96 @@ describe("issue 989: web owner link and unlink go through the server", () => {
   });
 });
 
+describe("issue 1182: gate settings goes through the server", () => {
+  async function gate(server: PersonServer, dir: string) {
+    const { GateStore } = await import("../../../src/shared/gates/store.js");
+    const { cmdGate } = await import("../../../src/ui/cli/gate-command.js");
+    const store = new GateStore({ dir, alive: () => true });
+    const out: string[] = [];
+    const err: string[] = [];
+    const run = (...args: string[]) =>
+      cmdGate(args, {
+        store,
+        env: {},
+        server,
+        out: (l) => out.push(l),
+        err: (l) => err.push(l),
+        now: Date.now,
+        sleep: () => Promise.resolve(),
+        exec: () => ({ pid: 1, kill: () => {}, done: Promise.resolve(0) }),
+        every: () => () => {},
+        onSignal: () => () => {},
+        exit: () => {},
+        pid: 4242,
+        cwd: "/tmp/repo",
+        lang: "en",
+      });
+    return { run, out, err, store };
+  }
+  const settingsFile = (dir: string) => path.join(dir, "settings.json");
+  const read = (dir: string) =>
+    fs.existsSync(settingsFile(dir))
+      ? fs.readFileSync(settingsFile(dir), "utf-8")
+      : "";
+
+  it("the server saves it (POST /api/settings {gate_slots}); the CLI writes nothing", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const yes = fake({ status: 200, json: { ok: true, gate_slots: {} } });
+    const g = await gate(yes.server, dir);
+    const before = read(dir);
+    expect(await g.run("settings", "--cpu-slots", "3")).toBe(0);
+    expect(yes.calls).toEqual([
+      {
+        method: "POST",
+        path: "/api/settings",
+        body: { gate_slots: { cpu_slots: 3 } },
+      },
+    ]);
+    expect(read(dir)).toBe(before);
+  });
+
+  it("a refusal is shown, exits non-zero and changes nothing", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const no = fake({
+      status: 403,
+      json: { ok: false, error: "only a person can do that" },
+    });
+    const g = await gate(no.server, dir);
+    const before = read(dir);
+    expect(await g.run("settings", "--cpu-slots", "3")).not.toBe(0);
+    expect(read(dir)).toBe(before);
+    expect(g.err.join("\n")).toContain("only a person can do that");
+  });
+
+  it("with no server, the CLI writes it as before; a bad value never reaches the server", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const none = fake(null);
+    const g = await gate(none.server, dir);
+    expect(await g.run("settings", "--cpu-slots", "3")).toBe(0);
+    expect(g.store.settings().cpuSlots).toBe(3);
+    const bad = fake({ status: 200, json: { ok: true } });
+    const g2 = await gate(bad.server, dir);
+    expect(await g2.run("settings", "--cpu-slots", "-1")).not.toBe(0);
+    expect(bad.calls).toEqual([]);
+  });
+
+  it("only showing them (no flags) asks no server", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const s = fake({ status: 200, json: { ok: true } });
+    const g = await gate(s.server, dir);
+    expect(await g.run("settings")).toBe(0);
+    expect(s.calls).toEqual([]);
+  });
+});
+
 describe("issue 989: gate end and gate box go through the server", () => {
   async function gate(server: PersonServer, dir: string) {
     const { GateStore } = await import("../../../src/shared/gates/store.js");

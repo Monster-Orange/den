@@ -1234,7 +1234,7 @@ function yieldPlace(args: string[], d: GateDeps): number {
   return 0;
 }
 
-function settings(args: string[], d: GateDeps): number {
+async function settings(args: string[], d: GateDeps): Promise<number> {
   const { f } = flags(args, {
     "--cpu-slots": true,
     "--overrun-margin-minutes": true,
@@ -1326,7 +1326,18 @@ function settings(args: string[], d: GateDeps): number {
       d.err(`gate settings: ${PRIORITY_OFF_WARNING[lang]}`);
       return 1;
     }
-    d.store.writeSettings(c.patch as GateSettingsPatch, whoAsks(d.env, d.cwd));
+    // Issue 1182: the running server saves it, audited as the person
+    // (POST /api/settings, which refuses agents); with none listening the
+    // CLI writes it as before.
+    const via = await viaServer(d, "gate settings", "/api/settings", {
+      gate_slots: c.patch,
+    });
+    if (via === false) return 1;
+    if (via === null)
+      d.store.writeSettings(
+        c.patch as GateSettingsPatch,
+        whoAsks(d.env, d.cwd),
+      );
   }
   const s = d.store.settings();
   // Issue 963: each setting, its value and what it means.
@@ -1365,7 +1376,7 @@ export async function cmdGate(
       case "yield":
         return yieldPlace(args.slice(1), d);
       case "settings":
-        return settings(args.slice(1), d);
+        return await settings(args.slice(1), d);
       default:
         d.err(`usage: ${GATE_HELP.usage}`);
         return 2;
