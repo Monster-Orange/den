@@ -54,6 +54,16 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import {
+  bothSpellings,
+  readRulesCover,
+  stateDirDenyRules,
+} from "../../shared/agents/den-claude.js";
+import {
+  isRegistered,
+  listOtherInstalls,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { AUDIT_FILE } from "../../shared/audit-file.js";
 import {
   SIGNIN_REQUEST_VERB,
@@ -1662,6 +1672,105 @@ export function edgeRotationLines(
 }
 
 /**
+ * Issue 728 (part C): installs sharing this OS user. Whether others do (by
+ * count: another install's path stays out, as its registry entry does),
+ * whether this install is in the install registry (their agents are denied
+ * its files only once it is), and the 0600 files in its state folder that
+ * agents' deny rules don't cover. Paths only, relative to the state
+ * folder; never a file's contents. Links are never followed.
+ */
+export function sharedUserLines(
+  title: string,
+  o: { stateDir?: string; registry?: string; home?: string } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const stateDir = o.stateDir ?? getStateDir();
+  const reg = o.registry ?? registryDir();
+  const home = o.home ?? process.env.HOME;
+  const others = listOtherInstalls(reg, {
+    ownStateDir: stateDir,
+    ...(home ? { home } : {}),
+  }).length;
+  const shared = others
+    ? `${others} other install${others === 1 ? " shares" : "s share"} this OS user. Its agents are kept out of ${title}'s credentials by deny rules, which bind an agent that follows them; a separate OS user for each install keeps them apart for certain`
+    : "no other install shares this OS user";
+  const registered = isRegistered(reg, stateDir);
+  const regDetail = registered
+    ? "this install is in the install registry, so other installs' agents on this OS user are denied its files"
+    : `this install isn't in the install registry yet, so other installs' agents on this OS user aren't denied its files. ${title} adds it at its next start`;
+  const rules = bothSpellings(stateDir).flatMap((d) =>
+    stateDirDenyRules(d, home),
+  );
+  const loose = uncoveredSecretFiles(stateDir, rules);
+  const SHOWN = 10;
+  const looseDetail = loose.length
+    ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
+        .slice(0, SHOWN)
+        .join(
+          ", ",
+        )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
+    : "agents' deny rules cover every 0600 file in the state folder";
+  const mark = (ok: boolean) => (ok ? "✓" : "⚠");
+  return {
+    lines: [
+      "",
+      `${title} doctor: Installs on this OS user`,
+      "",
+      `  shared user  ${mark(!others)}  ${shared}`,
+      `  registry  ${mark(registered)}  ${regDetail}`,
+      `  0600 files  ${mark(!loose.length)}  ${looseDetail}`,
+    ],
+    checks: [
+      { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
+      {
+        id: "install_registry",
+        status: registered ? "ok" : "warn",
+        detail: regDetail,
+      },
+      {
+        id: "uncovered_files",
+        status: loose.length ? "warn" : "ok",
+        detail: looseDetail,
+      },
+    ],
+  };
+}
+
+/**
+ * The 0600 regular files under `stateDir` no Read rule covers, relative to
+ * it and sorted. Never follows a link; stops at a bounded walk.
+ */
+function uncoveredSecretFiles(stateDir: string, rules: string[]): string[] {
+  const MAX_ENTRIES = 20000;
+  const MAX_DEPTH = 8;
+  const out: string[] = [];
+  let seen = 0;
+  const walk = (dir: string, depth: number): void => {
+    if (depth > MAX_DEPTH) return;
+    let names: fs.Dirent[] = [];
+    try {
+      names = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of names) {
+      if (++seen > MAX_ENTRIES) return;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p, depth + 1);
+      else if (e.isFile()) {
+        try {
+          if ((fs.lstatSync(p).mode & 0o777) !== 0o600) continue;
+        } catch {
+          continue;
+        }
+        if (!readRulesCover(rules, p)) out.push(path.relative(stateDir, p));
+      }
+    }
+  };
+  walk(path.resolve(stateDir), 0);
+  return out.sort();
+}
+
+/**
  * H1 (0.4.48): whether the edge set up here carries Den's proof (the
  * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
@@ -2319,6 +2428,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 728: the edge's once-only rotation, and stacks' secrets.
     r.checks.push(...edgeRotationLines(readBrand().name).checks);
+    // Issue 728: installs sharing this OS user.
+    r.checks.push(...sharedUserLines(readBrand().name).checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -2498,6 +2609,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
+  for (const l of sharedUserLines(readBrand().name).lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
