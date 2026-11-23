@@ -186,7 +186,7 @@ function rowHtml(n, fold) {
   const alert = !n.read && n.msg?.key === "bell.m.vschedFail";
   return (
     // Issue 187: a row that opens on a click looks it (the pointer).
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}"${alert ? ' role="alert"' : ""}>` +
+    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}" data-read="${n.read ? "true" : "false"}"${alert ? ' role="alert"' : ""}>` +
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" || alert ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
@@ -412,6 +412,7 @@ export function bellPanel(b, ui = {}) {
     older: !!ui.older,
     updates: !!ui.updates,
     ask: ui.ask,
+    busy: ui.busy ?? null,
   };
   // Issue 746: what waits for the person's Allow leads Needs you.
   const allows = allowsOf(b);
@@ -419,13 +420,20 @@ export function bellPanel(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
+  // Issue 1339: while its POST runs, the button stays, busy in itself
+  // (disabled, "Marking…"), and the other one waits too.
+  const busyAttr = u.busy ? ' disabled aria-busy="true"' : "";
   const actions =
-    (b?.unread || updates.unread
-      ? `<button type="button" data-bell="all">${esc(tr("bell.markAll"))}</button>`
-      : "") +
-    (all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
-      ? `<button type="button" data-bell="clear">${esc(tr("bell.clearRead"))}</button>`
-      : "");
+    (u.busy === "all"
+      ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.marking"))}</button>`
+      : b?.unread || updates.unread
+        ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.markAll"))}</button>`
+        : "") +
+    (u.busy === "clear"
+      ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearing"))}</button>`
+      : all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
+        ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearRead"))}</button>`
+        : "");
   const panel = {
     title: tr("bell.title"),
     titleId: "den-bell-h",
@@ -496,12 +504,65 @@ async function load() {
   }
 }
 
+/** POST; false (after an error toast) when it failed. */
 async function post(path, body) {
   try {
     await window.denShell?.api?.("POST", path, body);
+    return true;
   } catch (err) {
     window.denShell?.errorToast?.(err);
+    return false;
   }
+}
+
+/** Each group's items through `f` (null drops it); empty groups go. */
+function eachItem(groups, f) {
+  return (groups ?? [])
+    .map((g) => ({
+      ...g,
+      subjects: g.subjects
+        .map((sub) => ({ ...sub, items: sub.items.map(f).filter(Boolean) }))
+        .filter((sub) => sub.items.length),
+    }))
+    .filter((g) => g.subjects.length);
+}
+
+/**
+ * Issue 1339: the bell as it will be once "Mark all read" (`all`) or
+ * "Clear read" (`clear`) is done, to show at once while the POST runs.
+ */
+export function bellAfter(b, what) {
+  if (!b) return b;
+  const f =
+    what === "all"
+      ? (n) => (n.read ? n : { ...n, read: true })
+      : (n) => (n.read ? null : n);
+  const count = (gs) =>
+    gs.reduce(
+      (k, g) => k + g.subjects.reduce((j, sub) => j + sub.items.length, 0),
+      0,
+    );
+  const groups = eachItem(b.groups, f);
+  const upd = b.updates ?? { count: 0, unread: 0, groups: [] };
+  const updGroups = eachItem(upd.groups, f);
+  const old = b.older ?? { count: 0, groups: [] };
+  const oldGroups = eachItem(old.groups, f);
+  return {
+    ...b,
+    unread: what === "all" ? 0 : b.unread,
+    groups,
+    updates: {
+      ...upd,
+      groups: updGroups,
+      unread: what === "all" ? 0 : upd.unread,
+      count: what === "clear" ? count(updGroups) : upd.count,
+    },
+    older: {
+      ...old,
+      groups: oldGroups,
+      count: what === "clear" ? count(oldGroups) : old.count,
+    },
+  };
 }
 
 /**
@@ -573,6 +634,7 @@ export function initBell(doc = document) {
     older: false,
     updates: false,
     ask: null,
+    busy: null,
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
@@ -616,7 +678,9 @@ export function initBell(doc = document) {
   };
   const refresh = async () => {
     const b = await load();
-    if (!b) return;
+    // Issue 1339: a refresh while Mark all read or Clear read runs would
+    // put back what the person just saw go.
+    if (!b || ui.busy) return;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
@@ -665,9 +729,28 @@ export function initBell(doc = document) {
       await refresh();
       return;
     }
-    if (what === "all") await post("/api/notifications/read", { all: true });
-    else if (what === "clear") await post("/api/notifications/clear", {});
-    else if (what === "scope")
+    if (what === "all" || what === "clear") {
+      // Issue 1339: the rows change at once, the button shows busy in
+      // itself, and an error puts the rows back (with its toast).
+      if (ui.busy || !last) return;
+      const before = last;
+      ui.busy = what;
+      last = bellAfter(last, what);
+      bell.setCount((last.unread ?? 0) + overrunsOf(last).length);
+      paint();
+      const ok = await post(
+        what === "all" ? "/api/notifications/read" : "/api/notifications/clear",
+        what === "all" ? { all: true } : {},
+      );
+      ui.busy = null;
+      if (!ok) {
+        last = before;
+        bell.setCount((last.unread ?? 0) + overrunsOf(last).length);
+      }
+      paint();
+      if (ok) await refresh();
+      return;
+    } else if (what === "scope")
       await post("/api/notifications/read", { scope: el.dataset.scope });
     else if (what === "fold" || what === "older" || what === "updates") {
       if (what === "older") ui.older = !ui.older;

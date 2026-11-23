@@ -2859,6 +2859,7 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     .map((r) => ({ id: r.id, dir: r.sessionTmp! }));
   const leftoverTmp = leftoverSessionTmps(
     recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
+    d.sessionTmpBase,
   );
   // Issue 1328: every agent whose own sandbox is off, and the note.
   let own: Record<string, { sandbox?: boolean }> = {};
