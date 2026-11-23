@@ -73,6 +73,7 @@ describe("issue 898's live check", () => {
   const row = (fixed: boolean, text = LONG) => ({
     tag: "webkit-820x1180",
     text,
+    want: LONG,
     cut: fixed,
     ellipsis: fixed,
     nowrap: fixed,
@@ -107,6 +108,44 @@ describe("issue 898's live check", () => {
       cell("webkit", [{ ...row(true, "All active (8)"), cut: false }]),
     ]);
     expect(r.map((x) => x.ok)).toEqual([true, false]);
+  });
+
+  it("a project an earlier run left behind is named in the detail", () => {
+    const r = rows(898, [
+      cell("webkit", [{ ...row(true), left: ["gate-898-old"] }]),
+    ]);
+    expect(r.map((x) => x.ok)).toEqual([true, true]);
+    expect(r[0].detail).toContain(
+      "left behind by an earlier run: gate-898-old",
+    );
+  });
+
+  it("the checked row isn't this run's project: the long-name clause fails", () => {
+    const r = rows(898, [
+      cell("webkit", [
+        {
+          ...row(true),
+          text: "Gate 898 a project whose name runs well past the row old",
+        },
+      ]),
+    ]);
+    expect(r[1].ok).toBe(false);
+  });
+
+  it("each run's name is its own, over 52 characters and within the 64 a project allows", () => {
+    const js = `
+      const g = await import("./gate/898.mjs");
+      const a = g.longName(Date.UTC(2026, 10, 22)), b = g.longName(Date.UTC(2026, 10, 22) + 1);
+      process.stdout.write(JSON.stringify([a, b]));
+    `;
+    const out = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+      cwd: ROOT,
+      encoding: "utf-8",
+    });
+    const [a, b] = JSON.parse(out.stdout) as string[];
+    expect(a).not.toBe(b);
+    expect(a.length).toBeGreaterThan(52);
+    expect(a.length).toBeLessThanOrEqual(64);
   });
 
   it("the long-named project couldn't be made: both clauses fail with the reason", () => {
