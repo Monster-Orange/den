@@ -181,8 +181,12 @@ export async function run(ctx, s) {
     await p.close().catch(() => {});
   }
   // The bed's own Hub, through Den (no page routes).
-  const real = await ctx.api("/api/hub/groups").catch(() => null);
+  // A failed read says why (status, message), never a bare null.
+  const real = await ctx.api("/api/hub/groups").catch((e) => ({
+    error: String(e?.message ?? e).slice(0, 200),
+  }));
   out.real = real?.state ?? null;
+  if (real?.error) out.realError = real.error;
   return out;
 }
 
@@ -278,6 +282,7 @@ export function expect(cells) {
     },
   ];
   const real = list[0]?.result?.real ?? null;
+  const realError = list[0]?.result?.realError ?? null;
   // Until the bed's Hub serves GET /api/groups (G1), Den says it can't.
   if (real === "ok" || real === "unavailable" || real === "refused")
     rows.push({
@@ -290,7 +295,7 @@ export function expect(cells) {
       clause: clauses[6],
       ok: null,
       skip: "needs-hub-groups",
-      detail: `the bed's Hub: ${real}`,
+      detail: `the bed's Hub: ${real}${realError ? ` (${realError})` : ""}`,
     });
   // The bed runs with hub.groups at its default (off): nothing new.
   rows.push(
@@ -301,7 +306,7 @@ export function expect(cells) {
           ok: null,
           skip: "needs-hub-groups-off",
           why: "the bed's Den has hub.groups on",
-          detail: `the bed's Den: ${real}`,
+          detail: `the bed's Den: ${real}${realError ? ` (${realError})` : ""}`,
         },
   );
   return rows;
