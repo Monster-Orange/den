@@ -419,6 +419,7 @@ import {
   withApproveKey,
   type SessionVia,
   type WebAuthConfig,
+  SessionStoreUnreadable,
 } from "../../shared/web-session.js";
 import {
   checkFixtureCode,
@@ -1972,6 +1973,8 @@ function edgeFronted(): boolean {
 const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
+  // Issue 1299: a failed read of the sessions file, in the server log.
+  onProblem: (msg) => serverLog(`  ⚠ ${msg}`, "warn"),
 });
 /** Issue 819: whether a person has ever signed in here (first-run.ts). */
 const FIRST_RUN = new FirstRun({
@@ -10626,6 +10629,34 @@ const server = http.createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     const route = routeTemplate(pathname);
     const method = req.method ?? "GET";
+    // Issue 1299: the sign-ins file couldn't be read just now, so a sign-in
+    // was refused rather than saving over every session: 503, try again.
+    if (err instanceof SessionStoreUnreadable) {
+      serverLog(
+        `  ⚠ ${method} ${route} (req ${requestId}): ${err.message}`,
+        "warn",
+      );
+      try {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+        res.setHeader("Retry-After", "2");
+        if (pathname === "/api" || pathname.startsWith("/api/")) {
+          sendJson(
+            res,
+            { ok: false, error: err.message, code: "sessions_unreadable" },
+            503,
+          );
+          return;
+        }
+        res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(`${err.message} (request id ${requestId})`);
+      } catch {
+        /* socket already gone */
+      }
+      return;
+    }
     // A config that fails validation is the user's to fix, not a crash: the
     // /api frame answers 422 config_invalid (jsonApiErrors adds requestId), a
     // page gets the error page saying so, anything else the message as text.

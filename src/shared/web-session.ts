@@ -867,20 +867,48 @@ const empty = (): StoreFile => ({ v: 1, sessions: {}, usedCodes: {} });
  * The browser sessions, server-side. The file is re-read when it changes
  * (the CLI edits it while the server is down), written atomically, 0600.
  */
+/**
+ * Issue 1299: the sessions file couldn't be read just now (too many open
+ * files under load, say), so a write was refused rather than saving over
+ * every other session.
+ */
+export class SessionStoreUnreadable extends Error {
+  constructor(readonly code: string) {
+    super(`Couldn't read the sign-ins just now (${code}); try again`);
+    this.name = "SessionStoreUnreadable";
+  }
+}
+
 export class WebSessionStore {
   private cache: { key: string; data: StoreFile } | null = null;
   private readonly stateDir: () => string;
   private readonly secret: () => Buffer | null;
   private readonly now: () => number;
 
+  /** Issue 1299: why the last read failed; set, every write is refused. */
+  private unreadable: string | null = null;
+  /** Issue 1299: told when a read fails or a bad file is moved aside. */
+  private readonly onProblem?: (msg: string) => void;
+
   constructor(opts: {
     stateDir?: () => string;
     secret: () => Buffer | null;
     now?: () => number;
+    /** Issue 1299: told when a read fails (the server log); never contents. */
+    onProblem?: (msg: string) => void;
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
     this.secret = opts.secret;
     this.now = opts.now ?? Date.now;
+    this.onProblem = opts.onProblem;
+  }
+
+  private problem(msg: string): void {
+    try {
+      this.onProblem?.(msg);
+    } catch {
+      /* the log is best effort */
+    }
   }
 
   private file(): string {
@@ -898,30 +926,72 @@ export class WebSessionStore {
 
   private load(): StoreFile {
     const key = this.statKey();
-    if (key === null) return empty();
-    if (this.cache?.key === key) return this.cache.data;
-    let data = empty();
-    try {
-      const raw = JSON.parse(
-        fs.readFileSync(this.file(), "utf-8"),
-      ) as Partial<StoreFile>;
-      data = {
-        v: 1,
-        sessions:
-          raw.sessions && typeof raw.sessions === "object" ? raw.sessions : {},
-        usedCodes:
-          raw.usedCodes && typeof raw.usedCodes === "object"
-            ? raw.usedCodes
-            : {},
-      };
-    } catch {
-      /* unreadable or malformed: no sessions */
+    if (key === null) {
+      this.unreadable = null;
+      return empty();
     }
+    if (this.cache?.key === key) return this.cache.data;
+    // Issue 1299: a read that fails is never cached, and every write is
+    // refused until a read works: a write now would save over every
+    // session the file holds.
+    let text: string;
+    try {
+      text = fs.readFileSync(this.file(), "utf-8");
+    } catch (e) {
+      const code = String((e as NodeJS.ErrnoException).code ?? "read failed");
+      if (this.unreadable !== code)
+        this.problem(
+          `sign-ins file couldn't be read (${code}); sign-in waits until it can`,
+        );
+      this.unreadable = code;
+      return empty();
+    }
+    this.unreadable = null;
+    let raw: Partial<StoreFile> | null = null;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+        raw = parsed as Partial<StoreFile>;
+    } catch {
+      /* not JSON */
+    }
+    if (raw === null) {
+      // Read whole (writes are atomic renames) but not valid: it can't be
+      // made sense of, so it's kept aside for a person and the store
+      // starts empty rather than refusing sign-in for good.
+      const aside = `${this.file()}.bad-${this.now()}`;
+      try {
+        fs.renameSync(this.file(), aside);
+      } catch (e) {
+        const code = String(
+          (e as NodeJS.ErrnoException).code ?? "rename failed",
+        );
+        this.unreadable = code;
+        this.problem(
+          `sign-ins file is not valid and couldn't be moved aside (${code})`,
+        );
+        return empty();
+      }
+      this.problem(
+        `sign-ins file was not valid; moved aside to ${path.basename(aside)}`,
+      );
+      this.cache = null;
+      return empty();
+    }
+    const data: StoreFile = {
+      v: 1,
+      sessions:
+        raw.sessions && typeof raw.sessions === "object" ? raw.sessions : {},
+      usedCodes:
+        raw.usedCodes && typeof raw.usedCodes === "object" ? raw.usedCodes : {},
+    };
     this.cache = { key, data };
     return data;
   }
 
   private save(data: StoreFile): void {
+    if (this.unreadable !== null)
+      throw new SessionStoreUnreadable(this.unreadable);
     const dir = this.stateDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = this.file();
