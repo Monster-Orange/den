@@ -75,4 +75,52 @@ describe("issue 750: the bed's own groups read", () => {
       expect(x.skip).toBe("needs-bed-cli");
     for (const x of verdict(null)) expect(x.skip).toBe("needs-bed-groups");
   });
+
+  it("a bed Hub that refuses Den's token fails row 7, never a skip", () => {
+    const [hub] = verdict({ real: { ok: true, state: "rejected" }, off: OFF });
+    expect(hub.ok).toBe(false);
+    expect(hub.skip).toBeUndefined();
+  });
+});
+
+/** bedGroups against a fake CLI: what it ran, and what it left set. */
+function bedRun(start: string | undefined): {
+  ran: string[];
+  left: string | undefined;
+} {
+  const js = `
+    const g = await import("./gate/750.mjs");
+    let v = ${JSON.stringify(start ?? null)};
+    const ran = [];
+    const cli = (args) => {
+      ran.push(args.join(" "));
+      if (args[0] === "config" && args[1] === "hub.groups")
+        return { code: 0, out: (v ?? "auto") + "\\n" };
+      if (args[0] === "config" && args[1] === "rm") { v = null; return { code: 0, out: "" }; }
+      if (args[0] === "config") { v = args[1].split("=")[1]; return { code: 0, out: "" }; }
+      return { code: 0, out: JSON.stringify({ ok: true, state: v === "off" ? "off" : "ok" }) };
+    };
+    g.bedGroups({ cli });
+    process.stdout.write(JSON.stringify({ ran, left: v }));
+  `;
+  const r = spawnSync("node", ["--input-type=module", "-e", js], {
+    cwd: process.cwd(),
+    encoding: "utf-8",
+  });
+  if (r.status !== 0) throw new Error(r.stderr);
+  const o = JSON.parse(r.stdout) as { ran: string[]; left: string | null };
+  return { ran: o.ran, left: o.left ?? undefined };
+}
+
+describe("issue 750: the bed's hub.groups is put back", () => {
+  it("unset before: removed after", () => {
+    const r = bedRun(undefined);
+    expect(r.ran).toContain("config hub.groups=on");
+    expect(r.ran).toContain("config hub.groups=off");
+    expect(r.left).toBeUndefined();
+  });
+
+  it("set before: the same value after", () => {
+    for (const v of ["on", "off"]) expect(bedRun(v).left).toBe(v);
+  });
 });

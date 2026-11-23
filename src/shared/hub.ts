@@ -483,8 +483,11 @@ export function patchHubAllowTools(
 /**
  * Issue 750: hub.groups and hub.groups_cache_seconds from Settings › Hub
  * or `config`, into user.yml's hub block, in place: { mode?: auto | on |
- * off (true/false written as on/off), cache_seconds?: 5 to 3600, whole };
- * null clears one. Nothing is written when any part is refused.
+ * off (or true/false), cache_seconds?: 5 to 3600, whole }; null clears
+ * one. On and off are written as true and false, and auto (the default)
+ * as no key: every older Den reads hub.groups as true or false only, and
+ * refuses the whole hub block on anything else. Nothing is written when
+ * any part is refused.
  */
 export function patchHubGroups(
   user: Record<string, unknown>,
@@ -524,8 +527,8 @@ export function patchHubGroups(
       error: `hub.groups_cache_seconds must be a whole number of seconds, ${min} to ${max}`,
     };
   const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
-  if (mode === null) delete hub.groups;
-  else if (mode !== undefined) hub.groups = mode;
+  if (mode === null || mode === "auto") delete hub.groups;
+  else if (mode !== undefined) hub.groups = mode === "on";
   if (c === null) delete hub.groups_cache_seconds;
   else if (c !== undefined) hub.groups_cache_seconds = c;
   if (Object.keys(hub).length) user.hub = hub;

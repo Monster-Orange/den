@@ -319,7 +319,7 @@ describe("hub.allow_tools", () => {
       url,
       token: "file:/x",
       allow_tools: false,
-      groups: "on",
+      groups: true,
       groups_cache_seconds: 60,
     });
     expect(patchHubGroups(user, { mode: null, cache_seconds: null })).toEqual({
@@ -341,16 +341,27 @@ describe("hub.allow_tools", () => {
       expect(r.ok).toBe(false);
       expect(JSON.stringify(user)).toBe(before);
     }
-    // true and false (config hub.groups=true) are written as on and off.
-    const b: Record<string, unknown> = {};
-    patchHubGroups(b, { mode: true });
-    expect(b).toEqual({ hub: { groups: "on" } });
-    patchHubGroups(b, { mode: false });
-    expect(b).toEqual({ hub: { groups: "off" } });
+    // On and off are written as true and false, and auto as no key: an
+    // older Den reads only true or false, and refuses the whole hub block
+    // on anything else.
+    const b: Record<string, unknown> = { hub: { url } };
+    for (const [mode, want] of [
+      ["on", true],
+      ["off", false],
+      [true, true],
+      [false, false],
+    ] as const) {
+      expect(patchHubGroups(b, { mode })).toEqual({ ok: true });
+      expect(b).toEqual({ hub: { url, groups: want } });
+      // What it wrote reads back as the mode set.
+      expect(readHubConfig({}, b, noSecrets)?.groups).toBe(want ? "on" : "off");
+    }
+    expect(patchHubGroups(b, { mode: "auto" })).toEqual({ ok: true });
+    expect(b).toEqual({ hub: { url } });
     // An empty hub block goes away.
     const bare: Record<string, unknown> = {};
     patchHubGroups(bare, { mode: "off" });
-    expect(bare).toEqual({ hub: { groups: "off" } });
+    expect(bare).toEqual({ hub: { groups: false } });
     patchHubGroups(bare, { mode: null });
     expect(bare).toEqual({});
   });

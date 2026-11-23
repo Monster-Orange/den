@@ -169,6 +169,21 @@ describe("issue 750: GET /api/hub/groups", () => {
     // That answer is kept like any other.
     expect(a.whoami()).toBe(1);
   });
+  it("a mode change isn't served the other mode's kept read", async () => {
+    const hub = await stubHub(() => [200, GROUPS]);
+    let mode: "auto" | "on" = "auto";
+    const d = deps({
+      url: hub.url,
+      mode: () => mode,
+      self: async () => ({ install: "Bench", login: "pat", features: [] }),
+    });
+    // Auto without groups.read: off, kept.
+    expect((await call(d)).json).toMatchObject({ state: "off" });
+    mode = "on";
+    // On, inside the cache's seconds: Hub is read, not auto's answer.
+    expect((await call(d)).json).toMatchObject({ state: "ok" });
+    expect(hub.calls()).toBe(1);
+  });
   it("auto, whoami doesn't answer: off, and asked again next time", async () => {
     const hub = await stubHub(() => [200, GROUPS]);
     const a = auto(hub.url, null);

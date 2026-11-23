@@ -63,20 +63,47 @@ describe("issue 750: config hub.groups and hub.groups_cache_seconds", () => {
 
   it("auto is the default; each value is written to user.yml and read at once", async () => {
     expect(await live()).toEqual({ mode: "auto", cache: 30 });
-    for (const v of ["on", "off", "auto"] as const) {
+    // On and off as true and false, auto as no key: what every older Den
+    // reads too.
+    for (const [v, file] of [
+      ["on", true],
+      ["off", false],
+      ["auto", undefined],
+    ] as const) {
       await cli.cmdConfig([`hub.groups=${v}`]);
-      expect((readUser().hub as Record<string, unknown>).groups).toBe(v);
+      expect((readUser().hub as Record<string, unknown>).groups).toBe(file);
       expect((await live()).mode).toBe(v);
     }
     // The Hub's address is kept.
     expect((readUser().hub as Record<string, unknown>).url).toBe(HUB);
   });
 
-  it("true and false are written as on and off", async () => {
+  it("true and false are taken too", async () => {
     await cli.cmdConfig(["hub.groups=true"]);
-    expect((readUser().hub as Record<string, unknown>).groups).toBe("on");
+    expect((readUser().hub as Record<string, unknown>).groups).toBe(true);
     await cli.cmdConfig(["hub.groups=false"]);
-    expect((readUser().hub as Record<string, unknown>).groups).toBe("off");
+    expect((readUser().hub as Record<string, unknown>).groups).toBe(false);
+  });
+
+  it("with no value, each prints the value in force", async () => {
+    const said = async (k: string) => {
+      const lines: string[] = [];
+      const log = console.log;
+      console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+      try {
+        await cli.cmdConfig([k]);
+      } finally {
+        console.log = log;
+      }
+      return lines.join("\n");
+    };
+    await cli.cmdConfig(["hub.groups=off"]);
+    expect(await said("hub.groups")).toBe("off");
+    await cli.cmdConfig(["rm", "hub.groups"]);
+    expect(await said("hub.groups")).toBe("auto");
+    await cli.cmdConfig(["hub.groups=true"]);
+    expect(await said("hub.groups")).toBe("on");
+    expect(await said("hub.groups_cache_seconds")).toBe("30");
   });
 
   it("the cache's seconds: 5 to 3600, whole seconds", async () => {

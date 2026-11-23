@@ -222,7 +222,7 @@ Set it in **Settings › Hub › Groups from Hub**: Auto, On or Off. Or run `den
 - **On**: Den reads Hub's groups whatever Hub's whoami lists.
 - **Off**: Den never asks Hub for groups.
 
-`true` and `false` in `user.yml` read as On and Off. While groups are off, while Auto finds no Hub or no `groups.read`, or while Hub has no groups list (it answers 404), the Agents page shows nothing about groups, and Den logs nothing about them.
+Den writes On and Off to `user.yml` as `true` and `false`, and Auto as no key, so older Dens read the same file. `den config hub.groups` prints the value in force. Only a person can change it: an agent's or the fixture person's change is refused. While groups are off, while Auto finds no Hub or no `groups.read`, or while Hub has no groups list (it answers 404), the Agents page shows nothing about groups, and Den logs nothing about them.
 
 `den hub groups` prints the same read as the Agents page gets, as one line of JSON. Add `--fresh` to read Hub now.
 

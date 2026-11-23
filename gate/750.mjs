@@ -111,10 +111,19 @@ function groupsRead(cli) {
 
 /**
  * Rows 7 and 8 on the bed's own Den: hub.groups on, its read of the bed's
- * Hub; then off, its read. user.yml's hub.groups is cleared after (auto).
+ * Hub; then off, its read. After, the value in force before is put back:
+ * the key removed when that restores it, else set to it.
  */
-function bedGroups(ctx) {
+export function bedGroups(ctx) {
   if (!ctx.cli) return skip("needs-bed-cli", "the bed gives no ctx.cli");
+  const now = () => {
+    const r = ctx.cli(["config", "hub.groups"]);
+    const v = String(r.out ?? "").trim();
+    return r.code === 0 && ["auto", "on", "off"].includes(v) ? v : null;
+  };
+  const was = now();
+  if (!was)
+    return fail("config", "`config hub.groups` didn't print auto, on or off");
   const set = (v) => ctx.cli(["config", `hub.groups=${v}`]);
   try {
     const on = set("on");
@@ -126,6 +135,7 @@ function bedGroups(ctx) {
     return { real, off: groupsRead(ctx.cli) };
   } finally {
     ctx.cli(["config", "rm", "hub.groups"]);
+    if (now() !== was) set(was);
   }
 }
 const skip = (why, detail) => ({
@@ -606,9 +616,16 @@ export function bedRows(b) {
     });
   else if (["ok", "unavailable", "refused"].includes(real.state))
     rows.push({ clause: c7, ok: true, detail: `the bed's Hub: ${real.state}` });
+  else if (real.state === "rejected")
+    // Hub refused Den's own token: Den's credential, never "not run".
+    rows.push({
+      clause: c7,
+      ok: false,
+      detail: "the bed's Hub refused Den's token (rejected)",
+    });
   else
     // off: the bed's Hub has no groups route; none: no Hub connected;
-    // rejected / unreachable: the bed's Hub, not Den.
+    // unreachable: the bed's Hub didn't answer.
     rows.push({
       clause: c7,
       ok: null,

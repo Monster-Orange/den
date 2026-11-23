@@ -97,7 +97,7 @@ export async function groupsView(
     return { ok: true, state: mode === "auto" ? "off" : "none" };
   }
   const now = (d.now ?? Date.now)();
-  const kept = d.cache.get(hub.url);
+  const kept = d.cache.get(`${mode} ${hub.url}`);
   let read: GroupsRead;
   let self: { install?: string; login?: string };
   if (!fresh && kept && now - kept.at < d.cacheSeconds() * 1000) {
@@ -117,14 +117,14 @@ export async function groupsView(
       ? await fetchHubGroups(hub.url, hub.token)
       : { state: "absent", noFeature: true };
     if (read.state !== "unreachable")
-      d.cache.set(hub.url, { at: now, read, self });
+      d.cache.set(`${mode} ${hub.url}`, { at: now, read, self });
   } else {
     read = await fetchHubGroups(hub.url, hub.token);
     self = read.state === "ok" ? await d.self().catch(() => ({})) : {};
     d.cache.clear();
     // Only an answer is kept: a Hub that didn't answer is asked again.
     if (read.state !== "unreachable")
-      d.cache.set(hub.url, { at: now, read, self });
+      d.cache.set(`${mode} ${hub.url}`, { at: now, read, self });
   }
   const own = d.company();
   const company = isGroupSlug(own)
