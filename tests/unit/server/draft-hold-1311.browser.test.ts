@@ -8,6 +8,9 @@
  * scripted PTY (helpers/agents-page-server.ts): no runtime runs. The
  * message is a web app's relayed one (POST /api/embed/say with an app
  * key), held by the same delivery loop as a Hub comment.
+ * Covers draft-input.ts (the keys), session-routes.ts (the attach and its
+ * "waiting" frame), agent-ops.ts (the hold), hub-delivery-service.ts and
+ * agents-page.js (the pane's tag).
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";

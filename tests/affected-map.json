@@ -831,6 +831,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1288,6 +1289,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1382,6 +1384,7 @@
         "tests/unit/server/confirm-busy.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
@@ -1482,6 +1485,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
@@ -1571,6 +1575,7 @@
         "tests/unit/server/d67-remote-approve.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
@@ -1846,6 +1851,7 @@
         "tests/unit/server/d67-remote-approve.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/edge-page.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/environments-dead-host.browser.test.ts",
@@ -3005,6 +3011,16 @@
     {
       "when": ["src/ui/server/public/dialog-den.js"],
       "run": ["tests/unit/server/dialogs-fit-ipad.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/draft-input.ts",
+        "src/ui/cli/agent-ops.ts",
+        "src/ui/server/hub-delivery-service.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/draft-hold-1311.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

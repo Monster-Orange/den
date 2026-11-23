@@ -74,6 +74,7 @@ describe("search", () => {
           "agents.pane_reconnect_wait",
           // den#156: the Agents list's wait for the terminal host.
           "agents.list_host_wait",
+          "agents.draft_hold_max",
         ],
       ],
       // Issue 532: Server › the terminal limits.
