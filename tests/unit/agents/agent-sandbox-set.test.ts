@@ -179,7 +179,7 @@ describe("agent_sandbox_set: on Allow (issue 1328)", () => {
     const r = await runAgentSandboxSet(
       f.d,
       { agent: "ana", project: "north", on: false, reason: "Docker" },
-      { id: "q1", agent: "ana" },
+      { agent: "ana" },
     );
     expect(r).toEqual({
       ok: true,
