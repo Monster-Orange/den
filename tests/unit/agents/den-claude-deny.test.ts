@@ -161,6 +161,12 @@ describe("issue 728: every credential file in the state dir is denied as web.sec
   it.each(files)("a Read rule covers %s", (f) =>
     expect([f, readDenied(rules, `${STATE}/${f}`)]).toEqual([f, true]),
   );
+  // Issue 1299: a damaged sessions file moved aside, and a write's
+  // temporary copy, hold the same records.
+  it.each(["web-sessions.json.bad-1795413600000", "actor-tokens.json.tmp-123"])(
+    "a Read rule covers the copy %s",
+    (f) => expect([f, readDenied(rules, `${STATE}/${f}`)]).toEqual([f, true]),
+  );
 });
 
 describe("issue 728: what an agent needs to run stays allowed", () => {

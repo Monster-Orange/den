@@ -443,6 +443,9 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
     ...files.map((f) => `Read(/${f})`),
+    // Issue 1299: copies beside each (a damaged file moved aside, a
+    // write's temporary file) hold the same records.
+    ...files.map((f) => `Read(/${f}*)`),
     ...dirs.map((d) => `Read(/${d}/**)`),
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),

@@ -420,6 +420,7 @@ import {
   type SessionVia,
   type WebAuthConfig,
   SessionStoreUnreadable,
+  SESSIONS_LOCK_WAIT_MS,
 } from "../../shared/web-session.js";
 import {
   checkFixtureCode,
@@ -1974,6 +1975,14 @@ const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
   // Issue 1299: a failed read of the sessions file, in the server log.
+  // Issue 1299: how long a write waits for another process's lock.
+  lockWaitMs: () => {
+    try {
+      return webAuthNow().sessionsLockWaitMs;
+    } catch {
+      return SESSIONS_LOCK_WAIT_MS;
+    }
+  },
   onProblem: (msg, kind) => {
     serverLog(`  ⚠ ${msg}`, "warn");
     // A damaged file moved aside signs every browser out: the activity
@@ -5874,6 +5883,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     web_agent_view: (() => {
       const c = webAuthNow();
       return { on: c.agentView, minutes: c.agentViewMinutes };
+    })(),
+    // Issue 1299: how long a sessions write waits for another's lock.
+    web_sessions: (() => {
+      const c = webAuthNow();
+      return { lockWaitMs: c.sessionsLockWaitMs };
     })(),
     // Issue 819: new-device requests and wrong codes.
     web_pairing: (() => {
@@ -9970,6 +9984,7 @@ async function handleRequest(
           web_ready?: unknown;
           web_pairing?: unknown;
           web_agent_view?: unknown;
+          web_sessions?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
@@ -10040,6 +10055,7 @@ async function handleRequest(
             web_ready: body.web_ready,
             web_pairing: body.web_pairing,
             web_agent_view: body.web_agent_view,
+            web_sessions: body.web_sessions,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agents_resume: body.agents_resume,

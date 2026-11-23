@@ -146,6 +146,43 @@ describe("issue 1299: a failed read never costs a session", () => {
     expect(problems.join("\n")).toMatch(/moved aside/);
   });
 
+  it.each([
+    ['{"v":2,"sessions":{},"usedCodes":{}}', "a newer version"],
+    ['{"v":1,"sessions":null,"usedCodes":{}}', "sessions null"],
+    ['{"v":1,"sessions":[],"usedCodes":{}}', "sessions a list"],
+    ['{"v":1,"sessions":{},"usedCodes":[]}', "usedCodes a list"],
+  ])(
+    "(5) a valid object of the wrong shape is moved aside: %s (%s)",
+    (body) => {
+      const { s, kinds } = store();
+      fs.writeFileSync(webSessionsPath(tmp), body, { mode: 0o600 });
+      s.create({});
+      const aside = fs
+        .readdirSync(tmp)
+        .filter((f) => f.startsWith("web-sessions.json.bad-"));
+      expect(aside.length).toBe(1);
+      expect(fs.readFileSync(path.join(tmp, aside[0]), "utf-8")).toBe(body);
+      expect(kinds).toEqual(["moved-aside"]);
+    },
+  );
+
+  itDeny(
+    "(6) a stat that fails (not a missing file) refuses writes too",
+    () => {
+      const { s, kinds } = store();
+      s.create({ host: "a" });
+      store().s.create({ host: "other" });
+      fs.chmodSync(tmp, 0o000);
+      try {
+        expect(() => s.create({})).toThrow(SessionStoreUnreadable);
+        expect(kinds).toContain("unreadable");
+      } finally {
+        fs.chmodSync(tmp, 0o700);
+      }
+      expect(onDisk()).toBe(2);
+    },
+  );
+
   it("no file yet is no problem: the first sign-in makes it", () => {
     const { s, problems } = store();
     s.create({});
