@@ -88,4 +88,21 @@ describe("review legs", () => {
     expect(a).not.toBe(b);
     expect(a).toMatch(/^[a-f0-9]{32}$/);
   });
+
+  it("a leg opened before its agent exists takes no submission until bound, once", () => {
+    const legs = new ReviewLegs();
+    const id = legs.open({ ...leg, agent: "" }, now, 60);
+    const sub = { leg: id, repo: "octo/app", pr: 12, sha: leg.sha };
+    expect(legs.accept(who(""), sub, now)).toEqual({
+      ok: false,
+      why: "unverified_actor",
+    });
+    expect(legs.accept(who("rev-7f3a"), sub, now)).toEqual({
+      ok: false,
+      why: "wrong_agent",
+    });
+    legs.bind(id, "rev-7f3a");
+    expect(() => legs.bind(id, "someone-else")).toThrow();
+    expect(legs.accept(who("rev-7f3a"), sub, now).ok).toBe(true);
+  });
 });

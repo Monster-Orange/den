@@ -10,6 +10,7 @@ export const OUTCOMES = [
   "awaiting_human",
   "no_review_needed",
   "no_reviewer_free",
+  "outdated",
   "auth",
   "usage_cap",
   "transient",
@@ -36,6 +37,8 @@ const TABLE: Record<Outcome, Pick<CheckResult, "conclusion" | "retry">> = {
   awaiting_human: { conclusion: "action_required", retry: null },
   no_review_needed: { conclusion: "success", retry: null },
   no_reviewer_free: { conclusion: "neutral", retry: null },
+  // The PR moved during the review: the new head gets its own review.
+  outdated: { conclusion: "neutral", retry: null },
   auth: { conclusion: "neutral", retry: { afterMinutes: 10, times: null } },
   usage_cap: {
     conclusion: "neutral",

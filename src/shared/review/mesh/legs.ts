@@ -55,6 +55,17 @@ export class ReviewLegs {
     return h ? strip(h) : undefined;
   }
 
+  /**
+   * Names the agent started for a leg. A leg's id goes into the agent's
+   * first prompt, so the leg opens before the agent exists; until it is
+   * bound, nobody can submit to it. Bound once.
+   */
+  bind(id: string, agent: string): void {
+    const h = this.legs.get(id);
+    if (!h || h.agent) throw new Error("that leg can't be bound");
+    h.agent = agent;
+  }
+
   /** Drops a leg (the head moved, or the review ended). */
   close(id: string): void {
     this.legs.delete(id);
@@ -69,7 +80,8 @@ export class ReviewLegs {
       return { ok: false, why: "unverified_actor" };
     const h = this.legs.get(sub.leg);
     if (!h) return { ok: false, why: "unknown_leg" };
-    if (h.agent !== who.agent) return { ok: false, why: "wrong_agent" };
+    if (!h.agent || h.agent !== who.agent)
+      return { ok: false, why: "wrong_agent" };
     if (h.repo !== sub.repo || h.pr !== sub.pr)
       return { ok: false, why: "wrong_pr" };
     if (h.sha !== sub.sha) return { ok: false, why: "wrong_head" };
