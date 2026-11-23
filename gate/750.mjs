@@ -100,7 +100,9 @@ async function hubLeg(ctx) {
   if (!ctx.den2) return skip("needs-den2", "the bed gives no ctx.den2");
   let d2;
   try {
-    d2 = await ctx.den2();
+    // A test install (den-bed's fixture-person exception for den2): its
+    // page and API run as the fixture person, on test Hubs only.
+    d2 = await ctx.den2({ product: { testInstall: true } });
   } catch (e) {
     return skip(
       "person",
@@ -163,6 +165,7 @@ async function hubLeg(ctx) {
     await A.group(company, SLUG, {
       name: "Gate 750 check",
       leadAgent: `${idLead.install}:${idLead.agentKey}`,
+      // escalates: left to the harness's default, the test Hub's fixture person.
       roles: { held: `${idHeld.install}:${idHeld.agentKey}` },
     });
 
