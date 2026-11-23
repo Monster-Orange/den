@@ -1138,6 +1138,57 @@
     "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
     "set.server.owner_name_timeout.d":
       "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.agents.reviews_enabled":
+      "レビュー: エージェントがプルリクエストをレビュー",
+    "set.agents.reviews_enabled.d":
+      "既定ではオフ。オンにすると、レビュー担当エージェントがリポジトリを監視し、レビューが必要なプルリクエストを引き受けて、行コメント付きのレビューを 1 件投稿します。投稿はあなたの GitHub ログインで行われ、各レビューにはどのエージェントが書いたかが記されます。__DEN_CLI__ config reviews.enabled=true",
+    "set.agents.reviews_agent": "レビュー: レビュー担当エージェント",
+    "set.agents.reviews_agent.d":
+      "各レビューが使うペルソナ、プロジェクト、モデルを持つエージェント。各レビューは新しいエージェントとして、プルリクエストの読み取り専用コピーで動きます。空欄: レビュー担当なし。",
+    "set.agents.reviews_repos": "レビュー: 監視するリポジトリ",
+    "set.agents.reviews_repos.d":
+      "レビュー担当が監視するリポジトリ (owner/name 形式、カンマ区切り)。",
+    "set.agents.reviews_skill": "レビュー: レビュー用スキル",
+    "set.agents.reviews_skill.d":
+      "各レビューで実行するスキル (自社のレビュー用スキルなど)。リポジトリのレビュールールが別のスキルを指定した場合はそちらが優先されます。空欄: レビュー担当ペルソナ自身の方法。",
+    "set.agents.reviews_min_session": "レビュー: 引き受けに必要な時間枠の残量",
+    "set.agents.reviews_min_session.d":
+      "使用時間枠の残りがこの割合を下回ると、レビュー担当はレビューを引き受けず、理由を示します。0: 制限なし。使用量は __DEN_TITLE__ が使用量の上限に対して数えたものです。__DEN_CLI__ config reviews.min_session_left_pct=25",
+    "set.agents.reviews_min_weekly": "レビュー: 引き受けに必要な週間残量",
+    "set.agents.reviews_min_weekly.d":
+      "週の使用量の残りがこの割合を下回ると、レビュー担当はレビューを引き受けません。0: 制限なし。__DEN_CLI__ config reviews.min_weekly_left_pct=15",
+    "set.agents.reviews_max_concurrent": "レビュー: 同時に行うレビュー数",
+    "set.agents.reviews_max_concurrent.d":
+      "同時に実行するレビューの数。__DEN_CLI__ config reviews.max_concurrent=1",
+    "set.agents.reviews_claim_window": "レビュー: 引き受けの待ち時間 (秒)",
+    "set.agents.reviews_claim_window.d":
+      "プルリクエストに引き受けを投稿した後、レビュー担当はこの時間待ってからスレッドを読み直します。最初の引き受けが優先され、ほかは手を引きます。__DEN_CLI__ config reviews.claim_window_seconds=10",
+    "set.agents.reviews_claim_timeout": "レビュー: 引き受けの有効時間 (分)",
+    "set.agents.reviews_claim_timeout.d":
+      "引き受けがプルリクエストを保持する時間。過ぎると別のレビュー担当が引き受けられます。__DEN_CLI__ config reviews.claim_timeout_minutes=30",
+    "set.agents.reviews_max_rounds": "レビュー: 通知までのラウンド数",
+    "set.agents.reviews_max_rounds.d":
+      "1 つのプルリクエストでこの回数のレビューラウンドを過ぎると、__DEN_TITLE__ がお知らせします。__DEN_CLI__ config reviews.max_rounds=3",
+    "set.agents.reviews_agents_may_approve":
+      "レビュー: エージェントの承認を許可",
+    "set.agents.reviews_agents_may_approve.d":
+      "既定ではオフ: レビューはコメントとチェックを投稿するだけで、承認はしません。オン: ブロックする指摘のないレビューはプルリクエストを承認します。",
+    "set.agents.usage_session_cap": "使用量の上限: 使用時間枠あたりのトークン",
+    "set.agents.usage_session_cap.d":
+      "1 つの使用時間枠でエージェントが使えるトークン数 (__DEN_TITLE__ がトランスクリプトから数えた値)。レビューは残りを参照します。0: 上限なし。__DEN_CLI__ config usage.session_token_cap=0",
+    "set.agents.usage_session_hours": "使用量の上限: 使用時間枠 (時間)",
+    "set.agents.usage_session_hours.d":
+      "1 つの使用時間枠の長さ。__DEN_CLI__ config usage.session_hours=5",
+    "set.agents.usage_weekly_cap": "使用量の上限: 1 週間あたりのトークン",
+    "set.agents.usage_weekly_cap.d":
+      "7 日間でエージェントが使えるトークン数 (__DEN_TITLE__ が数えた値)。0: 上限なし。__DEN_CLI__ config usage.weekly_token_cap=0",
+    "bell.m.reviewPosted":
+      "{pr} に Den のレビューを投稿しました: ブロック {blocking} 件。作成者が各スレッドを修正するか回答します。",
+    "bell.m.reviewSkipped": "{pr} の Den レビューをスキップしました: {why}",
+    "bell.m.reviewOutdated":
+      "{pr} の Den レビューは古くなりました: レビュー中にプルリクエストが更新されました。新しい版は別にレビューされます。",
+    "bell.m.reviewWaiting":
+      "フォークからのプルリクエストが「これをレビュー」を待っています: {pr}",
     "set.server.github_watch_interval": "GitHub の監視: 最初の間隔 (秒)",
     "set.server.github_watch_interval.d":
       "__DEN_TITLE__ のひとつの GitHub 監視が、エージェントの監視するプルリクエストと実行 (MCP github_watch) を確認する間隔です。変化がない間は倍になり、変化があると最初に戻ります。__DEN_CLI__ config github.watch_interval_seconds=60",

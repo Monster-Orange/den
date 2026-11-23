@@ -771,7 +771,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "review_submit",
     "Hand a review leg's findings to Den",
-    "Only for a review leg: the reviewer session Den started for one pull request at one head, whose first prompt gave you a `leg` id. Call it once, when the review is done, with that `leg`, the `repo`, `pr` and `sha` from your prompt, your `verdict` in a sentence or two, your `findings` (each: a short `id`, the file `path` and `line` on the PR head, `severity` high, medium or low, its `lens`, whether it is `blocking`, and its `body`), the `depth` you reviewed at and your `model`, plus `tokens` or `costUsd` if you know them. Den posts the review on GitHub; you don't. Den refuses it from any other session, for another pull request or head, or a second time. If the PR moved during your review, Den marks it outdated and posts no verdict.",
+    "Only for a review leg: the reviewer agent Den started for one pull request at one head, whose first prompt gave you a `leg` id. Call it once, when the review is done, with that `leg`, the `repo`, `pr` and `sha` from your prompt, your `verdict` in a sentence or two, your `findings` (each: a short `id`, the file `path` and `line` on the PR head, `severity` high, medium or low, its `lens`, whether it is `blocking`, and its `body`), the `depth` you reviewed at and your `model`, plus `tokens` or `costUsd` if you know them. Den posts the review on GitHub; you don't. Den refuses it from any other agent, for another pull request or head, or a second time. If the PR moved during your review, Den marks it outdated and posts no verdict.",
     {
       leg: z.string().describe("The leg id from your first prompt"),
       repo: z.string().describe("owner/name, from your first prompt"),
@@ -804,7 +804,7 @@ const READ_TOOLS: DenTool[] = [
     async (a, ctx) => {
       if (!ctx.scope?.actor.startsWith("agent:"))
         throw new Refusal(
-          "review_submit: only a review leg's session may call it, and this MCP server isn't an agent's.",
+          "review_submit: only a review leg's agent may call it, and this MCP server isn't an agent's.",
         );
       const body = {
         leg: a.leg,

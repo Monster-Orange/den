@@ -162,6 +162,23 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     retries: true,
     backoff_seconds: true,
   }, // The shared GitHub watcher's pace and API budget.
+  // Issue 476: the reviewer and the usage caps (person-only blocks).
+  reviews: {
+    enabled: true,
+    reviewer: true,
+    min_session_left_pct: true,
+    min_weekly_left_pct: true,
+    max_concurrent: true,
+    claim_window_seconds: true,
+    claim_timeout_minutes: true,
+    max_rounds: true,
+    agents_may_approve: true,
+  },
+  usage: {
+    session_token_cap: true,
+    session_hours: true,
+    weekly_token_cap: true,
+  },
   github: {
     watch_interval_seconds: true,
     watch_max_interval_seconds: true,
@@ -273,6 +290,19 @@ describe("the settings inventory (R21)", () => {
         "github.watch_max_interval_seconds",
         "github.api_budget_floor",
         "github.watches_max",
+        // Issue 476: Settings › Agents › Reviews, and the usage caps.
+        "reviews.enabled",
+        "reviews.reviewer",
+        "reviews.min_session_left_pct",
+        "reviews.min_weekly_left_pct",
+        "reviews.max_concurrent",
+        "reviews.claim_window_seconds",
+        "reviews.claim_timeout_minutes",
+        "reviews.max_rounds",
+        "reviews.agents_may_approve",
+        "usage.session_token_cap",
+        "usage.session_hours",
+        "usage.weekly_token_cap",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",

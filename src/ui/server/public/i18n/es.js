@@ -1165,6 +1165,61 @@
       "Consulta del nombre en GitHub al arrancar, en segundos",
     "set.server.owner_name_timeout.d":
       "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.agents.reviews_enabled":
+      "Revisiones: los agentes revisan pull requests",
+    "set.agents.reviews_enabled.d":
+      "Apagado por defecto. Encendido: el agente revisor vigila sus repositorios, toma cada pull request que necesita revisión y publica una revisión con comentarios por línea. Publica en GitHub a tu nombre, y cada revisión dice qué agente la escribió. __DEN_CLI__ config reviews.enabled=true",
+    "set.agents.reviews_agent": "Revisiones: el agente revisor",
+    "set.agents.reviews_agent.d":
+      "El agente cuyo perfil, proyecto y modelo usa cada revisión. Cada revisión corre como un agente nuevo, en una copia de solo lectura del pull request. Vacío: sin revisor.",
+    "set.agents.reviews_repos": "Revisiones: repositorios a vigilar",
+    "set.agents.reviews_repos.d":
+      "Los repositorios que vigila el revisor, como propietario/nombre, separados por comas.",
+    "set.agents.reviews_skill": "Revisiones: la habilidad de revisión",
+    "set.agents.reviews_skill.d":
+      "La habilidad que ejecuta cada revisión, como la de revisión de tu empresa. Las reglas de revisión de un repositorio pueden nombrar otra, y esa gana. Vacío: el método propio del perfil revisor.",
+    "set.agents.reviews_min_session":
+      "Revisiones: mínimo de uso en la ventana para tomar una",
+    "set.agents.reviews_min_session.d":
+      "El revisor no toma una revisión si queda menos de esta parte de la ventana de uso, y dice por qué. 0: sin límite. El uso es lo que __DEN_TITLE__ suma frente a tus topes de uso. __DEN_CLI__ config reviews.min_session_left_pct=25",
+    "set.agents.reviews_min_weekly":
+      "Revisiones: mínimo de uso semanal para tomar una",
+    "set.agents.reviews_min_weekly.d":
+      "El revisor no toma una revisión si queda menos de esta parte del uso de la semana. 0: sin límite. __DEN_CLI__ config reviews.min_weekly_left_pct=15",
+    "set.agents.reviews_max_concurrent": "Revisiones: revisiones a la vez",
+    "set.agents.reviews_max_concurrent.d":
+      "Cuántas revisiones corren al mismo tiempo. __DEN_CLI__ config reviews.max_concurrent=1",
+    "set.agents.reviews_claim_window":
+      "Revisiones: ventana para tomar, en segundos",
+    "set.agents.reviews_claim_window.d":
+      "Tras publicar que toma un pull request, el revisor espera esto y vuelve a leer el hilo: gana la primera toma y las demás se retiran. __DEN_CLI__ config reviews.claim_window_seconds=10",
+    "set.agents.reviews_claim_timeout":
+      "Revisiones: cuánto dura una toma, en minutos",
+    "set.agents.reviews_claim_timeout.d":
+      "Cuánto tiempo retiene una toma un pull request. Después, otro revisor puede tomarlo. __DEN_CLI__ config reviews.claim_timeout_minutes=30",
+    "set.agents.reviews_max_rounds": "Revisiones: rondas antes de avisarte",
+    "set.agents.reviews_max_rounds.d":
+      "Tras estas rondas de revisión en un pull request, __DEN_TITLE__ te avisa. __DEN_CLI__ config reviews.max_rounds=3",
+    "set.agents.reviews_agents_may_approve":
+      "Revisiones: los agentes pueden aprobar",
+    "set.agents.reviews_agents_may_approve.d":
+      "Apagado por defecto: una revisión publica comentarios y la comprobación, nunca una aprobación. Encendido: una revisión sin hallazgos que bloqueen aprueba el pull request.",
+    "set.agents.usage_session_cap": "Tope de uso: tokens por ventana de uso",
+    "set.agents.usage_session_cap.d":
+      "Los tokens que los agentes pueden usar en una ventana de uso, contados por __DEN_TITLE__ en sus transcripciones. Las revisiones leen lo que queda. 0: sin tope. __DEN_CLI__ config usage.session_token_cap=0",
+    "set.agents.usage_session_hours": "Tope de uso: ventana de uso, en horas",
+    "set.agents.usage_session_hours.d":
+      "Cuánto dura una ventana de uso. __DEN_CLI__ config usage.session_hours=5",
+    "set.agents.usage_weekly_cap": "Tope de uso: tokens por semana",
+    "set.agents.usage_weekly_cap.d":
+      "Los tokens que los agentes pueden usar en 7 días, contados por __DEN_TITLE__. 0: sin tope. __DEN_CLI__ config usage.weekly_token_cap=0",
+    "bell.m.reviewPosted":
+      "Revisión de Den publicada en {pr}: {blocking} bloquean. El autor corrige o responde cada hilo.",
+    "bell.m.reviewSkipped": "Revisión de Den omitida en {pr}: {why}",
+    "bell.m.reviewOutdated":
+      "La revisión de Den de {pr} quedó desactualizada: el PR cambió durante la revisión. La nueva versión tendrá la suya.",
+    "bell.m.reviewWaiting":
+      "Un pull request de un fork espera tu «Revisar esto»: {pr}",
     "set.server.github_watch_interval":
       "Vigilancia de GitHub: primer intervalo, en segundos",
     "set.server.github_watch_interval.d":

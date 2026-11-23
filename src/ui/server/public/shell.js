@@ -2247,6 +2247,57 @@
     "set.server.owner_name_timeout": "GitHub name check at start, in seconds",
     "set.server.owner_name_timeout.d":
       "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.agents.reviews_enabled": "Reviews: agents review pull requests",
+    "set.agents.reviews_enabled.d":
+      "Off by default. On: the reviewer agent watches its repos, claims each pull request that needs a review, and posts one review with line comments. It posts under your GitHub login, and every review says which agent wrote it. __DEN_CLI__ config reviews.enabled=true",
+    "set.agents.reviews_agent": "Reviews: the reviewer agent",
+    "set.agents.reviews_agent.d":
+      "The agent whose persona, project and model each review uses. Each review runs as a fresh agent of its own, in a read-only copy of the pull request. Empty: no reviewer.",
+    "set.agents.reviews_repos": "Reviews: repos to watch",
+    "set.agents.reviews_repos.d":
+      "The repos the reviewer watches, as owner/name, separated by commas.",
+    "set.agents.reviews_skill": "Reviews: the review skill",
+    "set.agents.reviews_skill.d":
+      "The skill each review runs, such as your company's review skill. A repo's own review rules may name another, and theirs wins. Empty: the reviewer persona's own method.",
+    "set.agents.reviews_min_session":
+      "Reviews: least usage left in the window to claim",
+    "set.agents.reviews_min_session.d":
+      "The reviewer doesn't claim a review with less than this share of the usage window left, and says why. 0: no limit. Usage is what __DEN_TITLE__ counts against your usage caps. __DEN_CLI__ config reviews.min_session_left_pct=25",
+    "set.agents.reviews_min_weekly":
+      "Reviews: least weekly usage left to claim",
+    "set.agents.reviews_min_weekly.d":
+      "The reviewer doesn't claim a review with less than this share of the week's usage left. 0: no limit. __DEN_CLI__ config reviews.min_weekly_left_pct=15",
+    "set.agents.reviews_max_concurrent": "Reviews: reviews at once",
+    "set.agents.reviews_max_concurrent.d":
+      "How many reviews run at the same time. __DEN_CLI__ config reviews.max_concurrent=1",
+    "set.agents.reviews_claim_window": "Reviews: claim window, in seconds",
+    "set.agents.reviews_claim_window.d":
+      "After posting its claim on a pull request, the reviewer waits this long, then rereads the thread: the first claim wins and the others step back. __DEN_CLI__ config reviews.claim_window_seconds=10",
+    "set.agents.reviews_claim_timeout": "Reviews: a claim lasts, in minutes",
+    "set.agents.reviews_claim_timeout.d":
+      "How long a claim holds a pull request. After that, another reviewer may take it. __DEN_CLI__ config reviews.claim_timeout_minutes=30",
+    "set.agents.reviews_max_rounds": "Reviews: rounds before you're told",
+    "set.agents.reviews_max_rounds.d":
+      "After this many review rounds on one pull request, __DEN_TITLE__ tells you. __DEN_CLI__ config reviews.max_rounds=3",
+    "set.agents.reviews_agents_may_approve": "Reviews: agents may approve",
+    "set.agents.reviews_agents_may_approve.d":
+      "Off by default: a review posts comments and the check, never an approval. On: a review with no blocking finding approves the pull request.",
+    "set.agents.usage_session_cap": "Usage cap: tokens per usage window",
+    "set.agents.usage_session_cap.d":
+      "The tokens agents may use in one usage window, as __DEN_TITLE__ counts them from its transcripts. Reviews read what's left. 0: no cap. __DEN_CLI__ config usage.session_token_cap=0",
+    "set.agents.usage_session_hours": "Usage cap: usage window, in hours",
+    "set.agents.usage_session_hours.d":
+      "How long one usage window lasts. __DEN_CLI__ config usage.session_hours=5",
+    "set.agents.usage_weekly_cap": "Usage cap: tokens per week",
+    "set.agents.usage_weekly_cap.d":
+      "The tokens agents may use in 7 days, as __DEN_TITLE__ counts them. 0: no cap. __DEN_CLI__ config usage.weekly_token_cap=0",
+    "bell.m.reviewPosted":
+      "Den review posted on {pr}: {blocking} blocking. The author fixes or answers each thread.",
+    "bell.m.reviewSkipped": "Den review skipped {pr}: {why}",
+    "bell.m.reviewOutdated":
+      "Den review of {pr} is outdated: the PR moved during the review. The new head gets its own.",
+    "bell.m.reviewWaiting":
+      'A pull request from a fork waits for your "Review this": {pr}',
     "set.server.github_watch_interval":
       "GitHub watch: first interval, in seconds",
     "set.server.github_watch_interval.d":

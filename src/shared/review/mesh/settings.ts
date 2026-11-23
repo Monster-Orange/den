@@ -120,3 +120,68 @@ export function reviewSettings(user: unknown): ReviewSettings {
     commentersBlock: strings(b.commenters_block, LOGIN_RE),
   };
 }
+
+/**
+ * What's wrong with a patch of user.yml `reviews:` (POST /api/settings,
+ * `config`), naming the key; null when every value is valid. `null` for a
+ * key removes it.
+ */
+export function reviewsPatchError(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return "reviews is an object";
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const at = `reviews.${k}`;
+    if (v === null) continue;
+    if (k in REVIEW_LIMITS) {
+      const l = REVIEW_LIMITS[k as Key];
+      if (
+        typeof v !== "number" ||
+        !Number.isInteger(v) ||
+        v < l.min ||
+        v > l.max
+      )
+        return `${at} is a whole number from ${l.min} to ${l.max}`;
+    } else if (k === "enabled" || k === "agents_may_approve") {
+      if (typeof v !== "boolean") return `${at} is true or false`;
+    } else if (k === "install_label") {
+      if (typeof v !== "string" || !/^[A-Za-z0-9_.-]{1,40}$/.test(v))
+        return `${at} is up to 40 letters, digits, dots, dashes or underscores`;
+    } else if (k === "base_deny") {
+      if (
+        !Array.isArray(v) ||
+        !v.every((x) => typeof x === "string" && REF_RE.test(x))
+      )
+        return `${at} is a list of branch names (a trailing * matches a prefix)`;
+    } else if (k === "commenters_allow" || k === "commenters_block") {
+      if (
+        !Array.isArray(v) ||
+        !v.every((x) => typeof x === "string" && LOGIN_RE.test(x))
+      )
+        return `${at} is a list of GitHub logins`;
+    } else if (k === "reviewer") {
+      const r = obj(v);
+      if (typeof r.agent !== "string" || !NAME_RE.test(r.agent))
+        return `${at}.agent is an agent id`;
+      if (
+        !Array.isArray(r.repos) ||
+        r.repos.length === 0 ||
+        !r.repos.every((x) => typeof x === "string" && REPO_RE.test(x))
+      )
+        return `${at}.repos is a list of owner/name repos`;
+      if (
+        r.skill !== undefined &&
+        (typeof r.skill !== "string" || !NAME_RE.test(r.skill))
+      )
+        return `${at}.skill is a skill's name`;
+      if (
+        r.skill_args !== undefined &&
+        (typeof r.skill_args !== "string" || r.skill_args.length > 500)
+      )
+        return `${at}.skill_args is text up to 500 characters`;
+      for (const x of Object.keys(r))
+        if (!["agent", "repos", "skill", "skill_args"].includes(x))
+          return `${at}.${x} is not a reviewer setting (agent, repos, skill, skill_args)`;
+    } else return `${at} is not a reviews setting`;
+  }
+  return null;
+}

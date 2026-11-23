@@ -2647,6 +2647,234 @@ function drawRestart(host) {
 /** issue 267: the bell's kinds that come from Hub, shown in Settings › Hub. */
 const HUB_BELL_KINDS = new Set(["hub", "pick", "shared"]);
 
+/**
+ * Issue 476: the reviewer's three fields post together (agent and repos are
+ * both needed); an empty agent or no repos turns the reviewer off.
+ */
+function reviewerWith(ctx, field, value) {
+  const cur = ctx.data.reviews?.reviewer ?? {};
+  const next = {
+    agent: cur.agent ?? "",
+    repos: cur.repos ?? [],
+    skill: cur.skill ?? "",
+    skill_args: cur.skill_args ?? "",
+    [field]: value,
+  };
+  if (!next.agent || next.repos.length === 0) return null;
+  const out = { agent: next.agent, repos: next.repos };
+  if (next.skill) out.skill = next.skill;
+  if (next.skill_args) out.skill_args = next.skill_args;
+  return out;
+}
+
+/** Issue 476: Settings › Agents › Reviews, and the usage caps its limits read. */
+const REVIEW_ROWS = [
+  {
+    id: "agents.reviews_enabled",
+    category: "agents",
+    label: "Reviews: agents review pull requests",
+    description:
+      "Off by default. On: the reviewer agent watches its repos, claims each pull request that needs a review, and posts one review with line comments. It posts under your GitHub login, and every review says which agent wrote it. __DEN_CLI__ config reviews.enabled=true",
+    keywords: ["reviews", "review", "usage", "reviews.enabled"],
+    scope: "user",
+    keys: ["reviews.enabled"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.reviews?.enabled ?? false,
+    write: (v, ctx) => ctx.post({ reviews: { enabled: v } }),
+  },
+  {
+    id: "agents.reviews_agent",
+    category: "agents",
+    label: "Reviews: the reviewer agent",
+    description:
+      "The agent whose persona, project and model each review uses. Each review runs as a fresh agent of its own, in a read-only copy of the pull request. Empty: no reviewer.",
+    keywords: ["reviews", "review", "usage", "reviews.reviewer.agent"],
+    scope: "user",
+    keys: ["reviews.reviewer"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.reviews?.reviewer?.agent ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        reviews: {
+          reviewer: reviewerWith(ctx, "agent", String(v ?? "").trim()),
+        },
+      }),
+  },
+  {
+    id: "agents.reviews_repos",
+    category: "agents",
+    label: "Reviews: repos to watch",
+    description:
+      "The repos the reviewer watches, as owner/name, separated by commas.",
+    keywords: ["reviews", "review", "usage", "reviews.reviewer.repos"],
+    scope: "user",
+    keys: ["reviews.reviewer"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.reviews?.reviewer?.repos ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({
+        reviews: {
+          reviewer: reviewerWith(
+            ctx,
+            "repos",
+            String(v ?? "")
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean),
+          ),
+        },
+      }),
+  },
+  {
+    id: "agents.reviews_skill",
+    category: "agents",
+    label: "Reviews: the review skill",
+    description:
+      "The skill each review runs, such as your company's review skill. A repo's own review rules may name another, and theirs wins. Empty: the reviewer persona's own method.",
+    keywords: ["reviews", "review", "usage", "reviews.reviewer.skill"],
+    scope: "user",
+    keys: ["reviews.reviewer"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.reviews?.reviewer?.skill ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        reviews: {
+          reviewer: reviewerWith(ctx, "skill", String(v ?? "").trim()),
+        },
+      }),
+  },
+  {
+    id: "agents.reviews_min_session",
+    category: "agents",
+    label: "Reviews: least usage left in the window to claim",
+    description:
+      "The reviewer doesn't claim a review with less than this share of the usage window left, and says why. 0: no limit. Usage is what __DEN_TITLE__ counts against your usage caps. __DEN_CLI__ config reviews.min_session_left_pct=25",
+    keywords: ["reviews", "review", "usage", "reviews.min_session_left_pct"],
+    scope: "user",
+    keys: ["reviews.min_session_left_pct"],
+    control: { type: "number", min: 0, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.reviews?.min_session_left_pct,
+    write: (v, ctx) => ctx.post({ reviews: { min_session_left_pct: v } }),
+  },
+  {
+    id: "agents.reviews_min_weekly",
+    category: "agents",
+    label: "Reviews: least weekly usage left to claim",
+    description:
+      "The reviewer doesn't claim a review with less than this share of the week's usage left. 0: no limit. __DEN_CLI__ config reviews.min_weekly_left_pct=15",
+    keywords: ["reviews", "review", "usage", "reviews.min_weekly_left_pct"],
+    scope: "user",
+    keys: ["reviews.min_weekly_left_pct"],
+    control: { type: "number", min: 0, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.reviews?.min_weekly_left_pct,
+    write: (v, ctx) => ctx.post({ reviews: { min_weekly_left_pct: v } }),
+  },
+  {
+    id: "agents.reviews_max_concurrent",
+    category: "agents",
+    label: "Reviews: reviews at once",
+    description:
+      "How many reviews run at the same time. __DEN_CLI__ config reviews.max_concurrent=1",
+    keywords: ["reviews", "review", "usage", "reviews.max_concurrent"],
+    scope: "user",
+    keys: ["reviews.max_concurrent"],
+    control: { type: "number", min: 1, max: 20, step: 1 },
+    read: (ctx) => ctx.data.reviews?.max_concurrent,
+    write: (v, ctx) => ctx.post({ reviews: { max_concurrent: v } }),
+  },
+  {
+    id: "agents.reviews_claim_window",
+    category: "agents",
+    label: "Reviews: claim window, in seconds",
+    description:
+      "After posting its claim on a pull request, the reviewer waits this long, then rereads the thread: the first claim wins and the others step back. __DEN_CLI__ config reviews.claim_window_seconds=10",
+    keywords: ["reviews", "review", "usage", "reviews.claim_window_seconds"],
+    scope: "user",
+    keys: ["reviews.claim_window_seconds"],
+    control: { type: "number", min: 1, max: 600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.reviews?.claim_window_seconds,
+    write: (v, ctx) => ctx.post({ reviews: { claim_window_seconds: v } }),
+  },
+  {
+    id: "agents.reviews_claim_timeout",
+    category: "agents",
+    label: "Reviews: a claim lasts, in minutes",
+    description:
+      "How long a claim holds a pull request. After that, another reviewer may take it. __DEN_CLI__ config reviews.claim_timeout_minutes=30",
+    keywords: ["reviews", "review", "usage", "reviews.claim_timeout_minutes"],
+    scope: "user",
+    keys: ["reviews.claim_timeout_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.reviews?.claim_timeout_minutes,
+    write: (v, ctx) => ctx.post({ reviews: { claim_timeout_minutes: v } }),
+  },
+  {
+    id: "agents.reviews_max_rounds",
+    category: "agents",
+    label: "Reviews: rounds before you're told",
+    description:
+      "After this many review rounds on one pull request, __DEN_TITLE__ tells you. __DEN_CLI__ config reviews.max_rounds=3",
+    keywords: ["reviews", "review", "usage", "reviews.max_rounds"],
+    scope: "user",
+    keys: ["reviews.max_rounds"],
+    control: { type: "number", min: 1, max: 20, step: 1 },
+    read: (ctx) => ctx.data.reviews?.max_rounds,
+    write: (v, ctx) => ctx.post({ reviews: { max_rounds: v } }),
+  },
+  {
+    id: "agents.reviews_agents_may_approve",
+    category: "agents",
+    label: "Reviews: agents may approve",
+    description:
+      "Off by default: a review posts comments and the check, never an approval. On: a review with no blocking finding approves the pull request.",
+    keywords: ["reviews", "review", "usage", "reviews.agents_may_approve"],
+    scope: "user",
+    keys: ["reviews.agents_may_approve"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.reviews?.agents_may_approve ?? false,
+    write: (v, ctx) => ctx.post({ reviews: { agents_may_approve: v } }),
+  },
+  {
+    id: "agents.usage_session_cap",
+    category: "agents",
+    label: "Usage cap: tokens per usage window",
+    description:
+      "The tokens agents may use in one usage window, as __DEN_TITLE__ counts them from its transcripts. Reviews read what's left. 0: no cap. __DEN_CLI__ config usage.session_token_cap=0",
+    keywords: ["reviews", "review", "usage", "usage.session_token_cap"],
+    scope: "user",
+    keys: ["usage.session_token_cap"],
+    control: { type: "number", min: 0, max: 1000000000000, step: 1 },
+    read: (ctx) => ctx.data.usage?.session_token_cap,
+    write: (v, ctx) => ctx.post({ usage: { session_token_cap: v } }),
+  },
+  {
+    id: "agents.usage_session_hours",
+    category: "agents",
+    label: "Usage cap: usage window, in hours",
+    description:
+      "How long one usage window lasts. __DEN_CLI__ config usage.session_hours=5",
+    keywords: ["reviews", "review", "usage", "usage.session_hours"],
+    scope: "user",
+    keys: ["usage.session_hours"],
+    control: { type: "number", min: 1, max: 168, step: 1, unit: "h" },
+    read: (ctx) => ctx.data.usage?.session_hours,
+    write: (v, ctx) => ctx.post({ usage: { session_hours: v } }),
+  },
+  {
+    id: "agents.usage_weekly_cap",
+    category: "agents",
+    label: "Usage cap: tokens per week",
+    description:
+      "The tokens agents may use in 7 days, as __DEN_TITLE__ counts them. 0: no cap. __DEN_CLI__ config usage.weekly_token_cap=0",
+    keywords: ["reviews", "review", "usage", "usage.weekly_token_cap"],
+    scope: "user",
+    keys: ["usage.weekly_token_cap"],
+    control: { type: "number", min: 0, max: 10000000000000, step: 1 },
+    read: (ctx) => ctx.data.usage?.weekly_token_cap,
+    write: (v, ctx) => ctx.post({ usage: { weekly_token_cap: v } }),
+  },
+];
+
 export const DEN_SETTINGS = [
   {
     // MODE-5: the web app's crash-loop guard (user.yml web.crash_loop_*).
@@ -5056,6 +5284,7 @@ export const DEN_SETTINGS = [
   },
 
   ...ACCESS_ROWS,
+  ...REVIEW_ROWS,
   ...EMBED_ROWS,
 
   // ── Distribution (read-only) ───────────────────────────────────────────

@@ -40,6 +40,8 @@ import {
 } from "./notification-routes.js";
 import { handleAppFeedRoutes, isAppFeedPath } from "./app-feed-routes.js";
 import { githubWatchSettings } from "../../shared/github-watch/settings.js";
+import { reviewSettings } from "../../shared/review/mesh/settings.js";
+import { usageCaps } from "../../shared/usage/left.js";
 import {
   handleGithubWatchRoutes,
   isGithubWatchPath,
@@ -5479,6 +5481,36 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         watches_max: g.watchesMax,
       };
     })(),
+    // Issue 476: the reviewer (reviews.*) and the usage caps (usage.*).
+    reviews: (() => {
+      const r = reviewSettings(user);
+      return {
+        enabled: r.enabled,
+        reviewer: r.reviewer
+          ? {
+              agent: r.reviewer.agent,
+              repos: r.reviewer.repos,
+              skill: r.reviewer.skill ?? "",
+              skill_args: r.reviewer.skillArgs,
+            }
+          : null,
+        min_session_left_pct: r.minSessionLeftPct,
+        min_weekly_left_pct: r.minWeeklyLeftPct,
+        max_concurrent: r.maxConcurrent,
+        claim_window_seconds: r.claimWindowSeconds,
+        claim_timeout_minutes: r.claimTimeoutMinutes,
+        max_rounds: r.maxRounds,
+        agents_may_approve: r.agentsMayApprove,
+      };
+    })(),
+    usage: (() => {
+      const u = usageCaps(user);
+      return {
+        session_token_cap: u.sessionTokens,
+        session_hours: u.sessionHours,
+        weekly_token_cap: u.weeklyTokens,
+      };
+    })(),
     // den#156: the Agents list's waits (agents_list.*).
     agents_list: (() => {
       try {
@@ -9476,6 +9508,8 @@ async function handleRequest(
           held_writes?: unknown;
           health_poll?: unknown;
           github?: unknown;
+          reviews?: unknown;
+          usage?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
           approvals_watch?: unknown;
@@ -9542,6 +9576,9 @@ async function handleRequest(
             held_writes: body.held_writes,
             health_poll: body.health_poll,
             github: body.github,
+            // Issue 476: the reviewer and the usage caps.
+            reviews: body.reviews,
+            usage: body.usage,
           });
           if (!c.ok) return send400(res, c.error);
         }

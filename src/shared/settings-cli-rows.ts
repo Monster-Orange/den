@@ -65,6 +65,8 @@
  *                                     user.yml agents.keep_running_after_logout
  *                                     (issue 163: `service install`'s mode)
  */
+import { USAGE_CAP_LIMITS } from "./usage/left.js";
+import { reviewsPatchError } from "./review/mesh/settings.js";
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
 import {
   SHOT_KEEP_DAYS_MAX,
@@ -155,6 +157,10 @@ export const PERSON_ONLY_SETTINGS = [
   "sessions",
   // The shared GitHub watcher's pace and API budget: every agent's polls.
   "github",
+  // Issue 476: the reviewer (on/off, its repos, limits, approval) and the
+  // usage caps its limits read: an agent never widens its own.
+  "reviews",
+  "usage",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
@@ -405,6 +411,35 @@ const GITHUB_WATCH: Record<string, Limit> = Object.fromEntries(
     { key: k, min: l.min, max: l.max, int: true },
   ]),
 );
+
+/** Issue 476: user.yml usage.* caps (usage/left.ts). */
+const USAGE_CAPS: Record<string, Limit> = Object.fromEntries(
+  Object.entries(USAGE_CAP_LIMITS).map(([k, l]) => [
+    k,
+    { key: k, min: l.min, max: l.max, int: true },
+  ]),
+);
+
+/** Issue 476: user.yml reviews.* (review/mesh/settings.ts checks them). */
+function patchReviews(
+  user: Record<string, unknown>,
+  value: unknown,
+  apply: (() => void)[],
+): string | null {
+  if (value === undefined) return null;
+  const e = reviewsPatchError(value);
+  if (e) return e;
+  apply.push(() => {
+    const b = isObj(user.reviews) ? { ...user.reviews } : {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === null) delete b[k];
+      else b[k] = v;
+    }
+    if (Object.keys(b).length) user.reviews = b;
+    else delete user.reviews;
+  });
+  return null;
+}
 
 /** Issue 278: user.yml agent_context's numbers (context-watch.ts). */
 const AGENT_CONTEXT: Record<string, Limit> = Object.fromEntries(
@@ -796,7 +831,9 @@ export function patchCliRows(
       body.health_poll,
       apply,
     ) ??
-    patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);
+    patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply) ??
+    patchBlock(user, "usage", "usage", USAGE_CAPS, body.usage, apply) ??
+    patchReviews(user, body.reviews, apply);
   if (e) return { ok: false, error: e };
   for (const f of apply) f();
   return { ok: true };

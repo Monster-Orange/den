@@ -133,7 +133,7 @@ export async function handleReviewRoutes(
         ok: false,
         code: "unverified_actor",
         error:
-          "review_submit is a review leg's: only the session Den started for the review may call it.",
+          "review_submit is a review leg's: only the agent Den started for the review may call it.",
       },
       403,
     );
