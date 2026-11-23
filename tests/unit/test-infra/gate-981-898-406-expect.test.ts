@@ -110,52 +110,29 @@ describe("issue 898's live check", () => {
     expect(r.map((x) => x.ok)).toEqual([true, false]);
   });
 
-  it("a project an earlier run left behind is named in the detail", () => {
+  it("the bed has no long-named project: both clauses are not run (needs-long-project), never failed", () => {
     const r = rows(898, [
-      cell("webkit", [{ ...row(true), left: ["gate-898-old"] }]),
+      cell("webkit", [{ tag: "webkit", skip: "needs-long-project" }]),
     ]);
-    expect(r.map((x) => x.ok)).toEqual([true, true]);
-    expect(r[0].detail).toContain(
-      "left behind by an earlier run: gate-898-old",
-    );
+    expect(r.map((x) => [x.ok, x.skip])).toEqual([
+      [null, "needs-long-project"],
+      [null, "needs-long-project"],
+    ]);
   });
 
-  it("the checked row isn't this run's project: the long-name clause fails", () => {
+  it("the checked row isn't the bed's long-named project: the long-name clause fails", () => {
     const r = rows(898, [
-      cell("webkit", [
-        {
-          ...row(true),
-          text: "Gate 898 a project whose name runs well past the row old",
-        },
-      ]),
+      cell("webkit", [{ ...row(true), text: "Another project" }]),
     ]);
     expect(r[1].ok).toBe(false);
   });
 
-  it("each run's name is its own, over 52 characters and within the 64 a project allows", () => {
-    const js = `
-      const g = await import("./gate/898.mjs");
-      const a = g.longName(Date.UTC(2026, 10, 22)), b = g.longName(Date.UTC(2026, 10, 22) + 1);
-      process.stdout.write(JSON.stringify([a, b]));
-    `;
-    const out = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
-      cwd: ROOT,
-      encoding: "utf-8",
-    });
-    const [a, b] = JSON.parse(out.stdout) as string[];
-    expect(a).not.toBe(b);
-    expect(a.length).toBeGreaterThan(52);
-    expect(a.length).toBeLessThanOrEqual(64);
-  });
-
-  it("the long-named project couldn't be made: both clauses fail with the reason", () => {
+  it("the project couldn't be put in view: both clauses fail with the reason", () => {
     const r = rows(898, [
-      cell("webkit", [
-        { tag: "webkit", error: "couldn't make the long-named project" },
-      ]),
+      cell("webkit", [{ tag: "webkit", error: "couldn't put it in view" }]),
     ]);
     expect(r.map((x) => x.ok)).toEqual([false, false]);
-    expect(r[0].detail).toContain("couldn't make the long-named project");
+    expect(r[0].detail).toContain("couldn't put it in view");
   });
 });
 

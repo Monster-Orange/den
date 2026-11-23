@@ -1,11 +1,13 @@
 /* eslint-env browser */
 // Live check for issue 898: on an iPad the project drop-down's checkmark
-// wrapped onto a line of its own. Setup makes a throwaway project with a long
-// name, activates it and puts it in view, so it is the checked row. Each cell
-// opens the Services page signed in as the bed's person, in a touch context
-// of its own at iPad sizes (the cell's browser, the page's own sign-in),
-// opens the project picker and measures that row. Teardown puts the person's
-// view back, deactivates the project and deletes it.
+// wrapped onto a line of its own. The bed keeps one active project with a
+// long name (BED_LONG_NAME); setup puts it in view, so it is the checked
+// row. Each cell opens the Services page signed in as the bed's person, in a
+// touch context of its own at iPad sizes (the cell's browser, the page's own
+// sign-in), opens the project picker and measures that row. Teardown puts
+// the person's view back. The fixture person may change the view only
+// (FIXTURE_WRITES): the check never makes, activates or deletes a project.
+// Without the bed's project, both clauses are not run (needs-long-project).
 export const issue = 898;
 export const items = [898];
 export const clauses = [
@@ -13,14 +15,9 @@ export const clauses = [
   "a long project name is cut short with an ellipsis instead of wrapping",
 ];
 
-/**
- * Long enough that no iPad-width row holds it on one line, with a suffix of
- * its own each run, so a project a crashed run left behind never collides.
- */
-export const LONG_PREFIX =
+/** The bed's long-named project: no iPad-width row holds it on one line. */
+export const BED_LONG_NAME =
   "Gate 898 a project whose name runs well past the row";
-export const longName = (now = Date.now()) =>
-  `${LONG_PREFIX} ${now.toString(36)}`;
 
 const json = (method, body) => ({
   method,
@@ -60,34 +57,24 @@ async function touchPage(ctx, width, height) {
   return p;
 }
 
-// No Hub project is made: creating a Den project only writes this install's
-// project list. A Hub-connected Den sends Hub that whole list; Hub marks a
-// project missing from the next send as gone (never a Hub project).
-//
-// Setup never throws: the runner calls teardown with what setup returned,
-// so a project it made is always in the state teardown reads.
+// Setup never throws: the runner calls teardown with what setup returned.
 export async function setup(ctx) {
-  const s = { name: longName() };
+  const s = {};
   try {
     s.viewWas = (await ctx.api("/api/scope"))?.scope ?? "all";
-    // A project an earlier run left behind is said, never swept by name.
-    const ws = (await ctx.api("/api/workspaces"))?.workspaces ?? {};
-    s.leftover = Object.entries(ws)
-      .filter(([, w]) => String(w?.name ?? "").startsWith(LONG_PREFIX))
-      .map(([slug]) => slug);
-    const made = await ctx.api(
-      "/api/workspaces/create",
-      json("POST", { name: s.name }),
-    );
-    if (!made?.slug) {
-      s.error = `couldn't make the long-named project: ${JSON.stringify(made).slice(0, 160)}`;
+    const data = await ctx.api("/api/workspaces");
+    const active = Array.isArray(data?.active)
+      ? data.active
+      : data?.active
+        ? [data.active]
+        : [];
+    s.slug = Object.entries(data?.workspaces ?? {}).find(
+      ([slug, w]) => w?.name === BED_LONG_NAME && active.includes(slug),
+    )?.[0];
+    if (!s.slug) {
+      s.skip = "needs-long-project";
       return s;
     }
-    s.slug = made.slug;
-    await ctx.api(
-      "/api/workspaces",
-      json("POST", { name: s.slug, action: "activate" }),
-    );
     const view = await ctx.api("/api/scope", json("POST", { scope: s.slug }));
     if (view?.scope !== s.slug)
       s.error = `couldn't put it in view: ${JSON.stringify(view).slice(0, 160)}`;
@@ -98,22 +85,13 @@ export async function setup(ctx) {
 }
 
 export async function teardown(ctx, s) {
-  if (s?.viewWas)
+  if (s?.viewWas && s.slug)
     await ctx.api("/api/scope", json("POST", { scope: s.viewWas }));
-  if (!s?.slug) return;
-  await ctx.api(
-    "/api/workspaces",
-    json("POST", { name: s.slug, action: "deactivate" }),
-  );
-  await ctx.api(
-    "/api/workspaces",
-    json("DELETE", { name: s.slug, agents: "stop" }),
-  );
 }
 
 export async function run(ctx, s) {
-  const left = s?.leftover?.length ? s.leftover : undefined;
-  if (s?.error) return [{ tag: ctx.browser, error: s.error, left }];
+  if (s?.skip) return [{ tag: ctx.browser, skip: s.skip }];
+  if (s?.error) return [{ tag: ctx.browser, error: s.error }];
   const out = [];
   for (const [w, h] of SIZES) {
     const tag = `${ctx.browser}-${w}x${h}`;
@@ -155,7 +133,7 @@ export async function run(ctx, s) {
         };
       });
       await p.screenshot({ path: ctx.evidence(`${tag}.png`) });
-      out.push({ tag, want: s.name, left, ...row });
+      out.push({ tag, want: BED_LONG_NAME, ...row });
     } catch (e) {
       out.push({ tag, error: String(e).slice(0, 200) });
     } finally {
@@ -182,10 +160,15 @@ export function expect(cells) {
       ? `${r.tag}: ${r.error}`
       : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row${r.cut ? ", cut short" : ""}${r.ellipsis ? " with an ellipsis" : ""}) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
   const ok = (f) => all.length > 0 && all.every(f);
-  const left = all.find((r) => r.left)?.left;
-  const detail =
-    all.map(say).join("; ") +
-    (left ? `; left behind by an earlier run: ${left.join(", ")}` : "");
+  const skip = all.find((r) => r.skip)?.skip;
+  if (skip)
+    return clauses.map((clause) => ({
+      clause,
+      ok: null,
+      skip,
+      detail: `the bed has no active project named "${BED_LONG_NAME}"`,
+    }));
+  const detail = all.map(say).join("; ");
   const evidence = all.map((r) => `${r.tag}.png`);
   return [
     { clause: clauses[0], ok: ok(good), detail, evidence },
