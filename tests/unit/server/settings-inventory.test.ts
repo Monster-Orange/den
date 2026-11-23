@@ -191,6 +191,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
+  // Issue 1051: how long the top bar waits for its project menu's load.
+  menu_load: { timeout_ms: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -411,6 +413,8 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        // Issue 1051: how long the top bar waits for its project menu's load.
+        "menu_load.timeout_ms",
         // Issue 1129: the restart queue.
         "agents_resume.batch",
         "agents_resume.gap_seconds",

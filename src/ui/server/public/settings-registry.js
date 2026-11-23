@@ -2933,6 +2933,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ process_lookup: { retry_seconds: v } }),
   },
   {
+    // Issue 1051: the top bar's project menu load wait (user.yml web.menu_load_timeout_ms).
+    id: "server.menu_load_timeout",
+    category: "server",
+    label: "Project menu load wait",
+    description:
+      "How long each page's top bar waits for its project menu to load before it counts as failed and tries again. A slow or stalled connection then never hides the menu until a reload. __DEN_CLI__ config web.menu_load_timeout_ms=8000",
+    keywords: ["project", "menu", "top bar", "load", "timeout", "wait", "slow"],
+    scope: "user",
+    keys: ["menu_load.timeout_ms"],
+    control: { type: "number", min: 1000, max: 600000, step: 500, unit: "ms" },
+    read: (ctx) => ctx.data.menu_load?.timeout_ms ?? 8000,
+    write: (v, ctx) => ctx.post({ menu_load: { timeout_ms: v } }),
+  },
+  {
     // Issue 455: the address check's limits (user.yml web.address_check_*).
     id: "server.address_check_timeout",
     category: "server",

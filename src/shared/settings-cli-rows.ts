@@ -61,6 +61,7 @@
  *                                     checked as den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
+ *   menu_load: { timeout_ms? }                         user.yml web.menu_load_timeout_ms (issue 1051)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max? }
  *                                     user.yml github.* (the shared GitHub
@@ -92,6 +93,7 @@ import {
   sessionsValueError,
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
+import { MENU_LOAD } from "./menu-load.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
 import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
@@ -178,6 +180,8 @@ export const PERSON_ONLY_SETTINGS = [
   "held_writes",
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll",
+  // Issue 1051: how long the top bar waits for its project menu's load.
+  "menu_load",
 ] as const;
 
 /**
@@ -459,6 +463,16 @@ const HEALTH_POLL_LIMITS: Record<string, Limit> = {
     int: true,
   },
   hidden_seconds: { key: "hidden_seconds", ...HEALTH_POLL.hidden, int: true },
+};
+
+/** Issue 1051: user.yml web.menu_load_timeout_ms (menu-load.ts). */
+const MENU_LOAD_LIMITS: Record<string, Limit> = {
+  timeout_ms: {
+    key: "menu_load_timeout_ms",
+    min: MENU_LOAD.timeout_ms.min,
+    max: MENU_LOAD.timeout_ms.max,
+    int: true,
+  },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -868,6 +882,14 @@ export function patchCliRows(
       "health_poll",
       HEALTH_POLL_LIMITS,
       body.health_poll,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "menu_load",
+      "web",
+      MENU_LOAD_LIMITS,
+      body.menu_load,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);

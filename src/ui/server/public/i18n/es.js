@@ -1138,6 +1138,9 @@
     "set.server.lookup_retry": "Espera del reintento de la búsqueda",
     "set.server.lookup_retry.d":
       "Cuánto espera el segundo intento cuando el primero se quedó sin tiempo. Una máquina ocupada puede tardar en responder. __DEN_CLI__ config process_lookup.retry_seconds=20",
+    "set.server.menu_load_timeout": "Espera de carga del menú de proyectos",
+    "set.server.menu_load_timeout.d":
+      "Cuánto espera la barra superior de cada página a que cargue su menú de proyectos antes de darlo por fallido y volver a intentarlo. Así una conexión lenta o detenida nunca oculta el menú hasta recargar. __DEN_CLI__ config web.menu_load_timeout_ms=8000",
     "set.server.address_check_timeout":
       "Espera de la comprobación de dirección",
     "set.server.address_check_timeout.d":

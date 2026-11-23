@@ -95,6 +95,9 @@ function _readHealthPoll() {
       const hp = s?.health_poll;
       if (Number.isFinite(hp?.visible)) _healthPoll.visible = hp.visible;
       if (Number.isFinite(hp?.hidden)) _healthPoll.hidden = hp.hidden;
+      // Issue 1051: the project menu's load wait (web.menu_load_timeout_ms).
+      const ml = s?.menu_load?.timeout_ms;
+      if (Number.isFinite(ml) && ml > 0) _scopeLoadMs = ml;
     })
     .catch(() => {});
   return _healthPollRead;
@@ -413,8 +416,9 @@ const SCOPE_RETRY_FIRST_MS = 1_000;
 const SCOPE_RETRY_MAX_MS = 30_000;
 // A load that hasn't answered in this long counts as failed (a stalled
 // connection never errors, so it would never be tried again; issue 1044's
-// WebKit wait after a pick's reload).
-const SCOPE_LOAD_TIMEOUT_MS = 8_000;
+// WebKit wait after a pick's reload). A Setting (web.menu_load_timeout_ms,
+// from /api/settings); this default until the page has read it.
+let _scopeLoadMs = 8_000;
 
 /** fetch(url), ended (it throws) when it hasn't answered in `ms`. */
 function fetchWithin(url, ms) {
@@ -461,10 +465,8 @@ async function _renderScopeMenu() {
   if (!sh?.setWorkspaces || configInvalid()) return;
   try {
     const [data, scope] = await Promise.all([
-      fetchWithin("/api/workspaces", SCOPE_LOAD_TIMEOUT_MS).then((r) =>
-        r.json(),
-      ),
-      fetchWithin("/api/scope", SCOPE_LOAD_TIMEOUT_MS)
+      fetchWithin("/api/workspaces", _scopeLoadMs).then((r) => r.json()),
+      fetchWithin("/api/scope", _scopeLoadMs)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     ]);

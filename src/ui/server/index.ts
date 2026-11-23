@@ -32,6 +32,7 @@ import {
   healthCacheTtlMs,
   healthPollSeconds,
 } from "../../shared/health-poll.js";
+import { menuLoadTimeoutMs } from "../../shared/menu-load.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
@@ -6024,6 +6025,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
+    // Issue 1051: the top bar's project menu load wait (web.menu_load_timeout_ms).
+    menu_load: { timeout_ms: menuLoadTimeoutMs(() => user) },
     // Issue 707: the server's warning lines on disk, capped (server_log.*).
     server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
@@ -9992,6 +9995,7 @@ async function handleRequest(
           sessions?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
+          menu_load?: unknown;
           github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
@@ -10061,6 +10065,7 @@ async function handleRequest(
             sessions: body.sessions,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
+            menu_load: body.menu_load,
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
