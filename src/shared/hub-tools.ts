@@ -33,6 +33,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** Each Hub tool's parameters and the required ones, sorted. */
 export type ToolShape = Record<
@@ -491,9 +492,8 @@ export class HubToolsWatch {
   private persist(): void {
     try {
       fs.mkdirSync(path.dirname(this.d.file), { recursive: true });
-      const tmp = `${this.d.file}.${process.pid}.tmp`;
-      fs.writeFileSync(
-        tmp,
+      writeFileAtomic(
+        this.d.file,
         JSON.stringify({
           v: STATE_V,
           agents: this.seen,
@@ -502,7 +502,6 @@ export class HubToolsWatch {
         }),
         { mode: 0o600 },
       );
-      fs.renameSync(tmp, this.d.file);
     } catch (e) {
       this.d.log?.(
         `Hub's tools: state not saved: ${String((e as Error)?.message ?? e).slice(0, 200)}`,

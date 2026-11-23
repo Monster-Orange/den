@@ -11,6 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { getStateDir } from "./paths.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export interface LinkSeen {
   id: string;
@@ -32,9 +33,7 @@ export function readLinksSeen(): Record<string, LinkSeen> {
 function write(v: Record<string, LinkSeen>): void {
   const f = file();
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(v, null, 1) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, f);
+  writeFileAtomic(f, JSON.stringify(v, null, 1) + "\n", { mode: 0o600 });
 }
 
 /** Note the projects linked in `workspaces` (best effort). */
@@ -45,7 +44,9 @@ export function noteLinksSeen(
     const seen = readLinksSeen();
     let changed = false;
     for (const [ws, cfg] of Object.entries(workspaces)) {
-      const l = cfg?.hub_project as { id?: unknown; slug?: unknown } | undefined;
+      const l = cfg?.hub_project as
+        | { id?: unknown; slug?: unknown }
+        | undefined;
       if (!l || typeof l.id !== "string") continue;
       const slug = typeof l.slug === "string" ? l.slug : l.id;
       if (seen[ws]?.id === l.id && seen[ws]?.slug === slug) continue;
