@@ -3045,8 +3045,12 @@ function sendPairing(
   requestId: string,
   lead: { key: string; message: string },
   link?: { nonce: string; startedAt?: number },
-  spend?: { spend: () => boolean; gone: () => void },
+  spend?: { spend: () => boolean; gone: () => void; used?: () => boolean },
 ): void {
+  // Issue 1146: a used link opens nothing. Checked before any request is
+  // made, so replaying one is never a link's request (uncounted, and able
+  // to drop one waiting).
+  if (spend?.used?.()) return spend.gone();
   const g = checkRequest(req, GUARD, product().cli, product().title);
   const client = g.ok ? g.client : undefined;
   const r = PAIRS.tryCreate({
@@ -3238,7 +3242,11 @@ async function handleAuth(
       pairLinkLead(),
       // Issue 1146: a link's request, with or without its `web login` run.
       { nonce: check.nonce, ...(wait ? { startedAt: wait.startedAt } : {}) },
-      { spend: spendLink, gone },
+      {
+        spend: spendLink,
+        gone,
+        used: () => webSessions.codeUsed(check.nonce),
+      },
     );
   if (!spendLink()) return gone();
   if (wait) LOGIN_WAITS.used(check.nonce, meta(already));
@@ -4216,7 +4224,11 @@ async function handleClaim(
       },
       // Issue 1146: protected as a sign-in link's request is (spent once).
       { nonce: check.nonce },
-      { spend: spendClaim, gone: claimGone },
+      {
+        spend: spendClaim,
+        gone: claimGone,
+        used: () => CLAIM_NONCES.used(check.nonce),
+      },
     );
   if (!spendClaim()) return claimGone();
   const s = startSession(req, "claim");

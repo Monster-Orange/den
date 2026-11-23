@@ -150,6 +150,16 @@ export class ClaimNonces {
   }
 
   /**
+   * Issue 1146: whether `nonce` is used already, without using it. An
+   * unreadable file counts as used (fail closed, as consume does).
+   */
+  used(nonce: string, now: number = Date.now()): boolean {
+    const used = this.read();
+    if (!used) return true;
+    return nonce in used && used[nonce] > now;
+  }
+
+  /**
    * Use `nonce` (its code expires at `expiresAt`): true the first time,
    * false once used. Expired entries are pruned on the way.
    */

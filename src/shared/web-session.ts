@@ -885,6 +885,15 @@ export class WebSessionStore {
   }
 
   /**
+   * Issue 1146: whether a login code's nonce is used already, without
+   * using it (a used link opens nothing, and drops nothing waiting).
+   */
+  codeUsed(nonce: string): boolean {
+    const h = createHash("sha256").update(nonce).digest("hex");
+    return this.load().usedCodes[h] !== undefined;
+  }
+
+  /**
    * Record a login code's nonce as used. False when it was used already
    * (the code is refused).
    */
