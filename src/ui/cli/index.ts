@@ -5213,13 +5213,18 @@ class DenCLI {
     // ignored (the distribution's web.allow_plain_http_remote: only
     // config/local/user.yml counts) is flagged, as `web up` says it.
     {
-      const { ignoredConfigWarning, readWebAuthConfig } =
-        await import("../../shared/web-session.js");
+      const {
+        fixturePersonOffInstallWarning,
+        ignoredConfigWarning,
+        readWebAuthConfig,
+      } = await import("../../shared/web-session.js");
       try {
-        const w = ignoredConfigWarning(
-          readWebAuthConfig(getDistRoot(), product().configFile),
-        );
-        if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
+        const cfg = readWebAuthConfig(getDistRoot(), product().configFile);
+        for (const w of [
+          ignoredConfigWarning(cfg),
+          fixturePersonOffInstallWarning(cfg),
+        ])
+          if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
       } catch (e) {
         console.error(chalk.red(`\n  ✗  web: ${(e as Error).message}`));
         process.exitCode = 1;
