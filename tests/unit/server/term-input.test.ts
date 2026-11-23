@@ -198,14 +198,16 @@ describe("issue 302: the terminal keys a phone sends", () => {
   it("the row's keys, in the mock's order", () => {
     // Enter and Tab too: a phone's terminal input raises no keyboard and
     // the message box sends no empty line, so a menu needs them here.
+    // Two lines of four (the design check): Esc Ctrl-C Tab Enter, then the
+    // arrows in a keyboard's order.
     expect(TERM_KEYS).toEqual([
       "esc",
       "ctrlc",
       "tab",
       "enter",
+      "left",
       "up",
       "down",
-      "left",
       "right",
     ]);
   });
