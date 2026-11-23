@@ -56,6 +56,9 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
+ *   den_sandbox_on    issue 936: agents.sandbox: on in user.yml, for the
+ *                     agents that started before the sandbox. Den asks for
+ *                     it itself; only the person's Allow runs it
  *   embed_key_create  issue 334: an app key for a web app's own server,
  *   embed_key_revoke  and its revoke (embed-routes.ts appKeyOps). A
  *                     person's own ask and Allow only; the key is shown
@@ -246,6 +249,8 @@ export interface HeldActionDeps {
   report?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
+  sandboxOn?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
   reposRoot?: () => string;
   /** SRV-P3: runs git for the clone (a test's fake; default: git). */
@@ -666,6 +671,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const sandboxOn = op(
+    d.sandboxOn,
+    "this Den can't turn the agent sandbox on here",
+  );
   const gateRunnerToken = op(
     d.gateRunnerToken,
     "this Den can't make gate runner tokens here",
@@ -1028,6 +1037,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       }),
     },
     den_pin_commit: pinCommit,
+    den_sandbox_on: sandboxOn,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,

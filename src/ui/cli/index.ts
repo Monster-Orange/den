@@ -5,6 +5,7 @@
  * Main entry point for the interactive CLI
  */
 
+import { sandboxErrorHint } from "../../shared/agents/sandbox.js";
 import { notSetLine, readWebUrl } from "../../shared/web-url.js";
 import { getStateDir } from "../../shared/paths.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -855,6 +856,7 @@ class DenCLI {
           durationMs: stopTimer(),
         });
         console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
+        printSandboxHint(error);
         process.exit(1);
       }
       return;
@@ -1297,6 +1299,7 @@ class DenCLI {
         reason: telemetryReason(error),
       });
       console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
+      printSandboxHint(error);
       process.exit(1);
     }
   }
@@ -5641,4 +5644,15 @@ function workspaceAgentsRefusal(name: string): string | null {
     `Move ${ids.length === 1 ? "it" : "them"} first (${cli} agents move <id> -w <project>), ` +
     `or stop and remove ${ids.length === 1 ? "it" : "them"} (${cli} agents stop <id>, ${cli} agents rm <id>).`
   );
+}
+
+/** Issue 936: inside an agent's sandbox, say why a write was refused. */
+function printSandboxHint(error: unknown): void {
+  const hint = sandboxErrorHint(
+    error,
+    process.env,
+    product().cli,
+    process.argv.slice(2),
+  );
+  if (hint) console.error(chalk.yellow(hint));
 }
