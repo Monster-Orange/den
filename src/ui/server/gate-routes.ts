@@ -595,7 +595,8 @@ async function handleBoxes(
         { ok: false, error: "enabled is true or false" },
         400,
       );
-    if (!(await lockOf(d)(() => store.setBoxEnabled(name, body.enabled))))
+    const on = body.enabled;
+    if (!(await lockOf(d)(() => store.setBoxEnabled(name, on))))
       return sendJson(res, { ok: false, error: "no such test box" }, 404);
     audit(`test box ${name} turned ${body.enabled ? "on" : "off"}`);
     return sendJson(res, { ok: true, boxes: store.boxes() });

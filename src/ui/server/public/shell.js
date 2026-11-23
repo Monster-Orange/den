@@ -3691,6 +3691,8 @@
     "bell.undo": "Undo",
     "bell.undoMsg": "No longer showing “{kind}”.",
     "bell.clearRead": "Clear read",
+    "bell.marking": "Marking…",
+    "bell.clearing": "Clearing…",
     "bell.read": "Mark read",
     "bell.server": "__DEN_TITLE__ agent",
     "bell.hub": "Hub · {project}",
