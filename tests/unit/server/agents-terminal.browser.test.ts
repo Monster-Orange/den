@@ -1020,8 +1020,8 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       }),
     );
     await p.reload();
-    const st = (id: string) =>
-      `#agl .agst:has(> .agr[data-id="${sid[id]}"]), #agl .agst:has(.agrw > .agr[data-id="${sid[id]}"])`;
+    // The row's whole block (its button and the callout under it).
+    const st = (id: string) => `#agl .agst:has(.agr[data-id="${sid[id]}"])`;
     const bar = `.pane[data-id="${sid.planner}"] .bar2`;
     await p.waitForSelector(`${bar} [data-mcp-stale="den"]`, {
       timeout: 15_000,
