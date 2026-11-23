@@ -426,7 +426,7 @@ export function handleAccountsRoute(
           return bad("`account` is a string");
         removed = await d.remove(runtime, body.account);
         d.log?.(
-          `agents' sign-in account ${removed.label} (${runtime}) removed (by a person)`,
+          `agents' sign-in for ${runtime}: ${removed.label} removed (by a person)`,
         );
       } else {
         if (typeof body.account !== "string")
