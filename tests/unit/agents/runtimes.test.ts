@@ -13,7 +13,10 @@ import {
   RUNTIME_KIND,
   type LaunchInput,
 } from "../../../src/shared/agents/runtimes.js";
-import { stateDirDenyRules } from "../../../src/shared/agents/den-claude.js";
+import {
+  ownFilesDenyRules,
+  stateDirDenyRules,
+} from "../../../src/shared/agents/den-claude.js";
 import { HUB_HEADERS_HELPER } from "../../../src/ui/cli/agent-ops.js";
 import { denied, readDenied } from "./helpers/claude-rules.js";
 import {
@@ -273,7 +276,13 @@ describe("den-claude launch", () => {
     // cooperating agent only): Read, and any command naming web.secret or
     // sessions/.
     expect(JSON.parse(out.files![settingsFile])).toEqual({
-      permissions: { deny: stateDirDenyRules("/home/someone/.acme") },
+      permissions: {
+        deny: [
+          // Issue 362: the files it was launched with.
+          ...ownFilesDenyRules([settingsFile, mcpFile]),
+          ...stateDirDenyRules("/home/someone/.acme"),
+        ],
+      },
       // den#3: the account's claude.ai connectors stay out.
       disableClaudeAiConnectors: true,
     });
@@ -361,8 +370,8 @@ describe("den-claude launch", () => {
     // …but not its own MCP config and settings, which Claude Code reads.
     for (const f of [path.join(filesDir, "mcp.json"), settingsFile])
       expect([f, readDenied(deny, f)]).toEqual([f, false]);
-    // Nor the commands its start runs: Claude Code with its own files,
-    // Den's MCP server, and the Hub headers helper (its token comes from
+    // Nor the commands its start runs: Den's MCP server and the Hub
+    // headers helper (its token comes from
     // DEN_ACTOR_TOKEN_FILE, never a path in the command).
     const mcp = JSON.parse(out.files![path.join(filesDir, "mcp.json")]) as {
       mcpServers: Record<
@@ -370,8 +379,9 @@ describe("den-claude launch", () => {
         { command?: string; args?: string[]; headersHelper?: string }
       >;
     };
+    // (Claude Code's own argv is not a Bash tool call, so it's left out:
+    // it names the agent's settings file, which issue 362 denies to Bash.)
     const commands = [
-      out.argv.slice(0, -1).join(" "),
       ...Object.values(mcp.mcpServers).map(
         (x) => x.headersHelper ?? [x.command, ...(x.args ?? [])].join(" "),
       ),

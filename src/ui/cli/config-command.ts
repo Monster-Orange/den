@@ -75,6 +75,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // Issue 1129: the restart queue (agents.resume.*).
+  "agents.resume.batch": ["agents_resume", "batch"],
+  "agents.resume.gap_seconds": ["agents_resume", "gap_seconds"],
+  "agents.resume.load_ceiling": ["agents_resume", "load_ceiling"],
+  "agents.resume.max_wait_seconds": ["agents_resume", "max_wait_seconds"],
   // issue_write: which roles write GitHub issues ([planner, sde]), and the
   // install's writes an hour.
   "agents.issue_writes": ["agent_issue_writes", "roles"],
