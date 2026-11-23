@@ -111,6 +111,10 @@ declares one of:
   address yet when it asks (`--browser-endpoint=self`). Its own setup
   keeps the browser in that container.
 
+On a Mac, a run with no `--box` and no browser of its own isn't refused when
+a test box can serve it: it waits for a box only, since a box's browser is in a
+container.
+
 Over MCP (`gate_slot_request`) and HTTP (`POST /api/gate-slots/ask`) the
 field is `browser_endpoint`. A run for a named test box uses that box's
 browser and needs none. An address that is given is checked everywhere:
@@ -467,8 +471,9 @@ who asked and who allowed. Deny changes nothing.
 ### Which runs go to a box
 
 A browser run with no `--box` takes whichever browser slot frees first:
-this machine's, then the first test box with a free slot. It needs
-`--base-url` for that (a box's browser reaches the app by it):
+this machine's, then the first test box with a free slot. A box's browser
+reaches the app by the run's `--base-url`; with none, it may reach only
+the ports the run opens itself (`http://127.0.0.1:*`, never 80 or 443):
 
 ```sh
 den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
@@ -489,8 +494,10 @@ A run with no `--box` stays on this machine, and says why in one line
 - its project or label is host-only (`browser_host_only`, below);
 - it brings its own browser: `--browser-endpoint` (an address, or `self`
   for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
-  `E2E_WEBKIT_WS` in its environment;
-- it has no `--base-url`, or one a box can't use;
+  `E2E_WEBKIT_WS` in its environment naming a container on another host.
+  One on this machine's loopback (`ws://127.0.0.1:…`) is what the run uses
+  if it stays here; given a box, `DEN_PW_WS` becomes the box's;
+- its `--base-url` is one a box can't use;
 - its Playwright version is unknown (no `--pw-version`, and none installed
   where it runs): a box's server would refuse it;
 - no box can serve it. By default a run skips a box that declares no

@@ -113,10 +113,11 @@ describe("the rule", () => {
     expect(
       browserSlotCheck({ kind: "browser", where: "box-1", ...mac() }),
     ).toEqual({ ok: true });
-    // "any" may land on this machine: it still declares one.
+    // Issue 1198: "any" with none declared waits for a box only (a box's
+    // browser is a container); it never lands on this machine.
     expect(
       browserSlotCheck({ kind: "browser", where: "any", ...mac() }),
-    ).toMatchObject({ ok: false });
+    ).toEqual({ ok: true, boxesOnly: true });
   });
 
   it.each([

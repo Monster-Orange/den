@@ -500,7 +500,11 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
       !versionSkip(e.pwVersion, b) &&
       (!e.onlyBoxes || e.onlyBoxes.includes(b.name)),
   );
-  if (w === "any") return ["local", ...fits.map((b) => b.name)];
+  if (w === "any") {
+    const names = fits.map((b) => b.name);
+    // Issue 1198: no browser of its own on a host that needs a container.
+    return e.boxesOnly ? names : ["local", ...names];
+  }
   return fits.some((b) => b.name === w) ? [w] : [];
 }
 

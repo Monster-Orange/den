@@ -209,6 +209,7 @@ async function askAndWait(
     reason?: string;
     where?: string;
     browserEndpoint?: string;
+    boxesOnly?: boolean;
   },
 ): Promise<void> {
   let e: GateEntry | null;
@@ -223,6 +224,7 @@ async function askAndWait(
       ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
       ...(a.where ? { where: a.where } : {}),
       ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
+      ...(a.boxesOnly ? { boxesOnly: true } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused)
@@ -441,6 +443,7 @@ async function handleRunnerRoute(
         ...(reason !== undefined ? { reason } : {}),
         ...(typeof where === "string" ? { where } : {}),
         ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
+        ...(verdict.boxesOnly ? { boxesOnly: true } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;

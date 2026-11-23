@@ -1064,6 +1064,8 @@ export class GateStore {
     hostWhy?: string;
     /** Issue 1033: a default pick's boxes (the others can't serve it). */
     onlyBoxes?: string[];
+    /** Issue 1198: a default pick that may take a box only. */
+    boxesOnly?: boolean;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -1102,6 +1104,9 @@ export class GateStore {
                 .filter((n) => BOX_NAME_RE.test(n))
                 .slice(0, 64),
             }
+          : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.boxesOnly
+          ? { boxesOnly: true as const }
           : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
@@ -1159,6 +1164,8 @@ export class GateStore {
     where?: string;
     /** A browser run's declared container browser, as recorded. */
     browserEndpoint?: string;
+    /** Issue 1198: "any" with no browser of its own: a box only. */
+    boxesOnly?: boolean;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -1188,6 +1195,9 @@ export class GateStore {
         estimateMin: o.estimateMin,
         ...whereOf(o.kind, o.where),
         ...browserEndpointOf(o.kind, o.browserEndpoint),
+        ...(o.kind === "browser" && o.where === "any" && o.boxesOnly
+          ? { boxesOnly: true as const }
+          : {}),
         remote: {
           runner: o.runner.slice(0, 64),
           tokenId: o.tokenId,
