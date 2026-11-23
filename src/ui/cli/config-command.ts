@@ -2,8 +2,11 @@ import chalk from "chalk";
 import * as yaml from "yaml";
 import {
   mergeUserConfig,
+  readSessionsConfig,
   readUserConfig,
+  SESSIONS_SETTINGS_KEYS,
   writeUserConfig,
+  type ResolvedSessionsConfig,
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
@@ -33,7 +36,7 @@ const KEY_ALIASES: Record<string, ConfigKey> = {
  * panes.reconnect_max_failures=20`): the Settings field and its limit, so
  * the same checks hold here as on the page.
  */
-const DOTTED: Record<string, [field: string, limit: string]> = {
+export const DOTTED: Record<string, [field: string, limit: string]> = {
   "panes.reconnect_seconds": ["panes_reconnect", "seconds"],
   "panes.reconnect_max_seconds": ["panes_reconnect", "max_seconds"],
   "panes.reconnect_max_failures": ["panes_reconnect", "max_failures"],
@@ -123,9 +126,24 @@ const DOTTED: Record<string, [field: string, limit: string]> = {
   "agent_hooks.timeout_seconds": ["agent_hooks", "timeout_seconds"],
   "agent_hooks.retries": ["agent_hooks", "retries"],
   "agent_hooks.backoff_seconds": ["agent_hooks", "backoff_seconds"],
+  // Issue 532: the terminal limits (sessions.max_concurrent and the rest).
+  ...Object.fromEntries(
+    SESSIONS_SETTINGS_KEYS.map((k) => [`sessions.${k}`, ["sessions", k]]),
+  ),
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
+  // Issue 1022: how often the page polls health, visible and hidden.
+  "health_poll.visible_seconds": ["health_poll", "visible_seconds"],
+  "health_poll.hidden_seconds": ["health_poll", "hidden_seconds"],
 };
+
+/** Issue 532: a terminal limit's effective value (user.yml over den.yml). */
+function sessionsValue(name: string): number | undefined {
+  const [field, limit] = DOTTED[name] ?? [];
+  if (field !== "sessions" || !limit) return undefined;
+  const camel = limit.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+  return readSessionsConfig()[camel as keyof ResolvedSessionsConfig] as number;
+}
 
 /**
  * Dotted switches, as Settings names them: the Settings field each sets
@@ -215,6 +233,12 @@ export async function cmdConfig(args: string[]): Promise<void> {
 
   const assignment = args[0];
   const eq = assignment.indexOf("=");
+  // Issue 532: `config sessions.<key>` prints the value in force.
+  const effective = eq < 0 ? sessionsValue(assignment) : undefined;
+  if (effective !== undefined) {
+    console.log(String(effective));
+    return;
+  }
   if (eq <= 0) {
     throw new Error(
       `Usage: ${product().cli} config <key>=<value> or ${product().cli} config rm <key>`,

@@ -39,6 +39,7 @@ import { denAuth } from "./den-auth.js";
 import { ensureWebSecret } from "../../../../src/shared/web-secret.js";
 import { setupFixturePerson } from "../../../../src/shared/fixture-person.js";
 import { writeCreationRecord } from "../../../../src/shared/test-operator.js";
+import { writeTestEdgeProof } from "./edge-proof.js";
 import { CLAUDE_SHIM } from "../../agents/helpers/rig.js";
 import {
   startDenServer,
@@ -134,6 +135,8 @@ export async function startAgentsPageServer(
      * before the server starts, so the server's own claim can't run).
      */
     testInstall?: boolean;
+    /** Issue 1034: write the invented edge proof (helpers/edge-proof.ts). */
+    edgeProof?: boolean;
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -287,6 +290,7 @@ export async function startAgentsPageServer(
       `#!/bin/sh\n${body.split("$TMP").join(tmp)}\n`,
       0o755,
     );
+  if (opts.edgeProof) writeTestEdgeProof(path.join(tmp, "edge-state"));
   const home = path.join(tmp, "home");
   const stateDir = opts.testInstall
     ? path.join(tmp, "state")
