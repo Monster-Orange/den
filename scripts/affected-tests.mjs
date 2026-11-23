@@ -121,6 +121,17 @@ export function loadMap(file = DEFAULT_MAP) {
  *             English text, for a rule with `mentions: true`
  * Returns { all, allBecause, files: Map<test file, reasons[]> }.
  */
+/**
+ * Issue 843: the jest files CI's `fast` job ran (scripts/fast-checks.json).
+ * The pull request's jobs wait for `fast`, so a selection leaves them out:
+ * one run per check per tree.
+ */
+export function ranFirstTests(root = ROOT) {
+  const file = path.join(root, "scripts", "fast-checks.json");
+  if (!fs.existsSync(file)) return [];
+  return JSON.parse(fs.readFileSync(file, "utf-8")).jest ?? [];
+}
+
 export function selectTests({
   changed,
   allTests,
@@ -128,7 +139,10 @@ export function selectTests({
   map,
   importersOf = {},
   mentioned = [],
+  ranFirst = [],
 }) {
+  const skip = new Set(ranFirst);
+  allTests = allTests.filter((f) => !skip.has(f));
   const everything = (map.everything ?? []).map((e) =>
     typeof e === "string" ? { glob: e } : e,
   );
@@ -379,6 +393,7 @@ async function main(argv) {
     map,
     importersOf,
     mentioned,
+    ranFirst: ranFirstTests(),
   });
   if (sel.all)
     console.log(
