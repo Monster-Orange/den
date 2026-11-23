@@ -6,8 +6,20 @@
  * would on the bed.
  */
 import { checkGateModule, checkRows } from "../../scripts/gate-shape.mjs";
+import { withMcpSessions } from "./gate-mcp-session.mjs";
 
+/**
+ * Issue 1213: with `ctx.mcpOpen(opts)` (a session factory), the check gets
+ * `ctx.mcp`, and every session it opened is closed after its teardown,
+ * however it ended, as the bed's harness does.
+ */
 export async function runLikeBed(file, mod, ctx) {
+  if (typeof ctx.mcpOpen === "function")
+    return withMcpSessions(ctx, ctx.mcpOpen, () => runChecked(file, mod, ctx));
+  return runChecked(file, mod, ctx);
+}
+
+async function runChecked(file, mod, ctx) {
   const shape = checkGateModule(file, mod);
   if (shape.length) return { error: "shape: " + shape.join("; ") };
   let state;
