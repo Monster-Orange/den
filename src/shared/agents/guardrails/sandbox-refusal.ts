@@ -3,12 +3,24 @@
  * Claude Code runs this after each tool (PostToolUse) and after a failed
  * one (PostToolUseFailure). Inside the sandbox (DEN_AGENT_SANDBOX=1), a
  * refused write ("Operation not permitted", EPERM, "Read-only file
- * system") gets one note for the agent: why, and what to use instead.
+ * system") gets one note for the agent: why, and what to use instead. A
+ * commit whose GPG signing was refused (gpg's "IPC connect call failed",
+ * issue 1316) gets its own.
  * Anything else, and anything outside the sandbox: nothing. It reads no
  * file and calls nothing: a short-lived hook that can't fail a tool.
  */
 
 const REFUSED = /operation not permitted|\bEPERM\b|read-only file system/i;
+/**
+ * Issue 1316: gpg can't reach the person's gpg-agent (its socket is
+ * refused), so a commit the person's git asks gpg to sign fails.
+ */
+const GPG_REFUSED =
+  /gpg: (?:can't connect to the agent|signing failed)|IPC connect call failed|IPC connect failed|failed to sign the data/i;
+
+/** What the agent is told when a commit's GPG signing was refused. */
+export const GPG_REFUSAL_NOTE =
+  "Den's agent sandbox keeps the person's GPG agent out of reach, so their GPG key can't sign your commit (issue 1316). Don't retry it, don't turn signing off, and never commit through the GitHub API with the person's token instead. Den signs agents' commits with the agents' own SSH key when the person's git signs commits: if yours aren't signed, the person restarts you from Den (agents.git.signing may be off in user.yml). Tell the person.";
 
 /** What the agent is told, beside the tool's own error. */
 export const REFUSAL_NOTE =
@@ -43,9 +55,14 @@ export function refusalNote(
   } catch {
     return null;
   }
-  if (!REFUSED.test(text)) return null;
+  const note = GPG_REFUSED.test(text)
+    ? GPG_REFUSAL_NOTE
+    : REFUSED.test(text)
+      ? REFUSAL_NOTE
+      : null;
+  if (!note) return null;
   return {
-    hookSpecificOutput: { hookEventName: ev, additionalContext: REFUSAL_NOTE },
+    hookSpecificOutput: { hookEventName: ev, additionalContext: note },
   };
 }
 

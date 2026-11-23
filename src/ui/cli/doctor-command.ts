@@ -44,6 +44,8 @@ import {
 import type { ConfigError } from "../../shared/config-error.js";
 import {
   checkAgentSigning,
+  existingAgentSigningKey,
+  resolveAgentSigning,
   signingKeyAddLine,
   type AgentGitSettings,
   type SigningCheck,
@@ -1768,15 +1770,23 @@ export function instructionSizeLines(
 }
 
 /**
- * agents.git.signing_key: whether agents' commits sign and verify with the
- * key (a commit in a temp repo, checkAgentSigning), and the line that adds
- * its .pub to GitHub as a signing key. Nothing when unset.
+ * agents.git: whether agents' commits sign and verify with their key
+ * (a commit in a temp repo, checkAgentSigning), and the line that adds its
+ * .pub to GitHub as a signing key. The key is agents.git.signing_key, or
+ * (issue 1316) the install's own once an agent start made it. Nothing when
+ * signing is off, or the person's git doesn't sign and none is set.
  */
 export function signingLines(
   title: string,
   readGit: () => AgentGitSettings | undefined = () => {
     try {
-      return readAgentsConfig().git;
+      return resolveAgentSigning({
+        git: readAgentsConfig().git,
+        stateDir: getStateDir(),
+        cwd: process.cwd(),
+        env: process.env,
+        ensure: existingAgentSigningKey,
+      });
     } catch {
       // A bad agents: block is configLines' row.
       return undefined;

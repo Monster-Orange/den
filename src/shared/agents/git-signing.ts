@@ -14,39 +14,208 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { SESSION_SIGNING_DIR } from "./sandbox.js";
 
 export interface AgentGitSettings {
   /** The private key's absolute path (~ expanded). */
   signingKey: string;
+  /** An allowed_signers file git checks its own signatures with. */
+  allowedSigners?: string;
 }
+
+/** `agents.git` as user.yml says it: each field only when set. */
+export interface AgentGitBlock {
+  /** agents.git.signing_key, ~ expanded. */
+  signingKey?: string;
+  /** agents.git.signing: off. Agents' commits are left as git makes them. */
+  off?: true;
+}
+
+/** The key the agents' sessions sign with, and where it came from. */
+export interface AgentSigning extends AgentGitSettings {
+  /** setting: agents.git.signing_key; default: the install's own key. */
+  source: "setting" | "default";
+  /** This call made the default key (the start line says so, once). */
+  made?: true;
+}
+
+/** <state>/agent-signing: the install's agents' key. Read-only to them. */
+export const AGENT_SIGNING_DIR = SESSION_SIGNING_DIR;
+const KEY_FOLDER = "key";
+const KEY_FILE = "id_ed25519";
+const SIGNER = "den-agents@den.invalid";
 
 /** `agents.git` checked. Throws naming the key, as readAgentsConfig does. */
 export function gitSigningBlock(
   raw: unknown,
   home: string = os.homedir(),
-): AgentGitSettings | undefined {
+): AgentGitBlock | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== "object" || Array.isArray(raw))
     throw new Error(
-      `agents.git: must be a mapping with signing_key (got ${JSON.stringify(raw)})`,
+      `agents.git: must be a mapping with signing or signing_key (got ${JSON.stringify(raw)})`,
     );
   for (const k of Object.keys(raw))
-    if (k !== "signing_key")
-      throw new Error(`agents.git.${k}: unknown key (agents.git takes signing_key)`);
+    if (k !== "signing_key" && k !== "signing")
+      throw new Error(
+        `agents.git.${k}: unknown key (agents.git takes signing and signing_key)`,
+      );
+  const out: AgentGitBlock = {};
+  const sw = (raw as { signing?: unknown }).signing;
+  // YAML reads a bare off as false.
+  if (sw === "off" || sw === false) out.off = true;
+  else if (!(sw === undefined || sw === null || sw === "on" || sw === true))
+    throw new Error(
+      `agents.git.signing: must be on or off (got ${JSON.stringify(sw)})`,
+    );
   const key = (raw as { signing_key?: unknown }).signing_key;
-  if (key === undefined || key === null) return undefined;
-  if (typeof key !== "string" || !key.trim())
-    throw new Error(
-      `agents.git.signing_key: must be the path of an SSH private key (got ${JSON.stringify(key)})`,
+  if (key !== undefined && key !== null) {
+    if (typeof key !== "string" || !key.trim())
+      throw new Error(
+        `agents.git.signing_key: must be the path of an SSH private key (got ${JSON.stringify(key)})`,
+      );
+    const p = key.trim();
+    const abs =
+      p === "~" ? home : p.startsWith("~/") ? path.join(home, p.slice(2)) : p;
+    if (!path.isAbsolute(abs))
+      throw new Error(
+        `agents.git.signing_key: must be an absolute path or start with ~/ (got ${JSON.stringify(key)})`,
+      );
+    out.signingKey = path.normalize(abs);
+  }
+  return out.off || out.signingKey ? out : undefined;
+}
+
+/** The folder the install's agents' key lives in, once made. */
+export function agentSigningKeyDir(stateDir: string): string {
+  return path.join(stateDir, AGENT_SIGNING_DIR, KEY_FOLDER);
+}
+
+function keyIn(dir: string): AgentSigning {
+  return {
+    signingKey: path.join(dir, KEY_FILE),
+    allowedSigners: path.join(dir, "allowed_signers"),
+    source: "default",
+  };
+}
+
+function complete(dir: string): boolean {
+  const k = keyIn(dir);
+  return [k.signingKey, `${k.signingKey}.pub`, k.allowedSigners!].every((f) =>
+    fs.existsSync(f),
+  );
+}
+
+/** The default key if it is made already (doctor: it never makes one). */
+export function existingAgentSigningKey(
+  stateDir: string,
+): AgentSigning | undefined {
+  const dir = agentSigningKeyDir(stateDir);
+  return complete(dir) ? keyIn(dir) : undefined;
+}
+
+export interface EnsureKeyDeps {
+  /** Runs after the key is made, before it is moved into place (tests). */
+  beforePlace?: () => void;
+}
+
+/**
+ * The install's agents' key: made once. ssh-keygen writes it, its .pub and
+ * allowed_signers into a fresh folder beside the final one; a rename moves
+ * that folder into place only if none is there. Two Den processes that
+ * race both make one, one rename wins, and the other uses the winner's.
+ */
+export function ensureAgentSigningKey(
+  stateDir: string,
+  d: EnsureKeyDeps = {},
+): AgentSigning {
+  const parent = path.join(stateDir, AGENT_SIGNING_DIR);
+  const final = agentSigningKeyDir(stateDir);
+  if (complete(final)) return keyIn(final);
+  fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
+  const tmp = fs.mkdtempSync(path.join(parent, ".new-"));
+  try {
+    const key = path.join(tmp, KEY_FILE);
+    const r = spawnSync(
+      "ssh-keygen",
+      ["-q", "-t", "ed25519", "-N", "", "-C", "den agents", "-f", key],
+      { encoding: "utf8", timeout: 20_000, stdio: ["ignore", "ignore", "pipe"] },
     );
-  const p = key.trim();
-  const abs =
-    p === "~" ? home : p.startsWith("~/") ? path.join(home, p.slice(2)) : p;
-  if (!path.isAbsolute(abs))
-    throw new Error(
-      `agents.git.signing_key: must be an absolute path or start with ~/ (got ${JSON.stringify(key)})`,
+    if (r.error || r.status !== 0)
+      throw new Error(
+        `agents' signing key: ssh-keygen failed: ${(r.stderr || r.error?.message || `exit ${r.status}`).trim()}`,
+      );
+    const pub = fs.readFileSync(`${key}.pub`, "utf8").trim().split(/\s+/);
+    fs.writeFileSync(
+      path.join(tmp, "allowed_signers"),
+      `${SIGNER} namespaces="git" ${pub[0]} ${pub[1] ?? ""}\n`,
+      { mode: 0o644 },
     );
-  return { signingKey: path.normalize(abs) };
+    d.beforePlace?.();
+    try {
+      // A rename onto a folder that has files in it fails: the winner's.
+      fs.renameSync(tmp, final);
+      return { ...keyIn(final), made: true };
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (!(code === "ENOTEMPTY" || code === "EEXIST") || !complete(final))
+        throw e;
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  return keyIn(final);
+}
+
+/** The person's own git, at `cwd`: does it sign commits (repo, then global)? */
+export function personSignsCommits(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const clean: NodeJS.ProcessEnv = { ...env };
+  // Only the person's files: never a session's GIT_CONFIG_* pairs.
+  for (const k of Object.keys(clean))
+    if (/^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/.test(k))
+      delete clean[k];
+  const r = spawnSync(
+    "git",
+    ["config", "--type=bool", "--get", "commit.gpgsign"],
+    {
+      cwd: fs.existsSync(cwd) ? cwd : os.homedir(),
+      env: clean,
+      encoding: "utf8",
+      timeout: 10_000,
+    },
+  );
+  return r.status === 0 && r.stdout.trim() === "true";
+}
+
+export interface ResolveSigningInput {
+  git: AgentGitBlock | undefined;
+  stateDir: string;
+  /** The agent's working folder: its repo's own config counts. */
+  cwd: string;
+  /** The person's env (their HOME, so their ~/.gitconfig). */
+  env?: NodeJS.ProcessEnv;
+  /** Makes (or finds) the default key; doctor's only finds it. */
+  ensure?: (stateDir: string) => AgentSigning | undefined;
+}
+
+/**
+ * Which key an agent's session signs with (issue 1316):
+ *   agents.git.signing: off      none: commits as git makes them
+ *   agents.git.signing_key set   that key
+ *   the person's git signs       the install's own key, made once
+ *   otherwise                    none: nothing changes
+ */
+export function resolveAgentSigning(
+  i: ResolveSigningInput,
+): AgentSigning | undefined {
+  if (i.git?.off) return undefined;
+  if (i.git?.signingKey)
+    return { signingKey: i.git.signingKey, source: "setting" };
+  if (!personSignsCommits(i.cwd, i.env)) return undefined;
+  return (i.ensure ?? ensureAgentSigningKey)(i.stateDir);
 }
 
 /**
@@ -62,6 +231,8 @@ export function agentGitEnv(
     ["user.signingkey", git.signingKey],
     ["commit.gpgsign", "true"],
   ];
+  if (git.allowedSigners)
+    pairs.push(["gpg.ssh.allowedSignersFile", git.allowedSigners]);
   const env: Record<string, string> = {
     GIT_CONFIG_COUNT: String(pairs.length),
   };

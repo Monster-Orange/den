@@ -66,6 +66,13 @@ role from it in a fresh conversation. Use these headings, each filled in:
 
 Write it plainly. Explain every ID in it, as in a hand-back.
 
+### Commits
+
+Commit with git. Den signs your commits with the agents' own SSH key when
+your person's git signs theirs. If a commit's signing fails, tell your
+person. Don't turn signing off, and never commit through the GitHub API or
+any other API with your person's token.
+
 ### Sending feedback about Den
 
 **Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and

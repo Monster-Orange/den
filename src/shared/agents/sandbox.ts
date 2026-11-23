@@ -100,6 +100,14 @@ export const SESSION_READ_FILES: readonly string[] = [
   path.join("hub", "inbox-watch.json"),
   path.join("hub", "tools-seen.json"),
 ];
+/**
+ * Issue 1316: the agents' own SSH signing key, its .pub and allowed_signers
+ * (git-signing.ts AGENT_SIGNING_DIR). Its private key is a secret every
+ * agent of this install signs with, so readable; never writable (the state
+ * dir is read-only), so no agent swaps it or plants another. Nothing else
+ * of the person's is in it.
+ */
+export const SESSION_SIGNING_DIR = "agent-signing";
 /** Folders whose names a session lists (not their files). */
 export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
 /**
@@ -227,6 +235,7 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
       path.join(tokensDir, i.agentId),
       ...SESSION_READ_DIRS.map((f) => path.join(state, f)),
       ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
+      path.join(state, SESSION_SIGNING_DIR),
     ],
     readableFiles: SESSION_READ_FILES.map((f) => path.join(state, f)),
     listable: SESSION_LIST_DIRS.map((f) => path.join(state, f)),
