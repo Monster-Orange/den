@@ -8,7 +8,12 @@
  *   2. A lock another live process holds: the change is seen at once in
  *      this process, never waited for on the thread, and saved once the
  *      lock is free.
- *   3. A lock left by a process that is gone is taken back.
+ *   3. A lock left by a process that is gone is taken back at once; a
+ *      live holder's only once it is 60 s old (a stalled writer keeps it).
+ *   4. A change saved later merges onto the file as it is then, so the
+ *      other process's change made meanwhile stays.
+ *   5. A change still waiting when the process ends (process.exit, as the
+ *      CLI and the server's SIGTERM and restart end) is saved at exit.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { spawn, type ChildProcess } from "child_process";
@@ -35,13 +40,12 @@ const dir = () => {
   return d;
 };
 
-/** Another process adds `n` entries, one store per add (as the CLI does). */
-function adder(stateDir: string, n: number): Promise<number | null> {
+/** Another process runs `body` with NotificationStore imported. */
+function child(body: string): ChildProcess {
   const src = path.join(ROOT, "src/shared/notifications.ts");
   const code =
     `const { NotificationStore } = await import(${JSON.stringify(src)});` +
-    `for (let i = 0; i < ${n}; i++) new NotificationStore(${JSON.stringify(stateDir)}).add(` +
-    `{ kind: "waiting", subject: "agent:a" + i, scope: "workspace/north", text: "t" + i });`;
+    body;
   const k = spawn(
     process.execPath,
     [
@@ -51,11 +55,45 @@ function adder(stateDir: string, n: number): Promise<number | null> {
       "-e",
       code,
     ],
-    { stdio: "ignore", cwd: ROOT },
+    { stdio: ["ignore", "pipe", "ignore"], cwd: ROOT },
   );
   kids.push(k);
-  return new Promise((r) => k.on("exit", (c) => r(c)));
+  return k;
 }
+const exited = (k: ChildProcess) =>
+  new Promise<number | null>((r) =>
+    k.exitCode !== null ? r(k.exitCode) : k.on("exit", (c) => r(c)),
+  );
+
+/** Another process adds `n` entries, one store per add (as the CLI does). */
+function adder(stateDir: string, n: number): Promise<number | null> {
+  return exited(
+    child(
+      `for (let i = 0; i < ${n}; i++) new NotificationStore(${JSON.stringify(stateDir)}).add(` +
+        `{ kind: "waiting", subject: "agent:a" + i, scope: "workspace/north", text: "t" + i });`,
+    ),
+  );
+}
+
+const lockOf = (d: string) => path.join(d, "notifications.json.lock");
+const fileOf = (d: string) => path.join(d, "notifications.json");
+/** The lock, as a holder that is this test's own (live) process. */
+function takeLock(d: string, ageMs = 0) {
+  fs.mkdirSync(lockOf(d), { recursive: true });
+  fs.writeFileSync(path.join(lockOf(d), "pid"), String(process.pid));
+  if (ageMs) {
+    const t = (Date.now() - ageMs) / 1000;
+    fs.utimesSync(lockOf(d), t, t);
+  }
+}
+const onDisk = (d: string) =>
+  fs.existsSync(fileOf(d))
+    ? (
+        JSON.parse(fs.readFileSync(fileOf(d), "utf-8")) as {
+          items: { subject: string }[];
+        }
+      ).items.map((x) => x.subject)
+    : [];
 
 /** Another process takes the store's lock and keeps it for `ms`. */
 async function holdLock(stateDir: string, ms: number): Promise<void> {
@@ -147,4 +185,92 @@ describe("a busy lock (issue 1348)", () => {
     expect(fs.existsSync(path.join(d, "notifications.json"))).toBe(true);
     expect(fs.existsSync(lock)).toBe(false);
   });
+
+  it("a live holder's lock: kept at 20 s old, taken back at 70 s", async () => {
+    const d = dir();
+    const add = (subject: string) =>
+      new NotificationStore(d).add({
+        kind: "waiting",
+        subject,
+        scope: "workspace/north",
+        text: "t",
+      });
+    takeLock(d, 20_000);
+    add("agent:young");
+    expect(onDisk(d)).toEqual([]);
+    takeLock(d, 70_000);
+    add("agent:old");
+    await notificationsSaved(d);
+    expect(onDisk(d).sort()).toEqual(["agent:old", "agent:young"]);
+    expect(fs.existsSync(lockOf(d))).toBe(false);
+  });
+});
+
+describe("a change saved later (issue 1348)", () => {
+  it("merges onto the file as it is then: the holder's own write stays", async () => {
+    const d = dir();
+    takeLock(d);
+    new NotificationStore(d).add({
+      kind: "waiting",
+      subject: "agent:mine",
+      scope: "workspace/north",
+      text: "waits for the lock",
+    });
+    // The holder writes its own entry, then lets go.
+    fs.writeFileSync(
+      fileOf(d),
+      JSON.stringify({
+        items: [
+          {
+            id: "other-1",
+            kind: "waiting",
+            subject: "agent:other",
+            scope: "workspace/north",
+            text: "the other process's",
+            at: new Date(Date.now() - 1000).toISOString(),
+            read: false,
+          },
+        ],
+        mutes: [],
+      }),
+    );
+    fs.rmSync(lockOf(d), { recursive: true, force: true });
+    await notificationsSaved(d);
+    expect(onDisk(d).sort()).toEqual(["agent:mine", "agent:other"]);
+  });
+});
+
+describe("a change still waiting when the process ends (issue 1348)", () => {
+  const ADD = (d: string) =>
+    `new NotificationStore(${JSON.stringify(d)}).add({ kind: "waiting", subject: "agent:late", scope: "workspace/north", text: "t" });`;
+
+  it("process.exit (the CLI's end): saved at exit once the lock frees", async () => {
+    const d = dir();
+    takeLock(d);
+    const k = child(ADD(d) + "process.exit(0);");
+    setTimeout(
+      () => fs.rmSync(lockOf(d), { recursive: true, force: true }),
+      300,
+    );
+    expect(await exited(k)).toBe(0);
+    expect(onDisk(d)).toEqual(["agent:late"]);
+  }, 30_000);
+
+  it("SIGTERM (the server's stop and restart end in process.exit): saved", async () => {
+    const d = dir();
+    takeLock(d);
+    const k = child(
+      `process.on("SIGTERM", () => process.exit(0));` +
+        ADD(d) +
+        `console.log("ready"); setInterval(() => {}, 1000);`,
+    );
+    await new Promise<void>((r) => k.stdout!.once("data", () => r()));
+    k.kill("SIGTERM");
+    setTimeout(
+      () => fs.rmSync(lockOf(d), { recursive: true, force: true }),
+      300,
+    );
+    expect(await exited(k)).toBe(0);
+    expect(onDisk(d)).toEqual(["agent:late"]);
+  }, 30_000);
 });

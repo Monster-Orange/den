@@ -301,10 +301,22 @@ function writeStore(file: string, f: StoreFile): void {
  */
 type StoreOp = (f: StoreFile) => boolean;
 
-/** Issue 1348: a lock this old is its holder's leftover (a write takes ms). */
-const STORE_LOCK_STALE_MS = 10_000;
+/**
+ * Issue 1348: when a lock is its holder's leftover. A write takes ms, so a
+ * lock with no pid (its holder died between taking it and saying who it
+ * is) is left after STORE_LOCK_NO_PID_MS; a live holder's only after
+ * STORE_LOCK_LIVE_MS (a process stalled in a swap storm still holds it); a
+ * gone holder's at once.
+ */
+const STORE_LOCK_NO_PID_MS = 10_000;
+const STORE_LOCK_LIVE_MS = 60_000;
 /** Issue 1348: how often a change waiting for the lock tries again. */
 const STORE_LOCK_STEP_MS = 5;
+/**
+ * Issue 1348: at exit only (nothing is served then), how long the last
+ * waiting changes may wait for the lock before they are given up.
+ */
+const STORE_EXIT_WAIT_MS = 2_000;
 
 function aliveProcess(pid: number): boolean {
   try {
@@ -317,8 +329,9 @@ function aliveProcess(pid: number): boolean {
 
 /**
  * Issue 1348: the store's cross-process lock, `<file>.lock`, tried once,
- * never waited for. A lock whose holder is gone, or that is older than any
- * write takes, is taken back.
+ * never waited for. A leftover lock (see STORE_LOCK_LIVE_MS) is taken back:
+ * renamed aside first, and only if it is still the lock looked at (same
+ * inode and time), so two takers that both found it stale never both win.
  */
 function tryStoreLock(file: string): boolean {
   const lock = `${file}.lock`;
@@ -327,21 +340,7 @@ function tryStoreLock(file: string): boolean {
     fs.mkdirSync(lock);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-    let pid = NaN;
-    try {
-      pid = Number(fs.readFileSync(path.join(lock, "pid"), "utf-8").trim());
-    } catch {
-      /* taken just now: its pid follows */
-    }
-    let age = 0;
-    try {
-      age = Date.now() - fs.statSync(lock).mtimeMs;
-    } catch {
-      return false;
-    }
-    const gone = Number.isInteger(pid) && pid > 0 && !aliveProcess(pid);
-    if (!gone && age < STORE_LOCK_STALE_MS) return false;
-    fs.rmSync(lock, { recursive: true, force: true });
+    if (!takeBackStoreLock(lock)) return false;
     try {
       fs.mkdirSync(lock);
     } catch {
@@ -353,6 +352,50 @@ function tryStoreLock(file: string): boolean {
   } catch {
     /* the lock holds without it; only its takeback needs it */
   }
+  return true;
+}
+
+/** Issue 1348: moves a leftover lock out of the way; false: it isn't one. */
+function takeBackStoreLock(lock: string): boolean {
+  let seen: fs.Stats;
+  try {
+    seen = fs.statSync(lock);
+  } catch {
+    return true; // gone meanwhile: free
+  }
+  let pid = NaN;
+  try {
+    pid = Number(fs.readFileSync(path.join(lock, "pid"), "utf-8").trim());
+  } catch {
+    /* taken just now, or its holder died before saying who it is */
+  }
+  const age = Date.now() - seen.mtimeMs;
+  const known = Number.isInteger(pid) && pid > 0;
+  const left = known
+    ? !aliveProcess(pid) || age >= STORE_LOCK_LIVE_MS
+    : age >= STORE_LOCK_NO_PID_MS;
+  if (!left) return false;
+  const aside = `${lock}.old-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    fs.renameSync(lock, aside);
+  } catch {
+    return false; // another taker moved it first
+  }
+  try {
+    const moved = fs.statSync(aside);
+    if (moved.ino !== seen.ino || moved.mtimeMs !== seen.mtimeMs) {
+      // Not the one looked at: a lock taken since. Put it back.
+      try {
+        fs.renameSync(aside, lock);
+      } catch {
+        /* a newer lock is there: this one's holder ended up beside it */
+      }
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  fs.rmSync(aside, { recursive: true, force: true });
   return true;
 }
 
@@ -370,7 +413,29 @@ const PENDING = new Map<
   { ops: StoreOp[]; timer?: NodeJS.Timeout; waiters: (() => void)[] }
 >();
 
-function savePending(file: string): void {
+/**
+ * Issue 1348: the process is ending (a normal exit, and the server's
+ * SIGTERM and restart, which end in process.exit): its waiting changes are
+ * saved now. The thread serves nothing any more, so this one waits for the
+ * lock, at most STORE_EXIT_WAIT_MS (a gone or stale holder's lock is taken
+ * back sooner).
+ */
+function savePendingAtExit(): void {
+  const until = Date.now() + STORE_EXIT_WAIT_MS;
+  const nap = new Int32Array(new SharedArrayBuffer(4));
+  for (const file of [...PENDING.keys()]) {
+    const p = PENDING.get(file)!;
+    if (p.timer) clearTimeout(p.timer);
+    savePending(file, false);
+    while (PENDING.has(file) && Date.now() < until) {
+      Atomics.wait(nap, 0, 0, STORE_LOCK_STEP_MS);
+      savePending(file, false);
+    }
+  }
+}
+let exitHooked = false;
+
+function savePending(file: string, retry = true): void {
   const p = PENDING.get(file);
   if (!p) return;
   p.timer = undefined;
@@ -381,21 +446,40 @@ function savePending(file: string): void {
     locked = false;
   }
   if (!locked) {
-    p.timer = setTimeout(() => savePending(file), STORE_LOCK_STEP_MS);
+    if (retry)
+      p.timer = setTimeout(() => savePending(file), STORE_LOCK_STEP_MS);
     return;
   }
   try {
+    // Issue 1348: onto the file as it is now, so another process's change
+    // made meanwhile stays.
     const f = readStore(file);
     let changed = false;
     for (const op of p.ops) changed = op(f) || changed;
     if (changed) writeStore(file, f);
-  } catch {
-    /* unwritable: as a direct write's failure, the change is not kept */
+  } catch (e) {
+    // Unwritable: as a direct write's failure, the changes are not kept.
+    // The caller was answered already, so the log says so (no content).
+    console.error(
+      `notifications: ${p.ops.length} waiting change(s) not saved (${(e as NodeJS.ErrnoException).code ?? "error"})`,
+    );
   } finally {
     unlockStore(file);
     PENDING.delete(file);
     for (const w of p.waiters) w();
   }
+}
+
+/** Whether `subject` (or its scope) is muted at `t` in `mutes`. */
+function mutedIn(
+  mutes: readonly Mute[],
+  subject: string,
+  scope: string,
+  t: string,
+): boolean {
+  return mutes.some(
+    (m) => (m.target === subject || m.target === scope) && m.until > t,
+  );
 }
 
 /**
@@ -450,6 +534,10 @@ export class NotificationStore {
       const p = PENDING.get(this.file) ?? { ops: [], waiters: [] };
       PENDING.set(this.file, p);
       p.ops.push((f) => op(f).changed);
+      if (!exitHooked) {
+        exitHooked = true;
+        process.on("exit", savePendingAtExit);
+      }
       p.timer ??= setTimeout(() => savePending(this.file), STORE_LOCK_STEP_MS);
     }
     return r.out;
@@ -466,10 +554,7 @@ export class NotificationStore {
 
   /** Whether `subject` (or its scope) is muted now. */
   muted(subject: string, scope: string): boolean {
-    const t = this.now().toISOString();
-    return this.read().mutes.some(
-      (m) => (m.target === subject || m.target === scope) && m.until > t,
-    );
+    return mutedIn(this.read().mutes, subject, scope, this.now().toISOString());
   }
 
   /**
@@ -532,6 +617,7 @@ export class NotificationStore {
    * one Hub no longer lists goes. Den's own items are left alone.
    */
   syncHub(notes: readonly HubNote[], owner: string | null): string[] {
+    const t = this.now().toISOString();
     return this.change((f) => {
       const me = owner?.toLowerCase() ?? null;
       const byId = new Map(
@@ -550,7 +636,7 @@ export class NotificationStore {
           : `hub/${n.scope}`.replace(/\/$/, "");
         const x = byId.get(id);
         if (!x) {
-          if (this.muted(n.subject, scope)) continue;
+          if (mutedIn(f.mutes, n.subject, scope, t)) continue;
           f.items.push({
             id,
             source: "hub",
