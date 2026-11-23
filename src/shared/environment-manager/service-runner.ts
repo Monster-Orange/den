@@ -245,20 +245,59 @@ function toDaemonRecord(json: DaemonRecordJSON): DaemonRecord {
   };
 }
 
+/**
+ * Issue 130: the daemons file, read whole or not at all.
+ *  - Missing: no records yet.
+ *  - Not JSON, or not the shape Den writes: moved aside to
+ *    `<file>.corrupt-<time>` (never overwritten), with a warning naming it;
+ *    the records start empty, and the next save writes a fresh file. If it
+ *    can't be moved aside, nothing goes on: a save would overwrite it.
+ *  - Unreadable for another reason (permissions, not a file): throws, so a
+ *    change is refused rather than saved over records Den never saw.
+ */
 function readDaemonsFile(filePath: string): Map<string, DaemonRecord> {
   const map = new Map<string, DaemonRecord>();
+  let text: string;
   try {
-    if (!fs.existsSync(filePath)) return map;
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as
-      | DaemonsFile
-      | DaemonRecordJSON[];
-    const records = Array.isArray(parsed) ? parsed : (parsed.daemons ?? []);
-    for (const record of records) {
-      if (!record.address) continue;
-      map.set(record.address, toDaemonRecord(record));
-    }
+    text = fs.readFileSync(filePath, "utf-8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return map;
+    throw new Error(
+      `The daemons file ${filePath} can't be read (${(e as Error).message}). ${product().title} changed nothing, so the services recorded in it aren't lost; fix or remove it, then try again.`,
+    );
+  }
+  let records: DaemonRecordJSON[] | null = null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    const list = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === "object"
+        ? (parsed as { daemons?: unknown }).daemons
+        : undefined;
+    if (Array.isArray(list))
+      records = list.filter(
+        (r): r is DaemonRecordJSON => !!r && typeof r === "object",
+      );
   } catch {
-    // Corrupt or missing file: keep registry empty.
+    records = null;
+  }
+  if (!records) {
+    const aside = `${filePath}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    try {
+      fs.renameSync(filePath, aside);
+    } catch (e) {
+      throw new Error(
+        `The daemons file ${filePath} is corrupt and couldn't be moved aside (${(e as Error).message}). ${product().title} changed nothing; fix or remove it, then try again.`,
+      );
+    }
+    console.warn(
+      `The daemons file ${filePath} was corrupt. ${product().title} moved it to ${aside} (its records are kept there) and starts a fresh one.`,
+    );
+    return map;
+  }
+  for (const record of records) {
+    if (!record.address) continue;
+    map.set(record.address, toDaemonRecord(record));
   }
   return map;
 }
@@ -276,10 +315,14 @@ function saveDaemonsFile(filePath: string): void {
     (d) => ({ ...d, startedAt: d.startedAt.toISOString() }),
   );
   const file: DaemonsFile = { denPid: process.pid, daemons: records };
+  // Issue 130: a save that fails says so; a caller (up) must not report a
+  // service as recorded when it isn't.
   try {
     writeFileAtomic(filePath, JSON.stringify(file, null, 2) + "\n");
-  } catch {
-    /* best effort: the registry in memory still holds them */
+  } catch (e) {
+    throw new Error(
+      `${product().title} couldn't save the daemons file ${filePath} (${(e as Error).message}). The services it lists stay as they were on disk.`,
+    );
   }
 }
 

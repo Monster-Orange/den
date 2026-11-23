@@ -10511,10 +10511,17 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // The container listing runs as async child processes (a sync `docker ps`
 // here held the event loop at startup); /api/service/daemons waits for it,
 // so the UI never gets a stale entry on its first load.
-loadDaemonsFromFile();
+// Issue 130: a daemons file Den can't read doesn't stop the server: it
+// logs why, and each change to the file is refused until it's fixed.
 // 0.4.46 services.restore_on_boot: the record as the last run left it, and
 // why the prune drops any of it (restore-on-boot.ts).
-const daemonsAtStart = listDaemons();
+let daemonsAtStart: ReturnType<typeof listDaemons> = [];
+try {
+  loadDaemonsFromFile();
+  daemonsAtStart = listDaemons();
+} catch (e) {
+  console.warn(String((e as Error).message ?? e));
+}
 const prunedAtStart = new Map<string, "unresolved" | "stale" | "dead">();
 startupPrune = pruneDeadDaemonsAsync((a, why) => prunedAtStart.set(a, why))
   .then((pruned) => {
