@@ -48,6 +48,10 @@
   --dur: 200ms;
   --dur-cue: 400ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+  /* The switch's curve (issue 680): the sister app's --ease-out, value for value. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The switch knob's shadow (issue 680): the sister app's literal, both themes. */
+  --shadow-knob: 0 1px 3px rgb(32 38 29 / 0.25);
 
   --z-menu: 10;
   --z-bar: 30;
@@ -102,6 +106,8 @@
     0 2px 4px rgba(32, 38, 29, 0.07), 0 10px 28px rgba(32, 38, 29, 0.1),
     inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
   --bar: linear-gradient(90deg, #557a2a 0%, #8a6a48 100%);
+  /* The switch knob (issue 680): light in both themes, as the sister app's is. */
+  --switch-knob: var(--surface);
 }
 
 /* Dark: asked for, or the system's choice when no mode is set. */
@@ -132,6 +138,7 @@
     0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
   --bar: linear-gradient(90deg, #9bbb63 0%, #a07c55 100%);
+  --switch-knob: var(--text);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -162,5 +169,6 @@
       0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.4),
       inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
     --bar: linear-gradient(90deg, #9bbb63 0%, #a07c55 100%);
+    --switch-knob: var(--text);
   }
 }

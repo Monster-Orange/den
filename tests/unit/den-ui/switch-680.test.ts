@@ -138,3 +138,114 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
     );
   });
 });
+
+/**
+ * Issue 680, second part: the kit's switch is the sister app's shipped switch
+ *, value for value, on the kit's tokens. Den Design and
+ * Reviewer A said yes; the token map came from the sister app's design agent.
+ * The 44px touch target under a coarse pointer is the kit's own addition.
+ */
+describe("issue 680: the switch copies the sister app's, value for value", () => {
+  const css = fs.readFileSync(
+    path.join(process.cwd(), "packages/den-ui/src/switch.css"),
+    "utf-8",
+  );
+  const tokens = fs.readFileSync(
+    path.join(process.cwd(), "packages/den-ui/src/tokens.css"),
+    "utf-8",
+  );
+  /** The declarations of the first rule whose selector list is exactly sel. */
+  const rule = (sel: string): Record<string, string> => {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const m = new RegExp(`(?:^|\\})\\s*${esc}\\s*\\{([^}]*)\\}`, "m").exec(
+      css.replace(/\/\*[\s\S]*?\*\//g, ""),
+    );
+    if (!m) throw new Error(`no rule for ${sel}`);
+    return Object.fromEntries(
+      m[1]
+        .split(";")
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((d) => {
+          const i = d.indexOf(":");
+          return [d.slice(0, i).trim(), d.slice(i + 1).trim()];
+        }),
+    );
+  };
+
+  it("the switch comes before its label, 10px apart, top-aligned", () => {
+    const html = switchHtml({ id: "n", label: "Notes", help: "Kept." });
+    expect(html.indexOf("<input")).toBeLessThan(html.indexOf("den-switch-text"));
+    const row = rule(".den-switch");
+    expect(row.gap).toBe("10px");
+    expect(row["align-items"]).toBe("flex-start");
+    expect(row["justify-content"]).toBe("flex-start");
+    expect(rule(".den-switch-label")["line-height"]).toBe("24px");
+  });
+
+  it("the track: 40×24, fully round, never shrinks; off is the strong border, on the accent fill", () => {
+    const t = rule(".den-switch-input");
+    expect(t.width).toBe("40px");
+    expect(t["min-width"]).toBe("40px");
+    expect(t.flex).toBe("0 0 40px");
+    expect(t.height).toBe("24px");
+    expect(t["border-radius"]).toBe("999px");
+    expect(t["background-color"]).toBe("var(--border-strong)");
+    expect(t.transition).toBe("background-color var(--dur) var(--ease-out)");
+    expect(rule(".den-switch-input:checked")["background-color"]).toBe(
+      "var(--accent-fill)",
+    );
+  });
+
+  it("the knob: 18px at 3px, the knob colour and shadow, 16px of travel", () => {
+    const k = rule(".den-switch-input::before");
+    // 3px from the track's outer edge: its 1px border (seen in forced
+    // colours) is inside the box, and top/left count from inside it.
+    expect(rule(".den-switch-input").border).toBe("1px solid transparent");
+    expect(k.top).toBe("2px");
+    expect(k.left).toBe("2px");
+    expect(k.width).toBe("18px");
+    expect(k.height).toBe("18px");
+    expect(k["background-color"]).toBe("var(--switch-knob)");
+    expect(k["box-shadow"]).toBe("var(--shadow-knob)");
+    expect(k.transition).toBe("transform var(--dur) var(--ease-out)");
+    expect(rule(".den-switch-input:checked::before").transform).toBe(
+      "translateX(16px)",
+    );
+  });
+
+  it("the tokens: an ease-out curve, a knob light in both themes, the sister app's shadow", () => {
+    expect(tokens).toContain("--ease-out: cubic-bezier(0.22, 1, 0.36, 1);");
+    expect(tokens).toContain("--shadow-knob: 0 1px 3px rgb(32 38 29 / 0.25);");
+    // Light: the surface. Dark (both the media query and data-theme): the
+    // text colour, which is light there, as the sister app's knob is.
+    expect(tokens.match(/--switch-knob: var\(--surface\);/g)).toHaveLength(1);
+    expect(tokens.match(/--switch-knob: var\(--text\);/g)).toHaveLength(2);
+  });
+
+  it("disabled: the input at .45, the label muted, no pointer anywhere", () => {
+    expect(rule(".den-switch-input:disabled").opacity).toBe(".45");
+    expect(rule(".den-switch-input:disabled").cursor).toBe("not-allowed");
+    expect(rule(".den-switch[data-disabled]").cursor).toBe("not-allowed");
+    expect(rule(".den-switch[data-disabled] .den-switch-label").color).toBe(
+      "var(--muted)",
+    );
+  });
+
+  it("the help: under the label, 4px down, small, muted, at most 60ch", () => {
+    const h = rule(".den-switch-help");
+    expect(h["margin-top"]).toBe("var(--space-1)");
+    expect(h["font-size"]).toBe("var(--fs-s)");
+    expect(h["line-height"]).toBe("1.45");
+    expect(h.color).toBe("var(--muted)");
+    expect(h["max-width"]).toBe("60ch");
+    expect(rule(".den-switch-help:lang(ja)")["word-break"]).toBe("auto-phrase");
+  });
+
+  it("a coarse pointer gets a 44px target without changing the drawn size", () => {
+    expect(css).toMatch(
+      /@media \(pointer: coarse\)\s*\{\s*\.den-switch-input::after\s*\{[^}]*min-width: var\(--tap\);[^}]*min-height: var\(--tap\);/,
+    );
+    expect(rule(".den-switch")["min-height"]).toBeUndefined();
+  });
+});

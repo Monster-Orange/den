@@ -7,8 +7,9 @@
  * own language. Pure builder, runs in Node too:
  *
  *   switchHtml({ label, on, disabled, help, id, attrs })
- *     <label class="den-switch" for=id>: the label (and the help under
- *     it, its description), then <input type="checkbox" role="switch">.
+ *     <label class="den-switch" for=id>: <input type="checkbox"
+ *     role="switch">, then the label (and the help under it, its
+ *     description), as the sister app's switch is (issue 680).
  *     No label: nothing is drawn (a switch must have a name). No id: one
  *     of the kit's own (den-sw-N). attrs: more attributes on the input
  *     (a host's data-*, for its handler).
@@ -26,8 +27,8 @@
  *     onChange(on). The host keeps the state: sw.set(on) moves it with no
  *     call; sw.setDisabled(off); sw.on(); sw.destroy().
  *
- * The look is switch.css: link it after tokens.css. 44px tall, so a
- * phone's tap is the whole row.
+ * The look is switch.css: link it after tokens.css. The sister app's switch,
+ * value for value; a 44px target under a coarse pointer.
  */
 import { esc } from "./strings.js";
 
@@ -62,11 +63,7 @@ export function switchHtml(o = {}) {
   const labelId = `${id}-label`;
   return (
     `<label class="den-switch" for="${esc(id)}"${o.disabled ? " data-disabled" : ""}>` +
-    `<span class="den-switch-text"><span class="den-switch-label" id="${esc(labelId)}">${esc(label)}</span>` +
-    (help
-      ? `<span class="den-switch-help" id="${esc(helpId)}">${esc(help)}</span>`
-      : "") +
-    "</span>" +
+    // The switch first, then its words (issue 680: the sister app's order).
     switchInputHtml({
       id,
       on: o.on,
@@ -75,6 +72,11 @@ export function switchHtml(o = {}) {
       describedBy: help ? helpId : "",
       attrs: o.attrs,
     }) +
+    `<span class="den-switch-text"><span class="den-switch-label" id="${esc(labelId)}">${esc(label)}</span>` +
+    (help
+      ? `<span class="den-switch-help" id="${esc(helpId)}">${esc(help)}</span>`
+      : "") +
+    "</span>" +
     "</label>"
   );
 }
