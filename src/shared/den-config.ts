@@ -622,6 +622,8 @@ export interface UserConfig {
      * for one agent. Only here: agents can't write this file.
      */
     sandbox?: unknown;
+    /** Issue 988: on or off: agents run as a second OS user. */
+    os_user?: unknown;
     /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
@@ -1161,6 +1163,30 @@ export function setUserSandboxOn(): void {
   writeUserConfig({
     ...cfg,
     agents: { ...(cfg.agents ?? {}), sandbox: "on" },
+  } as UserConfig);
+}
+
+/**
+ * Issue 988: agents.os_user in user.yml (on or off, true or false; unset is
+ * off): agents run as a second OS user, which `agents os-user setup` makes.
+ * Only user.yml holds it: agents can't write that file.
+ */
+export function osUserSetting(userAgents: unknown): boolean {
+  if (!isMapping(userAgents)) return false;
+  const v = userAgents.os_user;
+  if (v === undefined || v === null || v === false || v === "off") return false;
+  if (v === true || v === "on") return true;
+  throw new Error(
+    `agents.os_user: must be on or off (got ${JSON.stringify(v)})`,
+  );
+}
+
+/** Issue 988: sets agents.os_user in user.yml, keeping everything else there. */
+export function setUserOsUser(on: boolean): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), os_user: on ? "on" : "off" },
   } as UserConfig);
 }
 

@@ -69,7 +69,7 @@ describe("issue 988: names and paths", () => {
 
   it("refuses a person name that isn't a plain OS user name", () => {
     for (const bad of ["", "Robin Hood", "../x", "-r", "a".repeat(17), "r;id"])
-      expect(() => osUserNames("linux", bad)).toThrow(/not a user name/);
+      expect(() => osUserNames("linux", bad)).toThrow(/not a login name/);
   });
 
   it("the launcher sits in a root folder of its own; the home is in the agent files", () => {

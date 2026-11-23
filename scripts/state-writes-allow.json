@@ -71,6 +71,10 @@
     "count": 1,
     "reason": "the manifest in the person's repo, written once by init"
   },
+  "src/ui/cli/os-user-command.ts": {
+    "count": 2,
+    "reason": "temp files: the launcher and the sudo rule, staged in a fresh temp folder for sudo install to copy (issue 988)"
+  },
   "src/ui/cli/repo-command.ts": {
     "count": 1,
     "reason": "a side-car manifest in the person's repo, created exclusively (wx)"

@@ -24,6 +24,7 @@
  * environment to LAUNCH_ENV and execs only the runtime written into it at
  * setup. Starting sessions through it is part 2.
  */
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -76,7 +77,7 @@ export function osUserNames(
 ): { user: string; group: string } {
   if (!PERSON_RE.test(person))
     throw new Error(
-      `"${person}" is not a user name Den can use for its agents user (lower case letters, digits, _ and -, up to 16)`,
+      `"${person}" is not a login name Den can use for the agents' own login (lower case letters, digits, _ and -, up to 16)`,
     );
   return platform === "darwin"
     ? { user: `_den_agents_${person}`, group: `_den_${person}` }
@@ -231,7 +232,7 @@ export function setupPlan(
         argv: ["groupadd", "--system", n.group],
       },
       {
-        say: `Make the agents user ${n.user}: a system user, no login shell, its home in the agent files`,
+        say: `Make the agents' login ${n.user}: a system login with no shell, its home in the agent files`,
         argv: [
           "useradd",
           "--system",
@@ -267,8 +268,13 @@ export function setupPlan(
         "PrimaryGroupID",
         String(l.ids.gid),
       ),
-      dscl(`Name the group`, G, "RealName", `Den agents (${l.person})`),
-      dscl(`Make the agents user ${n.user}`, U),
+      dscl(
+        `Name the group, for the list of groups`,
+        G,
+        "RealName",
+        `Den agents (${l.person})`,
+      ),
+      dscl(`Make the agents' login ${n.user}`, U),
       dscl(
         `Give ${n.user} the system id ${l.ids.uid}`,
         U,
@@ -288,7 +294,12 @@ export function setupPlan(
         "NFSHomeDirectory",
         p.home,
       ),
-      dscl(`Name the user`, U, "RealName", `Den agents (${l.person})`),
+      dscl(
+        `Name the login, for the list of logins`,
+        U,
+        "RealName",
+        `Den agents (${l.person})`,
+      ),
       dscl(`Hide ${n.user} from the login window`, U, "IsHidden", "1"),
       dscl(`Give ${n.user} no password (it can't log in)`, U, "Password", "*"),
       {
@@ -401,7 +412,7 @@ export function removePlan(l: OsUserLayout): PlanStep[] {
   if (l.platform === "linux")
     steps.push(
       {
-        say: `Remove the agents user ${n.user}`,
+        say: `Remove the agents' login ${n.user}`,
         argv: ["userdel", n.user],
         optional: true,
       },
@@ -414,7 +425,7 @@ export function removePlan(l: OsUserLayout): PlanStep[] {
   else
     steps.push(
       {
-        say: `Remove the agents user ${n.user}`,
+        say: `Remove the agents' login ${n.user}`,
         argv: ["dscl", ".", "-delete", `/Users/${n.user}`],
         optional: true,
       },
@@ -493,7 +504,7 @@ export function osUserCheck(
     );
 
   const present = [
-    f.user.exists && `the user ${n.user}`,
+    f.user.exists && `the login ${n.user}`,
     f.group.exists && `the group ${n.group}`,
     f.sudoers && `the sudo rule ${p.sudoers}`,
     f.dir && `the folder ${p.dir}`,
@@ -505,7 +516,7 @@ export function osUserCheck(
         status: problems.length ? "fail" : "ok",
         detail: problems.length
           ? problems.join("; ")
-          : "agents run as you: an agents user is not set up (agents.os_user is off)",
+          : "agents run as you: their own login is not set up (agents.os_user is off)",
         problems,
       };
     problems.push(
@@ -519,13 +530,13 @@ export function osUserCheck(
 
   if (present.length === 0) {
     problems.push(
-      `agents.os_user is on, but no agents user is set up: run \`${cli} agents os-user setup\``,
+      `agents.os_user is on, but the agents' login is not set up: run \`${cli} agents os-user setup\``,
     );
     return { status: "fail", detail: problems.join("; "), problems };
   }
 
   // Pin 4: no sudo, no login shell, no home outside the agent files.
-  if (!f.user.exists) problems.push(`the agents user ${n.user} is missing`);
+  if (!f.user.exists) problems.push(`the agents' login ${n.user} is missing`);
   else {
     if (
       !f.user.shell ||
@@ -636,4 +647,160 @@ export function writableChain(file: string): (StatFacts & { path: string })[] {
     d = up;
   }
   return out;
+}
+
+export interface OsUserReadDeps {
+  /** Runs a command (never with sudo), for its status and output. */
+  exec: (cmd: string, args: string[]) => { status: number; stdout: string };
+  personUid: number;
+  /** A path's owner and mode; null when it isn't there. */
+  stat: (p: string) => StatFacts | null;
+  /** A file's text; null when it isn't there or can't be read. */
+  read: (p: string) => string | null;
+  /** The folders above a file (writableChain). */
+  chain: (p: string) => (StatFacts & { path: string })[];
+}
+
+/** What doctor checks, read from the machine as the person (no sudo). */
+export function readOsUserFacts(
+  l: OsUserLayout,
+  stateDir: string,
+  d: OsUserReadDeps,
+): OsUserFacts {
+  const n = osUserNames(l.platform, l.person);
+  const p = osUserPaths(l.root, l.person);
+  const ok = (cmd: string, args: string[]) => {
+    try {
+      const r = d.exec(cmd, args);
+      return r.status === 0 ? r.stdout : null;
+    } catch {
+      return null;
+    }
+  };
+  const groupsOf = (u: string) =>
+    (ok("id", ["-Gn", u]) ?? "").trim().split(/\s+/).filter(Boolean);
+
+  let user: OsUserFacts["user"] = { exists: false };
+  let group: OsUserFacts["group"] = { exists: false };
+  if (l.platform === "linux") {
+    const pw = ok("getent", ["passwd", n.user])?.trim().split(":");
+    if (pw && pw.length >= 7)
+      user = {
+        exists: true,
+        uid: Number(pw[2]),
+        shell: pw[6],
+        home: pw[5],
+        groups: groupsOf(n.user),
+      };
+    const gr = ok("getent", ["group", n.group])?.trim().split(":");
+    if (gr && gr.length >= 4)
+      group = {
+        exists: true,
+        members: (gr[3] ?? "").split(",").filter(Boolean),
+      };
+  } else {
+    const field = (text: string, key: string) =>
+      new RegExp(`^${key}:\\s*(.*)$`, "m").exec(text)?.[1]?.trim();
+    const u = ok("dscl", [
+      ".",
+      "-read",
+      `/Users/${n.user}`,
+      "UniqueID",
+      "UserShell",
+      "NFSHomeDirectory",
+    ]);
+    if (u !== null)
+      user = {
+        exists: true,
+        uid: Number(field(u, "UniqueID")),
+        shell: field(u, "UserShell"),
+        home: field(u, "NFSHomeDirectory"),
+        groups: groupsOf(n.user),
+      };
+    const g = ok("dscl", [
+      ".",
+      "-read",
+      `/Groups/${n.group}`,
+      "GroupMembership",
+    ]);
+    if (g !== null)
+      group = {
+        exists: true,
+        members: (field(g, "GroupMembership") ?? "")
+          .split(/\s+/)
+          .filter(Boolean),
+      };
+  }
+
+  // `sudo -n -l` lists the person's rules without a password while one of
+  // them is NOPASSWD; otherwise it fails, and the rules are not known.
+  // Only when there is an agents user: a plain install never calls sudo.
+  const listed = user.exists || group.exists ? ok("sudo", ["-n", "-l"]) : "";
+  const personRules =
+    listed === null
+      ? null
+      : listed
+          .split("\n")
+          .map((x) => x.trim())
+          .filter((x) =>
+            (/^\(([^)]*)\)/.exec(x)?.[1] ?? "")
+              .split(/[,:]/)
+              .map((y) => y.trim())
+              .includes(n.user),
+          );
+
+  const launcherStat = d.stat(p.launcher);
+  const launcherText = launcherStat ? d.read(p.launcher) : null;
+  return {
+    user,
+    group,
+    personUid: d.personUid,
+    sudoers: d.stat(p.sudoers),
+    personRules,
+    launcher: launcherStat
+      ? { ...launcherStat, text: launcherText ?? "" }
+      : null,
+    launcherChain: launcherStat ? d.chain(p.launcher) : [],
+    agentsDir: d.stat(p.agents),
+    homeDir: d.stat(p.home),
+    stateDir: d.stat(stateDir),
+    dir: d.stat(p.dir) !== null,
+  };
+}
+
+/** readOsUserFacts' deps on this machine. */
+export function machineReadDeps(): OsUserReadDeps {
+  return {
+    exec: (cmd, args) => {
+      const r = spawnSync(cmd, args, {
+        encoding: "utf-8",
+        timeout: 10_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      return { status: r.status ?? 1, stdout: r.stdout ?? "" };
+    },
+    personUid: typeof process.getuid === "function" ? process.getuid() : -1,
+    stat: (x) => {
+      try {
+        const s = fs.statSync(x);
+        return { uid: s.uid, mode: s.mode };
+      } catch {
+        return null;
+      }
+    },
+    read: (x) => {
+      try {
+        return fs.readFileSync(x, "utf-8");
+      } catch {
+        return null;
+      }
+    },
+    chain: (x) => {
+      try {
+        return writableChain(x);
+      } catch {
+        return [];
+      }
+    },
+  };
 }
