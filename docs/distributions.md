@@ -5891,12 +5891,21 @@ How the watcher paces itself:
   reset time.
 - `Retry-After` is honoured, and a 403 or 429 secondary limit waits a minute
   at least.
-- `github.watches_max` (50) watches at once, for every agent together.
+- `github.watches_max` (50) watches at once, for every agent together, at
+  least. The calls left over the floor until GitHub's reset raise it (one
+  look per watch per interval, the most a watch costs), up to 1000. Past
+  it, a new watch is queued ("queued, N ahead") and starts when one ends.
+- A pull request's watch asks about the pull request again every 10
+  minutes. When it merges or closes, or a newer push replaces its head
+  ("replaced by <sha>"), the watch ends and its agent is told once.
+- A watch whose state hasn't changed for `github.watch_stale_minutes` (60)
+  ends, and its agent is told why. Its slot is freed.
 
-These four are Settings › Server rows, a person's only
+These five are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
 `<cli> github status` show one line: the calls left, the reset time, the
-active watches and the current interval.
+open and queued watches, the oldest open watch's age, the cap now and the
+current interval.
 
 ## Gate slots: heavy test runs taken in turn
 
@@ -5957,7 +5966,7 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
 - Held past `overrun_bell_multiple` times its estimate (default 2; `gate
-  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
   the bell's Needs you: who holds it, what it runs, since when and its
   estimate, with End for the person. When an agent holds it, Den types one
   line at that agent's prompt, once per slot, to release it with

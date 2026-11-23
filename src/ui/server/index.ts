@@ -5477,6 +5477,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         watch_max_interval_seconds: g.maxIntervalSeconds,
         api_budget_floor: g.budgetFloor,
         watches_max: g.watchesMax,
+        watch_stale_minutes: g.staleMinutes,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).

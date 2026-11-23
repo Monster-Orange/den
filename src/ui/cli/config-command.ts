@@ -61,6 +61,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],
   "github.api_budget_floor": ["github", "api_budget_floor"],
   "github.watches_max": ["github", "watches_max"],
+  "github.watch_stale_minutes": ["github", "watch_stale_minutes"],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],

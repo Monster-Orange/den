@@ -721,7 +721,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch",
     "Watch a pull request's checks or a workflow run",
-    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: after a new push, watch again. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
+    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: when it merges or closes, or a new push replaces its head, the watch ends and Den tells you (after a new push, watch again). A watch with no progress for a while ends, saying why. When Den watches as many as it can at once, a new watch is queued (state queued, \"queued, N ahead\") and starts when a slot frees. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
     {
       repo: z.string().describe("The GitHub repo, owner/name"),
       pr: z
@@ -759,7 +759,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch_list",
     "Your GitHub watches",
-    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
+    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done, queued), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
     {},
     async (_a, ctx) => {
       githubWatchAgent("github_watch_list", ctx);
