@@ -24,7 +24,9 @@
  *
  * The rules that apply are the base branch's (reviewAt), never the PR
  * head's, so a PR can't change its own review. An override can only
- * tighten them (reviewLoosenings, checked in validate-layers.ts).
+ * tighten them (reviewLoosenings, checked in validate-layers.ts). A PR
+ * that edits the section itself always gets one blocking review on top
+ * (reviewRulesGuard).
  *
  * The spec's later fields (skill, skill_args, ticket_coverage, reviewer,
  * agent_may, escalate) are accepted and kept for the reviewer agents
@@ -150,6 +152,42 @@ export function matchReview(
       lenses: r.require?.lenses ?? [],
       blocksMerge: r.require?.blocks_merge ?? false,
     }));
+}
+
+/** A value with object keys sorted, so key order alone isn't a change. */
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.keys(v as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, canonical((v as Record<string, unknown>)[k])]),
+    );
+  return v;
+}
+
+/** What reviewAt returns for one ref. */
+export type ReviewAt = ReturnType<typeof reviewAt>;
+
+/**
+ * The review a PR that edits the review rules always gets, on top of what
+ * matchReview returns. The rules come from the base branch, so without it
+ * a PR setting `rules: []` passes under the old rules and turns reviews off
+ * once merged. `base` and `head` are reviewAt on each side; a head Den
+ * can't read (null) counts as a change. Null when the section is the same.
+ */
+export function reviewRulesGuard(
+  base: ReviewAt,
+  head: ReviewAt,
+): MatchedRule | null {
+  const section = (a: ReviewAt) => JSON.stringify(canonical(a?.review ?? null));
+  if (base && head && section(base) === section(head)) return null;
+  return {
+    rule: "review-rules-changed",
+    reviews: 1,
+    lenses: ["governance"],
+    blocksMerge: true,
+  };
 }
 
 /** How wide an author kind is: any takes both. */
