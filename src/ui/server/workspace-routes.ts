@@ -109,7 +109,12 @@ import {
 } from "../../shared/workspace-name.js";
 import { redactRemote } from "../../shared/environment-manager/git-remote.js";
 import { getDistRoot } from "../../shared/paths.js";
-import { recordRemovedFromWorkspace } from "../../shared/environment-manager/default-workspace.js";
+import {
+  isMultiBlueprint,
+  recordRemovedFromWorkspace,
+  seedBlueprintWorkspaces,
+  seedDefaultWorkspace,
+} from "../../shared/environment-manager/default-workspace.js";
 import { getSudoEnv, prewarmSudo, watchSudo } from "./sudo-store.js";
 import {
   devManagedPaths,
@@ -406,6 +411,77 @@ export function setWorkspaceAgentsDeps(f: (() => AgentsResolved) | null): void {
 }
 const wsAgentsDeps = (): AgentsResolved =>
   (wsAgentsOver ?? (() => webDeps()))();
+
+/**
+ * Issue 1182: `workspace seed` and `init` with a reset, a person's.
+ *
+ *   POST /api/workspaces/seed { reset: true }: each project the committed
+ *       config's blueprint names is reset to it (its repos managed), as the
+ *       CLI's reset does. An agent is refused. Audited.
+ *
+ * A seed with nothing to reset stays the CLI's: it only creates what the
+ * committed config lists.
+ */
+export interface SeedResetDeps {
+  isAgent: (req: http.IncomingMessage) => boolean;
+  /** The reset: what was seeded, in blueprint order. */
+  seed: () => { name: string; repos: string[] }[];
+  audit: (req: http.IncomingMessage, line: string, refused?: boolean) => void;
+}
+
+export async function seedResetRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: SeedResetDeps,
+): Promise<boolean> {
+  if (pathname !== "/api/workspaces/seed") return false;
+  if (req.method !== "POST") {
+    sendJson(res, { ok: false, error: "POST only" }, 405);
+    return true;
+  }
+  if (d.isAgent(req)) {
+    const error = "Only a person can reset projects (this is an agent)";
+    d.audit(req, error, true);
+    sendJson(res, { ok: false, error }, 403);
+    return true;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse((await readBody(req)) || "{}");
+  } catch {
+    body = null;
+  }
+  const keys =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? Object.keys(body)
+      : null;
+  if (
+    !keys ||
+    keys.length !== 1 ||
+    (body as Record<string, unknown>).reset !== true
+  ) {
+    sendJson(
+      res,
+      { ok: false, error: "The body is JSON: { reset: true }." },
+      400,
+    );
+    return true;
+  }
+  try {
+    const seeded = d.seed();
+    d.audit(
+      req,
+      `reset to the blueprint: ${seeded.map((w) => `${w.name} (${w.repos.length} repos)`).join(", ") || "nothing to seed"}`,
+    );
+    sendJson(res, { ok: true, seeded });
+  } catch (e) {
+    const error = (e as Error).message;
+    d.audit(req, error, true);
+    sendJson(res, { ok: false, error }, 400);
+  }
+  return true;
+}
 
 export async function handleWorkspaceRoutes(
   req: http.IncomingMessage,
@@ -732,6 +808,31 @@ export async function handleWorkspaceRoutes(
   }
 
   // ── API: create workspace ─────────────────────────────────────────────────
+  // Issue 1182: a reset to the blueprint, a person's.
+  if (
+    await seedResetRoute(req, res, pathname, {
+      isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
+      seed: () =>
+        isMultiBlueprint()
+          ? seedBlueprintWorkspaces()
+          : [{ name: "default", repos: seedDefaultWorkspace() }],
+      audit: (r, line, refused) =>
+        recordAction(
+          auditActorOf(r),
+          refused
+            ? {
+                verb: "workspace-seed-reset",
+                detail: "",
+                outcome: "refused",
+                reason: line,
+              }
+            : { verb: "workspace-seed-reset", detail: line },
+          principalOf(r),
+        ),
+    })
+  )
+    return;
+
   if (pathname === "/api/workspaces/create" && req.method === "POST") {
     try {
       const body = await readBody(req);

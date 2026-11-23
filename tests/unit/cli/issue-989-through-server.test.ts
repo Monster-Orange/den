@@ -686,6 +686,85 @@ describe("issue 989: the agents' sign-in goes through the server", () => {
   });
 });
 
+describe("issue 1182: agents accounts remove goes through the server", () => {
+  const TOKEN = "fake-token-for-1182-0123456789abcdef";
+  function accountsRig(r: Rig, server: PersonServer) {
+    const local = { cleared: 0 };
+    const run = (...args: string[]) =>
+      cmdAgents(args, {
+        ...r.deps,
+        server,
+        loginPath: async () => {},
+        tokenInput: async () => TOKEN,
+        tokenConfirm: async () => true,
+        tokenClear: async () => {
+          local.cleared++;
+          return {
+            cleared: true,
+            how: "item",
+            store: "Local store",
+            refDropped: false,
+          };
+        },
+        tokenDeps: {
+          status: () => ({
+            backend: "1password",
+            label: "1Password",
+            implicit: false,
+            detect: { available: true },
+          }),
+        },
+      } as Parameters<typeof cmdAgents>[1]);
+    return { run, local };
+  }
+
+  it("the server removes it; a refusal removes nothing; no server: removed here", async () => {
+    const r = await rig();
+    const made = accountsRig(r, fake(null).server);
+    expect(await made.run("accounts", "add", "--name", "two")).toBe(0);
+    const before = written(r);
+
+    const yes = fake({
+      status: 200,
+      json: { ok: true, removed: "Account B", store: "1Password" },
+    });
+    expect(
+      await accountsRig(r, yes.server).run(
+        "accounts",
+        "remove",
+        "two",
+        "--yes",
+      ),
+    ).toBe(0);
+    expect(yes.calls).toEqual([
+      {
+        method: "POST",
+        path: "/api/agents/accounts/remove",
+        body: { runtime: "den-claude", account: "2" },
+      },
+    ]);
+    expect(written(r)).toBe(before);
+    expect(r.out.at(-1)).toMatch(/removed Account B/);
+
+    const no = fake({ status: 403, json: { ok: false, error: "nope" } });
+    expect(
+      await accountsRig(r, no.server).run("accounts", "remove", "two", "--yes"),
+    ).not.toBe(0);
+    expect(written(r)).toBe(before);
+    expect(r.err.join("\n")).toContain("nope");
+
+    expect(
+      await accountsRig(r, fake(null).server).run(
+        "accounts",
+        "remove",
+        "two",
+        "--yes",
+      ),
+    ).toBe(0);
+    expect(written(r)).not.toBe(before);
+  });
+});
+
 describe("issue 989: notifications read and clear go through the server", () => {
   const cases: { args: string[]; path: string; body: unknown; said: RegExp }[] =
     [

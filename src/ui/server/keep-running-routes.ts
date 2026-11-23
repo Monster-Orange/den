@@ -343,6 +343,9 @@ export function handleSignInTokenRoute(
  *        Set sign-in token: its own item in the install's secrets store,
  *        by the same code as `agents accounts set-token`
  *   POST /api/agents/accounts/order {runtime, order: [id, ...]}
+ *   POST /api/agents/accounts/remove {runtime, account}
+ *        Issue 1182: removes the account and its token from the store, as
+ *        `agents accounts remove` does
  *
  * The token is never in an answer, a log line or an error. Answers:
  *   { ok: true, accounts }    the Settings list (agent_accounts)
@@ -353,6 +356,11 @@ export interface AccountsRouteDeps {
   isAgent: (req: http.IncomingMessage) => boolean;
   add: (runtime: string, name?: string) => void;
   order: (runtime: string, ids: string[]) => void;
+  /** Issue 1182: the account removed, and the store its token left. */
+  remove: (
+    runtime: string,
+    account: string,
+  ) => Promise<{ label: string; store?: string }>;
   saveToken: (
     runtime: string,
     account: string,
@@ -374,7 +382,8 @@ export function handleAccountsRoute(
   if (
     (pathname !== "/api/agents/accounts" &&
       pathname !== "/api/agents/accounts/token" &&
-      pathname !== "/api/agents/accounts/order") ||
+      pathname !== "/api/agents/accounts/order" &&
+      pathname !== "/api/agents/accounts/remove") ||
     req.method !== "POST"
   )
     return false;
@@ -401,6 +410,7 @@ export function handleAccountsRoute(
     const { withoutSecret, tokenShapeError } =
       await import("../../shared/agents/signin-token.js");
     let value = "";
+    let removed: { label: string; store?: string } | undefined;
     try {
       if (pathname === "/api/agents/accounts") {
         if (body.name !== undefined && typeof body.name !== "string")
@@ -411,6 +421,13 @@ export function handleAccountsRoute(
         if (!Array.isArray(order) || !order.every((x) => typeof x === "string"))
           return bad("order is a list of ids");
         d.order(runtime, order as string[]);
+      } else if (pathname === "/api/agents/accounts/remove") {
+        if (typeof body.account !== "string" || !body.account)
+          return bad("`account` is a string");
+        removed = await d.remove(runtime, body.account);
+        d.log?.(
+          `agents' sign-in account ${removed.label} (${runtime}) removed (by a person)`,
+        );
       } else {
         if (typeof body.account !== "string")
           return bad("`account` is a string");
@@ -441,7 +458,16 @@ export function handleAccountsRoute(
         status,
       );
     }
-    return d.sendJson(res, { ok: true, accounts: await d.view() });
+    return d.sendJson(res, {
+      ok: true,
+      accounts: await d.view(),
+      ...(removed
+        ? {
+            removed: removed.label,
+            ...(removed.store ? { store: removed.store } : {}),
+          }
+        : {}),
+    });
   })().catch(() => {
     if (!res.headersSent)
       d.sendJson(res, { ok: false, error: "not saved" }, 500);
