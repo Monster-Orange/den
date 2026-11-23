@@ -143,6 +143,22 @@ describe("Attention.statuses (issue 771)", () => {
     expect(a.waitingNow().get("ag-1")).toBe("permission");
   });
 
+  it.each([
+    ["the screen's question (issue 828)", { why: "asked", dialog: true }],
+    ["a permission dialog", { why: "permission" }],
+  ] as const)(
+    "a 7501-raised wait that %s then repeats is no longer the 7501's to lower",
+    async (_w, ev) => {
+      const { a } = mk();
+      await a.statuses([st("ag-1", "blocked")]);
+      clock += 1000;
+      await a.event("ag-1", "web", { event: "waiting", ...ev });
+      clock += 1000;
+      await a.statuses([st("ag-1", "idle")]);
+      expect(a.waitingNow().get("ag-1")).toBe(ev.why);
+    },
+  );
+
   it("applies only to the agent it names", async () => {
     const { a } = mk();
     await a.statuses([st("ag-2", "blocked")]);
