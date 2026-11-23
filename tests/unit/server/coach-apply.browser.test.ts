@@ -94,7 +94,11 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
-  s = await startAgentsPageServer({ fresh: true });
+  // The Coach is off by default: the distribution turns it on here.
+  s = await startAgentsPageServer({
+    fresh: true,
+    distYml: "agents:\n  coach:\n    enabled: true",
+  });
 }, 60_000);
 
 afterAll(async () => {

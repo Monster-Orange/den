@@ -275,3 +275,21 @@ describe("read out when it changes", () => {
     expect(applyLiveText(after, after, {})).toBe("");
   });
 });
+
+describe("every Coach write has a busy action", () => {
+  // The kit refuses a name busy-den.js doesn't list, so the button would
+  // never show its dots and the write would fail at once.
+  it("each write(name, …) in coach-tab.js is named in busy-den.js", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const pub = path.join(process.cwd(), "src", "ui", "server", "public");
+    const tab = fs.readFileSync(path.join(pub, "coach-tab.js"), "utf-8");
+    const den = fs.readFileSync(path.join(pub, "busy-den.js"), "utf-8");
+    const names = [...tab.matchAll(/\bwrite\(\s*"([a-z-]+)"/g)].map(
+      (m) => m[1]!,
+    );
+    expect(names).toContain("coach-apply");
+    const missing = names.filter((n) => !den.includes(`"${n}": {`));
+    expect(missing).toEqual([]);
+  });
+});

@@ -270,6 +270,17 @@ export const DEN_ACTIONS = {
       failure: "co.counts.fail",
     },
   },
+  // Issue 110: a finding's Apply asks for the person's Allow (dots in
+  // the button; the bell then holds the change).
+  "coach-apply": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.ap.busy.w",
+      success: "co.ap.busy.done",
+      failure: "co.ap.busy.fail",
+    },
+  },
   // Issue 172: Settings › Notifications › Devices that get push.
   "push-test": {
     who: "__DEN_TITLE__",
