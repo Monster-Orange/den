@@ -80,7 +80,7 @@ export function safeWhy(message: string): string {
     const at = /position (\d+)/.exec(message);
     return `not valid JSON${at ? ` (at position ${at[1]})` : ""}`;
   }
-  const code = /\b(E[A-Z]{2,})\b/.exec(message);
+  const code = /^(E[A-Z]{2,}):/.exec(message);
   return code ? `can't be read (${code[1]})` : "can't be read";
 }
 

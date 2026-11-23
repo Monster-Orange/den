@@ -210,6 +210,11 @@ describe("issue 786: a broken file's text never reaches backup's notes (security
       expect(keepUnreadable(s, file, `odd "${SECRET}"`)!.why).toBe(
         "can't be read",
       );
+      // Only an errno code at the start, never an upper-case word inside.
+      fs.writeFileSync(file, "x");
+      expect(
+        keepUnreadable(s, file, "token EVILSECRETTOKEN refused")!.why,
+      ).toBe("can't be read");
     } finally {
       fs.rmSync(s, { recursive: true, force: true });
     }
