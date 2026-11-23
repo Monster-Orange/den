@@ -32,6 +32,8 @@ const setView = (ctx, scope) => ctx.api("/api/scope", json({ scope }));
  * (issue 946), so a bed that has some keeps them through every clause.
  * The check leaves them out of what it compares, and never tests their
  * items. Set at the start of each run, from what an empty save left.
+ * Module-level is safe only because cells run one at a time, as they must:
+ * every cell writes the same person's pins.
  */
 let base = { keys: new Set(), items: new Set() };
 const allPins = async (ctx) => {
