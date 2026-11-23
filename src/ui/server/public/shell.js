@@ -2142,6 +2142,41 @@
     "hub.justConnected":
       "Connected to {company} ({host}). Not the company you meant?",
     "hub.reconnect": "Reconnect",
+    "hub.cw.done": "Connected to Hub ({company}).",
+    "hub.cw.doneNoCo": "Connected to Hub.",
+    "hub.cw.linked": "Linked {n} projects in the same approval.",
+    "hub.cw.linked.one": "Linked {n} project in the same approval.",
+    "hub.cw.linkedNew":
+      "Linked {n} projects in the same approval ({made} new).",
+    "hub.cw.linkedNew.one":
+      "Linked {n} project in the same approval ({made} new).",
+    "hub.cw.notCreated": "{key}: not created.",
+    "hub.cw.notCreatedWhy": "{key}: not created ({detail}).",
+    "hub.cw.notDone": "{key}: not done on Hub.",
+    "hub.cw.notDoneWhy": "{key}: not done on Hub ({detail}).",
+    "hub.cw.later": "{key}: waits for your review.",
+    "hub.cw.fb.oldHub":
+      "This Hub doesn't link projects in Connect yet, so they wait for your review here.",
+    "hub.cw.fb.otherList":
+      "Hub's answer is for another list of projects, so they wait for your review here.",
+    "hub.cw.fb.badAnswer":
+      "Den couldn't read Hub's answer about the projects, so they wait for your review here.",
+    "hub.cw.fb.rebind":
+      "Den couldn't move its Hub records to this Hub, so the projects wait for your review here.",
+    "hub.cw.fb.tooMany":
+      "Connect sends at most 50 projects to Hub, so they wait for your review here.",
+    "hub.cw.fb.tooBig":
+      "The list of projects was over 6 KB, so they wait for your review here.",
+    "hub.cw.fb.badKey":
+      "A project's name has letters Hub can't match, so they wait for your review here.",
+    "hub.cw.fb.twice":
+      "A project was listed twice, so they wait for your review here.",
+    "hub.cw.review":
+      "Review {n} projects below, then press Connect and link all.",
+    "hub.cw.review.one":
+      "Review {n} project below, then press Connect and link all.",
+    "hub.cw.cannot":
+      "Hub can't list its projects yet: link them in Settings › Hub when it can.",
     "hubgh.offline": "This install isn't connected to Hub yet.",
     "hubgh.failed": "Den couldn't ask Hub about GitHub access.",
     "hubgh.noOrgs": "No repos sent to Hub yet.",

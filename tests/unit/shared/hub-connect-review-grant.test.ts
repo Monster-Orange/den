@@ -58,6 +58,7 @@ describe("issue 648: what Connect sends", () => {
     expect(reviewParam(many)).toEqual({
       ok: false,
       why: "more than 50 projects",
+      code: "too-many",
     });
     const big = Array.from({ length: 40 }, (_, i) => ({
       key: `p${i}`,
@@ -67,6 +68,7 @@ describe("issue 648: what Connect sends", () => {
     expect(reviewParam(big)).toEqual({
       ok: false,
       why: "the list is over 6 KB",
+      code: "too-big",
     });
   });
 
@@ -74,12 +76,18 @@ describe("issue 648: what Connect sends", () => {
     expect(reviewParam([{ key: "North", name: "N", repos: [] }])).toEqual({
       ok: false,
       why: 'project "North" has a name Hub can\'t match (a-z, 0-9 and -, at most 64)',
+      code: "bad-key",
     });
     expect(reviewParam([P[0]!, P[0]!])).toEqual({
       ok: false,
       why: 'project "north" is listed twice',
+      code: "twice",
     });
-    expect(reviewParam([])).toEqual({ ok: false, why: "no projects to link" });
+    expect(reviewParam([])).toEqual({
+      ok: false,
+      why: "no projects to link",
+      code: "empty",
+    });
   });
 });
 
@@ -122,6 +130,7 @@ describe("issue 648: Hub's answer", () => {
     expect(parseGrantReview(undefined, sent())).toEqual({
       ok: false,
       why: "this Hub doesn't link projects in Connect yet",
+      code: "old-hub",
     });
   });
 
@@ -130,6 +139,7 @@ describe("issue 648: Hub's answer", () => {
     expect(parseGrantReview(good("0".repeat(64)), s)).toEqual({
       ok: false,
       why: "Hub's answer is for another list of projects",
+      code: "other-list",
     });
   });
 

@@ -6,6 +6,11 @@
  * link: no second approval, no plan page. An older Hub (no `review` in its
  * answer) falls back to issue 646's flow, and Connect says so. Live-check
  * clauses 1 and 2. Fakes for Hub; invented names only.
+ *
+ * Connect's summary is data (lastResult().words); Settings words it in
+ * en/es/ja (settings-hub-words.test.ts). Security review: links are
+ * written only after the rebind to this Hub resolved, and never over a
+ * link to another Hub project.
  */
 import { describe, expect, it } from "@jest/globals";
 import { createHash } from "crypto";
@@ -26,8 +31,9 @@ const PROJECTS = [
 function hc(
   review: (hash: string) => unknown,
   over: Partial<HubConnectDeps> = {},
+  had: Record<string, HubProjectLink> = {},
 ) {
-  const links = new Map<string, HubProjectLink>();
+  const links = new Map<string, HubProjectLink>(Object.entries(had));
   let sentHash = "";
   let reviewed = 0;
   const h = new HubConnect({
@@ -47,6 +53,9 @@ function hc(
     installLabel: () => "den on box",
     reviewProjects: () => PROJECTS,
     linkProject: (ws, l) => void links.set(ws, l),
+    linkOf: (ws) => links.get(ws) ?? null,
+    rebind: async () => ({ kind: "same" }),
+    boundOrigin: () => HUB,
     reviewAfter: async () => {
       reviewed++;
       return { review: 3 - links.size };
@@ -129,15 +138,19 @@ describe("issue 648: one approval links every project (clause 1)", () => {
     const f = hc(ALL);
     const r = await f.finish(f.start());
     expect([...f.links.keys()]).toEqual(["north", "south", "east"]);
+    // Stamped with the Hub connected now, not whatever was bound before.
     expect(f.links.get("east")).toEqual({
       id: "p_east",
       slug: "east",
       name: "East",
+      hub: { origin: HUB, company: "acme" },
     });
     expect(r?.ok).toBe(true);
-    expect(r?.message).toBe(
-      "Connected to Hub (Acme Co). Linked 3 projects in the same approval (1 new).",
-    );
+    expect(r?.words).toEqual({
+      team: "Acme Co",
+      grant: { linked: 3, created: 1, skipped: [] },
+      review: { n: 0 },
+    });
   });
 
   it("a skipped project waits for 646's review, said in the summary", async () => {
@@ -154,11 +167,21 @@ describe("issue 648: one approval links every project (clause 1)", () => {
     }));
     const r = await f.finish(f.start());
     expect([...f.links.keys()]).toEqual(["north", "south"]);
-    expect(r?.message).toContain("Linked 2 projects in the same approval.");
-    expect(r?.message).toContain(
-      "east: not created (members can't create projects).",
-    );
-    expect(r?.message).toContain("Review 1 project below");
+    expect(r?.words).toEqual({
+      team: "Acme Co",
+      grant: {
+        linked: 2,
+        created: 0,
+        skipped: [
+          {
+            key: "east",
+            why: "permission",
+            detail: "members can't create projects",
+          },
+        ],
+      },
+      review: { n: 1 },
+    });
   });
 });
 
@@ -168,17 +191,56 @@ describe("issue 648: an older Hub falls back to issue 646's flow (clause 2)", ()
     const r = await f.finish(f.start());
     expect(f.links.size).toBe(0);
     expect(f.reviewed()).toBe(1);
-    expect(r?.message).toBe(
-      "Connected to Hub (Acme Co). This Hub doesn't link projects in Connect yet, so they wait for your review here. Review 3 projects below, then press Connect and link all.",
-    );
+    expect(r?.words).toEqual({
+      team: "Acme Co",
+      grant: { fallback: "old-hub" },
+      review: { n: 3 },
+    });
   });
 
   it("a review for another list (its hash): dropped, and said", async () => {
     const f = hc(() => ALL("0".repeat(64)));
     const r = await f.finish(f.start());
     expect(f.links.size).toBe(0);
-    expect(r?.message).toContain(
-      "Hub's answer is for another list of projects",
-    );
+    expect(r?.words?.grant).toEqual({ fallback: "other-list" });
+  });
+});
+
+describe("issue 648 security: links only for this Hub, never over another link", () => {
+  it("the rebind rejects: nothing is linked, and the projects wait for the review", async () => {
+    const f = hc(ALL, {
+      rebind: async () => {
+        throw new Error("state dir is read-only");
+      },
+    });
+    const r = await f.finish(f.start());
+    expect(f.links.size).toBe(0);
+    expect(r?.words?.grant).toEqual({ fallback: "rebind" });
+    expect(r?.words?.review).toEqual({ n: 3 });
+  });
+
+  it("the rebind resolved but the bound Hub is another one: nothing is linked", async () => {
+    const f = hc(ALL, { boundOrigin: () => "https://old-hub.example.test" });
+    const r = await f.finish(f.start());
+    expect(f.links.size).toBe(0);
+    expect(r?.words?.grant).toEqual({ fallback: "rebind" });
+  });
+
+  it("a project linked to another Hub project keeps its link and waits for the review; the same id is confirmed", async () => {
+    const theirs = { id: "p_mine", slug: "mine", name: "Mine" };
+    const same = { id: "p_docs", slug: "docs", name: "Docs" };
+    const f = hc(ALL, {}, { north: theirs, south: same });
+    const r = await f.finish(f.start());
+    expect(f.links.get("north")).toEqual(theirs);
+    expect(f.links.get("south")).toEqual({
+      ...same,
+      hub: { origin: HUB, company: "acme" },
+    });
+    expect(f.links.get("east")?.id).toBe("p_east");
+    expect(r?.words?.grant).toEqual({
+      linked: 2,
+      created: 1,
+      skipped: [{ key: "north", why: "person" }],
+    });
   });
 });

@@ -47,18 +47,25 @@ import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import { getStateDir } from "../../shared/paths.js";
-import { recordUnrevoked } from "../../shared/hub-binding.js";
+import {
+  hubOrigin,
+  readHubBinding,
+  recordUnrevoked,
+} from "../../shared/hub-binding.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { projectRepos } from "../../shared/project-repos.js";
 import { workspaceDisplayName } from "../../shared/workspace-name.js";
 import {
+  parseHubProjectLink,
   setHubProject,
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
 import {
   parseGrantReview,
   reviewParam,
+  type FallbackCode,
   type GrantReview,
+  type GrantSkip,
   type ReviewProject,
 } from "../../shared/hub-connect-review-grant.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
@@ -85,7 +92,9 @@ interface Pending {
    * Issue 648: the projects sent to Hub's page (their hash and keys), or
    * why none were (then issue 646's flow); absent: nothing to link.
    */
-  review?: { hash: string; keys: string[] } | { why: string };
+  review?:
+    | { hash: string; keys: string[] }
+    | { why: string; code: FallbackCode };
 }
 
 /** What hub.token becomes after a connect: a store ref, or a file source. */
@@ -143,6 +152,14 @@ export interface HubConnectDeps {
   reviewProjects?: () => ReviewProject[];
   /** Issue 648: store a link Hub made in that approval. */
   linkProject?: (ws: string, link: HubProjectLink, by: string) => void;
+  /**
+   * Issue 648: project `ws`'s link as written (any Hub), or null. Connect
+   * fills only a project with none, or confirms the same id; another link
+   * waits for the person's review.
+   */
+  linkOf?: (ws: string) => HubProjectLink | null;
+  /** Issue 648: the origin hub/bound.json names now (after the rebind). */
+  boundOrigin?: () => string | null;
 }
 
 /** Issue 646: at most this many repos go to Hub's Connect page. */
@@ -412,6 +429,9 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     repos: defaultRepos,
     reviewProjects: defaultReviewProjects,
     linkProject: (ws, link, by) => setHubProject(ws, link, by),
+    linkOf: (ws) =>
+      parseHubProjectLink(readWorkspacesFile().workspaces[ws]?.hub_project),
+    boundOrigin: () => readHubBinding(getStateDir())?.origin ?? null,
   };
 }
 
@@ -432,49 +452,48 @@ export function callbackOriginProblem(origin: string): string | null {
   return `Hub can only send you back to https or to this machine (localhost or a .localhost name); open ${product().title} over https (its edge address) or on this machine, then Connect`;
 }
 
+/** Issue 648: why the one approval's links fell back to issue 646's flow. */
+type GrantFallback = {
+  ok: false;
+  why: string;
+  code: FallbackCode;
+  quiet?: boolean;
+};
+
 export type ConnectResult =
   | {
       ok: true;
       team?: string;
       where: string;
       /** Issue 648: what Hub's one approval did with the projects. */
-      review?: GrantReview | { ok: false; why: string; quiet?: boolean };
+      review?: GrantReview | GrantFallback;
     }
   | { ok: false; reason: "denied" | "expired" | "failed"; message: string };
 
-/** Issue 648: what the one approval did, after "Connected to Hub (…)." */
-function grantWords(
-  r: GrantReview | { ok: false; why: string; quiet?: boolean },
-): string {
-  if (!r.ok) {
-    if ("quiet" in r && r.quiet) return "";
-    const why = r.why.charAt(0).toUpperCase() + r.why.slice(1);
-    return ` ${why}, so they wait for your review here.`;
-  }
-  const n = r.links.length;
-  const made = r.links.filter((l) => l.how === "created").length;
-  let out = n
-    ? ` Linked ${n} project${n === 1 ? "" : "s"} in the same approval${made ? ` (${made} new)` : ""}.`
-    : "";
-  for (const s of r.skipped) {
-    const d = s.detail ? ` (${s.detail})` : "";
-    out +=
-      s.why === "permission"
-        ? ` ${s.key}: not created${d}.`
-        : s.why === "failed"
-          ? ` ${s.key}: not done on Hub${d}.`
-          : ` ${s.key}: left for later.`;
-  }
-  return out;
+/**
+ * What Connect came to, as data: Settings words it in the page's language
+ * (en/es/ja), never the server. `grant` is issue 648's one approval: the
+ * links stored, how many Hub created, the projects left out (each one's
+ * key, why, and Hub's detail, shown as escaped text), or the fallback's
+ * code. `review` is issue 646's: how many projects wait for the person.
+ */
+export interface ConnectWords {
+  team?: string;
+  grant?:
+    | { linked: number; created: number; skipped: GrantSkip[] }
+    | { fallback: FallbackCode };
+  review?: { n: number } | { cannot: true };
 }
 
-/** Issue 646: what waits for the review, after "Connected to Hub." */
-function reviewWords(l: { review: number } | { cannot: true }): string {
-  if ("cannot" in l)
-    return " Hub can't list its projects yet: link them in Settings › Hub when it can.";
-  const n = l.review;
-  if (!n) return "";
-  return ` Review ${n} project${n === 1 ? "" : "s"} below, then press Connect and link all.`;
+function grantData(
+  r: GrantReview | GrantFallback,
+): ConnectWords["grant"] | undefined {
+  if (!r.ok) return "quiet" in r && r.quiet ? undefined : { fallback: r.code };
+  return {
+    linked: r.links.length,
+    created: r.links.filter((l) => l.how === "created").length,
+    skipped: r.skipped,
+  };
 }
 
 export class HubConnect {
@@ -523,7 +542,10 @@ export class HubConnect {
       review = r.ok
         ? { hash: r.hash, keys: r.keys }
         : list.length
-          ? { why: `Connect couldn't send the projects to Hub (${r.why})` }
+          ? {
+              why: `Connect couldn't send the projects to Hub (${r.why})`,
+              code: r.code,
+            }
           : undefined;
       if (r.ok) projectsParam = r.param;
     } catch {
@@ -572,17 +594,30 @@ export class HubConnect {
    */
   async finish(q: URLSearchParams): Promise<ConnectResult> {
     const r = await this.finishOnce(q);
-    let message = r.ok
-      ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.${r.review ? grantWords(r.review) : ""}`
+    // `message` is the plain English line for logs and older pages; the
+    // page words `words` itself (issue 648, en/es/ja).
+    const message = r.ok
+      ? `Connected to Hub${r.team ? ` (${r.team})` : ""}.`
       : r.message;
-    // Issue 646: the projects wait for the review. It never fails Connect.
-    if (r.ok && this.deps.reviewAfter) {
-      const l = await this.deps
-        .reviewAfter()
-        .catch(() => ({ cannot: true }) as const);
-      message += reviewWords(l);
+    let words: ConnectWords | undefined;
+    if (r.ok) {
+      words = r.team ? { team: r.team } : {};
+      const grant = r.review ? grantData(r.review) : undefined;
+      if (grant) words.grant = grant;
+      // Issue 646: the projects wait for the review. It never fails Connect.
+      if (this.deps.reviewAfter) {
+        const l = await this.deps
+          .reviewAfter()
+          .catch(() => ({ cannot: true }) as const);
+        words.review = "cannot" in l ? { cannot: true } : { n: l.review };
+      }
     }
-    this.last = { ok: r.ok, message, at: this.deps.now() };
+    this.last = {
+      ok: r.ok,
+      message,
+      ...(words ? { words } : {}),
+      at: this.deps.now(),
+    };
     return r;
   }
 
@@ -591,14 +626,27 @@ export class HubConnect {
    * after Hub's redirect; the callback page only flashes by). Never the
    * token or the code.
    */
-  lastResult(): { ok: boolean; message: string } | null {
+  lastResult(): {
+    ok: boolean;
+    message: string;
+    words?: ConnectWords;
+  } | null {
     const l = this.last;
     this.last = null;
     if (!l || this.deps.now() - l.at > CONNECT_TTL_MS) return null;
-    return { ok: l.ok, message: l.message };
+    return {
+      ok: l.ok,
+      message: l.message,
+      ...(l.words ? { words: l.words } : {}),
+    };
   }
 
-  private last: { ok: boolean; message: string; at: number } | null = null;
+  private last: {
+    ok: boolean;
+    message: string;
+    words?: ConnectWords;
+    at: number;
+  } | null = null;
 
   private async finishOnce(q: URLSearchParams): Promise<ConnectResult> {
     const state = q.get("state") ?? "";
@@ -688,28 +736,68 @@ export class HubConnect {
         }
       });
     // Issue 726: another Hub or company: the old one's state goes first.
-    await this.deps
-      .rebind?.(hubUrl, grant.company?.slug || grant.company?.name || undefined)
-      .catch(() => undefined);
-    // Issue 648: the links Hub's one approval made, stored after the rebind
-    // so each is stamped with the Hub and company connected now.
+    const company = grant.company?.slug || grant.company?.name || undefined;
+    let rebound = true;
+    if (this.deps.rebind)
+      rebound = await this.deps.rebind(hubUrl, company).then(
+        () => true,
+        () => false,
+      );
+    // Issue 648: the links Hub's one approval made. Written only when the
+    // rebind resolved and hub/bound.json names this Hub, each stamped with
+    // it (else a new company's ids would count as the old Hub's). Only a
+    // project with no link, or linked to the same Hub project, is filled:
+    // another link waits for the person's review.
     let review: Extract<ConnectResult, { ok: true }>["review"];
     if (p.review && "why" in p.review)
-      review = { ok: false, why: p.review.why };
+      review = { ok: false, why: p.review.why, code: p.review.code };
     else if (p.review) {
-      review = parseGrantReview(grant.review, p.review);
-      if (review.ok)
-        for (const l of review.links) {
+      const origin = hubOrigin(hubUrl);
+      let bound: string | null = null;
+      try {
+        bound = this.deps.boundOrigin?.() ?? origin;
+      } catch {
+        bound = null;
+      }
+      const parsed = parseGrantReview(grant.review, p.review);
+      if (parsed.ok && (!rebound || !bound || hubOrigin(bound) !== origin))
+        review = {
+          ok: false,
+          why: "Den couldn't move its Hub records to this Hub",
+          code: "rebind",
+        };
+      else if (!parsed.ok) review = parsed;
+      else {
+        const links: typeof parsed.links = [];
+        const skipped = [...parsed.skipped];
+        for (const l of parsed.links) {
+          let had: HubProjectLink | null = null;
+          try {
+            had = this.deps.linkOf?.(l.key) ?? null;
+          } catch {
+            had = null;
+          }
+          if (had && had.id !== l.project.id) {
+            skipped.push({ key: l.key, why: "person" });
+            continue;
+          }
           try {
             this.deps.linkProject?.(
               l.key,
-              l.project,
+              {
+                ...l.project,
+                hub: { origin, ...(company ? { company } : {}) },
+              },
               `Connect, Hub's one approval (${l.how})`,
             );
+            links.push(l);
           } catch {
-            /* one project's write never stops Connect */
+            // One project's write never stops Connect: it waits for the review.
+            skipped.push({ key: l.key, why: "failed" });
           }
         }
+        review = { ok: true, links, skipped };
+      }
     }
     return {
       ok: true,

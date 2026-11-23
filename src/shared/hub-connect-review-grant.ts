@@ -5,7 +5,10 @@
  *   Den → Hub's Connect page: `review=1&projects=<base64url JSON>`, the
  *   JSON `[{key, name, repos}]`: at most 50 projects and 6 KB encoded, keys
  *   [a-z0-9-]{1,64} once each, never the catch-all `default` (issue 649).
- *   Den keeps the sha256 of the `projects` value it sent.
+ *   Den keeps the sha256 of the `projects` value it sent. The list goes in
+ *   the Connect page's URL (so the browser's history keeps it): it never
+ *   carries anything but these project keys, names and owner/name repos;
+ *   no tokens, no paths.
  *
  *   Hub → POST /connect/token adds `review: {version: 1, projects_hash,
  *   links: [{key, project: {id, slug, name}, how: linked|created}],
@@ -30,25 +33,47 @@ export interface ReviewProject {
   repos: string[];
 }
 
+/** Why a review falls back to issue 646's flow; the page words each one. */
+export type FallbackCode =
+  | "empty"
+  | "too-many"
+  | "too-big"
+  | "bad-key"
+  | "twice"
+  | "old-hub"
+  | "other-list"
+  | "bad-answer"
+  | "rebind";
+
 export type ReviewParam =
   | { ok: true; param: string; hash: string; keys: string[] }
-  | { ok: false; why: string };
+  | { ok: false; why: string; code: FallbackCode };
 
 /** What Connect sends, or why it sends nothing (then issue 646's flow). */
 export function reviewParam(projects: ReviewProject[]): ReviewParam {
   const list = projects.filter((p) => !isCatchAllProject(p.key));
-  if (!list.length) return { ok: false, why: "no projects to link" };
+  if (!list.length)
+    return { ok: false, why: "no projects to link", code: "empty" };
   if (list.length > REVIEW_MAX_PROJECTS)
-    return { ok: false, why: `more than ${REVIEW_MAX_PROJECTS} projects` };
+    return {
+      ok: false,
+      why: `more than ${REVIEW_MAX_PROJECTS} projects`,
+      code: "too-many",
+    };
   const seen = new Set<string>();
   for (const p of list) {
     if (!KEY.test(p.key))
       return {
         ok: false,
         why: `project "${p.key.slice(0, 64)}" has a name Hub can't match (a-z, 0-9 and -, at most 64)`,
+        code: "bad-key",
       };
     if (seen.has(p.key))
-      return { ok: false, why: `project "${p.key}" is listed twice` };
+      return {
+        ok: false,
+        why: `project "${p.key}" is listed twice`,
+        code: "twice",
+      };
     seen.add(p.key);
   }
   const body = list.map((p) => ({
@@ -58,7 +83,7 @@ export function reviewParam(projects: ReviewProject[]): ReviewParam {
   }));
   const param = Buffer.from(JSON.stringify(body), "utf8").toString("base64url");
   if (param.length > REVIEW_MAX_BYTES)
-    return { ok: false, why: "the list is over 6 KB" };
+    return { ok: false, why: "the list is over 6 KB", code: "too-big" };
   return {
     ok: true,
     param,
@@ -80,12 +105,14 @@ export interface GrantSkip {
 
 export type GrantReview =
   | { ok: true; links: GrantLink[]; skipped: GrantSkip[] }
-  | { ok: false; why: string };
+  | { ok: false; why: string; code: FallbackCode };
 
 const text = (v: unknown): string | null =>
   typeof v === "string" && v.trim() && v.length <= TEXT_MAX ? v : null;
-const bad = (why = "Hub's answer about the projects isn't one Den reads") =>
-  ({ ok: false, why }) as const;
+const bad = (
+  why = "Hub's answer about the projects isn't one Den reads",
+  code: FallbackCode = "bad-answer",
+) => ({ ok: false, why, code }) as const;
 
 /** Hub's `review`, checked against what Den sent; else why it's dropped. */
 export function parseGrantReview(
@@ -93,12 +120,12 @@ export function parseGrantReview(
   sent: { hash: string; keys: string[] },
 ): GrantReview {
   if (raw === undefined || raw === null)
-    return bad("this Hub doesn't link projects in Connect yet");
+    return bad("this Hub doesn't link projects in Connect yet", "old-hub");
   if (typeof raw !== "object") return bad();
   const r = raw as Record<string, unknown>;
   if (r.version !== 1) return bad();
   if (r.projects_hash !== sent.hash)
-    return bad("Hub's answer is for another list of projects");
+    return bad("Hub's answer is for another list of projects", "other-list");
   if (!Array.isArray(r.links) || !Array.isArray(r.skipped)) return bad();
   const want = new Set(sent.keys);
   const got = new Set<string>();

@@ -5642,14 +5642,82 @@ function hubAddressHtml(b) {
   );
 }
 
+/**
+ * Issue 648: Connect's summary, worded here in the page's language from
+ * the data the server sends (lastResult().words), never words built on
+ * the server. `head` adds "Connected to Hub (…)." first. Plain sentences:
+ * the caller escapes them (a project's key and Hub's detail are data).
+ */
+const HUB_FALLBACK_KEYS = {
+  "old-hub": "hub.cw.fb.oldHub",
+  "other-list": "hub.cw.fb.otherList",
+  "bad-answer": "hub.cw.fb.badAnswer",
+  rebind: "hub.cw.fb.rebind",
+  "too-many": "hub.cw.fb.tooMany",
+  "too-big": "hub.cw.fb.tooBig",
+  "bad-key": "hub.cw.fb.badKey",
+  twice: "hub.cw.fb.twice",
+};
+export function hubConnectWords(w, t = (k) => k, head = true) {
+  const out = [];
+  if (!w || typeof w !== "object") return out;
+  if (head)
+    out.push(
+      w.team ? t("hub.cw.done", { company: w.team }) : t("hub.cw.doneNoCo"),
+    );
+  const g = w.grant;
+  if (g && typeof g === "object") {
+    if (typeof g.fallback === "string") {
+      const k = HUB_FALLBACK_KEYS[g.fallback];
+      if (k) out.push(t(k));
+    } else {
+      const n = Number(g.linked) || 0;
+      const made = Number(g.created) || 0;
+      if (n)
+        out.push(
+          made ? t("hub.cw.linkedNew", { n, made }) : t("hub.cw.linked", { n }),
+        );
+      for (const x of Array.isArray(g.skipped) ? g.skipped : []) {
+        const key = String(x?.key ?? "");
+        const detail = typeof x?.detail === "string" ? x.detail : "";
+        if (x?.why === "permission")
+          out.push(
+            detail
+              ? t("hub.cw.notCreatedWhy", { key, detail })
+              : t("hub.cw.notCreated", { key }),
+          );
+        else if (x?.why === "failed")
+          out.push(
+            detail
+              ? t("hub.cw.notDoneWhy", { key, detail })
+              : t("hub.cw.notDone", { key }),
+          );
+        else out.push(t("hub.cw.later", { key }));
+      }
+    }
+  }
+  const r = w.review;
+  if (r && r.cannot) out.push(t("hub.cw.cannot"));
+  else if (r && Number(r.n) > 0)
+    out.push(t("hub.cw.review", { n: Number(r.n) }));
+  return out;
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
     ? b.state || (b.connected ? "connected" : "no_token")
     : "no_token";
   const note = (t, attr) => `<p class="set-note" ${attr}>${escR(t)}</p>`;
+  // Issue 648: Connect's words come as data and are worded here; an older
+  // server (or Disconnect's flash) sends only a message.
+  const flashText = flash
+    ? flash.words
+      ? hubConnectWords(flash.words, t).join(" ")
+      : flash.message
+    : "";
   const flashHtml = flash
-    ? `<p class="set-note hub-flash ${flash.ok ? "ok" : "warn"}" role="status" data-hub-flash="${flash.ok ? "ok" : "failed"}">${escR(flash.message)}</p>`
+    ? `<p class="set-note hub-flash ${flash.ok ? "ok" : "warn"}" role="status" data-hub-flash="${flash.ok ? "ok" : "failed"}">${escR(flashText)}</p>`
     : "";
   if (state === "bad_config")
     return (
@@ -5771,9 +5839,17 @@ export function hubHtml(b, flash, t = (k) => k) {
     `</div>`;
   // Issue 646 (mock v2, 1c): right after Connect, one line naming the
   // company, with Switch company; a later visit has no flash, so no line.
+  // Issue 648: what the one approval did follows it, in its own line.
+  const justMore =
+    first && flash?.ok && flash.words
+      ? hubConnectWords(flash.words, t, false).join(" ")
+      : "";
   const just =
     first && flash?.ok
-      ? `<p class="set-note ok hub-just" role="status" data-hub-flash="ok" data-hub-just>${escR(t("hub.justConnected", { company: b.team, host }))} ${switchBtn}</p>`
+      ? `<p class="set-note ok hub-just" role="status" data-hub-flash="ok" data-hub-just>${escR(t("hub.justConnected", { company: b.team, host }))} ${switchBtn}</p>` +
+        (justMore
+          ? `<p class="set-note" data-hub-words>${escR(justMore)}</p>`
+          : "")
       : "";
   const head = first
     ? `<div class="hub-co" data-hub-co>` +
