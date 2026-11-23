@@ -462,14 +462,41 @@ const READ_TOOLS: DenTool[] = [
       question: z
         .string()
         .describe("The question, plainly, at most 300 characters"),
+      choices: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Issue 620, a session that isn't a Den agent only: 2 to 4 named choices (default yes and no)",
+        ),
+      session: z
+        .string()
+        .optional()
+        .describe(
+          "Issue 620, a session that isn't a Den agent only: what this session calls itself, at most 60 characters",
+        ),
     },
-    async (a, { api }) => {
+    async (a, { api, scope }) => {
       const question = (str(a.question) ?? "").trim();
       if (!question) throw new Refusal("ask_human: say what you need to ask.");
       if (question.length > 300)
         throw new Refusal(
           "ask_human: a question is at most 300 characters; put the detail in your reply.",
         );
+      // Issue 620: a session that isn't a Den agent (no agent scope) files
+      // a question for the person; it reads the answer with ask_answer.
+      if (!scope?.actor.startsWith("agent:")) {
+        const choices = Array.isArray(a.choices)
+          ? (a.choices as unknown[]).map((c) => String(c).trim())
+          : undefined;
+        const label = (str(a.session) ?? "").trim();
+        const r = (await api.get("/api/session-asks", {}, "POST", {
+          question,
+          ...(choices ? { choices } : {}),
+          ...(label ? { session: label } : {}),
+        })) as { id?: unknown; expiresAt?: unknown } | null;
+        const id = typeof r?.id === "string" ? r.id : "";
+        return `Asked. Your person has it in Needs you, marked as from a session that isn't a Den agent. Its id is ${id}: read the answer with ask_answer (it says pending, answered with the choice, expired, or lost)${typeof r?.expiresAt === "string" ? `; it expires at ${r.expiresAt}` : ""}. Answering it runs nothing.`;
+      }
       const r = (await api.get("/api/agents/self/attention", {}, "POST", {
         event: "waiting",
         why: "asked",
@@ -485,6 +512,27 @@ const READ_TOOLS: DenTool[] = [
       if (typeof r?.lead === "string" && r.lead)
         return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.${id}`;
       return `Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.${id}`;
+    },
+  ),
+  read(
+    "ask_answer",
+    "Read your question's answer",
+    "Issue 620: for a session that isn't a Den agent: the answer to a question you asked with ask_human. `id` is the id ask_human gave you. It says open (no answer yet), answered (with the person's choice), expired, or lost. Only the process that asked can read it; any other gets \"no such question\". Reads only.",
+    { id: z.string().describe("The question's id, from ask_human") },
+    async (a, { api }) => {
+      const id = (str(a.id) ?? "").trim();
+      if (!/^sa_[0-9a-f]{24}$/.test(id))
+        throw new Refusal("ask_answer: give the id ask_human gave you.");
+      const r = (await api.get(`/api/session-asks/${id}`)) as {
+        state?: unknown;
+        answer?: unknown;
+      } | null;
+      const state = typeof r?.state === "string" ? r.state : "unknown";
+      return state === "answered"
+        ? `answered: ${String(r?.answer ?? "")}`
+        : state === "open"
+          ? "open: no answer yet. Do other work, then ask again."
+          : `${state}: it can't be answered now. Ask again if it still matters.`;
     },
   ),
   read(

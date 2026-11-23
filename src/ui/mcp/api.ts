@@ -172,6 +172,9 @@ const ACTION_ROUTES: Record<string, string> = {
   // Issue 565 (MCP report): the agent's own draft, holding its screenshot
   // until the held `report` files it. Saves on this computer only.
   "/api/report/drafts": "POST",
+  // Issue 620 (MCP ask_human from a session that isn't an agent): a
+  // question for the person; runs nothing. Never its answer route.
+  "/api/session-asks": "POST",
 };
 
 /**
@@ -180,6 +183,9 @@ const ACTION_ROUTES: Record<string, string> = {
  * (MCP agent_helpers, D32, GET only) and its tools (MCP whoami, D44).
  */
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
+  // Issue 620 (MCP ask_answer): the session's own question (the server
+  // answers its filing process only). Never /answer.
+  { re: /^\/api\/session-asks\/sa_[0-9a-f]{24}$/, method: "GET" },
   // One held request's state (its own, the server checks). Never /decide.
   { re: /^\/api\/approvals\/[A-Za-z0-9_-]{16}$/, method: "GET" },
   {

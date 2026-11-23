@@ -60,8 +60,8 @@ describe("issue 620: ask_human from a session that isn't an agent", () => {
         body: { question: "Ship 0.4.87?", session: "builder" },
       },
     ]);
-    expect(JSON.stringify(r.content)).toContain(ID);
-    expect(JSON.stringify(r.content)).toContain("ask_answer");
+    expect(r.text).toContain(ID);
+    expect(r.text).toContain("ask_answer");
   });
 
   it("passes named choices", async () => {
@@ -94,7 +94,7 @@ describe("issue 620: ask_answer", () => {
     expect(calls).toEqual([
       { path: `/api/session-asks/${ID}`, method: undefined, body: undefined },
     ]);
-    expect(JSON.stringify(r.content)).toMatch(/answered.*yes/);
+    expect(r.text).toMatch(/answered.*yes/);
   });
 
   it("refuses an id that isn't one", async () => {
