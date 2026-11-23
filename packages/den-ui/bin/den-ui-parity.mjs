@@ -163,6 +163,18 @@ export const COMPONENTS = {
     code: ["configureBusy", "registerActions"],
     files: ["busy.js", "busy-words.js", "busy.css"],
   },
+  // Issue 673: the one button. A product's own `.btn` (its class drawn, or
+  // a rule for it) is a copy; the kit's `.den-btn`, and a host's layout of
+  // it (`.acts .den-btn { margin… }`), are not.
+  button: {
+    label: "button (.den-btn: secondary, primary, danger, sm)",
+    markup: [
+      /(class(Name)?\s*[=:]\s*\\?["'`]|classList\.add\(\s*["'])([^"'`]*\s)?btn(?![\w-])/,
+    ],
+    css: ["btn"],
+    code: [],
+    files: [],
+  },
   // 0.7.0: pieces of the top bar and rail a product drew itself before.
   // Its words and values go in the kit's options; its own HTML in a crumb's
   // menu or the bell's rows (classes of its own) is not a copy.

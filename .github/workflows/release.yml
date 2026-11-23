@@ -168,6 +168,14 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
           REF: ${{ needs.check.outputs.ref }}
         run: sh .release-main/scripts/release-ancestry.sh "$VERSION" "$REF"
+      # The release holds what its newest gated candidate held, apart from the version lines and the changelog:
+      # work that reached main after the candidate was tagged stops the release. A second check of the promoted
+      # commit (the tested job's release-tree-check.mjs is the first), with main's scripts.
+      - name: The release is the gated candidate
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          REF: ${{ needs.check.outputs.ref }}
+        run: sh .release-main/scripts/release-tree.sh "$VERSION" "$REF"
       - name: The tag v<version>, on the promoted commit
         env:
           TAG: v${{ needs.check.outputs.version }}
@@ -188,7 +196,8 @@ jobs:
   publish:
     needs: [check, gates, tag]
     if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
-    # Issue 922: its protection (main only, and who approves) is a repository setting: docs/releasing.md.
+    # Issue 922: its protection (main only, and who approves) is a repository setting: docs/releasing.md. Only main
+    # may deploy to it; npm's trusted publisher can name it.
     environment: release
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45 # npm can take ~20 min to serve an accepted (202) upload
@@ -257,6 +266,7 @@ jobs:
     # Issue 922: only in a promoted release, from its commit (the kit's version is decided in the candidate).
     needs: [check, gates]
     if: github.ref == 'refs/heads/main' && needs.check.outputs.release == 'true'
+    # Only main may deploy to the release environment; npm's trusted publisher can name it.
     environment: release
     runs-on: ubuntu-latest # trusted publishing takes GitHub-hosted runners only
     timeout-minutes: 45

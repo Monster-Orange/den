@@ -126,6 +126,7 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
+- `ask_withdraw`: withdraw your question once it is settled another way.
 - `page_view`: a one-time link to open this Den's own pages read-only, as
   you, to look, take a screenshot or check a fix. It changes nothing, and
   ends in a few minutes.

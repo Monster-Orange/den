@@ -124,7 +124,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
     expect(await p.isDisabled("#ag-go")).toBe(false);
     // AG-12.1: what isn't installed, and Install… (later).
     expect(await text(p, "#ag-r-miss")).toBe(
-      "Not found on this machine: Claude Code, Gemini CLI, Grok Build · Install… later",
+      "Not found on this machine: Claude Code, Gemini CLI, Grok Build, Antigravity CLI · Install… later",
     );
     // Picking the persona's own runtime: Start is disabled, and says why.
     await p.selectOption("#ag-runtime", "");
@@ -147,6 +147,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
       ["Claude Code — not installed", true],
       ["Gemini CLI — not installed", true],
       ["Grok Build — not installed", true],
+      ["Antigravity CLI — not installed", true],
       ["Generic command — the persona has no argv template", true],
     ]);
     // Enter doesn't start it either.
@@ -199,6 +200,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
       "Codex CLI · 0.50.0 · Den tools: coming",
       "Gemini CLI — not installed",
       "Grok Build — not installed",
+      "Antigravity CLI — not installed",
       "Generic command — the persona has no argv template",
     ]);
     await p.context().close();

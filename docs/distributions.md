@@ -675,6 +675,20 @@ that a container existed, running or not).
 `service`, with both forms at once, or with a key of another type (`cmd`,
 `url`), and says which.
 
+### How often the checks run
+
+An open page checks health every 5 seconds while it is in view, and every
+60 seconds while its tab is hidden. Back in view, it checks at once. A
+hidden page's poll says so, and the server keeps its last answer for the
+slow interval: with no page in view, the checks run at most once a minute.
+Both are Settings (Settings > Server), or in `user.yml`:
+
+```yaml
+health_poll:
+  visible_seconds: 5 # 2 to 300
+  hidden_seconds: 60 # 10 to 3600
+```
+
 ### The Environments page
 
 The Environments page lists every service's row at once, each cell pulsing
@@ -721,6 +735,26 @@ verify:
     max_bytes: 5000000 # the largest verdict file Den reads
     max_clauses: 5000 # the most clauses in one file
     max_text: 2000 # a clause or note longer than this is cut
+  schedule:
+    allow_expiry: 30d # a schedule's standing Allow lasts this long
+    expiry_warning: 3d # the bell warns this long before it ends
+    shared_commands: false # a command (cmd) runs on its own on staging or production
+    production:
+      enabled: false # schedules run on production at all (the org's opt-in)
+      min_interval: 15m # the shortest gap between two production runs
+      hosts: [shop.example.com] # leave out for any host; never a metadata address
+```
+
+`environments` can also be a map, when an environment needs its own
+settings. Each key is an environment. `imported: true` marks one whose
+answer comes from an outside runner:
+
+```yaml
+verify:
+  environments:
+    bed: { imported: true }
+    production:
+      write_allow: ["POST /login"] # writes a read-only run may still send
 ```
 
 A bad value is named in the error: the CLI exits 1, and the Checks API
@@ -754,6 +788,67 @@ then needs you, then one row for each check. A row opens its clauses
 (`?why=bed`): the result, the clause, the runner's note and the time.
 Before any import the environment says it hasn't been checked yet, and an
 import where nothing ran is never a pass.
+
+### Schedules: checks that run on their own
+
+A module in a repo's `verify:` block can carry a `schedule:`. Den runs it at
+those times, with no one there:
+
+```yaml
+# .acme.yml of shop
+verify:
+  modules:
+    web/home-speed:
+      kind: performance
+      environments: [staging]
+      schedule:
+        { cron: "0 2 * * *", window: "01:00-05:00", name: Nightly speed }
+```
+
+- `cron` is five fields, in this Den's time zone. `window` is `HH:MM-HH:MM`,
+  `night` (22:00 to 06:00) or `any`. A run that can't start before its
+  window ends is skipped, and the skip is named. `env` picks the
+  environment when the module has more than one.
+- Modules with the same environment, cron, window and name are one
+  schedule. Heavy runs go one at a time. After Den was down, a schedule
+  catches up once, not once for every time it missed.
+- A schedule on `local`, or one whose modules only read the code and run
+  no command, runs without an Allow.
+- On staging and production a scheduled command (`cmd`) runs only when
+  `verify.schedule.shared_commands` is true. It's off by default. Even when
+  it's on, Den runs only a command it can follow: one or more steps joined
+  by `&&`, each a script in the repo (`./scripts/speed.sh --quick`), or an
+  interpreter and a script (`bash scripts/speed.sh`), every file there. A
+  runner such as `make` or `npm`, shell syntax, or a file Den can't find:
+  the schedule can't be allowed, and its row says why.
+- Such a command runs from the commit the Allow named, never the working
+  tree. Den copies that commit's files (`git archive`) into its state
+  folder and runs there, so a later edit can't reach the run. The files
+  the command names must be committed when a person allows it. Untracked
+  files (installed packages, a local `.env`) aren't in the copy.
+- A schedule on staging or production runs only under a standing Allow. A
+  person gives it once, on the Checks page's Schedules screen
+  (`/verify?schedules=1`). It covers every run of that plan. It lapses when
+  the plan changes (a module, its command or the scripts it names, what it
+  writes, its health URLs, the environment's method rule, the times or the
+  window). It ends after `verify.schedule.allow_expiry`. An agent
+  can't give or use one: the routes refuse an agent's token. A person can take an
+  Allow back with **Take back Allow** on its row. The schedule then waits
+  for a new one.
+- Production schedules are off until `verify.schedule.production.enabled`
+  is true. Then a schedule may run there no more often than
+  `min_interval`, and only to the hosts in `hosts` when that list is set.
+  A link-local or cloud metadata address is always refused. A schedule
+  outside these limits can't be allowed, and its row says why.
+- On production a scheduled run is read-only. It sends only GET, HEAD and
+  OPTIONS, plus the `write_allow` pairs for that environment. Any other
+  request is blocked before it leaves, and the run's record names it.
+  Only built-in smoke and built-in code scans run there: never a command.
+- Each result goes to the bell, a failure as an alert. The bell warns once,
+  `verify.schedule.expiry_warning` before an Allow ends.
+
+Schedules come from the repo. The Schedules screen shows them and allows
+them. To add, change or remove one, change the repo.
 
 ## Placement
 
@@ -2746,6 +2841,21 @@ running after logout. An install from before 0.4.63 with the Setting never
 set keeps its mode, because switching needs sudo; its web server offers it
 once in the bell ("Keep agents running after logout: Apply"), Settings
 shows the offer, and `doctor` names it. An explicit off stays off.
+
+`doctor`'s **survives logout** row answers it in one word: `yes`, or `no`
+with why (no service, login mode, turned off, the job not loaded, or a
+host started in your login) and the fix in words. A login install says
+"this install stops its agents at logout (login mode)" and points to
+Apply.
+
+**Back from a logout.** Under `always` the web server runs through a
+logout, so it watches who owns the console (`/dev/console`: you while
+logged in, root at the login window) every `ui.console_check_seconds`
+(user.yml, 30). When you come back after longer than
+`ui.restart_wait_seconds` (90), the bell says "While you were logged out
+(N min), these agents ran: <names>", linked to the Agents page. Agents
+that stopped meanwhile get a second note, "While you were logged out (N
+min), these agents stopped: <names>", also when nothing else ran.
 
 **Agents' sign-in under `always`.** A LaunchDaemon started after a logout
 isn't assumed to reach the login keychain, and the CLI's interactive
@@ -4946,7 +5056,8 @@ role: planner # a role (see Roles); a sentence here is the description
 category: engineering # see Categories; default: the role's
 description: Writes stories and their acceptance criteria. # one line
 model: some-model # optional; `inherit` means none
-version: latest # or a pinned version of the model
+model_version: latest # or a pinned version of the model (`version:` is still read; New persona and Edit write both, the same, for older Dens; doctor notes `version:` alone, or the two differing)
+persona_version: v3 # optional: a readable name for this version of the persona
 subagent_model: haiku # its subagents' model, over agents.subagents.model; `inherit`: the runtime decides
 allowed_commands: [npm test] # extra plain prefixes allowed without asking
 tools: Read, Grep # hints for the runtime; Den restricts nothing with them
@@ -4961,6 +5072,19 @@ argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
 
 You are the planner. …
 ```
+
+**Editing a persona** (the Personas page's Edit, or a held
+`persona_update`) rewrites only the fields the form has: name, role,
+category, description, runtime, model and its version, mode, allowed
+commands and the instructions. Every other key in the file (`subagent_model`,
+`persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
+(issue 978).
+
+**A persona's version** (issue 137) is the sha256 of its file, so any edit
+makes a new one; `persona_version` gives it a readable name. An agent
+records the version it started with, and while its persona's file differs,
+the agent's row says so (`personaNewer` in `/api/agents`: the new version's
+name, else its hash's first 7 characters).
 
 Den ships a default pack: `planner` and `orchestrator` (standing), `fe-dev`,
 `be-dev` and `devops` (role `sde`), `reviewer`, `tester` and `ux-designer`

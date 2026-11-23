@@ -10,6 +10,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /**
  * Issue 402 (the model set on 11-18): a pin is (company, project or none,
@@ -51,7 +52,29 @@ export interface ShellPrefs {
    * is A to Z; a project not listed slots in A to Z. Never sent to Hub.
    */
   projectOrder: string[];
+  /**
+   * Issue 168: the colour this person chose for a project (slug to colour);
+   * a project not listed is Automatic. Yours only, never sent to Hub.
+   */
+  projectColours: Record<string, ProjectColour>;
 }
+
+/**
+ * Issue 168: the eight project colours (workspace-picker.js lists the
+ * same). No orange and no red: orange is the brand and the selection, red
+ * means a problem.
+ */
+export const PROJECT_COLOURS = [
+  "blue",
+  "teal",
+  "green",
+  "purple",
+  "pink",
+  "gold",
+  "brown",
+  "slate",
+] as const;
+export type ProjectColour = (typeof PROJECT_COLOURS)[number];
 
 export const SHELL_DEFAULTS: ShellPrefs = {
   pins: [],
@@ -61,6 +84,7 @@ export const SHELL_DEFAULTS: ShellPrefs = {
   dock: false,
   dockHeight: 0,
   projectOrder: [],
+  projectColours: {},
 };
 
 /** The dock height's bounds (the page also caps it at half the window). */
@@ -107,6 +131,43 @@ function checkProjectOrder(
     return {
       ok: false,
       error: `shell.projectOrder: at most ${MAX_PROJECT_IDS}`,
+    };
+  return { ok: true, value: out };
+}
+
+function checkProjectColours(
+  v: unknown,
+  current: Record<string, ProjectColour> = {},
+):
+  | { ok: true; value: Record<string, ProjectColour> }
+  | { ok: false; error: string } {
+  if (!isObject(v))
+    return {
+      ok: false,
+      error: "shell.projectColours must be an object of project to colour",
+    };
+  const out: Record<string, ProjectColour> = { ...current };
+  for (const [slug, c] of Object.entries(v)) {
+    if (!WORKSPACE_NAME_RE.test(slug))
+      return {
+        ok: false,
+        error: `shell.projectColours: "${slug}" is not a project`,
+      };
+    if (c === null) {
+      delete out[slug];
+      continue;
+    }
+    if (!(PROJECT_COLOURS as readonly unknown[]).includes(c))
+      return {
+        ok: false,
+        error: `shell.projectColours: "${String(c)}" is not one of ${PROJECT_COLOURS.join(", ")}`,
+      };
+    out[slug] = c as ProjectColour;
+  }
+  if (Object.keys(out).length > MAX_PROJECT_IDS)
+    return {
+      ok: false,
+      error: `shell.projectColours: at most ${MAX_PROJECT_IDS}`,
     };
   return { ok: true, value: out };
 }
@@ -214,8 +275,15 @@ export function shellPrefs(
     dock: false,
     dockHeight: 0,
     projectOrder: [],
+    projectColours: {},
   };
   if (!isObject(stored)) return out;
+  // Issue 168: a hand-broken entry is Automatic; the others stay.
+  if (isObject(stored.projectColours))
+    for (const [slug, c] of Object.entries(stored.projectColours)) {
+      const one = checkProjectColours({ [slug]: c });
+      if (one.ok) Object.assign(out.projectColours, one.value);
+    }
   if (stored.projectOrder !== undefined) {
     const o = checkProjectOrder(stored.projectOrder);
     if (o.ok) out.projectOrder = o.value;
@@ -248,6 +316,7 @@ export function mergeShellPrefs(
     hidden: [...current.hidden],
     order: [...current.order],
     projectOrder: [...(current.projectOrder ?? [])],
+    projectColours: { ...(current.projectColours ?? {}) },
   };
   for (const key of Object.keys(patch)) {
     // null clears a pref back to its default (0.3.0-dev.32): the stored
@@ -256,7 +325,9 @@ export function mergeShellPrefs(
       const d = SHELL_DEFAULTS[key as keyof ShellPrefs];
       (out as unknown as Record<string, unknown>)[key] = Array.isArray(d)
         ? []
-        : d;
+        : isObject(d)
+          ? {}
+          : d;
       continue;
     }
     if (key === "pins") {
@@ -279,6 +350,11 @@ export function mergeShellPrefs(
       const o = checkProjectOrder(patch.projectOrder);
       if (!o.ok) return o;
       out.projectOrder = o.value;
+    } else if (key === "projectColours") {
+      // Issue 168: one project's colour at a time; null is Automatic.
+      const c = checkProjectColours(patch.projectColours, out.projectColours);
+      if (!c.ok) return c;
+      out.projectColours = c.value;
     } else if (key === "hidden" || key === "order") {
       const ids = checkNavIds(key, patch[key]);
       if (!ids.ok) return ids;
@@ -310,6 +386,8 @@ export function storedShell(p: ShellPrefs): StoredShell | undefined {
   if (p.dock) out.dock = true;
   if (p.dockHeight) out.dockHeight = p.dockHeight;
   if (p.projectOrder?.length) out.projectOrder = p.projectOrder;
+  if (p.projectColours && Object.keys(p.projectColours).length)
+    out.projectColours = p.projectColours;
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -387,5 +465,22 @@ export function writeFixturePins(
     return;
   }
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, JSON.stringify(keep), { mode: 0o600 });
+  writeFileAtomic(file, JSON.stringify(keep), { mode: 0o600 });
+}
+
+/**
+ * Issue 957: the fixture person's own pins, kept only while they are still
+ * stored. A pin dropped from user.yml (by hand, or any other way) leaves
+ * the record at once, so the same pin made again later is the person's.
+ * Rewrites the record when it shrinks.
+ */
+export function prunedFixturePins(
+  stateDir: string,
+  stored: readonly Pin[],
+): Pin[] {
+  const had = readFixturePins(stateDir);
+  const now = new Set(stored.map(pinKey));
+  const keep = had.filter((p) => now.has(pinKey(p)));
+  if (keep.length !== had.length) writeFixturePins(stateDir, keep, stored);
+  return keep;
 }

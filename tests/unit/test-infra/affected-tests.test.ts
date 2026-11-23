@@ -32,6 +32,8 @@ interface Map {
   everything: string[];
   smoke: string[];
   rules: { when: string[]; run: string[]; why: string }[];
+  subjects?: Record<string, string[]>;
+  subjectless?: string[];
 }
 interface Case {
   file: string;
@@ -237,7 +239,7 @@ describe("the map (tests/affected-map.json)", () => {
     const globs = MAP.rules.flatMap((r) => r.run);
     const res = call<string[]>(AFFECTED, "globsToRegExps", globs);
     const dead = globs.filter(
-      (g, i) => !TESTS.some((t) => new RegExp(res[i]).test(t)),
+      (_g, i) => !TESTS.some((t) => new RegExp(res[i]).test(t)),
     );
     expect(dead).toEqual([]);
   });
@@ -402,7 +404,25 @@ describe("tests that start Den as a process (issue 708)", () => {
     );
     // missing: starts Den, no subject, not listed (add `subjects` for it).
     // stale: listed, but it has a subject now or starts no Den (drop it).
-    expect(r).toEqual({ missing: [], stale: [] });
+    // empty: a declared subject glob that names no file (issue 709).
+    expect(r).toEqual({ missing: [], stale: [], empty: [] });
+  });
+
+  it("issue 709: a declared subject that names no file is refused, never counted as a subject", () => {
+    const a11y = "tests/unit/server/a11y.browser.test.ts";
+    const r = call<{ empty: string[] }>(MAP_GEN, "subjectGaps", {
+      ...MAP,
+      subjects: {
+        ...MAP.subjects,
+        [a11y]: ["", "src/ui/server/no-such-module.ts", "src/ui/server/*.ts"],
+        "tests/unit/no-such.test.ts": ["src/ui/server/index.ts"],
+      },
+    });
+    expect(r.empty).toEqual([
+      `${a11y}: ""`,
+      `${a11y}: "src/ui/server/no-such-module.ts"`,
+      "tests/unit/no-such.test.ts: the test isn't there",
+    ]);
   });
 });
 

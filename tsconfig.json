@@ -19,7 +19,10 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node", "jest", "@playwright/test"]
+    "types": ["node", "jest", "@playwright/test"],
+    "paths": {
+      "@monster-orange/den/pw-guard": ["./src/shared/gates/pw-guard-export.ts"]
+    }
   },
   "include": [
     "src/shared/**/*",

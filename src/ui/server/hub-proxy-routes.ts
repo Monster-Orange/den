@@ -47,6 +47,17 @@ export const HUB_PROXY_PATHS: readonly string[] = [
 /** Hub paths an agent may only read (GET, HEAD): Hub serves nothing else there. */
 const READ_ONLY_PATHS: readonly string[] = ["/f/*"];
 
+/** Issue 749: how much of an MCP call (each way) Den reads to see a tool listing. */
+const SNIFF_BYTES = 64 * 1024;
+/** A JSON-RPC call (or a batch) asking for the tool list. */
+const TOOLS_LIST = /"method"\s*:\s*"tools\/list"/;
+/**
+ * A JSON-RPC answer with a result (JSON or an event stream's data line).
+ * Limit: in a batch where tools/list fails beside a call that has a result,
+ * the listing reads as ok (ids aren't matched). Runtimes list on their own.
+ */
+const RESULT = /"result"\s*:/;
+
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "DELETE"]);
 
 /** The request headers that go to Hub (the rest stay here). */
@@ -88,6 +99,14 @@ export interface HubProxyDeps {
    * what it got: whoami reports a failed one (hub-mcp-connect.ts).
    */
   onMcpInit?: (agentId: string, o: { ok: boolean; error?: string }) => void;
+  /**
+   * Issue 749: an agent's tools/list inside its MCP session and what it
+   * got. A connect that worked leaves no hub_* tools when this fails.
+   */
+  onMcpToolsList?: (
+    agentId: string,
+    o: { ok: boolean; error?: string },
+  ) => void;
   /**
    * 0.4.48: each answer an agent got for Hub path `sub`: Hub's status, or
    * null with why when Den didn't reach Hub. Den re-reads its token on a
@@ -188,6 +207,28 @@ export async function handleHubProxy(
       // A note never changes the agent's answer.
     }
   };
+  // Issue 749: inside a session, whether this call lists Hub's tools
+  // (read from the start of the body as it streams) and what came back.
+  const session =
+    sub === "/mcp" &&
+    method === "POST" &&
+    !!req.headers["mcp-session-id"] &&
+    !!deps.onMcpToolsList;
+  let asked = "";
+  let answer = "";
+  let listed = false;
+  const noteList = (ok: boolean, error?: string) => {
+    if (!session || listed || !TOOLS_LIST.test(asked)) return;
+    listed = true;
+    try {
+      deps.onMcpToolsList!(
+        agentId,
+        ok ? { ok } : { ok, ...(error ? { error } : {}) },
+      );
+    } catch {
+      // A note never changes the agent's answer.
+    }
+  };
   const up = await deps
     .upstream({
       agentId,
@@ -253,20 +294,37 @@ export async function handleHubProxy(
         back["x-accel-buffering"] = "no";
       const status = hubRes.statusCode ?? 502;
       answered(status);
-      noteInit(
-        status >= 200 && status < 300,
-        `hub (${status}): ${http.STATUS_CODES[status] ?? "error"}`,
+      const statusLine = `hub (${status}): ${http.STATUS_CODES[status] ?? "error"}`;
+      // An encoded answer can't be read here: never noted either way.
+      const encoded = !/^(identity)?$/i.test(
+        String(hubRes.headers["content-encoding"] ?? "").trim(),
       );
+      if (session && encoded) listed = true;
+      if (session && !encoded) {
+        hubRes.on("data", (c: Buffer) => {
+          if (answer.length < SNIFF_BYTES) answer += c.toString("utf8");
+        });
+        hubRes.on("end", () =>
+          status < 200 || status >= 300
+            ? noteList(false, statusLine)
+            : RESULT.test(answer)
+              ? noteList(true)
+              : noteList(false, "hub answered tools/list with an error"),
+        );
+      }
+      noteInit(status >= 200 && status < 300, statusLine);
       res.writeHead(status, back);
       res.flushHeaders?.();
       hubRes.pipe(res);
       hubRes.on("end", resolve);
       hubRes.on("error", () => {
+        noteList(false, "hub's tool list didn't arrive");
         res.destroy();
         resolve();
       });
     });
     out.on("error", () => {
+      noteList(false, "hub didn't answer");
       if (!res.headersSent) noteInit(false, "hub didn't answer");
       if (!res.headersSent) answered(null, "hub didn't answer");
       if (!res.headersSent)
@@ -280,11 +338,20 @@ export async function handleHubProxy(
     });
     // The agent went away: so does the call to Hub.
     res.on("close", () => {
+      // The runtime gave up waiting for the list: it has no Hub tools.
+      if (!res.writableFinished)
+        noteList(false, "hub's tool list didn't arrive");
       if (!res.writableFinished) out.destroy();
       resolve();
     });
     if (method === "GET" || method === "HEAD") out.end();
-    else req.pipe(out);
+    else {
+      if (session)
+        req.on("data", (c: Buffer) => {
+          if (asked.length < SNIFF_BYTES) asked += c.toString("utf8");
+        });
+      req.pipe(out);
+    }
   });
   return true;
 }

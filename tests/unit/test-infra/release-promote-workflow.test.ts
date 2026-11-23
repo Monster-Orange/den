@@ -120,6 +120,7 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
     for (const [job, script] of [
       ["tested", "release-tree-check.mjs"],
       ["tag", "release-ancestry.sh"],
+      ["tag", "release-tree.sh"],
       ["den-ui", "kit-version.mjs"],
     ] as const) {
       const steps = w.jobs[job].steps ?? [];
@@ -135,6 +136,25 @@ describe("release.yml: a release is a promoted dev tag (issue 922)", () => {
       expect([job, runs[0]]).toEqual([
         job,
         expect.stringContaining(`.release-main/scripts/${script}`),
+      ]);
+    }
+  });
+
+  it("the tag checks the promoted commit (REF), not main's head: its candidates' ancestry and its tree", () => {
+    const steps = w.jobs.tag.steps ?? [];
+    for (const script of ["release-ancestry.sh", "release-tree.sh"]) {
+      const step = steps.find((st) => (st.run ?? "").includes(script));
+      expect([script, step?.env?.REF]).toEqual([
+        script,
+        "${{ needs.check.outputs.ref }}",
+      ]);
+      expect([script, step?.run]).toEqual([
+        script,
+        expect.stringContaining('"$VERSION" "$REF"'),
+      ]);
+      expect([script, step?.run]).toEqual([
+        script,
+        expect.not.stringContaining("GITHUB_SHA"),
       ]);
     }
   });
