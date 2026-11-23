@@ -443,7 +443,14 @@ export async function commitPin(
       `${sha}:refs/heads/${up.branch}`,
     ]);
     if (p.code === 0) {
-      writePinRecord(d.stateDir, { version, state: "pushed", sha, at: at() });
+      const why = await catchUp(d.git, sha);
+      writePinRecord(d.stateDir, {
+        version,
+        state: "pushed",
+        sha,
+        at: at(),
+        ...(why ? { why } : {}),
+      });
       return { did: "pushed", version, sha };
     }
     // Issue 1189: a branch rule said no: the pin goes to a pull request.
@@ -533,6 +540,37 @@ async function takePin(git: GitRun, tip: string, sha: string): Promise<void> {
   const moved = await git(["update-ref", ref, sha, tip]);
   if (moved.code !== 0) return;
   await git(["reset", "-q", "--", ...PIN_FILES]);
+}
+
+/**
+ * Issue 1202: after the pin is pushed, a checkout whose branch is behind
+ * it (an ancestor, not the pin itself) fast-forwards to the pin commit, so
+ * its next pull isn't stopped by the pin files it still has changed. The
+ * pin commit holds those files as the working tree has them, so they are
+ * put back to HEAD's first and nothing is lost. When git won't
+ * fast-forward (another local change in the way) the files go back as
+ * they were, the branch stays, and the answer says why (doctor shows it).
+ */
+async function catchUp(git: GitRun, sha: string): Promise<string | undefined> {
+  const h = await git(["rev-parse", "HEAD"]);
+  if (h.code !== 0 || h.out.trim() === sha) return undefined;
+  const b = await git(["symbolic-ref", "-q", "HEAD"]);
+  if (b.code !== 0 || !b.out.trim()) return undefined;
+  const behind = await git(["merge-base", "--is-ancestor", "HEAD", sha]);
+  if (behind.code !== 0) return undefined;
+  const later =
+    "the checkout is behind and has local changes, so pull to get the pin";
+  // Only when the working tree's pin files are exactly the pin's.
+  const same = await git(["diff", "--quiet", sha, "--", ...PIN_FILES]);
+  if (same.code !== 0) return later;
+  const reset = await git(["checkout", "-q", "HEAD", "--", ...PIN_FILES]);
+  if (reset.code === 0) {
+    const ff = await git(["merge", "--ff-only", "--quiet", sha]);
+    if (ff.code === 0) return undefined;
+  }
+  await git(["checkout", "-q", sha, "--", ...PIN_FILES]);
+  await git(["reset", "-q", "--", ...PIN_FILES]);
+  return later;
 }
 
 /**
