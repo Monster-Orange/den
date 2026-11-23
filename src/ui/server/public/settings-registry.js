@@ -600,8 +600,8 @@ function drawSounds(host, ctx, io) {
   host.innerHTML =
     `<input type="checkbox" class="set-check" id="set-alert-sound" aria-labelledby="l-notifications-alert_sound"${on ? " checked" : ""}>` +
     `<span class="set-sound-try">` +
-    `<button type="button" class="btn sm" data-sound="needs">${escHtml(L("set.notifications.alert_sound.needs", "\u25b6 Needs you"))}</button> ` +
-    `<button type="button" class="btn sm" data-sound="finished">${escHtml(L("set.notifications.alert_sound.finished", "\u25b6 Finished"))}</button>` +
+    `<button type="button" class="den-btn sm" data-sound="needs">${escHtml(L("set.notifications.alert_sound.needs", "\u25b6 Needs you"))}</button> ` +
+    `<button type="button" class="den-btn sm" data-sound="finished">${escHtml(L("set.notifications.alert_sound.finished", "\u25b6 Finished"))}</button>` +
     `</span>`;
   host
     .querySelector("input")
