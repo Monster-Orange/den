@@ -72,7 +72,11 @@ describe("the login code", () => {
     });
     const c = checkLoginCode(mintLoginCode(secret, T0), secret, T0);
     if (!c.ok) throw new Error("fresh code refused");
+    // Issue 1146: whether it is used, without using it.
+    expect(store.codeUsed(c.nonce)).toBe(false);
+    expect(store.codeUsed(c.nonce)).toBe(false);
     expect(store.consumeCode(c.nonce, c.expiresAt)).toBe(true);
+    expect(store.codeUsed(c.nonce)).toBe(true);
     expect(store.consumeCode(c.nonce, c.expiresAt)).toBe(false);
     // A second store on the same state dir (a restarted server) agrees.
     const again = new WebSessionStore({

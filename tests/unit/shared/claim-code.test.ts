@@ -101,6 +101,13 @@ describe("single use, across a restart", () => {
     // The server restarted.
     const b = new ClaimNonces(dir);
     expect(b.consume(v.nonce, v.expiresAt, T0 + 1000)).toBe(false);
+    // Issue 1146: whether it is used, without using it.
+    expect(b.used(v.nonce, T0 + 1000)).toBe(true);
+    const fresh = checkClaimCode(mintClaimCode(secret, T0), secret, T0);
+    if (!fresh.ok) throw new Error("bad code");
+    expect(b.used(fresh.nonce, T0)).toBe(false);
+    expect(b.used(fresh.nonce, T0)).toBe(false);
+    expect(b.consume(fresh.nonce, fresh.expiresAt, T0)).toBe(true);
     const file = path.join(dir, "claim-nonces.json");
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(fs.readFileSync(file, "utf-8")).not.toContain(c);

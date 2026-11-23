@@ -511,6 +511,34 @@ describe("1. a `web login` link doesn't sign in by itself", () => {
 });
 
 describe("2. a signed-in browser approves or denies the waiting device", () => {
+  it("issue 1146: replaying a used sign-in or setup link drops nothing waiting and makes no request", async () => {
+    await denyAllWaiting();
+    // A `web login` link and the setup link, each used once.
+    const { where } = await webLoginLink();
+    const first = await call("GET", where, lan(page));
+    expect(pairCodeOf(first)).toBe(true);
+    await withdrawPage(first);
+    const setup = setupLink();
+    const firstSetup = await call("GET", setup, local(page));
+    expect(pairCodeOf(firstSetup)).toBe(true);
+    await withdrawPage(firstSetup);
+    // The queue full of plain requests.
+    const plain: string[] = [];
+    for (let i = 0; i < 5; i++)
+      plain.push(
+        String(json(await call("POST", "/api/signin/code", lan(), "{}")).id),
+      );
+    // Replayed many times: never a pairing screen.
+    for (let i = 0; i < 8; i++) {
+      expect(pairCodeOf(await call("GET", where, lan(page)))).toBe(false);
+      expect(pairCodeOf(await call("GET", setup, local(page)))).toBe(false);
+    }
+    const states: unknown[] = [];
+    for (const id of plain) states.push(json(await poll(id)).state);
+    expect(states).toEqual(Array(5).fill("pending"));
+    await denyAllWaiting();
+  });
+
   it("item 1: Settings › Access lists it with no code, the link's request first, marked with its web login run", async () => {
     const person = signedInPerson();
     // An unlinked request first, then the link's: the link's is listed first.
