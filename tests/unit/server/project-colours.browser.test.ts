@@ -376,11 +376,12 @@ describe("project colours (issue 168)", () => {
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     const p = await open(agentsUrl(), {
-      before: (ctx) =>
-        ctx.route(/\/vendor\/xterm\.mjs/, async (route) => {
+      before: async (ctx) => {
+        await ctx.route(/\/vendor\/xterm\.mjs/, async (route) => {
           await held;
           await route.continue();
-        }),
+        });
+      },
     });
     try {
       const tab = `#agr [role="tab"][data-id="${sid.planner}"]`;
