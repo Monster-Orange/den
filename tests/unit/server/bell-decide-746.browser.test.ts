@@ -15,7 +15,6 @@ import * as path from "path";
 import type { Browser, Locator, Page } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
-import { writeRecord } from "../../../src/shared/agents/records.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { denAuth } from "./helpers/den-auth.js";
 import { launchBrowser } from "../helpers/browser.js";
