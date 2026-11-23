@@ -58,7 +58,7 @@ const GROUPS = {
 
 async function stubHub(answer: () => [number, unknown]) {
   let calls = 0;
-  const s = http.createServer((req, res) => {
+  const s = http.createServer((_req, res) => {
     calls++;
     const [status, json] = answer();
     res.writeHead(status, { "Content-Type": "application/json" });

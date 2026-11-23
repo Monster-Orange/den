@@ -177,13 +177,16 @@ describe("issue 750 (GR-T12): By group", () => {
   it("this Den's own members, lead first; the rest Not in a group", () => {
     const s = byGroupSections(rows, OK.groups);
     expect(
-      s.groups.map((g) => [g.group.slug, g.rows.map((r) => r.id)]),
+      s.groups.map((g: { group: { slug: string }; rows: { id: string }[] }) => [
+        g.group.slug,
+        g.rows.map((r) => r.id),
+      ]),
     ).toEqual([
       ["web-delivery", ["s-review", "s-planner"]],
       ["docs", []],
     ]);
     // "solo" shares an id with another person's agent: not in the group.
-    expect(s.none.map((r) => r.id)).toEqual(["s-solo", "sh-1"]);
+    expect(s.none.map((r: { id: string }) => r.id)).toEqual(["s-solo", "sh-1"]);
   });
 
   it("the kit header per group: lead marked, opens in Hub, Message group", () => {
