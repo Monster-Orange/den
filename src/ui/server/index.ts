@@ -1974,7 +1974,16 @@ const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
   // Issue 1299: a failed read of the sessions file, in the server log.
-  onProblem: (msg) => serverLog(`  ⚠ ${msg}`, "warn"),
+  onProblem: (msg, kind) => {
+    serverLog(`  ⚠ ${msg}`, "warn");
+    // A damaged file moved aside signs every browser out: the activity
+    // trail says so, so a person knows why.
+    if (kind === "moved-aside")
+      recordAction(null, {
+        verb: "sessions-reset",
+        detail: `${msg}; every browser signs in again`,
+      });
+  },
 });
 /** Issue 819: whether a person has ever signed in here (first-run.ts). */
 const FIRST_RUN = new FirstRun({

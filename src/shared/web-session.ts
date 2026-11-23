@@ -872,6 +872,13 @@ const empty = (): StoreFile => ({ v: 1, sessions: {}, usedCodes: {} });
  * files under load, say), so a write was refused rather than saving over
  * every other session.
  */
+/**
+ * Issue 1299: what went wrong with the sessions file. "unreadable": a read
+ * failed and writes wait; "moved-aside": a damaged file was set aside and
+ * every browser signs in again.
+ */
+export type SessionStoreProblem = "unreadable" | "moved-aside";
+
 export class SessionStoreUnreadable extends Error {
   constructor(readonly code: string) {
     super(`Couldn't read the sign-ins just now (${code}); try again`);
@@ -888,14 +895,14 @@ export class WebSessionStore {
   /** Issue 1299: why the last read failed; set, every write is refused. */
   private unreadable: string | null = null;
   /** Issue 1299: told when a read fails or a bad file is moved aside. */
-  private readonly onProblem?: (msg: string) => void;
+  private readonly onProblem?: (msg: string, kind: SessionStoreProblem) => void;
 
   constructor(opts: {
     stateDir?: () => string;
     secret: () => Buffer | null;
     now?: () => number;
     /** Issue 1299: told when a read fails (the server log); never contents. */
-    onProblem?: (msg: string) => void;
+    onProblem?: (msg: string, kind: SessionStoreProblem) => void;
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
     this.secret = opts.secret;
@@ -903,9 +910,9 @@ export class WebSessionStore {
     this.onProblem = opts.onProblem;
   }
 
-  private problem(msg: string): void {
+  private problem(msg: string, kind: SessionStoreProblem): void {
     try {
-      this.onProblem?.(msg);
+      this.onProblem?.(msg, kind);
     } catch {
       /* the log is best effort */
     }
@@ -942,6 +949,7 @@ export class WebSessionStore {
       if (this.unreadable !== code)
         this.problem(
           `sign-ins file couldn't be read (${code}); sign-in waits until it can`,
+          "unreadable",
         );
       this.unreadable = code;
       return empty();
@@ -969,11 +977,13 @@ export class WebSessionStore {
         this.unreadable = code;
         this.problem(
           `sign-ins file is not valid and couldn't be moved aside (${code})`,
+          "unreadable",
         );
         return empty();
       }
       this.problem(
         `sign-ins file was not valid; moved aside to ${path.basename(aside)}`,
+        "moved-aside",
       );
       this.cache = null;
       return empty();

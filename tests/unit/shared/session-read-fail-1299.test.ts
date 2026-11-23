@@ -40,13 +40,17 @@ afterEach(() => {
 const secret = randomBytes(32);
 function store() {
   const problems: string[] = [];
+  const kinds: string[] = [];
   const s = new WebSessionStore({
     stateDir: () => tmp,
     secret: () => secret,
     now: () => T0,
-    onProblem: (m) => problems.push(m),
+    onProblem: (m, kind) => {
+      problems.push(m);
+      kinds.push(kind);
+    },
   });
-  return { s, problems };
+  return { s, problems, kinds };
 }
 
 /**
@@ -106,17 +110,18 @@ describe("issue 1299: a failed read never costs a session", () => {
   );
 
   itDeny("(3) the refusal is reported by code, never a secret", () => {
-    const { s, problems } = store();
+    const { s, problems, kinds } = store();
     const a = s.create({ host: "a" });
     changedThenUnreadable();
     expect(() => s.create({})).toThrow(/try again/);
     expect(problems.join("\n")).toMatch(/EACCES/);
+    expect(new Set(kinds)).toEqual(new Set(["unreadable"]));
     expect(problems.join("\n")).not.toContain(a.session.csrf);
     expect(problems.join("\n")).not.toContain(a.session.key);
   });
 
   it("(4) a file that isn't valid is moved aside, reported, and the store starts empty", () => {
-    const { s, problems } = store();
+    const { s, problems, kinds } = store();
     s.create({ host: "a" });
     fs.writeFileSync(webSessionsPath(tmp), "{ not json", { mode: 0o600 });
     const fresh = s.create({ host: "b" });
@@ -130,6 +135,7 @@ describe("issue 1299: a failed read never costs a session", () => {
       "{ not json",
     );
     expect(problems.join("\n")).toMatch(/not valid.*moved aside/);
+    expect(kinds).toEqual(["moved-aside"]);
   });
 
   it("(4) JSON that isn't an object is not valid either", () => {
@@ -160,6 +166,21 @@ describe("issue 1299: the server answers a refused sign-in plainly", () => {
     expect(block).toMatch(/Retry-After/);
     expect(block).toMatch(/503/);
     expect(block).not.toMatch(/stack/);
-    expect(src).toMatch(/onProblem: \(msg\) => serverLog\(/);
+    expect(src).toMatch(/onProblem: \(msg, kind\) =>/);
+  });
+});
+
+describe("issue 1299: a damaged file moved aside is in the activity trail", () => {
+  it("the server records it, so a person knows why they were signed out", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "../../../src/ui/server/index.ts"),
+      "utf-8",
+    );
+    const at = src.indexOf("onProblem: (msg, kind) =>");
+    expect(at).toBeGreaterThan(-1);
+    const block = src.slice(at, at + 600);
+    expect(block).toMatch(/kind === "moved-aside"/);
+    expect(block).toMatch(/recordAction\(/);
+    expect(block).toMatch(/verb: "sessions-reset"/);
   });
 });
