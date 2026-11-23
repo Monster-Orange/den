@@ -530,6 +530,11 @@ export interface UserConfig {
    * `screenshot_max_mb` (8) the largest kept, `hub_screenshot_max_mb` (6)
    * the largest sent to Hub, `hub_timeout_seconds` (10) the wait for Hub.
    */
+  /**
+   * Issue 707: the server's warning lines on disk while it runs as a
+   * service (<state>/logs/server.log): `max_mb` (20), then it rotates once.
+   */
+  server_log?: { max_mb?: unknown };
   reports?: {
     screenshot_keep_days?: unknown;
     screenshot_max_mb?: unknown;
@@ -606,6 +611,12 @@ export interface UserConfig {
   sessions?: Partial<Record<(typeof SESSIONS_SETTINGS_KEYS)[number], unknown>>;
   agents?: {
     runtimes?: Record<string, { bin?: unknown } | null>;
+    /**
+     * Issue 936: on (default) or off: agents' sessions start in the OS
+     * sandbox, Den's state read-only to them. `agents.<id>.sandbox: off`
+     * for one agent. Only here: agents can't write this file.
+     */
+    sandbox?: unknown;
     /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
@@ -1047,6 +1058,18 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   if (Object.keys(agents).length) next.agents = agents;
   else delete next.agents;
   writeUserConfig(next);
+}
+
+/**
+ * Issue 936, the rollout's Turn on: `agents.sandbox: on` in user.yml,
+ * keeping everything else there (an agent's own `off` stays).
+ */
+export function setUserSandboxOn(): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), sandbox: "on" },
+  } as UserConfig);
 }
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
@@ -1911,6 +1934,9 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  // Issue 936: Den's state read-only to agents' sessions (on|off|required).
+  "sandbox",
+  "sandbox_sockets",
 ];
 
 /**
@@ -1918,18 +1944,55 @@ export const AGENTS_RESERVED_KEYS = [
  * key other than grants (signing_key, or a typo gitSigningBlock names).
  */
 function isGitSettings(block: unknown): boolean {
-  return isMapping(block) && Object.keys(block).some((k) => k !== "grants");
+  return (
+    isMapping(block) &&
+    Object.keys(block).some((k) => k !== "grants" && k !== "sandbox")
+  );
 }
 
 /** One agent's own block, `agents.<id>`. */
 export interface AgentGrantsConfig {
   /** Workspaces beyond its own that its MCP serves. */
   grants: string[];
+  /** Issue 936: false: this agent's session starts outside the sandbox. */
+  sandbox?: boolean;
+  /** Issue 936: required: it doesn't start where no sandbox applies. */
+  sandboxRequired?: boolean;
+}
+
+const SANDBOX_IN_USER_YML = (key: string) =>
+  `${key}: set it in config/local/user.yml, which agents can't write`;
+
+/**
+ * Issue 936: agents.sandbox / agents.<id>.sandbox: on, off (true, false),
+ * or required (on, and an agent with no sandbox here doesn't start).
+ */
+function sandboxValue(
+  v: unknown,
+  where: string,
+): { on: boolean; required: boolean } | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (v === true || v === "on") return { on: true, required: false };
+  if (v === false || v === "off") return { on: false, required: false };
+  if (v === "required") return { on: true, required: true };
+  throw new Error(
+    `${where}: must be on, off or required (got ${JSON.stringify(v)})`,
+  );
 }
 
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  /**
+   * Issue 936: agents' sessions start in the OS sandbox, Den's state
+   * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
+   * off for one agent.
+   */
+  sandbox?: boolean;
+  /** Issue 936: agents.sandbox: required (an unsandboxed start refused). */
+  sandboxRequired?: boolean;
+  /** Issue 936: agents.sandbox_sockets, more unix-socket folders allowed. */
+  sandboxSockets?: string[];
   /**
    * #70: an agent's token counts only from its own session's processes
    * (agents.token_binding, default true). false: from any process here.
@@ -2137,6 +2200,11 @@ export function readAgentsConfig(
   const c = config ?? readDenConfig();
   const u = user ?? (config ? {} : readUserConfigQuiet());
   const out = asConfigError(() => parseAgentsConfig(c));
+  // Issue 936: the sandbox is per machine, from user.yml only.
+  asConfigError(
+    () => applyUserSandbox(out, u.agents),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
   // A signing key is per machine: user.yml's agents.git wins.
   const mine = u.agents?.git;
   if (mine !== undefined && mine !== null) {
@@ -2147,6 +2215,50 @@ export function readAgentsConfig(
     if (g) out.git = g;
   }
   return out;
+}
+
+/**
+ * Issue 936: user.yml's agents.sandbox and agents.<id>.sandbox (on or off)
+ * onto the resolved config. Other keys of user.yml's agents block are not
+ * read here.
+ */
+export function applyUserSandbox(
+  out: ResolvedAgentsConfig,
+  userAgents: unknown,
+): void {
+  if (!isMapping(userAgents)) return;
+  const all = sandboxValue(userAgents.sandbox, "agents.sandbox");
+  if (all !== undefined) {
+    out.sandbox = all.on;
+    out.sandboxRequired = all.required;
+  }
+  const socks = userAgents.sandbox_sockets;
+  if (socks !== undefined && socks !== null) {
+    if (
+      !Array.isArray(socks) ||
+      !socks.every((x) => typeof x === "string" && path.isAbsolute(x))
+    )
+      throw new Error(
+        `agents.sandbox_sockets: a list of absolute folder paths (got ${JSON.stringify(socks)})`,
+      );
+    out.sandboxSockets = [...new Set(socks as string[])];
+  }
+  for (const [id, block] of Object.entries(userAgents)) {
+    if (
+      AGENTS_RESERVED_KEYS.includes(id) ||
+      id === "git" ||
+      id === "sandbox_sockets"
+    )
+      continue;
+    if (!AGENT_KEY_RE.test(id) || !isMapping(block)) continue;
+    const one = sandboxValue(block.sandbox, `agents.${id}.sandbox`);
+    if (one === undefined) continue;
+    out.agents[id] = {
+      ...(out.agents[id] ?? { grants: [] }),
+      sandbox: one.on,
+      ...(one.required ? { sandboxRequired: true } : {}),
+    };
+  }
 }
 
 /** user.yml, or {} when it can't be read (a bad one is its own row). */
@@ -2200,6 +2312,11 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     })(),
   };
   out.helpers = helpersBlock(raw.helpers);
+  // Issue 936: the sandbox is the machine's, in user.yml (config/local is
+  // read-only to agents; the org config may sit in a repo they edit).
+  if (raw.sandbox !== undefined)
+    throw new Error(SANDBOX_IN_USER_YML("agents.sandbox"));
+  out.sandbox = true;
   // agents.git, unless it is an agent called git (a block with grants).
   const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;
   out.git = gitSigningBlock(gitBlock);
@@ -2307,7 +2424,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))
-      if (k !== "grants")
+      if (k !== "grants" && k !== "sandbox")
         throw new Error(`${where}.${k}: unknown key (an agent takes grants)`);
     const grants = block.grants ?? [];
     if (!Array.isArray(grants))
@@ -2320,6 +2437,8 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
           `${where}.grants[${i}]: ${JSON.stringify(g)} is not a project name`,
         );
     });
+    if (block.sandbox !== undefined)
+      throw new Error(SANDBOX_IN_USER_YML(`${where}.sandbox`));
     out.agents[id] = { grants: [...new Set(grants as string[])] };
   }
   return out;

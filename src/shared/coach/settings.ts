@@ -23,6 +23,20 @@ export interface FindingThresholds {
   denials_per_day: number;
   /** A window's transcripts at or over this many MB. */
   transcript_mb: number;
+  /** T-c: asks passing R12, in percent, below which it shows... */
+  ask_r12_pass_pct: number;
+  /** ...and the waits for an answer: with at least this many asks. */
+  min_asks: number;
+  /** The median wait for a person's answer, in minutes, at or over which it shows. */
+  ask_wait_min: number;
+  /** The same text sent again to the same agent, this many times or more. */
+  sends_repeated: number;
+  /** Sends no reply followed, in percent, at or above which it shows... */
+  sends_no_reply_pct: number;
+  /** ...when it sent at least this many. */
+  min_sends: number;
+  /** R12: a sentence in an ask of more words than this is long. */
+  sentence_words: number;
 }
 
 export const FINDING_DEFAULTS: Readonly<FindingThresholds> = Object.freeze({
@@ -31,6 +45,13 @@ export const FINDING_DEFAULTS: Readonly<FindingThresholds> = Object.freeze({
   polls_per_day: 20,
   denials_per_day: 5,
   transcript_mb: 1024,
+  ask_r12_pass_pct: 80,
+  min_asks: 3,
+  ask_wait_min: 240,
+  sends_repeated: 3,
+  sends_no_reply_pct: 50,
+  min_sends: 5,
+  sentence_words: 25,
 });
 
 export interface CoachSettings {

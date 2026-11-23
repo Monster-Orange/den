@@ -18,6 +18,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 const TOKEN = "hubi_TESTONLY_tools_slow_stop_8d1a";
 
@@ -188,7 +189,7 @@ describe("issue 193, 0.4.57: a slow stop during Den's restart for Hub's tools", 
 
     await until(() => s.made.length > first + 1, 30_000);
     const next = s.made.length - 1;
-    expect(s.made[next].args.slice(0, 2)).toEqual(["--resume", token]);
+    expect(runtimeArgs(s.made[next]).slice(0, 2)).toEqual(["--resume", token]);
     expect(seen().planner.conv).toBe(conv);
     const rows = (await call("GET", "/api/sessions")).json as {
       sessions: { agent?: string; state?: string }[];

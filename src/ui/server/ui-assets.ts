@@ -161,6 +161,8 @@ export const KIT_FILES: readonly string[] = [
   "fonts.css",
   "tokens.css",
   "base.css",
+  // Issue 788: the sketch theme (greys, dashed edges, outline buttons).
+  "themes/sketch.css",
   "busy.js",
   "busy-words.js",
   // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).

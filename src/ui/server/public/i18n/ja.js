@@ -1231,6 +1231,10 @@
       "エージェントのゲート枠: 見積もり後の猶予（分）",
     "set.server.gate_mcp_grace.d":
       "更新されない枠も、見積もりをこの時間過ぎるまでは保持されます。__DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_waiter_return":
+      "待っているテスト実行が終わったあと順番を保つ時間（分）",
+    "set.server.gate_waiter_return.d":
+      "待っているテスト実行が順番を手放さずに終わったとき（再起動や、ウィンドウを閉じたとき）、列の順番をこの時間保ちます。もう一度実行すると、その順番に戻ります。過ぎると順番は手放され、次に頼んだときにそのことを伝えます。0: すぐに手放す。__DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "順番のクラス(高い順)",
     "set.server.gate_class_order.d":
       "カンマ区切りで、たとえば release, lane, other。高いクラスの待機中の実行が先に始まり、同じクラスの中では先着順です。順番を持っている実行は止まりません。空なら全員が先着順です。__DEN_CLI__ gate settings --class-order release,lane,other",
@@ -1266,6 +1270,9 @@
     "set.server.report_screenshot_days": "報告のスクリーンショットの保存期間",
     "set.server.report_screenshot_days.d":
       "ここから送った報告のマスク済みスクリーンショットを __DEN_TITLE__ が保存する日数です。あなたとこのインストール自身のエージェントが読めます(report_screenshot)。過ぎると削除されます。__DEN_CLI__ config reports.screenshot_keep_days=30",
+    "set.server.server_log_max": "警告ログの最大サイズ",
+    "set.server.server_log_max.d":
+      "__DEN_TITLE__ がサービスとして動いている間、警告は状態フォルダーの logs/server.log にも書かれるので、再起動後も残ります。このサイズに達すると server.log.1 に移し（1 回だけ）、新しく書き始めます。__DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
       "報告のスクリーンショットの最大サイズ（保存）",
     "set.server.report_screenshot_max.d":
@@ -1948,6 +1955,14 @@
       "プロジェクト {where} のペルソナ {id} を変更: {fields}",
     "ap.do.den_pin_commit":
       "ディストリビューションの固定バージョンを Den {version} でコミット",
+    "ap.do.den_sandbox_on":
+      "それより前に起動した {count} 個のエージェントでエージェント サンドボックスをオンにする (それぞれ次の起動時)",
+    "ap.det.den_sandbox_on.sets":
+      "config/local/user.yml に agents.sandbox: on を設定します。",
+    "ap.det.den_sandbox_on.next":
+      "各エージェントは次の起動時にサンドボックスに入ります。いま動いているエージェントはそのまま続きます。",
+    "ap.det.den_sandbox_on.off":
+      "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
@@ -1992,6 +2007,18 @@
       "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.web_url_set": "{url} をこの Den のアドレスにする",
+    "ap.det.web_url_set.newHost":
+      "新しいホスト: {host} はこのマシンでも Den が提供するアドレスでもありません。サインインとすべてのリンクがここを経由します。",
+    "ap.det.web_url_set.now": "現在: {from}。",
+    "ap.det.web_url_set.nowUnconfirmed": "現在: {from} (未確認)。",
+    "ap.det.web_url_set.none": "現在: アドレスは設定されていません。",
+    "ap.det.web_url_set.answers":
+      "{url} は今この Den として応答します: Den がその名前経由で一回限りのトークンを問い合わせました。",
+    "ap.det.web_url_set.saves":
+      "設定と同じ方法で確認済みとして保存します。再起動なしで有効になり、Den は接続中の Hub に伝えます。",
+    "set.ui.hub.denUrlRefused":
+      "Hub はこの Den のアドレス ({url}) を受け付けませんでした: {why}",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
