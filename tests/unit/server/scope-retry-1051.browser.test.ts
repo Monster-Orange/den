@@ -9,6 +9,8 @@
  *  - The first load never answers (a stalled connection): it counts as
  *    failed after a while, and the next try shows the menu (issue 1044's
  *    WebKit wait after a pick's reload).
+ *  - The first load answers its headers and never its body: the wait
+ *    covers the body too, and the next try shows the menu.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
@@ -150,6 +152,62 @@ describe("issue 1051: the project menu after a failed load", () => {
     expect(loads()).toBeGreaterThanOrEqual(2);
     expect(navs).toBe(0);
     await p.context().close();
+  }, 50_000);
+
+  it("the first load's body never comes: the project button shows once a later try answers, no reload", async () => {
+    if (!browser) return;
+    const ctx = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+    });
+    await signIn(ctx, path.join(tmp, "home"), base());
+    // The page's first GET /api/workspaces answers 200 with its headers
+    // and a first byte, then nothing: the body ends only if the page
+    // gives up on it (its abort signal). Later loads are real.
+    await ctx.addInitScript(() => {
+      const real = window.fetch.bind(window);
+      const w = window as unknown as { __wsLoads: number };
+      w.__wsLoads = 0;
+      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (
+          !/\/api\/workspaces(\?|$)/.test(url) ||
+          (init?.method ?? "GET") !== "GET"
+        )
+          return real(input, init);
+        w.__wsLoads++;
+        if (w.__wsLoads > 1) return real(input, init);
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode("{"));
+            signal?.addEventListener("abort", () =>
+              c.error(new DOMException("aborted", "AbortError")),
+            );
+          },
+        });
+        return Promise.resolve(
+          new Response(body, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      };
+    });
+    const p = await ctx.newPage();
+    let navs = 0;
+    p.on("framenavigated", (f) => {
+      if (f === p.mainFrame()) navs++;
+    });
+    await p.goto(`${base()}/services`);
+    navs = 0;
+    await p.waitForSelector("#ws-pill:not([hidden])", { timeout: 25_000 });
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { __wsLoads: number }).__wsLoads,
+      ),
+    ).toBeGreaterThanOrEqual(2);
+    expect(navs).toBe(0);
+    await ctx.close();
   }, 50_000);
 
   it("a failed refresh after a good load keeps the menu it had", async () => {

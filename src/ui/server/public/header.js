@@ -420,14 +420,18 @@ const SCOPE_RETRY_MAX_MS = 30_000;
 // from /api/settings); this default until the page has read it.
 let _scopeLoadMs = 8_000;
 
-/** fetch(url), ended (it throws) when it hasn't answered in `ms`. */
-function fetchWithin(url, ms) {
+/** fetch(url) and `parse` of its answer, ended (it throws) when not done in `ms`. */
+function fetchWithin(url, ms, parse) {
   const ctl =
     typeof AbortController === "function" ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
-  return fetch(url, ctl ? { signal: ctl.signal } : undefined).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
+  // The body is read inside the wait too: headers that come and a body
+  // that stalls end the same way (the abort ends the read).
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined)
+    .then(parse)
+    .finally(() => {
+      if (timer) clearTimeout(timer);
+    });
 }
 let _scopeShown = false;
 let _scopeRetryMs = 0;
@@ -465,10 +469,10 @@ async function _renderScopeMenu() {
   if (!sh?.setWorkspaces || configInvalid()) return;
   try {
     const [data, scope] = await Promise.all([
-      fetchWithin("/api/workspaces", _scopeLoadMs).then((r) => r.json()),
-      fetchWithin("/api/scope", _scopeLoadMs)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
+      fetchWithin("/api/workspaces", _scopeLoadMs, (r) => r.json()),
+      fetchWithin("/api/scope", _scopeLoadMs, (r) =>
+        r.ok ? r.json() : null,
+      ).catch(() => null),
     ]);
     sh.setWorkspaces({
       // The page's language sorts the projects (ja its own way).
