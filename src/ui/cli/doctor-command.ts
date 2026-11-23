@@ -46,7 +46,7 @@ import {
   pinNotes,
   pinProjectsOf,
   type PinProjects,
-} from "../server/shell-prefs.js";
+} from "../../shared/shell-pins.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import {
   checkAgentSigning,
