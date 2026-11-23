@@ -4,17 +4,6 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.86] - unreleased
-
-### Changed
-
-- Agents: Den's state can't be written from an agent's session. A new agent's session runs in the OS sandbox (sandbox-exec on macOS, bwrap on Linux). An agent from before this release keeps starting as before until the person Allows Turn on in the bell, or sets `agents.sandbox: on` in config/local/user.yml; `agents doctor` says how many are still off. A session started before the sandbox, or with it off, can still write Den's state until it is relaunched. (issue 936)
-- Config: settings that widen what an agent may do are read from config/local/user.yml only: `agents.<id>.grants` and `mcp.actions`. In the distribution's config they are no longer read, and `agents doctor` names each one. Doctor also names a user.yml agent block it skips for a misspelt or extra key. (issue 1072)
-
-### Migrations
-
-- An install that set `mcp.actions` or `agents.<id>.grants` in the distribution's config loses them at upgrade until they are moved to config/local/user.yml. `agents doctor` names each one. (issue 1072)
-
 ## [0.4.85] - 2026-11-22
 
 ### Added
