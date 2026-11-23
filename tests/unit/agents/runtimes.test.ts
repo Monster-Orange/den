@@ -13,7 +13,10 @@ import {
   RUNTIME_KIND,
   type LaunchInput,
 } from "../../../src/shared/agents/runtimes.js";
-import { stateDirDenyRules } from "../../../src/shared/agents/den-claude.js";
+import {
+  ownFilesDenyRules,
+  stateDirDenyRules,
+} from "../../../src/shared/agents/den-claude.js";
 import {
   getStrategy,
   strategyIds,
@@ -271,7 +274,13 @@ describe("den-claude launch", () => {
     // cooperating agent only): Read, and any command naming web.secret or
     // sessions/.
     expect(JSON.parse(out.files![settingsFile])).toEqual({
-      permissions: { deny: stateDirDenyRules("/home/someone/.acme") },
+      permissions: {
+        deny: [
+          // Issue 362: the files it was launched with.
+          ...ownFilesDenyRules([settingsFile, mcpFile]),
+          ...stateDirDenyRules("/home/someone/.acme"),
+        ],
+      },
       // den#3: the account's claude.ai connectors stay out.
       disableClaudeAiConnectors: true,
     });

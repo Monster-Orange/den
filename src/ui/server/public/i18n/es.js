@@ -393,6 +393,11 @@
     "ws.all": "Todos los activos",
     "ws.focus": "predeterminado de la CLI",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Conectado a {company} ({host}). Este proyecto: {name}.",
+    "ws.hubAway": "Otro Hub",
+    "ws.hubAwayTip":
+      "El enlace de este proyecto apunta a otro Hub, así que aquí no vale. Vuelve a enlazarlo en Configuración del proyecto.",
     "ws.hubUnseen": "Den Hub no puede ver {n} repos",
     "ws.hubTip":
       "Los agentes de este proyecto archivan su trabajo de Hub en este proyecto de Hub. Cámbialo en Configuración del proyecto.",
@@ -1447,6 +1452,18 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.agents.resume_batch": "Agentes reiniciados a la vez",
+    "set.agents.resume_batch.d":
+      "Tras un reinicio, o cuando cambian las herramientas de Hub, los agentes se reinician de este número en este número; primero los que estaban trabajando. 0 reinicia todos a la vez. __DEN_CLI__ config agents.resume.batch=4",
+    "set.agents.resume_gap": "Espera entre grupos de reinicio",
+    "set.agents.resume_gap.d":
+      "Cuánto espera el siguiente grupo de reinicios de agentes después de que empieza uno. __DEN_CLI__ config agents.resume.gap_seconds=30",
+    "set.agents.resume_load": "Carga que detiene los reinicios",
+    "set.agents.resume_load.d":
+      "Mientras la carga de 1 minuto de la máquina supere este valor, el siguiente grupo de reinicios de agentes espera. 0: sin límite. Por defecto es el número de núcleos × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+    "set.agents.resume_max_wait": "Espera máxima de un reinicio por la carga",
+    "set.agents.resume_max_wait.d":
+      "Cuando un agente ha esperado este tiempo, su grupo se reinicia aunque la carga siga alta, de unos pocos en unos pocos como antes. 0: la carga puede detener los reinicios mientras siga alta. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Quién escribe issues de GitHub",
     "set.agents.issue_writes.d":
       "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -1491,6 +1508,9 @@
     "hubp.whyRepo": "tiene estos repos",
     "hubp.whyName": "mismo nombre",
     "hubp.link": "Vincular",
+    "hubp.elsewhere":
+      "{project} apunta a “{name}” en otro Hub ({host}, {company}). Este Den está conectado a {nowHost} ({nowCompany}), así que el enlace no vale aquí. Vuelve a enlazarlo aquí o desenlázalo.",
+    "hubp.relink": "Volver a enlazar",
     "hubp.unlink": "Desvincular",
     "hubp.none": "Tu empresa aún no tiene proyectos en Hub.",
     "hubp.noOther":
@@ -1552,7 +1572,45 @@
     "hubp.createF": "Hub no aceptó la petición. No se creó nada.",
     "hub.legacy":
       "Esta instalación usa un token antiguo de Hub, guardado donde Den no puede reemplazarlo. Vuelve a conectar para pasar a uno nuevo.",
+    "hub.addressMore": "Dirección del Hub…",
+    "hub.justConnected":
+      "Conectado a {company} ({host}). ¿No es la empresa que querías?",
     "hub.reconnect": "Volver a conectar",
+    "hub.cw.done": "Conectado a Hub ({company}).",
+    "hub.cw.doneNoCo": "Conectado a Hub.",
+    "hub.cw.linked": "Se vincularon {n} proyectos en la misma aprobación.",
+    "hub.cw.linked.one": "Se vinculó {n} proyecto en la misma aprobación.",
+    "hub.cw.linkedNew":
+      "Se vincularon {n} proyectos en la misma aprobación ({made} nuevos).",
+    "hub.cw.linkedNew.one":
+      "Se vinculó {n} proyecto en la misma aprobación ({made} nuevo).",
+    "hub.cw.notCreated": "{key}: no se creó.",
+    "hub.cw.notCreatedWhy": "{key}: no se creó ({detail}).",
+    "hub.cw.notDone": "{key}: no se hizo en Hub.",
+    "hub.cw.notDoneWhy": "{key}: no se hizo en Hub ({detail}).",
+    "hub.cw.later": "{key}: espera tu revisión.",
+    "hub.cw.fb.oldHub":
+      "Este Hub aún no vincula proyectos al conectar, así que esperan tu revisión aquí.",
+    "hub.cw.fb.otherList":
+      "La respuesta de Hub es para otra lista de proyectos, así que esperan tu revisión aquí.",
+    "hub.cw.fb.badAnswer":
+      "Den no pudo leer la respuesta de Hub sobre los proyectos, así que esperan tu revisión aquí.",
+    "hub.cw.fb.rebind":
+      "Den no pudo pasar sus registros de Hub a este Hub, así que los proyectos esperan tu revisión aquí.",
+    "hub.cw.fb.tooMany":
+      "Conectar envía a Hub 50 proyectos como máximo, así que esperan tu revisión aquí.",
+    "hub.cw.fb.tooBig":
+      "La lista de proyectos pasaba de 6 KB, así que esperan tu revisión aquí.",
+    "hub.cw.fb.badKey":
+      "El nombre de un proyecto tiene letras que Hub no puede emparejar, así que esperan tu revisión aquí.",
+    "hub.cw.fb.twice":
+      "Un proyecto aparecía dos veces, así que esperan tu revisión aquí.",
+    "hub.cw.review":
+      "Revisa {n} proyectos abajo y luego pulsa Conectar y vincular todo.",
+    "hub.cw.review.one":
+      "Revisa {n} proyecto abajo y luego pulsa Conectar y vincular todo.",
+    "hub.cw.cannot":
+      "Hub aún no puede listar sus proyectos: vincúlalos en Ajustes › Hub cuando pueda.",
     "hubgh.offline": "Esta instalación aún no está conectada a Hub.",
     "hubgh.failed": "Den no pudo preguntar a Hub por el acceso a GitHub.",
     "hubgh.noOrgs": "Aún no se han enviado repos a Hub.",
@@ -1574,6 +1632,66 @@
     "hubla.linked": "{n} proyectos vinculados.",
     "hubla.failed": "{n} sin vincular: {names}. Inténtalo de nuevo.",
     "hubla.failedAll": "No se pudo vincular {names}. Inténtalo de nuevo.",
+    "hubrv.title": "Conectar este Den a {company}",
+    "hubrv.titleNo": "Vincular los proyectos de este Den a Hub",
+    "hubrv.offline":
+      "Hub no respondió. La empresa se conoce, pero no se pueden listar sus proyectos. No se cambió nada.",
+    "hubrv.youAre": "eres {role}",
+    "hubrv.signedAs": "conectado como {login}",
+    "hubrv.role.owner": "propietario",
+    "hubrv.role.member": "miembro",
+    "hubrv.retry": "Reintentar",
+    "hubrv.allMatch.one": "{n} proyecto coincide. No hay nada que elegir.",
+    "hubrv.allMatch": "Los {n} proyectos coinciden. No hay nada que elegir.",
+    "hubrv.why.repo": "mismo repositorio",
+    "hubrv.why.name": "mismo nombre",
+    "hubrv.why.picked": "tu elección",
+    "hubrv.why.linked": "vinculado",
+    "hubrv.why.new": "ningún proyecto de Hub encaja: uno nuevo",
+    "hubrv.why.pick": "encajan dos proyectos de Hub: elige uno",
+    "hubrv.waiting":
+      "un proyecto de Hub nuevo, a la espera de que un propietario lo aplique en Hub",
+    "hubrv.was": "estaba vinculado a «{name}» en {host}; aquí, {why}",
+    "hubrv.wasCo":
+      "estaba vinculado a «{name}» en {host} (empresa {company}); aquí, {why}",
+    "hubrv.offlineRow": "Hub no respondió con la lista de proyectos",
+    "hubrv.create": "Crear «{name}»",
+    "hubrv.suggested": "Sugerido",
+    "hubrv.choose": "Elige un proyecto de Hub para «{project}»",
+    "hubrv.search.one": "Buscar en {n} proyecto",
+    "hubrv.search": "Buscar en {n} proyectos",
+    "hubrv.noMatch": "Ningún proyecto de Hub coincide.",
+    "hubrv.noProjects": "Hub aún no tiene proyectos en esta empresa.",
+    "hubrv.use": "Usar {name}",
+    "hubrv.createInstead": "Crear «{name}» en su lugar",
+    "hubrv.cancel": "Cancelar",
+    "hubrv.change": "Cambiar",
+    "hubrv.openPlan": "Abrir la página del plan en Hub",
+    "hubrv.apply": "Conectar y vincular todo",
+    "hubrv.applyNote":
+      "Los vínculos se aplican al momento. Los proyectos nuevos abren la página del plan en Hub: un solo Aplicar allí los crea todos.",
+    "hubrv.member.one":
+      "{n} proyecto nuevo va a un propietario para su aprobación. Eres miembro, así que Hub pide a un propietario que lo aplique. Los vínculos se aplican al momento.",
+    "hubrv.member":
+      "Estos {n} proyectos nuevos van a un propietario para su aprobación. Eres miembro, así que Hub pide a un propietario que los aplique. Los vínculos se aplican al momento.",
+    "hubrv.doneTitle": "Conectado a {company}",
+    "hubrv.doneTitleNo": "Hecho",
+    "hubrv.linkedLine": "{project} → {name} ({why})",
+    "hubrv.creatingLine":
+      "{project}: un proyecto de Hub nuevo, {name}, a la espera de Aplicar en Hub. Se vincula cuando se aplica.",
+    "hubrv.skip.duplicate": "{project}: aparece dos veces; se hizo una vez.",
+    "hubrv.skip.unknown": "{project}: sin hacer: aquí no existe ese proyecto.",
+    "hubrv.skip.offline":
+      "{project}: sin hacer: Hub no respondió. Inténtalo de nuevo.",
+    "hubrv.skip.stale":
+      "{project}: sin hacer: ya no es uno de los proyectos de Hub de la empresa.",
+    "hubrv.skip.waiting":
+      "{project}: sin hacer: ya hay un proyecto de Hub nuevo esperando a un propietario.",
+    "hubrv.skip.hub": "{project}: sin hacer: Hub dijo: {why}",
+    "hubrv.skip.name":
+      "{project}: sin hacer: el nombre debe tener de 1 a 80 caracteres.",
+    "hubrv.asked": "Se pidieron a Hub los proyectos nuevos.",
+    "hubrv.switch": "Cambiar de empresa",
     "set.agents.hub_link_all": "Coincidencias dudosas",
     "set.agents.hub_link_all.d":
       "Vincular une un proyecto con su proyecto de Hub, para que sus agentes guarden allí documentos, maquetas y comentarios. Den lista aquí un proyecto solo cuando no sabe cuál de Hub corresponde. Elige uno y pulsa Vincular. Hasta entonces, no se guarda nada de ese proyecto.",
@@ -1658,6 +1776,7 @@
       "Duración de la vista de un agente, en minutos",
     "set.access.agent_view_minutes.d":
       "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.test_installs_here": "Instalaciones de prueba en esta máquina",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -2067,6 +2186,12 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.test_person_setup":
+      "Configurar la persona de prueba en la instalación de prueba {id}",
+    "ap.det.test_person_setup.which":
+      "Instalación de prueba {id}, carpeta de estado {where}, en esta máquina.",
+    "ap.det.test_person_setup.what":
+      "Sus comprobaciones en vivo podrán entrar allí como su persona de prueba. No puede entrar en ningún otro sitio.",
     "ap.do.web_url_set": "Hacer de {url} la dirección de este Den",
     "ap.det.web_url_set.newHost":
       "Host nuevo: {host} no es esta máquina ni una dirección que Den sirve. El inicio de sesión y todos los enlaces pasarán por él.",
@@ -2111,6 +2236,7 @@
       'Primero activa el proyecto "{project}", para que pueda funcionar.',
     "ap.det.service_try.up":
       'Ejecuta el "up" local del servicio, como hace Iniciar en la página Servicios.',
+    "ap.det.service_try.command": "Comando: {command}",
     "ap.det.service_try.reports":
       "Den informa del código de salida y de las últimas líneas de su salida.",
     "ap.det.den_restart.restart":
@@ -3552,6 +3678,11 @@
       "No es una instalación de prueba. Las comprobaciones en vivo no pueden iniciar sesión aquí. Una persona marca una instalación de prueba a mano en la configuración de la distribución (web.test_install: true).",
     "set.ui.testPersonReady": "La persona de prueba está configurada.",
     "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
+    "set.ui.testInstallsNone":
+      "Ninguna instalación de prueba de esta máquina espera su persona de prueba.",
+    "set.ui.testInstallsOne": "{where} (instalación de prueba {id})",
+    "set.ui.testInstallsSignedIn":
+      "Solo la persona que ha iniciado sesión ve las instalaciones de prueba de esta máquina.",
     "set.ui.testPersonSetUp": "Configurar persona de prueba",
     "set.ui.testInstallSignedIn":
       "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
@@ -3637,7 +3768,7 @@
     "set.ui.hub.address": "Dirección de Hub",
     "set.ui.hub.connect": "Conectar",
     "set.ui.hub.connectLinks":
-      "Conectar también vincula cada proyecto de aquí con su proyecto de Hub. Cuando Den no sabe cuál corresponde, te pregunta.",
+      "Después de Conectar, cada proyecto de aquí muestra su proyecto de Hub sugerido. Revísalos y pulsa Conectar y vincular todo.",
     "set.ui.hub.connectNote":
       "Conectar abre Hub. Inicia sesión allí y aprueba esta instalación; vuelves aquí ya conectado. El token se guarda en el almacén de secretos de esta instalación y nunca se muestra.",
     "set.ui.hub.teams": "un Hub compartido en {host}.",
@@ -3965,6 +4096,8 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_installs_here.d":
+      "Instalaciones de prueba de esta máquina que su lanzador anuncia y que esperan su persona de prueba. Configurar persona de prueba la configura desde aquí, en cualquier navegador, con tu propia autorización.",
     "set.access.test_install.d":
       "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":
