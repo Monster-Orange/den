@@ -9,6 +9,7 @@ import {
   APPROVE_WINDOW_MS,
   formatPairCode,
   MAX_PAIRS_PER_CLIENT_MINUTE,
+  MAX_PAIRS_PER_UNKNOWN_MINUTE,
   MAX_PENDING_PAIRS,
   MAX_WITHDRAWN_KEPT,
   newPairCode,
@@ -470,5 +471,97 @@ describe("issue 320: a request its page stopped asking for has ended", () => {
     const r = pairs.create({ userAgent: UA });
     c.advance(2000);
     expect(pairs.approve(r.code)).toEqual({ ok: false, error: "ended" });
+  });
+});
+
+describe("issue 1146: a link's request and callers of unknown address", () => {
+  it("a request a sign-in or setup link opened isn't counted against, or refused by, the address's per-minute limit", () => {
+    const c = clock();
+    const pairs = new PairRequests({
+      now: c.now,
+      unseenMs: Infinity,
+      perClient: () => 1,
+    });
+    for (const n of ["a", "b", "c"])
+      expect(
+        pairs.tryCreate({ userAgent: UA, client: "203.0.113.7", link: n.repeat(22) })
+          .ok,
+      ).toBe(true);
+    // The links used none of the address's minute.
+    expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" }).ok).toBe(
+      true,
+    );
+    expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" })).toEqual({
+      ok: false,
+      error: "rate_limited",
+    });
+    // A link's request still goes through once the address is limited.
+    expect(
+      pairs.tryCreate({ userAgent: UA, client: "203.0.113.7", link: "d".repeat(22) })
+        .ok,
+    ).toBe(true);
+  });
+
+  it(`callers whose address is unknown are their own, stricter case (default ${MAX_PAIRS_PER_UNKNOWN_MINUTE} a minute, a Setting), never an empty key a known address shares`, () => {
+    expect(MAX_PAIRS_PER_UNKNOWN_MINUTE).toBeLessThan(
+      MAX_PAIRS_PER_CLIENT_MINUTE,
+    );
+    const c = clock();
+    let unknown = 2;
+    const pairs = new PairRequests({
+      now: c.now,
+      unseenMs: Infinity,
+      perClient: () => 5,
+      perUnknown: () => unknown,
+    });
+    expect(pairs.tryCreate({ userAgent: UA }).ok).toBe(true);
+    expect(pairs.tryCreate({ userAgent: UA, client: "" }).ok).toBe(true);
+    expect(pairs.tryCreate({ userAgent: UA })).toEqual({
+      ok: false,
+      error: "rate_limited",
+    });
+    // A known address isn't held up by them.
+    expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" }).ok).toBe(
+      true,
+    );
+    unknown = 3;
+    expect(pairs.tryCreate({ userAgent: UA }).ok).toBe(true);
+    c.advance(60_000);
+    unknown = 2;
+    expect(pairs.tryCreate({ userAgent: UA }).ok).toBe(true);
+  });
+
+  it("past the cap, a request of unknown address drops only another of unknown address, never a known address's", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now, unseenMs: Infinity, max: 2 });
+    const k1 = pairs.create({ userAgent: UA, client: "203.0.113.7" });
+    c.advance(1);
+    const k2 = pairs.create({ userAgent: UA, client: "198.51.100.2" });
+    c.advance(1);
+    expect(pairs.tryCreate({ userAgent: UA })).toEqual({
+      ok: false,
+      error: "full",
+    });
+    expect([pairs.get(k1.id)?.state, pairs.get(k2.id)?.state]).toEqual([
+      "pending",
+      "pending",
+    ]);
+    // A known address's new one drops the oldest plain one, as before.
+    const k3 = pairs.create({ userAgent: UA, client: "192.0.2.9" });
+    expect(pairs.get(k1.id)).toBeNull();
+    c.advance(1);
+    // With one of unknown address waiting, a known one drops it first.
+    const pk = new PairRequests({ now: c.now, unseenMs: Infinity, max: 2 });
+    const kk = pk.create({ userAgent: UA, client: "203.0.113.7" });
+    c.advance(1);
+    const u1 = pk.create({ userAgent: UA });
+    c.advance(1);
+    const u2 = pk.create({ userAgent: UA });
+    expect([pk.get(kk.id)?.state, pk.get(u1.id), pk.get(u2.id)?.state]).toEqual(
+      ["pending", null, "pending"],
+    );
+    pk.create({ userAgent: UA, client: "198.51.100.2" });
+    expect([pk.get(kk.id)?.state, pk.get(u2.id)]).toEqual(["pending", null]);
+    expect(pairs.get(k3.id)?.state).toBe("pending");
   });
 });

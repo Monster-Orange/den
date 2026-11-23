@@ -339,6 +339,15 @@ describe("3. first run, on an install that has never had a person signed in", ()
     });
   });
 
+  it("issue 1146: once set up, the setup link's request is protected as a sign-in link's is (listed as from a link)", async () => {
+    const person = signedInPerson();
+    const before = (await waitingRows(person)).filter((x) => x.fromLink).length;
+    const r = await call("GET", setupLink(), local(page));
+    expect(pairCodeOf(r)).toBe(true);
+    const after = (await waitingRows(person)).filter((x) => x.fromLink).length;
+    expect(after).toBe(before + 1);
+  });
+
   describe("a Den with no screen (first run, away from the Den computer)", () => {
     let fresh: Den | null = null;
     /** A link item 8 left unspent. */
