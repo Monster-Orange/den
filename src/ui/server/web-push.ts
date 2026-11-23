@@ -26,6 +26,7 @@ import {
 } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export const VAPID_FILE = "push-vapid.json";
 export const SUBSCRIPTIONS_FILE = "push-subscriptions.json";
@@ -44,9 +45,7 @@ export interface VapidKeys {
 
 function writePrivate(file: string, text: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}`;
-  fs.writeFileSync(tmp, text, { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, text, { mode: 0o600 });
 }
 
 /** This install's VAPID keys, made on first use. */

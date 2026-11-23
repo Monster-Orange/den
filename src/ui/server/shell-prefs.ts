@@ -10,6 +10,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /**
  * Issue 402 (the model set on 11-18): a pin is (company, project or none,
@@ -464,7 +465,7 @@ export function writeFixturePins(
     return;
   }
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, JSON.stringify(keep), { mode: 0o600 });
+  writeFileAtomic(file, JSON.stringify(keep), { mode: 0o600 });
 }
 
 /**
