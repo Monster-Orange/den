@@ -253,6 +253,40 @@ describe("issue 816: the test install's grant route", () => {
     expect(again.json.code).toBe("spent");
   });
 
+  it("the list: 401 without a sign-in, 403 for an agent, 200 for the person", async () => {
+    const get = (bearer: string | null) =>
+      new Promise<number>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: "127.0.0.1",
+            port: plain.port,
+            path: "/api/web/test-installs",
+            method: "GET",
+            agent: false,
+            headers: {
+              connection: "close",
+              host: `localhost:${plain.port}`,
+              ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+            },
+          },
+          (res) => {
+            res.resume();
+            res.on("end", () => resolve(res.statusCode ?? 0));
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+    expect(await get(null)).toBe(401);
+    const t = mintActorToken(plain.stateDir, {
+      agentId: "builder",
+      workspace: "north",
+      sessionName: "builder",
+    });
+    expect([401, 403]).toContain(await get(t.token));
+    expect(await get(personToken(secretOf(plain)))).toBe(200);
+  });
+
   it("no grant or bearer in any log or audit line", () => {
     const seen = [test.out(), plain.out(), audit(test), audit(plain)].join(
       "\n",

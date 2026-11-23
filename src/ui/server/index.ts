@@ -4108,16 +4108,18 @@ async function handleTestInstallsListRoute(
     !("testPerson" in p && p.testPerson) &&
     !("fixture" in p && p.fixture) &&
     !notAPersonOf(req);
+  // Nobody signed in: 401, as other reads that need a sign-in answer. An
+  // agent, a fixture or a test person: 403.
   if (!person)
     return sendJson(
       res,
       {
         ok: false,
-        code: "person_only",
+        code: p ? "person_only" : "signin_required",
         error:
           "Only the signed-in person sees the test installs on this computer.",
       },
-      403,
+      p ? 403 : 401,
     );
   // Issue 816 review: probed and still waiting, so a forged announcement of
   // a real install never offers Set up.
