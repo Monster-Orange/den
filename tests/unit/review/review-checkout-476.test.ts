@@ -1,8 +1,7 @@
 /**
  * Issue 476: a review leg runs in a fresh read-only checkout at the PR's
- * head. It holds no push credential and no remote: every push fails, its
- * files can't be written, and the leg's environment carries no GitHub
- * token, askpass or SSH agent.
+ * head. It holds no push credential and no remote: every push fails, and
+ * its files can't be written.
  */
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -10,7 +9,6 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, describe, expect, it } from "@jest/globals";
 import {
-  legEnv,
   reviewCheckout,
   removeCheckout,
 } from "../../../src/shared/review/mesh/checkout.js";
@@ -103,31 +101,5 @@ describe("the review checkout", () => {
     reviewCheckout(repo, first, dir);
     removeCheckout(dir);
     expect(fs.existsSync(dir)).toBe(false);
-  });
-});
-
-describe("the leg's environment", () => {
-  it("drops tokens, keys, askpass helpers and the SSH agent; keeps the runtime's own subscription sign-in", () => {
-    const env = legEnv({
-      PATH: "/usr/bin",
-      HOME: "/home/x",
-      GH_TOKEN: "t1",
-      GITHUB_TOKEN: "t2",
-      GH_ENTERPRISE_TOKEN: "t3",
-      GITHUB_ENTERPRISE_TOKEN: "t4",
-      GIT_ASKPASS: "/x",
-      SSH_ASKPASS: "/y",
-      SSH_AUTH_SOCK: "/tmp/agent.sock",
-      OP_SERVICE_ACCOUNT_TOKEN: "t5",
-      NPM_TOKEN: "t6",
-      ANTHROPIC_API_KEY: "metered",
-      CLAUDE_CODE_OAUTH_TOKEN: "subscription",
-    });
-    expect(env).toEqual({
-      PATH: "/usr/bin",
-      HOME: "/home/x",
-      CLAUDE_CODE_OAUTH_TOKEN: "subscription",
-      GIT_TERMINAL_PROMPT: "0",
-    });
   });
 });

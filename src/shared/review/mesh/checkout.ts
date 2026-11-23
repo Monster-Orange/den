@@ -8,10 +8,9 @@
  * folder too, is made read-only. Den fetched the head into `repoPath`
  * first; the clone never talks to GitHub.
  *
- * The leg's environment drops every token, key, password and askpass
- * helper and the SSH agent, so it holds no push credential. It keeps the
- * runtime's own subscription sign-in (CLAUDE_CODE_OAUTH_TOKEN): metered API
- * keys are dropped, so the leg bills to the subscription (RV-9 item 7).
+ * The leg's session gets no push credential from its environment either:
+ * every agent session starts from Den's allowlist (sessions/env.ts), with
+ * no GitHub token, askpass helper or SSH agent.
  */
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -69,20 +68,4 @@ export function removeCheckout(dir: string): void {
   if (!fs.existsSync(dir)) return;
   execFileSync("chmod", ["-R", "u+w", dir]);
   fs.rmSync(dir, { recursive: true, force: true });
-}
-
-const KEEP = new Set(["CLAUDE_CODE_OAUTH_TOKEN"]);
-const DROP_RE =
-  /TOKEN|SECRET|PASSWORD|PASSWD|ASKPASS|CREDENTIAL|_KEY$|^SSH_AUTH_SOCK$/i;
-
-/** The environment a review leg runs with. */
-export function legEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) {
-    if (v === undefined) continue;
-    if (!KEEP.has(k) && DROP_RE.test(k)) continue;
-    out[k] = v;
-  }
-  out.GIT_TERMINAL_PROMPT = "0";
-  return out;
 }
