@@ -6,6 +6,9 @@
  *  - The first /api/workspaces fails (a dropped connection): the project
  *    button shows once a later try answers, with no reload.
  *  - A failed refresh after a good load keeps the menu it had.
+ *  - The first load never answers (a stalled connection): it counts as
+ *    failed after a while, and the next try shows the menu (issue 1044's
+ *    WebKit wait after a pick's reload).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
@@ -100,6 +103,7 @@ afterAll(async () => {
  */
 async function openFailing(
   fail: number,
+  how: "reset" | "stall" = "reset",
 ): Promise<{ p: Page; loads: () => number }> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
@@ -109,7 +113,11 @@ async function openFailing(
   await ctx.route(/\/api\/workspaces(\?|$)/, async (r) => {
     if (r.request().method() !== "GET") return r.continue();
     n++;
-    if (n <= fail) return r.abort("connectionreset");
+    if (n <= fail)
+      return how === "reset"
+        ? r.abort("connectionreset")
+        : // Never answered: held until the context closes.
+          new Promise<void>(() => undefined);
     return r.continue();
   });
   const p = await ctx.newPage();
@@ -130,6 +138,19 @@ describe("issue 1051: the project menu after a failed load", () => {
     expect(navs).toBe(0);
     await p.context().close();
   }, 40_000);
+
+  it("the first load never answers: the project button shows once a later try answers, no reload", async () => {
+    if (!browser) return;
+    const { p, loads } = await openFailing(1, "stall");
+    let navs = 0;
+    p.on("framenavigated", (f) => {
+      if (f === p.mainFrame()) navs++;
+    });
+    await p.waitForSelector("#ws-pill:not([hidden])", { timeout: 25_000 });
+    expect(loads()).toBeGreaterThanOrEqual(2);
+    expect(navs).toBe(0);
+    await p.context().close();
+  }, 50_000);
 
   it("a failed refresh after a good load keeps the menu it had", async () => {
     if (!browser) return;

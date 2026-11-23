@@ -411,6 +411,20 @@ export async function refreshWorkspacePill() {
 // had stays meanwhile; with none yet, the part stays hidden.
 const SCOPE_RETRY_FIRST_MS = 1_000;
 const SCOPE_RETRY_MAX_MS = 30_000;
+// A load that hasn't answered in this long counts as failed (a stalled
+// connection never errors, so it would never be tried again; issue 1044's
+// WebKit wait after a pick's reload).
+const SCOPE_LOAD_TIMEOUT_MS = 8_000;
+
+/** fetch(url), ended (it throws) when it hasn't answered in `ms`. */
+function fetchWithin(url, ms) {
+  const ctl =
+    typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 let _scopeShown = false;
 let _scopeRetryMs = 0;
 let _scopeRetry = null;
@@ -447,8 +461,10 @@ async function _renderScopeMenu() {
   if (!sh?.setWorkspaces || configInvalid()) return;
   try {
     const [data, scope] = await Promise.all([
-      fetch("/api/workspaces").then((r) => r.json()),
-      fetch("/api/scope")
+      fetchWithin("/api/workspaces", SCOPE_LOAD_TIMEOUT_MS).then((r) =>
+        r.json(),
+      ),
+      fetchWithin("/api/scope", SCOPE_LOAD_TIMEOUT_MS)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     ]);
