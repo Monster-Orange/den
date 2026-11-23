@@ -16,9 +16,11 @@
  *     person { name, kind: "person", login }. Den matches its agents by
  *     agent_id.
  *   401: the token isn't taken. 403 with code "groups_not_in_plan": the
- *   company's plan has no groups. Any other 403: a guest (the token's
- *   person is a guest in the company). Den reads the `code`, never the
- *   error's words. No answer, a 5xx (or an older Hub's 404): not shown.
+ *   company's plan has no groups. 403 with code "install_refused" (Hub
+ *   0.2.29), or with no code (an older Hub): a guest (the token's person
+ *   is a guest in the company). A 403 with any other code isn't about
+ *   groups: not shown. Den reads the `code`, never the error's words. No
+ *   answer, a 5xx (or an older Hub's 404): not shown.
  *   A member's agent_id may be another person's agent: Den marks as its
  *   own only one whose install and person are this Den's (`here`).
  *
@@ -35,6 +37,8 @@ import { HubCallError, hubCall } from "./hub.js";
 export const GROUPS_PATH = "/api/groups";
 /** Hub's 403 code for a company whose plan has no groups. */
 export const GROUPS_NOT_IN_PLAN = "groups_not_in_plan";
+/** Hub 0.2.29's 403 code for an install refused for its person's role (a guest). */
+export const INSTALL_REFUSED = "install_refused";
 
 export type GroupLead =
   | {
@@ -83,7 +87,7 @@ export type GroupsRead =
   | { state: "none" }
   /** 403 groups_not_in_plan: not in the company's Den Hub plan. */
   | { state: "unavailable" }
-  /** Any other 403: a guest in the company. */
+  /** 403 install_refused (or no code): a guest in the company. */
   | { state: "refused" }
   /** 401: the token isn't taken. */
   | { state: "rejected" }
@@ -272,9 +276,12 @@ export async function fetchHubGroups(
     // A 403: its `code` only, never its words.
     if (e.kind === "forbidden") {
       const code = (e.body as Record<string, unknown> | undefined)?.code;
-      return code === GROUPS_NOT_IN_PLAN
-        ? { state: "unavailable" }
-        : { state: "refused" };
+      if (code === GROUPS_NOT_IN_PLAN) return { state: "unavailable" };
+      // A guest's token (Hub 0.2.29 names it); an older Hub sends no code.
+      if (code === INSTALL_REFUSED || code === undefined)
+        return { state: "refused" };
+      // Another refusal (not about groups): no groups, never the guest line.
+      return { state: "unreachable" };
     }
     // No answer, a 5xx, or a Hub with no such route (404): not shown.
     return { state: "unreachable" };

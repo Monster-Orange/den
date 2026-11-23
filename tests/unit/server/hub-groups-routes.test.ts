@@ -190,10 +190,10 @@ describe("issue 750: GET /api/hub/groups", () => {
     });
   });
 
-  it("GR-T19: any other 403 (a guest): refused, no words of Hub's", async () => {
+  it("GR-T19: 403 install_refused (a guest): refused, no words of Hub's", async () => {
     const hub = await stubHub(() => [
       403,
-      { error: "Guests can't read groups", code: "guest" },
+      { error: "Guests can't read groups", code: "install_refused" },
     ]);
     const r = await call(deps({ url: hub.url }));
     expect(r.json).toEqual({ ok: true, state: "refused" });

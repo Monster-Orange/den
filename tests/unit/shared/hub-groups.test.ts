@@ -179,13 +179,31 @@ describe("issue 750: fetchHubGroups against a stub Hub", () => {
     });
   });
 
-  it("GR-T19: any other 403 (a guest): refused, by its code alone", async () => {
+  it("GR-T19: 403 install_refused (Hub 0.2.29: the token's person is a guest) reads as a guest, by its code alone", async () => {
     const hub = await stubHub(() => [
       403,
       // The words even name the plan: only the code counts.
-      { error: "groups_not_in_plan for guests", code: "guest" },
+      { error: "groups_not_in_plan for guests", code: "install_refused" },
     ]);
     expect(await fetchHubGroups(hub.url, "t")).toEqual({ state: "refused" });
+  });
+
+  it("a 403 with no code (an older Hub) reads as a guest too", async () => {
+    const hub = await stubHub(() => [403, { error: "forbidden" }]);
+    expect(await fetchHubGroups(hub.url, "t")).toEqual({ state: "refused" });
+  });
+
+  it("a 403 with another code (not a guest, not the plan) shows no groups, never the guest line", async () => {
+    const hub = await stubHub(() => [
+      403,
+      {
+        error: "this install's grant doesn't cover agents",
+        code: "agents_not_covered",
+      },
+    ]);
+    expect(await fetchHubGroups(hub.url, "t")).toEqual({
+      state: "unreachable",
+    });
   });
 
   it("401: the token isn't taken; Hub down or a 5xx: unreachable", async () => {
