@@ -148,3 +148,66 @@ describe("issue 785: agents report-resume", () => {
     expect(h.out.join("\n")).toMatch(/newer/);
   });
 });
+
+describe("issue 785: agents report-resume --notify-json (Codex's notify)", () => {
+  const turn = (o: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      type: "agent-turn-complete",
+      "thread-id": "019a7f2c-1b2d-7e3f-9a8b-0c1d2e3f4a5b",
+      "turn-id": "t-9",
+      cwd: "/work/north",
+      "input-messages": ["plan the release"],
+      "last-assistant-message": "done",
+      ...o,
+    });
+
+  it("a finished turn: only its thread id and folder are reported", async () => {
+    const h = harness();
+    expect(await cmdReportResume(["--notify-json", turn()], h.deps)).toBe(0);
+    expect(h.calls.map((c) => c.body)).toEqual([
+      {
+        conversation: "019a7f2c-1b2d-7e3f-9a8b-0c1d2e3f4a5b",
+        cwd: "/work/north",
+        seq: 1_763_800_000_000,
+      },
+    ]);
+  });
+
+  it("another kind of notice: nothing is sent, exit 0", async () => {
+    const h = harness();
+    expect(
+      await cmdReportResume(
+        ["--notify-json", turn({ type: "approval-requested" })],
+        h.deps,
+      ),
+    ).toBe(0);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("not JSON, no thread id, an id that reads as a flag, or a relative folder: refused, nothing sent", async () => {
+    for (const bad of [
+      "not json",
+      "[1,2]",
+      turn({ "thread-id": undefined }),
+      turn({ "thread-id": "--sandbox" }),
+      turn({ "thread-id": 7 }),
+      turn({ cwd: "work/north" }),
+      turn({ cwd: undefined }),
+    ]) {
+      const h = harness();
+      expect(await cmdReportResume(["--notify-json", bad], h.deps)).toBe(2);
+      expect(h.calls).toEqual([]);
+    }
+  });
+
+  it("with a conversation as well, or with no JSON: usage, nothing sent", async () => {
+    for (const args of [
+      ["019a-77", "--notify-json", turn()],
+      ["--notify-json"],
+    ]) {
+      const h = harness();
+      expect(await cmdReportResume(args, h.deps)).toBe(2);
+      expect(h.calls).toEqual([]);
+    }
+  });
+});

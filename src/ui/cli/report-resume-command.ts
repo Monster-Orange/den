@@ -11,6 +11,7 @@
  * flag is never sent. The sequence defaults to the time in milliseconds,
  * so each report outranks the one before.
  */
+import * as path from "path";
 import { actorTokenOf } from "../../shared/actor-token.js";
 import {
   CONVERSATION_ID,
@@ -39,7 +40,7 @@ export interface ReportResumeDeps {
 }
 
 export const REPORT_RESUME_USAGE =
-  "agents report-resume <conversation> [--cwd <dir>] [--seq <n>] [--json]";
+  "agents report-resume <conversation> [--cwd <dir>] [--seq <n>] [--json] | --notify-json <json>";
 
 export async function cmdReportResume(
   args: readonly string[],
@@ -60,14 +61,27 @@ export async function cmdReportResume(
   let cwd: string | undefined;
   let seqText: string | undefined;
   let json = false;
+  let notify: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (a === "--json") json = true;
-    else if (a === "--cwd") cwd = args[++i];
+    else if (a === "--notify-json") {
+      notify = args[++i];
+      if (notify === undefined) return usage("--notify-json needs the JSON");
+    } else if (a === "--cwd") cwd = args[++i];
     else if (a === "--seq") seqText = args[++i];
     else if (a.startsWith("-")) return usage(`unknown option ${oneWord(a)}`);
     else if (conversation !== undefined) return usage("one conversation only");
     else conversation = a;
+  }
+  if (notify !== undefined) {
+    if (conversation !== undefined || cwd !== undefined)
+      return usage("--notify-json takes the id and folder from the JSON");
+    const turn = notifyTurn(notify);
+    if (turn === "other") return 0;
+    if (typeof turn === "string") return usage(turn);
+    conversation = turn.conversation;
+    cwd = turn.cwd;
   }
   if (conversation === undefined)
     return usage("the conversation id is missing");
@@ -135,6 +149,33 @@ export async function cmdReportResume(
       `Den already holds a newer report (sequence ${String(body.seq)}); this one was not kept.`,
     );
   return 0;
+}
+
+/**
+ * A notify program's JSON argument (Codex's legacy notify: type
+ * "agent-turn-complete", "thread-id", "cwd"): only the thread id and the
+ * folder are read. "other": another kind of notice, nothing to report.
+ * A string: why it can't be read.
+ */
+function notifyTurn(
+  text: string,
+): { conversation: string; cwd: string } | "other" | string {
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return "--notify-json: not JSON";
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v))
+    return "--notify-json: not a JSON object";
+  const o = v as Record<string, unknown>;
+  if (o.type !== "agent-turn-complete") return "other";
+  const id = o["thread-id"];
+  if (typeof id !== "string" || !CONVERSATION_ID.test(id))
+    return "--notify-json: its thread-id is not a conversation id";
+  if (typeof o.cwd !== "string" || !path.isAbsolute(o.cwd))
+    return "--notify-json: its cwd is not an absolute path";
+  return { conversation: id, cwd: o.cwd };
 }
 
 /** An option named back, cleaned and short. */
