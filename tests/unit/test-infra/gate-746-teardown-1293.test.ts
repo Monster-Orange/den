@@ -15,6 +15,7 @@ interface Out {
   ids: string[];
   calls: { args: string[]; tokenFile: string | null }[];
   order: string[];
+  log: string[];
 }
 
 function runTeardown(withdrawCode = 0): Out {
@@ -52,10 +53,11 @@ function runTeardown(withdrawCode = 0): Out {
     };
     await g.setup(ctx);
     const origErr = process.stderr.write.bind(process.stderr);
-    process.stderr.write = () => true;
+    const log = [];
+    process.stderr.write = (x) => (log.push(String(x)), true);
     await g.teardown(ctx);
     process.stderr.write = origErr;
-    console.log(JSON.stringify({ ids, calls, order }));`;
+    console.log(JSON.stringify({ ids, calls, order, log }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
     encoding: "utf-8",
@@ -96,8 +98,20 @@ describe("issue 1293: issue 746's live check withdraws its own requests in teard
     expect(firstRemove).toBeGreaterThan(lastWithdraw);
   });
 
+  it("the run's log shows each withdraw", () => {
+    const o = runTeardown();
+    const lines = o.log.join("");
+    expect(lines).toContain(
+      `746 teardown: ${o.ids[0]} withdrew rqallowaaaaaaaaa`,
+    );
+    expect(lines).toContain(
+      `746 teardown: ${o.ids[1]} withdrew rqdenybbbbbbbbbb`,
+    );
+  });
+
   it("a refused withdraw doesn't stop the teardown: the stubs are still removed", () => {
     const o = runTeardown(1);
     expect(o.order.filter((x) => x.startsWith("remove"))).toHaveLength(2);
+    expect(o.log.join("")).toContain("couldn't withdraw rqallowaaaaaaaaa");
   });
 });

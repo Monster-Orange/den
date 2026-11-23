@@ -295,7 +295,7 @@ export function expect(cells) {
  * may withdraw them, and it does so before it is removed (removal revokes
  * its token). Only requests on file whose agent is one of this run's ids.
  * Exit 0 means withdrawn or already ended. Best effort: a teardown never
- * fails the check; a refusal is printed.
+ * fails the check. Each withdraw, or its refusal, is printed to the log.
  */
 function withdrawOwn(ctx) {
   const mine = new Set(Object.values(IDS));
@@ -307,10 +307,12 @@ function withdrawOwn(ctx) {
       timeout: 15000,
       env: { DEN_ACTOR_TOKEN_FILE: file },
     });
-    if (r.code !== 0)
-      process.stderr.write(
-        `746 teardown: ${h.agent} couldn't withdraw ${rid}: ${(r.err || r.out || "").trim().slice(-200)}\n`,
-      );
+    // Both outcomes go to the run's log, so a live run shows each withdraw.
+    process.stderr.write(
+      r.code === 0
+        ? `746 teardown: ${h.agent} withdrew ${rid}: ${(r.out || "").trim().slice(-200)}\n`
+        : `746 teardown: ${h.agent} couldn't withdraw ${rid}: ${(r.err || r.out || "").trim().slice(-200)}\n`,
+    );
   }
 }
 
