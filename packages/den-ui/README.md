@@ -568,7 +568,7 @@ never converted to HTML and back).
   `kit.fold.hidden` and `kit.badge.*`, in en, es and ja. Show or hide each
   with the `hidden` attribute.
 - `src/preview.js`, `src/preview-frame.js` (exports `./preview`,
-  `./preview-frame.js`): a page or a component as a preview (issue 789),
+  `./preview-frame`): a page or a component as a preview (issue 789),
   in a frame that is `sandbox="allow-scripts"` (an opaque origin: the
   previewed page's scripts can't reach the host's DOM, cookies or
   storage), at a width (Hub's frames are 390, 768 and 1440; it scales

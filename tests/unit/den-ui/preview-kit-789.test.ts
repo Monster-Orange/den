@@ -116,7 +116,7 @@ describe("issue 789: the helper ships", () => {
       fs.readFileSync(path.join(ROOT, "packages/den-ui/package.json"), "utf8"),
     ) as { exports: Record<string, string> };
     expect(pkg.exports["./preview"]).toBe("./src/preview.js");
-    expect(pkg.exports["./preview-frame.js"]).toBe("./src/preview-frame.js");
+    expect(pkg.exports["./preview-frame"]).toBe("./src/preview-frame.js");
     expect(pkg.exports["./themes/sketch.css"]).toBe("./src/themes/sketch.css");
     const assets = fs.readFileSync(
       path.join(ROOT, "src/ui/server/ui-assets.ts"),
