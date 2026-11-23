@@ -15,6 +15,7 @@ import { CODEX_RULES } from "./rules/codex.js";
 import { GEMINI_RULES } from "./rules/gemini.js";
 import { GROK_RULES } from "./rules/grok.js";
 import { ANTIGRAVITY_RULES } from "./rules/antigravity.js";
+import type { StatusState } from "../../sessions/bell.js";
 
 export {
   detect,
@@ -49,20 +50,66 @@ export function ruleSet(name: string | undefined): RuleSet | undefined {
 /** What Den shows for an agent: working, needs you, or idle. */
 export type AgentStatus = "working" | "blocked" | "idle";
 
+/** Issue 771: a status the agent's own terminal said (OSC 7501), and when. */
+export interface TermStatus {
+  state: StatusState;
+  /** When the sessions host read it (ISO 8601). */
+  at: string;
+}
+
 /**
- * An agent's status. Hook status, when the runtime reports one (Claude
- * with Den's hooks on), wins over the screen. Otherwise the screen's
- * reading, unless it says nothing new: no rule matched (`fallback`), a
- * transcript viewer is up (`skip`), or the state is unknown. Then
- * undefined: the caller keeps what it has (the bell, output stopped).
+ * Issue 771: OSC 7501's five states onto Den's three. Error needs a person;
+ * done is idle, and `finished` says its turn ended (issue 773's Done).
  */
-export function agentStatus(
-  hook: AgentStatus | undefined,
-  screen: Detection | undefined,
-): AgentStatus | undefined {
-  if (hook) return hook;
+export function fromTerm(state: StatusState): {
+  status: AgentStatus;
+  finished: boolean;
+} {
+  switch (state) {
+    case "working":
+      return { status: "working", finished: false };
+    case "blocked":
+    case "error":
+      return { status: "blocked", finished: false };
+    case "done":
+      return { status: "idle", finished: true };
+    default:
+      return { status: "idle", finished: false };
+  }
+}
+
+/** A reading that says something: a matched, known state. */
+function said(screen: Detection | undefined): AgentStatus | undefined {
   if (!screen || screen.fallback || screen.skip) return undefined;
   return screen.state === "unknown" ? undefined : screen.state;
+}
+
+/**
+ * An agent's status, in one order (issues 770 and 771): its hook (Claude
+ * with Den's hooks on), then a status its own terminal said with OSC 7501,
+ * then the screen's reading. A 7501 gives way once the screen, read after
+ * it, shows a different matched state; a screen that says nothing (no
+ * rule matched, a transcript viewer, unknown) never drops it. Undefined
+ * when nothing says: the caller keeps what it has (the bell, output
+ * stopped).
+ */
+export function agentStatus(input: {
+  hook?: AgentStatus;
+  term?: TermStatus;
+  screen?: Detection;
+  /** When the screen's reading was taken (ISO 8601). */
+  screenAt?: string;
+}): AgentStatus | undefined {
+  if (input.hook) return input.hook;
+  const seen = said(input.screen);
+  if (input.term) {
+    const t = fromTerm(input.term.state).status;
+    const later =
+      input.screenAt !== undefined &&
+      Date.parse(input.screenAt) > Date.parse(input.term.at);
+    if (!seen || seen === t || !later) return t;
+  }
+  return seen;
 }
 
 /** A named rule set's reading of a screen; undefined with no such set. */

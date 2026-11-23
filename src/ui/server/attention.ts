@@ -39,6 +39,7 @@ import type {
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
 import { STATUS_STATES, type StatusState } from "../../shared/sessions/bell.js";
+import type { TermStatus } from "../../shared/agents/detect/index.js";
 
 /**
  * Issue 771: a status an agent's own session said with OSC 7501, and when
@@ -267,6 +268,8 @@ export class Attention {
   private readonly statusSeen = new Map<string, string>();
   /** Issue 771: each agent's status, as its terminal last said it. */
   private readonly status = new Map<string, StatusState>();
+  /** Issue 771: when each agent's terminal said it (the host's read time). */
+  private readonly statusAt = new Map<string, string>();
   /** Issue 369: rows from before this server still to decide. */
   private orphansLeft = true;
   /** Issue 609: events in the order they came (a set's awaits aside). */
@@ -294,6 +297,16 @@ export class Attention {
   /** Issue 771: the agents whose terminal said a status, and the last one. */
   statusNow(): Map<string, StatusState> {
     return new Map(this.status);
+  }
+
+  /**
+   * Issue 771: what `agent`'s own terminal last said, for agentStatus's
+   * `term` (shared/agents/detect): hook, then this, then the screen.
+   */
+  termOf(agent: string): TermStatus | undefined {
+    const state = this.status.get(agent);
+    const at = this.statusAt.get(agent);
+    return state && at ? { state, at } : undefined;
   }
 
   /** Issue 327: what `agent` waits on and since when, or undefined. */
@@ -859,6 +872,7 @@ export class Attention {
       if (prev === key) continue;
       this.statusSeen.set(r.agent, key);
       this.status.set(r.agent, r.state);
+      this.statusAt.set(r.agent, r.at);
       if (prev === undefined && this.now() - Date.parse(r.at) > 10_000)
         continue;
       const w = this.waiting.get(r.agent);
@@ -982,6 +996,7 @@ export class Attention {
   gone(agent: string): void {
     this.lastRun.delete(agent);
     this.status.delete(agent);
+    this.statusAt.delete(agent);
     this.clear(agent);
   }
 

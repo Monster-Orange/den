@@ -55,6 +55,15 @@ describe("Attention.statuses (issue 771)", () => {
     },
   );
 
+  it("termOf gives the state and its read time for agentStatus; another agent has none; gone clears it", async () => {
+    const { a } = mk();
+    await a.statuses([st("ag-1", "error", 999_000)]);
+    expect(a.termOf("ag-1")).toEqual({ state: "error", at: at(999_000) });
+    expect(a.termOf("ag-2")).toBeUndefined();
+    a.gone("ag-1");
+    expect(a.termOf("ag-1")).toBeUndefined();
+  });
+
   it("blocked: waiting for its person, with a bell row; its output moving doesn't clear it; working does", async () => {
     const { store, a } = mk();
     marks["ag-1"] = "m1";
