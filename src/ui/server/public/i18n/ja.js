@@ -2042,6 +2042,7 @@
       "まずプロジェクト「{project}」をアクティブにして、動かせるようにします。",
     "ap.det.service_try.up":
       "サービスのローカルの「up」を、サービスのページの「開始」と同じように実行します。",
+    "ap.det.service_try.command": "コマンド: {command}",
     "ap.det.service_try.reports":
       "Den は終了コードと出力の最後の数行を伝えます。",
     "ap.det.den_restart.restart":

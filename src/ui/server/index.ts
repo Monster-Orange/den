@@ -4468,7 +4468,14 @@ function approvalDeps(): ApprovalDeps {
           ok: false,
           error: `"up" for ${resolved.address} needs an interactive terminal: the person runs \`${product().cli} up ${resolved.address}\``,
         };
-      return { ok: true, address: resolved.address };
+      // Issue 362: the command the dialog shows, and its Allow is for.
+      const command =
+        def === undefined ? undefined : typeof def === "string" ? def : def.cmd;
+      return {
+        ok: true,
+        address: resolved.address,
+        ...(command ? { command } : {}),
+      };
     },
     // `up` as /api/service/exec runs it, collected instead of streamed.
     tryService: async (address, ws) => {

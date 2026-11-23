@@ -112,6 +112,7 @@ import {
   type PolicySetting,
 } from "../../shared/approval-policy.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
+import { createHash } from "crypto";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
 import {
@@ -153,11 +154,17 @@ export interface HeldActionDeps {
   workspaceExists: (name: string) => boolean;
   /** Where `repo add` puts a repo with no -w: the focused one, else `default`. */
   defaultWorkspace: () => string;
-  /** The service `up` would start, or why it can't (the exec route's checks). */
+  /**
+   * The service `up` would start, or why it can't (the exec route's
+   * checks). `command`: its declared local "up", as the dialog shows it
+   * (issue 362), absent when it runs the runner's own.
+   */
   serviceTarget: (
     service: string,
     workspace?: string,
-  ) => { ok: true; address: string } | { ok: false; error: string };
+  ) =>
+    | { ok: true; address: string; command?: string }
+    | { ok: false; error: string };
   tryService: (address: string, workspace?: string) => Promise<TryResult>;
   /** SRV-1a: leave the marker, then restart this server (after answering). */
   restartDen?: (
@@ -468,11 +475,27 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: `there is no project "${workspace}"` };
       const t = d.serviceTarget(service, workspace);
       if (!t.ok) return { ok: false, error: t.error };
+      // Issue 362: the Allow is for the command the dialog shows. Its
+      // fingerprint rides in the request; the check again before the run
+      // refuses a command that changed while it waited.
+      const up = createHash("sha256")
+        .update(`${t.address}\n${t.command ?? ""}`)
+        .digest("hex")
+        .slice(0, 32);
+      if (a.up !== undefined && a.up !== up)
+        return {
+          ok: false,
+          error: `the "up" command of ${t.address} changed after this was asked, so the Allow is not for it: ask again`,
+        };
       const activates =
         workspace !== undefined && !d.workspaceActive(workspace);
       return {
         ok: true,
-        args: { service: t.address, ...(workspace ? { workspace } : {}) },
+        args: {
+          service: t.address,
+          ...(workspace ? { workspace } : {}),
+          up,
+        },
         summary: `start ${t.address}${workspace ? ` in project "${workspace}"` : ""}${activates ? ` (this activates ${workspace})` : ""}`,
         params: {
           service: t.address,
@@ -493,6 +516,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             `Runs the service's local "up", as the Services page's Start does.`,
             "ap.det.service_try.up",
           ),
+          ...(t.command
+            ? [
+                line(`Command: ${t.command}`, "ap.det.service_try.command", {
+                  command: t.command,
+                }),
+              ]
+            : []),
           line(
             `Den reports the exit code and the last lines of its output.`,
             "ap.det.service_try.reports",
