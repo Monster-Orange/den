@@ -147,6 +147,9 @@ Reads (they change nothing):
   `gh pr checks --watch` or `gh run watch`: one watcher for every agent
   here, under one GitHub API budget. `github_watch_list` and
   `github_watch_cancel` show and stop your own watches.
+- `review_submit`: only for a review leg (a reviewer session Den started for
+  one pull request at one head). It hands the findings to Den, which posts
+  the review. You never call it as Den's own agent.
 
 Hub files (through Den, as you; when Hub is connected):
 

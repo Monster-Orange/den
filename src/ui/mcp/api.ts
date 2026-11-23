@@ -200,6 +200,9 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   { re: /^\/api\/agents\/self\/github-watches$/, method: "GET" },
   { re: /^\/api\/agents\/self\/github-watches$/, method: "POST" },
   { re: /^\/api\/agents\/self\/github-watches\/cancel$/, method: "POST" },
+  // Issue 476 (MCP review_submit): a review leg's findings. The server takes
+  // the agent from its token and accepts only the leg Den started for it.
+  { re: /^\/api\/agents\/self\/review-submit$/, method: "POST" },
   // Issue 403 (MCP report_screenshot): a filed report's kept screenshot.
   // A read; the route itself answers only the person or the server agent.
   { re: /^\/api\/report\/shots\/[a-f0-9]{16}$/, method: "GET" },

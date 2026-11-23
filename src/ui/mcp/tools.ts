@@ -769,6 +769,61 @@ const READ_TOOLS: DenTool[] = [
     },
   ),
   read(
+    "review_submit",
+    "Hand a review leg's findings to Den",
+    "Only for a review leg: the reviewer session Den started for one pull request at one head, whose first prompt gave you a `leg` id. Call it once, when the review is done, with that `leg`, the `repo`, `pr` and `sha` from your prompt, your `verdict` in a sentence or two, your `findings` (each: a short `id`, the file `path` and `line` on the PR head, `severity` high, medium or low, its `lens`, whether it is `blocking`, and its `body`), the `depth` you reviewed at and your `model`, plus `tokens` or `costUsd` if you know them. Den posts the review on GitHub; you don't. Den refuses it from any other session, for another pull request or head, or a second time. If the PR moved during your review, Den marks it outdated and posts no verdict.",
+    {
+      leg: z.string().describe("The leg id from your first prompt"),
+      repo: z.string().describe("owner/name, from your first prompt"),
+      pr: z.number().int().positive().describe("The pull request's number"),
+      sha: z.string().describe("The head commit you reviewed (40 hex)"),
+      verdict: z.string().describe("Your verdict in a sentence or two"),
+      findings: z
+        .array(
+          z.object({
+            id: z.string(),
+            path: z.string(),
+            line: z.number().int().positive(),
+            severity: z.enum(["high", "medium", "low"]),
+            lens: z.string(),
+            blocking: z.boolean(),
+            body: z.string(),
+          }),
+        )
+        .describe("Each finding, verified against the code"),
+      depth: z.string().describe("The depth you reviewed at"),
+      model: z.string().describe("Your model"),
+      tokens: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Tokens used, if known"),
+      costUsd: z.number().min(0).optional().describe("Cost in USD, if known"),
+    },
+    async (a, ctx) => {
+      if (!ctx.scope?.actor.startsWith("agent:"))
+        throw new Refusal(
+          "review_submit: only a review leg's session may call it, and this MCP server isn't an agent's.",
+        );
+      const body = {
+        leg: a.leg,
+        repo: a.repo,
+        pr: a.pr,
+        sha: a.sha,
+        verdict: a.verdict,
+        findings: a.findings,
+        depth: a.depth,
+        model: a.model,
+        tokens: typeof a.tokens === "number" ? a.tokens : null,
+        costUsd: typeof a.costUsd === "number" ? a.costUsd : null,
+      };
+      return githubWatchCall("review_submit", () =>
+        ctx.api.get("/api/agents/self/review-submit", {}, "POST", body),
+      );
+    },
+  ),
+  read(
     "github_watch_cancel",
     "Stop one of your GitHub watches",
     "Stop a watch you asked for with github_watch (its `id`); you are not told when it finishes. Only your own.",
