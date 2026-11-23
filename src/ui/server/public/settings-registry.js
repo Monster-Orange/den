@@ -2038,6 +2038,29 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_pairing: { requests_per_minute: v } }),
   },
   {
+    // Issue 1146: callers whose address is unknown, all together.
+    id: "access.pair_requests_unknown",
+    category: "access",
+    label: "New sign-in requests from unknown addresses, a minute",
+    description:
+      "How many new devices may ask to sign in a minute, all together, when __DEN_TITLE__ can't tell their address. A sign-in or setup link's request never counts. __DEN_CLI__ config web.pair_requests_per_minute_unknown=10",
+    keywords: [
+      "pair",
+      "sign-in",
+      "requests",
+      "limit",
+      "rate",
+      "unknown",
+      "web.pair_requests_per_minute_unknown",
+    ],
+    scope: "user",
+    keys: ["web_pairing.requests_per_minute_unknown"],
+    control: { type: "number", min: 1, max: 10000, step: 1 },
+    read: (ctx) => ctx.data.web_pairing?.requestsPerMinuteUnknown ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ web_pairing: { requests_per_minute_unknown: v } }),
+  },
+  {
     // Issue 819: wrong codes approving a device may take, per window.
     id: "access.approve_attempts",
     category: "access",

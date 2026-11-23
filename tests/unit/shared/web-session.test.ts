@@ -297,6 +297,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       startWaitSeconds: 120,
       // Issue 819: the new-device limits' permissive defaults.
       pairRequestsPerMinute: 30,
+      pairRequestsPerMinuteUnknown: 10,
       approveAttempts: 10,
       approveWindowSeconds: 30,
       // D16: a sign-in link lasts 5 minutes unless set.

@@ -2558,6 +2558,10 @@
     "set.access.tooManyTries": "Too many tries. Wait a minute and try again.",
     "set.access.ended": "That request ended or expired. Nothing was allowed.",
     "set.access.pair": "Pair a device",
+    "set.access.pair_requests_unknown":
+      "New sign-in requests from unknown addresses, a minute",
+    "set.access.pair_requests_unknown.d":
+      "How many new devices may ask to sign in a minute, all together, when __DEN_TITLE__ can't tell their address. A sign-in or setup link's request never counts. __DEN_CLI__ config web.pair_requests_per_minute_unknown=10",
     "set.access.pair_requests": "New sign-in requests per address, a minute",
     "set.access.pair_requests.d":
       "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",

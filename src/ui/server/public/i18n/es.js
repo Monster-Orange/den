@@ -1633,6 +1633,10 @@
       "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
     "set.access.ended": "Esa solicitud terminó o caducó. No se permitió nada.",
     "set.access.pair": "Emparejar un dispositivo",
+    "set.access.pair_requests_unknown":
+      "Nuevas peticiones de inicio desde direcciones desconocidas, por minuto",
+    "set.access.pair_requests_unknown.d":
+      "Cuántos dispositivos nuevos pueden pedir iniciar sesión por minuto, en total, cuando __DEN_TITLE__ no sabe su dirección. La petición de un enlace de inicio o de configuración no entra en este límite. __DEN_CLI__ config web.pair_requests_per_minute_unknown=10",
     "set.access.pair_requests":
       "Solicitudes nuevas de inicio de sesión por dirección, por minuto",
     "set.access.pair_requests.d":

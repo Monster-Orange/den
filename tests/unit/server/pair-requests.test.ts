@@ -403,7 +403,8 @@ describe("D67: only codes a page still waits on", () => {
 
   it("#320: a withdrawn request says ended for a minute, then is forgotten; only so many are kept", () => {
     const c = clock();
-    const pairs = new PairRequests({ now: c.now });
+    // Many in a minute from no known address: the limit isn't this test's.
+    const pairs = new PairRequests({ now: c.now, perUnknown: 1000 });
     const r = pairs.create({ userAgent: UA });
     pairs.withdraw(r.id);
     c.advance(59_000);
@@ -484,8 +485,11 @@ describe("issue 1146: a link's request and callers of unknown address", () => {
     });
     for (const n of ["a", "b", "c"])
       expect(
-        pairs.tryCreate({ userAgent: UA, client: "203.0.113.7", link: n.repeat(22) })
-          .ok,
+        pairs.tryCreate({
+          userAgent: UA,
+          client: "203.0.113.7",
+          link: n.repeat(22),
+        }).ok,
       ).toBe(true);
     // The links used none of the address's minute.
     expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" }).ok).toBe(
@@ -497,8 +501,11 @@ describe("issue 1146: a link's request and callers of unknown address", () => {
     });
     // A link's request still goes through once the address is limited.
     expect(
-      pairs.tryCreate({ userAgent: UA, client: "203.0.113.7", link: "d".repeat(22) })
-        .ok,
+      pairs.tryCreate({
+        userAgent: UA,
+        client: "203.0.113.7",
+        link: "d".repeat(22),
+      }).ok,
     ).toBe(true);
   });
 

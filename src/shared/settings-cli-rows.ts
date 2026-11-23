@@ -20,10 +20,13 @@
  *   web_ready: { probe_seconds?, start_seconds? }
  *                                     user.yml web.ready_probe_seconds,
  *                                     web.start_wait_seconds (den#143)
- *   web_pairing: { requests_per_minute?, approve_attempts?,
+ *   web_pairing: { requests_per_minute?, requests_per_minute_unknown?,
+ *     approve_attempts?,
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
- *                                     web.approve_window_seconds (issue 819)
+ *                                     web.approve_window_seconds (issue 819),
+ *                                     web.pair_requests_per_minute_unknown
+ *                                     (issue 1146)
  *   web_agent_view: { on?: boolean, minutes? }
  *                                     user.yml web.agent_view,
  *                                     web.agent_view_minutes (issue 796)
@@ -306,6 +309,10 @@ const WEB_PAIRING: Record<string, Limit> = {
   requests_per_minute: {
     key: "pair_requests_per_minute",
     ...PAIR_LIMITS.pair_requests_per_minute,
+  },
+  requests_per_minute_unknown: {
+    key: "pair_requests_per_minute_unknown",
+    ...PAIR_LIMITS.pair_requests_per_minute_unknown,
   },
   approve_attempts: {
     key: "approve_attempts",

@@ -2312,6 +2312,8 @@ function noteExpiringToken(): void {
 const PAIRS = new PairRequests({
   unseenMs: pairUnseenMs(),
   perClient: () => webAuthNow().pairRequestsPerMinute,
+  // Issue 1146: callers whose address is unknown, together, stricter.
+  perUnknown: () => webAuthNow().pairRequestsPerMinuteUnknown,
   maxAttempts: () => webAuthNow().approveAttempts,
   windowMs: () => webAuthNow().approveWindowSeconds * 1000,
 });
@@ -3234,7 +3236,8 @@ async function handleAuth(
       res,
       requestId,
       pairLinkLead(),
-      wait ? { nonce: check.nonce, startedAt: wait.startedAt } : undefined,
+      // Issue 1146: a link's request, with or without its `web login` run.
+      { nonce: check.nonce, ...(wait ? { startedAt: wait.startedAt } : {}) },
       { spend: spendLink, gone },
     );
   if (!spendLink()) return gone();
@@ -4211,7 +4214,8 @@ async function handleClaim(
         key: "err.signin.claimSetUp",
         message: `${product().title} is already set up, so the setup link doesn't sign in by itself any more. Approve this browser from one that is signed in: Settings › Access, then the code below.`,
       },
-      undefined,
+      // Issue 1146: protected as a sign-in link's request is (spent once).
+      { nonce: check.nonce },
       { spend: spendClaim, gone: claimGone },
     );
   if (!spendClaim()) return claimGone();
@@ -5413,6 +5417,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         requestsPerMinute: c.pairRequestsPerMinute,
         approveAttempts: c.approveAttempts,
         approveWindowSeconds: c.approveWindowSeconds,
+        requestsPerMinuteUnknown: c.pairRequestsPerMinuteUnknown,
       };
     })(),
     // den#143: how long `web up` waits for the server.

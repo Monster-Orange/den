@@ -48,6 +48,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 819: the new-device limits.
   web_pairing: {
     requests_per_minute: true,
+    // Issue 1146: unknown-address callers, together.
+    requests_per_minute_unknown: true,
     approve_attempts: true,
     approve_window_seconds: true,
   },
@@ -276,6 +278,7 @@ describe("the settings inventory (R21)", () => {
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
+        "web_pairing.requests_per_minute_unknown",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",

@@ -30,7 +30,14 @@
  *
  * No code, cookie or link is printed: a failure shows booleans and states.
  */
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import { createHmac, randomBytes } from "crypto";
 import type { ChildProcess } from "child_process";
 import * as fs from "fs";
@@ -310,6 +317,28 @@ async function waitingRows(p: Person): Promise<Record<string, unknown>[]> {
   return (json(r).waiting ?? []) as Record<string, unknown>[];
 }
 
+/**
+ * Issue 1146: a link's request (a sign-in or setup link) is protected in
+ * the queue, so a test that needs room for a plain one first denies what
+ * earlier tests left waiting.
+ */
+/** Ends a pairing page's request, as its page does when closed. */
+async function withdrawPage(r: Reply): Promise<void> {
+  const id = (signinOf(r).pair as { id?: unknown } | undefined)?.id;
+  if (typeof id === "string")
+    await call("DELETE", `/api/signin/code/${id}`, lan());
+}
+async function denyAllWaiting(): Promise<void> {
+  const person = signedInPerson();
+  for (const row of await waitingRows(person))
+    await call(
+      "POST",
+      "/api/web/deny",
+      asPerson(person),
+      JSON.stringify({ ref: String(row.ref) }),
+    );
+}
+
 beforeAll(async () => {
   main = await startDen();
   use(main);
@@ -346,6 +375,7 @@ describe("3. first run, on an install that has never had a person signed in", ()
     expect(pairCodeOf(r)).toBe(true);
     const after = (await waitingRows(person)).filter((x) => x.fromLink).length;
     expect(after).toBe(before + 1);
+    await denyAllWaiting();
   });
 
   describe("a Den with no screen (first run, away from the Den computer)", () => {
@@ -674,6 +704,7 @@ describe("4. a link or a code alone never yields a session, whatever made it", (
 });
 
 describe("5. only a person's browser approves a device", () => {
+  beforeEach(denyAllWaiting);
   it("an agent's token can't approve", async () => {
     const a = json(await call("POST", "/api/signin/code", lan(), "{}"));
     const { token } = mintActorToken(stateDir, {
@@ -794,7 +825,7 @@ describe("3. signing everyone out never brings first run back", () => {
 describe("item 2: new requests are limited per address (a Setting)", () => {
   const userYml = () =>
     path.join(main!.tmp, "dist", "config", "local", "user.yml");
-  it("past the limit, a new code gets 429 and a link's page says to wait; the limit is read at once", async () => {
+  it("past the limit, a new code gets 429, and a link's page still opens (issue 1146); the limit is read at once", async () => {
     use(main!);
     const before = fs.readFileSync(userYml(), "utf-8");
     fs.writeFileSync(
@@ -813,17 +844,20 @@ describe("item 2: new requests are limited per address (a Setting)", () => {
         429,
         "too_many_requests",
       ]);
+      // Issue 1146: a link's request isn't counted or refused by the
+      // per-minute limit: its page still shows a code.
       const r = await call("GET", bareLink(), lan(page));
       expect({
-        lead: signinOf(r).lead,
-        pair: signinOf(r).pair,
-      }).toEqual({ lead: "err.signin.tooManyRequests", pair: undefined });
+        refused: signinOf(r).lead === "err.signin.tooManyRequests",
+        pair: pairCodeOf(r),
+      }).toEqual({ refused: false, pair: true });
+      await withdrawPage(r);
     } finally {
       fs.writeFileSync(userYml(), before);
     }
   });
 
-  it("a refused request never spends the link or the setup link: once the limit allows, each opens the pairing screen, and `web login` still waits", async () => {
+  it("issue 1146: past the per-minute limit, a `web login` link and the setup link still each open the pairing screen; neither counts", async () => {
     use(main!);
     const before = fs.readFileSync(userYml(), "utf-8");
     const { where, id } = await webLoginLink();
@@ -835,33 +869,18 @@ describe("item 2: new requests are limited per address (a Setting)", () => {
     try {
       // Past the limit (one more request, if none was made this minute).
       await call("POST", "/api/signin/code", lan(), "{}");
-      const refused = await call("GET", where, lan(page));
-      const refusedSetup = await call("GET", setup, local(page));
-      expect([
-        signinOf(refused).lead,
-        signinOf(refusedSetup).lead,
-        (await loginWait(id)).state,
-      ]).toEqual([
-        "err.signin.tooManyRequests",
-        "err.signin.tooManyRequests",
-        "waiting",
-      ]);
-    } finally {
-      fs.writeFileSync(
-        userYml(),
-        "web:\n  allow_plain_http_remote: true\n  pair_requests_per_minute: 1000\n",
-      );
-    }
-    try {
-      const again = await call("GET", where, lan(page));
-      const againSetup = await call("GET", setup, local(page));
-      // The setup link may be refused again (too many waiting), but it is
-      // never the used-or-expired page: it was not spent.
+      const viaLink = await call("GET", where, lan(page));
+      const viaSetup = await call("GET", setup, local(page));
       expect({
-        link: pairCodeOf(again),
+        link: pairCodeOf(viaLink),
+        setup: pairCodeOf(viaSetup),
         wait: (await loginWait(id)).state,
-        setupLinkSpent: signinOf(againSetup).expired === true,
-      }).toEqual({ link: true, wait: "pairing", setupLinkSpent: false });
+      }).toEqual({ link: true, setup: true, wait: "pairing" });
+      // The links used none of the minute: a plain one is still refused.
+      const plain = await call("POST", "/api/signin/code", lan(), "{}");
+      expect(plain.status).toBe(429);
+      await withdrawPage(viaLink);
+      await withdrawPage(viaSetup);
     } finally {
       fs.writeFileSync(userYml(), before);
     }

@@ -65,6 +65,14 @@ export const MAX_APPROVE_ATTEMPTS = 10;
 export const APPROVE_WINDOW_MS = 30_000;
 /** New requests a minute from one client address (web.pair_requests_per_minute). */
 export const MAX_PAIRS_PER_CLIENT_MINUTE = 30;
+/**
+ * Issue 1146: new requests a minute from callers whose address Den can't
+ * tell (behind the edge, unvouched), all together
+ * (web.pair_requests_per_minute_unknown). Stricter than one address's.
+ */
+export const MAX_PAIRS_PER_UNKNOWN_MINUTE = 10;
+/** The bucket unknown callers share: never a key a real address could be. */
+const UNKNOWN_CLIENT = "\u0000unknown";
 
 export { PAIR_ALPHABET };
 const CODE_LEN = 6;
@@ -167,6 +175,7 @@ export class PairRequests {
   private readonly maxAttempts: Live;
   private readonly windowMs: Live;
   private readonly perClient: Live;
+  private readonly perUnknown: Live;
   private readonly unseenMs: number;
   private attempts: number[] = [];
   private madeBy = new Map<string, number[]>();
@@ -180,6 +189,8 @@ export class PairRequests {
       windowMs?: Live;
       /** New requests a minute from one client address. */
       perClient?: Live;
+      /** Issue 1146: new requests a minute from unknown addresses, together. */
+      perUnknown?: Live;
       unseenMs?: number;
     } = {},
   ) {
@@ -189,6 +200,7 @@ export class PairRequests {
     this.maxAttempts = opts.maxAttempts ?? MAX_APPROVE_ATTEMPTS;
     this.windowMs = opts.windowMs ?? APPROVE_WINDOW_MS;
     this.perClient = opts.perClient ?? MAX_PAIRS_PER_CLIENT_MINUTE;
+    this.perUnknown = opts.perUnknown ?? MAX_PAIRS_PER_UNKNOWN_MINUTE;
     this.unseenMs = opts.unseenMs ?? PAIR_UNSEEN_MS;
   }
 
@@ -210,6 +222,13 @@ export class PairRequests {
    * opened and this one has none ("full"). Issue 819: past the cap, the
    * oldest without a link goes first; a link's request goes only for
    * another link's.
+   *
+   * Issue 1146: a link's request (a sign-in or setup link, each spent
+   * once) is never counted against or refused by the per-minute limit.
+   * Callers whose address is unknown share their own, stricter limit
+   * (perUnknown), and past the cap one of them drops only another of
+   * unknown address; a known address's new request drops one of unknown
+   * address first.
    */
   tryCreate(meta: {
     userAgent?: string;
@@ -219,9 +238,14 @@ export class PairRequests {
   }): CreateResult {
     this.sweep();
     const now = this.now();
-    const who = String(meta.client ?? "");
+    const known = !!meta.client;
+    const who = known ? String(meta.client) : UNKNOWN_CLIENT;
+    const counted = !meta.link;
     const made = (this.madeBy.get(who) ?? []).filter((t) => now - t < 60_000);
-    if (made.length >= live(this.perClient)) {
+    if (
+      counted &&
+      made.length >= live(known ? this.perClient : this.perUnknown)
+    ) {
       this.madeBy.set(who, made);
       return { ok: false, error: "rate_limited" };
     }
@@ -229,13 +253,18 @@ export class PairRequests {
       .filter((r) => r.state === "pending")
       .sort((a, b) => a.createdAt - b.createdAt);
     while (pending.length >= this.max) {
-      const i = pending.findIndex((r) => !r.link);
+      const unknownPlain = pending.findIndex((r) => !r.link && !r.client);
+      const plain = pending.findIndex((r) => !r.link);
+      const i =
+        unknownPlain >= 0 ? unknownPlain : known || meta.link ? plain : -1;
       if (i < 0 && !meta.link) return { ok: false, error: "full" };
       const [gone] = pending.splice(i < 0 ? 0 : i, 1);
       this.byId.delete(gone.id);
     }
-    made.push(now);
-    this.madeBy.set(who, made);
+    if (counted) {
+      made.push(now);
+      this.madeBy.set(who, made);
+    }
     if (this.madeBy.size > 1000)
       for (const [k, v] of this.madeBy)
         if (!v.some((t) => now - t < 60_000)) this.madeBy.delete(k);

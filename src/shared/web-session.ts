@@ -242,6 +242,12 @@ export interface WebAuthConfig {
   approveAttempts: number;
   approveWindowSeconds: number;
   /**
+   * Issue 1146: `web.pair_requests_per_minute_unknown`: new device requests
+   * a minute from callers whose address Den can't tell, all together.
+   * Default 10 (one address's is 30).
+   */
+  pairRequestsPerMinuteUnknown: number;
+  /**
    * `web.machine_name` (SEC-2a, user.yml only): the name the signed-out
    * page gives this machine ("runs on <name>"). Unset: the short hostname.
    */
@@ -595,6 +601,7 @@ export function readWebAuthConfig(
     readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
     startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
     pairRequestsPerMinute: pairLimits.pair_requests_per_minute,
+    pairRequestsPerMinuteUnknown: pairLimits.pair_requests_per_minute_unknown,
     approveAttempts: pairLimits.approve_attempts,
     approveWindowSeconds: pairLimits.approve_window_seconds,
     ...(clientId !== undefined ? { githubClientId: clientId } : {}),
@@ -613,6 +620,13 @@ export function readWebAuthConfig(
  */
 export const PAIR_LIMITS = {
   pair_requests_per_minute: { min: 1, max: 10_000, int: true, dflt: 30 },
+  // Issue 1146: callers whose address is unknown, together (stricter).
+  pair_requests_per_minute_unknown: {
+    min: 1,
+    max: 10_000,
+    int: true,
+    dflt: 10,
+  },
   approve_attempts: { min: 1, max: 1000, int: true, dflt: 10 },
   approve_window_seconds: { min: 1, max: 3600, int: false, dflt: 30 },
 } as const;

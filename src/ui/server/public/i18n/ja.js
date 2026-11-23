@@ -1588,6 +1588,10 @@
     "set.access.ended":
       "そのリクエストは終了したか、期限切れです。何も許可していません。",
     "set.access.pair": "デバイスをペアリング",
+    "set.access.pair_requests_unknown":
+      "不明なアドレスからの新しいサインイン依頼 (1 分あたり)",
+    "set.access.pair_requests_unknown.d":
+      "__DEN_TITLE__ がアドレスを判別できないとき、新しいデバイスが合計で 1 分間にサインインを依頼できる数。サインインリンクやセットアップリンクからの依頼は数えません。__DEN_CLI__ config web.pair_requests_per_minute_unknown=10",
     "set.access.pair_requests":
       "アドレスごとの新しいサインイン要求 (1 分あたり)",
     "set.access.pair_requests.d":

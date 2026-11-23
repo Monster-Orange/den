@@ -68,6 +68,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
   "web.approve_window_seconds": ["web_pairing", "approve_window_seconds"],
+  // Issue 1146: unknown-address callers' new device requests, together.
+  "web.pair_requests_per_minute_unknown": [
+    "web_pairing",
+    "requests_per_minute_unknown",
+  ],
   // Issue 796: agents' read-only page views, and how long one lasts.
   "web.agent_view": ["web_agent_view", "on"],
   "web.agent_view_minutes": ["web_agent_view", "minutes"],
