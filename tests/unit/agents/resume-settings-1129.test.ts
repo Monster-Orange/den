@@ -116,7 +116,7 @@ describe("issue 1129: agents.resume is a setting, never an agent", () => {
         agents: {
           resume: { batch: 2, gap_seconds: 10 },
           planner: { grants: ["south"] },
-        } as Record<string, never>,
+        } as unknown as Record<string, never>,
       },
       {},
     );
