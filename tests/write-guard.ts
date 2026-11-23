@@ -116,6 +116,7 @@ export function writeGuardRoots(
       return path.resolve(p);
     }
   };
+  const home = r(os.homedir());
   const temp = [
     os.tmpdir(),
     "/tmp",
@@ -129,7 +130,10 @@ export function writeGuardRoots(
   ]
     .map((p) => p.trim())
     .filter(Boolean)
-    .map(r);
+    .map(r)
+    // A root set too wide (/, the home, a folder above it) would turn the
+    // guard off: dropped.
+    .filter((t) => t !== path.parse(t).root && !inside(home, t));
   return {
     // tests/ sits in the checkout (never in node_modules, which may be a
     // link into another checkout).

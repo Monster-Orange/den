@@ -185,6 +185,21 @@ describe("the roots a run names (issue 1356)", () => {
   });
 });
 
+describe("a root set too wide (issue 1356)", () => {
+  it("drops /, the home folder and any folder above it", () => {
+    const home = fs.realpathSync(os.homedir());
+    const roots = writeGuardRoots({
+      TMPDIR: "/",
+      RUNNER_TEMP: path.dirname(home),
+      DEN_FAST_JEST_CACHE: home,
+    });
+    expect(roots.temp).not.toContain("/");
+    expect(roots.temp).not.toContain(home);
+    expect(roots.temp).not.toContain(path.dirname(home));
+    expect(roots.temp.length).toBeGreaterThan(0);
+  });
+});
+
 describe("one refusal list per worker (issue 1356)", () => {
   it("a later test file's load of the guard sees a refusal made through the first load's wrappers", () => {
     const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
