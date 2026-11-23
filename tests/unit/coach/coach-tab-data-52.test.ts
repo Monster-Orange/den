@@ -46,7 +46,7 @@ const rec = (id: string): AgentRecord =>
     session: { host: "local", id: `s-${id}` },
     sessionName: `shop-${id}`,
     startedAt: iso(NOW - 30 * DAY),
-  }) as AgentRecord;
+  }) as unknown as AgentRecord;
 const noSource = (): UsageSource | undefined => undefined;
 
 describe("the row detail: each agent's conversations in the window", () => {
@@ -147,6 +147,7 @@ describe("GET /api/coach: the Running and Failed states", () => {
       audit: () => {},
       findings: () => ({ open: [], dismissed: [] }),
       dismiss: () => ({ ok: true }),
+      undismiss: () => ({ ok: true }),
       readBody: async () => "{}",
       now: () => Date.parse("2026-11-22T13:00:00.000Z"),
     };

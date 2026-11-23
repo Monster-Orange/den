@@ -221,6 +221,45 @@ export const DEN_ACTIONS = {
       failure: "sa.fresh.fail",
     },
   },
+  // Issue 52: the Coach tab's Run now (a minute or two).
+  "coach-run": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.run.w",
+      success: "co.run.done",
+      failure: "co.run.fail",
+    },
+  },
+  // Issue 52, mock v4: a Coach finding's Dismiss and Undo, and the
+  // tab's Total / Per day (dots in the button; a pop-up only when slow).
+  "coach-dismiss": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.dis.w",
+      success: "co.dis.done",
+      failure: "co.dis.fail",
+    },
+  },
+  "coach-undismiss": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.undo.w",
+      success: "co.undo.done",
+      failure: "co.undo.fail",
+    },
+  },
+  "coach-counts": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.counts.w",
+      success: "co.counts.done",
+      failure: "co.counts.fail",
+    },
+  },
   // Issue 172: Settings › Notifications › Devices that get push.
   "push-test": {
     who: "__DEN_TITLE__",

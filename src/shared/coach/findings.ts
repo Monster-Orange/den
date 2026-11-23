@@ -16,9 +16,10 @@
  *   msg_repeat    it sends other agents the same text again and again
  *   msg_no_reply  most of its sends to other agents get no reply
  *
- * Thresholds are agents.coach.findings (settings.ts). Dismiss records the
- * reason, who and when (`coach/dismissed.json`, 0600); a dismissed
- * finding stays out of the open list on later runs. A finding's id is
+ * Thresholds are agents.coach.findings (settings.ts). Dismiss records
+ * who and when, and a reason when one is given (mock v4 asks for none;
+ * `coach/dismissed.json`, 0600); a dismissed finding stays out of the open
+ * list on later runs, until Undo takes the dismissal back. A finding's id is
  * `<kind>:<agent id>`, so a later run's finding of the same kind on the
  * same agent is the same finding.
  */
@@ -281,11 +282,11 @@ export type DismissResult =
   | { ok: true }
   | {
       ok: false;
-      code: "bad_id" | "reason_required" | "reason_too_long";
+      code: "bad_id" | "reason_too_long";
       error: string;
     };
 
-/** Dismiss finding `id`, with the person's reason (it replaces an earlier one). */
+/** Dismiss finding `id`, with the person's reason if any (it replaces an earlier one). */
 export function dismissFinding(
   stateDir: string,
   id: string,
@@ -296,12 +297,6 @@ export function dismissFinding(
   if (typeof id !== "string" || !ID_RE.test(id))
     return { ok: false, code: "bad_id", error: "That isn't a finding's id." };
   const why = typeof reason === "string" ? reason.trim() : "";
-  if (!why)
-    return {
-      ok: false,
-      code: "reason_required",
-      error: "Say why it's dismissed: the reason is kept with it.",
-    };
   if (why.length > MAX_REASON)
     return {
       ok: false,
@@ -310,6 +305,29 @@ export function dismissFinding(
     };
   const list = readDismissals(stateDir).filter((d) => d.id !== id);
   list.push({ id, reason: why, by, at });
+  writePrivate(dismissedFile(stateDir), JSON.stringify(list, null, 2) + "\n");
+  return { ok: true };
+}
+
+export type UndismissResult =
+  | { ok: true }
+  | { ok: false; code: "bad_id" | "not_dismissed"; error: string };
+
+/** Undo: take finding `id`'s dismissal back, so later runs show it again. */
+export function undismissFinding(
+  stateDir: string,
+  id: string,
+): UndismissResult {
+  if (typeof id !== "string" || !ID_RE.test(id))
+    return { ok: false, code: "bad_id", error: "That isn't a finding's id." };
+  const all = readDismissals(stateDir);
+  const list = all.filter((d) => d.id !== id);
+  if (list.length === all.length)
+    return {
+      ok: false,
+      code: "not_dismissed",
+      error: "That finding isn't dismissed.",
+    };
   writePrivate(dismissedFile(stateDir), JSON.stringify(list, null, 2) + "\n");
   return { ok: true };
 }

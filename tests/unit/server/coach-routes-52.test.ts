@@ -43,12 +43,11 @@ function harness(over: Partial<CoachRouteDeps> = {}) {
         at: "t",
       })),
     }),
-    dismiss: (id, reason) => {
-      if (!reason.trim())
-        return { ok: false, code: "reason_required", error: "Say why." };
+    dismiss: (id) => {
       dismissed.add(id);
       return { ok: true };
     },
+    undismiss: () => ({ ok: true }),
     readBody: async () => body,
     ...over,
   };
@@ -68,6 +67,7 @@ describe("the Coach's routes", () => {
       "/api/coach",
       "/api/coach/run",
       "/api/coach/dismiss",
+      "/api/coach/undismiss",
     ]);
     const h = harness();
     expect(await h.call("GET", "/api/coaches")).toBe(false);
@@ -205,16 +205,16 @@ describe("the Coach's routes", () => {
     ]);
   });
 
-  it("Dismiss with no reason, a bad body or from an agent is refused", async () => {
+  it("Dismiss with a bad body or from an agent is refused", async () => {
     const h = harness();
     await h.call("POST", "/api/coach/dismiss", {
       id: "polling:builder",
-      reason: " ",
+      reason: 5,
     });
     await h.call("POST", "/api/coach/dismiss", "not json");
     await h.call("POST", "/api/coach/dismiss", { id: 5, reason: "x" });
     expect(h.sent.map((s) => s.status)).toEqual([400, 400, 400]);
-    expect(h.sent[0].body).toMatchObject({ code: "reason_required" });
+    expect(h.sent[0].body).toMatchObject({ code: "bad_body" });
     const a = harness({ notAPerson: () => true });
     await a.call("POST", "/api/coach/dismiss", {
       id: "polling:builder",

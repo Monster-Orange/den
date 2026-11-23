@@ -21,6 +21,7 @@ import { runCoach } from "../../shared/coach/run.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
+  undismissFinding,
   openFindings,
   readDismissals,
 } from "../../shared/coach/findings.js";
@@ -579,6 +580,8 @@ import {
   agentsLayout,
   helpersShown,
   patchAgentsLayout,
+  coachCounts,
+  patchCoachCounts,
   patchHelpersShown,
 } from "./agents-layout-pref.js";
 import {
@@ -3806,6 +3809,7 @@ function coachRouteDeps(): CoachRouteDeps {
     }),
     dismiss: (id, reason) =>
       dismissFinding(getStateDir(), id, reason, "person"),
+    undismiss: (id) => undismissFinding(getStateDir(), id),
     readBody,
   };
 }
@@ -9203,6 +9207,8 @@ async function handleRequest(
   //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
+  //   coach_counts: total | per_day, the Coach tab's "Show counts as"
+  //     (issue 52, user.yml agents.coach_counts); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
   //     badge shows (#80, user.yml agents.helpers_shown); null clears it
   //   bell_kinds: {switch: true | false | null}, the bell's kinds (bell
@@ -9271,6 +9277,7 @@ async function handleRequest(
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell, pinProjects()),
         agents_layout: agentsLayout(user),
+        coach_counts: coachCounts(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
@@ -9363,6 +9370,7 @@ async function handleRequest(
           time_zone?: unknown;
           machine_name?: unknown;
           agents_layout?: unknown;
+          coach_counts?: unknown;
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
@@ -9561,6 +9569,11 @@ async function handleRequest(
         if (body.agents_layout !== undefined) {
           const l = patchAgentsLayout(user, body.agents_layout);
           if (!l.ok) return send400(res, l.error);
+        }
+        // Issue 52: the Coach tab's Total / Per day, a view preference only.
+        if (body.coach_counts !== undefined) {
+          const c = patchCoachCounts(user, body.coach_counts);
+          if (!c.ok) return send400(res, c.error);
         }
         // #80: how many running helpers an open badge shows.
         if (body.agents_helpers_shown !== undefined) {
@@ -9766,6 +9779,7 @@ async function handleRequest(
           time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
+          coach_counts: coachCounts(user),
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
