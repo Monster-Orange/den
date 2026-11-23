@@ -5768,7 +5768,9 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 
 /** Issue 144: the machine's gate slots, opened on first use. */
 let gateStore: GateStore | undefined;
-const gates = () => (gateStore ??= new GateStore());
+// Issue 1339: the server's store never waits on the gate-slot lock on its
+// one thread (lockWaitMs 0); its callers wait by timer, with gateLocked.
+const gates = () => (gateStore ??= new GateStore({ lockWaitMs: 0 }));
 
 /**
  * Issue 163 (b): the Settings row's view of the agents' sign-in token:
