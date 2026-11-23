@@ -416,8 +416,9 @@ const wsAgentsDeps = (): AgentsResolved =>
   (wsAgentsOver ?? (() => webDeps()))();
 
 /**
- * Issue 1215: a project act, audited (verb "project") whoever makes it;
- * the fixture person's own projects are remembered and forgotten here.
+ * Issue 1215: a project act, audited (verb "project") whoever makes it.
+ * The fixture person's own projects carry fixture_made on their record
+ * (fixture-projects.ts), not here.
  */
 function auditProject(
   req: http.IncomingMessage,
