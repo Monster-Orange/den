@@ -991,6 +991,62 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("issue 749: a running agent whose Hub tools failed to load says so, with the error, on its row and pane; Restart asks for it at its next idle", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    const error =
+      "listing Hub's tools failed (hub (500): Internal Server Error)";
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpFailed?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner")
+            x.mcpFailed = [
+              { server: "hub", error, at: new Date().toISOString() },
+            ];
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    const posted: unknown[] = [];
+    await p.route("**/agents/planner/restart", (r) => {
+      posted.push(r.request().postDataJSON());
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: '{"ok":true,"agent":"planner","pending":true}',
+      });
+    });
+    await p.reload();
+    const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
+    const bar = `.pane[data-id="${sid.planner}"] .bar2`;
+    await p.waitForSelector(`${bar} [data-mcp-failed="hub"]`, {
+      timeout: 15_000,
+    });
+    const words = await p.evaluate(() =>
+      (
+        window as unknown as { denShell: { t: (k: string) => string } }
+      ).denShell.t("ag.mcp.failed"),
+    );
+    expect(await p.textContent(`${bar} [data-mcp-failed]`)).toBe(words);
+    expect(
+      await p.getAttribute(`${row("planner")} [data-mcp-failed]`, "title"),
+    ).toContain(error);
+    expect(await p.locator(`${row("coder")} [data-mcp-failed]`).count()).toBe(
+      0,
+    );
+    await p.click(`${bar} [data-act="tools-restart"]`);
+    await p.waitForFunction(() =>
+      /restarts at its next idle/.test(document.body.textContent ?? ""),
+    );
+    expect(posted).toEqual([{ when: "after-turn" }]);
+    await p.context().close();
+  }, 60_000);
+
   it("issue 1223: a running agent whose Den tools are an older Den's says so, on its row and pane, each with Restart; the row's asks for it at its next idle", async () => {
     if (skip()) return;
     const p = await page(`/agents?open=${sid.planner}&layout=focus`);
@@ -1049,62 +1105,10 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     );
     await p.click(`${st("planner")} [data-act="tools-restart"]`);
     expect((await sent).postDataJSON()).toEqual({ when: "after-turn" });
-    await p.context().close();
-  }, 60_000);
-
-  it("issue 749: a running agent whose Hub tools failed to load says so, with the error, on its row and pane; Restart asks for it at its next idle", async () => {
-    if (skip()) return;
-    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
-    const error =
-      "listing Hub's tools failed (hub (500): Internal Server Error)";
-    await p.route("**/api/sessions*", async (r) => {
-      try {
-        const res = await r.fetch();
-        const body = (await res.json()) as {
-          sessions: { agent?: string; mcpFailed?: unknown }[];
-        };
-        for (const x of body.sessions)
-          if (x.agent === "planner")
-            x.mcpFailed = [
-              { server: "hub", error, at: new Date().toISOString() },
-            ];
-        await r.fulfill({ response: res, json: body });
-      } catch {
-        await r.abort().catch(() => undefined);
-      }
-    });
-    const posted: unknown[] = [];
-    await p.route("**/agents/planner/restart", (r) => {
-      posted.push(r.request().postDataJSON());
-      return r.fulfill({
-        status: 202,
-        contentType: "application/json",
-        body: '{"ok":true,"agent":"planner","pending":true}',
-      });
-    });
-    await p.reload();
-    const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
-    const bar = `.pane[data-id="${sid.planner}"] .bar2`;
-    await p.waitForSelector(`${bar} [data-mcp-failed="hub"]`, {
-      timeout: 15_000,
-    });
-    const words = await p.evaluate(() =>
-      (
-        window as unknown as { denShell: { t: (k: string) => string } }
-      ).denShell.t("ag.mcp.failed"),
-    );
-    expect(await p.textContent(`${bar} [data-mcp-failed]`)).toBe(words);
-    expect(
-      await p.getAttribute(`${row("planner")} [data-mcp-failed]`, "title"),
-    ).toContain(error);
-    expect(await p.locator(`${row("coder")} [data-mcp-failed]`).count()).toBe(
-      0,
-    );
-    await p.click(`${bar} [data-act="tools-restart"]`);
+    // Its answer is in before the page goes (as D44's case).
     await p.waitForFunction(() =>
       /restarts at its next idle/.test(document.body.textContent ?? ""),
     );
-    expect(posted).toEqual([{ when: "after-turn" }]);
     await p.context().close();
   }, 60_000);
 
