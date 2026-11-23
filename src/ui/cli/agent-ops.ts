@@ -50,6 +50,10 @@
  * Nothing here takes a grant: grants come from the org config only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  denToolsOld,
+  type DenToolsOld,
+} from "../../shared/agents/den-tools-version.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -175,7 +179,7 @@ import {
   peerSessionName,
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { engineVersion, getDistRoot } from "../../shared/paths.js";
 import {
   operatorStubArgv,
   operatorStubEnv,
@@ -363,6 +367,7 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   type AgentSandboxInput,
@@ -389,6 +394,11 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
+  /**
+   * Issue 989: this install's server, called with the person token. A
+   * test gives one that answers null (no server) unless it asks for one.
+   */
+  server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
   /**
    * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
@@ -533,6 +543,8 @@ export interface AgentsDeps extends SessionsDeps {
 export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
 
 export interface AgentsResolved extends Resolved {
+  /** Issue 989: this install's server, for person-only verbs. */
+  server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
   distRoot: () => string;
@@ -885,6 +897,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
     ...base,
+    server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     agentSandbox:
       d.agentSandbox ??
@@ -1652,6 +1665,17 @@ export function resumesOnRestart(rec: AgentRecord, p?: Persona): boolean {
 export interface McpStale {
   adds: string[];
   drops: string[];
+  /** Issue 1223: its Den tools are an older Den's. */
+  den?: DenToolsOld;
+}
+
+/** Issue 1223: Hub's change and its Den tools' age, in one; or none. */
+export function withDenTools(
+  st: McpStale | undefined,
+  den: DenToolsOld | undefined,
+): McpStale | undefined {
+  if (!den) return st;
+  return { ...(st ?? { adds: [], drops: [] }), den };
 }
 
 /** How long what Hub gives agents now is trusted (the token read is slow). */
@@ -1758,9 +1782,13 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
   const url = await hubNow(d);
   const waiting = d.hubProblem() !== null;
   for (const r of running) {
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, {
-      waiting,
-    });
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, { waiting }),
+      (() => {
+        const rec = readRecord(d.stateDir(), r.agent);
+        return rec ? denToolsOld(rec, r.startedAt, d.stateDir()) : undefined;
+      })(),
+    );
     if (st) r.mcpStale = st;
     const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
     const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
@@ -1783,10 +1811,14 @@ export async function staleAgents(
   }
   const out: { id: string; workspace: string; stale: McpStale }[] = [];
   for (const rec of listRecords(d.stateDir())) {
-    if (!live.some((s) => sessionOf([s], rec))) continue;
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
-      waiting: d.hubProblem() !== null,
-    });
+    const s = sessionOf(live, rec);
+    if (!s) continue;
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
+        waiting: d.hubProblem() !== null,
+      }),
+      denToolsOld(rec, s.startedAt ?? rec.startedAt, d.stateDir()),
+    );
     if (st) out.push({ id: rec.id, workspace: rec.workspace, stale: st });
   }
   return out;
@@ -3425,6 +3457,10 @@ async function startSession(
     grants: [...launch.grants],
     ...extra,
   };
+  // Issue 1223: the Den its tools start on (they keep its code).
+  const denV = engineVersion();
+  if (denV) rec.denVersion = denV;
+  else delete rec.denVersion;
   // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
   delete rec.endedAt;

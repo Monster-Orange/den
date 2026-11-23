@@ -1049,6 +1049,71 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("issue 1223: a running agent whose Den tools are an older Den's says so, on its row and pane, each with Restart; the row's asks for it at its next idle", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner")
+            x.mcpStale = {
+              adds: [],
+              drops: [],
+              den: { from: "0.0.1-old", to: "0.0.2-new" },
+            };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    await p.route("**/agents/planner/restart", (r) =>
+      r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: '{"ok":true,"agent":"planner","pending":true}',
+      }),
+    );
+    await p.reload();
+    // The row's whole block (its button and the callout under it).
+    const st = (id: string) => `#agl .agst:has(.agr[data-id="${sid[id]}"])`;
+    const bar = `.pane[data-id="${sid.planner}"] .bar2`;
+    await p.waitForSelector(`${bar} [data-mcp-stale="den"]`, {
+      timeout: 15_000,
+    });
+    const tag = await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: { t: (k: string, v: object) => string };
+        }
+      ).denShell.t("ag.mcp.den", { from: "0.0.1-old", to: "0.0.2-new" }),
+    );
+    expect(await p.textContent(`${bar} [data-mcp-stale="den"]`)).toBe(tag);
+    expect(await p.textContent(`${st("planner")} [data-mcp-stale="den"]`)).toBe(
+      tag,
+    );
+    expect(await p.locator(`${bar} [data-act="tools-restart"]`).count()).toBe(
+      1,
+    );
+    // Not on the codex agent, whose tools are current.
+    expect(
+      await p.locator(`${st("coder")} [data-act="tools-restart"]`).count(),
+    ).toBe(0);
+    const sent = p.waitForRequest((q) =>
+      q.url().endsWith("/agents/planner/restart"),
+    );
+    await p.click(`${st("planner")} [data-act="tools-restart"]`);
+    expect((await sent).postDataJSON()).toEqual({ when: "after-turn" });
+    // Its answer is in before the page goes (as D44's case).
+    await p.waitForFunction(() =>
+      /restarts at its next idle/.test(document.body.textContent ?? ""),
+    );
+    await p.context().close();
+  }, 60_000);
+
   it("MODE-3: a row and its pane say the mode; a mismatch says both and has Restart to apply, one click, now", async () => {
     if (skip()) return;
     const p = await page(`/agents?open=${sid.planner}&layout=focus`);

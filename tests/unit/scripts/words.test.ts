@@ -154,7 +154,9 @@ describe("a tag's attributes (dev.6)", () => {
  * new one is a one-line change here that review sees. Lower it when you
  * remove one; raise it only with the exemption it pays for.
  */
-const WORDS_OK_MAX = 68; // +1: ja "サーバー" for the approved mock's Server tag (issue 773)
+// 68: 1257 (Refs #989) names the CLI's "workspace seed" command in SeedVia.
+// 69: ja "サーバー" for the approved mock's Server tag (issue 773).
+const WORDS_OK_MAX = 69;
 
 describe("lines only moved or re-indented (0.4.48)", () => {
   // A diff where one string moved in a file (re-indented under a new

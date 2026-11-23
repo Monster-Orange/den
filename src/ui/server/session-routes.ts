@@ -42,6 +42,7 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import { denToolsOld } from "../../shared/agents/den-tools-version.js";
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import type * as http from "http";
@@ -112,6 +113,7 @@ import {
   defaultHubNow,
   isStoppedState,
   mcpStaleOf,
+  withDenTools,
   newerOf,
   noteEnded,
   rowHelpers,
@@ -753,10 +755,18 @@ export function listedSessions(
         return w ? { hubWork: w } : {};
       })(),
       ...(() => {
-        if (hubUrl === undefined || r.state !== "running") return {};
-        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
-          waiting: hubUrl === null && hubTokenProblem() !== null,
-        });
+        if (r.state !== "running") return {};
+        const hub =
+          hubUrl === undefined
+            ? undefined
+            : mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
+                waiting: hubUrl === null && hubTokenProblem() !== null,
+              });
+        // Issue 1223: its Den tools are an older Den's.
+        const st = withDenTools(
+          hub,
+          denToolsOld(rec, r.startedAt, d.stateDir()),
+        );
         return st ? { mcpStale: st } : {};
       })(),
       ...(() => {

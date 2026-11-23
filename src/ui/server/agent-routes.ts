@@ -3026,10 +3026,24 @@ async function staleRoute(
     guard(actor);
     const body = await jsonBody(req);
     for (const k of Object.keys(body))
-      throw new AgentError(`${k}: unknown field (restart-stale takes none)`, {
-        usage: true,
-      });
-    const list = await staleAgents(d, { fresh: true });
+      if (k !== "only")
+        throw new AgentError(
+          `${k}: unknown field (restart-stale takes only: "hub")`,
+          { usage: true },
+        );
+    // Issue 1223: only: "hub", Settings' Hub offer (the Hub-stale only);
+    // none, every stale agent (an older Den's tools too).
+    if (body.only !== undefined && body.only !== "hub")
+      throw new AgentError(
+        `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
+        { usage: true },
+      );
+    const list = (await staleAgents(d, { fresh: true })).filter(
+      (a) =>
+        body.only !== "hub" ||
+        a.stale.adds.length > 0 ||
+        a.stale.drops.length > 0,
+    );
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     for (const a of list) {

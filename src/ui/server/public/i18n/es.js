@@ -1310,8 +1310,7 @@
     "set.server.report_screenshot_days": "Capturas de informes, se guardan",
     "set.server.report_screenshot_days.d":
       "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
-    "set.server.server_log_max":
-      "Registro de avisos, tamaño máximo",
+    "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
@@ -1947,6 +1946,9 @@
     "ag.mcp.failed": "Las herramientas de Hub no cargaron",
     "ag.mcp.failedTip":
       "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
+    "ag.mcp.den": "Las herramientas de Den {to} llegan al reiniciar",
+    "ag.mcp.denTip":
+      "Den se actualizó a {to} después de que este agente empezara, así que sus herramientas de Den siguen con el código de {from}. Reiniciar carga las de {to}, en su próxima pausa, en la misma conversación.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -3121,6 +3123,12 @@
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
+    "busy.allowW": "Permitiendo…",
+    "busy.allowS": "Permitido.",
+    "busy.allowF": "No se pudo permitir.",
+    "busy.denyW": "Rechazando…",
+    "busy.denyS": "Rechazado.",
+    "busy.denyF": "No se pudo rechazar.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",

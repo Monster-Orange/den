@@ -224,7 +224,8 @@ const LISTING: Record<string, Entry> = {
  * dispatches them, and the labels there that aren't subcommands.
  */
 const DISPATCH: Record<string, { file: string; not?: string[] }> = {
-  web: { file: "web-command.ts", not: ["show", "unlink"] },
+  // `web owner` link, show and unlink.
+  web: { file: "web-command.ts", not: ["link", "show", "unlink"] },
   edge: { file: "edge-command.ts" },
   service: {
     file: "service-command.ts",
