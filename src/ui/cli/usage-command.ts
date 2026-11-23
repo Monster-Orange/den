@@ -45,6 +45,7 @@ import {
   UsageError,
   workspaceFlag,
 } from "./sessions-command.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export const USAGE_HELP = {
   usage: "usage <agents|report> ...",
@@ -301,12 +302,12 @@ async function report(
   const prev = previous(dir, date);
   const md = renderReport(m, date, prev);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(
+  writeFileAtomic(
     path.join(dir, `${date}.json`),
     JSON.stringify(m, null, 1) + "\n",
     { mode: 0o600 },
   );
-  fs.writeFileSync(path.join(dir, `${date}.md`), md, { mode: 0o600 });
+  writeFileAtomic(path.join(dir, `${date}.md`), md, { mode: 0o600 });
   if (p.flags["--json"]) d.out(JSON.stringify(m, null, 2));
   else {
     for (const l of md.trimEnd().split("\n")) d.out(l);
