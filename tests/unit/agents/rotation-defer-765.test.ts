@@ -135,6 +135,19 @@ describe("issue 765: the time a person types", () => {
     expect(parseDeferTime("off", now)).toBeNull();
   });
 
+  it.each(["+100000000d", "+99999999999999m", "+275761-01-01T00:00:00Z"])(
+    "refuses %j: too far off to be a time at all",
+    (raw) => {
+      expect(() => parseDeferTime(raw, now)).toThrow(/a time to come/);
+    },
+  );
+
+  it("refuses an ISO year past what a date can hold", () => {
+    expect(() => parseDeferTime("275760-09-14T00:00:00Z", now)).toThrow(
+      /a time to come/,
+    );
+  });
+
   it.each(["", "soon", "+0h", "+5x", "25:00", "2026-03-04T09:00:00Z"])(
     "refuses %j, saying what it takes",
     (raw) => {
