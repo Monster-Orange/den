@@ -81,6 +81,21 @@ export interface GateSlotView {
   memoryHold?: { free: number; limit: number };
   /** Issue 1274: a run here waiting on swap: in use and the setting, GB. */
   swapHold?: { usedGb: number; limitGb: number };
+  /**
+   * Issue 1132: granted, but its command waits for the machine's load to
+   * drop under gates.max_start_load: the load seen, the ceiling, since.
+   */
+  startHold?: { load: number; limit: number; since: string };
+}
+
+/** Issue 1132: what was stopped of an ended run (the last hour). */
+export interface GateLeftoverView {
+  at: string;
+  id: string;
+  label: string;
+  cmd: string;
+  count: number;
+  reason: string;
 }
 
 /**
@@ -236,6 +251,7 @@ export function gateView(
           },
         }
       : {}),
+    ...(e.grantedAt && e.startHold ? { startHold: e.startHold } : {}),
     ...(memHold &&
     !e.grantedAt &&
     (!e.where || e.where === "local" || e.where === "any")
@@ -265,10 +281,24 @@ export function gateView(
           ).toISOString(),
         }),
   }));
+  // Issue 1132: leftovers stopped in the last hour (the TERM row: KILL
+  // after it is the same run's).
+  const leftovers: GateLeftoverView[] = store
+    .stoppedLeftovers(now - 60 * 60_000)
+    .filter((r) => r.signal !== "KILL")
+    .map((r) => ({
+      at: r.at,
+      id: r.id,
+      label: r.label,
+      cmd: r.cmd ?? "",
+      count: r.count ?? 0,
+      reason: r.reason ?? "ended",
+    }));
   return {
     settings,
     slots,
     boxes: gateBoxesView(store, slots),
+    leftovers,
     machine: machineView(store, freeMem, swapGb, !!o.vmsNow),
     removed: removedView(store, now),
   };

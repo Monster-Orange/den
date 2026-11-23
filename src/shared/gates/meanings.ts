@@ -11,6 +11,9 @@ export type GateSettingKey =
   | "cpu_slots_beside_release_browser"
   | "local_browser_slots"
   | "cpu_hold_load"
+  | "max_start_load"
+  | "max_start_wait_minutes"
+  | "reap_grace_seconds"
   | "overrun_margin_minutes"
   | "remote_renew_seconds"
   | "remote_lapse_seconds"
@@ -47,6 +50,12 @@ export const GATE_MEANINGS: Record<
     local_browser_slots: "Browser test runs at once on this machine",
     cpu_hold_load:
       "Machine load at which unit test runs wait while a release browser run holds (0: off)",
+    max_start_load:
+      "Machine load (5-minute) at or over which no gate run starts its command; it waits (0: off)",
+    max_start_wait_minutes:
+      "Minutes a run waits for the load before it starts anyway, recorded as busy (0: no limit)",
+    reap_grace_seconds:
+      "Seconds between stopping what an ended run left behind and killing it",
     overrun_margin_minutes:
       "Minutes past its estimate before a run is flagged (never stopped)",
     remote_renew_seconds: "Seconds between a CI runner's renewals of its slot",
@@ -97,6 +106,12 @@ export const GATE_MEANINGS: Record<
       "Ejecuciones de pruebas de navegador a la vez en esta máquina",
     cpu_hold_load:
       "Carga de la máquina a la que las pruebas unitarias esperan mientras corre una de navegador de versión (0: apagado)",
+    max_start_load:
+      "Carga de la máquina (5 minutos) a partir de la cual ninguna ejecución empieza su comando; espera (0: desactivado)",
+    max_start_wait_minutes:
+      "Minutos que una ejecución espera a que baje la carga antes de empezar igualmente, anotada como ocupada (0: sin límite)",
+    reap_grace_seconds:
+      "Segundos entre detener lo que dejó una ejecución terminada y forzar su cierre",
     overrun_margin_minutes:
       "Minutos pasada su estimación antes de marcar una ejecución (nunca se detiene)",
     remote_renew_seconds:
@@ -149,6 +164,12 @@ export const GATE_MEANINGS: Record<
     local_browser_slots: "このマシンで同時に動くブラウザテストの数",
     cpu_hold_load:
       "リリースのブラウザテスト中、ユニットテストを待たせるマシン負荷 (0: オフ)",
+    max_start_load:
+      "この負荷 (5 分平均) 以上ではゲートの実行はコマンドを始めずに待ちます (0: オフ)",
+    max_start_wait_minutes:
+      "負荷が下がるのを待つ分数。過ぎると混雑中として記録して開始します (0: 制限なし)",
+    reap_grace_seconds:
+      "終了した実行が残したプロセスを止めてから強制終了するまでの秒数",
     overrun_margin_minutes:
       "見積もりを何分過ぎたら印を付けるか（止めはしない）",
     remote_renew_seconds: "CI ランナーが枠を更新する間隔（秒）",
@@ -239,4 +260,28 @@ export const KEPT_PLACE_WORDS: Record<
       `以前の順番（${asked} に依頼）は ${at} に手放されました: 実行が ${m} 分なかったため`,
     kept: (until) => `実行なし、${until} まで順番を保持`,
   },
+};
+
+/** Issue 1132: a run held by the start ceiling, for gate status and run. */
+export const START_HOLD_WORDS: Record<
+  UiLanguage,
+  (load: number, limit: number) => string
+> = {
+  en: (load, limit) => `waiting for the load (${load}) to drop under ${limit}`,
+  es: (load, limit) => `esperando a que la carga (${load}) baje de ${limit}`,
+  ja: (load, limit) =>
+    `負荷 (${load}) が ${limit} 未満に下がるのを待っています`,
+};
+
+/** Issue 1132: what was stopped of an ended run, for gate status. */
+export const LEFTOVER_WORDS: Record<
+  UiLanguage,
+  (n: number, label: string, cmd: string) => string
+> = {
+  en: (n, label, cmd) =>
+    `stopped ${n} leftover process${n === 1 ? "" : "es"} of ${label} (${cmd})`,
+  es: (n, label, cmd) =>
+    `${n === 1 ? "se detuvo 1 proceso sobrante" : `se detuvieron ${n} procesos sobrantes`} de ${label} (${cmd})`,
+  ja: (n, label, cmd) =>
+    `${label} (${cmd}) の残りのプロセス ${n} 個を止めました`,
 };

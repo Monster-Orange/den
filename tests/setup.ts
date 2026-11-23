@@ -51,6 +51,14 @@ if (!process.env.DEN_GATE_DIR)
     "gate-slots",
   );
 
+// Issue 728: nor registers in, or reads, this user's real install registry.
+if (!process.env.DEN_INSTALLS_DIR)
+  process.env.DEN_INSTALLS_DIR = path.join(
+    os.tmpdir(),
+    `den-test-${process.pid}`,
+    "installs",
+  );
+
 // No test asks this machine's login shell for its PATH (its startup files
 // are the developer's), and no test finds a runtime CLI installed here
 // (~/.local/bin/claude) by its install directories: AG-0.1's search is the

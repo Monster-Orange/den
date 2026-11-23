@@ -390,6 +390,120 @@ describe("den-claude launch", () => {
     for (const c of commands) expect([c, denied(deny, c)]).toEqual([c, false]);
   });
 
+  it("issue 728: other installs' entries only add denials: every rule stays, nothing is allowed", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const env = { ...shim().env, HOME: path.dirname(state) };
+    const settingsOf = (over: Partial<LaunchInput>) =>
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({ env, stateDir: state, filesDir, ...over }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as {
+        permissions: { allow?: string[]; ask?: string[]; deny: string[] };
+      };
+    const base = settingsOf({}).permissions;
+    // A poisoned entry naming this install's own folders, its worktree and /.
+    const worktree = input().worktree;
+    const poisoned = settingsOf({
+      otherStateDirs: [state, worktree, "/"],
+      edgeKeyDirs: [filesDir, worktree],
+    }).permissions;
+    for (const r of base.deny)
+      expect([r, poisoned.deny.includes(r)]).toEqual([r, true]);
+    expect(poisoned.allow).toEqual(base.allow);
+    expect(poisoned.ask).toEqual(base.ask);
+  });
+
+  it("issue 728: a symlinked state folder and edge folder are denied by their real paths too", () => {
+    const base = fs.realpathSync(tmp());
+    const realState = path.join(base, "real-state");
+    fs.mkdirSync(realState);
+    const state = path.join(base, ".acme");
+    fs.symlinkSync(realState, state);
+    const realEdge = path.join(base, "real-edge");
+    fs.mkdirSync(path.join(realEdge, "ca"), { recursive: true });
+    const edge = path.join(base, "edge");
+    fs.symlinkSync(realEdge, edge);
+    const filesDir = path.join(state, "agent-files", "planner");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: base },
+            stateDir: state,
+            filesDir,
+            edgeKeyDirs: [path.join(edge, "ca")],
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    for (const f of [
+      path.join(state, "web.secret"),
+      path.join(realState, "web.secret"),
+      path.join(realState, "hub", "token"),
+      path.join(edge, "ca", "rootCA-key.pem"),
+      path.join(realEdge, "ca", "rootCA-key.pem"),
+    ]) {
+      expect([f, readDenied(deny, f)]).toEqual([f, true]);
+      expect([f, denied(deny, `cat ${f}`)]).toEqual([f, true]);
+    }
+  });
+
+  it("issue 728: the edge folder's proof, Traefik file and stack secrets are denied", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const edge = path.join(path.dirname(state), "share", "acme", "edge");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+            edgeKeyDirs: [edge],
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    for (const f of [
+      "den-edge-proof",
+      "dynamic/edge.yml",
+      "stacks/db/generated.env",
+      "ca/rootCA-key.pem",
+      "certs/edge-key.pem",
+    ]) {
+      const abs = path.join(edge, f);
+      expect([f, readDenied(deny, abs)]).toEqual([f, true]);
+      expect([f, denied(deny, `cat ${abs}`)]).toEqual([f, true]);
+    }
+    // Edit too: Traefik reloads dynamic/, and ca/ and certs/ carry TLS.
+    expect(deny).toContain(`Edit(/${edge}/**)`);
+  });
+
+  it("issue 728: the install registry is denied to Read, Edit and Bash", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const reg = path.join(path.dirname(state), "reg", "den", "installs");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+            installRegistryDir: reg,
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    const entry = path.join(reg, "0123456789abcdef.json");
+    expect(readDenied(deny, entry)).toBe(true);
+    expect(deny).toContain(`Edit(/${reg}/**)`);
+    expect(denied(deny, `ls ${reg}`)).toBe(true);
+    expect(denied(deny, `cat ${entry}`)).toBe(true);
+  });
+
   it("issue 728: the edge's key folders are denied, from the launch input", () => {
     const state = path.join(tmp(), ".acme");
     const filesDir = path.join(state, "agent-files", "planner");

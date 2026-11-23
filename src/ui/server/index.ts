@@ -120,6 +120,8 @@ import {
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
+import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
+import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import { syncEdgeProof } from "../../shared/edge/runtime.js";
 import {
   bridgeGateway,
@@ -3666,6 +3668,22 @@ if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
+}
+
+// Issue 728: list this install for the others on this OS user (any
+// distribution's), so their agents are denied its credential files and keys.
+try {
+  const { dropped } = registerInstall(registryDir(), {
+    stateDir: getStateDir(),
+    edgeKeyDirs: edgeKeyDirs(getDistRoot()),
+  });
+  if (dropped.length)
+    serverLog(
+      `  ⚠ install registry: left out edge folders it can't name exactly: ${dropped.join(", ")}`,
+      "warn",
+    );
+} catch (e) {
+  serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
 }
 
 /**
