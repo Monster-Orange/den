@@ -91,6 +91,7 @@ import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
+import { lookup as dnsLookup } from "dns/promises";
 import {
   TEST_RESOLVE_ENV_KEY,
   parseTestResolve,
@@ -225,6 +226,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
@@ -471,8 +473,11 @@ import {
   notSetLine,
   readWebUrl,
   setWebUrl,
+  type WebUrlChange,
 } from "../../shared/web-url.js";
 import { peopleWebUrl } from "../../shared/agent-links.js";
+import { tellHubDenUrl } from "../../shared/hub-den-url.js";
+import { webUrlSetAction } from "./web-url-held.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -916,9 +921,32 @@ function pushLog(kind: string, text: string, actor?: string): void {
  * Log to stdout unless --silent was passed, AND fan out to the log ring so the
  * /logs page and any connected SSE subscribers see the same stream.
  */
+/**
+ * Issue 707: while it runs silent (as a service), warn and error lines also
+ * go to <state>/logs/server.log (server_log.max_mb, rotated once), so they
+ * outlive a restart. The cap is read again at most once a minute.
+ */
+let serverLogCap = { at: 0, bytes: serverLogMaxBytes(null) };
+const toServerLogFile = serverLogWriter({
+  stateDir: () => getStateDir(),
+  maxBytes: () => {
+    if (Date.now() - serverLogCap.at > 60_000) {
+      let user: unknown = null;
+      try {
+        user = readUserConfig();
+      } catch {
+        /* a bad user.yml: the default */
+      }
+      serverLogCap = { at: Date.now(), bytes: serverLogMaxBytes(user) };
+    }
+    return serverLogCap.bytes;
+  },
+});
+
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
   if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
+  if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
 
 // Its output's reader gone (the terminal, runner or script that started it
@@ -1283,7 +1311,15 @@ import {
   issueWriteSettings,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
+import {
+  listRecords as listAgentRecords,
+  readRecord as readAgentRecord,
+} from "../../shared/agents/records.js";
+import {
+  askSandboxOn,
+  legacyAgentIds,
+  sandboxOnHeldOp,
+} from "../../shared/agents/sandbox-rollout.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1324,6 +1360,10 @@ import {
 } from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
+import {
+  serverLogMaxBytes,
+  serverLogWriter,
+} from "../../shared/server-log-file.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
 
 /** Sign-in: Den's own processes, this server always among them. */
@@ -1917,6 +1957,31 @@ function sessionCookie(
 
 /** web.url, re-read at most every 5 s (the request checks ask often). */
 let WEB_URL_NOW = { at: 0, url: null as string | null };
+
+/**
+ * Issue 869: tell the connected Hub this install's address after it
+ * changes (hub-den-url.ts). Never waited on; the save never fails for it.
+ */
+function tellHubAddress(url: string): void {
+  void tellHubDenUrl(url, {
+    hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+    put: async (h, t, u) =>
+      (await import("../../shared/hub.js")).hubPutDenUrl(h, t, u),
+    stateDir: getStateDir(),
+  }).catch(() => undefined);
+}
+
+/**
+ * This install's address, saved the one way every path saves it
+ * (Settings, `web url`, an alias made the address, web_url_set):
+ * confirmed, audited, read again at once, and told to Hub.
+ */
+function saveWebUrl(url: string, how?: WebUrlChange): string {
+  const saved = setWebUrl(url, undefined, undefined, how);
+  WEB_URL_NOW = { at: 0, url: null }; // re-read at once
+  tellHubAddress(saved);
+  return saved;
+}
 function webUrlNow(): string | null {
   if (Date.now() - WEB_URL_NOW.at > 5_000)
     WEB_URL_NOW = { at: Date.now(), url: readWebUrl()?.url ?? null };
@@ -2052,6 +2117,48 @@ function adoptOffer(req: http.IncomingMessage): {
         },
       }
     : {};
+}
+
+/**
+ * Issue 869: whether an address's host is this machine or one Den already
+ * serves: the current address's host, an edge name (its domains and
+ * aliases, and names under them), or a name that resolves to one of this
+ * machine's own addresses (its interfaces, the mesh's among them, or
+ * loopback). A host that is none of these gets web_url_set's warning.
+ */
+async function addressHostKnown(host: string): Promise<boolean> {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  try {
+    const now = readWebUrl();
+    if (now && new URL(now.url).hostname.toLowerCase() === h) return true;
+  } catch {
+    /* no current address */
+  }
+  try {
+    const domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+    if (domains.some((d) => h === d || h.endsWith(`.${d}`))) return true;
+  } catch {
+    /* no edge */
+  }
+  const mine = new Set(
+    Object.values(os.networkInterfaces())
+      .flat()
+      .flatMap((i) => (i ? [i.address.toLowerCase()] : [])),
+  );
+  try {
+    const found = await dnsLookup(h, { all: true });
+    return (
+      found.length > 0 &&
+      found.every(
+        (a) =>
+          mine.has(a.address.toLowerCase()) ||
+          a.address === "::1" ||
+          a.address.startsWith("127."),
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Whether the request is the owner's (web-url-routes adoptAllowed). */
@@ -4318,6 +4425,21 @@ type ApprovalDeps = {
   webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
+/**
+ * Issue 869: web_url_set's deps. Outside approvalDeps on purpose: this held
+ * write reads the stored web.url (its "Now:" line, and the address it
+ * replaces), while approvalDeps' links use the people address (issue 1016).
+ */
+function webUrlSetDeps(): Parameters<typeof webUrlSetAction>[0] {
+  return {
+    knownHost: addressHostKnown,
+    read: () => readWebUrl(),
+    set: (url, how) => saveWebUrl(url, how),
+    ping: (url, ms) => pingHttp(url, ms),
+    checkMs: () => webUrlCheckSeconds() * 1000,
+  };
+}
+
 /** The held writes and their queue, made on first use. */
 function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
@@ -4656,6 +4778,8 @@ function approvalDeps(): ApprovalDeps {
       const box = gateBoxOps({ store: () => gates() });
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
+    // Issue 869: Den's own agent proposes the address; the person Allows.
+    webUrlSet: webUrlSetAction(webUrlSetDeps()),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
@@ -4685,6 +4809,8 @@ function approvalDeps(): ApprovalDeps {
     },
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    // Issue 936: the rollout's Turn on, for agents from before the sandbox.
+    sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -4868,6 +4994,36 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * expired: its item goes). Issue 742: the queue is made at the start, so
  * what waited before a restart is read back and shows in the bell.
  */
+/** Issue 936: den_sandbox_on, counting the agents from before it now. */
+function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
+  return sandboxOnHeldOp({
+    count: () =>
+      legacyAgentIds(listAgentRecords(getStateDir()), readAgentsConfig())
+        .length,
+    turnOn: () => setUserSandboxOn(),
+  });
+}
+
+/**
+ * Issue 936, the rollout: Den asks once, as a held write in the bell, to
+ * turn the sandbox on for agents from before it; then each hour, should
+ * the person have let it lapse. Best effort.
+ */
+function startSandboxOnAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      void askSandboxOn(ap.queue, sandboxOnServerOp()).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      /* no queue here: doctor still says it */
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
+}
+
 function startHeldWritesBell(): void {
   let shown = true;
   try {
@@ -5527,6 +5683,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
+    // Issue 707: the server's warning lines on disk, capped (server_log.*).
+    server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
     reports: (() => {
       const l = shotLimits(user);
@@ -6255,11 +6413,7 @@ async function handleRequest(
     handleWebUrlRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       read: () => readWebUrl(),
-      set: (url, how) => {
-        const saved = setWebUrl(url, undefined, undefined, how);
-        WEB_URL_NOW = { at: 0, url: null }; // re-read at once
-        return saved;
-      },
+      set: (url, how) => saveWebUrl(url, how),
       who: (r) => principalOf(r),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
@@ -8490,6 +8644,13 @@ async function handleRequest(
     }
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
+      // Issue 1210: the fixture person, on a bound test install with
+      // web.fixture_person set, shows its invented name over its login on
+      // the rail. Display only: the audit and the log keep FIXTURE_LABEL.
+      const named =
+        rec?.via === "fixture" && testInstallNow()
+          ? webAuthNow().fixturePerson
+          : undefined;
       const github = rec?.via === "github" && !!rec.login;
       const name = github ? githubSessionName(rec) : undefined;
       return sendJson(res, {
@@ -8498,8 +8659,14 @@ async function handleRequest(
         signedIn: true,
         // 0.4.71: a browser on this machine, signed in with a link or a
         // code, is the local browser it always was (the owner's chip).
-        identity:
-          !github && !g.beyond
+        identity: named
+          ? {
+              kind: "github",
+              via: "fixture",
+              login: named.login,
+              name: named.name,
+            }
+          : !github && !g.beyond
             ? localIdentity()
             : {
                 kind: github ? "github" : "device",
@@ -9446,6 +9613,7 @@ async function handleRequest(
           agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
+          server_log?: unknown;
           feedback?: unknown;
           address_check?: unknown;
           process_lookup?: unknown;
@@ -9512,6 +9680,7 @@ async function handleRequest(
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
+            server_log: body.server_log,
             feedback: body.feedback,
             address_check: body.address_check,
             process_lookup: body.process_lookup,
@@ -10646,6 +10815,7 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // and puts it in place of a loopback one). A route edge.routes names is
 // taken over the one made from the brand, and corrects an unconfirmed
 // brand-route address once: only the named one may reach other machines.
+const ADDRESS_BEFORE = readWebUrl();
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
@@ -10658,6 +10828,8 @@ const ADDRESS = migrateWebUrl(() => {
     return undefined; // no edge config: nothing to take
   }
 });
+// Issue 869: the migration wrote or corrected it: tell Hub.
+if (ADDRESS && ADDRESS.url !== ADDRESS_BEFORE?.url) tellHubAddress(ADDRESS.url);
 // Review M4 (0.4.48): server_agent.self_update is the person's (user.yml).
 // Once, at the first start without it there, the team file's ask or auto
 // is copied (an audit row; doctor says so), so the person's choice carries
@@ -10733,6 +10905,8 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    // Issue 936: Turn on the agent sandbox for agents from before it.
+    startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.
