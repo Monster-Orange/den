@@ -381,7 +381,18 @@ export interface GateEventRow {
   /** Issue 1263: containers-removed: how many, and their image names. */
   count?: number;
   images?: string[];
+  /** Issue 1289: the run's checkout tag. */
+  checkout?: string;
 }
+
+/** Issue 1289: the log events that end a slot. */
+export const SLOT_ENDS: ReadonlySet<GateEvent> = new Set<GateEvent>([
+  "released",
+  "taken-back-gone",
+  "taken-back-lapsed",
+  "taken-back-revoked",
+  "ended-early",
+]);
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
 const byOf = (e: GateEntry): string =>
@@ -723,6 +734,7 @@ export class GateStore {
       ...(e.mcp ? { actor: e.actor, install: e.mcp.install } : {}),
       ...(e.box ? { box: e.box } : {}),
       ...(cls ? { class: cls } : {}),
+      ...(e.checkout ? { checkout: e.checkout } : {}),
       ...row,
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
@@ -755,6 +767,20 @@ export class GateStore {
       };
       fs.appendFileSync(this.eventsFile, JSON.stringify(row) + "\n");
     });
+  }
+
+  /**
+   * Issue 1289: when a slot from `checkout` last ended (ms), or null when
+   * the log has none.
+   */
+  lastEndFor(checkout: string): number | null {
+    let last: number | null = null;
+    for (const r of this.events()) {
+      if (r.checkout !== checkout || !SLOT_ENDS.has(r.event)) continue;
+      const t = Date.parse(r.at);
+      if (Number.isFinite(t) && (last === null || t > last)) last = t;
+    }
+    return last;
   }
 
   /** The runs' rows (issue 963: never a settings change). */

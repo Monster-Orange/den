@@ -182,21 +182,25 @@ export async function listThrowaway(
     return null;
   }
   if (r.code !== 0) return null;
-  return r.out
-    .split("\n")
-    .map((l) => l.split("\t"))
-    .filter((p) => p[0])
-    .filter((p) => p[5] === undefined || p[5] === "1" || p[5] === "stop")
-    .map(([id, image, label, created, store, mode, state, checkout]) => ({
-      id: id!,
-      image: image ?? "",
-      run: label && SLOT_ID.test(label) ? label : null,
-      created: created ?? "",
-      store: store && TAG.test(store) ? store : null,
-      mode: mode === "stop" ? ("stop" as const) : ("remove" as const),
-      state: state ?? "",
-      checkout: checkout && TAG.test(checkout) ? checkout : null,
-    }));
+  return (
+    r.out
+      .split("\n")
+      .map((l) => l.split("\t"))
+      .filter((p) => p[0])
+      // Issue 1289 review: only the two exact values; anything else is never
+      // removed or stopped.
+      .filter((p) => p[5] === "1" || p[5] === "stop")
+      .map(([id, image, label, created, store, mode, state, checkout]) => ({
+        id: id!,
+        image: image ?? "",
+        run: label && SLOT_ID.test(label) ? label : null,
+        created: created ?? "",
+        store: store && TAG.test(store) ? store : null,
+        mode: mode === "1" ? ("remove" as const) : ("stop" as const),
+        state: state ?? "",
+        checkout: checkout && TAG.test(checkout) ? checkout : null,
+      }))
+  );
 }
 
 /** Stops and removes `boxes`; what went. Never throws. */
@@ -229,6 +233,58 @@ async function stopAll(docker: Docker, boxes: Throwaway[]): Promise<Removed> {
     .sort()
     .slice(0, 10);
   return { count: boxes.length, images };
+}
+
+/**
+ * Issue 1289 review: when each of `ids` last started (ms), by one `docker
+ * inspect`; null when docker didn't answer (then nothing is stopped).
+ */
+async function startedAt(
+  docker: Docker,
+  ids: string[],
+): Promise<Map<string, number> | null> {
+  let r: { code: number; out: string };
+  try {
+    r = await docker(["inspect", "-f", "{{.Id}} {{.State.StartedAt}}", ...ids]);
+  } catch {
+    return null;
+  }
+  if (r.code !== 0) return null;
+  const full = new Map<string, number>();
+  for (const line of r.out.split("\n")) {
+    const [id, at] = line.trim().split(" ");
+    // Docker gives nanoseconds; milliseconds are enough.
+    const t = Date.parse((at ?? "").replace(/(\.\d{3})\d+/, "$1"));
+    if (id && Number.isFinite(t)) full.set(id, t);
+  }
+  const out = new Map<string, number>();
+  for (const id of ids)
+    for (const [f, t] of full) if (f.startsWith(id)) out.set(id, t);
+  return out;
+}
+
+/**
+ * Issue 1289 review: of `boxes` (idle kept containers), the ones a gate run
+ * left running: started before their checkout's last slot ended. One
+ * started since is someone's own use outside the gate: left alone. No end
+ * in the log, no start time, or docker not answering: none.
+ */
+async function leftByRuns(
+  store: GateStore,
+  docker: Docker,
+  boxes: Throwaway[],
+): Promise<Throwaway[]> {
+  if (!boxes.length) return [];
+  const started = await startedAt(
+    docker,
+    boxes.map((b) => b.id),
+  );
+  if (!started) return [];
+  return boxes.filter((b) => {
+    const end = store.lastEndFor(b.checkout!);
+    const t = started.get(b.id);
+    return end !== null && t !== undefined && t < end;
+  });
 }
 
 /** Issue 1289: a kept container of this store, running, with a checkout. */
@@ -274,7 +330,11 @@ async function stopCheckout(
   const all = (await listThrowaway(docker)) ?? [];
   await stopAll(
     docker,
-    all.filter((b) => keptRunning(b, tag) && b.checkout === checkout),
+    await leftByRuns(
+      store,
+      docker,
+      all.filter((b) => keptRunning(b, tag) && b.checkout === checkout),
+    ),
   );
 }
 
@@ -344,7 +404,7 @@ export async function sweepThrowaway(
     byCheckout.set(b.checkout!, [...(byCheckout.get(b.checkout!) ?? []), b]);
   }
   for (const [checkout, list] of byCheckout) {
-    const r = await stopAll(docker, list);
+    const r = await stopAll(docker, await leftByRuns(store, docker, list));
     for (const b of list) seen.delete(b.id);
     if (r.count) out.push({ id: checkout, ...r, stopped: true });
   }

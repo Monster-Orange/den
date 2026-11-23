@@ -5,8 +5,10 @@
  * running, or docker refused. One started outside a gate run (no run label)
  * is listed, never removed and never a warning: it may be a test running
  * now. Issue 1289: a kept container (den.ephemeral=stop) stopped is
- * counted apart, never as left over; one still running with no live run
- * from its checkout is ⚠. Doctor only reads; it removes nothing.
+ * counted apart, never as left over; one running with no live run from its
+ * checkout is listed (someone's own use outside the gate, or one the
+ * sweeper is about to stop), never a warning. Doctor only reads; it
+ * removes nothing.
  */
 import type { OnboardCheck } from "./doctor-onboard.js";
 import type { Throwaway } from "../../shared/gates/ephemeral.js";
@@ -46,7 +48,7 @@ export function throwawayLines(
   const lines = [
     ...idle.map(
       (b) =>
-        `  ⚠ ${b.id} ${b.image}: kept, still running with no run from its checkout`,
+        `  · ${b.id} ${b.image}: kept, running with no gate run from its checkout (stopped by the sweeper if a run left it; left alone if started since)`,
     ),
     ...left.map(
       (b) => `  ⚠ ${b.id} ${b.image}: its gate run ${b.run} has ended`,
@@ -56,21 +58,13 @@ export function throwawayLines(
         `  · ${b.id} ${b.image}: no gate run${b.created ? ` (created ${b.created})` : ""}; remove it by hand when its test is done`,
     ),
   ];
-  if (left.length || idle.length)
+  if (left.length)
     return {
       lines,
       check: {
         id,
         status: "warn",
-        detail: [
-          left.length ? `${left.length} left over from ended gate runs` : "",
-          idle.length
-            ? `${idle.length} kept and running with no run from its checkout`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("; ")
-          .concat(keptNote),
+        detail: `${left.length} left over from ended gate runs${keptNote}`,
         fix: "start Den's server (its sweeper removes left-over ones and stops idle kept ones), or docker rm -f / docker stop the ids listed",
       },
     };
@@ -80,9 +74,13 @@ export function throwawayLines(
       id,
       status: "ok",
       detail:
+        (idle.length
+          ? `${idle.length} kept and running outside a gate run; `
+          : "") +
         (loose.length
           ? `none left over from gate runs; ${loose.length} started outside one`
-          : "none left over") + keptNote,
+          : "none left over") +
+        keptNote,
     },
   };
 }

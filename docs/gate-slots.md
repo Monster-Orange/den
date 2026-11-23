@@ -730,8 +730,11 @@ slot.
 A kept container belongs to its checkout, not to the run that made it: a
 container's labels can't change, so a later run reusing it would still
 carry the first run's id. It is **stopped**, never removed, when it is
-running and no live slot comes from its checkout: when `gate run` ends, or
-when the server's sweeper finds it so on two looks a minute apart. One
-already stopped is left alone. One with no checkout label is never
-stopped. `den doctor` counts stopped kept containers apart, and warns
-about one still running with no run from its checkout.
+running, no live slot comes from its checkout, and it started before that
+checkout's last slot ended: when `gate run` ends, or when the server's
+sweeper finds it so on two looks a minute apart. One started after the
+checkout's last run ended is someone's own use outside the gate, and is
+left alone. One already stopped is left alone. One with no checkout label,
+or a `den.ephemeral` value other than `1` or `stop`, is never touched.
+`den doctor` counts stopped kept containers apart, and lists one running
+with no gate run from its checkout.

@@ -9,7 +9,9 @@
  *     and records it on its slot; the container carries den.gate.checkout.
  *     It is stopped only when running and no live slot has its checkout.
  *  3. The store guard; no checkout label: never stopped.
- *  4. An already-stopped container: no stop.
+ *  4. An already-stopped container: no stop. One started after its
+ *     checkout's last slot ended is someone's own use outside the gate:
+ *     never stopped (docker inspect's start time against the slot log).
  *  5. Doctor counts stopped-and-kept ones apart, and warns about a running
  *     one whose checkout has no live run.
  */
@@ -50,10 +52,12 @@ interface Box {
   image: string;
   state: "running" | "exited";
   labels: Record<string, string>;
+  /** Docker's StartedAt (nanoseconds, as docker prints it). */
+  startedAt?: string;
 }
 
 /** A fake docker: ps applies label filters (key or key=value); stop; rm -f. */
-function world(boxes: Box[]) {
+function world(boxes: Box[], inspectDown = false) {
   const calls: string[][] = [];
   const docker: Docker = async (args) => {
     calls.push(args);
@@ -84,6 +88,18 @@ function world(boxes: Box[]) {
           .join("\n"),
       };
     }
+    if (args[0] === "inspect") {
+      if (inspectDown) return { code: 1, out: "" };
+      const ids = args.slice(3);
+      return {
+        code: 0,
+        out: ids
+          .map((id) => boxes.find((b) => b.id === id))
+          .filter(Boolean)
+          .map((b) => `${b!.id}${"0".repeat(52)} ${b!.startedAt ?? ""}`)
+          .join("\n"),
+      };
+    }
     if (args[0] === "stop") {
       for (const id of args.slice(1).filter((a) => !a.startsWith("-"))) {
         const b = boxes.find((x) => x.id === id);
@@ -103,12 +119,21 @@ function world(boxes: Box[]) {
   return { boxes, calls, docker };
 }
 
-/** A store in use (its slots folder made). */
+const T0 = Date.parse("2026-11-22T22:00:00Z");
+/** Docker's way of printing a time: nanoseconds. */
+const dockerTime = (ms: number) =>
+  new Date(ms).toISOString().replace(/\.(\d{3})Z$/, ".$1456789Z");
+
+/** A store in use (its slots folder made), its clock at T0. */
 const newStore = (alive: (pid: number) => boolean = () => true) => {
   const dir = tmp();
   fs.mkdirSync(path.join(dir, "slots"), { recursive: true });
-  return new GateStore({ platform: "linux", dir, alive });
+  return new GateStore({ platform: "linux", dir, alive, now: () => T0 });
 };
+
+/** A run from `checkout` that asked and ended (at T0). */
+const ended = (s: GateStore, checkout: string) =>
+  s.release(s.ask({ kind: "cpu", who: "a", label: "a", pid: 9, checkout }).id);
 
 /** A kept container for `checkout` (a tag), made by run `run`. */
 const kept = (
@@ -117,10 +142,12 @@ const kept = (
   checkout: string | null,
   state: Box["state"] = "running",
   run = "cpu-0000000001",
+  startedAt = dockerTime(T0 - 3_600_000),
 ): Box => ({
   id,
   image: "postgres:16",
   state,
+  startedAt,
   labels: {
     [EPHEMERAL_LABEL]: "stop",
     [RUN_LABEL]: run,
@@ -129,7 +156,6 @@ const kept = (
   },
 });
 
-const T0 = Date.parse("2026-11-22T22:00:00Z");
 async function twice(s: GateStore, docker: Docker) {
   const seen = new Map<string, number>();
   await sweepThrowaway(s, docker, seen, T0);
@@ -209,6 +235,7 @@ describe("issue 1289 (1, 2): labels and the checkout", () => {
 describe("issue 1289 (2-4): stopped, never removed", () => {
   it("the sweep stops a kept container once its checkout has no live run; never removes it", async () => {
     const s = newStore();
+    ended(s, "aaaaaaaaaaaa");
     const w = world([kept("k1", s, "aaaaaaaaaaaa")]);
     const out = await twice(s, w.docker);
     expect(w.boxes).toHaveLength(1);
@@ -240,6 +267,56 @@ describe("issue 1289 (2-4): stopped, never removed", () => {
     const w = world([kept("k1", s, "aaaaaaaaaaaa", "exited")]);
     expect(await twice(s, w.docker)).toEqual([]);
     expect(w.calls.some((c) => c[0] === "stop")).toBe(false);
+  });
+
+  it("one restarted after its checkout's last run ended is someone's own use: never stopped", async () => {
+    const s = newStore();
+    ended(s, "aaaaaaaaaaaa"); // the last run ended at T0
+    const w = world([
+      kept(
+        "k1",
+        s,
+        "aaaaaaaaaaaa",
+        "running",
+        "cpu-0000000001",
+        dockerTime(T0 + 10_000),
+      ),
+    ]);
+    expect(await twice(s, w.docker)).toEqual([]);
+    expect(w.boxes[0]!.state).toBe("running");
+    expect(w.calls.some((c) => c[0] === "stop")).toBe(false);
+  });
+
+  it("no run from its checkout in the log, or docker inspect failing: nothing is stopped", async () => {
+    const s = newStore();
+    const w = world([kept("k1", s, "aaaaaaaaaaaa")]);
+    expect(await twice(s, w.docker)).toEqual([]);
+    ended(s, "aaaaaaaaaaaa");
+    const down = world([kept("k2", s, "aaaaaaaaaaaa")], true);
+    expect(await twice(s, down.docker)).toEqual([]);
+    expect([w.boxes[0]!.state, down.boxes[0]!.state]).toEqual([
+      "running",
+      "running",
+    ]);
+  });
+
+  it("a mode value other than 1 or stop is never removed or stopped", async () => {
+    const s = newStore();
+    ended(s, "aaaaaaaaaaaa");
+    const odd = (id: string, mode: string): Box => {
+      const b = kept(id, s, "aaaaaaaaaaaa", "running", "cpu-0000000009");
+      b.labels[EPHEMERAL_LABEL] = mode;
+      return b;
+    };
+    const w = world([odd("o1", ""), odd("o2", "yes"), odd("o3", "true")]);
+    await twice(s, w.docker);
+    await cleanRun(s, "cpu-0000000009", w.docker, "aaaaaaaaaaaa");
+    expect(w.boxes.map((b) => b.state)).toEqual([
+      "running",
+      "running",
+      "running",
+    ]);
+    expect(w.calls.some((c) => c[0] === "rm" || c[0] === "stop")).toBe(false);
   });
 
   it("another store's, or one with no checkout label, is never stopped", async () => {
@@ -330,7 +407,7 @@ describe("issue 1289 (5): doctor", () => {
     expect(r.check.detail).toMatch(/2 kept \(stopped\)/);
   });
 
-  it("warns about a kept container running with no run from its checkout", () => {
+  it("lists, never warns about, a kept container running with no run from its checkout", () => {
     const r = throwawayLines(
       [
         row("k1", { state: "running" }),
@@ -340,8 +417,11 @@ describe("issue 1289 (5): doctor", () => {
       "aaaaaaaaaaaa",
       new Set(["dddddddddddd"]),
     );
-    expect(r.check.status).toBe("warn");
-    expect(r.lines.join("\n")).toMatch(/k1.*running.*no run from its checkout/);
+    expect(r.check.status).toBe("ok");
+    expect(r.check.detail).toMatch(/1 kept and running outside a gate run/);
+    expect(r.lines.join("\n")).toMatch(
+      /k1.*running with no gate run from its checkout/,
+    );
     expect(r.lines.join("\n")).not.toMatch(/k2/);
   });
 });
