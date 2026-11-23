@@ -30,6 +30,7 @@ import {
   ephemeralLabels,
   listThrowaway,
   sweepThrowaway,
+  ThrowawaySweeper,
   type Docker,
 } from "../../../src/shared/gates/ephemeral.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
@@ -113,8 +114,12 @@ const throwaway = (
   },
 });
 
-const newStore = (alive: (pid: number) => boolean = () => true) =>
-  new GateStore({ platform: "linux", dir: tmp(), alive });
+/** A store in use (its slots folder made, as the first ask makes it). */
+const newStore = (alive: (pid: number) => boolean = () => true) => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, "slots"), { recursive: true });
+  return new GateStore({ platform: "linux", dir, alive });
+};
 
 describe("issue 1263 (1): a helper labels what it starts", () => {
   it("labels a container with the run, its store, and as throwaway inside a gate run", () => {
@@ -242,10 +247,21 @@ describe("issue 1263 (2): a run's containers go when its slot ends", () => {
   });
 });
 
-describe("issue 1263 (3): the gate tick sweeps leftovers", () => {
-  it("removes a run's container once its slot is taken back; keeps a live run's and unlabelled ones", async () => {
+describe("issue 1263 (3): the sweep removes leftovers, carefully", () => {
+  const T0 = Date.parse("2026-11-22T21:00:00Z");
+
+  /** Two sweeps a minute apart: an orphan goes only on the second. */
+  async function twice(s: GateStore, docker: Docker) {
+    const seen = new Map<string, number>();
+    const first = await sweepThrowaway(s, docker, seen, T0);
+    const second = await sweepThrowaway(s, docker, seen, T0 + 61_000);
+    return { first, second };
+  }
+
+  it("removes a taken-back run's container; keeps a live run's, unlabelled ones and another store's", async () => {
     const dead = new Set<number>();
     const s = newStore((pid) => !dead.has(pid));
+    const other = newStore();
     const gone = s.ask({ kind: "cpu", who: "a", label: "gone", pid: 11 });
     const live = s.ask({ kind: "cpu", who: "b", label: "live", pid: 12 });
     const w = world([
@@ -253,44 +269,65 @@ describe("issue 1263 (3): the gate tick sweeps leftovers", () => {
       throwaway("c2", live.id, s),
       { id: "c3", image: "nginx", labels: { [RUN_LABEL]: gone.id } },
       { id: "c4", image: "mine", labels: {} },
+      throwaway("c5", null),
+      throwaway("c6", "cpu-abcdefabcd", other),
     ]);
     dead.add(11); // its run died: the next settle takes the slot back
-    const n = new GateNotices({
-      store: () => s,
-      install: "/x",
-      projectOf: () => null,
-      relay: async () => true,
-      bell: () => {},
-      docker: w.docker,
-    });
-    n.start();
-    await n.tick();
-    expect(w.boxes.map((b) => b.id)).toEqual(["c2", "c3", "c4"]);
-    expect(
-      s
-        .events()
-        .filter((x) => x.event === "containers-removed")
-        .map((x) => x.id),
-    ).toEqual([gone.id]);
-    // rm is only ever given what the throwaway filter listed.
+    const { first, second } = await twice(s, w.docker);
+    expect(first).toEqual([]);
+    expect(second!.map((r) => r.id)).toEqual([gone.id]);
+    expect(w.boxes.map((b) => b.id)).toEqual(["c2", "c3", "c4", "c5", "c6"]);
     const rms = w.calls.filter((c) => c[0] === "rm").flat();
-    expect(rms).not.toContain("c3");
-    expect(rms).not.toContain("c4");
+    for (const kept of ["c2", "c3", "c4", "c5", "c6"])
+      expect(rms).not.toContain(kept);
   });
 
-  it("a throwaway container with no run label is left alone by the sweep", async () => {
+  it("an orphan seen once is kept; seen again under a minute later, still kept", async () => {
     const s = newStore();
-    const w = world([throwaway("c1", null)]);
-    expect(await sweepThrowaway(s, w.docker)).toEqual([]);
+    const w = world([throwaway("c1", "cpu-0000000009", s)]);
+    const seen = new Map<string, number>();
+    expect(await sweepThrowaway(s, w.docker, seen, T0)).toEqual([]);
+    expect(await sweepThrowaway(s, w.docker, seen, T0 + 30_000)).toEqual([]);
+    expect(w.boxes).toHaveLength(1);
+    expect((await sweepThrowaway(s, w.docker, seen, T0 + 61_000))!.length).toBe(
+      1,
+    );
+    expect(w.boxes).toHaveLength(0);
+  });
+
+  it("slots it can't read: nothing is removed", async () => {
+    const s = newStore();
+    const run = s.ask({ kind: "cpu", who: "a", label: "a", pid: 1 });
+    const w = world([throwaway("c1", run.id, s)]);
+    const slots = path.join(s.dir, "slots");
+    fs.chmodSync(slots, 0o000);
+    try {
+      const { second } = await twice(s, w.docker);
+      expect(second).toEqual([]);
+    } finally {
+      fs.chmodSync(slots, 0o755);
+    }
     expect(w.boxes).toHaveLength(1);
   });
 
-  it("a run from another slot store is never judged gone here", async () => {
-    const here = newStore();
-    const there = newStore();
-    const run = there.ask({ kind: "cpu", who: "x", label: "x", pid: 31 });
-    const w = world([throwaway("c1", run.id, there)]);
-    expect(await sweepThrowaway(here, w.docker)).toEqual([]);
+  it("no slots folder (it can't be read): nothing is removed", async () => {
+    const s = new GateStore({ platform: "linux", dir: tmp() });
+    const w = world([throwaway("c1", "cpu-0000000009", s)]);
+    const { second } = await twice(s, w.docker);
+    expect(second).toEqual([]);
+    expect(w.boxes).toHaveLength(1);
+  });
+
+  it("a slot file that isn't whole: nothing is removed", async () => {
+    const s = newStore();
+    s.ask({ kind: "cpu", who: "a", label: "a", pid: 1 });
+    const w = world([throwaway("c1", "cpu-0000000009", s)]);
+    fs.writeFileSync(
+      path.join(s.dir, "slots", "cpu-0000000008.json"),
+      '{"id":',
+    );
+    const { second } = await twice(s, w.docker);
+    expect(second).toEqual([]);
     expect(w.boxes).toHaveLength(1);
   });
 
@@ -307,14 +344,112 @@ describe("issue 1263 (3): the gate tick sweeps leftovers", () => {
       }
       return r;
     };
-    await sweepThrowaway(s, docker);
-    await sweepThrowaway(s, docker);
+    await twice(s, docker);
     expect(w.boxes.map((b) => b.id)).toEqual(["c5"]);
+  });
+
+  it("docker not answering is reported (null), and nothing is removed", async () => {
+    const s = newStore();
+    const down: Docker = async () => ({ code: 1, out: "" });
+    expect(await sweepThrowaway(s, down, new Map(), T0)).toBeNull();
   });
 });
 
-describe("issue 1263 (4): after a restart they never come back", () => {
-  it("every slot gone after the restart: the sweep removes them and starts none", async () => {
+describe("issue 1263 (3b): the server's sweeper looks only when it should", () => {
+  const T0 = Date.parse("2026-11-22T21:00:00Z");
+  const timing = {
+    fallbackMs: 600_000,
+    backoffMs: 30_000,
+    backoffMaxMs: 600_000,
+  };
+
+  it("looks at start, then only when a slot ended, a second look is due, or the fallback", async () => {
+    const s = newStore();
+    let t = T0;
+    const w = world([]);
+    const sw = new ThrowawaySweeper(
+      () => s,
+      w.docker,
+      () => t,
+      timing,
+    );
+    const looks = () => w.calls.filter((c) => c[0] === "ps").length;
+    await sw.tick(false); // start
+    expect(looks()).toBe(1);
+    t += 10_000;
+    await sw.tick(false);
+    expect(looks()).toBe(1); // nothing ended: no docker call
+    await sw.tick(true);
+    expect(looks()).toBe(2); // a slot ended
+    w.boxes.push(throwaway("c1", "cpu-0000000009", s));
+    t += 10_000;
+    await sw.tick(true); // seen once
+    t += 30_000;
+    await sw.tick(false);
+    expect(looks()).toBe(3); // its second look isn't due yet
+    t += 31_000;
+    await sw.tick(false); // due: removed
+    expect(w.boxes).toEqual([]);
+    t += 600_000;
+    await sw.tick(false);
+    expect(looks()).toBe(5); // the fallback
+  });
+
+  it("backs off after docker fails, doubling", async () => {
+    const s = newStore();
+    let t = T0;
+    let calls = 0;
+    const down: Docker = async () => {
+      calls++;
+      return { code: 1, out: "" };
+    };
+    const sw = new ThrowawaySweeper(
+      () => s,
+      down,
+      () => t,
+      timing,
+    );
+    await sw.tick(true);
+    t += 20_000;
+    await sw.tick(true);
+    expect(calls).toBe(1); // held 30 s
+    t += 15_000;
+    await sw.tick(true);
+    expect(calls).toBe(2);
+    t += 45_000;
+    await sw.tick(true);
+    expect(calls).toBe(2); // held 60 s now
+  });
+
+  it("the gate tick never waits on a slow docker", async () => {
+    const dead = new Set<number>();
+    const s = newStore((pid) => !dead.has(pid));
+    const gone = s.ask({ kind: "cpu", who: "a", label: "gone", pid: 11 });
+    let release: () => void = () => {};
+    const slow: Docker = () =>
+      new Promise((r) => (release = () => r({ code: 0, out: "" })));
+    const n = new GateNotices({
+      store: () => s,
+      install: "/x",
+      projectOf: () => null,
+      relay: async () => true,
+      bell: () => {},
+      docker: slow,
+    });
+    n.start();
+    dead.add(11);
+    void gone;
+    // Resolves although docker hasn't answered.
+    await n.tick();
+    release();
+    await n.sweeping;
+  });
+});
+
+describe("issue 1263 (4): across a restart", () => {
+  const T0 = Date.parse("2026-11-22T21:00:00Z");
+
+  it("every slot gone after the restart: they are removed, and none started", async () => {
     const s = newStore(() => true);
     const a = s.ask({ kind: "cpu", who: "a", label: "a", pid: 21 });
     const b = s.ask({ kind: "cpu", who: "b", label: "b", pid: 22 });
@@ -325,10 +460,28 @@ describe("issue 1263 (4): after a restart they never come back", () => {
       dir: s.dir,
       alive: () => false,
     });
-    const out = await sweepThrowaway(after, w.docker);
-    expect(out.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    const seen = new Map<string, number>();
+    await sweepThrowaway(after, w.docker, seen, T0);
+    const out = await sweepThrowaway(after, w.docker, seen, T0 + 61_000);
+    expect(out!.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
     expect(w.boxes).toEqual([]);
     expect(w.calls.some((c) => c[0] === "start" || c[0] === "run")).toBe(false);
+  });
+
+  it("a gate run still going across a server restart keeps its containers", async () => {
+    const s = newStore(() => true);
+    const run = s.ask({ kind: "cpu", who: "a", label: "a", pid: 21 });
+    const w = world([throwaway("c1", run.id, s)]);
+    // The server restarted; the run's own process (pid 21) did not.
+    const reopened = new GateStore({
+      platform: "linux",
+      dir: s.dir,
+      alive: (pid) => pid === 21,
+    });
+    const seen = new Map<string, number>();
+    await sweepThrowaway(reopened, w.docker, seen, T0);
+    await sweepThrowaway(reopened, w.docker, seen, T0 + 61_000);
+    expect(w.boxes).toHaveLength(1);
   });
 });
 

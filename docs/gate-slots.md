@@ -702,11 +702,13 @@ set).
 Who removes them:
 
 - `gate run`, as soon as its command ends and its slot is given back.
-- Den's server, every 10 seconds: any throwaway container whose run has no
-  live slot (taken back, lapsed, ended by a person, or killed before it
-  could clean up).
-- Den's server once at start, before services are restored, so a container
-  Docker brings back after a restart is removed rather than left running.
+- Den's server: any throwaway container whose run has no live slot (taken
+  back, lapsed, ended by a person, or killed before it could clean up). It
+  looks when a slot has ended, once at start (so a container Docker brings
+  back after a restart goes), and every 10 minutes otherwise. Each docker
+  call has a 5-second limit, and after a failure it waits longer each time.
+  A container goes only when two looks at least a minute apart both found
+  its run ended, and never when the slots can't be read for sure.
 
 Only a container with all three labels, from this machine's slot store, is
 ever removed. One started outside a gate run (no run label) is never

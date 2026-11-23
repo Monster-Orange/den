@@ -946,6 +946,42 @@ export class GateStore {
     return out;
   }
 
+  /**
+   * Issue 1263: the ids of every slot (held or waiting), read strictly for a
+   * sweep that removes containers: null when the slots can't be read for
+   * sure (the folder unreadable or missing, a file unreadable or not JSON),
+   * so "can't read" is never taken for "nothing is live". A file gone
+   * between the listing and its read is a slot that just ended. Settles
+   * first, as list() does.
+   */
+  liveIds(): Set<string> | null {
+    this.list();
+    let names: string[];
+    try {
+      names = fs.readdirSync(this.slots).filter((n) => n.endsWith(".json"));
+    } catch {
+      return null;
+    }
+    const ids = new Set<string>();
+    for (const n of names) {
+      let text: string;
+      try {
+        text = fs.readFileSync(path.join(this.slots, n), "utf-8");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        return null;
+      }
+      try {
+        const e = JSON.parse(text) as Partial<GateEntry>;
+        if (typeof e.id !== "string") return null;
+        ids.add(e.id);
+      } catch {
+        return null;
+      }
+    }
+    return ids;
+  }
+
   private file(id: string) {
     if (!/^[a-z0-9-]{1,64}$/.test(id)) throw new Error(`not a slot id: ${id}`);
     return path.join(this.slots, `${id}.json`);

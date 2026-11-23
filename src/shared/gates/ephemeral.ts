@@ -14,11 +14,12 @@
  *
  * Who removes them:
  *   - `gate run`, when its command ends and its slot is released (cleanRun);
- *   - the server's gate tick, for any throwaway container whose run has no
- *     live slot: taken back, lapsed, ended by a person, or a run killed
- *     before it could clean up (sweepThrowaway). The same sweep runs once at
- *     server start, before services are restored, so a container Docker
- *     brings back after a restart is removed instead of left running.
+ *   - the server's sweeper (ThrowawaySweeper), for any throwaway container
+ *     whose run has no live slot: taken back, lapsed, ended by a person, or
+ *     a run killed before it could clean up. It looks when a slot ended,
+ *     at server start, and every 10 minutes; an orphan goes only when two
+ *     looks at least a minute apart both found it orphaned, and never when
+ *     the slots can't be read for sure.
  *
  * Only containers carrying den.ephemeral=1, a run label and this store's
  * tag are ever removed.
@@ -89,7 +90,7 @@ export function ephemeralLabels(env: NodeJS.ProcessEnv): string[] {
 }
 
 /** The real docker CLI, each call bounded by `timeoutMs`. */
-export function realDocker(timeoutMs = 30_000): Docker {
+export function realDocker(timeoutMs = 5_000): Docker {
   return (args) =>
     new Promise((resolve) => {
       execFile(
@@ -178,31 +179,126 @@ export async function cleanRun(
   return r;
 }
 
+/** Issue 1263 review: an orphan is removed only when seen this long apart. */
+export const CONFIRM_MS = 60_000;
+
 /**
  * Removes throwaway containers whose run has no live slot (any slot in the
  * queue, held or waiting, counts as live). It lists first and reads the
  * slots after, so a run that starts in between is live by the time its
- * container could be judged. Never throws.
+ * container is judged. The slots are read strictly (store.liveIds): when
+ * they can't be read for sure, nothing is removed. An orphan is removed
+ * only when this sweep and an earlier one at least `confirmMs` before both
+ * found it orphaned; `seen` (container id → first sighting) carries that
+ * between sweeps. Null when docker didn't answer; never throws.
  */
 export async function sweepThrowaway(
   store: GateStore,
   docker: Docker,
-): Promise<({ id: string } & Removed)[]> {
+  seen: Map<string, number>,
+  now: number,
+  confirmMs = CONFIRM_MS,
+): Promise<({ id: string } & Removed)[] | null> {
   const boxes = await listThrowaway(docker);
-  if (!boxes?.length) return [];
-  const live = new Set(store.list().map((e) => e.id));
+  if (boxes === null) return null;
+  const live = store.liveIds();
+  if (live === null) return [];
   const tag = storeTag(store.dir);
+  const orphans = boxes.filter(
+    (b) => b.run && b.store === tag && !live.has(b.run),
+  );
+  const orphanIds = new Set(orphans.map((b) => b.id));
+  for (const id of [...seen.keys()]) if (!orphanIds.has(id)) seen.delete(id);
   const byRun = new Map<string, Throwaway[]>();
-  for (const b of boxes) {
-    if (!b.run || b.store !== tag || live.has(b.run)) continue;
-    byRun.set(b.run, [...(byRun.get(b.run) ?? []), b]);
+  for (const b of orphans) {
+    const first = seen.get(b.id);
+    if (first === undefined) {
+      seen.set(b.id, now);
+      continue;
+    }
+    if (now - first < confirmMs) continue;
+    byRun.set(b.run!, [...(byRun.get(b.run!) ?? []), b]);
   }
   const out: ({ id: string } & Removed)[] = [];
   for (const [id, list] of byRun) {
     const r = await removeAll(docker, list);
+    for (const b of list) seen.delete(b.id);
     if (!r.count) continue;
     store.noteContainersRemoved(id, r);
     out.push({ id, ...r });
   }
   return out;
+}
+
+/** When the server's sweeper looks: cheap on a loaded machine. */
+export interface SweeperTiming {
+  /** A look with no slot ended meanwhile, at most this often (ms). */
+  fallbackMs: number;
+  /** After docker failed: the first wait (ms), doubled each failure. */
+  backoffMs: number;
+  /** The longest wait after failures (ms). */
+  backoffMaxMs: number;
+}
+
+export const SWEEPER_TIMING: SweeperTiming = {
+  fallbackMs: 10 * 60_000,
+  backoffMs: 30_000,
+  backoffMaxMs: 10 * 60_000,
+};
+
+/**
+ * Issue 1263: the server's sweeper. Its tick (from the gate tick, never
+ * awaited there) looks only when a slot ended since its last look, when an
+ * orphan seen once is due its second look, or at the slow fallback; after
+ * docker fails it backs off. One look at a time. The first tick (server
+ * start) looks.
+ */
+export class ThrowawaySweeper {
+  private seen = new Map<string, number>();
+  private nextFallback = 0;
+  private holdUntil = 0;
+  private failures = 0;
+  private busy = false;
+
+  constructor(
+    private readonly store: () => GateStore,
+    private readonly docker: Docker,
+    private readonly now: () => number = Date.now,
+    private readonly timing: SweeperTiming = SWEEPER_TIMING,
+  ) {}
+
+  /** Whether a look is due now; `ended`: a slot ended since the last tick. */
+  due(ended: boolean): boolean {
+    const t = this.now();
+    if (this.busy || t < this.holdUntil) return false;
+    if (ended || t >= this.nextFallback) return true;
+    for (const first of this.seen.values())
+      if (t - first >= CONFIRM_MS) return true;
+    return false;
+  }
+
+  /** Looks if due; what it removed (empty when it didn't look). */
+  async tick(ended: boolean): Promise<({ id: string } & Removed)[]> {
+    if (!this.due(ended)) return [];
+    this.busy = true;
+    try {
+      const t = this.now();
+      const r = await sweepThrowaway(this.store(), this.docker, this.seen, t);
+      if (r === null) {
+        this.failures++;
+        this.holdUntil =
+          t +
+          Math.min(
+            this.timing.backoffMaxMs,
+            this.timing.backoffMs * 2 ** (this.failures - 1),
+          );
+        return [];
+      }
+      this.failures = 0;
+      this.nextFallback = t + this.timing.fallbackMs;
+      return r;
+    } finally {
+      this.busy = false;
+    }
+  }
 }
