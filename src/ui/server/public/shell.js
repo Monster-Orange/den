@@ -2343,6 +2343,10 @@
       "An agent's gate slot: grace past its estimate, in minutes",
     "set.server.gate_mcp_grace.d":
       "An unrenewed slot keeps holding until it is this far past its estimate. __DEN_CLI__ gate settings --mcp-grace-minutes 15",
+    "set.server.gate_waiter_return":
+      "A waiting test run keeps its place this long after it ends, in minutes",
+    "set.server.gate_waiter_return.d":
+      "When a waiting test run ends without giving up its place (a restart, or its window closed), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "Gate classes, highest first",
     "set.server.gate_class_order.d":
       "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
