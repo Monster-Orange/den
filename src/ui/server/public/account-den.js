@@ -331,10 +331,10 @@ export async function openAccount({ section, opener } = {}) {
       const s = Math.max(0, Math.round((until - Date.now()) / 1000));
       flow(
         "pair",
-        `<div class="den-aa-pair"><div class="den-aa-qr">${qrSvg(href, { scale: 4, margin: 4 })}</div>` +
+        `<div class="den-aa-pair"><div class="den-aa-qr" data-aa-qr>${qrSvg(href, { scale: 4, margin: 4 })}</div>` +
           `<div>${note(t("set.ui.pairScan", "Scan it with the other device, or open the link there. It works once, until it expires (below), and signs that browser in for good."))}` +
-          `<a class="den-aa-plink" href="${esc(href)}">${esc(href)}</a>` +
-          `<p class="den-aa-note den-aa-left">${esc(
+          `<a class="den-aa-plink" data-aa-plink href="${esc(href)}">${esc(href)}</a>` +
+          `<p class="den-aa-note den-aa-left" data-aa-left>${esc(
             s
               ? t("set.ui.expiresIn", "Expires in {s} s.").replace(
                   "{s}",

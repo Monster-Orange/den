@@ -289,18 +289,27 @@ describe("Settings › Access", () => {
     // Account area now (Settings › Access links to it).
     await p.goto(`http://localhost:${port}/settings?account=access`);
     const pane = (k: string) =>
-      p.locator(`dialog.den-aa-dlg[open] .den-aa-pane[data-aa-pane="${k}"]`);
+      p.locator(`dialog[data-aa-dlg][open] [data-aa-pane="${k}"]`);
     await pane("access").waitFor({ timeout: 20_000 });
     expect(
-      (await pane("access").locator(".den-aa-item").first().textContent())
+      (
+        await pane("access")
+          .locator("[data-aa-find]")
+          .filter({ has: p.locator('[data-aa-act="unlink"]') })
+          .textContent()
+      )
         ?.replace(/\s+/g, " ")
         .trim(),
     ).toMatch(
       /^GitHub@octo-owner · linked .+\. Den keeps its id, never a token\.Unlink$/,
     );
-    await p.click('.den-aa-row[data-aa-section="devices"]');
-    const devices = pane("devices").locator(".den-aa-item");
-    await devices.first().waitFor();
+    await p.click('[data-aa-section="devices"]');
+    const devices = pane("devices").locator("[data-aa-find]");
+    const anyDevice = () =>
+      p.waitForSelector(
+        'dialog[data-aa-dlg][open] [data-aa-pane="devices"] [data-aa-find]',
+      );
+    await anyDevice();
     const before = await pane("devices")
       .locator('[data-aa-act="sign-out-device"]')
       .count();
@@ -314,32 +323,33 @@ describe("Settings › Access", () => {
     );
     // No address on screen (the place, or nothing).
     expect(rows.join(" ")).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);
-    await shots(p, "account-devices", () => devices.first().waitFor());
+    await shots(p, "account-devices", anyDevice);
 
-    await p.click('.den-aa-row[data-aa-section="access"]');
+    await p.click('[data-aa-section="access"]');
     await pane("access").locator('[data-aa-act="pair"]').click();
-    const qr = pane("access").locator(".den-aa-qr svg");
+    const qr = pane("access").locator("[data-aa-qr] svg");
     await qr.waitFor();
     const link = await pane("access")
-      .locator("a.den-aa-plink")
+      .locator("a[data-aa-plink]")
       .getAttribute("href");
     expect(link?.startsWith(`http://${EDGE}/auth?c=`)).toBe(true);
-    expect(await pane("access").locator(".den-aa-left").textContent()).toMatch(
-      /^Expires in \d+ s\.$/,
-    );
+    expect(
+      await pane("access").locator("[data-aa-left]").textContent(),
+    ).toMatch(/^Expires in \d+ s\.$/);
     await shots(p, "pair-a-device", () => qr.waitFor());
 
-    await p.click('.den-aa-row[data-aa-section="devices"]');
-    await pane("devices")
-      .locator(".den-aa-item")
-      .filter({ hasNotText: "This device" })
-      .first()
+    await p.click('[data-aa-section="devices"]');
+    // Another browser's row: the first sign-out button's id.
+    const [other] = await pane("devices")
       .locator('[data-aa-act="sign-out-device"]')
+      .evaluateAll((els) => els.map((x) => x.getAttribute("data-aa-id")));
+    await pane("devices")
+      .locator(`[data-aa-act="sign-out-device"][data-aa-id="${other}"]`)
       .click();
     await p.waitForFunction(
       (n) =>
         document.querySelectorAll(
-          '.den-aa-pane[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
+          '[data-aa-pane="devices"] [data-aa-act="sign-out-device"]',
         ).length < n,
       before,
       { timeout: 20_000 },
