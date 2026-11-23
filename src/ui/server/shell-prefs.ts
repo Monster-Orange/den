@@ -250,15 +250,17 @@ function entryPins(
 }
 
 /**
- * A posted list is checked whole: one bad entry, or more than MAX_PINS,
- * refuses the save. A stored list (`loading`) is read entry by entry
- * (issue 1217): a bad entry is skipped (pinNotes names it) and the cap
- * isn't applied, so the person's pins never vanish for one bad line.
+ * A posted list is checked whole: one bad entry, or more than `cap`
+ * (MAX_PINS, or the stored list's length when that is more), refuses the
+ * save. A stored list (`loading`) is read entry by entry (issue 1217): a
+ * bad entry is skipped (pinNotes names it) and no cap is applied, so the
+ * person's pins never vanish for one bad line.
  */
 function checkPins(
   v: unknown,
   projectsOf?: PinProjects,
   loading = false,
+  cap = MAX_PINS,
 ): { ok: true; value: Pin[] } | { ok: false; error: string } {
   if (!Array.isArray(v))
     return { ok: false, error: "shell.pins must be a list" };
@@ -273,8 +275,8 @@ function checkPins(
       if (!out.some((q) => q.item === pin.item && q.project === pin.project))
         out.push(pin);
   }
-  if (!loading && out.length > MAX_PINS)
-    return { ok: false, error: `shell.pins: at most ${MAX_PINS}` };
+  if (!loading && out.length > cap)
+    return { ok: false, error: `shell.pins: at most ${cap}` };
   return { ok: true, value: out };
 }
 
@@ -407,7 +409,16 @@ export function mergeShellPrefs(
       continue;
     }
     if (key === "pins") {
-      const p = checkPins(patch.pins, projectsOf);
+      // Issue 1217: old pins moved to each of their projects can load past
+      // MAX_PINS, and the page posts the whole list, so a save is held to
+      // the larger of the cap and what was stored: unpinning always saves,
+      // and no save grows a list past the cap.
+      const p = checkPins(
+        patch.pins,
+        projectsOf,
+        false,
+        Math.max(MAX_PINS, current.pins.length),
+      );
       if (!p.ok) return p;
       out.pins = p.value;
     } else if (key === "collapsed") {

@@ -101,6 +101,34 @@ describe("issue 1217: an old-format pin never vanishes", () => {
     );
   });
 
+  it("a person whose old pins load past the cap is never locked out: unpinning saves, adding past it is refused", () => {
+    // 50 old pins, each of a repo in two projects: 100 pins on load.
+    const both = (item: string) =>
+      item.startsWith("two-") ? ["alpha", "beta"] : projectsOf(item);
+    const old = Array.from({ length: 50 }, (_, i) => `two-${i}`);
+    const loaded = shellPrefs({ pins: old }, both);
+    expect(loaded.pins.length).toBeGreaterThan(MAX_PINS);
+    // The page posts the whole list less the one unpinned.
+    const fewer = mergeShellPrefs(loaded, { pins: loaded.pins.slice(1) }, both);
+    expect(fewer.ok && fewer.value.pins.length).toBe(loaded.pins.length - 1);
+    // The same list again (a save that changes no pin) is fine too.
+    expect(mergeShellPrefs(loaded, { pins: loaded.pins }, both).ok).toBe(true);
+    // One more than it had: refused, as any save past the cap is.
+    const more = mergeShellPrefs(
+      loaded,
+      { pins: [...loaded.pins, { item: "shop", project: "alpha" }] },
+      both,
+    );
+    expect(more.ok).toBe(false);
+  });
+
+  it("a list under the cap still can't grow past it", () => {
+    const some = Array.from({ length: MAX_PINS }, (_, i) => `gone-${i}`);
+    const loaded = shellPrefs({ pins: some }, projectsOf);
+    const r = mergeShellPrefs(loaded, { pins: [...some, "shop"] }, projectsOf);
+    expect(r.ok).toBe(false);
+  });
+
   it("a posted list is still checked whole: a bad entry is refused, nothing stored", () => {
     const r = mergeShellPrefs(
       shellPrefs(undefined),
