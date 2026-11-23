@@ -430,6 +430,11 @@
     "tests/unit/server/host-refresh-web.integration.test.ts": [
       "src/shared/sessions/host-refresh.ts"
     ],
+    "tests/unit/server/hub-agent-tokens-security.integration.test.ts": [
+      "src/shared/hub-agent-tokens.ts",
+      "src/ui/server/hub-proxy-routes.ts",
+      "src/ui/server/hub-connect.ts"
+    ],
     "tests/unit/server/hub-editions-den-yml.integration.test.ts": [
       "src/shared/hub-editions.ts"
     ],
