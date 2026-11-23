@@ -3560,10 +3560,18 @@
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
       "A request was lost at a restart: {what}. Nothing ran from it.",
-    "bell.m.restartsWaiting":
-      "{n} agents waiting to restart, a few at a time",
+    "bell.m.restartsWaiting": "{n} agents waiting to restart, a few at a time",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
+    "bell.to.h": "Agents on older tools",
+    "bell.to.row": "{n} agents are on older tools",
+    "bell.to.row1": "1 agent is on older tools",
+    "bell.to.rowBack": "Restarting the agents on older tools",
+    "bell.to.more": "and {n} more",
+    "bell.to.failed": "{agent} didn't restart: {reason}",
+    "bell.to.restart": "Restart {n} agents",
+    "bell.to.restart1": "Restart 1 agent",
+    "bell.to.restarting": "Restarting {done} of {total}…",
     "bell.go.h": "Test slots past their estimate",
     "bell.go.row": "{who} holds the {kind} test slot: {label}",
     "bell.go.sub": "Since {time} · estimate {est} min · {over} min over",
@@ -3970,6 +3978,10 @@
       "waiting: this machine's load is {load}, over {perCore} × {cores} cores ({limit}), while another unit test run is going; it starts once the load drops or that run ends",
     "gate.loadHold":
       "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
+    "busy.toolsW": "Restarting the agents on older tools…",
+    "busy.toolsS":
+      "They restart a few at a time, each at its next idle, on the same conversation.",
+    "busy.toolsF": "Couldn't restart the agents on older tools.",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

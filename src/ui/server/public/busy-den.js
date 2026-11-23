@@ -70,6 +70,16 @@ export const DEN_ACTIONS = {
     },
   },
   // Issue 144: a person ends a gate slot early (the run goes on).
+  // Issue 1223: Restart N agents on older tools, from the bell.
+  "tools-restart": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.toolsW",
+      success: "busy.toolsS",
+      failure: "busy.toolsF",
+    },
+  },
   "gate-end": {
     who: "__DEN_TITLE__",
     autoClose: true,

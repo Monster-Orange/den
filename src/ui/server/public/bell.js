@@ -315,6 +315,103 @@ function overrunRowHtml(w) {
   );
 }
 
+/**
+ * Issue 1223: the agents still on older tools (a `waiting` entry of kind
+ * "tools_old"): one row, whatever their number.
+ */
+export function toolsOldOf(b) {
+  return (
+    (b?.waiting ?? []).find(
+      (w) => w && w.kind === "tools_old" && Number(w.n) > 0,
+    ) ??
+    (b?.waiting ?? []).find(
+      (w) => w && w.kind === "tools_old" && w.restarting,
+    ) ??
+    null
+  );
+}
+
+/**
+ * Issue 1223: "N agents are on older tools", who, and one Restart N
+ * agents (the person's: restart-stale, through the restart queue). While
+ * it runs the button says how far it got; one that failed says why.
+ */
+export function toolsOldHtml(w) {
+  if (!w) return "";
+  const n = Number(w.n) || 0;
+  const agents = Array.isArray(w.agents) ? w.agents : [];
+  const names = agents
+    .filter((a) => !a.reason)
+    .map((a) => String(a.agent ?? ""));
+  const shown = names.slice(0, 5).join(tr("bell.sep"));
+  const more =
+    names.length > 5 ? tr("bell.to.more", { n: names.length - 5 }) : "";
+  const failed = agents
+    .filter((a) => a.reason)
+    .map(
+      (a) =>
+        `<span class="den-bell-sub" data-to-failed="${esc(String(a.agent ?? ""))}">${esc(
+          tr("bell.to.failed", {
+            agent: String(a.agent ?? ""),
+            reason: String(a.reason ?? ""),
+          }),
+        )}</span>`,
+    )
+    .join("");
+  const r = w.restarting;
+  const btn = r
+    ? `<button type="button" class="den-btn" data-bell="tools-restart" disabled aria-busy="true">${esc(
+        tr("bell.to.restarting", {
+          done: Number(r.done) || 0,
+          total: Number(r.total) || 0,
+        }),
+      )}</button>`
+    : n
+      ? `<button type="button" class="den-btn primary" data-bell="tools-restart" data-n="${n}">${esc(
+          tr(n === 1 ? "bell.to.restart1" : "bell.to.restart", { n }),
+        )}</button>`
+      : "";
+  return (
+    `<section data-scope="tools_old"><div class="den-bell-sc"><span>${esc(tr("bell.to.h"))}</span></div>` +
+    `<div class="den-bell-row den-bell-allow" data-kind="tools_old" data-to-n="${n}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(
+      r && !n
+        ? tr("bell.to.rowBack")
+        : tr(n === 1 ? "bell.to.row1" : "bell.to.row", { n }),
+    )}` +
+    (shown
+      ? `<span class="den-bell-sub">${esc(shown)}${more ? esc(" " + more) : ""}</span>`
+      : "") +
+    failed +
+    `</span>` +
+    btn +
+    `</div></section>`
+  );
+}
+
+/**
+ * Issue 1223: Restart N agents from the bell: the person-only POST
+ * /api/agents/restart-stale (an agent is refused there), through the
+ * restart queue; the row then shows how far it got.
+ */
+async function restartToolsOld(el) {
+  const shell = window.denShell;
+  const n = Number(el.dataset.n) || 0;
+  const run = (headers) =>
+    shell.api("POST", "/api/agents/restart-stale", {}, { headers });
+  try {
+    if (shell?.busyAction)
+      await shell.busyAction("tools-restart", run, {
+        button: el,
+        vars: { n },
+      });
+    else await run({});
+  } catch (err) {
+    shell?.errorToast?.(err);
+  }
+}
+
 /** Issue 993: the overrun slots' own group, in Needs you. */
 function overrunsHtml(list) {
   if (!list.length) return "";
@@ -441,6 +538,7 @@ export function bellPanel(b, ui = {}) {
   if (
     !allows.length &&
     !overrunsOf(b).length &&
+    !toolsOldOf(b) &&
     !groups.length &&
     !older.count &&
     !updates.count
@@ -466,6 +564,7 @@ export function bellPanel(b, ui = {}) {
       needs:
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
+        toolsOldHtml(toolsOldOf(b)) +
         groupsHtml(groups, u, true),
       earlier:
         updatesHtml +
@@ -616,7 +715,9 @@ export function initBell(doc = document) {
     if (!b) return;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
-    bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
+    bell.setCount(
+      (b?.unread ?? 0) + overrunsOf(b).length + (toolsOldOf(b)?.n ? 1 : 0),
+    );
     if (bell.isOpen()) paint();
   };
   pop.addEventListener("click", async (e) => {
@@ -647,6 +748,11 @@ export function initBell(doc = document) {
     e.preventDefault();
     if (what === "gate-end") {
       await endSlot(el);
+      await refresh();
+      return;
+    }
+    if (what === "tools-restart") {
+      await restartToolsOld(el);
       await refresh();
       return;
     }

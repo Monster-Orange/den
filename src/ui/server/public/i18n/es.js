@@ -2667,6 +2667,15 @@
       "{n} agentes esperan para reiniciarse, unos pocos a la vez",
     "bell.m.heldLostAll":
       "Las solicitudes que esperaban tu permiso no se pudieron recuperar tras un reinicio. Se perdieron; los agentes que vuelvan a pedirlo aparecerán aquí.",
+    "bell.to.h": "Agentes con herramientas antiguas",
+    "bell.to.row": "{n} agentes tienen herramientas antiguas",
+    "bell.to.row1": "1 agente tiene herramientas antiguas",
+    "bell.to.rowBack": "Reiniciando los agentes con herramientas antiguas",
+    "bell.to.more": "y {n} más",
+    "bell.to.failed": "{agent} no se reinició: {reason}",
+    "bell.to.restart": "Reiniciar {n} agentes",
+    "bell.to.restart1": "Reiniciar 1 agente",
+    "bell.to.restarting": "Reiniciando {done} de {total}…",
     "bell.go.h": "Turnos de prueba pasados de su estimación",
     "bell.go.row": "{who} tiene el turno de prueba {kind}: {label}",
     "bell.go.sub": "Desde {time} · estimación {est} min · {over} min de más",
@@ -3079,6 +3088,11 @@
       "esperando: la carga de esta máquina es {load}, más de {perCore} × {cores} núcleos ({limit}), mientras se ejecuta otra prueba unitaria; empieza cuando baje la carga o termine esa prueba",
     "gate.loadHold":
       "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
+    "busy.toolsW": "Reiniciando los agentes con herramientas antiguas…",
+    "busy.toolsS":
+      "Se reinician de a pocos, cada uno en su próxima pausa, en la misma conversación.",
+    "busy.toolsF":
+      "No se pudieron reiniciar los agentes con herramientas antiguas.",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

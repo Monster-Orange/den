@@ -2600,6 +2600,15 @@
       "{n} 件のエージェントが再起動を待っています（数件ずつ再起動します）",
     "bell.m.heldLostAll":
       "あなたの許可を待っていた依頼を再起動後に読み戻せませんでした。失われています。もう一度依頼したエージェントはここに表示されます。",
+    "bell.to.h": "古いツールのエージェント",
+    "bell.to.row": "{n} 件のエージェントが古いツールのままです",
+    "bell.to.row1": "1 件のエージェントが古いツールのままです",
+    "bell.to.rowBack": "古いツールのエージェントを再起動しています",
+    "bell.to.more": "ほか {n} 件",
+    "bell.to.failed": "{agent} は再起動できませんでした: {reason}",
+    "bell.to.restart": "{n} 件のエージェントを再起動",
+    "bell.to.restart1": "1 件のエージェントを再起動",
+    "bell.to.restarting": "再起動中 {done} / {total}…",
     "bell.go.h": "見込みを過ぎたテスト枠",
     "bell.go.row": "{who} が {kind} のテスト枠を使用中: {label}",
     "bell.go.sub": "{time} から · 見込み {est} 分 · {over} 分超過",
@@ -2977,6 +2986,10 @@
       "待機中: このマシンの負荷は {load} で、{perCore} × {cores} コア ({limit}) を超えており、別の単体テストが動いています。負荷が下がるかその実行が終わると始まります",
     "gate.loadHold":
       "待機中: 負荷 {load} ≥ {limit}、リリース用の実行がブラウザー枠を使っています",
+    "busy.toolsW": "古いツールのエージェントを再起動しています…",
+    "busy.toolsS":
+      "数件ずつ、それぞれ次のアイドル時に同じ会話のまま再起動します。",
+    "busy.toolsF": "古いツールのエージェントを再起動できませんでした。",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",
