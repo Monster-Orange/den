@@ -9,7 +9,8 @@
 //
 // Two stub agents, gate-746-allow and gate-746-deny, each ask through the
 // bed's scoped MCP server (`mcp --actor agent:<id> --call agent_mode`) to
-// clear their own mode: harmless on a stub, and removed with it in teardown.
+// clear their own mode. Setup first gives each its own strictest mode (ask),
+// so the clear is a real held write. Harmless on a stub; removed in teardown.
 export const issue = 746;
 export const items = [746];
 export const clauses = [
@@ -69,7 +70,16 @@ export async function setup(ctx) {
   }
   const ready = {};
   for (const id of made) ready[id] = await ctx.agent(id).running(20000);
-  return { made, ready };
+  // A fresh agent follows its project's mode, so there is nothing to clear and
+  // agent_mode refuses before any held write exists. The person gives each
+  // stub its own strictest mode ("ask") first; clearing it would widen the
+  // agent, so the ask is a real held write the bell must decide.
+  const own = {};
+  for (const id of made) {
+    const r = ctx.cli(["agents", "permission", id, "ask"], { timeout: 15000 });
+    own[id] = r.code === 0 ? "ask" : `failed (${r.code}): ${`${r.out || ""} ${r.err || ""}`.replace(/\s+/g, " ").trim().slice(-160)}`;
+  }
+  return { made, ready, own };
 }
 
 /** One agent asks to clear its own mode; the call returns at its timeout. */
@@ -89,7 +99,12 @@ function ask(ctx, id) {
     ],
     { timeout: 15000 },
   );
-  return { project, code: r.code, err: (r.err || "").slice(-300) };
+  return {
+    project,
+    code: r.code,
+    err: (r.err || "").slice(-300),
+    out: (r.out || "").slice(-300),
+  };
 }
 
 export async function run(ctx, s) {
@@ -138,7 +153,7 @@ export async function run(ctx, s) {
     await page.keyboard.press("Escape");
     seen[which] = { rowMs, rid, status, state, stateMs, audit };
   }
-  return { ready: s.ready, asked, seen, errors };
+  return { ready: s.ready, own: s.own, asked, seen, errors };
 }
 
 function row(r, which, clause) {
@@ -158,7 +173,7 @@ function row(r, which, clause) {
     clause,
     ok,
     evidence: [`746-${which}`],
-    detail: `${FIXTURE}. ${IDS[which]} asked (cli ${r.asked[which].code}, project ${r.asked[which].project}); bell row ${v.rowMs === null ? "never showed" : `after ${v.rowMs} ms`}, request ${v.rid ?? "none"}; ${which} answered ${v.status}; state ${v.state ?? "?"}${v.stateMs !== null && v.stateMs !== undefined ? "" : " (not " + want + " in time)"}; audit ${line ? `"${line.detail}"` : "no approval-decide line"}; page errors ${r.errors.length ? r.errors.join(" | ") : "none"}`,
+    detail: `${FIXTURE}. ${IDS[which]} asked (running ${r.ready?.[IDS[which]] ?? "?"}, own mode ${r.own?.[IDS[which]] ?? "?"}, cli ${r.asked[which].code}, project ${r.asked[which].project}${r.asked[which].code ? `, said "${`${r.asked[which].out || ""} ${r.asked[which].err || ""}`.replace(/\s+/g, " ").trim().slice(-240)}"` : ""}); bell row ${v.rowMs === null ? "never showed" : `after ${v.rowMs} ms`}, request ${v.rid ?? "none"}; ${which} answered ${v.status}; state ${v.state ?? "?"}${v.stateMs !== null && v.stateMs !== undefined ? "" : " (not " + want + " in time)"}; audit ${line ? `"${line.detail}"` : "no approval-decide line"}; page errors ${r.errors.length ? r.errors.join(" | ") : "none"}`,
   };
 }
 
