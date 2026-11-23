@@ -502,7 +502,7 @@ export function bothSpellings(p: string): string[] {
 }
 
 /**
- * Issue 728: rules denying an agent's Read and Bash tools the files in
+ * Issue 728: rules denying an agent's Read, Edit and Bash tools the files in
  * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
  * naming the path in each shell spelling, and the readers by name. For the
  * edge's key folders (edgeKeyDirs), wherever the edge config puts them.
@@ -517,6 +517,7 @@ export function credentialDirRules(
   );
   return [
     ...abs.map((d) => `Read(/${d}/**)`),
+    ...abs.map((d) => `Edit(/${d}/**)`),
     ...targets.map((t) => `Bash(*${t})`),
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
   ];
