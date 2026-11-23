@@ -5305,11 +5305,35 @@
     el.appendChild(acts);
     document.body.appendChild(el);
     clearOfMarked(el);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      done = true;
-      if (el.remove) el.remove();
-    }, ms || 10000);
+    // Issue 52: it stays while the pointer or focus is on it, then runs
+    // out what was left, so an Undo is never pulled from under a hand.
+    var left = ms || 10000;
+    var since = Date.now();
+    var held = 0;
+    var go = function () {
+      clearTimeout(toastTimer);
+      since = Date.now();
+      toastTimer = setTimeout(function () {
+        done = true;
+        if (el.remove) el.remove();
+      }, left);
+    };
+    var hold = function () {
+      if (held++ === 0) {
+        clearTimeout(toastTimer);
+        left = Math.max(1000, left - (Date.now() - since));
+      }
+    };
+    var letGo = function () {
+      if (held > 0 && --held === 0 && !done) go();
+    };
+    if (el.addEventListener) {
+      el.addEventListener("mouseenter", hold);
+      el.addEventListener("mouseleave", letGo);
+      el.addEventListener("focusin", hold);
+      el.addEventListener("focusout", letGo);
+    }
+    go();
     return el;
   }
 
