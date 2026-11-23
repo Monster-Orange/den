@@ -6,13 +6,19 @@
  * stands for that program, as a TOML array of separate words (Codex runs
  * it directly, never through a shell).
  */
-import { describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it } from "@jest/globals";
 import {
   BUILTIN_CATALOG,
   validateCatalog,
 } from "../../../src/shared/agents/catalog.js";
 import { catalogRuntime } from "../../../src/shared/agents/catalog-runtime.js";
 import type { LaunchInput } from "../../../src/shared/agents/runtime.js";
+import {
+  listRuntimes,
+  resolveAgentsDeps,
+} from "../../../src/ui/cli/agent-ops.js";
+import { runtimeRowHtml } from "../../../src/ui/server/public/settings-registry.js";
+import { cleanupRigs, rig } from "./helpers/rig.js";
 
 const BIN = "/opt/tools/bin/codex";
 const codex = () => BUILTIN_CATALOG.find((e) => e.id === "codex")!;
@@ -142,5 +148,35 @@ describe("issue 785: Codex's notify is Den's own CLI, for that launch only", () 
       expect(() => validateCatalog([entry([...launch], resume)], "t")).toThrow(
         /\{report\}/,
       );
+  });
+});
+
+describe("issue 785: Settings says Den's notify replaces the person's own", () => {
+  afterEach(cleanupRigs);
+
+  it("the runtimes list marks the one whose notify Den sets (Codex only)", async () => {
+    const r = await rig();
+    const rows = await listRuntimes(resolveAgentsDeps(r.deps));
+    const of = (id: string) => rows.find((x) => x.id === id);
+    expect(of("codex")?.setsNotify).toBe(true);
+    for (const id of ["den-claude", "gemini", "grok", "generic"])
+      expect(of(id)?.setsNotify).toBeUndefined();
+  });
+
+  it("its row says so; another runtime's doesn't", () => {
+    const h = runtimeRowHtml(
+      { id: "codex", label: "Codex CLI", available: true, setsNotify: true },
+      "",
+    );
+    expect(h).toContain('data-sets-notify="true"');
+    expect(h).toContain(
+      "Den sets Codex CLI&#39;s notify for the agents it starts, in place of one in your own config, for those agents only.",
+    );
+    expect(
+      runtimeRowHtml(
+        { id: "gemini", label: "Gemini CLI", available: true },
+        "",
+      ),
+    ).not.toContain("data-sets-notify");
   });
 });

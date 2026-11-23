@@ -4781,9 +4781,34 @@ stopping` and exits 1. `--no-wait` returns once TERM is sent. The route
 with `{ ok, agent, wasRunning, stopped: true }` once the session has
 ended, or 202 with `stopped: false, stillStopping: true`.
 
-A runtime that can't resume (codex, gemini, grok), or an agent with no
-saved conversation id, shows Start fresh in Resume's place (⋯ has
-Remove), and says why in its tooltip. **Clear
+A runtime that can't resume (grok), or an agent with no conversation
+to resume, shows Start fresh in Resume's place (⋯ has Remove), and says
+why in its tooltip.
+
+**Codex and Gemini resume too.** Den builds the command itself from the
+runtime's own template and the binary it already launches; nothing an
+agent writes reaches it but one conversation id, held to a strict
+pattern (a letter or digit first, then letters, digits and `. _ : -`).
+
+- **Gemini**: Den chooses the id. It starts Gemini under it
+  (`--session-id <id>`) and resumes by it (`--resume <id>`). A session
+  that stopped before its first reply has nothing to resume: it starts
+  fresh under a new id.
+- **Codex**: the agent reports its thread. Den sets Codex's `notify` for
+  the agents it starts (`-c notify=[…]`, that launch only) to its own
+  `agents report-resume --notify-json`, which Codex runs after each turn.
+  It takes the place of a `notify` in your own Codex config, for Den's
+  agents only; Codex outside Den keeps yours. Den keeps a thread only
+  when Codex's own session record names it a main thread in the agent's
+  folder, so a sub-agent's thread is never resumed.
+- `agents report-resume <conversation> [--cwd <dir>] [--seq <n>]` sends a
+  report by hand, from inside an agent Den started: only the id, the
+  folder and a rising sequence, with the agent's own Den token, and only
+  to this Den.
+
+After a restart, an agent whose conversation can't resume starts fresh
+(from its newest handoff when one is on file), and one note in the bell
+says how many did. **Clear
 stopped**, beside + Start agent, removes every stopped agent in view. A
 running agent is never removed: stop it first. None of this asks for the
 admin password.

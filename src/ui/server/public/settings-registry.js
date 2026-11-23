@@ -5369,6 +5369,11 @@ export function runtimeRowHtml(r, scopeWs) {
       ? ` <button type="button" class="den-btn sm" data-clear-path="${id}">${escR(L("set.ui.rt.clear", "Clear"))}</button>`
       : "") +
     `</div>` +
+    // Issue 785: Den's notify takes the place of the person's own, for
+    // Den's agents only.
+    (r.setsNotify
+      ? `<div class="rt-note" data-sets-notify="true">${escR(L("set.ui.rt.setsNotify", "Den sets {name}'s notify for the agents it starts, in place of one in your own config, for those agents only.", { name: r.label || r.id }))}</div>`
+      : "") +
     `<form class="rt-f" data-path-form="${id}" hidden>` +
     `<label class="rt-fl" for="rt-in-${id}">${escR(scopeWs ? L("set.ui.rt.pathToIn", "Path to {name} for {ws}", { name: r.label || r.id, ws: scopeWs }) : L("set.ui.rt.pathToAll", "Path to {name} (every project)", { name: r.label || r.id }))}</label>` +
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +

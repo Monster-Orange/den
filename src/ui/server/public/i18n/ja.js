@@ -4024,6 +4024,8 @@
     "set.ui.rt.pathToAll": "{name} のパス (すべてのプロジェクト)",
     "set.ui.rt.save": "保存",
     "set.ui.rt.cancel": "キャンセル",
+    "set.ui.rt.setsNotify":
+      "Den が起動するエージェントでは、{name} の notify を Den が設定します。ご自身の設定の notify はそれらのエージェントでのみ置き換えられます。",
     "set.ui.rt.pathsFor": "パスの対象",
     "set.ui.rt.everyProject": "すべてのプロジェクト (user.yml)",
     "set.ui.rt.fixConfig":

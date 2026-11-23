@@ -738,6 +738,13 @@
         align-items: center;
         gap: 6px;
       }
+      /* Issue 785: what Den sets for the agents it starts. */
+      .rt-note {
+        grid-column: 1 / -1;
+        color: var(--muted);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
       .rt-f[hidden],
       .rt-err[hidden] {
         display: none;

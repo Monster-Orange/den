@@ -2961,6 +2961,11 @@ export interface RuntimeChoice {
    * coming"). Absent for a runtime that isn't from the catalog.
    */
   denTools?: boolean;
+  /**
+   * Issue 785: Den sets its notify for the agents it starts (a "{report}"
+   * in its launch), in place of one in the person's own config.
+   */
+  setsNotify?: true;
   available: boolean;
   /** Why it is unavailable. */
   why?: string;
@@ -3117,6 +3122,9 @@ export async function listRuntimes(
         ...(rt.label ? { label: rt.label } : {}),
         ...(rt.vendor ? { vendor: rt.vendor } : {}),
         ...(rt.catalog ? { denTools: rt.denTools === true } : {}),
+        ...(rt.catalog?.launch.argv.some((w) => w.includes("{report}"))
+          ? { setsNotify: true as const }
+          : {}),
         available: det.available,
         ...(det.available ? {} : { why: det.why ?? "unavailable" }),
         ...(version ? { version } : {}),

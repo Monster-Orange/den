@@ -4142,6 +4142,8 @@
     "set.ui.rt.pathToAll": "Ruta de {name} (todos los proyectos)",
     "set.ui.rt.save": "Guardar",
     "set.ui.rt.cancel": "Cancelar",
+    "set.ui.rt.setsNotify":
+      "Den define el notify de {name} para los agentes que inicia, en lugar del de tu propia configuración, solo para esos agentes.",
     "set.ui.rt.pathsFor": "Rutas para",
     "set.ui.rt.everyProject": "todos los proyectos (user.yml)",
     "set.ui.rt.fixConfig":

@@ -596,6 +596,8 @@
     "set.ui.rt.pathToAll": "Path to {name} (every project)",
     "set.ui.rt.save": "Save",
     "set.ui.rt.cancel": "Cancel",
+    "set.ui.rt.setsNotify":
+      "Den sets {name}'s notify for the agents it starts, in place of one in your own config, for those agents only.",
     "set.ui.rt.pathsFor": "Paths for",
     "set.ui.rt.everyProject": "every project (user.yml)",
     "set.ui.rt.fixConfig":
