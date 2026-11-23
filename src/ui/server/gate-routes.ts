@@ -108,7 +108,15 @@ export interface GateRouteDeps {
   runners?: () => RunnerTokens;
   /** Issue 621: how often a waiting ask looks again, ms (default 1000). */
   pollMs?: number;
+  /** Issue 1349: how long a route waits for the gate-slot lock (tests). */
+  lockWait?: { waitMs?: number; stepMs?: number };
 }
+
+/** Issue 1349: gateLocked with this route's wait. */
+const lockOf =
+  (d: Pick<GateRouteDeps, "lockWait">) =>
+  <T>(fn: () => T): Promise<T> =>
+    gateLocked(fn, d.lockWait);
 
 /** The largest body a gate route reads, bytes. */
 const BODY_MAX = 4096;
@@ -225,7 +233,7 @@ async function askAndWait(
 ): Promise<void> {
   let e: GateEntry | null;
   try {
-    e = await gateLocked(() =>
+    e = await lockOf(d)(() =>
       store.askRemote({
         kind: a.kind,
         who: `${d.title} · runner ${runner.name}`,
@@ -274,25 +282,25 @@ async function askAndWait(
     looks++;
     e =
       looks % LOOKS_PER_RENEW === 0
-        ? await gateLocked(() => store.renew(e!.id, runner.id))
+        ? await lockOf(d)(() => store.renew(e!.id, runner.id))
         : (store.peek(e.id) ??
-          (await gateLocked(() => store.renew(e!.id, runner.id))));
+          (await lockOf(d)(() => store.renew(e!.id, runner.id))));
   }
   if (!tokenLive(d, runner.id)) {
-    await gateLocked(() => store.takeBackToken(runner.id));
+    await lockOf(d)(() => store.takeBackToken(runner.id));
     if (!closed) sendJson(res, REVOKED, 401);
     return;
   }
   // A caller that hung up never hears the slot's id: give it back.
   if (closed) {
-    if (e) await gateLocked(() => store.releaseRemote(e!.id, runner.id));
+    if (e) await lockOf(d)(() => store.releaseRemote(e!.id, runner.id));
     return;
   }
   if (!e) return sendJson(res, NO_SLOT, 410);
   // A cheap look may be stale: renew under the lock before answering.
-  const now = await gateLocked(() => store.renew(e!.id, runner.id));
+  const now = await lockOf(d)(() => store.renew(e!.id, runner.id));
   if (!now) return sendJson(res, NO_SLOT, 410);
-  return sendJson(res, await gateLocked(() => standing(store, now)));
+  return sendJson(res, await lockOf(d)(() => standing(store, now)));
 }
 
 async function handleRunnerRoute(
@@ -467,11 +475,12 @@ async function handleRunnerRoute(
   if (!/^[a-z0-9-]{1,64}$/.test(id))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   if (pathname === "/api/gate-slots/renew") {
-    const e = await gateLocked(() => store.renew(id, runner.id));
+    const e = await lockOf(d)(() => store.renew(id, runner.id));
     if (!e) return sendJson(res, NO_SLOT, 404);
-    return sendJson(res, standing(store, e));
+    // Issue 1349: standing() reads the queue under the lock too.
+    return sendJson(res, await lockOf(d)(() => standing(store, e)));
   }
-  if (!(await gateLocked(() => store.releaseRemote(id, runner.id))))
+  if (!(await lockOf(d)(() => store.releaseRemote(id, runner.id))))
     return sendJson(res, NO_SLOT, 404);
   return sendJson(res, { ok: true, released: true });
 }
@@ -575,7 +584,7 @@ async function handleBoxes(
   if (pathname === "/api/gate-slots/boxes") {
     const c = checkBox(body.box);
     if (!c.ok) return sendJson(res, { ok: false, error: c.error }, 400);
-    await gateLocked(() => setTestBox(store, c.box, audit));
+    await lockOf(d)(() => setTestBox(store, c.box, audit));
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
   const name = typeof body.name === "string" ? body.name : "";
@@ -586,12 +595,12 @@ async function handleBoxes(
         { ok: false, error: "enabled is true or false" },
         400,
       );
-    if (!(await gateLocked(() => store.setBoxEnabled(name, body.enabled))))
+    if (!(await lockOf(d)(() => store.setBoxEnabled(name, body.enabled))))
       return sendJson(res, { ok: false, error: "no such test box" }, 404);
     audit(`test box ${name} turned ${body.enabled ? "on" : "off"}`);
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
-  if (!(await gateLocked(() => removeTestBox(store, name, audit))))
+  if (!(await lockOf(d)(() => removeTestBox(store, name, audit))))
     return sendJson(res, { ok: false, error: "no such test box" }, 404);
   return sendJson(res, { ok: true, boxes: store.boxes() });
 }
@@ -675,6 +684,32 @@ export async function handleGateRoutes(
   pathname: string,
   d: GateRouteDeps,
 ): Promise<void> {
+  try {
+    await gateRoute(req, res, pathname, d);
+  } catch (e) {
+    // Issue 1349: the gate-slot lock stayed held past the route's wait:
+    // busy, not broken, so a runner or the CLI tries again.
+    if (!(e instanceof GateLockBusy) || res.headersSent) throw e;
+    res.setHeader("Retry-After", "1");
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "gate_lock_busy",
+        error:
+          "The gate slots are busy (another run holds their lock). Try again.",
+      },
+      503,
+    );
+  }
+}
+
+async function gateRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: GateRouteDeps,
+): Promise<void> {
   // The runner token's routes (request-guard.ts RUNNER_ROUTES).
   if (
     pathname === "/api/gate-slots/ask" ||
@@ -696,7 +731,7 @@ export async function handleGateRoutes(
   if (pathname === "/api/gate-slots") {
     if (req.method !== "GET")
       return sendJson(res, { ok: false, error: "GET only" }, 405);
-    return sendJson(res, await gateLocked(() => gateView(d.store())));
+    return sendJson(res, await lockOf(d)(() => gateView(d.store())));
   }
   if (pathname !== "/api/gate-slots/end")
     return sendJson(res, { ok: false, error: "no such route" }, 404);
@@ -717,7 +752,7 @@ export async function handleGateRoutes(
   if (!/^[a-z0-9-]{1,64}$/.test(id))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   const by = `${d.title} · ${principalOf(req) ?? "a person in the browser"}`;
-  const row = await gateLocked(() => d.store().endEarly(id, by));
+  const row = await lockOf(d)(() => d.store().endEarly(id, by));
   if (!row) return sendJson(res, { ok: false, error: "no such slot" }, 404);
   // This install's own record says who did it, and points to the slot
   // log's entry (the machine's record of the slot).
@@ -731,7 +766,7 @@ export async function handleGateRoutes(
   );
   return sendJson(res, {
     ok: true,
-    slots: (await gateLocked(() => gateView(d.store()))).slots,
+    slots: (await lockOf(d)(() => gateView(d.store()))).slots,
   });
 }
 

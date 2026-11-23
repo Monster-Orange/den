@@ -156,3 +156,87 @@ describe("GET /api/gate-slots on the server's store (issue 1339)", () => {
     expect(r.ticks).toBeGreaterThanOrEqual(10);
   });
 });
+
+/**
+ * The runner routes on the server's store, with a runner principal. `busy`
+ * makes the named store calls say GateLockBusy (as if a gate run took the
+ * lock just then) the given number of times.
+ */
+async function runnerServer(
+  store: GateStore,
+  busy: Partial<Record<"list" | "renew", number>> = {},
+  lockWait?: { waitMs?: number; stepMs?: number },
+) {
+  const left = { ...busy };
+  const flaky = new Proxy(store, {
+    get(t, k, r) {
+      const v = Reflect.get(t, k, r) as unknown;
+      if ((k === "list" || k === "renew") && typeof v === "function")
+        return (...a: unknown[]) => {
+          if ((left[k] ?? 0) > 0) {
+            left[k]!--;
+            throw new GateLockBusy(path.join(t.dir, "lock"));
+          }
+          return (v as (...x: unknown[]) => unknown).apply(t, a);
+        };
+      return typeof v === "function" ? (v as Function).bind(t) : v;
+    },
+  });
+  const server = http.createServer((req, res) => {
+    setPrincipal(req, { kind: "gate-runner", id: "t1", name: "ci" } as never);
+    const p = new URL(req.url ?? "/", "http://localhost").pathname;
+    void handleGateRoutes(req, res, p, {
+      store: () => flaky,
+      title: "Acme",
+      audit: (() => ({}) as never) as never,
+      ...(lockWait ? { lockWait } : {}),
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return async (p: string, body: unknown) => {
+    const r = await fetch(base + p, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: r.status,
+      retryAfter: r.headers.get("retry-after"),
+      json: (await r.json()) as Record<string, unknown>,
+    };
+  };
+}
+
+const remoteSlot = (store: GateStore) =>
+  store.askRemote({
+    kind: "browser",
+    who: "Acme · runner ci",
+    label: "e2e",
+    estimateMin: 5,
+    runner: "ci",
+    tokenId: "t1",
+  });
+
+describe("the runner routes while the lock is busy (issue 1349)", () => {
+  it("renew: the lock taken again just after the renew still answers ok, with its standing", async () => {
+    const { store } = serverStore();
+    const e = remoteSlot(store);
+    // The renew gets the lock; the standing's read finds it busy once.
+    const call = await runnerServer(store, { list: 1 });
+    const r = await call("/api/gate-slots/renew", { id: e.id });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ ok: true, id: e.id, granted: true });
+  });
+
+  it("held past the route's wait: 503 with Retry-After, never a 500", async () => {
+    const { store } = serverStore();
+    const e = remoteSlot(store);
+    const call = await runnerServer(store, { renew: 1_000 }, { waitMs: 100 });
+    const r = await call("/api/gate-slots/renew", { id: e.id });
+    expect(r.status).toBe(503);
+    expect(r.retryAfter).toBe("1");
+    expect(r.json).toMatchObject({ ok: false, code: "gate_lock_busy" });
+  });
+});
