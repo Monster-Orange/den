@@ -159,6 +159,8 @@ describe("pre-push hook", () => {
         PATH: process.env.PATH ?? "",
         DEN_ROOT: ROOT,
         DEN_PREPUSH_FILES: "0",
+        // The fast static checks have their own test (fast-checks.test.ts).
+        DEN_PREPUSH_FAST: "0",
         ...env,
       },
     });

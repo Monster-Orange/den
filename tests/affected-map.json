@@ -2060,6 +2060,11 @@
       "why": "tests that read examples/"
     },
     {
+      "when": ["scripts/affected-tests.mjs"],
+      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "why": "tests that run scripts/affected-tests.mjs"
+    },
+    {
       "when": ["scripts/brittle-ratchet.mjs"],
       "run": [
         "tests/unit/scripts/kit-version.test.ts",
@@ -2083,6 +2088,11 @@
       "why": "tests that run scripts/ci-force-all.mjs"
     },
     {
+      "when": ["scripts/ci-ok.mjs"],
+      "run": ["tests/unit/test-infra/ci-ok.test.ts"],
+      "why": "tests that run scripts/ci-ok.mjs"
+    },
+    {
       "when": ["scripts/ci-pw-install.sh"],
       "run": ["tests/unit/test-infra/pw-install.test.ts"],
       "why": "tests that run scripts/ci-pw-install.sh"
@@ -2101,6 +2111,11 @@
       "when": ["scripts/docs-links.js"],
       "run": ["tests/unit/scripts/docs-links.test.ts"],
       "why": "tests that run scripts/docs-links.js"
+    },
+    {
+      "when": ["scripts/fast-checks.mjs"],
+      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "why": "tests that run scripts/fast-checks.mjs"
     },
     {
       "when": ["scripts/flake-evidence.mjs"],
@@ -2124,14 +2139,23 @@
     },
     {
       "when": ["scripts/org-name-commits.mjs"],
-      "run": ["tests/unit/scripts/org-name-commits.test.ts"],
+      "run": [
+        "tests/unit/scripts/org-name-commits.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
+      ],
       "why": "tests that run scripts/org-name-commits.mjs"
+    },
+    {
+      "when": ["scripts/org-name-gate.mjs"],
+      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "why": "tests that run scripts/org-name-gate.mjs"
     },
     {
       "when": ["scripts/org-names.js"],
       "run": [
         "tests/unit/scripts/doc-shots-guard.browser.test.ts",
-        "tests/unit/scripts/org-names.test.ts"
+        "tests/unit/scripts/org-names.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
       ],
       "why": "tests that run scripts/org-names.js"
     },
@@ -2170,6 +2194,7 @@
     {
       "when": ["scripts/shard-plan.cjs"],
       "run": [
+        "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/quarantine.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
       ],
@@ -2189,6 +2214,7 @@
       "when": ["scripts/words-gate.mjs"],
       "run": [
         "tests/unit/scripts/words-gate-vendored.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
       ],
       "why": "tests that run scripts/words-gate.mjs"
