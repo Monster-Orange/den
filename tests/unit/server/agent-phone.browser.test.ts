@@ -651,7 +651,14 @@ describe.each(ENGINES)("issue 302: two screens on a phone, in %s", (engine) => {
       ).toBe(counted);
       for (const sel of ["#ag-url", "#agl-hint"])
         expect([sel, await shown(p, sel)]).toEqual([sel, null]);
-      expect(await shown(p, '#agl [data-act="reorder"]')).not.toBeNull();
+      // Reorder is a visible 44px button here, and the grip a 44px-wide
+      // column (the mock's frame 1).
+      const reorder = (await shown(p, '#agl [data-act="reorder"]'))!;
+      expect(Math.round(reorder.h)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(reorder.w)).toBeGreaterThanOrEqual(44);
+      const grip = (await shown(p, "#agl [data-grip]"))!;
+      expect(Math.round(grip.w)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(grip.h)).toBeGreaterThanOrEqual(44);
       expect(await shown(p, PANE("scout"))).toBeNull();
       expect(await p.locator("#den-dock").isVisible()).toBe(true);
       const after = new URL(p.url());

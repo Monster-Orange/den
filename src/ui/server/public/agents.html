@@ -1482,6 +1482,20 @@
         #agl-hint {
           display: none;
         }
+        /* The list is the whole screen here, with no panes below it to
+           make room for: Reorder (the project's and the stopped
+           section's) is a visible 44px button, and the grip a 44px-wide
+           column at the row's left; its glyph stays small. */
+        #agl .agord-t {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        #agl .agr:has(> .agrip) {
+          padding-left: 44px;
+        }
+        #agl .agr .agrip {
+          width: 44px;
+        }
         /* Terminal keys: two lines of four, nothing scrolled sideways. */
         .pane .agkeys {
           display: grid;

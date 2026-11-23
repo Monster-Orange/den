@@ -262,6 +262,13 @@ async function touchDrag(p: Page, from: string, to: string) {
   );
 }
 
+/** DEN_PHONE_SHOTS=<dir>: a phone frame's screenshot, Chromium only (for a design check). */
+async function phoneShot(p: Page, engine: string, name: string) {
+  const dir = process.env.DEN_PHONE_SHOTS;
+  if (!dir || engine !== "chromium") return;
+  fs.mkdirSync(dir, { recursive: true });
+  await p.screenshot({ path: path.join(dir, `${name}.png`) });
+}
 describe.each(ENGINES)(
   "Issue 96 in %s: a project's agents in your order",
   (engine) => {
@@ -361,6 +368,7 @@ describe.each(ENGINES)(
         .click();
       const up = p.locator('#agl .agord[data-agent="cy"] [data-act="ord-up"]');
       await up.waitFor();
+      await phoneShot(p, engine, "5-reorder-375");
       const box = (await up.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
@@ -412,6 +420,7 @@ describe.each(ENGINES)(
         `${stopped} .agord[data-agent="eve"] [data-act="ord-down"]`,
       );
       await up.waitFor();
+      await phoneShot(p, engine, "6-reorder-stopped-375");
       for (const b of [up, down]) {
         const box = (await b.boundingBox())!;
         expect(box.width).toBeGreaterThanOrEqual(44);
