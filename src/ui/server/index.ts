@@ -1459,6 +1459,7 @@ import {
 } from "../../shared/open-url.js";
 
 import { product } from "../../shared/product.js";
+import { pinBellMsg, pinRefusalKey } from "./pin-commit.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
@@ -5043,9 +5044,15 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
         step.did === "pr" ||
         step.did === "clean" ||
         step.did === "done";
-      return ok
-        ? { ok: true, step }
-        : { ok: false, error: JSON.stringify(step) };
+      if (ok) return { ok: true, step };
+      // Issue 577: the step stays the error (agents read it); the page
+      // shows why in its own language.
+      const why = pinRefusalKey(step);
+      return {
+        ok: false,
+        error: JSON.stringify(step),
+        ...(why ? { errorKey: why } : {}),
+      };
     },
   };
 }
@@ -5056,7 +5063,6 @@ function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
     const store = notificationDeps().store;
     const subject = "record:den-pin";
     const t = product().title;
-    const v = step.version;
     const add = (
       text: string,
       key: string,
@@ -5069,62 +5075,13 @@ function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
         subject,
         scope: "workspace/den-server",
         text,
-        msg: { key, vars: { v, ...vars } },
+        msg: { key, vars },
         link,
       });
     };
-    switch (step.did) {
-      case "pushed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
-          "bell.m.pinPushed",
-          { sha },
-        );
-        return;
-      }
-      case "push_failed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
-          "bell.m.pinPushFailed",
-          { sha, why: step.why },
-        );
-        return;
-      }
-      case "commit_failed":
-        add(
-          `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
-          "bell.m.pinCommitFailed",
-          { why: step.why },
-        );
-        return;
-      case "pr":
-        add(
-          `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
-          "bell.m.pinPrOpened",
-          { branch: step.branch },
-          step.url,
-        );
-        return;
-      case "branch_pushed":
-        add(
-          `${t} ${v}: the pin branch ${step.branch} is pushed; open a pull request for it (${step.why})`,
-          "bell.m.pinBranchPushed",
-          { branch: step.branch, why: step.why },
-          step.link ?? "/server-agent",
-        );
-        return;
-      case "held":
-        add(
-          `${t} ${v}: committing its pin waits for your Allow`,
-          "bell.m.pinHeld",
-          {},
-        );
-        return;
-      default:
-        return;
-    }
+    // Issue 577: the note's English, key and vars, from pin-commit.ts.
+    const m = pinBellMsg(step, t);
+    if (m) add(m.text, m.key, m.vars, m.link ?? undefined);
   } catch {
     /* the bell is best effort */
   }

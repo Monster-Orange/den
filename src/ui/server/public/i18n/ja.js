@@ -1901,36 +1901,60 @@
     "ag.bring.min": "{n} 分前",
     "ag.bring.h": "{n} 時間前",
     // Issue 577: held writes' refusals.
-    "ap.err.giveService": "service を指定してください: <repo> または <repo>/<service>",
-    "ap.err.projectName": "プロジェクト「{project}」には英字か数字が 1 文字以上必要です",
+    "ap.err.giveService":
+      "service を指定してください: <repo> または <repo>/<service>",
+    "ap.err.projectName":
+      "プロジェクト「{project}」には英字か数字が 1 文字以上必要です",
     "ap.err.noProject": "プロジェクト「{project}」はありません",
     "ap.err.giveReason": "reason を指定してください (1 行で理由を)",
     "ap.err.reasonLong": "reason は {max} 文字までです",
     "ap.err.cantRestart": "この __DEN_TITLE__ は自分で再起動できません",
     "ap.err.versionForm": "version: latest、または 0.4.44 のような番号",
     "ap.err.cantUpdate": "この __DEN_TITLE__ は自分で更新できません",
-    "ap.err.cantStartAgents": "この __DEN_TITLE__ はここでエージェントを起動できません",
-    "ap.err.cantPersonas": "この __DEN_TITLE__ はここでペルソナを変更できません",
-    "ap.err.cantHubLink": "この __DEN_TITLE__ はここでプロジェクトを Hub にリンクできません",
-    "ap.err.cantClone": "この __DEN_TITLE__ はここでリポジトリをクローンできません",
-    "ap.err.reposShared": "リポジトリのフォルダーはすべてのプロジェクトで共有されています。そこへのクローンを頼めるのは __DEN_TITLE__ 自身のエージェントか人で、{agent} ではありません",
-    "ap.err.reposSharedAgent": "リポジトリのフォルダーはすべてのプロジェクトで共有されています。そこへのクローンを頼めるのは __DEN_TITLE__ 自身のエージェントか人で、プロジェクトのエージェントではありません",
+    "ap.err.cantStartAgents":
+      "この __DEN_TITLE__ はここでエージェントを起動できません",
+    "ap.err.cantPersonas":
+      "この __DEN_TITLE__ はここでペルソナを変更できません",
+    "ap.err.cantHubLink":
+      "この __DEN_TITLE__ はここでプロジェクトを Hub にリンクできません",
+    "ap.err.cantClone":
+      "この __DEN_TITLE__ はここでリポジトリをクローンできません",
+    "ap.err.reposShared":
+      "リポジトリのフォルダーはすべてのプロジェクトで共有されています。そこへのクローンを頼めるのは __DEN_TITLE__ 自身のエージェントか人で、{agent} ではありません",
+    "ap.err.reposSharedAgent":
+      "リポジトリのフォルダーはすべてのプロジェクトで共有されています。そこへのクローンを頼めるのは __DEN_TITLE__ 自身のエージェントか人で、プロジェクトのエージェントではありません",
     "ap.err.cantImport": "この __DEN_TITLE__ はここで会話を取り込めません",
     "ap.err.nameProject": "プロジェクトを指定してください",
-    "ap.err.importOwn": "プロジェクトのエージェントが会話を取り込めるのは自分のプロジェクト ({own}) だけで、{project} ではありません",
+    "ap.err.importOwn":
+      "プロジェクトのエージェントが会話を取り込めるのは自分のプロジェクト ({own}) だけで、{project} ではありません",
     "ap.err.sessionId": "`session` は会話の ID にしてください",
     "ap.err.namePersona": "実行に使うペルソナを指定してください",
     "ap.err.runtimeId": "runtime はランタイムの ID にしてください",
-    "ap.err.cantPolicy": "この __DEN_TITLE__ はここで承認ポリシーを変更できません",
-    "ap.err.policyOwn": "プロジェクトのエージェントが尋ねられるのは自分のプロジェクト ({own}) のことだけで、{project} ではありません",
-    "ap.err.policyInstall": "インストールのポリシーはすべてのプロジェクトのものです。変更を頼めるのは __DEN_TITLE__ 自身のエージェントか人です。自分のプロジェクトのポリシーを変えるには、そのプロジェクトを指定してください",
-    "ap.err.policyForm": "approvals: { policy, writes, watch, critical }、または null で解除",
-    "ap.err.cantClosePr": "この __DEN_TITLE__ はここでプルリクエストを閉じられません",
-    "ap.err.closePrOwn": "プロジェクトのエージェントが閉じられるのは自分のプロジェクト ({own}) のプルリクエストだけで、{project} のものではありません",
+    "ap.err.cantPolicy":
+      "この __DEN_TITLE__ はここで承認ポリシーを変更できません",
+    "ap.err.policyOwn":
+      "プロジェクトのエージェントが尋ねられるのは自分のプロジェクト ({own}) のことだけで、{project} ではありません",
+    "ap.err.policyInstall":
+      "インストールのポリシーはすべてのプロジェクトのものです。変更を頼めるのは __DEN_TITLE__ 自身のエージェントか人です。自分のプロジェクトのポリシーを変えるには、そのプロジェクトを指定してください",
+    "ap.err.policyForm":
+      "approvals: { policy, writes, watch, critical }、または null で解除",
+    "ap.err.cantClosePr":
+      "この __DEN_TITLE__ はここでプルリクエストを閉じられません",
+    "ap.err.closePrOwn":
+      "プロジェクトのエージェントが閉じられるのは自分のプロジェクト ({own}) のプルリクエストだけで、{project} のものではありません",
     "ap.err.repoForm": "repo: GitHub のリポジトリ (owner/name)",
     "ap.err.prNumber": "pr: プルリクエストの番号",
-    "ap.err.commentForm": "comment: 閉じる理由。プルリクエストに投稿されます (Hub のメモ: 古い、またはどれに置き換えられたか)",
+    "ap.err.commentForm":
+      "comment: 閉じる理由。プルリクエストに投稿されます (Hub のメモ: 古い、またはどれに置き換えられたか)",
     "ap.err.cantReport": "この __DEN_TITLE__ はここでレポートを送れません",
+    "ap.err.pinNotCheckout": "{root} は git のチェックアウトではありません",
+    "ap.err.pinDetached":
+      "ディストリビューションのチェックアウトがどのブランチにもありません (detached HEAD)",
+    "ap.err.pinPush":
+      "ピンはコミット済みですが、{remote} {branch} への git push に失敗しました: {out}",
+    "ap.err.pinCommit": "ピンをコミットできませんでした: {why}",
+    "ap.err.pinBranch":
+      "ピンのブランチ {branch} はプッシュ済みですが、そのプルリクエストを開けませんでした: {why}",
     "ap.title": "{agent}が次のことを求めています:",
     "ap.agent": "エージェント {name} ",
     "ap.noAgent": "このマシン上の何か（エージェントの識別なし）",
@@ -2052,15 +2076,20 @@
     "ap.det.service_try.up":
       "サービスのローカルの「up」を、サービスのページの「開始」と同じように実行します。",
     // Issue 577: repo add's Review lines.
-    "ap.det.repo_add.folder": "フォルダー: {folder} (あなたのチェックアウト。Den がリポジトリを変えることはありません)。",
+    "ap.det.repo_add.folder":
+      "フォルダー: {folder} (あなたのチェックアウト。Den がリポジトリを変えることはありません)。",
     "ap.det.repo_add.project": "プロジェクト: {project}。",
     "ap.det.repo_add.projectNew": "プロジェクト: {project} (新規)。",
-    "ap.det.repo_add.manifestRepo": "マニフェスト: リポジトリ自身のもの ({file})。",
-    "ap.det.repo_add.manifestSide": "マニフェスト: Den がこのディストリビューションの manifests/ フォルダーに書く別ファイル ({file}):",
-    "ap.det.repo_add.manifestSideNew": "マニフェスト: Den がこのディストリビューションの manifests/ フォルダーに書く別ファイル:",
+    "ap.det.repo_add.manifestRepo":
+      "マニフェスト: リポジトリ自身のもの ({file})。",
+    "ap.det.repo_add.manifestSide":
+      "マニフェスト: Den がこのディストリビューションの manifests/ フォルダーに書く別ファイル ({file}):",
+    "ap.det.repo_add.manifestSideNew":
+      "マニフェスト: Den がこのディストリビューションの manifests/ フォルダーに書く別ファイル:",
     "ap.det.repo_add.yaml": "  {line}",
     "ap.det.repo_add.services": "サービス: {services}。",
-    "ap.det.repo_add.noServices": "サービス: なし。何も実行しません。何も起動もチェックもされず、エージェントはそこで作業できます。",
+    "ap.det.repo_add.noServices":
+      "サービス: なし。何も実行しません。何も起動もチェックもされず、エージェントはそこで作業できます。",
     "ap.det.service_try.reports":
       "Den は終了コードと出力の最後の数行を伝えます。",
     "ap.det.den_restart.restart":
@@ -2672,6 +2701,8 @@
       "__DEN_TITLE__ {v} はここで動いていますが、新しい固定バージョンがディストリビューションのフォルダーにコミットされていません",
     "bell.m.pinPushed":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはコミット ({sha}) され、プッシュされました",
+    "bell.m.pinPushFailedTo":
+      "__DEN_TITLE__ {v}: ピンはコミット済み ({sha}) ですが、{remote} {branch} へのプッシュに失敗しました: {out}。__DEN_TITLE__ は次の更新チェックで再試行します",
     "bell.m.pinPushFailed":
       "__DEN_TITLE__ {v}: 固定バージョンはコミット ({sha}) されましたが、プッシュに失敗しました: {why}。__DEN_TITLE__ は次の更新チェックで再試行します",
     "bell.m.pinCommitFailed":

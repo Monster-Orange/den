@@ -29,6 +29,8 @@
  *      routine). When it says ask, Den holds the commit for the person's
  *      Allow, once per version, and commits nothing until then.
  */
+import { refusal, type RefusalKey } from "../../shared/held-refusal-words.js";
+import type { DetailKey } from "../../shared/review-lines.js";
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -75,6 +77,8 @@ export type PinStep =
       version: string;
       sha: string;
       why: string;
+      /** Issue 577: where it pushed, and git's own output, apart. */
+      to?: { remote: string; branch: string; out: string };
       first: boolean;
     }
   | { did: "commit_failed"; version: string; why: string; first: boolean }
@@ -98,7 +102,13 @@ export type PinStep =
   /** Done before, at an earlier check: nothing to do. */
   | { did: "done"; version: string; how?: PinMode }
   /** Not a git checkout, or no branch to push: nothing Den can do. */
-  | { did: "skipped"; version: string; why: string };
+  | {
+      did: "skipped";
+      version: string;
+      why: string;
+      /** Issue 577: the reason's key, for the page's language. */
+      whyKey?: DetailKey;
+    };
 
 export const pinRecordFile = (stateDir: string): string =>
   path.join(stateDir, "server-agent", "update", "pin.json");
@@ -222,18 +232,9 @@ export async function commitPin(
   try {
     const top = await d.git(["rev-parse", "--show-toplevel"]);
     if (top.code !== 0)
-      return {
-        did: "skipped",
-        version,
-        why: `${d.root} is not a git checkout`,
-      };
+      return skipped(version, "ap.err.pinNotCheckout", { root: d.root });
     const up = await upstream(d.git);
-    if (!up)
-      return {
-        did: "skipped",
-        version,
-        why: "the distribution's checkout is on no branch (detached HEAD)",
-      };
+    if (!up) return skipped(version, "ap.err.pinDetached");
 
     // A commit an earlier pass made (its push or its pull request failed).
     let sha =
@@ -348,7 +349,7 @@ export async function commitPin(
     return pushFailed(
       version,
       sha,
-      `git push to ${up.remote} ${up.branch}: ${tail(p.out)}`,
+      { remote: up.remote, branch: up.branch, out: tail(p.out) },
       same,
       d,
       at,
@@ -370,13 +371,14 @@ export async function commitPin(
 function pushFailed(
   version: string,
   sha: string,
-  why: string,
+  to: { remote: string; branch: string; out: string },
   same: PinRecord | null,
   d: PinCommitDeps,
   at: () => string,
   branch?: string,
 ): PinStep {
   const first = !(same?.state === "push_failed" && same.noted);
+  const why = `git push to ${to.remote} ${to.branch}: ${to.out}`;
   writePinRecord(d.stateDir, {
     version,
     state: "push_failed",
@@ -386,7 +388,7 @@ function pushFailed(
     at: at(),
     ...(branch ? { branch } : {}),
   });
-  return { did: "push_failed", version, sha, why, first };
+  return { did: "push_failed", version, sha, why, to, first };
 }
 
 /** pr: push the pin's branch (unless pushed), then gh opens the PR. */
@@ -410,7 +412,7 @@ async function openPr(
       return pushFailed(
         version,
         sha,
-        `git push to ${up.remote} ${branch}: ${tail(p.out)}`,
+        { remote: up.remote, branch, out: tail(p.out) },
         same,
         d,
         at,
@@ -538,4 +540,107 @@ export function pinGit(
       extra,
     );
   };
+}
+
+/** Issue 577: a skipped step, its English and its key from one catalog. */
+function skipped(
+  version: string,
+  key: RefusalKey,
+  vars?: Record<string, string>,
+): PinStep {
+  const r = refusal(key, vars);
+  return { did: "skipped", version, why: r.error, whyKey: r.errorKey };
+}
+
+/**
+ * Issue 577: why an Allowed pin commit didn't finish, as a key for the
+ * page's language (null: it finished, or has no reason). Git's and gh's
+ * own output stays as they said it, in a var.
+ */
+export function pinRefusalKey(step: PinStep): DetailKey | null {
+  const key = (k: RefusalKey, vars: Record<string, string>) =>
+    refusal(k, vars).errorKey;
+  switch (step.did) {
+    case "skipped":
+      return step.whyKey ?? null;
+    case "push_failed":
+      return step.to
+        ? key("ap.err.pinPush", { ...step.to })
+        : key("ap.err.pinCommit", { why: step.why });
+    case "commit_failed":
+      return key("ap.err.pinCommit", { why: step.why });
+    case "branch_pushed":
+      return key("ap.err.pinBranch", { branch: step.branch, why: step.why });
+    default:
+      return null;
+  }
+}
+
+/**
+ * #176: the bell's note for a pin step: its English, its key and vars
+ * (issue 577: Den's words never baked into a var), and where it links.
+ * Null: the step has no note.
+ */
+export function pinBellMsg(
+  step: PinStep,
+  t: string,
+): {
+  text: string;
+  key: string;
+  vars: Record<string, string>;
+  link?: string | null;
+} | null {
+  const v = step.version;
+  switch (step.did) {
+    case "pushed": {
+      const sha = step.sha.slice(0, 12);
+      return {
+        text: `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
+        key: "bell.m.pinPushed",
+        vars: { v, sha },
+      };
+    }
+    case "push_failed": {
+      const sha = step.sha.slice(0, 12);
+      if (step.to)
+        return {
+          text: `${t} ${v}: its pin is committed (${sha}) but the push to ${step.to.remote} ${step.to.branch} failed: ${step.to.out}. ${t} tries again at the next update check`,
+          key: "bell.m.pinPushFailedTo",
+          vars: { v, sha, ...step.to },
+        };
+      return {
+        text: `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
+        key: "bell.m.pinPushFailed",
+        vars: { v, sha, why: step.why },
+      };
+    }
+    case "commit_failed":
+      return {
+        text: `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
+        key: "bell.m.pinCommitFailed",
+        vars: { v, why: step.why },
+      };
+    case "pr":
+      return {
+        text: `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
+        key: "bell.m.pinPrOpened",
+        vars: { v, branch: step.branch },
+        link: step.url,
+      };
+    case "branch_pushed":
+      return {
+        text: `${t} ${v}: the pin branch ${step.branch} is pushed; open a pull request for it (${step.why})`,
+        key: "bell.m.pinBranchPushed",
+        vars: { v, branch: step.branch, why: step.why },
+        link: step.link ?? "/server-agent",
+      };
+    case "held":
+      return {
+        text: `${t} ${v}: committing its pin waits for your Allow`,
+        key: "bell.m.pinHeld",
+        vars: { v },
+      };
+    default:
+      return null;
+  }
 }

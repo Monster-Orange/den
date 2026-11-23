@@ -90,7 +90,12 @@ describe("held actions activate the workspace they need", () => {
       service: "shop",
       workspace: "nope",
     });
-    expect(c).toEqual({ ok: false, error: 'there is no project "nope"' });
+    // Issue 577: with its key, for the page's language.
+    expect(c).toEqual({
+      ok: false,
+      error: 'there is no project "nope"',
+      errorKey: { key: "ap.err.noProject", vars: { project: "nope" } },
+    });
   });
 });
 
@@ -100,6 +105,7 @@ describe("SRV-P1: agent_create", () => {
     expect(await heldActions(f.deps).agent_create.check({})).toEqual({
       ok: false,
       error: "this Den can't start agents here",
+      errorKey: { key: "ap.err.cantStartAgents" },
     });
     const ran: unknown[] = [];
     const a = heldActions({
@@ -191,6 +197,7 @@ describe("SRV-P2: persona_create and persona_update", () => {
       expect(await heldActions(f.deps)[k].check({})).toEqual({
         ok: false,
         error: "this Den can't change personas here",
+        errorKey: { key: "ap.err.cantPersonas" },
       });
     const wrote: unknown[] = [];
     const ok = {

@@ -2875,8 +2875,9 @@
     "ag.bring.h": "{n} h ago",
     // Issue 577: held writes' refusals.
     "ap.err.giveService": "give service: <repo> or <repo>/<service>",
-    "ap.err.projectName": "project \"{project}\" needs at least one letter or digit",
-    "ap.err.noProject": "there is no project \"{project}\"",
+    "ap.err.projectName":
+      'project "{project}" needs at least one letter or digit',
+    "ap.err.noProject": 'there is no project "{project}"',
     "ap.err.giveReason": "give reason (one line: why)",
     "ap.err.reasonLong": "reason is at most {max} characters",
     "ap.err.cantRestart": "this __DEN_TITLE__ can't restart itself",
@@ -2886,24 +2887,41 @@
     "ap.err.cantPersonas": "this __DEN_TITLE__ can't change personas here",
     "ap.err.cantHubLink": "this __DEN_TITLE__ can't link projects to Hub here",
     "ap.err.cantClone": "this __DEN_TITLE__ can't clone repos here",
-    "ap.err.reposShared": "the repos folder is shared by every project: __DEN_TITLE__'s own agent or a person asks to clone into it, not {agent}",
-    "ap.err.reposSharedAgent": "the repos folder is shared by every project: __DEN_TITLE__'s own agent or a person asks to clone into it, not a project's agent",
+    "ap.err.reposShared":
+      "the repos folder is shared by every project: __DEN_TITLE__'s own agent or a person asks to clone into it, not {agent}",
+    "ap.err.reposSharedAgent":
+      "the repos folder is shared by every project: __DEN_TITLE__'s own agent or a person asks to clone into it, not a project's agent",
     "ap.err.cantImport": "this __DEN_TITLE__ can't bring in conversations here",
     "ap.err.nameProject": "name the project",
-    "ap.err.importOwn": "a project's agent brings conversations into its own project ({own}), not {project}",
+    "ap.err.importOwn":
+      "a project's agent brings conversations into its own project ({own}), not {project}",
     "ap.err.sessionId": "`session` must be a conversation id",
     "ap.err.namePersona": "name the persona to run it as",
     "ap.err.runtimeId": "runtime must be a runtime id",
-    "ap.err.cantPolicy": "this __DEN_TITLE__ can't change the approval policy here",
-    "ap.err.policyOwn": "a project's agent asks about its own project ({own}), not {project}",
-    "ap.err.policyInstall": "the install's policy is every project's: __DEN_TITLE__'s own agent or a person asks to change it; name your project to change its own",
-    "ap.err.policyForm": "approvals: { policy, writes, watch, critical }, or null to clear it",
+    "ap.err.cantPolicy":
+      "this __DEN_TITLE__ can't change the approval policy here",
+    "ap.err.policyOwn":
+      "a project's agent asks about its own project ({own}), not {project}",
+    "ap.err.policyInstall":
+      "the install's policy is every project's: __DEN_TITLE__'s own agent or a person asks to change it; name your project to change its own",
+    "ap.err.policyForm":
+      "approvals: { policy, writes, watch, critical }, or null to clear it",
     "ap.err.cantClosePr": "this __DEN_TITLE__ can't close pull requests here",
-    "ap.err.closePrOwn": "a project's agent closes pull requests for its own project ({own}), not {project}",
+    "ap.err.closePrOwn":
+      "a project's agent closes pull requests for its own project ({own}), not {project}",
     "ap.err.repoForm": "repo: a GitHub repo, owner/name",
     "ap.err.prNumber": "pr: the pull request number",
-    "ap.err.commentForm": "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
+    "ap.err.commentForm":
+      "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
     "ap.err.cantReport": "this __DEN_TITLE__ can't file reports here",
+    "ap.err.pinNotCheckout": "{root} is not a git checkout",
+    "ap.err.pinDetached":
+      "the distribution's checkout is on no branch (detached HEAD)",
+    "ap.err.pinPush":
+      "the pin is committed, but git push to {remote} {branch} failed: {out}",
+    "ap.err.pinCommit": "couldn't commit the pin: {why}",
+    "ap.err.pinBranch":
+      "the pin branch {branch} is pushed, but its pull request couldn't be opened: {why}",
     "ap.title": "{agent} wants to:",
     "ap.agent": "The {name} agent",
     "ap.noAgent": "Something on this machine (no agent identity)",
@@ -3019,15 +3037,19 @@
     "ap.det.service_try.up":
       "Runs the service's local \"up\", as the Services page's Start does.",
     // Issue 577: repo add's Review lines.
-    "ap.det.repo_add.folder": "Folder: {folder} (your checkout; Den never changes the repo).",
+    "ap.det.repo_add.folder":
+      "Folder: {folder} (your checkout; Den never changes the repo).",
     "ap.det.repo_add.project": "Project: {project}.",
     "ap.det.repo_add.projectNew": "Project: {project} (new).",
     "ap.det.repo_add.manifestRepo": "Manifest: the repo's own ({file}).",
-    "ap.det.repo_add.manifestSide": "Manifest: a side-car Den writes in this distribution's manifests/ folder ({file}):",
-    "ap.det.repo_add.manifestSideNew": "Manifest: a side-car Den writes in this distribution's manifests/ folder:",
+    "ap.det.repo_add.manifestSide":
+      "Manifest: a side-car Den writes in this distribution's manifests/ folder ({file}):",
+    "ap.det.repo_add.manifestSideNew":
+      "Manifest: a side-car Den writes in this distribution's manifests/ folder:",
     "ap.det.repo_add.yaml": "  {line}",
     "ap.det.repo_add.services": "Services: {services}.",
-    "ap.det.repo_add.noServices": "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
+    "ap.det.repo_add.noServices":
+      "Services: none. It runs nothing: nothing starts or is checked; agents can work in it.",
     "ap.det.service_try.reports":
       "Den reports the exit code and the last lines of its output.",
     "ap.det.den_restart.restart":
@@ -3658,6 +3680,8 @@
       "__DEN_TITLE__ {v} runs here, but its new pin isn't committed in the distribution's folder",
     "bell.m.pinPushed":
       "__DEN_TITLE__ updated to {v}: its pin is committed ({sha}) and pushed",
+    "bell.m.pinPushFailedTo":
+      "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push to {remote} {branch} failed: {out}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinPushFailed":
       "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinCommitFailed":

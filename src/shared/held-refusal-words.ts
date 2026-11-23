@@ -52,6 +52,15 @@ export const REFUSAL_WORDS: Record<string, string> = {
   "ap.err.commentForm":
     "comment: why it closes, posted on the pull request (the Hub note: stale, or superseded by which)",
   "ap.err.cantReport": "this __DEN_TITLE__ can't file reports here",
+  // The pin commit (pin-commit.ts): Den's words; git's output is a var.
+  "ap.err.pinNotCheckout": "{root} is not a git checkout",
+  "ap.err.pinDetached":
+    "the distribution's checkout is on no branch (detached HEAD)",
+  "ap.err.pinPush":
+    "the pin is committed, but git push to {remote} {branch} failed: {out}",
+  "ap.err.pinCommit": "couldn't commit the pin: {why}",
+  "ap.err.pinBranch":
+    "the pin branch {branch} is pushed, but its pull request couldn't be opened: {why}",
 };
 
 export type RefusalKey = keyof typeof REFUSAL_WORDS & string;
