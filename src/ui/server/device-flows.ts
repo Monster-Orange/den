@@ -312,6 +312,18 @@ export class DeviceFlows {
   }
 
   /**
+   * The identity of a finished, approved flow, without spending it (the
+   * sign-in is made first, then claim: issue 1299).
+   */
+  identity(id: string, purpose: FlowPurpose): GithubIdentity | null {
+    this.sweep();
+    const f = this.flows.get(id);
+    if (!f || f.purpose !== purpose || f.state !== "ok" || !f.identity)
+      return null;
+    return f.identity;
+  }
+
+  /**
    * The identity of a finished, approved flow, once: the flow is forgotten,
    * so a second claim gets null (a sign-in makes one session).
    */
