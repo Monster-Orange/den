@@ -24,7 +24,10 @@ import {
 import { agentRefusal } from "../../../src/ui/server/request-guard.js";
 import { routeClass } from "../../../src/ui/server/route-classes.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
-import type { PersonServer } from "../../../src/ui/cli/person-server.js";
+import type {
+  PersonServer,
+  ServerAnswer,
+} from "../../../src/ui/cli/person-server.js";
 import { cleanupRigs, rig, type Rig } from "../agents/helpers/rig.js";
 import { seedScout } from "../agents/helpers/seed-helpers.js";
 
@@ -138,7 +141,7 @@ describe("issue 1182: POST .../agents/:id/folder", () => {
 
 describe("issue 1182: the CLI's agents folder", () => {
   type Call = { method: string; path: string; body: unknown };
-  function fake(answer: { status: number; json: unknown } | null) {
+  function fake(answer: ServerAnswer | null) {
     const calls: Call[] = [];
     const server: PersonServer = async (method, p, body) => {
       calls.push({ method, path: p, body });

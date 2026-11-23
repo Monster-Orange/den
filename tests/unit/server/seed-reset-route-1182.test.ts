@@ -19,7 +19,10 @@ import {
   type SeedResetDeps,
 } from "../../../src/ui/server/workspace-routes.js";
 import { seedResetViaServer } from "../../../src/ui/cli/workspace-person.js";
-import type { PersonServer } from "../../../src/ui/cli/person-server.js";
+import type {
+  PersonServer,
+  ServerAnswer,
+} from "../../../src/ui/cli/person-server.js";
 import { agentRefusal } from "../../../src/ui/server/request-guard.js";
 import { routeClass } from "../../../src/ui/server/route-classes.js";
 
@@ -38,7 +41,7 @@ async function world() {
       seeded.push(1);
       return [{ name: "north", repos: ["shop", "api"] }];
     },
-    audit: (req, line, refused) =>
+    audit: (_req, line, refused) =>
       audited.push(`${refused ? "refused: " : ""}${line}`),
   };
   const server = http.createServer((req, res) => {
@@ -114,7 +117,7 @@ describe("issue 1182: POST /api/workspaces/seed", () => {
 
 describe("issue 1182: seedResetViaServer (the CLI's side)", () => {
   type Call = { method: string; path: string; body: unknown };
-  function fake(answer: { status: number; json: unknown } | null) {
+  function fake(answer: ServerAnswer | null) {
     const calls: Call[] = [];
     const server: PersonServer = async (method, p, body) => {
       calls.push({ method, path: p, body });

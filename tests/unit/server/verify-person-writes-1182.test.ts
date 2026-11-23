@@ -18,7 +18,10 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { cmdVerify } from "../../../src/ui/cli/verify-command.js";
-import type { PersonServer } from "../../../src/ui/cli/person-server.js";
+import type {
+  PersonServer,
+  ServerAnswer,
+} from "../../../src/ui/cli/person-server.js";
 import {
   readRunRecord,
   writeRunRecord,
@@ -73,7 +76,7 @@ function snap(stateDir: string): string {
 }
 
 type Call = { method: string; path: string; body: unknown };
-function fake(answer: { status: number; json: unknown } | null) {
+function fake(answer: ServerAnswer | null) {
   const calls: Call[] = [];
   const server: PersonServer = async (method, p, body) => {
     calls.push({ method, path: p, body });
