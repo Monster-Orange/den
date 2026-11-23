@@ -10,6 +10,7 @@
  * A fake server records each call. Invented names.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
@@ -23,6 +24,7 @@ import {
 import { writeRotation } from "../../../src/shared/agents/rotation.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
 import { cleanupRigs, rig, type Rig } from "../agents/helpers/rig.js";
+import { sandboxFor } from "../../../src/shared/agents/sandbox.js";
 
 afterEach(async () => {
   await cleanupRigs();
@@ -562,7 +564,12 @@ describe("issue 989: the agents' sign-in goes through the server", () => {
         },
         tokenClear: async () => {
           local.cleared++;
-          return { cleared: true, how: "item", store: "Local store" };
+          return {
+            cleared: true,
+            how: "item",
+            store: "Local store",
+            refDropped: false,
+          };
         },
         tokenDeps: {
           status: () => ({
@@ -1131,4 +1138,100 @@ describe("issue 989: an agent can't reset projects with workspace seed or init",
     ])
       expect(seedResetRefusal({ ...o, via: "init" }, {})).toBeNull();
   });
+});
+
+/**
+ * Issue 989 with the agent sandbox (issue 936): an agent that clears its
+ * token variables looks like a person to the CLI, and with no server
+ * answering the CLI writes the change itself. In the sandbox that write
+ * fails and nothing changes. Outside it the same command writes, so the
+ * sandbox is what stops it.
+ */
+const sandboxTool =
+  (process.platform === "darwin" && fs.existsSync("/usr/bin/sandbox-exec")) ||
+  (process.platform === "linux" &&
+    spawnSync("bwrap", ["--dev-bind", "/", "/", "true"]).status === 0);
+const itSandbox = sandboxTool ? it : it.skip;
+
+describe("issue 989: in the agent sandbox, with no server", () => {
+  const ENGINE = path.resolve(__dirname, "../../..");
+  function install() {
+    const base = fs.realpathSync(fs.mkdtempSync("/tmp/dsb9-"));
+    const l = {
+      base,
+      stateDir: path.join(base, "state"),
+      distRoot: path.join(base, "root"),
+      gateDir: path.join(base, "gate"),
+      agentId: "a1",
+    };
+    for (const d of [
+      l.stateDir,
+      path.join(l.distRoot, "config", "local"),
+      l.gateDir,
+    ])
+      fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(l.distRoot, "den.yml"), "name: t\n");
+    fs.writeFileSync(
+      path.join(l.distRoot, "config", "local", "user.yml"),
+      "local_dev: true\n",
+    );
+    // No server: nothing listens on port 1.
+    fs.writeFileSync(path.join(l.stateDir, "web.json"), '{"port":1}\n');
+    return l;
+  }
+  /** An agent's env with its token variables cleared. */
+  function clearedEnv(l: ReturnType<typeof install>): NodeJS.ProcessEnv {
+    const e: NodeJS.ProcessEnv = {
+      ...process.env,
+      DEN_HOME: l.stateDir,
+      DEN_ROOT: l.distRoot,
+      FORCE_COLOR: "0",
+      NO_COLOR: "1",
+    };
+    delete e.DEN_ACTOR_TOKEN_FILE;
+    delete e.DEN_ACTOR_TOKEN;
+    delete e.DEN_AGENT;
+    return e;
+  }
+  const argv = [path.join(ENGINE, "bin", "den"), "workspace", "create", "sbx"];
+  const wsFile = (l: ReturnType<typeof install>) =>
+    path.join(l.distRoot, "config", "local", "workspaces.yml");
+
+  itSandbox(
+    "a project write fails in the sandbox, and nothing is written",
+    () => {
+      const l = install();
+      try {
+        const w = sandboxFor(argv, l, { platform: process.platform, on: true });
+        expect(w.applied).toBe(true);
+        const r = spawnSync(w.argv[0], w.argv.slice(1), {
+          encoding: "utf-8",
+          env: { ...clearedEnv(l), ...w.env },
+          timeout: 60_000,
+        });
+        expect(r.status).not.toBe(0);
+        expect(`${r.stdout}${r.stderr}`).toMatch(/EPERM|not permitted/);
+        expect(`${r.stdout}${r.stderr}`).not.toMatch(/Created project/);
+        expect(fs.existsSync(wsFile(l))).toBe(false);
+      } finally {
+        fs.rmSync(l.base, { recursive: true, force: true });
+      }
+    },
+    90_000,
+  );
+
+  it("outside the sandbox the same command writes (the control)", () => {
+    const l = install();
+    try {
+      const r = spawnSync(argv[0], argv.slice(1), {
+        encoding: "utf-8",
+        env: clearedEnv(l),
+        timeout: 60_000,
+      });
+      expect(r.status).toBe(0);
+      expect(fs.readFileSync(wsFile(l), "utf-8")).toMatch(/sbx/);
+    } finally {
+      fs.rmSync(l.base, { recursive: true, force: true });
+    }
+  }, 90_000);
 });

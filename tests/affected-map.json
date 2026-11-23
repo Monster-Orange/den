@@ -745,6 +745,17 @@
       "src/shared/health-poll.ts",
       "src/ui/server/index.ts",
       "src/ui/server/public/header.js"
+    ],
+    "tests/unit/cli/issue-989-through-server.test.ts": [
+      "src/ui/cli/person-server.ts",
+      "src/ui/cli/workspace-person.ts",
+      "src/ui/cli/agents-command.ts",
+      "src/ui/cli/notifications-command.ts",
+      "src/ui/cli/web-command.ts",
+      "src/ui/cli/gate-command.ts",
+      "src/ui/cli/hub-link-command.ts",
+      "src/ui/cli/index.ts",
+      "src/shared/agents/sandbox.ts"
     ]
   },
   "subjectless": [],
@@ -2263,6 +2274,21 @@
         "src/ui/cli/flag-parser.ts"
       ],
       "run": ["tests/unit/cli/edge-route-cli.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/sandbox.ts",
+        "src/ui/cli/agents-command.ts",
+        "src/ui/cli/gate-command.ts",
+        "src/ui/cli/hub-link-command.ts",
+        "src/ui/cli/index.ts",
+        "src/ui/cli/notifications-command.ts",
+        "src/ui/cli/person-server.ts",
+        "src/ui/cli/web-command.ts",
+        "src/ui/cli/workspace-person.ts"
+      ],
+      "run": ["tests/unit/cli/issue-989-through-server.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
