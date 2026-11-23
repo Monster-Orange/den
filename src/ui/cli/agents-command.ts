@@ -73,6 +73,7 @@ import {
 } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import * as path from "path";
+import { realPath, SESSION_TMP_RE } from "../../shared/agents/sandbox.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import {
   listUploads,
@@ -2747,6 +2748,42 @@ export interface SandboxReport {
   outside: { id: string; project: string; reason: string }[];
   /** The rollout: agents from before the sandbox, not turned on yet. */
   fromBefore: number;
+  /** Issue 1325: running agents' own temp folders (their TMPDIR). */
+  tmp?: { id: string; dir: string }[];
+  /** Issue 1325: session temp folders no agent's record names (left over). */
+  leftoverTmp?: string[];
+}
+
+/**
+ * Issue 1325: den-XXXXXX folders in `base` of this user's that no agent's
+ * record names: a session's that outlived it.
+ */
+export function leftoverSessionTmps(
+  named: string[],
+  base: string = "/tmp",
+): string[] {
+  const keep = new Set(named.map((x) => realPath(x)));
+  const root = realPath(base);
+  const uid = process.getuid?.();
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => SESSION_TMP_RE.test(n))
+    .map((n) => path.join(root, n))
+    .filter((p) => {
+      try {
+        const st = fs.lstatSync(p);
+        return st.isDirectory() && (uid === undefined || st.uid === uid);
+      } catch {
+        return false;
+      }
+    })
+    .filter((p) => !keep.has(p))
+    .sort();
 }
 
 /** Issue 1072: the widening keys Den no longer reads from the org config. */
@@ -2810,8 +2847,17 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     listRecords(d.stateDir()),
     d.agentsConfig(),
   );
+  const recs = listRecords(d.stateDir());
+  const tmp = recs
+    .filter((r) => r.session && !r.stoppedAt && r.sessionTmp)
+    .map((r) => ({ id: r.id, dir: r.sessionTmp! }));
+  const leftoverTmp = leftoverSessionTmps(
+    recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
+  );
   return {
     fromBefore: fromBefore.length,
+    ...(tmp.length ? { tmp } : {}),
+    ...(leftoverTmp.length ? { leftoverTmp } : {}),
     here: {
       applied: probe.applied,
       ...(probe.tool ? { tool: probe.tool } : {}),
@@ -2836,6 +2882,13 @@ export function sandboxLines(r: SandboxReport): string[] {
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
     out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);
+  // Issue 1325: where each session's own sockets and temp files go.
+  for (const t of r.tmp ?? [])
+    out.push(`  ✓ ${t.id}'s temp folder (TMPDIR, its own sockets): ${t.dir}`);
+  for (const dir of r.leftoverTmp ?? [])
+    out.push(
+      `  ⚠ ${dir} is an agent's temp folder no agent uses now: Den didn't see its agent's run end; it is safe to remove`,
+    );
   return out;
 }
 

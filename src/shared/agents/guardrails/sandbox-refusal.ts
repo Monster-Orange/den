@@ -5,7 +5,8 @@
  * refused write ("Operation not permitted", EPERM, "Read-only file
  * system") gets one note for the agent: why, and what to use instead. A
  * commit whose GPG signing was refused (gpg's "IPC connect call failed",
- * issue 1316) gets its own.
+ * issue 1316) gets its own, and so does a unix socket the sandbox refused
+ * to connect to (issue 1325).
  * Anything else, and anything outside the sandbox: nothing. It reads no
  * file and calls nothing: a short-lived hook that can't fail a tool.
  */
@@ -17,6 +18,20 @@ const REFUSED = /operation not permitted|\bEPERM\b|read-only file system/i;
  */
 const GPG_REFUSED =
   /gpg: (?:can't connect to the agent|signing failed)|IPC connect call failed|IPC connect failed|failed to sign the data/i;
+
+/**
+ * Issue 1325: a unix socket connection refused ("connect EPERM <path>"),
+ * outside Den's own session host (that one is Den's state: REFUSAL_NOTE).
+ */
+const SOCKET_REFUSED =
+  /\bconnect\b[^\n]{0,20}(?:EPERM|EACCES|operation not permitted)/i;
+const DEN_HOST_SOCKET = /sessions\.sock\b/;
+
+/** What the agent is told when a unix socket connection was refused. */
+export function socketRefusalNote(env: NodeJS.ProcessEnv): string {
+  const tmp = env.TMPDIR?.trim();
+  return `Den's agent sandbox refused a connection to a unix socket outside your own temp folder: other programs' sockets stay out of reach (issue 1325). Make the socket under $TMPDIR${tmp ? ` (${tmp})` : ""}: your own sockets there connect, a test's or a dev tool's included. Don't retry the other path or work around it.`;
+}
 
 /** What the agent is told when a commit's GPG signing was refused. */
 export const GPG_REFUSAL_NOTE =
@@ -57,9 +72,11 @@ export function refusalNote(
   }
   const note = GPG_REFUSED.test(text)
     ? GPG_REFUSAL_NOTE
-    : REFUSED.test(text)
-      ? REFUSAL_NOTE
-      : null;
+    : SOCKET_REFUSED.test(text) && !DEN_HOST_SOCKET.test(text)
+      ? socketRefusalNote(env)
+      : REFUSED.test(text)
+        ? REFUSAL_NOTE
+        : null;
   if (!note) return null;
   return {
     hookSpecificOutput: { hookEventName: ev, additionalContext: note },
