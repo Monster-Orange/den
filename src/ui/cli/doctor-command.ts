@@ -1672,7 +1672,7 @@ export function edgeRotationLines(
 }
 
 /**
- * Issue 728 (part C): installs sharing this OS user. Whether others do (by
+ * Issue 728 (part C): installs running as this login. Whether others do (by
  * count: another install's path stays out, as its registry entry does),
  * whether this install is in the install registry (their agents are denied
  * its files only once it is), and the 0600 files in its state folder that
@@ -1691,12 +1691,12 @@ export function sharedUserLines(
     ...(home ? { home } : {}),
   }).length;
   const shared = others
-    ? `${others} other install${others === 1 ? " shares" : "s share"} this OS user. Its agents are kept out of ${title}'s credentials by deny rules, which bind an agent that follows them; a separate OS user for each install keeps them apart for certain`
-    : "no other install shares this OS user";
+    ? `${others} other install${others === 1 ? " runs" : "s run"} as this login on this computer. Their agents are kept out of ${title}'s credentials by deny rules, which bind an agent that follows them; a separate login for each install keeps them apart for certain`
+    : "no other install runs as this login on this computer";
   const registered = isRegistered(reg, stateDir);
   const regDetail = registered
-    ? "this install is in the install registry, so other installs' agents on this OS user are denied its files"
-    : `this install isn't in the install registry yet, so other installs' agents on this OS user aren't denied its files. ${title} adds it at its next start`;
+    ? "this install is in the install registry, so other installs' agents on this login are denied its files"
+    : `this install isn't in the install registry yet, so other installs' agents on this login aren't denied its files. ${title} adds it at its next start`;
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home),
   );
@@ -1713,9 +1713,9 @@ export function sharedUserLines(
   return {
     lines: [
       "",
-      `${title} doctor: Installs on this OS user`,
+      `${title} doctor: Installs on this login`,
       "",
-      `  shared user  ${mark(!others)}  ${shared}`,
+      `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(registered)}  ${regDetail}`,
       `  0600 files  ${mark(!loose.length)}  ${looseDetail}`,
     ],
@@ -2428,7 +2428,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 728: the edge's once-only rotation, and stacks' secrets.
     r.checks.push(...edgeRotationLines(readBrand().name).checks);
-    // Issue 728: installs sharing this OS user.
+    // Issue 728: installs running as this login.
     r.checks.push(...sharedUserLines(readBrand().name).checks);
     {
       const bl = bridgeListenLines(readBrand().name);

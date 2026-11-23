@@ -1,6 +1,6 @@
 /**
  * Issue 728 (part C): doctor says whether other installs share this OS
- * user, whether this install is in the install registry (so their agents
+ * account, whether this install is in the install registry (so their agents
  * are denied its files), and which 0600 files in its state folder agents'
  * deny rules don't cover. Paths only: never a file's contents, and never
  * another install's path.
@@ -38,7 +38,7 @@ const rows = (stateDir: string) =>
 const check = (r: ReturnType<typeof rows>, id: string) =>
   r.checks.find((c) => c.id === id)!;
 
-describe("issue 728: doctor's shared OS user rows", () => {
+describe("issue 728: doctor's same-login rows", () => {
   it("alone and registered: every row ok", () => {
     const own = install("own");
     registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
@@ -48,7 +48,7 @@ describe("issue 728: doctor's shared OS user rows", () => {
     expect(check(r, "uncovered_files").status).toBe("ok");
   });
 
-  it("another install on this OS user: a warning with how many, never its path", () => {
+  it("another install on this login: a warning with how many, never its path", () => {
     const own = install("own");
     const other = install("other-install");
     registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
@@ -56,7 +56,7 @@ describe("issue 728: doctor's shared OS user rows", () => {
     const r = rows(own);
     const s = check(r, "shared_user");
     expect(s.status).toBe("warn");
-    expect(s.detail).toMatch(/1 other install shares this OS user/);
+    expect(s.detail).toMatch(/1 other install runs as this login on this computer/);
     expect(r.lines.join("\n")).not.toContain("other-install");
   });
 
