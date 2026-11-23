@@ -120,6 +120,8 @@ import {
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
+import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
+import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import { syncEdgeProof } from "../../shared/edge/runtime.js";
 import {
   bridgeGateway,
@@ -615,6 +617,7 @@ import {
   handlePairRoutes,
   isPairRoute,
 } from "./pair-routes.js";
+import { mayWriteSessions } from "./session-writes.js";
 import {
   cliCommand,
   cliPrefix,
@@ -3683,6 +3686,22 @@ function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
 }
 
+// Issue 728: list this install for the others on this OS user (any
+// distribution's), so their agents are denied its credential files and keys.
+try {
+  const { dropped } = registerInstall(registryDir(), {
+    stateDir: getStateDir(),
+    edgeKeyDirs: edgeKeyDirs(getDistRoot()),
+  });
+  if (dropped.length)
+    serverLog(
+      `  ⚠ install registry: left out edge folders it can't name exactly: ${dropped.join(", ")}`,
+      "warn",
+    );
+} catch (e) {
+  serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
+}
+
 /**
  * Issue 816: keep this test install's announcement true. It is there only
  * while the launcher opted in, this is a test install, and its test person
@@ -6105,14 +6124,10 @@ async function handleRequest(
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
   // Issue 1299 review: a request that may write the sessions file (a
-  // sign-in, a sign-out, a revoke) waits here, on timers, while another
+  // sign-in, a sign-out, a revoke; session-writes.ts) waits here, on timers, while another
   // process holds its lock; every other request is served meanwhile. Its
   // write then never waits (a lock taken in between: 503 "try again").
-  if (
-    (req.method !== "GET" && req.method !== "HEAD") ||
-    pathname === "/auth" ||
-    pathname.startsWith("/auth/")
-  )
+  if (mayWriteSessions(req.method, pathname))
     await webSessions.whenFree(sessionsLockWait());
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);

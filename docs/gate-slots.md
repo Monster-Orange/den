@@ -232,6 +232,52 @@ their own leases.
 Change it in Settings › Server, or with `den gate settings
 --waiter-return-minutes N` (0: a gone waiter loses its place at once).
 
+## What a run leaves behind is stopped
+
+`gate run` starts its command in its own process group, and in a new
+session with no terminal. When the run is over, whatever the command
+started that is still running is stopped: first asked to stop, then killed
+after `reap_grace_seconds` (default 10). That happens when:
+
+- the command ends (gate run waits for its leftovers before it exits);
+- the run's folder is deleted while it holds the slot;
+- the process that started gate run goes away. A run started with
+  `nohup … &` therefore ends when its shell exits;
+- gate run itself was killed. The next look at the queue, from anything on
+  this machine, stops what it left.
+
+Nothing outside the run's group is ever touched. A group is stopped only
+while it is still the one the run started: its leader's start time is
+checked first, and a group recorded before the machine restarted is never
+stopped. The slot log records `stopped-leftovers` with how many, the
+command's name and the run's label, never arguments. `gate status` and the
+Gate pop-up list the last hour's.
+
+The command has no terminal, so one that asks for a password on it (an ssh
+or git prompt, pinentry) fails at once with "Device not configured"
+(ENXIO). Give such a command its password another way.
+
+Change the grace in Settings › Server, or with `den gate settings
+--reap-grace-seconds N`.
+
+## No run starts while the machine is overloaded
+
+A run that has its slot doesn't start its command while this machine's
+5-minute load average is at or over `max_start_load` (the total, not per
+core). It waits, and `gate status`, the Gate pop-up and the run's own output
+say so: `waiting for the load (40) to drop under 27`. After
+`max_start_wait_minutes` (default 10) it starts anyway, and the slot log
+records `started-busy` with the load.
+
+The default is the machine's cores × 1.5 (27 on 18 cores), below where a
+machine stalls: an 18-core one reset twice at a 5-minute load of about 34.
+0 turns it off. It holds every run, release runs too. It's not
+`cpu_hold_load`, which holds only cpu asks, and only during a release
+browser run.
+
+Change them in Settings › Server, or with `den gate settings
+--max-start-load N --max-start-wait-minutes N` (wait 0: no limit).
+
 ## Let one waiting run go ahead of yours
 
 ```sh

@@ -1192,6 +1192,16 @@
       "リリース用ブラウザーテスト中に単体テストを待たせるマシン負荷",
     "set.server.gate_cpu_hold_load.d":
       "このマシンの 5 分間の平均負荷がこの値以上で、リリース優先のブラウザーテストがブラウザー枠を使っている間、単体テストは待ちます。すでに動いている実行は止めません。既定はコア数 × 4 / 3 です。0 でオフになります。__DEN_CLI__ gate settings --cpu-hold-load 24",
+    "set.server.gate_max_start_load": "テストを開始しないマシン負荷",
+    "set.server.gate_max_start_load.d":
+      "このマシンの 5 分間の平均負荷がこの値以上の間 (コアごとではなく合計)、枠を得たテストはコマンドを始める前に待ち、その理由を表示します。マシンが止まる負荷より下に保ちます。既定はコア数 × 1.5 です。0 でオフになります。__DEN_CLI__ gate settings --max-start-load 27",
+    "set.server.gate_max_start_wait_minutes": "負荷を待つ分数",
+    "set.server.gate_max_start_wait_minutes.d":
+      "負荷で待っているテストは、この分数が過ぎると開始し、混雑したマシンで始まったことを記録します。既定は 10 です。0 にすると負荷が下がるまで待ちます。__DEN_CLI__ gate settings --max-start-wait-minutes 10",
+    "set.server.gate_reap_grace_seconds":
+      "残ったプロセスを強制終了するまでの秒数",
+    "set.server.gate_reap_grace_seconds.d":
+      "テストが終わったとき、またはそのフォルダーが削除されたとき、まだ動いている起動したプロセスに停止を求め、この秒数後に強制終了します。テストの外のものには触れません。既定は 10 です。__DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",
     "set.server.gate_local_browser.d":
       "このマシンで同時に動かせるブラウザーテスト実行の数です。それぞれ専用のコンテナーで動きます。テスト用マシンで動くブラウザーテストは数えません。1 では 1 つずつ動きます。__DEN_CLI__ gate settings --local-browser-slots 1",
@@ -3140,6 +3150,10 @@
       "待機中: このマシンの負荷は {load} で、{perCore} × {cores} コア ({limit}) を超えており、別の単体テストが動いています。負荷が下がるかその実行が終わると始まります",
     "gate.loadHold":
       "待機中: 負荷 {load} ≥ {limit}、リリース用の実行がブラウザー枠を使っています",
+    "gate.startHold":
+      "枠を確保済み。負荷 ({load}) が {limit} 未満に下がるまで開始を待っています",
+    "gate.leftoversH": "実行の終了後に止めたもの",
+    "gate.leftovers": "{label} ({cmd}) の残りのプロセス {n} 個",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",

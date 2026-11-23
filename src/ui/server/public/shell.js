@@ -2409,6 +2409,17 @@
       "Machine load that holds unit test runs during a release browser run",
     "set.server.gate_cpu_hold_load.d":
       "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    "set.server.gate_max_start_load":
+      "Machine load at which no test run starts",
+    "set.server.gate_max_start_load.d":
+      "While this machine's 5-minute load average is at or above this (the total, not per core), a test run that has its slot waits before it starts its command, and says why. It stays under where the machine stalls: the default is the machine's cores × 1.5. 0 turns it off. __DEN_CLI__ gate settings --max-start-load 27",
+    "set.server.gate_max_start_wait_minutes":
+      "Minutes a run waits for the load",
+    "set.server.gate_max_start_wait_minutes.d":
+      "A run held by the load starts anyway after this many minutes, and its record says it started on a busy machine. The default is 10. 0 means it waits however long. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
+    "set.server.gate_reap_grace_seconds": "Seconds before leftovers are killed",
+    "set.server.gate_reap_grace_seconds.d":
+      "When a test run ends, or its folder is deleted, whatever it started that is still running is asked to stop, then killed after this many seconds. Nothing outside the run is touched. The default is 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
@@ -4141,6 +4152,11 @@
       "waiting: this machine's load is {load}, over {perCore} × {cores} cores ({limit}), while another unit test run is going; it starts once the load drops or that run ends",
     "gate.loadHold":
       "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
+    "gate.startHold":
+      "holds its slot; waiting for the load ({load}) to drop under {limit} before it starts",
+    "gate.leftoversH": "Stopped after their run ended",
+    "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
+    "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

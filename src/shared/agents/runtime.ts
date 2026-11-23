@@ -145,6 +145,11 @@ export interface LaunchInput {
    */
   testAnnounceDir?: string;
   /**
+   * Issue 728: the install registry (install-registry.ts), whose entries
+   * name the other installs' state folders. Denied like testAnnounceDir.
+   */
+  installRegistryDir?: string;
+  /**
    * Issue 810: the distribution config file (it holds the test-install
    * mark), denied to the agent's edits with personConfigDir.
    */

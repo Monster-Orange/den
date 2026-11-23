@@ -72,11 +72,15 @@ import {
   hookCommands,
   mergeHooks,
   sandboxRefusalHooks,
+  type GateRouteArgs,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { distributionBin, shellQuote } from "../cli-command.js";
+import { getDistRoot, getEngineRoot } from "../paths.js";
+import { gateDir } from "../gates/store.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -447,8 +451,8 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
     `Read(/${sessionsLock})`,
+    // Edit(path) covers writes too (issue 660: no Write(path) rules).
     `Edit(/${sessionsLock})`,
-    `Write(/${sessionsLock})`,
     ...files.map((f) => `Read(/${f})`),
     // Issue 1299: copies beside each (a damaged file moved aside, a
     // write's temporary file) hold the same records.
@@ -493,7 +497,22 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
 export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
 
 /**
- * Issue 728: rules denying an agent's Read and Bash tools the files in
+ * Issue 728: a path as given (resolved) and by its real path, when a
+ * symlink makes them differ, so a deny rule binds both spellings.
+ */
+export function bothSpellings(p: string): string[] {
+  const given = path.resolve(p);
+  let real = given;
+  try {
+    real = fs.realpathSync(given);
+  } catch {
+    /* not there yet: its given spelling only */
+  }
+  return real === given ? [given] : [given, real];
+}
+
+/**
+ * Issue 728: rules denying an agent's Read, Edit and Bash tools the files in
  * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
  * naming the path in each shell spelling, and the readers by name. For the
  * edge's key folders (edgeKeyDirs), wherever the edge config puts them.
@@ -508,6 +527,7 @@ export function credentialDirRules(
   );
   return [
     ...abs.map((d) => `Read(/${d}/**)`),
+    ...abs.map((d) => `Edit(/${d}/**)`),
     ...targets.map((t) => `Bash(*${t})`),
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
   ];
@@ -702,6 +722,8 @@ function common(input: LaunchInput): {
   const inbox = inboxBase
     ? { base: inboxBase, ...(call ? { call } : {}) }
     : undefined;
+  // Issue 1264: the hook routes heavy runs through the gate (guardrails on).
+  const gate = input.persona.guardrails?.hooks ? gateRouteArgs() : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -720,6 +742,7 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          gate,
         ),
         !!input.apiOnly,
       )
@@ -763,6 +786,7 @@ function common(input: LaunchInput): {
       : [];
   const allow = [
     ...allowRules(input.allow ?? []),
+    ...gateAllowRules(gate?.cli, input.allow ?? []),
     ...(den?.allow ?? []),
     ...hubAllow,
   ];
@@ -812,21 +836,33 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 728: this install's own folders by their
+                    // given and their real paths (a symlink in either).
                     ...(input.stateDir
-                      ? stateDirDenyRules(input.stateDir, input.env?.HOME)
+                      ? bothSpellings(input.stateDir).flatMap((d) =>
+                          stateDirDenyRules(d, input.env?.HOME),
+                        )
                       : []),
                     // Issue 728: the edge's key folders.
                     ...credentialDirRules(
-                      input.edgeKeyDirs ?? [],
+                      (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
                       input.env?.HOME,
                     ),
-                    // Issue 816: announced test installs'.
+                    // Issue 816: announced test installs'; issue 728:
+                    // the other installs in the install registry.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>
                       stateDirDenyRules(d, input.env?.HOME),
                     ),
                     ...(input.testAnnounceDir
                       ? announceDirDenyRules(
                           input.testAnnounceDir,
+                          input.env?.HOME,
+                        )
+                      : []),
+                    // Issue 728: the install registry, as 816's folder.
+                    ...(input.installRegistryDir
+                      ? announceDirDenyRules(
+                          input.installRegistryDir,
                           input.env?.HOME,
                         )
                       : []),
@@ -1186,3 +1222,38 @@ export const denClaude: Runtime = {
   // catalog entry's sign-in data.
   signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };
+
+/**
+ * Issue 1264: allow rules for the gated form of each command the agent is
+ * already allowed (`<cli> gate run --kind cpu|browser -- <command>`), so a
+ * run the hook routes still runs without asking. Only those commands, never
+ * the gate on its own. The words match the hook's (gate-route.mjs
+ * gatePrefix, pretooluse.mjs gateRewrite); a test checks both agree.
+ */
+export function gateAllowRules(
+  cli: string | undefined,
+  commands: readonly string[],
+): string[] {
+  if (!cli) return [];
+  return ["cpu", "browser"].flatMap((kind) =>
+    allowRules(
+      commands.map((c) => `${shellQuote(cli)} gate run --kind ${kind} -- ${c}`),
+    ),
+  );
+}
+
+/**
+ * Issue 1264: this install's CLI and the gate's settings file, for the
+ * PreToolUse hook to route an agent's heavy runs through the gate; none
+ * when the install's CLI can't be found (no routing then).
+ */
+export function gateRouteArgs(): GateRouteArgs | undefined {
+  try {
+    const cli = distributionBin(product().cli, getDistRoot(), getEngineRoot());
+    return cli
+      ? { cli, settings: path.join(gateDir(), "settings.json") }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

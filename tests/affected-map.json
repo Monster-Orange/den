@@ -773,6 +773,11 @@
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/bell.js",
       "packages/den-ui/src/shell.css"
+    ],
+    "tests/unit/agents/gate-route-e2e-1264.test.ts": [
+      "src/shared/agents/guardrails/gate-route.mjs",
+      "src/shared/agents/guardrails/pretooluse.mjs",
+      "src/ui/cli/gate-command.ts"
     ]
   },
   "subjectless": [],
@@ -2035,6 +2040,7 @@
         "tests/unit/agents/den-claude-deny.test.ts",
         "tests/unit/agents/file-deny.test.ts",
         "tests/unit/agents/guardrails-pretooluse.test.ts",
+        "tests/unit/agents/other-installs-728.test.ts",
         "tests/unit/agents/personas.test.ts",
         "tests/unit/agents/project-mcp-edit.test.ts",
         "tests/unit/agents/runtimes.test.ts",
@@ -2316,6 +2322,15 @@
     {
       "when": ["src/shared/agents/runtimes.ts"],
       "run": ["tests/unit/agents/agent-shell-install-home.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/guardrails/gate-route.mjs",
+        "src/shared/agents/guardrails/pretooluse.mjs",
+        "src/ui/cli/gate-command.ts"
+      ],
+      "run": ["tests/unit/agents/gate-route-e2e-1264.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

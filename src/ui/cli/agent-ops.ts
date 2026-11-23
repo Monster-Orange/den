@@ -102,7 +102,12 @@ import {
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
+import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
+import {
+  listOtherInstalls,
+  registerInstall,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
@@ -3620,6 +3625,32 @@ function launchInput(
     { id, persona: persona.id, workspace: ws, cwd: dir },
     persona,
   ).afterCompactions;
+  // Issue 728: this install registers itself (its server does at start too),
+  // then reads the others.
+  const ownEdgeKeys = edgeKeyDirs(d.distRoot());
+  // ...narrowed where the edge folder holds this install's own folders.
+  const ownEdgeDeny = narrowEdgeDirs(ownEdgeKeys, [
+    path.resolve(d.stateDir()),
+    path.resolve(d.distRoot()),
+    path.resolve(dir),
+  ]);
+  const reg = registryDir({ ...process.env, ...d.env });
+  const others = (() => {
+    try {
+      registerInstall(reg, {
+        stateDir: d.stateDir(),
+        edgeKeyDirs: ownEdgeKeys,
+      });
+    } catch {
+      /* listed at its server's next start */
+    }
+    return listOtherInstalls(reg, {
+      ownStateDir: d.stateDir(),
+      home: { ...process.env, ...d.env }.HOME,
+      // No entry may deny this install's own checkout or workspace.
+      protect: [d.distRoot(), dir],
+    });
+  })();
   return {
     persona,
     workspace: { name: ws, dir },
@@ -3629,15 +3660,25 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
-    // Issue 816: test installs announced on this computer.
-    otherStateDirs: listAnnounced(announceDir(), {
-      ownStateDir: d.stateDir(),
-    }).map((a) => a.stateDir),
+    // Issue 816: test installs announced on this computer; issue 728: the
+    // other installs registered for this OS user, any distribution's.
+    otherStateDirs: [
+      ...new Set([
+        ...listAnnounced(announceDir(), { ownStateDir: d.stateDir() }).map(
+          (a) => a.stateDir,
+        ),
+        ...others.map((o) => o.stateDir),
+      ]),
+    ],
     // ...and where they announce, for those announced after this launch.
     testAnnounceDir: announceDir(),
+    installRegistryDir: reg,
     personConfigDir: path.join(d.distRoot(), "config", "local"),
-    // Issue 728: the edge's key folders, wherever its config puts them.
-    edgeKeyDirs: edgeKeyDirs(d.distRoot()),
+    // Issue 728: the edge's key folders, wherever its config puts them, and
+    // the other installs' edges'.
+    edgeKeyDirs: [
+      ...new Set([...ownEdgeDeny, ...others.flatMap((o) => o.edgeKeyDirs)]),
+    ],
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,

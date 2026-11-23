@@ -53,6 +53,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 796: agents' read-only page views.
   web_agent_view: { on: true, minutes: true },
+  // Issue 1299: how long a sessions write waits for another's lock.
+  web_sessions: { lock_wait_ms: true },
   // Issue 144: the machine's gate slots.
   gate_slots: {
     cpu_slots: true,
@@ -64,6 +66,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_hold_load: true,
     // Issue 1048: new cpu runs wait over this × the cores.
     load_hold_per_core: true,
+    // Issue 1132: the start ceiling, its wait limit, leftovers' grace.
+    max_start_load: true,
+    max_start_wait_minutes: true,
+    reap_grace_seconds: true,
     // Issue 1274: memory free under which new runs here wait; VM share.
     memory_free_min_percent: true,
     vm_memory_share: true,
@@ -296,6 +302,8 @@ describe("the settings inventory (R21)", () => {
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        // Issue 1299: how long a sessions write waits for another's lock.
+        "web_sessions.lock_wait_ms",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
         "gate_slots.browser_box_default",
@@ -311,6 +319,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots_beside_release_browser",
         "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
+        "gate_slots.max_start_load",
+        "gate_slots.max_start_wait_minutes",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
@@ -321,6 +331,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_max",
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
+        "gate_slots.reap_grace_seconds",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",

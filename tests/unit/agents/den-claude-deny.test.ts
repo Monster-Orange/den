@@ -169,11 +169,12 @@ describe("issue 728: every credential file in the state dir is denied as web.sec
   );
   // Issue 1299 review: an agent that wrote a live pid in the sessions
   // lock would hold every sign-in for its wait, then refuse it.
-  it("web-sessions.lock: no Read, Edit, Write or shell", () => {
+  it("web-sessions.lock: no Read, Edit (writes too) or shell", () => {
     const lock = `${STATE}/web-sessions.lock`;
     expect(readDenied(rules, lock)).toBe(true);
     expect(rules).toContain(`Edit(/${lock})`);
-    expect(rules).toContain(`Write(/${lock})`);
+    // Edit(path) covers writes; a Write(path) rule never matches (issue 660).
+    expect(rules).not.toContain(`Write(/${lock})`);
     for (const cmd of [
       `echo 1 > ${lock}`,
       `cat ${lock}`,
