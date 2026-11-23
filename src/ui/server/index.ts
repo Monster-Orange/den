@@ -6079,9 +6079,12 @@ async function handleRequest(
   if (guard.ok && isGithubWatchPath(pathname)) {
     const { githubWatcher } = await import("./github-watch-service.js");
     const { projectRepos } = await import("../../shared/project-repos.js");
+    const { projectWatchRepos } =
+      await import("../../shared/github-watch/watch-repos.js");
     await handleGithubWatchRoutes(req, res, pathname, {
       watcher: githubWatcher,
       reposOf: projectRepos,
+      watchReposOf: (project) => projectWatchRepos(project),
       allRepos: () => [
         ...new Set(
           Object.keys(readWorkspacesFile().workspaces ?? {}).flatMap((ws) =>

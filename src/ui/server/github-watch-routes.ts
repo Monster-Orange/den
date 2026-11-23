@@ -34,6 +34,11 @@ export interface GithubWatchRouteDeps {
   reposOf: (project: string) => string[];
   /** The server agent's scope: every project's repos. */
   allRepos?: () => string[];
+  /**
+   * Issue 1270: a project's agents.watch_repos (watch-repos.ts
+   * projectWatchRepos), extra repos its own agents may watch, read-only.
+   */
+  watchReposOf?: (project: string) => string[];
   /** Tests pass one; the server reads the request's actor token. */
   principal?: (req: http.IncomingMessage) => AgentPrincipal | null;
 }
@@ -68,13 +73,21 @@ async function jsonBody(
   }
 }
 
-/** The repos an agent may watch: its project's and its grants'. */
+/**
+ * The repos an agent may watch: its project's and its grants', and (issue
+ * 1270) its own project's agents.watch_repos. A granted project's list is
+ * that project's agents' only.
+ */
 function scopeRepos(p: AgentPrincipal, d: GithubWatchRouteDeps): string[] {
   // A server-scope agent works across the install's projects.
   if (isServerScope(p.workspace) && d.allRepos) return d.allRepos();
   const out: string[] = [];
+  const add = (r: string) => {
+    if (!out.some((o) => o.toLowerCase() === r.toLowerCase())) out.push(r);
+  };
   for (const ws of [p.workspace, ...(p.grants ?? [])])
-    for (const r of d.reposOf(ws)) if (!out.includes(r)) out.push(r);
+    for (const r of d.reposOf(ws)) add(r);
+  for (const r of d.watchReposOf?.(p.workspace) ?? []) add(r);
   return out;
 }
 

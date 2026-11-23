@@ -46,6 +46,8 @@ function setup(principal: unknown) {
   const gh = new FakeGithub(Date.now);
   gh.pr("acme/north", 5, SHA);
   gh.pr("other/elsewhere", 5, SHA);
+  gh.pr("shared/pipeline", 7, SHA);
+  gh.pr("acme/westshared", 7, SHA);
   const watcher = new GithubWatcher({
     get: gh.get,
     settings: () => ({
@@ -64,6 +66,13 @@ function setup(principal: unknown) {
         ? ["acme/north"]
         : project === "west"
           ? ["acme/west"]
+          : [],
+    // Issue 1270: each project's agents.watch_repos, as read (checked).
+    watchReposOf: (project: string) =>
+      project === "north"
+        ? ["shared/pipeline"]
+        : project === "west"
+          ? ["acme/westshared"]
           : [],
   };
   const call = async (method: string, path: string, body?: unknown) => {
@@ -153,5 +162,55 @@ describe("github watch routes", () => {
       id: "gw-nope",
     });
     expect(r.status).toBe(404);
+  });
+});
+
+describe("issue 1270: a project's agents.watch_repos", () => {
+  it("a listed repo is watched, through the same watcher", async () => {
+    const { call } = setup(agent);
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "shared/pipeline",
+      pr: 7,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({
+      ok: true,
+      watch: { repo: "shared/pipeline", pr: 7 },
+    });
+  });
+
+  it("an unlisted repo is refused, naming the setting and that it grants no new access", async () => {
+    const { call, gh } = setup(agent);
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "other/elsewhere",
+      pr: 5,
+    });
+    expect(r.status).toBe(403);
+    expect(r.body).toMatchObject({ ok: false, code: "scope" });
+    const error = String((r.body as { error: string }).error);
+    expect(error).toMatch(/agents\.watch_repos/);
+    expect(error).toMatch(/no new access/);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("a granted project's list is that project's own: it doesn't reach this agent", async () => {
+    const { call, gh } = setup(agent);
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "acme/westshared",
+      pr: 7,
+    });
+    expect(r.status).toBe(403);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("a listed repo's watch only reads: every call is a GET path under that repo", async () => {
+    const { call, gh } = setup(agent);
+    await call("POST", "/api/agents/self/github-watches", {
+      repo: "shared/pipeline",
+      pr: 7,
+    });
+    expect(gh.calls.length).toBeGreaterThan(0);
+    for (const path of gh.calls)
+      expect(path.startsWith("/repos/shared/pipeline/")).toBe(true);
   });
 });

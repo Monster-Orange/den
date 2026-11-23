@@ -708,6 +708,11 @@ export interface WorkspaceConfig {
      * secrets.refs entry (shared/agents/app-feeds.ts).
      */
     event_feeds?: unknown;
+    /**
+     * Issue 1270: extra repos (owner/name) this project's agents may watch
+     * with github_watch, read-only (shared/github-watch/watch-repos.ts).
+     */
+    watch_repos?: unknown;
   };
   /**
    * Issue 160: this project's approval policy, over the install's
