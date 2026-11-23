@@ -199,13 +199,18 @@ export function makeSessionTmp(base: string = "/tmp"): string {
 
 /**
  * Issue 1325: remove a session temp folder (its session ended). Only a
- * real folder named den-XXXXXX, owned by this process's uid: never a
- * link, never anything else. Never throws.
+ * real folder named den-XXXXXX right inside `base`, owned by this
+ * process's uid: never a link, never anything else. Never throws.
  */
-export function removeSessionTmp(dir: string | undefined): void {
+export function removeSessionTmp(
+  dir: string | undefined,
+  /** The folder makeSessionTmp made it in: nothing elsewhere goes. */
+  base: string = "/tmp",
+): void {
   if (!dir) return;
   try {
     if (!SESSION_TMP_RE.test(path.basename(dir))) return;
+    if (realPath(path.dirname(dir)) !== realPath(base)) return;
     const st = fs.lstatSync(dir);
     const uid = process.getuid?.();
     if (!st.isDirectory() || (uid !== undefined && st.uid !== uid)) return;
@@ -321,11 +326,7 @@ export function sandboxHidesFile(
     return isUnder(f, path.join(state, SESSION_SIGNING_DIR))
       ? null
       : `${file} is in Den's state folder, hidden from agents: put the key in ${path.join(state, SESSION_SIGNING_DIR)}/ or outside the state folder`;
-  if (
-    [...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) =>
-      isUnder(f, d),
-    )
-  )
+  if ([...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) => isUnder(f, d)))
     return `${file} is in a folder hidden from agents (Den's local proof, an edge's keys or another install's state)`;
   return null;
 }
@@ -430,6 +431,27 @@ function linuxSocketDirs(env: NodeJS.ProcessEnv): string[] {
 }
 
 /** A regex that matches `dir` and everything under it, for SBPL. */
+/**
+ * Issue 1325: the folders session temp folders are made in: /tmp's real
+ * path, and this session's own folder's parent.
+ */
+function sessionTmpBases(p: SandboxPolicy): string[] {
+  return [
+    ...new Set([
+      realPath("/tmp"),
+      ...(p.sessionTmp ? [path.dirname(p.sessionTmp)] : []),
+    ]),
+  ];
+}
+
+/** Issue 1325: SBPL's regex for any session temp folder in `base`. */
+function sessionTmpRegex(base: string): string {
+  if (/["\0\n\r]/.test(base))
+    throw new Error(`sandbox: a temp folder can't hold a quote: ${base}`);
+  const esc = base.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  return `#"^${esc}/den-[A-Za-z0-9]{6}(/|$)"`;
+}
+
 function underRegex(dir: string): string {
   if (/["\0\n\r]/.test(dir))
     throw new Error(`sandbox: a socket folder can't hold a quote: ${dir}`);
@@ -470,6 +492,11 @@ export function macProfile(p: SandboxPolicy): string {
     "(allow default)",
     `(deny file-write* ${p.readOnly.map(sub).join(" ")})`,
     ...(above.length ? [`(deny file-write* ${above.map(lit).join(" ")})`] : []),
+    // Issue 1325: no session writes another session's temp folder (a
+    // listener planted there); its own is allowed back just below.
+    `(deny file-write* ${sessionTmpBases(p)
+      .map((d) => `(regex ${sessionTmpRegex(d)})`)
+      .join(" ")})`,
     `(allow file-write* ${p.writable.map(sub).join(" ")})`,
     `(deny file-write* ${p.locked.map(lit).join(" ")})`,
     // The writable folders themselves, and those above them, can't be
@@ -480,6 +507,10 @@ export function macProfile(p: SandboxPolicy): string {
     `(allow file-read-metadata ${p.unreadable.map(sub).join(" ")})`,
     `(allow file-read* ${[...p.readable.map(sub), ...p.readableFiles.map(lit), ...p.listable.map(lit)].join(" ")})`,
     `(deny file-read* ${p.hidden.map(lit).join(" ")})`,
+    // Issue 1325: no hard link to a socket. A writable folder whose
+    // sockets connect (the session's temp folder) would otherwise take a
+    // link to one the sandbox refuses (an SSH or GPG agent's, the host's).
+    "(deny file-link (vnode-type SOCKET))",
     // A program started through LaunchServices (open, an app's script)
     // runs outside the sandbox.
     "(deny lsopen)",

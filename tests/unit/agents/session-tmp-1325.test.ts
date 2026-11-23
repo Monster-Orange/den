@@ -66,7 +66,7 @@ describe("issue 1325: the session's own temp folder", () => {
     expect(
       Buffer.byteLength(path.join(dir, "a-socket-name.sock")),
     ).toBeLessThan(104);
-    removeSessionTmp(dir);
+    removeSessionTmp(dir, base);
     expect(fs.existsSync(dir)).toBe(false);
   });
 
@@ -89,6 +89,14 @@ describe("issue 1325: the session's own temp folder", () => {
     fs.mkdirSync(other);
     removeSessionTmp(other);
     expect(fs.existsSync(other)).toBe(true);
+    // Only right inside its base (/tmp by default).
+    const nested = path.join(base, "deeper");
+    fs.mkdirSync(nested);
+    const elsewhere = makeSessionTmp(nested);
+    removeSessionTmp(elsewhere);
+    expect(fs.existsSync(elsewhere)).toBe(true);
+    removeSessionTmp(elsewhere, nested);
+    expect(fs.existsSync(elsewhere)).toBe(false);
     removeSessionTmp(undefined);
     removeSessionTmp(path.join(base, "den-zzzzzz")); // gone: no throw
   });
@@ -116,9 +124,22 @@ describe("issue 1325: the session's own temp folder", () => {
       .split("\n")
       .filter((x) => x.startsWith("(deny network-outbound"));
     expect(deny[deny.length - 1]).toContain("sessions.sock");
+    // No hard link to a socket; no write to another session's folder,
+    // its own allowed back after.
+    const lines = prof.split("\n");
+    expect(lines).toContain("(deny file-link (vnode-type SOCKET))");
+    const denyOthers = lines.findIndex((x) =>
+      x.includes("/den-[A-Za-z0-9]{6}(/|$)"),
+    );
+    const allowOwn = lines.findIndex((x) => x.startsWith("(allow file-write*"));
+    expect(lines[denyOthers]).toMatch(
+      /^\(deny file-write\* \(regex #"\^\/private\/tmp\/den-/,
+    );
+    expect(denyOthers).toBeLessThan(allowOwn);
+    expect(lines[allowOwn]).toContain(realPath(dir));
     const a = bwrapArgs(p).join(" ");
     expect(a).toContain(`--bind ${realPath(dir)} ${realPath(dir)}`);
-    removeSessionTmp(dir);
+    removeSessionTmp(dir, base);
   });
 
   it("sandboxFor gives the session TMPDIR, TMP and TEMP: only when it applies", () => {
@@ -160,7 +181,7 @@ describe("issue 1325: the session's own temp folder", () => {
       },
     );
     expect(linux.env).toMatchObject({ TMPDIR: realPath(dir) + "/" });
-    removeSessionTmp(dir);
+    removeSessionTmp(dir, base);
   });
 
   it("the refusal note: a refused socket says to use $TMPDIR; Den's own host socket keeps the state note", () => {
@@ -201,20 +222,21 @@ describe("issue 1325: the session's own temp folder", () => {
         { ref: { backend: "den-pty", id: "s2" }, exited: false },
       ] as never,
       recs,
+      base,
     );
     expect(fs.existsSync(ended)).toBe(false);
     expect(recs[0].sessionTmp).toBeUndefined();
     expect(fs.existsSync(running)).toBe(true);
     // The host doesn't list it (it may just be away): kept.
     expect(fs.existsSync(away)).toBe(true);
-    for (const d of [running, away]) removeSessionTmp(d);
+    for (const d of [running, away]) removeSessionTmp(d, base);
   });
 
   it("doctor names a den-XXXXXX folder no record names", () => {
     const named = makeSessionTmp(base);
     const left = makeSessionTmp(base);
     expect(leftoverSessionTmps([named], base)).toEqual([realPath(left)]);
-    for (const d of [named, left]) removeSessionTmp(d);
+    for (const d of [named, left]) removeSessionTmp(d, base);
   });
 });
 
@@ -228,9 +250,14 @@ describe("issue 1325: agents start and stop", () => {
     const seen: (string | undefined)[] = [];
     const r = await rig({
       sessionTmp: () => makeSessionTmp(base),
+      sessionTmpBase: base,
       agentSandbox: (argv, _id, tmp) => {
         seen.push(tmp);
-        return { applied: true, argv, env: tmp ? { TMPDIR: `${tmp}/` } : {} };
+        return {
+          applied: true,
+          argv,
+          env: (tmp ? { TMPDIR: `${tmp}/` } : {}) as Record<string, string>,
+        };
       },
     });
     expect(
@@ -251,6 +278,7 @@ describe("issue 1325: agents start and stop", () => {
     let made = "";
     const r = await rig({
       sessionTmp: () => (made = makeSessionTmp(base)),
+      sessionTmpBase: base,
       agentSandbox: (argv) => ({
         applied: false,
         argv,
@@ -312,20 +340,65 @@ function run(
   return `${r.stdout}${r.stderr}`.trim();
 }
 
+/** A short folder of this test's under /tmp, named like a session's. */
+const ownTmp = () => fs.realpathSync(fs.mkdtempSync("/tmp/den-"));
+
+/** In the wrap: listen on `name` under $TMPDIR, then connect to it. */
+const listenAndConnect = (name: string) =>
+  `const net=require("net"),p=require("path").join(process.env.TMPDIR,${JSON.stringify(name)});` +
+  `const s=net.createServer(c=>c.end("hi")).listen(p,()=>{net.connect(p).on("connect",()=>{console.log("connected");s.close();process.exit(0)}).on("error",e=>{console.log("refused "+e.code);s.close();process.exit(0)})}).on("error",e=>{console.log("listen "+e.code);process.exit(0)})`;
+
+/**
+ * In the wrap: make a link (`kind`) at $TMPDIR/l.sock to `target`, then
+ * connect through it. "link-refused <code>" when the link itself is.
+ */
+const linkAndConnect = (kind: "symlink" | "hard", target: string) =>
+  `const net=require("net"),fs=require("fs"),p=require("path").join(process.env.TMPDIR,"l.sock");` +
+  `try{fs.${kind === "hard" ? "linkSync" : "symlinkSync"}(${JSON.stringify(target)},p)}catch(e){console.log("link-refused "+e.code);process.exit(0)}` +
+  `net.connect(p).on("connect",()=>{console.log("connected");process.exit(0)}).on("error",e=>{console.log("refused "+e.code);process.exit(0)})`;
+
+/** A server listening at `p` (its folder made first, 0700). */
+function listenAt(p: string): Promise<net.Server> {
+  fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
+  return new Promise((r) => {
+    const sv = net.createServer((c) => c.end("hi\n"));
+    sv.listen(p, () => r(sv));
+  });
+}
+
 describe("issue 1325, in the real sandbox", () => {
+  // Red on code without the fix: its folder is given as TMPDIR by hand, so
+  // the case needs nothing new; only the sandbox's allow makes it connect.
   itReal(
-    "a server on a socket under $TMPDIR takes a connection from the same session",
+    "a server on a socket in the session's own temp folder takes a connection from the same session",
     () => {
       const l = layout("real-own");
+      const dir = ownTmp();
+      try {
+        const w = sandboxFor(
+          [process.execPath, "-e", listenAndConnect("own.sock")],
+          { ...l, sessionTmp: dir },
+          { platform: process.platform, on: true },
+        );
+        expect(w.applied).toBe(true);
+        const r = spawnSync(w.argv[0]!, w.argv.slice(1), {
+          encoding: "utf-8",
+          env: { ...process.env, TMPDIR: `${dir}/`, ...w.env },
+        });
+        expect(`${r.stdout}${r.stderr}`.trim()).toBe("connected");
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itReal(
+    "the same, with the folder agents start makes (makeSessionTmp)",
+    () => {
+      const l = layout("real-made");
       const dir = makeSessionTmp();
       try {
-        const out = run(
-          l,
-          dir,
-          `const net=require("net"),p=require("path").join(process.env.TMPDIR,"own.sock");` +
-            `const s=net.createServer(c=>c.end("hi")).listen(p,()=>{net.connect(p).on("connect",()=>{console.log("connected");s.close();process.exit(0)}).on("error",e=>{console.log("refused "+e.code);s.close();process.exit(0)})})`,
-        );
-        expect(out).toBe("connected");
+        expect(run(l, dir, listenAndConnect("own.sock"))).toBe("connected");
       } finally {
         removeSessionTmp(dir);
       }
@@ -333,21 +406,13 @@ describe("issue 1325, in the real sandbox", () => {
   );
 
   itMac(
-    "a socket in /tmp made outside the sandbox stays refused, and so does the session host's",
+    "a socket outside its folder stays refused, and so does the session host's",
     async () => {
       const l = layout("real-out");
       const dir = makeSessionTmp();
-      const outside = path.join(base, "outside.sock");
+      const outside = path.join(base, "out-0700", "o.sock");
       const host = path.join(realPath(l.stateDir), "sessions.sock");
-      const live = await Promise.all(
-        [outside, host].map(
-          (p) =>
-            new Promise<net.Server>((r) => {
-              const sv = net.createServer((c) => c.end("hi\n"));
-              sv.listen(p, () => r(sv));
-            }),
-        ),
-      );
+      const live = await Promise.all([listenAt(outside), listenAt(host)]);
       try {
         expect(run(l, dir, probe(outside))).toMatch(/^refused/);
         expect(run(l, dir, probe(host))).toMatch(/^refused/);
@@ -357,4 +422,50 @@ describe("issue 1325, in the real sandbox", () => {
       }
     },
   );
+
+  itMac(
+    "a link in its folder to a refused socket gets nowhere: symlink or hard link, the host's or another program's",
+    async () => {
+      const l = layout("real-link");
+      const outside = path.join(base, "link-0700", "o.sock");
+      const host = path.join(realPath(l.stateDir), "sessions.sock");
+      const live = await Promise.all([listenAt(outside), listenAt(host)]);
+      try {
+        for (const kind of ["symlink", "hard"] as const)
+          for (const target of [outside, host]) {
+            const dir = makeSessionTmp();
+            try {
+              const out = run(l, dir, linkAndConnect(kind, target));
+              expect({ kind, target, out }).toEqual({
+                kind,
+                target,
+                out: expect.stringMatching(/^(refused|link-refused) /),
+              });
+            } finally {
+              removeSessionTmp(dir);
+            }
+          }
+      } finally {
+        for (const sv of live) sv.close();
+      }
+    },
+  );
+
+  itMac("it can't write another session's temp folder", () => {
+    const l = layout("real-other");
+    const mine = makeSessionTmp();
+    const theirs = makeSessionTmp();
+    try {
+      const out = run(
+        l,
+        mine,
+        `try{require("fs").writeFileSync(${JSON.stringify(path.join(theirs, "planted"))},"x");console.log("wrote")}catch(e){console.log("refused "+e.code)}`,
+      );
+      expect(out).toMatch(/^refused/);
+      expect(fs.existsSync(path.join(theirs, "planted"))).toBe(false);
+    } finally {
+      removeSessionTmp(mine);
+      removeSessionTmp(theirs);
+    }
+  });
 });
