@@ -86,6 +86,15 @@ describe("issue 1086: Remove all stopped (N), on the stopped list's own header",
     );
   });
 
+  // Den Design: 44px on touch. The kit's tap target is the button's
+  // ::after, past its box; a clip on the button would cut it.
+  it("the button is never clipped (the kit's 44px touch target stays whole)", () => {
+    const css = read("agents.html");
+    const r = css.match(/\.agl \.agstw > \.den-btn\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(r).not.toBe("");
+    expect(r).not.toMatch(/overflow\s*:\s*(hidden|clip)/);
+  });
+
   it("the list's click sends remove-stopped there, and the summary does not toggle", () => {
     expect(PAGE).toMatch(
       /which === "remove-stopped"\)\s*\{\s*e\.preventDefault\(\);\s*return void removeAllStopped\(act\);/,

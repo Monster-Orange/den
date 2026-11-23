@@ -585,10 +585,9 @@
       .agl .agstw > .den-btn {
         align-self: flex-end;
         margin: 8px 12px 0;
-        white-space: nowrap;
+        /* A long label wraps within the list; never clipped, so the
+           kit's 44px touch target (its ::after) stays whole. */
         max-width: calc(100% - 24px);
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
       .agl .agstw:has(> .den-btn) .agstg > summary {
         border-top: 0;
