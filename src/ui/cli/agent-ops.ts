@@ -394,6 +394,8 @@ import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   type AgentSandboxInput,
   localProofDirs,
+  makeSessionTmp,
+  removeSessionTmp,
   sandboxFor,
   sandboxRequired,
   sandboxSetting,
@@ -427,6 +429,16 @@ export interface AgentsDeps extends SessionsDeps {
    * read-only to it). Default: sandboxFor with the person's setting.
    */
   agentSandbox?: AgentSandboxFn;
+  /**
+   * Issue 1325: makes a sandboxed session's own temp folder (default
+   * makeSessionTmp under /tmp); undefined: none (the system's TMPDIR).
+   */
+  sessionTmp?: () => string | undefined;
+  /**
+   * Issue 1325: the folder session temp folders are made in (default
+   * /tmp); Den removes one only right inside it.
+   */
+  sessionTmpBase?: string;
   /** Issue 1316: the key an agent working in `cwd` signs commits with. */
   agentSigning?: (cwd: string) => AgentSigning | undefined;
   /** Issue 1072: mcp.actions in the distribution's config, not read. */
@@ -566,13 +578,20 @@ export interface AgentsDeps extends SessionsDeps {
 }
 
 /** Issue 936: an agent's argv, wrapped (or not, and why). */
-export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
+export type AgentSandboxFn = (
+  argv: string[],
+  agentId: string,
+  /** Issue 1325: the session's own temp folder (makeSessionTmp). */
+  sessionTmp?: string,
+) => SandboxWrap;
 
 export interface AgentsResolved extends Resolved {
   /** Issue 989: this install's server, for person-only verbs. */
   server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
+  sessionTmp: () => string | undefined;
+  sessionTmpBase: string;
   /** Issue 1316: the key an agent working in `cwd` signs commits with. */
   agentSigning: (cwd: string) => AgentSigning | undefined;
   mcpNotReadFromOrg: () => string[];
@@ -930,8 +949,11 @@ export function agentSandboxInput(o: {
   home?: string;
   /** Issue 1316: agents.git.signing_key's files, read wherever they are. */
   readableFiles?: string[];
+  /** Issue 1325: the session's own temp folder. */
+  sessionTmp?: string;
 }): AgentSandboxInput {
   return {
+    ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
     stateDir: o.stateDir,
     distRoot: o.distRoot,
     gateDir: gateDir(o.env),
@@ -972,10 +994,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
         })),
     agentSandbox:
       d.agentSandbox ??
-      ((argv, agentId) =>
+      ((argv, agentId, sessionTmp) =>
         sandboxFor(
           argv,
           agentSandboxInput({
+            sessionTmp,
             stateDir: base.stateDir(),
             distRoot: (d.distRoot ?? getDistRoot)(),
             env: base.env,
@@ -993,6 +1016,15 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             ),
           },
         )),
+    // macOS only until issue 1331 keeps other sessions out of one on Linux
+    // too (there /tmp is shared, and sockets were never refused).
+    sessionTmp:
+      d.sessionTmp ??
+      (() =>
+        process.platform === "darwin"
+          ? makeSessionTmp(d.sessionTmpBase)
+          : undefined),
+    sessionTmpBase: d.sessionTmpBase ?? "/tmp",
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
       d.serverAgentFolder ??
@@ -1590,10 +1622,19 @@ export function noteEnded(
   stateDir: string,
   sessions: SessionInfo[],
   records: AgentRecord[],
+  /** Issue 1325: where session temp folders are made (AgentsDeps). */
+  sessionTmpBase = "/tmp",
 ): void {
   const byId = new Map(sessions.map((s) => [s.ref.id, s]));
   for (const rec of records) {
     const s = byId.get(rec.session.id);
+    // Issue 1325: an exited session's temp folder goes, however it ended
+    // (never for one the host doesn't list: the host may just be away).
+    if (s?.exited && rec.sessionTmp) {
+      removeSessionTmp(rec.sessionTmp, sessionTmpBase);
+      delete rec.sessionTmp;
+      writeRecord(stateDir, rec);
+    }
     // An exit with no code is a host that went down: interrupted, not ended.
     if (!s?.exited || s.exitCode === undefined) continue;
     if (rec.endedAt || rec.stoppedAt || rec.restartFailed) continue;
@@ -1635,7 +1676,7 @@ export async function listAgents(
   } else all = await withClient(d, (c) => c.list());
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
-  noteEnded(d.stateDir(), sessions, records);
+  noteEnded(d.stateDir(), sessions, records, d.sessionTmpBase);
   const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
@@ -3467,6 +3508,8 @@ async function startSession(
   let info: SessionInfo;
   let box: SandboxWrap;
   let legacy = false;
+  // Issue 1325: a sandboxed session's own temp folder (its sockets work).
+  let sessionTmp: string | undefined;
   let signing: AgentSigning | undefined;
   let signingWarning: string | undefined;
   try {
@@ -3500,7 +3543,23 @@ async function startSession(
           env: {},
           reason: LEGACY_SANDBOX_REASON,
         }
-      : d.agentSandbox(launch.argv, launch.rec.id);
+      : (() => {
+          // The last session's folder, if it outlived it, goes first.
+          removeSessionTmp(launch.rec.sessionTmp, d.sessionTmpBase);
+          if (sandboxSetting(d.agentsConfig(), launch.rec.id)) {
+            try {
+              sessionTmp = d.sessionTmp();
+            } catch {
+              sessionTmp = undefined; // the system's TMPDIR, as before
+            }
+          }
+          const w = d.agentSandbox(launch.argv, launch.rec.id, sessionTmp);
+          if (!w.applied) {
+            removeSessionTmp(sessionTmp, d.sessionTmpBase);
+            sessionTmp = undefined;
+          }
+          return w;
+        })();
     if (!box.applied && sandboxRequired(d.agentsConfig(), launch.rec.id))
       throw refused(
         `agents start: ${launch.rec.id} needs the agent sandbox (agents.sandbox: required), and it can't apply here: ${box.reason ?? "no sandbox"}`,
@@ -3534,6 +3593,7 @@ async function startSession(
   } catch (e) {
     revokeActorToken(d.stateDir(), minted.key);
     removeActorTokenFile(d.stateDir(), launch.rec.id);
+    removeSessionTmp(sessionTmp, d.sessionTmpBase);
     throw e;
   }
   bindActorSession(d.stateDir(), minted.key, info.ref.id);
@@ -3548,6 +3608,8 @@ async function startSession(
   const denV = engineVersion();
   if (denV) rec.denVersion = denV;
   else delete rec.denVersion;
+  if (sessionTmp) rec.sessionTmp = sessionTmp;
+  else delete rec.sessionTmp;
   // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
   delete rec.endedAt;
@@ -6390,6 +6452,13 @@ export async function stopAgent(
           await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
         }
       }
+      // Issue 1325: its temp folder goes once its session has (one still
+      // stopping: noteEnded takes it when the host lists it exited).
+      if (!stillStopping && next.sessionTmp) {
+        removeSessionTmp(next.sessionTmp, d.sessionTmpBase);
+        delete next.sessionTmp;
+        writeRecord(d.stateDir(), next);
+      }
       return {
         rec: next,
         ...(live ? { session: s! } : {}),
@@ -8284,6 +8353,7 @@ async function removeRecords(
       const s = sessionOf(sessions, rec);
       revokeAgentTokens(d.stateDir(), rec.id);
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
+      removeSessionTmp(rec.sessionTmp, d.sessionTmpBase); // issue 1325
       if (removeRecord(d.stateDir(), rec.id))
         out.push({ agent: rec.id, workspace: rec.workspace });
     }
@@ -8348,6 +8418,7 @@ export async function pruneStopped(
   });
   for (const r of old) {
     revokeAgentTokens(d.stateDir(), r.id);
+    removeSessionTmp(r.sessionTmp, d.sessionTmpBase); // issue 1325
     removeRecord(d.stateDir(), r.id);
   }
   purgeRemoved(d.stateDir(), 0, now);
