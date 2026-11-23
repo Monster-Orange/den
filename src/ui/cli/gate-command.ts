@@ -88,6 +88,8 @@ import {
 } from "../../shared/gates/browser-container.js";
 import {
   GATE_MEANINGS,
+  PRIORITY_OFF_RUN,
+  PRIORITY_OFF_STATUS,
   PRIORITY_OFF_WARNING,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
@@ -856,9 +858,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   }
   // Issue 963: asked for release priority, but it is off here.
   if (priority && s.settings().priorityMax === 0)
-    d.err(
-      "gate: taken as an ordinary run: release priority is off on this machine (priority_max 0)",
-    );
+    d.err(`gate: ${PRIORITY_OFF_RUN[d.lang ?? personLanguage()]}`);
   const id = e.id;
   let child: GateRun | undefined;
   let released = false;
@@ -975,7 +975,8 @@ function status(args: string[], d: GateDeps): number {
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
   // Issue 963: said plainly, so a release run waiting in line has a why.
-  if (set.priorityMax === 0) d.out("release priority: off (priority_max 0)");
+  if (set.priorityMax === 0)
+    d.out(PRIORITY_OFF_STATUS[d.lang ?? personLanguage()]);
   return 0;
 }
 

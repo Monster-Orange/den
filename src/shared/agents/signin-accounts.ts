@@ -43,6 +43,7 @@ import {
   type TokenMeta,
   type TokenStoreDeps,
 } from "./signin-token.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** The list, per runtime (never a token): `<stateDir>/<this>`. */
 export const ACCOUNTS_FILE = "agent-signin-accounts.json";
@@ -153,9 +154,7 @@ function cleanAccount(v: unknown): SignInAccount | null {
 function writeFile(stateDir: string, f: AccountsFile): void {
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const dest = file(stateDir);
-  const tmp = `${dest}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(f, null, 2) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, dest);
+  writeFileAtomic(dest, JSON.stringify(f, null, 2) + "\n", { mode: 0o600 });
 }
 
 /** The runtime's accounts, in the person's order. */

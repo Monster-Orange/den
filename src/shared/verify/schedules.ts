@@ -21,6 +21,7 @@ import * as path from "path";
 import type { VerifyModule } from "./config.js";
 import type { RunActor } from "./records.js";
 import { nextRun } from "./cron.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface Schedule {
   /** Stable across plan changes: from the project, environment, cron, window and name. */
@@ -369,9 +370,7 @@ function save(
 ) {
   const file = fileOf(stateDir, project);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 });
 }
 
 /** A person allows the schedule's plan as it is now. */
