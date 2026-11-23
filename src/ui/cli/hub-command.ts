@@ -101,7 +101,7 @@ export interface HubCommandDeps {
   identify?: (base: string) => Promise<ServerIdentity>;
   /** Issue 750: the groups read's deps (default: this install's). */
   groupsDeps?: () => Promise<
-    import("../server/hub-groups-routes.js").HubGroupsDeps
+    import("../../shared/hub-groups-view.js").HubGroupsDeps
   >;
 }
 
@@ -169,7 +169,7 @@ export async function cmdHub(
   if (args[0] === "groups") {
     const rest = args.slice(1);
     if (rest.some((a) => a !== "--fresh")) return usage();
-    const r = await import("../server/hub-groups-routes.js");
+    const r = await import("../../shared/hub-groups-view.js");
     const d = await (deps.groupsDeps ?? r.defaultHubGroupsDeps)();
     out(JSON.stringify(await r.groupsView(d, { fresh: rest.length > 0 })));
     return 0;

@@ -34,6 +34,11 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
+      "src/shared/hub.ts",
+      "src/shared/settings-cli-rows.ts",
+      "src/ui/server/index.ts"
+    ],
     "tests/unit/server/fixture-grant.integration.test.ts": [
       "src/shared/test-install-grant.ts",
       "src/ui/server/index.ts"
@@ -3195,6 +3200,15 @@
     {
       "when": ["src/shared/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub.ts",
+        "src/shared/settings-cli-rows.ts",
+        "src/ui/server/index.ts"
+      ],
+      "run": ["tests/unit/server/hub-groups-settings-750.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
