@@ -144,3 +144,26 @@ describe("issue 1223: a running agent on an older Den's tools is stale", () => {
     expect(row(stopped).mcpStale).toBeUndefined();
   });
 });
+
+// Settings' Hub section offers to restart the Hub-stale only: its words
+// are about Hub (an older Den's tools are the bell's, part B).
+import { restartOfferHtml } from "../../../src/ui/server/public/settings-registry.js";
+
+describe("issue 1223: Settings' Hub restart offer counts Hub's stale agents only", () => {
+  const den = { from: OLD, to: NOW };
+  it("only an older Den's tools: no Hub offer", () => {
+    expect(
+      restartOfferHtml([
+        { id: "a", workspace: "north", stale: { adds: [], drops: [], den } },
+      ]),
+    ).toBe("");
+  });
+  it("mixed: counts the Hub ones, and its button restarts only those", () => {
+    const html = restartOfferHtml([
+      { id: "a", workspace: "north", stale: { adds: [], drops: [], den } },
+      { id: "b", workspace: "north", stale: { adds: ["hub"], drops: [] } },
+    ]);
+    expect(html).toContain('data-hub-restart="1"');
+    expect(html).toContain("1 agent started before Hub was connected");
+  });
+});
