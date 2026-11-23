@@ -184,7 +184,7 @@ describe("issue 1295 (4): the server hands every end to the trail", () => {
   it("its session store records each end with sessionEndRow", () => {
     const at = src.indexOf("const webSessions = new WebSessionStore({");
     expect(at).toBeGreaterThan(-1);
-    const block = src.slice(at, src.indexOf("});", at));
+    const block = src.slice(at, src.indexOf("\n});\n", at));
     expect(block).toMatch(/onEnd:/);
     expect(src).toMatch(/recordAction\(\s*null,\s*\{\s*verb: row\.verb/);
   });

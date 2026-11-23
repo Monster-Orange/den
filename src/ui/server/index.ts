@@ -422,6 +422,8 @@ import {
   fixtureSessionEndWhy,
   sessionEndRow,
   type SessionEndWhy,
+  SessionStoreUnreadable,
+  SESSIONS_LOCK_WAIT_MS,
 } from "../../shared/web-session.js";
 import {
   checkFixtureCode,
@@ -1974,6 +1976,21 @@ function edgeFronted(): boolean {
 const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
+  // Issue 1299: a failed read of the sessions file, in the server log.
+  // Issue 1299 review: a write never blocks the server waiting for the
+  // lock; a request that may write sessions waits first, on timers
+  // (sessionsLockWait in handleRequest), and others are served meanwhile.
+  lockWaitMs: () => 0,
+  onProblem: (msg, kind) => {
+    serverLog(`  ⚠ ${msg}`, "warn");
+    // A damaged file moved aside signs every browser out: the activity
+    // trail says so, so a person knows why.
+    if (kind === "moved-aside")
+      recordAction(null, {
+        verb: "sessions-reset",
+        detail: `${msg}; every browser signs in again`,
+      });
+  },
   // Issue 1295: every session that ends says why in the activity trail.
   onEnd: (ended, why) => {
     for (const s of ended) {
@@ -2385,7 +2402,12 @@ const GUARD: GuardContext = {
     if (s?.via === "fixture") {
       const why = fixtureSessionWhyEnds(s);
       if (why) {
-        webSessions.end(s.key, why);
+        // Best effort: with the lock busy it ends at a later request.
+        try {
+          webSessions.end(s.key, why);
+        } catch {
+          /* still refused below */
+        }
         return null;
       }
     }
@@ -2393,7 +2415,11 @@ const GUARD: GuardContext = {
     // views off, or when the agent's token goes; it counts on loopback only.
     if (s?.via === "agent-view") {
       if (!agentViewStands(s)) {
-        webSessions.end(s.key, "agent-view-ended");
+        try {
+          webSessions.end(s.key, "agent-view-ended");
+        } catch {
+          /* still refused below; it ends at a later request */
+        }
         closeSessionSockets([s.key]);
         return null;
       }
@@ -2629,6 +2655,15 @@ function closeSessionSockets(keys: Iterable<string>): void {
   for (const k of keys) {
     for (const sock of SESSION_SOCKETS.get(k) ?? []) sock.destroy();
     SESSION_SOCKETS.delete(k);
+  }
+}
+
+/** Issue 1299: web.sessions_lock_wait_ms (its default when unreadable). */
+function sessionsLockWait(): number {
+  try {
+    return webAuthNow().sessionsLockWaitMs;
+  } catch {
+    return SESSIONS_LOCK_WAIT_MS;
   }
 }
 
@@ -5881,6 +5916,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const c = webAuthNow();
       return { on: c.agentView, minutes: c.agentViewMinutes };
     })(),
+    // Issue 1299: how long a sessions write waits for another's lock.
+    web_sessions: (() => {
+      const c = webAuthNow();
+      return { lockWaitMs: c.sessionsLockWaitMs };
+    })(),
     // Issue 819: new-device requests and wrong codes.
     web_pairing: (() => {
       const c = webAuthNow();
@@ -6064,6 +6104,16 @@ async function handleRequest(
   // eslint-disable-next-line no-restricted-syntax -- a base to parse the path against, never dialled
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  // Issue 1299 review: a request that may write the sessions file (a
+  // sign-in, a sign-out, a revoke) waits here, on timers, while another
+  // process holds its lock; every other request is served meanwhile. Its
+  // write then never waits (a lock taken in between: 503 "try again").
+  if (
+    (req.method !== "GET" && req.method !== "HEAD") ||
+    pathname === "/auth" ||
+    pathname.startsWith("/auth/")
+  )
+    await webSessions.whenFree(sessionsLockWait());
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);
   if (!res.headersSent) res.setHeader("X-Request-Id", requestId);
@@ -9977,6 +10027,7 @@ async function handleRequest(
           web_ready?: unknown;
           web_pairing?: unknown;
           web_agent_view?: unknown;
+          web_sessions?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
@@ -10047,6 +10098,7 @@ async function handleRequest(
             web_ready: body.web_ready,
             web_pairing: body.web_pairing,
             web_agent_view: body.web_agent_view,
+            web_sessions: body.web_sessions,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
             agents_resume: body.agents_resume,
@@ -10645,6 +10697,34 @@ const server = http.createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     const route = routeTemplate(pathname);
     const method = req.method ?? "GET";
+    // Issue 1299: the sign-ins file couldn't be read just now, so a sign-in
+    // was refused rather than saving over every session: 503, try again.
+    if (err instanceof SessionStoreUnreadable) {
+      serverLog(
+        `  ⚠ ${method} ${route} (req ${requestId}): ${err.message}`,
+        "warn",
+      );
+      try {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+        res.setHeader("Retry-After", "2");
+        if (pathname === "/api" || pathname.startsWith("/api/")) {
+          sendJson(
+            res,
+            { ok: false, error: err.message, code: "sessions_unreadable" },
+            503,
+          );
+          return;
+        }
+        res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(`${err.message} (request id ${requestId})`);
+      } catch {
+        /* socket already gone */
+      }
+      return;
+    }
     // A config that fails validation is the user's to fix, not a crash: the
     // /api frame answers 422 config_invalid (jsonApiErrors adds requestId), a
     // page gets the error page saying so, anything else the message as text.

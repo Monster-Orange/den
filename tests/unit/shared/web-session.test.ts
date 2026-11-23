@@ -308,6 +308,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       fixtureSessionMinutes: 60,
       agentView: true,
       agentViewMinutes: 10,
+      sessionsLockWaitMs: 2000,
     });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });
