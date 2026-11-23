@@ -9,7 +9,8 @@
  *   - the checkout under test, except any config/local in it (coverage,
  *     fixtures);
  *   - /dev (/dev/null);
- *   - a root a suite names in WriteGuardRoots.allow.
+ *   - Playwright's browser folder, where its launch writes a lock;
+ *   - a folder a suite names (allowWrites), for that test file only.
  *
  * Everything else is refused: any other config/local (another checkout's,
  * reached through a linked node_modules), ~/.den and every install's state
@@ -34,6 +35,7 @@ export interface WriteGuardRoots {
 
 const GUARDED = Symbol.for("den.writeGuard");
 const REFUSALS = Symbol.for("den.writeGuard.refusals");
+const ROOTS = Symbol.for("den.writeGuard.roots");
 
 /**
  * The refusals so far through `fsObj`'s wrappers (setup.ts fails each test
@@ -54,11 +56,16 @@ export function guardedWrites(fsObj: typeof fs = fsModule): string[] {
 export function armWriteGuard(
   afterAll: (fn: () => void) => void,
   roots: WriteGuardRoots = writeGuardRoots(),
+  fsObj: typeof fs = fsModule,
 ): void {
-  installWriteGuard(fsModule, roots);
-  const before = guardedWrites().length;
+  installWriteGuard(fsObj, roots);
+  const before = guardedWrites(fsObj).length;
+  const live = rootsOf(fsObj);
+  const allowed = live?.allow?.length ?? 0;
   afterAll(() => {
-    const refused = guardedWrites().splice(before);
+    // A folder a suite named (allowWrites) is its own: gone after it.
+    if (live?.allow) live.allow.length = allowed;
+    const refused = guardedWrites(fsObj).splice(before);
     if (refused.length)
       throw new Error(
         [
@@ -67,6 +74,25 @@ export function armWriteGuard(
         ].join("\n"),
       );
   });
+}
+
+const rootsOf = (fsObj: typeof fs): WriteGuardRoots | undefined =>
+  (fsObj as unknown as Record<symbol, WriteGuardRoots | undefined>)[ROOTS];
+
+/**
+ * A suite names a folder it must write outside the temp folders (Docker
+ * Desktop and OrbStack share only the home folder with their VM; a probe's
+ * screenshot folder). Until that test file ends; never /, the home itself or
+ * a folder above it.
+ */
+export function allowWrites(dir: string, fsObj: typeof fs = fsModule): void {
+  const roots = rootsOf(fsObj);
+  if (!roots) return;
+  const real = realish(dir);
+  const home = realish(os.homedir());
+  if (real === path.parse(real).root || inside(home, real))
+    throw new Error(`allowWrites: ${real} is too wide to allow`);
+  (roots.allow ??= []).push(real);
 }
 
 /** A path's real form, for one that may not exist yet (its nearest folder). */
@@ -127,6 +153,8 @@ export function writeGuardRoots(
     // and report writes share the guarded fs.
     env.RUNNER_TEMP ?? "",
     env.DEN_FAST_JEST_CACHE ?? "",
+    // Playwright's own browser folder: its launch writes a lock there.
+    playwrightBrowsers(env),
   ]
     .map((p) => p.trim())
     .filter(Boolean)
@@ -144,6 +172,24 @@ export function writeGuardRoots(
     ),
     temp: [...new Set(temp)],
   };
+}
+
+/** Where Playwright keeps its browsers (its registry's own rule). */
+function playwrightBrowsers(env: NodeJS.ProcessEnv): string {
+  const set = env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+  if (set && set !== "0") return set;
+  const home = os.homedir();
+  if (process.platform === "darwin")
+    return path.join(home, "Library", "Caches", "ms-playwright");
+  if (process.platform === "win32")
+    return path.join(
+      env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"),
+      "ms-playwright",
+    );
+  return path.join(
+    env.XDG_CACHE_HOME?.trim() || path.join(home, ".cache"),
+    "ms-playwright",
+  );
 }
 
 function message(p: string, op: string): string {
@@ -225,6 +271,8 @@ export function installWriteGuard(
   const mod = fsObj as unknown as Record<string | symbol, unknown>;
   if (mod[GUARDED]) return;
   mod[GUARDED] = true;
+  // The live roots: allowWrites adds to them for one test file.
+  mod[ROOTS] = roots;
   const check = (op: string, args: unknown[], idx: number[]) => {
     for (const i of idx) {
       const p = pathOf(args[i]);

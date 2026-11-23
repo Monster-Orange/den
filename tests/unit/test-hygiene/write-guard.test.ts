@@ -13,6 +13,8 @@ import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import {
+  allowWrites,
+  armWriteGuard,
   guardedWrites,
   installWriteGuard,
   writeGuardRoots,
@@ -193,6 +195,41 @@ describe("a root set too wide (issue 1356)", () => {
     expect(roots.temp).not.toContain(home);
     expect(roots.temp).not.toContain(path.dirname(home));
     expect(roots.temp.length).toBeGreaterThan(0);
+  });
+});
+
+describe("a folder a suite names (issue 1356)", () => {
+  it("allowWrites lets writes into that folder only, and its end-of-file check takes it away again", () => {
+    const r = rig();
+    const shared = path.join(r.home, ".docker-share");
+    expect(() => r.f.mkdirSync(shared)).toThrow(/outside its temp folders/);
+    r.refused.splice(0);
+    let end: (() => void) | undefined;
+    armWriteGuard((fn) => void (end = fn), undefined, r.f);
+    allowWrites(shared, r.f);
+    r.f.mkdirSync(shared);
+    r.f.writeFileSync(path.join(shared, "a"), "x");
+    expect(() => r.f.writeFileSync(path.join(r.home, "b"), "x")).toThrow(
+      /outside its temp folders/,
+    );
+    guardedWrites(r.f).splice(0);
+    end!();
+    expect(() => r.f.writeFileSync(path.join(shared, "c"), "x")).toThrow(
+      /outside its temp folders/,
+    );
+  });
+
+  it("Playwright's own browser folder is a named root", () => {
+    const pw = path.join(tmp, "pw-browsers");
+    expect(writeGuardRoots({ PLAYWRIGHT_BROWSERS_PATH: pw }).temp).toContain(
+      pw,
+    );
+    const home = fs.realpathSync(os.homedir());
+    const dflt =
+      process.platform === "darwin"
+        ? path.join(home, "Library", "Caches", "ms-playwright")
+        : path.join(home, ".cache", "ms-playwright");
+    expect(writeGuardRoots({}).temp).toContain(dflt);
   });
 });
 
