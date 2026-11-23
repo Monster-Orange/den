@@ -144,24 +144,26 @@ export function compareLink(
   base: string,
   head: string,
 ): string | null {
-  const m = remoteUrl
-    .trim()
-    .match(
-      /github\.com[:/]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
-    );
-  return m
-    ? `https://github.com/${m[1]}/${m[2]}/compare/${base}...${head}?expand=1`
+  const gh = githubRepo(remoteUrl);
+  return gh
+    ? `https://github.com/${gh.owner}/${gh.repo}/compare/${base}...${head}?expand=1`
     : null;
 }
 
-/** A GitHub remote's owner and repo, or null. */
+/**
+ * A GitHub remote's owner and repo, or null. The host must be github.com
+ * itself (issue 1189): an https or ssh address whose host is github.com,
+ * or scp-style user@github.com:owner/repo. A look-alike host
+ * (notgithub.com, github.com.example) or a path with github.com in it is
+ * not GitHub.
+ */
 export function githubRepo(
   remoteUrl: string,
 ): { owner: string; repo: string } | null {
   const m = remoteUrl
     .trim()
     .match(
-      /github\.com[:/]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
+      /^(?:(?:https?|ssh):\/\/(?:[^@/]+@)?github\.com\/|[^@/:]+@github\.com:)([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
     );
   return m ? { owner: m[1], repo: m[2] } : null;
 }
@@ -423,8 +425,20 @@ export async function commitPin(
     }
     // Issue 1189: a branch rule said no: the pin goes to a pull request.
     if (ruleRejected(p.out)) {
-      await stepBack(d.git, sha);
-      return await openPr(version, sha, branch, up, same, d, at, "rejected");
+      // The branch moved meanwhile (or wasn't on the commit): it keeps the
+      // pin commit, and the record says so (doctor shows it).
+      const back = await stepBack(d.git, sha);
+      return await openPr(
+        version,
+        sha,
+        branch,
+        up,
+        same,
+        d,
+        at,
+        "rejected",
+        back ? undefined : "the local branch still has the pin commit",
+      );
     }
     return pushFailed(
       version,
@@ -455,15 +469,16 @@ export async function commitPin(
  * on that commit (update-ref checks it), and only the pin files' index
  * entries move; nothing else the person has staged or changed.
  */
-async function stepBack(git: GitRun, sha: string): Promise<void> {
+async function stepBack(git: GitRun, sha: string): Promise<boolean> {
   const b = await git(["symbolic-ref", "-q", "HEAD"]);
   const ref = b.code === 0 ? b.out.trim() : "";
-  if (!ref) return;
+  if (!ref) return false;
   const parent = await git(["rev-parse", "--verify", "-q", `${sha}^`]);
-  if (parent.code !== 0) return;
+  if (parent.code !== 0) return false;
   const moved = await git(["update-ref", ref, parent.out.trim(), sha]);
-  if (moved.code !== 0) return;
+  if (moved.code !== 0) return false;
   await git(["reset", "-q", "--", ...PIN_FILES]);
+  return true;
 }
 
 function pushFailed(
@@ -498,6 +513,8 @@ async function openPr(
   d: PinCommitDeps,
   at: () => string,
   via?: PinVia,
+  /** Issue 1189: something the person should know (kept as `why`). */
+  note?: string,
 ): Promise<PinStep> {
   if (same?.state !== "branch_pushed") {
     const p = await d.git([
@@ -543,6 +560,7 @@ async function openPr(
       branch,
       url,
       ...(via ? { via } : {}),
+      ...(note ? { why: note } : {}),
       at: at(),
     });
     return { did: "pr", version, sha, branch, url, ...(via ? { via } : {}) };

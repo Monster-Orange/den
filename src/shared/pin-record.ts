@@ -69,7 +69,8 @@ export function pinDoctorText(r: PinRecord | null): string | null {
   switch (r.state) {
     case "pr_opened": {
       const n = pullNumber(r.url);
-      return `pin ${v}: ${need}opened ${n ? `#${n} ` : ""}(${r.url ?? r.branch ?? ""})`;
+      const also = r.why ? `; ${r.why}` : "";
+      return `pin ${v}: ${need}opened ${n ? `#${n} ` : ""}(${r.url ?? r.branch ?? ""})${also}`;
     }
     case "branch_pushed":
       return `pin ${v}: ${need}its branch ${r.branch ?? ""} is pushed, but no pull request yet (${r.why ?? ""})`;

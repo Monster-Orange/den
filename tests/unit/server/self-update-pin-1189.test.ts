@@ -22,12 +22,15 @@ import * as os from "os";
 import * as path from "path";
 import {
   commitPin,
+  compareLink,
+  githubRepo,
   pinBellMessage,
   pinGit,
   readPinRecord,
   type PinCommitDeps,
 } from "../../../src/ui/server/pin-commit.js";
 import { selfUpdateLines } from "../../../src/ui/cli/doctor-command.js";
+import { pinDoctorText } from "../../../src/shared/pin-record.js";
 
 const GH_URL = "https://github.com/acme/dist.git";
 let tmp: string;
@@ -305,5 +308,41 @@ describe("issue 1189: a pin push a branch rule rejects goes to a pull request", 
     const step = await commitPin("1.1.0", deps(gh.argv));
     expect(step).toMatchObject({ did: "pushed" });
     expect(pushed()).toEqual(["refs/heads/main"]);
+  });
+
+  it("only a github.com remote counts as GitHub: a look-alike host is never asked", () => {
+    for (const url of [
+      "https://github.com/acme/dist.git",
+      "https://github.com/acme/dist",
+      "https://person@github.com/acme/dist.git",
+      "git@github.com:acme/dist.git",
+      "ssh://git@github.com/acme/dist.git",
+    ])
+      expect(githubRepo(url)).toEqual({ owner: "acme", repo: "dist" });
+    for (const url of [
+      "https://notgithub.com/acme/dist.git",
+      "https://host.example/github.com/acme/dist.git",
+      "git@notgithub.com:acme/dist.git",
+      "https://github.com.example/acme/dist.git",
+      "/srv/github.com/acme/dist.git",
+    ]) {
+      expect(githubRepo(url)).toBeNull();
+      expect(compareLink(url, "main", "den/pin-1.1.0")).toBeNull();
+    }
+  });
+
+  it("a fallback whose branch couldn't step back says so in doctor", () => {
+    expect(
+      pinDoctorText({
+        version: "1.1.0",
+        state: "pr_opened",
+        url: "https://github.com/acme/dist/pull/7",
+        via: "rejected",
+        why: "the local branch still has the pin commit",
+        at: "2026-11-22T00:00:00.000Z",
+      }),
+    ).toBe(
+      "pin 1.1.0: the branch needs a pull request; opened #7 (https://github.com/acme/dist/pull/7); the local branch still has the pin commit",
+    );
   });
 });
