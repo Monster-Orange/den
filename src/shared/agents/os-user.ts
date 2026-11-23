@@ -1,6 +1,6 @@
 /**
  * Issue 988 (slice 2 of issue 936), part 1: agents as a second OS user.
- * The setup, the remove and doctor's check, as data: what `agents os-user
+ * The setup, the remove and doctor's check, as data: what `agents os-login
  * setup` shows the person and then runs with sudo, and what doctor reads.
  *
  * One agents user and one group per person:
@@ -14,8 +14,8 @@
  *   bin/                  root, 0755, as is every folder above it
  *   bin/den-agent-launch  root, 0555: the only thing the person may run as
  *                         the agents user (one sudoers rule, no password)
- *   agents/               person:group, 2770: the agent files
- *   agents/home           agents user, 0700: its home, and its only one
+ *   home/                 agents' login, 0700: its home, and its only one
+ *   agents/               person:group, 3770 (sticky): the agent files
  *   /etc/sudoers.d/den-<person>   root, 0440:
  *       <person> ALL=(<agents user>) NOPASSWD: <launcher>
  *
@@ -93,7 +93,7 @@ export function osUserPaths(root: string, person: string) {
     bin,
     launcher: path.posix.join(bin, "den-agent-launch"),
     agents,
-    home: path.posix.join(agents, "home"),
+    home: path.posix.join(dir, "home"),
     sudoers: `/etc/sudoers.d/den-${person}`,
   };
 }
@@ -179,8 +179,11 @@ export function launcherScript(o: {
   osUserNames("linux", o.person);
   return `#!/bin/sh
 # Den's agent launcher (issue 988), for ${o.person}'s agents. Root's:
-# \`agents os-user setup\` wrote it, and doctor checks it is unchanged.
+# \`agents os-login setup\` wrote it, and doctor checks it is unchanged.
 set -eu
+# Bracket ranges below mean ASCII, whatever locale sudo kept.
+LC_ALL=C
+export LC_ALL
 if [ "$#" -ne 1 ]; then
   echo "den-agent-launch: give one agent id" >&2
   exit 64
@@ -212,27 +215,121 @@ export interface PlanStep {
   argv: string[];
   /** A failure doesn't stop the plan (remove: it may already be gone). */
   optional?: boolean;
+  /** Given on stdin, from Den's memory: never a file anyone else can write. */
+  stdin?: string;
+  /** What it must print, exactly; anything else stops the plan. */
+  expect?: string;
+  /** Run (each with sudo) when this step fails, before stopping. */
+  cleanup?: string[][];
 }
 
 const rootGroup = (p: OsUserPlatform) => (p === "darwin" ? "wheel" : "root");
 
-/** The setup's steps, in order; `staged` holds the launcher and the rule, written by the person first. */
+/**
+ * Root writes `text` (on stdin, from Den's memory) to `<dest>.new` in a
+ * folder only root can write, makes it root's with `mode`, reads it back
+ * (it must be exactly `text`), runs `check` on it, then moves it into
+ * place and reads that back too. On any difference both are removed.
+ */
+function rootWrite(
+  what: string,
+  dest: string,
+  text: string,
+  rg: string,
+  mode: string,
+  check?: { say: string; argv: string[] },
+): PlanStep[] {
+  const tmp = `${dest}.new`;
+  const dropTmp = [["rm", "-f", tmp]];
+  return [
+    {
+      say: `Write ${what} (as shown above, from Den, not from a file) to ${tmp}, a file only root can write`,
+      argv: ["tee", tmp],
+      stdin: text,
+      cleanup: dropTmp,
+    },
+    {
+      say: `Make ${tmp} root's`,
+      argv: ["chown", `root:${rg}`, tmp],
+      cleanup: dropTmp,
+    },
+    {
+      say: `Make ${tmp} ${mode}`,
+      argv: ["chmod", mode, tmp],
+      cleanup: dropTmp,
+    },
+    {
+      say: `Read ${tmp} back: it must be exactly what was shown`,
+      argv: ["cat", tmp],
+      expect: text,
+      cleanup: dropTmp,
+    },
+    ...(check ? [{ ...check, cleanup: dropTmp }] : []),
+    {
+      say: `Put ${what} in place at ${dest}`,
+      argv: ["mv", "-f", tmp, dest],
+      cleanup: dropTmp,
+    },
+    {
+      say: `Read ${dest} back: it must be exactly what was shown`,
+      argv: ["cat", dest],
+      expect: text,
+      cleanup: [["rm", "-f", dest]],
+    },
+  ];
+}
+
+/** Every path setup writes as root: none may be a link (checked first). */
+export function setupPaths(l: OsUserLayout): string[] {
+  const p = osUserPaths(l.root, l.person);
+  return [
+    l.root,
+    p.dir,
+    p.bin,
+    p.home,
+    p.agents,
+    p.launcher,
+    `${p.launcher}.new`,
+    p.sudoers,
+    `${p.sudoers}.new`,
+  ];
+}
+
+/**
+ * The setup's steps, in order. `text` is the launcher and the rule as
+ * shown to the person; root gets each on stdin. `have`: the login and the
+ * group already exist (a re-run keeps them).
+ */
 export function setupPlan(
   l: OsUserLayout,
-  staged: { launcher: string; sudoers: string },
+  text: { launcher: string; sudoers: string },
+  have: { user: boolean; group: boolean } = { user: false, group: false },
 ): PlanStep[] {
   const n = osUserNames(l.platform, l.person);
   const p = osUserPaths(l.root, l.person);
   const rg = rootGroup(l.platform);
-  const steps: PlanStep[] = [];
+  const steps: PlanStep[] = [
+    {
+      say: "Check none of the paths setup writes is a link (a re-run would follow it)",
+      argv: [
+        "/bin/sh",
+        "-c",
+        'for p in "$@"; do if [ -h "$p" ]; then echo "$p is a link" >&2; exit 1; fi; done',
+        "sh",
+        ...setupPaths(l),
+      ],
+    },
+  ];
   if (l.platform === "linux") {
-    steps.push(
-      {
+    // A re-run keeps the login and the group it made (doctor checks them).
+    if (!have.group)
+      steps.push({
         say: `Make the group ${n.group}, for you and your agents`,
         argv: ["groupadd", "--system", n.group],
-      },
-      {
-        say: `Make the agents' login ${n.user}: a system login with no shell, its home in the agent files`,
+      });
+    if (!have.user)
+      steps.push({
+        say: `Make the agents' login ${n.user}: a system login with no shell, its home beside the launcher, root's folder`,
         argv: [
           "useradd",
           "--system",
@@ -245,81 +342,91 @@ export function setupPlan(
           l.noLogin,
           n.user,
         ],
-      },
-      {
-        say: `Add you (${l.person}) to ${n.group}`,
-        argv: ["usermod", "--append", "--groups", n.group, l.person],
-      },
-    );
+      });
+    steps.push({
+      say: `Add you (${l.person}) to ${n.group}`,
+      argv: ["usermod", "--append", "--groups", n.group, l.person],
+    });
   } else {
-    if (!l.ids)
+    if (!l.ids && !(have.user && have.group))
       throw new Error("macOS: the setup needs a free system uid and gid");
+    const ids = l.ids ?? { uid: 0, gid: 0 };
     const G = `/Groups/${n.group}`;
     const U = `/Users/${n.user}`;
     const dscl = (say: string, ...a: string[]): PlanStep => ({
       say,
       argv: ["dscl", ".", "-create", ...a],
     });
-    steps.push(
-      dscl(`Make the group ${n.group}, for you and your agents`, G),
-      dscl(
-        `Give ${n.group} the system id ${l.ids.gid}`,
-        G,
-        "PrimaryGroupID",
-        String(l.ids.gid),
-      ),
-      dscl(
-        `Name the group, for the list of groups`,
-        G,
-        "RealName",
-        `Den agents (${l.person})`,
-      ),
-      dscl(`Make the agents' login ${n.user}`, U),
-      dscl(
-        `Give ${n.user} the system id ${l.ids.uid}`,
-        U,
-        "UniqueID",
-        String(l.ids.uid),
-      ),
-      dscl(
-        `Put ${n.user} in ${n.group}`,
-        U,
-        "PrimaryGroupID",
-        String(l.ids.gid),
-      ),
-      dscl(`Give ${n.user} no login shell`, U, "UserShell", l.noLogin),
-      dscl(
-        `Set ${n.user}'s home, in the agent files`,
-        U,
-        "NFSHomeDirectory",
-        p.home,
-      ),
-      dscl(
-        `Name the login, for the list of logins`,
-        U,
-        "RealName",
-        `Den agents (${l.person})`,
-      ),
-      dscl(`Hide ${n.user} from the login window`, U, "IsHidden", "1"),
-      dscl(`Give ${n.user} no password (it can't log in)`, U, "Password", "*"),
-      {
-        say: `Add you (${l.person}) to ${n.group}`,
-        argv: [
-          "dseditgroup",
-          "-o",
-          "edit",
-          "-a",
-          l.person,
-          "-t",
-          "user",
-          n.group,
-        ],
-      },
-    );
+    // A re-run keeps the login and the group, and their ids.
+    if (!have.group)
+      steps.push(
+        dscl(`Make the group ${n.group}, for you and your agents`, G),
+        dscl(
+          `Give ${n.group} the system id ${ids.gid}`,
+          G,
+          "PrimaryGroupID",
+          String(ids.gid),
+        ),
+        dscl(
+          `Name the group, for the list of groups`,
+          G,
+          "RealName",
+          `Den agents (${l.person})`,
+        ),
+      );
+    if (!have.user)
+      steps.push(
+        dscl(`Make the agents' login ${n.user}`, U),
+        dscl(
+          `Give ${n.user} the system id ${ids.uid}`,
+          U,
+          "UniqueID",
+          String(ids.uid),
+        ),
+        dscl(
+          `Put ${n.user} in ${n.group}`,
+          U,
+          "PrimaryGroupID",
+          String(ids.gid),
+        ),
+        dscl(`Give ${n.user} no login shell`, U, "UserShell", l.noLogin),
+        dscl(
+          `Set ${n.user}'s home, in Den's root folder`,
+          U,
+          "NFSHomeDirectory",
+          p.home,
+        ),
+        dscl(
+          `Name the login, for the list of logins`,
+          U,
+          "RealName",
+          `Den agents (${l.person})`,
+        ),
+        dscl(`Hide ${n.user} from the login window`, U, "IsHidden", "1"),
+        dscl(
+          `Give ${n.user} no password (it can't log in)`,
+          U,
+          "Password",
+          "*",
+        ),
+      );
+    steps.push({
+      say: `Add you (${l.person}) to ${n.group}`,
+      argv: [
+        "dseditgroup",
+        "-o",
+        "edit",
+        "-a",
+        l.person,
+        "-t",
+        "user",
+        n.group,
+      ],
+    });
   }
   steps.push(
     {
-      say: `Make ${p.bin} and the folders above it root's, so only root can change the launcher`,
+      say: `Make ${p.bin}, ${p.dir} and ${l.root} root's, so only root can make or change anything in them`,
       argv: [
         "install",
         "-d",
@@ -335,35 +442,7 @@ export function setupPlan(
       ],
     },
     {
-      say: `Install the launcher at ${p.launcher}, root's and read-only`,
-      argv: [
-        "install",
-        "-o",
-        "root",
-        "-g",
-        rg,
-        "-m",
-        "0555",
-        staged.launcher,
-        p.launcher,
-      ],
-    },
-    {
-      say: `Make the agent files folder ${p.agents}, yours and the group's`,
-      argv: [
-        "install",
-        "-d",
-        "-o",
-        l.person,
-        "-g",
-        n.group,
-        "-m",
-        "2770",
-        p.agents,
-      ],
-    },
-    {
-      say: `Make ${n.user}'s home ${p.home}, its own`,
+      say: `Make ${n.user}'s home ${p.home}, its own, in root's folder`,
       argv: [
         "install",
         "-d",
@@ -377,25 +456,57 @@ export function setupPlan(
       ],
     },
     {
-      say: `Check the sudo rule before installing it`,
-      argv: ["visudo", "-c", "-f", staged.sudoers],
-    },
-    {
-      say: `Install the sudo rule ${p.sudoers}: you may run the launcher as ${n.user}, and nothing else`,
+      say: `Make the agent files folder ${p.agents}: yours and the group's, sticky (nobody removes another's files)`,
       argv: [
         "install",
+        "-d",
         "-o",
-        "root",
+        l.person,
         "-g",
-        rg,
+        n.group,
         "-m",
-        "0440",
-        staged.sudoers,
-        p.sudoers,
+        "3770",
+        p.agents,
       ],
     },
+    ...rootWrite("the launcher", p.launcher, text.launcher, rg, "0555"),
+    ...rootWrite("the sudo rule", p.sudoers, text.sudoers, rg, "0440", {
+      say: "Check the sudo rule with visudo before it is put in place",
+      argv: ["visudo", "-c", "-f", `${p.sudoers}.new`],
+    }),
   );
   return steps;
+}
+
+export type PlanRunner = (
+  argv: string[],
+  stdin?: string,
+) => { ok: boolean; stdout?: string; error?: string };
+
+/**
+ * Runs `steps` with `run` (sudo). A failed step, or one whose output isn't
+ * exactly what it must print, runs its cleanup and stops the plan (an
+ * optional step without an expected output just goes on).
+ */
+export function runPlan(
+  steps: PlanStep[],
+  run: PlanRunner,
+): { ok: true } | { ok: false; index: number; error: string } {
+  for (const [index, s] of steps.entries()) {
+    const r = run(s.argv, s.stdin);
+    const differs = s.expect !== undefined && r.ok && r.stdout !== s.expect;
+    if (r.ok && !differs) continue;
+    if (!differs && s.optional) continue;
+    for (const c of s.cleanup ?? []) run(c);
+    return {
+      ok: false,
+      index,
+      error: differs
+        ? "what root wrote is not what was shown, so it was removed"
+        : (r.error ?? "it failed"),
+    };
+  }
+  return { ok: true };
 }
 
 /** The remove's steps: the rule first, then the user, the group and the folders. */
@@ -488,7 +599,7 @@ export interface OsUserCheck {
 
 const octal = (m: number) => (m & 0o7777).toString(8).padStart(4, "0");
 
-/** Doctor's row: as it should be when agents.os_user is on, gone when it is off. */
+/** Doctor's row: as it should be when agents.os_login is on, gone when it is off. */
 export function osUserCheck(
   o: { on: boolean; layout: OsUserLayout; cli?: string },
   f: OsUserFacts,
@@ -516,13 +627,13 @@ export function osUserCheck(
         status: problems.length ? "fail" : "ok",
         detail: problems.length
           ? problems.join("; ")
-          : "agents run as you: their own login is not set up (agents.os_user is off)",
+          : "agents run as you: their own login is not set up (agents.os_login is off)",
         problems,
       };
     problems.push(
       ...present.map(
         (x) =>
-          `${x} is still here, but agents.os_user is off: \`${cli} agents os-user remove\` removes it`,
+          `${x} is still here, but agents.os_login is off: \`${cli} agents os-login remove\` removes it`,
       ),
     );
     return { status: "fail", detail: problems.join("; "), problems };
@@ -530,7 +641,7 @@ export function osUserCheck(
 
   if (present.length === 0) {
     problems.push(
-      `agents.os_user is on, but the agents' login is not set up: run \`${cli} agents os-user setup\``,
+      `agents.os_login is on, but the agents' login is not set up: run \`${cli} agents os-login setup\``,
     );
     return { status: "fail", detail: problems.join("; "), problems };
   }
@@ -596,7 +707,7 @@ export function osUserCheck(
     });
     if (f.launcher.text !== want)
       problems.push(
-        `the launcher ${p.launcher} is not the one Den wrote: run \`${cli} agents os-user setup\` again`,
+        `the launcher ${p.launcher} is not the one Den wrote: run \`${cli} agents os-login setup\` again`,
       );
   }
   for (const c of f.launcherChain)
@@ -609,10 +720,10 @@ export function osUserCheck(
     problems.push(`the agent files folder ${p.agents} is missing`);
   else if (
     f.agentsDir.uid !== f.personUid ||
-    (f.agentsDir.mode & 0o7777) !== 0o2770
+    (f.agentsDir.mode & 0o7777) !== 0o3770
   )
     problems.push(
-      `${p.agents} is ${octal(f.agentsDir.mode)}, uid ${f.agentsDir.uid}: it should be yours, 2770`,
+      `${p.agents} is ${octal(f.agentsDir.mode)}, uid ${f.agentsDir.uid}: it should be yours, 3770`,
     );
   if (!f.homeDir) problems.push(`${n.user}'s home ${p.home} is missing`);
   else if (f.homeDir.uid !== f.user.uid || (f.homeDir.mode & 0o777) !== 0o700)

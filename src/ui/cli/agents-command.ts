@@ -315,7 +315,7 @@ export const AGENTS_HELP = {
     "    its own item in the install's secrets store; set-token reads it like",
     "    token set. Agents sign in with the first in the order. The token that",
     "    exists today is Claude account A. Changes are a person's only",
-    "{cli} `agents os-user` setup | remove | check",
+    "{cli} `agents os-login` setup | remove | check",
     "    agents run under a login of their own (macOS, Linux), so they can't read Den's state",
     "    or your files. setup shows each step and runs it with sudo once you say",
     "    yes; remove undoes it and checks nothing is left. A person's only",
@@ -2949,7 +2949,7 @@ export async function cmdAgents(
           return await tokenCmd(rest, d, deps);
         case "accounts":
           return await accountsCmd(rest, d, deps);
-        case "os-user": {
+        case "os-login": {
           // Issue 988: agents as a second OS user (a person's).
           const { cmdOsUser, defaultOsUserDeps } =
             await import("./os-user-command.js");

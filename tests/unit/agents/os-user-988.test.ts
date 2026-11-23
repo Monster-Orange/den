@@ -31,12 +31,15 @@ import {
   osUserNames,
   osUserPaths,
   removePlan,
+  runPlan,
+  setupPaths,
   setupPlan,
   sudoersLine,
   sudoersRuleProblem,
   writableChain,
   type OsUserFacts,
   type OsUserLayout,
+  type PlanRunner,
 } from "../../../src/shared/agents/os-user.js";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "den-os-user-988-"));
@@ -79,7 +82,7 @@ describe("issue 988: names and paths", () => {
       bin: "/opt/den/robin/bin",
       launcher: "/opt/den/robin/bin/den-agent-launch",
       agents: "/opt/den/robin/agents",
-      home: "/opt/den/robin/agents/home",
+      home: "/opt/den/robin/home",
       sudoers: "/etc/sudoers.d/den-robin",
     });
   });
@@ -222,13 +225,13 @@ const lines = (steps: { argv: string[] }[]) =>
   steps.map((s) => s.argv.join(" "));
 
 describe("issue 988 (pins 2 and 4): the setup", () => {
-  const staged = { launcher: "/tmp/s/launch", sudoers: "/tmp/s/sudoers" };
+  const staged = { launcher: "LAUNCHER TEXT\n", sudoers: "RULE TEXT\n" };
 
   it("Linux: a system user with no login shell, its home in the agent files, never in a sudo group", () => {
     const l = lines(setupPlan(layout("linux"), staged));
     expect(l).toContain("groupadd --system den-robin");
     expect(l).toContain(
-      "useradd --system --gid den-robin --home-dir /opt/den/robin/agents/home --no-create-home --shell /usr/sbin/nologin den-agents-robin",
+      "useradd --system --gid den-robin --home-dir /opt/den/robin/home --no-create-home --shell /usr/sbin/nologin den-agents-robin",
     );
     expect(l).toContain("usermod --append --groups den-robin robin");
     expect(l.join("\n")).not.toMatch(
@@ -242,7 +245,7 @@ describe("issue 988 (pins 2 and 4): the setup", () => {
       "dscl . -create /Users/_den_agents_robin UserShell /usr/bin/false",
     );
     expect(l).toContain(
-      "dscl . -create /Users/_den_agents_robin NFSHomeDirectory /opt/den/robin/agents/home",
+      "dscl . -create /Users/_den_agents_robin NFSHomeDirectory /opt/den/robin/home",
     );
     expect(l).toContain("dscl . -create /Users/_den_agents_robin IsHidden 1");
     expect(l).toContain("dscl . -create /Users/_den_agents_robin Password *");
@@ -259,26 +262,186 @@ describe("issue 988 (pins 2 and 4): the setup", () => {
       expect(l).toContain(
         `install -d -o root -g ${grp} -m 0755 /opt/den /opt/den/robin /opt/den/robin/bin`,
       );
-      expect(l).toContain(
-        `install -o root -g ${grp} -m 0555 /tmp/s/launch /opt/den/robin/bin/den-agent-launch`,
+      const L = "/opt/den/robin/bin/den-agent-launch";
+      const S = "/etc/sudoers.d/den-robin";
+      // Each goes to a .new file in a root-only folder, is read back,
+      // (the rule) checked by visudo, then moved into place.
+      for (const [dest, mode] of [
+        [L, "0555"],
+        [S, "0440"],
+      ] as const) {
+        const order = [
+          `tee ${dest}.new`,
+          `chown root:${grp} ${dest}.new`,
+          `chmod ${mode} ${dest}.new`,
+          `cat ${dest}.new`,
+          `mv -f ${dest}.new ${dest}`,
+          `cat ${dest}`,
+        ].map((x) => l.indexOf(x));
+        expect(order.every((i) => i >= 0)).toBe(true);
+        expect([...order].sort((a, b) => a - b)).toEqual(order);
+      }
+      const visudo = l.indexOf(`visudo -c -f ${S}.new`);
+      expect(visudo).toBeGreaterThan(l.indexOf(`cat ${S}.new`));
+      expect(visudo).toBeLessThan(l.indexOf(`mv -f ${S}.new ${S}`));
+      // The launcher goes in before the rule that lets it run.
+      expect(l.indexOf(`mv -f ${L}.new ${L}`)).toBeLessThan(
+        l.indexOf(`mv -f ${S}.new ${S}`),
       );
-      const check = l.indexOf("visudo -c -f /tmp/s/sudoers");
-      const put = l.indexOf(
-        `install -o root -g ${grp} -m 0440 /tmp/s/sudoers /etc/sudoers.d/den-robin`,
-      );
-      expect(check).toBeGreaterThanOrEqual(0);
-      expect(put).toBeGreaterThan(check);
       const n = osUserNames(platform, "robin");
       expect(l).toContain(
-        `install -d -o robin -g ${n.group} -m 2770 /opt/den/robin/agents`,
+        `install -d -o robin -g ${n.group} -m 3770 /opt/den/robin/agents`,
       );
       expect(l).toContain(
-        `install -d -o ${n.user} -g ${n.group} -m 0700 /opt/den/robin/agents/home`,
+        `install -d -o ${n.user} -g ${n.group} -m 0700 /opt/den/robin/home`,
       );
       // Every step says what it does, for the person to read first.
       for (const s of setupPlan(layout(platform), staged))
         expect(s.say.length).toBeGreaterThan(10);
     });
+});
+
+describe("issue 988: root installs nothing from a file anyone else can write", () => {
+  const text = { launcher: "LAUNCHER TEXT\n", sudoers: "RULE TEXT\n" };
+
+  for (const platform of ["linux", "darwin"] as const)
+    it(`${platform}: every path a root step names is in a root-only place; the texts come on stdin`, () => {
+      const steps = setupPlan(layout(platform), text);
+      const allowed = [
+        /^\/opt\/den(\/|$)/,
+        /^\/etc\/sudoers\.d\//,
+        /^\/bin\/sh$/,
+        /^\/usr\/sbin\/nologin$/,
+        /^\/usr\/bin\/false$/,
+        /^\/(Users|Groups)\//, // dscl record names
+      ];
+      for (const s of steps)
+        for (const a of s.argv.slice(1))
+          if (a.startsWith("/"))
+            expect(allowed.some((r) => r.test(a)) ? "ok" : a).toBe("ok");
+      const fed = steps.filter((s) => s.stdin !== undefined);
+      expect(fed.map((s) => [s.argv.join(" "), s.stdin])).toEqual([
+        ["tee /opt/den/robin/bin/den-agent-launch.new", text.launcher],
+        ["tee /etc/sudoers.d/den-robin.new", text.sudoers],
+      ]);
+    });
+
+  it("first, it refuses if any path it writes is a link (a re-run would follow it)", () => {
+    const first = setupPlan(layout("linux"), text)[0]!;
+    expect(first.argv.slice(0, 2)).toEqual(["/bin/sh", "-c"]);
+    expect(first.argv.slice(4)).toEqual(setupPaths(layout("linux")));
+    for (const p of [
+      "/opt/den",
+      "/opt/den/robin",
+      "/opt/den/robin/bin",
+      "/opt/den/robin/home",
+      "/opt/den/robin/agents",
+      "/etc/sudoers.d/den-robin",
+      "/etc/sudoers.d/den-robin.new",
+    ])
+      expect(setupPaths(layout("linux"))).toContain(p);
+    // The check itself, on the real shell: a link fails it.
+    const d = fs.mkdtempSync(path.join(tmp, "links-"));
+    fs.mkdirSync(path.join(d, "real"));
+    fs.symlinkSync(path.join(d, "real"), path.join(d, "home"));
+    const sh = (...ps: string[]) =>
+      spawnSync(first.argv[0]!, [first.argv[1]!, first.argv[2]!, "sh", ...ps], {
+        encoding: "utf-8",
+      });
+    expect(sh(path.join(d, "real"), path.join(d, "none")).status).toBe(0);
+    const r = sh(path.join(d, "real"), path.join(d, "home"));
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("is a link");
+  });
+
+  it("the home is in root's folder, not in the agent files the group can write", () => {
+    const p = osUserPaths(ROOT, "robin");
+    expect(path.posix.dirname(p.home)).toBe(p.dir);
+    expect(p.home.startsWith(p.agents)).toBe(false);
+  });
+
+  it("a re-run keeps the login and the group it made", () => {
+    const again = lines(
+      setupPlan(layout("linux"), text, { user: true, group: true }),
+    ).join("\n");
+    expect(again).not.toMatch(/useradd|groupadd/);
+    expect(again).toMatch(/usermod --append --groups den-robin robin/);
+    const mac = lines(
+      setupPlan({ ...layout("darwin"), ids: undefined }, text, {
+        user: true,
+        group: true,
+      }),
+    ).join("\n");
+    expect(mac).not.toMatch(/-create \/(Users|Groups)\//);
+  });
+});
+
+describe("issue 988: runPlan", () => {
+  /** A stand-in for root: files in a map; `tamper` changes one after it is written. */
+  function machine(tamper?: { path: string; to: string }) {
+    const files = new Map<string, string>();
+    const ran: string[] = [];
+    const run: PlanRunner = (argv, stdin) => {
+      ran.push(argv.join(" "));
+      const [cmd, a] = argv;
+      if (cmd === "tee") {
+        files.set(a!, stdin ?? "");
+        if (tamper && tamper.path === a) files.set(a!, tamper.to);
+        return { ok: true, stdout: stdin ?? "" };
+      }
+      if (cmd === "cat")
+        return files.has(a!)
+          ? { ok: true, stdout: files.get(a!)! }
+          : { ok: false, error: "no such file" };
+      if (cmd === "mv") {
+        // mv -f <from> <to>
+        const [from, to] = [argv[2]!, argv[3]!];
+        files.set(to, files.get(from) ?? "");
+        files.delete(from);
+        return { ok: true };
+      }
+      if (cmd === "rm") {
+        for (const f of argv.slice(2)) files.delete(f);
+        return { ok: true };
+      }
+      return { ok: true };
+    };
+    return { run, files, ran };
+  }
+  const text = { launcher: "LAUNCHER TEXT\n", sudoers: "RULE TEXT\n" };
+  const S = "/etc/sudoers.d/den-robin";
+  const L = "/opt/den/robin/bin/den-agent-launch";
+
+  it("as shown: everything goes in", () => {
+    const m = machine();
+    expect(runPlan(setupPlan(layout("linux"), text), m.run)).toEqual({
+      ok: true,
+    });
+    expect(m.files.get(S)).toBe(text.sudoers);
+    expect(m.files.get(L)).toBe(text.launcher);
+  });
+
+  it("a rule changed after it was written: it stops before the rule is in place, and removes it", () => {
+    const m = machine({
+      path: `${S}.new`,
+      to: "robin ALL=(ALL) NOPASSWD: ALL\n",
+    });
+    const r = runPlan(setupPlan(layout("linux"), text), m.run);
+    expect(r.ok).toBe(false);
+    expect(m.files.has(S)).toBe(false);
+    expect(m.files.has(`${S}.new`)).toBe(false);
+    expect(m.ran.join("\n")).not.toMatch(/visudo|mv -f \/etc/);
+    if (!r.ok) expect(r.error).toMatch(/not what was shown/);
+  });
+
+  it("a launcher changed after it was written: nothing goes in, the rule is never written", () => {
+    const m = machine({ path: `${L}.new`, to: "#!/bin/sh\nexec /bin/sh\n" });
+    expect(runPlan(setupPlan(layout("linux"), text), m.run).ok).toBe(false);
+    expect(m.files.has(L)).toBe(false);
+    expect(m.ran.join("\n")).not.toMatch(
+      /^(tee|mv|chmod|chown|visudo)\b.*sudoers/m,
+    );
+  });
 });
 
 describe("issue 988 (pin 5): remove undoes everything setup makes", () => {
@@ -309,7 +472,7 @@ function goodFacts(): OsUserFacts {
       exists: true,
       uid: 455,
       shell: "/usr/sbin/nologin",
-      home: "/opt/den/robin/agents/home",
+      home: "/opt/den/robin/home",
       groups: ["den-robin"],
     },
     group: { exists: true, members: ["robin"] },
@@ -322,7 +485,7 @@ function goodFacts(): OsUserFacts {
       text: launcherScript({
         person: "robin",
         user: "den-agents-robin",
-        home: "/opt/den/robin/agents/home",
+        home: "/opt/den/robin/home",
         runtime: lay.runtime,
       }),
     },
@@ -333,7 +496,7 @@ function goodFacts(): OsUserFacts {
       { path: "/opt", uid: 0, mode: 0o40755 },
       { path: "/", uid: 0, mode: 0o40755 },
     ],
-    agentsDir: { uid: 1000, mode: 0o42770 },
+    agentsDir: { uid: 1000, mode: 0o43770 },
     homeDir: { uid: 455, mode: 0o40700 },
     stateDir: { uid: 1000, mode: 0o40700 },
     dir: true,
@@ -350,7 +513,7 @@ describe("issue 988: doctor's check", () => {
     expect(r.status).toBe("ok");
   });
 
-  it("not set up, and agents.os_user off: ok, says so", () => {
+  it("not set up, and agents.os_login off: ok, says so", () => {
     const none: OsUserFacts = {
       user: { exists: false },
       group: { exists: false },

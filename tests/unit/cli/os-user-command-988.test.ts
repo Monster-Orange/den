@@ -1,12 +1,12 @@
 /**
- * Issue 988, part 1: `agents os-user setup | remove | check`, and the
+ * Issue 988, part 1: `agents os-login setup | remove | check`, and the
  * facts doctor reads from the machine. The commands run through stand-ins:
  * nothing here calls sudo or changes the machine.
  *
  *   setup   shows every step, asks, then runs each with sudo; a failure
- *           stops it. Sets agents.os_user: on.
+ *           stops it. Sets agents.os_login: on.
  *   remove  asks, runs each step (gone already is fine), sets
- *           agents.os_user: off, then checks nothing is left (pin 5).
+ *           agents.os_login: off, then checks nothing is left (pin 5).
  *   check   doctor's row.
  *
  * All three are a person's: an agent's session is refused.
@@ -54,6 +54,8 @@ function rig(
     fail?: string;
     env?: NodeJS.ProcessEnv;
     facts?: OsUserFacts;
+    /** A same-login process rewrites this file right after root writes it. */
+    tamper?: { path: string; to: string };
     platform?: NodeJS.Platform;
   } = {},
 ) {
@@ -62,26 +64,37 @@ function rig(
   const err: string[] = [];
   const asked: string[] = [];
   const set: boolean[] = [];
-  const staged: Record<string, string> = {};
+  // Root's files, as the stand-in sudo keeps them.
+  const files = new Map<string, string>();
   const d: OsUserCommandDeps = {
     platform: o.platform ?? "linux",
     env: o.env ?? {},
     layout: async () => LAYOUT,
-    stage: (files) => {
-      Object.assign(staged, files);
-      return { launcher: "/tmp/st/launch", sudoers: "/tmp/st/sudoers" };
-    },
     confirm: async (q) => {
       asked.push(q);
       // Everything was shown before the question.
       asked.push(`shown:${out.length}`);
       return o.yes ?? false;
     },
-    sudo: (argv) => {
+    sudo: (argv, stdin) => {
       ran.push(argv.join(" "));
-      return argv.join(" ").startsWith(o.fail ?? "\0")
-        ? { ok: false, error: "no such thing" }
-        : { ok: true };
+      if (argv.join(" ").startsWith(o.fail ?? "\0"))
+        return { ok: false, error: "no such thing" };
+      const [cmd, a] = argv;
+      if (cmd === "tee") {
+        files.set(a!, stdin ?? "");
+        if (o.tamper?.path === a) files.set(a!, o.tamper.to);
+      }
+      if (cmd === "cat")
+        return files.has(a!)
+          ? { ok: true, stdout: files.get(a!)! }
+          : { ok: false, error: "no such file" };
+      if (cmd === "mv") {
+        files.set(argv[3]!, files.get(argv[2]!) ?? "");
+        files.delete(argv[2]!);
+      }
+      if (cmd === "rm") for (const f of argv.slice(2)) files.delete(f);
+      return { ok: true, stdout: "" };
     },
     facts: () => o.facts ?? NONE,
     setOn: (on) => set.push(on),
@@ -90,10 +103,10 @@ function rig(
     err: (l) => err.push(l),
     cli: "den",
   };
-  return { d, ran, out, err, asked, set, staged };
+  return { d, ran, out, err, asked, set, files };
 }
 
-describe("issue 988: agents os-user setup", () => {
+describe("issue 988: agents os-login setup", () => {
   it("shows every step and its command before asking; no means nothing runs", async () => {
     const r = rig({ yes: false });
     expect(await cmdOsUser(["setup"], r.d)).toBe(1);
@@ -106,28 +119,87 @@ describe("issue 988: agents os-user setup", () => {
     expect(r.set).toEqual([]);
   });
 
-  it("yes: runs each step with sudo, in order, and turns agents.os_user on", async () => {
+  it("yes: runs each step with sudo, in order, and turns agents.os_login on", async () => {
     const r = rig({ yes: true });
     expect(await cmdOsUser(["setup"], r.d)).toBe(0);
-    expect(r.ran[0]).toBe("groupadd --system den-robin");
-    expect(r.ran.at(-1)).toBe(
-      "install -o root -g root -m 0440 /tmp/st/sudoers /etc/sudoers.d/den-robin",
-    );
-    expect(r.staged.sudoers).toBe(
+    expect(r.ran[0]).toMatch(/^\/bin\/sh -c .*is a link/);
+    expect(r.ran[1]).toBe("groupadd --system den-robin");
+    expect(r.ran.at(-1)).toBe("cat /etc/sudoers.d/den-robin");
+    expect(r.files.get("/etc/sudoers.d/den-robin")).toBe(
       "robin ALL=(den-agents-robin) NOPASSWD: /opt/den/robin/bin/den-agent-launch\n",
     );
-    expect(r.staged.launcher).toMatch(/^#!\/bin\/sh/);
+    expect(r.files.get("/opt/den/robin/bin/den-agent-launch")).toMatch(
+      /^#!\/bin\/sh/,
+    );
     expect(r.set).toEqual([true]);
   });
 
-  it("a failed step stops it, says which, and leaves agents.os_user as it was", async () => {
+  it("a failed step stops it, says which, and leaves agents.os_login as it was", async () => {
     const r = rig({ yes: true, fail: "visudo" });
     expect(await cmdOsUser(["setup"], r.d)).toBe(1);
-    expect(r.ran.at(-1)).toMatch(/^visudo/);
-    expect(r.ran.join("\n")).not.toMatch(/sudoers\.d/);
+    expect(r.ran.at(-2)).toMatch(/^visudo/);
+    expect(r.ran.at(-1)).toBe("rm -f /etc/sudoers.d/den-robin.new");
+    expect(r.files.has("/etc/sudoers.d/den-robin")).toBe(false);
+    expect(r.files.has("/etc/sudoers.d/den-robin.new")).toBe(false);
     expect(r.err.join("\n")).toMatch(/visudo/);
     expect(r.err.join("\n")).toMatch(/remove/);
     expect(r.set).toEqual([]);
+  });
+
+  it("shows the launcher's text and the rule from Den itself, never a file path to go and read", async () => {
+    const r = rig({ yes: false });
+    await cmdOsUser(["setup"], r.d);
+    const shown = r.out.join("\n");
+    expect(shown).toMatch(/^ {2}\| #!\/bin\/sh$/m);
+    expect(shown).toMatch(/^ {2}\| exec \/usr\/bin\/env -i /m);
+    expect(shown).toContain(
+      "robin ALL=(den-agents-robin) NOPASSWD: /opt/den/robin/bin/den-agent-launch",
+    );
+    expect(shown).not.toMatch(/\/tmp\/|\/var\/folders\//);
+  });
+
+  it("a same-login process changes the rule between the yes and the install: setup refuses, and installs no rule", async () => {
+    const r = rig({
+      yes: true,
+      tamper: {
+        path: "/etc/sudoers.d/den-robin.new",
+        to: "robin ALL=(ALL) NOPASSWD: ALL\n",
+      },
+    });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(1);
+    expect(r.files.has("/etc/sudoers.d/den-robin")).toBe(false);
+    expect(r.files.has("/etc/sudoers.d/den-robin.new")).toBe(false);
+    expect(r.err.join("\n")).toMatch(/not what was shown/);
+    expect(r.set).toEqual([]);
+  });
+
+  it("the same for the launcher: nothing of it stays, and the rule is never written", async () => {
+    const r = rig({
+      yes: true,
+      tamper: {
+        path: "/opt/den/robin/bin/den-agent-launch.new",
+        to: "#!/bin/sh\nexec /bin/sh\n",
+      },
+    });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(1);
+    expect(r.files.has("/opt/den/robin/bin/den-agent-launch")).toBe(false);
+    expect(r.files.has("/opt/den/robin/bin/den-agent-launch.new")).toBe(false);
+    expect(r.ran.join("\n")).not.toMatch(
+      /^(tee|mv|chmod|chown|visudo)\b.*sudoers/m,
+    );
+  });
+
+  it("a re-run keeps the login and the group", async () => {
+    const r = rig({
+      yes: true,
+      facts: {
+        ...NONE,
+        user: { exists: true, uid: 455 },
+        group: { exists: true },
+      },
+    });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(0);
+    expect(r.ran.join("\n")).not.toMatch(/useradd|groupadd/);
   });
 
   it("an agent's session is refused, and nothing is shown or run", async () => {
@@ -152,7 +224,7 @@ describe("issue 988: agents os-user setup", () => {
   });
 });
 
-describe("issue 988 (pin 5): agents os-user remove", () => {
+describe("issue 988 (pin 5): agents os-login remove", () => {
   it("runs every step (gone already is fine), turns it off, and checks nothing is left", async () => {
     const r = rig({ yes: true, fail: "userdel" });
     expect(await cmdOsUser(["remove"], r.d)).toBe(0);
@@ -178,7 +250,7 @@ describe("issue 988 (pin 5): agents os-user remove", () => {
   });
 });
 
-describe("issue 988: agents os-user check", () => {
+describe("issue 988: agents os-login check", () => {
   it("prints doctor's row; off and not set up is fine", async () => {
     const r = rig();
     expect(await cmdOsUser(["check"], r.d)).toBe(0);
@@ -186,16 +258,16 @@ describe("issue 988: agents os-user check", () => {
   });
 });
 
-describe("issue 988: agents.os_user in user.yml", () => {
+describe("issue 988: agents.os_login in user.yml", () => {
   it("on or off (true, false); unset is off; anything else is an error", () => {
     expect(osUserSetting(undefined)).toBe(false);
     expect(osUserSetting({})).toBe(false);
-    expect(osUserSetting({ os_user: "on" })).toBe(true);
-    expect(osUserSetting({ os_user: true })).toBe(true);
-    expect(osUserSetting({ os_user: "off" })).toBe(false);
-    expect(osUserSetting({ os_user: false })).toBe(false);
-    expect(() => osUserSetting({ os_user: "required" })).toThrow(
-      /agents\.os_user/,
+    expect(osUserSetting({ os_login: "on" })).toBe(true);
+    expect(osUserSetting({ os_login: true })).toBe(true);
+    expect(osUserSetting({ os_login: "off" })).toBe(false);
+    expect(osUserSetting({ os_login: false })).toBe(false);
+    expect(() => osUserSetting({ os_login: "required" })).toThrow(
+      /agents\.os_login/,
     );
   });
 });
@@ -321,7 +393,7 @@ describe("issue 988: doctor's row", () => {
     });
     expect(r?.problem).toBe(false);
     expect(r?.line).toMatch(/^✓ Agents' own login: .*not set up/);
-    expect(r?.check.id).toBe("agents-os-user");
+    expect(r?.check.id).toBe("agents-os-login");
   });
 
   it("left behind: ✗, with remove as the fix; on and missing: setup", () => {
@@ -331,12 +403,12 @@ describe("issue 988: doctor's row", () => {
       on: () => false,
     });
     expect(left?.problem).toBe(true);
-    expect(left?.check.fix).toBe("den agents os-user remove");
+    expect(left?.check.fix).toBe("den agents os-login remove");
     const missing = osUserDoctorRow("den", {
       platform: "linux",
       facts: () => NONE,
       on: () => true,
     });
-    expect(missing?.check.fix).toBe("den agents os-user setup");
+    expect(missing?.check.fix).toBe("den agents os-login setup");
   });
 });
