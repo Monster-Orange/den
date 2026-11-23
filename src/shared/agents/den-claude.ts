@@ -507,6 +507,24 @@ export function personConfigDenyRules(
   ];
 }
 
+/**
+ * Issue 362: the files Den launches an agent with (its settings file:
+ * hooks, deny and allow rules; its MCP config) are denied to its edits,
+ * and to any shell command naming them. Its files folder stays writable
+ * otherwise (its handoff goes there). A cooperating agent's boundary
+ * only, as the state-dir rules are.
+ */
+export function ownFilesDenyRules(
+  files: readonly string[],
+  home?: string,
+): string[] {
+  const abs = files.map((f) => path.resolve(f));
+  return [
+    ...abs.map((f) => `Edit(/${f})`),
+    ...abs.flatMap((f) => shellSpellings(f, home).map((t) => `Bash(*${t}*)`)),
+  ];
+}
+
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
 export const BASH_READERS = [
   "cat",
@@ -708,33 +726,23 @@ function common(input: LaunchInput): {
         ? {
             [settings]: `${JSON.stringify(
               {
-                ...(input.stateDir || input.personConfigDir || allow.length
-                  ? {
-                      permissions: {
-                        ...(allow.length ? { allow } : {}),
-                        ...(ask.length ? { ask } : {}),
-                        ...(input.stateDir || input.personConfigDir
-                          ? {
-                              deny: [
-                                ...(input.stateDir
-                                  ? stateDirDenyRules(
-                                      input.stateDir,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                                ...(input.personConfigDir
-                                  ? personConfigDenyRules(
-                                      input.personConfigDir,
-                                      input.distConfigFile,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                              ],
-                            }
-                          : {}),
-                      },
-                    }
-                  : {}),
+                permissions: {
+                  ...(allow.length ? { allow } : {}),
+                  ...(ask.length ? { ask } : {}),
+                  deny: [
+                    ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    ...(input.stateDir
+                      ? stateDirDenyRules(input.stateDir, input.env?.HOME)
+                      : []),
+                    ...(input.personConfigDir
+                      ? personConfigDenyRules(
+                          input.personConfigDir,
+                          input.distConfigFile,
+                          input.env?.HOME,
+                        )
+                      : []),
+                  ],
+                },
                 ...(hooks ? { hooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays

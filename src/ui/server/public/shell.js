@@ -3031,6 +3031,7 @@
       'Activates the project "{project}" first, so it can run.',
     "ap.det.service_try.up":
       "Runs the service's local \"up\", as the Services page's Start does.",
+    "ap.det.service_try.command": "Command: {command}",
     "ap.det.service_try.reports":
       "Den reports the exit code and the last lines of its output.",
     "ap.det.den_restart.restart":

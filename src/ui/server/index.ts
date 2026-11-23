@@ -1440,6 +1440,7 @@ import {
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
+import { loggedPath } from "./logged-path.js";
 import {
   lastRunsByRepo,
   recordRunEnd,
@@ -2397,6 +2398,8 @@ const DEVICE_FLOWS = new DeviceFlows({
   // A test's fake GitHub may answer interval 0; the real one never does.
   minIntervalMs: GITHUB.fake ? 50 : 1000,
   onExpiringToken: noteExpiringToken,
+  // Issue 362: one address's new sign-ins a minute, as its pairing requests.
+  perClient: () => webAuthNow().pairRequestsPerMinute,
 });
 
 /**
@@ -2529,18 +2532,6 @@ function machineNameSetting(user: {
   } catch {
     return null;
   }
-}
-
-/**
- * A path as the request log writes it: a sign-in poll's id is its
- * credential (SEC-2a: the code request's, a GitHub flow's), so it shows
- * as `:id`.
- */
-function loggedPath(pathname: string): string {
-  return pathname.replace(
-    /^(\/api\/(?:signin\/code|github\/signin|web\/owner\/link))\/[^/]+$/,
-    "$1/:id",
-  );
 }
 
 /**
@@ -4487,7 +4478,14 @@ function approvalDeps(): ApprovalDeps {
           ok: false,
           error: `"up" for ${resolved.address} needs an interactive terminal: the person runs \`${product().cli} up ${resolved.address}\``,
         };
-      return { ok: true, address: resolved.address };
+      // Issue 362: the command the dialog shows, and its Allow is for.
+      const command =
+        def === undefined ? undefined : typeof def === "string" ? def : def.cmd;
+      return {
+        ok: true,
+        address: resolved.address,
+        ...(command ? { command } : {}),
+      };
     },
     // `up` as /api/service/exec runs it, collected instead of streamed.
     tryService: async (address, ws) => {
@@ -6156,6 +6154,10 @@ async function handleRequest(
     (await handleGithubRoutes(req, res, pathname, {
       flows: DEVICE_FLOWS,
       clientId: () => GITHUB_CLIENT_ID,
+      client: (r) => {
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        return g.ok ? g.client : undefined;
+      },
       tokensExpire: () => GITHUB_TOKENS_EXPIRE,
       cli: product().cli,
       sendJson,

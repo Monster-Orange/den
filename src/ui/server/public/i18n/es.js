@@ -2123,6 +2123,7 @@
       'Primero activa el proyecto "{project}", para que pueda funcionar.',
     "ap.det.service_try.up":
       'Ejecuta el "up" local del servicio, como hace Iniciar en la página Servicios.',
+    "ap.det.service_try.command": "Comando: {command}",
     "ap.det.service_try.reports":
       "Den informa del código de salida y de las últimas líneas de su salida.",
     "ap.det.den_restart.restart":
