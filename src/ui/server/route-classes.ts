@@ -301,17 +301,17 @@ export const ROUTES: readonly RouteEntry[] = [
   // agent's token never reaches the writes (request-guard.ts).
   R(
     "/api/session-asks/:id",
-    "a session's own question and its answer: the filing process only",
+    "a question from outside Den's agents and its answer: the asking process only",
   ),
   M(
     ["POST"],
     "/api/session-asks",
-    "a session that isn't an agent asks the person; runs nothing",
+    "a coding tool that isn't an agent asks the person; runs nothing",
   ),
   M(
     ["POST"],
     "/api/session-asks/:id/answer",
-    "the person's browser answers a session's question; runs nothing",
+    "the person's browser answers a question from outside Den's agents; runs nothing",
   ),
   // 0.4.71: each starts a process for its output (a log command, `tail`,
   // `docker logs`, `grep`): a sign-in, as every GET that runs something.

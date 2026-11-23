@@ -76,7 +76,7 @@ export function sessionAskWaiting(a: SessionAsk) {
     id: a.id,
     question: a.question,
     choices: a.choices,
-    ...(a.session ? { session: a.session } : {}),
+    ...(a.label ? { label: a.label } : {}),
     caller: {
       pid: a.caller.pid,
       ...(a.caller.command ? { command: a.caller.command } : {}),
@@ -97,7 +97,7 @@ export function sessionAsksWaiting(deps: SessionAskDeps) {
 }
 
 const who = (a: SessionAsk) =>
-  `${a.session ? `"${a.session}"` : "a session"} (not a Den agent; ${a.caller.command ?? "?"} pid ${a.caller.pid}${a.caller.cwd ? ` in ${a.caller.cwd}` : ""})`;
+  `${a.label ? `"${a.label}"` : "a caller outside Den's agents"} (not a Den agent; ${a.caller.command ?? "?"} pid ${a.caller.pid}${a.caller.cwd ? ` in ${a.caller.cwd}` : ""})`;
 
 async function jsonBody(req: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -125,14 +125,16 @@ async function placedCaller(
   const not = await deps.personCallerWhy(req);
   if (not)
     return {
-      why: "Den asks the person for a session in your own terminal only: this caller is inside an agent's session, a Terminals-page shell or Den itself, or Den couldn't check it",
+      why: "Den asks the person only for a coding tool in your own terminal: this caller is inside an agent, a Terminals-page shell or Den itself, or Den couldn't check it",
       detail: not,
     };
   const pid = deps.callerPid(req);
   const info = pid ? deps.processInfo(pid) : null;
   if (!pid || !info) return { why: "Den couldn't place the calling process" };
   if (info.uid !== deps.uid())
-    return { why: "the calling process isn't this machine's user's" };
+    return {
+      why: "the calling process belongs to someone else on this computer",
+    };
   return {
     caller: {
       pid,
@@ -172,7 +174,7 @@ export async function handleSessionAskRoutes(
           res,
           403,
           "person_token_only",
-          "A session's question comes through Den's MCP server (the person token). An agent uses its own ask_human.",
+          "A question from outside Den's agents comes through Den's MCP server (the person token). An agent uses its own ask_human.",
         ),
         true
       );

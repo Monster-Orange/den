@@ -466,13 +466,13 @@ const READ_TOOLS: DenTool[] = [
         .array(z.string())
         .optional()
         .describe(
-          "Issue 620, a session that isn't a Den agent only: 2 to 4 named choices (default yes and no)",
+          "Issue 620, if you aren't a Den agent: 2 to 4 named choices (default yes and no)",
         ),
-      session: z
+      label: z
         .string()
         .optional()
         .describe(
-          "Issue 620, a session that isn't a Den agent only: what this session calls itself, at most 60 characters",
+          "Issue 620, if you aren't a Den agent: what you call yourself, at most 60 characters",
         ),
     },
     async (a, { api, scope }) => {
@@ -488,14 +488,14 @@ const READ_TOOLS: DenTool[] = [
         const choices = Array.isArray(a.choices)
           ? (a.choices as unknown[]).map((c) => String(c).trim())
           : undefined;
-        const label = (str(a.session) ?? "").trim();
+        const label = (str(a.label) ?? "").trim();
         const r = (await api.get("/api/session-asks", {}, "POST", {
           question,
           ...(choices ? { choices } : {}),
-          ...(label ? { session: label } : {}),
+          ...(label ? { label } : {}),
         })) as { id?: unknown; expiresAt?: unknown } | null;
         const id = typeof r?.id === "string" ? r.id : "";
-        return `Asked. Your person has it in Needs you, marked as from a session that isn't a Den agent. Its id is ${id}: read the answer with ask_answer (it says pending, answered with the choice, expired, or lost)${typeof r?.expiresAt === "string" ? `; it expires at ${r.expiresAt}` : ""}. Answering it runs nothing.`;
+        return `Asked. Your person has it in Needs you, marked as not from a Den agent. Its id is ${id}: read the answer with ask_answer (it says pending, answered with the choice, expired, or lost)${typeof r?.expiresAt === "string" ? `; it expires at ${r.expiresAt}` : ""}. Answering it runs nothing.`;
       }
       const r = (await api.get("/api/agents/self/attention", {}, "POST", {
         event: "waiting",
@@ -517,7 +517,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "ask_answer",
     "Read your question's answer",
-    "Issue 620: for a session that isn't a Den agent: the answer to a question you asked with ask_human. `id` is the id ask_human gave you. It says open (no answer yet), answered (with the person's choice), expired, or lost. Only the process that asked can read it; any other gets \"no such question\". Reads only.",
+    "Issue 620: if you aren't a Den agent: the answer to a question you asked with ask_human. `id` is the id ask_human gave you. It says open (no answer yet), answered (with the person's choice), expired, or lost. Only the process that asked can read it; any other gets \"no such question\". Reads only.",
     { id: z.string().describe("The question's id, from ask_human") },
     async (a, { api }) => {
       const id = (str(a.id) ?? "").trim();

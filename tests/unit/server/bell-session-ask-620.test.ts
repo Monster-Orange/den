@@ -17,7 +17,7 @@ const ask = {
   id: "sa_0123456789abcdef01234567",
   question: "Ship <b>0.4.87</b>?",
   choices: ["yes", "no"],
-  session: "builder",
+  label: "builder",
   caller: { pid: 4242, command: "node", cwd: "/w/app" },
   since: "2026-11-22T16:00:00.000Z",
   expiresAt: "2026-11-23T16:00:00.000Z",
@@ -59,7 +59,7 @@ describe("issue 620: the bell's row for a session's question", () => {
 
   it("a session with no label is named as such", async () => {
     const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
-    const { session: _, ...bare } = ask;
+    const { label: _, ...bare } = ask;
     const p = bellPanel({ groups: [], waiting: [bare], unread: 0 });
     if (!("sections" in p)) throw new Error("the bell has no sections");
     expect(p.sections.needs).toContain("[bell.sa.rowBare:");

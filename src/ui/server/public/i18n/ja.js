@@ -2579,6 +2579,17 @@
     "bell.go.h": "見込みを過ぎたテスト枠",
     "bell.go.row": "{who} が {kind} のテスト枠を使用中: {label}",
     "bell.go.sub": "{time} から · 見込み {est} 分 · {over} 分超過",
+    // Issue 620: a session's question in the bell.
+    "bell.sa.h": "Den のエージェント以外から",
+    "bell.sa.row":
+      "{label}（Den のエージェントではありません）からの質問: {question}",
+    "bell.sa.rowBare":
+      "Den のエージェントではないコーディングツールからの質問: {question}",
+    "bell.sa.found": "Den が確認したもの: {cwd} の {command}、pid {pid}",
+    "bell.sa.answered": "回答しました: {choice}",
+    "busy.saW": "回答を送信しています…",
+    "busy.saS": "回答を送信しました",
+    "busy.saF": "回答を送信できませんでした",
     "bell.go.end": "終了",
     "bell.go.ended": "テスト枠を終了しました。次の順番が始まります。",
     "bell.ap.h": "あなたの許可待ち",

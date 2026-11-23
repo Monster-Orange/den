@@ -2646,6 +2646,16 @@
     "bell.go.h": "Turnos de prueba pasados de su estimación",
     "bell.go.row": "{who} tiene el turno de prueba {kind}: {label}",
     "bell.go.sub": "Desde {time} · estimación {est} min · {over} min de más",
+    // Issue 620: a session's question in the bell.
+    "bell.sa.h": "De fuera de los agentes de Den",
+    "bell.sa.row": "{label} (no es un agente de Den) pregunta: {question}",
+    "bell.sa.rowBare":
+      "Una herramienta de código que no es un agente de Den pregunta: {question}",
+    "bell.sa.found": "Den encontró: {command} en {cwd}, pid {pid}",
+    "bell.sa.answered": "Respondida: {choice}",
+    "busy.saW": "Enviando tu respuesta…",
+    "busy.saS": "Respuesta enviada",
+    "busy.saF": "No se pudo enviar tu respuesta",
     "bell.go.end": "Terminar",
     "bell.go.ended":
       "Turno de prueba terminado. Empieza el siguiente en la fila.",

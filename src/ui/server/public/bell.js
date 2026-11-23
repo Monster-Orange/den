@@ -315,6 +315,89 @@ function overrunRowHtml(w) {
   );
 }
 
+/**
+ * Issue 620: questions from sessions that aren't Den agents (`waiting`
+ * entries of kind "session_ask"), oldest first.
+ */
+export function sessionAsksOf(b) {
+  return (b?.waiting ?? []).filter(
+    (w) =>
+      w &&
+      w.kind === "session_ask" &&
+      typeof w.id === "string" &&
+      /^sa_[0-9a-f]{24}$/.test(w.id) &&
+      Array.isArray(w.choices),
+  );
+}
+
+/**
+ * Issue 620: one session question's row: the question with the session's
+ * own label (its claim), marked as not a Den agent; what Den found of the
+ * caller (command, folder, pid); and a button per choice. All of it is the
+ * caller's text or the caller's process: escaped.
+ */
+function sessionAskRowHtml(w) {
+  const question = String(w.question ?? "");
+  const text = w.label
+    ? tr("bell.sa.row", { label: String(w.label), question })
+    : tr("bell.sa.rowBare", { question });
+  const c = w.caller ?? {};
+  const found = tr("bell.sa.found", {
+    command: String(c.command ?? "?"),
+    cwd: String(c.cwd ?? "?"),
+    pid: String(c.pid ?? "?"),
+  });
+  const buttons = w.choices
+    .map(
+      (ch, i) =>
+        `<button type="button" class="den-btn${i === 0 ? " primary" : ""}" data-bell="sa-answer" data-sa="${esc(w.id)}" data-choice="${esc(String(ch))}">${esc(String(ch))}</button>`,
+    )
+    .join("");
+  return (
+    `<div class="den-bell-row den-bell-allow" data-kind="session_ask" data-sa-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(text)}<span class="den-bell-sub">${esc(found)}</span></span>` +
+    buttons +
+    `</div>`
+  );
+}
+
+/** Issue 620: the session questions' own group, in Needs you. */
+function sessionAsksHtml(list) {
+  if (!list.length) return "";
+  return (
+    `<section data-scope="session_ask"><div class="den-bell-sc"><span>${esc(tr("bell.sa.h"))}</span></div>` +
+    list.map(sessionAskRowHtml).join("") +
+    `</section>`
+  );
+}
+
+/**
+ * Issue 620: a choice from the bell: the person-only answer route (the
+ * signed-in browser; never a token). Answering runs nothing.
+ */
+async function answerSessionAsk(el) {
+  const id = el.dataset.sa;
+  const choice = el.dataset.choice;
+  if (!id || !choice) return;
+  const shell = window.denShell;
+  const run = (headers) =>
+    shell.api(
+      "POST",
+      `/api/session-asks/${id}/answer`,
+      { choice },
+      { headers },
+    );
+  try {
+    const j = shell?.busyAction
+      ? await shell.busyAction("session-answer", run, { button: el })
+      : await run({});
+    if (j) shell?.toast?.(tr("bell.sa.answered", { choice }));
+  } catch (err) {
+    shell?.errorToast?.(err);
+  }
+}
+
 /** Issue 993: the overrun slots' own group, in Needs you. */
 function overrunsHtml(list) {
   if (!list.length) return "";
@@ -441,6 +524,7 @@ export function bellPanel(b, ui = {}) {
   if (
     !allows.length &&
     !overrunsOf(b).length &&
+    !sessionAsksOf(b).length &&
     !groups.length &&
     !older.count &&
     !updates.count
@@ -466,6 +550,7 @@ export function bellPanel(b, ui = {}) {
       needs:
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
+        sessionAsksHtml(sessionAsksOf(b)) +
         groupsHtml(groups, u, true),
       earlier:
         updatesHtml +
@@ -616,7 +701,10 @@ export function initBell(doc = document) {
     if (!b) return;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
-    bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
+    // Issue 620: each session question counts until it is answered.
+    bell.setCount(
+      (b?.unread ?? 0) + overrunsOf(b).length + sessionAsksOf(b).length,
+    );
     if (bell.isOpen()) paint();
   };
   pop.addEventListener("click", async (e) => {
@@ -647,6 +735,11 @@ export function initBell(doc = document) {
     e.preventDefault();
     if (what === "gate-end") {
       await endSlot(el);
+      await refresh();
+      return;
+    }
+    if (what === "sa-answer") {
+      await answerSessionAsk(el);
       await refresh();
       return;
     }

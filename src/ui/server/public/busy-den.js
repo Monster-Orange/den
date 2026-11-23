@@ -14,7 +14,7 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * add-service, remove-service, remove-mcp, gate-end. Waits for
+ * add-service, remove-service, remove-mcp, gate-end, session-answer. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -77,6 +77,16 @@ export const DEN_ACTIONS = {
       working: "busy.gateEndW",
       success: "busy.gateEndS",
       failure: "busy.gateEndF",
+    },
+  },
+  // Issue 620: the person answers a session's question from the bell.
+  "session-answer": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.saW",
+      success: "busy.saS",
+      failure: "busy.saF",
     },
   },
   "remove-service": {

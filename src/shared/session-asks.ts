@@ -36,8 +36,8 @@ export interface AskCaller {
 export interface AskInput {
   question: string;
   choices: string[];
-  /** The session's own name for itself: a label, never checked. */
-  session?: string;
+  /** What the asker calls itself: a label, never checked. */
+  label?: string;
 }
 
 export type AskState = "open" | "answered" | "expired" | "lost";
@@ -97,15 +97,15 @@ export function parseAskInput(
     if (new Set(choices).size !== choices.length)
       return { ok: false, error: "choices must differ" };
   }
-  const session = text(o.session);
-  if (session !== undefined && session.length > LABEL_MAX)
+  const label = text(o.label);
+  if (label !== undefined && label.length > LABEL_MAX)
     return {
       ok: false,
-      error: `session: a label of at most ${LABEL_MAX} characters`,
+      error: `the label is at most ${LABEL_MAX} characters`,
     };
   return {
     ok: true,
-    input: { question, choices, ...(session ? { session } : {}) },
+    input: { question, choices, ...(label ? { label } : {}) },
   };
 }
 
@@ -181,19 +181,19 @@ export function fileAsk(
     return {
       ok: false,
       code: "ask_limit",
-      error: `this session has ${limits.openPerSession} open questions (notifications.session_asks_open); wait for an answer first`,
+      error: `you have ${limits.openPerSession} open questions (notifications.session_asks_open); wait for an answer first`,
     };
   if (open.length >= limits.openTotal)
     return {
       ok: false,
       code: "ask_limit_total",
-      error: `${limits.openTotal} questions from sessions are open already (notifications.session_asks_total); wait for the person to answer some`,
+      error: `${limits.openTotal} questions from outside Den's agents are open already (notifications.session_asks_total); wait for the person to answer some`,
     };
   const ask: SessionAsk = {
     id: `sa_${randomBytes(12).toString("hex")}`,
     question: redactSecrets(input.question),
     choices: input.choices.map(redactSecrets),
-    ...(input.session ? { session: redactSecrets(input.session) } : {}),
+    ...(input.label ? { label: redactSecrets(input.label) } : {}),
     caller: {
       pid: caller.pid,
       started: caller.started,

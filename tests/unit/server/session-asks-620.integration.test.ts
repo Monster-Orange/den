@@ -61,7 +61,7 @@ const FILE = `
   const made = await fetch(base + "/api/session-asks", {
     method: "POST",
     headers: { ...auth, "content-type": "application/json" },
-    body: JSON.stringify({ question: "Ship 0.4.87?", session: "builder" }),
+    body: JSON.stringify({ question: "Ship 0.4.87?", label: "builder" }),
   }).then(j);
 `;
 
@@ -102,7 +102,7 @@ describe("issue 620: a session's ask, bound to its process", () => {
       kind: "session_ask",
       question: "Ship 0.4.87?",
       choices: ["yes", "no"],
-      session: "builder",
+      label: "builder",
     });
     expect((row!.caller as { pid: number }).pid).toBeGreaterThan(0);
 

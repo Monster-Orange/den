@@ -30,16 +30,14 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("issue 620: what an ask may say", () => {
   it("a question, yes/no by default, and the session's own label", () => {
-    expect(parseAskInput({ question: "Ship it?", session: "builder" })).toEqual(
-      {
-        ok: true,
-        input: {
-          question: "Ship it?",
-          choices: ["yes", "no"],
-          session: "builder",
-        },
+    expect(parseAskInput({ question: "Ship it?", label: "builder" })).toEqual({
+      ok: true,
+      input: {
+        question: "Ship it?",
+        choices: ["yes", "no"],
+        label: "builder",
       },
-    );
+    });
   });
 
   it("two to four named choices", () => {
@@ -57,7 +55,7 @@ describe("issue 620: what an ask may say", () => {
   it("refuses an empty or long question, a long label or choice", () => {
     expect(parseAskInput({ question: "  " }).ok).toBe(false);
     expect(parseAskInput({ question: "x".repeat(301) }).ok).toBe(false);
-    expect(parseAskInput({ question: "Q", session: "s".repeat(61) }).ok).toBe(
+    expect(parseAskInput({ question: "Q", label: "s".repeat(61) }).ok).toBe(
       false,
     );
     expect(
@@ -199,7 +197,7 @@ describe("issue 620: Reviewer B's additions", () => {
     const { id } = fileAsk(
       store,
       ME,
-      { question: `Use ${token}?`, choices: ["yes", "no"], session: "s" },
+      { question: `Use ${token}?`, choices: ["yes", "no"], label: "s" },
       LIMITS,
       1_000,
     ) as { id: string };
@@ -213,13 +211,13 @@ describe("issue 620: Reviewer B's additions", () => {
     const { id } = fileAsk(
       store,
       { ...ME, command: "node", cwd: "/w/app" },
-      { question: "Q", choices: ["yes", "no"], session: "deploy-bot" },
+      { question: "Q", choices: ["yes", "no"], label: "deploy-bot" },
       LIMITS,
       1_000,
     ) as { id: string };
     expect(openAsks(store, 1_000)[0]).toMatchObject({
       id,
-      session: "deploy-bot",
+      label: "deploy-bot",
       caller: { pid: 4242, command: "node", cwd: "/w/app" },
     });
   });

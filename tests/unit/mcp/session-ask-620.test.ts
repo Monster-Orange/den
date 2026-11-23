@@ -49,7 +49,7 @@ describe("issue 620: ask_human from a session that isn't an agent", () => {
     const { api, calls } = fakeApi(() => ({ ok: true, id: ID }));
     const r = await callTool(
       "ask_human",
-      { question: " Ship 0.4.87? ", session: "builder" },
+      { question: " Ship 0.4.87? ", label: "builder" },
       session(api),
     );
     expect(r.isError).toBeFalsy();
@@ -57,7 +57,7 @@ describe("issue 620: ask_human from a session that isn't an agent", () => {
       {
         path: "/api/session-asks",
         method: "POST",
-        body: { question: "Ship 0.4.87?", session: "builder" },
+        body: { question: "Ship 0.4.87?", label: "builder" },
       },
     ]);
     expect(r.text).toContain(ID);
