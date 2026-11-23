@@ -16,6 +16,7 @@ import { readRecord } from "../../../src/shared/agents/records.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
 import {
   HANDOVER_MARKER,
+  importAgent,
   resolveAgentsDeps,
   runAgentImport,
   sweepHandovers,
@@ -243,6 +244,35 @@ describe("issue 159: agent_import after the Allow", () => {
     age(f, 10 * 60_000);
     const second = await runAgentImport(d, { ...ask, session: other });
     expect(second).toMatchObject({ ok: true, id: "planner-2" });
+  });
+
+  it("an import naming a reserved id outright is refused while the hand-over waits", async () => {
+    const r = await rig();
+    conversation(r, r.wsDir("north"), 5_000);
+    const d = resolveAgentsDeps(r.deps);
+    await runAgentImport(d, ask, { pollMs: 20, fail: () => undefined });
+    const other = "0f1e2d3c-aaaa-bbbb-cccc-000000000161";
+    const dir = path.join(
+      r.dir,
+      "claude-config",
+      "projects",
+      claudeSlug(r.wsDir("north")),
+    );
+    const f = path.join(dir, `${other}.jsonl`);
+    fs.writeFileSync(
+      f,
+      `${JSON.stringify({ type: "user", cwd: r.wsDir("north"), message: { content: "Fix the build" } })}\n`,
+    );
+    age(f, 10 * 60_000);
+    await expect(
+      importAgent(d, {
+        workspace: "north",
+        session: other,
+        persona: "planner",
+        id: "planner",
+      }),
+    ).rejects.toThrow(/planner is reserved/);
+    expect(r.made).toHaveLength(0);
   });
 
   it("a restart drops a waiting hand-over: the sweep names it once and frees its id", async () => {

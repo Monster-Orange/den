@@ -4560,7 +4560,7 @@ export interface HandoverHooks {
  */
 export const HANDOVER_MARKER = "handoff.md.reserved";
 
-/** Hand-overs this process runs (agent ids): a marker of no other is stale. */
+/** Hand-overs this process runs (marker paths): a marker of no other is stale. */
 const handingOver = new Set<string>();
 
 interface HandoverMark {
@@ -4613,11 +4613,10 @@ export function sweepHandovers(
 ): { agent: string; session: string; project: string }[] {
   const out: { agent: string; session: string; project: string }[] = [];
   for (const { id, mark } of handoverMarks(d)) {
-    if (handingOver.has(id)) continue;
+    const marker = path.join(agentFilesDir(d.stateDir(), id), HANDOVER_MARKER);
+    if (handingOver.has(marker)) continue;
     try {
-      fs.rmSync(path.join(agentFilesDir(d.stateDir(), id), HANDOVER_MARKER), {
-        force: true,
-      });
+      fs.rmSync(marker, { force: true });
     } catch {
       continue;
     }
@@ -4779,9 +4778,9 @@ function startHandover(
     at: new Date().toISOString(),
   };
   writeFileAtomic(marker, `${JSON.stringify(mark)}\n`, { mode: 0o600 });
-  handingOver.add(id);
+  handingOver.add(marker);
   const release = () => {
-    handingOver.delete(id);
+    handingOver.delete(marker);
     try {
       fs.rmSync(marker, { force: true });
     } catch {
@@ -4964,6 +4963,12 @@ export async function importAgent(
   const id = req.id ?? freeId(d, req.persona);
   if (readRecord(d.stateDir(), id))
     throw refused(`${where}: agent ${id} exists; give this one another --id`);
+  // Issue 159: an id a waiting hand-over holds is its conversation's only.
+  const held = reservedFor(d, id);
+  if (held && held.session !== req.session)
+    throw refused(
+      `${where}: agent ${id} is reserved for a hand-over that is waiting; give this one another --id`,
+    );
   // AG-17.1c: the conversation keeps its own model unless one is picked.
   const model = req.model ?? c.model;
   // D65 v2: bringing back a conversation Den removed keeps its link.
