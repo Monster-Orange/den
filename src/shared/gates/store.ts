@@ -34,7 +34,7 @@
  * Nothing here takes a live holder's slot. Issue 1132: the one thing it
  * stops is what a run left in its own process group once its slot ended.
  */
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -694,6 +694,104 @@ function readFreeMemory(): number {
     /* unread */
   }
   return NaN;
+}
+
+/** Issue 1349: `sysctl -n <key>`'s output, read by a child process the thread never waits on. */
+function sysctlAsync(key: string): Promise<string> {
+  return new Promise((res, rej) =>
+    execFile(
+      "/usr/sbin/sysctl",
+      ["-n", key],
+      { encoding: "utf-8", timeout: 2_000 },
+      (err, out) => (err ? rej(err) : res(String(out))),
+    ),
+  );
+}
+
+/** Issue 1349: realSwapUsedGb's machine read, without a synchronous process. */
+async function readSwapAsync(): Promise<number> {
+  if (process.platform === "darwin")
+    return swapGbFromSysctl(await sysctlAsync("vm.swapusage"));
+  if (process.platform === "linux")
+    return swapGbFromMeminfo(
+      await fs.promises.readFile("/proc/meminfo", "utf-8"),
+    );
+  return NaN;
+}
+
+/** Issue 1349: readFreeMemory's machine read, without a synchronous process. */
+async function readFreeMemoryAsync(): Promise<number> {
+  if (process.platform === "darwin") {
+    const n = Number((await sysctlAsync("kern.memorystatus_level")).trim());
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? n : NaN;
+  }
+  if (process.platform === "linux")
+    return freePercentFromMeminfo(
+      await fs.promises.readFile("/proc/meminfo", "utf-8"),
+    );
+  return NaN;
+}
+
+/**
+ * Issue 1349: a machine reading for the server's thread. It answers at once
+ * with the last value (NaN before the first read and after a failed one:
+ * unread, which holds nothing back). A value older than `everyMs` is read
+ * again in the background, one read at a time.
+ */
+export function backgroundReading(
+  read: () => Promise<number>,
+  everyMs = 2_000,
+  now: () => number = Date.now,
+): () => number {
+  let value = NaN;
+  let at = -Infinity;
+  let reading = false;
+  return () => {
+    if (!reading && now() - at >= everyMs) {
+      reading = true;
+      read()
+        .then(
+          (v) => {
+            value = v;
+          },
+          () => {
+            value = NaN;
+          },
+        )
+        .finally(() => {
+          at = now();
+          reading = false;
+        });
+    }
+    return value;
+  };
+}
+
+/** A fixed reading from the environment (the test setup, a drill), or NaN. */
+const fixedReading = (v: string | undefined) => Number((v ?? "").trim() || NaN);
+
+/**
+ * Issue 1349: the server's swap in use, GB: as realSwapUsedGb, but never a
+ * synchronous process (DEN_GATE_SWAP_GB still fixes it).
+ */
+export function serverSwapUsedGb(): () => number {
+  const bg = backgroundReading(readSwapAsync);
+  return () => {
+    const fixed = fixedReading(process.env.DEN_GATE_SWAP_GB);
+    return Number.isFinite(fixed) ? fixed : bg();
+  };
+}
+
+/**
+ * Issue 1349: the server's free memory, percent: as realFreeMemory, but
+ * never a synchronous process (DEN_GATE_FREE_MEM still fixes it).
+ */
+export function serverFreeMemory(): () => number {
+  const bg = backgroundReading(readFreeMemoryAsync);
+  return () => {
+    const fixed = fixedReading(process.env.DEN_GATE_FREE_MEM);
+    return Number.isFinite(fixed) ? fixed : bg();
+  };
 }
 
 /** Issue 1048: this machine's cores. */
