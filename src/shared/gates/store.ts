@@ -1953,14 +1953,22 @@ export class GateStore {
               ...(mem
                 ? {
                     memory: mem.unavailable
-                      ? { free: null, limit: mem.limit, unavailable: true }
+                      ? {
+                          free: null,
+                          limit: mem.limit,
+                          unavailable: true as const,
+                        }
                       : { free: Math.round(mem.free), limit: mem.limit },
                   }
                 : {}),
               ...(sw
                 ? {
                     swap: sw.unavailable
-                      ? { usedGb: null, limitGb: sw.limitGb, unavailable: true }
+                      ? {
+                          usedGb: null,
+                          limitGb: sw.limitGb,
+                          unavailable: true as const,
+                        }
                       : { usedGb: sw.usedGb, limitGb: sw.limitGb },
                   }
                 : {}),

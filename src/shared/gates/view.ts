@@ -259,7 +259,7 @@ export function gateView(
       ? {
           // Issue 1349: an unknown reading holds, and says so.
           memoryHold: memHold.unavailable
-            ? { free: null, limit: memHold.limit, unavailable: true }
+            ? { free: null, limit: memHold.limit, unavailable: true as const }
             : { free: Math.round(memHold.free), limit: memHold.limit },
         }
       : {}),
@@ -268,7 +268,11 @@ export function gateView(
     (!e.where || e.where === "local" || e.where === "any")
       ? {
           swapHold: swHold.unavailable
-            ? { usedGb: null, limitGb: swHold.limitGb, unavailable: true }
+            ? {
+                usedGb: null,
+                limitGb: swHold.limitGb,
+                unavailable: true as const,
+              }
             : { usedGb: swHold.usedGb, limitGb: swHold.limitGb },
         }
       : {}),
@@ -342,10 +346,12 @@ function machineView(
   const known = (v: MachineReading): v is number =>
     v !== null && Number.isFinite(v);
   const out: GateMachineView = {
-    ...(freeMem === null && swapGb === null ? { notMeasured: true } : {}),
+    ...(freeMem === null && swapGb === null
+      ? { notMeasured: true as const }
+      : {}),
     ...((freeMem !== null && !known(freeMem)) ||
     (swapGb !== null && !known(swapGb))
-      ? { unavailable: true }
+      ? { unavailable: true as const }
       : {}),
     ...(known(freeMem) ? { freeMemory: Math.round(freeMem) } : {}),
     ...(known(swapGb) && swapGb > 0 ? { swapUsedGb: swapGb } : {}),
