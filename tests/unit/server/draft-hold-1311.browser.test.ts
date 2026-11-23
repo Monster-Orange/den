@@ -27,10 +27,13 @@ import {
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { enCatalog } from "./helpers/en-catalog.js";
 
 const ORIGIN = "https://app.example.test";
 const TOKEN = "7a1c2d3e-4b5c-4d6e-8f70-112233445566";
 const MESSAGE = "a message from the app for planner";
+/** The person's unsent draft. */
+const DRAFT = "half a sen";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -72,12 +75,10 @@ beforeAll(async () => {
     userYml: `embed:\n  origins: ["${ORIGIN}"]\n`,
   });
   host = await connectHost(sessionPaths(s.stateDir).socket);
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
   const info = await host.start({
     name: "acme-north:planner",
     cwd: s.wsDir("north"),
@@ -131,7 +132,7 @@ async function eventually(
   const end = Date.now() + ms;
   while (!(await pred())) {
     if (Date.now() > end) throw new Error("timed out");
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
   }
 }
 
@@ -151,16 +152,12 @@ async function open(): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   await p.goto(`${s!.base}/agents?open=${sid}&layout=tabs`);
-  // Its session is attached: the pane shows what the runtime drew.
-  await p.waitForFunction(
-    (i) =>
-      (
-        document.querySelector(`.pane[data-id="${i}"] .xterm-rows`)
-          ?.textContent ?? ""
-      ).includes("for shortcuts"),
-    sid,
-    { timeout: 20_000 },
+  // Its session is attached (the server says so) and its terminal is up.
+  await eventually(
+    () => s!.log().includes("sessions attach acme-north:planner"),
+    20_000,
   );
+  await p.waitForSelector(`[data-id="${sid}"] textarea`, { timeout: 20_000 });
   return p;
 }
 
@@ -168,12 +165,12 @@ describe("issue 1311: a delivered message never sends the person's draft", () =>
   it("the draft stays on the line, 1 waits; Enter sends the draft alone, then the message", async () => {
     if (skip()) return;
     const p = await open();
-    await p.click(`.pane[data-id="${sid}"] .term`);
+    await p.focus(`[data-id="${sid}"] textarea`);
     const from = pty().writes.length;
-    await p.keyboard.type("half a sen");
-    await eventually(() => written(from) === "half a sen", 10_000);
+    await p.keyboard.type(DRAFT);
+    await eventually(() => written(from) === DRAFT, 10_000);
     // The runtime echoes it on its input line.
-    pty().emit(box("half a sen"));
+    pty().emit(box(DRAFT));
 
     // A web app's message for planner, held by the delivery loop.
     const { key } = ServerKeys.at(s!.stateDir).create({
@@ -189,7 +186,7 @@ describe("issue 1311: a delivered message never sends the person's draft", () =>
     expect(said.status).toBe(202);
 
     // The pane says one waits; nothing was typed, no Enter for the draft.
-    const tag = p.locator(`.pane[data-id="${sid}"] [data-draft-waiting]`);
+    const tag = p.locator(`[data-id="${sid}"] [data-draft-waiting]`);
     // Today's bug, said plainly if it comes back: the draft and the
     // message sent together.
     await tag.waitFor({ timeout: 30_000 }).catch((e: Error) => {
@@ -197,17 +194,17 @@ describe("issue 1311: a delivered message never sends the person's draft", () =>
     });
     expect(await tag.getAttribute("data-draft-waiting")).toBe("1");
     expect(await tag.textContent()).toBe(
-      "1 message waiting: sent after your draft",
+      enCatalog()["ag.draftWaiting.one"].replace("{n}", "1"),
     );
-    expect(written(from)).toBe("half a sen");
+    expect(written(from)).toBe(DRAFT);
 
     // The person sends their draft: it goes alone, then the message.
     await p.keyboard.press("Enter");
-    await eventually(() => written(from) === "half a sen\r", 10_000);
+    await eventually(() => written(from) === `${DRAFT}\r`, 10_000);
     pty().emit(box(""));
     await eventually(() => written(from).includes(MESSAGE), 45_000);
     const all = written(from);
-    expect(all.startsWith("half a sen\r")).toBe(true);
+    expect(all.startsWith(`${DRAFT}\r`)).toBe(true);
     expect(all.indexOf(MESSAGE)).toBeGreaterThan(all.indexOf("\r"));
     await tag.waitFor({ state: "detached", timeout: 10_000 });
     await p.context().close();
