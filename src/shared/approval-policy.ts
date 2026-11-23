@@ -200,6 +200,10 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS)",
   },
+  web_url_set: {
+    risk: "critical",
+    why: "changes the address every link, sign-in and Hub uses for this Den: a person's own Allow",
+  },
   host_restart: {
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
