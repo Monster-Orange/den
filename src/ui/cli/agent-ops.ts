@@ -357,6 +357,7 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   AGENT_TOKEN_REF_NAME,
@@ -374,6 +375,11 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
+  /**
+   * Issue 989: this install's server, called with the person token. A
+   * test gives one that answers null (no server) unless it asks for one.
+   */
+  server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
   distRoot?: () => string;
   /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
@@ -510,6 +516,8 @@ export interface AgentsDeps extends SessionsDeps {
 }
 
 export interface AgentsResolved extends Resolved {
+  /** Issue 989: this install's server, for person-only verbs. */
+  server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   distRoot: () => string;
   serverAgentFolder: () => string;
@@ -831,6 +839,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
     ...base,
+    server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:

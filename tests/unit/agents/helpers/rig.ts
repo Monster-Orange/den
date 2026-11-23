@@ -185,6 +185,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     workspaceHubLoop: () => undefined,
     // D52: Den's own address as agents reach it (never this machine's port).
     denBase: () => DEN_BASE,
+    // Issue 989: never this machine's server: none answers unless a test
+    // gives one.
+    server: async () => null,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).
