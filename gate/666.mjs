@@ -16,6 +16,7 @@
 // the owner and looks for the offer. It never presses it (the owner's act,
 // and it would change the bed's address for good).
 // The loopback /signin redirect is issue 601's, not asserted here.
+import { doctorChecks, readJson } from "./lib/read-json.mjs";
 export const issue = 666;
 export const clauses = [
   "a settings change or write to a loopback address (localhost, *.localhost, 127.x, ::1) is refused, and the address stays as it was",
@@ -35,20 +36,10 @@ const SAYS = /names this machine only/;
 const LOOP_HOST = (h) =>
   /^(localhost|.*\.localhost|127\..*|\[?::1\]?|0\.0\.0\.0)$/i.test(h);
 
-/** doctor --json's address check, or null. */
-function addressRow(out) {
-  const at = String(out ?? "").indexOf("{");
-  if (at < 0) return null;
-  try {
-    const j = JSON.parse(String(out).slice(at));
-    return (j.checks ?? []).find((c) => c?.id === "address") ?? null;
-  } catch {
-    return null;
-  }
-}
-
 const where = (w) =>
-  w ? { url: w.url ?? null, confirmed: !!w.confirmed, loopback: !!w.loopback } : null;
+  w
+    ? { url: w.url ?? null, confirmed: !!w.confirmed, loopback: !!w.loopback }
+    : null;
 
 export async function setup() {
   return {};
@@ -68,7 +59,10 @@ export async function run(ctx) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ url }),
         })
-        .catch((e) => ({ status: 0, body: { error: String(e?.message ?? e) } }));
+        .catch((e) => ({
+          status: 0,
+          body: { error: String(e?.message ?? e) },
+        }));
       tries.push({
         path,
         url,
@@ -79,15 +73,17 @@ export async function run(ctx) {
     }
   }
   const c = await ctx.cli(["web", "url", LOOPS[0], "--json"]);
+  // A refusal exits 2 with { ok: false, error }: its words are under test.
+  const cj = readJson(c, "web url", { codes: [0, 2] });
   const cli = {
     code: c.code,
-    said: String(c.out || c.err || "").slice(0, 160),
+    said: String(cj?.error ?? JSON.stringify(cj)).slice(0, 160),
   };
   const after = where(await ctx.api("/api/web-url").catch(() => null));
 
   // Clause 2: doctor's address row.
   const d = await ctx.cli(["doctor", "--json"]);
-  const row = addressRow(d.out);
+  const row = doctorChecks(d).find((x) => x?.id === "address") ?? null;
 
   // Clause 3: what this browser is offered, on the address it is on.
   const look = async () => {
@@ -133,11 +129,16 @@ export async function run(ctx) {
         15000,
       ));
       offer.signinTitle = offer.signinOffer
-        ? ((await out.page.locator("#den-offer-title").textContent()) ?? "").trim()
+        ? (
+            (await out.page.locator("#den-offer-title").textContent()) ?? ""
+          ).trim()
         : "";
       await ctx.shotOf(out.page, "666-signin-offer");
     } finally {
-      await out.page.context().close().catch(() => {});
+      await out.page
+        .context()
+        .close()
+        .catch(() => {});
     }
     // Signed in as the owner (the harness's page): Settings offers it.
     await ctx.goto(ctx.page, "/settings?q=web.url");
@@ -163,10 +164,16 @@ export async function run(ctx) {
     cli,
     // The whole detail is tested; only the line shown is cut (doctor leads with
     // other words, so the fix can sit past 200 characters).
-    row: row ? { status: row.status, detail: String(row.detail ?? "").slice(0, 2000) } : null,
+    row: row
+      ? { status: row.status, detail: String(row.detail ?? "").slice(0, 2000) }
+      : null,
     origin,
     here: here
-      ? { url: here.url ?? null, loopback: !!here.loopback, offer: here.offer ?? null }
+      ? {
+          url: here.url ?? null,
+          loopback: !!here.loopback,
+          offer: here.offer ?? null,
+        }
       : null,
     onAlias,
     ...(dead ? { dead } : {}),
@@ -196,11 +203,16 @@ export function expect(cells) {
           clause: clauses[0],
           ok: null,
           skip: "needs-person-session",
-          detail: "every write was refused as an agent's (403), so the loopback rule wasn't reached",
+          detail:
+            "every write was refused as an agent's (403), so the loopback rule wasn't reached",
         }
       : {
           clause: clauses[0],
-          ok: tries.length === LOOPS.length * 2 && tries.every(refused) && cliOk && same,
+          ok:
+            tries.length === LOOPS.length * 2 &&
+            tries.every(refused) &&
+            cliOk &&
+            same,
           detail: `${tryLine}; web url ${LOOPS[0]} → exit ${r.cli?.code}: ${r.cli?.said}; address ${JSON.stringify(r.before)} → ${JSON.stringify(r.after)}`,
         },
   ];

@@ -76,6 +76,16 @@ export function cliReads(src: string, wordsUnderTest = false): Hit[] {
           line: lineAt(src, at),
           what: `reads the text output of cli([${c.args.trim()}]): pass --json and read its fields`,
         });
+    // --json output goes whole to readJson or doctorChecks
+    // (gate/lib/read-json.mjs), which fail on anything that isn't JSON. A
+    // parse of .out with a fallback ([], null) would let a clause that
+    // proves an absence pass on nothing.
+    if (json)
+      for (const at of uses)
+        hits.push({
+          line: lineAt(src, at),
+          what: `reads cli([${c.args.trim()}]).out itself: pass the result to readJson or doctorChecks`,
+        });
     // Names built from this call's output carry it on.
     for (const at of uses) {
       const stmtStart = src.lastIndexOf("\n", at) + 1;
@@ -119,7 +129,10 @@ describe("issue 840: the checker, seen red first", () => {
   return { ok: /edge/.test(d.out) };
 }`;
     expect(cliReads(text).map((h) => h.line)).toEqual([3]);
-    const json = text.replace('["doctor"]', '["doctor", "--json"]');
+    const json = `export async function run(ctx) {
+  const d = ctx.cli(["doctor", "--json"]);
+  return { ok: doctorChecks(d).some((c) => /edge/.test(c.detail)) };
+}`;
     expect(cliReads(json)).toEqual([]);
   });
 
@@ -140,9 +153,15 @@ describe("issue 840: the checker, seen red first", () => {
   it("an argument that indexes (LOOPS[0]) doesn't hide --json", () => {
     const src = `export async function run(ctx) {
   const c = await ctx.cli(["web", "url", LOOPS[0], "--json"]);
-  return JSON.parse(c.out);
+  return readJson(c, "web url");
 }`;
     expect(cliReads(src)).toEqual([]);
+    // ...and its .out read itself is seen as a --json read.
+    expect(
+      cliReads(src.replace('readJson(c, "web url")', "JSON.parse(c.out)")).map(
+        (h) => h.what.startsWith("reads cli("),
+      ),
+    ).toEqual([true]);
   });
 
   it("words under test may read the text whole, but never split or match it", () => {
@@ -166,13 +185,30 @@ describe("issue 840: the checker, seen red first", () => {
     expect(cliReads(byLine, true).map((h) => h.line)).toEqual([4]);
   });
 
-  it("a call read only for its exit code, or parsed as JSON, is not flagged", () => {
+  it("a --json result parsed with a silent fallback is flagged: it would pass on nothing", () => {
+    const silent = `export async function run(ctx) {
+  const d = ctx.cli(["doctor", "--json"]);
+  let checks = [];
+  try {
+    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
+  } catch {
+    checks = [];
+  }
+  const j = parse(ctx.cli(["gate", "status", "--json"]).out);
+  return { ok: !checks.some((c) => c.status === "fail"), j };
+}`;
+    expect(cliReads(silent).map((h) => h.line)).toEqual([5, 9]);
+    // Words under test don't lift it.
+    expect(cliReads(silent, true).map((h) => h.line)).toEqual([5, 9]);
+  });
+
+  it("a call read only for its exit code, or passed to readJson, is not flagged", () => {
     const fine = `export async function run(ctx) {
   const down = ctx.cli(["web", "down", "--json"]).code;
   const up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
-  const d = JSON.parse(ctx.cli(["doctor", "--json"]).out);
+  const d = doctorChecks(ctx.cli(["doctor", "--json"]));
   const l = ctx.cli(["agents", "accounts", "list", "--json"]);
-  const rows = JSON.parse(l.out).accounts;
+  const rows = readJson(l, "agents accounts list").accounts;
   return { down, up, d, rows };
 }`;
     expect(cliReads(fine)).toEqual([]);

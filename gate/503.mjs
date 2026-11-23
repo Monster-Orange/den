@@ -9,6 +9,7 @@
 // Then it reads doctor's rows, the installed Den's config keys, and the
 // installed @lydell/node-pty against the lockfile. It closes every
 // terminal it opened (teardown too) and never touches one the bed had.
+import { readJson, doctorChecks } from "./lib/read-json.mjs";
 export const issue = 503;
 export const clauses = [
   "opening terminals up to sessions.max_concurrent (at most 20) and closing them leaves the terminal host's PTY count where it started (±1); the machine's count is logged, not judged, since other programs share the machine",
@@ -56,7 +57,7 @@ const parse = (b) => {
 /** Doctor's Terminals row: { host, machineUsed, machineMax, detail } or null. */
 function ptyRow(ctx) {
   const r = ctx.cli(["doctor", "--json"]);
-  const d = parse(r.out);
+  const d = { checks: doctorChecks(r) };
   const checks = Array.isArray(d?.checks) ? d.checks : [];
   const c = checks.find((x) => x?.id === "terminal_host_ptys");
   if (!c) return null;
@@ -130,12 +131,10 @@ export async function run(ctx, state) {
     );
     // Issue 840: started is the --json record's session; a refusal's
     // words (whether they name the cap) are read whole from stderr.
-    let started = null;
-    try {
-      started = JSON.parse(String(r?.out ?? "")).session ?? null;
-    } catch {
-      started = null;
-    }
+    // Exit 0 must print the record (readJson throws otherwise); a refusal
+    // exits non-zero with its words on stderr.
+    const started =
+      r?.code === 0 ? (readJson(r, "sessions start").session ?? null) : null;
     if (r?.code !== 0 || !started?.name) {
       const said = String(r?.err ?? "").trim();
       out.openError = {

@@ -2,6 +2,7 @@
 // Live check for #367: the push timeout and time-to-live are Settings › Notifications rows with permissive
 // defaults, and doctor names the contact push services get (warning when there is no https address).
 // Read only.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 367;
 export const clauses = [
   "the push timeout and time-to-live are rows in Settings › Notifications, with the same permissive defaults",
@@ -22,12 +23,7 @@ export const readOnly = true;
 export async function setup(ctx) {
   // Issue 840: doctor --json's push_contact check, by field.
   const d = ctx.cli(["doctor", "--json"]);
-  let checks = [];
-  try {
-    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
-  } catch {
-    checks = [];
-  }
+  const checks = doctorChecks(d);
   const c = checks.find((x) => x?.id === "push_contact");
   return { push: c ? String(c.detail ?? "") : null };
 }

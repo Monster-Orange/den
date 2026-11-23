@@ -1,0 +1,86 @@
+/**
+ * Issue 840 (review): a live check that reads --json never passes on output
+ * it couldn't read. gate/335 (no MCP server row may show a secret) and
+ * gate/339 (no token or email in the accounts list) prove absences, so an
+ * unreadable or empty answer must stop them, not become an empty list.
+ * Through gate/lib/read-json.mjs they throw, and the bed reports every
+ * clause as an error, never a pass.
+ */
+import { describe, expect, it } from "@jest/globals";
+import { spawnSync } from "child_process";
+import * as path from "path";
+
+const ROOT = path.resolve(__dirname, "../../..");
+
+/** Runs `gate/<n>.mjs`'s setup with a CLI that prints `out` and exits `code`. */
+function setupWith(n: number, out: string, code = 0) {
+  const js = `
+    const g = await import("./gate/${n}.mjs");
+    const ctx = { cli: () => ({ code: ${code}, out: ${JSON.stringify(out)}, err: "" }) };
+    try {
+      const s = await g.setup(ctx);
+      console.log(JSON.stringify({ state: s ?? null }));
+    } catch (e) {
+      console.log(JSON.stringify({ error: String(e?.message ?? e) }));
+    }`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+    cwd: ROOT,
+    encoding: "utf-8",
+    timeout: 60_000,
+  });
+  if (r.status !== 0) throw new Error(r.stderr || `exit ${r.status}`);
+  return JSON.parse(r.stdout.trim().split("\n").pop()!) as {
+    state?: unknown;
+    error?: string;
+  };
+}
+
+const DOCTOR_OK = JSON.stringify({
+  ok: true,
+  checks: [{ id: "node", status: "ok", detail: "v24" }],
+});
+const ACCOUNTS_OK = JSON.stringify({
+  runtime: { id: "den-claude", name: "Claude Code" },
+  accounts: [
+    { id: "1", label: "Claude account A", tokenSet: false, first: true },
+  ],
+});
+
+describe.each([
+  [335, "doctor", DOCTOR_OK],
+  [339, "agents accounts list", ACCOUNTS_OK],
+])("gate/%i reads %s --json or stops", (n, what, good) => {
+  it("good JSON: setup goes on", () => {
+    expect(setupWith(n, good).error).toBeUndefined();
+  });
+
+  it.each([
+    ["not JSON", "not json"],
+    ["nothing at all", ""],
+    ["a line before the JSON", `Warning: something\n${good}`],
+  ])("%s: setup throws, naming the command and what it printed", (_k, out) => {
+    const r = setupWith(n, out);
+    expect(r.state).toBeUndefined();
+    expect(r.error).toContain(`${what} --json did not print JSON`);
+  });
+
+  it("an exit the check doesn't expect: setup throws with the exit code", () => {
+    const r = setupWith(n, good, 3);
+    expect(r.error).toContain(`${what} --json exited 3`);
+  });
+});
+
+describe("doctor --json with no checks", () => {
+  it.each([
+    ["an empty list", JSON.stringify({ ok: true, checks: [] })],
+    ["no list", JSON.stringify({ ok: true })],
+  ])("%s: setup throws (doctor always has rows)", (_k, out) => {
+    expect(setupWith(335, out).error).toContain(
+      "doctor --json printed no checks",
+    );
+  });
+
+  it("doctor's exit 1 (a failing row) still reads its checks", () => {
+    expect(setupWith(335, DOCTOR_OK, 1).error).toBeUndefined();
+  });
+});

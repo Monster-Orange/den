@@ -1,6 +1,7 @@
 /* eslint-env browser */
 // Live check for #339: `agents accounts list` and Settings › Agents show each vendor's sign-in accounts by
 // label and status, never a token or an email. Nothing is added, set, ordered or removed. Read only.
+import { readJson } from "./lib/read-json.mjs";
 export const issue = 339;
 export const clauses = [
   "`agents accounts` (list, add, set-token, order, remove) on the command line",
@@ -21,15 +22,11 @@ export async function setup(ctx) {
   // Issue 840: the list's --json form. `out` stays the whole printed
   // text, so the token and email checks below read every byte of it.
   const l = ctx.cli(["agents", "accounts", "list", "--json"]);
-  let list = null;
-  try {
-    list = JSON.parse(String(l.out ?? ""));
-  } catch {
-    list = null;
-  }
+  const list = readJson(l, "agents accounts list");
   return {
     code: l.code,
-    out: String(l.out ?? ""),
+    // The whole printed JSON, so every byte is read for a token or email.
+    out: JSON.stringify(list),
     err: String(l.err ?? ""),
     runtime: list?.runtime ?? null,
     accounts: Array.isArray(list?.accounts) ? list.accounts : null,

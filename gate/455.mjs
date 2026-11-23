@@ -2,6 +2,7 @@
 // Live check for #455: Den prints only an address it has just proven reaches this Den; when
 // another server holds the port, Den names it and offers the two ways out (mock v3).
 // Read only: it never binds a port, never changes a setting, and never presses Check again.
+import { doctorChecks, readJson } from "./lib/read-json.mjs";
 export const issue = 455;
 export const clauses = [
   "Den never prints or links an address before checking it reaches this Den (an identity challenge, not a connect)",
@@ -51,12 +52,7 @@ export async function setup(ctx) {
   // Issue 840: doctor --json's checks, by field: the address rows are
   // the ones whose detail says what was checked.
   const d = ctx.cli(["doctor", "--json"]);
-  let checks = [];
-  try {
-    checks = JSON.parse(String(d.out ?? "")).checks ?? [];
-  } catch {
-    checks = [];
-  }
+  const checks = doctorChecks(d);
   s.doctor = {
     code: d.code,
     lines: checks
@@ -72,12 +68,7 @@ export async function setup(ctx) {
     // Issue 840: the route's --json form; config is the block a person
     // pastes into that proxy.
     const r = ctx.cli(["edge", "route", "--for", kind, "--json"]);
-    let route = null;
-    try {
-      route = JSON.parse(String(r.out ?? ""));
-    } catch {
-      route = null;
-    }
+    const route = readJson(r, `edge route --for ${kind}`);
     s.routes[kind] = {
       code: r.code,
       host: route?.host ?? null,

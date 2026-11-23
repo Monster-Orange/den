@@ -1,6 +1,7 @@
 // Live check for #331: doctor warns when edge.image is a Traefik major below 3, or a tag Den can't read a
 // version from, naming what's missing and the default image to move to.
 // The bed's own edge only (ctx.edge.swap, as in 330); teardown and the harness put its image back.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 331;
 export const clauses = [
   "doctor is quiet about edge.image on Den's default Traefik v3",
@@ -12,15 +13,8 @@ const DEFAULT = /Set edge\.image to traefik:v3\.\d+\.\d+, Den's default\./;
 
 // Issue 840: doctor --json's strategy:tls check carries the edge.image
 // line: a warning in its detail, the healthy line in its notes.
-const parse = (b) => {
-  try {
-    return JSON.parse(String(b ?? ""));
-  } catch {
-    return null;
-  }
-};
 function imageView(d) {
-  const c = (parse(d.out)?.checks ?? []).find((x) => x?.id === "strategy:tls");
+  const c = doctorChecks(d).find((x) => x?.id === "strategy:tls");
   const said = [c?.detail ?? "", ...(c?.notes ?? [])].filter((t) =>
     /edge\.image/.test(t),
   );

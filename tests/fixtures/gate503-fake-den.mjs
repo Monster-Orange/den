@@ -86,9 +86,10 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
         return { code: 0, out: `stopped ${args[2]}`, err: "" };
       }
       if (args[0] !== "doctor") return { code: 2, out: "", err: "" };
+      // Doctor always has rows: a broken one lacks only the PTY row.
       const checks =
         broken === "doctor"
-          ? []
+          ? [{ id: "node", status: "ok", detail: "v24" }]
           : [
               {
                 id: "terminal_host_ptys",
