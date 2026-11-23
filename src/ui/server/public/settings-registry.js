@@ -4544,6 +4544,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
+    // Issue 1225: 0.4.46's services.restore_on_boot, now in Settings.
+    id: "server.restore_services",
+    category: "server",
+    label: "Bring back services after a restart",
+    description:
+      "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
+    keywords: ["restart", "reboot", "services", "restore", "resume", "boot"],
+    scope: "user",
+    keys: ["restore_services_on_boot"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.restore_services_on_boot !== false,
+    write: (v, ctx) => ctx.post({ restore_services_on_boot: !!v }),
+  },
+  {
     // Issue 1129: the restart queue (user.yml agents.resume.*).
     id: "agents.resume_batch",
     category: "agents",

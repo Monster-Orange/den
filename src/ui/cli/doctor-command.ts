@@ -59,6 +59,14 @@ import {
   readTestResolveState,
   testResolveDoctorLine,
 } from "../../shared/test-resolve.js";
+import { listDaemons } from "../../shared/environment-manager/service-runner.js";
+import {
+  containerRuntimeOnPath,
+  readLastRestore,
+  restoreDoctorLine,
+  runtimeMissingDoctorLine,
+  servicesRestoreOnBoot,
+} from "../../shared/environment-manager/restore-on-boot.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
@@ -2112,6 +2120,30 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   {
     const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
     if (tr) console.log(tr);
+  }
+  // Issue 1225: what the last restore after a restart brought back, or that
+  // the setting is off.
+  {
+    let enabled = true;
+    try {
+      enabled = servicesRestoreOnBoot();
+    } catch {
+      /* a bad value: doctor's config check says so */
+    }
+    const rl = restoreDoctorLine({
+      enabled,
+      last: readLastRestore(getStateDir()),
+    });
+    if (rl) console.log(rl);
+    try {
+      const rm = runtimeMissingDoctorLine({
+        runtime: await containerRuntimeOnPath(),
+        records: listDaemons(),
+      });
+      if (rm) console.log(rm);
+    } catch {
+      /* no service records to read: nothing to say */
+    }
   }
   for (const l of pushContactLines(
     readWebUrl(),

@@ -1464,6 +1464,10 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.restore_services":
+      "Volver a iniciar los servicios después de un reinicio",
+    "set.server.restore_services.d":
+      "Activado, después de que la máquina o __DEN_TITLE__ se reinicie, los servicios que estaban activos vuelven a iniciarse solos, unos pocos a la vez. Un servicio que detuviste sigue detenido. La campana dice cuáles volvieron. __DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "Agentes reiniciados a la vez",
     "set.agents.resume_batch.d":
       "Tras un reinicio, o cuando cambian las herramientas de Hub, los agentes se reinician de este número en este número; primero los que estaban trabajando. 0 reinicia todos a la vez. __DEN_CLI__ config agents.resume.batch=4",
@@ -2891,6 +2895,14 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.serviceBack":
+      "Se volvió a iniciar 1 servicio después del reinicio.",
+    "bell.m.servicesBack":
+      "Se volvieron a iniciar {n} servicios después del reinicio.",
+    "bell.m.serviceBackFailed":
+      "Se volvió a iniciar 1 servicio después del reinicio. No se pudieron iniciar: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Se volvieron a iniciar {n} servicios después del reinicio. No se pudieron iniciar: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.toolsListFailed":

@@ -1419,6 +1419,9 @@
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.restore_services": "再起動後にサービスを再開する",
+    "set.server.restore_services.d":
+      "オンにすると、マシンまたは __DEN_TITLE__ の再起動後、動いていたサービスが数件ずつ自動で再開します。あなたが停止したサービスは停止したままです。再開したものはベルでお知らせします。__DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "一度に再起動するエージェント数",
     "set.agents.resume_batch.d":
       "再起動のあと、または Hub のツールが変わったとき、エージェントはこの数ずつ再起動します。作業中だったものが先です。0 にするとすべて同時に再起動します。__DEN_CLI__ config agents.resume.batch=4",
@@ -2794,6 +2797,12 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
     "bell.m.updatedSecurity":
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.serviceBack": "再起動後、1 件のサービスを再開しました。",
+    "bell.m.servicesBack": "再起動後、{n} 件のサービスを再開しました。",
+    "bell.m.serviceBackFailed":
+      "再起動後、1 件のサービスを再開しました。再開できなかったもの: {failed}。",
+    "bell.m.servicesBackFailed":
+      "再起動後、{n} 件のサービスを再開しました。再開できなかったもの: {failed}。",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.toolsListFailed":

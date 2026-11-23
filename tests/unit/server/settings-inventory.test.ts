@@ -255,6 +255,8 @@ describe("the settings inventory (R21)", () => {
         "machine_name",
         // SRV-P6: whether Den updates itself without asking.
         "server_agent_self_update",
+        // Issue 1225: whether services that were up come back after a restart.
+        "restore_services_on_boot",
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",
