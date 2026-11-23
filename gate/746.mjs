@@ -169,8 +169,9 @@ async function ask(ctx, id) {
 
 /**
  * This run's own requests, withdrawn at the end. Issue 1293 adds the
- * asker's CLI withdraw; until it lands this asks nothing, and removing the
- * stub (its token ends) ends its requests as before.
+ * asker's CLI withdraw; until it lands this asks nothing, and this run's
+ * two requests stay pending on the bed after the stubs are removed (as
+ * earlier runs' did). The per-run names keep them out of later runs' rows.
  */
 const MINE = new Set();
 async function withdrawMine(ctx) {
