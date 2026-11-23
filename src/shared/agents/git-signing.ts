@@ -133,6 +133,15 @@ export function ensureAgentSigningKey(
   const final = agentSigningKeyDir(stateDir);
   if (complete(final)) return keyIn(final);
   fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
+  // A folder missing a file (a .pub deleted): moved aside, never used, so
+  // the next make can land. Another process may have moved it first.
+  // A complete one never turns incomplete: a racer's is left alone.
+  if (fs.existsSync(final) && !complete(final))
+    try {
+      fs.renameSync(final, path.join(parent, `.incomplete-${Date.now()}-${process.pid}`));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
   const tmp = fs.mkdtempSync(path.join(parent, ".new-"));
   try {
     const key = path.join(tmp, KEY_FILE);
@@ -243,6 +252,18 @@ export function agentGitEnv(
   return env;
 }
 
+/**
+ * Issue 1316: the files of agents.git.signing_key a session reads, the key
+ * and its .pub, wherever they are (the state dir too): exact paths, never
+ * their folder. The default key's folder is read back as a whole.
+ */
+export function signingReadFiles(
+  git: { signingKey?: string; off?: true } | undefined,
+): string[] {
+  if (!git?.signingKey || git.off) return [];
+  return [git.signingKey, `${git.signingKey}.pub`];
+}
+
 /** What the person runs once so GitHub shows the agents' commits Verified. */
 export function signingKeyAddLine(git: AgentGitSettings): string {
   return `gh ssh-key add ${JSON.stringify(`${git.signingKey}.pub`)} --type signing --title "Den agents"`;
@@ -258,6 +279,11 @@ export interface SigningCheckDeps {
   tmp?: string;
   /** The env git runs with (default: this process's, PATH and HOME). */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Issue 1316: git runs as an agent's session would, in its sandbox
+   * (sandboxFor's argv and env), so a key the sandbox hides fails here too.
+   */
+  wrap?: (argv: string[]) => { argv: string[]; env: Record<string, string> };
 }
 
 /**
@@ -299,13 +325,17 @@ export function checkAgentSigning(
       ...agentGitEnv(git),
     };
     const repo = path.join(dir, "repo");
-    const run = (args: string[]) =>
-      spawnSync("git", args, {
+    const run = (args: string[]) => {
+      const w = d.wrap
+        ? d.wrap(["git", ...args])
+        : { argv: ["git", ...args], env: {} };
+      return spawnSync(w.argv[0], w.argv.slice(1), {
         cwd: fs.existsSync(repo) ? repo : dir,
-        env,
+        env: { ...env, ...w.env },
         encoding: "utf8",
         timeout: 20_000,
       });
+    };
     const steps: [string, string[]][] = [
       ["git init", ["init", "-q", repo]],
       ["a signed commit", ["commit", "-q", "--allow-empty", "-m", "Den: signing check"]],

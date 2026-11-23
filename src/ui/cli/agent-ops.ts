@@ -272,6 +272,7 @@ import {
   agentGitEnv,
   resolveAgentSigning,
   signingKeyAddLine,
+  signingReadFiles,
   type AgentSigning,
 } from "../../shared/agents/git-signing.js";
 import {
@@ -898,6 +899,8 @@ export function agentSandboxInput(o: {
   sockets?: string[];
   platform?: NodeJS.Platform;
   home?: string;
+  /** Issue 1316: agents.git.signing_key's files, read wherever they are. */
+  readableFiles?: string[];
 }): AgentSandboxInput {
   return {
     stateDir: o.stateDir,
@@ -906,6 +909,7 @@ export function agentSandboxInput(o: {
     agentId: o.agentId,
     env: o.env,
     socketsAllowed: o.sockets ?? [],
+    ...(o.readableFiles?.length ? { readableFiles: o.readableFiles } : {}),
     deniedDirs: localProofDirs(
       o.env,
       o.platform ?? process.platform,
@@ -944,6 +948,9 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             agentId,
             sockets: (d.agentsConfig ?? (() => readAgentsConfig()))()
               .sandboxSockets,
+            readableFiles: signingReadFiles(
+              (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+            ),
           }),
           {
             on: sandboxSetting(

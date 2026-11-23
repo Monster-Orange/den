@@ -141,6 +141,13 @@ export interface AgentSandboxInput {
   socketsAllowed?: string[];
   /** The env the session starts from (its SSH agent, its runtime dir). */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Issue 1316: single files the session reads wherever they are, the
+   * state dir too (agents.git.signing_key and its .pub). Exact paths,
+   * never their folder; one the sandbox hides stays hidden
+   * (sandboxHidesFile says why).
+   */
+  readableFiles?: string[];
 }
 
 /**
@@ -204,6 +211,37 @@ export function realPath(p: string): string {
   }
 }
 
+/**
+ * Issue 1316: why the sandbox won't let a session read `file` that a
+ * setting names (a signing key), or null when it will. Only a plain file
+ * (not a link, not a folder), never one of the hidden files, an agent's
+ * token, the sessions socket, or a file in a denied folder.
+ */
+export function sandboxHidesFile(
+  file: string,
+  i: Pick<AgentSandboxInput, "stateDir" | "deniedDirs">,
+): string | null {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(file);
+  } catch {
+    return `${file} doesn't exist`;
+  }
+  if (st.isSymbolicLink()) return `${file} is a link: name the file itself`;
+  if (!st.isFile()) return `${file} is not a file`;
+  const f = realPath(file);
+  const state = realPath(i.stateDir);
+  const under = (d: string) => f === d || f.startsWith(d + path.sep);
+  if (
+    HIDDEN_FILES.some((h) => f === path.join(state, h)) ||
+    under(path.join(state, "actor-token")) ||
+    f === path.join(state, "sessions.sock") ||
+    (i.deniedDirs ?? []).some((d) => under(realPath(d)))
+  )
+    return `${file} is one of Den's private files, hidden from agents`;
+  return null;
+}
+
 export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
   if (!SAFE_ID.test(i.agentId) || i.agentId === "." || i.agentId === "..")
     throw new Error(`sandbox: agent id "${i.agentId}" is not a plain name`);
@@ -237,7 +275,12 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
       ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
       path.join(state, SESSION_SIGNING_DIR),
     ],
-    readableFiles: SESSION_READ_FILES.map((f) => path.join(state, f)),
+    readableFiles: [
+      ...SESSION_READ_FILES.map((f) => path.join(state, f)),
+      ...(i.readableFiles ?? [])
+        .filter((f) => sandboxHidesFile(f, i) === null)
+        .map(realPath),
+    ],
     listable: SESSION_LIST_DIRS.map((f) => path.join(state, f)),
     hidden: HIDDEN_FILES.map((f) => path.join(state, f)),
     ownTokenDir: path.join(tokensDir, i.agentId),

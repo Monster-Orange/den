@@ -47,11 +47,18 @@ import {
   existingAgentSigningKey,
   resolveAgentSigning,
   signingKeyAddLine,
+  signingReadFiles,
   type AgentGitSettings,
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
-import { getStateDir } from "../../shared/paths.js";
+import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import {
+  sandboxFor,
+  sandboxHidesFile,
+  sandboxSetting,
+} from "../../shared/agents/sandbox.js";
+import { agentSandboxInput } from "./agent-ops.js";
 import { localDateTime } from "../../shared/local-time.js";
 import {
   readRestartsWaiting,
@@ -1792,7 +1799,7 @@ export function signingLines(
       return undefined;
     }
   },
-  check: (g: AgentGitSettings) => SigningCheck = (g) => checkAgentSigning(g),
+  check: (g: AgentGitSettings) => SigningCheck = signingInSandbox,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const git = readGit();
   if (!git) return { lines: [], problem: false, checks: [] };
@@ -1818,6 +1825,55 @@ export function signingLines(
       },
     ],
   };
+}
+
+/**
+ * Issue 1316: doctor's signing check as an agent's session runs it: git
+ * inside the agent sandbox (when it is on), with the key's files read
+ * back as a session's are. A key the sandbox hides fails, saying why.
+ */
+export function signingInSandbox(
+  g: AgentGitSettings,
+  o: {
+    stateDir?: string;
+    distRoot?: string;
+    env?: NodeJS.ProcessEnv;
+    on?: boolean;
+    tmp?: string;
+  } = {},
+): SigningCheck {
+  const env = o.env ?? process.env;
+  const on =
+    o.on ??
+    (() => {
+      try {
+        return sandboxSetting(readAgentsConfig(), "den-doctor-signing");
+      } catch {
+        return true;
+      }
+    })();
+  if (!on) return checkAgentSigning(g, { ...(o.tmp ? { tmp: o.tmp } : {}) });
+  const input = agentSandboxInput({
+    stateDir: o.stateDir ?? getStateDir(),
+    distRoot: o.distRoot ?? getDistRoot(),
+    env,
+    // Never an agent's own id: its folder isn't one a check writes.
+    agentId: "den-doctor-signing",
+    readableFiles: signingReadFiles(g),
+  });
+  for (const f of [g.signingKey, `${g.signingKey}.pub`])
+    if (fs.existsSync(f)) {
+      const why = sandboxHidesFile(f, input);
+      if (why)
+        return { ok: false, detail: `agents can't read their signing key: ${why}` };
+    }
+  return checkAgentSigning(g, {
+    ...(o.tmp ? { tmp: o.tmp } : {}),
+    wrap: (argv) => {
+      const w = sandboxFor(argv, input, { on: true });
+      return { argv: w.argv, env: w.env };
+    },
+  });
 }
 
 /**
