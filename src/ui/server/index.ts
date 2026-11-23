@@ -1315,6 +1315,7 @@ import {
   handleWorkspaceRoutes,
   workspaceCreateRefusal,
 } from "./workspace-routes.js";
+import { setFixtureTestInstall } from "./fixture-projects.js";
 import {
   createApprovalQueue,
   handleApprovalRoutes,
@@ -3594,6 +3595,8 @@ function testInstallNow(except?: string): boolean {
       ),
   }).ok;
 }
+// Issue 1215: the fixture person's project acts check the mark too.
+setFixtureTestInstall(() => testInstallNow());
 
 // Issue 1073: install the name map's hook, and tell the log and doctor.
 if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
