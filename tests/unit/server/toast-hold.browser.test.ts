@@ -60,7 +60,7 @@ async function page(): Promise<Page> {
   return p;
 }
 
-const toasts = (p: Page) => p.locator(".den-toast.den-toast-act").count();
+const toasts = (p: Page) => p.locator('[data-toast="action"]').count();
 
 describe("the kit's action toast", () => {
   it("closes after its time when nobody touches it", async () => {
@@ -76,7 +76,7 @@ describe("the kit's action toast", () => {
   it("the pointer on it holds it; it closes about 8 s after the pointer leaves", async () => {
     if (!browser) return;
     const p = await page();
-    await p.locator(".den-toast-act").hover();
+    await p.locator('[data-toast="action"]').hover();
     await p.clock.runFor(15_000);
     expect(await toasts(p)).toBe(1);
     await p.mouse.move(0, 0);
@@ -90,7 +90,7 @@ describe("the kit's action toast", () => {
   it("focus on its button holds it; it closes about 8 s after focus leaves", async () => {
     if (!browser) return;
     const p = await page();
-    await p.locator(".den-toast-act .den-tbtn").focus();
+    await p.locator('[data-toast="action"] [data-toast-btn]').focus();
     await p.clock.runFor(15_000);
     expect(await toasts(p)).toBe(1);
     await p.evaluate(() => (document.activeElement as HTMLElement)?.blur());

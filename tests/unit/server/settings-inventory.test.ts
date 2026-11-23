@@ -62,6 +62,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_release_browser: true,
     // Issue 1009: cpu runs wait at this load under a release run.
     cpu_hold_load: true,
+    // Issue 1048: new cpu runs wait over this × the cores.
+    load_hold_per_core: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -81,6 +83,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     mcp_renew_minutes: true,
     mcp_lapse_minutes: true,
     mcp_grace_minutes: true,
+    // Issue 867: a gone waiter keeps its place this long.
+    waiter_return_minutes: true,
     // Issue 625: test boxes' check and recheck.
     box_check_timeout_seconds: true,
     box_recheck_seconds: true,
@@ -104,6 +108,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     hub_screenshot_max_mb: true,
     hub_timeout_seconds: true,
   },
+  // Issue 707: the server's warning lines on disk, capped.
+  server_log: { max_mb: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
   // issue_write: which roles write GitHub issues, and how many an hour.
@@ -170,6 +176,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 52: the Coach's rows (user.yml agents.coach; a person's write).
   coach: { enabled: true, window_days: true, "judge.enabled": true },
+  // Issue 1022: how often the page polls health, visible and hidden.
+  health_poll: { visible_seconds: true, hidden_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -294,6 +302,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
         "gate_slots.cpu_slots_beside_release_browser",
+        "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
@@ -308,6 +317,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
@@ -316,6 +326,8 @@ describe("the settings inventory (R21)", () => {
         "reports.screenshot_max_mb",
         "reports.hub_screenshot_max_mb",
         "reports.hub_timeout_seconds",
+        // Issue 707: the server's warning lines on disk, capped.
+        "server_log.max_mb",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
         // issue_write: which roles write GitHub issues, and how many an hour.
@@ -379,6 +391,9 @@ describe("the settings inventory (R21)", () => {
         "agent_hooks.backoff_seconds",
         // Issue 742: how long a held write waits for the person's Allow.
         "held_writes.wait_minutes",
+        // Issue 1022: how often the page polls health, visible and hidden.
+        "health_poll.visible_seconds",
+        "health_poll.hidden_seconds",
       ].sort(),
     );
   });

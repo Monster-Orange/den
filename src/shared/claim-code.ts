@@ -26,6 +26,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { isAgentTokenEnv } from "./actor-token.js";
 import { AGENT_ACTOR_ENV } from "./sessions/env.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const CLAIM_CODE_TTL_MS = 30 * 60_000;
 const SKEW_MS = 5_000;
@@ -145,10 +146,7 @@ export class ClaimNonces {
 
   private write(used: Record<string, number>): void {
     fs.mkdirSync(this.stateDir, { recursive: true });
-    const tmp = `${this.file()}.${process.pid}.${randomBytes(4).toString("hex")}`;
-    fs.writeFileSync(tmp, JSON.stringify(used) + "\n", { mode: 0o600 });
-    fs.chmodSync(tmp, 0o600);
-    fs.renameSync(tmp, this.file());
+    writeFileAtomic(this.file(), JSON.stringify(used) + "\n", { mode: 0o600 });
   }
 
   /**

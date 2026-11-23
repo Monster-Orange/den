@@ -233,6 +233,30 @@ export function toolsNoteHeldNote(
   });
 }
 
+/** Issue 749: the bell item for an agent whose Hub tools still didn't load. */
+export const TOOLS_LIST_FAILED_SUBJECT = "record:hub-tools-list-failed";
+
+/**
+ * Issue 749: listing Hub's tools failed again after Den's one restart for
+ * it, so Den stops restarting `agent` and tells its person once.
+ */
+export function toolsListFailedNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  workspace: string,
+  error: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `${TOOLS_LIST_FAILED_SUBJECT}:${agent}`,
+    scope: `workspace/${workspace}`,
+    text: `${agent} can't use Hub's tools: ${error}. ${title} restarted it once; restart it from Agents once Hub is fixed`,
+    msg: { key: "bell.m.toolsListFailed", vars: { agent } },
+    link: "/agents",
+  });
+}
+
 /**
  * Issue 629: clear every waiting-note bell item. The loop that kept a note
  * is in memory: after Den restarts, nothing waits any more, so an item

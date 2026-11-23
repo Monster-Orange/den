@@ -16,7 +16,7 @@
   font-size: var(--fs-s);
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow-menu);
 }
@@ -46,7 +46,7 @@
   white-space: nowrap;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius-button);
   cursor: pointer;
 }

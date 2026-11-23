@@ -34,6 +34,7 @@ describe("whereRows", () => {
       ["server", "Background", "ok"],
       ["session host", "Background", "ok"],
       ["service", "always (system)", "ok"],
+      ["survives logout", "yes", "ok"],
     ]);
   });
 
@@ -65,6 +66,8 @@ describe("whereRows", () => {
       ["server", "info"],
       ["session host", "info"],
       ["service", "ok"],
+      // Issue 163: login mode stops agents at logout, said plainly.
+      ["survives logout", "warn"],
     ]);
     expect(formatWhere(rows, "Acme").join("\n")).toMatch(/server\s+Aqua\s+ℹ/);
     expect(whereCheck(rows[0]).status).toBe("ok");
@@ -345,5 +348,98 @@ describe("serviceJobState", () => {
         print: () => 0,
       }),
     ).toBeNull();
+  });
+});
+
+/**
+ * Issue 163: one row that answers "does this install survive a logout?",
+ * yes or no, with why and the fix in words. An install from before
+ * keep-running was the default stays in login mode after an update: the
+ * row says so plainly, and the fix is Den's own Apply (one admin
+ * password), not a terminal chore.
+ */
+describe("survives logout", () => {
+  const logout = async (over: Partial<WhereDeps> = {}) =>
+    (await whereRows(base(over))).find((r) => r.what === "survives logout");
+  const login =
+    (state: "loaded" | "not-loaded" = "loaded") =>
+    () => ({
+      state,
+      mode: "login" as const,
+      plist: "/x.plist",
+      domain: "gui/501",
+    });
+
+  it("always, loaded, host and server outside the desktop login: yes", async () => {
+    expect(await logout()).toMatchObject({
+      session: "yes",
+      status: "ok",
+      detail:
+        "agents keep running when you log out, and are still running when you log back in",
+    });
+    // No host yet: it starts under the service, so still yes.
+    expect((await logout({ host: async () => null }))!.session).toBe("yes");
+  });
+
+  it("login mode (an install from before the default, Setting unset): no, with Den's Apply as the fix", async () => {
+    const row = await logout({
+      server: async () => ({ launchd: "Aqua" }),
+      host: async () => ({ launchd: "Aqua", pid: 7 }),
+      service: login(),
+      keepSetting: () => undefined,
+    });
+    expect(row).toMatchObject({ session: "no (login mode)", status: "warn" });
+    expect(row!.detail).toContain(
+      "this install stops its agents at logout (login mode)",
+    );
+    expect(row!.detail).toContain(
+      "Settings › Agents › Keep agents running after logout › Apply",
+    );
+    expect(row!.detail).toContain("one admin password");
+    // The fix is Den's, not a terminal line.
+    expect(row!.detail).not.toContain("acme service install");
+    expect(row!.detail).not.toContain("acme config");
+  });
+
+  it("login mode because the person turned it off: no, as chosen (ℹ)", async () => {
+    const row = await logout({
+      server: async () => ({ launchd: "Aqua" }),
+      service: login(),
+      keepSetting: () => false,
+    });
+    expect(row).toMatchObject({ session: "no (turned off)", status: "info" });
+    expect(row!.detail).toContain(
+      "Keep agents running after logout is off (Settings › Agents)",
+    );
+  });
+
+  it("always, but the host serving now runs in the desktop login: no", async () => {
+    const row = await logout({
+      host: async () => ({ launchd: "Aqua", pid: 9 }),
+    });
+    expect(row).toMatchObject({
+      session: "no (host in the desktop login)",
+      status: "warn",
+    });
+    expect(row!.detail).toContain("pid 9");
+  });
+
+  it("the job isn't loaded, or there is no service: no", async () => {
+    expect(
+      await logout({
+        service: () => ({
+          state: "not-loaded",
+          mode: "always",
+          plist: "/x.plist",
+          domain: "system",
+        }),
+      }),
+    ).toMatchObject({ session: "no (job not loaded)", status: "warn" });
+    const none = await logout({
+      service: () => null,
+      server: async () => ({ launchd: "Aqua" }),
+    });
+    expect(none).toMatchObject({ session: "no (no service)", status: "warn" });
+    expect(none!.detail).toContain("this install stops its agents at logout");
   });
 });
