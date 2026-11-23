@@ -2,13 +2,11 @@
 // runner token (issue 739).
 // Read only: it reads nothing and changes nothing, and asks for no slot.
 // Its clauses go through the bed's Den server (POST /api/gate-slots/ask
-// with a runner token). Two things are missing on the bed: the bed's
-// server keeps its slots in the machine's shared gate folder (it sets no
-// DEN_GATE_DIR), so a priority ask would jump every other run on the
-// machine; and a runner token is made only with a person's Allow (a
-// fixture session counts as an agent there). So each clause reports "not
-// run" until the bed's server has a gate folder of its own and a token
-// a person made for it.
+// with a runner token). The bed's server has its own gate folder now
+// (the bed-gate-dir proof on v0.4.85), so a priority ask there no
+// longer jumps the machine's line. A runner token is still made only with
+// a person's Allow (a fixture session counts as an agent there), so each
+// clause reports "not run" (person) until a person makes one for the bed.
 export const readOnly = true;
 
 export const issue = 739;
@@ -32,8 +30,8 @@ export function expect() {
   return clauses.map((clause) => ({
     clause,
     ok: null,
-    skip: "needs-bed-gate-dir",
+    skip: "person",
     detail:
-      "the bed's Den server keeps gate slots in the machine's shared folder (no DEN_GATE_DIR of its own), so a runner's priority ask from this check would jump every other run on the machine; and a runner token needs a person's Allow (skip: person). Not asked",
+      "a runner token is made only with a person's Allow, and a fixture session counts as an agent there. Not asked",
   }));
 }

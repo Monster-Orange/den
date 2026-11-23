@@ -3784,6 +3784,15 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/shared/gates/classes.ts",
+        "src/shared/gates/store.ts",
+        "src/ui/cli/gate-command.ts"
+      ],
+      "run": ["tests/unit/test-infra/gate-795-803-runner.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["tests/child-servers.ts"],
       "run": ["tests/unit/test-infra/start-den-server.test.ts"],
       "why": "starts Den as a process: its subject"
