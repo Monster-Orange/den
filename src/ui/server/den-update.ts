@@ -74,7 +74,28 @@ export type UpdateResult =
       restarting: true;
       doctor: string[];
     }
-  | { ok: false; error: string; from?: string; to?: string };
+  | {
+      ok: false;
+      error: string;
+      from?: string;
+      to?: string;
+      /**
+       * Issue 125: the rollback failed too. What the person must do by hand
+       * (put the pin back on `from` in `root`, then npm install there), kept
+       * apart from the long npm reasons so the bell can lead with it.
+       */
+      rollbackFailed?: RollbackFailed;
+    };
+
+/** Issue 125: an update whose rollback failed as well. */
+export interface RollbackFailed {
+  /** The version the pin must go back to. */
+  from: string;
+  /** The distribution's folder, where npm install must run. */
+  root: string;
+  /** Both reasons: the update's, then the rollback's. */
+  why: string;
+}
 
 export const UPDATE_SPEC_RE = /^(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 /** A state file newer than this, not finished, is an update in flight. */
@@ -301,6 +322,7 @@ export async function updateDen(
         error: `${both}. The rollback failed: Den ${from} may not start. A person must put the pin back on ${from} in ${d.root} and run npm install there.`,
         from,
         to,
+        rollbackFailed: { from, root: d.root, why: both },
       };
     }
     state("rolled_back", why);

@@ -88,6 +88,15 @@ describe("a failed rollback is reported honestly (issue 125)", () => {
       /npm install of 1\.0\.0 failed \(exit 1\): npm ERR! network still down/,
     );
     expect(error).toMatch(/rollback failed/i);
+    // Issue 125: the hand-fix's parts, apart from npm's long reasons, so
+    // the bell can lead with them.
+    expect(!res.ok && res.rollbackFailed).toEqual({
+      from: "1.0.0",
+      root: r.deps.root,
+      why: expect.stringMatching(
+        /npm install of 1\.2\.0 failed .*; npm install of 1\.0\.0 failed/,
+      ),
+    });
     const s = readUpdateState(stateDir);
     expect(s?.state).toBe("rollback_failed");
     expect(s?.why).toMatch(/npm install of 1\.2\.0 failed \(exit 1\)/);

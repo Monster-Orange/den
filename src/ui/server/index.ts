@@ -11531,10 +11531,21 @@ function startUpdateCheck(): void {
             const r = (await a.run(ok.args, {
               id: "update-check",
               decidedBy: "auto:server_agent.self_update: auto",
-            })) as { ok?: boolean; error?: unknown };
+            })) as {
+              ok?: boolean;
+              error?: unknown;
+              rollbackFailed?: import("./den-update.js").RollbackFailed;
+            };
             return r.ok
               ? { ok: true }
-              : { ok: false, error: String(r.error ?? "not updated") };
+              : {
+                  ok: false,
+                  error: String(r.error ?? "not updated"),
+                  // Issue 125: the bell leads with the hand-fix.
+                  ...(r.rollbackFailed
+                    ? { rollbackFailed: r.rollbackFailed }
+                    : {}),
+                };
           } finally {
             updating = false;
             autoRestartHold = null;

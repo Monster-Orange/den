@@ -438,7 +438,12 @@ export interface UpdateCheckDeps {
     version: string,
     reason: string,
     opts?: { security: boolean },
-  ): Promise<{ ok: boolean; error?: string }>;
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    /** Issue 125: the rollback failed too (den-update.ts RollbackFailed). */
+    rollbackFailed?: import("./den-update.js").RollbackFailed;
+  }>;
   /** Hold "update Den to X" for the person; false when it couldn't. */
   ask(version: string, reason: string): Promise<boolean> | boolean;
   /**
@@ -753,10 +758,23 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         return { did: "updating", version: want, security: true };
       }
       const why = r.error ?? "the update didn't run";
-      d.notice(want, `Den couldn't update to ${want}: ${why}`, {
-        key: "bell.m.updateFailed",
-        vars: { v: want, why },
-      });
+      const rb = "rollbackFailed" in r ? r.rollbackFailed : undefined;
+      if (rb)
+        // Issue 125: the bell keeps 300 characters, and npm's reasons are
+        // long: the failure and the hand-fix go first, the reasons last.
+        d.notice(
+          want,
+          `Den couldn't update to ${want}, and the rollback failed too: Den ${rb.from} may not start. Put the pin back on ${rb.from} in ${rb.root} and run npm install there. Why: ${rb.why}`,
+          {
+            key: "bell.m.updateRollbackFailed",
+            vars: { v: want, from: rb.from, root: rb.root, why: rb.why },
+          },
+        );
+      else
+        d.notice(want, `Den couldn't update to ${want}: ${why}`, {
+          key: "bell.m.updateFailed",
+          vars: { v: want, why },
+        });
       return { did: "failed", version: want, why };
     },
   };

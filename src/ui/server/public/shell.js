@@ -3637,6 +3637,8 @@
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} is out. Allow the update when it suits you (this install runs {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ couldn't update to {v}, and the rollback failed too: __DEN_TITLE__ {from} may not start. Put the pin back on {from} in {root} and run npm install there. Why: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
