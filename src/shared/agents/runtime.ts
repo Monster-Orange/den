@@ -311,6 +311,21 @@ export interface Runtime {
    */
   reportedResume?: boolean;
   /**
+   * Issue 785: whether a reported conversation is one this agent may
+   * resume, by the runtime's own session record (Codex: a main thread that
+   * ran in `cwd`). `env` is Den's own. None: the report's checks only.
+   */
+  reportedConversationOk?(
+    conversation: string,
+    cwd: string,
+    env: NodeJS.ProcessEnv,
+  ): boolean;
+  /**
+   * Issue 785: its conversation id is Den's, and a fresh start takes a
+   * new one (Gemini refuses an id whose session file exists).
+   */
+  freshTakesNewId?: boolean;
+  /**
    * Whether the runtime has a conversation for `token` on this machine
    * (den-claude: its transcript file). Only ever a fast path: false may
    * just mean it isn't written yet.

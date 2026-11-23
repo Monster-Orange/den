@@ -152,6 +152,11 @@ function parse(line: string): Record<string, unknown> | null {
   }
 }
 
+/** $CODEX_HOME in Den's own environment, else ~/.codex. */
+export function codexHomeOf(env: NodeJS.ProcessEnv): string {
+  return env.CODEX_HOME || path.join(env.HOME || os.homedir(), ".codex");
+}
+
 /**
  * Whether Codex thread `id` is a main thread (no parent, not a
  * sub-agent's) that ran in `cwd`, by its session file under `codexHome`
@@ -229,7 +234,7 @@ export function geminiResumable(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (!CONVERSATION_ID.test(id) || id.length < 8) return false;
-  const home = env.GEMINI_CLI_HOME || os.homedir();
+  const home = env.GEMINI_CLI_HOME || env.HOME || os.homedir();
   const short = id.slice(0, 8);
   const files = findFiles(
     path.join(home, ".gemini", "tmp"),

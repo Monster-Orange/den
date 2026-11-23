@@ -25,6 +25,11 @@ import {
   resumeCommandFor,
 } from "./resume-command.js";
 import {
+  codexHomeOf,
+  codexMainThread,
+  geminiResumable,
+} from "./session-files.js";
+import {
   LaunchError,
   type DetectOptions,
   type LaunchOutput,
@@ -137,7 +142,27 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
     // why before this is reached.
     ...(e.resume
       ? {
-          ...(denIdStart(e) ? {} : { reportedResume: true as const }),
+          ...(denIdStart(e)
+            ? { freshTakesNewId: true as const }
+            : { reportedResume: true as const }),
+          // Issue 785: the runtime's own session record, where Den reads it.
+          ...(e.id === "codex"
+            ? {
+                reportedConversationOk: (
+                  conversation: string,
+                  cwd: string,
+                  env: NodeJS.ProcessEnv,
+                ) => codexMainThread(conversation, cwd, codexHomeOf(env)),
+              }
+            : {}),
+          ...(e.id === "gemini" && denIdStart(e)
+            ? {
+                conversationExists: (
+                  token: string,
+                  env: NodeJS.ProcessEnv = process.env,
+                ) => geminiResumable(token, env),
+              }
+            : {}),
           resume(input: Parameters<NonNullable<Runtime["resume"]>>[0]) {
             // Den's own id: only the one it kept, in Den's shape.
             if (

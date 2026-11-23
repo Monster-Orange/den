@@ -1404,6 +1404,36 @@ export function resumeRefusal(
   return null;
 }
 
+/**
+ * Issue 785: why `rec`'s conversation can't resume by its runtime's own
+ * session record (read only here, at a resume), or null. Codex: a
+ * reported thread that isn't a main thread in its folder. Gemini: an id
+ * whose session holds no reply yet (a fresh start under a new id).
+ */
+export function conversationRefusal(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): string | null {
+  const rt = getRuntime(rec.runtime);
+  if (!rt) return null;
+  const conv = rec.resumeReport?.conversation;
+  if (
+    rt.reportedResume &&
+    rt.reportedConversationOk &&
+    typeof conv === "string" &&
+    !rt.reportedConversationOk(conv, rec.cwd, d.env)
+  )
+    return `${rec.runtime} can't resume ${rec.id}: its conversation is not a main thread of ${rec.runtime} in ${rec.cwd}`;
+  if (
+    rt.freshTakesNewId &&
+    rt.conversationExists &&
+    rec.resumeToken &&
+    !rt.conversationExists(rec.resumeToken, d.env)
+  )
+    return `${rec.runtime} can't resume ${rec.id}: its conversation was never written (it stopped before its first turn)`;
+  return null;
+}
+
 /** Whether `rec` may be resumed now, in `rowState`. */
 function canResume(
   rec: AgentRecord,
@@ -6412,7 +6442,9 @@ export async function resumeAgent(
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
     // AG-14.2: never a resume that would start a new conversation instead.
-    const why = resumeRefusal(rec, listRecords(d.stateDir()));
+    const why =
+      resumeRefusal(rec, listRecords(d.stateDir())) ??
+      (rt.reportedResume ? conversationRefusal(d, rec) : null);
     if (why)
       throw refused(why, [
         `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
@@ -6599,9 +6631,13 @@ export async function resumeAgent(
         const early = await exitedAtOnce(d, c, info);
         return { out, next, info, early, signInWarning, sandboxWarning };
       };
-      let fresh = !known && Boolean(token);
+      // Issue 785: a runtime whose id is Den's, with nothing written under
+      // it: a fresh start under a new id (the old one is refused).
+      const notWritten = Boolean(rt.freshTakesNewId) && onDisk === false;
+      let fresh = notWritten || (!known && Boolean(token));
       let newConversation = false;
-      let r = await run(fresh, old);
+      let r = await run(fresh, old, notWritten);
+      if (notWritten && !r.early) newConversation = true;
       // It exited at once saying the other way was the right one: try that,
       // once. A resume with nothing to continue starts fresh under the same
       // id; a fresh start whose id is taken resumes it.
@@ -6609,7 +6645,7 @@ export async function resumeAgent(
       const other = fresh
         ? rt.launchFailures?.idInUse?.test(said)
         : rt.launchFailures?.noConversation?.test(said);
-      if (r.early && other && token) {
+      if (r.early && other && token && !notWritten) {
         const first = r;
         fresh = !fresh;
         // The first try's token goes with its session.
@@ -8355,8 +8391,9 @@ export async function markInterrupted(
       ? rec.resumeOnRestart !== false
       : !!p && resumesOnRestart(rec, p);
     if (!wants) return false;
-    const refusal = resumeRefusal(rec, all);
-    if (refusal && getRuntime(rec.runtime)?.reportedResume)
+    const refusal = resumeRefusal(rec, all) ?? conversationRefusal(d, rec);
+    const rt = getRuntime(rec.runtime);
+    if (refusal && (rt?.reportedResume || rt?.freshTakesNewId))
       why.set(rec.id, refusal);
     return !refusal || why.has(rec.id);
   });
@@ -8613,8 +8650,7 @@ export async function resumeInterrupted(
   for (const rec of recs) {
     const rot = rotationOf(d, rec);
     const why =
-      resumeRefusal(rec, all) ??
-      (rot?.ready ? rotatedRefusal(rec, rot) : null);
+      resumeRefusal(rec, all) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
       failed.push({ agent: rec.id, why });
       continue;
