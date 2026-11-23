@@ -1198,6 +1198,10 @@
       "Pruebas unitarias junto a una prueba de navegador de versión",
     "set.server.gate_cpu_beside_release.d":
       "Cuántas pruebas unitarias pueden ejecutarse en esta máquina mientras se ejecuta una prueba de navegador con prioridad de versión. 0 (el valor predeterminado): la prueba de versión se ejecuta sola, para que otras no ralenticen sus comprobaciones. Las demás pruebas de navegador usan el ajuste de arriba. __DEN_CLI__ gate settings --cpu-slots-beside-release-browser 0",
+    "set.server.gate_load_hold_per_core":
+      "Esperar nuevas pruebas unitarias por encima de esta carga por núcleo",
+    "set.server.gate_load_hold_per_core.d":
+      "Las nuevas pruebas unitarias esperan mientras la carga media de 5 minutos de esta máquina supere este número de veces sus núcleos, pero solo mientras otra prueba unitaria se ejecuta: si no hay ninguna, la siguiente empieza con cualquier carga. Las pruebas de versión y las que ya se ejecutan nunca esperan. Cada prueba unitaria recibe también su parte de los núcleos en DEN_GATE_WORKERS. 0 desactiva la espera. __DEN_CLI__ gate settings --load-hold-per-core 3",
     "set.server.gate_cpu_hold_load":
       "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
     "set.server.gate_cpu_hold_load.d":
@@ -1426,6 +1430,13 @@
     "set.agents.approvals_critical": "Crítico",
     "set.agents.approvals_critical.d":
       "Tipos de escritura de agentes que siempre te preguntan, en todos los proyectos. Separados por comas, por ejemplo repo_clone, service_try.",
+    "set.server.health_poll": "Comprobaciones de salud mientras miras",
+    "set.server.health_poll.d":
+      "Cada cuánto una página abierta y visible comprueba la salud de cada servicio: de 2 a 300 segundos. __DEN_CLI__ config health_poll.visible_seconds=5",
+    "set.server.health_poll_hidden":
+      "Comprobaciones de salud en una pestaña oculta",
+    "set.server.health_poll_hidden.d":
+      "Cada cuánto una página en una pestaña oculta comprueba la salud: de 10 a 3600 segundos. Sin ninguna página a la vista, las comprobaciones se ejecutan como mucho con esa frecuencia. Al volver a la vista, la página comprueba enseguida. __DEN_CLI__ config health_poll.hidden_seconds=60",
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -1925,6 +1936,9 @@
     "ag.mcp.drops": "Las herramientas de Hub se van al reiniciar",
     "ag.mcp.dropsTip":
       "Hub se desconectó después de que este agente empezó; sus herramientas de Hub ya no funcionan. Reiniciar mantiene su conversación y espera a que termine su turno.",
+    "ag.mcp.failed": "Las herramientas de Hub no cargaron",
+    "ag.mcp.failedTip":
+      "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -2622,6 +2636,11 @@
     "bell.m.vschedExpire.one":
       'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.shared": "{actor} compartió {title} contigo",
+    "bell.m.sharedNote": "{actor} compartió {title} contigo: {note}",
+    "bell.m.sharedAgent": "El agente {actor} compartió {title} contigo",
+    "bell.m.sharedAgentNote":
+      "El agente {actor} compartió {title} contigo: {note}",
     "bell.m.heldLapsed":
       "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLapsedAsk":
@@ -2649,6 +2668,10 @@
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
       "Mientras __DEN_TITLE__ no estaba, {kept} siguieron y {back} volvieron: {names}",
+    "bell.m.ranLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes trabajaron: {names}",
+    "bell.m.stoppedLoggedOut":
+      "Mientras estabas desconectado ({min} min), estos agentes se detuvieron: {names}",
     "bell.m.keepOffer": "Mantener los agentes al cerrar sesión: Aplicar",
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
@@ -2708,6 +2731,8 @@
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
+    "bell.m.toolsListFailed":
+      "{agent} no puede usar las herramientas de Hub: no se pudieron listar otra vez después de que __DEN_TITLE__ lo reiniciara una vez. Reinícialo desde Agentes cuando Hub esté arreglado",
     "bell.m.backNoteHeld":
       "__DEN_TITLE__ ha vuelto; su nota para {agent} espera hasta que respondas a {agent} en su terminal",
     "bell.m.restartedWhileWorking":
@@ -3034,6 +3059,8 @@
     "gate.yielded": "Dejó pasar a {to}",
     "gate.class": "Clase: {name}",
     "gate.window": "espera su horario {window}",
+    "gate.loadHoldCores":
+      "esperando: la carga de esta máquina es {load}, más de {perCore} × {cores} núcleos ({limit}), mientras se ejecuta otra prueba unitaria; empieza cuando baje la carga o termine esa prueba",
     "gate.loadHold":
       "esperando: carga {load} ≥ {limit} mientras una prueba de versión tiene el puesto de navegador",
     "busy.gateEndW": "Terminando el turno de {name}…",
@@ -3042,6 +3069,9 @@
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",
+    "busy.addSvcW": "Añadiendo {name}…",
+    "busy.addSvcS": "Se añadió {name}.",
+    "busy.addSvcF": "No se pudo añadir {name}.",
     "ag.orphan.one":
       "{names} no tiene proyecto: se eliminó. Asígnale uno con ⋯ › Mover a otro proyecto….",
     "ag.orphan.many":
@@ -3331,6 +3361,40 @@
     "pj.th.lastRun": "Última prueba",
     "pj.th.actions": "Acciones",
     "pj.addRepo": "Añadir repositorio",
+    "addSvc.title": "Añadir servicio: {ws}",
+    "addSvc.filter": "Filtrar repositorios",
+    "addSvc.filterPh": "Filtrar repositorios…",
+    "addSvc.tab.local": "Locales",
+    "addSvc.tab.gh": "GitHub",
+    "addSvc.sortBy": "Ordenar por",
+    "addSvc.sort.name": "Nombre",
+    "addSvc.sort.project": "Proyecto",
+    "addSvc.loading": "Cargando…",
+    "addSvc.noLocal": "No hay repositorios en esta máquina",
+    "addSvc.noResults": "Ningún repositorio coincide",
+    "addSvc.added": "añadido",
+    "addSvc.group.dev": "Gestionados por desarrollo",
+    "addSvc.group.managed": "Gestionados por __DEN_TITLE__",
+    "addSvc.ghLoading": "Cargando repositorios de GitHub…",
+    "addSvc.ghNoMatch": "Ningún repositorio coincide con «{q}»",
+    "addSvc.ghNone": "No hay repositorios de GitHub",
+    "addSvc.noManifest": "sin manifiesto",
+    "addSvc.group.supported": "Listos para __DEN_TITLE__",
+    "addSvc.group.unsupported": "Sin __DEN_MANIFEST_YML__",
+    "addSvc.refresh": "Actualizar",
+    "addSvc.refreshTip": "Volver a cargar la lista de repositorios de GitHub",
+    "addSvc.refreshing": "Actualizando…",
+    "addSvc.manage": "Gestión",
+    "addSvc.mode.dev": "Por desarrollo",
+    "addSvc.mode.managed": "Gestionado",
+    "addSvc.branch": "Rama",
+    "addSvc.newBranch": "Rama nueva",
+    "addSvc.optional": "opcional",
+    "addSvc.add": "Añadir",
+    "addSvc.done": "✓ {name} añadido",
+    "addSvc.doneSetup":
+      "✓ {name} añadido · la configuración está en marcha (ver Registros)",
+    "addSvc.missingDeps": "Faltan dependencias: {deps}",
     "pj.validate.title": "Validar un manifiesto",
     "pj.validate.path": "Ruta o carpeta",
     "pj.validate.pathPh": "/absolute/path/to/repo  o  /path/to/{file}",

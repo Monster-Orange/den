@@ -12,6 +12,8 @@ import { parseHubNote, type NotificationStore } from "./notifications.js";
 
 export interface HubNotesDeps {
   store: NotificationStore;
+  /** Issue 581: the connected Hub's address; a shared item links only there. */
+  hubUrl?: string;
   /** The owner's login on Hub (whoami), whose reads count; null: unknown. */
   owner: () => string | null;
   list: () => Promise<{ items: unknown[] }>;
@@ -38,7 +40,7 @@ export async function syncHubNotes(d: HubNotesDeps): Promise<HubNotesPass> {
     return { ok: false, items: 0, pushed: 0 };
   }
   const notes = raw.items
-    .map(parseHubNote)
+    .map((v) => parseHubNote(v, d.hubUrl))
     .filter((n): n is NonNullable<typeof n> => !!n);
   const push = d.store.syncHub(notes, d.owner());
   let pushed = 0;

@@ -246,7 +246,7 @@ export function addressCardView(s, opts = {}) {
     `<div class="addr-pane" data-pane="free"${option === "free" ? "" : " hidden"}>` +
     freeHtml(s) +
     (takeOver
-      ? `<button type="button" class="btn" id="addr-take-over">${esc(t("edgeAddr.opt.takeOver"))}</button>`
+      ? `<button type="button" class="den-btn" id="addr-take-over">${esc(t("edgeAddr.opt.takeOver"))}</button>`
       : "") +
     `</div>`;
   const choices = held
@@ -257,10 +257,10 @@ export function addressCardView(s, opts = {}) {
       `</div>` +
       proxyPane +
       freePane +
-      `<div class="addr-check-row"><button type="button" class="btn primary" id="addr-check">${esc(t("edgeAddr.check"))}</button>` +
+      `<div class="addr-check-row"><button type="button" class="den-btn primary" id="addr-check">${esc(t("edgeAddr.check"))}</button>` +
       `<span class="addr-out" id="addr-check-out" aria-live="polite">${esc(opts.result ?? stillLine(s))}</span></div>` +
       `</section>`
-    : `<section class="addr-box"><div class="addr-check-row"><button type="button" class="btn primary" id="addr-check">${esc(t("edgeAddr.check"))}</button>` +
+    : `<section class="addr-box"><div class="addr-check-row"><button type="button" class="den-btn primary" id="addr-check">${esc(t("edgeAddr.check"))}</button>` +
       `<span class="addr-out" id="addr-check-out" aria-live="polite">${esc(opts.result ?? "")}</span></div></section>`;
   return (
     `<div class="addr-card" data-address-card>` +
