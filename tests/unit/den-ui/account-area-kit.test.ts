@@ -151,7 +151,7 @@ describe("issue 310: the Account area's rail", () => {
     );
     expect(html).toContain('<kbd aria-hidden="true">/</kbd>');
     expect(html).toMatch(
-      /<a class="den-aa-cross" href="\/settings">Install settings →<\/a>/,
+      /<a class="den-aa-cross" data-aa-cross href="\/settings">Install settings →<\/a>/,
     );
     expect(accountAreaHtml({ ...FULL, settingsHref: undefined })).not.toContain(
       "den-aa-cross",
