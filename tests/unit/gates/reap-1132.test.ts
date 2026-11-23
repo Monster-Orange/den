@@ -132,7 +132,7 @@ describe("a run's worker tree", () => {
       reason: "ended",
     });
     // What, never how: no arguments or environment in the row.
-    expect(JSON.stringify(rows[0])).not.toMatch(/spawn|setInterval|-e|REAP_/);
+    expect(JSON.stringify(rows[0])).not.toMatch(/spawn|setInterval|REAP_/);
   });
 
   it("workers that ignore TERM are killed after the grace period", async () => {

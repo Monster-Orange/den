@@ -34,12 +34,17 @@
  * Nothing here takes a live holder's slot. Issue 1132: the one thing it
  * stops is what a run left in its own process group once its slot ended.
  */
-import { execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import {
+  processGroupStateSync,
+  recordProcessGroup,
+  type GroupState,
+  type RecordedProcessGroup,
+} from "../process/process-group.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
@@ -416,6 +421,10 @@ export type LeftoverReason = "ended" | "folder-gone" | "parent-gone" | "gone";
 /** Issue 1132: a process group whose slot ended, until it is empty. */
 interface Leftover {
   group: number;
+  /** The leader as recorded when it started (process-group.ts). */
+  rec?: RecordedProcessGroup;
+  /** The boot it was recorded in (minutes since the epoch). */
+  boot?: number;
   id: string;
   kind: GateKind;
   who: string;
@@ -427,38 +436,37 @@ interface Leftover {
   killAt?: string;
 }
 
-/** Issue 1132: what the store may do to a process group (tests fake it). */
-export interface GroupOps {
-  /** The processes in group `group` now (none: it is empty). */
-  members(group: number): number[];
-  signal(group: number, signal: "SIGTERM" | "SIGKILL"): void;
-}
+/** Issue 1132: an entry's group, as noted when its slot ends. */
+type GroupOwner = Pick<
+  GateEntry,
+  "id" | "kind" | "who" | "label" | "group" | "groupRec" | "boot" | "cmd"
+>;
 
 /**
- * Issue 1132: process groups, by pgrep -g (macOS and Linux). A group that
- * holds this process is never ours to stop: it reads as empty.
+ * Issue 1132: what the store may do to a process group (tests fake it).
+ * A group is signalled only while it is still the one gate run started:
+ * its record is checked first (process-group.ts), and one from before
+ * this boot is never signalled (slot files outlive a reboot, and a
+ * recorded number may then lead someone else's group).
  */
+export interface GroupOps {
+  /** The record of a leader just started, or null (gone, or unreadable). */
+  record(pid: number): RecordedProcessGroup | null;
+  /** Whether it is still ours, gone, or reused; null when it can't tell. */
+  state(rec: RecordedProcessGroup): GroupState | null;
+  signal(group: number, signal: "SIGTERM" | "SIGKILL"): void;
+  /** When this machine booted, in minutes since the epoch. */
+  boot(): number;
+}
+
+/** Issue 1132: a boot this many minutes from the recorded one is another. */
+const BOOT_SLACK_MIN = 2;
+
+/** Issue 1132: process groups through the shared helper (ps; /proc on Linux). */
 export const realGroups: GroupOps = {
-  members(group) {
-    if (!(Number.isInteger(group) && group > 1)) return [];
-    let out = "";
-    try {
-      out = execFileSync("pgrep", ["-g", String(group)], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 5_000,
-      });
-    } catch (e) {
-      // pgrep exits 1 when none match; anything else, read it as empty.
-      out = String((e as { stdout?: unknown }).stdout ?? "");
-    }
-    const pids = out
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 1);
-    return pids.includes(process.pid) ? [] : pids;
-  },
+  record: (pid) =>
+    Number.isInteger(pid) && pid > 1 ? recordProcessGroup(pid) : null,
+  state: (rec) => processGroupStateSync(rec),
   signal(group, signal) {
     if (!(Number.isInteger(group) && group > 1)) return;
     try {
@@ -467,6 +475,7 @@ export const realGroups: GroupOps = {
       /* already gone */
     }
   },
+  boot: () => Math.round((Date.now() / 1000 - os.uptime()) / 60),
 };
 
 /** Issue 1132: a group not empty this long after its slot ended is let go. */
@@ -508,7 +517,7 @@ export interface GateStoreOpts {
   load?: () => number;
   /** Issue 1048: the machine's cores (default os.availableParallelism). */
   cores?: () => number;
-  /** Issue 1132: process groups (default pgrep and kill); tests fake it. */
+  /** Issue 1132: process groups (default process-group.ts and kill); tests fake it. */
   groups?: GroupOps;
 }
 
@@ -1607,7 +1616,17 @@ export class GateStore {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return;
       e.runPid = runPid;
-      if (o.group !== undefined && o.group > 1) e.group = o.group;
+      // Issue 1132: the group, with its leader's record and this boot,
+      // so it is never mistaken for another later. Unreadable: none.
+      const rec =
+        o.group !== undefined && o.group > 1
+          ? this.groups.record(o.group)
+          : null;
+      if (rec) {
+        e.group = rec.pgid;
+        e.groupRec = rec;
+        e.boot = this.groups.boot();
+      }
       if (o.cmd) e.cmd = path.basename(o.cmd).slice(0, 60);
       this.write(e);
     });
@@ -1642,10 +1661,7 @@ export class GateStore {
    * (gate run, after a command whose slot it gave back early). Returns
    * whether anything of it is still being stopped.
    */
-  reap(
-    e: Pick<GateEntry, "id" | "kind" | "who" | "label" | "group" | "cmd">,
-    reason: LeftoverReason,
-  ): boolean {
+  reap(e: GroupOwner, reason: LeftoverReason): boolean {
     return this.locked(() => {
       this.noteGroup(e, reason);
       this.sweep(this.settings(), this.now());
@@ -1758,11 +1774,12 @@ export class GateStore {
   }
 
   /** Issue 1132: an ended slot's group, to be stopped. Call under the lock. */
-  private noteGroup(
-    e: Pick<GateEntry, "id" | "kind" | "who" | "label" | "group" | "cmd">,
-    reason: LeftoverReason,
-  ): void {
-    if (!(e.group !== undefined && e.group > 1) || e.group === process.pid)
+  private noteGroup(e: GroupOwner, reason: LeftoverReason): void {
+    if (
+      !(e.group !== undefined && e.group > 1) ||
+      e.group === process.pid ||
+      !e.groupRec
+    )
       return;
     const all = this.readLeftovers();
     if (all.some((l) => l.group === e.group)) return;
@@ -1775,6 +1792,8 @@ export class GateStore {
       cmd: e.cmd ?? "",
       reason,
       endedAt: new Date(this.now()).toISOString(),
+      rec: e.groupRec,
+      ...(e.boot !== undefined ? { boot: e.boot } : {}),
     });
     this.writeLeftovers(all);
   }
@@ -1790,12 +1809,25 @@ export class GateStore {
     const at = new Date(now).toISOString();
     const keep: Leftover[] = [];
     let changed = false;
+    const boot = this.groups.boot();
     for (const l of all) {
-      const pids = this.groups.members(l.group);
-      if (!pids.length || now - Date.parse(l.endedAt) > LEFTOVER_KEEP_MS) {
+      // Issue 1132: never a record from before this boot, or one with no
+      // leader's record; and only while the group is still ours.
+      const stale =
+        !l.rec ||
+        l.boot === undefined ||
+        Math.abs(l.boot - boot) > BOOT_SLACK_MIN ||
+        now - Date.parse(l.endedAt) > LEFTOVER_KEEP_MS;
+      const st = stale ? null : this.groups.state(l.rec!);
+      if (stale || st?.state === "gone" || st?.state === "reused") {
         changed = true;
         continue;
       }
+      if (!st) {
+        keep.push(l); // can't tell now: nothing is signalled; look again
+        continue;
+      }
+      const pids = st.members;
       const row = {
         id: l.id,
         kind: l.kind,

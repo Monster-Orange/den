@@ -43,6 +43,7 @@
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
+import type { RecordedProcessGroup } from "../process/process-group.js";
 import * as os from "os";
 import {
   classRank,
@@ -82,6 +83,14 @@ export interface GateEntry {
    * stopped; nothing outside it ever is.
    */
   group?: number;
+  /**
+   * Issue 1132: the group's leader as recorded when it started (its start
+   * time; on Linux its ticks and boot id), and the boot it was recorded in
+   * (minutes since the epoch). Its group is signalled only while both
+   * still match.
+   */
+  groupRec?: RecordedProcessGroup;
+  boot?: number;
   /** Issue 1132: the command's name (never its arguments), for the log. */
   cmd?: string;
   /**

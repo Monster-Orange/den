@@ -1043,12 +1043,21 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
+    // Issue 1132: the group as the store recorded it (with its leader's
+    // record and the boot), for a reap after a dump gave the slot back.
+    const recorded = s.get(id);
     const mine = {
       id,
       kind,
       who: e.who,
       label: e.label,
-      ...(child.group !== undefined ? { group: child.group } : {}),
+      ...(recorded?.group !== undefined
+        ? {
+            group: recorded.group,
+            groupRec: recorded.groupRec,
+            boot: recorded.boot,
+          }
+        : {}),
       cmd: path.basename(pos[0]!).slice(0, 60),
     };
     // Issue 1132: the run's folder deleted, or its parent gone: the slot

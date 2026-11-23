@@ -35,7 +35,11 @@ const REC: RecordedProcessGroup = {
 };
 
 /** A store whose holder dies on cue, over fake process groups. */
-function rig(o: { state: GroupState | null; bootThen: number; bootNow: number }) {
+function rig(o: {
+  state: GroupState | null;
+  bootThen: number;
+  bootNow: number;
+}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gate1132r-"));
   tmps.push(dir);
   const box = { holderAlive: true, boot: o.bootThen, now: Date.now() };
@@ -98,7 +102,10 @@ describe("a recorded group is signalled only while it is ours", () => {
 
   it("reused: its leader is now another process: never signalled, and dropped", () => {
     const r = rig({
-      state: { state: "reused", detail: "pid 7001 now belongs to another process" },
+      state: {
+        state: "reused",
+        detail: "pid 7001 now belongs to another process",
+      },
       bootThen: 1000,
       bootNow: 1000,
     });
