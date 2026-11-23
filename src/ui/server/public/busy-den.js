@@ -231,7 +231,7 @@ export const DEN_ACTIONS = {
       failure: "co.run.fail",
     },
   },
-  // Issue 52, mock v4: a Coach finding's Dismiss and Undo, and the
+  // Issue 52, mock v6: a Coach finding's Dismiss and Undo, and the
   // tab's Total / Per day (dots in the button; a pop-up only when slow).
   "coach-dismiss": {
     who: "Den",

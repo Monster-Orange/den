@@ -15,7 +15,7 @@
  *                 its detail (conversations newest first, model mix, per day)
  *   phone         one card per agent; the detail is its own view
  *
- *   findings      (mock v4, approved) under the table: what was found,
+ *   findings      (mock v6) under the table: what was found,
  *                 the agent, why Coach says so (the numbers and the line
  *                 passed), each with Dismiss (dots in the button; no
  *                 reason asked; an Undo toast above the heading); "N
@@ -349,7 +349,7 @@ function cards(rows, o) {
 
 const WHY = ["start", "fresh", "rotation", "bring-in"];
 
-function mixBar(label, mix) {
+function mixBar(label, mix, flagged = false) {
   if (!mix)
     return `<div class="co-mix"><b>${esc(label)}</b><small>${esc(t("co.mix.none"))}</small></div>`;
   const parts = ["opus", "sonnet", "haiku", "other"].filter(
@@ -368,12 +368,19 @@ function mixBar(label, mix) {
             pct: fmtNum(mix[k] / 100, { style: "percent" }),
           }),
         )
-        .join(" · "),
+        .join(" · ") +
+        // Mock v6: the subagent mix points at its finding under the table.
+        (flagged
+          ? ` · ${t("co.mix.flagged", { pct: fmtNum(mix.opus / 100, { style: "percent" }) })}`
+          : ""),
     )}</small></div>`
   );
 }
 
-function detail(row, r) {
+function detail(row, r, findings = []) {
+  const opusFlagged = findings.some(
+    (f) => f?.kind === "subagent_opus" && f.agent === row.agent,
+  );
   const list = row.conversations?.list ?? [];
   const convs = list.length
     ? list
@@ -404,7 +411,7 @@ function detail(row, r) {
     `<button type="button" class="den-btn sm co-close" data-act="coach-close">✕ ${esc(t("co.close"))}</button></h4>` +
     `<div class="co-cols"><div><h5>${esc(t("co.conv.h"))}</h5>${convs}</div>` +
     `<div><h5>${esc(t("co.mix.h"))}</h5>${mixBar(t("co.mix.main"), modelMix(row.models?.main))}` +
-    `${mixBar(t("co.mix.sub"), modelMix(row.models?.subagent))}` +
+    `${mixBar(t("co.mix.sub"), modelMix(row.models?.subagent), opusFlagged)}` +
     `<h5>${esc(t("co.perDayH"))}</h5><p class="co-muted">${esc(perDay)}</p></div></div></section>`
   );
 }
@@ -566,7 +573,7 @@ export function coachTabView(data, o = {}) {
     cards(rows, view) +
     findingsSection(data, r.agents ?? [], view);
   html += `</div>`;
-  if (open) html += detail(open, r);
+  if (open) html += detail(open, r, data.findings ?? []);
   return html;
 }
 

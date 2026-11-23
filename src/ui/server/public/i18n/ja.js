@@ -2900,6 +2900,7 @@
     "co.mix.haiku": "Haiku",
     "co.mix.other": "その他",
     "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} が Opus。Coach が下で指摘しています",
     "co.perDayH": "1 日あたり",
     "co.perDayLine":
       "呼び出し {calls}/日 · 出力 {output}/日 · コンパクション {compactions}/日 · ローテーション {rotations}/日",

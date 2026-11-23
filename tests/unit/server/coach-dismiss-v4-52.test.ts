@@ -1,5 +1,5 @@
 /**
- * Issue 52, mock v4 (approved): Dismiss asks for no reason, and a dismissed
+ * Issue 52, mock v6: Dismiss asks for no reason, and a dismissed
  * finding can be taken back (Undo, or Undo in the dismissed list). Both are
  * a person's, audited; a dismissed finding stays dismissed in later runs.
  */

@@ -29,6 +29,7 @@ import type {
   UndismissResult,
 } from "../../shared/coach/findings.js";
 import type { CoachSettings } from "../../shared/coach/settings.js";
+import { redactSecrets } from "../../shared/redact.js";
 
 export const COACH_ROUTES = [
   "/api/coach",
@@ -153,16 +154,19 @@ export async function handleCoachRoute(
     d.audit(req, { verb: "coach-run", detail: "Coach run (read-only)" });
     d.sendJson(res, { ok: true, report });
   } catch (e) {
+    // Agents can read GET /api/coach: a run's error (the claude CLI's, a
+    // path) loses any secret in it before it is kept or sent.
+    const message = redactSecrets(String((e as Error)?.message ?? e));
     failed = {
       at: new Date((d.now ?? Date.now)()).toISOString(),
-      error: String((e as Error)?.message ?? e).slice(0, 300),
+      error: message.slice(0, 300),
     };
     d.sendJson(
       res,
       {
         ok: false,
         code: "run_failed",
-        error: `The Coach run failed: ${(e as Error).message}`,
+        error: `The Coach run failed: ${message}`,
       },
       500,
     );

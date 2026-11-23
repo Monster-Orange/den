@@ -197,4 +197,22 @@ describe("GET /api/coach: the Running and Failed states", () => {
     await h.call("GET", "/api/coach");
     expect(h.sent.at(-1)!.body).toMatchObject({ failed: null });
   });
+
+  it("a failed run's error has secrets taken out before agents can read it", async () => {
+    const key = "den_ek_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v";
+    const h = harness(async () => {
+      throw new Error(
+        `claude: Bearer abcdefghijklmnop1234 refused; read /h/${key}.json`,
+      );
+    });
+    await h.call("POST", "/api/coach/run");
+    const posted = JSON.stringify(h.sent.at(-1)!.body);
+    await h.call("GET", "/api/coach");
+    const got = JSON.stringify(h.sent.at(-1)!.body);
+    for (const text of [posted, got]) {
+      expect(text).not.toContain(key);
+      expect(text).not.toContain("abcdefghijklmnop1234");
+      expect(text).toContain("[REDACTED]");
+    }
+  });
 });

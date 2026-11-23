@@ -273,6 +273,30 @@ describe("a row's detail", () => {
     expect(html).toContain("co-has-detail");
   });
 
+  it("mock v6: the subagent mix says the Coach flags it below, when it does", () => {
+    const opus = {
+      id: "subagent_opus:builder",
+      kind: "subagent_opus",
+      agent: "builder",
+      workspace: "shop",
+      title: "builder (shop) runs subagents on Opus.",
+      evidence: { subagent_opus_pct: 87 },
+      proposal: "Run its subagents on Sonnet.",
+      window: W,
+    };
+    const det = (findings: unknown[]) => {
+      const html = coachTabView(data({ settings: SETTINGS, findings }), {
+        open: "builder",
+      });
+      return html.slice(html.indexOf('class="co-det"'));
+    };
+    expect(det([opus])).toContain("co.mix.flagged");
+    expect(det([])).not.toContain("co.mix.flagged");
+    expect(
+      det([{ ...opus, agent: "tester", id: "subagent_opus:tester" }]),
+    ).not.toContain("co.mix.flagged");
+  });
+
   it("the model mix is by family, in percent of calls", () => {
     expect(
       modelMix({ "claude-opus-5-5": 90, "claude-sonnet-5-5": 10 }),
@@ -331,7 +355,7 @@ const SETTINGS = {
   findings: { polls_per_day: 20, denials_per_day: 5 },
 };
 
-describe("findings (mock v4, approved)", () => {
+describe("findings (mock v6)", () => {
   const withF = (over = {}) =>
     data({ settings: SETTINGS, findings: FINDINGS, ...over });
 

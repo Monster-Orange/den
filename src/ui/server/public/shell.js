@@ -3862,6 +3862,7 @@
     "co.mix.haiku": "Haiku",
     "co.mix.other": "Other",
     "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} on Opus; the Coach flags this below",
     "co.perDayH": "Per day",
     "co.perDayLine":
       "Calls {calls}/day · output {output}/day · {compactions} compactions/day · {rotations} rotations/day",

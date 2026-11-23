@@ -3003,6 +3003,7 @@
     "co.mix.haiku": "Haiku",
     "co.mix.other": "Otros",
     "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} en Opus; el Coach lo señala abajo",
     "co.perDayH": "Por día",
     "co.perDayLine":
       "Llamadas {calls}/día · salida {output}/día · {compactions} compactaciones/día · {rotations} rotaciones/día",
