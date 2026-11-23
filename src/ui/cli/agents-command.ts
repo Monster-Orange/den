@@ -81,7 +81,13 @@ import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import { HostError } from "../../shared/sessions/client.js";
 import { checkHandback } from "../../shared/agents/handback.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { handoffFile, reasonText } from "../../shared/agents/rotation.js";
+import {
+  handoffFile,
+  isDeferred,
+  parseDeferTime,
+  readRotation,
+  reasonText,
+} from "../../shared/agents/rotation.js";
 import { shownDepths, sortHelpers } from "../../shared/agents/helpers.js";
 import { isConfigError } from "../../shared/config-error.js";
 import { auditConfig } from "../../shared/config-audit.js";
@@ -111,6 +117,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  deferAgentRotation,
   setAgentResumeOnRestart,
   askForHandoff,
   rotationSettings,
@@ -1033,6 +1040,33 @@ const ROTATE_SCOPE_FLAGS: Record<string, OverrideScope> = {
  */
 async function rotate(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents rotate";
+  // Issue 765: `agents rotate <id> [-w <ws>] --defer <when>|off`.
+  const deferAt = args.indexOf("--defer");
+  if (deferAt >= 0) {
+    personOnly(where, d);
+    const raw = args[deferAt + 1];
+    if (raw === undefined)
+      throw new UsageError(
+        `${where}: --defer needs a time (+30m, +2h, +1d, HH:MM, an ISO time) or off`,
+      );
+    let until: Date | null;
+    try {
+      until = parseDeferTime(raw);
+    } catch (e) {
+      throw new UsageError(`${where}: ${(e as Error).message}`);
+    }
+    const { id, ws } = idAndWorkspace(
+      where,
+      args.filter((_, i) => i !== deferAt && i !== deferAt + 1),
+    );
+    const rec = deferAgentRotation(d, id, ws, until);
+    d.out(
+      until
+        ? `${rec.id}'s rotation is put off until ${localDateTime(until)}; after that, the normal rule applies (agents rotate ${rec.id} --defer off to undo)`
+        : `${rec.id}'s rotation is no longer put off: the normal rule applies`,
+    );
+    return 0;
+  }
   if (args.includes("--show")) {
     const { id, ws } = idAndWorkspace(
       where,
@@ -1052,6 +1086,10 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
     d.out(
       `  on_pr_merged       ${e.onPrMerged}  (from ${e.from?.on_pr_merged})`,
     );
+    // Issue 765: a person put it off.
+    const rs = readRotation(agentFilesDir(d.stateDir(), e.agent));
+    if (rs && isDeferred(rs) && rs.deferredUntil)
+      d.out(`  put off until      ${localDateTime(rs.deferredUntil)}`);
     return 0;
   }
   if (!args.length) {

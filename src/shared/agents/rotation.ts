@@ -77,6 +77,12 @@ export interface RotationState {
    * here, at most agents.rotation_wait_minutes.
    */
   waitingSince?: string;
+  /**
+   * Issue 765: a person put this agent's rotation off until then (ISO
+   * 8601). Before it, nothing rotates it; after it, the normal rule
+   * applies. It outlives a new conversation.
+   */
+  deferredUntil?: string;
   /** Issue 914: how many background items it waits on (the row says so). */
   waitingOn?: number;
   /**
@@ -224,6 +230,11 @@ export function readRotation(filesDir: string): RotationState | null {
   if (typeof o.waitingSince === "string") s.waitingSince = o.waitingSince;
   if (count(o.waitingOn)) s.waitingOn = count(o.waitingOn);
   if (o.leftAsked === true) s.leftAsked = true;
+  if (
+    typeof o.deferredUntil === "string" &&
+    Number.isFinite(Date.parse(o.deferredUntil))
+  )
+    s.deferredUntil = o.deferredUntil;
   const left = leftOf(o.leftRunning);
   if (left) s.leftRunning = left;
   return s;
@@ -327,6 +338,7 @@ export function launchRotation(
   filesDir: string,
   conversation: string | undefined,
   after: number,
+  now: Date = new Date(),
 ): RotationState {
   const prev = readRotation(filesDir);
   const same =
@@ -338,6 +350,11 @@ export function launchRotation(
         compactions: 0,
         after,
       };
+  // Issue 765: a deferral is the person's, not the conversation's; one
+  // already past goes.
+  if (prev?.deferredUntil && isDeferred(prev, now))
+    s.deferredUntil = prev.deferredUntil;
+  else delete s.deferredUntil;
   if (after === 0) {
     delete s.due;
     delete s.dueAt;
@@ -503,12 +520,74 @@ export function clearDue(filesDir: string, reason: RotateReason): boolean {
 export function dueFor(
   s: RotationState | null,
   conversation?: string,
+  now: Date = new Date(),
 ): RotateReason | undefined {
   if (!s || s.after === 0) return undefined;
+  if (isDeferred(s, now)) return undefined;
   if (conversation && s.conversation && s.conversation !== conversation)
     return undefined;
   if (s.due) return s.due;
   return s.compactions >= s.after ? "compactions" : undefined;
+}
+
+/** Issue 765: a person put the rotation off past `now`. */
+export function isDeferred(
+  s: Pick<RotationState, "deferredUntil"> | null,
+  now: Date = new Date(),
+): boolean {
+  const at = s?.deferredUntil ? Date.parse(s.deferredUntil) : NaN;
+  return Number.isFinite(at) && now.getTime() < at;
+}
+
+/**
+ * Issue 765: put agent's rotation off until `until`; null clears it, and
+ * the normal rule applies again at once. Its rotation.json is made when
+ * the agent has none yet.
+ */
+export function deferRotation(filesDir: string, until: Date | null): void {
+  const s = readRotation(filesDir) ?? { compactions: 0, after: 0 };
+  if (until) s.deferredUntil = until.toISOString();
+  else delete s.deferredUntil;
+  writeRotation(filesDir, s);
+}
+
+const DEFER_WORDS =
+  "a time to come: +30m, +2h, +1d, HH:MM, an ISO time, or off";
+
+/**
+ * Issue 765: the time a person typed for "put off rotation until": "+30m",
+ * "+2h", "+1d"; "HH:MM", the next such time on this machine's clock; an
+ * ISO 8601 time; or "off" (null). It must be after `now`.
+ */
+export function parseDeferTime(
+  raw: string,
+  now: Date = new Date(),
+): Date | null {
+  const v = raw.trim();
+  if (v === "off") return null;
+  let at: Date | null = null;
+  const rel = /^\+(\d+)([mhd])$/.exec(v);
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(v);
+  if (rel) {
+    const n = Number(rel[1]);
+    const unit = { m: 60_000, h: 3_600_000, d: 86_400_000 }[rel[2] as "m"];
+    if (n > 0) at = new Date(now.getTime() + n * unit);
+  } else if (hm) {
+    const h = Number(hm[1]);
+    const m = Number(hm[2]);
+    if (h < 24 && m < 60) {
+      at = new Date(now);
+      at.setHours(h, m, 0, 0);
+      if (at.getTime() <= now.getTime()) at.setDate(at.getDate() + 1);
+    }
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(v) && Number.isFinite(Date.parse(v))) {
+    at = new Date(Date.parse(v));
+  }
+  if (!at || at.getTime() <= now.getTime())
+    throw new Error(
+      `put off until takes ${DEFER_WORDS} (got ${JSON.stringify(raw)})`,
+    );
+  return at;
 }
 
 export type HandoffStatus = "ok" | "missing" | "invalid";
@@ -576,6 +655,8 @@ export interface RotationInfo {
   ready: boolean;
   /** Issue 914: it waits on this many background items it left running. */
   waiting?: number;
+  /** Issue 765: a person put its rotation off until then (ISO 8601). */
+  deferredUntil?: string;
 }
 
 /**
@@ -610,9 +691,14 @@ export function rotationInfo(
   }
   if (policy && !policy.onPrMerged && s.due === "pr-merged") delete s.due;
   const merged = policy ? policy.onPrMerged : true;
-  const due =
-    dueFor(s) ??
-    (s.after > 0 && merged && rec.outcome?.prMerged ? "pr-merged" : undefined);
+  // Issue 765: put off by a person: nothing is due before that time.
+  const deferred = isDeferred(s);
+  const due = deferred
+    ? undefined
+    : (dueFor(s) ??
+      (s.after > 0 && merged && rec.outcome?.prMerged
+        ? "pr-merged"
+        : undefined));
   const h = due
     ? readHandoff(files)
     : { status: "missing" as const, problems: [] };
@@ -631,6 +717,7 @@ export function rotationInfo(
     ...(due && read.waitingSince && !read.leftRunning && read.waitingOn
       ? { waiting: read.waitingOn }
       : {}),
+    ...(deferred ? { deferredUntil: s.deferredUntil } : {}),
   };
 }
 

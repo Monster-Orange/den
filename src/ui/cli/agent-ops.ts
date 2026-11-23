@@ -304,6 +304,7 @@ import {
   type RotationEntry,
   type RotationInfo,
   type RotationPolicy,
+  deferRotation,
 } from "../../shared/agents/rotation.js";
 import {
   binSettingKey,
@@ -9288,6 +9289,21 @@ export function keepAgentConversation(
     throw refused(`agent ${rec.id} has no rotation to reset`);
   if (o.never)
     setRotateValue(d.stateDir(), "agent", rec.id, "after_compactions", "never");
+  return rec;
+}
+
+/**
+ * Issue 765: put agent `id`'s rotation off until `until` (null: off, the
+ * normal rule again). A person's only; nothing rotates it before then.
+ */
+export function deferAgentRotation(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  until: Date | null,
+): AgentRecord {
+  const rec = agentRecord(d, id, ws);
+  deferRotation(agentFilesDir(d.stateDir(), rec.id), until);
   return rec;
 }
 
