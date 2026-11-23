@@ -309,6 +309,48 @@ describe("a due agent's callout (D28)", () => {
   }, 60_000);
 });
 
+describe("a rotation put off (issue 765)", () => {
+  it("says until when; Stop putting it off clears it and the due callout comes back", async () => {
+    if (!browser) return;
+    const until = new Date(Date.now() + 2 * 3600_000).toISOString();
+    writeRotation(files(), {
+      conversation: TOKEN,
+      compactions: 3,
+      after: 3,
+      due: "compactions",
+      deferredUntil: until,
+    });
+    const { p, errors } = await open(1280);
+    const line = row(p).locator("[data-rot-deferred]");
+    await line.waitFor({ timeout: 20_000 });
+    expect(await line.getAttribute("data-rot-deferred")).toBe(until);
+    expect((await line.textContent())?.trim()).toMatch(
+      /^Rotation put off until \S/,
+    );
+    expect(await line.locator("time").getAttribute("datetime")).toBe(until);
+    // Put off: nothing is due, so none of the due callout's buttons.
+    expect(await row(p).locator("[data-rot-msg]").count()).toBe(0);
+    const res = p.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname ===
+        "/api/workspaces/north/agents/scout/defer",
+    );
+    await row(p)
+      .getByRole("button", { name: "Stop putting scout's rotation off" })
+      .click();
+    const r = await res;
+    expect(r.status()).toBe(200);
+    expect(r.request().postDataJSON()).toEqual({ until: null });
+    await row(p).locator("[data-rot-msg]").waitFor({ timeout: 10_000 });
+    expect(await row(p).locator("[data-rot-deferred]").count()).toBe(0);
+    expect(readRotation(files())?.deferredUntil).toBeUndefined();
+    expect(await hScroll(p)).toBe(false);
+    expect(errors).toEqual([]);
+    await p.context().close();
+    due();
+  }, 60_000);
+});
+
 describe("the add override form (D30)", () => {
   for (const width of [1280, 375])
     it(`picks an agent by its name with the keyboard; the table shows names, a gone one greyed (${width} px)`, async () => {

@@ -743,8 +743,35 @@ function rotFromText(rot) {
   );
 }
 
+/**
+ * Issue 765: a person put its rotation off: until when, and Stop putting
+ * it off (the person-only defer route, until null). "" when it isn't.
+ */
+export function rotDeferredHtml(r) {
+  const until = r.rotation?.deferredUntil;
+  if (!until) return "";
+  const id = r.agent;
+  return (
+    `<span class="agcant" data-rot-deferred="${esc(until)}">${esc(t("ag.rc.deferred"))} ${timeHtml(until, { style: "datetime" })}</span>` +
+    `<button type="button" class="den-btn sm" data-act="rot-undefer" aria-label="${esc(t("ag.rc.undeferName", { id }))}">${esc(t("ag.rc.undefer"))}</button>`
+  );
+}
+
+/** Issue 765: Stop putting it off: its rotation counts again from now. */
+async function undeferRotation(r, button) {
+  await window.denShell.busyAction(
+    "rot-undefer",
+    (headers) =>
+      api("POST", agentPath(r, "defer"), { until: null }, { headers }),
+    { button, vars: { name: r.agent } },
+  );
+  await refresh();
+}
+
 /** D28: the callout under a row: the message, its line of settings, the buttons. */
 function rotCalloutHtml(r) {
+  const deferred = rotDeferredHtml(r);
+  if (deferred) return deferred;
   const acts = rotActionsHtml(r);
   if (!acts) return "";
   const from = rotFromText(r.rotation);
@@ -5824,6 +5851,7 @@ export async function mountAgentsPage(root) {
       if (which === "relaunch") void relaunchNow(r, act);
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
+      else if (which === "rot-undefer") void undeferRotation(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
       // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
       else if (which === "stop")
@@ -5914,6 +5942,7 @@ export async function mountAgentsPage(root) {
       if (b.dataset.act === "relaunch") void relaunchNow(r, b);
       else if (b.dataset.act === "rot-write") void writeHandoff(r, b);
       else if (b.dataset.act === "rot-keep") void keepConversation(r, b);
+      else if (b.dataset.act === "rot-undefer") void undeferRotation(r, b);
     } else if (b.dataset.act === "ctx-clear") {
       // Issue 278: the bar's Clear, as under the row.
       const r = rowOf(id);

@@ -4114,6 +4114,26 @@ as…" line as Bring in.
     rotation_wait_minutes: 240 # minutes, above 0
   ```
 
+  A person can put an agent's rotation off until a time (issue 765),
+  for example to let it finish a long piece of work in one conversation.
+  Until then nothing is due: compactions still count, but no handoff is
+  asked for and nothing relaunches. The agent's row on the Agents page
+  says "Rotation put off until <time>", with **Stop putting it off**,
+  which makes the rotation count again at once. The time is fixed when
+  it is set (`+30m`, `+2h`, `+1d`, `HH:MM` or an ISO time) and can be at most
+  `agents.rotation_defer_max_hours` ahead (default 168, 1 to 8760);
+  `den doctor` flags a value that isn't a number of hours in that range,
+  and Den uses 168 until it's fixed. Only a person can put one off or
+  stop it: the route `POST /api/workspaces/<ws>/agents/<id>/defer`
+  `{ until: <ISO time> | null }` refuses an agent (403), and an agent asks
+  with the held write `agent_rotation_defer`, which waits for the
+  person's Allow.
+
+  ```yaml
+  agents:
+    rotation_defer_max_hours: 168 # hours, 1 to 8760
+  ```
+
   A session that ends without Den asking (issue 926): no stop, restart
   or relaunch from Den or a person, such as a signal from outside Den or
   a crash. Den's sweep writes one audit row with the exit code. Exit 0
