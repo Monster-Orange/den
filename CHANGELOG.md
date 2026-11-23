@@ -4,10 +4,11 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.87] - unreleased
+## [0.4.87] - 2026-11-23
 
 ### Security
 
+- Den 0.4.86 and older let an agent's session reset a person's projects, and create, activate or delete projects, from the CLI (GHSA-hj78-247f-gqv6), and read the edge's state folder, which holds the edge proof (GHSA-9fvg-6fx3-r3vw). Upgrade to 0.4.87; the edge gets its new proof at the next start. Doctor's Edge secrets rows name each stack whose generated secrets have not changed since, with its project, to rotate them the stack's own way.
 - Agents: the deny rules cover every credential file and folder in Den's state folder, and the edge's whole state folder, for Read, Edit and Bash. When the edge's folder holds this install's own files, only its protected parts are named. (issue 728)
 - Agents: installs that share an OS user list themselves in an install registry, and an agent's deny rules cover the other installs' credential files and edge folders too. (issue 728)
 - Edge: Den gives the edge a new proof once, at its next start. People stay signed in. A page loaded in the few seconds before the edge reloads may ask to sign in. (issue 728)
