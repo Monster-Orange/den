@@ -8,9 +8,12 @@
  * is verified (the watch wrote "good" and this Den runs it), on the lead
  * install only (LEAD-1..4: a follower applies the pin, never moves it):
  *
- *   1. Only the two pin files are staged, by path, and the commit takes
- *      only them (`git commit --only`): anything else dirty or staged in
- *      the checkout stays as it was.
+ *   1. Only the two pin files go in, from a scratch index read from the
+ *      branch's tip on the remote (issue 1195: fetched first, or the last
+ *      one fetched; never local HEAD, so commits not pushed yet never ride
+ *      along). Anything else dirty or staged in the checkout stays as it
+ *      was. In push mode the checkout's branch takes the pin commit only
+ *      when it was on that tip.
  *   2. Signing as the install is set up: agents.git.signing_key signs it
  *      (an SSH key, gpg.format ssh, ssh-keygen as the signer); with no key
  *      set it is unsigned (commit.gpgsign false). Never the person's GPG
@@ -21,8 +24,8 @@
  *      in <state>/server-agent/update/pin.json; the next check pushes it
  *      again. `first` is true once per version, so the bell says it once.
  *   5. server_agent.pin_commit: pr: the commit goes on its own branch,
- *      den/pin-<version>, built from a scratch index so the checkout's
- *      branch and index don't move, and gh opens the pull request. If gh
+ *      den/pin-<version> (the checkout's branch and index don't move), and
+ *      gh opens the pull request. If gh
  *      can't, the branch is pushed and the bell links where to open one;
  *      the next check tries gh again.
  *   6. Issue 160: the approval policy decides (held write den_pin_commit,
@@ -353,61 +356,53 @@ export async function commitPin(
         mode = "pr";
         via = "rules";
       }
+      // Issue 1195: the pin goes on the branch's tip on the remote, fetched
+      // now, never local HEAD: commits not pushed yet never ride along.
+      const tip = await remoteTip(d.git, up);
+      if (!tip)
+        return failCommit(
+          `can't reach ${up.remote} to find the tip of ${up.branch}, and it was never fetched`,
+        );
       const subject = `Den ${version}: pin the distribution to Den ${version}`;
       const body =
         "Den committed this pin itself after its update to this version was verified.";
-      if (mode === "pr") {
-        // A scratch index: the checkout's branch and index stay as they are.
-        const idx = path.join(
-          path.dirname(pinRecordFile(d.stateDir)),
-          "pin-index",
-        );
-        fs.mkdirSync(path.dirname(idx), { recursive: true, mode: 0o700 });
-        fs.rmSync(idx, { force: true });
-        const ienv = { GIT_INDEX_FILE: idx };
-        try {
-          const rt = await d.git(["read-tree", "HEAD"], ienv);
-          if (rt.code !== 0)
-            return failCommit(`git read-tree: ${tail(rt.out)}`);
-          const add = await d.git(["add", "--", ...files], ienv);
-          if (add.code !== 0) return failCommit(`git add: ${tail(add.out)}`);
-          const wt = await d.git(["write-tree"], ienv);
-          if (wt.code !== 0)
-            return failCommit(`git write-tree: ${tail(wt.out)}`);
-          const ct = await d.git([
-            "commit-tree",
-            wt.out.trim(),
-            "-p",
-            "HEAD",
-            "-m",
-            subject,
-            "-m",
-            body,
-          ]);
-          if (ct.code !== 0)
-            return failCommit(`git commit-tree: ${tail(ct.out)}`);
-          sha = ct.out.trim();
-        } finally {
-          fs.rmSync(idx, { force: true });
-        }
-      } else {
-        const add = await d.git(["add", "--", ...files]);
+      // A scratch index from the tip: the checkout's branch and index stay
+      // as they are, and the commit's tree is the tip's with only the pin
+      // files from the checkout.
+      const idx = path.join(
+        path.dirname(pinRecordFile(d.stateDir)),
+        "pin-index",
+      );
+      fs.mkdirSync(path.dirname(idx), { recursive: true, mode: 0o700 });
+      fs.rmSync(idx, { force: true });
+      const ienv = { GIT_INDEX_FILE: idx };
+      try {
+        const rt = await d.git(["read-tree", tip], ienv);
+        if (rt.code !== 0) return failCommit(`git read-tree: ${tail(rt.out)}`);
+        const add = await d.git(["add", "--", ...files], ienv);
         if (add.code !== 0) return failCommit(`git add: ${tail(add.out)}`);
-        const c = await d.git([
-          "commit",
-          "--only",
-          "-q",
+        const wt = await d.git(["write-tree"], ienv);
+        if (wt.code !== 0) return failCommit(`git write-tree: ${tail(wt.out)}`);
+        const ct = await d.git([
+          "commit-tree",
+          wt.out.trim(),
+          "-p",
+          tip,
           "-m",
           subject,
           "-m",
           body,
-          "--",
-          ...files,
         ]);
-        if (c.code !== 0) return failCommit(`git commit: ${tail(c.out)}`);
-        const h = await d.git(["rev-parse", "HEAD"]);
-        sha = h.out.trim();
+        if (ct.code !== 0)
+          return failCommit(`git commit-tree: ${tail(ct.out)}`);
+        sha = ct.out.trim();
+      } finally {
+        fs.rmSync(idx, { force: true });
       }
+      // Push mode, a checkout on that tip (nothing unpushed): its branch
+      // takes the pin commit, as a commit there would have, and the pin
+      // files' index entries match it. Behind or ahead: it stays as it is.
+      if (mode === "push") await takePin(d.git, tip, sha);
     }
 
     if (mode === "pr")
@@ -425,9 +420,11 @@ export async function commitPin(
     }
     // Issue 1189: a branch rule said no: the pin goes to a pull request.
     if (ruleRejected(p.out)) {
-      // The branch moved meanwhile (or wasn't on the commit): it keeps the
-      // pin commit, and the record says so (doctor shows it).
-      const back = await stepBack(d.git, sha);
+      // A branch that took the pin commit steps back off it; one that moved
+      // meanwhile keeps it, and the record says so (doctor shows it).
+      const h = await d.git(["rev-parse", "HEAD"]);
+      const onPin = h.code === 0 && h.out.trim() === sha;
+      const back = onPin ? await stepBack(d.git, sha) : true;
       return await openPr(
         version,
         sha,
@@ -460,6 +457,43 @@ export async function commitPin(
     });
     return { did: "commit_failed", version, why, first };
   }
+}
+
+/**
+ * Issue 1195: the tip of the branch the pin goes to, on the remote:
+ * fetched now, or the last one fetched when the remote can't be reached.
+ * null when there is neither (a pin built on local HEAD could carry
+ * commits that were never pushed).
+ */
+async function remoteTip(
+  git: GitRun,
+  up: { remote: string; branch: string },
+): Promise<string | null> {
+  const f = await git([
+    "fetch",
+    "--quiet",
+    "--no-tags",
+    up.remote,
+    `refs/heads/${up.branch}`,
+  ]);
+  const ref =
+    f.code === 0 ? "FETCH_HEAD" : `refs/remotes/${up.remote}/${up.branch}`;
+  const r = await git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]);
+  return r.code === 0 && r.out.trim() ? r.out.trim() : null;
+}
+
+/**
+ * Issue 1195: the checkout's branch takes the pin commit only when it is
+ * on `tip` (update-ref checks it); the pin files' index entries then match
+ * it, as `git commit --only` left them. Nothing else moves.
+ */
+async function takePin(git: GitRun, tip: string, sha: string): Promise<void> {
+  const b = await git(["symbolic-ref", "-q", "HEAD"]);
+  const ref = b.code === 0 ? b.out.trim() : "";
+  if (!ref) return;
+  const moved = await git(["update-ref", ref, sha, tip]);
+  if (moved.code !== 0) return;
+  await git(["reset", "-q", "--", ...PIN_FILES]);
 }
 
 /**
