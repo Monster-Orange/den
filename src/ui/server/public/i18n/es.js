@@ -1576,6 +1576,41 @@
     "hub.justConnected":
       "Conectado a {company} ({host}). ¿No es la empresa que querías?",
     "hub.reconnect": "Volver a conectar",
+    "hub.cw.done": "Conectado a Hub ({company}).",
+    "hub.cw.doneNoCo": "Conectado a Hub.",
+    "hub.cw.linked": "Se vincularon {n} proyectos en la misma aprobación.",
+    "hub.cw.linked.one": "Se vinculó {n} proyecto en la misma aprobación.",
+    "hub.cw.linkedNew":
+      "Se vincularon {n} proyectos en la misma aprobación ({made} nuevos).",
+    "hub.cw.linkedNew.one":
+      "Se vinculó {n} proyecto en la misma aprobación ({made} nuevo).",
+    "hub.cw.notCreated": "{key}: no se creó.",
+    "hub.cw.notCreatedWhy": "{key}: no se creó ({detail}).",
+    "hub.cw.notDone": "{key}: no se hizo en Hub.",
+    "hub.cw.notDoneWhy": "{key}: no se hizo en Hub ({detail}).",
+    "hub.cw.later": "{key}: espera tu revisión.",
+    "hub.cw.fb.oldHub":
+      "Este Hub aún no vincula proyectos al conectar, así que esperan tu revisión aquí.",
+    "hub.cw.fb.otherList":
+      "La respuesta de Hub es para otra lista de proyectos, así que esperan tu revisión aquí.",
+    "hub.cw.fb.badAnswer":
+      "Den no pudo leer la respuesta de Hub sobre los proyectos, así que esperan tu revisión aquí.",
+    "hub.cw.fb.rebind":
+      "Den no pudo pasar sus registros de Hub a este Hub, así que los proyectos esperan tu revisión aquí.",
+    "hub.cw.fb.tooMany":
+      "Conectar envía a Hub 50 proyectos como máximo, así que esperan tu revisión aquí.",
+    "hub.cw.fb.tooBig":
+      "La lista de proyectos pasaba de 6 KB, así que esperan tu revisión aquí.",
+    "hub.cw.fb.badKey":
+      "El nombre de un proyecto tiene letras que Hub no puede emparejar, así que esperan tu revisión aquí.",
+    "hub.cw.fb.twice":
+      "Un proyecto aparecía dos veces, así que esperan tu revisión aquí.",
+    "hub.cw.review":
+      "Revisa {n} proyectos abajo y luego pulsa Conectar y vincular todo.",
+    "hub.cw.review.one":
+      "Revisa {n} proyecto abajo y luego pulsa Conectar y vincular todo.",
+    "hub.cw.cannot":
+      "Hub aún no puede listar sus proyectos: vincúlalos en Ajustes › Hub cuando pueda.",
     "hubgh.offline": "Esta instalación aún no está conectada a Hub.",
     "hubgh.failed": "Den no pudo preguntar a Hub por el acceso a GitHub.",
     "hubgh.noOrgs": "Aún no se han enviado repos a Hub.",

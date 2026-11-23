@@ -1557,6 +1557,11 @@ export interface HubGrant {
   /** Hub's canonical origin: kept as hub.url. */
   hubUrl?: string;
   mcpUrl?: string;
+  /**
+   * Issue 648: what Hub's one approval did with the projects Den sent
+   * (checked by parseGrantReview; unread here).
+   */
+  review?: unknown;
 }
 
 /** Trade the one-time code for the install's token, server to server. */
@@ -1597,6 +1602,7 @@ export async function hubExchange(
     },
     ...(str(b.hub_url) ? { hubUrl: str(b.hub_url)!.replace(/\/+$/, "") } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
+    ...(b.review !== undefined ? { review: b.review } : {}),
   };
 }
 

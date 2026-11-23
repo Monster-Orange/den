@@ -1529,6 +1529,36 @@
     "hub.justConnected":
       "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
     "hub.reconnect": "再接続",
+    "hub.cw.done": "Hub（{company}）に接続しました。",
+    "hub.cw.doneNoCo": "Hub に接続しました。",
+    "hub.cw.linked": "同じ承認で {n} 個のプロジェクトをリンクしました。",
+    "hub.cw.linkedNew":
+      "同じ承認で {n} 個のプロジェクトをリンクしました（新規 {made} 個）。",
+    "hub.cw.notCreated": "{key}：作成されませんでした。",
+    "hub.cw.notCreatedWhy": "{key}：作成されませんでした（{detail}）。",
+    "hub.cw.notDone": "{key}：Hub で完了しませんでした。",
+    "hub.cw.notDoneWhy": "{key}：Hub で完了しませんでした（{detail}）。",
+    "hub.cw.later": "{key}：あなたの確認を待っています。",
+    "hub.cw.fb.oldHub":
+      "この Hub はまだ接続時にプロジェクトをリンクしません。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.otherList":
+      "Hub の応答は別のプロジェクト一覧に対するものでした。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.badAnswer":
+      "プロジェクトに関する Hub の応答を Den が読めませんでした。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.rebind":
+      "Den は Hub の記録をこの Hub に移せませんでした。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.tooMany":
+      "接続で Hub に送れるのは 50 個のプロジェクトまでです。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.tooBig":
+      "プロジェクト一覧が 6 KB を超えていました。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.badKey":
+      "Hub が照合できない文字を含むプロジェクト名があります。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.fb.twice":
+      "同じプロジェクトが 2 回含まれていました。プロジェクトはここであなたの確認を待ちます。",
+    "hub.cw.review":
+      "下の {n} 個のプロジェクトを確認してから、「接続してすべてリンク」を押してください。",
+    "hub.cw.cannot":
+      "Hub はまだプロジェクトを一覧表示できません。できるようになったら 設定 › Hub でリンクしてください。",
     "hubgh.offline": "このインストールはまだ Hub に接続されていません。",
     "hubgh.failed":
       "Den は GitHub へのアクセスについて Hub に問い合わせできませんでした。",
