@@ -250,9 +250,10 @@ export function hydrateShell(root, opts = {}) {
     railBox.setAttribute("aria-label", kitT(lang(), "kit.pages"));
     // Issue 81: the drawer's scrim covers the top bar (and its Report), so
     // the drawer has Report of its own while it is open; never on the
-    // wide rail (issue 94: Report is in the top bar there).
+    // wide rail (issue 94: Report is in the top bar there). It ends the
+    // rail's foot, so it stays in view with it (issue 1341).
     if (nav && !nav.querySelector(".den-rb-drawer"))
-      nav.insertAdjacentHTML(
+      (nav.querySelector(".den-rail-foot") || nav).insertAdjacentHTML(
         "beforeend",
         '<div class="den-rb-foot den-rb-drawer" data-den-drawer-report>' +
           reportButtonHtml({ inFoot: true, lang: lang() }) +

@@ -586,6 +586,25 @@ body.den-has-shell > #den-content {
 .den-rail-grow {
   flex: 1;
 }
+/* Issue 1341: the foot stays in view when the groups are taller than the
+   rail. The rail scrolls; the foot is sticky at its bottom, over the
+   groups that scroll under it. The foot's background reaches over the
+   rail's 10 px bottom padding (a negative margin), so nothing shows
+   below it, and its entries sit where they did when the groups fit.
+   bottom is -10px because a sticky box's inset is measured from inside
+   its scroller's padding: 0 would lift the foot 10 px. The rail keeps
+   its padding, so its height is unchanged. */
+.den-rail-foot {
+  position: sticky;
+  bottom: -10px;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: -10px;
+  padding-bottom: 10px;
+  background: var(--surface);
+}
 .den-sr {
   position: absolute;
   width: 1px;
