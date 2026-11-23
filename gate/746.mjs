@@ -11,7 +11,8 @@
 // through the bed's scoped MCP server (`mcp --actor agent:<id> --call
 // agent_mode`, with the agent's own token file) to clear their own mode.
 // Setup first gives each its own strictest mode (ask), so the clear is a real
-// held write. Harmless on a stub; removed in teardown. The fixture's click is
+// held write. Harmless on a stub; teardown withdraws the two requests with
+// each stub's own token (`approvals withdraw`, issue 1293), then removes it. The fixture's click is
 // refused by design (issue 810): the check proves it reaches Den, comes back
 // as that refusal, and leaves the request pending.
 import * as os from "os";
@@ -142,7 +143,11 @@ function ask(ctx, id) {
   if (!project) return { project, code: null, err: "no project in its record" };
   const file = tokenFile(ctx, id);
   if (!file)
-    return { project, code: null, err: "the stub has no token file of its own" };
+    return {
+      project,
+      code: null,
+      err: "the stub has no token file of its own",
+    };
   const r = ctx.cli(
     [
       "mcp",
@@ -283,7 +288,34 @@ export function expect(cells) {
   return [row(r, "allow", clauses[0]), row(r, "deny", clauses[1])];
 }
 
+/**
+ * Issue 1293: this run's own held writes, withdrawn by their asker with
+ * `approvals withdraw <id>` and the stub's own token file, so none waits out
+ * held_writes.wait_minutes. Each stub asked with its own token, so it alone
+ * may withdraw them, and it does so before it is removed (removal revokes
+ * its token). Only requests on file whose agent is one of this run's ids.
+ * Exit 0 means withdrawn or already ended. Best effort: a teardown never
+ * fails the check; a refusal is printed.
+ */
+function withdrawOwn(ctx) {
+  const mine = new Set(Object.values(IDS));
+  for (const [rid, h] of heldIds(ctx)) {
+    if (!mine.has(h.agent) || h.state !== "pending") continue;
+    const file = tokenFile(ctx, h.agent);
+    if (!file) continue;
+    const r = ctx.cli(["approvals", "withdraw", rid], {
+      timeout: 15000,
+      env: { DEN_ACTOR_TOKEN_FILE: file },
+    });
+    if (r.code !== 0)
+      process.stderr.write(
+        `746 teardown: ${h.agent} couldn't withdraw ${rid}: ${(r.err || r.out || "").trim().slice(-200)}\n`,
+      );
+  }
+}
+
 export async function teardown(ctx) {
+  withdrawOwn(ctx);
   for (const id of Object.values(IDS))
     if (ctx.agent(id).state()) ctx.agent(id).remove();
 }
