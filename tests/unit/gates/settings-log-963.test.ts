@@ -147,12 +147,15 @@ describe("issue 963: each setting says what it means", () => {
     "mcp_renew_minutes",
     "mcp_lapse_minutes",
     "mcp_grace_minutes",
+    "waiter_return_minutes",
     "box_check_timeout_seconds",
     "box_recheck_seconds",
     "browser_requires_container",
     "class_order",
     "class_map",
     "class_windows",
+    "browser_box_default",
+    "browser_host_only",
   ];
 
   it.each(["en", "es", "ja"] as UiLanguage[])(

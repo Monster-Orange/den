@@ -13,8 +13,8 @@
  *
  * A box is checked only when a slot on it is about to be given: never on a
  * timer. The check is a read over the box's own connection (an sftp `ls`
- * of the hold file, or a TCP connect to the Playwright server); nothing on
- * the box is run. An open answer is good for one assignment; a held or
+ * of the hold file, or a WebSocket upgrade to the Playwright server, closed
+ * at once); nothing on the box is run. An open answer is good for one assignment; a held or
  * unreachable answer is remembered for `box_recheck_seconds`, then read
  * again the next time a slot on that box is wanted.
  *
@@ -25,14 +25,32 @@
  * that can't start keeps the slots it waits for from the runs behind it,
  * and never blocks a slot it could not use.
  *
+ * When a box may be used: its window (`window: "00:00-08:00"`, this
+ * machine's local time, may wrap past midnight) and its switch (`enabled`,
+ * on unless set false). Outside its window, or turned off, a box gets no
+ * new slot and Den makes no contact with it at all: no check, no doctor
+ * read. A run already holding a slot on it finishes. A fragile box can
+ * keep its own `recheck_seconds`: the least time between two contacts
+ * while it says no (box_recheck_seconds when unset).
+ *
  * Nothing here holds a secret: ssh names a key file, never its contents.
  */
 import { spawn } from "child_process";
+import { createHash, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
+import { connect as tlsConnect } from "tls";
 import { writeFileAtomic } from "../atomic-write.js";
-import { windowHeld } from "./classes.js";
+import {
+  clockText,
+  glob,
+  inWindow,
+  items,
+  parseWindow,
+  windowHeld,
+  windowOpens,
+} from "./classes.js";
 import {
   loadHold,
   localRoom,
@@ -70,6 +88,12 @@ export interface GateBox {
    * `playwright_version`, which stay as they were for a box with one.
    */
   playwright_endpoints?: Record<string, string>;
+  /** When it may be used, "HH:MM-HH:MM" in this machine's local time. */
+  window?: string;
+  /** false: turned off, no slot and no contact. Absent: on. */
+  enabled?: boolean;
+  /** Least seconds between contacts while it says no (else the global). */
+  recheck_seconds?: number;
 }
 
 export const BOX_LIMITS = {
@@ -77,6 +101,7 @@ export const BOX_LIMITS = {
   ssh_port: { min: 1, max: 65535 },
   time_scale: { min: 1, max: 10 },
   min_free_mem_mb: { min: 0, max: 1024 * 1024 },
+  recheck_seconds: { min: 1, max: 24 * 3600 },
 } as const;
 
 /** Clause 8: free memory a box keeps by default (MB). */
@@ -177,10 +202,16 @@ function versionSkip(
     return b.versions.some((v) => pwServes(v, client))
       ? ""
       : `client ${client}: box serves ${b.versions.join(", ")}`;
-  return b.version && client !== b.version
+  // Issue 1033: Playwright's remote connect needs the same major.minor
+  // only, so a 1.61.0 client takes a box that declares 1.61.1.
+  return b.version && majorMinor(client) !== majorMinor(b.version)
     ? `client ${client} ≠ server ${b.version}`
     : "";
 }
+
+/** Issue 1033: a version's major.minor ("1.61.2" → "1.61"). */
+const majorMinor = (v: string) =>
+  v.split("-")[0]!.split(".").slice(0, 2).join(".");
 
 /** A ws:// or wss:// address with a host and no login; or what is wrong. */
 function wsProblem(pw: string): string {
@@ -319,11 +350,37 @@ export function checkBox(
       };
     box.playwright_version = pv;
   }
+  const win = o.window;
+  if (typeof win === "string" && win.trim()) {
+    const w = parseWindow(win);
+    if (!w)
+      return {
+        ok: false,
+        error: `box ${name}: window is HH:MM-HH:MM, this machine's time (like 00:00-08:00)`,
+      };
+    if (w.from === w.to)
+      return {
+        ok: false,
+        error: `box ${name}: its window opens and closes at the same time`,
+      };
+    box.window = `${clockText(w.from)}-${clockText(w.to)}`;
+  } else if (win !== undefined && win !== null && win !== "")
+    return {
+      ok: false,
+      error: `box ${name}: window is HH:MM-HH:MM, this machine's time (like 00:00-08:00)`,
+    };
+  if (o.enabled !== undefined && o.enabled !== null) {
+    if (typeof o.enabled !== "boolean")
+      return { ok: false, error: `box ${name}: enabled is true or false` };
+    // Only "off" is written: an old box, and one turned on, look the same.
+    if (!o.enabled) box.enabled = false;
+  }
   for (const k of [
     "browser_slots",
     "ssh_port",
     "time_scale",
     "min_free_mem_mb",
+    "recheck_seconds",
   ] as const) {
     const x = o[k];
     if (x === undefined || x === null) continue;
@@ -358,10 +415,44 @@ export function boxesOf(raw: unknown): GateBox[] {
   return out;
 }
 
+/**
+ * Why a box takes no slot and gets no contact now, or null when it may be
+ * used: turned off, or outside its window (with when it opens: "HH:MM",
+ * this machine's time, and the moment).
+ */
+export type BoxOff =
+  | { why: "off" }
+  | { why: "window"; opens: string; opensAt: number };
+
+export function boxOff(
+  box: Pick<GateBox, "enabled" | "window">,
+  now: number,
+): BoxOff | null {
+  if (box.enabled === false) return { why: "off" };
+  const w = box.window ? parseWindow(box.window) : undefined;
+  if (!w || w.from === w.to || inWindow(w, now)) return null;
+  return {
+    why: "window",
+    opens: clockText(w.from),
+    opensAt: windowOpens(w, now),
+  };
+}
+
+/** Least seconds between two contacts while a box says no. */
+export function boxRecheckSeconds(
+  box: Pick<GateBox, "recheck_seconds">,
+  s: Pick<BoxSettings, "boxRecheckSeconds">,
+): number {
+  return box.recheck_seconds ?? s.boxRecheckSeconds;
+}
+
 /** What the last check of a box found. */
 export interface BoxState {
-  /** Clause 8: "low", the box has less free memory than it keeps. */
-  state: "open" | "held" | "unreachable" | "low";
+  /**
+   * Clause 8: "low", the box has less free memory than it keeps. Issue
+   * 857: "unknown", its free memory couldn't be read (never free).
+   */
+  state: "open" | "held" | "unreachable" | "low" | "unknown";
   /** Why it takes no slot (held, unreachable), in words. */
   reason?: string;
   /** When it was checked (ISO). */
@@ -403,7 +494,12 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
   if (e.kind !== "browser") return ["local"];
   const w = e.where ?? "local";
   if (w === "local") return ["local"];
-  const fits = boxes.filter((b) => !versionSkip(e.pwVersion, b));
+  // Issue 1033: a default pick names the boxes that can serve it.
+  const fits = boxes.filter(
+    (b) =>
+      !versionSkip(e.pwVersion, b) &&
+      (!e.onlyBoxes || e.onlyBoxes.includes(b.name)),
+  );
   if (w === "any") return ["local", ...fits.map((b) => b.name)];
   return fits.some((b) => b.name === w) ? [w] : [];
 }
@@ -435,11 +531,13 @@ export function assign(
         | "priorityPassLimitMinutes"
         | "classes"
         | "cpuHoldLoad"
+        | "loadHoldPerCore"
       >
     >,
   now: number,
   boxes: BoxCap[] = [],
   load?: number,
+  cores?: number,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);
@@ -458,9 +556,9 @@ export function assign(
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
   const held = windowHeld(entries, s.classes, now);
-  // Issue 1009: a loaded machine under a release browser run: plain cpu
-  // asks wait; a release one goes through.
-  const cpuHeld = !!loadHold(entries, s, load);
+  // Issues 1009, 1048: a loaded machine: plain cpu asks wait; a release
+  // one goes through.
+  const cpuHeld = !!loadHold(entries, s, load, cores);
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
     if (cpuHeld && w.kind === "cpu" && !w.priority) continue;
@@ -545,29 +643,89 @@ const oneLine = (s: string) =>
     .trim()
     .slice(0, 200);
 
-/** A TCP connect to the box's Playwright server (nothing else is sent). */
-function tcpReach(
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+/**
+ * The check of a box's Playwright server: a WebSocket upgrade (an HTTP GET
+ * with Upgrade: websocket), open only on "101 Switching Protocols" with
+ * the right Sec-WebSocket-Accept. A bare TCP connect isn't enough: a relay
+ * or port forward in front of a dead server still accepts it. The socket
+ * is closed as soon as the answer's head is read, and never later than
+ * the check's time (capped at BOX_CHECK_CAP_MS). No frame is ever sent.
+ */
+function wsReach(
   u: URL,
   timeoutMs: number,
 ): Promise<{ state: BoxState["state"]; reason?: string }> {
-  const port = Number(u.port) || (u.protocol === "wss:" ? 443 : 80);
+  const tls = u.protocol === "wss:";
+  const port = Number(u.port) || (tls ? 443 : 80);
+  const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
+  const key = randomBytes(16).toString("base64");
+  const accept = createHash("sha1")
+    .update(key + WS_GUID)
+    .digest("base64");
+  const where = `${u.hostname}:${port}`;
   return new Promise((resolve) => {
-    const sock = net.connect({ host: u.hostname, port });
+    const sock: net.Socket = tls
+      ? tlsConnect({ host: u.hostname, port, servername: u.hostname })
+      : net.connect({ host: u.hostname, port });
+    let head = "";
+    let settled = false;
     const done = (v: { state: BoxState["state"]; reason?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       sock.destroy();
       resolve(v);
     };
-    sock.setTimeout(timeoutMs, () =>
+    const timer = setTimeout(
+      () =>
+        done({
+          state: "unreachable",
+          reason: `no websocket upgrade from ${where} in ${Math.max(1, Math.round(capMs / 1000))} s`,
+        }),
+      capMs,
+    );
+    sock.once(tls ? "secureConnect" : "connect", () => {
+      const host = u.port ? `${u.hostname}:${u.port}` : u.hostname;
+      sock.write(
+        `GET ${u.pathname || "/"}${u.search} HTTP/1.1\r\n` +
+          `Host: ${host}\r\n` +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Key: ${key}\r\n` +
+          "Sec-WebSocket-Version: 13\r\n\r\n",
+      );
+    });
+    sock.on("data", (d: Buffer) => {
+      head += d.toString("latin1");
+      const end = head.indexOf("\r\n\r\n");
+      if (end < 0 && head.length < 8192) return;
+      const lines = head.slice(0, end < 0 ? 8192 : end).split("\r\n");
+      const status = /^HTTP\/1\.[01] (\d{3})/.exec(lines[0] ?? "")?.[1];
+      const got = lines
+        .map((l) => /^sec-websocket-accept:\s*(\S+)/i.exec(l)?.[1])
+        .find(Boolean);
+      if (status === "101" && got === accept) return done({ state: "open" });
       done({
         state: "unreachable",
-        reason: `no answer from ${u.hostname}:${port} in ${Math.round(timeoutMs / 1000)} s`,
+        reason: oneLine(
+          status === "101"
+            ? `${where}: a websocket upgrade with the wrong accept key`
+            : `${where}: no websocket upgrade (${lines[0] || "no answer"})`,
+        ),
+      });
+    });
+    sock.once("end", () =>
+      done({
+        state: "unreachable",
+        reason: `${where}: no websocket upgrade (closed without an answer)`,
       }),
     );
-    sock.once("connect", () => done({ state: "open" }));
     sock.once("error", (e) =>
       done({
         state: "unreachable",
-        reason: oneLine(`${u.hostname}:${port}: ${e.message}`),
+        reason: oneLine(`${where}: ${e.message}`),
       }),
     );
   });
@@ -580,88 +738,166 @@ export function memAvailableMb(text: string): number | undefined {
 }
 
 /**
+ * Issue 857: free memory on macOS (MB) from `vm_stat` and, after it,
+ * `sysctl -n hw.pagesize`: free + inactive + speculative pages times the
+ * page size (sysctl's, else the one in vm_stat's header). Undefined when
+ * the text isn't that: memory unknown, never free.
+ */
+export function macFreeMb(text: string): number | undefined {
+  const pages = (label: string) => {
+    const m = new RegExp(`^Pages ${label}:\\s+(\\d+)\\.?\\s*$`, "m").exec(text);
+    return m ? Number(m[1]) : undefined;
+  };
+  const free = pages("free");
+  if (free === undefined) return undefined;
+  const sysctl = /^\s*(\d{3,7})\s*$/m.exec(text)?.[1];
+  const header = /page size of (\d+) bytes/.exec(text)?.[1];
+  const size = Number(sysctl ?? header);
+  if (!Number.isInteger(size) || size < 512) return undefined;
+  const n = free + (pages("inactive") ?? 0) + (pages("speculative") ?? 0);
+  return (n * size) / (1024 * 1024);
+}
+
+/** Issue 857: the one command a macOS box runs for its memory. */
+export const MAC_MEM_COMMAND =
+  "/usr/bin/vm_stat && /usr/sbin/sysctl -n hw.pagesize";
+
+/** One process, its output, killed at the time given. */
+function runOnce(
+  start: typeof spawn,
+  cmd: string,
+  args: string[],
+  stdin: string,
+  capMs: number,
+): Promise<{
+  code: number | null;
+  out: string;
+  err: string;
+  failed?: string;
+  timedOut?: boolean;
+}> {
+  return new Promise((resolve) => {
+    let err = "";
+    let out = "";
+    let settled = false;
+    const finish = (v: Awaited<ReturnType<typeof runOnce>>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const k = start(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const timer = setTimeout(() => {
+      k.kill("SIGKILL");
+      finish({ code: null, out, err, timedOut: true });
+    }, capMs);
+    k.stdout?.on("data", (d: Buffer) => {
+      if (out.length < 65536) out += d.toString("utf-8");
+    });
+    k.stderr?.on("data", (d: Buffer) => {
+      if (err.length < 4096) err += d.toString("utf-8");
+    });
+    k.on("error", (e: Error) =>
+      finish({ code: null, out, err, failed: e.message }),
+    );
+    k.on("close", (code: number | null) => finish({ code, out, err }));
+    k.stdin?.end(stdin);
+  });
+}
+
+/**
  * The check over ssh, with the process starter given (tests pass a
  * stub). It is one sftp read: `ls` of the hold file, and the box's
- * /proc/meminfo (clause 8); the box runs nothing for it. Keys only
- * (BatchMode): a box that asks for a password is unreachable. Clause 12:
- * the whole check is killed at the time given, and never later than
- * BOX_CHECK_CAP_MS, so an ssh that connects but stalls at the banner is
- * unreachable and never hangs its callers.
+ * /proc/meminfo (clause 8); the box runs nothing for it. Issue 857: a
+ * box with no /proc/meminfo (macOS) is then read with one ssh exec of
+ * MAC_MEM_COMMAND, nothing else. Memory that can't be read is "unknown":
+ * the box is skipped with that reason, never counted as free (unless it
+ * keeps no free memory: min_free_mem_mb 0). Keys only (BatchMode): a box
+ * that asks for a password is unreachable. Clause 12: the whole check is
+ * killed at the time given, and never later than BOX_CHECK_CAP_MS, so an
+ * ssh that connects but stalls at the banner is unreachable and never
+ * hangs its callers.
  */
 export function sftpProbe(start: typeof spawn): BoxProbe {
-  return (box, timeoutMs) => {
+  return async (box, timeoutMs) => {
     // Issue 1017: with several Playwright servers, the first is reached.
-    if (!box.ssh) return tcpReach(new URL(boxEndpoints(box)[0]!.ws), timeoutMs);
+    // Issue 625: by a WebSocket upgrade, never a bare TCP connect.
+    if (!box.ssh) return wsReach(new URL(boxEndpoints(box)[0]!.ws), timeoutMs);
     const capMs = Math.max(1, Math.min(timeoutMs, BOX_CHECK_CAP_MS));
+    const deadline = Date.now() + capMs;
     const secs = Math.max(1, Math.round(capMs / 1000));
-    const args = [
-      "-q",
-      "-b",
-      "-",
+    const conn = (port: string) => [
       "-o",
       "BatchMode=yes",
       "-o",
       `ConnectTimeout=${secs}`,
-      ...(box.ssh_port ? ["-P", String(box.ssh_port)] : []),
+      ...(box.ssh_port ? [port, String(box.ssh_port)] : []),
       ...(box.ssh_identity ? ["-i", box.ssh_identity] : []),
       "--",
-      box.ssh,
+      box.ssh!,
     ];
-    return new Promise((resolve) => {
-      let err = "";
-      let out = "";
-      let settled = false;
-      const finish = (v: Awaited<ReturnType<BoxProbe>>) => {
-        if (settled) return;
-        settled = true;
-        resolve(v);
+    const noAnswer = {
+      state: "unreachable" as const,
+      reason: `no answer over ssh in ${secs} s`,
+    };
+    // A leading "-" lets the batch go on when a file is absent.
+    const r = await runOnce(
+      start,
+      "sftp",
+      ["-q", "-b", "-", ...conn("-P")],
+      (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+        "-get /proc/meminfo /dev/stdout\n",
+      capMs,
+    );
+    if (r.timedOut) return noAnswer;
+    if (r.failed)
+      return { state: "unreachable", reason: oneLine(`sftp: ${r.failed}`) };
+    if (r.code !== 0)
+      return {
+        state: "unreachable",
+        reason:
+          oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
+          `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-      const k = start("sftp", args, { stdio: ["pipe", "pipe", "pipe"] });
-      const timer = setTimeout(() => {
-        k.kill("SIGKILL");
-        finish({
-          state: "unreachable",
-          reason: `no answer over ssh in ${secs} s`,
-        });
-      }, capMs);
-      k.stdout?.on("data", (d: Buffer) => {
-        if (out.length < 65536) out += d.toString("utf-8");
-      });
-      k.stderr?.on("data", (d: Buffer) => {
-        if (err.length < 4096) err += d.toString("utf-8");
-      });
-      k.on("error", (e: Error) => {
-        clearTimeout(timer);
-        finish({
-          state: "unreachable",
-          reason: oneLine(`sftp: ${e.message}`),
-        });
-      });
-      k.on("close", (code: number | null) => {
-        clearTimeout(timer);
-        if (code !== 0)
-          return finish({
-            state: "unreachable",
-            reason:
-              oneLine(err.split("\n").filter(Boolean).pop() ?? "") ||
-              `ssh to ${box.ssh} failed (exit ${code})`,
-          });
-        const freeMemMb = memAvailableMb(out);
-        const mem = freeMemMb === undefined ? {} : { freeMemMb };
-        if (box.hold_file && !/not found|no such file/i.test(err))
-          return finish({
-            state: "held",
-            reason: `its hold file (${box.hold_file}) is there`,
-            ...mem,
-          });
-        finish({ state: "open", ...mem });
-      });
-      // A leading "-" lets the batch go on when the hold file is absent.
-      k.stdin?.end(
-        (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
-          "-get /proc/meminfo /dev/stdout\n",
+    const missing = r.err
+      .split("\n")
+      .filter((l) => /not found|no such file/i.test(l));
+    const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
+    const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
+    let freeMemMb = memAvailableMb(r.out);
+    const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
+    if (box.hold_file && !holdGone)
+      return {
+        state: "held",
+        reason: `its hold file (${box.hold_file}) is there`,
+        ...mem(),
+      };
+    if ((box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB) <= 0)
+      return { state: "open", ...mem() };
+    let why = "/proc/meminfo has no MemAvailable";
+    if (freeMemMb === undefined && noMeminfo) {
+      // Issue 857: no /proc (macOS): one fixed command, nothing else.
+      const left = deadline - Date.now();
+      if (left <= 0) return noAnswer;
+      const m = await runOnce(
+        start,
+        "ssh",
+        ["-T", ...conn("-p"), MAC_MEM_COMMAND],
+        "",
+        left,
       );
-    });
+      if (m.timedOut) return noAnswer;
+      freeMemMb = m.code === 0 ? macFreeMb(m.out) : undefined;
+      why =
+        m.code === 0
+          ? "vm_stat gave nothing Den can read"
+          : oneLine(
+              `vm_stat failed: ${m.failed ?? (m.err.split("\n").filter(Boolean).pop() || `exit ${m.code}`)}`,
+            );
+    }
+    if (freeMemMb === undefined)
+      return { state: "unknown", reason: `memory unknown: ${why}` };
+    return { state: "open", ...mem() };
   };
 }
 
@@ -729,7 +965,145 @@ export function boxEnv(
   return {
     DEN_GATE_BOX: box.name,
     DEN_GATE_TIME_SCALE: String(box.time_scale ?? 1),
-    ...(ws ? { DEN_PW_WS: ws } : {}),
+    // Issue 1033: the box's browser reaches this machine's ports only
+    // through a client that exposes the loopback; pw-guard reads this.
+    ...(ws ? { DEN_PW_WS: ws, DEN_PW_EXPOSE: "<loopback>" } : {}),
     ...(box.ssh ? { DEN_GATE_BOX_SSH: box.ssh } : {}),
   };
+}
+
+/** Issue 1033: one host-only rule: a project, or a label pattern. */
+type HostOnlyRule = { project?: string; label?: string; text: string };
+
+/**
+ * Issue 1033: "den, label:*webkit*" (browser_host_only) → the rules; or
+ * what is wrong. A project by name (* is every project), a label by
+ * pattern (* matches any text), as class_map names them.
+ */
+export function parseHostOnly(s: string): HostOnlyRule[] | string {
+  const out: HostOnlyRule[] = [];
+  for (const it of items(s)) {
+    if (it.length > 120 || it.includes("="))
+      return `"${it.slice(0, 60)}" is not <project> or label:<pattern>`;
+    if (it.startsWith("label:")) {
+      const pattern = it.slice(6).trim();
+      if (!pattern) return `"${it}" needs a label pattern`;
+      out.push({ label: pattern, text: it });
+    } else out.push({ project: it, text: it });
+  }
+  return out;
+}
+
+/** Issue 1033: the host-only rule a run matches, as written; else none. */
+export function hostOnlyMatch(
+  e: { project?: string; label: string },
+  setting: string,
+): HostOnlyRule | undefined {
+  const rules = parseHostOnly(setting);
+  if (typeof rules === "string") return undefined;
+  return rules.find((r) =>
+    r.label
+      ? glob(r.label).test(e.label)
+      : r.project === "*" || (!!e.project && r.project === e.project),
+  );
+}
+
+/** Issue 1033: browser_box_default is any or local; null when it is. */
+export function checkBoxDefault(v: string): string | null {
+  const t = v.trim();
+  return t === "any" || t === "local"
+    ? null
+    : `any or local, not ${t.slice(0, 40)}`;
+}
+
+/**
+ * Issue 1033: where a browser `gate run` with no --box goes. With the
+ * setting at any and a test box set: anywhere (`where` "any": the first
+ * free browser slot, here or on a box), unless it can't or mustn't go to
+ * a box; then it stays here, and `why` says so in one line. The setting
+ * at local, or no box set: here, as before, with nothing to say.
+ */
+export function defaultPlace(o: {
+  setting: "any" | "local";
+  hostOnly: string;
+  label: string;
+  project?: string;
+  boxes: GateBox[];
+  /** The run gave --base-url (a box's browser reaches the app by it). */
+  baseUrl: boolean;
+  pwVersion?: string;
+  /**
+   * Issue 1033: the run brings its own browser (--browser-endpoint, or
+   * one in its environment): why it stays here, in words.
+   */
+  ownBrowser?: string;
+  /** Issue 625: the time a box's window is read at (now when unset). */
+  now?: number;
+}): {
+  where?: "any";
+  why?: string;
+  /** The boxes it may take (where "any"), when some are skipped. */
+  only?: string[];
+  /** Those skipped, and why, in one line. */
+  skipped?: string;
+} {
+  if (o.setting === "local" || !o.boxes.length) return {};
+  const rule = hostOnlyMatch(o, o.hostOnly);
+  if (rule)
+    return {
+      why: rule.label
+        ? `${o.label} is host-only (browser_host_only ${rule.text})`
+        : `project ${o.project ?? "*"} is host-only (browser_host_only ${rule.text})`,
+    };
+  if (o.ownBrowser) return { why: o.ownBrowser };
+  if (!o.baseUrl)
+    return { why: "no --base-url, so a test box can't reach the app" };
+  // Issue 1033: which box server it needs can't be said; a box would
+  // refuse it at connect (HTTP 428). Only an explicit --box takes one.
+  if (!o.pwVersion)
+    return {
+      why: "this run's Playwright version is unknown: pass --pw-version",
+    };
+  const skips = o.boxes.map((b) => ({
+    name: b.name,
+    reason: defaultSkip(b, o.pwVersion, o.now ?? Date.now()),
+  }));
+  const said = skips
+    .filter((x) => x.reason)
+    .map((x) => x.reason)
+    .join("; ");
+  if (skips.every((x) => x.reason))
+    return { why: oneLine(`no test box can take it: ${said}`) };
+  if (!said) return { where: "any" };
+  return {
+    where: "any",
+    only: skips.filter((x) => !x.reason).map((x) => x.name),
+    skipped: oneLine(said),
+  };
+}
+
+/**
+ * Issue 1033: why a default pick can't send a run with --base-url to this
+ * box, or "". Only an explicit --box <name> takes such a box (as before):
+ *   no declared Playwright version (playwright_version or
+ *     playwright_endpoints): its server refuses a client of another
+ *     version (HTTP 428), and which one it runs can't be said;
+ *   a declared version that doesn't serve the run's (clause 11);
+ *   (issue 625) turned off, or outside its window: no slot comes, so a
+ *     run with only that box stays here, saying when it opens.
+ */
+function defaultSkip(
+  b: GateBox,
+  pwVersion: string | undefined,
+  now: number,
+): string {
+  const off = boxOff(b, now);
+  if (off)
+    return off.why === "off"
+      ? `box ${b.name}: turned off`
+      : `box ${b.name}: outside its window (opens ${off.opens})`;
+  if (!b.playwright_version && !b.playwright_endpoints)
+    return `box ${b.name} declares no Playwright version`;
+  const v = boxSkipReason({ pwVersion }, b);
+  return v ? `box ${b.name}: ${v}` : "";
 }

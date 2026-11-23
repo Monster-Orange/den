@@ -126,6 +126,7 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
+- `ask_withdraw`: withdraw your question once it is settled another way.
 - `page_view`: a one-time link to open this Den's own pages read-only, as
   you, to look, take a screenshot or check a fix. It changes nothing, and
   ends in a few minutes.
@@ -217,6 +218,12 @@ Held (each waits for the person's Allow):
   waits for the person's Allow, then for no agent mid-turn, restarts the
   host and resumes the agents. Never stop the terminal host another way:
   that stops every agent. While doctor says Den is waiting, do nothing.
+- `web_url_set`: when this install's address is wrong or missing
+  (doctor's address row, a sign-in link that goes nowhere). Check first
+  that the name answers and an edge route sends it here (`edge_status`),
+  then propose it with its proof in `note`. Den checks it answers as this
+  Den, at the ask and again at the Allow; it never writes one that doesn't.
+  Never ask the person to type `web url` instead.
 
 Only when Den's config turns them on (`mcp.actions`):
 

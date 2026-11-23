@@ -62,6 +62,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     cpu_slots_beside_release_browser: true,
     // Issue 1009: cpu runs wait at this load under a release run.
     cpu_hold_load: true,
+    // Issue 1048: new cpu runs wait over this × the cores.
+    load_hold_per_core: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -81,6 +83,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     mcp_renew_minutes: true,
     mcp_lapse_minutes: true,
     mcp_grace_minutes: true,
+    // Issue 867: a gone waiter keeps its place this long.
+    waiter_return_minutes: true,
     // Issue 625: test boxes' check and recheck.
     box_check_timeout_seconds: true,
     box_recheck_seconds: true,
@@ -90,6 +94,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     class_order: true,
     class_map: true,
     class_windows: true,
+    // Issue 1033: where a browser run with no --box goes, and the
+    // projects and labels kept on this machine.
+    browser_box_default: true,
+    browser_host_only: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -100,6 +108,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     hub_screenshot_max_mb: true,
     hub_timeout_seconds: true,
   },
+  // Issue 707: the server's warning lines on disk, capped.
+  server_log: { max_mb: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
   // issue_write: which roles write GitHub issues, and how many an hour.
@@ -142,6 +152,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 609: how long Den's process lookups wait.
   process_lookup: { first_seconds: true, retry_seconds: true },
+  // Issue 532: the terminal limits (user.yml sessions.*).
+  sessions: {
+    max_concurrent: true,
+    close_grace_seconds: true,
+    pty_close_seconds: true,
+    pty_warn_above: true,
+    pty_machine_warn_percent: true,
+  },
   // Issue 609: how agents' hooks wait for Den, and retry.
   agent_hooks: {
     timeout_seconds: true,
@@ -156,6 +174,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
+  // Issue 1022: how often the page polls health, visible and hidden.
+  health_poll: { visible_seconds: true, hidden_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -230,6 +250,8 @@ describe("the settings inventory (R21)", () => {
         "shell.hidden",
         "shell.order",
         "shell.pins",
+        // Issue 168: a project's colour, the person's own.
+        "shell.projectColours",
         // 0.4.45: this person's project order.
         "shell.projectOrder",
         "terminal",
@@ -263,6 +285,8 @@ describe("the settings inventory (R21)", () => {
         "web_ready.start_seconds",
         "gate_slots.box_check_timeout_seconds",
         "gate_slots.box_recheck_seconds",
+        "gate_slots.browser_box_default",
+        "gate_slots.browser_host_only",
         "gate_slots.browser_requires_container",
         "gate_slots.claim_minutes",
         "gate_slots.class_map",
@@ -272,6 +296,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots",
         "gate_slots.cpu_slots_beside_browser",
         "gate_slots.cpu_slots_beside_release_browser",
+        "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
         "gate_slots.mcp_grace_minutes",
         "gate_slots.mcp_lapse_minutes",
@@ -286,6 +311,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
+        "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
         "agents_list.host_timeout_seconds",
         "agents_list.refresh_timeout_seconds",
@@ -294,6 +320,8 @@ describe("the settings inventory (R21)", () => {
         "reports.screenshot_max_mb",
         "reports.hub_screenshot_max_mb",
         "reports.hub_timeout_seconds",
+        // Issue 707: the server's warning lines on disk, capped.
+        "server_log.max_mb",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
         // issue_write: which roles write GitHub issues, and how many an hour.
@@ -345,12 +373,21 @@ describe("the settings inventory (R21)", () => {
         // Issue 609: how long Den's process lookups wait.
         "process_lookup.first_seconds",
         "process_lookup.retry_seconds",
+        // Issue 532: the terminal limits.
+        "sessions.close_grace_seconds",
+        "sessions.max_concurrent",
+        "sessions.pty_close_seconds",
+        "sessions.pty_machine_warn_percent",
+        "sessions.pty_warn_above",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
         "agent_hooks.backoff_seconds",
         // Issue 742: how long a held write waits for the person's Allow.
         "held_writes.wait_minutes",
+        // Issue 1022: how often the page polls health, visible and hidden.
+        "health_poll.visible_seconds",
+        "health_poll.hidden_seconds",
       ].sort(),
     );
   });

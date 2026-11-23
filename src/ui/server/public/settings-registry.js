@@ -41,6 +41,8 @@ import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
 import { dialogHtml, mountDialog } from "./dialog-den.js";
+import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
+import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
 
 export const DEN_SETTING_CATEGORIES = [
@@ -644,7 +646,7 @@ export function drawPushDevices(host, ctx) {
           (r
             ? `<br><span class="${r.reached ? "set-note" : "set-warn"}" data-test-result role="status">${escHtml(outcome(r))}</span>`
             : "") +
-          `</span> <button type="button" class="btn" data-forget="${escHtml(d.id)}">${escHtml(L("set.notifications.devices.forget", "Forget"))}</button></li>`
+          `</span> <button type="button" class="den-btn" data-forget="${escHtml(d.id)}">${escHtml(L("set.notifications.devices.forget", "Forget"))}</button></li>`
         );
       })
       .join("");
@@ -663,7 +665,7 @@ export function drawPushDevices(host, ctx) {
             `<p class="set-warn" data-test-result role="status">${escHtml([r.device, pushServiceName(r.service)].filter(Boolean).join(" \u00b7 "))}: ${escHtml(outcome(r))}</p>`,
         )
         .join("") +
-      `<button type="button" class="btn" id="set-push-test"${devices.length ? "" : " disabled"}>${escHtml(L("set.notifications.devices.test", "Send a test alert"))}</button>`;
+      `<button type="button" class="den-btn" id="set-push-test"${devices.length ? "" : " disabled"}>${escHtml(L("set.notifications.devices.test", "Send a test alert"))}</button>`;
     host.querySelector("#set-push-test")?.addEventListener("click", (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
@@ -810,7 +812,7 @@ function drawOwner(host, ctx) {
     if (o.owner) {
       host.innerHTML =
         `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.ownerIs", "Owner:"))} <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
-        `<button type="button" class="btn" id="set-owner-unlink">${escHtml(L("set.ui.unlink", "Unlink"))}</button>`;
+        `<button type="button" class="den-btn" id="set-owner-unlink">${escHtml(L("set.ui.unlink", "Unlink"))}</button>`;
       host.querySelector("#set-owner-unlink").addEventListener("click", () =>
         api("POST", "/api/web/owner/unlink", {})
           .then(load)
@@ -821,7 +823,7 @@ function drawOwner(host, ctx) {
     host.innerHTML =
       `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.noOwner", "This Den has no owner identity yet."))}</output> ` +
       (o.clientId
-        ? `<button type="button" class="btn primary" id="set-owner-link">${escHtml(L("set.ui.linkGithub", "Link your GitHub account"))}</button>`
+        ? `<button type="button" class="den-btn primary" id="set-owner-link">${escHtml(L("set.ui.linkGithub", "Link your GitHub account"))}</button>`
         : `<span class="set-note" id="set-owner-noclient" style="flex-basis:100%">${L(
             "set.ui.noClient",
             "Linking needs a GitHub App client id, and none is configured: set {key} in config/local/user.yml, then restart the server.", // words-ok: moved word for word into the catalog (0.4.45)
@@ -870,7 +872,7 @@ function drawOwner(host, ctx) {
             },
           )}</p>` +
           `<span id="set-owner-code" style="${CODE_STYLE}">${escHtml(f.userCode)}</span> ` +
-          `<a class="btn" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(L("set.ui.openGithub", "Open GitHub"))}</a>` +
+          `<a class="den-btn" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${escHtml(L("set.ui.openGithub", "Open GitHub"))}</a>` +
           `<p class="set-note" style="margin:8px 0 0">${escHtml(L("set.ui.waitingGithub", "Waiting for GitHub…"))}</p>`;
         timer = setTimeout(() => poll(f.id), 1500);
       })
@@ -913,13 +915,13 @@ function drawDevices(host, ctx) {
                   : "") +
                 `</div>` +
                 `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
-                `<button type="button" class="btn" data-revoke="${escHtml(d.id)}">${escHtml(L("set.ui.revoke", "Revoke"))}</button></div>`
+                `<button type="button" class="den-btn" data-revoke="${escHtml(d.id)}">${escHtml(L("set.ui.revoke", "Revoke"))}</button></div>`
               );
             })
             .join("") +
           "</div>" +
           // MODE-5: `web logout` (and --all) from the page, asked first.
-          `<div data-signout-box style="margin-top:10px"><button type="button" class="btn" data-signout-all>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button></div>`;
+          `<div data-signout-box style="margin-top:10px"><button type="button" class="den-btn" data-signout-all>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button></div>`;
         const box = host.querySelector("[data-signout-box]");
         const idle = box.innerHTML;
         box.addEventListener("click", (e) => {
@@ -930,7 +932,7 @@ function drawDevices(host, ctx) {
               `<div data-signout-ask role="group" aria-label="${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}" style="display:grid;gap:8px">` +
               `<p class="set-note" style="margin:0">${escHtml(L("set.ui.signOutAllB", "This signs out every browser and phone, including this one. Each signs in again the usual way."))}</p>` +
               `<label class="set-note" style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" data-signout-rotate> ${escHtml(L("set.ui.signOutRotate", "Also replace the sign-in secret. Running agents stop until they are restarted."))}</label>` +
-              `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-signout-yes>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button><button type="button" class="btn" data-signout-no>${escHtml(L("set.ui.cancel", "Cancel"))}</button></div></div>`;
+              `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="den-btn" data-signout-yes>${escHtml(L("set.ui.signOutAll", "Sign out everywhere"))}</button><button type="button" class="den-btn" data-signout-no>${escHtml(L("set.ui.cancel", "Cancel"))}</button></div></div>`;
             box.querySelector("[data-signout-no]")?.focus();
             return;
           }
@@ -1120,8 +1122,8 @@ function drawWaiting(host, ctx) {
                   `<div class="set-note" style="overflow-wrap:anywhere"${l.tip ? ` title="${escHtml(l.tip)}"` : ""}>${escHtml(l.detail)}</div></div>` +
                   `<label for="${id}" class="set-note">${escHtml(L("set.ui.codeLabel", "Code on its screen"))}</label>` +
                   `<input id="${id}" class="mono" data-code-for="${ref}" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" style="width:10ch">` +
-                  `<button type="button" class="btn primary" data-approve="${ref}" disabled>${escHtml(L("set.ui.approve", "Approve"))}</button>` +
-                  `<button type="button" class="btn" data-deny="${ref}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
+                  `<button type="button" class="den-btn primary" data-approve="${ref}" disabled>${escHtml(L("set.ui.approve", "Approve"))}</button>` +
+                  `<button type="button" class="den-btn" data-deny="${ref}">${escHtml(L("set.ui.deny", "Deny"))}</button></div>`
                 );
               })
               .join("") +
@@ -1215,7 +1217,7 @@ function drawPair(host, ctx) {
           .map((h) => `<option value="${escHtml(h)}">${escHtml(h)}</option>`)
           .join("") +
         "</select> " +
-        `<button type="button" class="btn primary" id="set-pair-go">${escHtml(L("set.access.pair", "Pair a device"))}</button>` +
+        `<button type="button" class="den-btn primary" id="set-pair-go">${escHtml(L("set.access.pair", "Pair a device"))}</button>` +
         '<div id="set-pair-out" style="flex-basis:100%" aria-live="polite"></div>';
       const out = host.querySelector("#set-pair-out");
       const go = () => {
@@ -1283,7 +1285,7 @@ function drawEdgeUp(host, ctx) {
   const box = document.createElement("div");
   box.style.cssText = "flex-basis:100%;margin-top:8px";
   box.innerHTML =
-    `<button type="button" class="btn sm" id="set-edge-up">${escHtml(L("set.ui.edgeStart", "Start the edge"))}</button>` +
+    `<button type="button" class="den-btn sm" id="set-edge-up">${escHtml(L("set.ui.edgeStart", "Start the edge"))}</button>` +
     '<p class="set-note" id="set-edge-up-out" aria-live="polite" hidden></p>';
   host.appendChild(box);
   const btn = box.querySelector("#set-edge-up");
@@ -1328,7 +1330,7 @@ function drawOrigins(host, ctx, api) {
     `<textarea id="set-embed-origins" rows="3" spellcheck="false" style="width:100%;min-width:0;font:inherit" ` +
     `aria-label="${escHtml(L("set.embed.origins", "Web apps that may embed agents"))}" ` +
     `placeholder="https://app.example.com">${escHtml(list.join("\n"))}</textarea>` +
-    `<button type="button" class="btn sm" id="set-embed-origins-save">${escHtml(L("set.ui.saveOrigins", "Save list"))}</button>`;
+    `<button type="button" class="den-btn sm" id="set-embed-origins-save">${escHtml(L("set.ui.saveOrigins", "Save list"))}</button>`;
   host
     .querySelector("#set-embed-origins-save")
     .addEventListener("click", () => {
@@ -1381,7 +1383,7 @@ function drawAppKeys(host, ctx) {
       .join("") +
     `</select>` +
     `<input id="set-appkey-label" type="text" maxlength="80" aria-label="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}" placeholder="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}">` +
-    `<button type="button" class="btn sm" id="set-appkey-make">${escHtml(L("set.ui.appKeyMake", "Make key"))}</button>` +
+    `<button type="button" class="den-btn sm" id="set-appkey-make">${escHtml(L("set.ui.appKeyMake", "Make key"))}</button>` +
     `</div>` +
     `<div id="set-appkey-out" style="flex-basis:100%" aria-live="polite"></div>` +
     `<div id="set-appkey-list" style="flex-basis:100%"></div>`;
@@ -1432,7 +1434,7 @@ function drawAppKeys(host, ctx) {
                 )}</span>` +
                 (k.revokedAt
                   ? `<span class="set-note">${escHtml(L("set.ui.appKeyRevoked", "revoked {when}", { when: when(k.revokedAt) }))}</span>`
-                  : `<button type="button" class="btn sm" data-revoke="${escHtml(k.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
+                  : `<button type="button" class="den-btn sm" data-revoke="${escHtml(k.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
                 `</li>`,
             )
             .join("") +
@@ -1476,7 +1478,7 @@ function drawAppKeys(host, ctx) {
       out.innerHTML =
         `<p class="set-note">${escHtml(L("set.ui.appKeyOnce", "Copy this key into the web app's backend now. It is not shown again."))}</p>` +
         `<input type="text" readonly id="set-appkey-new" style="width:100%;font-family:var(--mono)" aria-label="${escHtml(L("set.ui.appKeyNew", "New app key"))}">` +
-        `<button type="button" class="btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
+        `<button type="button" class="den-btn sm" id="set-appkey-copy">${escHtml(L("set.ui.copy", "Copy"))}</button>`;
       const box = out.querySelector("#set-appkey-new");
       box.value = key;
       out.querySelector("#set-appkey-copy").addEventListener("click", () => {
@@ -1527,7 +1529,7 @@ function drawRunnerTokens(host, ctx) {
                 )}</span>` +
                 (r.revokedAt
                   ? `<span class="set-note">${escHtml(L("set.ui.appKeyRevoked", "revoked {when}", { when: when(r.revokedAt) }))}</span>`
-                  : `<button type="button" class="btn sm" data-revoke="${escHtml(r.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
+                  : `<button type="button" class="den-btn sm" data-revoke="${escHtml(r.id)}">${escHtml(L("set.ui.appKeyRevoke", "Revoke"))}</button>`) +
                 `</li>`,
             )
             .join("") +
@@ -1562,7 +1564,9 @@ function drawRunnerTokens(host, ctx) {
 /**
  * Issue 625: the test boxes, browser slots on other machines. A person
  * adds one (its name, how Den reaches it, its slots, its hold file and
- * time scale), and removes one. Saving a box of the same name replaces it.
+ * time scale, its window in this machine's time, its recheck time, on or
+ * off), turns one on or off, and removes one. Saving a box of the same
+ * name replaces it.
  * Never a key: ssh names a key file on this machine.
  */
 function drawGateBoxes(host, ctx) {
@@ -1644,7 +1648,22 @@ function drawGateBoxes(host, ctx) {
       "text",
       `maxlength="2048" placeholder="${escHtml(L("set.ui.boxPwsEx", "1.61=ws://box:3931, 1.63=ws://box:3932"))}"`,
     ) +
-    `<button type="button" class="btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
+    field(
+      "set-box-window",
+      "set.ui.boxWindow",
+      "Window (this machine's time)",
+      "text",
+      'maxlength="11" placeholder="00:00-08:00"',
+    ) +
+    field(
+      "set-box-recheck",
+      "set.ui.boxRecheck",
+      "Recheck after, in seconds",
+      "number",
+      'min="1" max="86400" step="1"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="set-box-on" checked> ${escHtml(L("set.ui.boxOn", "On"))}</label>` +
+    `<button type="button" class="den-btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
     `<div id="set-box-list" style="flex-basis:100%"></div>`;
@@ -1718,11 +1737,33 @@ function drawGateBoxes(host, ctx) {
                 (x.time_scale && x.time_scale !== 1
                   ? `<span class="set-note">${escHtml(L("set.ui.boxScaleIs", "time ×{n}", { n: x.time_scale }))}</span>`
                   : "") +
-                `<button type="button" class="btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                (x.window
+                  ? `<span class="set-note">${escHtml(L("set.ui.boxWindowIs", "{window}, this machine's time", { window: x.window }))}</span>`
+                  : "") +
+                (x.enabled === false
+                  ? `<span class="set-note set-warn">${escHtml(L("set.ui.boxIsOff", "turned off"))}</span>`
+                  : "") +
+                `<button type="button" class="den-btn sm" data-box-on="${escHtml(x.name)}" data-on="${x.enabled === false ? "1" : "0"}">${escHtml(
+                  x.enabled === false
+                    ? L("set.ui.boxTurnOn", "Turn on")
+                    : L("set.ui.boxTurnOff", "Turn off"),
+                )}</button>` +
+                `<button type="button" class="den-btn sm" data-box-rm="${escHtml(x.name)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
                 `</li>`,
             )
             .join("") +
           `</ul>`;
+        for (const btn of list.querySelectorAll("[data-box-on]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/boxes/enable",
+              {
+                name: btn.getAttribute("data-box-on"),
+                enabled: btn.getAttribute("data-on") === "1",
+              },
+              btn,
+            ).catch(warn);
+          });
         for (const btn of list.querySelectorAll("[data-box-rm]"))
           btn.addEventListener("click", () => {
             post(
@@ -1747,6 +1788,9 @@ function drawGateBoxes(host, ctx) {
       playwright_version: val("#set-box-pwv") || undefined,
       // Issue 1017: "1.61=ws://…, 1.63=ws://…" → version → address.
       playwright_endpoints: pwPairs(val("#set-box-pws")),
+      window: val("#set-box-window") || undefined,
+      recheck_seconds: num("#set-box-recheck"),
+      enabled: host.querySelector("#set-box-on").checked,
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
   });
@@ -2115,7 +2159,7 @@ function drawTestInstall(host, ctx) {
     host.innerHTML =
       `<output class="set-ro" id="set-test-install" data-test-install="${b.testInstall ? "yes" : "no"}" data-ready="${b.ready ? "yes" : "no"}">${lines.map(escHtml).join(" ")}</output>` +
       (b.testInstall
-        ? ` <button type="button" class="btn" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`
+        ? ` <button type="button" class="den-btn" id="set-test-person">${escHtml(L("set.ui.testPersonSetUp", "Set up test person"))}</button>`
         : "");
     const btn = host.querySelector("#set-test-person");
     if (!btn) return;
@@ -2257,9 +2301,9 @@ function renderAccountList(list, t) {
                 `<div class="set-note" data-acct="${escR(a.id)}" data-acct-state="${l.state}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">` +
                 `<strong>${escR(name)}</strong> <span data-acct-status>${escR(l.text)}${a.first ? ` ${escR(t("acct.first"))}` : ""}</span>` +
                 `<input type="password" autocomplete="off" spellcheck="false" data-acct-token aria-label="${escR(t("acct.tokenLabel", { name }))}">` +
-                `<button type="button" class="btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
-                `<button type="button" class="btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
-                `<button type="button" class="btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
+                `<button type="button" class="den-btn sm" data-acct-save>${escR(t("acct.tokenSave"))}</button>` +
+                `<button type="button" class="den-btn sm" data-acct-up aria-label="${escR(t("acct.up"))}" title="${escR(t("acct.up"))}"${i === 0 ? " disabled" : ""}>↑</button>` +
+                `<button type="button" class="den-btn sm" data-acct-down aria-label="${escR(t("acct.down"))}" title="${escR(t("acct.down"))}"${last ? " disabled" : ""}>↓</button>` +
                 `</div>`
               );
             })
@@ -2269,7 +2313,7 @@ function renderAccountList(list, t) {
         `<div data-acct-runtime="${escR(v.runtime)}" style="display:grid;gap:6px">` +
         `<p class="set-note"><strong>${escR(t("acct.title", { vendor: v.account || v.name }))}</strong></p>` +
         rows +
-        `<div><button type="button" class="btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
+        `<div><button type="button" class="den-btn sm" data-acct-add>${escR(t("acct.add", { vendor: v.account || v.name }))}</button></div>` +
         `<p class="set-note" data-acct-note hidden></p>` +
         `</div>`
       );
@@ -2522,13 +2566,13 @@ function renderKeepRunning(host, ctx) {
     // Issue 299: the token is pasted here; the one terminal step is named, with
     // a copy button. The field is never filled from the server.
     `<div data-keep-signin style="display:grid;gap:6px"${on0 ? "" : " hidden"}>` +
-    `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
-    `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
+    `<p class="set-note" data-keep-setup style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.setup"))} <code>${escR(SETUP_TOKEN_CMD)}</code> <button type="button" class="den-btn sm" data-keep-copy>${escR(t("keep.copy"))}</button></p>` +
+    `<label class="set-note" data-keep-token-row style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${escR(t("keep.tokenLabel"))} <input type="password" autocomplete="off" spellcheck="false" data-keep-token-input aria-label="${escR(t("keep.tokenLabel"))}"> <button type="button" class="den-btn sm" data-keep-token-save>${escR(t("keep.tokenSave"))}</button> <button type="button" class="den-btn sm" data-keep-token-clear${signLine.state === "missing" ? " hidden" : ""}>${escR(t("keep.tokenClear"))}</button></label>` +
     `<p class="set-note" data-keep-token-note hidden></p>` +
     // Issue 339: the sign-in accounts, per vendor.
     `<div data-acct-list style="display:grid;gap:10px"></div>` +
     `</div>` +
-    `<div><button type="button" class="btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
+    `<div><button type="button" class="den-btn sm" data-keep-apply>${escR(t("keep.apply"))}</button></div>` +
     `<p class="set-note" data-keep-note${pending ? "" : " hidden"}>${escR(pending ? t("keep.pending") : "")}</p>` +
     `</div>`;
   const box = host.querySelector("[data-keep-on]");
@@ -2594,7 +2638,7 @@ function renderKeepRunning(host, ctx) {
 /** D64: Settings › Server's Restart Den button. */
 function drawRestart(host) {
   const label = window.denShell?.t?.("rd.setButton") ?? "Restart Den";
-  host.innerHTML = `<button type="button" class="btn sm" id="set-restart-den">${escR(label)}</button>`;
+  host.innerHTML = `<button type="button" class="den-btn sm" id="set-restart-den">${escR(label)}</button>`;
   host
     .querySelector("#set-restart-den")
     .addEventListener("click", () => void restartDen({ from: "settings" }));
@@ -2672,6 +2716,29 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 3650, step: 1, unit: "d" },
     read: (ctx) => ctx.data.reports?.screenshot_keep_days ?? 30,
     write: (v, ctx) => ctx.post({ reports: { screenshot_keep_days: v } }),
+  },
+  {
+    // Issue 707: the server's warning lines on disk while it runs as a
+    // service (user.yml server_log.max_mb), rotated once. A person's only.
+    id: "server.server_log_max",
+    category: "server",
+    label: "Warnings log, largest size",
+    description:
+      "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
+    keywords: [
+      "log",
+      "server",
+      "service",
+      "warnings",
+      "file",
+      "size",
+      "rotate",
+    ],
+    scope: "user",
+    keys: ["server_log.max_mb"],
+    control: { type: "number", min: 1, max: 1024, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.server_log?.max_mb ?? 20,
+    write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
   },
   {
     // Issue 403: the largest report screenshot kept here (reports.*).
@@ -3091,6 +3158,29 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { cpu_slots_beside_release_browser: v } }),
   },
   {
+    // Issue 1048: new cpu runs wait while the load is over this × cores.
+    id: "server.gate_load_hold_per_core",
+    category: "server",
+    label: "Hold new unit test runs over this load per core",
+    description:
+      "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    keywords: [
+      "gate",
+      "slot",
+      "tests",
+      "queue",
+      "cpu",
+      "load",
+      "workers",
+      "cores",
+    ],
+    scope: "user",
+    keys: ["gate_slots.load_hold_per_core"],
+    control: { type: "number", min: 0, max: 64, step: 0.1 },
+    read: (ctx) => ctx.data.gate_slots?.loadHoldPerCore ?? 3,
+    write: (v, ctx) => ctx.post({ gate_slots: { load_hold_per_core: v } }),
+  },
+  {
     // Issue 1009: cpu runs wait at this load under a release browser run.
     id: "server.gate_cpu_hold_load",
     category: "server",
@@ -3361,6 +3451,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { mcp_grace_minutes: v } }),
   },
   {
+    // Issue 867: a waiting run ended by a restart keeps its place a while.
+    id: "server.gate_waiter_return",
+    category: "server",
+    label:
+      "A waiting test run keeps its place this long after it ends, in minutes",
+    description:
+      "When a waiting test run ends without giving up its place (a restart, or its window closed), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
+    keywords: ["gate", "slot", "queue", "restart", "place", "waiting"],
+    scope: "user",
+    keys: ["gate_slots.waiter_return_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.waiterReturnMinutes ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { waiter_return_minutes: v } }),
+  },
+  {
     // Issue 803: priority classes per project; empty is first-come.
     id: "server.gate_class_order",
     category: "server",
@@ -3426,8 +3531,18 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Test boxes",
     description:
-      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
-    keywords: ["gate", "slot", "box", "remote", "browser", "tests", "machine"],
+      "Other machines that run browser tests. Each has its own browser slots. A browser run that may use a box takes whichever slot frees first, here or on a box. A box whose hold file is there takes no new runs. One that doesn't answer is skipped, never waited on. A box with a window takes runs only within it, in this machine's time. Outside it, or turned off, Den never contacts the box; a run already on it finishes. __DEN_CLI__ gate box add <name> --ssh login@host --slots 1",
+    keywords: [
+      "gate",
+      "slot",
+      "box",
+      "remote",
+      "browser",
+      "tests",
+      "machine",
+      "window",
+      "off",
+    ],
     scope: "user",
     control: { type: "custom", render: drawGateBoxes },
     read: () => null,
@@ -3458,6 +3573,49 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 86400, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.boxRecheckSeconds ?? 30,
     write: (v, ctx) => ctx.post({ gate_slots: { box_recheck_seconds: v } }),
+  },
+  {
+    // Issue 1033: a browser run with no --box takes a test box by default.
+    id: "server.gate_box_default",
+    category: "server",
+    label: "Browser runs go to",
+    description:
+      "Where a browser test run with no --box goes. Here or a test box: the first free browser slot, here or on a test box. A run with no --base-url, or no box for its Playwright version, stays here and says why. Here only: as before; a run goes to a box only with --box. __DEN_CLI__ gate settings --browser-box-default any",
+    keywords: ["gate", "slot", "box", "browser", "default", "any", "local"],
+    scope: "user",
+    keys: ["gate_slots.browser_box_default"],
+    control: {
+      type: "select",
+      options: () => [
+        {
+          value: "any",
+          label: L("set.server.gate_box_default.any", "Here or a test box"),
+        },
+        {
+          value: "local",
+          label: L("set.server.gate_box_default.local", "Here only"),
+        },
+      ],
+    },
+    read: (ctx) => ctx.data.gate_slots?.browserBoxDefault ?? "any",
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { browser_box_default: v || null } }),
+  },
+  {
+    id: "server.gate_host_only",
+    category: "server",
+    label: "Browser runs kept here",
+    description:
+      "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    keywords: ["gate", "slot", "box", "browser", "host", "label", "project"],
+    scope: "user",
+    keys: ["gate_slots.browser_host_only"],
+    control: { type: "text" },
+    read: (ctx) => ctx.data.gate_slots?.browserHostOnly ?? "",
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { browser_host_only: String(v ?? "").trim() || null },
+      }),
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version
@@ -3502,6 +3660,79 @@ export const DEN_SETTINGS = [
     scope: "user",
     control: { type: "custom", render: renderAddress },
     read: () => null,
+  },
+  {
+    // Issue 532: the terminal limits (user.yml sessions.*, over den.yml).
+    id: "server.sessions_max",
+    category: "server",
+    label: "Terminals at once",
+    description:
+      "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
+    keywords: ["terminal", "sessions", "limit", "max_concurrent", "pty"],
+    scope: "user",
+    keys: ["sessions.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.max_concurrent ?? 8,
+    write: (v, ctx) => ctx.post({ sessions: { max_concurrent: v } }),
+  },
+  {
+    id: "server.sessions_close_grace",
+    category: "server",
+    label: "Terminal close grace",
+    description:
+      "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    keywords: ["terminal", "close", "grace", "kill", "close_grace_seconds"],
+    scope: "user",
+    keys: ["sessions.close_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_close",
+    category: "server",
+    label: "Terminal close after exit",
+    description:
+      "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
+    keywords: ["terminal", "pty", "exit", "close", "pty_close_seconds"],
+    scope: "user",
+    keys: ["sessions.pty_close_seconds"],
+    control: { type: "number", min: 0, max: 86400, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.pty_close_seconds ?? 0,
+    write: (v, ctx) => ctx.post({ sessions: { pty_close_seconds: v } }),
+  },
+  {
+    id: "server.sessions_pty_warn",
+    category: "server",
+    label: "Terminal count warning",
+    description:
+      "Doctor fails when the terminal host holds more terminals than this. __DEN_CLI__ config sessions.pty_warn_above=400",
+    keywords: ["terminal", "pty", "doctor", "warn", "pty_warn_above"],
+    scope: "user",
+    keys: ["sessions.pty_warn_above"],
+    control: { type: "number", min: 1, max: 100000, step: 1 },
+    read: (ctx) => ctx.data.sessions?.pty_warn_above ?? 400,
+    write: (v, ctx) => ctx.post({ sessions: { pty_warn_above: v } }),
+  },
+  {
+    id: "server.sessions_pty_machine",
+    category: "server",
+    label: "Machine terminal warning, in percent",
+    description:
+      "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
+    keywords: [
+      "terminal",
+      "pty",
+      "doctor",
+      "machine",
+      "percent",
+      "pty_machine_warn_percent",
+    ],
+    scope: "user",
+    keys: ["sessions.pty_machine_warn_percent"],
+    control: { type: "number", min: 1, max: 100, step: 1, unit: "%" },
+    read: (ctx) => ctx.data.sessions?.pty_machine_warn_percent ?? 90,
+    write: (v, ctx) => ctx.post({ sessions: { pty_machine_warn_percent: v } }),
   },
   {
     id: "server.restart",
@@ -3922,6 +4153,26 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
   {
+    // Issue 168: the project's colour, the person's own (Manage projects
+    // has the same control on its dot).
+    id: "workspace.colour",
+    category: "workspace",
+    label: "Colour",
+    description:
+      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+    keywords: ["colour", "color", "hue", "project"],
+    scope: "workspace",
+    control: { type: "custom", render: renderProjectColour },
+    keys: ["shell.projectColours"],
+    read: () => null,
+    // The control saves through the choice (project-colour-picker.js);
+    // a write sets this project's colour, "" or null for Automatic.
+    write: (v, ctx) =>
+      ctx.post({
+        shell: { projectColours: { [ctx.workspace]: v || null } },
+      }),
+  },
+  {
     id: "workspace.editor",
     category: "workspace",
     label: "IDE for this project",
@@ -4168,6 +4419,44 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
     read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
+  },
+  {
+    // Issue 1022: how often a visible page checks health (user.yml
+    // health_poll.visible_seconds).
+    id: "server.health_poll",
+    category: "server",
+    label: "Health checks while you look",
+    description:
+      "How often an open, visible page checks every service's health: 2 to 300 seconds. __DEN_CLI__ config health_poll.visible_seconds=5",
+    keywords: ["health", "poll", "check", "status", "interval", "visible"],
+    scope: "user",
+    keys: ["health_poll.visible_seconds"],
+    control: { type: "number", min: 2, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.health_poll?.visible ?? 5,
+    write: (v, ctx) => ctx.post({ health_poll: { visible_seconds: v } }),
+  },
+  {
+    // Issue 1022: how often a hidden page checks health; the server keeps
+    // its answer this long (user.yml health_poll.hidden_seconds).
+    id: "server.health_poll_hidden",
+    category: "server",
+    label: "Health checks in a hidden tab",
+    description:
+      "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    keywords: [
+      "health",
+      "poll",
+      "check",
+      "hidden",
+      "background",
+      "tab",
+      "interval",
+    ],
+    scope: "user",
+    keys: ["health_poll.hidden_seconds"],
+    control: { type: "number", min: 10, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.health_poll?.hidden ?? 60,
+    write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
     // issue_write: which persona roles write GitHub issues in their
@@ -4703,9 +4992,9 @@ export const DEN_SETTINGS = [
         const draw = (signedIn) => {
           host.innerHTML = signedIn
             ? `<output class="set-ro">${escR(L("set.ui.signedIn", "Signed in"))}</output> ` +
-              `<button type="button" class="btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
+              `<button type="button" class="den-btn" id="set-signout">${escR(L("set.ui.signOut", "Sign out"))}</button>`
             : `<output class="set-ro">${escR(L("set.ui.notSignedIn", "Not signed in"))}</output> ` +
-              `<button type="button" class="btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+              `<button type="button" class="den-btn primary" id="set-signin">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
           host
             .querySelector("#set-signin")
             ?.addEventListener("click", () =>
@@ -4727,7 +5016,7 @@ export const DEN_SETTINGS = [
         // drawn height: a row that grows later moves the sections below it,
         // and a link to the last one (#distribution) would end short of the
         // foot, with the category above it marked current.
-        host.innerHTML = `<button type="button" class="btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
+        host.innerHTML = `<button type="button" class="den-btn" style="visibility:hidden" aria-hidden="true" tabindex="-1">${escR(L("set.ui.signIn", "Sign in"))}</button>`;
         fetch("/api/session", { cache: "no-store" })
           .then((r) => (r.ok ? r.json() : null))
           .then((b) => draw(b?.signedIn === true))
@@ -4763,7 +5052,7 @@ export const DEN_SETTINGS = [
           host.innerHTML =
             '<output class="set-ro" id="set-sudo"></output>' +
             (saved
-              ? ` <button type="button" class="btn" id="set-sudo-forget">${escR(L("set.ui.forget", "Forget"))}</button>`
+              ? ` <button type="button" class="den-btn" id="set-sudo-forget">${escR(L("set.ui.forget", "Forget"))}</button>`
               : "");
           host.querySelector("output").textContent = where;
           host
@@ -4941,15 +5230,15 @@ export function runtimeRowHtml(r, scopeWs) {
     `<div class="rt-n">${name}</div>` +
     `<div class="rt-s">${status}</div>` +
     `<div class="rt-w">${where}</div>` +
-    `<div class="rt-a"><button type="button" class="btn sm" data-set-path="${id}">${escR(L("set.ui.rt.setPath", "Set path…"))}</button>` +
+    `<div class="rt-a"><button type="button" class="den-btn sm" data-set-path="${id}">${escR(L("set.ui.rt.setPath", "Set path…"))}</button>` +
     (mine
-      ? ` <button type="button" class="btn sm" data-clear-path="${id}">${escR(L("set.ui.rt.clear", "Clear"))}</button>`
+      ? ` <button type="button" class="den-btn sm" data-clear-path="${id}">${escR(L("set.ui.rt.clear", "Clear"))}</button>`
       : "") +
     `</div>` +
     `<form class="rt-f" data-path-form="${id}" hidden>` +
     `<label class="rt-fl" for="rt-in-${id}">${escR(scopeWs ? L("set.ui.rt.pathToIn", "Path to {name} for {ws}", { name: r.label || r.id, ws: scopeWs }) : L("set.ui.rt.pathToAll", "Path to {name} (every project)", { name: r.label || r.id }))}</label>` +
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +
-    `<button type="submit" class="btn sm primary">${escR(L("set.ui.rt.save", "Save"))}</button> <button type="button" class="btn sm" data-cancel-path>${escR(L("set.ui.rt.cancel", "Cancel"))}</button>` +
+    `<button type="submit" class="den-btn sm primary">${escR(L("set.ui.rt.save", "Save"))}</button> <button type="button" class="den-btn sm" data-cancel-path>${escR(L("set.ui.rt.cancel", "Cancel"))}</button>` +
     `<div class="rt-err" role="alert" hidden></div></form>` +
     otherCopiesHtml(r) +
     `</div>`
@@ -4981,7 +5270,7 @@ function otherCopiesHtml(r) {
           (o.quarantined
             ? ` <span class="rt-bad" data-quarantined="true">${escR(rtQuarantined())}</span>`
             : "") +
-          ` <button type="button" class="btn sm" data-pin-path="${escR(r.id)}" data-bin="${escR(o.path)}" aria-label="${escR(L("set.ui.rt.useThisFor", "Use {path} for {name}", { path: o.path, name }))}">${escR(L("set.ui.rt.useThis", "Use this"))}</button>` +
+          ` <button type="button" class="den-btn sm" data-pin-path="${escR(r.id)}" data-bin="${escR(o.path)}" aria-label="${escR(L("set.ui.rt.useThisFor", "Use {path} for {name}", { path: o.path, name }))}">${escR(L("set.ui.rt.useThis", "Use this"))}</button>` +
           `</div>`,
       )
       .join("") +
@@ -5259,7 +5548,7 @@ export function rotationHtml(b) {
           `<tr data-rot-row${who.gone ? " data-rot-gone" : ""}><td data-l="${escR(L("set.ui.rot.thScope", "Scope"))}">${escR(rotScope(scope))}</td>` +
             `<td data-l="${escR(L("set.ui.rot.thFor", "For"))}"${who.gone ? ' class="rot-gone"' : ""}>${who.gone ? L("set.ui.rot.gone", "{name} (gone)", { name: `<span class="den-mono">${escR(who.name)}</span>` }) : escR(who.name)}</td>` +
             `<td data-l="${escR(L("set.ui.rot.thSetting", "Setting"))}">${escR(setting)}</td><td data-l="${escR(L("set.ui.rot.thValue", "Value"))}">${escR(rotValText(k, v))}</td>` +
-            `<td class="rot-act"><button type="button" class="btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="${escR(L(who.gone ? "set.ui.rot.removeX" : "set.ui.rot.clearX", who.gone ? "Remove {setting} for {name}" : "Clear {setting} for {name}", { setting, name: who.name }))}">${escR(who.gone ? L("set.ui.rot.remove", "Remove") : L("set.ui.rot.clear", "Clear"))}</button></td></tr>`,
+            `<td class="rot-act"><button type="button" class="den-btn sm" data-rot-clear data-scope="${escR(scope)}" data-target="${escR(target)}" data-key="${escR(k)}" aria-label="${escR(L(who.gone ? "set.ui.rot.removeX" : "set.ui.rot.clearX", who.gone ? "Remove {setting} for {name}" : "Clear {setting} for {name}", { setting, name: who.name }))}">${escR(who.gone ? L("set.ui.rot.remove", "Remove") : L("set.ui.rot.clear", "Clear"))}</button></td></tr>`,
         );
       }
   return (
@@ -5267,7 +5556,7 @@ export function rotationHtml(b) {
     `<div class="rot-inst">` +
     field(
       "after_compactions",
-      `<input type="text" id="rot-after_compactions" data-focus-key="rot-after_compactions" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="${escR(inherited("after_compactions"))}" value="${escR(after === undefined ? "" : rotVal(after))}"> <button type="button" class="btn sm" data-rot-save-after>${escR(L("set.ui.save", "Save"))}</button>`,
+      `<input type="text" id="rot-after_compactions" data-focus-key="rot-after_compactions" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="${escR(inherited("after_compactions"))}" value="${escR(after === undefined ? "" : rotVal(after))}"> <button type="button" class="den-btn sm" data-rot-save-after>${escR(L("set.ui.save", "Save"))}</button>`,
     ) +
     field(
       "on_due",
@@ -5301,7 +5590,7 @@ export function rotationHtml(b) {
     `<span class="rot-pick" data-val="after_compactions"><label for="rot-a-n">${escR(L("set.ui.rot.thValue", "Value"))}</label> <input type="number" id="rot-a-n" min="1" max="100" step="1" value="3"> <label class="rot-never"><input type="checkbox" id="rot-a-never"> ${escR(L("set.ui.rot.never", "never"))}</label></span>` +
     `<span class="rot-pick" data-val="on_due" hidden><label for="rot-a-due">${escR(L("set.ui.rot.thValue", "Value"))}</label> <select id="rot-a-due"><option value="auto">${escR(rotAuto())}</option><option value="ask">${escR(rotAsk())}</option><option value="off">${escR(rotOff())}</option></select></span>` +
     `<span class="rot-pick" data-val="on_pr_merged" hidden><label for="rot-a-pr">${escR(L("set.ui.rot.thValue", "Value"))}</label> <select id="rot-a-pr"><option value="true">${escR(rotRelaunch())}</option><option value="false">${escR(rotKeep())}</option></select></span>` +
-    `<button type="submit" class="btn sm primary">${escR(L("set.ui.rot.add", "Add override"))}</button></form>` +
+    `<button type="submit" class="den-btn sm primary">${escR(L("set.ui.rot.add", "Add override"))}</button></form>` +
     `<div class="rt-err" role="alert" hidden></div>` +
     `</div>`
   );
@@ -5381,14 +5670,32 @@ function hubAddressHtml(b) {
     `<form class="hub-addr" data-hub-addr>` +
     `<label for="hub-addr">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
     `<input type="url" id="hub-addr" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
-    ` <button type="submit" class="btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
+    ` <button type="submit" class="den-btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
     (b.url
-      ? ` <button type="button" class="btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
+      ? ` <button type="button" class="den-btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
       : "") +
     `</form>` +
     `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
     `<p class="set-note" data-hub-addr-note>${escR(L("set.ui.hub.saveNote", "Save keeps it in your settings and restarts Den. Clear disconnects; agents lose Hub's tools when they next restart."))}</p>`
   );
+}
+
+/**
+ * Issue 869: Hub refused this Den's address when Den last told it (400,
+ * 401, 403): what Hub said, until a later tell goes through.
+ */
+export function hubDenUrlHtml(d) {
+  if (!d || !d.url) return "";
+  return `<p class="set-note set-warn" data-hub-den-url="refused" role="status">${escR(
+    L(
+      "set.ui.hub.denUrlRefused",
+      "Hub didn't take this Den's address ({url}): {why}",
+      {
+        url: d.url,
+        why: d.error || String(d.status || ""),
+      },
+    ),
+  )}</p>`;
 }
 
 export function hubHtml(b, flash, t = (k) => k) {
@@ -5417,10 +5724,10 @@ export function hubHtml(b, flash, t = (k) => k) {
       `<form class="hub-connect" data-hub-connect>` +
       `<label for="hub-url">${escR(L("set.ui.hub.address", "Hub's address"))}</label> ` +
       `<input type="url" id="hub-url" class="den-mono" spellcheck="false" autocomplete="url" placeholder="https://hub.example.com" value="${escR(b.url || "")}">` +
-      ` <button type="submit" class="btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
-      ` <button type="button" class="btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
+      ` <button type="submit" class="den-btn sm primary" data-hub-action="connect">${escR(L("set.ui.hub.connect", "Connect"))}</button>` +
+      ` <button type="button" class="den-btn sm" data-hub-action="save-url">${escR(L("set.ui.hub.save", "Save"))}</button>` +
       (b.url
-        ? ` <button type="button" class="btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
+        ? ` <button type="button" class="den-btn sm" data-hub-action="clear-url">${escR(L("set.ui.hub.clear", "Clear"))}</button>`
         : "") +
       `</form>` +
       `<p class="set-note set-warn" data-hub-addr-problem role="status" hidden></p>` +
@@ -5499,17 +5806,18 @@ export function hubHtml(b, flash, t = (k) => k) {
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
     (why ? note(why, "data-hub-problem") : "") +
+    hubDenUrlHtml(b.denUrl) +
     `<div class="hub-acts">` +
     (state === "rejected" || b.legacy
-      ? `<button type="button" class="btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
+      ? `<button type="button" class="den-btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
       : "") +
-    `<button type="button" class="btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
+    `<button type="button" class="den-btn sm" data-hub-action="disconnect">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button>` +
     `</div>` +
     // Disconnect asks first, saying what it does (Hub revokes the key).
     `<div class="hub-confirm" data-hub-confirm hidden>` +
     `<p class="set-note set-warn">${escR(L("set.ui.hub.disconnectWarn", "This revokes this Den's Hub key on Hub. Agents lose Hub until you Connect again."))}</p>` +
-    `<button type="button" class="btn sm primary" data-hub-action="disconnect-yes">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button> ` +
-    `<button type="button" class="btn sm" data-hub-action="disconnect-no">${escR(L("set.ui.cancel", "Cancel"))}</button>` +
+    `<button type="button" class="den-btn sm primary" data-hub-action="disconnect-yes">${escR(L("set.ui.hub.disconnect", "Disconnect"))}</button> ` +
+    `<button type="button" class="den-btn sm" data-hub-action="disconnect-no">${escR(L("set.ui.cancel", "Cancel"))}</button>` +
     `</div>` +
     `<div class="rt-err" role="alert" hidden></div>` +
     tools
@@ -5617,7 +5925,7 @@ export function restartOfferHtml(agents) {
   return (
     `<div class="hub-restart" data-hub-restart="${n}">` +
     `<p class="set-note">${escR(what)} A restart keeps each conversation and never cuts a turn.</p>` +
-    `<button type="button" class="btn sm primary" data-hub-action="restart-stale">Restart ${escR(who)} at ${n === 1 ? "its" : "their"} next idle</button>` +
+    `<button type="button" class="den-btn sm primary" data-hub-action="restart-stale">Restart ${escR(who)} at ${n === 1 ? "its" : "their"} next idle</button>` +
     `</div>`
   );
 }
@@ -5766,7 +6074,7 @@ export function projectModeHtml(v, t) {
     .join("");
   const n = Number(v?.own) || 0;
   const offer = n
-    ? `<div data-pmode-offer="${n}"><button type="button" class="btn sm primary" data-pmode-follow>${escR(t("pmode.follow", { n }))}</button></div>`
+    ? `<div data-pmode-offer="${n}"><button type="button" class="den-btn sm primary" data-pmode-follow>${escR(t("pmode.follow", { n }))}</button></div>`
     : "";
   // Issue 268: what is in effect for this project, and where from.
   const dw = modeWords(v?.install, t);
@@ -5878,14 +6186,14 @@ export function projectMcpHtml(v, t) {
         const n = escR(sv.name);
         return (
           `<li data-pmcp="${n}"><span data-pmcp-text>${escR(t("pmcp.row", { name: sv.name, url: sv.url }))}</span> ` +
-          `<button type="button" class="btn sm" data-pmcp-edit="${n}" aria-label="${escR(t("pmcp.editL", { name: sv.name }))}">${escR(t("pmcp.edit"))}</button> ` +
-          `<button type="button" class="btn sm" data-pmcp-remove="${n}" aria-label="${escR(t("pmcp.removeL", { name: sv.name }))}">${escR(t("pmcp.remove"))}</button>` +
+          `<button type="button" class="den-btn sm" data-pmcp-edit="${n}" aria-label="${escR(t("pmcp.editL", { name: sv.name }))}">${escR(t("pmcp.edit"))}</button> ` +
+          `<button type="button" class="den-btn sm" data-pmcp-remove="${n}" aria-label="${escR(t("pmcp.removeL", { name: sv.name }))}">${escR(t("pmcp.remove"))}</button>` +
           `<div data-pmcp-form="${n}" hidden><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
           `<label>${escR(t("pmcp.url"))} <input type="url" spellcheck="false" autocomplete="off" data-pmcp-url value="${escR(sv.url)}"></label>` +
           `<label>${escR(t("pmcp.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-pmcp-bearer placeholder="${escR(t("pmcp.bearerKeep"))}"></label>` +
           `<label><input type="checkbox" data-pmcp-nobearer> ${escR(t("pmcp.noBearer"))}</label>` +
-          `<button type="button" class="btn sm primary" data-pmcp-save>${escR(t("pmcp.save"))}</button>` +
-          `<button type="button" class="btn sm" data-pmcp-cancel>${escR(t("pmcp.cancel"))}</button>` +
+          `<button type="button" class="den-btn sm primary" data-pmcp-save>${escR(t("pmcp.save"))}</button>` +
+          `<button type="button" class="den-btn sm" data-pmcp-cancel>${escR(t("pmcp.cancel"))}</button>` +
           `</div></div></li>`
         );
       })
@@ -6076,7 +6384,7 @@ export function projectOrderHtml(custom, t, href = "/local-dev") {
     `<div data-porder data-porder-state="${custom ? "mine" : "az"}">` +
     `<p class="set-status">${escR(t(custom ? "ws.order.mine" : "ws.order.az"))}</p>` +
     (custom
-      ? `<button type="button" class="btn sm" data-porder-reset>${escR(t("ws.order.reset"))}</button> `
+      ? `<button type="button" class="den-btn sm" data-porder-reset>${escR(t("ws.order.reset"))}</button> `
       : "") +
     `<a href="${escR(href)}">${escR(t("ws.manage"))}</a>` +
     `<div class="rt-err" role="alert" hidden></div></div>`
@@ -6155,7 +6463,7 @@ export function projectNameHtml(p, t) {
               ? t("pname.offlineNever")
               : t("pname.offline", { n: stale }),
           )}</p>` +
-          `<button type="button" class="btn sm" data-pname-retry>${escR(t("pname.retry"))}</button>`;
+          `<button type="button" class="den-btn sm" data-pname-retry>${escR(t("pname.retry"))}</button>`;
     // Issue 167 (A3): a rename asked of Hub, waiting there. Withdraw
     // waits on mo-den-hub issue 72 (Hub has no API to take it back yet).
     const ask = p?.cfg?.hub_rename;
@@ -6163,7 +6471,7 @@ export function projectNameHtml(p, t) {
       ask && typeof ask.to === "string" && ask.to
         ? `<div class="pname-held" data-pname-pending><p class="set-status"><span class="rt-dot warn"></span> ${escR(t("pname.pending", { to: ask.to }))}</p>` +
           (typeof ask.url === "string" && /^https?:\/\//.test(ask.url)
-            ? `<a class="btn sm" href="${escR(ask.url)}" target="_blank" rel="noopener noreferrer" data-pname-open>${escR(t("pname.openHub"))}</a>`
+            ? `<a class="den-btn sm" href="${escR(ask.url)}" target="_blank" rel="noopener noreferrer" data-pname-open>${escR(t("pname.openHub"))}</a>`
             : "") +
           `</div>`
         : "";
@@ -6173,7 +6481,7 @@ export function projectNameHtml(p, t) {
       `<p class="set-note">${escR(t("pname.hubHelp"))}</p>` +
       `<p class="set-status pname-nm"><strong data-pname-value>${escR(hub.trim())}</strong> ` +
       `<span class="pname-chip" data-pname-chip><i aria-hidden="true"></i>${escR(t("pname.hubChip"))}</span> ` +
-      `<button type="button" class="btn sm" data-pname-rename${off ? " disabled" : ""}>${escR(t("pname.rename"))}</button></p>` +
+      `<button type="button" class="den-btn sm" data-pname-rename${off ? " disabled" : ""}>${escR(t("pname.rename"))}</button></p>` +
       `<div data-pname-slot></div>` +
       waiting +
       offline +
@@ -6187,7 +6495,7 @@ export function projectNameHtml(p, t) {
   return (
     `<form data-pname data-pname-state="local" class="pname-form">` +
     `<input id="pname-in" type="text" aria-label="${escR(t("pname.label"))}" data-pname-input value="${escR(own)}" maxlength="${PNAME_MAX}" autocomplete="off"> ` +
-    `<button type="submit" class="btn sm primary" data-pname-save disabled>${escR(t("pname.save"))}</button>` +
+    `<button type="submit" class="den-btn sm primary" data-pname-save disabled>${escR(t("pname.save"))}</button>` +
     `<p class="set-note">${escR(t("pname.localHelp"))}</p>` +
     `<div class="rt-err" role="alert" data-pname-err hidden></div>` +
     `<p class="set-note" role="status" data-pname-ok hidden>${escR(t("pname.saved"))}</p></form>`
@@ -6205,8 +6513,8 @@ export function pnameRenameHtml(current, t) {
     `<input id="pname-new" type="text" value="${escR(current)}" maxlength="${PNAME_MAX}" autocomplete="off" aria-describedby="pname-new-help">` +
     `<p class="set-note" id="pname-new-help">${escR(t("pname.askHelp"))}</p>` +
     `<div class="rt-err" role="alert" data-pname-ask-err hidden></div>` +
-    `<div class="pname-acts"><button type="submit" class="btn sm primary" data-pname-ask>${escR(t("pname.ask"))}</button>` +
-    `<button type="button" class="btn sm" data-pname-cancel>${escR(t("pname.cancel"))}</button></div>` +
+    `<div class="pname-acts"><button type="submit" class="den-btn sm primary" data-pname-ask>${escR(t("pname.ask"))}</button>` +
+    `<button type="button" class="den-btn sm" data-pname-cancel>${escR(t("pname.cancel"))}</button></div>` +
     `</form>`
   );
 }
@@ -6267,6 +6575,46 @@ function wireHubRename(host, ctx, ws, current, t) {
           if (r !== undefined) return renderProjectName(host, ctx);
         });
     });
+  });
+}
+
+/**
+ * Issue 168: Settings › Project setup › Colour: the project's dot and its
+ * colour's name (Automatic, or the one chosen), and Change colour, which
+ * opens the same choice as Manage projects.
+ */
+export function projectColourHtml(data, slug, t) {
+  const c = projectColour(data, slug);
+  if (!c) return "";
+  const said = chosenColour(data, slug)
+    ? t(`pc.${c}`)
+    : t("pc.autoIs", { colour: t(`pc.${c}`) });
+  return (
+    `<span class="pcp-now" data-pc-now data-pc="${escR(c)}"><span class="den-pc" aria-hidden="true"></span><span data-pc-said>${escR(said)}</span></span> ` +
+    `<button type="button" class="den-btn sm" data-pc-change>${escR(t("pc.change"))}</button>`
+  );
+}
+
+function renderProjectColour(host, ctx) {
+  const ws = ctx.workspace;
+  if (!ws || ctx.shell?.configInvalid?.() === true) {
+    host.innerHTML = "";
+    return Promise.resolve();
+  }
+  const t = (k, v) => ctx.shell.t(k, v);
+  return ctx.shell.api("GET", "/api/workspaces").then((data) => {
+    host.innerHTML = projectColourHtml(data, ws, t);
+    const btn = host.querySelector("[data-pc-change]");
+    btn?.addEventListener("click", () =>
+      pickProjectColour({
+        slug: ws,
+        name: projectLabel(data, ws),
+        data,
+        opener: btn,
+      }).then((saved) => {
+        if (saved) return renderProjectColour(host, ctx);
+      }),
+    );
   });
 }
 
@@ -6498,7 +6846,7 @@ export function hubUncoveredHtml(list, t) {
           (u) => String(u.org).toLowerCase() === k && u.installUrl,
         )?.installUrl;
         return href && /^https:\/\/github\.com\//.test(href)
-          ? `<a class="btn sm primary" data-hubp-give="${escR(org)}" href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(t("hubp.giveAccess", { org }))}</a> `
+          ? `<a class="den-btn sm primary" data-hubp-give="${escR(org)}" href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(t("hubp.giveAccess", { org }))}</a> `
           : "";
       })
       .join("") +
@@ -6539,7 +6887,7 @@ export function hubProjectHtml(b, t, name) {
     return (
       `<div data-hubp data-hubp-state="offline">` +
       st("warn", t("hubp.noHub")) +
-      `<a class="btn sm primary" href="/settings#agents.hub">${escR(t("hubp.connectBtn"))}</a></div>`
+      `<a class="den-btn sm primary" href="/settings#agents.hub">${escR(t("hubp.connectBtn"))}</a></div>`
     );
   const linked = b.hub;
   const why = (w) => (w === "repo" ? t("hubp.whyRepo") : t("hubp.whyName"));
@@ -6572,7 +6920,7 @@ export function hubProjectHtml(b, t, name) {
   // Issue 651: linked, Unlink rides in the Switch row (one row beside the
   // list, wrapping only on a narrow screen).
   const unlinkBtn = linked
-    ? `<button type="button" class="btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
+    ? `<button type="button" class="den-btn sm" data-hubp-action="unlink">${escR(t("hubp.unlink"))}</button>`
     : "";
   const picker = (label, btn, primary) =>
     !linked
@@ -6580,13 +6928,13 @@ export function hubProjectHtml(b, t, name) {
         `<label for="hubp-sel">${escR(label)}</label> ` +
         `<select id="hubp-sel">${createOpt(!sugg.length)}${opts}</select> ` +
         newName(!sugg.length) +
-        `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(sugg.length ? btn : t("hubp.create"))}</button>` +
+        `<button type="submit" class="den-btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(sugg.length ? btn : t("hubp.create"))}</button>` +
         `</form>`
       : opts
         ? `<form class="hubp-pick" data-hubp-form>` +
           `<label for="hubp-sel">${escR(label)}</label> ` +
           `<select id="hubp-sel">${opts}</select> ` +
-          `<button type="submit" class="btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
+          `<button type="submit" class="den-btn sm${primary ? " primary" : ""}" data-hubp-action="link">${escR(btn)}</button>` +
           unlinkBtn +
           `</form>`
         : `<p class="set-note">${escR(t(linked ? "hubp.noOther" : "hubp.none"))}</p>` +
@@ -6625,7 +6973,7 @@ export function hubProjectHtml(b, t, name) {
       b.owner === true
         ? `<p class="set-note">${escR(t("hubp.youAllow", { project: ws }))}</p>` +
           (url
-            ? `<a class="btn sm primary" href="${escR(url)}" target="_blank" rel="noopener noreferrer" data-hubp-allow>${escR(t("hubp.allowBtn"))}</a>`
+            ? `<a class="den-btn sm primary" href="${escR(url)}" target="_blank" rel="noopener noreferrer" data-hubp-allow>${escR(t("hubp.allowBtn"))}</a>`
             : "")
         : `<p class="set-note">${escR(
             b.company
@@ -6651,7 +6999,7 @@ export function hubProjectHtml(b, t, name) {
     return (
       `<div data-hubp data-hubp-state="pick">` +
       st("warn", t("hubp.waiting", { project: ws })) +
-      `<a class="btn sm primary" href="${HUB_PICK_HREF}">${escR(t("hubp.pickBtn"))}</a>` +
+      `<a class="den-btn sm primary" href="${HUB_PICK_HREF}">${escR(t("hubp.pickBtn"))}</a>` +
       tail
     );
   return (
@@ -6842,13 +7190,13 @@ export function hubLinkAllHtml(b, t) {
         })
         .join("") +
       `</div>` +
-      `<button type="button" class="btn sm primary" data-hubla-link="${escR(r.project)}" disabled>${escR(t("ub.link"))}</button>` +
+      `<button type="button" class="den-btn sm primary" data-hubla-link="${escR(r.project)}" disabled>${escR(t("ub.link"))}</button>` +
       `</fieldset>`
     );
   };
   const one = (r) =>
     `<li data-hubla-clear="${escR(r.project)}"><span>${escR(t("ub.clear", { project: r.project }))} <b>${name(r.suggestion)}</b></span> ` +
-    `<button type="button" class="btn sm" data-hubla-link="${escR(r.project)}" data-hubla-hub="${escR(r.suggestion.id)}">${escR(t("ub.link"))}</button></li>`;
+    `<button type="button" class="den-btn sm" data-hubla-link="${escR(r.project)}" data-hubla-hub="${escR(r.suggestion.id)}">${escR(t("ub.link"))}</button></li>`;
   return (
     `<div data-hubla data-hubla-state="${unclear.length ? "todo" : "done"}">` +
     (unclear.length
@@ -7000,7 +7348,7 @@ export function hubGithubHtml(b, t) {
           return (
             `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="error">` +
             `<span class="rt-dot warn"></span> ${escR(reason ? t("hubgh.error", { org: o.org, reason }) : t("hubgh.errorNoReason", { org: o.org }))}` +
-            ` <button type="button" class="btn sm" data-hubgh-retry>${escR(t("hubgh.retry"))}</button>` +
+            ` <button type="button" class="den-btn sm" data-hubgh-retry>${escR(t("hubgh.retry"))}</button>` +
             `</p>`
           );
         }
@@ -7025,7 +7373,7 @@ export function hubGithubHtml(b, t) {
           `<p class="set-status" data-hubgh-org="${escR(o.org)}" data-hubgh-access="${escR(o.access)}">` +
           `<span class="rt-dot ${dot}"></span> ${escR(t("hubgh.line", { org: o.org, what }))}` +
           (href && /^https:\/\/github\.com\//.test(href)
-            ? ` <a class="btn sm${give ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
+            ? ` <a class="den-btn sm${give ? " primary" : ""}" data-hubgh-open href="${escR(href)}" target="_blank" rel="noopener noreferrer">${escR(label)}</a>`
             : "") +
           `</p>`
         );
@@ -7134,7 +7482,7 @@ function wireHub(host, ctx) {
     if (retry) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "btn sm";
+      btn.className = "den-btn sm";
       btn.dataset.hubAction = "force";
       btn.textContent = "Remove it here anyway";
       btn.addEventListener("click", () => disconnect(true, btn));

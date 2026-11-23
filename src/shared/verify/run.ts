@@ -43,6 +43,12 @@ import {
   type RunActor,
   type RunRecord,
 } from "./records.js";
+import {
+  guardProbe,
+  methodRules,
+  type MethodRules,
+  type RequestLog,
+} from "./guard.js";
 
 export { VERDICT_EXIT, type Verdict };
 
@@ -63,6 +69,8 @@ export interface ModuleRun {
   /** The first failure, in one line. */
   message?: string;
   ms: number;
+  /** Issue 214: on a read-only run, every request smoke sent or the guard blocked. */
+  requests?: RequestLog[];
 }
 
 export interface RunResult {
@@ -94,8 +102,12 @@ export interface RunDeps {
     m: VerifyModule,
     ctx: CmdContext,
   ) => Promise<{ exitCode: number | null; lines?: string[] }>;
-  /** GET `url`: its HTTP status (it throws when nothing answers). */
-  probe: (url: string) => Promise<number>;
+  /** GET `url` (or `method`): its HTTP status (it throws when nothing answers). */
+  probe: (url: string, method?: string) => Promise<number>;
+  /** Issue 214: the method rule for a read-only run (production); every request goes through it. */
+  methods?: MethodRules;
+  /** Built-in smoke's method: GET. A seam for the guard's tests only. */
+  smokeMethod?: string;
   runId?: () => string;
   now?: () => Date;
   /** Issue 209: who started the run and who allowed it, for its record. */
@@ -103,6 +115,8 @@ export interface RunDeps {
   /** Issue 210: Cancel, and who cancelled (for the record). */
   signal?: AbortSignal;
   cancelled?: () => { by: RunActor; at: string } | undefined;
+  /** Issue 214: the schedule this run is for. */
+  schedule?: string;
 }
 
 /** The verdict of a set of module states (VERIFY-SPEC section 5). */
@@ -130,19 +144,23 @@ async function smoke(
   m: VerifyModule,
   env: string,
   probe: RunDeps["probe"],
+  method = "GET",
 ): Promise<Pick<ModuleRun, "state" | "message">> {
   for (const url of m.healthUrls[env] ?? []) {
     let status: number;
     try {
-      status = await probe(url);
+      status = await probe(url, method);
     } catch (e) {
       return {
         state: "failed",
-        message: `GET ${url}: ${(e as Error).message}`,
+        message: `${method} ${url}: ${(e as Error).message}`,
       };
     }
     if (status <= 0 || status >= 400)
-      return { state: "failed", message: `GET ${url} returned ${status}` };
+      return {
+        state: "failed",
+        message: `${method} ${url} returned ${status}`,
+      };
   }
   return { state: "passed" };
 }
@@ -175,6 +193,8 @@ export async function runPlan(
       startedAt,
       ...(d.by?.startedBy ? { startedBy: d.by.startedBy } : {}),
       ...(d.by?.allowedBy ? { allowedBy: d.by.allowedBy } : {}),
+      ...(plan.trigger ? { trigger: plan.trigger } : {}),
+      ...(d.schedule ? { schedule: d.schedule } : {}),
       ...r,
       ...(r.verdict !== "running" ? { endedAt: now().toISOString() } : {}),
       modules: r.modules.map((m): ModuleRecord => {
@@ -246,8 +266,23 @@ export async function runPlan(
         : dependsOn(plan.layers, m.layer).find((l) => badLayers.has(l));
     let r: Omit<ModuleRun, keyof typeof row | "ms">;
     if (blocker) r = { state: "blocked", blockedBy: blocker };
-    else if (m.adapter === "smoke") r = await smoke(m, plan.env, d.probe);
-    else {
+    else if (m.adapter === "smoke") {
+      // Issue 214: a read-only run's requests go through the guard, logged.
+      const rules =
+        d.methods ?? (plan.readOnly ? methodRules(undefined, plan.env) : null);
+      if (rules) {
+        const log: RequestLog[] = [];
+        r = {
+          ...(await smoke(
+            m,
+            plan.env,
+            guardProbe(d.probe, rules, log),
+            d.smokeMethod,
+          )),
+          requests: log,
+        };
+      } else r = await smoke(m, plan.env, d.probe, d.smokeMethod);
+    } else {
       const resultsDir = path.join(
         d.stateDir,
         "verify",
@@ -385,8 +420,8 @@ export function spawnCmd(
 }
 
 /** GET a health URL: its status (redirects are answers, not followed). */
-export async function httpProbe(url: string): Promise<number> {
-  const res = await fetch(url, { method: "GET", redirect: "manual" });
+export async function httpProbe(url: string, method = "GET"): Promise<number> {
+  const res = await fetch(url, { method, redirect: "manual" });
   await res.body?.cancel();
   return res.status;
 }

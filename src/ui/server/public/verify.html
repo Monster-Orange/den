@@ -526,7 +526,7 @@
         background: var(--accent-fill);
         color: var(--on-accent);
       }
-      .vf-sch {
+      .vf-sch-help {
         margin: 0 0 12px;
       }
       .vf-plist,
@@ -650,6 +650,108 @@
       .vf-btns .den-btn.danger {
         border-color: var(--bad);
         color: var(--bad);
+      }
+      /* Issue 214: Schedules (S11). A row's state is its edge colour, plus a
+         symbol and a word (never colour alone). */
+      .vf-head > .den-btn {
+        margin-inline-start: auto;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+      }
+      .vf-sch-list {
+        list-style: none;
+        margin: 8px 0 12px;
+        padding: 0;
+      }
+      .vf-sch {
+        --c: var(--border-strong);
+        border: 1px solid var(--border);
+        border-inline-start: 4px solid var(--c);
+        background: var(--surface);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        margin: 0 0 12px;
+      }
+      .vf-sch:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .vf-sch-h {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        align-items: baseline;
+      }
+      .vf-sch-h h3 {
+        font: 600 15px/1.3 var(--sans);
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .vf-pill {
+        font: 11.5px var(--mono);
+        color: var(--muted);
+        border: 1px solid var(--border-strong);
+        border-radius: 999px;
+        padding: 0 8px;
+      }
+      .vf-sch-mods {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        margin: 6px 0 8px;
+        padding: 0;
+        font-size: 12.5px;
+        overflow-wrap: anywhere;
+      }
+      ol.vf-sch-mods {
+        display: block;
+        padding-inline-start: 20px;
+      }
+      .vf-sch-facts {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px 16px;
+        margin: 0 0 8px;
+      }
+      .vf-sch-facts dt {
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+      .vf-sch-facts dd {
+        margin: 2px 0 0;
+        font-size: 13px;
+      }
+      .vf-flag {
+        margin: 8px 0 0;
+        padding: 8px 10px;
+        border: 1px dashed var(--warn);
+        border-radius: var(--radius);
+        background: var(--sunken);
+        font-size: 13px;
+      }
+      .vf-sch-ask,
+      .vf-sch-change {
+        margin: 10px 0 0;
+      }
+      .vf-sch-ask h4,
+      .vf-sch-change h4 {
+        font: 600 13px/1.3 var(--sans);
+        margin: 8px 0 4px;
+      }
+      .vf-sch-change ul {
+        margin: 0;
+        padding-inline-start: 20px;
+        font-size: 13px;
+      }
+      @media (max-width: 700px) {
+        .vf-sch-facts {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .vf-btns .den-btn {
+          min-height: 44px;
+        }
       }
     </style>
   </head>

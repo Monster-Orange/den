@@ -17,6 +17,7 @@ import {
   GateYieldRefused,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
+import { gateWorkers } from "../../shared/gates/rules.js";
 import {
   browserSlotCheck,
   browserSlotRefusal,
@@ -287,8 +288,14 @@ function lapseNotices(): string[] {
 function slotView(store: GateStore, id: string) {
   const v = gateView(store);
   const mine = v.slots.find((x) => x.id === id);
+  // Issue 1048: a cpu run here uses its share of the cores (one waiting
+  // on the machine's load has it in loadHold, from the view).
+  const cpu = mine?.kind === "cpu";
   return {
     ...mine,
+    ...(cpu && mine?.granted && !mine.box
+      ? { workers: gateWorkers(store.cores(), v.settings.cpuSlots) }
+      : {}),
     // Issue 714: renew it this often while you work (gate_slot_request
     // with its id), or it lapses once past its estimate.
     renewEveryMinutes: v.settings.mcpRenewMinutes,
@@ -467,11 +474,54 @@ const READ_TOOLS: DenTool[] = [
         event: "waiting",
         why: "asked",
         text: question,
-      })) as { lead?: unknown } | null;
-      // Issue 101: a project with a lead: the question went to it.
+      })) as { lead?: unknown; askId?: unknown } | null;
+      // Issue 1008: its id, to withdraw it if it is settled elsewhere.
+      const id =
+        typeof r?.askId === "string" && r.askId
+          ? ` Its id is ${r.askId}: if it is settled another way, withdraw it with ask_withdraw.`
+          : "";
+      // Issue 101: a project with a lead: the question went to it. Issue
+      // 1058: it has an id too.
       if (typeof r?.lead === "string" && r.lead)
-        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.`;
-      return "Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.";
+        return `Asked. It went to your project's lead, ${r.lead}, who decides it or asks the person; end your turn.${id}`;
+      return `Asked. Your person has it in their bell; end your turn, and their answer comes as your next input.${id}`;
+    },
+  ),
+  read(
+    "ask_withdraw",
+    "Withdraw your question",
+    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    {
+      id: z.string().describe("The question's id, from ask_human"),
+      reason: z
+        .string()
+        .describe("How it was settled, one line, at most 200 characters"),
+    },
+    async (a, { api }) => {
+      const id = (str(a.id) ?? "").trim();
+      const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
+      if (!id || !reason)
+        throw new Refusal(
+          "ask_withdraw: give the question's id and a one-line reason.",
+        );
+      if (reason.length > 200)
+        throw new Refusal(
+          "ask_withdraw: a reason is one line, at most 200 characters.",
+        );
+      try {
+        await api.get("/api/notifications/withdraw", {}, "POST", {
+          id,
+          reason,
+        });
+      } catch (e) {
+        if (
+          e instanceof DenHttpError &&
+          [400, 403, 404, 409].includes(e.status)
+        )
+          throw new Refusal(`ask_withdraw: ${e.body}`);
+        throw e;
+      }
+      return `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
     },
   ),
   read(
@@ -807,7 +857,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2859,6 +2909,33 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "web_url_set",
+    title: "Propose this install's address",
+    description:
+      "Issue 869: when this install's address (web.url) is wrong or missing, propose the right one instead of asking the person to type a command. Check it first: the name answers (curl it) and an edge route sends it to this Den (edge_status). Den checks it answers as this Den, at the ask and again at the Allow; an address that doesn't is never written. On the person's Allow it is saved as confirmed, the way Settings' address saves it, takes effect without a restart, and Den tells the connected Hub. Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      url: z
+        .string()
+        .describe(
+          "The address other machines open, e.g. https://den.example.com (never localhost)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("web_url_set", ctx.scope);
+      return askPerson(
+        "web_url_set",
+        "web_url_set",
+        { url: str(a.url) },
+        a,
+        ctx,
+      );
     },
   },
   {

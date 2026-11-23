@@ -97,6 +97,7 @@ describe("gate-slot routes", () => {
       cpuSlotsBesideReleaseBrowser: 0,
       // Issue 1009: cores × 4 / 3 on the machine the test runs on.
       cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
+      loadHoldPerCore: 3,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       overrunBellMultiple: 2,
@@ -109,7 +110,10 @@ describe("gate-slot routes", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      browserBoxDefault: "any",
+      browserHostOnly: "",
       remoteRenewSeconds: 30,
+      waiterReturnMinutes: 10,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,

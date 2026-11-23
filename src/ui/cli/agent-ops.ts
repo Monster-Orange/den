@@ -250,8 +250,9 @@ import {
 } from "../../shared/agents/runtimes.js";
 import { agentGitEnv } from "../../shared/agents/git-signing.js";
 import {
+  mcpLoadFailures,
   noteHubMcpInit,
-  readHubMcpInit,
+  type McpLoadFailure,
 } from "../../shared/agents/hub-mcp-connect.js";
 import type {
   RuntimeDetect,
@@ -1121,6 +1122,12 @@ export function projectMcpServers(
  */
 export interface AgentRow {
   agent: string;
+  /**
+   * PSN-4 (issue 137): its persona changed since it started: the new
+   * version's readable name (persona_version, else its hash's first 7)
+   * and its hash.
+   */
+  personaNewer?: { version: string; hash: string };
   /** The name a person gave it (AG-4b), when one did. */
   displayName?: string;
   /**
@@ -1218,6 +1225,11 @@ export interface AgentRow {
    * keeps its conversation brings them in line.
    */
   mcpStale?: McpStale;
+  /**
+   * Issue 749: MCP servers whose tools failed to load in its running
+   * session (Hub's, as Den sees it through its proxy), with the error.
+   */
+  mcpFailed?: McpLoadFailure[];
   /** D56: started outside its project (rec.cwd is that folder). */
   outside?: boolean;
   /**
@@ -1467,6 +1479,7 @@ export async function listAgents(
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
   await addMcpStale(d, rows);
+  addPersonaNewer(d, rows, records, ws);
   // Issue 96: the person's order, as every list of the project's agents shows.
   const ordered = inAgentOrder(
     rows,
@@ -1675,6 +1688,9 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
       waiting,
     });
     if (st) r.mcpStale = st;
+    const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
+    const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
+    if (failed.length) r.mcpFailed = failed;
   }
 }
 
@@ -1745,11 +1761,11 @@ export async function agentTools(
   // What its session actually got: a connect that failed in this session
   // (the proxy's note) means no hub_* tools until it connects again.
   // 0.4.48: or it launched with none because Den couldn't read its token.
-  const init =
-    loaded || connected ? readHubMcpInit(d.stateDir(), rec.id) : null;
+  // Issue 749: or its connect worked but listing Hub's tools failed.
   const failed =
-    init && !init.ok && Date.parse(init.at) >= Date.parse(rec.startedAt)
-      ? (init.error ?? "an error")
+    loaded || connected
+      ? (mcpLoadFailures(d.stateDir(), rec).find((f) => f.server === HUB_SERVER)
+          ?.error ?? null)
       : null;
   if (failed) {
     loaded = false;
@@ -2087,6 +2103,36 @@ export function projectPersonaDirs(
   return [...workspaceRepoFolders(d, ws).values()].map((dir) =>
     path.join(dir, ".den", "personas"),
   );
+}
+
+/**
+ * PSN-4 (issue 137): mark each row whose persona's file changed since the
+ * agent started (its recorded hash). A persona gone, unreadable personas,
+ * or no hash recorded: no mark. Never throws.
+ */
+function addPersonaNewer(
+  d: AgentsResolved,
+  rows: AgentRow[],
+  records: AgentRecord[],
+  ws: string,
+): void {
+  let all: Map<string, Persona>;
+  try {
+    all = personas(d, d.agentsConfig(), ws);
+  } catch {
+    return;
+  }
+  const byId = new Map(records.map((r) => [r.id, r]));
+  for (const row of rows) {
+    const rec = byId.get(row.agent);
+    const p = rec?.personaHash ? all.get(rec.persona) : undefined;
+    const now = p ? personaHashOf(p) : undefined;
+    if (!p || !now || now === rec!.personaHash) continue;
+    row.personaNewer = {
+      version: p.personaVersion ?? now.slice(0, 7),
+      hash: now,
+    };
+  }
 }
 
 /** PSN-3: the sha256 of persona `p`'s file, or undefined if unreadable. */

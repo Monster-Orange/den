@@ -30,6 +30,25 @@ drops or the release run ends. `gate status` and the Gate panel say why:
 "waiting: load 38 ≥ 24 while a release run holds the browser slot".
 `gate settings --cpu-hold-load N` sets it.
 
+Issue 1048: a plain cpu ask also waits while the 5-minute load is over
+`load_hold_per_core` × the cores (default 3: 54 on 18 cores), but only while
+another cpu run is going. With none going, the next one starts whatever the
+load, so the line slows down and never stops. Release-priority asks and
+holders never wait. The reason reads "waiting: this machine's load is 60.0,
+over 3 × 18 cores (54), while another unit test run is going; it starts once
+the load drops or that run ends". 0 turns it off; `gate settings
+--load-hold-per-core N` sets it.
+
+`DEN_GATE_LOAD5` is a test override: when set, the gate reads that number as
+the 5-minute load instead of the machine's, for both holds (issues 1009 and
+1048). Den's test setup sets it to 0, so a busy machine never holds a test's
+own slot, and a drill can set it high. Anything that sets it skips the real
+load, so never set it in a service's environment.
+
+Each cpu run on this machine gets `DEN_GATE_WORKERS`: the cores shared by
+the cpu slots, at least 2 (9 on 18 cores with 2 slots). Den's jest config
+reads it when `DEN_TEST_WORKERS` is unset; any runner can.
+
 A browser run that waits only because more cpu runs hold the machine than
 may run beside it is never starved: while it waits, no new cpu run starts
 past that number. Once they drop to it, the browser run starts.
@@ -68,7 +87,10 @@ local or remote.
 The slot is given back the moment the command ends, however it ends: its
 own exit, or any signal (Ctrl-C, `kill`, a hang-up). A signal sent to
 `gate run` itself (SIGINT, SIGTERM, SIGHUP or SIGQUIT) is passed to the
-command, and the slot is free once the command ends. An agent can also
+command, and the slot is free once the command ends. On Linux a command
+that dumps core (SIGQUIT) gives its slot back as the dump starts, not
+after it: it can run no more, and a crash handler may take seconds to
+read the dump. An agent can also
 give back a slot its own `gate run` made with the MCP tool
 `gate_slot_release` (its id from `gate status`); giving it back does not
 stop the command. Another agent's slot is refused.
@@ -158,7 +180,35 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 
 Change the three settings in Settings › Server, or with
 `den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
+`--priority-max 0` turns release priority off for every repo on the machine,
+so it warns first and changes nothing (exit 1) unless you add `--yes`. A
+script that turns it off must pass `--yes`. While it is off, `gate status`
+says so on its last line, and a `gate run --priority release` says it is
+taken as an ordinary run.
 A CI runner may ask for it too (see below; `priority_runners`).
+
+## A waiting run keeps its place across a restart
+
+A Den restart (or its window closing) can end a `gate run` while it waits.
+Its place in line is kept for `waiter_return_minutes` (default 10):
+
+- `gate status` shows it as `run gone, place kept until <time>`. It's
+  never given a slot while it's gone, so the next live run starts instead.
+- The same run asking again (same kind, label, repo and asker, and the
+  same `--box` choice) takes its place back: `gate: back in your place
+(<id>)`. A different run goes to the end of the line as usual.
+- If it doesn't come back in time, the place is let go. The slot log
+  records `taken-back-gone` with reason `waiter-gone`, and the next time
+  that run asks, it prints `gate: your earlier place (asked <time>) was let
+go at <time>`.
+
+Only a hang-up or terminate signal (SIGHUP, SIGTERM) keeps the place.
+Ctrl-C (SIGINT) and SIGQUIT give it back at once. A holder whose run ends
+frees its slot at once, as before. Agents' MCP asks and CI runners keep
+their own leases.
+
+Change it in Settings › Server, or with `den gate settings
+--waiter-return-minutes N` (0: a gone waiter loses its place at once).
 
 ## Let one waiting run go ahead of yours
 
@@ -382,6 +432,41 @@ den gate box remove box2
 - `--time-scale X`: the box's browsers take X times as long as this
   machine's. Its runs' expected ends stretch by it, and the run gets
   `DEN_GATE_TIME_SCALE` to stretch its own timeouts.
+- `--window HH:MM-HH:MM`: when the box may be used, in **this machine's
+  local time zone** (the gate host's, not the box's). Optional; without
+  it, any time.
+- `--off`: add the box turned off. `den gate box enable|disable <name>`
+  switches it later.
+- `--recheck-seconds N`: this box's own `box_recheck_seconds` (below).
+
+### When a box may be used: its window and its switch
+
+Some boxes are free only part of the day: an evening-only box, a Windows
+box that is someone's machine by day.
+
+```sh
+den gate box add box3 --ssh ci@box3.example --window 00:00-08:00
+den gate box add box4 --ssh ci@box4.example --window 22:00-06:00 --off
+den gate box enable box4
+den gate box disable box3
+```
+
+- A window may wrap past midnight (`22:00-06:00`). Times are this
+  machine's local time; Settings and `gate box list` say so. The queue
+  pop-up shows when a closed box opens in the viewer's own time.
+- Outside its window, or turned off, a box gets **no slots and no
+  contact**: Den doesn't read its hold file, open a connection to its Playwright server,
+  or check it from `doctor` or `gate status`. A run waiting for that box
+  by name waits; a `--box any` run takes this machine or another box.
+- A run that already holds a slot on a box **finishes** when the window
+  closes, or when the box is turned off. No new slot is given after.
+- Each box is on unless turned off. An existing `settings.json` with boxes
+  loads unchanged: on, no window, the global recheck.
+- Turning a box on or off is a person's only (Settings › Server › Test
+  boxes, or the CLI), and goes in the audit, like adding or removing one.
+
+`gate status`, the queue pop-up and `den doctor` say why a box is
+skipped: "outside its window (opens 00:00)" or "turned off".
 
 ### An agent can ask
 
@@ -404,23 +489,67 @@ who asked and who allowed. Deny changes nothing.
 
 ### Which runs go to a box
 
-A browser run says where it may go:
+A browser run with no `--box` takes whichever browser slot frees first:
+this machine's, then the first test box with a free slot. It needs
+`--base-url` for that (a box's browser reaches the app by it):
 
 ```sh
-den gate run --kind browser --box any --base-url http://app.localhost:4100 -- npm run test:e2e
-den gate run --kind browser -- npm run test:e2e             # this machine only
+den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
+den gate run --kind browser --box local -- npm run test:e2e    # this machine only
+den gate run --kind browser --box box1 --base-url http://app.localhost:4100 -- npm run test:e2e
 ```
 
-`--box any` takes whichever slot frees first: this machine's, then the
-first box with a free slot. A run that needs a local browser leaves `--box`
-out and takes only this machine's slot. The run is told what it got:
-`DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its Playwright server, when
-set), `DEN_GATE_BOX_SSH` and `DEN_GATE_TIME_SCALE`.
+`--box local` (or this machine's own name) keeps a run here; `--box <name>`
+sends it to that box; `--box any` is the default spelled out. The run is
+told what it got: `DEN_GATE_BOX` (the box's name), `DEN_PW_WS` (its
+Playwright server, when set), `DEN_PW_EXPOSE` (`<loopback>`, beside
+`DEN_PW_WS`: what its client exposes to the box), `DEN_GATE_BOX_SSH` and
+`DEN_GATE_TIME_SCALE`.
+
+A run with no `--box` stays on this machine, and says why in one line
+(`gate: stays on this machine: …`), when:
+
+- its project or label is host-only (`browser_host_only`, below);
+- it brings its own browser: `--browser-endpoint` (an address, or `self`
+  for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
+  `E2E_WEBKIT_WS` in its environment;
+- it has no `--base-url`, or one a box can't use;
+- its Playwright version is unknown (no `--pw-version`, and none installed
+  where it runs): a box's server would refuse it;
+- no box can serve it. By default a run skips a box that declares no
+  Playwright version (`playwright_version` or `--pw`; its server refuses another
+  client version), and a box whose versions don't serve the run's (a
+  box's one `playwright_version` matches by major.minor: 1.61.1 serves a
+  1.61.0 client). It
+  takes a box like that only with `--box <name>`. When some boxes are
+  skipped and others aren't, it says which (`gate: skips …`) and takes
+  only the others.
+
+It never fails for that: it waits for this machine's slot, as before.
+`gate status` shows each held browser slot's machine (`on box box1`, or
+`on this machine` with the reason it stayed), and so do `gate status
+--json` (`machine`, `hostWhy`) and the slot log's `granted` rows.
+
+Two settings (Settings, or `den gate settings`):
+
+- `browser_box_default`: `any` (the default) or `local`. At `local`, a run
+  with no `--box` takes only this machine's slot, as before boxes were the
+  default: `den gate settings --browser-box-default local`.
+- `browser_host_only`: projects and label patterns whose browser runs
+  stay here, comma-separated, as `class_map` names them: a project by
+  name, `label:<pattern>` with `*` for any text. For example layout suites
+  and WebKit on macOS:
+  `den gate settings --browser-host-only "label:layout*, label:*webkit*"`.
+  Empty (the default): none.
 
 A test suite that starts its own server on a free port (Den's own browser
 suites do) names a loopback host (`127.0.0.1`, `localhost` or
 `<name>.localhost`) with `*` for the port. The `*` covers only the ports the
-run opened itself, never 80 or 443:
+run opened itself, never 80 or 443. A box run pins `localhost` and
+`<name>.localhost` to `127.0.0.1`, so the three names are one host: a run
+allowed `127.0.0.1:*` reaches `localhost:<its port>` (where Den's test
+servers listen), and the reverse. `::1` and the rest of `127.0.0.0/8` are
+not the same host:
 
 ```sh
 den gate run --kind browser --box mini --base-url 'http://127.0.0.1:*' -- npx jest tests/unit/server/x.browser.test.ts
@@ -447,13 +576,25 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 A box is checked only when a slot on it is about to be given, never on a
 timer. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
-it); with only a Playwright address, a TCP connect.
+it). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
+over ssh, `vm_stat` and `sysctl -n hw.pagesize`, and nothing else, and
+counts free, inactive and speculative pages as available. A macOS box
+added with ssh gets the hold file and the memory floor like a Linux box.
+With only a Playwright address, a WebSocket upgrade to that address
+(an HTTP GET with `Upgrade: websocket`), closed as soon as it answers.
+Only "101 Switching Protocols" counts as open: a relay or port forward in
+front of a dead server still accepts a TCP connection, so a bare connect
+is never enough.
 
 - **Held** (its hold file is there): no new slot. The next assignment
   after the file is placed sees it.
 - **Low on memory**: the box has less available memory than its
   `min_free_mem_mb` (2048 by default; `--min-free-mem-mb`). No new slot,
   and the queue says "box low on memory".
+- **Memory unknown**: Den couldn't read the box's free memory (no
+  `/proc/meminfo` and no `vm_stat`, or output it can't read). The box is
+  skipped with why, never counted as free. A box set with
+  `--min-free-mem-mb 0` keeps no free memory, so its memory isn't read.
 - **Unreachable** (no answer within `box_check_timeout_seconds`, 8 by
   default, never more than 25): skipped, with why, and the run goes to
   another box or waits. An ssh that connects but stalls before its banner
@@ -488,11 +629,26 @@ machine as its loopback, where ports 80 and 443 may be live services. So:
   Playwright setup guards every browser context with Den's
   `shared/gates/pw-guard` module (`guardBrowser`), so only those
   host:ports load, and each blocked request is reported.
+- The box's browser reaches this machine's ports only through a client
+  that connects with `exposeNetwork: "<loopback>"`. The gate hands a box
+  run `DEN_PW_WS` (the box's Playwright server) and `DEN_PW_EXPOSE`
+  (`<loopback>`); on this machine it adds neither. Den's own browser
+  helper reads both. Another product's client either connects with
+  pw-guard's `connectGuarded(chromium, process.env.DEN_PW_WS)`, which
+  reads `DEN_PW_EXPOSE` itself, or passes it:
+  `chromium.connect(process.env.DEN_PW_WS, { exposeNetwork: process.env.DEN_PW_EXPOSE })`.
+  A box run (`DEN_GATE_SLOT_BOX` is a box's name) that connects through
+  pw-guard without it is told once: `box run without exposeNetwork
+<loopback>: pages on this machine will be refused; pass DEN_PW_EXPOSE
+to connect()`.
 - The setup calls `pinLoopbackNames()` too: `localhost` and
   `*.localhost` resolve to 127.0.0.1 in the client, never ::1 (the
   tunnel's forwarders listen on IPv4).
 - A held or unreachable box is passed over for `box_recheck_seconds` (30
   by default), then checked again the next time a slot on it is wanted.
+  A fragile box can set its own `recheck_seconds` (`--recheck-seconds`,
+  or Settings): the least time between two contacts while it says no, so
+  a queue waiting on it contacts it at most once in that time.
 
 `gate status`, the queue on the Agents page and `den doctor` show each
 slot's box and each box's state, with why a box is skipped. The slot log

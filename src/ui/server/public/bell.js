@@ -63,6 +63,22 @@ function scopeLabel(scope, name) {
   return scope;
 }
 
+/**
+ * Issue 168: a project's group heading carries its colour, a dot beside its
+ * name (the shell knows the colours: denShell.projectColour); "" for the
+ * server, Hub and anything else.
+ */
+function scopeDot(scope) {
+  if (!scope.startsWith("workspace/")) return "";
+  const pc =
+    typeof window !== "undefined"
+      ? window.denShell?.projectColour?.(scope.slice("workspace/".length))
+      : null;
+  return pc
+    ? `<i class="den-pc" data-pc="${esc(pc)}" aria-hidden="true"></i>`
+    : "";
+}
+
 /** The name Hub gave a group's project, from any of its items. */
 const groupName = (g) =>
   g.subjects
@@ -82,13 +98,43 @@ function localVars(vars) {
 }
 
 /**
+ * Issue 746: a held write's item (a lapsed request) keeps its action and
+ * params: `what` in the page's language, as the Allow dialog words it
+ * (shell.js apWhat). An item from before, or a page without apWhat, keeps
+ * the stored English `what`.
+ */
+function heldWhat(vars) {
+  const words = window.denApWhat;
+  if (typeof vars?.action !== "string" || typeof words !== "function")
+    return vars;
+  let params = {};
+  try {
+    params = vars.params ? JSON.parse(String(vars.params)) : {};
+  } catch {
+    params = {};
+  }
+  return {
+    ...vars,
+    what: words({ action: vars.action, params, summary: vars.what }),
+  };
+}
+
+/** Issue 746: a Needs you entry's request in the page's words. */
+function allowWhat(w) {
+  const words = window.denApWhat;
+  return typeof words === "function"
+    ? String(words({ action: w.action, params: w.params, summary: w.what }))
+    : String(w.what ?? w.action ?? "");
+}
+
+/**
  * What a row says: Den's own items in the page's language (their key and
  * values), else the stored text (Hub's, or an item from before keys).
  */
 export function noteText(n) {
   const m = n?.msg;
   if (m && typeof m.key === "string" && /^bell\.m\./.test(m.key)) {
-    const said = tr(m.key, localVars(m.vars ?? {}));
+    const said = tr(m.key, heldWhat(localVars(m.vars ?? {})));
     if (said && said !== m.key) return said;
   }
   return n?.text ?? "";
@@ -113,6 +159,8 @@ const KIND_SWITCH = {
   mention: "hub",
   decision: "pick",
   service: "release",
+  // Issue 581: Hub's "shared with you".
+  shared: "shared",
 };
 export const switchOf = (kind) => KIND_SWITCH[kind] ?? "release";
 /** A switch's name: its Settings › Notifications label. */
@@ -134,10 +182,12 @@ function rowHtml(n, fold) {
   const sub = noteSub(n);
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
   const sw = switchOf(n.kind);
+  // Issue 214: a failed scheduled run is an alert while it is unread.
+  const alert = !n.read && n.msg?.key === "bell.m.vschedFail";
   return (
     // Issue 187: a row that opens on a click looks it (the pointer).
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}">` +
-    `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" ? "warn" : "ok"}" aria-hidden="true"></span>` +
+    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}"${alert ? ' role="alert"' : ""}>` +
+    `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" || alert ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
     (link
@@ -197,7 +247,7 @@ export function allowsOf(b) {
  * (shell.js's denApDetailLines). `open`: Review is open.
  */
 function allowRowHtml(w, open) {
-  const what = String(w.what ?? w.action ?? "");
+  const what = allowWhat(w);
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
     : tr("bell.ap.rowAsk", { what });
@@ -326,7 +376,7 @@ function groupsHtml(groups, ui, needs = false) {
   return groups
     .map(
       (g) =>
-        `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
+        `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
         (!needs && g.subjects.some((s) => s.items.some((n) => !n.read))
           ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
           : "") +
@@ -660,6 +710,10 @@ export function initBell(doc = document) {
       attributes: true,
       attributeFilter: ["data-den-tz"],
     });
+  // Issue 168: a project's colour changed: the open panel's headings.
+  window.addEventListener("den:project-colours-shown", () => {
+    if (bell.isOpen()) paint();
+  });
   void refresh();
   const timer = setInterval(() => {
     if (doc.visibilityState !== "hidden") void refresh();

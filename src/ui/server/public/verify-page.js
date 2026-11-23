@@ -535,7 +535,8 @@ function oldKinds() {
 export function answerView(ov, { wide = true } = {}) {
   const head =
     `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.ov_t"))}</h2>` +
-    `<p class="vf-lede">${esc(t("v.ov_s"))}</p></div></div>`;
+    `<p class="vf-lede">${esc(t("v.ov_s"))}</p></div>` +
+    `<a class="den-btn" href="?schedules=1" data-sched-open>${esc(t("v.sch_link"))}</a></div>`;
   if (!ov.modules && !(ov.envs ?? []).some((e) => e.imported))
     return `${head}<div class="vf-cols"><div class="vf-main">${emptyView()}${oldKinds()}</div>${feedView(ov.activity)}</div>`;
   const cards =
@@ -697,7 +698,7 @@ export function planView(v) {
         ([k, w]) =>
           `<button type="button" class="den-btn vf-segb" data-vf-scope="${k}" aria-pressed="${p.scope === k && !p.chosen}">${esc(t(w))}</button>`,
       ).join("") +
-      `</div><p class="vf-muted vf-sch">${esc(t(SCOPES.find((x) => x[0] === p.scope)?.[2] ?? "v.sc_changed_h"))}</p>`;
+      `</div><p class="vf-muted vf-sch-help">${esc(t(SCOPES.find((x) => x[0] === p.scope)?.[2] ?? "v.sc_changed_h"))}</p>`;
   if (p.nothingToRun)
     return (
       back +
@@ -838,16 +839,6 @@ function whoWord(a) {
   return t("v.who_person");
 }
 
-function clock(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  try {
-    return d.toLocaleTimeString(lang(), { timeStyle: "short" });
-  } catch {
-    return d.toISOString();
-  }
-}
-
 /**
  * S3: a run going on, or how it ended. `v`: confirming (Cancel asked once),
  * reconnecting (a read failed: refetching), now (ms, for the time so far).
@@ -962,6 +953,300 @@ export function runView(rec, v = {}) {
   );
 }
 
+// ── Issue 214: Schedules (S11), checks that run on their own ─────────────
+
+/** Sunday first, as cron counts. */
+const DAYS = [
+  "v.sch_d0",
+  "v.sch_d1",
+  "v.sch_d2",
+  "v.sch_d3",
+  "v.sch_d4",
+  "v.sch_d5",
+  "v.sch_d6",
+];
+
+function listOf(items) {
+  try {
+    const lang = globalThis.document?.documentElement?.lang || undefined;
+    return new Intl.ListFormat(lang, { type: "conjunction" }).format(items);
+  } catch {
+    return items.join(", ");
+  }
+}
+
+/** The cron in words, or the cron itself when it has no plain shape. */
+function cronWords(row) {
+  const w = row.words ?? { kind: "raw" };
+  if (w.kind === "hourly") return esc(t("v.sch_hourly"));
+  if (w.kind === "daily") return esc(t("v.sch_daily", { t: w.time }));
+  if (w.kind === "weekly")
+    return esc(
+      t("v.sch_weekly", {
+        d: listOf((w.days ?? []).map((d) => t(DAYS[d] ?? "v.sch_d0"))),
+        t: w.time,
+      }),
+    );
+  return `<code>${esc(row.cron)}</code>`;
+}
+
+function windowWords(win) {
+  if (!win || win === "any") return esc(t("v.sch_any"));
+  if (win === "night") return esc(t("v.sch_night"));
+  const m = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(win);
+  return m
+    ? esc(t("v.sch_span", { a: m[1], b: m[2] }))
+    : `<code>${esc(win)}</code>`;
+}
+
+const day = (iso) => formatTime(iso, { style: "date" });
+
+/** A schedule's state, as a symbol and a word. */
+const SCH_STATE = {
+  allowed: { tone: "ok", mark: "✓", word: "v.sch_st_allowed" },
+  "no-allow-needed": { tone: "ok", mark: "✓", word: "v.sch_st_free" },
+  expiring: { tone: "warn", mark: "◔", word: "v.sch_st_expiring" },
+  "needs-allow": { tone: "warn", mark: "‖", word: "v.sch_st_paused" },
+  "plan-changed": { tone: "warn", mark: "‖", word: "v.sch_st_paused" },
+  expired: { tone: "warn", mark: "‖", word: "v.sch_st_paused" },
+};
+
+function schTag(state) {
+  const s = SCH_STATE[state] ?? SCH_STATE["needs-allow"];
+  return `<span class="vf-st vf-${s.tone}"><span class="vf-mk" aria-hidden="true">${s.mark}</span>${esc(t(s.word))}</span>`;
+}
+
+function allowLine(row) {
+  if (row.state === "no-allow-needed")
+    return esc(t(row.codeOnly ? "v.sch_free_code" : "v.sch_free_local"));
+  if (!row.allow) return esc(t("v.sch_needs"));
+  if (row.state === "plan-changed")
+    return esc(t("v.sch_lapsed", { t: day(row.allow.at) }));
+  if (row.state === "expired")
+    return esc(t("v.sch_expired", { t: day(row.allow.expiresAt) }));
+  return esc(t("v.sch_allow_until", { t: day(row.allow.expiresAt) }));
+}
+
+/**
+ * The body of a schedule POST. An Allow carries the plan's fingerprint and
+ * commits the page showed (issue 964), so the person allows what they saw.
+ */
+export function allowBody(sv, path, id) {
+  const row = (sv?.schedules ?? []).find((r) => r.id === id);
+  return path === "allow" && row
+    ? {
+        project: sv?.project,
+        id,
+        hash: row.hash,
+        ...(row.commits ? { commits: row.commits } : {}),
+      }
+    : { project: sv?.project, id };
+}
+
+/** Issue 964: production limits, the page's words and the line to show. */
+const LIMIT_KEYS = {
+  "production-off": [
+    "v.sch_lim_prod_off",
+    "schedule: { production: { enabled: true } }",
+  ],
+  "too-often": [
+    "v.sch_lim_often",
+    "schedule: { production: { min_interval: 15m } }",
+  ],
+  host: ["v.sch_lim_host", ""],
+};
+
+function flagOf(row) {
+  if (row.limit && LIMIT_KEYS[row.limit.reason])
+    return `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t(LIMIT_KEYS[row.limit.reason][0]))} <code>${esc(row.limit.reason === "host" ? (row.limit.hosts ?? []).join(", ") : LIMIT_KEYS[row.limit.reason][1])}</code></div>`;
+  if (row.limit)
+    return row.limit.reason === "commands-off"
+      ? `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t("v.sch_lim_off"))} <code>schedule: { shared_commands: true }</code></div>`
+      : `<div class="vf-flag" role="status">${schTag("needs-allow")} ${esc(t("v.sch_lim_unclear"))} <code>${esc(row.limit.why ?? "")}</code></div>`;
+  if (row.state === "plan-changed")
+    return `<div class="vf-flag" role="status">${schTag(row.state)} ${esc(t("v.sch_changed"))}</div>`;
+  if (row.state === "needs-allow" || row.state === "expired")
+    return `<div class="vf-flag" role="status">${schTag(row.state)} ${esc(t("v.sch_needs_h"))}</div>`;
+  if (row.state === "expiring")
+    return `<div class="vf-flag" role="status">${esc(t("v.sch_expiring", { t: when(row.allow.expiresAt) }))}</div>`;
+  return "";
+}
+
+const SCH_MARK_WORD = {
+  enforced: "v.sch_mk_enforced",
+  "declared-read-only": "v.sch_mk_declared",
+  "reads-code-only": "v.sch_mk_code",
+  "declared-by-service": "v.sch_mk_service",
+};
+
+const SKIP_WORD = {
+  "needs-allow": "v.sch_sk_allow",
+  "plan-changed": "v.sch_sk_changed",
+  expired: "v.sch_sk_expired",
+  window: "v.sch_sk_window",
+  busy: "v.sch_sk_busy",
+  "commands-off": "v.sch_sk_cmdoff",
+  "command-unclear": "v.sch_sk_unclear",
+  "production-off": "v.sch_sk_prodoff",
+  "too-often": "v.sch_sk_often",
+  host: "v.sch_sk_host",
+};
+
+const modName = (row, id) =>
+  row.modules.find((m) => m.id === id)?.name ?? id.split(":").pop();
+
+/** Frame 4: what changed since the Allow, and the runs it missed. */
+function changeCard(row) {
+  const c = row.change;
+  if (!c) return "";
+  const code = (id) => `<code>${esc(modName(row, id))}</code>`;
+  const lines = [
+    ...c.added.map((id) =>
+      t("v.sch_ch_added", { m: "\u0000" }).replace("\u0000", code(id)),
+    ),
+    ...c.removed.map((id) =>
+      t("v.sch_ch_removed", { m: "\u0000" }).replace("\u0000", code(id)),
+    ),
+    ...c.changed.map((id) =>
+      t("v.sch_ch_cmd", { m: "\u0000" }).replace("\u0000", code(id)),
+    ),
+    ...c.writes.map((id) =>
+      t("v.sch_ch_writes", { m: "\u0000" }).replace("\u0000", code(id)),
+    ),
+    ...(c.window ? [esc(t("v.sch_ch_window"))] : []),
+    ...(c.cron ? [esc(t("v.sch_ch_cron"))] : []),
+  ];
+  return (
+    `<div class="vf-card vf-sch-change"><h4>${esc(t("v.sch_ch_h"))}</h4><ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>` +
+    (row.skipped?.length
+      ? `<h4>${esc(t("v.sch_missed_h"))}</h4><ul>${row.skipped
+          .map(
+            (k) =>
+              `<li>${esc(when(k.due))} ${stateTag("none")} ${esc(t(SKIP_WORD[k.reason] ?? "v.sch_sk_allow"))}</li>`,
+          )
+          .join("")}</ul>`
+      : "") +
+    `</div>`
+  );
+}
+
+/** Frame 3: Allow this schedule, its plan fixed to its modules. */
+function askCard(row, sv) {
+  const until = new Date(
+    Date.parse(sv.now) + (sv.settings?.allowExpiryMs ?? 30 * 86_400_000),
+  ).toISOString();
+  const title = row.name ?? row.modules.map((m) => m.name).join(", ");
+  return (
+    `<div class="vf-card vf-sch-ask" data-sch-card="${esc(row.id)}" role="group" aria-label="${esc(t("v.sch_ask"))}">` +
+    `<p class="vf-say" data-part="say">${esc(t("v.sch_ask_t", { s: title, e: envName(row.env) }))}</p>` +
+    `<p class="vf-meta" data-part="meta">${cronWords(row)} · ${esc(t("v.sch_window_h"))}: ${windowWords(row.window)}</p>` +
+    (row.readOnly ? `<p class="vf-meta">${esc(t("v.sch_ro_h"))}</p>` : "") +
+    `<h4>${esc(t("v.sch_does"))}</h4><ol class="vf-sch-mods">${row.modules
+      .map(
+        (m) =>
+          `<li><code>${esc(m.name)}</code> <span class="vf-meta">${esc(t(SCH_MARK_WORD[m.mark] ?? "v.sch_mk_declared"))}</span>` +
+          ` <span class="vf-st vf-${m.writes ? "warn" : "ok"}" data-part="touch">${esc(t(m.writes ? "v.sch_touch_writes" : "v.sch_touch_reads"))}</span>` +
+          (m.cost ? ` <span class="vf-meta">${esc(m.cost)}</span>` : "") +
+          `</li>`,
+      )
+      .join("")}</ol>` +
+    `<p class="vf-meta">${esc(t("v.sch_ask_h", { t: day(until) }))}</p>` +
+    `<div class="vf-btns"><button type="button" class="den-btn primary" data-sch-allow="${esc(row.id)}">${esc(t("v.sch_ask"))}</button>` +
+    `<button type="button" class="den-btn" data-sch-decline="${esc(row.id)}">${esc(t("v.sch_decline"))}</button></div>` +
+    `<p class="vf-meta">${esc(t("v.sch_decline_h"))}</p></div>`
+  );
+}
+
+const ASKS = new Set(["needs-allow", "plan-changed", "expired", "expiring"]);
+/** States whose flag already carries the symbol and word. */
+const FLAGGED = new Set(["needs-allow", "plan-changed", "expired"]);
+
+function scheduleRow(row, sv, open) {
+  const s = SCH_STATE[row.state] ?? SCH_STATE["needs-allow"];
+  const name = row.name ?? row.modules.map((m) => m.name).join(", ");
+  const env = row.codeOnly ? t("v.sch_code") : envName(row.env);
+  const last = row.last
+    ? `${stateTag(row.last.verdict === "passed" ? "passed" : row.last.verdict === "failed" ? "failed" : "none")} ${esc(when(row.last.at))}`
+    : esc(t("v.sch_never"));
+  const next =
+    row.runs && row.next ? esc(when(row.next)) : esc(t("v.sch_st_paused"));
+  const facts = [
+    ["v.sch_when", cronWords(row)],
+    ["v.sch_window_h", windowWords(row.window)],
+    ["v.sch_next_h", next],
+    ["v.sch_last_h", last],
+  ];
+  return (
+    `<li class="vf-sch vf-${s.tone}" id="sch-${esc(row.id)}" tabindex="-1" data-sch="${esc(row.id)}" data-state="${esc(row.state)}">` +
+    `<div class="vf-sch-h"><h3>${esc(name)}</h3><span class="vf-sch-env"><span class="vf-pill">${esc(env)}</span>` +
+    (row.readOnly
+      ? ` <span class="vf-pill">${esc(t("v.sch_ro"))}</span>`
+      : "") +
+    `</span></div>` +
+    `<div class="vf-sch-mods">${row.modules.map((m) => `<code>${esc(m.name)}</code>`).join(" ")}</div>` +
+    `<dl class="vf-sch-facts">${facts.map(([k, v]) => `<div><dt>${esc(t(k))}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
+    `<p class="vf-meta" data-part="meta">${FLAGGED.has(row.state) ? "" : `${schTag(row.state)} `}${allowLine(row)}</p>` +
+    flagOf(row) +
+    (row.state === "plan-changed" ? changeCard(row) : "") +
+    `<div class="vf-btns">` +
+    (row.needsAllow && !row.limit && ASKS.has(row.state)
+      ? `<button type="button" class="den-btn${row.runs ? "" : " primary"}" data-sch-ask="${esc(row.id)}" aria-expanded="${open === row.id}">${esc(t("v.sch_ask"))}</button>`
+      : "") +
+    (row.allow
+      ? `<button type="button" class="den-btn" data-sch-revoke="${esc(row.id)}">${esc(t("v.sch_revoke"))}</button>`
+      : "") +
+    (row.runs
+      ? `<button type="button" class="den-btn" data-sch-run="${esc(row.id)}">${esc(t("v.sch_run"))}</button>`
+      : "") +
+    `<a class="den-btn" href="?why=${encodeURIComponent(row.env)}" data-why="${esc(row.env)}">${esc(t("v.sch_runs"))}</a>` +
+    `</div>` +
+    (open === row.id ? askCard(row, sv) : "") +
+    `</li>`
+  );
+}
+
+const SCH_SNIPPET = `verify:
+  modules:
+    web/home-speed: { kind: performance, schedule: { cron: "0 2 * * *", window: "01:00-05:00" } }`;
+
+/**
+ * S11: every schedule, or how to add one. `open`: the row whose Allow card shows.
+ * @param {any} sv
+ * @param {{ open?: string | null, note?: string }} [opts]
+ */
+export function schedulesView(sv, { open = null, note = "" } = {}) {
+  const head =
+    `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.sch_t"))}</h2>` +
+    `<p class="vf-lede">${esc(t("v.sch_s"))}</p></div>` +
+    `<p class="vf-back" data-part="back"><a href="?">${esc(t("v.back"))}</a></p></div>`;
+  const live = `<p class="vf-meta" role="status" data-part="note">${esc(note)}</p>`;
+  const rows = sv.schedules ?? [];
+  if (!rows.length)
+    return (
+      head +
+      live +
+      `<section class="vf-card" data-sch-empty><p class="vf-say" data-part="say">${t("v.sch_empty", { c: "\u0000" }).split("\u0000").map(esc).join("<code>schedule:</code>")}</p>` +
+      `<pre class="vf-pre">${esc(SCH_SNIPPET)}</pre>` +
+      `<p class="vf-meta">${esc(t("v.sch_empty_h"))}</p></section>`
+    );
+  return (
+    head +
+    live +
+    `<p class="vf-meta">${esc(t("v.sch_tz", { z: sv.zone ?? "" }))}</p>` +
+    `<ul class="vf-sch-list">${rows.map((r) => scheduleRow(r, sv, open)).join("")}</ul>` +
+    `<p class="vf-meta">${t("v.sch_how", { a: "\u0000", b: "\u0001" })
+      .split(/(\u0000|\u0001)/)
+      .map((p) =>
+        p === "\u0000"
+          ? "<code>schedule:</code>"
+          : p === "\u0001"
+            ? "<code>verify:</code>"
+            : esc(p),
+      )
+      .join("")}</p>`
+  );
+}
+
 export function loadingView() {
   return (
     `<div class="vf-head"><div><h2 tabindex="-1">${esc(t("v.ov_t"))}</h2><p class="vf-lede">${esc(t("v.loading"))}</p></div></div>` +
@@ -976,7 +1261,10 @@ export function errorView() {
   );
 }
 
-/** Mounts the page in `root`: the answer, why, a plan, or a run, by the URL. */
+/**
+ * Mounts the page in `root`: the answer, why, a plan, a run, or the
+ * schedules (issue 214), by the URL.
+ */
 export async function mountVerify(
   root,
   { fetchImpl = globalThis.fetch, pollMs = 1500 } = {},
@@ -1013,6 +1301,10 @@ export async function mountVerify(
   /** S3's state. */
   let rv = { rec: null, confirming: false, reconnecting: false, timer: 0 };
   let view = "";
+  /** Issue 214, S11: the schedules, the one whose Allow is open, a note. */
+  let sv = null;
+  let open = null;
+  let note = "";
   const busy = (on) => root.setAttribute("aria-busy", on ? "true" : "false");
   const focusHead = () => root.querySelector(".vf-head h2")?.focus?.();
   const stopPoll = () => {
@@ -1040,6 +1332,76 @@ export async function mountVerify(
       root.innerHTML = errorView();
       busy(false);
     }
+  };
+
+  // ── Issue 214: Schedules (S11) ──
+  const drawSchedules = () => {
+    if (!sv) return;
+    root.innerHTML = schedulesView(sv, { open, note });
+    busy(false);
+  };
+  const readSchedules = async () => {
+    const { res, body } = await json("/api/verify/schedules");
+    if (!res.ok || !body.ok) throw new Error(body.error ?? res.status);
+    sv = body;
+  };
+  const loadSchedules = async () => {
+    busy(true);
+    root.innerHTML = loadingView();
+    try {
+      await readSchedules();
+      drawSchedules();
+    } catch {
+      root.innerHTML = errorView();
+      busy(false);
+    }
+  };
+  /** Allow, Revoke or Run now: a person's POST, through the working pop-up (BUSY-1). */
+  const schedAct = async (path, id, button) => {
+    const sh = globalThis.window?.denShell;
+    const run = async (headers) => {
+      const res = await fetchImpl(
+        withProject(`/api/verify/schedules/${path}`),
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            ...(headers ?? {}),
+          },
+          body: JSON.stringify(allowBody(sv, path, id)),
+        },
+      );
+      const body = await res.json();
+      if (!res.ok || !body.ok)
+        throw new Error(body.error ?? String(res.status));
+      return body;
+    };
+    let done = null;
+    try {
+      done = sh?.busyAction
+        ? await sh.busyAction(`schedule-${path}`, run, { button })
+        : await run({});
+    } catch (e) {
+      note = t("v.sch_err", { e: e.message });
+    }
+    if (done) {
+      note = t(
+        path === "allow"
+          ? "v.sch_allowed"
+          : path === "revoke"
+            ? "v.sch_revoked"
+            : "v.sch_started",
+      );
+      if (path === "allow") open = null;
+    }
+    try {
+      await readSchedules();
+    } catch {
+      // The list stays as it was; the pop-up said what happened.
+    }
+    drawSchedules();
+    root.querySelector(`#sch-${CSS.escape(id)}`)?.focus?.();
   };
 
   const drawPlan = () => {
@@ -1270,6 +1632,11 @@ export async function mountVerify(
       busy(true);
       root.innerHTML = planningView();
       await readRun(id);
+    } else if (q.get("schedules")) {
+      view = "schedules";
+      open = null;
+      note = "";
+      await loadSchedules();
     } else if (q.get("plan") || q.get("allow")) {
       view = "plan";
       await loadPlan();
@@ -1286,7 +1653,36 @@ export async function mountVerify(
     const el = ev.target instanceof globalThis.Element ? ev.target : null;
     if (!el) return;
     if (el.closest("[data-retry]")) {
-      void loadAnswer();
+      void (view === "schedules" ? loadSchedules() : loadAnswer());
+      return;
+    }
+    const sb = el.closest(
+      "button[data-sch-ask], button[data-sch-allow], button[data-sch-decline], button[data-sch-run], button[data-sch-revoke]",
+    );
+    if (sb) {
+      const ask = sb.getAttribute("data-sch-ask");
+      if (ask !== null) {
+        open = open === ask ? null : ask;
+        note = "";
+        drawSchedules();
+        root
+          .querySelector(`[data-sch-card="${CSS.escape(ask)}"] button`)
+          ?.focus?.();
+        return;
+      }
+      const decline = sb.getAttribute("data-sch-decline");
+      if (decline !== null) {
+        open = null;
+        note = t("v.sch_declined");
+        drawSchedules();
+        root.querySelector(`#sch-${CSS.escape(decline)}`)?.focus?.();
+        return;
+      }
+      const allow = sb.getAttribute("data-sch-allow");
+      const revoke = sb.getAttribute("data-sch-revoke");
+      if (allow !== null) void schedAct("allow", allow, sb);
+      else if (revoke !== null) void schedAct("revoke", revoke, sb);
+      else void schedAct("run", sb.getAttribute("data-sch-run"), sb);
       return;
     }
     const act = el.closest("[data-act]")?.getAttribute("data-act");
@@ -1328,7 +1724,9 @@ export async function mountVerify(
       void loadPlan();
       return;
     }
-    const a = el.closest("a[data-why], a[data-nav], .vf-back a");
+    const a = el.closest(
+      "a[data-why], a[data-nav], a[data-sched-open], .vf-back a",
+    );
     if (!a || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
     ev.preventDefault();
     const href = a.getAttribute("href");

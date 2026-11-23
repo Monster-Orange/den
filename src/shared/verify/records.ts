@@ -14,6 +14,7 @@ import * as path from "path";
 import type { ClauseRecord } from "./imports.js";
 import type { Verdict } from "../run-outcome.js";
 import type { ModuleRun, RunResult } from "./run.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** Who did something to a run. */
 export interface RunActor {
@@ -55,6 +56,9 @@ export interface RunRecord {
   /** Issue 210: who cancelled it, and when (ISO). */
   cancelledBy?: RunActor;
   cancelledAt?: string;
+  /** Issue 214: a schedule's run, and which schedule. */
+  trigger?: "schedule";
+  schedule?: string;
   /** The commit the run checked (the first repo's), when known. */
   commit?: string | null;
   modules: ModuleRecord[];
@@ -113,9 +117,7 @@ function writePointers(
 ): void {
   const file = pointersFile(stateDir, project);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(all, null, 2) + "\n");
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(all, null, 2) + "\n");
 }
 
 export function writeRunRecord(stateDir: string, rec: RunRecord): void {
@@ -124,9 +126,7 @@ export function writeRunRecord(stateDir: string, rec: RunRecord): void {
   const dir = path.join(runsDir(stateDir, rec.project), rec.runId);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "run.json");
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(rec, null, 2) + "\n");
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(rec, null, 2) + "\n");
   if (rec.source !== "import") return;
   const ptr = readPointers(stateDir, rec.project);
   const cur = ptr[rec.env];

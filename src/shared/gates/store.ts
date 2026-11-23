@@ -9,6 +9,7 @@
  *   settings.json     cpu_slots, cpu_slots_beside_browser (issue 751),
  *                     cpu_slots_beside_release_browser (its follow-up),
  *                     cpu_hold_load (issue 1009),
+ *                     load_hold_per_core (issue 1048),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -17,7 +18,11 @@
  *                     back (process gone, or lease lapsed), overdue, ended
  *                     early (Coach reads time lost); issue 715: priority
  *                     (who, why, what it passed) and priority-waits;
- *                     issue 795: yielded (the entry and the one let ahead)
+ *                     issue 795: yielded (the entry and the one let ahead);
+ *                     issue 867: waiter-gone, reattached, and a gone
+ *                     waiter taken back with reason "waiter-gone"
+ *   dropped.json      issue 867: places taken back from gone waiters, until
+ *                     their asker asks again (told once) or a day passes
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
@@ -32,18 +37,24 @@ import { writeFileAtomic } from "../atomic-write.js";
 import { browserRequiresContainerDefault } from "./browser-container.js";
 import {
   BOX_DEFAULTS,
+  BOX_NAME_RE,
   assign,
   boxCapOf,
+  boxOff,
+  boxRecheckSeconds,
   boxesOf,
   boxesWanted,
   checkBox,
+  checkBoxDefault,
   freshNo,
   freshYes,
+  parseHostOnly,
   withMemory,
   readBoxStates,
   realBoxProbe,
   writeBoxStates,
   type BoxCap,
+  type BoxOff,
   type BoxProbe,
   type BoxSettings,
   type BoxState,
@@ -105,6 +116,8 @@ export type GateSettingsPatch = {
   local_browser_slots?: number | null;
   /** Issue 1009: cpu asks wait at this load under a release run (0: off). */
   cpu_hold_load?: number | null;
+  /** Issue 1048: cpu asks wait over this many times the cores (0: off). */
+  load_hold_per_core?: number | null;
   overrun_margin_minutes?: number | null;
   /** Issue 993: held past this many times its estimate: the bell. */
   overrun_bell_multiple?: number | null;
@@ -120,6 +133,7 @@ export type GateSettingsPatch = {
   mcp_renew_minutes?: number | null;
   mcp_lapse_minutes?: number | null;
   mcp_grace_minutes?: number | null;
+  waiter_return_minutes?: number | null;
   box_check_timeout_seconds?: number | null;
   box_recheck_seconds?: number | null;
   /** 1: a browser ask on this host declares a container browser. */
@@ -128,16 +142,34 @@ export type GateSettingsPatch = {
   class_order?: string | null;
   class_map?: string | null;
   class_windows?: string | null;
+  /** Issue 1033: where a browser run with no --box goes: any or local. */
+  browser_box_default?: string | null;
+  /** Issue 1033: projects and label patterns kept on this machine. */
+  browser_host_only?: string | null;
 };
 
 /** Issue 803: the settings that are a line of text, and their checks. */
+/**
+ * Issue 1002: the most of the slot log an ask's measured estimate reads,
+ * from its end (1 MiB, some 5,000 rows), so an ask's cost doesn't grow
+ * with the log. A log under it reads whole, as before.
+ */
+export const MEASURE_TAIL_MAX_BYTES = 1024 * 1024;
+const MEASURE_CHUNK_BYTES = 64 * 1024;
+
 export const GATE_TEXT: Record<
-  "class_order" | "class_map" | "class_windows",
+  | "class_order"
+  | "class_map"
+  | "class_windows"
+  | "browser_box_default"
+  | "browser_host_only",
   (v: string) => unknown
 > = {
   class_order: parseClassOrder,
   class_map: parseClassMap,
   class_windows: parseClassWindows,
+  browser_box_default: checkBoxDefault,
+  browser_host_only: parseHostOnly,
 };
 type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
@@ -155,6 +187,8 @@ export const GATE_LIMITS: Record<
   local_browser_slots: { min: 1, max: 64, int: true },
   // Issue 1009: a 5-minute load average; 0 turns the hold off.
   cpu_hold_load: { min: 0, max: 1024, int: false },
+  // Issue 1048: a multiple of the cores; 0 turns the hold off.
+  load_hold_per_core: { min: 0, max: 64, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 993: 1 is "as soon as it passes its estimate".
   overrun_bell_multiple: { min: 1, max: 100, int: false },
@@ -174,6 +208,8 @@ export const GATE_LIMITS: Record<
   mcp_renew_minutes: { min: 1, max: 24 * 60, int: false },
   mcp_lapse_minutes: { min: 1, max: 7 * 24 * 60, int: false },
   mcp_grace_minutes: { min: 0, max: 7 * 24 * 60, int: false },
+  // Issue 867: how long a gone waiter keeps its place.
+  waiter_return_minutes: { min: 0, max: 24 * 60, int: false },
   // Issue 625: a test box's check, and how long a no from it is kept.
   // The check runs outside the lock, so it may take its time.
   // Clause 12: never more than 25 s (BOX_CHECK_CAP_MS).
@@ -244,7 +280,10 @@ export type GateEvent =
   | "priority"
   | "priority-waits"
   | "passed-unclaimed"
-  | "yielded";
+  | "yielded"
+  // Issue 867: a waiter's run is gone, its place kept; and taken back.
+  | "waiter-gone"
+  | "reattached";
 
 /** Issue 963: one key's change: the value in effect before and after. */
 export interface GateSettingChange {
@@ -268,6 +307,29 @@ function settingValue(s: GateSettings, key: string): number | string | null {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;
   return null;
+}
+
+/** Issue 867: a place taken back from a waiter whose run was gone. */
+export interface DroppedPlace {
+  id: string;
+  kind: GateKind;
+  who: string;
+  label: string;
+  askedAt: string;
+  /** When it was taken back (ISO). */
+  at: string;
+  reason: "waiter-gone";
+}
+
+/**
+ * Issue 867: a waiter (not a holder) asked through `gate run`, whose place
+ * is kept while its run is gone. An MCP or runner entry has its lease.
+ */
+function keptWaiter(
+  e: GateEntry,
+  s: Pick<GateSettings, "waiterReturnMinutes">,
+): boolean {
+  return !e.grantedAt && !e.mcp && !e.remote && s.waiterReturnMinutes > 0;
 }
 
 /** Issue 999: the median of some minutes, to a whole minute. */
@@ -310,6 +372,10 @@ export interface GateEventRow {
   to?: string;
   /** Issue 803: its class, when classes are set. */
   class?: string;
+  /** Issue 1033: granted (browser): the test box's name, or "local". */
+  machine?: string;
+  /** Issue 1033: why a run that could go to a box stays here. */
+  hostWhy?: string;
 }
 
 /** Issue 715: who asked for priority, for the record (739: a runner). */
@@ -346,7 +412,23 @@ export interface GateStoreOpts {
    * os.loadavg()[1]); tests pass a stub.
    */
   load?: () => number;
+  /** Issue 1048: the machine's cores (default os.availableParallelism). */
+  cores?: () => number;
 }
+
+/**
+ * Issue 1048: this machine's 5-minute load average. DEN_GATE_LOAD5 fixes
+ * the reading (the test setup sets 0, so a busy machine never holds an
+ * unrelated test's slot; a drill can set it high).
+ */
+export function realLoad(env: NodeJS.ProcessEnv = process.env): number {
+  const fixed = Number((env.DEN_GATE_LOAD5 ?? "").trim() || NaN);
+  return Number.isFinite(fixed) ? fixed : (os.loadavg()[1] ?? 0);
+}
+
+/** Issue 1048: this machine's cores. */
+export const realCores = (): number =>
+  os.availableParallelism?.() ?? os.cpus().length;
 
 /**
  * Issue 621: renew and lapse, seconds. A lapse shorter than two renews
@@ -377,6 +459,14 @@ function browserEndpointOf(kind: GateKind, v: string | undefined) {
     : {};
 }
 
+/** Issue 1033: one line, at most 200 characters, no control characters. */
+const oneLineOf = (r: string) =>
+  r
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, " ")
+    .trim()
+    .slice(0, 200);
+
 /** Issue 715: priority asked for by an agent where only people may. */
 export class GatePriorityRefused extends Error {}
 
@@ -391,9 +481,14 @@ export class GateStore {
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  /** Issue 867: the last ask took back a kept place (not a new entry). */
+  lastAskReattached = false;
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
+  private readonly readCores: () => number;
   readonly platform: NodeJS.Platform;
+  /** Issue 1002: bytes of the slot log measured() has read (for tests). */
+  logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
@@ -402,7 +497,18 @@ export class GateStore {
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
     this.probe = o.probe ?? realBoxProbe;
-    this.readLoad = o.load ?? (() => os.loadavg()[1]!);
+    this.readLoad = o.load ?? (() => realLoad());
+    this.readCores = o.cores ?? realCores;
+  }
+
+  /** Issue 1048: this machine's cores (at least 1). */
+  cores(): number {
+    try {
+      const n = this.readCores();
+      return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    } catch {
+      return 1;
+    }
   }
 
   /** Issue 1009: the machine's 5-minute load average now (NaN: unread). */
@@ -456,6 +562,10 @@ export class GateStore {
           num("local_browser_slots", GATE_DEFAULTS.localBrowserSlots),
         ),
         cpuHoldLoad: num("cpu_hold_load", GATE_DEFAULTS.cpuHoldLoad),
+        loadHoldPerCore: num(
+          "load_hold_per_core",
+          GATE_DEFAULTS.loadHoldPerCore,
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -496,6 +606,10 @@ export class GateStore {
           "mcp_grace_minutes",
           GATE_DEFAULTS.mcpGraceMinutes,
         ),
+        waiterReturnMinutes: num(
+          "waiter_return_minutes",
+          GATE_DEFAULTS.waiterReturnMinutes,
+        ),
         boxCheckTimeoutSeconds: num(
           "box_check_timeout_seconds",
           BOX_DEFAULTS.boxCheckTimeoutSeconds,
@@ -509,6 +623,10 @@ export class GateStore {
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
           ) === 1,
+        // Issue 1033: a browser run with no --box: here or a test box.
+        browserBoxDefault:
+          text("browser_box_default").trim() === "local" ? "local" : "any",
+        browserHostOnly: text("browser_host_only"),
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -626,6 +744,98 @@ export class GateStore {
   }
 
   /**
+   * Issue 867: a kept place of a gone waiter that this ask is the same run
+   * as (kind, asker, label, and where it may run), taken back: its pid is
+   * the new one, its place and id as they were. Call under the lock.
+   */
+  private keptPlaceFor(o: {
+    kind: GateKind;
+    who: string;
+    label: string;
+    pid: number;
+    where?: string;
+    mcp?: { install: string };
+  }): GateEntry | null {
+    if (o.mcp) return null;
+    const s = this.settings();
+    const now = this.now();
+    const who = o.who.slice(0, 200);
+    const label = o.label.slice(0, 120);
+    const where = (whereOf(o.kind, o.where) as { where?: string }).where;
+    const e = this.readAll()
+      .filter(
+        (x) =>
+          x.kind === o.kind &&
+          x.who === who &&
+          x.label === label &&
+          x.where === where &&
+          keptWaiter(x, s) &&
+          (x.orphanedAt || gone(x, this.alive)),
+      )
+      .sort((a, b) => a.askedAt.localeCompare(b.askedAt))[0];
+    if (!e) return null;
+    if (
+      e.orphanedAt &&
+      now - Date.parse(e.orphanedAt) > s.waiterReturnMinutes * 60_000
+    )
+      return null;
+    e.pid = o.pid;
+    delete e.runPid;
+    delete e.orphanedAt;
+    this.write(e);
+    this.record(e, { event: "reattached" });
+    return this.settle().find((x) => x.id === e.id) ?? e;
+  }
+
+  private get droppedFile(): string {
+    return path.join(this.dir, "dropped.json");
+  }
+
+  private readDropped(): DroppedPlace[] {
+    try {
+      const v = JSON.parse(fs.readFileSync(this.droppedFile, "utf-8"));
+      return Array.isArray(v) ? (v as DroppedPlace[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Issue 867: a place taken back from a gone waiter, kept a day (50 at most). */
+  private noteDropped(e: GateEntry, at: string): void {
+    const day = this.now() - 24 * 60 * 60_000;
+    const kept = this.readDropped().filter((d) => Date.parse(d.at) > day);
+    kept.push({
+      id: e.id,
+      kind: e.kind,
+      who: e.who,
+      label: e.label,
+      askedAt: e.askedAt,
+      at,
+      reason: "waiter-gone",
+    });
+    writeFileAtomic(this.droppedFile, JSON.stringify(kept.slice(-50)) + "\n");
+  }
+
+  /**
+   * Issue 867: what became of this asker's earlier place of the same run,
+   * if a gone waiter's place was taken back in the last day. Told once.
+   */
+  droppedFor(
+    e: Pick<GateEntry, "kind" | "who" | "label">,
+  ): DroppedPlace | null {
+    return this.locked(() => {
+      const all = this.readDropped();
+      const i = all.findIndex(
+        (d) => d.kind === e.kind && d.who === e.who && d.label === e.label,
+      );
+      if (i < 0) return null;
+      const [d] = all.splice(i, 1);
+      writeFileAtomic(this.droppedFile, JSON.stringify(all) + "\n");
+      return d!;
+    });
+  }
+
+  /**
    * Holds the lock while `fn` runs. The lock names its holder's pid; a
    * lock whose holder is gone (killed while holding it) is taken back at
    * once (issue 275), and any lock older than 30 s is stale.
@@ -738,15 +948,34 @@ export class GateStore {
     for (const e of this.readAll()) {
       // Issue 714: an MCP holder's lease lapses as a runner's does.
       const lapse = lapsed(e, now) || mcpLapsed(e, s, now);
-      if (!lapse && !gone(e, this.alive)) {
+      // Issue 867: a kept waiter stays on the kept-place path even when its
+      // old pid number is in use again (another process): its time still
+      // runs out, and only its own run asking again takes it back.
+      if (!lapse && !e.orphanedAt && !gone(e, this.alive)) {
         entries.push(e);
         continue;
       }
+      // Issue 867: a waiter whose run is gone keeps its place a while;
+      // one whose process was gone as it asked never waited, so not it.
+      if (!lapse && e.id !== claimNow && keptWaiter(e, s)) {
+        if (!e.orphanedAt) {
+          e.orphanedAt = at;
+          this.write(e);
+          this.record(e, { event: "waiter-gone" });
+        }
+        if (now - Date.parse(e.orphanedAt) <= s.waiterReturnMinutes * 60_000) {
+          entries.push(e);
+          continue;
+        }
+      }
       this.remove(e.id);
+      const why = !lapse && e.orphanedAt ? "waiter-gone" : undefined;
       this.record(e, {
         event: lapse ? "taken-back-lapsed" : "taken-back-gone",
         ...this.heldFor(e, now),
+        ...(why ? { reason: why } : {}),
       });
+      if (why) this.noteDropped(e, at);
     }
     // Issue 714: an MCP slot granted while it waited and not claimed in
     // time passes on, when someone waits: back in line, at its end.
@@ -781,7 +1010,16 @@ export class GateStore {
     // Issue 625: test boxes; an open answer is good for one assignment.
     const caps = this.boxCaps(now);
     // Issue 1009: the machine's load, read once per pass.
-    for (const g of assign(entries, s, now, caps.caps, this.load())) {
+    // Issue 867: a gone waiter keeps its place but is never given a slot.
+    const live = entries.filter((x) => !x.orphanedAt);
+    for (const g of assign(
+      live,
+      s,
+      now,
+      caps.caps,
+      this.load(),
+      this.cores(),
+    )) {
       const e = entries.find((x) => x.id === g.id)!;
       e.grantedAt = at;
       // Issue 714: an MCP ask granted while it waited is claimed by its
@@ -800,6 +1038,9 @@ export class GateStore {
         event: "granted",
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
         ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
+        // Issue 1033: the machine a browser run got, and why it stayed.
+        ...(e.kind === "browser" ? { machine: e.box ?? "local" } : {}),
+        ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
       });
     }
     if (caps.used) writeBoxStates(this.dir, caps.states);
@@ -831,24 +1072,81 @@ export class GateStore {
     who: string;
     actor?: string;
   }): { minutes: number; from: "label" | "actor" } | null {
-    const done = this.events().filter(
-      (r) => r.event === "released" && typeof r.minutes === "number",
-    );
-    const last10 = (rows: GateEventRow[]) =>
-      rows.slice(-10).map((r) => r.minutes!);
-    const label = last10(
-      done.filter((r) => r.kind === o.kind && r.label === o.label),
-    );
+    // Issue 1002: newest first, from the log's tail, until the label has
+    // its 10 (nothing older could change the answer) or the cap is read.
+    const label: number[] = [];
+    const mine: number[] = [];
+    this.tailRows((r) => {
+      if (r.event !== "released" || typeof r.minutes !== "number") return true;
+      if (r.kind !== o.kind) return true;
+      if (r.label === o.label && label.length < 10) label.push(r.minutes);
+      // Its agent's runs from any project, or the same asker in words.
+      if (
+        mine.length < 10 &&
+        (r.who === o.who || (!!o.actor && r.actor === o.actor))
+      )
+        mine.push(r.minutes);
+      return label.length < 10;
+    });
     if (label.length >= 3) return { minutes: median(label), from: "label" };
-    // Its agent's runs from any project, or the same asker in words.
-    const mine = last10(
-      done.filter(
-        (r) =>
-          r.kind === o.kind &&
-          (r.who === o.who || (!!o.actor && r.actor === o.actor)),
-      ),
-    );
     return mine.length ? { minutes: median(mine), from: "actor" } : null;
+  }
+
+  /**
+   * Issue 1002: the slot log's rows, newest first, read back from its end
+   * in chunks, to `visit` until it returns false, the log's start, or
+   * MEASURE_TAIL_MAX_BYTES read. A broken line is skipped.
+   */
+  private tailRows(visit: (r: GateEventRow | GateSettingsRow) => boolean) {
+    let fd: number;
+    try {
+      fd = fs.openSync(this.eventsFile, "r");
+    } catch {
+      return;
+    }
+    try {
+      let pos = fs.fstatSync(fd).size;
+      const floor = Math.max(0, pos - MEASURE_TAIL_MAX_BYTES);
+      // Bytes of a line cut by the chunk before (it continues later on).
+      let rest = Buffer.alloc(0);
+      while (pos > floor) {
+        const n = Math.min(MEASURE_CHUNK_BYTES, pos - floor);
+        pos -= n;
+        const chunk = Buffer.alloc(n);
+        fs.readSync(fd, chunk, 0, n, pos);
+        this.logBytesRead += n;
+        const buf = Buffer.concat([chunk, rest]);
+        // The first line is whole only at the log's start.
+        let end = buf.length;
+        let nl = buf.lastIndexOf(0x0a, end - 1);
+        while (nl >= 0) {
+          const l = buf.subarray(nl + 1, end).toString("utf-8");
+          if (l && !this.visitLine(l, visit)) return;
+          end = nl;
+          nl = end > 0 ? buf.lastIndexOf(0x0a, end - 1) : -1;
+        }
+        rest = buf.subarray(0, end);
+        if (pos === 0 && rest.length) {
+          this.visitLine(rest.toString("utf-8"), visit);
+          return;
+        }
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  private visitLine(
+    l: string,
+    visit: (r: GateEventRow | GateSettingsRow) => boolean,
+  ): boolean {
+    let r: GateEventRow | GateSettingsRow;
+    try {
+      r = JSON.parse(l) as GateEventRow | GateSettingsRow;
+    } catch {
+      return true;
+    }
+    return visit(r);
   }
 
   /**
@@ -914,6 +1212,10 @@ export class GateStore {
     project?: string;
     /** A browser run's declared container browser, as recorded. */
     browserEndpoint?: string;
+    /** Issue 1033: why a run that could go to a box stays here. */
+    hostWhy?: string;
+    /** Issue 1033: a default pick's boxes (the others can't serve it). */
+    onlyBoxes?: string[];
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -923,6 +1225,10 @@ export class GateStore {
         throw new GatePriorityRefused(
           "only a person may ask for release priority on this machine (Settings, gate priority)",
         );
+      // Issue 867: the same run asking again takes back its kept place.
+      const back = this.keptPlaceFor(o);
+      this.lastAskReattached = !!back;
+      if (back) return back;
       const e: GateEntry = {
         id: `${o.kind}-${randomBytes(5).toString("hex")}`,
         kind: o.kind,
@@ -943,6 +1249,16 @@ export class GateStore {
           ? { pwVersion: o.pwVersion }
           : {}),
         ...browserEndpointOf(o.kind, o.browserEndpoint),
+        ...(o.kind === "browser" && o.hostWhy
+          ? { hostWhy: oneLineOf(o.hostWhy) }
+          : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.onlyBoxes
+          ? {
+              onlyBoxes: o.onlyBoxes
+                .filter((n) => BOX_NAME_RE.test(n))
+                .slice(0, 64),
+            }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -1316,6 +1632,33 @@ export class GateStore {
     });
   }
 
+  /**
+   * Turns a test box on or off (a person's). Off: no new slot and no
+   * contact; its running slots finish. The box, or null when none is set.
+   */
+  setBoxEnabled(name: string, on: boolean): GateBox | null {
+    return this.locked(() => {
+      const list = this.boxes();
+      const b = list.find((x) => x.name === name);
+      if (!b) return null;
+      if (on) delete b.enabled;
+      else b.enabled = false;
+      this.writeBoxes(list, name);
+      return b;
+    });
+  }
+
+  /** The boxes skipped now (turned off, or outside their window), and why. */
+  boxesOff(): Record<string, BoxOff> {
+    const now = this.now();
+    const out: Record<string, BoxOff> = {};
+    for (const b of this.boxes()) {
+      const off = boxOff(b, now);
+      if (off) out[b.name] = off;
+    }
+    return out;
+  }
+
   /** What the last check of each box found. */
   boxStates(): Record<string, BoxState> {
     return readBoxStates(this.dir);
@@ -1326,9 +1669,12 @@ export class GateStore {
     const boxes = this.boxes();
     const states = boxes.length ? readBoxStates(this.dir) : {};
     const s = this.settings();
-    const caps: BoxCap[] = boxes.map((b) =>
-      boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
-    );
+    // Turned off, or outside its window: no new slot (running ones finish).
+    const caps: BoxCap[] = boxes
+      .filter((b) => !boxOff(b, now))
+      .map((b) =>
+        boxCapOf(b, freshYes(states[b.name], now, s.boxCheckTimeoutSeconds)),
+      );
     return { boxes, states, caps, used: false };
   }
 
@@ -1350,9 +1696,10 @@ export class GateStore {
    * gives the slots. Called by whoever waits (gate run, a runner's ask),
    * never on a timer. A box is checked only when a slot on it is about to
    * be given; a held or unreachable box is not checked again for
-   * box_recheck_seconds. The checks run outside the lock. A held or
-   * unreachable box is passed over in the same call: the run goes to the
-   * next box, or waits.
+   * its recheck_seconds (else box_recheck_seconds). A box turned off, or
+   * outside its window, is never contacted. The checks run outside the
+   * lock. A held or unreachable box is passed over in the same call: the
+   * run goes to the next box, or waits.
    */
   async checkBoxes(): Promise<void> {
     const boxes = this.boxes();
@@ -1362,7 +1709,11 @@ export class GateStore {
       const now = this.now();
       const states = readBoxStates(this.dir);
       const caps = boxes
-        .filter((b) => !freshNo(states[b.name], now, s.boxRecheckSeconds))
+        .filter(
+          (b) =>
+            !boxOff(b, now) &&
+            !freshNo(states[b.name], now, boxRecheckSeconds(b, s)),
+        )
         .map((b) => boxCapOf(b, true));
       const want = boxesWanted(this.readAll(), s, now, caps).filter(
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),

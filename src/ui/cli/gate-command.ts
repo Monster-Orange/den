@@ -11,14 +11,18 @@
  *       release puts a release run a person waits on at the front of its
  *       kind's queue (never ahead of a holder), recorded with why
  *       Issue 625: --box any lets a browser run take a test box's slot
- *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS
+ *       (whichever frees first); the run gets DEN_GATE_BOX, DEN_PW_WS.
+ *       Issue 1033: with no --box it does so by default (the setting
+ *       browser_box_default, any or local); one that can't go to a box
+ *       (no --base-url, no matching Playwright, host-only) stays here and
+ *       says why in one line
  *       --browser-endpoint ws://…|self: where a browser run's browser
  *       runs (a container's Playwright endpoint, or a container the run
  *       starts itself); also read from DEN_PW_WS, HUB_PW_WEBKIT_WS,
  *       E2E_WEBKIT_WS. On macOS a browser run without one is refused
  *       (gates/browser-container.ts; a Setting)
  *   status [--json]          who holds, who waits, overruns, test boxes
- *   box <list|add|remove>    the test boxes (a person changes them)
+ *   box <list|add|remove|enable|disable>  the test boxes (a person's)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
@@ -36,6 +40,7 @@
  *            [--box-check-timeout-seconds N] [--box-recheck-seconds N]
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
  *            [--browser-requires-container 0|1]
+ *            [--browser-box-default any|local] [--browser-host-only <l>]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
@@ -45,7 +50,10 @@ import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
+  gateWorkers,
+  type LoadHold,
   expectedStart,
+  GATE_DEFAULTS,
   loadHold,
   queueEnd,
   queueMinOf,
@@ -61,11 +69,18 @@ import {
   GateStore,
   GateYieldRefused,
   checkGatePatch,
+  realCores,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import * as fs from "fs";
-import { boxEnv, checkBox } from "../../shared/gates/boxes.js";
 import {
+  boxEnv,
+  checkBox,
+  defaultPlace,
+  hostOnlyMatch,
+} from "../../shared/gates/boxes.js";
+import {
+  SELF,
   browserSlotCheck,
   browserSlotRefusal,
   endpointFromEnv,
@@ -74,11 +89,18 @@ import {
 } from "../../shared/gates/browser-container.js";
 import {
   GATE_MEANINGS,
+  KEPT_PLACE_WORDS,
+  PRIORITY_OFF_RUN,
+  PRIORITY_OFF_STATUS,
   PRIORITY_OFF_WARNING,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
 import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
-import { gateBoxesView, gateView } from "../../shared/gates/view.js";
+import {
+  boxOffWords,
+  gateBoxesView,
+  gateView,
+} from "../../shared/gates/view.js";
 import { product } from "../../shared/product.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
@@ -94,20 +116,26 @@ export const GATE_HELP = {
     "    waits for a slot, runs <cmd>, gives the slot back when it ends",
     "    --priority release --reason <why>: a release run a person waits on",
     "    goes to the front of its kind's queue (one at a time; recorded)",
-    "    --box any: a browser run that can use a test box's browser takes",
-    "    whichever slot frees first, here or on a box (DEN_PW_WS is set)",
+    "    a browser run takes whichever browser slot frees first, here or on a",
+    "    test box (DEN_PW_WS is set); --box local keeps it here, --box <name>",
+    "    sends it to one box. One with no --base-url, its own browser, no box",
+    "    for its Playwright version, or marked host-only stays here, saying why",
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
     "{cli} gate status [--json]      who holds a slot, who waits",
-    "{cli} gate box <list|add|remove> <name> [--ssh login@host] [--ssh-port N]",
+    "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
     "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
     "    [--pw <version>=ws://…] (repeat it): a box with a Playwright address",
     "    per version; a run gets the one for its version (--pw-version, else",
     "    the installed Playwright, looking up to the repo's top folder)",
-    "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443)",
+    "    [--window HH:MM-HH:MM] when it may be used, this machine's time",
+    "    [--off] added turned off; [--recheck-seconds N] least time between",
+    "    checks of a box that says no. Off or outside its window: no slot, no contact",
+    "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443);",
+    "    127.0.0.1, localhost and <name>.localhost are one host there",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
@@ -122,6 +150,8 @@ export const GATE_HELP = {
     '    [--class-order "release, lane, other"] [--class-map "<project>=<class>, label:<pattern>=<class>, *=<class>"]',
     '    [--class-windows "<class>=22:00-06:00/30"]   priority classes per project ("" clears)',
     "    [--browser-requires-container 0|1]   a browser run declares a container browser",
+    "    [--browser-box-default any|local]   where a browser run with no --box goes",
+    '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -133,10 +163,19 @@ export interface GateRun {
   kill: (s: NodeJS.Signals) => void;
   /** Resolves with its exit code when it ends. */
   done: Promise<number>;
+  /**
+   * Issue 1023: true once the command can run no more, though it has not
+   * ended: it is writing a core dump (SIGQUIT, on Linux). Its threads are
+   * stopped for good, and the dump can take seconds (a crash handler reads
+   * all of it), so its slot is given back then, not at its exit.
+   */
+  dumping?: () => boolean;
 }
 
 export interface GateDeps {
   store: GateStore;
+  /** Issue 1048: this machine's cores (the worker cap); default the host's. */
+  cores?: number;
   env: NodeJS.ProcessEnv;
   out: (line: string) => void;
   err: (line: string) => void;
@@ -160,6 +199,23 @@ export interface GateDeps {
 
 /** Issue 928: how often a nested run checks its slot still holds. */
 const NESTED_LOOK_MS = 5_000;
+
+/** Issue 1023: how often a run looks whether its command is dumping core. */
+const DUMP_LOOK_MS = 100;
+
+/**
+ * Issue 1023: whether a process is writing a core dump, from Linux's
+ * /proc/<pid>/status ("CoreDumping: 1"). False where there is no /proc.
+ */
+export function coreDumping(pid: number, read = fs.readFileSync): boolean {
+  try {
+    return /^CoreDumping:\s*1\s*$/m.test(
+      String(read(`/proc/${pid}/status`, "utf8")),
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 928: what `gate run` tells its command about the slot it holds. */
 export const GATE_SLOT_ENV = "DEN_GATE_SLOT";
@@ -186,6 +242,25 @@ function heldSlotFor(
   const under = d.descends ?? ((p, r) => descendsFrom(p, r));
   const roots = [e.runPid, e.pid].filter((p): p is number => !!p && p > 1);
   return roots.some((r) => under(d.pid, r)) ? e : undefined;
+}
+
+/** Issue 1033: whether a --box name is this machine's own. */
+function isThisMachine(name: string): boolean {
+  const full = os.hostname().toLowerCase();
+  const n = name.toLowerCase();
+  return n === full || n === full.split(".")[0];
+}
+
+/**
+ * The machine a held slot is on, in words: a box's name; this machine
+ * for a browser run that could have gone to a box (issue 1033); else
+ * nothing, as before.
+ */
+function machineWords(e: GateEntry): string {
+  if (e.box) return ` on box ${e.box}`;
+  return e.kind === "browser" && (e.where || e.hostWhy)
+    ? " on this machine"
+    : "";
 }
 
 /** A signal's exit code, as a shell gives it (128 + its number). */
@@ -215,11 +290,17 @@ const realExec = (
     stdio: "inherit",
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
+  const running = () => k.exitCode === null && k.signalCode === null;
   return {
     pid: k.pid,
     kill: (s) => {
-      if (k.exitCode === null && k.signalCode === null) k.kill(s);
+      if (running()) k.kill(s);
     },
+    ...(process.platform === "linux"
+      ? {
+          dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
+        }
+      : {}),
     done: new Promise<number>((resolve) => {
       k.on("error", () => resolve(127));
       k.on("exit", (code, signal) => resolve(code ?? signalCode(signal)));
@@ -405,6 +486,16 @@ function priorityWords(
   return `  ${why} (waits behind the one ahead)`;
 }
 
+/** Issue 1048: the workers a cpu slot's run may use. */
+export const GATE_WORKERS_ENV = "DEN_GATE_WORKERS";
+
+/** Issues 1009, 1048: why a cpu run waits on the load, in words. */
+export function holdWords(h: LoadHold): string {
+  return h.why === "release"
+    ? `waiting: load ${Math.round(h.load)} ≥ ${h.limit} while a release run holds the browser slot`
+    : `waiting: this machine's load is ${h.load.toFixed(1)}, over ${h.perCore} × ${h.cores} cores (${h.limit}), while another unit test run is going; it starts once the load drops or that run ends`;
+}
+
 /** One line for a holder or waiter. */
 export function slotLine(
   e: GateEntry,
@@ -413,13 +504,17 @@ export function slotLine(
   margin: { overrunMarginMinutes: number } & Partial<GateSettings> & {
       /** Issue 1009: the machine's 5-minute load, when read. */
       load?: number;
+      /** Issue 867: the person's language, for the kept-place words. */
+      lang?: UiLanguage;
+      /** Issue 1048: the machine's cores. */
+      cores?: number;
     },
 ): string {
   const yields = yieldedTo(e, all);
   // Issue 1009: a cpu waiter held by the load under a release run.
   const hold =
     !e.grantedAt && e.kind === "cpu" && !e.priority
-      ? loadHold(all, margin, margin.load)
+      ? loadHold(all, margin, margin.load, margin.cores)
       : undefined;
   // Issue 803: its class, and a wait for its class's window.
   const cls = classOf(e, margin.classes);
@@ -428,18 +523,17 @@ export function slotLine(
     priorityWords(e, all, margin) +
     (cls ? `  class ${cls}` : "") +
     (win ? `  waits for its ${win.text} window` : "") +
-    (hold
-      ? `  waiting: load ${Math.round(hold.load)} ≥ ${hold.limit} while a release run holds the browser slot`
-      : "") +
+    (hold ? `  ${holdWords(hold)}` : "") +
     (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
     (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "") +
+    (e.hostWhy ? `  stays here: ${e.hostWhy}` : "") +
     // Issue 999: a padded estimate, and what the queue uses instead.
     (e.padded && e.expectedMin !== undefined
       ? `  estimate ${e.estimateMin} min; this usually takes ${e.expectedMin}`
       : "");
   if (e.grantedAt) {
     const late = overrun(e, margin, now) ? " (past its estimate)" : "";
-    const on = e.box ? ` on box ${e.box}` : "";
+    const on = machineWords(e);
     return `${e.id}  holds ${e.kind}${on}  ${e.who}  "${e.label}"  until about ${hm(queueEnd(e))}${late}${pri}`;
   }
   // Issue 625: a waiter that may go to a test box says so.
@@ -449,7 +543,11 @@ export function slotLine(
       : e.where
         ? ` (box ${e.where})`
         : "";
-  return `${e.id}  waits for ${e.kind}${where}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now, margin))}${pri}`;
+  // Issue 867: a waiter whose run is gone, its place kept a while.
+  const kept = e.orphanedAt
+    ? `  ${KEPT_PLACE_WORDS[margin.lang ?? "en"].kept(hm(Date.parse(e.orphanedAt) + (margin.waiterReturnMinutes ?? GATE_DEFAULTS.waiterReturnMinutes) * 60_000))}`
+    : "";
+  return `${e.id}  waits for ${e.kind}${where}  ${e.who}  "${e.label}"  starts about ${hm(expectedStart(all, e.id, now, margin))}${pri}${kept}`;
 }
 
 /** Issue 625: one line per test box: its slots, or why it is skipped. */
@@ -463,7 +561,16 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
     const pw = b.playwrightVersions?.length
       ? `, playwright ${b.playwrightVersions.join(", ")}`
       : "";
-    if (b.state === "held" || b.state === "unreachable" || b.state === "low")
+    // A run already on it finishes; it shows beside why the box is skipped.
+    const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
+    const off = boxOffWords(b);
+    if (off) return `box ${b.name}: skipped, ${off}${still}${pw}`;
+    if (
+      b.state === "held" ||
+      b.state === "unreachable" ||
+      b.state === "low" ||
+      b.state === "unknown"
+    )
       return `box ${b.name}: skipped, ${b.state}${b.reason ? `: ${b.reason}` : ""}${pw}`;
     return (b.state === "unchecked" ? `${base}, not checked yet` : base) + pw;
   });
@@ -534,7 +641,14 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (kind !== "browser" && kind !== "cpu")
     throw new GateUsage("--kind is browser or cpu");
   // Issue 625: a browser run that can use a test box's browser says so.
-  const where = typeof f["--box"] === "string" ? f["--box"] : undefined;
+  let where = typeof f["--box"] === "string" ? f["--box"] : undefined;
+  // Issue 1033: this machine's own name (not a box's) is local.
+  if (
+    where !== undefined &&
+    isThisMachine(where) &&
+    !d.store.boxes().some((b) => b.name === where)
+  )
+    where = "local";
   if (where !== undefined) {
     if (kind !== "browser")
       throw new GateUsage("--box goes with --kind browser");
@@ -552,12 +666,30 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  const label =
+    typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
+  // Issue 1033: with no --box, a browser run may go anywhere (the
+  // setting browser_box_default).
+  const anyByDefault =
+    where === undefined &&
+    kind === "browser" &&
+    d.store.settings().browserBoxDefault === "any";
+  // Issue 1033: a host-only run never goes to a box, nor runs inside a
+  // box's slot: checked before the nested look.
+  const hostOnly =
+    anyByDefault &&
+    !!hostOnlyMatch(
+      { label, project: path.basename(d.cwd) },
+      d.store.settings().browserHostOnly,
+    );
   // Issue 928: inside a held slot of this kind and place: run in it, at
   // once. The outer run checked the browser and keeps the slot.
-  const inside = heldSlotFor(d, kind as GateKind, where);
+  const inside = heldSlotFor(
+    d,
+    kind as GateKind,
+    where ?? (anyByDefault && !hostOnly ? "any" : undefined),
+  );
   if (inside) {
-    const label =
-      typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
     d.err(
       `gate: inside ${inside.id} (holds ${kind}${inside.box ? ` on box ${inside.box}` : ""}); running ${label} in it`,
     );
@@ -603,6 +735,45 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ? endpointFromEnv(d.env)
       : undefined;
   const endpoint = flagEndpoint ?? fromEnv?.endpoint;
+  const urls = (typeof f["--base-url"] === "string" ? f["--base-url"] : "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const pwFlag =
+    typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
+  // Issue 1033: no --box: the first free browser slot, here or on a test
+  // box; or here, saying why in one line (never a failure for it).
+  let hostWhy: string | undefined;
+  let onlyBoxes: string[] | undefined;
+  if (anyByDefault && d.store.boxes().length) {
+    const badUrl = urls.map(checkBaseUrl).find(Boolean);
+    const pick = badUrl
+      ? { why: `--base-url ${badUrl}, so a test box can't reach the app` }
+      : defaultPlace({
+          setting: "any",
+          hostOnly: d.store.settings().browserHostOnly,
+          label,
+          project: path.basename(d.cwd),
+          boxes: d.store.boxes(),
+          baseUrl: urls.length > 0,
+          pwVersion: pwFlag ?? playwrightVersion(d.cwd),
+          // A run that brings its own browser (the flag, or its
+          // environment) keeps it: a box would only change DEN_PW_WS.
+          ...(endpoint !== undefined
+            ? {
+                ownBrowser:
+                  endpoint === SELF
+                    ? "it starts its own browser container"
+                    : `it brings its own browser (${fromEnv?.from ?? "--browser-endpoint"})`,
+              }
+            : {}),
+        });
+    where = pick.where;
+    hostWhy = pick.why;
+    onlyBoxes = pick.only;
+    if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
+    if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
+  }
   const verdict = browserSlotCheck({
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
@@ -625,11 +796,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // handed them (DEN_GATE_ALLOW) to guard every browser context.
   const allow: string[] = [];
   if (where && where !== "local") {
-    const raw = typeof f["--base-url"] === "string" ? f["--base-url"] : "";
-    const urls = raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
     if (!urls.length)
       throw new GateUsage(
         "a box run needs --base-url http://<name>.localhost:<port>[,…] (or http://127.0.0.1:* for the ports the run opens itself): the app's loopback addresses, never port 80 or 443",
@@ -643,8 +809,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // Clause 11: the run's Playwright client version (a box whose server
   // differs is skipped, saying why).
   const pwVersion =
-    typeof f["--pw-version"] === "string"
-      ? f["--pw-version"]
+    pwFlag !== undefined
+      ? pwFlag
       : where && where !== "local"
         ? playwrightVersion(d.cwd)
         : undefined;
@@ -663,8 +829,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     typeof f["--estimate"] === "string"
       ? parseEstimate(f["--estimate"])
       : undefined;
-  const label =
-    typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
   // Issue 715: a release run a person waits on, and why.
   const priority = f["--priority"];
   const reason = typeof f["--reason"] === "string" ? f["--reason"].trim() : "";
@@ -693,16 +857,28 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(where ? { where } : {}),
       ...(pwVersion ? { pwVersion } : {}),
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
+      ...(hostWhy ? { hostWhy } : {}),
+      ...(onlyBoxes ? { onlyBoxes } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
     throw err;
   }
+  // Issue 867: back in a place kept since a restart, or told what became
+  // of the earlier one.
+  const kw = KEPT_PLACE_WORDS[d.lang ?? personLanguage()];
+  if (s.lastAskReattached)
+    d.err(`gate: ${kw.back(e.id, hm(Date.parse(e.askedAt)))}`);
+  else {
+    const was = s.droppedFor(e);
+    if (was)
+      d.err(
+        `gate: ${kw.letGo(hm(Date.parse(was.askedAt)), hm(Date.parse(was.at)), s.settings().waiterReturnMinutes)}`,
+      );
+  }
   // Issue 963: asked for release priority, but it is off here.
   if (priority && s.settings().priorityMax === 0)
-    d.err(
-      "gate: taken as an ordinary run: release priority is off on this machine (priority_max 0)",
-    );
+    d.err(`gate: ${PRIORITY_OFF_RUN[d.lang ?? personLanguage()]}`);
   const id = e.id;
   let child: GateRun | undefined;
   let released = false;
@@ -714,9 +890,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // While waiting, a signal gives the place back and leaves. While the
   // command runs, it goes to the command, whose end gives the slot back:
   // a slot is never free while the run it was for goes on.
+  // Issue 867: a hang-up or terminate while waiting (a restart ending
+  // this run) keeps the place for the run's return; Ctrl-C gives it back.
   const off = d.onSignal((sig) => {
     if (child) return child.kill(sig);
-    release();
+    const keep =
+      (sig === "SIGHUP" || sig === "SIGTERM") &&
+      s.settings().waiterReturnMinutes > 0;
+    if (keep) released = true;
+    else release();
     cancelled = signalCode(sig);
     d.exit(cancelled);
   });
@@ -731,12 +913,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         // Issue 1009: a cpu run held by the load says so.
         const hold =
           e.kind === "cpu" && !e.priority
-            ? loadHold(all, set, s.load())
+            ? loadHold(all, set, s.load(), s.cores())
             : undefined;
-        if (hold)
-          d.err(
-            `waiting: load ${Math.round(hold.load)} ≥ ${hold.limit} while a release run holds the browser slot`,
-          );
+        if (hold) d.err(holdWords(hold));
         said = d.now();
       }
       await d.sleep(2_000);
@@ -747,15 +926,18 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       if (!e) throw new Error(`the slot ${id} was ended while waiting`);
     }
     const box = e.box ? s.boxes().find((b) => b.name === e!.box) : undefined;
-    d.err(
-      `gate: ${id} holds ${kind}${e.box ? ` on box ${e.box}` : ""}; running ${label}`,
-    );
+    d.err(`gate: ${id} holds ${kind}${machineWords(e)}; running ${label}`);
     // Issue 928: the command knows the slot it runs in.
-    const slotEnv = {
+    const slotEnv: Record<string, string> = {
       [GATE_SLOT_ENV]: id,
       [GATE_SLOT_KIND_ENV]: kind,
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
     };
+    // Issue 1048: a cpu run here uses its share of the cores, no more.
+    if (kind === "cpu" && !e.box)
+      slotEnv[GATE_WORKERS_ENV] = String(
+        gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
+      );
     child = box
       ? d.exec(pos[0]!, pos.slice(1), {
           // Issue 1017: the box's endpoint for this run's version.
@@ -771,6 +953,15 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           })
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined) s.setRunPid(id, child.pid);
+    // Issue 1023: a command that took SIGQUIT (from gate run or anyone)
+    // and is dumping core can run no more: its slot is given back then,
+    // not after the dump, which a crash handler may take seconds to read.
+    const dumping = child.dumping;
+    const noDump = dumping
+      ? d.every(DUMP_LOOK_MS, () => {
+          if (!released && dumping()) release();
+        })
+      : () => {};
     // Past its estimate plus the margin, it says so once; never stopped.
     let flagged = false;
     const stop = d.every(60_000, () => {
@@ -784,6 +975,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     try {
       return await child.done;
     } finally {
+      noDump();
       stop();
     }
   } finally {
@@ -800,20 +992,27 @@ function status(args: string[], d: GateDeps): number {
   }
   const all = d.store.list();
   // Issue 1009: the load, so a held cpu waiter's line says why.
-  const set = { ...d.store.settings(), load: d.store.load() };
+  const set = {
+    ...d.store.settings(),
+    load: d.store.load(),
+    cores: d.store.cores(),
+    lang: d.lang ?? personLanguage(),
+  };
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
   // Issue 963: said plainly, so a release run waiting in line has a why.
-  if (set.priorityMax === 0) d.out("release priority: off (priority_max 0)");
+  if (set.priorityMax === 0)
+    d.out(PRIORITY_OFF_STATUS[d.lang ?? personLanguage()]);
   return 0;
 }
 
 /**
  * Issue 625: the test boxes. `box list`; `box add <name> --ssh <dest>
  * [--ssh-port N] [--ssh-identity <key file>] [--playwright ws://…]
- * [--slots N] [--hold-file <path>] [--time-scale X]` (adds or replaces);
- * `box remove <name>`. Adding and removing are a person's.
+ * [--slots N] [--hold-file <path>] [--time-scale X] [--window HH:MM-HH:MM]
+ * [--off] [--recheck-seconds N]` (adds or replaces); `box remove <name>`;
+ * `box enable|disable <name>`. Changing them is a person's.
  */
 function boxCmd(args: string[], d: GateDeps): number {
   const [verb, ...rest] = args;
@@ -833,12 +1032,22 @@ function boxCmd(args: string[], d: GateDeps): number {
           (b.hold_file ? `  hold file ${b.hold_file}` : "") +
           (b.time_scale && b.time_scale !== 1
             ? `  time scale ${b.time_scale}`
-            : ""),
+            : "") +
+          (b.window ? `  window ${b.window} (this machine's time)` : "") +
+          (b.recheck_seconds
+            ? `  rechecked after ${b.recheck_seconds} s`
+            : "") +
+          (b.enabled === false ? "  turned off" : ""),
       );
     return 0;
   }
-  if (verb !== "add" && verb !== "remove")
-    throw new GateUsage("gate box <list|add|remove> ...");
+  if (
+    verb !== "add" &&
+    verb !== "remove" &&
+    verb !== "enable" &&
+    verb !== "disable"
+  )
+    throw new GateUsage("gate box <list|add|remove|enable|disable> ...");
   if (isAgentEnv(d.env))
     throw new GateUsage(
       `gate box ${verb}: only a person can change the test boxes (this is an agent)`,
@@ -854,9 +1063,25 @@ function boxCmd(args: string[], d: GateDeps): number {
     "--min-free-mem-mb": true,
     "--playwright-version": true,
     "--pw": "many",
+    "--window": true,
+    "--recheck-seconds": true,
+    "--off": false,
   });
   const [name, extra] = pos;
   if (!name || extra) throw new GateUsage(`gate box ${verb} needs one <name>`);
+  if (verb === "enable" || verb === "disable") {
+    const b = d.store.setBoxEnabled(name, verb === "enable");
+    if (!b) {
+      d.err(`gate box ${verb}: no box ${name}`);
+      return 1;
+    }
+    d.out(
+      verb === "enable"
+        ? `Box ${name} turned on${b.window ? `: slots within ${b.window}, this machine's time` : ""}.`
+        : `Box ${name} turned off: no new slots and no contact. Its running slots finish.`,
+    );
+    return 0;
+  }
   if (verb === "remove") {
     if (!d.store.removeBox(name)) {
       d.err(`gate box remove: no box ${name}`);
@@ -879,11 +1104,14 @@ function boxCmd(args: string[], d: GateDeps): number {
     min_free_mem_mb: num("--min-free-mem-mb"),
     playwright_version: f["--playwright-version"],
     ...(f["--pw"] ? { playwright_endpoints: pwPairs(f["--pw"]) } : {}),
+    window: f["--window"],
+    recheck_seconds: num("--recheck-seconds"),
+    ...(f["--off"] ? { enabled: false } : {}),
   });
   if (!c.ok) throw new GateUsage(c.error);
   d.store.setBox(c.box);
   d.out(
-    `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A run takes it with gate run --kind browser --box any.`,
+    `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A browser run with --base-url takes it when it is free (gate settings --browser-box-default local: only with --box).`,
   );
   return 0;
 }
@@ -948,6 +1176,7 @@ function settings(args: string[], d: GateDeps): number {
     "--cpu-slots-beside-release-browser": true,
     "--local-browser-slots": true,
     "--cpu-hold-load": true,
+    "--load-hold-per-core": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -956,12 +1185,15 @@ function settings(args: string[], d: GateDeps): number {
     "--mcp-renew-minutes": true,
     "--mcp-lapse-minutes": true,
     "--mcp-grace-minutes": true,
+    "--waiter-return-minutes": true,
     "--box-check-timeout-seconds": true,
     "--box-recheck-seconds": true,
     "--class-order": true,
     "--class-map": true,
     "--class-windows": true,
     "--browser-requires-container": true,
+    "--browser-box-default": true,
+    "--browser-host-only": true,
     "--yes": false,
   });
   const raw: Record<string, number | string | null> = {};
@@ -971,6 +1203,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--cpu-slots-beside-release-browser", "cpu_slots_beside_release_browser"],
     ["--local-browser-slots", "local_browser_slots"],
     ["--cpu-hold-load", "cpu_hold_load"],
+    ["--load-hold-per-core", "load_hold_per_core"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
@@ -985,6 +1218,7 @@ function settings(args: string[], d: GateDeps): number {
     ["--mcp-renew-minutes", "mcp_renew_minutes"],
     ["--mcp-lapse-minutes", "mcp_lapse_minutes"],
     ["--mcp-grace-minutes", "mcp_grace_minutes"],
+    ["--waiter-return-minutes", "waiter_return_minutes"],
     ["--box-check-timeout-seconds", "box_check_timeout_seconds"],
     ["--box-recheck-seconds", "box_recheck_seconds"],
     ["--browser-requires-container", "browser_requires_container"],
@@ -997,6 +1231,9 @@ function settings(args: string[], d: GateDeps): number {
     ["--class-order", "class_order"],
     ["--class-map", "class_map"],
     ["--class-windows", "class_windows"],
+    // Issue 1033: where a browser run with no --box goes.
+    ["--browser-box-default", "browser_box_default"],
+    ["--browser-host-only", "browser_host_only"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = v.trim() || null;
@@ -1031,7 +1268,7 @@ function settings(args: string[], d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

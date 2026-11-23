@@ -1,0 +1,34 @@
+# Vision 11-22: an issue (897) closed itself through a commit's closing
+# keyword, with no proof it worked. A pull request's title, body and commits
+# say "Refs #N"; an issue closes only with a live-proof comment
+# (scripts/no-close-keywords.mjs). Its own workflow, so editing the title or
+# body runs it again without rerunning the tests.
+name: pr-text
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+permissions:
+  contents: read
+concurrency:
+  group: pr-text-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  closing-keywords:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.13.0"
+      - name: No closing keywords (use Refs #N)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          # Never counted as a shared branch, so its own commits are checked.
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/no-close-keywords.mjs "$RANGE_BASE..$RANGE_HEAD"
