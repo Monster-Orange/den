@@ -756,6 +756,12 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 1264: the gate's settings (route_agents and
+                    // route_commands among them) are a person's; its slot
+                    // log beside them stays the hook's to append to.
+                    ...(gate
+                      ? ownFilesDenyRules([gate.settings], input.env?.HOME)
+                      : []),
                     ...(input.stateDir
                       ? stateDirDenyRules(input.stateDir, input.env?.HOME)
                       : []),
