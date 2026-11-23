@@ -43,6 +43,12 @@ import {
 } from "../../shared/den-config.js";
 import type { ConfigError } from "../../shared/config-error.js";
 import {
+  pinNotes,
+  pinProjectsOf,
+  type PinProjects,
+} from "../server/shell-prefs.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import {
   checkAgentSigning,
   signingKeyAddLine,
   type AgentGitSettings,
@@ -1511,6 +1517,51 @@ export function attentionLostLines(
 }
 
 /**
+ * Issue 1217: the rail's pins in user.yml that need a word. An old id-only
+ * pin no project holds is kept, shown under All; an entry that isn't a pin
+ * is skipped (it stays in user.yml, not shown), never the whole list.
+ * Shown only when there is one of either.
+ */
+export function oldPinsLines(
+  title: string,
+  read: () => { shell?: unknown } = readUserConfig,
+  projectsOf?: PinProjects,
+): { lines: string[]; check: OnboardCheck | null } {
+  let shell: unknown;
+  try {
+    shell = read().shell;
+  } catch {
+    return { lines: [], check: null };
+  }
+  let of = projectsOf;
+  if (!of)
+    try {
+      of = pinProjectsOf(readWorkspacesFile().workspaces ?? {});
+    } catch {
+      of = undefined;
+    }
+  const { kept, skipped } = pinNotes(shell, of);
+  if (!kept.length && !skipped.length) return { lines: [], check: null };
+  const lines = ["", `${title} doctor: Pins`, ""];
+  for (const k of kept)
+    lines.push(`  kept, no project  ·  ${k} (shown under All)`);
+  for (const k of skipped)
+    lines.push(
+      `  skipped          ⚠  ${k} (not a pin; left in user.yml, not shown)`,
+    );
+  const detail = [
+    kept.length ? `${kept.length} kept with no project` : "",
+    skipped.length ? `${skipped.length} skipped, not a pin` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    lines,
+    check: { id: "pins", status: skipped.length ? "warn" : "ok", detail },
+  };
+}
+
+/**
  * UK-2 (0.4.48): ui.request_memory_seconds became requests.keep_minutes.
  * Shown only while the old key is set: what it became, and whether it still
  * counts (until 0.4.49, when requests.keep_minutes is unset).
@@ -1922,6 +1973,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
+    const pinsCheck = oldPinsLines(readBrand().name).check;
+    if (pinsCheck) r.checks.push(pinsCheck);
     // Issue 636: whether this install is a test bed.
     r.checks.push(
       (await import("./test-person.js")).testBedLines(readBrand().name).check,
@@ -2041,6 +2094,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
+  for (const l of oldPinsLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);

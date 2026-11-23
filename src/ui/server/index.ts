@@ -636,6 +636,7 @@ import {
   pinnedItems,
   shellPrefs,
   storedShell,
+  pinProjectsOf,
   type PinProjects,
 } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -1141,18 +1142,7 @@ function pinProjects(): PinProjects {
   } catch {
     /* no projects readable: old pins become none */
   }
-  return (item) => {
-    const repo = item.split("/")[0];
-    return Object.entries(all)
-      .filter(([, ws]) => {
-        const repos = new Set(
-          Object.keys(ws?.services ?? {}).map((k) => k.split("/")[0]),
-        );
-        for (const r of Object.keys(ws?.repos ?? {})) repos.add(r);
-        return repos.has(repo);
-      })
-      .map(([name]) => name);
-  };
+  return pinProjectsOf(all);
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
