@@ -1823,6 +1823,18 @@ and the guide to making your own
   text in `accent-text`. Two colors are optional in each mode: `info`
   (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
   checked when a theme sets them; unset, the UI kit's defaults hold.
+- `shape` (optional): `radius`, `radius-button` and `density`, and two
+  keys for how the kit draws edges and buttons:
+  - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
+    Added in 0.4.88.
+  - `buttons`: `filled` (the default) or `outline`. With `outline`, the
+    primary and danger buttons have no fill: a `border-strong` edge and
+    `text` words, danger in `bad`. Added in 0.4.88.
+
+  A theme that sets neither draws as before. The built-in `sketch` theme
+  (greys only, dashed, outline, one face) ships in the UI kit as
+  `themes/sketch.css`, so a page with the kit and no Den server can link
+  it after `tokens.css`.
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -2972,6 +2984,15 @@ its label. `logs` may start with `~/`; a relative path is under the
 distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
+
+A service starts the web server with `--silent`, so `web.log` stops at the
+start banner. While it runs that way, the server's warning lines (Hub
+deliveries held or typed, among others) also go to `logs/server.log` in Den's
+state folder, so they are still there after a restart. `server_log.max_mb` in
+`user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
+size it moves to `server.log.1`, replacing the one there, and starts again.
+The lines are the server's own log lines, which carry no tokens. Doctor names
+the file and its size (`server_log`).
 
 `web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
 server keeps an idle connection open. It sits above the page's own poll and
@@ -4950,6 +4971,79 @@ working. The `<cli>` and the MCP server Den starts for the agent send it, so
 the server audits their calls as the agent, from the token, never from a
 header (agent headers without the token are recorded as an unverified
 claim).
+
+**Den's state is read-only to an agent's session** (issue 936). An agent
+runs as you, so each agent's session starts inside the OS sandbox:
+`sandbox-exec` on macOS, `bwrap` (bubblewrap) on Linux. Inside it:
+
+- Den's state folder and the install's `config/local` (where `user.yml`
+  is) can't be written. The agent can't change its own record, its mode or
+  the settings. Den's server does the writing an agent asks for: its MCP
+  server is a client of the server.
+- The gate store's settings (the machine's gate settings and test boxes)
+  can't be written. Its slot queue can, so `gate run` and the MCP slot
+  tools work as before.
+- The agent's own token can be read. Den's other files are read only
+  where the agent's tools need them.
+- On macOS, unix sockets can't be reached, except the system's own and
+  the agents' message sockets (and the SSH agent's, when the session has
+  one). On Linux, the sockets in your tmux and runtime folders
+  (`XDG_RUNTIME_DIR`) and the container engines' sockets are hidden;
+  sockets elsewhere can still be reached. On both, the terminal host's
+  socket can't be reached. A session started there
+  would run outside the sandbox. So `<cli> agents list`, `start` and
+  `stop` don't work from an agent's shell. An agent starts another with
+  the `agent_create` tool.
+- The agent's own folder (`<state>/agent-files/<id>`) stays writable:
+  `handoff.md`, its notes, the hooks' counts. The launch files Den writes
+  there (its Claude settings, its MCP config) don't.
+
+The start line and `<cli> agents doctor` name every agent that runs
+outside the sandbox, and why: no `bwrap` on this Linux machine, an agent
+from before the sandbox, or the setting below. A write the sandbox
+refuses shows the agent a plain reason and what to use instead (a Den
+hook after each tool, for personas with Den's hooks on), never only a
+permission error.
+
+The sandbox is on for every agent started new. An agent that existed
+before your Den had the sandbox keeps starting as before until you turn
+it on: Den asks once, as a held write in the bell (Turn on), and
+`<cli> agents doctor` warns "Sandbox is off for N agents". Turn on sets
+`agents.sandbox: on` in `config/local/user.yml`; each of those agents goes
+into the sandbox at its next start, and one you set to `off` stays off.
+
+The sandbox is on by default. To turn it off, for every agent or for one,
+set it in `config/local/user.yml` (agents can't write that file). Den
+refuses this setting in the distribution's config, since agents may edit
+that file:
+
+```yaml
+agents:
+  sandbox: on # or off, or required
+  sandbox_sockets: [/var/run/some-tool] # more socket folders it may reach
+  some-agent:
+    sandbox: off # this agent's sessions start outside it
+```
+
+With `required`, an agent whose sandbox can't apply on this machine
+doesn't start: the start says why. On Linux, Den runs `bwrap` once to
+check it works here, not only that it is installed.
+
+This first slice covers Den's state. It doesn't limit what a session can
+reach over the network on this machine, or files outside Den's state that
+you can write. Agents' messages to each other's sessions stay open inside
+it, so an agent can ask another session, which may run outside a sandbox,
+to act for it. Later slices do, when an agent runs as its own OS user.
+
+Migrating: nothing to do. Agents you start after the update run in the
+sandbox; your existing agents keep running as before until you Allow
+Turn on (or set `agents.sandbox: on`). On Linux, install `bubblewrap`
+(`bwrap`) first; without it agents start outside the sandbox and doctor
+says so, unless you set `agents.sandbox: required`.
+
+On macOS a program inside the sandbox can't start a sandbox of its own,
+so Claude Code's own Bash sandbox setting doesn't work in an agent's
+session. Den's sandbox covers that session.
 
 **The token counts only from the agent's own processes.** For each
 connection, Den finds the process on the other end (macOS: `lsof`;

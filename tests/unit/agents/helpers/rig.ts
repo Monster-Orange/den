@@ -161,6 +161,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     workspaceExists: (ws) => ["north", "south"].includes(ws),
     maxConcurrent: () => r.config.maxConcurrent,
     agentsConfig: () => r.config,
+    // Issue 936: the rig's fake PTY records argv as given; a test of the
+    // sandbox deletes this to get Den's own.
+    agentSandbox: (argv) => ({ applied: true, argv, env: {} }),
     distRoot: () => dir,
     stateDir: () => stateDir,
     workspaceDir: wsDir,

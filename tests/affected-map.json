@@ -1962,6 +1962,7 @@
         "tests/unit/server/product-tokens.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/public-tokens-parse.test.ts",
+        "tests/unit/server/report-popups-static.test.ts",
         "tests/unit/server/sec1a-request-checks.integration.test.ts",
         "tests/unit/server/shell.test.ts",
         "tests/unit/server/times-chosen-zone-668.test.ts",
@@ -2001,6 +2002,7 @@
         "tests/unit/cli/repo-add.integration.test.ts",
         "tests/unit/cli/up-multi-service-dep.integration.test.ts",
         "tests/unit/den-ui/site-head-kit.test.ts",
+        "tests/unit/den-ui/sketch-theme-788.test.ts",
         "tests/unit/edge/ca.test.ts",
         "tests/unit/environment-manager/workspace-manager.test.ts",
         "tests/unit/environment/env-selector.test.ts",
@@ -2069,6 +2071,11 @@
       "when": ["scripts/build-pw-guard.mjs"],
       "run": ["tests/unit/gates/pw-guard-export-1010.test.ts"],
       "why": "tests that run scripts/build-pw-guard.mjs"
+    },
+    {
+      "when": ["scripts/build-sketch-theme.ts"],
+      "run": ["tests/unit/den-ui/sketch-theme-788.test.ts"],
+      "why": "tests that run scripts/build-sketch-theme.ts"
     },
     {
       "when": ["scripts/ci-force-all.mjs"],

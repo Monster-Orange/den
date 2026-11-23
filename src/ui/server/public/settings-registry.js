@@ -2738,6 +2738,29 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ reports: { screenshot_keep_days: v } }),
   },
   {
+    // Issue 707: the server's warning lines on disk while it runs as a
+    // service (user.yml server_log.max_mb), rotated once. A person's only.
+    id: "server.server_log_max",
+    category: "server",
+    label: "Warnings log, largest size",
+    description:
+      "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
+    keywords: [
+      "log",
+      "server",
+      "service",
+      "warnings",
+      "file",
+      "size",
+      "rotate",
+    ],
+    scope: "user",
+    keys: ["server_log.max_mb"],
+    control: { type: "number", min: 1, max: 1024, step: 1, unit: "MB" },
+    read: (ctx) => ctx.data.server_log?.max_mb ?? 20,
+    write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
+  },
+  {
     // Issue 403: the largest report screenshot kept here (reports.*).
     id: "server.report_screenshot_max",
     category: "server",
@@ -3446,6 +3469,21 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 10080, step: 1 },
     read: (ctx) => ctx.data.gate_slots?.mcpGraceMinutes ?? 15,
     write: (v, ctx) => ctx.post({ gate_slots: { mcp_grace_minutes: v } }),
+  },
+  {
+    // Issue 867: a waiting run ended by a restart keeps its place a while.
+    id: "server.gate_waiter_return",
+    category: "server",
+    label:
+      "A waiting test run keeps its place this long after it ends, in minutes",
+    description:
+      "When a waiting test run ends without giving up its place (a restart, or its window closed), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
+    keywords: ["gate", "slot", "queue", "restart", "place", "waiting"],
+    scope: "user",
+    keys: ["gate_slots.waiter_return_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.waiterReturnMinutes ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { waiter_return_minutes: v } }),
   },
   {
     // Issue 803: priority classes per project; empty is first-come.
@@ -5672,6 +5710,24 @@ function hubAddressHtml(b) {
   );
 }
 
+/**
+ * Issue 869: Hub refused this Den's address when Den last told it (400,
+ * 401, 403): what Hub said, until a later tell goes through.
+ */
+export function hubDenUrlHtml(d) {
+  if (!d || !d.url) return "";
+  return `<p class="set-note set-warn" data-hub-den-url="refused" role="status">${escR(
+    L(
+      "set.ui.hub.denUrlRefused",
+      "Hub didn't take this Den's address ({url}): {why}",
+      {
+        url: d.url,
+        why: d.error || String(d.status || ""),
+      },
+    ),
+  )}</p>`;
+}
+
 export function hubHtml(b, flash, t = (k) => k) {
   b = b || { configured: false };
   const state = b.configured
@@ -5780,6 +5836,7 @@ export function hubHtml(b, flash, t = (k) => k) {
     rows.map(([k, v]) => `<dt>${escR(k)}</dt><dd>${v}</dd>`).join("") +
     `</dl>` +
     (why ? note(why, "data-hub-problem") : "") +
+    hubDenUrlHtml(b.denUrl) +
     `<div class="hub-acts">` +
     (state === "rejected" || b.legacy
       ? `<button type="button" class="den-btn sm primary" data-hub-action="connect">${escR(t("hub.reconnect"))}</button> `
