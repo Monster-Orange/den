@@ -1336,6 +1336,31 @@ export async function hubPutProjects(
   );
 }
 
+/**
+ * Issue 869: tell Hub this install's address after it changes: PUT
+ * <url>/api/installs/self/den-url {url}. Hub answers {changed}.
+ */
+export async function hubPutDenUrl(
+  url: string,
+  token: string,
+  denUrl: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<Record<string, unknown>> {
+  return hubCall(
+    `${url}/api/installs/self/den-url`,
+    {
+      method: "PUT",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: denUrl }),
+    },
+    { timeoutMs: 10_000, ...opts },
+  );
+}
+
 /** How much of each GitHub org Den Hub's App can read: GET <url>/api/installs/self/github. */
 export async function hubGithubCoverage(
   url: string,

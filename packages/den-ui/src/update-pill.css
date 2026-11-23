@@ -12,7 +12,7 @@
 .den-upd[hidden] { display: none; }
 .den-upd .upd-pill { pointer-events: auto; display: flex; align-items: center; gap: 16px; width: fit-content; max-width: 100%; box-sizing: border-box;
   padding: var(--upd-pad-y) 12px var(--upd-pad-y) 24px;
-  border: 1px solid var(--border-strong); border-radius: 999px; color: var(--text); font-size: 14px; line-height: 1.5;
+  border: 1px var(--edge-style, solid) var(--border-strong); border-radius: 999px; color: var(--text); font-size: 14px; line-height: 1.5;
   background: var(--surface);
   background: color-mix(in srgb, var(--surface) 20%, transparent);
   background-image: linear-gradient(color-mix(in srgb, var(--text) 7%, transparent), color-mix(in srgb, var(--text) 3%, transparent));
