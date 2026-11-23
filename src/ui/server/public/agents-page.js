@@ -104,6 +104,7 @@ import {
   groupsLineHtml,
   groupsOffered,
   groupsViewHtml,
+  toolsRestartButton,
   toolsRestartHtml,
   viewSwitchHtml,
 } from "/agent-groups.js";
@@ -2274,10 +2275,7 @@ function mcpStaleTag(r, withButton) {
     tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
   }
   if (!withButton) return tag;
-  return (
-    `<span class="agstale">${tag}` +
-    `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${esc(t("ag.mcp.restartName", { id: r.agent }))}" title="${esc(t("ag.mcp.restartName", { id: r.agent }))}">${esc(t("ag.mcp.restart"))}</button></span>`
-  );
+  return `<span class="agstale">${tag}` + `${toolsRestartButton(r, t)}</span>`;
 }
 
 /**

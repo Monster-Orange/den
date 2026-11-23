@@ -6,7 +6,10 @@
  * Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
-import { toolsRestartHtml } from "../../../src/ui/server/public/agent-groups.js";
+import {
+  toolsRestartButton,
+  toolsRestartHtml,
+} from "../../../src/ui/server/public/agent-groups.js";
 
 const t = (k: string, v: Record<string, unknown> = {}) =>
   `${k}${Object.keys(v).length ? `(${Object.values(v).join(",")})` : ""}`;
@@ -42,5 +45,9 @@ describe("issue 750 step 3: Restart on the row of an agent that can't reach Hub"
     expect(toolsRestartHtml({ ...failed, agent: 'x"><b>' }, t)).not.toContain(
       '"><b>',
     );
+  });
+
+  it("the row's Restart is the pane bar's own button (one markup)", () => {
+    expect(toolsRestartHtml(failed, t)).toBe(toolsRestartButton(failed, t));
   });
 });

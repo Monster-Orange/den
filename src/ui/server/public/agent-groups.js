@@ -38,6 +38,14 @@ export function toolsRestartHtml(r, t) {
   if (r?.kind !== "agent" || r.toolsRestarting) return "";
   if (r.state !== "running" && r.state !== "stopping") return "";
   if (!Array.isArray(r.mcpFailed) || !r.mcpFailed.length) return "";
+  return toolsRestartButton(r, t);
+}
+
+/**
+ * The Restart button that loads an agent's tools again: one markup for
+ * its row (toolsRestartHtml) and its pane bar (agents-page mcpStaleTag).
+ */
+export function toolsRestartButton(r, t) {
   const name = esc(t("ag.mcp.restartName", { id: r.agent }));
   return `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${name}" title="${name}">${esc(t("ag.mcp.restart"))}</button>`;
 }
