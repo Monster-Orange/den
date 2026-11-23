@@ -110,11 +110,19 @@ runtime and model.
 Projects that run browser tests on a test box import Den's box guard instead of copying it:
 
 ```js
-import { allowFromEnv, connectGuarded, guardBrowser, ownPorts, pinLoopbackNames } from "@monster-orange/den/pw-guard";
+import {
+  allowFromEnv,
+  connectGuarded,
+  guardBrowser,
+  ownPorts,
+  pinLoopbackNames,
+} from "@monster-orange/den/pw-guard";
 ```
 
 It holds a box's pages to the run's base URLs, never this machine's ports 80 or 443, and has no Playwright
-dependency. `@monster-orange/den/pw-guard` follows semver: These names and their behaviour change only in a major version. A new option is a minor. The guard never gets looser in a patch.
+dependency. `connectGuarded(chromium, process.env.DEN_PW_WS)` returns a browser that is already guarded by the
+run's base URLs (`DEN_GATE_ALLOW`); with none, it loads nothing. A browser connected another way needs
+`guardBrowser`. Guarding a browser twice is harmless. `@monster-orange/den/pw-guard` follows semver: These names and their behaviour change only in a major version. A new option is a minor. The guard never gets looser in a patch.
 
 ## Docs
 
