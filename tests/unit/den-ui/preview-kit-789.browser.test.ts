@@ -129,7 +129,11 @@ describe("issue 789: the preview frame", () => {
         const b = document.querySelector<HTMLElement>("[data-den-preview]")!;
         return { width: b.dataset.width, scale: Number(b.dataset.scale) };
       });
-    expect(await at()).toEqual({ width: "1440", scale: 600 / 1440 });
+    // data-scale is rounded to 3 places: 600 / 1440 is 0.417.
+    expect(await at()).toEqual({
+      width: "1440",
+      scale: Math.round((600 / 1440) * 1000) / 1000,
+    });
     await p.evaluate(() =>
       (window as { pv?: { setWidth(w: number): void } }).pv!.setWidth(390),
     );
