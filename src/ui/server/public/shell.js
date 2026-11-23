@@ -4661,7 +4661,16 @@
   var page = host.dataset.page || "";
   // 0.4.45: the rail item lit; a page may light another of its own.
   // Issue 482: the Terminals page's id is its rail item's ("terminal").
-  var railLit = page;
+  // Issue 284: a page with no rail item of its own: its name (the header
+  // and the tab's title) and the rail item it lights. The older test
+  // kinds' page (/test-runs) is reached from Checks, so Checks is lit.
+  var OFF_RAIL = {
+    tests: { label: "n.tests", lit: "verify", href: "/test-runs" },
+  };
+  function litFor(id) {
+    return OFF_RAIL[id] ? OFF_RAIL[id].lit : id;
+  }
+  var railLit = litFor(page);
   // The page id on the body (den-page-<id>), for CSS from first paint: the
   // Graph page is the Workspaces page's file at /graph (R22, 0.3.0-dev.32).
   if (/^[a-z0-9-]+$/.test(page) && document.body)
@@ -5833,8 +5842,8 @@
         return s.openLogs > 0 ? { n: s.openLogs, what: "open" } : null;
       },
     },
-    // Issue 209: Verify's page ("Checks"), and the older test kinds'
-    // page while they retire.
+    // Issue 209: Verify's page ("Checks"). Issue 284: its one rail item;
+    // the older test kinds' page is off the rail (OFF_RAIL).
     {
       id: "verify",
       label: "n.verify",
@@ -5842,14 +5851,6 @@
       group: "verify",
       order: 10,
       href: "/verify",
-    },
-    {
-      id: "tests",
-      label: "n.tests",
-      icon: "tests",
-      group: "verify",
-      order: 20,
-      href: "/test-runs",
     },
     {
       id: "environments",
@@ -6713,7 +6714,7 @@
   function ensurePageHeader() {
     var main = document.getElementById("den-content");
     if (!main || main.querySelector("h1")) return;
-    var label = "";
+    var label = OFF_RAIL[page] ? t(OFF_RAIL[page].label) : "";
     NAV.forEach(function (n) {
       if (n.id === page) label = t(n.label);
     });
@@ -9329,7 +9330,12 @@
   }
   // The tab's title names the page in the page's language.
   (function () {
-    var label = page === SETTINGS.id ? SETTINGS.label : null;
+    var label =
+      page === SETTINGS.id
+        ? SETTINGS.label
+        : OFF_RAIL[page]
+          ? OFF_RAIL[page].label
+          : null;
     NAV.forEach(function (n) {
       if (n.id === page) label = n.label;
     });
@@ -9583,7 +9589,7 @@
     },
     /** Light rail item `id` for this page (null: the page's own). */
     setRailLit: function (id) {
-      var next = id || page;
+      var next = id || litFor(page);
       if (next === railLit) return;
       railLit = next;
       renderRail();
@@ -9684,12 +9690,19 @@
     },
     /**
      * Every page the rail can lead to (issue 297): the NAV registry, hidden
-     * and conditional pages included, then Settings. { id, href } each.
+     * and conditional pages included, then Settings, then the pages off
+     * the rail (issue 284: reached from another page). { id, href } each.
      */
     pages: function () {
       return NAV.map(function (n) {
         return { id: n.id, href: n.href };
-      }).concat([{ id: SETTINGS.id, href: SETTINGS.href }]);
+      })
+        .concat([{ id: SETTINGS.id, href: SETTINGS.href }])
+        .concat(
+          Object.keys(OFF_RAIL).map(function (id) {
+            return { id: id, href: OFF_RAIL[id].href };
+          }),
+        );
     },
     /** NAV in the rail's order (groups, then your order), hidden included. */
     orderedNav: orderedNav,

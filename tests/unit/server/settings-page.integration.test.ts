@@ -393,12 +393,13 @@ describe("the Settings page writes only what you change (R21)", () => {
     before = snapshot();
     posts.length = 0;
     const pages = p.locator('[data-setting="shell.pages"]');
-    await pages.getByRole("button", { name: "Hide Tests" }).click();
+    // Issue 284: Tests is no longer a rail page, so this hides Logs.
+    await pages.getByRole("button", { name: "Hide Logs" }).click();
     await pages.locator(".set-saved", { hasText: "✓ Saved" }).waitFor();
     expect(posts).toEqual([
-      { url: "/api/settings", body: { shell: { hidden: ["tests"] } } },
+      { url: "/api/settings", body: { shell: { hidden: ["logs"] } } },
     ]);
-    expect(await p.$$('.den-rail [data-nav="tests"]')).toHaveLength(0);
+    expect(await p.$$('.den-rail [data-nav="logs"]')).toHaveLength(0);
     expect(changedSince(before)).toEqual([USER_YML]);
 
     // The workspace editor saves on change, like every other row, for

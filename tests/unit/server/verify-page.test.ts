@@ -166,14 +166,14 @@ describe("issue 209: the Verify page", () => {
     }
   });
 
-  it('T2: the nav\'s Verify item is "Checks" at /verify; Tests stays for the older kinds', () => {
+  it('T2: the nav\'s one Verify item is "Checks" at /verify (issue 284: no Tests item)', () => {
     const shell = read("shell.js");
     const item = (id: string) =>
       new RegExp(
         `id: "${id}",\\s*label: "(n\\.[\\w.]+)",[^}]*?href: "([^"]+)"`,
       ).exec(shell);
     expect(item("verify")?.slice(1)).toEqual(["n.verify", "/verify"]);
-    expect(item("tests")?.slice(1)).toEqual(["n.tests", "/test-runs"]);
+    expect(item("tests")).toBeNull();
     const m = catalogs();
     expect([m.en["n.verify"], m.es["n.verify"], m.ja["n.verify"]]).toEqual([
       "Checks",

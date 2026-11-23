@@ -914,6 +914,7 @@
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
+        "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts",
         "tests/unit/server/workspaces-page.browser.test.ts"
       ],

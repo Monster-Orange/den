@@ -129,7 +129,9 @@ describe("the rail", () => {
         tag: null,
         items: ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       },
-      { heading: "Verify", tag: null, items: ["verify", "tests"] },
+      // Issue 284: one Verify item, Checks. The older test kinds' page is
+      // reached from the Checks page, not from the rail.
+      { heading: "Verify", tag: null, items: ["verify"] },
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",
       "settings",
@@ -142,12 +144,32 @@ describe("the rail", () => {
         "aria-labelledby",
       ),
     ).toBe("den-gh-verify");
-    expect(await p.getAttribute('[data-nav="tests"]', "aria-current")).toBe(
-      "page",
-    );
     expect(await p.getAttribute('[data-nav="settings"]', "href")).toBe(
       "/settings",
     );
+    await p.context().close();
+  });
+
+  it("issue 284: on the older test kinds' page Checks is lit, and the page keeps its name", async () => {
+    if (!browser) return;
+    const { p } = await mount("tests");
+    expect(await p.getAttribute('[data-nav="verify"]', "aria-current")).toBe(
+      "page",
+    );
+    expect(await p.$$('.den-rail [data-nav="tests"]')).toHaveLength(0);
+    expect(await p.textContent("#den-content h1")).toBe("Tests");
+    // The page is still in the registry's page list (the a11y sweep's).
+    expect(
+      await p.evaluate(() =>
+        (
+          window as unknown as {
+            denShell: { pages(): { id: string; href: string }[] };
+          }
+        ).denShell
+          .pages()
+          .filter((x) => x.id === "tests"),
+      ),
+    ).toEqual([{ id: "tests", href: "/test-runs" }]);
     await p.context().close();
   });
 
@@ -236,7 +258,7 @@ describe("the rail", () => {
         null,
         ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       ],
-      ["Verify", null, ["verify", "tests"]],
+      ["Verify", null, ["verify"]],
       ["Ship", null, ["environments", "release"]],
       ["Acme", "acme", ["early", "edge"]],
     ]);
@@ -1066,13 +1088,13 @@ describe("Navigation prefs (R21)", () => {
       shell: {
         pins: [],
         collapsed: false,
-        // Both Verify pages hidden: the empty group goes too.
-        hidden: ["verify", "tests"],
+        // The Verify page hidden: the empty group goes too.
+        hidden: ["verify"],
         order: ["logs", "local-dev"],
       },
     });
     await p.waitForFunction(
-      () => !document.querySelector('.den-rail [data-nav="tests"]'),
+      () => !document.querySelector('.den-rail [data-nav="verify"]'),
     );
     expect(await rail(p)).toEqual([
       {
