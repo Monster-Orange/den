@@ -3290,6 +3290,10 @@
     "ap.det.agent_create.runtime": "Runtime: {v}",
     "ap.det.agent_create.mode": "Mode: {mode} (the project's: {cap})",
     "ap.det.agent.who": "Agent: {agent}, project {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} starts outside the sandbox: agents.{id}.sandbox is off in config/local/user.yml.",
+    "ap.det.agent.sandboxOffAll":
+      "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
     "ap.det.agent.whoId": "Agent: {agent} ({id}), project {project}",
     "ap.det.agent_folder.from": "From: {v}",
     "ap.det.agent_folder.to": "To: {v}",

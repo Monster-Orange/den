@@ -1489,6 +1489,7 @@ import {
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
+  importSandboxOff,
   runAgentImport,
   personaLookup,
   hubUpstream,
@@ -5029,6 +5030,14 @@ function approvalDeps(): ApprovalDeps {
     testPersonSetup: testPersonSetupAction(testPersonSetupDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 1328: an agent brought in outside the sandbox needs the person.
+    agentImportSandbox: (persona) => {
+      try {
+        return importSandboxOff(agentWebDeps(), persona);
+      } catch {
+        return null;
+      }
+    },
     // Issue 160: an agent closes a stale or superseded pull request after
     // a Hub note (auto unless the repo is watched or pinned).
     prClose: async ({ repo, pr, comment }) => {

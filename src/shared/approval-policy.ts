@@ -160,8 +160,8 @@ export const HELD_WRITE_RISK: Readonly<
     why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
   },
   agent_create: {
-    risk: "routine",
-    why: "starts an agent in the project's mode or a stricter one",
+    risk: "widens",
+    why: "starts an agent in the project's mode or a stricter one; one that would start outside the sandbox is the person's (issue 1328)",
   },
   agent_folder: { risk: "routine", why: "moves an agent within its project" },
   workspace_create: { risk: "routine", why: "adds an empty project" },
@@ -221,9 +221,9 @@ export const HELD_WRITE_RISK: Readonly<
     why: "changes the approval policy itself: a person's only",
   },
   agent_import: {
-    risk: "routine",
+    risk: "widens",
     kind: "ask",
-    why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it",
+    why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it; one that would start outside the sandbox is the person's (issue 1328)",
   },
   pr_close: {
     risk: "routine",

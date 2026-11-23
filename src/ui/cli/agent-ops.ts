@@ -153,10 +153,16 @@ import {
   ROTATION_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
+  clearUserAgentSandbox,
   setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
 } from "../../shared/den-config.js";
+import {
+  newAgentSandboxOff,
+  SANDBOX_OFF_SINCE_ASK,
+  writeSandboxNote,
+} from "../../shared/agents/sandbox-set.js";
 import {
   contextTokensFor,
   contextWatchSettings,
@@ -426,6 +432,12 @@ export interface AgentsDeps extends SessionsDeps {
   server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
   /**
+   * Issue 1328: drops a removed agent's agents.<id>.sandbox from user.yml
+   * and its note, so the setting goes with the agent. Default: the
+   * person's user.yml and this install's notes.
+   */
+  forgetSandbox?: (id: string) => void;
+  /**
    * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
    * read-only to it). Default: sandboxFor with the person's setting.
    */
@@ -590,6 +602,7 @@ export interface AgentsResolved extends Resolved {
   /** Issue 989: this install's server, for person-only verbs. */
   server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
+  forgetSandbox: (id: string) => void;
   agentSandbox: AgentSandboxFn;
   sessionTmp: () => string | undefined;
   sessionTmpBase: string;
@@ -982,6 +995,12 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     ...base,
     server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    forgetSandbox:
+      d.forgetSandbox ??
+      ((id) => {
+        clearUserAgentSandbox(id);
+        writeSandboxNote(base.stateDir(), id, null);
+      }),
     mcpNotReadFromOrg:
       d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
     agentSigning:
@@ -4763,12 +4782,21 @@ function freeId(d: AgentsResolved, persona: string): string {
  */
 export async function runAgentImport(
   d: AgentsResolved,
-  a: { project: string; session: string; persona: string; runtime?: string },
+  a: {
+    project: string;
+    session: string;
+    persona: string;
+    runtime?: string;
+    /** Issue 1328: asked for knowing it starts outside the sandbox. */
+    sandboxOff?: boolean;
+  },
 ): Promise<
   | { ok: true; id: string; project: string; persona: string }
   | { ok: false; error: string }
 > {
   try {
+    if (importSandboxOff(d, a.persona) && a.sandboxOff !== true)
+      return { ok: false, error: SANDBOX_OFF_SINCE_ASK };
     const s = await importAgent(d, {
       workspace: a.project,
       session: a.session,
@@ -5037,6 +5065,8 @@ export type AgentCreateCheck =
       details: string[];
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
+      /** Issue 1328: it starts outside the sandbox: the person's own Allow. */
+      personOnly?: boolean;
       args: AgentCreateArgs;
     }
   | { ok: false; error: string };
@@ -5049,6 +5079,8 @@ export interface AgentCreateArgs {
   mode: PermissionIntent;
   repo?: string;
   folder?: string;
+  /** Issue 1328: asked for knowing it starts outside the sandbox. */
+  sandboxOff?: boolean;
 }
 
 const INTENT_RANK: Record<PermissionIntent, number> = {
@@ -5120,8 +5152,10 @@ export function checkAgentCreate(
         : ws;
     const shown = name ?? persona.displayName ?? persona.id;
     const rt = runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID;
+    const off = createSandboxOff(d, ws, persona.id, name);
     return {
       ok: true,
+      ...(off ? { personOnly: true } : {}),
       summary: `start agent ${shown} (${persona.id}) in ${where}, mode ${mode}${runtime ? `, runtime ${runtime}` : ""}`,
       params: { name: shown, persona: persona.id, where, mode },
       ...review([
@@ -5140,6 +5174,7 @@ export function checkAgentCreate(
           "ap.det.agent_create.mode",
           { mode, cap: String(cap) },
         ),
+        ...(off ? [off] : []),
       ]),
       args: {
         project: ws,
@@ -5149,11 +5184,50 @@ export function checkAgentCreate(
         mode,
         ...(repo !== undefined ? { repo } : {}),
         ...(folder !== undefined ? { folder: dir ?? folder } : {}),
+        ...(off ? { sandboxOff: true } : {}),
       },
     };
   } catch (e) {
     return no((e as Error).message);
   }
+}
+
+/**
+ * Issue 1328: whether the agent agent_create starts would be outside the
+ * sandbox. Every id the start could land on counts (startAgent picks it
+ * then): the name's, a same-named agent's of the project, the persona's
+ * free one.
+ */
+function createSandboxOff(
+  d: AgentsResolved,
+  ws: string,
+  persona: string,
+  name: string | undefined,
+): ReviewLine | null {
+  const ids: string[] = [];
+  if (name !== undefined) {
+    const slug = nameSlug(name);
+    if (slug) ids.push(slug);
+    for (const rec of listRecords(d.stateDir()))
+      if (
+        rec.workspace === ws &&
+        (rec.displayName ?? "").toLowerCase() === name.toLowerCase()
+      )
+        ids.push(rec.id);
+  }
+  ids.push(defaultId(d.stateDir(), persona, ws));
+  return newAgentSandboxOff(d.agentsConfig(), ids);
+}
+
+/**
+ * Issue 1328: whether the agent agent_import makes of `persona` would start
+ * outside the sandbox (the id it gets, as importAgent picks it).
+ */
+export function importSandboxOff(
+  d: AgentsResolved,
+  persona: string,
+): ReviewLine | null {
+  return newAgentSandboxOff(d.agentsConfig(), [freeId(d, persona)]);
 }
 
 /** SRV-P1: on Allow, starts it as `agents start` does. */
@@ -5166,6 +5240,9 @@ export async function createAgent(
 > {
   const c = checkAgentCreate(d, raw);
   if (!c.ok) return c;
+  // Issue 1328: asked for in the sandbox, it now starts outside it.
+  if (c.personOnly && raw.sandboxOff !== true)
+    return { ok: false, error: SANDBOX_OFF_SINCE_ASK };
   const a = c.args;
   const s = await startAgent(d, {
     workspace: a.project,
@@ -8359,6 +8436,7 @@ async function removeRecords(
       revokeAgentTokens(d.stateDir(), rec.id);
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
       removeSessionTmp(rec.sessionTmp, d.sessionTmpBase); // issue 1325
+      d.forgetSandbox(rec.id); // issue 1328: its sandbox setting goes too
       if (removeRecord(d.stateDir(), rec.id))
         out.push({ agent: rec.id, workspace: rec.workspace });
     }
@@ -8424,6 +8502,7 @@ export async function pruneStopped(
   for (const r of old) {
     revokeAgentTokens(d.stateDir(), r.id);
     removeSessionTmp(r.sessionTmp, d.sessionTmpBase); // issue 1325
+    d.forgetSandbox(r.id); // issue 1328
     removeRecord(d.stateDir(), r.id);
   }
   purgeRemoved(d.stateDir(), 0, now);

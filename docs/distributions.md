@@ -325,6 +325,7 @@ agent's held write into one of two groups.
   | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
   | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
   | `agent_sandbox_set`                                          | the sandbox goes off (back on only narrows)                            |
+  | `agent_create`, `agent_import`                               | the new agent would start outside the sandbox                          |
   | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
@@ -5082,6 +5083,12 @@ itself. Back on runs as the approval policy says. Den writes only
 why and who asked, and restarts a running agent after its turn on the same
 conversation. `<cli> agents doctor` lists every agent whose sandbox is off,
 with when and why.
+
+The setting follows the agent's lifecycle. Removing an agent drops its
+`agents.<id>.sandbox` and its note (an agent brought back with Undo starts
+in the sandbox). Adding an agent (`agent_create` or `agent_import`) whose id
+has its sandbox off, or while `agents.sandbox` is off for the machine, waits
+for your own Allow too, and the Review says why.
 
 With `required`, an agent whose sandbox can't apply on this machine
 doesn't start: the start says why. On Linux, Den runs `bwrap` once to

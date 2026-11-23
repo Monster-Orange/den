@@ -65,6 +65,40 @@ describe("setUserAgentSandbox: only agents.<id>.sandbox (issue 1328)", () => {
     ).toEqual({ grants: ["south"], sandbox: "on" });
   });
 
+  it("leaves long lines and flow maps elsewhere in the file as they were", () => {
+    const long = "x".repeat(120);
+    const before = [
+      "# mine",
+      "web:",
+      `  note: this is a long line that yaml would fold at eighty columns ${long}`,
+      "  ports: { a: 1, b: 2 }",
+      "",
+    ].join("\n");
+    fs.writeFileSync(userFile(), before);
+    cfg.setUserAgentSandbox("bo", false);
+    const after = fs.readFileSync(userFile(), "utf-8");
+    expect(after.startsWith(before)).toBe(true);
+    expect(after).toContain("bo:\n    sandbox: off");
+  });
+
+  it("clearing drops only the agent's sandbox key, and its block when that was all", () => {
+    fs.writeFileSync(
+      userFile(),
+      "# mine\nagents:\n  bo:\n    sandbox: off\n  cy:\n    sandbox: off\n    model: x\n",
+    );
+    expect(cfg.clearUserAgentSandbox("bo")).toBe(true);
+    expect(cfg.clearUserAgentSandbox("cy")).toBe(true);
+    const after = fs.readFileSync(userFile(), "utf-8");
+    expect(after).toContain("# mine");
+    expect(after).not.toContain("bo:");
+    expect(after).toContain("cy:\n    model: x");
+    expect(after).not.toContain("sandbox");
+    // Nothing to clear: nothing written.
+    const at = fs.statSync(userFile()).mtimeMs;
+    expect(cfg.clearUserAgentSandbox("dee")).toBe(false);
+    expect(fs.statSync(userFile()).mtimeMs).toBe(at);
+  });
+
   it("no user.yml yet: makes one with just that key", () => {
     fs.rmSync(userFile(), { force: true });
     cfg.setUserAgentSandbox("ana", false);

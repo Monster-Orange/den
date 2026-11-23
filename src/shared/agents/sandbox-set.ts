@@ -14,7 +14,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../atomic-write.js";
-import { line, reviewLines, type DetailKey } from "../review-lines.js";
+import {
+  line,
+  reviewLines,
+  type DetailKey,
+  type ReviewLine,
+} from "../review-lines.js";
 import { sandboxRequired, sandboxSetting } from "./sandbox.js";
 import { isServerScope } from "./server-agent.js";
 
@@ -75,11 +80,31 @@ export type SandboxSetCheck =
     }
   | { ok: false; error: string };
 
+/**
+ * Text on one line with no control or format characters (terminal escapes,
+ * bidi controls): what the Review and agents doctor show of an agent's
+ * words or a hand-edited notes file.
+ */
+export function plainText(v: string): string {
+  return (
+    v
+      // Whole terminal sequences first (CSI, OSC), so none of one is left.
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/[\p{Cc}\p{Cf}]/gu, "")
+      .replace(/ {2,}/g, " ")
+      .trim()
+  );
+}
+
 /** The reason, on one line; an error when it is too long or not text. */
 function reasonOf(v: unknown): string | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v !== "string") throw new Error("reason must be text");
-  const r = v.replace(/\s+/g, " ").trim();
+  const r = plainText(v);
   if (r.length > SANDBOX_REASON_MAX)
     throw new Error(
       `reason must be ${SANDBOX_REASON_MAX} characters or fewer (got ${r.length})`,
@@ -252,6 +277,37 @@ export async function runAgentSandboxSet(
   if (restarts) void d.restart(agent, project).catch(() => undefined);
   return { ok: true, agent, project, sandbox: on ? "on" : "off", restarts };
 }
+
+/**
+ * Why a new agent that gets one of `ids` would start outside the sandbox
+ * (its own agents.<id>.sandbox: off, or agents.sandbox: off for the
+ * machine), as a Review line; null when it starts in it. agent_create and
+ * agent_import then need the person's own Allow, as turning a sandbox off
+ * does.
+ */
+export function newAgentSandboxOff(
+  cfg: ReturnType<SandboxSetDeps["agentsConfig"]>,
+  ids: readonly string[],
+): ReviewLine | null {
+  for (const id of ids) {
+    if (sandboxSetting(cfg, id) || sandboxRequired(cfg, id)) continue;
+    return cfg.agents?.[id]?.sandbox === false
+      ? line(
+          `${id} starts outside the sandbox: agents.${id}.sandbox is off in config/local/user.yml.`,
+          "ap.det.agent.sandboxOff",
+          { id },
+        )
+      : line(
+          "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
+          "ap.det.agent.sandboxOffAll",
+        );
+  }
+  return null;
+}
+
+/** The refusal when a new agent's sandbox went off after it was asked for. */
+export const SANDBOX_OFF_SINCE_ASK =
+  "this agent would start outside the sandbox, which changed after it was asked for: ask again, so the person sees it";
 
 const isNote = (v: unknown): v is SandboxNote =>
   !!v &&

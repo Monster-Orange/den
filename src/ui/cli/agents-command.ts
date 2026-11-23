@@ -66,7 +66,10 @@ import {
   agentsCount,
   legacyAgentIds,
 } from "../../shared/agents/sandbox-rollout.js";
-import { readSandboxNotes } from "../../shared/agents/sandbox-set.js";
+import {
+  plainText,
+  readSandboxNotes,
+} from "../../shared/agents/sandbox-set.js";
 import {
   gatherApiOnly,
   readApiOnlyAudit,
@@ -2900,12 +2903,17 @@ export function sandboxLines(r: SandboxReport): string[] {
       `  ⚠ Sandbox is off for ${agentsCount(r.fromBefore)} (started before it): Allow Turn on in the bell, or set agents.sandbox: on in config/local/user.yml`,
     );
   // Issue 1328: a person's choice, said as such (not a ⚠ to ask about).
-  for (const x of r.turnedOff ?? [])
+  // The notes file can be edited by hand: no control or format characters.
+  for (const x of r.turnedOff ?? []) {
+    const id = plainText(x.id);
+    const by = plainText(x.by ?? "") || "a person";
+    const why = plainText(x.why ?? "") || "no reason noted";
     out.push(
       x.at
-        ? `  ℹ ${x.id}: sandbox off since ${new Date(x.at).toLocaleString()}, asked by ${x.by ?? "a person"}: ${x.why || "no reason noted"}`
-        : `  ℹ ${x.id}: sandbox off (set in config/local/user.yml, no reason noted)`,
+        ? `  ℹ ${id}: sandbox off since ${new Date(x.at).toLocaleString()}, asked by ${by}: ${why}`
+        : `  ℹ ${id}: sandbox off (set in config/local/user.yml, no reason noted)`,
     );
+  }
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
     out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);

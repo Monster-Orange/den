@@ -2318,6 +2318,10 @@
     "ap.det.agent_create.runtime": "ランタイム: {v}",
     "ap.det.agent_create.mode": "モード: {mode}（プロジェクトのモード: {cap}）",
     "ap.det.agent.who": "エージェント: {agent}、プロジェクト {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} はサンドボックスの外で始まります: config/local/user.yml の agents.{id}.sandbox が off です。",
+    "ap.det.agent.sandboxOffAll":
+      "ここのエージェントはサンドボックスの外で始まります (agents.sandbox: off)。このエージェントも同じです。",
     "ap.det.agent.whoId":
       "エージェント: {agent}（{id}）、プロジェクト {project}",
     "ap.det.agent_folder.from": "移動元: {v}",

@@ -110,7 +110,11 @@
  *                     Den at the ask and at the Allow, and saves as
  *                     Settings does. The person's own Allow
  */
-import { line, reviewLines } from "../../shared/review-lines.js";
+import {
+  line,
+  reviewLines,
+  type ReviewLine,
+} from "../../shared/review-lines.js";
 import { UPDATE_SPEC_RE } from "./den-update.js";
 import {
   cloneTarget,
@@ -236,7 +240,14 @@ export interface HeldActionDeps {
     session: string;
     persona: string;
     runtime?: string;
+    sandboxOff?: boolean;
   }) => Promise<unknown>;
+  /**
+   * Issue 1328: why the agent agent_import makes of a persona would start
+   * outside the sandbox (a Review line), or null. Then only the person's
+   * own Allow brings it in.
+   */
+  agentImportSandbox?: (persona: string) => ReviewLine | null;
   /**
    * Issue 160: the approval policy as set (`approvals:`), the install's or
    * a project's, and its write. read throws on a project Den doesn't have.
@@ -847,9 +858,17 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const runtime = str(a.runtime);
       if (runtime !== undefined && !NAME_RE.test(runtime))
         return { ok: false, error: "runtime must be a runtime id" };
+      const off = d.agentImportSandbox?.(persona) ?? null;
       return {
         ok: true,
-        args: { project, session, persona, ...(runtime ? { runtime } : {}) },
+        ...(off ? { personOnly: true } : {}),
+        args: {
+          project,
+          session,
+          persona,
+          ...(runtime ? { runtime } : {}),
+          ...(off ? { sandboxOff: true } : {}),
+        },
         summary: `bring in conversation ${session} as a ${persona} agent of project "${project}"`,
         params: { session, persona, project },
         ...reviewLines([
@@ -872,6 +891,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             "Refused if it is still open in another terminal, or an agent already continues it.",
             "ap.det.agent_import.refused",
           ),
+          ...(off ? [off] : []),
         ]),
       };
     },
@@ -881,6 +901,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         session: String(a.session),
         persona: String(a.persona),
         ...(str(a.runtime) ? { runtime: str(a.runtime) } : {}),
+        ...(a.sandboxOff === true ? { sandboxOff: true } : {}),
       });
     },
   };

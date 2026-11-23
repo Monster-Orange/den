@@ -101,6 +101,24 @@ describe("agent_sandbox_set: the check (issue 1328)", () => {
     });
   });
 
+  it("the reason keeps no control or format characters (terminal escapes, bidi controls)", () => {
+    const { d } = fake();
+    const c = checkAgentSandboxSet(d, {
+      agent: "ana",
+      on: false,
+      reason: "it needs\u001b[2K Docker\u202e\u0000",
+    });
+    if (!c.ok) throw new Error(c.error);
+    expect(c.args.reason).toBe("it needs Docker");
+    expect(c.details).toContain("Why: it needs Docker");
+    const only = checkAgentSandboxSet(d, {
+      agent: "ana",
+      on: false,
+      reason: "\u001b\u202e",
+    });
+    expect(only).toMatchObject({ ok: false, error: /reason is required/ });
+  });
+
   it("an agent asking for itself: the Review says so plainly, first", () => {
     const { d } = fake();
     const c = checkAgentSandboxSet(
@@ -224,6 +242,15 @@ describe("approval policy (issue 1328)", () => {
       "ask",
     );
   });
+
+  it("a new agent that would start outside the sandbox is the person's; otherwise create and import keep their policy", () => {
+    for (const a of ["agent_create", "agent_import"]) {
+      expect(isCriticalWrite(a, true)).toBe(true);
+      expect(isCriticalWrite(a, false)).toBe(false);
+    }
+    expect(policyFor("agent_create", { widens: false }).kind).toBe("notify");
+    expect(policyFor("agent_import", { widens: false }).kind).toBe("ask");
+  });
 });
 
 describe("the notes, and agents doctor's list (issue 1328)", () => {
@@ -242,6 +269,24 @@ describe("the notes, and agents doctor's list (issue 1328)", () => {
     expect(readSandboxNotes(dir)).toEqual({});
     fs.writeFileSync(path.join(dir, "sandbox-off.json"), "nope");
     expect(readSandboxNotes(dir)).toEqual({});
+  });
+
+  it("prints no control or format characters from the notes file", () => {
+    const text = sandboxLines({
+      here: { applied: true, tool: "sandbox-exec" },
+      outside: [],
+      fromBefore: 0,
+      turnedOff: [
+        {
+          id: "ana",
+          at: "2026-11-23T22:00:00.000Z",
+          why: "Dock\u001b[2Ker\u202e",
+          by: "a\u0007na",
+        },
+      ],
+    }).join("\n");
+    expect(text).toContain("asked by ana: Docker");
+    for (const l of text.split("\n")) expect(l).not.toMatch(/[\p{Cc}\p{Cf}]/u);
   });
 
   it("lists every agent whose sandbox is off, with when and why, or that it was set by hand", () => {

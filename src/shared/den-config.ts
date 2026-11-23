@@ -1202,7 +1202,35 @@ export function setUserAgentSandbox(id: string, on: boolean): void {
     throw new Error(`config/local/user.yml: agents.${id} must be a mapping`);
   doc.setIn(["agents", id, "sandbox"], on ? "on" : "off");
   fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
-  writeFileAtomic(USER_CONFIG_PATH, doc.toString());
+  // lineWidth 0: long lines elsewhere in the file are never refolded.
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString({ lineWidth: 0 }));
+}
+
+/**
+ * Issue 1328: drops agents.<id>.sandbox from user.yml when an agent is
+ * removed, so its setting goes with it (and its block, when that was all
+ * it held). Whether it was there; nothing is written when it wasn't.
+ */
+export function clearUserAgentSandbox(id: string): boolean {
+  if (!AGENT_KEY_RE.test(id) || AGENTS_RESERVED_KEYS.includes(id)) return false;
+  let raw = "";
+  try {
+    raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+  if (!raw.trim()) return false;
+  const doc = yaml.parseDocument(raw);
+  if (doc.errors.length)
+    throw new Error(`config/local/user.yml: ${doc.errors[0]!.message}`);
+  if (!doc.hasIn(["agents", id, "sandbox"])) return false;
+  doc.deleteIn(["agents", id, "sandbox"]);
+  const block = doc.getIn(["agents", id], true);
+  if (yaml.isMap(block) && block.items.length === 0)
+    doc.deleteIn(["agents", id]);
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString({ lineWidth: 0 }));
+  return true;
 }
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */

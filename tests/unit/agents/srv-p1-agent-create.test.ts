@@ -16,7 +16,9 @@ import { readRecord } from "../../../src/shared/agents/records.js";
 import {
   checkAgentCreate,
   createAgent,
+  importSandboxOff,
   resolveAgentsDeps,
+  runAgentImport,
 } from "../../../src/ui/cli/agent-ops.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import { cleanupRigs, rig, type Rig } from "./helpers/rig.js";
@@ -169,5 +171,98 @@ describe("SRV-P1: on Allow", () => {
     const id = (out as { id: string }).id;
     expect(readRecord(r.stateDir, id)?.displayName).toBe("Ana");
     expect(r.made).toHaveLength(1);
+  });
+});
+
+describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
+  it("agent_create needs the person when the id it would get has its sandbox off", async () => {
+    const r = await repoRig();
+    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    const c = checkAgentCreate(resolveAgentsDeps(r.deps), {
+      project: "north",
+      persona: "planner",
+    });
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.personOnly).toBe(true);
+    expect(c.args.sandboxOff).toBe(true);
+    expect(c.details).toContain(
+      "planner starts outside the sandbox: agents.planner.sandbox is off in config/local/user.yml.",
+    );
+  });
+
+  it("so does a name whose id has it off, and agents.sandbox off for the machine", async () => {
+    const r = await repoRig();
+    r.config.agents = { ...r.config.agents, ana: { sandbox: false } };
+    const named = checkAgentCreate(resolveAgentsDeps(r.deps), {
+      project: "north",
+      persona: "reviewer",
+      name: "Ana",
+    });
+    expect(named.ok && named.personOnly).toBe(true);
+    const r2 = await repoRig();
+    r2.config.sandbox = false;
+    const all = checkAgentCreate(resolveAgentsDeps(r2.deps), {
+      project: "north",
+      persona: "planner",
+    });
+    expect(all.ok && all.personOnly).toBe(true);
+    expect(all.ok && all.details).toContain(
+      "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
+    );
+  });
+
+  it("with the sandbox on, or required, it follows the policy as before", async () => {
+    const r = await repoRig();
+    const c = checkAgentCreate(resolveAgentsDeps(r.deps), {
+      project: "north",
+      persona: "planner",
+    });
+    expect(c.ok && c.personOnly).toBeFalsy();
+    expect(c.ok && c.args.sandboxOff).toBeUndefined();
+    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    r.config.sandboxRequired = true;
+    const req = checkAgentCreate(resolveAgentsDeps(r.deps), {
+      project: "north",
+      persona: "planner",
+    });
+    expect(req.ok && req.personOnly).toBeFalsy();
+  });
+
+  it("on Allow, a create whose sandbox went off after the ask is refused", async () => {
+    const r = await repoRig();
+    const c = checkAgentCreate(resolveAgentsDeps(r.deps), {
+      project: "north",
+      persona: "planner",
+    });
+    if (!c.ok) throw new Error(c.error);
+    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    expect(await createAgent(resolveAgentsDeps(r.deps), { ...c.args })).toEqual(
+      {
+        ok: false,
+        error: expect.stringMatching(/outside the sandbox.*ask again/),
+      },
+    );
+  });
+
+  it("agent_import: the id it would get, the same way; and on Allow", async () => {
+    const r = await repoRig();
+    const d = resolveAgentsDeps(r.deps);
+    expect(importSandboxOff(d, "planner")).toBeNull();
+    r.config.agents = { ...r.config.agents, planner: { sandbox: false } };
+    expect(importSandboxOff(d, "planner")).toEqual([
+      "planner starts outside the sandbox: agents.planner.sandbox is off in config/local/user.yml.",
+      { key: "ap.det.agent.sandboxOff", vars: { id: "planner" } },
+    ]);
+    expect(
+      await runAgentImport(d, {
+        project: "north",
+        session: "abc-123",
+        persona: "planner",
+      }),
+    ).toEqual({
+      ok: false,
+      error: expect.stringMatching(/outside the sandbox.*ask again/),
+    });
   });
 });
