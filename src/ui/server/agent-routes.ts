@@ -675,6 +675,11 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 750: this install's groups from Hub, for the By group view.
+  if (pathname === "/api/hub/groups") {
+    const m = await import("./hub-groups-routes.js");
+    return m.hubGroupsRoute(req, res, await m.defaultHubGroupsDeps());
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");

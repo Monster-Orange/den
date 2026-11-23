@@ -53,6 +53,8 @@
     "./setting-row.css": "./src/setting-row.css",
     "./setting-field": "./src/setting-field.js",
     "./setting-field.css": "./src/setting-field.css",
+    "./group-header": "./src/group-header.js",
+    "./group-header.css": "./src/group-header.css",
     "./marks/*": "./src/marks/*",
     "./site/*": "./src/site/*",
     "./inventory": {

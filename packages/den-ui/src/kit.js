@@ -55,6 +55,8 @@
  *                               a list's bar while rows are selected
  *                               (bulk-bar.js)
  *   DenUI.buttonHtml(o)         the general button (button.js, issue 556)
+ *   DenUI.groupHeaderHtml(o)    a group's header in a list of agents by
+ *                               group (group-header.js, issue 750)
  *   DenUI.pageMenu(btn, { items, onSelect })   the page action menu on a
  *                               pageMenuButtonHtml button (issue 555)
  *   DenUI.settingRow(el, { onSave, ...row })   the settings on/off row
@@ -125,6 +127,7 @@ import { createSaveState } from "./savestate.js";
 import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
 import { buttonHtml } from "./button.js";
+import { groupHeaderHtml } from "./group-header.js";
 import {
   hydrateSettingRow,
   mountSettingRow,
@@ -389,6 +392,7 @@ const DenUI = {
   filterBar,
   bulkBar,
   buttonHtml,
+  groupHeaderHtml,
   menuRowHtml,
   pageMenuButtonHtml,
   pageMenuHtml,

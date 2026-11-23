@@ -1890,6 +1890,27 @@
       "このエージェントは起動時に Hub のツールを読み込めませんでした（{error}）。そのため Hub からは連絡できません。再起動しても会話は続き、ターンの終わりを待ちます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
+    "ag.by.label": "一覧の表示",
+    "ag.by.project": "プロジェクト別",
+    "ag.by.group": "グループ別",
+    "ag.grp.noHub": "グループは Den Hub の機能です。",
+    "ag.grp.connect": "Den Hub に接続",
+    "ag.grp.notInPlan":
+      "この会社の Den Hub プランにはグループが含まれていません。",
+    "ag.grp.openHub": "Hub を開く",
+    "ag.grp.guest":
+      "この Hub の会社ではゲストのため、グループはここに表示されません。",
+    "ag.grp.unreachable":
+      "Den Hub に接続できないため、グループを表示できません。",
+    "ag.grp.retry": "再試行",
+    "ag.grp.noGroups": "グループはまだありません",
+    "ag.grp.openGroups": "Hub でグループを開く",
+    "ag.grp.lead": "リード: {name}",
+    "ag.grp.open": "Hub で {group} を開く",
+    "ag.grp.message": "グループにメッセージ",
+    "ag.grp.messageName": "Hub で {group} にメッセージ",
+    "ag.grp.empty": "この Den で動いているメンバーはいません。",
+    "ag.grp.notIn": "グループなし",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
     "ag.det.label": "{id} の詳細",
     "ag.det.close": "閉じる",
@@ -2635,6 +2656,8 @@
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den があなたが誰かを Hub にまだ問い合わせています",
     "bell.m.held.unread":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den がエージェントの状態を時間内に読めませんでした",
+    "bell.m.held.hub_tools":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Hub のツールが読み込まれていません。再起動してください",
     "bell.m.hubNoAnswer":
       "{name}: Hub コメント {n} 件を入力しましたが、{m} 分たってもまだ返事がありません",
     "bell.m.crashLoop":
