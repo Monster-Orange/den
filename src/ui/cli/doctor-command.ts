@@ -55,6 +55,11 @@ import {
   testResolveDoctorLine,
 } from "../../shared/test-resolve.js";
 import {
+  readLastRestore,
+  restoreDoctorLine,
+  servicesRestoreOnBoot,
+} from "../../shared/environment-manager/restore-on-boot.js";
+import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
@@ -2032,6 +2037,21 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   {
     const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
     if (tr) console.log(tr);
+  }
+  // Issue 1225: what the last restore after a restart brought back, or that
+  // the setting is off.
+  {
+    let enabled = true;
+    try {
+      enabled = servicesRestoreOnBoot();
+    } catch {
+      /* a bad value: doctor's config check says so */
+    }
+    const rl = restoreDoctorLine({
+      enabled,
+      last: readLastRestore(getStateDir()),
+    });
+    if (rl) console.log(rl);
   }
   for (const l of pushContactLines(
     readWebUrl(),

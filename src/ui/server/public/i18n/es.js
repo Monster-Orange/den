@@ -1310,8 +1310,7 @@
     "set.server.report_screenshot_days": "Capturas de informes, se guardan",
     "set.server.report_screenshot_days.d":
       "Cuántos días guarda __DEN_TITLE__ la captura con las zonas tapadas de un informe enviado desde aquí, para que tú y el agente propio de esta instalación la leáis (report_screenshot). Después se borra. __DEN_CLI__ config reports.screenshot_keep_days=30",
-    "set.server.server_log_max":
-      "Registro de avisos, tamaño máximo",
+    "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
     "set.server.report_screenshot_max":
@@ -2741,6 +2740,14 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.serviceBack":
+      "Se volvió a iniciar 1 servicio después del reinicio.",
+    "bell.m.servicesBack":
+      "Se volvieron a iniciar {n} servicios después del reinicio.",
+    "bell.m.serviceBackFailed":
+      "Se volvió a iniciar 1 servicio después del reinicio. No se pudieron iniciar: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Se volvieron a iniciar {n} servicios después del reinicio. No se pudieron iniciar: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.toolsListFailed":

@@ -2650,6 +2650,12 @@
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています: {what} ({since} から)",
     "bell.m.updatedSecurity":
       "{agent} があなたを待っている間に、__DEN_TITLE__ はセキュリティ修正のため更新されました。質問はまだ開いています",
+    "bell.m.serviceBack": "再起動後、1 件のサービスを再開しました。",
+    "bell.m.servicesBack": "再起動後、{n} 件のサービスを再開しました。",
+    "bell.m.serviceBackFailed":
+      "再起動後、1 件のサービスを再開しました。再開できなかったもの: {failed}。",
+    "bell.m.servicesBackFailed":
+      "再起動後、{n} 件のサービスを再開しました。再開できなかったもの: {failed}。",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ は {agent} の Hub ツールを再接続しました。その連絡は、{agent} のターミナルであなたが応答するまで待機します",
     "bell.m.toolsListFailed":

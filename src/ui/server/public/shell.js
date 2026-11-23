@@ -3636,6 +3636,12 @@
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.serviceBack": "Brought back 1 service after the restart.",
+    "bell.m.servicesBack": "Brought back {n} services after the restart.",
+    "bell.m.serviceBackFailed":
+      "Brought back 1 service after the restart. Not brought back: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Brought back {n} services after the restart. Not brought back: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
     "bell.m.toolsListFailed":

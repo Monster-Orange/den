@@ -207,6 +207,8 @@ import {
   shouldDetachServiceCommand,
 } from "../../shared/environment-manager/service-runner.js";
 import { reapDeadDaemons } from "./daemon-reaper.js";
+import { runningDockerNamesAsync } from "../../shared/environment-manager/opctl.js";
+import { restoreNote } from "./restore-note.js";
 import {
   heldManifestsDir,
   readManifest,
@@ -10500,22 +10502,45 @@ void (async () => {
     serverLog(`  ⚠ ${(e as Error).message}`, "warn");
     return;
   }
-  // At boot Docker may start after Den: wait for it when anything needs it.
-  const needsDocker = daemonsAtStart.some((d) => d.containers?.length);
+  // At boot the container runtime may start after Den. Issue 1225: wait
+  // for it whenever this machine has one (a service recorded only as a
+  // process group may start containers itself), and until it answers (its
+  // empty listing at boot is not "ready").
+  const listing = m.containerListingOnceReady({
+    dockerNames: runningDockerNamesAsync,
+    bases: runningContainerBasesAsync,
+  });
+  const needsDocker = m.shouldWaitForContainers(daemonsAtStart, {
+    runtime: await m.containerRuntimeOnPath(),
+  });
   const running = needsDocker
-    ? await m.waitForContainers(wait, runningContainerBasesAsync)
+    ? await m.waitForContainers(wait, listing)
     : await runningContainerBasesAsync().catch(() => null);
+  if (needsDocker && running === null)
+    serverLog(
+      `  ⚠ services after the restart: the container runtime didn't answer within ${wait} s; restoring anyway`,
+      "warn",
+    );
   const plan = await m.servicesToRestore(daemonsAtStart, {
     pruned: prunedAtStart,
     running,
   });
-  await m.restoreServicesOnBoot(plan, {
+  const result = await m.restoreServicesOnBoot(plan, {
     enabled: true,
     isActive: (ws) => isWorkspaceActive(ws),
     forget: unregisterDaemon,
     exec: upInProcess,
-    log: (line) => serverLog(line, "lifecycle"),
+    // Issue 1225: a service that dies once started is tried again.
+    stillDown: async (_ws, addrs) =>
+      m.stillDownOf(addrs, {
+        records: listDaemons(),
+        running: await listing().catch(() => null),
+      }),
+    log: (line, level) => serverLog(line, level ?? "lifecycle"),
   });
+  // Issue 1225: the bell, and doctor's record of the last restore.
+  restoreNote(notificationDeps().store, result);
+  m.writeLastRestore(getStateDir(), result);
 })().catch((e: unknown) =>
   serverLog(`  ⚠ services after the restart: ${String(e)}`, "warn"),
 );
