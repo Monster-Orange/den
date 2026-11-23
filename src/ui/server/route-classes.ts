@@ -870,6 +870,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 172: a person stops push alerts to a device",
   ),
   R(
+    "/api/agents/prompt-state",
+    "Issue 772: an agent's state (needs, working, done, idle; null when not running) for agent_wait; the caller's project only",
+  ),
+  R(
     "/api/alerts/devices",
     "Issue 172: the person's devices that get push (what each is, its push service, when added); never an endpoint, never an agent's",
   ),

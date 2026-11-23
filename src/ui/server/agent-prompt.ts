@@ -28,7 +28,10 @@ import {
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { checkInstruction } from "../cli/agent-ops.js";
 import { agentSeenSubject } from "../../shared/seen-mark.js";
-import type { HeldAsker, HeldCheck } from "./approval-routes.js";
+import type { HeldAsker } from "./approval-routes.js";
+import type { HeldOpCheck } from "../cli/agent-ops.js";
+
+type HeldCheck = HeldOpCheck<Record<string, unknown>>;
 
 /** An agent's state as agent_wait names it ("needs" is Blocked). */
 export type PromptState = "needs" | "working" | "done" | "idle";
@@ -232,6 +235,51 @@ export class AgentPrompts {
     }
   }
 
+  /**
+   * What agent_wait reads: `id`'s state for the caller. Another project's
+   * agent is refused (403), an unknown one is 404. An agent's read says it
+   * waits on `id` (the loop rule).
+   */
+  read(
+    id: string,
+    who: HeldAsker,
+  ):
+    | {
+        status: 200;
+        body: { ok: true; agent: string; state: PromptState | null };
+      }
+    | { status: 400 | 403 | 404; body: { ok: false; error: string } } {
+    if (!id)
+      return {
+        status: 400,
+        body: { ok: false, error: "agent is required (the agent's id)" },
+      };
+    const rec = this.d.record(id);
+    if (!rec)
+      return { status: 404, body: { ok: false, error: `no agent "${id}"` } };
+    if (
+      who.project &&
+      !isServerScope(who.project) &&
+      who.project !== rec.workspace
+    )
+      return {
+        status: 403,
+        body: {
+          ok: false,
+          error: `${who.agent ?? "this agent"} works in project ${who.project}: it can read that project's agents only`,
+        },
+      };
+    if (who.agent && who.agent !== id) this.waiting(who.agent, id);
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        agent: id,
+        state: this.d.stateOf(id, who.agent ? `agent:${who.agent}` : undefined),
+      },
+    };
+  }
+
   /** Whether `from` waits on `to`, directly or down a chain of waits. */
   private waitsOn(from: string, to: string): boolean {
     const now = this.now();
@@ -254,3 +302,27 @@ const oneLine = (t: string) => {
   const s = t.replace(/\s+/g, " ");
   return s.length > 120 ? `${s.slice(0, 119)}…` : s;
 };
+
+/** GET /api/agents/prompt-state?agent=<id>: agent_wait's poll. */
+export async function handlePromptState(
+  req: { method?: string },
+  res: {
+    writeHead(s: number, h?: Record<string, string>): unknown;
+    end(b?: string): void;
+  },
+  url: URL,
+  prompts: AgentPrompts,
+  who: HeldAsker,
+): Promise<void> {
+  const send = (status: number, body: unknown) => {
+    res.writeHead(status, {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    });
+    res.end(JSON.stringify(body));
+  };
+  if ((req.method ?? "GET") !== "GET")
+    return send(405, { ok: false, error: "GET only" });
+  const r = prompts.read((url.searchParams.get("agent") ?? "").trim(), who);
+  send(r.status, r.body);
+}

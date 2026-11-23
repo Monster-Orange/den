@@ -3086,6 +3086,9 @@
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
+    "ap.do.agent_prompt": "Tell {agent}: {text}",
+    "ap.det.agent_prompt.from": "Asked by: {agent}",
+    "ap.det.agent_prompt.text": "Text: {text}",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",

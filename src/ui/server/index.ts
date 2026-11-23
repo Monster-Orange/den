@@ -1286,6 +1286,13 @@ import {
 import { defaultInstallLabel } from "./hub-connect.js";
 import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
 import {
+  AgentPrompts,
+  handlePromptState,
+  promptStateOf,
+} from "./agent-prompt.js";
+import { embedDelivery } from "../../shared/hub-delivery.js";
+import { typeMessage } from "./agent-say.js";
+import {
   approvalsView,
   patchApprovals,
   pinsAsWatched,
@@ -4676,6 +4683,11 @@ function approvalDeps(): ApprovalDeps {
         ),
       log: (line) => serverLog(line, "lifecycle"),
     }),
+    // Issue 772: one agent prompts another.
+    agentPrompt: {
+      check: (a, who) => agentPrompts().check(a, who),
+      run: (a) => agentPrompts().run(a),
+    },
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
       run: (a) =>
@@ -5902,6 +5914,20 @@ async function handleRequest(
   // (direct and audited; the route checks the role, the repo and the limit).
   if (guard.ok && pathname === ISSUE_WRITE_PATH) {
     await handleIssueWriteRoute(req, res, pathname, issueWriteDeps(req));
+    return;
+  }
+  // Issue 772: agent_wait's poll of an agent's state.
+  if (guard.ok && pathname === "/api/agents/prompt-state") {
+    const ag = agentPrincipalOf(req);
+    await handlePromptState(
+      req,
+      res,
+      new URL(req.url ?? "/", "http://den"),
+      agentPrompts(),
+      ag
+        ? { agent: ag.actor.slice("agent:".length), project: ag.workspace }
+        : {},
+    );
     return;
   }
   // NT: the bell, and agents saying they wait for their person.
@@ -10959,6 +10985,52 @@ void CRASH_GATE.then(() =>
       );
   }),
 );
+
+let prompts: AgentPrompts | null = null;
+/**
+ * Issue 772: agent_prompt and agent_wait (agent-prompt.ts). Its check runs
+ * every 2 s while a prompted child has a parent to tell.
+ */
+export function agentPrompts(): AgentPrompts {
+  if (prompts) return prompts;
+  prompts = new AgentPrompts({
+    record: (id) => readAgentRecord(getStateDir(), id),
+    stateOf: (id, viewer) => {
+      const st = agentStateDeps();
+      return promptStateOf({
+        rec: readAgentRecord(getStateDir(), id),
+        waiting: notificationDeps().attention.waitingNow(),
+        working: st.working(),
+        seen: st.seen,
+        viewer: viewer ?? "agent:den",
+      });
+    },
+    type: async (id, text) => {
+      const d = agentWebDeps();
+      const rec = readAgentRecord(getStateDir(), id);
+      if (!rec) throw new Error(`no agent "${id}"`);
+      await typeMessage(d, rec, text);
+    },
+    note: (to, text) =>
+      void import("./hub-delivery-service.js")
+        .then((m) =>
+          m.relayMessage(
+            embedDelivery({
+              id: `agent-prompt-${to.agent}-${Date.now()}`,
+              agent: to.agent,
+              project: to.project,
+              origin: "Den agent_prompt",
+              text,
+              at: Date.now(),
+            }),
+          ),
+        )
+        .catch(() => undefined),
+  });
+  const t = setInterval(() => prompts?.tick(), 2000);
+  t.unref?.();
+  return prompts;
+}
 
 /**
  * SRV-1a: the restart marker the last server left. An audit row says the

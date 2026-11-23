@@ -2125,6 +2125,9 @@
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
+    "ap.do.agent_prompt": "{agent} に伝える: {text}",
+    "ap.det.agent_prompt.from": "依頼元: {agent}",
+    "ap.det.agent_prompt.text": "テキスト: {text}",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
     "ap.pm.warn":

@@ -13,6 +13,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   AgentPrompts,
+  handlePromptState,
   type AgentPromptDeps,
   promptStateOf,
   type PromptState,
@@ -273,5 +274,73 @@ describe("772: the state the server reads (promptStateOf)", () => {
     );
     expect(promptStateOf({ ...base, seen: seen(true, false) })).toBe("done");
     expect(promptStateOf({ ...base, seen: seen(true, true) })).toBe("idle");
+  });
+});
+
+describe("772: GET /api/agents/prompt-state (what agent_wait polls)", () => {
+  async function get(
+    r: Rig,
+    url: string,
+    who: { agent?: string; project?: string },
+  ) {
+    const out = { status: 0, body: "" };
+    const res = {
+      writeHead: (s: number) => {
+        out.status = s;
+        return res;
+      },
+      setHeader: () => undefined,
+      end: (b?: string) => {
+        out.body = b ?? "";
+      },
+    };
+    await handlePromptState(
+      { method: "GET" } as never,
+      res as never,
+      new URL(url, "http://den"),
+      r.p,
+      who,
+    );
+    return { status: out.status, json: JSON.parse(out.body || "{}") };
+  }
+
+  it("says the agent's state", async () => {
+    const r = rig();
+    r.state.set("b", "working");
+    const g = await get(r, "/api/agents/prompt-state?agent=b", from("a"));
+    expect(g.status).toBe(200);
+    expect(g.json).toEqual({ ok: true, agent: "b", state: "working" });
+  });
+
+  it("not running: state null", async () => {
+    const r = rig();
+    r.state.set("b", null);
+    const g = await get(r, "/api/agents/prompt-state?agent=b", from("a"));
+    expect(g.json).toEqual({ ok: true, agent: "b", state: null });
+  });
+
+  it("8: another project's agent: 403, nothing said", async () => {
+    const r = rig();
+    const g = await get(r, "/api/agents/prompt-state?agent=s", from("a"));
+    expect(g.status).toBe(403);
+    expect(g.json.state).toBeUndefined();
+  });
+
+  it("an unknown agent: 404; none named: 400", async () => {
+    const r = rig();
+    expect(
+      (await get(r, "/api/agents/prompt-state?agent=zz", from("a"))).status,
+    ).toBe(404);
+    expect((await get(r, "/api/agents/prompt-state", from("a"))).status).toBe(
+      400,
+    );
+  });
+
+  it("6: an agent's poll records its wait, so the target can't prompt it back", async () => {
+    const r = rig();
+    await get(r, "/api/agents/prompt-state?agent=a", from("b"));
+    expect((await r.p.check({ agent: "b", text: "x" }, from("a"))).ok).toBe(
+      false,
+    );
   });
 });
