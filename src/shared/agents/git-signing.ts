@@ -138,7 +138,10 @@ export function ensureAgentSigningKey(
   // A complete one never turns incomplete: a racer's is left alone.
   if (fs.existsSync(final) && !complete(final))
     try {
-      fs.renameSync(final, path.join(parent, `.incomplete-${Date.now()}-${process.pid}`));
+      fs.renameSync(
+        final,
+        path.join(parent, `.incomplete-${Date.now()}-${process.pid}`),
+      );
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
@@ -148,7 +151,11 @@ export function ensureAgentSigningKey(
     const r = spawnSync(
       "ssh-keygen",
       ["-q", "-t", "ed25519", "-N", "", "-C", "den agents", "-f", key],
-      { encoding: "utf8", timeout: 20_000, stdio: ["ignore", "ignore", "pipe"] },
+      {
+        encoding: "utf8",
+        timeout: 20_000,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
     );
     if (r.error || r.status !== 0)
       throw new Error(
@@ -338,10 +345,18 @@ export function checkAgentSigning(
     };
     const steps: [string, string[]][] = [
       ["git init", ["init", "-q", repo]],
-      ["a signed commit", ["commit", "-q", "--allow-empty", "-m", "Den: signing check"]],
+      [
+        "a signed commit",
+        ["commit", "-q", "--allow-empty", "-m", "Den: signing check"],
+      ],
       [
         "git verify-commit",
-        ["-c", `gpg.ssh.allowedSignersFile=${allowed}`, "verify-commit", "HEAD"],
+        [
+          "-c",
+          `gpg.ssh.allowedSignersFile=${allowed}`,
+          "verify-commit",
+          "HEAD",
+        ],
       ],
     ];
     for (const [what, args] of steps) {
@@ -358,7 +373,10 @@ export function checkAgentSigning(
         };
       }
     }
-    return { ok: true, detail: `commits sign with ${git.signingKey} and verify` };
+    return {
+      ok: true,
+      detail: `commits sign with ${git.signingKey} and verify`,
+    };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
