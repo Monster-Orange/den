@@ -261,6 +261,9 @@ const st = {
   // D54/D58: whether that pick also sizes the PTY (a pick from the list
   // does; a link that opens the page only puts the keyboard there).
   claimOnOpen: false,
+  // Issue 1315: a person picked a pane (a tab, a row) while the page was
+  // still opening its ?open= panes: their pick stays in front.
+  picked: false,
   keyPane: null,
   // #80: ?open= ids of other projects' sessions, left out of this
   // project's tabs (one line offers them in All active).
@@ -2132,6 +2135,7 @@ document.addEventListener("keydown", dropStalePick, true);
  * that pane is still in sight.
  */
 async function pick(id, add) {
+  st.picked = true;
   const layout = shownLayout();
   if (layout === "focus" && !add) {
     st.side.clear();
@@ -5971,6 +5975,7 @@ export async function mountAgentsPage(root) {
       // D58: a pointer's pick puts the keyboard in its terminal; Enter or
       // Space on the tab (a click with no pointer) keeps it on the tab.
       const pointer = e.detail > 0;
+      st.picked = true;
       if (st.cur !== tab.dataset.id) {
         st.cur = tab.dataset.id;
         paintLayout();
@@ -6203,10 +6208,16 @@ export async function mountAgentsPage(root) {
         if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
         continue;
       }
-      if (!st.data || rowOf(id)) await openPane(id);
+      // Issue 1315: once the person picks one, the rest open behind it.
+      if (!st.data || rowOf(id)) await openPane(id, { front: !st.picked });
     }
   // #80: ?front= (the tab that was in front) comes in front again.
-  if (frontAsked && st.open.includes(frontAsked) && st.cur !== frontAsked) {
+  if (
+    frontAsked &&
+    !st.picked &&
+    st.open.includes(frontAsked) &&
+    st.cur !== frontAsked
+  ) {
     st.cur = frontAsked;
     paintLayout();
   }

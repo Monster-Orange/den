@@ -1095,6 +1095,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/popup-font.browser.test.ts",
+        "tests/unit/server/project-colours.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
