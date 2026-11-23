@@ -2128,6 +2128,8 @@
     "ap.do.agent_prompt": "{agent} に伝える: {text}",
     "ap.det.agent_prompt.from": "依頼元: {agent}",
     "ap.det.agent_prompt.text": "テキスト: {text}",
+    "ap.det.agent_prompt.wider":
+      "{agent} は {from} より多くのことができます。あなたの許可でのみ送信されます。",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
     "ap.pm.warn":

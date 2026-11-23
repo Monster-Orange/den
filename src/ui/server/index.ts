@@ -1400,6 +1400,7 @@ import {
   runProjectMode,
   runAgentImport,
   personaLookup,
+  agentReach,
   hubUpstream,
   policyResolver,
   restartResolver,
@@ -10995,6 +10996,7 @@ export function agentPrompts(): AgentPrompts {
   if (prompts) return prompts;
   prompts = new AgentPrompts({
     record: (id) => readAgentRecord(getStateDir(), id),
+    reach: (id) => agentReach(agentWebDeps(), id),
     stateOf: (id, viewer) => {
       const st = agentStateDeps();
       return promptStateOf({

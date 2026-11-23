@@ -7430,6 +7430,40 @@ export function permissionNow(
   return effectiveMode(d, rec, persona, rt)!.mode;
 }
 
+/**
+ * Issue 772: what agent `id` may do, for agent_prompt's "privilege by
+ * proxy" check: its mode now as a rank (agent_mode's order, INTENT_RANK)
+ * and the projects beyond its own it was granted. Rank is null when Den
+ * can't tell: a runtime that takes no mode from Den, or a running process
+ * whose recorded mode is not the mode it would get now. Null (no record,
+ * or grants it holds that differ from agents.<id>.grants now) is unknown
+ * too. The caller treats unknown as wider, so the person decides.
+ */
+export function agentReach(
+  d: AgentsResolved,
+  id: string,
+): { rank: number | null; grants: readonly string[] } | null {
+  const rec = readRecord(d.stateDir(), id);
+  if (!rec) return null;
+  const cfg = d.agentsConfig();
+  const now = cfg.agents[id]?.grants ?? [];
+  if (
+    rec.grants &&
+    (rec.grants.length !== now.length ||
+      rec.grants.some((g) => !now.includes(g)))
+  )
+    return null;
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.permissions) return { rank: null, grants: [...now] };
+  const mode = effectiveMode(d, rec, personaLookup(d)(rec), rt)?.mode;
+  const drift =
+    !rec.stoppedAt && rec.permission !== undefined && rec.permission !== mode;
+  return {
+    rank: mode === undefined || drift ? null : INTENT_RANK[mode],
+    grants: [...now],
+  };
+}
+
 /** Issue 225: an agent's own mode (an override), if it has one. */
 export function ownModeOf(rec: AgentRecord): PermissionIntent | undefined {
   return rec.permission && rec.overrides?.includes("permission")

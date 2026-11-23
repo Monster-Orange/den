@@ -344,3 +344,53 @@ describe("772: GET /api/agents/prompt-state (what agent_wait polls)", () => {
     );
   });
 });
+
+describe("772 review: a prompt never widens what the caller may do without the person", () => {
+  const reach: Record<string, { rank: number | null; grants: string[] }> = {
+    ask: { rank: 0, grants: [] },
+    ask2: { rank: 0, grants: [] },
+    all: { rank: 3, grants: [] },
+    wide: { rank: 0, grants: ["south"] },
+    odd: { rank: null, grants: [] },
+  };
+  function wrig() {
+    const records: Record<string, { id: string; workspace: string }> = {};
+    for (const k of Object.keys(reach))
+      records[k] = { id: k, workspace: "north" };
+    return new AgentPrompts({
+      record: (id) => records[id] ?? null,
+      stateOf: () => "idle",
+      type: async () => undefined,
+      note: () => undefined,
+      reach: (id) => reach[id] ?? null,
+    });
+  }
+  const personOnly = async (target: string, caller: string) => {
+    const c = await wrig().check({ agent: target, text: "x" }, from(caller));
+    expect(c.ok).toBe(true);
+    return c.ok ? c.personOnly === true : null;
+  };
+
+  it("an ask-mode caller prompting an all-mode target: the person's Allow only", async () => {
+    expect(await personOnly("all", "ask")).toBe(true);
+  });
+  it("an all-mode caller prompting an ask-mode target: routine", async () => {
+    expect(await personOnly("ask", "all")).toBe(false);
+  });
+  it("the same mode: routine", async () => {
+    expect(await personOnly("ask2", "ask")).toBe(false);
+  });
+  it("a target with a grant the caller lacks: the person's Allow only", async () => {
+    expect(await personOnly("wide", "ask")).toBe(true);
+  });
+  it("a mode Den can't tell (either side): the person's Allow only", async () => {
+    expect(await personOnly("odd", "ask")).toBe(true);
+    expect(await personOnly("ask", "odd")).toBe(true);
+  });
+  it("the Review says why", async () => {
+    const c = await wrig().check({ agent: "all", text: "x" }, from("ask"));
+    expect(c.ok && c.detailKeys?.map((k) => k?.key)).toContain(
+      "ap.det.agent_prompt.wider",
+    );
+  });
+});

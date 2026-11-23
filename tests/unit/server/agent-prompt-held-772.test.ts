@@ -43,6 +43,11 @@ const prompts = new AgentPrompts({
     state.set(id, "working");
   },
   note: () => undefined,
+  // The same mode: the policy decides. `wide`: builder runs looser.
+  reach: (id) =>
+    state.has(id)
+      ? { rank: id === "builder" && wide ? 3 : 0, grants: [] }
+      : null,
   sleep: async () => undefined,
 });
 const actions: HeldActions = {
@@ -53,6 +58,7 @@ const actions: HeldActions = {
 };
 const queue = createApprovalQueue(actions, () => stateDir);
 let kind: PolicyKind = "ask";
+let wide = false;
 let server: http.Server;
 let base = "";
 
@@ -142,5 +148,21 @@ describe("772: agent_prompt behind the approval policy", () => {
     const r = await ask("go");
     expect(r.json.state).toBe("done");
     expect(typed).toEqual([["builder", "go"]]);
+  });
+
+  it("review: a looser-mode target waits for the person's Allow even when the policy wouldn't hold it", async () => {
+    kind = "notify";
+    wide = true;
+    typed.length = 0;
+    state.set("builder", "idle");
+    try {
+      const r = await ask("deploy it");
+      expect(r.json.state).toBe("pending");
+      expect(typed).toEqual([]);
+      await queue.decide(r.json.id, "allow", "s1");
+      expect(typed).toEqual([["builder", "deploy it"]]);
+    } finally {
+      wide = false;
+    }
   });
 });

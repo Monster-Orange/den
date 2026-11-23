@@ -47,6 +47,13 @@ export interface AgentPromptDeps {
   type(id: string, text: string): Promise<void>;
   /** One note to an agent (typed after its turn; kept if it is stopped). */
   note(to: { agent: string; project: string }, text: string): void;
+  /**
+   * What an agent may do: its permission mode's rank (agent_mode's order,
+   * ask < edits < auto < all; null when Den can't tell) and the projects
+   * beyond its own it was granted. Absent: every prompt by an agent waits
+   * for the person.
+   */
+  reach?(id: string): { rank: number | null; grants: readonly string[] } | null;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -143,8 +150,13 @@ export class AgentPrompts {
         `agent_blocked: ${id} needs its person (a dialog is theirs to answer); nothing was sent`,
       );
     const shown = rec.displayName ?? id;
+    // Review: never a way round the caller's own limits. A target that
+    // may do more (a looser mode, a grant the caller lacks, or a mode Den
+    // can't tell) waits for the person's own Allow, whatever the policy.
+    const wider = !!caller && this.wider(caller, id);
     return {
       ok: true,
+      ...(wider ? { personOnly: true } : {}),
       summary: `Tell ${shown}: ${oneLine(text)}`,
       params: { agent: shown, text: oneLine(text) },
       ...review([
@@ -157,6 +169,15 @@ export class AgentPrompts {
               rl(`Asked by: ${caller}`, "ap.det.agent_prompt.from", {
                 agent: caller,
               }),
+            ]
+          : []),
+        ...(wider
+          ? [
+              rl(
+                `${shown} may do more than ${caller}: only your Allow sends this.`,
+                "ap.det.agent_prompt.wider",
+                { agent: shown, from: caller! },
+              ),
             ]
           : []),
         rl(`Text: ${text}`, "ap.det.agent_prompt.text", { text }),
@@ -278,6 +299,20 @@ export class AgentPrompts {
         state: this.d.stateOf(id, who.agent ? `agent:${who.agent}` : undefined),
       },
     };
+  }
+
+  /** Whether `target` may do more than `caller` (mode, grants, unknown). */
+  private wider(caller: string, target: string): boolean {
+    let c, t;
+    try {
+      c = this.d.reach?.(caller);
+      t = this.d.reach?.(target);
+    } catch {
+      return true;
+    }
+    if (!c || !t || c.rank === null || t.rank === null) return true;
+    if (t.rank > c.rank) return true;
+    return t.grants.some((g) => !c.grants.includes(g));
   }
 
   /** Whether `from` waits on `to`, directly or down a chain of waits. */

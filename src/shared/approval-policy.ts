@@ -161,8 +161,8 @@ export const HELD_WRITE_RISK: Readonly<
   },
   agent_folder: { risk: "routine", why: "moves an agent within its project" },
   agent_prompt: {
-    risk: "routine",
-    why: "types one message into an agent of the same project; never into a dialog, never twice",
+    risk: "widens",
+    why: "types one message into an agent of the same project; never into a dialog, never twice. Critical when the target may do more than the caller (a looser mode, a grant the caller lacks)",
   },
   workspace_create: { risk: "routine", why: "adds an empty project" },
   repo_add: {

@@ -2183,6 +2183,8 @@
     "ap.do.agent_prompt": "Decir a {agent}: {text}",
     "ap.det.agent_prompt.from": "Lo pide: {agent}",
     "ap.det.agent_prompt.text": "Texto: {text}",
+    "ap.det.agent_prompt.wider":
+      "{agent} puede hacer más que {from}: solo tu Permitir lo envía.",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
     "ap.pm.warn":
