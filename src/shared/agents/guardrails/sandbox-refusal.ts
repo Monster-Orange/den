@@ -8,7 +8,8 @@
  * issue 1316) gets its own, and so does a unix socket the sandbox refused
  * to connect to (issue 1325), a setuid program that couldn't start and
  * Docker's socket (issue 1326). A file tool that succeeded gets nothing:
- * its content may name an error (issue 1326).
+ * its content may name an error (issue 1326); a Bash call that succeeded
+ * is read by its stderr alone (issue 1357).
  * Anything else, and anything outside the sandbox: nothing. It reads no
  * file and calls nothing: a short-lived hook that can't fail a tool.
  */
@@ -128,6 +129,24 @@ type Note = {
   };
 };
 
+/**
+ * Issue 1357: what a Bash call that succeeded says about a refusal: its
+ * stderr only. Its stdout is the command's output (a `git diff` or `cat`
+ * of a file that names the error refused nothing). Any other tool, or a
+ * response of another shape: the response, whole.
+ */
+function bashStderr(input: HookInput): unknown {
+  const r = input.tool_response;
+  if (
+    input.tool_name === "Bash" &&
+    r &&
+    typeof r === "object" &&
+    typeof (r as { stderr?: unknown }).stderr === "string"
+  )
+    return (r as { stderr: string }).stderr;
+  return r;
+}
+
 /** The note for this hook input, or null. */
 export function refusalNote(
   input: HookInput,
@@ -144,7 +163,7 @@ export function refusalNote(
     FILE_TOOLS.has(input.tool_name)
   )
     return null;
-  const said = ev === "PostToolUse" ? input.tool_response : input.error;
+  const said = ev === "PostToolUse" ? bashStderr(input) : input.error;
   let text = "";
   try {
     text = typeof said === "string" ? said : JSON.stringify(said ?? "");
