@@ -111,11 +111,9 @@ describe("issue 1264: heavy runs an agent starts go through the gate", () => {
     );
   });
 
-  it("already gated (lair gate run, den gate run) is not wrapped twice", () => {
-    expect(route("lair gate run --kind cpu -- npx jest a.test.ts")).toBeNull();
-    expect(
-      route("/x/mo-lair/bin/lair gate run -- npx jest a.test.ts"),
-    ).toBeNull();
+  it("already gated (another CLI's gate run, den gate run) is not wrapped twice", () => {
+    expect(route("ops gate run --kind cpu -- npx jest a.test.ts")).toBeNull();
+    expect(route("/x/tools/bin/ops gate run -- npx jest a.test.ts")).toBeNull();
     expect(route(`${GATE} --kind cpu -- npx jest a.test.ts`)).toBeNull();
   });
 

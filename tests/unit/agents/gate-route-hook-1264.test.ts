@@ -61,7 +61,7 @@ describe("issue 1264: the hook sends an agent's heavy run through the gate", () 
 
   it("already gated, or nothing heavy: no output, the command as it is", () => {
     for (const command of [
-      "lair gate run -- npx jest a.test.ts",
+      "ops gate run -- npx jest a.test.ts",
       "git status",
     ]) {
       const r = run({ command });

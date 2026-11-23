@@ -56,7 +56,7 @@ function programOf(words) {
   return i < words.length ? { name: base(words[i]), at: i } : null;
 }
 
-/** Whether this stage starts `gate run` (lair's or Den's own CLI). */
+/** Whether this stage starts `gate run` (Den's own CLI, or a tool's that wraps it). */
 function gated(words) {
   for (let i = 0; i + 1 < words.length; i++)
     if (words[i] === "gate" && words[i + 1] === "run") return i <= 2;
