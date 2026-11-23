@@ -101,9 +101,12 @@ describe("gate run follows its parent (issue 752)", () => {
       ran.push(cmd);
       return { pid: 1, kill: () => {}, done: Promise.resolve(0) };
     };
-    expect(await cmdGate(["run", "--kind", "browser", "--", "x"], t.d)).toBe(
-      129,
-    );
+    expect(
+      await cmdGate(
+        ["run", "--kind", "browser", "--browser-endpoint", "self", "--", "x"],
+        t.d,
+      ),
+    ).toBe(129);
     expect(ran).toEqual([]);
     expect(t.d.store.list().map((e) => e.label)).toEqual(["holder"]);
   });
@@ -122,7 +125,10 @@ describe("gate run follows its parent (issue 752)", () => {
       done: new Promise<number>((r) => (end = r)),
     };
     t.d.exec = () => run;
-    const going = cmdGate(["run", "--kind", "browser", "--", "x"], t.d);
+    const going = cmdGate(
+      ["run", "--kind", "browser", "--browser-endpoint", "self", "--", "x"],
+      t.d,
+    );
     for (let i = 0; i < 50 && t.beats.length === 0; i++)
       await new Promise((r) => setImmediate(r));
     for (const b of [...t.beats]) b();
@@ -153,7 +159,14 @@ describe("gate run follows its parent (issue 752)", () => {
         `"${process.execPath}" --import tsx "${child}" & echo "waiter $!"; wait`,
       ],
       {
-        env: { ...process.env, DEN_GATE_DIR: dir, TSX_DISABLE_CACHE: "1" },
+        env: {
+          ...process.env,
+          DEN_GATE_DIR: dir,
+          TSX_DISABLE_CACHE: "1",
+          // A browser ask names where its browser runs (required on
+          // macOS); only its form is checked, never connected to.
+          DEN_PW_WS: "ws://127.0.0.1:9/orphan-752",
+        },
         stdio: ["ignore", "pipe", "ignore"],
       },
     );
