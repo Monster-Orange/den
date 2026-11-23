@@ -41,8 +41,8 @@ body.den-has-shell > #den-content {
 }
 .den-top :focus-visible,
 .den-rail :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 .den-skip {
   position: fixed;
@@ -1044,7 +1044,7 @@ body.den-has-shell .den-upd {
 }
 /* Issue 101: Needs you, then Earlier, each under a quiet heading. */
 .den-bell-sec + .den-bell-sec {
-  border-top: 1px var(--edge-style, solid) var(--border);
+  border-top: 1px solid var(--border); /* issue 1137: a row divider stays solid */
 }
 .den-bell-sech {
   margin: 0;
@@ -1177,8 +1177,8 @@ body.den-has-shell .den-upd {
   outline: none;
 }
 .den-pop :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 .den-pop .den-ml {
   font: 11px var(--mono);

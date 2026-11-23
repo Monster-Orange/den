@@ -502,6 +502,11 @@
     "ws.all": "All active",
     "ws.focus": "CLI default",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Connected to {company} ({host}). This project: {name}.",
+    "ws.hubAway": "Another Hub",
+    "ws.hubAwayTip":
+      "This project's link points at another Hub, so it doesn't count here. Relink it in Project setup.",
     "ws.hubUnseen": "Den Hub can't see {n} repos",
     "ws.hubTip":
       "This project's agents file their Hub work in this Hub project. Change it in Project setup.",
@@ -991,6 +996,11 @@
       "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
     "set.ui.testPersonReady": "The test person is set up.",
     "set.ui.testPersonMissing": "The test person isn't set up yet.",
+    "set.ui.testInstallsNone":
+      "No test install on this computer is waiting for its test person.",
+    "set.ui.testInstallsOne": "{where} (test install {id})",
+    "set.ui.testInstallsSignedIn":
+      "Only the signed-in person sees the test installs on this computer.",
     "set.ui.testPersonSetUp": "Set up test person",
     "set.ui.testInstallSignedIn":
       "The test install can only be read signed in, or on this machine.",
@@ -1070,7 +1080,7 @@
     "set.ui.hub.address": "Hub's address",
     "set.ui.hub.connect": "Connect",
     "set.ui.hub.connectLinks":
-      "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you.",
+      "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all.",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
     "set.ui.hub.teams": "a shared Hub at {host}.",
@@ -1395,6 +1405,8 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_installs_here.d":
+      "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
     "set.access.test_install.d":
       "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
@@ -2072,6 +2084,9 @@
     "hubp.whyRepo": "has these repos",
     "hubp.whyName": "same name",
     "hubp.link": "Link",
+    "hubp.elsewhere":
+      "{project} points at “{name}” on another Hub ({host}, {company}). This Den is connected to {nowHost} ({nowCompany}), so the link doesn’t count. Relink it here, or unlink it.",
+    "hubp.relink": "Relink",
     "hubp.unlink": "Unlink",
     "hubp.none": "Your company has no Hub projects yet.",
     "hubp.noOther": "Your company has no other Hub projects to switch to.",
@@ -2130,7 +2145,45 @@
     "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
+    "hub.addressMore": "Hub address…",
+    "hub.justConnected":
+      "Connected to {company} ({host}). Not the company you meant?",
     "hub.reconnect": "Reconnect",
+    "hub.cw.done": "Connected to Hub ({company}).",
+    "hub.cw.doneNoCo": "Connected to Hub.",
+    "hub.cw.linked": "Linked {n} projects in the same approval.",
+    "hub.cw.linked.one": "Linked {n} project in the same approval.",
+    "hub.cw.linkedNew":
+      "Linked {n} projects in the same approval ({made} new).",
+    "hub.cw.linkedNew.one":
+      "Linked {n} project in the same approval ({made} new).",
+    "hub.cw.notCreated": "{key}: not created.",
+    "hub.cw.notCreatedWhy": "{key}: not created ({detail}).",
+    "hub.cw.notDone": "{key}: not done on Hub.",
+    "hub.cw.notDoneWhy": "{key}: not done on Hub ({detail}).",
+    "hub.cw.later": "{key}: waits for your review.",
+    "hub.cw.fb.oldHub":
+      "This Hub doesn't link projects in Connect yet, so they wait for your review here.",
+    "hub.cw.fb.otherList":
+      "Hub's answer is for another list of projects, so they wait for your review here.",
+    "hub.cw.fb.badAnswer":
+      "Den couldn't read Hub's answer about the projects, so they wait for your review here.",
+    "hub.cw.fb.rebind":
+      "Den couldn't move its Hub records to this Hub, so the projects wait for your review here.",
+    "hub.cw.fb.tooMany":
+      "Connect sends at most 50 projects to Hub, so they wait for your review here.",
+    "hub.cw.fb.tooBig":
+      "The list of projects was over 6 KB, so they wait for your review here.",
+    "hub.cw.fb.badKey":
+      "A project's name has letters Hub can't match, so they wait for your review here.",
+    "hub.cw.fb.twice":
+      "A project was listed twice, so they wait for your review here.",
+    "hub.cw.review":
+      "Review {n} projects below, then press Connect and link all.",
+    "hub.cw.review.one":
+      "Review {n} project below, then press Connect and link all.",
+    "hub.cw.cannot":
+      "Hub can't list its projects yet: link them in Settings › Hub when it can.",
     "hubgh.offline": "This install isn't connected to Hub yet.",
     "hubgh.failed": "Den couldn't ask Hub about GitHub access.",
     "hubgh.noOrgs": "No repos sent to Hub yet.",
@@ -2152,6 +2205,64 @@
     "hubla.linked": "Linked {n} projects.",
     "hubla.failed": "{n} couldn't be linked: {names}. Try again.",
     "hubla.failedAll": "Couldn't link {names}. Try again.",
+    "hubrv.title": "Connect this Den to {company}",
+    "hubrv.titleNo": "Link this Den's projects to Hub",
+    "hubrv.offline":
+      "Hub didn't answer. The company is known, but its projects can't be listed. Nothing was changed.",
+    "hubrv.youAre": "you are {role}",
+    "hubrv.signedAs": "signed in as {login}",
+    "hubrv.role.owner": "owner",
+    "hubrv.role.member": "member",
+    "hubrv.retry": "Try again",
+    "hubrv.allMatch.one": "{n} project matches. Nothing to pick.",
+    "hubrv.allMatch": "All {n} projects match. Nothing to pick.",
+    "hubrv.why.repo": "same repo",
+    "hubrv.why.name": "same name",
+    "hubrv.why.picked": "your pick",
+    "hubrv.why.linked": "linked",
+    "hubrv.why.new": "no Hub project fits: a new one",
+    "hubrv.why.pick": "two Hub projects fit: choose one",
+    "hubrv.waiting": "a new Hub project, waiting for an owner's Apply in Hub",
+    "hubrv.was": "was linked to “{name}” on {host}; {why} here",
+    "hubrv.wasCo":
+      "was linked to “{name}” on {host} (company {company}); {why} here",
+    "hubrv.offlineRow": "Hub didn't answer for the project list",
+    "hubrv.create": "Create “{name}”",
+    "hubrv.suggested": "Suggested",
+    "hubrv.choose": "Choose a Hub project for “{project}”",
+    "hubrv.search.one": "Search {n} project",
+    "hubrv.search": "Search {n} projects",
+    "hubrv.noMatch": "No Hub project matches.",
+    "hubrv.noProjects": "Hub has no projects in this company yet.",
+    "hubrv.use": "Use {name}",
+    "hubrv.createInstead": "Create “{name}” instead",
+    "hubrv.cancel": "Cancel",
+    "hubrv.change": "Change",
+    "hubrv.openPlan": "Open Hub's plan page",
+    "hubrv.apply": "Connect and link all",
+    "hubrv.applyNote":
+      "Links apply at once. Any new projects open Hub's plan page: one Apply there creates them all.",
+    "hubrv.member.one":
+      "{n} new project goes to an owner for approval. You are a member, so Hub asks an owner to Apply it. The links apply at once.",
+    "hubrv.member":
+      "These {n} new projects go to an owner for approval. You are a member, so Hub asks an owner to Apply them. The links apply at once.",
+    "hubrv.doneTitle": "Connected to {company}",
+    "hubrv.doneTitleNo": "Done",
+    "hubrv.linkedLine": "{project} → {name} ({why})",
+    "hubrv.creatingLine":
+      "{project}: a new Hub project, {name}, waiting for an Apply in Hub. It links when it is applied.",
+    "hubrv.skip.duplicate": "{project}: listed twice; done once.",
+    "hubrv.skip.unknown": "{project}: not done: there is no such project here.",
+    "hubrv.skip.offline": "{project}: not done: Hub didn't answer. Try again.",
+    "hubrv.skip.stale":
+      "{project}: not done: that isn't one of the company's Hub projects any more.",
+    "hubrv.skip.waiting":
+      "{project}: not done: a new Hub project is already waiting for an owner.",
+    "hubrv.skip.hub": "{project}: not done: Hub said: {why}",
+    "hubrv.skip.name":
+      "{project}: not done: the name must be 1 to 80 characters.",
+    "hubrv.asked": "Asked Hub for the new projects.",
+    "hubrv.switch": "Switch company",
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
       "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
@@ -2512,6 +2623,18 @@
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.agents.resume_batch": "Agents restarted at a time",
+    "set.agents.resume_batch.d":
+      "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
+    "set.agents.resume_gap": "Wait between restart batches",
+    "set.agents.resume_gap.d":
+      "How long the next batch of agent restarts waits after one starts. __DEN_CLI__ config agents.resume.gap_seconds=30",
+    "set.agents.resume_load": "Load that holds restarts",
+    "set.agents.resume_load.d":
+      "While the machine's 1-minute load is over this, the next batch of agent restarts waits. 0: no limit. The default is the number of cores × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+    "set.agents.resume_max_wait": "Longest a restart waits for the load",
+    "set.agents.resume_max_wait.d":
+      "Once an agent has waited this long, its batch restarts even if the load is still high, a few at a time as before. 0: the load may hold restarts as long as it stays high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
       "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
@@ -2580,6 +2703,7 @@
     "set.access.agent_view_minutes": "An agent's view lasts, in minutes",
     "set.access.agent_view_minutes.d":
       "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.test_installs_here": "Test installs on this computer",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -2976,6 +3100,11 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.test_person_setup": "Set up the test person on test install {id}",
+    "ap.det.test_person_setup.which":
+      "Test install {id}, state folder {where}, on this computer.",
+    "ap.det.test_person_setup.what":
+      "Its live checks can then sign in there as its test person. It can't sign in anywhere else.",
     "ap.do.web_url_set": "Make {url} this Den's address",
     "ap.det.web_url_set.newHost":
       "New host: {host} isn't this machine or an address Den serves. Sign-in and every link will go through it.",
@@ -3019,6 +3148,7 @@
       'Activates the project "{project}" first, so it can run.',
     "ap.det.service_try.up":
       "Runs the service's local \"up\", as the Services page's Start does.",
+    "ap.det.service_try.command": "Command: {command}",
     "ap.det.service_try.reports":
       "Den reports the exit code and the last lines of its output.",
     "ap.det.den_restart.restart":
@@ -3567,6 +3697,7 @@
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
       "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.restartsWaiting": "{n} agents waiting to restart, a few at a time",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
     "bell.go.h": "Test slots past their estimate",
@@ -9433,6 +9564,13 @@
             if (k !== last) {
               last = k;
               setState({ hub: h });
+              // Issue 646: pages that name the company (a project's Hub
+              // chip) redraw from it.
+              try {
+                window.dispatchEvent(new CustomEvent("den:hub", { detail: h }));
+              } catch (e) {
+                /* none */
+              }
             }
           },
           function () {},
@@ -9548,6 +9686,10 @@
   });
 
   window.denShell = {
+    /** Issue 646: the rail's Hub status (team, url, state), or null. */
+    hub: function () {
+      return state.hub;
+    },
     /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
     report: openReport,
     /** FB: My reports (the person's reports and the drafts). */

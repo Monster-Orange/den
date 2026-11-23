@@ -1,10 +1,10 @@
 /**
  * Issue 1263: doctor's row for throwaway containers (den.ephemeral=1) left
- * over from gate runs. One whose run has no live slot is ⚠: the server's
- * gate tick removes it within seconds, so one still here means no server is
- * running, or docker refused. One started outside a gate run (no run label)
- * is listed, never removed and never a warning: it may be a test running
- * now. Issue 1289: a kept container (den.ephemeral=stop) stopped is
+ * over from gate runs. One whose run has no live slot is ⚠: Den's sweeper
+ * removes it within minutes of the run's end, so one still here means Den
+ * isn't running, or docker refused. One started outside a gate run (no run
+ * label) is listed, never removed and never a warning: it may be a test
+ * running now. Issue 1289: a kept container (den.ephemeral=stop) stopped is
  * counted apart, never as left over; one running with no live run from its
  * checkout is listed (someone's own use outside the gate, or one the
  * sweeper is about to stop), never a warning. Doctor only reads; it
@@ -65,7 +65,7 @@ export function throwawayLines(
         id,
         status: "warn",
         detail: `${left.length} left over from ended gate runs${keptNote}`,
-        fix: "start Den's server (its sweeper removes left-over ones and stops idle kept ones), or docker rm -f / docker stop the ids listed",
+        fix: "start Den (it removes left-over ones and stops idle kept ones within minutes), or docker rm -f the ids listed",
       },
     };
   return {
