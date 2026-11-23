@@ -227,7 +227,16 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
       /^Claude Code · asks to run a command · (now|\d+ min)$/,
     );
     expect(await meta("reviewer")).toMatch(/^Claude Code · (now|\d+ min)$/);
-    expect(await meta("builder")).toMatch(/^Claude Code · finished /);
+    // Done's line: the page's own "finished {ago}" words.
+    const finished = await p.evaluate(
+      () =>
+        (
+          window as unknown as { denMessages: { en: Record<string, string> } }
+        ).denMessages.en["ag.meta.finished"].split("{ago}")[0],
+    );
+    expect(
+      (await meta("builder")).startsWith(`Claude Code · ${finished}`),
+    ).toBe(true);
     // Mock v3's rows and list: 9px 12px 9px 10px, gap 2px 10px, a
     // hairline on top of every row; the list 380 px at 1280.
     const css = await row("scribe").evaluate((el) => {

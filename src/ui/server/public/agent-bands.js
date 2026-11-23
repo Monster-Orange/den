@@ -153,7 +153,7 @@ export function chipHtml(r, seenNow) {
  */
 /**
  * @param {BandRow} r
- * @param {{ all?: boolean, name?: (workspace: string) => string }} [opts]
+ * @param {{ all?: boolean, name?: (workspace: string) => string, pc?: (workspace: string) => string | null | undefined }} [opts]
  */
 export function tagHtml(r, { all = false, name, pc } = {}) {
   if (r.server || r.workspace === SERVER_WS)
