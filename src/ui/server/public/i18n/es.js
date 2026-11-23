@@ -1958,6 +1958,9 @@
     "ag.mcp.failed": "Las herramientas de Hub no cargaron",
     "ag.mcp.failedTip":
       "Este agente no pudo cargar al iniciar las herramientas de Hub ({error}), así que no se le puede contactar por Hub. Reiniciar conserva su conversación y espera a que termine su turno.",
+    "ag.mcp.den": "Las herramientas de Den {to} llegan al reiniciar",
+    "ag.mcp.denTip":
+      "Den se actualizó a {to} después de que este agente empezara, así que sus herramientas de Den siguen con el código de {from}. Reiniciar carga las de {to}, en su próxima pausa, en la misma conversación.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.mcp.restarting":
@@ -3102,6 +3105,12 @@
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",
+    "busy.allowW": "Permitiendo…",
+    "busy.allowS": "Permitido.",
+    "busy.allowF": "No se pudo permitir.",
+    "busy.denyW": "Rechazando…",
+    "busy.denyS": "Rechazado.",
+    "busy.denyF": "No se pudo rechazar.",
     "busy.rmSvcW": "Quitando {name}…",
     "busy.rmSvcS": "Se quitó {name}.",
     "busy.rmSvcF": "No se pudo quitar {name}.",
