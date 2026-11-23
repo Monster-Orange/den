@@ -20,12 +20,65 @@
  */
 
 import { execFile, execFileSync } from "child_process";
+import * as fs from "fs";
+
+/**
+ * Issue 639: on Linux, when the leader started in clock ticks since boot
+ * (/proc/<pid>/stat field 22) and which boot that was. lstart is worked
+ * out from the wall clock minus uptime, so it moves when time sync steps
+ * the clock on a machine whose monotonic clock drifts; these don't.
+ */
+export interface LinuxStart {
+  ticks: string;
+  bootId: string;
+}
+
+/** The start in ticks and the boot id of `pid`, or null (not Linux, gone). */
+export type ProcStartReader = (pid: number) => LinuxStart | null;
 
 export interface RecordedProcessGroup {
   /** The group id: the detached leader's pid. */
   pgid: number;
   /** The leader's start time as `ps -o lstart=` prints it. */
   startedAt: string;
+  /**
+   * Issue 639: on Linux, the leader's start in ticks and the boot id; the
+   * check uses these when it can read them now. Older records lack them.
+   */
+  linuxStart?: LinuxStart;
+}
+
+/**
+ * Issue 639: field 22 (starttime) of a /proc/<pid>/stat line, or null. The
+ * command name (field 2) is in parentheses and may hold spaces and
+ * parentheses, so the fields are counted from its last ")".
+ */
+export function parseProcStatTicks(stat: string): string | null {
+  const close = stat.lastIndexOf(")");
+  if (close < 0) return null;
+  // After ")": field 3 (state) onward; field 22 is the 20th of those.
+  const rest = stat
+    .slice(close + 1)
+    .trim()
+    .split(/\s+/);
+  const v = rest[22 - 3];
+  return v && /^\d+$/.test(v) ? v : null;
+}
+
+/** Issue 639: /proc's start in ticks and boot id; null off Linux or gone. */
+export function linuxStartOf(pid: number): LinuxStart | null {
+  if (process.platform !== "linux") return null;
+  try {
+    const ticks = parseProcStatTicks(
+      fs.readFileSync(`/proc/${pid}/stat`, "utf-8"),
+    );
+    const bootId = fs
+      .readFileSync("/proc/sys/kernel/random/boot_id", "utf-8")
+      .trim();
+    return ticks && bootId ? { ticks, bootId } : null;
+  } catch {
+    return null;
+  }
 }
 
 export type GroupState =
@@ -99,34 +152,61 @@ function psRows(): Promise<PsRow[] | null> {
  * The record `up` keeps for a detached leader it just spawned, or null when
  * the process cannot be read (it already exited, or `ps` is unavailable).
  */
-export function recordProcessGroup(pid: number): RecordedProcessGroup | null {
+export function recordProcessGroup(
+  pid: number,
+  start: ProcStartReader = linuxStartOf,
+): RecordedProcessGroup | null {
   const row = psRowsSync(["-p", String(pid), ...PS_COLUMNS])?.find(
     (r) => r.pid === pid && !r.zombie,
   );
   if (!row || row.pgid !== pid) return null;
-  return { pgid: pid, startedAt: row.lstart };
+  const linuxStart = start(pid);
+  return {
+    pgid: pid,
+    startedAt: row.lstart,
+    ...(linuxStart ? { linuxStart } : {}),
+  };
 }
 
 /** A recorded group's state now, synchronously; null when `ps` cannot be run. */
 export function processGroupStateSync(
   rec: RecordedProcessGroup,
+  start: ProcStartReader = linuxStartOf,
 ): GroupState | null {
   const rows = psRowsSync(PS_ARGS);
-  return rows ? classifyGroup(rec, rows) : null;
+  return rows ? classifyGroup(rec, rows, start) : null;
 }
 
 /** Whether a recorded group is still the one `up` started (see the header). */
 export function classifyGroup(
   rec: RecordedProcessGroup,
   rows: PsRow[],
+  start: ProcStartReader = linuxStartOf,
 ): GroupState {
   const live = rows.filter((r) => !r.zombie);
   const leader = live.find((r) => r.pid === rec.pgid);
-  if (leader && (leader.lstart !== rec.startedAt || leader.pgid !== rec.pgid))
-    return {
+  if (leader) {
+    const reused = (detail: string): GroupState => ({
       state: "reused",
-      detail: `pid ${rec.pgid} now belongs to another process (started ${leader.lstart}; the recorded one started ${rec.startedAt})`,
-    };
+      detail: `pid ${rec.pgid} now belongs to another process (${detail})`,
+    });
+    if (leader.pgid !== rec.pgid)
+      return reused(`it leads process group ${leader.pgid}`);
+    // Issue 639: the start in ticks and the boot id when both are known;
+    // a moving lstart then doesn't count. Else lstart, as before.
+    const now = rec.linuxStart ? start(rec.pgid) : null;
+    if (rec.linuxStart && now) {
+      if (now.bootId !== rec.linuxStart.bootId)
+        return reused("the machine has restarted since it was recorded");
+      if (now.ticks !== rec.linuxStart.ticks)
+        return reused(
+          `started at tick ${now.ticks}; the recorded one at ${rec.linuxStart.ticks}`,
+        );
+    } else if (leader.lstart !== rec.startedAt)
+      return reused(
+        `started ${leader.lstart}; the recorded one started ${rec.startedAt}`,
+      );
+  }
   const members = live.filter((r) => r.pgid === rec.pgid).map((r) => r.pid);
   return members.length > 0 ? { state: "ours", members } : { state: "gone" };
 }
@@ -134,9 +214,10 @@ export function classifyGroup(
 /** The recorded group's state now; null when `ps` cannot be run. */
 export async function processGroupState(
   rec: RecordedProcessGroup,
+  start: ProcStartReader = linuxStartOf,
 ): Promise<GroupState | null> {
   const rows = await psRows();
-  return rows ? classifyGroup(rec, rows) : null;
+  return rows ? classifyGroup(rec, rows, start) : null;
 }
 
 function signalGroup(
