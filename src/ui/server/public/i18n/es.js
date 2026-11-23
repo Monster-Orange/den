@@ -1670,6 +1670,7 @@
       "Duración de la vista de un agente, en minutos",
     "set.access.agent_view_minutes.d":
       "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.test_installs_here": "Instalaciones de prueba en esta máquina",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
     "set.distribution.github_org": "Org de GitHub",
@@ -2079,6 +2080,12 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright por versión: {v}",
     "ap.det.gate_box_remove.what":
       "Quita la máquina de pruebas {name}. Las ejecuciones en curso terminan; no va ninguna nueva.",
+    "ap.do.test_person_setup":
+      "Configurar la persona de prueba en la instalación de prueba {id}",
+    "ap.det.test_person_setup.which":
+      "Instalación de prueba {id}, carpeta de estado {where}, en esta máquina.",
+    "ap.det.test_person_setup.what":
+      "Sus comprobaciones en vivo podrán entrar allí como su persona de prueba. No puede entrar en ningún otro sitio.",
     "ap.do.web_url_set": "Hacer de {url} la dirección de este Den",
     "ap.det.web_url_set.newHost":
       "Host nuevo: {host} no es esta máquina ni una dirección que Den sirve. El inicio de sesión y todos los enlaces pasarán por él.",
@@ -3565,6 +3572,11 @@
       "No es una instalación de prueba. Las comprobaciones en vivo no pueden iniciar sesión aquí. Una persona marca una instalación de prueba a mano en la configuración de la distribución (web.test_install: true).",
     "set.ui.testPersonReady": "La persona de prueba está configurada.",
     "set.ui.testPersonMissing": "La persona de prueba aún no está configurada.",
+    "set.ui.testInstallsNone":
+      "Ninguna instalación de prueba de esta máquina espera su persona de prueba.",
+    "set.ui.testInstallsOne": "{where} (instalación de prueba {id})",
+    "set.ui.testInstallsSignedIn":
+      "Solo la persona que ha iniciado sesión ve las instalaciones de prueba de esta máquina.",
     "set.ui.testPersonSetUp": "Configurar persona de prueba",
     "set.ui.testInstallSignedIn":
       "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
@@ -3978,6 +3990,8 @@
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_installs_here.d":
+      "Instalaciones de prueba de esta máquina que su lanzador anuncia y que esperan su persona de prueba. Configurar persona de prueba la configura desde aquí, en cualquier navegador, con tu propia autorización.",
     "set.access.test_install.d":
       "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
     "set.distribution.brand.d":

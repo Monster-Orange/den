@@ -443,6 +443,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
+  R(
+    "/api/web/test-installs",
+    "issue 816: the test installs on this computer waiting for their test person (the signed-in person only, checked in the route)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person/grant",
+    "issue 816: your own Den, at your Allow, makes this test install's test person (its person bearer on this machine plus a one-use grant)",
+  ),
   M(
     ["POST"],
     "/api/web/fixture-person/setup-secret",

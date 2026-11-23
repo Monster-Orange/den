@@ -97,6 +97,10 @@
  *   report            issue 565: file a report the way the page's Report
  *                     does (report-held.ts): to a public destination the
  *                     person's own Allow, to a private one the policy
+ *   test_person_setup issue 816: set up the test person of a test install
+ *                     announced on this computer (test-person-held.ts):
+ *                     one grant and that install's bearer, sent once over
+ *                     loopback at the Allow. The person's own Allow only
  *   web_url_set       issue 869: Den's own agent proposes this install's
  *                     address (web-url-held.ts); it must answer as this
  *                     Den at the ask and at the Allow, and saves as
@@ -249,6 +253,8 @@ export interface HeldActionDeps {
   }) => Promise<unknown>;
   /** Issue 565: file a report as the page does (report-held.ts reportHeld). */
   report?: HeldAction;
+  /** Issue 816: set up a test install's test person (test-person-held.ts). */
+  testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
   /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
@@ -288,6 +294,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "test_person_setup",
   "web_url_set",
 ]);
 
@@ -1067,6 +1074,16 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     gate_box_set: gateBoxSet,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    test_person_setup: d.testPersonSetup ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+      run: async () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+    },
     web_url_set: d.webUrlSet ?? {
       check: () => ({
         ok: false,

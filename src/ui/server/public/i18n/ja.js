@@ -1623,6 +1623,8 @@
     "set.access.agent_view_minutes": "エージェントの閲覧時間 (分)",
     "set.access.agent_view_minutes.d":
       "エージェントの読み取り専用の閲覧が続く時間。過ぎると終わります。 __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.test_installs_here":
+      "このコンピューター上のテスト用インストール",
     "set.access.test_install": "テスト用インストール",
     "set.distribution.brand": "製品名",
     "set.distribution.github_org": "GitHub の組織",
@@ -2022,6 +2024,12 @@
       "バージョン別の Playwright: {v}",
     "ap.det.gate_box_remove.what":
       "テスト用マシン {name} を削除します。実行中のものは最後まで動き、新しい実行は行きません。",
+    "ap.do.test_person_setup":
+      "テスト用インストール {id} のテスト用の人物を設定",
+    "ap.det.test_person_setup.which":
+      "このコンピューター上のテスト用インストール {id}（状態フォルダー {where}）。",
+    "ap.det.test_person_setup.what":
+      "そのライブチェックがテスト用の人物としてそこにサインインできるようになります。ほかの場所にはサインインできません。",
     "ap.do.web_url_set": "{url} をこの Den のアドレスにする",
     "ap.det.web_url_set.newHost":
       "新しいホスト: {host} はこのマシンでも Den が提供するアドレスでもありません。サインインとすべてのリンクがここを経由します。",
@@ -3460,6 +3468,11 @@
       "テスト用インストールではありません。ここではライブチェックはサインインできません。テスト用インストールは、人がディストリビューションの設定で手作業で印付けします (web.test_install: true)。",
     "set.ui.testPersonReady": "テスト用の人物は設定済みです。",
     "set.ui.testPersonMissing": "テスト用の人物はまだ設定されていません。",
+    "set.ui.testInstallsNone":
+      "テスト用の人物を待っているテスト用インストールは、このコンピューターにはありません。",
+    "set.ui.testInstallsOne": "{where}（テスト用インストール {id}）",
+    "set.ui.testInstallsSignedIn":
+      "このコンピューター上のテスト用インストールは、サインインしている本人だけが見られます。",
     "set.ui.testPersonSetUp": "テスト用の人物を設定",
     "set.ui.testInstallSignedIn":
       "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
@@ -3869,6 +3882,8 @@
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
       "GitHub を使わない場合やオフラインの場合: エッジのホスト名 1 つに対する一回限りのリンクと QR コードです (__DEN_CLI__ web login --host <name>)。",
+    "set.access.test_installs_here.d":
+      "起動元が知らせている、テスト用の人物を待っているこのコンピューター上のテスト用インストール。「テスト用の人物を設定」で、どのブラウザーからでも、あなた自身の許可でここから設定します。",
     "set.access.test_install.d":
       "このインストールがテスト用として印付けされているかどうか: ディストリビューションの設定の web.test_install で、手作業で設定します。その場合に限り、ライブチェックはテスト用の人物としてサインインできます (あなたでも、エージェントでもありません)。ブラウザのこの画面で「テスト用の人物を設定」を押して一度作成します。",
     "set.distribution.brand.d":
