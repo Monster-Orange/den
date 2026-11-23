@@ -17,6 +17,7 @@ import {
   type StrategyEntry,
 } from "../strategies/registry.js";
 import { mineTranscript, type TranscriptStats } from "./transcript.js";
+import { mineAsks, type AskStats } from "../coach/asks.js";
 
 export const USAGE_KIND = "usage";
 
@@ -31,6 +32,11 @@ export interface UsageSource {
   /** Every transcript changed since `since` (ms since the epoch). */
   files(since: number, env?: NodeJS.ProcessEnv): string[];
   mine(file: string, opts?: { since?: number }): Promise<TranscriptStats>;
+  /** Issue 52 (Coach T-c): the asks and agent messages in a transcript, when it can read them. */
+  asks?(
+    file: string,
+    opts?: { since?: number; maxWords?: number },
+  ): Promise<AskStats>;
 }
 
 /** A conversation id as Claude Code names its files: never a path. */
@@ -92,6 +98,7 @@ export const claudeCodeSource: UsageSource = {
     return out.sort();
   },
   mine: (file, opts) => mineTranscript(file, opts),
+  asks: (file, opts) => mineAsks(file, opts),
 };
 
 /** Register a usage source (Den's built-in, or a `usage` plugin's). */
