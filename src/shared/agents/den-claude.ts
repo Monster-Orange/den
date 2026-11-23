@@ -427,6 +427,9 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const spellings = (p: string) => shellSpellings(p, home);
   // Issue 810: the fixture person's key, as the web secret.
   const fixtureKey = path.join(abs, "fixture-person.key");
+  // Issue 1299 review: the sessions lock; a live pid written there would
+  // hold every sign-in for its wait, then refuse it.
+  const sessionsLock = path.join(abs, "web-sessions.lock");
   // Issue 728: the state dir's other credential files and folders.
   const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
   const dirs = STATE_CREDENTIAL_DIRS.map((d) => path.join(abs, d));
@@ -434,6 +437,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
+    ...spellings(sessionsLock).map((p) => `${p}*`),
     ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
     ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
@@ -442,6 +446,9 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${sessions}/**)`,
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
+    `Read(/${sessionsLock})`,
+    `Edit(/${sessionsLock})`,
+    `Write(/${sessionsLock})`,
     ...files.map((f) => `Read(/${f})`),
     // Issue 1299: copies beside each (a damaged file moved aside, a
     // write's temporary file) hold the same records.

@@ -929,14 +929,6 @@ const LOCK_UNREAD_STALE_MS = 5_000;
 /** Issue 1299: how often a writer looks again at a held lock. */
 const LOCK_POLL_MS = 10;
 
-function lockOlderThan(file: string, ms: number): boolean {
-  try {
-    return Date.now() - fs.statSync(file).mtimeMs > ms;
-  } catch {
-    return true;
-  }
-}
-
 /** Whether `pid` runs (EPERM: it runs, as another user). */
 function pidRuns(pid: number): boolean {
   if (!(Number.isInteger(pid) && pid > 0)) return false;
@@ -948,7 +940,52 @@ function pidRuns(pid: number): boolean {
   }
 }
 
-/** Blocks this thread `ms` (a writer waiting a few ms for the lock). */
+/**
+ * Issue 1299 review: unlinks a stale lock only when it is still the file
+ * `seen` described (same inode and modified time): two writers that both
+ * found it stale never delete the lock the first of them took since.
+ */
+export function lockUnlinkIfUnchanged(file: string, seen: fs.Stats): boolean {
+  try {
+    const now = fs.statSync(file);
+    if (now.ino !== seen.ino || now.mtimeMs !== seen.mtimeMs) return false;
+    fs.unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Who holds the sessions lock: free (no file, or a holder that left it
+ * behind) or held by a running process. `seen` is the file as looked at.
+ */
+function lockHolder(file: string): {
+  free: boolean;
+  holder: number;
+  seen?: fs.Stats;
+} {
+  let seen: fs.Stats;
+  try {
+    seen = fs.statSync(file);
+  } catch {
+    return { free: true, holder: 0 };
+  }
+  let holder = 0;
+  try {
+    holder = Number(fs.readFileSync(file, "utf-8").trim()) || 0;
+  } catch {
+    return { free: true, holder: 0 };
+  }
+  const live = holder !== 0 && holder !== process.pid && pidRuns(holder);
+  // No pid yet: a holder between making it and writing it, unless it is
+  // older than that takes (one that died there).
+  const young =
+    holder === 0 && Date.now() - seen.mtimeMs <= LOCK_UNREAD_STALE_MS;
+  return { free: !live && !young, holder, seen };
+}
+
+/** Blocks this thread `ms` (the CLI's writer waiting a few ms for the lock). */
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -1124,10 +1161,11 @@ export class WebSessionStore {
    */
   private write<R>(
     change: (data: StoreFile) => { save: boolean; value: R },
+    waitMs = this.waitMs(),
   ): R {
     let release: () => void;
     try {
-      release = this.lock(this.waitMs());
+      release = this.lock(waitMs);
     } catch (e) {
       const code =
         e instanceof WebSessionsBusy
@@ -1171,6 +1209,25 @@ export class WebSessionStore {
    * pid no longer runs, or no pid after LOCK_UNREAD_STALE_MS) is taken
    * over.
    */
+  /**
+   * Issue 1299 review: for the server, before a write. Resolves true once
+   * the sessions lock is free (or its holder left it behind), false when
+   * a running holder still keeps it after `waitMs`. Waits on timers, so
+   * every other request is served meanwhile; the write then takes the
+   * lock without waiting.
+   */
+  async whenFree(waitMs: number): Promise<boolean> {
+    const file = path.join(this.stateDir(), WEB_SESSIONS_LOCK);
+    const until = Date.now() + Math.max(0, waitMs);
+    for (;;) {
+      if (lockHolder(file).free) return true;
+      if (Date.now() >= until) return false;
+      await new Promise((r) =>
+        setTimeout(r, Math.min(LOCK_POLL_MS, Math.max(1, until - Date.now()))),
+      );
+    }
+  }
+
   lock(waitMs = 0): () => void {
     const dir = this.stateDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -1196,28 +1253,16 @@ export class WebSessionStore {
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       }
-      let holder = 0;
-      try {
-        holder = Number(fs.readFileSync(file, "utf-8").trim()) || 0;
-      } catch {
-        continue; // gone meanwhile: try again
-      }
-      const live = holder !== 0 && holder !== process.pid && pidRuns(holder);
-      // No pid yet: a holder between making it and writing it, unless it
-      // is older than that takes (one that died there).
-      const young = holder === 0 && !lockOlderThan(file, LOCK_UNREAD_STALE_MS);
-      if (live || young || tookOver) {
-        if (Date.now() >= until) throw new WebSessionsBusy(holder);
+      const h = lockHolder(file);
+      if (!h.free || tookOver) {
+        if (Date.now() >= until) throw new WebSessionsBusy(h.holder);
         sleepSync(Math.min(LOCK_POLL_MS, Math.max(1, until - Date.now())));
         tookOver = false;
         continue;
       }
+      // Left behind: take it over, unless it changed since it was read.
       tookOver = true;
-      try {
-        fs.unlinkSync(file);
-      } catch {
-        /* someone else took it over */
-      }
+      if (h.seen) lockUnlinkIfUnchanged(file, h.seen);
     }
   }
 
@@ -1342,7 +1387,8 @@ export class WebSessionStore {
   /** A write that may fail (a read-only state dir, the lock busy): the caller still answers. */
   private tryWrite(change: (data: StoreFile) => boolean): void {
     try {
-      this.write((d) => ({ save: change(d), value: null }));
+      // Best effort: never waits for a held lock (issue 1299 review).
+      this.write((d) => ({ save: change(d), value: null }), 0);
     } catch {
       /* the lookup still answers */
     }

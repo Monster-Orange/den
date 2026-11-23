@@ -1975,14 +1975,10 @@ const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
   // Issue 1299: a failed read of the sessions file, in the server log.
-  // Issue 1299: how long a write waits for another process's lock.
-  lockWaitMs: () => {
-    try {
-      return webAuthNow().sessionsLockWaitMs;
-    } catch {
-      return SESSIONS_LOCK_WAIT_MS;
-    }
-  },
+  // Issue 1299 review: a write never blocks the server waiting for the
+  // lock; a request that may write sessions waits first, on timers
+  // (sessionsLockWait in handleRequest), and others are served meanwhile.
+  lockWaitMs: () => 0,
   onProblem: (msg, kind) => {
     serverLog(`  ⚠ ${msg}`, "warn");
     // A damaged file moved aside signs every browser out: the activity
@@ -2392,14 +2388,23 @@ const GUARD: GuardContext = {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
     // Issue 810: a fixture session ends as soon as what allowed it goes.
     if (s?.via === "fixture" && !fixtureSessionStands(s)) {
-      webSessions.end(s.key);
+      // Best effort: with the lock busy it ends at a later request.
+      try {
+        webSessions.end(s.key);
+      } catch {
+        /* still refused below */
+      }
       return null;
     }
     // Issue 796: an agent's view ends at its time, when the install turns
     // views off, or when the agent's token goes; it counts on loopback only.
     if (s?.via === "agent-view") {
       if (!agentViewStands(s)) {
-        webSessions.end(s.key);
+        try {
+          webSessions.end(s.key);
+        } catch {
+          /* still refused below; it ends at a later request */
+        }
         closeSessionSockets([s.key]);
         return null;
       }
@@ -2635,6 +2640,15 @@ function closeSessionSockets(keys: Iterable<string>): void {
   for (const k of keys) {
     for (const sock of SESSION_SOCKETS.get(k) ?? []) sock.destroy();
     SESSION_SOCKETS.delete(k);
+  }
+}
+
+/** Issue 1299: web.sessions_lock_wait_ms (its default when unreadable). */
+function sessionsLockWait(): number {
+  try {
+    return webAuthNow().sessionsLockWaitMs;
+  } catch {
+    return SESSIONS_LOCK_WAIT_MS;
   }
 }
 
@@ -6072,6 +6086,16 @@ async function handleRequest(
   // eslint-disable-next-line no-restricted-syntax -- a base to parse the path against, never dialled
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  // Issue 1299 review: a request that may write the sessions file (a
+  // sign-in, a sign-out, a revoke) waits here, on timers, while another
+  // process holds its lock; every other request is served meanwhile. Its
+  // write then never waits (a lock taken in between: 503 "try again").
+  if (
+    (req.method !== "GET" && req.method !== "HEAD") ||
+    pathname === "/auth" ||
+    pathname.startsWith("/auth/")
+  )
+    await webSessions.whenFree(sessionsLockWait());
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);
   if (!res.headersSent) res.setHeader("X-Request-Id", requestId);

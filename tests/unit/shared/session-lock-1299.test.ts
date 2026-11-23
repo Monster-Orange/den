@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
+  lockUnlinkIfUnchanged,
   readWebAuthConfig,
   SESSIONS_LOCK_WAIT_MS,
   SessionStoreUnreadable,
@@ -151,5 +152,71 @@ describe("issue 1299: web.sessions_lock_wait_ms", () => {
     );
     expect(srv).toMatch(/lockWaitMs: \(\) =>/);
     expect(srv).toMatch(/web_sessions: body\.web_sessions/);
+  });
+});
+
+describe("issue 1299 review: the server never stalls on the lock", () => {
+  it("a lookup's touch skips a held lock at once, and still answers", () => {
+    let now = Date.UTC(2026, 10, 23, 8, 0, 0);
+    const s = new WebSessionStore({
+      stateDir: () => tmp,
+      secret: () => secret,
+      now: () => now,
+      lockWaitMs: () => 2000,
+    });
+    const a = s.create({ host: "a" });
+    now += 5 * 60_000; // the touch is due
+    fs.writeFileSync(lockFile(), `${process.ppid}\n`, { mode: 0o600 });
+    const t0 = Date.now();
+    expect(s.lookup(a.id)).not.toBeNull();
+    expect(Date.now() - t0).toBeLessThan(100);
+  });
+
+  it("whenFree waits without blocking: timers run meanwhile, and it says no once its time is up", async () => {
+    const s = store(0);
+    fs.writeFileSync(lockFile(), `${process.ppid}\n`, { mode: 0o600 });
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 5);
+    const t0 = Date.now();
+    const free = await s.whenFree(200);
+    clearInterval(timer);
+    expect(free).toBe(false);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(190);
+    expect(ticks).toBeGreaterThan(10);
+  });
+
+  it("whenFree says yes once the holder lets go, or when the holder is gone", async () => {
+    const s = store(0);
+    fs.writeFileSync(lockFile(), `${process.ppid}\n`, { mode: 0o600 });
+    setTimeout(() => fs.unlinkSync(lockFile()), 50);
+    expect(await s.whenFree(2000)).toBe(true);
+    fs.writeFileSync(lockFile(), "2147483646\n", { mode: 0o600 });
+    expect(await s.whenFree(2000)).toBe(true);
+    expect(await s.whenFree(0)).toBe(true);
+  });
+
+  it("the server's store never waits in a write; its requests wait in whenFree", () => {
+    const srv = fs.readFileSync(
+      path.join(__dirname, "../../../src/ui/server/index.ts"),
+      "utf-8",
+    );
+    expect(srv).toMatch(/lockWaitMs: \(\) => 0,/);
+    expect(srv).toMatch(/await webSessions\.whenFree\(/);
+  });
+});
+
+describe("issue 1299 review: a stale lock is unlinked only if it's still the one read", () => {
+  it("a lock replaced since it was looked at stays", () => {
+    fs.writeFileSync(lockFile(), "2147483646\n", { mode: 0o600 });
+    const seen = fs.statSync(lockFile());
+    // Another writer took it over meanwhile: a new file.
+    fs.unlinkSync(lockFile());
+    fs.writeFileSync(lockFile(), `${process.pid}\n`, { mode: 0o600 });
+    expect(lockUnlinkIfUnchanged(lockFile(), seen)).toBe(false);
+    expect(fs.existsSync(lockFile())).toBe(true);
+    expect(lockUnlinkIfUnchanged(lockFile(), fs.statSync(lockFile()))).toBe(
+      true,
+    );
+    expect(fs.existsSync(lockFile())).toBe(false);
   });
 });
