@@ -44,20 +44,19 @@ const GATE = "'/opt/den/bin/den' gate run";
 const route = (command: string, programs?: readonly string[]): Routed | null =>
   call([{ command, gate: GATE, programs }]).results[0];
 
-/** The command a rewrite runs inside the gate (bash -c '<this>'). */
+/** The command a rewrite runs inside the gate (after `--kind <k> --`). */
 function inner(rewritten: string): string {
-  const m = /-- bash -c '(.*)'$/s.exec(rewritten);
+  const m = /^.* gate run --kind (?:cpu|browser) -- (.*)$/s.exec(rewritten);
   expect(m).not.toBeNull();
-  return m![1]!.replace(/'\\''/g, "'");
+  return m![1]!;
 }
 
 describe("issue 1264: heavy runs an agent starts go through the gate", () => {
   it("npx jest is a gated cpu run, with the gate's worker share", () => {
     const r = route("npx jest tests/unit/a.test.ts");
     expect(r).toMatchObject({ kind: "cpu", program: "jest" });
-    expect(r!.command.startsWith(`${GATE} --kind cpu --label `)).toBe(true);
-    expect(inner(r!.command)).toBe(
-      `npx jest ${WORKERS_FLAG} tests/unit/a.test.ts`,
+    expect(r!.command).toBe(
+      `${GATE} --kind cpu -- npx jest ${WORKERS_FLAG} tests/unit/a.test.ts`,
     );
   });
 
@@ -100,15 +99,31 @@ describe("issue 1264: heavy runs an agent starts go through the gate", () => {
       expect(inner(route(c)!.command)).toBe(c);
   });
 
-  it("the whole command line runs in the gate: cd, &&, pipes and quotes kept", () => {
-    const c = `cd /w/den && npx jest a.test.ts 2>&1 | grep -E "✕|Tests:"`;
+  it("its own text follows the gate unchanged: quotes, $VARs and file redirects kept", () => {
+    const c = `npx jest -t 'it'"'"'s red' "$HOME/a.test.ts" > out.log 2>&1`;
     expect(inner(route(c)!.command)).toBe(
-      `cd /w/den && npx jest ${WORKERS_FLAG} a.test.ts 2>&1 | grep -E "✕|Tests:"`,
+      `npx jest ${WORKERS_FLAG} -t 'it'"'"'s red' "$HOME/a.test.ts" > out.log 2>&1`,
     );
-    const q = `npx jest -t 'it'"'"'s red' a.test.ts`;
-    expect(inner(route(q)!.command)).toBe(
-      `npx jest ${WORKERS_FLAG} -t 'it'"'"'s red' a.test.ts`,
-    );
+  });
+
+  it("only a single plain command: anything compound stays as written (its other parts stay visible to the agent's permission rules)", () => {
+    for (const c of [
+      "git push x; npx jest",
+      "npx jest $(cat f)",
+      "jest && rm -rf d",
+      "npx jest a || true",
+      "cd /w && npx jest a.test.ts",
+      "npx jest a | tail -5",
+      "npx jest `cat f`",
+      "npx jest <(ls)",
+      "npx jest a &",
+      "npx jest a <<'EOF'\nx\nEOF",
+      "npx jest a\nrm -rf d",
+      "npx jest a # note",
+      "FOO=1 npx jest a",
+      "'npx' jest a",
+    ])
+      expect([c, route(c)]).toEqual([c, null]);
   });
 
   it("already gated (another CLI's gate run, den gate run) is not wrapped twice", () => {
@@ -122,8 +137,8 @@ describe("issue 1264: heavy runs an agent starts go through the gate", () => {
       expect(route(c)).toBeNull();
   });
 
-  it("the program word twice: gated, but no flag (where it goes isn't sure)", () => {
-    const c = "npx jest a.test.ts && npx jest b.test.ts";
+  it("the program word twice (a quoted name): gated, but no flag", () => {
+    const c = "npx jest -t jest";
     expect(inner(route(c)!.command)).toBe(c);
   });
 

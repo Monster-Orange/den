@@ -3,9 +3,10 @@
  * command, and the rewritten command runs through the real `gate run`
  * (bin/den) on a gate folder of its own (DEN_GATE_DIR). A fake `jest` on
  * PATH prints what it was given. It shows:
- *  1. quoting: single quotes, $(…), backticks and a heredoc reach the
- *     program byte for byte as they do without the gate (the hook passes
- *     the whole command as one single-quoted word to bash -c);
+ *  1. quoting: the command's own text follows `gate run … --`, so single
+ *     quotes, double quotes and $VARs reach the program byte for byte as
+ *     they do without the gate ($( ), backticks and heredocs are never
+ *     rewritten: only a single plain command is);
  *  2. nesting: a script that calls `gate run` itself, inside the gated
  *     run, runs in place on the held slot (issue 928), never waits on it;
  *  3. the agent's folder, its environment and the exit code carry through;
@@ -84,12 +85,8 @@ function sh(command: string, more: Record<string, string> = {}) {
 const FLAG = /^arg\[--maxWorkers=[1-9]\d*\]\n/;
 
 describe("issue 1264: a rewritten run behaves as the agent's own did", () => {
-  it("quotes, $( ), backticks and a heredoc reach the program unchanged", () => {
-    const cmd = [
-      `jest 'it'"'"'s one' "$(printf 'sub %s' x)" \`printf tick\` '$HOME' <<'EOF'`,
-      `heredoc $NOT_EXPANDED 'q' "dq"`,
-      `EOF`,
-    ].join("\n");
+  it("quotes and $VARs reach the program unchanged", () => {
+    const cmd = `jest 'it'"'"'s one' "$FOO" '$HOME' "a  b" x\\ y`;
     const plain = sh(cmd);
     const gated = sh(rewrite(cmd));
     expect(plain.status).toBe(0);
@@ -99,6 +96,7 @@ describe("issue 1264: a rewritten run behaves as the agent's own did", () => {
     expect(gated.stdout.replace(FLAG, "")).toBe(
       plain.stdout.replace("slot[]", "slot[held]"),
     );
+    expect(plain.stdout).toContain("arg[a  b]\narg[x y]\n");
   }, 90_000);
 
   it("the agent's folder, environment and exit code carry through", () => {

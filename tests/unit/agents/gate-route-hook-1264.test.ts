@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { hookCommands } from "../../../src/shared/agents/guardrails.js";
+import { gateAllowRules } from "../../../src/shared/agents/den-claude.js";
 
 const HOOK = path.resolve("src/shared/agents/guardrails/pretooluse.mjs");
 const dir = fs.realpathSync(
@@ -49,7 +50,7 @@ describe("issue 1264: the hook sends an agent's heavy run through the gate", () 
     expect(u.description).toBe("Run one test");
     expect(u.timeout).toBe(600000);
     expect(u.command).toMatch(
-      /^\/opt\/den\/bin\/den gate run --kind cpu --label 'agent: jest' -- bash -c 'npx jest --maxWorkers=\$\{DEN_GATE_WORKERS:-1\} a\.test\.ts'$/,
+      /^\/opt\/den\/bin\/den gate run --kind cpu -- npx jest --maxWorkers=\$\{DEN_GATE_WORKERS:-1\} a\.test\.ts$/,
     );
   });
 
@@ -63,6 +64,8 @@ describe("issue 1264: the hook sends an agent's heavy run through the gate", () 
     for (const command of [
       "ops gate run -- npx jest a.test.ts",
       "git status",
+      // Compound: its other parts stay visible to the agent's own rules.
+      "git push --force origin main; npx jest a.test.ts",
     ]) {
       const r = run({ command });
       expect([r.code, r.stdout]).toEqual([0, ""]);
@@ -115,5 +118,46 @@ describe("issue 1264: an agent's hook is launched with the gate's arguments", ()
     expect(hookCommands("/g", "/usr/bin/node").pretooluse).toBe(
       "/usr/bin/node /g/pretooluse.mjs",
     );
+  });
+});
+
+describe("issue 1264: a command the agent is allowed stays allowed when gated", () => {
+  /** Whether a Claude Code rule `Bash(x)` or `Bash(x *)` lets `command` run. */
+  const allows = (rules: string[], command: string) =>
+    rules.some((r) => {
+      const m = /^Bash\((.*)\)$/s.exec(r);
+      if (!m) return false;
+      const x = m[1]!;
+      return x.endsWith(" *")
+        ? command.startsWith(x.slice(0, -1))
+        : command === x;
+    });
+  const rewritten = (command: string): string =>
+    JSON.parse(run({ command }).stdout).hookSpecificOutput.updatedInput.command;
+
+  it("the launch's rules allow the hook's rewrite of each allowed command, and only those", () => {
+    fs.rmSync(settings, { force: true });
+    const rules = gateAllowRules(GATE, [
+      "npm test",
+      "npx jest",
+      "npx playwright",
+    ]);
+    expect(allows(rules, rewritten("npm test"))).toBe(true);
+    expect(allows(rules, rewritten("npx jest a.test.ts"))).toBe(true);
+    expect(allows(rules, rewritten("npx playwright test e"))).toBe(true);
+    // Not allowed before, not allowed gated; never the gate on its own.
+    expect(allows(rules, rewritten("npx tsc -p ."))).toBe(false);
+    expect(allows(rules, `${GATE} gate run -- rm -rf d`)).toBe(false);
+    expect(allows(rules, `${GATE} gate run --kind cpu -- rm -rf d`)).toBe(
+      false,
+    );
+    for (const r of rules)
+      expect(r).toMatch(
+        / gate run --kind (cpu|browser) -- (npm test|npx jest|npx playwright)( \*)?\)$/,
+      );
+  });
+
+  it("no CLI found: no extra rules", () => {
+    expect(gateAllowRules(undefined, ["npm test"])).toEqual([]);
   });
 });

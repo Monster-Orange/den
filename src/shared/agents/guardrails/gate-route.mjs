@@ -7,9 +7,14 @@
  * jest or vitest given no worker count gets the gate's share
  * (DEN_GATE_WORKERS, issue 1048), so no run starts cores − 1 workers.
  *
- * It never changes a command it isn't sure of: one already under
- * `gate run`, one the parser can't read, or one with no listed program
- * stays as it is. Plain JavaScript with no imports (the parser is passed
+ * Only a single plain command is rewritten: one stage, no `;`, `&&`,
+ * `||`, pipe, `&`, `$( )`, backticks, `<( )`, `>( )`, heredoc, comment or
+ * line break (PR review: a wrapper hides the rest of a compound command
+ * from the agent's own permission rules). The command's own text follows
+ * `gate run … --` unchanged, so the same shell reads it the same way, and
+ * a prefix rule still sees the program. Anything else stays as written:
+ * one already under `gate run`, one the parser can't read, one with no
+ * listed program. Plain JavaScript with no imports (the parser is passed
  * in), so the hook stays fast.
  */
 
@@ -39,8 +44,24 @@ const TAKES_WORKERS = new Set(["jest", "vitest"]);
 
 const base = (w) => String(w).slice(String(w).lastIndexOf("/") + 1);
 
-/** A word for a single-quoted shell string. */
-export const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+/**
+ * Shell syntax that makes a command more than one plain command, outside
+ * a fd copy such as 2>&1. Checked on the raw text, quotes and all: a `|`
+ * inside quotes leaves the command as written too, which is safe.
+ */
+const COMPOUND = /[;&|`\n#]|\$\(|<\(|>\(|<</;
+const FD_COPY = /\d*>&\d+|\d*<&\d+/g;
+
+/** Whether `src` is a single plain command (see COMPOUND). */
+export function plainCommand(src) {
+  return !COMPOUND.test(String(src).replace(FD_COPY, ""));
+}
+
+/**
+ * The words in front of a routed command: `<gate> --kind <kind> --`. A
+ * launch builds its allow rules from the same words (den-claude.ts).
+ */
+export const gatePrefix = (gate, kind) => `${gate} --kind ${kind} --`;
 
 /**
  * The program a stage runs, past its runner (`npx -y jest` → jest), and
@@ -98,35 +119,35 @@ function matchEntry(words, programs) {
  * Returns { command, kind, program }.
  */
 export function routeCommand(command, { gate, programs, parse }) {
-  const src = String(command ?? "");
-  if (!gate || !programs || !programs.length || !src.trim()) return null;
+  const src = String(command ?? "").trim();
+  if (!gate || !programs || !programs.length || !src) return null;
+  if (!plainCommand(src)) return null;
   let pipelines;
   try {
     pipelines = parse(src);
   } catch {
     return null;
   }
-  const hits = [];
-  for (const stages of pipelines)
-    for (const st of stages) {
-      if (gated(st.words)) return null;
-      const m = matchEntry(st.words, programs);
-      if (m) hits.push({ ...m, words: st.words });
-    }
-  if (!hits.length) return null;
-  const kind = hits.some((h) => h.name === "playwright") ? "browser" : "cpu";
+  if (pipelines.length !== 1 || pipelines[0].length !== 1) return null;
+  const st = pipelines[0][0];
+  if (st.background || gated(st.words)) return null;
+  // The text must start with the stage's own first word: a leading
+  // FOO=1 (which `gate run` would try to run) or a quoted first word stays
+  // as written.
+  if (src.split(/\s+/)[0] !== st.words[0]) return null;
+  const h = matchEntry(st.words, programs);
+  if (!h) return null;
+  const kind = h.name === "playwright" ? "browser" : "cpu";
   let text = src;
-  const h = hits[0];
   if (
-    hits.length === 1 &&
     TAKES_WORKERS.has(h.name) &&
-    !h.words.slice(h.at + 1).some((w) => SETS_WORKERS.test(w))
+    !st.words.slice(h.at + 1).some((w) => SETS_WORKERS.test(w))
   ) {
-    // Only where the program's word stands once in the text: a second
-    // place (another run, a quoted name) leaves the count to the command.
-    const word = h.words[h.at];
+    // Right after the program's word, where it stands once in the text; a
+    // second place (a quoted name) leaves the count to the command.
+    const word = st.words[h.at];
     const re = new RegExp(
-      `(^|[\\s;&|(])(${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=\\s|$)`,
+      `(^|\\s)(${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=\\s|$)`,
       "g",
     );
     const found = [...src.matchAll(re)];
@@ -136,7 +157,7 @@ export function routeCommand(command, { gate, programs, parse }) {
     }
   }
   return {
-    command: `${gate} --kind ${kind} --label ${shq(`agent: ${h.name}`)} -- bash -c ${shq(text)}`,
+    command: `${gatePrefix(gate, kind)} ${text}`,
     kind,
     program: h.entry,
   };
