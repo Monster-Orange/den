@@ -76,12 +76,10 @@ describe("search", () => {
           "agents.list_host_wait",
         ],
       ],
-      // Issue 532: Server › the terminal limits; issue 867: a waiting
-      // test run ended with its terminal keeps its place.
+      // Issue 532: Server › the terminal limits.
       [
         "server",
         [
-          "server.gate_waiter_return",
           "server.sessions_max",
           "server.sessions_close_grace",
           "server.sessions_pty_close",

@@ -3434,7 +3434,7 @@ export const DEN_SETTINGS = [
     label:
       "A waiting test run keeps its place this long after it ends, in minutes",
     description:
-      "When a waiting test run ends without giving up its place (a restart, or a closed terminal), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
+      "When a waiting test run ends without giving up its place (a restart, or its window closed), its place in line is kept this long. Run again, it takes its place back. After that, the place is let go and the run says so the next time it asks. 0: let go at once. __DEN_CLI__ gate settings --waiter-return-minutes 10",
     keywords: ["gate", "slot", "queue", "restart", "place", "waiting"],
     scope: "user",
     keys: ["gate_slots.waiter_return_minutes"],

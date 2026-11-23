@@ -1272,7 +1272,7 @@
     "set.server.gate_waiter_return":
       "Una prueba en espera conserva su lugar este tiempo después de terminar, en minutos",
     "set.server.gate_waiter_return.d":
-      "Cuando una prueba en espera termina sin ceder su lugar (un reinicio, o una terminal cerrada), su lugar en la fila se conserva este tiempo. Si se ejecuta de nuevo, recupera su lugar. Después, el lugar se libera y la prueba lo dice la próxima vez que pide turno. 0: se libera al instante. __DEN_CLI__ gate settings --waiter-return-minutes 10",
+      "Cuando una prueba en espera termina sin ceder su lugar (un reinicio, o su ventana cerrada), su lugar en la fila se conserva este tiempo. Si se ejecuta de nuevo, recupera su lugar. Después, el lugar se libera y la prueba lo dice la próxima vez que pide turno. 0: se libera al instante. __DEN_CLI__ gate settings --waiter-return-minutes 10",
     "set.server.gate_class_order": "Clases de turno, de mayor a menor",
     "set.server.gate_class_order.d":
       "Separadas por comas, por ejemplo release, lane, other. Una ejecución en espera de una clase mayor empieza antes; dentro de una clase, por orden de llegada. Una ejecución que tiene su turno nunca se detiene. Vacío: orden de llegada para todas. __DEN_CLI__ gate settings --class-order release,lane,other",

@@ -189,7 +189,7 @@ A CI runner may ask for it too (see below; `priority_runners`).
 
 ## A waiting run keeps its place across a restart
 
-A Den restart (or a closed terminal) can end a `gate run` while it waits.
+A Den restart (or its window closing) can end a `gate run` while it waits.
 Its place in line is kept for `waiter_return_minutes` (default 10):
 
 - `gate status` shows it as `run gone, place kept until <time>`. It's
