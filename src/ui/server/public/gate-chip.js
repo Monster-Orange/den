@@ -35,6 +35,17 @@ const esc = (s) =>
 export const gateTime = (iso) => formatTime(iso, { style: "time" });
 const hm = gateTime;
 
+/**
+ * Issue 1263 review: a removal's time; with its date when it isn't today
+ * (removals reach back a day), in the person's zone (issue 206's check).
+ */
+export function removedAt(iso, now = Date.now()) {
+  const day = formatTime(iso, { style: "date" });
+  return day && day === formatTime(now, { style: "date" })
+    ? hm(iso)
+    : formatTime(iso, { style: "datetime" });
+}
+
 /** Issue 1132: a granted run held by the start ceiling, in words ("" if not). */
 export function startHoldWords(s, t) {
   return s.startHold
@@ -323,7 +334,7 @@ export function startGateChip(o) {
             .map(
               (r) =>
                 '<li class="gate-box">' +
-                esc(hm(r.at) + " · " + removedWords(r, t)) +
+                esc(removedAt(r.at) + " · " + removedWords(r, t)) +
                 "</li>",
             )
             .join("") +

@@ -11,7 +11,12 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { removedWords } from "../../../src/ui/server/public/gate-chip.js";
+import {
+  gateTime,
+  removedAt,
+  removedWords,
+} from "../../../src/ui/server/public/gate-chip.js";
+import { formatTime } from "../../../packages/den-ui/src/time.js";
 
 const t = (k: string, v?: Record<string, unknown>) =>
   k + (v ? JSON.stringify(v) : "");
@@ -60,6 +65,19 @@ describe("issue 1263: the Gate queue shows removed containers", () => {
     expect(chip).toMatch(
       /removed\.length\s*\?[\s\S]{0,200}gate\.removedH[\s\S]{0,200}data-gate-removed/,
     );
-    expect(chip).toMatch(/esc\(hm\(r\.at\) \+ " · " \+ removedWords\(r, t\)\)/);
+    expect(chip).toMatch(
+      /esc\(removedAt\(r\.at\) \+ " · " \+ removedWords\(r, t\)\)/,
+    );
+  });
+
+  it("(4) a row from today shows its time; one from an earlier day, its date too", () => {
+    const now = Date.parse("2026-11-23T20:00:00");
+    const today = "2026-11-23T08:12:00";
+    const yesterday = "2026-11-22T23:50:00";
+    expect(removedAt(today, now)).toBe(gateTime(today));
+    expect(removedAt(yesterday, now)).toBe(
+      formatTime(yesterday, { style: "datetime" }),
+    );
+    expect(removedAt(yesterday, now)).not.toBe(gateTime(yesterday));
   });
 });
