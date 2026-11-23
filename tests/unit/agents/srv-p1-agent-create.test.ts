@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
   checkAgentCreate,
   createAgent,
@@ -209,6 +209,31 @@ describe("issue 1328: an agent's sandbox setting follows its lifecycle", () => {
     expect(all.ok && all.personOnly).toBe(true);
     expect(all.ok && all.details).toContain(
       "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
+    );
+  });
+
+  it("checks the id the start picks: a name whose id is taken gets <id>-2, and that one's setting counts", async () => {
+    const r = await repoRig();
+    writeRecord(r.stateDir, {
+      id: "ana",
+      workspace: "north",
+      persona: "reviewer",
+      displayName: "Someone",
+      session: { name: "x" },
+      startedAt: "2026-11-23T00:00:00.000Z",
+      stoppedAt: "2026-11-23T00:01:00.000Z",
+    } as never);
+    r.config.agents = { ...r.config.agents, "ana-2": { sandbox: false } };
+    const c = checkAgentCreate(resolveAgentsDeps(r.deps), {
+      project: "north",
+      persona: "reviewer",
+      name: "Ana",
+    });
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.personOnly).toBe(true);
+    expect(c.details).toContain(
+      "ana-2 starts outside the sandbox: agents.ana-2.sandbox is off in config/local/user.yml.",
     );
   });
 

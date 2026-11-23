@@ -3412,12 +3412,23 @@ async function namedId(
         running: { id: rec.id, sessionId: s.ref.id },
       });
   }
+  return namedIdChoice(d.stateDir(), name);
+}
+
+/**
+ * The id a start with display name `name` gets (namedId, without its
+ * live-session check): the name's slug, or slug-2, slug-3 … when taken;
+ * null when the name has no slug. Issue 1328: agent_create's sandbox check
+ * calls this too, so it checks the id the start picks.
+ */
+function namedIdChoice(stateDir: string, name: string): string | null {
+  const slug = nameSlug(name);
   if (!slug) return null;
-  if (!readRecord(d.stateDir(), slug)) return slug;
+  if (!readRecord(stateDir, slug)) return slug;
   const stem = slug.slice(0, 58);
   for (let n = 2; n < 1000; n++) {
     const id = `${stem}-${n}`;
-    if (!readRecord(d.stateDir(), id)) return id;
+    if (!readRecord(stateDir, id)) return id;
   }
   throw refused(`no free agent id for ${slug}: give one with --id`);
 }
@@ -5194,9 +5205,9 @@ export function checkAgentCreate(
 
 /**
  * Issue 1328: whether the agent agent_create starts would be outside the
- * sandbox. Every id the start could land on counts (startAgent picks it
- * then): the name's, a same-named agent's of the project, the persona's
- * free one.
+ * sandbox, for the id startAgent picks, the same way: the name's
+ * (namedIdChoice), else the persona's (defaultId). The run checks again,
+ * so an id that changes between ask and Allow is caught there.
  */
 function createSandboxOff(
   d: AgentsResolved,
@@ -5204,19 +5215,11 @@ function createSandboxOff(
   persona: string,
   name: string | undefined,
 ): ReviewLine | null {
-  const ids: string[] = [];
-  if (name !== undefined) {
-    const slug = nameSlug(name);
-    if (slug) ids.push(slug);
-    for (const rec of listRecords(d.stateDir()))
-      if (
-        rec.workspace === ws &&
-        (rec.displayName ?? "").toLowerCase() === name.toLowerCase()
-      )
-        ids.push(rec.id);
-  }
-  ids.push(defaultId(d.stateDir(), persona, ws));
-  return newAgentSandboxOff(d.agentsConfig(), ids);
+  const given = name !== undefined ? checkDisplayName(name) : null;
+  const id =
+    (given ? namedIdChoice(d.stateDir(), given) : null) ??
+    defaultId(d.stateDir(), persona, ws);
+  return newAgentSandboxOff(d.agentsConfig(), [id]);
 }
 
 /**
