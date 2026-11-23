@@ -127,6 +127,12 @@ export interface LaunchInput {
    */
   personConfigDir?: string;
   /**
+   * Issue 728: the folders holding the edge's private keys (its CA's and
+   * its TLS key), from the resolved edge config; denied like stateDir's
+   * credential files.
+   */
+  edgeKeyDirs?: string[];
+  /**
    * Issue 816: the state folders of test installs announced on this
    * computer. Their web.secret mints the setup grant, so they are denied
    * as stateDir is (a cooperating agent only).

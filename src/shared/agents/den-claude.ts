@@ -427,16 +427,23 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const spellings = (p: string) => shellSpellings(p, home);
   // Issue 810: the fixture person's key, as the web secret.
   const fixtureKey = path.join(abs, "fixture-person.key");
+  // Issue 728: the state dir's other credential files and folders.
+  const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
+  const dirs = STATE_CREDENTIAL_DIRS.map((d) => path.join(abs, d));
   const targets = [
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
+    ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
+    ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
   return [
     `Read(/${secret})`,
     `Read(/${sessions}/**)`,
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
+    ...files.map((f) => `Read(/${f})`),
+    ...dirs.map((d) => `Read(/${d}/**)`),
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),
     // The common readers by name too, should a version match a leading
@@ -446,6 +453,53 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
     ...SIGN_IN_DENY_RULES,
+  ];
+}
+
+/**
+ * Issue 728: the state dir's files that hold a secret or a credential's
+ * record, besides web.secret, sessions/ and fixture-person.key: the agent
+ * token hashes, the push key and subscriptions, the browser sessions, the
+ * test-install seal, and the embed key and runner token hashes. Relative
+ * to the state dir.
+ */
+export const STATE_CREDENTIAL_FILES: readonly string[] = [
+  "actor-tokens.json",
+  "push-vapid.json",
+  "push-subscriptions.json",
+  "web-sessions.json",
+  "test-install.created",
+  "embed/server-keys.json",
+  "gate/runner-tokens.json",
+];
+
+/**
+ * Issue 728: the state dir's folders that hold credentials: each agent's
+ * token file (an agent's own reaches its MCP server and the CLI through
+ * DEN_ACTOR_TOKEN_FILE, never through these tools), and Hub's token with
+ * the old ones kept for a retried revoke. agent-files/ (an agent's MCP
+ * config and settings, no secret) stays readable.
+ */
+export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
+
+/**
+ * Issue 728: rules denying an agent's Read and Bash tools the files in
+ * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
+ * naming the path in each shell spelling, and the readers by name. For the
+ * edge's key folders (edgeKeyDirs), wherever the edge config puts them.
+ */
+export function credentialDirRules(
+  dirs: readonly string[],
+  home?: string,
+): string[] {
+  const abs = dirs.map((d) => path.resolve(d));
+  const targets = abs.flatMap((d) =>
+    shellSpellings(d, home).map((p) => `${p}/*`),
+  );
+  return [
+    ...abs.map((d) => `Read(/${d}/**)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
   ];
 }
 
@@ -751,6 +805,11 @@ function common(input: LaunchInput): {
                     ...(input.stateDir
                       ? stateDirDenyRules(input.stateDir, input.env?.HOME)
                       : []),
+                    // Issue 728: the edge's key folders.
+                    ...credentialDirRules(
+                      input.edgeKeyDirs ?? [],
+                      input.env?.HOME,
+                    ),
                     // Issue 816: announced test installs'.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>
                       stateDirDenyRules(d, input.env?.HOME),

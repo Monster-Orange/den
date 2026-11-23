@@ -14,36 +14,10 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   BASH_READERS,
+  credentialDirRules,
   stateDirDenyRules,
 } from "../../../src/shared/agents/den-claude.js";
-
-/** Whether one Bash rule matches one simple command (documented semantics). */
-function ruleMatches(rule: string, cmd: string): boolean {
-  const m = /^Bash\((.*)\)$/s.exec(rule);
-  if (!m) return false;
-  const body = m[1];
-  if (body.endsWith(":*")) {
-    // Legacy prefix: the prefix, then a space and something after it.
-    const prefix = body.slice(0, -2);
-    return cmd.startsWith(prefix + " ");
-  }
-  const re = new RegExp(
-    "^" +
-      body
-        .split("*")
-        .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-        .join("[\\s\\S]*") +
-      "$",
-  );
-  return re.test(cmd);
-}
-function denied(rules: string[], command: string): boolean {
-  return command
-    .split(/&&|\|\||;|\|/)
-    .map((c) => c.trim())
-    .filter(Boolean)
-    .some((c) => rules.some((r) => ruleMatches(r, c)));
-}
+import { denied, readDenied } from "./helpers/claude-rules.js";
 
 const HOME = "/home/someone";
 const STATE = `${HOME}/.acme`;
@@ -162,4 +136,78 @@ describe("Sign-in: the deny rules for the person-only sign-in commands", () => {
     "leaves %s alone",
     (cmd) => expect(denied(rules, cmd)).toBe(false),
   );
+});
+
+describe("issue 728: every credential file in the state dir is denied as web.secret is", () => {
+  const rules = stateDirDenyRules(STATE, HOME);
+  // Each holds a secret: another agent's raw token, Hub's token and the
+  // ones kept for a retried revoke, the push key and subscriptions, the
+  // browser sessions, the test-install seal, and the token and key hashes.
+  const files = [
+    "actor-token/planner/token",
+    "actor-tokens.json",
+    "hub/token",
+    "hub/unrevoked/1.token",
+    "push-vapid.json",
+    "push-subscriptions.json",
+    "web-sessions.json",
+    "test-install.created",
+    "embed/server-keys.json",
+    "gate/runner-tokens.json",
+  ];
+  it.each(
+    files.flatMap((f) => [`cat ${STATE}/${f}`, `cp ~/.acme/${f} /tmp/x`]),
+  )("denies %s", (cmd) => expect(denied(rules, cmd)).toBe(true));
+  it.each(files)("a Read rule covers %s", (f) =>
+    expect([f, readDenied(rules, `${STATE}/${f}`)]).toEqual([f, true]),
+  );
+});
+
+describe("issue 728: what an agent needs to run stays allowed", () => {
+  const rules = stateDirDenyRules(STATE, HOME);
+  // Its token reaches its MCP server and the CLI through
+  // DEN_ACTOR_TOKEN_FILE (child processes, which these rules don't bind);
+  // its MCP config and settings are in agent-files/<id>, with no secret.
+  it.each([
+    `cat ${STATE}/agent-files/planner/mcp.json`,
+    `cat ${STATE}/agent-files/planner/settings.json`,
+    "den mcp headers hub",
+    "den gate run --kind cpu -- npx jest x",
+    "den agents list",
+    'test -n "$DEN_ACTOR_TOKEN_FILE"',
+    `ls ${STATE}`,
+    `tail -n 50 ${STATE}/logs/server.log`,
+  ])("leaves %s alone", (cmd) => expect(denied(rules, cmd)).toBe(false));
+  it("no Read rule covers agent-files", () => {
+    expect(rules.filter((r) => r.includes("agent-files"))).toEqual([]);
+  });
+});
+
+describe("issue 728: the edge's key folders, from the resolved edge config", () => {
+  const EDGE = `${HOME}/.local/share/acme/edge`;
+  const rules = credentialDirRules([`${EDGE}/ca`, `${EDGE}/certs`], HOME);
+  it.each([
+    `cat ${EDGE}/ca/rootCA-key.pem`,
+    `cp ${EDGE}/certs/edge-key.pem /tmp/x`,
+    "cat ~/.local/share/acme/edge/ca/rootCA-key.pem",
+    "base64 < $HOME/.local/share/acme/edge/certs/edge-key.pem",
+  ])("denies %s", (cmd) => expect(denied(rules, cmd)).toBe(true));
+  it.each(["ca/rootCA-key.pem", "certs/edge-key.pem"])(
+    "a Read rule covers %s",
+    (f) => expect(readDenied(rules, `${EDGE}/${f}`)).toBe(true),
+  );
+  it("the fallback for a broken edge config: any org's key folders", () => {
+    const any = credentialDirRules(
+      [`${HOME}/.local/share/*/edge/ca`, `${HOME}/.local/share/*/edge/certs`],
+      HOME,
+    );
+    expect(denied(any, `cat ${EDGE}/ca/rootCA-key.pem`)).toBe(true);
+    expect(denied(any, "cat ~/.local/share/acme/edge/certs/edge-key.pem")).toBe(
+      true,
+    );
+    expect(readDenied(any, `${EDGE}/ca/rootCA-key.pem`)).toBe(true);
+    expect(readDenied(any, `${HOME}/.local/share/acme/notes.txt`)).toBe(false);
+  });
+  it("none for no folders", () =>
+    expect(credentialDirRules([], HOME)).toEqual([]));
 });

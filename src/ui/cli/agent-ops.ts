@@ -102,6 +102,7 @@ import {
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
+import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
@@ -3629,6 +3630,8 @@ function launchInput(
     // ...and where they announce, for those announced after this launch.
     testAnnounceDir: announceDir(),
     personConfigDir: path.join(d.distRoot(), "config", "local"),
+    // Issue 728: the edge's key folders, wherever its config puts them.
+    edgeKeyDirs: edgeKeyDirs(d.distRoot()),
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
