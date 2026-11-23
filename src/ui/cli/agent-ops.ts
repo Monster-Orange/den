@@ -47,7 +47,7 @@
  *           resumes the standing personas and those with
  *           `resume_on_restart: true`.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import type { RestartQueue } from "../../shared/agents/restart-queue.js";
@@ -135,6 +135,7 @@ import {
   shellPathTimeoutMs,
   configuredRuntimeCatalog,
   readAgentsConfig,
+  readMcpConfig,
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
@@ -409,6 +410,8 @@ export interface AgentsDeps extends SessionsDeps {
    * read-only to it). Default: sandboxFor with the person's setting.
    */
   agentSandbox?: AgentSandboxFn;
+  /** Issue 1072: mcp.actions in the distribution's config, not read. */
+  mcpNotReadFromOrg?: () => string[];
   distRoot?: () => string;
   /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
   serverAgentFolder?: () => string;
@@ -551,6 +554,7 @@ export interface AgentsResolved extends Resolved {
   server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
   agentSandbox: AgentSandboxFn;
+  mcpNotReadFromOrg: () => string[];
   distRoot: () => string;
   serverAgentFolder: () => string;
   workspaceDir: (ws: string) => string;
@@ -903,6 +907,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     ...base,
     server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    mcpNotReadFromOrg:
+      d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
     agentSandbox:
       d.agentSandbox ??
       ((argv, agentId) =>
