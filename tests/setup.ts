@@ -7,6 +7,7 @@ import { afterAll, expect } from "@jest/globals";
 import childProcess from "child_process";
 import { guardSpawns, sentinelCalls, sentinelMark } from "./sentinel";
 import * as fs from "fs";
+import fsModule from "fs";
 import * as os from "os";
 import * as path from "path";
 import { scrubSecretEnv } from "./scrub-env";
@@ -16,6 +17,11 @@ import {
   configLocalSnapshot,
   tripwireCalls,
 } from "./tripwire";
+import {
+  guardedWrites,
+  installWriteGuard,
+  writeGuardRoots,
+} from "./write-guard";
 
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
@@ -74,6 +80,38 @@ process.env.DEN_QUARANTINE_CHECK ??= "off";
 // sign-in tabs from test runs). `web up` and every opener honour it; the
 // opener refuses under JEST_WORKER_ID besides (browser-open.ts).
 process.env.DEN_NO_OPEN = "1";
+
+// Issue 1356: no test writes a real install's config/local or state folder
+// (write-guard.ts): such a write throws at the call, and the file fails at
+// its end should the writer swallow it. Installed once per worker, on the
+// fs every module of the test shares.
+const guardRoots = writeGuardRoots();
+// The module object itself: `import * as fs` reads it through getters, and
+// `import fs from "fs"` is it.
+installWriteGuard(fsModule, guardRoots);
+const refusedBefore = guardedWrites().length;
+afterAll(() => {
+  const refused = guardedWrites().splice(refusedBefore);
+  if (refused.length)
+    throw new Error(
+      [
+        "This test file wrote outside its temp folders (issue 1356): set DEN_ROOT or DEN_HOME to a temp folder first, then import Den's modules dynamically.",
+        ...[...new Set(refused)].map((p) => `  ${p}`),
+      ].join("\n"),
+    );
+});
+// Issue 1356: Den's roots come from the checkout under test, never from
+// where node_modules resolves (a link into another checkout made a test
+// write that checkout's config/local).
+try {
+  const nm = fs.realpathSync(path.join(guardRoots.checkout, "node_modules"));
+  if (!nm.startsWith(guardRoots.checkout + path.sep)) {
+    process.env.DEN_ROOT ??= guardRoots.checkout;
+    process.env.DEN_ENGINE_ROOT ??= guardRoots.checkout;
+  }
+} catch {
+  /* no node_modules here: nothing resolves elsewhere */
+}
 
 // 0.4.48 tripwires (tripwire.ts): no test reaches a person's browser or
 // Terminal (open, osascript, xdg-open, x-www-browser are failing shims
