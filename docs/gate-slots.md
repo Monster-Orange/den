@@ -30,6 +30,25 @@ drops or the release run ends. `gate status` and the Gate panel say why:
 "waiting: load 38 ≥ 24 while a release run holds the browser slot".
 `gate settings --cpu-hold-load N` sets it.
 
+Issue 1048: a plain cpu ask also waits while the 5-minute load is over
+`load_hold_per_core` × the cores (default 3: 54 on 18 cores), but only while
+another cpu run is going. With none going, the next one starts whatever the
+load, so the line slows down and never stops. Release-priority asks and
+holders never wait. The reason reads "waiting: this machine's load is 60.0,
+over 3 × 18 cores (54), while another unit test run is going; it starts once
+the load drops or that run ends". 0 turns it off; `gate settings
+--load-hold-per-core N` sets it.
+
+`DEN_GATE_LOAD5` is a test override: when set, the gate reads that number as
+the 5-minute load instead of the machine's, for both holds (issues 1009 and
+1048). Den's test setup sets it to 0, so a busy machine never holds a test's
+own slot, and a drill can set it high. Anything that sets it skips the real
+load, so never set it in a service's environment.
+
+Each cpu run on this machine gets `DEN_GATE_WORKERS`: the cores shared by
+the cpu slots, at least 2 (9 on 18 cores with 2 slots). Den's jest config
+reads it when `DEN_TEST_WORKERS` is unset; any runner can.
+
 A browser run that waits only because more cpu runs hold the machine than
 may run beside it is never starved: while it waits, no new cpu run starts
 past that number. Once they drop to it, the browser run starts.
@@ -161,7 +180,35 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 
 Change the three settings in Settings › Server, or with
 `den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
+`--priority-max 0` turns release priority off for every repo on the machine,
+so it warns first and changes nothing (exit 1) unless you add `--yes`. A
+script that turns it off must pass `--yes`. While it is off, `gate status`
+says so on its last line, and a `gate run --priority release` says it is
+taken as an ordinary run.
 A CI runner may ask for it too (see below; `priority_runners`).
+
+## A waiting run keeps its place across a restart
+
+A Den restart (or its window closing) can end a `gate run` while it waits.
+Its place in line is kept for `waiter_return_minutes` (default 10):
+
+- `gate status` shows it as `run gone, place kept until <time>`. It's
+  never given a slot while it's gone, so the next live run starts instead.
+- The same run asking again (same kind, label, repo and asker, and the
+  same `--box` choice) takes its place back: `gate: back in your place
+(<id>)`. A different run goes to the end of the line as usual.
+- If it doesn't come back in time, the place is let go. The slot log
+  records `taken-back-gone` with reason `waiter-gone`, and the next time
+  that run asks, it prints `gate: your earlier place (asked <time>) was let
+go at <time>`.
+
+Only a hang-up or terminate signal (SIGHUP, SIGTERM) keeps the place.
+Ctrl-C (SIGINT) and SIGQUIT give it back at once. A holder whose run ends
+frees its slot at once, as before. Agents' MCP asks and CI runners keep
+their own leases.
+
+Change it in Settings › Server, or with `den gate settings
+--waiter-return-minutes N` (0: a gone waiter loses its place at once).
 
 ## Let one waiting run go ahead of yours
 

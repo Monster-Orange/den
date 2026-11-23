@@ -80,6 +80,9 @@ jobs:
       # org, user, session… (company, install, project, person, agent).
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
       # Issue 95: Den keeps no copy of a UI kit component (den-ui's
       # shell, version chip, What's new, update pill, Report, working
       # pop-up); a copy passes only when DIVERGE.md names it with a reason.
@@ -267,6 +270,9 @@ jobs:
       - run: npm run typecheck
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
       - run: npm run -s gate:den-ui
       # Issue 839: a browser test or live check this change touches never
       # gains a fixed sleep, a positional pick, a class selector or an
@@ -506,6 +512,9 @@ jobs:
       - run: npm run typecheck
       - run: node scripts/words-gate.mjs
       - run: npm run lint
+      # Issue 786: every state file is written whole (atomic-write); a
+      # plain writeFileSync passes only with an allow-list entry and reason.
+      - run: node scripts/state-writes-gate.mjs
       - run: npm run -s gate:den-ui
       - name: Org-name gate
         env:

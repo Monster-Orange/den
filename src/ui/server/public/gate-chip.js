@@ -100,13 +100,20 @@ export function startGateChip(o) {
       ? t("gate.class", { name: s.class }) +
         (s.window ? " · " + t("gate.window", { window: s.window }) : "")
       : "";
-    // Issue 1009: a cpu run held by the machine's load.
-    const hold = s.loadHold
-      ? t("gate.loadHold", {
-          load: String(s.loadHold.load),
-          limit: String(s.loadHold.limit),
-        })
-      : "";
+    // Issues 1009, 1048: a cpu run held by the machine's load.
+    const hold = !s.loadHold
+      ? ""
+      : s.loadHold.why === "cores"
+        ? t("gate.loadHoldCores", {
+            load: String(s.loadHold.load),
+            limit: String(s.loadHold.limit),
+            perCore: String(s.loadHold.perCore),
+            cores: String(s.loadHold.cores),
+          })
+        : t("gate.loadHold", {
+            load: String(s.loadHold.load),
+            limit: String(s.loadHold.limit),
+          });
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +

@@ -61,7 +61,11 @@ describe("the rule (pure)", () => {
   it("load 30 ≥ 24 with a release browser holder: the cpu ask waits", () => {
     expect(grants(release, S, at(2), 30)).toEqual([]);
     expect(assign(release, S, at(2), [], 30)).toEqual([]);
-    expect(loadHold(release, S, 30)).toEqual({ load: 30, limit: 24 });
+    expect(loadHold(release, S, 30)).toEqual({
+      why: "release",
+      load: 30,
+      limit: 24,
+    });
   });
 
   it("a release run on a test box holds too (its app runs here)", () => {
@@ -187,7 +191,7 @@ describe("the store, with a stubbed load", () => {
       "waiting: load 30 ≥ 24 while a release run holds the browser slot",
     );
     const v = gateView(store, T0).slots.find((s) => s.id === cpu.id)!;
-    expect(v.loadHold).toEqual({ load: 30, limit: 24 });
+    expect(v.loadHold).toEqual({ why: "release", load: 30, limit: 24 });
   });
 
   it("load drops: granted on the next pass; the holder never stopped", () => {

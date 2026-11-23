@@ -24,6 +24,7 @@ export type GateSettingKey =
   | "mcp_renew_minutes"
   | "mcp_lapse_minutes"
   | "mcp_grace_minutes"
+  | "waiter_return_minutes"
   | "box_check_timeout_seconds"
   | "box_recheck_seconds"
   | "browser_requires_container"
@@ -69,6 +70,8 @@ export const GATE_MEANINGS: Record<
       "Minutes without a renewal, past its estimate and grace, before an agent's slot goes to the next",
     mcp_grace_minutes:
       "Minutes past its estimate an unrenewed agent slot still holds",
+    waiter_return_minutes:
+      "Minutes a waiting run keeps its place in line after it ends, such as in a restart (0: it loses its place at once)",
     box_check_timeout_seconds:
       "Seconds Den waits for a test box to answer (no answer: skipped)",
     box_recheck_seconds:
@@ -119,6 +122,8 @@ export const GATE_MEANINGS: Record<
       "Minutos sin renovar, pasada su estimación y el margen, antes de que el turno de un agente pase al siguiente",
     mcp_grace_minutes:
       "Minutos pasada su estimación que aún dura un turno de agente sin renovar",
+    waiter_return_minutes:
+      "Minutos que una ejecución en espera conserva su lugar en la fila después de terminar, por ejemplo en un reinicio (0: lo pierde al instante)",
     box_check_timeout_seconds:
       "Segundos que Den espera la respuesta de una máquina de pruebas (sin respuesta: se salta)",
     box_recheck_seconds:
@@ -165,6 +170,8 @@ export const GATE_MEANINGS: Record<
       "見積もりと猶予を過ぎて更新がないまま何分でエージェントの枠が次に移るか",
     mcp_grace_minutes:
       "更新のないエージェントの枠が見積もりを過ぎても保たれる時間（分）",
+    waiter_return_minutes:
+      "待っている実行が再起動などで終わったあと、列の順番を何分保つか（0: すぐに失う）",
     box_check_timeout_seconds:
       "Den がテスト用マシンの返事を待つ時間（秒、返事がなければ飛ばす）",
     box_recheck_seconds:
@@ -186,4 +193,50 @@ export const PRIORITY_OFF_WARNING: Record<UiLanguage, string> = {
   en: "priority_max 0 turns release priority off for every repo on this machine: a release run then waits behind plain runs. To go ahead, run it again with --yes.",
   es: "priority_max 0 desactiva la prioridad de versión para todos los repositorios de esta máquina: una ejecución de versión espera entonces detrás de las normales. Para seguir, ejecútalo de nuevo con --yes.",
   ja: "priority_max 0 は、このマシンのすべてのリポジトリでリリース優先をオフにします。リリース実行は通常の実行の後ろで待つことになります。続けるには --yes を付けてもう一度実行してください。",
+};
+
+/** Issue 963: `gate status`'s last line while release priority is off. */
+export const PRIORITY_OFF_STATUS: Record<UiLanguage, string> = {
+  en: "release priority: off (priority_max 0)",
+  es: "prioridad de versión: desactivada (priority_max 0)",
+  ja: "リリース優先: オフ (priority_max 0)",
+};
+
+/** Issue 963: a release ask while release priority is off. */
+export const PRIORITY_OFF_RUN: Record<UiLanguage, string> = {
+  en: "taken as an ordinary run: release priority is off on this machine (priority_max 0)",
+  es: "se toma como una ejecución normal: la prioridad de versión está desactivada en esta máquina (priority_max 0)",
+  ja: "通常の実行として扱います: このマシンではリリース優先がオフです (priority_max 0)",
+};
+
+/**
+ * Issue 867: the lines about a place kept for a waiting run whose run is
+ * gone (a restart): taken back, let go, and kept until when.
+ */
+export const KEPT_PLACE_WORDS: Record<
+  UiLanguage,
+  {
+    back: (id: string, asked: string) => string;
+    letGo: (asked: string, at: string, minutes: number) => string;
+    kept: (until: string) => string;
+  }
+> = {
+  en: {
+    back: (id, asked) => `back in your place (${id}), asked at ${asked}`,
+    letGo: (asked, at, m) =>
+      `your earlier place (asked ${asked}) was let go at ${at}: its run was gone for ${m} min`,
+    kept: (until) => `run gone, place kept until ${until}`,
+  },
+  es: {
+    back: (id, asked) => `de vuelta en tu lugar (${id}), pedido a las ${asked}`,
+    letGo: (asked, at, m) =>
+      `tu lugar anterior (pedido a las ${asked}) se liberó a las ${at}: su ejecución estuvo ausente ${m} min`,
+    kept: (until) => `ejecución ausente, lugar guardado hasta las ${until}`,
+  },
+  ja: {
+    back: (id, asked) => `元の順番に戻りました (${id})、${asked} に依頼`,
+    letGo: (asked, at, m) =>
+      `以前の順番（${asked} に依頼）は ${at} に手放されました: 実行が ${m} 分なかったため`,
+    kept: (until) => `実行なし、${until} まで順番を保持`,
+  },
 };

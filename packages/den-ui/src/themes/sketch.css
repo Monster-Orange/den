@@ -1,0 +1,78 @@
+/* Sketch 1.0.0 (sketch, den.theme/v1). Built from den-theme.json by scripts/build-sketch-theme.ts: do not edit. */
+:root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --display: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --ja: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+  --radius: 4px;
+  --radius-button: 4px;
+  --density: 1;
+  --edge-style: dashed;
+  --primary-bg: transparent;
+  --primary-border: var(--border-strong);
+  --primary-text: var(--text);
+  --danger-bg: transparent;
+  --danger-border: var(--bad);
+  --danger-text: var(--bad);
+}
+:root,
+:root[data-mode="light"] {
+  color-scheme: light;
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --sunken: #ebebeb;
+  --text: #1f1f1f;
+  --muted: #4d4d4d;
+  --faint: #5c5c5c;
+  --border: #c2c2c2;
+  --border-strong: #757575;
+  --accent: #3d3d3d;
+  --accent-text: #2e2e2e;
+  --accent-fill: #3d3d3d;
+  --on-accent: #ffffff;
+  --ok: #2e2e2e;
+  --warn: #3d3d3d;
+  --bad: #1f1f1f;
+  --remote: #4d4d4d;
+  --pc-blue: hsl(212 70% 42%);
+  --pc-teal: hsl(176 60% 30%);
+  --pc-green: hsl(135 50% 30%);
+  --pc-purple: hsl(272 50% 48%);
+  --pc-pink: hsl(330 60% 44%);
+  --pc-gold: hsl(44 80% 36%);
+  --pc-brown: hsl(25 40% 34%);
+  --pc-slate: hsl(215 14% 40%);
+  --shadow: none;
+  --bar: none;
+}
+:root[data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #1c1c1c;
+  --surface: #242424;
+  --raised: #2e2e2e;
+  --sunken: #161616;
+  --text: #ededed;
+  --muted: #bdbdbd;
+  --faint: #a3a3a3;
+  --border: #474747;
+  --border-strong: #858585;
+  --accent: #cccccc;
+  --accent-text: #e0e0e0;
+  --accent-fill: #d6d6d6;
+  --on-accent: #1c1c1c;
+  --ok: #d6d6d6;
+  --warn: #c2c2c2;
+  --bad: #f0f0f0;
+  --remote: #b8b8b8;
+  --pc-blue: hsl(212 80% 66%);
+  --pc-teal: hsl(176 55% 55%);
+  --pc-green: hsl(135 45% 58%);
+  --pc-purple: hsl(272 70% 76%);
+  --pc-pink: hsl(330 70% 70%);
+  --pc-gold: hsl(44 85% 60%);
+  --pc-brown: hsl(25 45% 62%);
+  --pc-slate: hsl(215 18% 68%);
+  --shadow: none;
+  --bar: none;
+}
