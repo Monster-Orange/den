@@ -30,6 +30,7 @@ import type {
   DeviceFlows,
   FlowView,
 } from "./device-flows.js";
+import { browserTagFor } from "./device-flows.js";
 
 /**
  * D17: who may claim a Den that has no owner yet.
@@ -242,7 +243,7 @@ async function startFlow(
   deps: GithubRouteDeps,
   res: http.ServerResponse,
   purpose: "signin" | "link",
-  meta: { local?: boolean; client?: string } = {},
+  meta: { local?: boolean; client?: string; browser?: string } = {},
 ): Promise<void> {
   let r;
   try {
@@ -341,9 +342,12 @@ export async function handleGithubRoutes(
       return true;
     }
     const client = deps.client?.(req);
+    // A start replaces only this browser's own pending sign-in.
+    const tag = browserTagFor(req.headers.cookie, deps.flows);
+    if (tag.setCookie) res.setHeader("Set-Cookie", tag.setCookie);
     await startFlow(deps, res, "signin", {
       local,
-      ...(client ? { client } : {}),
+      ...(client ? { client, browser: tag.tag } : {}),
     });
     return true;
   }

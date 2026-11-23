@@ -466,7 +466,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const serviceTry: HeldAction = {
-    check(a): HeldCheck {
+    check(a, _who, o): HeldCheck {
       const service = str(a.service);
       if (!service)
         return { ok: false, error: "give service: <repo> or <repo>/<service>" };
@@ -487,6 +487,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         .update(`${t.address}\n${t.command ?? ""}`)
         .digest("hex")
         .slice(0, 32);
+      // A request with no fingerprint at the Allow (asked before Den kept
+      // it, or its args changed on the way) names no command: refused.
+      if (o?.again && a.up === undefined)
+        return {
+          ok: false,
+          error: `this request for ${t.address} doesn't say which "up" command it was asked for, so the Allow is not for one: ask again`,
+        };
       if (a.up !== undefined && a.up !== up)
         return {
           ok: false,
