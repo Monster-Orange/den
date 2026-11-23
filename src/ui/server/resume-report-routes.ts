@@ -18,6 +18,7 @@ import {
 import {
   acceptResumeReport,
   conversationHeldElsewhere,
+  RESUME_REPORT_PATH,
   resumeReportProblem,
   type ResumeReport,
 } from "../../shared/agents/resume-command.js";
@@ -25,7 +26,7 @@ import { getRuntime } from "../../shared/agents/runtimes.js";
 import { agentTokenPrincipalOf, type AgentPrincipal } from "./request-guard.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 
-export const RESUME_REPORT_PATH = "/api/agents/self/resume-command";
+export { RESUME_REPORT_PATH };
 
 export interface ResumeReportDeps {
   stateDir: () => string;

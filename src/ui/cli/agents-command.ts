@@ -189,7 +189,7 @@ import { throughServer } from "./person-server.js";
 
 export const AGENTS_HELP = {
   usage:
-    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check|token|accounts> ...",
+    "agents <list|start|stop|resume|relaunch|rotate|keep|set|handoff|import|persona|restart|helpers|rename|move|link|unlink|files|rm|permission|personas|doctor|handback-check|handoff-check|token|accounts|report-resume> ...",
   lines: [
     "Agents: a persona and a project, run by a runtime in a session that",
     "outlives the web server (see `{cli} sessions`).",
@@ -210,6 +210,11 @@ export const AGENTS_HELP = {
     "    it starts fresh under the same conversation id. --all-interrupted: every",
     "    agent interrupted when Den or the machine restarted. A rotated agent",
     "    is not resumed: relaunch it",
+    "{cli} agents report-resume <conversation> [--cwd <dir>] [--seq <n>] [--json]",
+    "    from inside an agent Den started (a runtime's hook): the conversation",
+    "    Den resumes after a restart, for runtimes that report one (Codex,",
+    "    Gemini). Sends only the id, the folder and a rising sequence (default:",
+    "    the time), with the agent's own Den token, and only to this Den",
     "{cli} agents relaunch <id> [-w <ws>] [--from-handoff [<file>]]",
     "    session rotation: once a session ended after agents.rotate.after_compactions",
     "    compactions (default 3) or its pull request merged, and its handoff.md",
@@ -1380,10 +1385,7 @@ function files(args: string[], d: AgentsResolved): number {
  * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
  * workspace's agents start with when the start names none.
  */
-async function permission(
-  args: string[],
-  d: AgentsResolved,
-): Promise<number> {
+async function permission(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
   const ws = workspaceFlag(where, p);
@@ -1494,7 +1496,12 @@ function startedLine(
 }
 
 /** Issue 989: an agent's own route on the server, in its project. */
-function agentRoute(d: AgentsResolved, id: string, ws: string | undefined, verb: string): string {
+function agentRoute(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  verb: string,
+): string {
   const rec = agentRecord(d, id, ws);
   return `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(rec.id)}/${verb}`;
 }
@@ -2863,6 +2870,15 @@ export async function cmdAgents(
           return await tokenCmd(rest, d, deps);
         case "accounts":
           return await accountsCmd(rest, d, deps);
+        case "report-resume": {
+          const { cmdReportResume } =
+            await import("./report-resume-command.js");
+          return await cmdReportResume(rest, {
+            env: d.env,
+            out: d.out,
+            err: d.err,
+          });
+        }
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

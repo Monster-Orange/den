@@ -13,6 +13,9 @@
  */
 import * as path from "path";
 
+/** Where an agent reports its conversation, with its own token. */
+export const RESUME_REPORT_PATH = "/api/agents/self/resume-command";
+
 /** One report: the conversation to resume, where, and its place in line. */
 export interface ResumeReport {
   /** The runtime's own id for the conversation. */
