@@ -110,7 +110,7 @@ export function expect(cells) {
   const say = (r) =>
     r.error
       ? `${r.tag}: ${r.error}`
-      : `${r.tag}: picker ${r.pill.left}-${r.pill.right}, Search from ${r.search.left}, at the picker's middle: ${r.atPill ? "the picker" : "something else"}; tap: ${r.menu ? "projects menu" : "no menu"}${r.searchOpen ? ", Search opened" : ""}`;
+      : `${r.tag}: picker x ${r.pill.left} to ${r.pill.right}, Search from x ${r.search.left}, at the picker's middle: ${r.atPill ? "the picker" : "something else"}; tap: ${r.menu ? "projects menu" : "no menu"}${r.searchOpen ? ", Search opened" : ""}`;
   return [
     {
       clause: clauses[0],

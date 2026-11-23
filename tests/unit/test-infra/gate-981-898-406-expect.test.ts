@@ -55,6 +55,9 @@ describe("issue 981's live check", () => {
   it("with the fix: both clauses pass", () => {
     const r = rows(981, [cell("webkit", [bar(true)])]);
     expect(r.map((x) => x.ok)).toEqual([true, true]);
+    // Not digits-dash-digits: the bed masks that shape as a pairing code.
+    expect(r[0].detail).toContain("picker x 300 to 440, Search from x 452");
+    expect(r[0].detail).not.toMatch(/\d+-\d+/);
   });
 
   it("a cell that couldn't measure fails, never passes", () => {
