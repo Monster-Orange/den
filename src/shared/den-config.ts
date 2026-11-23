@@ -404,7 +404,12 @@ export interface UserConfig {
    * request_memory_seconds: replaced by requests.keep_minutes in 0.4.48;
    * still read until 0.4.49 when that is unset.
    */
-  ui?: { restart_wait_seconds?: number; request_memory_seconds?: number };
+  ui?: {
+    restart_wait_seconds?: number;
+    request_memory_seconds?: number;
+    /** Issue 163 (default 30): how often the console owner is looked at. */
+    console_check_seconds?: number;
+  };
   /**
    * UK-2: the working pop-up's request ledger. keep_minutes (default 15):
    * how long Den remembers how a write sent from the pop-up ended, so Try
@@ -791,6 +796,22 @@ export function uiRestartWaitSeconds(
     return Number.isFinite(v) && v > 0 ? v : 90;
   } catch {
     return 90;
+  }
+}
+
+/**
+ * Issue 163 ui.console_check_seconds (user.yml, 30): how often the web
+ * server looks at who owns the console, to say on the person's return
+ * which agents ran while they were logged out. A positive number, else 30.
+ */
+export function uiConsoleCheckSeconds(
+  read: () => UserConfig = readUserConfig,
+): number {
+  try {
+    const v = Number(read().ui?.console_check_seconds);
+    return Number.isFinite(v) && v > 0 ? v : 30;
+  } catch {
+    return 30;
   }
 }
 
