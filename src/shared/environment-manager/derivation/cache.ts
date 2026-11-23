@@ -15,6 +15,7 @@ import * as path from "path";
 import { getDistRoot } from "../../paths.js";
 import type { DerivedEdge } from "./types.js";
 import { repoInputFiles } from "./scan.js";
+import { writeFileAtomic } from "../../atomic-write.js";
 
 // Bump whenever derivation RULES change (signals, alias handling, edge
 // classification) — the fingerprint only tracks repo inputs, so without a
@@ -68,25 +69,9 @@ export function writeGraphCache(cache: CacheFile): void {
   try {
     const dir = path.dirname(cachePath());
     fs.mkdirSync(dir, { recursive: true });
-    // Temp-then-rename so a concurrent reader (another den up/graph) never
-    // observes a half-written cache file. Unique temp name avoids writer
-    // collisions; rename is atomic within the same directory/filesystem.
-    const tmp = path.join(
-      dir,
-      `.graph-cache.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`,
-    );
-    try {
-      fs.writeFileSync(tmp, JSON.stringify(cache), "utf-8");
-      fs.renameSync(tmp, cachePath());
-    } catch (err) {
-      // Don't leave an orphaned temp file behind when the write/rename fails.
-      try {
-        fs.unlinkSync(tmp);
-      } catch {
-        /* ignore cleanup failure */
-      }
-      throw err;
-    }
+    // Written whole (atomic-write), so a concurrent reader (another den
+    // up/graph) never observes a half-written cache file.
+    writeFileAtomic(cachePath(), JSON.stringify(cache));
   } catch {
     /* cache is best-effort — never fail a command because it couldn't write */
   }

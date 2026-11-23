@@ -25,6 +25,7 @@
 import { execFile, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** What one command came to (exit code, the end of its output). */
 export interface Ran {
@@ -169,9 +170,7 @@ export function readUpdateState(stateDir: string): UpdateState | null {
 
 function writeJson(file: string, v: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(v) + "\n", { mode: 0o600 });
 }
 
 /**
