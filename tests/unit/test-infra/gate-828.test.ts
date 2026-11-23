@@ -62,6 +62,22 @@ describe("gate/828.mjs", () => {
     });
   });
 
+  it("each raise waits longer than a hook's 20 s try, and the run fits its timeout", () => {
+    const t = call(
+      "{ tryMs: g.TRY_MS, tries: g.TRIES, timeoutMs: g.timeoutMs }",
+    ) as {
+      tryMs: number;
+      tries: number;
+      timeoutMs: number;
+    };
+    expect(t.tryMs).toBeGreaterThan(20000);
+    // Two starts (30 s each), two raises, the restart (30 s down, 90 s up)
+    // and the end of the wait (30 s).
+    expect(t.timeoutMs).toBeGreaterThanOrEqual(
+      2 * 30000 + 2 * t.tries * t.tryMs + 120000 + 30000,
+    );
+  });
+
   it("the question waits, survives a restart and ends on its tool's run: every clause passes", () => {
     expect(judge(good).map((r) => r.ok)).toEqual([true, true, true, true]);
   });

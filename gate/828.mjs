@@ -22,7 +22,7 @@ export const clauses = [
   "after a Den restart, the question's row is still there",
   "its answer (the tool's run) ends it",
 ];
-export const timeoutMs = 300000;
+export const timeoutMs = 420000;
 
 const ASK = "gate-828-ask";
 const ELICIT = "gate-828-elicit";
@@ -30,8 +30,10 @@ export const QUESTION = "Gate check 828: which colour, red or blue?";
 const ELICIT_TEXT = "Claude needs your input: gate check 828";
 /** How long one wait may take to show (the hooks wait 20 s a try). */
 const SHOW_MS = 30000;
+/** One raise's wait: longer than a hook's try, so a slow bed's wait isn't raised twice. */
+export const TRY_MS = SHOW_MS;
 /** Raises before giving up: an early SessionStart ends a question on screen. */
-const TRIES = 3;
+export const TRIES = 3;
 
 /** ctx.api's answer as JSON, whether it gives a Response or the body. */
 async function body(r) {
@@ -75,7 +77,7 @@ async function agentRow(ctx, id) {
 async function raiseUntil(ctx, raise, seen) {
   for (let i = 0; i < TRIES; i++) {
     await raise();
-    const ms = await ctx.until(seen, SHOW_MS / TRIES);
+    const ms = await ctx.until(seen, TRY_MS);
     if (ms !== null) return { ms, tries: i + 1 };
   }
   return { ms: null, tries: TRIES };
