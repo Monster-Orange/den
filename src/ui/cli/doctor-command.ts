@@ -1489,8 +1489,9 @@ export async function doctorAddress(
 /** Issue 1334: phones and browsers with push on; unknown on an error. */
 async function pushSubscriptionCount(): Promise<number | undefined> {
   try {
-    const { PushSubscriptions } = await import("../server/web-push.js");
-    return new PushSubscriptions(getStateDir()).list().length;
+    const { pushSubscriptionCount: count } =
+      await import("../../shared/push-subscription-count.js");
+    return count(getStateDir());
   } catch {
     return undefined;
   }
