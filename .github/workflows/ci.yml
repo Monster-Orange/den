@@ -207,8 +207,9 @@ jobs:
   # the two the same). Its run-server serves Chromium and WebKit; the test
   # connects with exposeNetwork "<loopback>", so the browsers reach Den's
   # server on this runner through the connection. Elsewhere (the shards,
-  # no DEN_PW_NAV_WS) the suite skips: a local browser lays text out a few px
-  # apart, and a general DEN_PW_WS server may be another build (issue 1227). --verbose: the red cases show by name in the log.
+  # no DEN_PW_NAV_WS) the suite skips: a local browser lays text out a few
+  # px apart, and a general DEN_PW_WS server may be another build (issue
+  # 1227). --verbose: the red cases show by name in the log.
   #
   # On a pull request it runs when the change's tests include it (it is in
   # the subset when den-ui or the shell changed: the pr job's "nav" output).
