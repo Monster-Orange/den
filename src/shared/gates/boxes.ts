@@ -39,6 +39,7 @@ import { spawn } from "child_process";
 import { createHash, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as net from "net";
+import * as os from "os";
 import * as path from "path";
 import { connect as tlsConnect } from "tls";
 import { writeFileAtomic } from "../atomic-write.js";
@@ -851,15 +852,41 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       state: "unreachable" as const,
       reason: `no answer over ssh in ${secs} s`,
     };
-    // A leading "-" lets the batch go on when a file is absent.
-    const r = await runOnce(
-      start,
-      "sftp",
-      ["-q", "-b", "-", ...conn("-P")],
-      (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
-        "-get /proc/meminfo /dev/stdout\n",
-      capMs,
-    );
+    // Issue 1381: into a file in a new private folder, read, and removed.
+    // macOS sftp can't write a -get to a pipe (/dev/stdout): no text.
+    let dir: string;
+    try {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-box-"));
+      fs.chmodSync(dir, 0o700);
+    } catch (e) {
+      return {
+        state: "unknown",
+        reason: oneLine(
+          `memory unknown: no private folder: ${(e as Error).message}`,
+        ),
+      };
+    }
+    const meminfo = path.join(dir, "meminfo");
+    let r: Awaited<ReturnType<typeof runOnce>>;
+    let memText = "";
+    try {
+      // A leading "-" lets the batch go on when a file is absent.
+      r = await runOnce(
+        start,
+        "sftp",
+        ["-q", "-b", "-", ...conn("-P")],
+        (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+          `-get /proc/meminfo "${meminfo}"\n`,
+        capMs,
+      );
+      try {
+        memText = fs.readFileSync(meminfo, "utf-8").slice(0, 65536);
+      } catch {
+        // Not there (no /proc/meminfo, or the box wasn't reached).
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
     if (r.timedOut) return noAnswer;
     if (r.failed)
       return { state: "unreachable", reason: oneLine(`sftp: ${r.failed}`) };
@@ -875,7 +902,7 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       .filter((l) => /not found|no such file/i.test(l));
     const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
     const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
-    let freeMemMb = memAvailableMb(r.out);
+    let freeMemMb = memAvailableMb(memText);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
     if (box.hold_file && !holdGone)
       return {
