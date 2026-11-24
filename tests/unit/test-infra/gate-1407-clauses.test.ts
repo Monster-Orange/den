@@ -46,9 +46,12 @@ const good = {
       job: { command: "sleep 270; :", minutes: 0 },
     },
   ],
-  before: { idle: { session: "s1", token: "t1" }, job: { session: "s2" } },
+  before: {
+    idle: { session: "s1", hasConversation: true },
+    job: { session: "s2" },
+  },
   idleBackMs: 4000,
-  idleAfter: { session: "s3", token: "t1", denVersion: "9.9.9" },
+  idleAfter: { session: "s3", sameConversation: true, denVersion: "9.9.9" },
   jobSameSession: true,
   jobAliveAfter: true,
   rowSeen: true,
@@ -59,6 +62,19 @@ const good = {
   nowMs: 3000,
   jobAliveEnd: false,
 };
+
+describe("gate/1407.mjs: what it writes", () => {
+  it("a page error's sign-in link shows without its code", () => {
+    const rows3 = rows({
+      ...good,
+      pageState: null,
+      pageNow: 0,
+      pageError:
+        "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:5/auth?fixture=SECRETCODE123&next=%2F",
+    });
+    expect(JSON.stringify(rows3).includes("SECRETCODE123")).toBe(false);
+  });
+});
 
 describe("gate/1407.mjs: a restart answers per agent", () => {
   it("names the items it proves", async () => {
@@ -93,8 +109,11 @@ describe("gate/1407.mjs: a restart answers per agent", () => {
     expect(rows(silent).map((r) => r.ok)).toEqual([true, false, false, true]);
   });
 
-  it("a new conversation (another resume token) fails row 1", () => {
-    const lost = { ...good, idleAfter: { ...good.idleAfter, token: "t9" } };
+  it("a new conversation fails row 1", () => {
+    const lost = {
+      ...good,
+      idleAfter: { ...good.idleAfter, sameConversation: false },
+    };
     expect(rows(lost)[0].ok).toBe(false);
   });
 

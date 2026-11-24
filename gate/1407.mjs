@@ -61,7 +61,12 @@ const parse = (b) => {
     return null;
   }
 };
-const msg = (e) => String(e?.message ?? e).slice(0, 200);
+// An error's text, with every URL's query cut (a one-time sign-in link
+// carries its code there), short.
+const clean = (t) => String(t ?? "").replace(/\?[^\s"'<>]*/g, "?…");
+const msg = (e) => clean(e?.message ?? e).slice(0, 200);
+// The idle agent's conversation id, kept here, never in a result or a log.
+let IDLE_RESUME = null;
 const skipAll = (skip, detail) =>
   clauses.map((clause) => ({ clause, ok: null, skip, detail }));
 
@@ -178,10 +183,11 @@ export async function setup(ctx) {
     await ctx.sleep(2000);
     s.jobAlive = jobAlive();
     if (!s.jobAlive) return { ...s, skip: "needs-background-job" };
+    IDLE_RESUME = recordOf(d2, IDLE)?.resumeToken ?? null;
     s.before = {
       idle: {
         session: sessionOf(d2, IDLE),
-        token: recordOf(d2, IDLE)?.resumeToken ?? null,
+        hasConversation: !!recordOf(d2, IDLE)?.resumeToken,
       },
       job: { session: sessionOf(d2, JOB) },
     };
@@ -207,14 +213,14 @@ export async function setup(ctx) {
       return (
         !!r?.session?.id &&
         r.session.id !== s.before.idle.session &&
-        r.resumeToken === s.before.idle.token &&
+        r.resumeToken === IDLE_RESUME &&
         r.denVersion !== OLD
       );
     }, 60000);
     const after = recordOf(d2, IDLE);
     s.idleAfter = {
       session: after?.session?.id ?? null,
-      token: after?.resumeToken ?? null,
+      sameConversation: !!IDLE_RESUME && after?.resumeToken === IDLE_RESUME,
       denVersion: after?.denVersion ?? null,
     };
   } catch (e) {
@@ -312,6 +318,7 @@ export async function run(ctx, s) {
 export async function teardown() {
   const d = D2;
   D2 = null;
+  IDLE_RESUME = null;
   if (!d) return;
   try {
     try {
@@ -370,8 +377,8 @@ export function expect(cells) {
       r.status === 202 &&
       idle?.state === "now" &&
       r.idleBackMs != null &&
-      r.idleAfter?.token === r.before?.idle?.token,
-    detail: `stale ${JSON.stringify(r.stale)}; restart-stale ${r.status}: ${JSON.stringify(idle ?? null)}; back ${r.idleBackMs} ms, same conversation ${r.idleAfter?.token === r.before?.idle?.token}, tools ${r.idleAfter?.denVersion}`,
+      r.idleAfter?.sameConversation === true,
+    detail: `stale ${JSON.stringify(r.stale)}; restart-stale ${r.status}: ${JSON.stringify(idle ?? null)}; back ${r.idleBackMs} ms, same conversation ${r.idleAfter?.sameConversation}, tools ${r.idleAfter?.denVersion}`,
   };
   const row2 = {
     clause: clauses[1],
@@ -398,7 +405,7 @@ export function expect(cells) {
             r.pageState === "job" &&
             /sleep 270/.test(String(r.pageLine)) &&
             r.pageNow === 1,
-          detail: `row seen ${r.rowSeen}; state ${r.pageState}; line ${JSON.stringify(r.pageLine)}; Restart now ${r.pageNow}; signed in by ${r.signIn}${r.pageError ? `; ${r.pageError}` : ""}`,
+          detail: `row seen ${r.rowSeen}; state ${r.pageState}; line ${JSON.stringify(r.pageLine)}; Restart now ${r.pageNow}; signed in by ${r.signIn}${r.pageError ? `; ${clean(r.pageError)}` : ""}`,
         };
   const row4 = {
     clause: clauses[3],
