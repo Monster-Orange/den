@@ -10169,6 +10169,7 @@ async function handleRequest(
           process_lookup?: unknown;
           agent_hooks?: unknown;
           sessions?: unknown;
+          agents_limits?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           github?: unknown;
