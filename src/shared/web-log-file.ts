@@ -40,12 +40,21 @@ export function fdIsFile(fd = 1): boolean {
   }
 }
 
+// ANSI SGR escapes (ESC = 0x1b): a control character, on purpose.
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
 /**
  * Issue 1368: serverLog's own stdout line (web.log under `web up` and a
- * service), passed through redactSecrets as every other log path is.
+ * service), passed through redactSecrets as every other log path is. The
+ * check reads the line without its color codes, so a secret split by
+ * them is caught; such a line is written plain. A line with no secret
+ * keeps its colors.
  */
 export function stdoutLine(msg: string): string {
-  return `${redactSecrets(msg)}\n`;
+  const plain = msg.replace(ANSI_RE, "");
+  const safe = redactSecrets(plain);
+  return `${safe === plain ? redactSecrets(msg) : safe}\n`;
 }
 
 /**

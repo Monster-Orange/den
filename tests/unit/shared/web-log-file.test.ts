@@ -115,6 +115,16 @@ describe("issue 1344: the server's own log file", () => {
     expect(got).not.toContain("abcDEF123456");
     expect(got.endsWith("\n")).toBe(true);
     expect(stdoutLine(LINE)).toBe(`${LINE}\n`);
+    // A colored line keeps its colors when nothing in it is a secret.
+    const green = "\x1b[32m  ready\x1b[0m";
+    expect(stdoutLine(green)).toBe(`${green}\n`);
+  });
+
+  it("issue 1368: a secret split by color codes is redacted too", () => {
+    const got = stdoutLine(
+      "failed: Authorization: Bearer \x1b[33mabcDEF123456\x1b[0m.xyz-_~+/=",
+    );
+    expect(got.replace(/\x1b\[[0-9;]*m/g, "")).not.toContain("abcDEF123456");
   });
 
   it("a file it can't write never throws", () => {
