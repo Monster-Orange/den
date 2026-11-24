@@ -27,3 +27,14 @@ export const DEN_HOST_SLOTS = [
   "#den-lock",
   ".den-bell-n",
 ];
+
+/**
+ * Issue 1227: the nav check's own Playwright server, from DEN_PW_NAV_WS
+ * (`npm run pw:server -- --nav` prints it; CI's den-ui-nav job sets it), or
+ * null. DEN_PW_WS alone is not it: a general server may run another build
+ * (an ARM machine's native one, issue 635), whose text the references can't
+ * match.
+ */
+export function navServer(env: NodeJS.ProcessEnv): string | null {
+  return env.DEN_PW_NAV_WS?.trim() || null;
+}

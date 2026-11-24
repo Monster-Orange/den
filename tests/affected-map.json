@@ -2285,7 +2285,10 @@
     },
     {
       "when": ["scripts/pw-server.mjs"],
-      "run": ["tests/unit/scripts/pw-server-635.test.ts"],
+      "run": [
+        "tests/unit/den-ui/nav-pin-ws-1227.test.ts",
+        "tests/unit/scripts/pw-server-635.test.ts"
+      ],
       "why": "tests that run scripts/pw-server.mjs"
     },
     {

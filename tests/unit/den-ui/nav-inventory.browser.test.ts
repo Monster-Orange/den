@@ -16,11 +16,13 @@
  * theme (NAV_THEME), so no colour or font is exempt.
  *
  * One browser build: the reference was taken on Playwright's image
- * NAV_BROWSER_IMAGE (its run-server, reached through DEN_PW_WS; CI's
- * den-ui-nav job starts the same image). With no DEN_PW_WS the suite
- * skips: a local browser lays text out a few px apart, and its boxes
- * can't match. On another build the comparer fails with "reference taken
- * on X, running on Y".
+ * NAV_BROWSER_IMAGE (its run-server, reached through DEN_PW_NAV_WS, which
+ * `npm run pw:server -- --nav` prints; CI's den-ui-nav job starts the same
+ * image). With no DEN_PW_NAV_WS the suite skips: a local browser lays text
+ * out a few px apart, and its boxes can't match. DEN_PW_WS alone skips it
+ * too (issue 1227): a general server may run another build, such as an ARM
+ * machine's native one. On another build the comparer fails with
+ * "reference taken on X, running on Y".
  *
  * Each red case compares the nav before and after its one change, both
  * against the reference, and asserts exactly the differences the change
@@ -52,12 +54,17 @@ import {
   type NavDiff,
   type NavSnapshot,
 } from "../../../packages/den-ui/inventory/nav-inventory.js";
-import { DEN_HOST_SLOTS, referenceFile } from "./nav-inventory-helpers.js";
+import {
+  DEN_HOST_SLOTS,
+  navServer,
+  referenceFile,
+} from "./nav-inventory-helpers.js";
 import { launchBrowser } from "../helpers/browser.js";
 
 const CAPTURE = process.env.DEN_UI_NAV_CAPTURE === "1";
-/** Only the pinned image's run-server can match the reference. */
-const PINNED = !!process.env.DEN_PW_WS;
+/** Only the pinned image's run-server can match the reference (issue 1227). */
+const NAV_WS = navServer(process.env);
+const PINNED = !!NAV_WS;
 const BROWSERS = ["chromium", "webkit"] as const;
 type BrowserName = (typeof BROWSERS)[number];
 const WIDTHS = [
@@ -71,14 +78,18 @@ const browsers: Partial<Record<BrowserName, Browser>> = {};
 beforeAll(async () => {
   if (!PINNED) {
     console.warn(
-      `nav inventory: skipped, no DEN_PW_WS (run it on ${NAV_BROWSER_IMAGE})`,
+      `nav inventory: skipped, no DEN_PW_NAV_WS (npm run pw:server -- --nav starts ${NAV_BROWSER_IMAGE})`,
     );
     return;
   }
   try {
     const pw = await import("playwright");
-    // PINNED: DEN_PW_WS is set, so this connects and never launches.
-    for (const b of BROWSERS) browsers[b] = await launchBrowser(pw[b]);
+    // PINNED: DEN_PW_NAV_WS is set, so this connects and never launches.
+    for (const b of BROWSERS)
+      browsers[b] = await launchBrowser(pw[b], undefined, {
+        ws: NAV_WS!,
+        env: "DEN_PW_NAV_WS",
+      });
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;

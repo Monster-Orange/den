@@ -48,7 +48,7 @@ describe("nav inventory: the pinned browser and theme", () => {
     );
     expect(NAV_BROWSER_IMAGE).toMatch(/:v[\d.]+-\w+@sha256:[0-9a-f]{64}$/);
     expect(ci).toContain(`NAV_IMAGE: ${NAV_BROWSER_IMAGE}`);
-    expect(ci).toContain("DEN_PW_WS: ws://localhost:3921/");
+    expect(ci).toContain("DEN_PW_NAV_WS: ws://localhost:3921/");
     expect(ci).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
     // The run-server's Playwright is the one the image is named for.
     const v = NAV_BROWSER_IMAGE.match(/:v([\d.]+)-/)![1];

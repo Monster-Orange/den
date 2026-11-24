@@ -102,7 +102,8 @@ docker stop pw-d17
 ```
 
 The nav inventory is the one exception: it runs on the exact amd64 build
-its references were taken on (`npm run pw:server -- --nav`).
+its references were taken on (`npm run pw:server -- --nav`), which it reaches
+only through its own `DEN_PW_NAV_WS`. With only `DEN_PW_WS` set, it skips.
 
 The browser's `localhost` and `*.localhost` are this machine's
 (`exposeNetwork`), so the test runs as it would locally.

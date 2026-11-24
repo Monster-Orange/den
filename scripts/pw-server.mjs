@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Issue 635: start a Playwright browser server for test runs that reach
- * a browser through DEN_PW_WS.
+ * a browser through DEN_PW_WS (the nav inventory's: DEN_PW_NAV_WS, issue 1227).
  *
  *   npm run pw:server                 # the general server, port 3000
  *   npm run pw:server -- --port 3917 --name pw-d17
@@ -63,6 +63,14 @@ export function serverArgs({
   ];
 }
 
+/**
+ * Issue 1227: the line to set. The nav inventory's server has its own
+ * variable, so a general server (maybe another build) is never taken for it.
+ */
+export function envLine(nav, port) {
+  return `${nav ? "DEN_PW_NAV_WS" : "DEN_PW_WS"}=ws://127.0.0.1:${port}/\n`;
+}
+
 function main(argv) {
   const nav = argv.includes("--nav");
   const val = (flag) => {
@@ -73,7 +81,7 @@ function main(argv) {
   const args = serverArgs({ nav, port, name: val("--name") });
   execFileSync("docker", args, { stdio: ["ignore", "ignore", "inherit"] });
   const p = args[args.indexOf("--port") + 1];
-  process.stdout.write(`DEN_PW_WS=ws://127.0.0.1:${p}/\n`);
+  process.stdout.write(envLine(nav, p));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

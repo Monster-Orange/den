@@ -115,10 +115,17 @@ function connectGuard(env: NodeJS.ProcessEnv): ConnectGuard {
   return { allow, onBlock: reportBlock(allow), ownPorts: ownPorts() };
 }
 
-/** A browser for a test: DEN_PW_WS's server, else a local launch. */
+/** Issue 1227: a suite's own Playwright server, in place of DEN_PW_WS. */
+export type BrowserServer = { ws: string; env: string };
+
+/**
+ * A browser for a test: DEN_PW_WS's server, else a local launch. `server`
+ * (issue 1227) names another server, and the variable it came from.
+ */
 export async function launchBrowser(
   engine: BrowserEngine | BrowserType = "chromium",
   options?: LaunchOptions,
+  server?: BrowserServer,
 ): Promise<Browser> {
   if (process.env.DEN_GATE_BOX && !allowFromEnv(process.env).length)
     throw new Error(
@@ -127,7 +134,8 @@ export async function launchBrowser(
         "gate run --base-url http://127.0.0.1:* (any port but 80 and 443).",
     );
   const type = await browserType(engine);
-  const ws = process.env.DEN_PW_WS;
+  const ws = server?.ws ?? process.env.DEN_PW_WS;
+  const wsVar = server?.env ?? "DEN_PW_WS";
   if (!ws) {
     const refused = hostWebkitRefusal(
       type.name(),
@@ -151,7 +159,7 @@ export async function launchBrowser(
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `DEN_PW_WS is set (${ws}) but its Playwright server gave no ` +
+      `${wsVar} is set (${ws}) but its Playwright server gave no ` +
         `${type.name()} browser; no local browser is started instead. ${why}`,
     );
   }
