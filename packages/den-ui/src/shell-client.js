@@ -58,8 +58,12 @@
  *       onEscape(e) (true: the host took that Esc), id, lang. A click
  *       toggles it; Esc closes it and focus goes back to the bell (in
  *       Safari too); a click outside closes it. Opening focuses its first
- *       link or button.
+ *       link or button. Issue 420: a row opens on a click anywhere on it
+ *       (wireRowOpens), as its link does.
  *       → { el, open(), close(focus), isOpen(), paint(), setCount(n) }
+ *   wireRowOpens(root, rowSelector)   issue 420: a click anywhere on a
+ *       row (its time, its dot, the space around) clicks the row's link,
+ *       except on the row's own controls. → a function that unwires it
  *   hydrateAccount(root, { onAction(event), menu(), onPick, onSubmit,
  *       lang })   the account entry: as an action (no href), a click or
  *       Enter calls onAction; with `menu: true` on the entry, its menu
@@ -700,6 +704,37 @@ export function patchChildren(live, next) {
   for (const c of [...live.childNodes]) if (!used.has(c)) c.remove();
 }
 
+/**
+ * Issue 420: what stays itself inside a row that opens: its link, its
+ * buttons, its fields.
+ */
+const ROW_CONTROLS =
+  'a[href], button, input, select, textarea, label, summary, [role="button"], [contenteditable="true"]';
+
+/**
+ * Issue 420: a click anywhere on a row (`rowSelector`, under `root`)
+ * clicks the row's first link, as a click on the link would. A click on
+ * the row's own controls is theirs alone. A row with no link does nothing.
+ * @param {Element} root
+ * @param {string} rowSelector
+ * @returns {() => void} unwires it
+ */
+export function wireRowOpens(root, rowSelector) {
+  /** @param {Event} e */
+  const onClick = (e) => {
+    const t = /** @type {Element | null} */ (e.target);
+    if (!t || !t.closest) return;
+    const row = t.closest(rowSelector);
+    if (!row || !root.contains(row)) return;
+    const inner = t.closest(ROW_CONTROLS);
+    if (inner && row.contains(inner)) return;
+    const a = /** @type {HTMLElement | null} */ (row.querySelector("a[href]"));
+    if (a) a.click();
+  };
+  root.addEventListener("click", onClick);
+  return () => root.removeEventListener("click", onClick);
+}
+
 /** The bell and its panel (see the top). */
 export function hydrateBell(btn, opts = {}) {
   const lang = () =>
@@ -763,6 +798,8 @@ export function hydrateBell(btn, opts = {}) {
       c > 0 ? kitT(lang(), "kit.bell.n", { n: c }) : word,
     );
   }
+  // Issue 420: a row opens on a click anywhere on it, as Den's bell does.
+  wireRowOpens(pop, ".den-bell-row");
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !isOpen()) return;
