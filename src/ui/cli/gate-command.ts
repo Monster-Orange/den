@@ -97,6 +97,7 @@ import {
 } from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
+  boxCouldServe,
   boxEnv,
   checkBox,
   defaultPlace,
@@ -120,7 +121,11 @@ import {
   START_HOLD_WORDS,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
-import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
+import {
+  allowOf,
+  checkBaseUrl,
+  isLoopbackHost,
+} from "../../shared/gates/pw-guard.js";
 import {
   boxOffWords,
   gateBoxesView,
@@ -275,6 +280,22 @@ const WATCH_LOOK_MS = 1_000;
 
 /** Issue 1132: how often a held run looks at the load again. */
 const HOLD_LOOK_MS = 2_000;
+
+/**
+ * Issue 1198: a default pick's base URL when the run gives none: any port
+ * on 127.0.0.1 but 80 and 443, and in the box guard (issue 991) only the
+ * ports the run itself opens.
+ */
+const DEFAULT_BASE = "http://127.0.0.1:*";
+
+/** Whether a Playwright endpoint is on this machine's loopback. */
+function loopbackEndpoint(raw: string): boolean {
+  try {
+    return isLoopbackHost(new URL(raw).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 1023: how often a run looks whether its command is dumping core. */
 const DUMP_LOOK_MS = 100;
@@ -913,6 +934,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+  // Issue 1198: a loopback container named in the run's environment is
+  // what this machine's browser runs use here; a box replaces it. One on
+  // another host, or one given with --browser-endpoint, the run keeps.
+  const envLoopback =
+    flagEndpoint === undefined &&
+    fromEnv !== undefined &&
+    loopbackEndpoint(fromEnv.endpoint);
   const pwFlag =
     typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
   // Issue 1033: no --box: the first free browser slot, here or on a test
@@ -929,11 +957,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           label,
           project: path.basename(d.cwd),
           boxes: d.store.boxes(),
-          baseUrl: urls.length > 0,
+          // Issue 1198: none given: the ports the run opens (DEFAULT_BASE).
+          baseUrl: true,
           pwVersion: pwFlag ?? playwrightVersion(d.cwd),
           // A run that brings its own browser (the flag, or its
           // environment) keeps it: a box would only change DEN_PW_WS.
-          ...(endpoint !== undefined
+          ...(endpoint !== undefined && !envLoopback
             ? {
                 ownBrowser:
                   endpoint === SELF
@@ -945,6 +974,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     where = pick.where;
     hostWhy = pick.why;
     onlyBoxes = pick.only;
+    if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
@@ -954,6 +984,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     ...(where ? { where } : {}),
     platform: d.store.platform,
     requiresContainer: d.store.settings().browserRequiresContainer,
+    // Issue 1198: "any" with none of its own waits only for a box that
+    // could ever take it; else it is refused at once.
+    ...(where === "any"
+      ? {
+          boxCouldServe: boxCouldServe(
+            d.store.boxes(),
+            pwFlag ?? playwrightVersion(d.cwd),
+            onlyBoxes,
+          ),
+        }
+      : {}),
   });
   if (!verdict.ok)
     throw new GateUsage(
@@ -1036,6 +1077,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       ...(hostWhy ? { hostWhy } : {}),
       ...(onlyBoxes ? { onlyBoxes } : {}),
+      ...(verdict.ok && verdict.boxesOnly ? { boxesOnly: true } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
