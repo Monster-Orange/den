@@ -32,6 +32,7 @@ import {
 } from "../../../src/shared/web-secret.js";
 import {
   creationRecordPath,
+  verifiedCreationRecord,
   writeCreationRecord,
 } from "../../../src/shared/test-operator.js";
 
@@ -57,6 +58,10 @@ let tmp = "";
 let fresh: Den;
 let later: Den;
 let normal: Den;
+let webup: Den;
+let copied: Den;
+/** The sealed record copied into `copied`, as it was. */
+let copiedRecord = "";
 
 interface Reply {
   status: number;
@@ -164,7 +169,15 @@ const MARKED = ["environments: [local]", "web:", "  test_install: true", ""];
 
 async function startDen(
   name: string,
-  o: { flag: boolean; ownState: boolean; existing?: boolean },
+  o: {
+    flag: boolean;
+    ownState: boolean;
+    existing?: boolean;
+    /** Issue 1407: what `web up` writes before the server starts. */
+    webUpLog?: boolean;
+    /** Issue 1407: another install's sealed record, copied in. */
+    copyRecordFrom?: string;
+  },
 ): Promise<Den> {
   const root = path.join(tmp, name, "dist");
   const home = path.join(tmp, name, "home");
@@ -178,6 +191,18 @@ async function startDen(
   // An install that already ran (its state folder holds its secret), and
   // was marked a test install later.
   if (o.existing) ensureWebSecret(stateDir);
+  if (o.webUpLog) {
+    fs.mkdirSync(path.join(stateDir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stateDir, "logs", "den", "web.log"),
+      "\n--- den web start ---\n",
+    );
+  }
+  if (o.copyRecordFrom)
+    fs.copyFileSync(
+      creationRecordPath(o.copyRecordFrom),
+      creationRecordPath(stateDir),
+    );
   const env: NodeJS.ProcessEnv = {
     ...baseEnv(),
     DEN_ROOT: root,
@@ -276,10 +301,22 @@ async function asFixture(den: Den, m: string, p: string, body?: unknown) {
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-op814-")));
-  [fresh, later, normal] = await Promise.all([
+  // Another install's sealed record (its own folder and secret), to copy
+  // into a real install's folder.
+  const other = path.join(tmp, "other-state");
+  writeCreationRecord(other, ensureWebSecret(other));
+  copiedRecord = fs.readFileSync(creationRecordPath(other), "utf-8");
+  [fresh, later, normal, webup, copied] = await Promise.all([
     startDen("fresh", { flag: true, ownState: true }),
     startDen("later", { flag: true, ownState: true, existing: true }),
     startDen("normal", { flag: false, ownState: true }),
+    startDen("webup", { flag: true, ownState: true, webUpLog: true }),
+    startDen("copied", {
+      flag: true,
+      ownState: true,
+      existing: true,
+      copyRecordFrom: other,
+    }),
   ]);
   // The later install: a person sets the fixture person up (issue 810).
   const p = await signedIn(later.stateDir, later.base);
@@ -289,7 +326,9 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => {
   await Promise.all(
-    [fresh, later, normal].filter(Boolean).map((d) => stopServer(d.server)),
+    [fresh, later, normal, webup, copied]
+      .filter(Boolean)
+      .map((d) => stopServer(d.server)),
   );
   fs.rmSync(tmp, { recursive: true, force: true });
 });
@@ -347,6 +386,44 @@ describe("a new test install is made with its fixture person", () => {
     expect(fs.existsSync(creationRecordPath(later.stateDir))).toBe(false);
     expect(fs.existsSync(creationRecordPath(normal.stateDir))).toBe(false);
     expect(fs.existsSync(fixturePersonPath(normal.stateDir))).toBe(false);
+  });
+});
+
+/**
+ * Issue 1407 (Vision's ruling): the birth is the flagged start that makes
+ * the install's secret, whatever `web up` wrote first; a real install's
+ * folder never becomes one, even with another install's record in it.
+ */
+describe("issue 1407: a test install started by `web up`", () => {
+  it("its log there first: still created as a test install, record sealed, fixture person made", () => {
+    expect(
+      verifiedCreationRecord(webup.stateDir, readWebSecret(webup.stateDir)),
+    ).toBe(true);
+    expect(fs.existsSync(fixturePersonPath(webup.stateDir))).toBe(true);
+  });
+
+  it.each(ACTS)(
+    "%s %s passes the gate there, audited as the test operator",
+    async (m, p, body) => {
+      const r = await asFixture(webup, m, p, body);
+      expect([m, p, r.json.code]).not.toEqual([m, p, "fixture_scope"]);
+      const row = auditRows(webup)
+        .reverse()
+        .find(
+          (e) => e.verb === "test-operator" && String(e.detail).includes(p),
+        );
+      expect(row?.principal).toBe("test:operator");
+    },
+  );
+
+  it("a real install with another install's sealed record copied in: not one, the record unchanged and unverified, no fixture person", () => {
+    expect(fs.readFileSync(creationRecordPath(copied.stateDir), "utf-8")).toBe(
+      copiedRecord,
+    );
+    expect(
+      verifiedCreationRecord(copied.stateDir, readWebSecret(copied.stateDir)),
+    ).toBe(false);
+    expect(fs.existsSync(fixturePersonPath(copied.stateDir))).toBe(false);
   });
 });
 

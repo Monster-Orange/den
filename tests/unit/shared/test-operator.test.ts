@@ -14,6 +14,7 @@ import * as path from "path";
 import {
   OPERATOR_PRINCIPAL,
   OPERATOR_STUB_SCRIPT,
+  birthClaim,
   claimAtBirth,
   forgetOperatorShell,
   isOperatorShell,
@@ -370,16 +371,111 @@ describe("claiming a state folder at the first start", () => {
     ).toBe(false);
     expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
   });
-  it("never twice: a second start finds the record and claims nothing", () => {
+  it("never twice: once the first start made the secret, a second claims nothing", () => {
     const dir = path.join(tmp, "twice");
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+    ensureWebSecret(dir);
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(false);
+  });
+
+  // Issue 1407 (Vision's ruling): the start that creates the install's
+  // secret, with the launcher's flag, is its birth; the folder needn't be
+  // empty. `web up` writes its log there before the server starts.
+  it("a folder `web up` already wrote its log in, with no secret yet: claimed", () => {
+    const dir = path.join(tmp, "webup");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+    expect(fs.readFileSync(creationRecordPath(dir), "utf-8").trim()).toBe(
+      "pending",
+    );
+    expect(fs.statSync(creationRecordPath(dir)).mode & 0o777).toBe(0o600);
+  });
+
+  it("a first start that died before its secret: the next start is still the birth", () => {
+    const dir = path.join(tmp, "died");
     expect(
       claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
     ).toBe(true);
     expect(
       claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+  });
+
+  it("the flag on an existing real install's folder: no claim, and nothing in it changes", () => {
+    const dir = path.join(tmp, "real");
+    ensureWebSecret(dir);
+    fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "agents", "planner.json"), "{}\n");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    const before = snapshot(dir);
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
     ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it("a pending record on a start without the flag is dropped", () => {
+    const dir = path.join(tmp, "dropflag");
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: false }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("a pending record beside an existing secret is dropped, never sealed later", () => {
+    const dir = path.join(tmp, "dropsecret");
+    ensureWebSecret(dir);
+    fs.writeFileSync(creationRecordPath(dir), "pending\n", { mode: 0o600 });
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("a sealed record beside an existing secret is left for verification to judge", () => {
+    const dir = path.join(tmp, "keepsealed");
+    const secret = ensureWebSecret(dir);
+    writeCreationRecord(dir, secret);
+    const before = snapshot(dir);
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
   });
 });
+
+/** Every file under `dir`: its path, mode and content. */
+function snapshot(dir: string): [string, number, string][] {
+  const out: [string, number, string][] = [];
+  const walk = (d: string) => {
+    for (const n of fs.readdirSync(d).sort()) {
+      const f = path.join(d, n);
+      const st = fs.lstatSync(f);
+      if (st.isDirectory()) {
+        out.push([path.relative(dir, f) + "/", st.mode, ""]);
+        walk(f);
+      } else
+        out.push([
+          path.relative(dir, f),
+          st.mode,
+          fs.readFileSync(f).toString("base64"),
+        ]);
+    }
+  };
+  walk(dir);
+  return out;
+}
 
 describe("the test operator's terminal is a fixed stub, never a shell (the Builder's decision a)", () => {
   it("runs Den's own node on one fixed script: no shell, nothing from the request", () => {

@@ -33,6 +33,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { isServerScope } from "./agents/server-agent.js";
 import { writeFileAtomic } from "./atomic-write.js";
+import { WEB_SECRET_FILE } from "./web-secret.js";
 
 /** The test operator's principal in the audit trail. */
 export const OPERATOR_PRINCIPAL = "test:operator";
@@ -70,11 +71,16 @@ function realOrResolved(p: string): string {
 }
 
 /**
- * At the server's first start on a state folder, before it writes
- * anything: when the launch flag is set and the folder isn't the
- * product's default, make the folder (an existing one only when empty)
- * and claim it with the pending creation record, made exclusively, as its
- * first file. True only when nothing else is in it after the claim.
+ * At the server's first start on a state folder (issue 814; issue 1407,
+ * Vision's ruling): the birth of a test install is the start that has the
+ * launcher's test flag and creates the install's secret. So: the flag,
+ * a folder that isn't the product's default and isn't a link, and no
+ * secret in it yet (no start has made one). The folder may hold what
+ * `web up` wrote before the server started (its log). Then the folder
+ * is claimed with the pending creation record, made exclusively (0600),
+ * which this start seals with the secret it creates. An install that ran
+ * before has its secret, so it is never claimed, and nothing in it is
+ * touched.
  */
 export function claimAtBirth(o: {
   stateDir: string;
@@ -85,24 +91,54 @@ export function claimAtBirth(o: {
   if (realOrResolved(o.stateDir) === realOrResolved(o.defaultStateDir))
     return false;
   try {
-    fs.mkdirSync(path.dirname(o.stateDir), { recursive: true, mode: 0o700 });
     try {
-      fs.mkdirSync(o.stateDir, { mode: 0o700 });
+      const st = fs.lstatSync(o.stateDir);
+      if (!st.isDirectory()) return false;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") return false;
+    }
+    // Any entry under the secret's name (a file, a link, a folder): an
+    // install that ran, or something to stay away from. No claim.
+    try {
+      fs.lstatSync(path.join(o.stateDir, WEB_SECRET_FILE));
+      return false;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") return false;
+    }
+    fs.mkdirSync(o.stateDir, { recursive: true, mode: 0o700 });
+    const f = creationRecordPath(o.stateDir);
+    try {
+      writeFileAtomic(f, `${CREATION_PENDING}\n`, {
+        exclusive: true,
+        mode: 0o600,
+      });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") return false;
-      if (!stateDirIsEmpty(o.stateDir)) return false;
+      // A first start that died before its secret left its claim.
+      const st = fs.lstatSync(f);
+      if (!st.isFile() || (st.mode & 0o077) !== 0) return false;
+      if (fs.readFileSync(f, "utf-8").trim() !== CREATION_PENDING) return false;
     }
-    writeFileAtomic(creationRecordPath(o.stateDir), `${CREATION_PENDING}\n`, {
-      exclusive: true,
-      mode: 0o600,
-    });
-    return (
-      fs.readdirSync(o.stateDir).length === 1 &&
-      !fs.lstatSync(o.stateDir).isSymbolicLink()
-    );
+    return !fs.lstatSync(o.stateDir).isSymbolicLink();
   } catch {
     return false;
   }
+}
+
+/**
+ * The server's birth step: claim (claimAtBirth), or else drop a pending
+ * record left there, so a pending record is only ever sealed by the start
+ * that claimed it. A sealed record is left for verifiedCreationRecord to
+ * judge: one copied in from another install fails there.
+ */
+export function birthClaim(o: {
+  stateDir: string;
+  defaultStateDir: string;
+  launchFlag: boolean;
+}): boolean {
+  if (claimAtBirth(o)) return true;
+  dropPendingRecord(o.stateDir);
+  return false;
 }
 
 function sealOf(stateDir: string, createdAt: string, secret: Buffer): Buffer {
