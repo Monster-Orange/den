@@ -114,6 +114,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
   },
+  setting_change: {
+    risk: "widens",
+    kind: "ask",
+    why: "a setting that widens what agents can do needs the person's own Allow (issue 1371); every other one asks until the person chooses per category",
+  },
   agent_sandbox_set: {
     risk: "widens",
     why: "an agent out of the sandbox can write Den's own files (issue 1328); back in only narrows",

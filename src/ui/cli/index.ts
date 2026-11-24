@@ -517,8 +517,12 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   config: {
-    usage: "config [get|set ...]",
-    lines: [`View or edit ${product().cli} configuration.`],
+    usage: "config [get|set ...|propose <key>=<value> --reason <why>]",
+    lines: [
+      `View or edit ${product().cli} configuration.`,
+      "propose: ask the person to change one setting (the held write setting_change),",
+      "as an agent does; Den checks it first and the person allows it in Den.",
+    ],
   },
   apps: {
     usage: "apps [--json]   (alias: applications)",

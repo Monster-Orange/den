@@ -326,6 +326,7 @@ agent's held write into one of two groups.
   | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
   | `agent_sandbox_set`                                          | the sandbox goes off (back on only narrows)                            |
   | `agent_create`, `agent_import`                               | the new agent would start outside the sandbox                          |
+  | `setting_change`                                             | the setting widens what agents can do (`USER_ONLY_WIDENING` and more)  |
   | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
@@ -5097,6 +5098,39 @@ The setting follows the agent's lifecycle. Removing an agent drops its
 in the sandbox). Adding an agent (`agent_create` or `agent_import`) whose id
 has its sandbox off, or while `agents.sandbox` is off for the machine, waits
 for your own Allow too, and the Review says why.
+
+### Changing a setting for the person: `setting_change` (issue 1371)
+
+An agent can't write `config/local/user.yml` (its sandbox closes the file),
+so it asks for a setting instead of handing you a YAML edit. The held write
+`setting_change { key, value, reason }` (or `<cli> config propose
+<key>=<value> --reason "<why>"`) names one setting by its dotted name, as
+`<cli> config` and Settings know it (`sessions.max_concurrent`,
+`agents.max_concurrent`, `web.agent_view`, `held_writes.wait_minutes`, and
+the rest). `value: null` puts Den's default back.
+
+- Den checks the key and the value with the same checks Settings and
+  `config` use, and den-config's own readers, before anything is held. An
+  unknown key (a typo names the key it is closest to), or a value they
+  refuse, comes back at once with why.
+- The Review shows the key, its value now, the new one and the reason.
+- A setting that widens what agents can do is marked so, and only your own
+  Allow runs it: every key in `USER_ONLY_WIDENING` (`src/shared/den-config.ts`:
+  an agent's grants and sandbox, `agents.sandbox_sockets`, `mcp.actions`,
+  `web.edge_unattested`, `web.allow_plain_http_remote`, the 1Password token
+  source), the approval policy itself (`approvals.*`), and the programs and
+  runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`). One agent's
+  sandbox stays `agent_sandbox_set`'s; secrets and runtimes are set in
+  Settings only.
+- Every other setting asks too, for now (its own kind is `ask`).
+- On Allow, Den checks again, keeps a copy of the file (the state folder's
+  `settings-backups/`, the newest 20), writes only that key (comments, order
+  and every other key stay) and adds an audit line naming the key, the old
+  and new values and who asked. A setting Den reads when it starts says so,
+  and the agent then asks for `den_restart_server`.
+
+`agents.max_concurrent` may now be set per machine in `user.yml`, over the
+distribution's, as the terminal limits are (`sessions.*`, issue 532).
 
 With `required`, an agent whose sandbox can't apply on this machine
 doesn't start: the start says why. On Linux, Den runs `bwrap` once to

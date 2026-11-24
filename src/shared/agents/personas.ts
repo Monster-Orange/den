@@ -481,6 +481,11 @@ export function rolePrompt(
   lines.push(
     "When you need your person's decision, call ask_human with the question, then end your turn: their answer comes as your next input.",
   );
+  // Issue 1371: config/local/user.yml is closed to an agent's sandbox; the
+  // held write setting_change is how a setting changes.
+  lines.push(
+    "When one of Den's settings needs changing, ask for it with setting_change (the MCP tool) and say why: the person allows it in Den. Never hand your person a YAML edit.",
+  );
   // Issue 1016: the address people open; links on it, never loopback.
   lines.push(addressBriefLine(webUrl));
   if (persona.context.length)

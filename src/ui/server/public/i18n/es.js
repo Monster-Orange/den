@@ -2432,6 +2432,21 @@
       "Está detenido: su próximo inicio tiene el cambio.",
     "ap.do.agent_sandbox_set": "{agent}: de vuelta en el sandbox",
     "ap.do.agent_sandbox_set.loosens": "Esto saca a {agent} del sandbox",
+    "ap.det.setting_change.widens":
+      "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
+    "ap.det.setting_change.key": "Ajuste: {key}",
+    "ap.det.setting_change.now": "Ahora: {value}",
+    "ap.det.setting_change.new": "Nuevo: {value}",
+    "ap.det.setting_change.why": "Por qué: {why}",
+    "ap.det.setting_change.by": "Lo pide {agent}",
+    "ap.det.setting_change.writes":
+      "Den escribe solo {key} en config/local/user.yml, guarda antes una copia del archivo y anota el cambio en la auditoría.",
+    "ap.det.setting_change.restart":
+      "Den lo lee al arrancar: se aplica tras reiniciar Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "Se aplica al momento.",
+    "ap.do.setting_change": "Cambiar {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "Esto amplía lo que pueden hacer los agentes: {key}: {now} → {value}",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
