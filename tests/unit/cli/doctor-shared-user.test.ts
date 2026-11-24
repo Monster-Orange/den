@@ -102,6 +102,9 @@ describe("issue 728: doctor's same-login rows", () => {
     registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
     put(own, "audit.jsonl");
     put(own, "den-procs/server-123.json");
+    put(own, "audit/cli-queue/000000000000001-1-000000000-00000000.json");
+    put(own, "audit-person-queue/000000000000001-1-000000000-00000001.json");
+    put(own, "audit-intake/pending/x--y.json");
     const s = check(rows(own), "uncovered_files");
     expect(s.status).toBe("ok");
   });

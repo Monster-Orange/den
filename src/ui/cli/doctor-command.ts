@@ -67,6 +67,7 @@ import {
 import { AUDIT_FILE } from "../../shared/audit-file.js";
 import {
   AUDIT_INTAKE_DIR,
+  AUDIT_PERSON_QUEUE_DIR,
   QUEUE_DROPPED_VERB,
   readAuditRows,
 } from "../../shared/audit-queue.js";
@@ -1771,12 +1772,13 @@ export function sharedUserLines(
 /**
  * Issue 728: state folders of 0600 files that hold no credential, left out
  * of the walk: the process records (pids only), a session's own writable
- * folder (its guardrail log, its audit queue: issue 1369) and the
- * server's intake of that queue.
+ * folder (its guardrail log, its audit queue: issue 1369), the person's
+ * CLI's audit queue and the server's intake of both.
  */
 const NOT_CREDENTIAL_DIRS: readonly string[] = [
   DEN_PROCS_DIR,
   "audit",
+  AUDIT_PERSON_QUEUE_DIR,
   AUDIT_INTAKE_DIR,
 ];
 
