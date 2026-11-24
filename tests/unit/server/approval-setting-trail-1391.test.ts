@@ -47,7 +47,8 @@ const deps: SettingChangeDeps = {
 };
 const actions: HeldActions = {
   setting_change: {
-    check: (a, who) => checkSettingChange(deps, a, who),
+    check: (a: Record<string, unknown>, who: { agent?: string }) =>
+      checkSettingChange(deps, a, who),
     run: async () => ({ ok: true }),
   },
 } as unknown as HeldActions;
@@ -139,7 +140,7 @@ describe("issue 1391: approval rows never carry a setting's free text", () => {
       queue
         .pending()
         .find((a) => a.id === id)
-        ?.details.join("\n"),
+        ?.details?.join("\n"),
     ).toContain(TYPED);
     const d = await post(
       `/api/approvals/${id}/decide`,
