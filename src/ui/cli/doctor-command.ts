@@ -45,6 +45,12 @@ import {
 } from "../../shared/den-config.js";
 import type { ConfigError } from "../../shared/config-error.js";
 import {
+  pinNotes,
+  pinProjectsOf,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import {
   checkAgentSigning,
   existingAgentSigningKey,
   resolveAgentSigning,
@@ -182,6 +188,11 @@ import {
   type OnboardDeps,
 } from "./doctor-onboard.js";
 import { printJson } from "./json-out.js";
+import {
+  pinDoctorText,
+  readPinRecord,
+  type PinRecord,
+} from "../../shared/pin-record.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
 import {
   formatWhere,
@@ -1936,6 +1947,8 @@ export function selfUpdateLines(
     >;
     state: () => CheckState | null;
     orgFile: string;
+    /** Issue 1189: the pin step's record (pin.json); default the state dir's. */
+    pin?: () => PinRecord | null;
   } = {
     config: () => readServerAgentConfig(),
     state: () => readCheckState(getStateDir()),
@@ -1951,12 +1964,21 @@ export function selfUpdateLines(
       detail: `self_update: unknown, the config can't be read: ${(e as Error).message}`,
     };
   }
+  // Issue 1189: what the self-update's pin step did last, when it says
+  // something (a pull request it fell back to, a push that waits).
+  let pin: string | null = null;
+  try {
+    pin = pinDoctorText((d.pin ?? (() => readPinRecord(getStateDir())))());
+  } catch {
+    pin = null;
+  }
   return {
     lines: [
       "",
       `${title} doctor: New versions`,
       "",
       `  self_update  ${r.status === "ok" ? "✓" : "⚠"}  ${r.detail}`,
+      ...(pin ? [`  pin          ·  ${pin}`] : []),
     ],
     check: { id: "self_update", status: r.status, detail: r.detail },
   };
@@ -1981,6 +2003,51 @@ export function attentionLostLines(
     lang,
     title,
   });
+}
+
+/**
+ * Issue 1217: the rail's pins in user.yml that need a word. An old id-only
+ * pin no project holds is kept, shown under All; an entry that isn't a pin
+ * is skipped (it stays in user.yml, not shown), never the whole list.
+ * Shown only when there is one of either.
+ */
+export function oldPinsLines(
+  title: string,
+  read: () => { shell?: unknown } = readUserConfig,
+  projectsOf?: PinProjects,
+): { lines: string[]; check: OnboardCheck | null } {
+  let shell: unknown;
+  try {
+    shell = read().shell;
+  } catch {
+    return { lines: [], check: null };
+  }
+  let of = projectsOf;
+  if (!of)
+    try {
+      of = pinProjectsOf(readWorkspacesFile().workspaces ?? {});
+    } catch {
+      of = undefined;
+    }
+  const { kept, skipped } = pinNotes(shell, of);
+  if (!kept.length && !skipped.length) return { lines: [], check: null };
+  const lines = ["", `${title} doctor: Pins`, ""];
+  for (const k of kept)
+    lines.push(`  kept, no project  ·  ${k} (shown under All)`);
+  for (const k of skipped)
+    lines.push(
+      `  skipped          ⚠  ${k} (not a pin; left in user.yml, not shown)`,
+    );
+  const detail = [
+    kept.length ? `${kept.length} kept with no project` : "",
+    skipped.length ? `${skipped.length} skipped, not a pin` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    lines,
+    check: { id: "pins", status: skipped.length ? "warn" : "ok", detail },
+  };
 }
 
 /**
@@ -2575,6 +2642,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(auditReportLines(readBrand().name).check);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
+    const pinsCheck = oldPinsLines(readBrand().name).check;
+    if (pinsCheck) r.checks.push(pinsCheck);
     // Issue 636: whether this install is a test bed.
     r.checks.push(
       (await import("./test-person.js")).testBedLines(readBrand().name).check,
@@ -2741,6 +2810,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       console.log(l);
   }
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
+  for (const l of oldPinsLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
