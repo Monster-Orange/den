@@ -19,6 +19,14 @@
  * token minting, doctor): BoxRunnerSpec, BoxRunnerToken, RunnerStatus.
  */
 
+import { spawn } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
+import { marksDirOf, type GateBox } from "./boxes.js";
+
+export { marksDirOf };
+
 /** The docker label that names a container as Den's box runner. */
 export const BOX_RUNNER_LABEL = "den.box-runner";
 /** Where the box's marks folder is mounted inside the container. */
@@ -184,4 +192,244 @@ export function runnerArgs(
     "-c",
     runnerScript(id, s),
   ];
+}
+
+/** What startBoxRunner needs; tests pass a scripted process starter. */
+export interface BoxRunnerDeps {
+  start?: typeof spawn;
+  /** Where each runner's status file is kept (one JSON file per runner). */
+  stateDir: string;
+  /** The runner image the box pulls. */
+  image: string;
+  newId?: () => string;
+  now?: () => Date;
+}
+
+/** ssh to the box, keys only, then the one remote line. */
+function sshArgs(box: GateBox, line: string): string[] {
+  return [
+    "-T",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    ...(box.ssh_port ? ["-p", String(box.ssh_port)] : []),
+    ...(box.ssh_identity ? ["-i", box.ssh_identity] : []),
+    "--",
+    box.ssh!,
+    line,
+  ];
+}
+
+/** Stands for the marks folder's full path, which only the box knows. */
+const MARKS_VAR = "$D";
+
+/**
+ * The line the box runs: make the marks folder, take its full path (a
+ * bind mount needs one), then `docker run`. Every word is quoted but the
+ * mount, which takes the folder's path from the box's shell.
+ */
+export function remoteLine(
+  s: BoxRunnerSpec,
+  id: string,
+  o: { image: string; marksDir: string },
+): string {
+  const mount = `${MARKS_VAR}:${HOLD_MOUNT}`;
+  const words = runnerArgs(s, id, { image: o.image, marksDir: MARKS_VAR }).map(
+    (w) => (w === mount ? `"${mount}"` : q(w)),
+  );
+  const dir = q(o.marksDir);
+  return `D=$(mkdir -p -- ${dir} && cd -- ${dir} && pwd) && exec ${words.join(" ")}`;
+}
+
+const newRunnerId = () =>
+  `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+function statusFile(dir: string, id: string): string {
+  return path.join(dir, `${id}.json`);
+}
+
+function saveStatus(dir: string, st: RunnerStatus): void {
+  fs.mkdirSync(dir, { recursive: true });
+  writeFileAtomic(statusFile(dir, st.id), JSON.stringify(st, null, 2) + "\n");
+}
+
+/** One process; resolves with its exit code and the end of its stderr. */
+function runSsh(
+  start: typeof spawn,
+  box: GateBox,
+  line: string,
+  stdin: string,
+): Promise<{ code: number | null; err: string; failed?: string }> {
+  return new Promise((resolve) => {
+    let err = "";
+    let settled = false;
+    const finish = (v: {
+      code: number | null;
+      err: string;
+      failed?: string;
+    }) => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
+    const k = start("ssh", sshArgs(box, line), {
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    k.stderr?.on("data", (d: Buffer) => {
+      err = (err + d.toString("utf-8")).slice(-4096);
+    });
+    k.on("error", (e: Error) => finish({ code: null, err, failed: e.message }));
+    k.on("close", (code: number | null) => finish({ code, err }));
+    k.stdin?.end(stdin);
+  });
+}
+
+/**
+ * Start one ephemeral runner on the box for one queued job, under the
+ * job's gate slot. The token goes to ssh's stdin, which reaches the
+ * container's: it is never in argv, a file, the status or an error.
+ * When the runner exits (after its one job), the status says done or
+ * failed, and Den removes the runner's own mark in case the
+ * job-completed hook never ran.
+ */
+export function startBoxRunner(
+  box: GateBox,
+  s: BoxRunnerSpec,
+  token: BoxRunnerToken,
+  deps: BoxRunnerDeps,
+):
+  | { ok: true; runner: RunnerStatus; done: Promise<RunnerStatus> }
+  | { ok: false; error: string } {
+  const c = checkSpec(s);
+  if (!c.ok) return c;
+  if (!box?.ssh)
+    return {
+      ok: false,
+      error: "the box has no ssh: Den can't start a runner on it",
+    };
+  if (box.name !== s.box)
+    return { ok: false, error: `the spec names box ${s.box}, not ${box.name}` };
+  const now = deps.now ?? (() => new Date());
+  const v = token?.value;
+  if (typeof v !== "string" || !v || /[\s]/.test(v))
+    return { ok: false, error: "the runner token is empty or not one word" };
+  const exp = Date.parse(token.expiresAt);
+  if (!Number.isFinite(exp) || exp <= now().getTime())
+    return { ok: false, error: "the runner token has expired" };
+  const start = deps.start ?? spawn;
+  const id = (deps.newId ?? newRunnerId)();
+  checkId(id);
+  const marksDir = marksDirOf(box);
+  const st: RunnerStatus = {
+    id,
+    project: s.project,
+    repo: s.repo,
+    box: s.box,
+    cpus: s.cpus,
+    ...(s.cpuset ? { cpuset: s.cpuset } : {}),
+    memoryMb: s.memoryMb,
+    startedAt: now().toISOString(),
+    state: "starting",
+    hold: false,
+  };
+  saveStatus(deps.stateDir, st);
+  const blank = (t: string) => t.split(v).join("[token]");
+  const done = runSsh(
+    start,
+    box,
+    remoteLine(s, id, { image: deps.image, marksDir }),
+    `${v}\n`,
+  ).then(async (r) => {
+    const last =
+      r.failed ??
+      r.err
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .pop();
+    const end: RunnerStatus = {
+      ...st,
+      endedAt: now().toISOString(),
+      state: r.code === 0 ? "done" : "failed",
+      hold: false,
+      ...(r.code === 0
+        ? {}
+        : { error: blank(last || `ssh exited ${r.code}`).slice(0, 300) }),
+    };
+    saveStatus(deps.stateDir, end);
+    // Its own mark only; harmless when the hook already removed it.
+    await runSsh(start, box, `rm -f -- ${q(`${marksDir}/${id}`)}`, "");
+    return end;
+  });
+  return { ok: true, runner: st, done };
+}
+
+/** A runner that has started but isn't in docker ps yet is left alone this long. */
+const LIVE_GRACE_MS = 60_000;
+
+/**
+ * The runners Den started, from their status files, one project's or all.
+ * With `live` (the ids docker ps lists on the boxes), a runner still
+ * marked as going whose container is gone is failed.
+ */
+export function listBoxRunners(
+  project: string | undefined,
+  o: { stateDir: string; live?: Set<string>; now?: () => Date },
+): RunnerStatus[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(o.stateDir).filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const now = (o.now ?? (() => new Date()))().getTime();
+  const out: RunnerStatus[] = [];
+  for (const f of names.sort()) {
+    let st: RunnerStatus;
+    try {
+      st = JSON.parse(fs.readFileSync(path.join(o.stateDir, f), "utf-8"));
+    } catch {
+      continue;
+    }
+    if (!st || typeof st.id !== "string" || !ID_RE.test(st.id)) continue;
+    if (project && st.project !== project) continue;
+    const going =
+      st.state === "starting" || st.state === "idle" || st.state === "running";
+    const age = now - Date.parse(st.startedAt);
+    if (o.live && going && !o.live.has(st.id) && !(age < LIVE_GRACE_MS)) {
+      st = {
+        ...st,
+        state: "failed",
+        hold: false,
+        endedAt: new Date(now).toISOString(),
+        error: "its container is gone",
+      };
+      saveStatus(o.stateDir, st);
+    }
+    out.push(st);
+  }
+  return out;
+}
+
+/** The box's command that lists Den's running box runners, one id a line. */
+export function dockerPsArgs(): string[] {
+  return [
+    "docker",
+    "ps",
+    "--filter",
+    `label=${BOX_RUNNER_LABEL}`,
+    "--format",
+    `{{.Label "${BOX_RUNNER_LABEL}"}}`,
+  ];
+}
+
+/** The runner ids in dockerPsArgs' output. */
+export function liveRunnerIds(out: string): Set<string> {
+  return new Set(
+    out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => ID_RE.test(l)),
+  );
 }

@@ -758,6 +758,18 @@ export function macFreeMb(text: string): number | undefined {
   return (n * size) / (1024 * 1024);
 }
 
+/**
+ * Issue 921: the folder on the box where each running CI job's runner
+ * leaves a mark (its runner id), next to the hold file. The box is held
+ * while any mark is there.
+ */
+export function marksDirOf(box: GateBox): string {
+  return `${box.hold_file ?? "den-hold"}.jobs`;
+}
+
+/** A runner's mark as sftp's `ls -1` lists it: "<folder>/<id>" or "<id>". */
+const MARK_LINE = /^(?:.*\.jobs\/)?([A-Za-z0-9][A-Za-z0-9_-]{0,63})$/;
+
 /** Issue 857: the one command a macOS box runs for its memory. */
 export const MAC_MEM_COMMAND =
   "/usr/bin/vm_stat && /usr/sbin/sysctl -n hw.pagesize";
@@ -846,6 +858,7 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       "sftp",
       ["-q", "-b", "-", ...conn("-P")],
       (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+        `-ls -1 "${marksDirOf(box)}"\n` +
         "-get /proc/meminfo /dev/stdout\n",
       capMs,
     );
@@ -863,13 +876,30 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       .split("\n")
       .filter((l) => /not found|no such file/i.test(l));
     const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
-    const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
+    // Issue 921: only a line naming the hold file itself, never its marks
+    // folder ("<hold>.jobs"), says the hold file is gone.
+    const holdGone =
+      !!box.hold_file &&
+      missing.some(
+        (l) =>
+          l.includes(`/${box.hold_file}"`) || l.includes(`"${box.hold_file}"`),
+      );
+    const marks = r.out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => MARK_LINE.test(l));
     let freeMemMb = memAvailableMb(r.out);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
     if (box.hold_file && !holdGone)
       return {
         state: "held",
         reason: `its hold file (${box.hold_file}) is there`,
+        ...mem(),
+      };
+    if (marks.length)
+      return {
+        state: "held",
+        reason: `a CI job is running on it (${marks.length} in ${marksDirOf(box)})`,
         ...mem(),
       };
     if ((box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB) <= 0)
