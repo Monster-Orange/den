@@ -497,6 +497,34 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
 export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
 
 /**
+ * Issue 728: whether `rules`' Read rules cover an absolute file: as Claude
+ * Code reads them, `Read(/<abs>)` one file, `Read(/<abs>/**)` everything
+ * under it, a `*` in the path one segment's run of characters. For
+ * doctor's list of 0600 files no rule covers.
+ */
+export function readRulesCover(
+  rules: readonly string[],
+  file: string,
+): boolean {
+  return rules
+    .filter((r) => r.startsWith("Read(/") && r.endsWith(")"))
+    .map((r) => r.slice("Read(/".length, -1))
+    .some((g) => {
+      const under = g.endsWith("/**");
+      const re = new RegExp(
+        "^" +
+          (under ? g.slice(0, -3) : g)
+            .split("*")
+            .map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join("[^/]*") +
+          (under ? "/.+" : "") +
+          "$",
+      );
+      return re.test(file);
+    });
+}
+
+/**
  * Issue 728: a path as given (resolved) and by its real path, when a
  * symlink makes them differ, so a deny rule binds both spellings.
  */
@@ -859,11 +887,11 @@ function common(input: LaunchInput): {
                           input.env?.HOME,
                         )
                       : []),
-                    // Issue 728: the install registry, as 816's folder.
+                    // Issue 728: the install registry, as 816's folder,
+                    // by its given and its real path.
                     ...(input.installRegistryDir
-                      ? announceDirDenyRules(
-                          input.installRegistryDir,
-                          input.env?.HOME,
+                      ? bothSpellings(input.installRegistryDir).flatMap((d) =>
+                          announceDirDenyRules(d, input.env?.HOME),
                         )
                       : []),
                     ...(input.personConfigDir
