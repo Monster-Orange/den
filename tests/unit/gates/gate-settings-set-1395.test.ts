@@ -51,7 +51,7 @@ function deps(mode: InstallMode, limits?: "auto" | "ask" | "never") {
     settings: (patch) => store.settings(patch),
     write: async (patch, by) => store.writeSettings(patch, by),
     installMode: () => mode,
-    kind: (key, value) => settingKind(key, mode, value),
+    kind: (key, value, before) => settingKind(key, mode, value, before),
     choices: () =>
       readPolicySetting(limits ? { settings: { limits } } : {})?.settings,
   };
@@ -240,12 +240,12 @@ describe("issue 1395: the policy sees each value as it'd be in effect", () => {
     // Not a Mac: browser_requires_container defaults to 0.
     const linux = new GateStore({ dir, lockWaitMs: 1_000, platform: "linux" });
     linux.writeSettings({ browser_requires_container: 1 }, "a person");
-    const seen: [string, unknown][] = [];
+    const seen: [string, unknown, unknown][] = [];
     const d: GateSettingsSetDeps = {
       ...deps("strict"),
       settings: (patch) => linux.settings(patch),
-      kind: (key, value) => {
-        seen.push([key, value]);
+      kind: (key, value, before) => {
+        seen.push([key, value, before]);
         return settingKind(key, "strict");
       },
     };
@@ -254,7 +254,7 @@ describe("issue 1395: the policy sees each value as it'd be in effect", () => {
       reason: "back to the default",
     });
     expect(c.ok).toBe(true);
-    expect(seen).toEqual([["gate.browser_requires_container", 0]]);
+    expect(seen).toEqual([["gate.browser_requires_container", 0, 1]]);
     if (c.ok)
       expect(c.details).toContain(
         "gate.browser_requires_container: 1 → default (0)",
@@ -316,6 +316,20 @@ describe("issue 1395: Vision's ruling, a browser run on the host", () => {
       { settings: { browser_requires_container: null }, reason: "default" },
     );
     expect(c.ok && c.personOnly).toBe(true);
+  });
+
+  it("strict: the rule judges old and new together: any lowering widens, a raise or no old value judged by off", () => {
+    const k = "gate.browser_requires_container";
+    expect(settingKind(k, "strict", 0, 1).widens).toBe(true);
+    expect(settingKind(k, "strict", 1, 2).widens).toBe(true);
+    expect(settingKind(k, "strict", 1, 0).widens).toBe(false);
+    expect(settingKind(k, "strict", 2, 1).widens).toBe(false);
+    expect(settingKind(k, "strict", false, true).widens).toBe(true);
+    // No old value known: off widens, on doesn't.
+    expect(settingKind(k, "strict", 0).widens).toBe(true);
+    expect(settingKind(k, "strict", 1).widens).toBe(false);
+    // Personal: routine whatever the values.
+    expect(settingKind(k, "personal", 0, 1).widens).toBe(false);
   });
 
   it("personal: routine, written at once, and the person is told", () => {

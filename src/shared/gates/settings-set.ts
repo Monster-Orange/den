@@ -48,6 +48,8 @@ export interface GateSettingsSetDeps {
   kind: (
     key: string,
     value: number | string | null,
+    /** The value in effect now. */
+    before: number | string | null,
   ) => { category: SettingCategory; widens: boolean };
   /** The person's per-category choices (approvals.settings). */
   choices: () => PolicySetting["settings"];
@@ -114,6 +116,7 @@ export function checkGateSettingsSet(
       from: string;
       to: string;
       value: number | string | null;
+      before: number | string | null;
     }[] = [];
     for (const [k, v] of Object.entries(c.patch)) {
       if (v === undefined) continue;
@@ -126,6 +129,7 @@ export function checkGateSettingsSet(
         from: shown(from),
         to: v === null ? `default (${shown(to)})` : shown(to),
         value: to,
+        before: from,
       });
     }
     if (!changes.length)
@@ -134,7 +138,7 @@ export function checkGateSettingsSet(
         error: "nothing to change: each value asked for is the one in effect",
         inEffect: true,
       };
-    const kinds = changes.map((x) => d.kind(x.key, x.value));
+    const kinds = changes.map((x) => d.kind(x.key, x.value, x.before));
     const widens = kinds.some((k) => k.widens);
     const category = kinds[0]!.category;
     const choice = settingChoice(category, d.installMode(), d.choices());
