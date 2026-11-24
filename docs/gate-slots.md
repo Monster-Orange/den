@@ -654,7 +654,9 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 A box is checked only when a slot on it is about to be given, never on a
 timer. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
-it). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
+it). The file is copied into a new private folder on the gate host (mode
+0700), read, and the folder removed, so this works from a macOS gate host
+too, whose sftp can't write to a pipe (issue 1381). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
 over ssh, `vm_stat` and `sysctl -n hw.pagesize`, and nothing else, and
 counts free, inactive and speculative pages as available. A macOS box
 added with ssh gets the hold file and the memory floor like a Linux box.

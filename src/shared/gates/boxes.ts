@@ -39,6 +39,7 @@ import { spawn } from "child_process";
 import { createHash, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as net from "net";
+import * as os from "os";
 import * as path from "path";
 import { connect as tlsConnect } from "tls";
 import { writeFileAtomic } from "../atomic-write.js";
@@ -829,7 +830,11 @@ function runOnce(
  * ssh that connects but stalls at the banner is unreachable and never
  * hangs its callers.
  */
-export function sftpProbe(start: typeof spawn): BoxProbe {
+export function sftpProbe(
+  start: typeof spawn,
+  /** Issue 1381: where the private folder is made (tests give one). */
+  tmpRoot: () => string = os.tmpdir,
+): BoxProbe {
   return async (box, timeoutMs) => {
     // Issue 1017: with several Playwright servers, the first is reached.
     // Issue 625: by a WebSocket upgrade, never a bare TCP connect.
@@ -851,15 +856,63 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       state: "unreachable" as const,
       reason: `no answer over ssh in ${secs} s`,
     };
-    // A leading "-" lets the batch go on when a file is absent.
-    const r = await runOnce(
-      start,
-      "sftp",
-      ["-q", "-b", "-", ...conn("-P")],
-      (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
-        "-get /proc/meminfo /dev/stdout\n",
-      capMs,
-    );
+    // Issue 1381: into a file in a new private folder, read, and removed.
+    // macOS sftp can't write a -get to a pipe (/dev/stdout): no text.
+    let dir: string;
+    try {
+      dir = fs.mkdtempSync(path.join(tmpRoot(), "den-box-"));
+      fs.chmodSync(dir, 0o700);
+    } catch (e) {
+      return {
+        state: "unknown",
+        reason: oneLine(
+          `memory unknown: no private folder: ${(e as Error).message}`,
+        ),
+      };
+    }
+    const meminfo = path.join(dir, "meminfo");
+    // The path goes into the batch in quotes: one with a quote, a backslash
+    // or a line break (TMPDIR is the environment's) could end it or add a
+    // command (a local `!` shell, a remote rm).
+    if (/["\\\r\n]/.test(meminfo)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return {
+        state: "unknown",
+        reason:
+          "memory unknown: the temp folder's path can't go in an sftp batch",
+      };
+    }
+    let r: Awaited<ReturnType<typeof runOnce>>;
+    let memText = "";
+    try {
+      // A leading "-" lets the batch go on when a file is absent.
+      r = await runOnce(
+        start,
+        "sftp",
+        ["-q", "-b", "-", ...conn("-P")],
+        (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+          `-get /proc/meminfo "${meminfo}"\n`,
+        capMs,
+      );
+      try {
+        // At most 64 KB is read, whatever the box sent.
+        const fd = fs.openSync(meminfo, "r");
+        try {
+          const buf = Buffer.alloc(65536);
+          memText = buf.toString(
+            "utf-8",
+            0,
+            fs.readSync(fd, buf, 0, buf.length, 0),
+          );
+        } finally {
+          fs.closeSync(fd);
+        }
+      } catch {
+        // Not there (no /proc/meminfo, or the box wasn't reached).
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
     if (r.timedOut) return noAnswer;
     if (r.failed)
       return { state: "unreachable", reason: oneLine(`sftp: ${r.failed}`) };
@@ -875,7 +928,7 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       .filter((l) => /not found|no such file/i.test(l));
     const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
     const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
-    let freeMemMb = memAvailableMb(r.out);
+    let freeMemMb = memAvailableMb(memText);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
     if (box.hold_file && !holdGone)
       return {
