@@ -98,6 +98,38 @@ describe("issue 1407: the status is live per agent and clears", () => {
     expect(l.list()[1]).toMatchObject({ state: "failed", error: "x" });
   });
 
+  it("a failure's text is redacted, on one line and short; a job's command too", () => {
+    const { l, store } = live();
+    l.begin(plan.slice(0, 2));
+    l.done({
+      id: "ana",
+      workspace: "north",
+      outcome: "failed",
+      error: `curl -H "Authorization: Bearer abcdEFGH12345678xyz" https://x.test\nsecond line\n${"y".repeat(400)}`,
+    });
+    l.done({
+      id: "bo",
+      workspace: "north",
+      outcome: "job",
+      job: {
+        command: "deploy --token=ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        minutes: 2,
+      },
+    });
+    const [a, b] = l.list();
+    expect(a.error).not.toContain("abcdEFGH12345678xyz");
+    expect(a.error).toContain("[REDACTED]");
+    expect(a.error).not.toContain("second line");
+    expect(a.error!.length).toBeLessThanOrEqual(200);
+    expect(b.job!.command).not.toContain(
+      "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+    );
+    for (const n of store.list())
+      expect(`${n.text} ${JSON.stringify(n.msg)}`).not.toMatch(
+        /abcdEFGH12345678xyz|ghp_abcdefghijklmnopqrstuvwxyz0123456789/,
+      );
+  });
+
   it("an outcome for an agent not in a run is ignored", () => {
     const { l } = live();
     l.done({ id: "zed", workspace: "north", outcome: "restarted" });

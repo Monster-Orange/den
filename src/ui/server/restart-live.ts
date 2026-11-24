@@ -8,6 +8,8 @@
  * is restarted. In memory: a server restart ends the runs anyway.
  */
 import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
+import { jobCommandOf } from "../../shared/process/jobs.js";
+import { redactSecrets } from "../../shared/redact.js";
 import type {
   RestartOutcome,
   RestartPlan,
@@ -38,6 +40,34 @@ export function restartBellSubject(ws: string, id: string): string {
 
 const key = (ws: string, id: string) => `${ws}\u0000${id}`;
 
+/** The longest a failure's text is shown. */
+export const ERROR_SHOWN_MAX = 200;
+
+/**
+ * A failure's text as a page and the bell may show it: secrets redacted,
+ * its first line only, no control characters, at most ERROR_SHOWN_MAX.
+ */
+export function errorShown(text: string): string {
+  const first =
+    redactSecrets(String(text))
+      .split(/\r?\n/)
+      .find((l) => l.trim()) ?? "";
+  const one = first
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return one.length > ERROR_SHOWN_MAX
+    ? `${one.slice(0, ERROR_SHOWN_MAX - 1)}…`
+    : one;
+}
+
+/** A job as shown: its command through jobCommandOf (redacted, short). */
+const jobShown = (j: { command: string; minutes: number }) => ({
+  command: jobCommandOf(String(j.command ?? "")),
+  minutes: Number(j.minutes) || 0,
+});
+
 export class RestartLive {
   private readonly rows = new Map<string, LiveRow>();
   private readonly keepDoneMs: number;
@@ -63,7 +93,7 @@ export class RestartLive {
         id: p.id,
         workspace: p.workspace,
         state: p.state,
-        ...(p.job ? { job: { ...p.job } } : {}),
+        ...(p.job ? { job: jobShown(p.job) } : {}),
         at: this.now(),
       });
   }
@@ -76,9 +106,9 @@ export class RestartLive {
       id: o.id,
       workspace: o.workspace,
       state: o.outcome,
-      ...(o.job ? { job: { ...o.job } } : {}),
+      ...(o.job ? { job: jobShown(o.job) } : {}),
       ...(o.minutes !== undefined ? { minutes: o.minutes } : {}),
-      ...(o.error ? { error: o.error } : {}),
+      ...(o.error ? { error: errorShown(o.error) } : {}),
       at: this.now(),
     };
     this.rows.set(k, row);

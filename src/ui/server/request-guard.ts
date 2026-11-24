@@ -1394,6 +1394,19 @@ export function notAPersonOf(req: http.IncomingMessage): boolean {
 }
 
 /**
+ * Issue 1407 part 2: whether this request proved a person: the CLI's
+ * bearer, or a signed-in browser that is neither an agent's view nor the
+ * fixture person, with no agent's token or claim on it. A loopback caller
+ * that proved nothing is not one.
+ */
+export function provenPersonOf(req: http.IncomingMessage): boolean {
+  if (notAPersonOf(req)) return false;
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person") return true;
+  return p?.kind === "person-browser" && !p.view && !p.fixture;
+}
+
+/**
  * Issue 402: whether this request is a test install's fixture person
  * itself: its browser session, with no agent's token or claim on it.
  */

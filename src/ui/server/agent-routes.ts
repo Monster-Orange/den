@@ -247,6 +247,7 @@ import {
   auditActorOf,
   notAPersonOf,
   fixturePersonOf,
+  provenPersonOf,
   operatorActOf,
   personOrOperator,
   principalOf,
@@ -3170,7 +3171,8 @@ async function restartLive(): Promise<RestartLive> {
 
 /**
  * Issue 1407, part 2: GET /api/agents/restart-status: each agent of a bulk
- * restart, live (its state, and why it waits). Restarted ones clear after a
+ * restart, live (its state, and why it waits); a signed-in person's read
+ * only (provenPersonOf). Restarted ones clear after a
  * moment; none, an empty list. The page polls it while it shows a run.
  */
 async function restartStatusRoute(
@@ -3180,6 +3182,21 @@ async function restartStatusRoute(
   const method = req.method ?? "GET";
   if (method !== "GET" && method !== "HEAD")
     return methodNotAllowed(res, "GET");
+  // Every project's restarts (job commands, why one failed): a person's
+  // read only. An agent's token or view, the fixture, or a caller that
+  // proved nothing is refused.
+  if (!provenPersonOf(req)) {
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "only a signed-in person can read the agents' restart status",
+      },
+      403,
+    );
+    return true;
+  }
   sendJson(res, { agents: (await restartLive()).list() });
   return true;
 }
