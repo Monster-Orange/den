@@ -1201,8 +1201,15 @@ export class GateStore {
    * Issue 963: each change is in the slot log, with `by` (who changed it,
    * named as an ask is), when, and each key's value before and after (the
    * value in effect: a cleared key's is its default). No change, no row.
+   * Issue 1395: the one writer of settings.json, under the gate-slot lock
+   * the grant decision holds (GateLockBusy past the store's wait); the
+   * file is replaced whole, so a reader never sees half of it.
    */
   writeSettings(patch: GateSettingsPatch, by = "unknown"): void {
+    this.locked(() => this.writeSettingsLocked(patch, by));
+  }
+
+  private writeSettingsLocked(patch: GateSettingsPatch, by: string): void {
     const before = this.settings();
     this.writeSettingsFile(patch);
     const after = this.settings();

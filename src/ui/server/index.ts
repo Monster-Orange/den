@@ -344,6 +344,7 @@ import {
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import {
   GateStore,
+  gateLocked,
   checkGatePatch,
   serverFreeMemory,
   serverSwapUsedGb,
@@ -10662,9 +10663,15 @@ async function handleRequest(
         // Issue 963: who changed it, in the slot log (named as an ask is).
         if (gatePatch) {
           const a = auditActorOf(req);
-          gates().writeSettings(
-            gatePatch,
-            a ? actorLabel(a) : `${product().title} · Settings page · a person`,
+          // Issue 1395: under the gate-slot lock, waited for a moment.
+          const patch = gatePatch;
+          await gateLocked(() =>
+            gates().writeSettings(
+              patch,
+              a
+                ? actorLabel(a)
+                : `${product().title} · Settings page · a person`,
+            ),
           );
         }
         if (modesChanged)
