@@ -6,21 +6,25 @@
 // - a personal den2: a test install with no install_mode anywhere. Its
 //   doctor and Settings say personal, from default; a stub agent started
 //   there runs outside the sandbox; that agent's own setting_change (a
-//   limit) is written at once, the bell says so with Undo, and the fixture
-//   person's Undo puts the value back.
+//   limit) is written at once, and the bell says so with Undo.
 // - a strict den2: the same, with install_mode: strict in its den.yml from
 //   its first start (the bed's product.denYml). The same ask is held, and
-//   runs only after the fixture person's Allow; a person's Settings write of
-//   install_mode: personal is refused (409), and the mode stays strict.
+//   nothing is written while it waits; the person's CLI (`config`, which
+//   runs as the person) can't set install_mode: personal there.
+// Allow, Undo and install_mode in Settings are the person's alone: the
+// fixture person is refused all three (gate/746 proves the Allow), and
+// this check asserts those refusals rather than widening them. A den2 has
+// no person session, so Undo's restore and Allow's run are proved by the
+// unit tests (setting-change, approval routes), not here.
 // Teardown removes the agents and closes both Dens (close() deletes them).
 export const issue = 1391;
 export const items = [1391, 1403, 1371];
 export const clauses = [
   "a fresh install with no install_mode is personal, from default: in Doctor and in Settings",
   "an agent started on a personal install runs outside the sandbox",
-  "on personal, an agent's limit setting_change is written at once, the bell says so, and Undo restores it",
-  "with install_mode: strict in den.yml, the same ask is held and runs only after the person's Allow",
-  "on strict, a person can't loosen it to personal (409), and the mode stays strict",
+  "on personal, an agent's limit setting_change is written at once, and its bell row says so with Undo, which stays the person's (the fixture's Undo is refused and changes nothing)",
+  "with install_mode: strict in den.yml, the same ask is held: nothing is written while it waits, and the fixture can't Allow it",
+  "on strict, the person's `config install_mode=personal` is refused, and the mode stays strict, from den.yml",
 ];
 export const timeoutMs = 300000;
 
@@ -156,12 +160,13 @@ async function personalLeg(ctx) {
         body: JSON.stringify({ approval: bell.row.undo.approval }),
       })
       .catch((e) => ({ status: null, body: { error: msg(e) } }));
-    out.undo = {
+    // The person's act: the fixture is refused, and nothing changes.
+    out.fixtureUndo = {
       status: u.status,
       ok: u.body?.ok === true,
       ...(u.body?.error ? { error: cut(u.body.error) } : {}),
     };
-    out.restored = configValue(d2);
+    out.afterUndo = configValue(d2);
   }
   return out;
 }
@@ -183,7 +188,7 @@ async function strictLeg(ctx) {
   const { a, ms } = await startAgent(d2);
   out.agentRunningMs = ms;
   if (ms != null) {
-    // (4) Held: nothing written, a held write waits; then the Allow.
+    // (4) Held: nothing written, a held write waits; the fixture can't Allow.
     out.before = configValue(d2);
     await askChange(a);
     const held = await poll(
@@ -206,27 +211,20 @@ async function strictLeg(ctx) {
           body: JSON.stringify({ decision: "allow" }),
         })
         .catch((e) => ({ status: null, body: { error: msg(e) } }));
-      out.allow = {
+      out.fixtureAllow = {
         status: r.status,
         ...(r.body?.error ? { error: cut(r.body.error) } : {}),
       };
-      out.written = await poll(
-        ctx,
-        async () => (configValue(d2) === String(VALUE) ? true : null),
-        30000,
-      );
+      await ctx.sleep(3000);
       out.after = configValue(d2);
     }
   }
-  // (5) A person's personal can't loosen den.yml's strict.
-  const w = await d2
-    .fetch("/api/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ install_mode: "personal" }),
-    })
-    .catch((e) => ({ status: null, body: { error: msg(e) } }));
-  out.loosen = { status: w.status, error: cut(w.body?.error) };
+  // (5) The person's CLI can't loosen den.yml's strict.
+  const w = d2.cli(["config", "install_mode=personal"]);
+  out.loosen = {
+    code: w?.code ?? null,
+    said: cut(String(w?.err ?? "") + String(w?.out ?? "")),
+  };
   const s2 = await d2.api("/api/settings").catch(() => null);
   out.modeAfter = {
     mode: s2?.install_mode ?? null,
@@ -301,10 +299,11 @@ export function expect(cells) {
         p.bell?.undo === true &&
         /without your Allow/.test(p.bell?.text ?? "") &&
         p.bell?.heldWaiting === 0 &&
-        p.undo?.ok === true &&
-        p.restored === p.before,
+        p.fixtureUndo?.status === 403 &&
+        p.fixtureUndo?.ok === false &&
+        p.afterUndo === String(VALUE),
       pe ??
-        `before ${p.before}, after ${p.after}; bell: ${JSON.stringify(p.bell)}; undo: ${JSON.stringify(p.undo)}, then ${p.restored}`,
+        `before ${p.before}, after ${p.after}; bell: ${JSON.stringify(p.bell)}; fixture's Undo: ${JSON.stringify(p.fixtureUndo)}, then ${p.afterUndo}`,
     ),
     row(
       clauses[3],
@@ -313,15 +312,17 @@ export function expect(cells) {
         t.mode?.from === "den.yml" &&
         !!t.held?.id &&
         t.whileHeld === t.before &&
-        t.allow?.status === 200 &&
-        t.written === true,
+        t.fixtureAllow?.status === 403 &&
+        t.after === t.before,
       te ??
-        `mode ${JSON.stringify(t.mode)}; held ${JSON.stringify(t.held)}; while held ${t.whileHeld} (before ${t.before}); allow ${JSON.stringify(t.allow)}; after ${t.after}`,
+        `mode ${JSON.stringify(t.mode)}; held ${JSON.stringify(t.held)}; while held ${t.whileHeld} (before ${t.before}); fixture's Allow ${JSON.stringify(t.fixtureAllow)}; after ${t.after}`,
     ),
     row(
       clauses[4],
       !te &&
-        t.loosen?.status === 409 &&
+        t.loosen?.code !== 0 &&
+        t.loosen?.code != null &&
+        /can't loosen/.test(t.loosen?.said ?? "") &&
         t.modeAfter?.mode === "strict" &&
         t.modeAfter?.from === "den.yml",
       te ??
