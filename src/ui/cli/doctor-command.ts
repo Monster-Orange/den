@@ -2680,6 +2680,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(
       (await import("./test-person.js")).testBedLines(readBrand().name).check,
     );
+    // Issue 1407: an install holding the test-install claim, never hidden.
+    const claim = (await import("./test-person.js")).testInstallClaimLines(
+      readBrand().name,
+    ).check;
+    if (claim) r.checks.push(claim);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -2854,6 +2859,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   // Issue 636: whether this install is a test bed.
   for (const l of (await import("./test-person.js")).testBedLines(
+    readBrand().name,
+  ).lines)
+    console.log(l);
+  for (const l of (await import("./test-person.js")).testInstallClaimLines(
     readBrand().name,
   ).lines)
     console.log(l);
