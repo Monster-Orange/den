@@ -19,6 +19,7 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
+import type { QueuedAuditRow } from "../../shared/audit-queue.js";
 import { auditVia } from "../../shared/test-person.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
@@ -26,6 +27,12 @@ export { actorFromHeaders } from "../../shared/agent-actor.js";
 
 export interface AuditEntry {
   ts: string;
+  /**
+   * Issue 1369: written by a process outside the server (the CLI, a
+   * script, an agent's `den` command) and taken in from its queue: its
+   * principal and time are as that process wrote them.
+   */
+  queued?: true;
   /** "agent" only for an agent's actor token (SEC-1c); a claim never is. */
   actor: "agent" | "user";
   /**
@@ -169,16 +176,19 @@ export function recordAction(
     targetWorkspace?: string;
     /** Issue 597: the agents it touched, in full. */
     agents?: Record<string, unknown>;
+    /** Issue 1369: a queued entry's own time, path and mark. */
+    queued?: { at: string; via?: string };
   },
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
 ): AuditEntry {
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
-  const via = auditVia();
+  const via = action.queued ? action.queued.via : auditVia();
   const entry: AuditEntry = {
-    ts: new Date().toISOString(),
+    ts: action.queued?.at ?? new Date().toISOString(),
     actor: verified ? "agent" : "user",
+    ...(action.queued ? { queued: true as const } : {}),
     ...(principal ? { principal } : {}),
     ...(via ? { via } : {}),
     ...(claim
@@ -232,6 +242,24 @@ export function recordAction(
     actor,
   );
   return entry;
+}
+
+/**
+ * Issue 1369: a queued entry from a process outside the server (the CLI's
+ * auditConfig, through audit-queue.ts), recorded as it was written.
+ */
+export function recordQueuedAuditRow(row: QueuedAuditRow): AuditEntry {
+  return recordAction(
+    null,
+    {
+      verb: row.verb,
+      detail: row.detail,
+      ...(row.outcome ? { outcome: row.outcome } : {}),
+      ...(row.reason ? { reason: row.reason } : {}),
+      queued: { at: row.ts, ...(row.via ? { via: row.via } : {}) },
+    },
+    row.principal,
+  );
 }
 
 /** One line, printable characters only, at most `max` long. */

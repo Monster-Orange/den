@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 let tmp: string;
 let state: string;
@@ -23,14 +24,8 @@ const B = { id: "proj_def", slug: "def", name: "Def" };
 
 type Row = { verb: string; detail: string; principal?: string; actor: string };
 const rows = (): Row[] => {
-  const f = path.join(state, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Row);
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(state) as unknown as Row[];
 };
 
 function seed() {

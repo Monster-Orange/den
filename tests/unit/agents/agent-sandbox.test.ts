@@ -44,6 +44,7 @@ import {
 } from "../../../src/ui/cli/agents-command.js";
 import { agentSandboxInput } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 import {
   readAgentsConfig,
   type DenConfig,
@@ -442,6 +443,20 @@ describe("sandboxFor (issue 936)", () => {
     expect(w.env).toEqual({ [AGENT_SANDBOX_ENV]: "1" });
   });
 
+  it("issue 1369: on macOS too, the session's writable state folders exist before it starts (the audit queue's)", () => {
+    const l = layout("wrap-mac-dirs");
+    fs.rmSync(path.join(l.stateDir, "audit"), { recursive: true, force: true });
+    const w = sandboxFor(["claude"], l, {
+      platform: "darwin",
+      on: true,
+      which: () => "/usr/bin/sandbox-exec",
+    });
+    expect(w.applied).toBe(true);
+    expect(fs.statSync(path.join(l.stateDir, "audit")).isDirectory()).toBe(
+      true,
+    );
+  });
+
   it("wraps with bwrap on Linux when bwrap is there", () => {
     const l = layout("wrap-linux");
     const w = sandboxFor(["claude"], l, {
@@ -513,6 +528,34 @@ const step = (name: string, cmd: string) =>
   `( ${cmd} ) >/dev/null 2>&1; echo ${name}=$?`;
 
 describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
+  itReal(
+    "issue 1369: a den command's audit entry is kept: queued in the sandbox, readable outside it",
+    () => {
+      const l = layout("real-audit");
+      const script = path.join(l.base, "work", "audit-one.ts");
+      const repo = path.resolve(__dirname, "..", "..", "..");
+      fs.writeFileSync(
+        script,
+        `import { auditConfig } from ${JSON.stringify(path.join(repo, "src", "shared", "config-audit.ts"))};\n` +
+          `auditConfig({ verb: "agents", detail: "restart a1 in north: ok" }, process.argv[2]);\n`,
+      );
+      const tsx = path.join(repo, "node_modules", ".bin", "tsx");
+      const out = inSandbox(
+        l,
+        [
+          step("trail", `echo x >> ${l.stateDir}/audit.jsonl`),
+          step("den", `TSX_DISABLE_CACHE=1 ${tsx} ${script} ${l.stateDir}`),
+        ].join("; "),
+      );
+      // The file itself stays read-only: the entry goes to the queue.
+      expect(out).toMatch(/^trail=[1-9]/m);
+      expect(out).toMatch(/^den=0/m);
+      expect(readAuditRows(l.stateDir).map((r) => r.detail)).toEqual([
+        "restart a1 in north: ok",
+      ]);
+    },
+  );
+
   itReal(
     "can't change its own mode, the gate settings or the settings file",
     () => {

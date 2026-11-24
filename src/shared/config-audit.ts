@@ -7,13 +7,14 @@
  *
  * The web server routes rows through its own audit (recordAction, the
  * activity trail and audit.jsonl); any other process (the CLI, a script)
- * appends to <state>/audit.jsonl itself. Words only: a link is an id,
- * slug and name, never a secret.
+ * queues its row for the server to take in (issue 1369: audit-queue.ts),
+ * so audit.jsonl has one writer. Words only: a link is an id, slug and
+ * name, never a secret.
  */
-import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { getStateDir } from "./paths.js";
+import { queueAuditRow } from "./audit-queue.js";
 import { auditVia } from "./test-person.js";
 
 export interface ConfigAuditRow {
@@ -48,27 +49,25 @@ function processWho(): string {
   return `person:${user} (${path.basename(process.argv[1] ?? "node")}${args ? ` ${args}` : ""}, pid ${process.pid})`;
 }
 
+/**
+ * Issue 1369: outside the server, the entry is queued for the server to
+ * take in (the audit file has one writer; an agent's sandbox can write
+ * the queue).
+ */
 const appendRow: Sink = (row, stateDir) => {
   try {
-    const file = path.join(stateDir ?? getStateDir(), "audit.jsonl");
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    fs.appendFileSync(
-      file,
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        actor: "user",
-        principal: processWho(),
-        // Issue 636: a CLI on a test bed's test-person path.
-        ...(auditVia() ? { via: auditVia() } : {}),
-        verb: row.verb,
-        detail: row.detail,
-        ...(row.outcome ? { outcome: row.outcome } : {}),
-        ...(row.reason
-          ? { reason: row.reason.split(/[\r\n]/)[0].slice(0, 300) }
-          : {}),
-      }) + "\n",
-      { mode: 0o600 },
-    );
+    queueAuditRow(stateDir ?? getStateDir(), {
+      ts: new Date().toISOString(),
+      principal: processWho(),
+      // Issue 636: a CLI on a test bed's test-person path.
+      ...(auditVia() ? { via: auditVia() } : {}),
+      verb: row.verb,
+      detail: row.detail,
+      ...(row.outcome ? { outcome: row.outcome } : {}),
+      ...(row.reason
+        ? { reason: row.reason.split(/[\r\n]/)[0].slice(0, 300) }
+        : {}),
+    });
   } catch {
     /* best effort: a write never fails for want of its audit row */
   }

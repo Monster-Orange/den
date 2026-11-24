@@ -20,6 +20,7 @@ import {
   resumeAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 afterEach(cleanupRigs);
 
@@ -79,14 +80,8 @@ async function idleAgent(): Promise<Rig> {
 
 /** The audit rows the CLI wrote for agents (audit.jsonl in its state). */
 function agentRows(r: Rig): Record<string, unknown>[] {
-  const f = path.join(r.stateDir, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Record<string, unknown>)
-    .filter((e) => e.verb === "agents");
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(r.stateDir).filter((e) => e.verb === "agents");
 }
 
 describe("two restarts of one agent at once (issue 216)", () => {

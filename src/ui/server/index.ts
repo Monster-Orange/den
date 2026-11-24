@@ -354,6 +354,7 @@ import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
   recordAction,
+  recordQueuedAuditRow,
   recordAgentRefusal,
   recordCrossWorkspace,
   repoAtPath,
@@ -362,6 +363,7 @@ import {
   AUDIT_FILE,
 } from "./audit.js";
 import { setConfigAuditSink } from "../../shared/config-audit.js";
+import { startAuditQueueIntake } from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
   defaultOnboardRouteDeps,
@@ -1150,6 +1152,9 @@ try {
 // 0.4.44: workspaces.yml writes and Hub link changes made in this process
 // go through the server's own audit (activity, the log, audit.jsonl).
 setConfigAuditSink((row) => void recordAction(null, row));
+// Issue 1369: the CLI's audit entries, queued outside this process, come
+// in now and while it runs: audit.jsonl has one writer.
+startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row));
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
