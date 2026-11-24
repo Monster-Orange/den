@@ -192,28 +192,12 @@ export function recordAction(
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
 ): AuditEntry {
-  // Issue 1391: agents may read the trail, so its free text never keeps
-  // a secret, whoever wrote it (a setting's value, a den command's row,
-  // a queued report's command line). The log line uses the same text.
-  action = {
-    ...action,
-    detail: redactSecrets(action.detail),
-    ...(action.reason ? { reason: redactSecrets(action.reason) } : {}),
-    ...(action.queued?.principal
-      ? {
-          queued: {
-            ...action.queued,
-            principal: redactSecrets(action.queued.principal),
-          },
-        }
-      : {}),
-  };
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
   const via = action.queued ? undefined : auditVia();
   // Issue 1369: a queued entry is no one's word: never a principal.
   if (action.queued) principal = undefined;
-  const entry: AuditEntry = {
+  const built: AuditEntry = {
     ts: new Date().toISOString(),
     actor: verified ? "agent" : "user",
     ...(action.queued
@@ -258,6 +242,12 @@ export function recordAction(
     ...(action.addresses?.length ? { addresses: action.addresses } : {}),
     ...(action.agents ? { agents: action.agents } : {}),
   };
+  // Issue 1391: agents may read the trail, so no entry keeps a secret:
+  // every string in it, however deep, whoever wrote it (a setting's
+  // value, a den command's row, a queued report's command line, an
+  // agent's claim, an error in the agents block). The log line below
+  // uses the same, redacted entry.
+  const entry = redactAll(built);
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();
   persist(entry);
@@ -266,12 +256,12 @@ export function recordAction(
   // A refusal whose detail is its reason names what it touched instead.
   const what = entry.addresses
     ? entry.addresses.join(", ")
-    : entry.reason && action.detail === entry.reason
+    : entry.reason && entry.detail === entry.reason
       ? ""
-      : action.detail;
+      : entry.detail;
   sink?.(
-    `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
-      (principal && !verified ? ` · as ${principal}` : "") +
+    `${mark} ${entry.verb}${what ? ` ${what}` : ""}${why}${redactSecrets(actorSuffix(actor))}` +
+      (entry.principal && !verified ? ` · as ${entry.principal}` : "") +
       (via ? " · by the test-person path" : "") +
       (action.queued ? " · queued by a process, unverified" : ""),
     actor,
@@ -315,6 +305,20 @@ export function recordSentAuditRow(
     },
     principal,
   );
+}
+
+/**
+ * Issue 1391: `v` with redactSecrets over every string in it, at any
+ * depth (arrays and plain objects walked; other values as they are).
+ */
+function redactAll<T>(v: T): T {
+  if (typeof v === "string") return redactSecrets(v) as T;
+  if (Array.isArray(v)) return v.map((x) => redactAll(x)) as T;
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, redactAll(x)]),
+    ) as T;
+  return v;
 }
 
 /** One line, printable characters only, at most `max` long. */

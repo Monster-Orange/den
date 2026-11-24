@@ -100,4 +100,29 @@ describe("issue 1391: the activity trail never keeps a secret", () => {
     expect(leaks(t)).toBeNull();
     expect(recentActions()[0].detail).toMatch(/^restart planner /);
   });
+
+  it("every string in an entry, however deep: addresses, the agents block, a claim's fields", () => {
+    const t = trail();
+    recordAction(
+      {
+        kind: "agent",
+        agent: "planner",
+        client: "den-mcp",
+        clientVersion: "0",
+        mcpPid: 1,
+        session: `acme:${GH}`,
+        unverified: true,
+      },
+      {
+        verb: "host-restart",
+        detail: "restart the host",
+        addresses: [`https://x:${GH}@example.test/a`],
+        agents: { failed: [{ id: "planner", why: `refused: ${BEARER}` }] },
+      },
+    );
+    expect(leaks(t)).toBeNull();
+    const e = recentActions()[0];
+    expect(e.addresses?.[0]).toMatch(/^https:\/\/x:/);
+    expect(JSON.stringify(e.agents)).toContain("refused: ");
+  });
 });
