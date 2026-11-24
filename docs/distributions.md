@@ -312,6 +312,33 @@ with "If you didn't ask an agent to do this, Deny." under it.
   project-scoped MCP server refuses `workspace_create` and `repo_add`:
   they change Den beyond its project.
 
+### Personal and strict installs (issue 1391)
+
+An install is **personal** (one person, their own machine: the default)
+or **strict** (a company's install or a shared machine), `install_mode`
+in `config/local/user.yml`, set in Settings › Server › "This install is"
+or with `<cli> config install_mode=strict`.
+
+- **Personal.** `agents.sandbox` is off unless set, so Docker, sockets
+  and the person's tools are reachable from agents' sessions. Doctor says
+  so once, as information: no "Sandbox is off for N agents" and no bell
+  offer to turn it on. Held writes ask only for real security (the
+  sandbox, the approval policy, credentials, who may sign in, network
+  exposure), money, deletes and acting on others; every other placed one
+  follows the approval policy (by default it runs and tells you). The
+  writes that still ask are marked `personal: "keep"` in
+  `HELD_WRITE_RISK`: `agent_sandbox_set`, `approval_policy`,
+  `project_mcp_add`, `project_mcp_update`, `hub_connect`, `den_update`,
+  `verify_run`, `embed_key_create`, `embed_key_revoke`, `web_url_set`,
+  `test_person_setup`, `report` and `setting_change`'s widening keys. A
+  write touching secrets, deletes or money asks on both. A write no one
+  placed still asks.
+- **Strict.** Today's behaviour: the sandbox on unless set off, and every
+  held write as the approval policy says.
+- A value set explicitly always wins: `agents.sandbox: on` (or
+  `required`, or one agent's `on`) survives the upgrade to a personal
+  default.
+
 ### The approval policy (0.4.52, issue 160)
 
 The person gets an Allow only for a real decision. Den sorts each
@@ -5156,9 +5183,22 @@ the rest). `value: null` puts Den's default back.
   an agent's grants and sandbox, `agents.sandbox_sockets`, `mcp.actions`,
   `web.edge_unattested`, `web.allow_plain_http_remote`, the 1Password token
   source), the approval policy itself (`approvals.*`), and the programs and
-  runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`). One agent's
-  sandbox stays `agent_sandbox_set`'s; secrets and runtimes are set in
-  Settings only.
+  runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`) on a strict
+  install. One agent's sandbox stays `agent_sandbox_set`'s.
+- Every setting Settings keeps as the person's can be asked for (issue
+  1391): `agents.default_mode`, `server_agent.self_update`,
+  `hub.allow_tools`, `hub.delivery_loop`, `hub.url` (a new address drops
+  the old token, as Settings does), `alerts.desktop`, `alerts.phone`,
+  `alerts.quiet.from`/`to`, `editor_open`, each `embed.*` setting,
+  `web.machine_name` and the rail's `shell.dock`, `shell.collapsed` and
+  `shell.pins`, each checked as Settings checks it. `editor`, `terminal`
+  and `editor_overrides.<language>` take only an editor or terminal Den
+  knows; `agents.runtimes.<id>.bin` an absolute path to a program.
+- `secrets.*` takes references only: `env:NAME`, `file:/path`,
+  `keychain:service` or `op://vault/item/field` for the 1Password token,
+  `{ vault, item, field }` for a ref, an env var's NAME for a key. A raw
+  secret is refused, without being shown, with "did you mean a
+  reference?".
 - It fails closed: a setting is routine only when `NARROW_SETTINGS`
   (`src/ui/cli/setting-change.ts`) names it, a timeout, interval, cap or
   retention that changes how fast or how much Den does. Every other one
@@ -5170,7 +5210,20 @@ the rest). `value: null` puts Den's default back.
   every key `setting_change` takes on one list or the other.
 - The card shows the new value whole, never cut. A value too long to read
   there (over 2000 characters) or text with control characters is refused.
-- Routine settings ask too, for now (its own kind is `ask`).
+- **Per category (issue 1371 Part 2).** Each key has a category: limits
+  and performance, look and layout (low), integrations (editors,
+  terminals, runtimes, Hub, GitHub: medium), network and access (`web.*`,
+  `embed.*`, `hub.url`: high), and agent powers (the sandbox, grants,
+  approvals, `mcp.*`, secrets, `install_mode`: high, and always widening).
+  Settings › Agents › "Agents changing settings" holds one choice per
+  category (`approvals.settings` in `user.yml`): change without asking
+  (tell me), ask me, or never. Agent powers offer only ask or never. With
+  none set, limits and look change without asking; network and agent
+  powers ask; integrations ask on a strict install and change without
+  asking on a personal one. Never refuses the ask and names the row. A
+  widening key always waits for your own Allow, whatever the choice. A
+  change made without asking still writes its audit line, and your updates
+  say so.
 - On Allow, Den checks again, keeps a copy of the file (the state folder's
   `settings-backups/`, the newest 20), writes only that key (comments, order
   and every other key stay) and adds an audit line naming the key, the old
