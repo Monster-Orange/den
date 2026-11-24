@@ -6,7 +6,15 @@
  *
  * The writes go to a temp folder, never to a checkout's config/local.
  */
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -201,5 +209,98 @@ describe("every agent limit has an agent ask path (issue 1417, Den Builder)", ()
     expect(asked.sort()).toEqual(
       AGENTS_USER_LIMIT_KEYS.map((k) => `agents.${k}`).sort(),
     );
+  });
+});
+
+describe("the 2× rule holds for every agent limit (issue 1417, Builder 2)", () => {
+  let dir = "";
+  const deps = (): SettingChangeDeps => ({
+    userFile: path.join(dir, "config", "local", "user.yml"),
+    backupDir: path.join(dir, "state", "settings-backups"),
+    denConfig: () => den(),
+    audit: () => undefined,
+    now: () => "2026-11-24T08:00:00.000Z",
+  });
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "limit-2x-1417-"));
+    fs.mkdirSync(path.join(dir, "config", "local"), { recursive: true });
+    fs.writeFileSync(deps().userFile, "# mine\n");
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  /** Whether an agent's change of key to value asks the person on personal. */
+  const asks = (key: string, value: unknown) => {
+    const c = checkSettingChange(deps(), { key, value, reason: "test" });
+    if (!c.ok) throw new Error(c.error);
+    return c.personOnly === true;
+  };
+
+  it.each([
+    ["agents.turn_read_max_mb", 16, false],
+    ["agents.turn_read_max_mb", 17, true],
+    ["agents.turn_read_max_mb", 4096, true],
+    ["agents.restart_wait_minutes", 240, false],
+    ["agents.restart_wait_minutes", 241, true],
+    ["agents.lock_wait_minutes", 60, false],
+    ["agents.lock_wait_minutes", 61, true],
+    ["agents.rotation_wait_minutes", 481, true],
+    ["agents.token_peer_wait_ms", 60_001, true],
+    ["agents.exited_shell_minutes", 20, false],
+    ["agents.exited_shell_minutes", 21, true],
+    // 0 is never reap: unlimited.
+    ["agents.exited_shell_minutes", 0, true],
+  ] as [string, number, boolean][])("%s to %s: asks %s", (key, value, ask) => {
+    expect(asks(key, value)).toBe(ask);
+  });
+
+  it("lowering is routine for a wait or a size", () => {
+    expect(asks("agents.turn_read_max_mb", 4)).toBe(false);
+    expect(asks("agents.restart_wait_minutes", 30)).toBe(false);
+  });
+
+  it("unasked_exit_window_minutes is a guard: lowering it asks, raising it within 2× is routine", () => {
+    expect(asks("agents.unasked_exit_window_minutes", 5)).toBe(true);
+    expect(asks("agents.unasked_exit_window_minutes", 9)).toBe(true);
+    // A tiny window lets a crash loop come back every time.
+    expect(asks("agents.unasked_exit_window_minutes", 0.05)).toBe(true);
+    expect(asks("agents.unasked_exit_window_minutes", 20)).toBe(false);
+    expect(asks("agents.unasked_exit_window_minutes", 21)).toBe(true);
+    // 0 is never brought back: the safest value.
+    expect(asks("agents.unasked_exit_window_minutes", 0)).toBe(false);
+  });
+
+  it("unasked_exit_window_minutes put back to Den's default asks (the person's call)", () => {
+    fs.writeFileSync(
+      deps().userFile,
+      "agents:\n  unasked_exit_window_minutes: 20\n",
+    );
+    expect(asks("agents.unasked_exit_window_minutes", null)).toBe(true);
+  });
+
+  it("unasked_exit_window_minutes from 0: any window asks", () => {
+    fs.writeFileSync(
+      deps().userFile,
+      "agents:\n  unasked_exit_window_minutes: 0\n",
+    );
+    expect(asks("agents.unasked_exit_window_minutes", 5)).toBe(true);
+    expect(asks("agents.unasked_exit_window_minutes", 0.05)).toBe(true);
+  });
+
+  it("lock_wait_minutes: lowering asks (a shorter wait takes over an unwritten lock sooner)", () => {
+    expect(asks("agents.lock_wait_minutes", 0.001)).toBe(true);
+    expect(asks("agents.lock_wait_minutes", 29)).toBe(true);
+    expect(asks("agents.lock_wait_minutes", 30)).toBe(false);
+  });
+
+  it("a routine raise keeps its baseline: a second raise can't climb past 2× of the first", () => {
+    const r = runSettingChange(
+      deps(),
+      { key: "agents.turn_read_max_mb", value: 16, reason: "t" },
+      { agent: "g1", decidedBy: "auto:personal" },
+    );
+    if (!r.ok) throw new Error(r.error);
+    expect(fs.readFileSync(deps().userFile, "utf8")).toMatch(
+      /setting_baselines:[\s\S]*agents\.turn_read_max_mb: 8/,
+    );
+    expect(asks("agents.turn_read_max_mb", 17)).toBe(true);
   });
 });

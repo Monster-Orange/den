@@ -1117,7 +1117,43 @@ export const CAP_KEYS = [
   "agents.max_concurrent",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
+  // Issue 1417 (Builder 2): every agent limit setting_change takes. Past
+  // twice its baseline asks on any install. Each one widens when raised: a
+  // bigger read, a longer wait, a shell kept longer. Lowering one is
+  // routine, except a guard's (LOWER_WIDENS).
+  "agents.token_peer_wait_ms",
+  "agents.turn_read_max_mb",
+  "agents.restart_wait_minutes",
+  "agents.rotation_wait_minutes",
+  "agents.unasked_exit_window_minutes",
+  "agents.lock_wait_minutes",
+  "agents.exited_shell_minutes",
 ] as const;
+
+/**
+ * Issue 1417: the limits where lowering is what widens.
+ * - unasked_exit_window_minutes: a second unasked exit within the window
+ *   leaves the agent down (issue 926). A small window lets a crash loop
+ *   come back every time. 0 is "never brought back", the safest value
+ *   (SAFE_AT_ZERO), so a change to 0 is routine and any window above a 0
+ *   asks.
+ * - lock_wait_minutes: a lock that can't be read (its holder between
+ *   making it and writing its pid) is taken over once older than the wait.
+ *   A shorter wait can break a live holder's lock: two writers on one
+ *   agent record.
+ */
+const LOWER_WIDENS: readonly string[] = [
+  "agents.unasked_exit_window_minutes",
+  "agents.lock_wait_minutes",
+];
+const SAFE_AT_ZERO: readonly string[] = ["agents.unasked_exit_window_minutes"];
+
+const ZERO_IS_UNLIMITED: readonly string[] = [
+  "agents.max_concurrent",
+  "sessions.max_concurrent",
+  "agents.resume.load_ceiling",
+  "agents.exited_shell_minutes",
+];
 
 const isCap = (key: string): key is (typeof CAP_KEYS)[number] =>
   (CAP_KEYS as readonly string[]).includes(key);
@@ -1133,7 +1169,11 @@ function capInForce(
       return readAgentsConfig(den, user).maxConcurrent;
     if (key === "sessions.max_concurrent")
       return readSessionsConfig(den, user).maxConcurrent;
-    return agentsResume(() => user).loadCeiling;
+    if (key === "agents.resume.load_ceiling")
+      return agentsResume(() => user).loadCeiling;
+    // Issue 1417: the other agent limits, from the one lookup.
+    const v = limitInForce(key, user, den)?.value;
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
   } catch {
     return undefined;
   }
@@ -1148,17 +1188,26 @@ function storedBaseline(user: UserConfig, key: string): number | undefined {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
 }
 
-/** Whether this new value raises the cap past twice its baseline. */
+/** Whether this new value raises the cap past twice its baseline, or lowers a guard. */
 function capRaisePast(
   key: (typeof CAP_KEYS)[number],
   value: unknown,
   den: DenConfig,
   user: UserConfig,
 ): boolean {
-  if (typeof value !== "number") return value !== null;
   const base = storedBaseline(user, key) ?? capInForce(key, den, user);
+  // A guard put back to its default (null) may lower it: the person's.
+  if (value === null) return LOWER_WIDENS.includes(key);
+  if (typeof value !== "number") return true;
   if (base === undefined) return true;
-  const inf = (n: number) => (n === 0 ? Infinity : n);
+  const inf = (n: number) =>
+    n === 0 && ZERO_IS_UNLIMITED.includes(key) ? Infinity : n;
+  if (
+    LOWER_WIDENS.includes(key) &&
+    inf(value) < inf(base) &&
+    !(value === 0 && SAFE_AT_ZERO.includes(key))
+  )
+    return true;
   return inf(value) > 2 * inf(base);
 }
 
