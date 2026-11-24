@@ -339,10 +339,24 @@ export function matchesSetting(pattern: string, key: string): boolean {
 }
 
 /** The key's category and severity: the one place either is decided. */
+/**
+ * Issue 1395: a key whose new value, not the key itself, widens on a
+ * strict install. gate.browser_requires_container 0 runs browsers on the
+ * host, not in a container. On personal installs the gate stays routine.
+ */
+const WIDENS_AT: readonly [key: string, widens: (v: unknown) => boolean][] = [
+  ["gate.browser_requires_container", (v) => v === 0 || v === false],
+];
+
 export function settingKind(
   key: string,
   /** Issue 1391: the install's mode; strict when not given. */
   mode: InstallMode = "strict",
+  /**
+   * Issue 1395: the value in effect after the change, defaults resolved.
+   * Given, WIDENS_AT may make it widen on strict.
+   */
+  ...value: [] | [unknown]
 ): SettingKind {
   const is = (list: readonly string[]) =>
     list.some((p) => matchesSetting(p, key));
@@ -355,7 +369,11 @@ export function settingKind(
     (mode === "personal" && is(ROUTINE_ON_PERSONAL)) || is(["gate.**"])
       ? true
       : !is(WIDENING_SETTINGS) && is(NARROW_SETTINGS);
-  const widens = category === "agent_powers" || !routine;
+  const widensAt =
+    mode === "strict" &&
+    value.length > 0 &&
+    WIDENS_AT.some(([k, w]) => k === key && w(value[0]));
+  const widens = category === "agent_powers" || !routine || widensAt;
   const restart = is(AT_START) ? ("server" as const) : undefined;
   return {
     category,
@@ -1077,7 +1095,7 @@ export function checkSettingChange(
     } catch {
       mode = "strict";
     }
-    const kind = settingKind(key, mode);
+    const kind = settingKind(key, mode, value);
     // Issue 1371 Part 2: the person's choice for its category. Never
     // refuses here, naming the row that changes it.
     let set: ReturnType<typeof readPolicySetting>;

@@ -88,6 +88,19 @@ describe("every key has a category and a severity (issue 1371 Part 2)", () => {
       }
   });
 
+  it("strict: a browser run on the host (browser_requires_container 0) widens", () => {
+    const k = "gate.browser_requires_container";
+    expect(settingKind(k, "strict", 0).widens).toBe(true);
+    expect(settingKind(k, "strict", false).widens).toBe(true);
+    expect(settingKind(k, "strict", 1).widens).toBe(false);
+    // With no value given, the key alone: a plain limit.
+    expect(settingKind(k, "strict").widens).toBe(false);
+    // Personal: every gate key stays routine, 0 included.
+    expect(settingKind(k, "personal", 0).widens).toBe(false);
+    // Another gate key at 0 is still a limit.
+    expect(settingKind("gate.cpu_slots", "strict", 0).widens).toBe(false);
+  });
+
   it("agent powers always widen, on both modes", () => {
     for (const mode of ["personal", "strict"] as const)
       for (const key of ["agents.sandbox", "approvals.policy", "install_mode"])
