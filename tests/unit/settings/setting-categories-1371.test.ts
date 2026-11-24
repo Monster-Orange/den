@@ -75,6 +75,19 @@ describe("every key has a category and a severity (issue 1371 Part 2)", () => {
     expect([k.category, k.severity]).toEqual([category, severity]);
   });
 
+  it("the gate's settings are limits, routine on both modes (issue 1395)", () => {
+    for (const mode of ["personal", "strict"] as const)
+      for (const key of ["gate.max_slots", "gate.priority_agents"]) {
+        const k = settingKind(key, mode);
+        expect([mode, key, k.category, k.widens]).toEqual([
+          mode,
+          key,
+          "limits",
+          false,
+        ]);
+      }
+  });
+
   it("agent powers always widen, on both modes", () => {
     for (const mode of ["personal", "strict"] as const)
       for (const key of ["agents.sandbox", "approvals.policy", "install_mode"])

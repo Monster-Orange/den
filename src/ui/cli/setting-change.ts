@@ -195,8 +195,6 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "embed.key_minutes",
   "embed.app_key_audit_window_seconds",
   "shell.pins",
-  // Issue 1395: agents taking a release's priority on the gate.
-  "gate.priority_agents",
   "approvals",
   "approvals.**",
   "editor",
@@ -351,8 +349,10 @@ export function settingKind(
   const category = CATEGORY_OF.find(([, ps]) => is(ps))?.[0] ?? "limits";
   // Fails closed: routine only when NARROW_SETTINGS names it (or, on a
   // personal install, ROUTINE_ON_PERSONAL). Agent powers always widen.
+  // Issue 1395: the gate's settings are scheduling on this machine, never
+  // security: routine on both modes (its writer checks each value).
   const routine =
-    mode === "personal" && is(ROUTINE_ON_PERSONAL)
+    (mode === "personal" && is(ROUTINE_ON_PERSONAL)) || is(["gate.**"])
       ? true
       : !is(WIDENING_SETTINGS) && is(NARROW_SETTINGS);
   const widens = category === "agent_powers" || !routine;
