@@ -5759,7 +5759,7 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
     },
     run: async (a) => {
       const step = await runPinCommit(String(a.version), false);
-      pinBellNotice(step);
+      void pinBellNotice(step);
       const ok =
         step.did === "pushed" ||
         step.did === "pr" ||
@@ -5773,80 +5773,24 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
 }
 
 /** #176: the bell for the pin step: one item, the newest replacing it. */
-function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
+async function pinBellNotice(
+  step: import("./pin-commit.js").PinStep,
+): Promise<void> {
   try {
+    const { pinBellMessage } = await import("./pin-commit.js");
+    const m = pinBellMessage(step, product().title);
+    if (!m) return;
     const store = notificationDeps().store;
     const subject = "record:den-pin";
-    const t = product().title;
-    const v = step.version;
-    const add = (
-      text: string,
-      key: string,
-      vars: Record<string, string>,
-      link = "/server-agent",
-    ) => {
-      store.withdraw(subject, "service");
-      store.add({
-        kind: "service",
-        subject,
-        scope: "workspace/den-server",
-        text,
-        msg: { key, vars: { v, ...vars } },
-        link,
-      });
-    };
-    switch (step.did) {
-      case "pushed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
-          "bell.m.pinPushed",
-          { sha },
-        );
-        return;
-      }
-      case "push_failed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
-          "bell.m.pinPushFailed",
-          { sha, why: step.why },
-        );
-        return;
-      }
-      case "commit_failed":
-        add(
-          `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
-          "bell.m.pinCommitFailed",
-          { why: step.why },
-        );
-        return;
-      case "pr":
-        add(
-          `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
-          "bell.m.pinPrOpened",
-          { branch: step.branch },
-          step.url,
-        );
-        return;
-      case "branch_pushed":
-        add(
-          `${t} ${v}: the pin branch ${step.branch} is pushed; open a pull request for it (${step.why})`,
-          "bell.m.pinBranchPushed",
-          { branch: step.branch, why: step.why },
-          step.link ?? "/server-agent",
-        );
-        return;
-      case "held":
-        add(
-          `${t} ${v}: committing its pin waits for your Allow`,
-          "bell.m.pinHeld",
-          {},
-        );
-        return;
-      default:
-        return;
-    }
+    store.withdraw(subject, "service");
+    store.add({
+      kind: "service",
+      subject,
+      scope: "workspace/den-server",
+      text: m.text,
+      msg: { key: m.key, vars: m.vars },
+      link: m.link,
+    });
   } catch {
     /* the bell is best effort */
   }
@@ -12366,7 +12310,7 @@ function startUpdateCheck(): void {
         // #176: Den commits and pushes the lead install's pin itself; the
         // approval policy (issue 160) may hold it for the person.
         pinCommit: (version) => runPinCommit(version, true),
-        pinNotice: pinBellNotice,
+        pinNotice: (s) => void pinBellNotice(s),
         update: async (version, reason, opts) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
