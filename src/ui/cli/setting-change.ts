@@ -33,6 +33,7 @@ import {
   readDenConfig,
   readSessionsConfig,
   readInstallMode,
+  limitInForce,
   readMcpConfig,
   USER_ONLY_WIDENING,
   type DenConfig,
@@ -1321,6 +1322,16 @@ export function checkSettingChange(
         `${key} isn't changed by agents: ${CATEGORY_LABEL[kind.category]} is set to Never in Settings › Approvals › Agents changing settings (approvals.settings.${kind.category}). A person changes it there.`,
       );
     const now = shown(getPath(before, parts));
+    // Issue 1417: an unset limit's Now is the value in force, never
+    // "not set", so the person sees what the change replaces.
+    const inForce =
+      getPath(before, parts) === undefined
+        ? limitInForce(key, before as UserConfig, den)
+        : undefined;
+    const nowShown =
+      inForce && inForce.from !== "user.yml"
+        ? { value: shown(inForce.value), from: inForce.from }
+        : null;
     const next = value === null ? "Den's default" : shown(stored ?? value);
     const lines: ReviewLine[] = [
       ...(kind.widens
@@ -1332,7 +1343,19 @@ export function checkSettingChange(
           ]
         : []),
       line(`Setting: ${key}`, "ap.det.setting_change.key", { key }),
-      line(`Now: ${now}`, "ap.det.setting_change.now", { value: now }),
+      nowShown?.from === "default"
+        ? line(
+            `Now: ${nowShown.value} (Den's default)`,
+            "ap.det.setting_change.nowDefault",
+            { value: nowShown.value },
+          )
+        : nowShown?.from === "den.yml"
+          ? line(
+              `Now: ${nowShown.value} (from den.yml)`,
+              "ap.det.setting_change.nowDen",
+              { value: nowShown.value },
+            )
+          : line(`Now: ${now}`, "ap.det.setting_change.now", { value: now }),
       line(`New: ${next}`, "ap.det.setting_change.new", { value: next }),
       line(`Why: ${reason}`, "ap.det.setting_change.why", { why: reason }),
       ...(who.agent

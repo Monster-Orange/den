@@ -2411,6 +2411,8 @@
       "エージェントにできることが広がります。あなた自身の「許可」でのみ実行されます。",
     "ap.det.setting_change.key": "設定: {key}",
     "ap.det.setting_change.now": "現在: {value}",
+    "ap.det.setting_change.nowDefault": "現在: {value}（Den の既定値）",
+    "ap.det.setting_change.nowDen": "現在: {value}（den.yml の値）",
     "ap.det.setting_change.new": "新しい値: {value}",
     "ap.det.setting_change.why": "理由: {why}",
     "ap.det.gate_settings_set.change": "{key}: {from} → {to}",

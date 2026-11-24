@@ -2630,18 +2630,94 @@ export function agentsLimitValueError(
 }
 
 /**
+ * Issue 1417: each agent limit's default, in its own units (as written).
+ * lock_wait_minutes and turn_read_max_mb mirror agent-lock.ts's
+ * LOCK_WAIT_MINUTES_DEFAULT and conversations.ts's TURN_READ_MAX_BYTES
+ * (a test holds them equal; importing them here would pull in the agents'
+ * modules).
+ */
+const AGENT_LIMIT_DEFAULTS: Readonly<
+  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
+> = {
+  max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
+  turn_read_max_mb: 8,
+  restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
+  rotation_wait_minutes: ROTATION_WAIT_MINUTES_DEFAULT,
+  unasked_exit_window_minutes: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
+  lock_wait_minutes: 30,
+  exited_shell_minutes: DEFAULT_EXITED_SHELL_MINUTES,
+};
+
+/** Where a limit's value in force comes from. */
+export type LimitSource = "user.yml" | "den.yml" | "default";
+
+/**
+ * Issue 1417: one agent limit (`restart_wait_minutes`) in force, in its
+ * own units, and where it comes from: user.yml's, else den.yml's, else
+ * Den's default. undefined: not an agent limit.
+ */
+export function agentLimitInForce(
+  key: string,
+  user: UserConfig,
+  den: DenConfig,
+): { value: unknown; from: LimitSource } | undefined {
+  if (!Object.hasOwn(AGENT_LIMIT_DEFAULTS, key)) return undefined;
+  const pick = (b: unknown) => {
+    const v = isMapping(b) ? (b as Record<string, unknown>)[key] : undefined;
+    return v === null ? undefined : v;
+  };
+  const mine = pick(user.agents);
+  if (mine !== undefined) return { value: mine, from: "user.yml" };
+  const theirs = pick((den as { agents?: unknown }).agents);
+  if (theirs !== undefined) return { value: theirs, from: "den.yml" };
+  return {
+    value: AGENT_LIMIT_DEFAULTS[key as keyof typeof AGENT_LIMIT_DEFAULTS],
+    from: "default",
+  };
+}
+
+/**
+ * Issue 1417: a limit as `config` and the setting_change card name it
+ * (`agents.<limit>` or `sessions.<key>`), in force, with its source; one
+ * lookup so the two can't drift. undefined: not such a limit, or the
+ * sessions block can't be read (its own error elsewhere).
+ */
+export function limitInForce(
+  dotted: string,
+  user: UserConfig,
+  den: DenConfig,
+): { value: unknown; from: LimitSource } | undefined {
+  const [block, key, ...rest] = dotted.split(".");
+  if (!key || rest.length) return undefined;
+  if (block === "agents") return agentLimitInForce(key, user, den);
+  if (block !== "sessions" || !SESSIONS_KEYS.includes(key)) return undefined;
+  const has = (b: unknown) => isMapping(b) && Object.hasOwn(b, key);
+  try {
+    const camel = key.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+    const value = readSessionsConfig(den, user)[
+      camel as keyof ResolvedSessionsConfig
+    ];
+    return {
+      value,
+      from: has(user.sessions)
+        ? "user.yml"
+        : has((den as { sessions?: unknown }).sessions)
+          ? "den.yml"
+          : "default",
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Issue 1373: one agent limit as it is in force, in its own units (as
- * written): user.yml's, else den.yml's; max_concurrent's default when
- * neither sets it. undefined: not a limit, or unset with no plain default.
+ * written): user.yml's, else den.yml's, else (issue 1417) Den's default.
+ * undefined: not an agent limit.
  */
 export function agentsLimitInForce(key: string): unknown {
-  if (!(AGENTS_USER_LIMIT_KEYS as readonly string[]).includes(key))
-    return undefined;
-  const pick = (b: unknown) =>
-    isMapping(b) ? (b as Record<string, unknown>)[key] : undefined;
-  const v = pick(readUserConfigQuiet().agents) ?? pick(readDenConfig().agents);
-  if (v !== undefined && v !== null) return v;
-  return key === "max_concurrent" ? DEFAULT_AGENTS_MAX_CONCURRENT : undefined;
+  return agentLimitInForce(key, readUserConfigQuiet(), readDenConfig())?.value;
 }
 
 /**
