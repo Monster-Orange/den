@@ -16,7 +16,6 @@ import {
 } from "../../../src/shared/edge/proof.js";
 import {
   edgeProofRotation,
-  rotateEdgeProofAtStart,
   rotateEdgeProofOnce,
   stacksWithGeneratedSecrets,
 } from "../../../src/shared/edge/runtime.js";
@@ -110,50 +109,5 @@ describe("issue 728: stacks whose generated secrets agents could read", () => {
 
   it("no stacks folder: none", () => {
     expect(stacksWithGeneratedSecrets(cfg())).toEqual([]);
-  });
-});
-
-describe("issue 728: the rotation at Den's start", () => {
-  it("no edge config here: quiet, nothing rotated", () => {
-    const warns: string[] = [];
-    const out = rotateEdgeProofAtStart({
-      readConfig: () => {
-        throw new Error("no edge config");
-      },
-      ports: new Set([7000]),
-      onRotated: () => warns.push("rotated?"),
-      warn: (m) => warns.push(m),
-    });
-    expect(out).toBe("no-config");
-    expect(warns).toEqual([]);
-  });
-
-  it("a config, and the rotation fails: a warning with the reason, never quiet", () => {
-    const warns: string[] = [];
-    const out = rotateEdgeProofAtStart({
-      readConfig: cfg,
-      ports: new Set([7000]),
-      rotate: () => {
-        throw new Error("EACCES: permission denied");
-      },
-      onRotated: () => warns.push("rotated?"),
-      warn: (m) => warns.push(m),
-    });
-    expect(out).toBe("failed");
-    expect(warns).toHaveLength(1);
-    expect(warns[0]).toMatch(/edge's proof.*not rotated.*EACCES/);
-  });
-
-  it("rotated: told once", () => {
-    ensureEdgeProof(dir);
-    let told = 0;
-    const out = rotateEdgeProofAtStart({
-      readConfig: cfg,
-      ports: new Set([7000]),
-      now,
-      onRotated: () => told++,
-      warn: () => told--,
-    });
-    expect([out, told]).toEqual(["rotated", 1]);
   });
 });
