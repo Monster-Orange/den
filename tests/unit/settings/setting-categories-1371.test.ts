@@ -248,7 +248,7 @@ describe("every person-only setting has an ask path (Vision's ruling, issue 1391
     ["editor_open", "zed", false],
     ["embed.origins", ["https://app.example.com"], true],
     ["embed.url_max_chars", 4000, false],
-    ["web.machine_name", "studio", false],
+    ["web.machine_name", "laptop-2", false],
     ["shell.dock", true, false],
     ["shell.pins", ["den"], true],
   ] as const)("%s can be asked for (widens: %s)", (key, value, widens) => {
