@@ -371,6 +371,7 @@ import {
   recordCrossWorkspace,
   repoAtPath,
   setAuditSink,
+  setAsideOldTrail,
   setAuditFile,
   AUDIT_FILE,
 } from "./audit.js";
@@ -1181,11 +1182,28 @@ setAuditSink((line, actor) =>
   serverLog(line, "lifecycle", actor ? actorLabel(actor) : undefined),
 );
 // den#6: the audit ring outlives a restart (<state dir>/audit.jsonl, 0600).
+// Issue 1391: agents may read the trail now, so the one written before
+// every row was redacted moves aside first, before it is read or added
+// to (the queue's intake starts below).
+let trailSetAside = 0;
+try {
+  trailSetAside = setAsideOldTrail(getStateDir()).moved;
+} catch (e) {
+  console.error(
+    `the older activity trail could not be set aside: ${String(e)}`,
+  );
+}
 try {
   setAuditFile(path.join(getStateDir(), AUDIT_FILE));
 } catch (e) {
   console.error(`[server] the audit file could not be read: ${String(e)}`);
 }
+if (trailSetAside)
+  recordAction(null, {
+    verb: "audit",
+    detail:
+      "the activity trail written before every row was redacted is set aside, where agents can't read it",
+  });
 // 0.4.44: workspaces.yml writes and Hub link changes made in this process
 // go through the server's own audit (activity, the log, audit.jsonl).
 setConfigAuditSink((row) => void recordAction(null, row));
