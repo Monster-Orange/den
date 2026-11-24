@@ -3597,8 +3597,17 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.browser_requires_container"],
     control: { type: "toggle" },
     read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    // On keeps the strict level (2, set with gate settings) if it was set.
     write: (v, ctx) =>
-      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+      ctx.post({
+        gate_slots: {
+          browser_requires_container: v
+            ? ctx.data.gate_slots?.browserContainerStrict === true
+              ? 2
+              : 1
+            : 0,
+        },
+      }),
   },
   {
     // Issue 714: an agent's gate slot held over MCP.

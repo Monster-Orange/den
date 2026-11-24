@@ -20,7 +20,7 @@ import {
 import { gateView } from "../../shared/gates/view.js";
 import { gateWorkers } from "../../shared/gates/rules.js";
 import {
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { gateBoxTools } from "./gate-box-tools.js";
@@ -675,11 +675,9 @@ const READ_TOOLS: DenTool[] = [
       const kind = a.kind === "browser" ? "browser" : "cpu";
       // On macOS a browser slot declares a container browser (a Setting).
       const endpoint = str(a.browser_endpoint)?.trim();
-      const verdict = browserSlotCheck({
+      const verdict = await browserSlotCheckOn(store, {
         kind,
         ...(endpoint !== undefined ? { endpoint } : {}),
-        platform: store.platform,
-        requiresContainer: store.settings().browserRequiresContainer,
       });
       if (!verdict.ok)
         throw new Refusal(
