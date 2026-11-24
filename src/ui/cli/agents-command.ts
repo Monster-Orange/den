@@ -2920,7 +2920,7 @@ export function sandboxLines(r: SandboxReport): string[] {
   // Vision's ruling (issue 1391): after the upgrade, one info row.
   if (r.mode === "personal" && r.modeFrom === "default")
     out.push(
-      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or in Settings › Server", // words-ok: the Settings section's own name
+      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or choose it in Settings",
     );
   if (r.personalOff) {
     out.push(
