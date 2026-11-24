@@ -271,8 +271,9 @@ export class HubWorkReader {
     const projectOf = this.deps.projectOf ?? ((ws) => hubProjectOf(ws));
     type Row = { project: string; work: ProjectWork | null; linked?: false };
     // Asked together, at most HUB_WORK_AT_ONCE at a time, so Hub down or
-    // slow costs about one timeout, not one per project. A 403 from any
-    // of them wins, checked once the batch is in.
+    // slow costs one timeout per HUB_WORK_AT_ONCE projects (rounded up),
+    // not one per project. A 403 from any of them wins, checked once the
+    // batch is in.
     let refused: HubRefused | null = null;
     const one = async (ws: string): Promise<Row> => {
       const p = projectOf(ws);
