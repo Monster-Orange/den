@@ -1182,7 +1182,7 @@ try {
   trailSetAside = setAsideOldTrail(getStateDir()).moved;
 } catch (e) {
   console.error(
-    `[server] the older activity trail could not be set aside: ${String(e)}`, // words-ok: the server's own log
+    `the older activity trail could not be set aside: ${String(e)}`,
   );
 }
 try {
