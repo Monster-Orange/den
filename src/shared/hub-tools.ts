@@ -100,7 +100,7 @@ export function toolsHash(s: ToolShape): string {
 export const NOTE_END = {
   loaded: "Your tool list has Hub's current tools now.",
   restart:
-    "Your tool list is still the one you started with, so you can't use these yet. A restart loads them and keeps this conversation: ask your person to press Restart on you in Den.",
+    "Your tool list is still the one you started with, so you can't use these yet. A restart loads them and keeps this conversation: if you need them, call agent_restart_self with reason tools, then end your turn. Don't ask your person in words: several agents' asks share one Allow.",
 } as const;
 
 /** The note for an agent whose conversation began on `was`; null when nothing changed. */

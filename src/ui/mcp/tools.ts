@@ -836,7 +836,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_restart_self, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2838,6 +2838,39 @@ const APPROVAL_TOOLS: DenTool[] = [
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
       return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
+    },
+  },
+  {
+    name: "agent_restart_self",
+    title: "Ask to be restarted when idle",
+    description:
+      'Issue 1406: ask the person to restart you at your next idle moment, on the same conversation (it never cuts a turn), for example when your MCP servers added tools you need (`reason: "tools"`) or Den was updated (`reason: "update"`); `reason: "other"` needs `why`, one line. Use this, never a free-text question, so several agents\' asks share one card and one Allow. You ask for yourself only. After asking, end your turn: the restart waits for it.' +
+      HELD,
+    action: true,
+    shape: {
+      reason: z
+        .enum(["tools", "update", "other"])
+        .optional()
+        .describe('Why: "tools" (the default), "update" or "other"'),
+      why: z
+        .string()
+        .max(300)
+        .optional()
+        .describe('One line on why (required for "other")'),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      return askPerson(
+        "agent_restart_self",
+        "agent_restart_self",
+        {
+          ...(str(a.reason) ? { reason: str(a.reason) } : {}),
+          ...(str(a.why) ? { why: str(a.why) } : {}),
+        },
+        a,
+        ctx,
+      );
     },
   },
   {

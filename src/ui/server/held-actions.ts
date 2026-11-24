@@ -49,6 +49,9 @@
  *                     (agents/sandbox-set.ts): only agents.<id>.sandbox in
  *                     user.yml; a running one restarts after its turn on
  *                     the same conversation. Off is the person's own Allow
+ *   agent_restart_self issue 1406: an agent asks to be restarted at its
+ *                     next idle, same conversation (agents/restart-self.ts);
+ *                     two or more waiting share one bell card and Allow
  *   setting_change    issue 1371: change one setting in user.yml
  *                     (cli/setting-change.ts): only that key, a backup and
  *                     an audit line; a widening key is the person's own Allow
@@ -225,6 +228,8 @@ export interface HeldActionDeps {
   agentSandbox?: HeldOp;
   /** Issue 1371: setting_change's check and write (cli/setting-change.ts). */
   settingChange?: HeldOp;
+  /** Issue 1406: agent_restart_self (agents/restart-self.ts). */
+  agentRestartSelf?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
@@ -725,6 +730,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.agentSandbox,
     "this Den can't change an agent's sandbox here",
   );
+  const agentRestartSelf = op(
+    d.agentRestartSelf,
+    "this Den can't restart agents here",
+  );
   const settingChange = op(
     d.settingChange,
     "this Den can't change its settings here",
@@ -1103,6 +1112,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_folder: agentFolder,
     agent_mode: agentMode,
     agent_sandbox_set: agentSandbox,
+    agent_restart_self: agentRestartSelf,
     setting_change: settingChange,
     verify_run: verifyRun,
     agent_import: agentImport,

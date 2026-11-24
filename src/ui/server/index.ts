@@ -1429,6 +1429,11 @@ import {
   type SandboxSetDeps,
 } from "../../shared/agents/sandbox-set.js";
 import {
+  checkAgentRestartSelf,
+  runAgentRestartSelf,
+  type RestartSelfDeps,
+} from "../../shared/agents/restart-self.js";
+import {
   checkSettingChange,
   runSettingChange,
   settingChangeDeps,
@@ -5269,6 +5274,8 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
+    // Issue 1406: an agent's ask to be restarted when idle.
+    agentRestartSelf: agentRestartSelfHeldOp(),
     settingChange: settingChangeHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
@@ -5500,6 +5507,30 @@ function agentSandboxHeldOp() {
     ) => checkAgentSandboxSet(deps(), a, who),
     run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
       runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
+/**
+ * Issue 1406: agent_restart_self on this install: the agent's record, and
+ * Restart at its next idle (the conversation kept).
+ */
+function agentRestartSelfHeldOp() {
+  const deps = (): RestartSelfDeps => ({
+    record: (id) => agentRecord(agentWebDeps(), id),
+    restart: (id, project) =>
+      restartAgent(agentWebDeps(), id, project, "after-turn").catch((e) => {
+        serverLog(
+          `  ⚠ agent_restart_self: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
+          "warn",
+        );
+      }),
+  });
+  return {
+    check: (
+      a: Record<string, unknown>,
+      who?: { agent?: string; project?: string },
+    ) => checkAgentRestartSelf(deps(), a, who),
+    run: (a: Record<string, unknown>) => runAgentRestartSelf(deps(), a),
   };
 }
 
