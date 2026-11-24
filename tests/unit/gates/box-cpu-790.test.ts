@@ -41,6 +41,7 @@ import {
   boxSecretRefusal,
   depsScript,
   runScript,
+  shipScript,
   shQuote,
   shipPlan,
   sweepScript,
@@ -263,6 +264,23 @@ describe("issue 790: the tree that ships", () => {
     expect(plan([], { "tests/fixture.ts": tok }).refused).toBeUndefined();
   });
 
+  // Found on a real box: an uncommitted lockfile names "js-tokens".
+  it("an untracked lockfile ships; an untracked env dump does not", () => {
+    const lock =
+      '{ "packages": { "node_modules/js-tokens": { "version": "4.0.0" } }, "dependencies": { "js-tokens": "^4.0.0" } }';
+    const ok = shipPlan(
+      ["package.json", "package-lock.json"],
+      new Set(["package-lock.json"]),
+      (f) => Buffer.from(f === "package-lock.json" ? lock : "{}"),
+    );
+    expect(ok.refused).toBeUndefined();
+    expect(
+      plan(["env.txt"], {
+        "env.txt": "PATH=/bin\nexport GITHUB_TOKEN=abcd1234efgh5678\n",
+      }).refused,
+    ).toMatch(/env\.txt/);
+  });
+
   it("an untracked binary or large file is skipped and named, not scanned", () => {
     const p = plan(["img.png", "big.log"], {
       "img.png": "\u0000\u0001PNG",
@@ -346,6 +364,25 @@ describe("issue 790: the remote side", () => {
     ).toBe(true);
   });
 
+  // Found on a real box: the sweep's own exit stopped what came after it.
+  it("the ship script sweeps, then unpacks the tar into the run's tree", () => {
+    const home = tmp();
+    const src = tmp();
+    fs.writeFileSync(path.join(src, "a.txt"), "hello");
+    const tar = execFileSync("tar", ["-cf", "-", "a.txt"], { cwd: src });
+    const r = spawnSync("/bin/sh", ["-c", shipScript("r2", ["r2"])], {
+      env: { HOME: home, PATH: process.env.PATH },
+      input: tar,
+    });
+    expect(r.status).toBe(0);
+    expect(
+      fs.readFileSync(
+        path.join(home, BOX_RUN_ROOT, "runs", "r2", "tree", "a.txt"),
+        "utf-8",
+      ),
+    ).toBe("hello");
+  });
+
   it("the run script refuses a bad id before any path", () => {
     expect(() => runScript("../x", ["true"], {})).toThrow(/id/);
     expect(() => sweepScript(["ok", "a b"])).toThrow(/id/);
@@ -399,6 +436,19 @@ describe("issue 790: the remote side", () => {
     expect(
       fs.readFileSync(path.join(cached, "node_modules/dep/index.js"), "utf-8"),
     ).toBe("ok\n");
+  });
+
+  it("deps: a box without npm says so (exit 127), and installs nothing", async () => {
+    const home = tmp();
+    const tree = treeWithLock(home);
+    const r = spawnSync("/bin/sh", ["-c", depsScript("a".repeat(64))], {
+      cwd: tree,
+      env: { HOME: home, PATH: "/nonexistent" },
+      encoding: "utf-8",
+    });
+    expect(r.status).toBe(127);
+    expect(r.stderr).toMatch(/npm isn't on this test box's PATH/);
+    expect(fs.existsSync(path.join(home, BOX_RUN_ROOT, "deps"))).toBe(false);
   });
 
   it("deps: an install killed midway leaves no deps/<sha>", async () => {

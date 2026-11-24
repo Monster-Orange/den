@@ -27,7 +27,7 @@ import { spawn as nodeSpawn } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { redactSecrets, STORE_REF } from "../redact.js";
+import { redactSecrets, SECRET_PATTERNS, STORE_REF } from "../redact.js";
 import type { GateBox } from "./boxes.js";
 
 /** The folder under the box's HOME that box runs use. */
@@ -63,6 +63,24 @@ function looksSecret(text: string): boolean {
   if (/\bkeychain:[^\s]/i.test(text)) return true;
   return redactSecrets(text) !== text;
 }
+
+/**
+ * A file's text holds a secret: a store reference, a value shaped like a
+ * secret (a token, a key block, a URL with a password), or a dumped
+ * secret variable (GITHUB_TOKEN=…). Not the log redactor's broad
+ * name: value match, which a lockfile trips ("js-tokens": "^4.0.0").
+ */
+function fileLooksSecret(text: string): boolean {
+  if (new RegExp(STORE_REF.source, "i").test(text)) return true;
+  for (const p of SECRET_PATTERNS) {
+    if (p.name === "key=value secret") continue;
+    if (new RegExp(p.re.source, p.re.flags.replace("g", "")).test(text))
+      return true;
+  }
+  return SECRET_ENV_LINE.test(text);
+}
+const SECRET_ENV_LINE =
+  /^\s*(?:export\s+)?[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|CREDENTIAL)[A-Za-z0-9_]*\s*=\s*["']?[^\s"']{8,}/im;
 
 /** Names whose value is a secret. */
 const SECRET_NAME =
@@ -155,7 +173,7 @@ export function shipPlan(
         p.skipped.push(f);
         continue;
       }
-      if (looksSecret(b.toString("utf-8"))) {
+      if (fileLooksSecret(b.toString("utf-8"))) {
         p.refused = `${f} (not committed) holds something shaped like a secret, so the tree can't go to a test box. Remove it, or ${local.charAt(0).toLowerCase()}${local.slice(1)}`;
         return p;
       }
@@ -177,6 +195,8 @@ export function depsScript(lockSha: string): string {
   if (!LOCK_SHA.test(lockSha)) throw new Error("a lockfile id is its sha256");
   return [
     "set -e",
+    // A box's non-login shell may lack node (installed for logins only).
+    `command -v npm >/dev/null 2>&1 || { echo "den gate: npm isn't on this test box's PATH for ssh commands: install Node.js there, or put it on that PATH" >&2; exit 127; }`,
     `D=${ROOT}/deps; F="$D/${lockSha}"; mkdir -p "$D"`,
     'if [ ! -d "$F" ]; then',
     '  L="$F.lock"; n=0',
@@ -272,8 +292,15 @@ export function sweepScript(live: readonly string[]): string {
     'if [ -d "$D" ]; then',
     '  find "$D" -mindepth 1 -maxdepth 1 \\( -name "*.tmp.*" -mmin +1440 -o -type d ! -name "*.*" -mtime +7 \\) -print 2>/dev/null | while read -r x; do chmod -R u+w "$x" 2>/dev/null; rm -rf -- "$x"; done',
     "fi",
-    "exit 0",
+    // Never `exit`: the ship script goes on after the sweep.
+    ":",
   ].join("\n");
+}
+
+/** The sweep, then the tree (a tar on stdin) unpacked into run `id`. */
+export function shipScript(id: string, live: readonly string[]): string {
+  const dir = `${ROOT}/runs/${mustId(id)}/tree`;
+  return `${sweepScript(live)}\nmkdir -p ${dir} && tar -xf - -C ${dir}`;
 }
 
 /** ssh's arguments for `box` (keys only), as the box check uses them. */
@@ -448,10 +475,9 @@ export function startBoxCpuRun(
       });
       tar.stdin?.end(plan.ship.join("\0") + "\0");
       const dir = `${ROOT}/runs/${r.id}/tree`;
-      const ship = await remote(
-        `${sweepScript(r.live)}\nmkdir -p ${dir} && tar -xf - -C ${dir}`,
-        { stdin: tar.stdout! },
-      );
+      const ship = await remote(shipScript(r.id, r.live), {
+        stdin: tar.stdout!,
+      });
       if (stopped) return 130;
       if (ship.code === 255 && !ship.saw) return unreachable();
       if (ship.code !== 0) {
@@ -462,9 +488,11 @@ export function startBoxCpuRun(
       if (stopped) return 130;
       if (deps.code === 255 && !deps.saw) return unreachable();
       if (deps.code !== 0) {
-        say(
-          `npm ci on ${box.name} failed (exit ${deps.code}). A lockfile that needs a signed-in registry can't install on a box. ${local}`,
-        );
+        // 127: the box said why (no npm); else the install itself failed.
+        if (deps.code !== 127)
+          say(
+            `npm ci on ${box.name} failed (exit ${deps.code}). A lockfile that needs a signed-in registry can't install on a box. ${local}`,
+          );
         return deps.code;
       }
       const run = await remote(runScript(r.id, r.argv, r.env, r.tree.sub), {
