@@ -18,6 +18,8 @@ import {
 import { legacyAgentIds } from "../../../src/shared/agents/sandbox-rollout.js";
 import { sandboxLines } from "../../../src/ui/cli/agents-command.js";
 import { settingKind } from "../../../src/ui/cli/setting-change.js";
+import { newAgentSandboxOff } from "../../../src/shared/agents/sandbox-set.js";
+import { explicitRestartAsk } from "../../../src/ui/server/server-restart.js";
 import {
   criticalWhy,
   policyFor,
@@ -244,7 +246,7 @@ describe("held writes on a personal install (issue 1391)", () => {
       "workspace_create",
       "service_try",
     ])
-      expect([w, policyFor(w, { widens: true, ...personal }).kind]).toEqual([
+      expect([w, policyFor(w, { widens: false, ...personal }).kind]).toEqual([
         w,
         "notify",
       ]);
@@ -289,12 +291,9 @@ describe("held writes on a personal install (issue 1391)", () => {
       .sort();
     expect(kept).toEqual(
       [
-        "agent_create", // may start one outside the sandbox (issue 1328)
-        "agent_import", // the same
         "agent_mode", // widens another agent's mode
         "agent_sandbox_set",
         "approval_policy",
-        "den_restart", // server_agent.self_update is the person's say
         "den_update",
         "embed_key_create",
         "embed_key_revoke",
@@ -375,5 +374,63 @@ describe("Builder 2's blockers, as Den Builder ruled (issue 1391)", () => {
     expect(userConfigOrStrict(() => ({ install_mode: "personal" }))).toEqual({
       install_mode: "personal",
     });
+  });
+});
+
+describe("Den Builder's calls: agents and restarts on personal (issue 1391)", () => {
+  const personal = { mode: "personal" as const };
+
+  it("starting or importing an agent: routine on personal, asks on strict", () => {
+    for (const w of ["agent_create", "agent_import"]) {
+      expect([w, policyFor(w, { widens: false, ...personal }).kind]).toEqual([
+        w,
+        "notify",
+      ]);
+      expect([w, policyFor(w, { widens: true, mode: "strict" }).kind]).toEqual([
+        w,
+        "ask",
+      ]);
+    }
+  });
+
+  it("personal, the default off and no agent sandboxed: a new agent is no one's special ask", () => {
+    const cfg = agents({});
+    expect(newAgentSandboxOff(cfg, ["a9"])).toBeNull();
+  });
+
+  it("personal with the default on: a new agent set to start outside it asks", () => {
+    const cfg = agents({
+      agents: { sandbox: "on", a9: { sandbox: "off" } },
+    } as UserConfig);
+    expect(newAgentSandboxOff(cfg, ["a9"])).not.toBeNull();
+  });
+
+  it("personal with one agent sandboxed: a new one outside it asks", () => {
+    const cfg = agents({ agents: { a1: { sandbox: "on" } } } as UserConfig);
+    expect(newAgentSandboxOff(cfg, ["a9"])).not.toBeNull();
+  });
+
+  it("strict with the sandbox off: a new agent outside it asks, as today", () => {
+    const cfg = agents({
+      install_mode: "strict",
+      agents: { sandbox: "off" },
+    } as UserConfig);
+    expect(newAgentSandboxOff(cfg, ["a9"])).not.toBeNull();
+  });
+
+  it("restarting Den: routine on personal unless self_update: ask is set", () => {
+    expect(policyFor("den_restart", personal).kind).toBe("notify");
+    expect(
+      explicitRestartAsk({ selfUpdate: "ask", selfUpdateFrom: "default" }),
+    ).toBe(false);
+    expect(
+      explicitRestartAsk({ selfUpdate: "ask", selfUpdateFrom: "user" }),
+    ).toBe(true);
+    expect(
+      explicitRestartAsk({ selfUpdate: "ask", selfUpdateFrom: "org" }),
+    ).toBe(true);
+    expect(
+      explicitRestartAsk({ selfUpdate: "auto", selfUpdateFrom: "user" }),
+    ).toBe(false);
   });
 });

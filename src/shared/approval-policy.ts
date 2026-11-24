@@ -7,6 +7,12 @@
  * person's own Allow, and no setting lowers it. Every other held write is
  * routine: it follows the policy, one of
  *
+ * Issue 1391's rule (Den Builder): a check that says personOnly ("this one
+ * is the person's") always asks, on every install mode, kept or not, and
+ * whatever the policy. A check that should be routine on a personal
+ * install stops saying personOnly there itself (newAgentSandboxOff,
+ * settingKind); the ask path never drops it (criticalWhy).
+ *
  *   auto    runs at once; the activity trail has it
  *   notify  runs at once; the trail has it, and the person's updates say
  *           what ran (the default)
@@ -176,7 +182,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "installs another Den version (a release)",
   },
   den_restart: {
-    personal: "keep",
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
@@ -192,7 +197,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
   },
   agent_create: {
-    personal: "keep",
     risk: "widens",
     why: "starts an agent in the project's mode or a stricter one; one that would start outside the sandbox is the person's (issue 1328)",
   },
@@ -263,7 +267,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "changes the approval policy itself: a person's only",
   },
   agent_import: {
-    personal: "keep",
     risk: "widens",
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it; one that would start outside the sandbox is the person's (issue 1328)",
@@ -302,11 +305,14 @@ export function criticalWhy(
     ...new Set([...areasOf(action), ...(placed?.areas ?? []), ...areas]),
   ].filter((a) => Object.hasOwn(CRITICAL_AREAS, a));
   if (touches.length) return `critical: ${touches.join(", ")}`;
+  // Issue 1391's rule: the check said personOnly, so the person's, on
+  // every mode (see the header).
+  if (widens) return "critical";
   // Issue 1391: a placed write is routine on a personal install unless it
   // is real security or acts on others. One no one placed still asks.
   if (mode === "personal" && placed && placed.personal !== "keep") return null;
   const r = placed ? placed.risk : "critical";
-  return r === "critical" || (r === "widens" && widens) ? "critical" : null;
+  return r === "critical" ? "critical" : null;
 }
 
 /** Whether held write `action` is critical (criticalWhy). */
