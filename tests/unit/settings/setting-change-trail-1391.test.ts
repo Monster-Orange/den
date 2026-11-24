@@ -1,7 +1,6 @@
 /**
  * Issue 1391: agents may read the activity trail, so setting_change never
- * puts a free-text value there. A command (editor, terminal,
- * editor_overrides) or any other text, list or map is said as changed,
+ * puts a free-text value there. Any text (an address, for one), list or map is said as changed,
  * with its length, in the audit line and in the summary every approval
  * row copies (ask, auto-allow, decide, withdraw, lapse). A number, a
  * switch, "not set" and Den's default stay as values. The card's own
@@ -46,67 +45,56 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 const trailText = () => audits.map((a) => a.detail).join("\n");
 
 describe("issue 1391: setting_change keeps free text out of the trail", () => {
-  it("a command: the audit line and the summary say changed, with lengths; the card shows it whole", () => {
-    const ask = {
-      key: "editor",
-      value: `mytool --pass ${TYPED}`,
-      reason: "a new editor",
-    };
+  it("a text value (an address): the audit line and the summary say changed, with lengths; the card shows it whole", () => {
+    const value = `https://hub.example.test/${TYPED}`;
+    const ask = { key: "hub.url", value, reason: "a new Hub" };
     const c = checkSettingChange(deps(), ask, { agent: "den-builder" });
     if (!c.ok) throw new Error(c.error);
     expect(c.summary).toBe(
-      "editor: changed (was 4 characters, now 29 characters)",
+      `hub.url: changed (was not set, now ${value.length} characters)`,
     );
-    expect(c.summary).not.toContain(TYPED);
     // The card: the whole value, as the person allows it.
-    expect(c.details.join("\n")).toContain(`New: mytool --pass ${TYPED}`);
-    expect(c.details.join("\n")).toContain("Now: code");
+    expect(c.details.join("\n")).toContain(`New: ${value}`);
     const r = runSettingChange(deps(), ask, { agent: "den-builder" });
     expect(r.ok).toBe(true);
     expect(trailText()).toBe(
-      "setting_change editor: changed (was 4 characters, now 29 characters) (asked by den-builder)",
+      `setting_change hub.url: changed (was not set, now ${value.length} characters) (asked by den-builder)`,
     );
   });
 
-  it("a command set where none was, and one taken back to Den's default", () => {
-    const set = { key: "terminal", value: `term ${TYPED}`, reason: "r" };
-    const c = checkSettingChange(deps(), set);
-    if (!c.ok) throw new Error(c.error);
-    expect(c.summary).toBe(
-      "terminal: changed (was not set, now 20 characters)",
-    );
-    runSettingChange(deps(), set);
+  it("taken back to Den's default: the old text by its length only", () => {
+    const value = `https://hub.example.test/${TYPED}`;
+    runSettingChange(deps(), { key: "hub.url", value, reason: "r" });
     const back = checkSettingChange(deps(), {
-      key: "terminal",
+      key: "hub.url",
       value: null,
       reason: "r",
     });
     if (!back.ok) throw new Error(back.error);
     expect(back.summary).toBe(
-      "terminal: changed (was 20 characters, now Den's default)",
+      `hub.url: changed (was ${value.length} characters, now Den's default)`,
     );
-    runSettingChange(deps(), { key: "terminal", value: null, reason: "r" });
+    runSettingChange(deps(), { key: "hub.url", value: null, reason: "r" });
     expect(trailText()).not.toContain(TYPED);
     expect(trailText()).toMatch(
-      /terminal: changed \(was 20 characters, now default\)/,
+      /hub\.url: changed \(was \d+ characters, now default\)/,
     );
   });
 
-  it("a mapping of commands (editor_overrides): never its text", () => {
+  it("a list (embed.origins): never its text", () => {
     const ask = {
-      key: "editor_overrides",
-      value: { "*.md": `mdtool ${TYPED}` },
+      key: "embed.origins",
+      value: [`https://${TYPED}.example.test`],
       reason: "r",
     };
     const c = checkSettingChange(deps(), ask);
     if (!c.ok) throw new Error(c.error);
     expect(c.summary).not.toContain(TYPED);
     expect(c.summary).toMatch(
-      /^editor_overrides: changed \(was not set, now \d+ characters\)$/,
+      /^embed\.origins: changed \(was not set, now \d+ characters\)$/,
     );
     runSettingChange(deps(), ask);
     expect(trailText()).not.toContain(TYPED);
-    expect(trailText()).not.toContain("mdtool");
   });
 
   it("a number stays a value", () => {
@@ -132,14 +120,18 @@ describe("issue 1391: setting_change keeps free text out of the trail", () => {
     expect(c.error).toMatch(/must be local or signin, got <\d+ characters>/);
   });
 
-  it("the same command again: nothing to change, never its text", () => {
+  it("the same text again: nothing to change, never its text", () => {
+    const value = `https://hub.example.test/${TYPED}`;
+    runSettingChange(deps(), { key: "hub.url", value, reason: "r" });
     const c = checkSettingChange(deps(), {
-      key: "editor",
-      value: "code",
+      key: "hub.url",
+      value,
       reason: "r",
     });
     expect(c.ok).toBe(false);
     if (c.ok) return;
-    expect(c.error).toBe("editor is already 4 characters: nothing to change");
+    expect(c.error).toBe(
+      `hub.url is already ${value.length} characters: nothing to change`,
+    );
   });
 });

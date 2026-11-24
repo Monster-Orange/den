@@ -1700,7 +1700,7 @@ export function sharedUserLines(
     serverRunning?: () => boolean;
     /**
      * Issue 1391: agents may read the trail (a personal install). Default:
-     * from install.mode; a config that can't be read counts as strict.
+     * from install_mode; a config that can't be read counts as strict.
      */
     trailReadable?: boolean;
   } = {},

@@ -127,7 +127,11 @@ describe("issue 1391: approval rows never carry a setting's free text", () => {
       "/api/approvals",
       {
         action: "setting_change",
-        args: { key: "editor", value: `mytool --pass ${TYPED}`, reason: "r" },
+        args: {
+          key: "hub.url",
+          value: `https://hub.example.test/${TYPED}`,
+          reason: "r",
+        },
         ask: true,
         note: "a test's own request",
       },
@@ -149,9 +153,9 @@ describe("issue 1391: approval rows never carry a setting's free text", () => {
     );
     if (d.status !== 200) throw new Error(await d.text());
     expect(trail()).toMatch(
-      /approval-ask setting_change: editor: changed \(was 4 characters, now 29 characters\)/,
+      /approval-ask setting_change: hub\.url: changed \(was not set, now \d+ characters\)/,
     );
-    expect(trail()).toMatch(/approval-decide .*editor: changed/);
+    expect(trail()).toMatch(/approval-decide .*hub\.url: changed/);
     expect(trail()).not.toContain(TYPED);
   });
 

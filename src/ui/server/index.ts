@@ -260,6 +260,8 @@ import {
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  readInstallMode,
+  type InstallMode,
   mergeUserConfig,
   type UserConfig,
   writeUserConfig,
@@ -1446,6 +1448,7 @@ import {
   checkSettingChange,
   runSettingChange,
   settingChangeDeps,
+  undoSettingChange,
 } from "../cli/setting-change.js";
 import {
   approvalsView,
@@ -4800,6 +4803,7 @@ type ApprovalDeps = {
     workspace: string | undefined,
   ) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
+  installMode: () => InstallMode;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
@@ -5329,10 +5333,14 @@ function approvalDeps(): ApprovalDeps {
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches
     // (approvals.watch) and pinned to the rail (their favorites).
+    // Issue 1391: personal (the default) or strict, read per ask.
+    installMode: () => readInstallMode(readUserConfig()),
     policy: (action, project, widens, ask) => {
       const user = readUserConfig();
       return policyFor(action, {
         widens,
+        mode: readInstallMode(user),
+        ...(ask?.category ? { setting: { category: ask.category } } : {}),
         areas: ask?.areas,
         install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,
@@ -5572,17 +5580,31 @@ function startHeldWritesBell(): void {
   }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
-export function approvalsSettings(raw: unknown): {
+export function approvalsSettings(
+  raw: unknown,
+  mode: InstallMode = "strict",
+): {
   approvals_policy: string | null;
   approvals_watch: string[];
   approvals_critical: string[];
+  approvals_settings: ReturnType<typeof approvalsView>["settings"];
 } {
-  const v = approvalsView(raw);
+  const v = approvalsView(raw, mode);
   return {
     approvals_policy: v.policy,
     approvals_watch: v.watch,
     approvals_critical: v.critical,
+    approvals_settings: v.settings,
   };
+}
+
+/** Issue 1391: the install's mode for Settings; a bad value says strict. */
+function installModeOf(user: UserConfig): InstallMode {
+  try {
+    return readInstallMode(user);
+  } catch {
+    return "strict";
+  }
 }
 /**
  * Issue 160: write the approval policy, the install's (user.yml) or one
@@ -10122,6 +10144,50 @@ async function handleRequest(
     }
   }
 
+  // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
+  // without asking. The person's only: never an agent, never the fixture.
+  if (pathname === "/api/settings/undo" && req.method === "POST") {
+    if (notAPersonOf(req) || fixturePersonOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can undo a setting change" },
+        403,
+      );
+    let id = "";
+    try {
+      const b = JSON.parse((await readBody(req)) || "{}") as {
+        approval?: unknown;
+      };
+      id = typeof b.approval === "string" ? b.approval.trim() : "";
+    } catch {
+      id = "";
+    }
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id))
+      return send400(res, "approval: the held write's id");
+    const a = approvalDeps().queue.get(id);
+    if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    const r = undoSettingChange(
+      settingChangeDeps({
+        userFile: userConfigPath(),
+        stateDir: getStateDir(),
+        audit: (detail, reason) =>
+          auditConfig({
+            verb: "config-write",
+            detail: `undo: ${detail}`,
+            ...(reason ? { reason } : {}),
+          }),
+      }),
+      a,
+    );
+    if (!r.ok) return sendJson(res, { ok: false, error: r.error }, 409);
+    try {
+      notificationDeps().store.dropUndo(id);
+    } catch {
+      /* the bell is best effort: the change is undone */
+    }
+    return sendJson(res, { ok: true, key: r.key, note: r.note });
+  }
+
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -10185,7 +10251,8 @@ async function handleRequest(
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
         // Issue 160: the install's approval policy (user.yml approvals).
-        ...approvalsSettings(user.approvals),
+        ...approvalsSettings(user.approvals, installModeOf(user)),
+        install_mode: installModeOf(user),
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
@@ -10295,6 +10362,8 @@ async function handleRequest(
           approvals_policy?: unknown;
           approvals_watch?: unknown;
           approvals_critical?: unknown;
+          approvals_settings?: unknown;
+          install_mode?: unknown;
         };
         // Issue 810: the test-install mark is a person's, by hand, in the
         // distribution config: never written here, by anyone.
@@ -10413,16 +10482,26 @@ async function handleRequest(
         if (
           body.approvals_policy !== undefined ||
           body.approvals_watch !== undefined ||
-          body.approvals_critical !== undefined
+          body.approvals_critical !== undefined ||
+          body.approvals_settings !== undefined
         ) {
           const a = patchApprovals(user.approvals, {
             policy: body.approvals_policy,
             watch: body.approvals_watch,
             critical: body.approvals_critical,
+            settings: body.approvals_settings,
           });
           if (!a.ok) return send400(res, a.error);
           if (a.value) user.approvals = a.value;
           else delete user.approvals;
+        }
+        // Issue 1391: the install's mode, personal or strict; null puts the
+        // default (personal) back. A person's only (PERSON_ONLY_SETTINGS).
+        if (body.install_mode !== undefined) {
+          const v = body.install_mode;
+          if (v === null || v === "") delete user.install_mode;
+          else if (v === "personal" || v === "strict") user.install_mode = v;
+          else return send400(res, "install_mode is personal, strict or null");
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Hub); null clears it (the default, on).
@@ -10666,7 +10745,8 @@ async function handleRequest(
                 | undefined
             )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
-          ...approvalsSettings(user.approvals),
+          ...approvalsSettings(user.approvals, installModeOf(user)),
+          install_mode: installModeOf(user),
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},

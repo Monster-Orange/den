@@ -197,8 +197,6 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
-  /** Issue 1391: the install's mode (installModeOf); strict here wins. */
-  install?: { mode?: unknown };
   /** Secrets backend strategy — see src/shared/secrets. */
   secrets?: SecretsConfig;
   /** Environments enabled for this deployment. */
@@ -340,8 +338,6 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
-  /** Issue 1391: the install's mode (installModeOf). */
-  install?: { mode?: unknown };
   /**
    * Review M4 (0.4.46): `server_agent.self_update: ask | auto`, the
    * person's: whether the server agent's own restarts and updates run
@@ -368,6 +364,11 @@ export interface UserConfig {
    * ones always ask). See shared/approval-policy.ts.
    */
   approvals?: unknown;
+  /**
+   * Issue 1391: `install_mode: personal | strict`, the person's. Unset is
+   * personal: one person's own machine (see readInstallMode).
+   */
+  install_mode?: unknown;
   /**
    * Issue 1072: settings that widen what agents may do, read from here
    * only (an agent's sandbox can't write this file): mcp.actions.
@@ -1268,31 +1269,6 @@ export const USER_ONLY_WIDENING: readonly string[] = [
   "web.allow_plain_http_remote",
   "secrets.onepassword.token",
 ];
-
-/**
- * Issue 1391: an install's mode. personal: one person's own machine (the
- * default); strict: a team or enterprise install, today's protections.
- */
-export type InstallMode = "personal" | "strict";
-
-/**
- * Issue 1391: `install.mode` from user.yml and the distribution's den.yml.
- * Personal only when every value set is "personal", or none is: "strict",
- * or anything else (a typo), is strict, so a team's den.yml makes it
- * strict whatever user.yml says. It fails closed.
- */
-export function installModeOf(
-  den: DenConfig | undefined,
-  user: UserConfig | undefined,
-): InstallMode {
-  const set = [den, user]
-    .map((c) => c?.install)
-    .filter((i) => i !== undefined)
-    .map((i) => (i && typeof i === "object" ? i.mode : i));
-  return set.every((m) => m === undefined || m === "personal")
-    ? "personal"
-    : "strict";
-}
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
@@ -2252,14 +2228,32 @@ function sandboxValue(
   );
 }
 
+/**
+ * Issue 1391: how open an install is. personal (the default): one person's
+ * own machine; the agent sandbox is off unless set, and held writes ask
+ * only for money, deletes, real security and acting on others. strict
+ * (opt-in): team and enterprise installs, the sandbox on and every held
+ * write as the approval policy says.
+ */
+export type InstallMode = "personal" | "strict";
+export const INSTALL_MODES: readonly InstallMode[] = ["personal", "strict"];
+
+/** user.yml's install_mode, checked; personal when unset. */
+export function readInstallMode(u: UserConfig): InstallMode {
+  const v = u.install_mode;
+  if (v === undefined || v === null) return "personal";
+  if (typeof v === "string" && (INSTALL_MODES as string[]).includes(v))
+    return v as InstallMode;
+  throw new Error(
+    `install_mode: personal or strict (got ${JSON.stringify(v)})`,
+  );
+}
+
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
-  /**
-   * Issue 1391: the install's mode (installModeOf). readAgentsConfig
-   * always sets it; a config built another way without it is strict.
-   */
-  installMode?: InstallMode;
+  /** Issue 1391: the install's mode (user.yml install_mode). */
+  mode?: InstallMode;
   /**
    * Issue 936: agents' sessions start in the OS sandbox, Den's state
    * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
@@ -2506,7 +2500,13 @@ export function readAgentsConfig(
   const out = asConfigError(() => parseAgentsConfig(merged));
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
-    () => applyUserSandbox(out, u.agents),
+    () => {
+      // Issue 1391: on a personal install the sandbox is off unless
+      // user.yml sets it; strict keeps it on. A value set always wins.
+      out.mode = readInstallMode(u);
+      if (out.mode === "personal") out.sandbox = false;
+      applyUserSandbox(out, u.agents);
+    },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
   // A signing key is per machine: user.yml's agents.git wins.
@@ -2523,7 +2523,6 @@ export function readAgentsConfig(
     );
     if (g) out.git = g;
   }
-  out.installMode = installModeOf(c, u);
   return out;
 }
 

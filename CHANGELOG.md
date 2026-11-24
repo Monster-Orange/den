@@ -12,7 +12,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
-- On a personal install (`install.mode`, personal unless set to strict in user.yml or the distribution's config), agents may read Den's activity trail again, to see who changed what; on a strict one it stays denied. Only the web server writes it, so they still can't edit it. At its first start, Den moves the trail written before this into a folder agents can't read. Den redacts secret-shaped text (tokens, keys, credentials) from every string in every row, and a setting changed to a text value (a command, for one) is noted by its length, never its text; the approval card still shows the person the whole value. (issue 1391)
+- On a personal install (`install_mode`, personal unless set to strict), agents may read Den's activity trail again, to see who changed what; on a strict one it stays denied. Only the web server writes it, so they still can't edit it. At its first start, Den moves the trail written before this into a folder agents can't read. Den redacts secret-shaped text (tokens, keys, credentials) from every string in every row, and a setting changed to a text value (a command, for one) is noted by its length, never its text; the approval card still shows the person the whole value. (issue 1391)
 - The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
 
 ### Fixed

@@ -361,9 +361,16 @@ describe("macProfile and bwrapArgs (issue 936)", () => {
 });
 
 describe("sandboxSetting (issue 936)", () => {
+  // Issue 1391: on a strict install. A personal one's default is below.
   it("is on unless the person turned it off, for all or for one agent", () => {
     const cfg = (agents: Record<string, unknown>) =>
-      readAgentsConfig({ agents: {} } as DenConfig, { agents } as UserConfig);
+      readAgentsConfig(
+        { agents: {} } as DenConfig,
+        {
+          install_mode: "strict",
+          agents,
+        } as UserConfig,
+      );
     expect(sandboxSetting(cfg({}), "a1")).toBe(true);
     expect(sandboxSetting(cfg({ sandbox: "off" }), "a1")).toBe(false);
     expect(sandboxSetting(cfg({ sandbox: false }), "a1")).toBe(false);
@@ -372,6 +379,15 @@ describe("sandboxSetting (issue 936)", () => {
     expect(
       sandboxSetting(cfg({ sandbox: "off", a1: { sandbox: "on" } }), "a1"),
     ).toBe(true);
+  });
+
+  it("is off on a personal install unless the person turned it on (issue 1391)", () => {
+    const cfg = (agents: Record<string, unknown>) =>
+      readAgentsConfig({ agents: {} } as DenConfig, { agents } as UserConfig);
+    expect(sandboxSetting(cfg({}), "a1")).toBe(false);
+    expect(sandboxSetting(cfg({ sandbox: "on" }), "a1")).toBe(true);
+    expect(sandboxSetting(cfg({ a1: { sandbox: "on" } }), "a1")).toBe(true);
+    expect(sandboxSetting(cfg({ a1: { sandbox: "on" } }), "a2")).toBe(false);
   });
 
   it("refuses a value that is not on or off", () => {

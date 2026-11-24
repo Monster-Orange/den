@@ -963,11 +963,11 @@ function signingKeyRefusedDirs(
  * aside (setAsideOldTrail's marker). Should that step fail, they don't.
  */
 export function agentsMayReadTrail(
-  cfg: { installMode?: "personal" | "strict" },
+  cfg: { mode?: "personal" | "strict" },
   stateDir: string,
 ): boolean {
   return (
-    cfg.installMode === "personal" &&
+    cfg.mode === "personal" &&
     !!fs.lstatSync(
       path.join(stateDir, AUDIT_SET_ASIDE_DIR, AUDIT_SET_ASIDE_MARK),
       { throwIfNoEntry: false },

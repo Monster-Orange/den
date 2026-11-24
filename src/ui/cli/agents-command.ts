@@ -2761,6 +2761,13 @@ export interface SandboxReport {
    * when, why and who asked when agent_sandbox_set turned it off.
    */
   turnedOff?: { id: string; at?: string; why?: string; by?: string }[];
+  /**
+   * Issue 1391: a personal install with the sandbox off for all agents (its
+   * default): said once, as information, with no warning to turn it on.
+   */
+  personalOff?: boolean;
+  /** Issue 1391: the install's mode, said once (install_mode). */
+  mode?: "personal" | "strict";
 }
 
 /**
@@ -2872,12 +2879,23 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     /* a bad config is its own row */
   }
   const notes = readSandboxNotes(d.stateDir());
+  let personalOff = false;
+  let mode: SandboxReport["mode"];
+  try {
+    const c = d.agentsConfig();
+    mode = c.mode;
+    personalOff = c.mode === "personal" && c.sandbox === false;
+  } catch {
+    /* a bad config is its own row */
+  }
   const turnedOff = Object.entries(own)
     .filter(([, a]) => a.sandbox === false)
     .map(([id]) => ({ id, ...(notes[id] ?? {}) }))
     .sort((a, b) => a.id.localeCompare(b.id));
   return {
     ...(turnedOff.length ? { turnedOff } : {}),
+    ...(personalOff ? { personalOff } : {}),
+    ...(mode ? { mode } : {}),
     fromBefore: fromBefore.length,
     ...(tmp.length ? { tmp } : {}),
     ...(leftoverTmp.length ? { leftoverTmp } : {}),
@@ -2892,6 +2910,35 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
 
 export function sandboxLines(r: SandboxReport): string[] {
   const out = ["Agent sandbox (agents can't write Den's state)"];
+  // Issue 1391: off by default on a personal install, so information, said
+  // once: nothing to turn on, and no agent outside it is a warning.
+  if (r.personalOff) {
+    out.push(
+      "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
+    );
+  } else {
+    if (r.mode === "strict")
+      out.push(
+        "  ℹ a strict install (install_mode: strict): the sandbox is on, and agents' held writes follow the approval policy",
+      );
+    else if (r.mode === "personal")
+      out.push(
+        "  ℹ a personal install, with the sandbox set on in config/local/user.yml",
+      );
+    sandboxOnLines(r, out);
+  }
+  // Issue 1325: where each session's own sockets and temp files go.
+  for (const t of r.tmp ?? [])
+    out.push(`  ✓ ${t.id}'s temp folder (TMPDIR, its own sockets): ${t.dir}`);
+  for (const dir of r.leftoverTmp ?? [])
+    out.push(
+      `  ⚠ ${dir} is an agent's temp folder no agent uses now: Den didn't see its agent's run end; it is safe to remove`,
+    );
+  return out;
+}
+
+/** The sandbox's lines where it is on by default (strict, or set on). */
+function sandboxOnLines(r: SandboxReport, out: string[]): void {
   // On by default: an agent outside it is a warning, never information.
   out.push(
     r.here.applied
@@ -2917,14 +2964,6 @@ export function sandboxLines(r: SandboxReport): string[] {
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
     out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);
-  // Issue 1325: where each session's own sockets and temp files go.
-  for (const t of r.tmp ?? [])
-    out.push(`  ✓ ${t.id}'s temp folder (TMPDIR, its own sockets): ${t.dir}`);
-  for (const dir of r.leftoverTmp ?? [])
-    out.push(
-      `  ⚠ ${dir} is an agent's temp folder no agent uses now: Den didn't see its agent's run end; it is safe to remove`,
-    );
-  return out;
 }
 
 /** D65 v2: doctor's lines on which repo each agent works on. */

@@ -69,6 +69,8 @@ describe("search", () => {
       [
         "agents",
         [
+          // Issue 1371 Part 2: Integrations names terminals.
+          "agents.settings_integrations",
           "agents.pane_reconnect",
           "agents.pane_reconnect_window",
           "agents.pane_reconnect_wait",

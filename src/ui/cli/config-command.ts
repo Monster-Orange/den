@@ -37,6 +37,8 @@ const KEY_ALIASES: Record<string, ConfigKey> = {
   editor_overrides: "editor_overrides",
   log_window_lines: "log_window_lines",
   log_window: "log_window_lines",
+  // Issue 1391: personal or strict.
+  install_mode: "install_mode",
 };
 
 /**
@@ -442,6 +444,8 @@ export async function cmdConfig(args: string[]): Promise<void> {
   }
   const key = canonicalKey(name);
   const value = parseValue(assignment.slice(eq + 1));
+  if (key === "install_mode" && value !== "personal" && value !== "strict")
+    throw new Error("install_mode is personal or strict");
   mergeUserConfig({ [key]: value } as Partial<UserConfig>);
   console.log(chalk.green(`  ✓ Set ${key}`));
 }

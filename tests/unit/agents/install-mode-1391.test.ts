@@ -1,22 +1,20 @@
 /**
- * Issue 1391: an install has a mode, `install.mode` in user.yml or the
- * distribution's den.yml: personal (one person's own machine; the
- * default) or strict (team and enterprise). Personal only when every
- * value set says personal, or none is set: "strict", or anything else
- * (a typo), is strict, and a team's den.yml can make it strict.
+ * Issue 1391: an install has a mode, `install_mode` in user.yml (PR 1394's
+ * readInstallMode): personal (one person's own machine; the default) or
+ * strict (team and enterprise).
  *
  * On a personal install an agent may read the install's own activity
- * trail (redacted, never editable); on a strict one the trail stays as
- * 0.4.88 left it: denied by the rules and unreadable in the sandbox.
- * Other installs' trails are denied in every mode. Read when an agent's
- * rules and sandbox are built: a change applies at its next start.
+ * trail (redacted, never editable), once the older trail is set aside;
+ * on a strict one the trail stays as 0.4.88 left it: denied by the rules
+ * and unreadable in the sandbox. A mode that can't be read counts as
+ * strict. Other installs' trails are denied in every mode. Read when an
+ * agent's rules and sandbox are built: a change applies at its next start.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
-  installModeOf,
   readAgentsConfig,
   type DenConfig,
   type UserConfig,
@@ -47,36 +45,19 @@ function tmp(): string {
   tmps.push(d);
   return d;
 }
-const den = (mode?: unknown) =>
-  (mode === undefined ? {} : { install: { mode } }) as unknown as DenConfig;
 const user = (mode?: unknown) =>
-  (mode === undefined ? {} : { install: { mode } }) as unknown as UserConfig;
+  (mode === undefined ? {} : { install_mode: mode }) as unknown as UserConfig;
 
 describe("issue 1391: the install's mode", () => {
-  it("unset is personal; personal is personal", () => {
-    expect(installModeOf(den(), user())).toBe("personal");
-    expect(installModeOf(den(), user("personal"))).toBe("personal");
-    expect(installModeOf(den("personal"), user())).toBe("personal");
+  it("readAgentsConfig carries it: unset is personal, strict is strict", () => {
+    expect(readAgentsConfig({} as DenConfig, user()).mode).toBe("personal");
+    expect(readAgentsConfig({} as DenConfig, user("strict")).mode).toBe(
+      "strict",
+    );
   });
 
-  it("strict anywhere is strict: a team's den.yml wins over user.yml's personal", () => {
-    expect(installModeOf(den(), user("strict"))).toBe("strict");
-    expect(installModeOf(den("strict"), user("personal"))).toBe("strict");
-  });
-
-  it("anything else fails closed to strict", () => {
-    expect(installModeOf(den(), user("Personal "))).toBe("strict");
-    expect(installModeOf(den(), user(true))).toBe("strict");
-    expect(installModeOf(den(null), user())).toBe("strict");
-  });
-
-  it("readAgentsConfig carries it", () => {
-    expect(readAgentsConfig(den(), user()).installMode).toBe("personal");
-    expect(readAgentsConfig(den("strict"), user()).installMode).toBe("strict");
-  });
-
-  it("setting_change on install.mode widens: only the person's own Allow runs it", () => {
-    expect(settingKind("install.mode").widens).toBe(true);
+  it("setting_change on install_mode widens: only the person's own Allow runs it", () => {
+    expect(settingKind("install_mode").widens).toBe(true);
     const dir = tmp();
     const deps: SettingChangeDeps = {
       userFile: path.join(dir, "config", "local", "user.yml"),
@@ -86,10 +67,10 @@ describe("issue 1391: the install's mode", () => {
       now: () => "2026-11-23T20:00:00.000Z",
     };
     fs.mkdirSync(path.dirname(deps.userFile), { recursive: true });
-    fs.writeFileSync(deps.userFile, "install:\n  mode: strict\n");
+    fs.writeFileSync(deps.userFile, "install_mode: strict\n");
     const c = checkSettingChange(
       deps,
-      { key: "install.mode", value: "personal", reason: "r" },
+      { key: "install_mode", value: "personal", reason: "r" },
       { agent: "planner" },
     );
     if (!c.ok) throw new Error(c.error);
@@ -163,7 +144,7 @@ describe("issue 1391: the trail by mode, in the sandbox", () => {
   describe("issue 1391: only once the older trail is set aside", () => {
     it("personal and set aside: readable; not set aside (the step failed), or strict: not", () => {
       const s = tmp();
-      const personal = { installMode: "personal" as const };
+      const personal = { mode: "personal" as const };
       expect(agentsMayReadTrail(personal, s)).toBe(false);
       fs.mkdirSync(path.join(s, AUDIT_SET_ASIDE_DIR));
       fs.writeFileSync(
@@ -171,7 +152,7 @@ describe("issue 1391: the trail by mode, in the sandbox", () => {
         "{}\n",
       );
       expect(agentsMayReadTrail(personal, s)).toBe(true);
-      expect(agentsMayReadTrail({ installMode: "strict" }, s)).toBe(false);
+      expect(agentsMayReadTrail({ mode: "strict" }, s)).toBe(false);
       expect(agentsMayReadTrail({}, s)).toBe(false);
     });
   });
