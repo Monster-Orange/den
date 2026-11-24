@@ -3209,6 +3209,8 @@
     "ap.det.gate_box_set.ssh_identity": "SSH key file: {v}",
     "ap.det.gate_box_set.playwright": "Playwright address: {v}",
     "ap.det.gate_box_set.slots": "Browser slots: {v}",
+    "ap.det.gate_box_set.cpu_slots":
+      "CPU slots (unit tests, lint: the tree is shipped over ssh): {v}",
     "ap.det.gate_box_set.hold_file": "Hold file: {v}",
     "ap.det.gate_box_set.time_scale": "Time scale: {v}",
     "ap.det.gate_box_set.playwright_version": "Playwright version: {v}",

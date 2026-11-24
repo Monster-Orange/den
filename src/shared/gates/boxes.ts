@@ -76,6 +76,11 @@ export interface GateBox {
   playwright?: string;
   /** Browser runs the box takes at once. */
   browser_slots: number;
+  /**
+   * Issue 790: cpu runs (unit tests, lint) the box takes at once, shipped
+   * over ssh. Absent or 0: it takes none.
+   */
+  cpu_slots?: number;
   /** A file on the box that, while present, stops new slots (ssh only). */
   hold_file?: string;
   /** Its browsers take this many times as long as this machine's. */
@@ -101,6 +106,7 @@ export interface GateBox {
 
 export const BOX_LIMITS = {
   browser_slots: { min: 1, max: 64 },
+  cpu_slots: { min: 0, max: 64 },
   ssh_port: { min: 1, max: 65535 },
   time_scale: { min: 1, max: 10 },
   min_free_mem_mb: { min: 0, max: 1024 * 1024 },
@@ -380,6 +386,7 @@ export function checkBox(
   }
   for (const k of [
     "browser_slots",
+    "cpu_slots",
     "ssh_port",
     "time_scale",
     "min_free_mem_mb",
@@ -399,6 +406,7 @@ export function checkBox(
         ok: false,
         error: `box ${name}: ${k} is ${k === "time_scale" ? "a number" : "a whole number"} from ${l.min} to ${l.max}`,
       };
+    if (k === "cpu_slots" && x === 0) continue; // issue 790: 0 is the default
     box[k] = x;
   }
   return { ok: true, box };
@@ -465,7 +473,10 @@ export interface BoxState {
 /** A box as the queue sees it at one assignment. */
 export interface BoxCap {
   name: string;
+  /** Browser runs at once. */
   slots: number;
+  /** Issue 790: cpu runs at once (0: none). */
+  cpuSlots?: number;
   /** Checked just now and open: a slot on it may be given. */
   open: boolean;
   /** Clause 11: its Playwright server's version, when set. */
@@ -479,6 +490,7 @@ export function boxCapOf(b: GateBox, open: boolean): BoxCap {
   return {
     name: b.name,
     slots: b.browser_slots,
+    cpuSlots: b.cpu_slots ?? 0,
     open,
     ...(b.playwright_endpoints
       ? { versions: Object.keys(b.playwright_endpoints) }
@@ -494,9 +506,18 @@ export function boxCapOf(b: GateBox, open: boolean): BoxCap {
  * 11), and the waiter doesn't hold it from the runs behind it.
  */
 function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
-  if (e.kind !== "browser") return ["local"];
   const w = e.where ?? "local";
   if (w === "local") return ["local"];
+  // Issue 790: a cpu run goes to a box with cpu slots (no Playwright).
+  if (e.kind === "cpu") {
+    const cpu = boxes.filter(
+      (b) =>
+        (b.cpuSlots ?? 0) > 0 && (!e.onlyBoxes || e.onlyBoxes.includes(b.name)),
+    );
+    if (w === "any") return ["local", ...cpu.map((b) => b.name)];
+    return cpu.some((b) => b.name === w) ? [w] : [];
+  }
+  if (e.kind !== "browser") return ["local"];
   // Issue 1033: a default pick names the boxes that can serve it.
   const fits = boxes.filter(
     (b) =>
@@ -551,10 +572,12 @@ export function assign(
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);
   const used: Record<string, number> = {};
-  for (const h of holders) if (h.box) used[h.box] = (used[h.box] ?? 0) + 1;
-  // Issue 751: this machine is reserved per kind; a box is browser only.
-  const key = (place: string, kind: GateEntry["kind"]) =>
-    place === "local" ? `local:${kind}` : place;
+  // Issue 790: a box's cpu and browser slots are counted apart.
+  const slot = (place: string, kind: GateEntry["kind"]) => `${place}:${kind}`;
+  for (const h of holders)
+    if (h.box) used[slot(h.box, h.kind)] = (used[slot(h.box, h.kind)] ?? 0) + 1;
+  // Issue 751: each place is reserved per kind.
+  const key = slot;
   const reserved = new Set<string>();
   const out: { id: string; box?: string }[] = [];
   const cap = (n: string) => boxes.find((b) => b.name === n);
@@ -565,7 +588,8 @@ export function assign(
     if (reserved.has(key(place, w.kind))) return false;
     if (place === "local") return !memHeld && room.fits(w);
     const b = cap(place);
-    return !!b && b.open && (used[place] ?? 0) < b.slots;
+    const n = w.kind === "cpu" ? (b?.cpuSlots ?? 0) : (b?.slots ?? 0);
+    return !!b && b.open && (used[slot(place, w.kind)] ?? 0) < n;
   };
   const held = windowHeld(entries, s.classes, now);
   // Issues 1009, 1048: a loaded machine: plain cpu asks wait; a release
@@ -573,8 +597,11 @@ export function assign(
   const cpuHeld = !!loadHold(entries, s, load, cores);
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
-    if (cpuHeld && w.kind === "cpu" && !w.priority) continue;
-    const places = placesOf(w, boxes);
+    // Issue 790: a loaded machine holds its own cpu room, not a box's.
+    const places = placesOf(w, boxes).filter(
+      (p) => !(cpuHeld && w.kind === "cpu" && !w.priority && p === "local"),
+    );
+    if (!places.length) continue;
     const at = places.find((p) => free(p, w));
     if (at === undefined) {
       for (const p of places) reserved.add(key(p, w.kind));
@@ -585,7 +612,7 @@ export function assign(
       room.take(w);
       out.push({ id: w.id });
     } else {
-      used[at] = (used[at] ?? 0) + 1;
+      used[slot(at, w.kind)] = (used[slot(at, w.kind)] ?? 0) + 1;
       out.push({ id: w.id, box: at });
     }
   }

@@ -392,12 +392,14 @@ describe("gate run and status with boxes", () => {
     expect(t.err.join("\n")).toMatch(/on box b1/);
   });
 
-  it("--box needs --kind browser", async () => {
+  // Issue 790: a cpu run may take a box too, one with cpu slots.
+  it("a cpu run's --box needs a box with cpu slots", async () => {
     const s = storeWith([box("b1")]);
     const t = deps(s.store);
     expect(
-      await cmdGate(["run", "--box", "any", "--", "npm", "test"], t.d),
+      await cmdGate(["run", "--box", "b1", "--", "npm", "test"], t.d),
     ).toBe(2);
+    expect(t.err.join("\n")).toMatch(/takes no cpu runs/);
   });
 
   it("status shows each slot's box, and a skipped box with why", async () => {

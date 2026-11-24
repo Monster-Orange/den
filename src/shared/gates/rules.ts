@@ -448,7 +448,8 @@ export function localRoom(
   const holders = entries.filter((e) => e.grantedAt);
   // Issue 625: a browser run on a test box doesn't hold this machine.
   let browser = holders.filter((e) => e.kind === "browser" && !e.box).length;
-  let cpu = holders.filter((e) => e.kind === "cpu").length;
+  // Issue 790: nor does a cpu run on a test box.
+  let cpu = holders.filter((e) => e.kind === "cpu" && !e.box).length;
   const local = holders.filter((e) => e.kind === "browser" && !e.box);
   let release = local.some((e) => !!e.priority);
   let draining: number | undefined;

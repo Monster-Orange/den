@@ -34,6 +34,13 @@ export function containsValue(
 const SECRET_KEY =
   "[\\w.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credentials?|cookie)[\\w.-]*";
 
+/**
+ * Secret-store references: op://, doppler://, vault://, keychain:… (also
+ * feedback.ts's redaction, and issue 790's box-run check).
+ */
+export const STORE_REF =
+  /\b(?:op|doppler|vault|keychain|bws|infisical|aws-sm|gcp-sm|azure-kv):\/\/[^\s"'`<>)]+/gi;
+
 interface Pattern {
   name: string;
   re: RegExp;
