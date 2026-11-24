@@ -41,6 +41,14 @@ export function fdIsFile(fd = 1): boolean {
 }
 
 /**
+ * Issue 1368: serverLog's own stdout line (web.log under `web up` and a
+ * service), passed through redactSecrets as every other log path is.
+ */
+export function stdoutLine(msg: string): string {
+  return `${redactSecrets(msg)}\n`;
+}
+
+/**
  * A writer for serverLog: (kind, text, onStdout), where `onStdout` says
  * whether serverLog already wrote the line to stdout.
  */
@@ -49,6 +57,9 @@ export function webLogWriter(o: {
   writeStdout: (s: string) => void;
   path: () => string;
 }): (kind: string, text: string, onStdout: boolean) => void {
+  // A web.log made wider before (another tool, an older Den) is
+  // tightened to 0600 on its first line here, once per file per run.
+  const tightened = new Set<string>();
   return (kind, text, onStdout) => {
     if (!WEB_LOG_KINDS.has(kind)) return;
     try {
@@ -60,6 +71,10 @@ export function webLogWriter(o: {
       const file = o.path();
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       fs.appendFileSync(file, line, { mode: 0o600 });
+      if (!tightened.has(file)) {
+        tightened.add(file);
+        fs.chmodSync(file, 0o600);
+      }
     } catch {
       // Best effort: the ring has the line.
     }

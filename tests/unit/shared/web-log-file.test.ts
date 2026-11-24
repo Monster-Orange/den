@@ -14,6 +14,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   WEB_LOG_KINDS,
+  stdoutLine,
   webLogPath,
   webLogWriter,
 } from "../../../src/shared/web-log-file.js";
@@ -94,6 +95,26 @@ describe("issue 1344: the server's own log file", () => {
       expect(got).toContain("failed:");
       expect(got).not.toContain("abcDEF123456");
     }
+  });
+
+  it("an existing web.log wider than 0600 is tightened on the first line", () => {
+    const x = writer(false);
+    fs.mkdirSync(path.dirname(x.file), { recursive: true });
+    fs.writeFileSync(x.file, "before\n", { mode: 0o644 });
+    fs.chmodSync(x.file, 0o644);
+    x.w("lifecycle", LINE, false);
+    expect(fs.statSync(x.file).mode & 0o777).toBe(0o600);
+    expect(x.onDisk()).toBe(`before\n${LINE}\n`);
+  });
+
+  it("issue 1368: the server's own stdout line is redacted too", () => {
+    const got = stdoutLine(
+      "failed: Authorization: Bearer abcDEF123456.xyz-_~+/=",
+    );
+    expect(got).toContain("failed:");
+    expect(got).not.toContain("abcDEF123456");
+    expect(got.endsWith("\n")).toBe(true);
+    expect(stdoutLine(LINE)).toBe(`${LINE}\n`);
   });
 
   it("a file it can't write never throws", () => {

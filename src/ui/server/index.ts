@@ -1009,7 +1009,8 @@ const toWebLog = webLogWriter({
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
   const onStdout = !SILENT && !outputLost();
-  if (onStdout) process.stdout.write(msg + "\n");
+  // Issue 1368: redacted, as every other log path is.
+  if (onStdout) process.stdout.write(stdoutLine(msg));
   toWebLog(kind, stripAnsi(msg), onStdout);
   if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
@@ -1582,6 +1583,7 @@ import {
 import { product } from "../../shared/product.js";
 import {
   fdIsFile,
+  stdoutLine,
   webLogPath,
   webLogWriter,
 } from "../../shared/web-log-file.js";
