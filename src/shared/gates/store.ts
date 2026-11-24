@@ -350,7 +350,10 @@ export interface GateSettingsRow {
 }
 
 /** A settings key's value in effect, as stored (true/false as 1/0). */
-function settingValue(s: GateSettings, key: string): number | string | null {
+export function gateSettingValue(
+  s: GateSettings,
+  key: string,
+): number | string | null {
   const camel = key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
   const v = (s as unknown as Record<string, unknown>)[camel];
   if (typeof v === "boolean") return v ? 1 : 0;
@@ -1215,8 +1218,8 @@ export class GateStore {
     const after = this.settings();
     const changes: Record<string, GateSettingChange> = {};
     for (const k of Object.keys(patch)) {
-      const from = settingValue(before, k);
-      const to = settingValue(after, k);
+      const from = gateSettingValue(before, k);
+      const to = gateSettingValue(after, k);
       if (from !== to) changes[k] = { from, to };
     }
     if (!Object.keys(changes).length) return;

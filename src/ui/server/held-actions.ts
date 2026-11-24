@@ -50,6 +50,7 @@
  *                     user.yml; a running one restarts after its turn on
  *                     the same conversation. Off is the person's own Allow
  *   setting_change    issue 1371: change one setting in user.yml
+ *   gate_settings_set issue 1395: change the gate's slot settings
  *                     (cli/setting-change.ts): only that key, a backup and
  *                     an audit line; a widening key is the person's own Allow
  *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
@@ -225,6 +226,8 @@ export interface HeldActionDeps {
   agentSandbox?: HeldOp;
   /** Issue 1371: setting_change's check and write (cli/setting-change.ts). */
   settingChange?: HeldOp;
+  /** Issue 1395: gate_settings_set's check and write (gates/settings-set.ts). */
+  gateSettings?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
@@ -729,6 +732,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.settingChange,
     "this Den can't change its settings here",
   );
+  const gateSettings = op(
+    d.gateSettings,
+    "this Den can't change its gate settings here",
+  );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
   const appKeyCreate = op(
     d.appKeys?.create,
@@ -1121,6 +1128,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
     gate_box_set: gateBoxSet,
+    gate_settings_set: gateSettings,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
     test_person_setup: d.testPersonSetup ?? {

@@ -130,6 +130,10 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "ask",
     why: "a setting that widens what agents can do needs the person's own Allow (issue 1371); every other one asks until the person chooses per category",
   },
+  gate_settings_set: {
+    risk: "widens",
+    why: "a gate setting that widens what agents may do (gate.priority_agents) needs the person's own Allow on a strict install; the rest follow the person's choice for Limits and performance (issue 1395)",
+  },
   agent_sandbox_set: {
     personal: "keep",
     risk: "widens",
@@ -590,7 +594,9 @@ export function policyFor(
   if (pinned) return { kind: "ask", from: `favorited ${pinned}` };
   // Issue 1371 Part 2: a setting follows the person's choice for its
   // category (one setting for the install), else the mode's default.
-  if (action === "setting_change" && o.setting) {
+  // Issue 1395: any write that names its setting's category (setting_change,
+  // gate_settings_set).
+  if (o.setting) {
     const c = settingChoice(o.setting.category, mode, o.install?.settings);
     return c.choice === "auto"
       ? { kind: "notify", from: c.from }

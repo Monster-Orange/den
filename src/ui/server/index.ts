@@ -1431,7 +1431,13 @@ import {
   checkSettingChange,
   runSettingChange,
   settingChangeDeps,
+  settingKind,
 } from "../cli/setting-change.js";
+import {
+  checkGateSettingsSet,
+  runGateSettingsSet,
+  type GateSettingsSetDeps,
+} from "../../shared/gates/settings-set.js";
 import {
   approvalsView,
   patchApprovals,
@@ -5266,6 +5272,7 @@ function approvalDeps(): ApprovalDeps {
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
     settingChange: settingChangeHeldOp(),
+    gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5513,6 +5520,38 @@ function settingChangeHeldOp() {
     },
     run: async (a: Record<string, unknown>, asked?: { agent?: string }) =>
       runSettingChange(deps(), a, asked),
+  };
+}
+
+/**
+ * Issue 1395: gate_settings_set on this install: the gate's settings in
+ * effect, the install's mode and the person's Limits choice (read per
+ * ask), and the gate's one writer under its lock.
+ */
+function gateSettingsHeldOp() {
+  const deps = (): GateSettingsSetDeps => {
+    const user = readUserConfig();
+    // A bad install_mode is strict, as setting_change reads it.
+    let mode: InstallMode = "strict";
+    try {
+      mode = readInstallMode(user);
+    } catch {
+      mode = "strict";
+    }
+    return {
+      settings: () => gates().settings(),
+      write: async (patch, by) => {
+        await gateLocked(() => gates().writeSettings(patch, by));
+      },
+      installMode: () => mode,
+      kind: (key) => settingKind(key, mode),
+      choices: () => readPolicySetting(user.approvals)?.settings,
+    };
+  };
+  return {
+    check: (a: Record<string, unknown>) => checkGateSettingsSet(deps(), a),
+    run: async (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runGateSettingsSet(deps(), a, asked),
   };
 }
 

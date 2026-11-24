@@ -3385,6 +3385,10 @@
     "ap.det.setting_change.now": "Now: {value}",
     "ap.det.setting_change.new": "New: {value}",
     "ap.det.setting_change.why": "Why: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Why: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den writes these in the gates folder's settings.json, under the gate's lock, and nothing else there.",
     "ap.det.setting_change.by": "Asked by {agent}",
     "ap.det.setting_change.writes":
       "Den writes only {key} in config/local/user.yml, keeps a copy of the file first, and notes the change in the audit.",
@@ -3394,6 +3398,9 @@
     "ap.do.setting_change": "Change {key}: {now} → {value}",
     "ap.do.setting_change.loosens":
       "This widens what agents can do: {key}: {now} → {value}",
+    "ap.do.gate_settings_set": "Change gate settings: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "This widens what agents can do: gate settings {keys}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",

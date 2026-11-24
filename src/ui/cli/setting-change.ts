@@ -94,7 +94,53 @@ export interface SettingKind {
  * widens what agents can do (a test places every key setting_change takes
  * on this list or WIDENING_SETTINGS).
  */
+/**
+ * Issue 1395: the gate's slot settings (gate_settings_set), each by name:
+ * Settings › Gate's keys (GATE_LIMITS, GATE_TEXT). Scheduling on this
+ * machine; gate.priority_agents widens (WIDENING_SETTINGS). A new gate
+ * key is placed here by hand (a test checks every one is).
+ */
+export const GATE_SETTING_KEYS: readonly string[] = [
+  "gate.cpu_slots",
+  "gate.cpu_slots_beside_browser",
+  "gate.cpu_slots_beside_release_browser",
+  "gate.local_browser_slots",
+  "gate.cpu_hold_load",
+  "gate.load_hold_per_core",
+  "gate.max_start_load",
+  "gate.max_start_wait_minutes",
+  "gate.reap_grace_seconds",
+  "gate.memory_free_min_percent",
+  "gate.swap_hold_gb",
+  "gate.memory_reading_keep_seconds",
+  "gate.vm_memory_share",
+  "gate.overrun_margin_minutes",
+  "gate.overrun_bell_multiple",
+  "gate.remote_renew_seconds",
+  "gate.remote_lapse_seconds",
+  "gate.remote_max_slots",
+  "gate.remote_max_asks",
+  "gate.priority_max",
+  "gate.priority_pass_limit_minutes",
+  "gate.priority_agents",
+  "gate.priority_runners",
+  "gate.claim_minutes",
+  "gate.mcp_renew_minutes",
+  "gate.mcp_lapse_minutes",
+  "gate.mcp_grace_minutes",
+  "gate.waiter_return_minutes",
+  "gate.box_check_timeout_seconds",
+  "gate.box_recheck_seconds",
+  "gate.browser_requires_container",
+  "gate.class_order",
+  "gate.class_map",
+  "gate.class_windows",
+  "gate.browser_box_default",
+  "gate.browser_host_only",
+];
+
 export const NARROW_SETTINGS: readonly string[] = [
+  ...GATE_SETTING_KEYS.filter((k) => k !== "gate.priority_agents"),
   "cli_tabs",
   "log_window_lines",
   "panes.reconnect_seconds",
@@ -185,6 +231,8 @@ export const WIDENING_SETTINGS: readonly string[] = [
   ...USER_ONLY_WIDENING,
   // Issue 1391: the install's mode (personal opens it up).
   "install_mode",
+  // Issue 1395: lets agents take release priority over people.
+  "gate.priority_agents",
   // Vision's ruling (issue 1391): Settings' own fields an agent may ask for.
   "agents.default_mode",
   "server_agent.self_update",
@@ -230,6 +278,8 @@ export const WIDENING_SETTINGS: readonly string[] = [
  * absolute path to a program).
  */
 export const ROUTINE_ON_PERSONAL: readonly string[] = [
+  // Issue 1395: every gate key, on the person's own machine.
+  ...GATE_SETTING_KEYS,
   "editor",
   "terminal",
   "editor_overrides",
