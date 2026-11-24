@@ -14,7 +14,12 @@
  * - A thread comment Hub already delivered (a mention) is passed over.
  * - Hub has no ack for inbox items: none is sent.
  * - Hub not answering: the next read waits twice as long, up to
- *   hub.inbox_backoff_max_seconds; one log line per bad spell.
+ *   hub.inbox_backoff_max_seconds, plus up to a quarter more by chance so
+ *   installs don't come back together; one log line per bad spell.
+ * - 2026-11-22: the install reads at most hub.inbox_reads_per_second
+ *   (default 2), whatever its number of agents, and each agent at most once
+ *   per hub.inbox_poll_seconds counted from when its last read ended. A
+ *   slow Hub then slows the reads instead of running them back to back.
  *
  * No timers of its own: tick() is called on a beat and reads when due.
  */
@@ -198,7 +203,12 @@ export interface InboxSettings {
   on: boolean;
   pollSeconds: number;
   backoffMaxSeconds: number;
+  /** hub.inbox_reads_per_second: the whole install's reads (default 2). */
+  readsPerSecond?: number;
 }
+
+/** The install's inbox reads a second when the setting is left out. */
+export const INBOX_READS_PER_SECOND = 2;
 
 export interface InboxWatchDeps {
   /** Hub's inbox answer for one agent; throws when Hub doesn't answer. */
@@ -213,6 +223,8 @@ export interface InboxWatchDeps {
   /** Where the watcher keeps when it first ran. */
   stateFile: string;
   now?: () => number;
+  /** In [0, 1): spreads backoffs (tests pin it). */
+  random?: () => number;
   log?: (line: string) => void;
   /**
    * #65: the kinds Hub's own delivery feed carries now (whoami features);
@@ -236,14 +248,22 @@ export function feedKinds(
 }
 
 export class InboxWatcher {
+  /** No read at all before this (a backoff after Hub didn't answer). */
   private nextAt = 0;
+  /** Each agent's next read, from when its last read ended. */
+  private readonly due = new Map<string, number>();
+  /** Reads the install may make now (refilled at readsPerSecond). */
+  private tokens = -1;
+  private refilledAt = 0;
   private failures = 0;
   private busy = false;
   private since: number;
   private readonly now: () => number;
+  private readonly random: () => number;
 
   constructor(private readonly d: InboxWatchDeps) {
     this.now = d.now ?? Date.now;
+    this.random = d.random ?? Math.random;
     this.since = this.readSince();
   }
 
@@ -281,9 +301,36 @@ export class InboxWatcher {
     if (!s.on || this.busy) return;
     const now = this.now();
     if (now < this.nextAt) return;
+    const rate =
+      typeof s.readsPerSecond === "number" &&
+      Number.isFinite(s.readsPerSecond) &&
+      s.readsPerSecond > 0
+        ? s.readsPerSecond
+        : INBOX_READS_PER_SECOND;
+    // At most two seconds' worth at once (Den's beat is 2 s).
+    const burst = Math.max(1, rate * 2);
+    this.tokens =
+      this.tokens < 0
+        ? burst
+        : Math.min(
+            burst,
+            this.tokens + ((now - this.refilledAt) / 1000) * rate,
+          );
+    this.refilledAt = now;
     this.busy = true;
     try {
-      for (const agent of this.d.agents()) {
+      const agents = this.d.agents();
+      const live = new Set(agents);
+      for (const a of [...this.due.keys()])
+        if (!live.has(a)) this.due.delete(a);
+      // Longest waiting first; a new agent (never read) before all.
+      const ready = agents
+        .map((a, i) => ({ a, i, at: this.due.get(a) ?? 0 }))
+        .filter((x) => x.at <= now)
+        .sort((x, y) => x.at - y.at || x.i - y.i);
+      for (const { a: agent } of ready) {
+        if (this.tokens < 1) break;
+        this.tokens -= 1;
         let body: unknown;
         try {
           body = await this.d.fetchInbox(agent);
@@ -297,14 +344,15 @@ export class InboxWatcher {
             s.pollSeconds * 1000 * 2 ** this.failures,
             Math.max(s.backoffMaxSeconds, s.pollSeconds) * 1000,
           );
-          this.nextAt = now + wait;
+          this.nextAt = now + wait * (1 + this.random() * 0.25);
           return;
         }
+        // Counted from when the read ended: a slow Hub never means back to back.
+        this.due.set(agent, this.now() + s.pollSeconds * 1000);
+        if (this.failures) this.d.log?.("hub inbox: Hub answers again");
+        this.failures = 0;
         for (const e of parseInbox(body, agent)) await this.handle(e);
       }
-      if (this.failures) this.d.log?.("hub inbox: Hub answers again");
-      this.failures = 0;
-      this.nextAt = now + s.pollSeconds * 1000;
     } catch (e) {
       this.d.log?.(
         `hub inbox: ${String((e as Error)?.message ?? e).slice(0, 200)}`,

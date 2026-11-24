@@ -679,6 +679,13 @@ export interface WorkspaceServiceEntry {
 
 export interface WorkspaceConfig {
   /**
+   * Issue 1215: true only on a project a test install's fixture person
+   * made through the server; the only projects it may activate, deactivate
+   * or delete. Written only by createWorkspace's fixtureMade option; a
+   * seed, a person's create, the CLI or a hand edit never carries it.
+   */
+  fixture_made?: true;
+  /**
    * D70: the name the person typed ("back office"), when it isn't the key.
    * The key is its slug ("back-office"): paths, URLs and the CLI use it.
    */

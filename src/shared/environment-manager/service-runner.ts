@@ -82,6 +82,7 @@ import {
   processGroupStateSync,
   recordProcessGroup,
   stopProcessGroup,
+  type LinuxStart,
   type RecordedProcessGroup,
 } from "../process/process-group.js";
 import { writeFileAtomic } from "../atomic-write.js";
@@ -133,6 +134,12 @@ export interface DaemonRecord {
    * reused pid is never signalled.
    */
   pgidStartedAt?: string;
+  /**
+   * Issue 639: on Linux, the leader's start in clock ticks and the boot id
+   * (process-group.ts LinuxStart). `down` checks these, which don't move
+   * when time sync steps the clock; records without them use the lstart.
+   */
+  pgidLinuxStart?: LinuxStart;
   /**
    * A pid some writers before 0.3.0-dev.37 kept. Only a hint for adopting
    * such a record (legacy-adopt.ts); never signalled on its own.
@@ -361,6 +368,7 @@ export function updateDaemonProcessGroup(
     ...existing,
     pgid: group.pgid,
     pgidStartedAt: group.startedAt,
+    ...(group.linuxStart ? { pgidLinuxStart: group.linuxStart } : {}),
   });
   saveDaemonsFile(getDaemonsFile());
 }
@@ -373,6 +381,7 @@ function clearDaemonProcessGroup(address: string): void {
   const rest = { ...existing };
   delete rest.pgid;
   delete rest.pgidStartedAt;
+  delete rest.pgidLinuxStart;
   _daemonRegistry.set(address, rest);
   saveDaemonsFile(getDaemonsFile());
 }
@@ -1439,6 +1448,31 @@ function downGraceMs(): number {
 
 type GroupRecord = DaemonRecord & { pgid: number; pgidStartedAt: string };
 
+/** Issue 639: a record's process group, with its ticks when it has them. */
+export function groupOf(
+  d: Pick<DaemonRecord, "pgidLinuxStart"> & {
+    pgid: number;
+    pgidStartedAt: string;
+  },
+): RecordedProcessGroup {
+  return {
+    pgid: d.pgid,
+    startedAt: d.pgidStartedAt,
+    ...(isLinuxStart(d.pgidLinuxStart) ? { linuxStart: d.pgidLinuxStart } : {}),
+  };
+}
+
+/** A LinuxStart as read back from the file (strings only). */
+function isLinuxStart(v: unknown): v is LinuxStart {
+  const o = v as Partial<LinuxStart> | null | undefined;
+  return (
+    !!o &&
+    typeof o === "object" &&
+    typeof o.ticks === "string" &&
+    typeof o.bootId === "string"
+  );
+}
+
 /** Whether a record carries a process group `down` can verify and signal. */
 function hasProcessGroup(d: DaemonRecord | undefined): d is GroupRecord {
   return !!d && typeof d.pgid === "number" && !!d.pgidStartedAt;
@@ -1453,10 +1487,7 @@ async function stopDaemonProcessGroup(
   record: GroupRecord,
   onLine: (line: string) => void,
 ): Promise<DownOutcome> {
-  const result = await stopProcessGroup(
-    { pgid: record.pgid, startedAt: record.pgidStartedAt },
-    downGraceMs(),
-  );
+  const result = await stopProcessGroup(groupOf(record), downGraceMs());
   switch (result.outcome) {
     case "stopped":
       onLine(

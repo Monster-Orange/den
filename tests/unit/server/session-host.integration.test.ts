@@ -290,6 +290,42 @@ describe("before the named address is known to work (no lockout)", () => {
   });
 });
 
+describe("issue 1299: a held sessions lock never stalls the server", () => {
+  it("a sign-in waits for the lock, while another request answers at once", async () => {
+    // Another live process (this test) holds the lock.
+    const lock = path.join(stateDir, "web-sessions.lock");
+    fs.writeFileSync(lock, `${process.pid}\n`, { mode: 0o600 });
+    try {
+      let answeredAt = 0;
+      const signIn = call("GET", `/auth?c=${encodeURIComponent(code())}`, {
+        ...local(),
+        ...nav,
+      }).then((r) => {
+        answeredAt = Date.now();
+        return r;
+      });
+      await new Promise((r) => setTimeout(r, 100));
+      const t0 = Date.now();
+      const other = await call("GET", "/api/session", {
+        ...local(),
+        "sec-fetch-site": "same-origin",
+      });
+      expect(other.status).toBeGreaterThan(0);
+      expect(Date.now() - t0).toBeLessThan(100);
+      // The sign-in is still waiting; the holder lets go and it goes on
+      // (what it answers then is this file's sign-in rules, never a 503).
+      expect(answeredAt).toBe(0);
+      const letGo = Date.now();
+      fs.unlinkSync(lock);
+      const r = await signIn;
+      expect(answeredAt).toBeGreaterThanOrEqual(letGo);
+      expect(r.status).not.toBe(503);
+    } finally {
+      fs.rmSync(lock, { force: true });
+    }
+  });
+});
+
 describe("on the named https address", () => {
   it("the sign-in sets a __Host- cookie: host-only, Secure, Path=/", async () => {
     // Issue 819: the link's device, approved, then its page's poll.

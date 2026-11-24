@@ -190,6 +190,16 @@ describe("the fixture sign-in code", () => {
   });
 });
 
+describe("issue 1391: the two requests open only on a test install", () => {
+  it("a real install makes no fixture session to use them", () => {
+    const real = fixtureLoginLink(tmp, {
+      testInstall: false,
+      origin: "https://den.example.test",
+    });
+    expect(real.ok ? "" : real.code).toBe("not_test_install");
+  });
+});
+
 describe("a fixture session's lifetime", () => {
   const MIN = 60_000;
   it("has a short default", () => {
@@ -228,6 +238,18 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["POST", "/api/session/logout", "mutating"],
     ["POST", "/api/notifications/read", "mutating"],
     ["POST", "/api/workspaces/notes/agents/a1/stop", "mutating"],
+    // Issue 1215: a live check makes, activates, deactivates and removes
+    // its own project (test installs only: a fixture session exists only
+    // there, and the route checks the mark again).
+    ["POST", "/api/workspaces/create", "mutating"],
+    ["POST", "/api/workspaces", "mutating"],
+    ["DELETE", "/api/workspaces", "mutating"],
+    // Issue 1391 (the bed's 542): the signed-in person lists repos. A
+    // read, though it runs gh (the route table classes it mutating).
+    ["GET", "/api/github/repos", "mutating"],
+    // Issue 1391 (the bed's 573): checks posted manifest text, writes
+    // nothing.
+    ["POST", "/api/manifest/validate", "mutating"],
   ] as const)("%s %s passes", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toBeNull();
   });
@@ -247,10 +269,18 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["GET", "/api/hub/github", "readonly"],
     ["GET", "/api/web/sessions", "shell-grade"],
     ["GET", "/api/nowhere", null],
-    ["DELETE", "/api/workspaces", "mutating"],
+    // Issue 1215: the rest of the project family stays the person's.
+    ["POST", "/api/workspaces/rename", "mutating"],
+    ["POST", "/api/workspaces/settings", "mutating"],
+    ["POST", "/api/workspaces/services", "mutating"],
+    ["POST", "/api/workspaces/notes/hub-create", "mutating"],
     // Hardening: agent writes that are refused to a fixture session anyway.
     ["POST", "/api/workspaces/notes/agents/a1/say", "mutating"],
     ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],
+    // Issue 1391: only the list and the posted check, nothing near them.
+    ["GET", "/api/github/branches", "mutating"],
+    ["GET", "/api/manifest/validate", "mutating"],
+    ["POST", "/api/github/repos", "mutating"],
   ] as const)("%s %s is refused", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toMatch(/fixture person/);
   });
