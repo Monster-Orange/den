@@ -2969,6 +2969,19 @@
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
     "bell.ap.done": "Permitido: {what}",
+    "rs.now": "{id}: reiniciando ahora, en la misma conversación.",
+    "rs.turn":
+      "{id}: se reinicia cuando termine su turno, en la misma conversación.",
+    "rs.job":
+      "{id}: en espera: un trabajo en segundo plano ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den no sabe cuándo termina su turno, así que aún no se reinicia.",
+    "rs.nowJob": "Reiniciar ahora (termina el trabajo)",
+    "rs.nowBtn": "Reiniciar ahora",
+    "rs.all": "Reiniciar los {n} ahora",
+    "rs.none": "Ningún agente necesita reiniciarse.",
+    "rs.done": "{id}: reiniciado, en la misma conversación.",
+    "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":

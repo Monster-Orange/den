@@ -144,6 +144,7 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
+  restartMany,
   askAboutJob,
   staleAgents,
   agentHelpers,
@@ -3119,20 +3120,37 @@ async function staleRoute(
     );
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
-        d,
-        a.id,
-        a.workspace,
-        "after-turn",
-        deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
-      );
-    }
-    sendJson(res, { ok: true, pending: list }, 202);
+    // Issue 1407: each agent is checked first and answered for: restarting
+    // now, after its turn, a background job (what, how long) or can't
+    // tell. Only the first two restart; the person decides the others
+    // (Restart now). How each restart ended reaches the trail.
+    const one = (id: string, ws: string) =>
+      `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
+    const plan = await restartMany(
+      d,
+      list.map((a) => ({ id: a.id, workspace: a.workspace })),
+      {
+        ...(deps.personaWait ?? {}),
+        onDone: (o) =>
+          o.outcome === "restarted"
+            ? audit(one(o.id, o.workspace))
+            : audit(
+                one(o.id, o.workspace),
+                o.outcome === "job"
+                  ? `a background job is still running (${o.job?.command ?? "?"}, ${o.job?.minutes ?? 0} min)`
+                  : (o.error ?? "not restarted"),
+              ),
+      },
+    );
+    for (const p of plan)
+      if (p.state === "job" || p.state === "unknown")
+        audit(
+          one(p.id, p.workspace),
+          p.state === "job"
+            ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
+            : "waits for the person: Den can't tell when its turn ends",
+        );
+    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);

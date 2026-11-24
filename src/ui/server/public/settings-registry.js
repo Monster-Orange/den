@@ -6538,6 +6538,102 @@ export function restartOfferHtml(all) {
   );
 }
 
+/**
+ * Issue 1407: each agent's answer after "Restart N agents at their next
+ * idle" (restart-stale's `agents`): restarting now, after its turn,
+ * waiting on a background job (what, how long) or can't tell. Those that
+ * wait on the person get Restart now; two or more, Restart all now.
+ */
+export function restartResultHtml(agents, t) {
+  const list = Array.isArray(agents) ? agents : [];
+  if (!list.length)
+    return `<p class="set-note" role="status" data-rs-result="0">${escR(t("rs.none"))}</p>`;
+  const waits = list.filter((a) => a.state === "job" || a.state === "unknown");
+  const rows = list
+    .map((a) => {
+      const id = String(a.id ?? "");
+      const line =
+        a.state === "job"
+          ? t("rs.job", {
+              id,
+              cmd: String(a.job?.command ?? ""),
+              min: Number(a.job?.minutes) || 0,
+            })
+          : a.state === "unknown"
+            ? t("rs.unknown", { id })
+            : a.state === "turn"
+              ? t("rs.turn", { id })
+              : t("rs.now", { id });
+      const btn =
+        a.state === "job" || a.state === "unknown"
+          ? `<button type="button" class="den-btn sm" data-rs-now="${escR(id)}" data-rs-ws="${escR(String(a.workspace ?? ""))}">${escR(t(a.state === "job" ? "rs.nowJob" : "rs.nowBtn"))}</button>`
+          : "";
+      return `<div class="hub-rs-row" data-rs-agent="${escR(id)}" data-rs-state="${escR(String(a.state ?? ""))}"><span class="set-note" data-rs-line>${escR(line)}</span>${btn}</div>`;
+    })
+    .join("");
+  const all =
+    waits.length >= 2
+      ? `<button type="button" class="den-btn sm primary" data-rs-all>${escR(t("rs.all", { n: waits.length }))}</button>`
+      : "";
+  return `<div role="status" data-rs-result="${list.length}">${rows}${all}</div>`;
+}
+
+/**
+ * Issue 1407: Restart now for one agent (the agent route's when: now,
+ * which ends a job it left running), busy in its own button; its line
+ * then says how it went.
+ */
+async function restartNowRow(ctx, btn) {
+  const t = (k, v) => ctx.shell.t(k, v);
+  const id = btn.dataset.rsNow;
+  const ws = btn.dataset.rsWs;
+  const row = btn.closest("[data-rs-agent]");
+  const run = (headers) =>
+    ctx.shell.api(
+      "POST",
+      `/api/workspaces/${encodeURIComponent(ws)}/agents/${encodeURIComponent(id)}/restart`,
+      { when: "now" },
+      { headers },
+    );
+  let ok = false;
+  try {
+    ok = Boolean(
+      ctx.shell.busyAction
+        ? await ctx.shell.busyAction("restart-agent", run, {
+            button: btn,
+            vars: { name: id },
+          })
+        : await run({}),
+    );
+  } catch {
+    ok = false;
+  }
+  const line = row?.querySelector("[data-rs-line]");
+  if (line) line.textContent = t(ok ? "rs.done" : "rs.failed", { id });
+  if (row) row.dataset.rsState = ok ? "done" : "failed";
+  if (ok) btn.remove();
+  return ok;
+}
+
+/** Issue 1407: wire the per-agent result's Restart now and Restart all now. */
+function wireRestartResult(box, ctx) {
+  box.querySelectorAll("[data-rs-now]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await restartNowRow(ctx, b);
+      if (box.querySelectorAll("[data-rs-now]").length < 2)
+        box.querySelector("[data-rs-all]")?.remove();
+    }),
+  );
+  const all = box.querySelector("[data-rs-all]");
+  all?.addEventListener("click", async () => {
+    all.disabled = true;
+    all.setAttribute("aria-busy", "true");
+    for (const b of [...box.querySelectorAll("[data-rs-now]")])
+      await restartNowRow(ctx, b);
+    all.remove();
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6552,12 +6648,11 @@ function offerRestart(host, ctx, fresh) {
         ctx.shell
           .api("POST", "/api/agents/restart-stale", { only: "hub" })
           .then((x) => {
-            const k = Array.isArray(x?.pending) ? x.pending.length : 0;
-            box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
-              k === 1
-                ? "1 agent restarts at its next idle, in the same conversation."
-                : `${k} agents restart at their next idle, each in the same conversation.`,
-            )}</p>`;
+            // Issue 1407: each agent's own answer, never a fixed line.
+            box.innerHTML = restartResultHtml(x?.agents, (k, v) =>
+              ctx.shell.t(k, v),
+            );
+            wireRestartResult(box, ctx);
           })
           .catch((e) => {
             btn.disabled = false;
