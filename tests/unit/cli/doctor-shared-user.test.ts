@@ -34,7 +34,12 @@ const install = (name: string) => {
 };
 const reg = () => path.join(root, "installs");
 const rows = (stateDir: string) =>
-  sharedUserLines("Den", { stateDir, registry: reg(), home: root });
+  sharedUserLines("Den", {
+    stateDir,
+    registry: reg(),
+    home: root,
+    serverRunning: () => false,
+  });
 const check = (r: ReturnType<typeof rows>, id: string) =>
   r.checks.find((c) => c.id === id)!;
 
@@ -62,11 +67,43 @@ describe("issue 728: doctor's same-login rows", () => {
     expect(r.lines.join("\n")).not.toContain("other-install");
   });
 
-  it("this install not in the registry: a warning that it registers at its next start", () => {
+  it("this install not in the registry while its server runs: a warning", () => {
     const own = install("own");
-    const s = check(rows(own), "install_registry");
+    const s = check(
+      sharedUserLines("Den", {
+        stateDir: own,
+        registry: reg(),
+        home: root,
+        serverRunning: () => true,
+      }),
+      "install_registry",
+    );
     expect(s.status).toBe("warn");
+    expect(s.detail).toMatch(/isn't in the install registry/);
+  });
+
+  it("a fresh install (its server never started): ok, it registers at its next start", () => {
+    const own = install("own");
+    const s = check(
+      sharedUserLines("Den", {
+        stateDir: own,
+        registry: reg(),
+        home: root,
+        serverRunning: () => false,
+      }),
+      "install_registry",
+    );
+    expect(s.status).toBe("ok");
     expect(s.detail).toMatch(/next start/);
+  });
+
+  it("the activity trail is denied to agents, so it is never listed; process records (pids only) aren't counted", () => {
+    const own = install("own");
+    registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
+    put(own, "audit.jsonl");
+    put(own, "den-procs/server-123.json");
+    const s = check(rows(own), "uncovered_files");
+    expect(s.status).toBe("ok");
   });
 
   it("a 0600 file the deny rules don't cover: named by its path in the state folder, never read", () => {
