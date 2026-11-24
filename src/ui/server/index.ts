@@ -1450,6 +1450,7 @@ import {
   checkSettingChange,
   runSettingChange,
   settingChangeDeps,
+  personSetCaps,
   undoSettingChange,
 } from "../cli/setting-change.js";
 import {
@@ -5531,8 +5532,15 @@ function settingChangeHeldOp() {
       const { text: _t, before: _b, kind: _k, ...card } = c;
       return card;
     },
-    run: async (a: Record<string, unknown>, asked?: { agent?: string }) =>
-      runSettingChange(deps(), a, asked),
+    // Issue 1391: who decided (auto:… is the policy) moves a cap's baseline.
+    run: async (
+      a: Record<string, unknown>,
+      asked?: { agent?: string; decidedBy?: string },
+    ) =>
+      runSettingChange(deps(), a, {
+        ...(asked?.agent ? { agent: asked.agent } : {}),
+        ...(asked?.decidedBy ? { decidedBy: asked.decidedBy } : {}),
+      }),
   };
 }
 
@@ -5610,6 +5618,14 @@ function denModeConfig(): Pick<DenConfig, "install_mode"> {
     return { install_mode: readDenConfig().install_mode };
   } catch {
     return { install_mode: "strict" };
+  }
+}
+/** Issue 1391: Den's config for the caps' values in force ({} unreadable). */
+function denForCaps(): DenConfig {
+  try {
+    return readDenConfig();
+  } catch {
+    return {} as DenConfig;
   }
 }
 /** Issue 1391: the install's mode (den.yml and user.yml); never throws. */
@@ -10165,10 +10181,10 @@ async function handleRequest(
       );
     let id = "";
     try {
-      const b = JSON.parse((await readBody(req)) || "{}") as {
-        approval?: unknown;
-      };
-      id = typeof b.approval === "string" ? b.approval.trim() : "";
+      // Reviewer C: a small body, capped (null: too big).
+      const raw = await readBodyCapped(req, GRANT_BODY_MAX);
+      const b = JSON.parse(raw ?? "null") as { approval?: unknown } | null;
+      id = typeof b?.approval === "string" ? b.approval.trim() : "";
     } catch {
       id = "";
     }
@@ -10730,6 +10746,8 @@ async function handleRequest(
             delete user.editor_overrides;
           }
         }
+        // Issue 1391: a cap the person moved here takes it as its baseline.
+        personSetCaps(readUserConfig(), user, denForCaps());
         writeUserConfig(user);
         if (hubSaved) {
           const saved = hubSaved;

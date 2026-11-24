@@ -28,8 +28,10 @@ import * as yaml from "yaml";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import {
   configuredRuntimeCatalog,
+  agentsResume,
   readAgentsConfig,
   readDenConfig,
+  readSessionsConfig,
   readInstallMode,
   readMcpConfig,
   USER_ONLY_WIDENING,
@@ -47,13 +49,13 @@ import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { checkIntent } from "../../shared/agents/permissions.js";
 import { parseMachineName } from "../../shared/cli-command.js";
-import { patchEditorOpen } from "../server/editor-open-pref.js";
-import { patchEmbed } from "../server/embed-settings.js";
+import { patchEditorOpen } from "../../shared/editor-open-pref.js";
+import { patchEmbed } from "../../shared/embed-settings.js";
 import {
   isKnownEditorKey,
   isKnownTerminalKey,
   SUPPORTED_LANGUAGES,
-} from "../server/editor-manager.js";
+} from "../../shared/editor-catalog.js";
 import { plainText } from "../../shared/agents/sandbox-set.js";
 import {
   line,
@@ -1081,11 +1083,111 @@ function readDoc(file: string): yaml.Document {
  * Checks `key = value` against what Den reads; the card, the args and the
  * file as it will be written when it is fine. Writes nothing.
  */
+/**
+ * Issue 1391 (Den Builder): the concurrency caps. An agent may raise one,
+ * without asking, up to twice its baseline: the last value the person set
+ * or allowed (setting_baselines in user.yml), else the value in force
+ * before any agent's routine raise. Lowering is always routine. 0 is no
+ * limit, above any baseline.
+ */
+export const CAP_KEYS = [
+  "agents.max_concurrent",
+  "sessions.max_concurrent",
+  "agents.resume.load_ceiling",
+] as const;
+
+const isCap = (key: string): key is (typeof CAP_KEYS)[number] =>
+  (CAP_KEYS as readonly string[]).includes(key);
+
+/** A cap's value in force (defaults resolved); undefined when unreadable. */
+function capInForce(
+  key: (typeof CAP_KEYS)[number],
+  den: DenConfig,
+  user: UserConfig,
+): number | undefined {
+  try {
+    if (key === "agents.max_concurrent")
+      return readAgentsConfig(den, user).maxConcurrent;
+    if (key === "sessions.max_concurrent")
+      return readSessionsConfig(den, user).maxConcurrent;
+    return agentsResume(() => user).loadCeiling;
+  } catch {
+    return undefined;
+  }
+}
+
+function storedBaseline(user: UserConfig, key: string): number | undefined {
+  const b = user.setting_baselines;
+  const v =
+    b && typeof b === "object" && !Array.isArray(b)
+      ? (b as Record<string, unknown>)[key]
+      : undefined;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
+}
+
+/** Whether this new value raises the cap past twice its baseline. */
+function capRaisePast(
+  key: (typeof CAP_KEYS)[number],
+  value: unknown,
+  den: DenConfig,
+  user: UserConfig,
+): boolean {
+  if (typeof value !== "number") return value !== null;
+  const base = storedBaseline(user, key) ?? capInForce(key, den, user);
+  if (base === undefined) return true;
+  const inf = (n: number) => (n === 0 ? Infinity : n);
+  return inf(value) > 2 * inf(base);
+}
+
+/**
+ * The baselines after a change: a routine agent raise keeps (or first
+ * records) the baseline; the person's own set or Allow drops it, so the
+ * value now in force is the baseline.
+ */
+function baselinesAfter(
+  user: UserConfig,
+  key: (typeof CAP_KEYS)[number],
+  routine: boolean,
+  den: DenConfig,
+): Record<string, number> | undefined {
+  const cur =
+    user.setting_baselines &&
+    typeof user.setting_baselines === "object" &&
+    !Array.isArray(user.setting_baselines)
+      ? { ...(user.setting_baselines as Record<string, number>) }
+      : {};
+  if (routine) {
+    if (storedBaseline(user, key) === undefined) {
+      const now = capInForce(key, den, user);
+      if (now !== undefined) cur[key] = now;
+    }
+  } else delete cur[key];
+  return Object.keys(cur).length ? cur : undefined;
+}
+
+/**
+ * Issue 1391: the person changed settings by hand (Settings, the CLI):
+ * a cap whose value in force moved takes it as its baseline.
+ */
+export function personSetCaps(
+  was: UserConfig,
+  now: UserConfig,
+  den: DenConfig = {} as DenConfig,
+): void {
+  for (const key of CAP_KEYS) {
+    if (storedBaseline(now, key) === undefined) continue;
+    if (capInForce(key, den, was) === capInForce(key, den, now)) continue;
+    const b = baselinesAfter(now, key, false, den);
+    if (b) now.setting_baselines = b;
+    else delete now.setting_baselines;
+  }
+}
+
 export function checkSettingChange(
   d: SettingChangeDeps,
   raw: Record<string, unknown>,
   /** person: the person's own change (Undo): a category's Never doesn't apply. */
-  who: { agent?: string; person?: boolean } = {},
+  who: { agent?: string; person?: boolean; decidedBy?: string } = {},
 ): SettingChangeCheck {
   const no = (error: string): SettingChangeCheck => ({
     ok: false,
@@ -1155,6 +1257,20 @@ export function checkSettingChange(
     // value in either file is strict).
     const den = d.denConfig();
     const mode: InstallMode = readInstallMode(before as UserConfig, den);
+    // Reviewer D (issue 1391): editor, terminal and runtimes are commands
+    // Den runs as the person. Routine on personal only while every agent
+    // is outside the sandbox (no new power); with any sandboxed, they'd
+    // let one out, so they're judged as on strict.
+    let sandboxed = mode === "strict";
+    if (!sandboxed)
+      try {
+        const a = readAgentsConfig(den, before as UserConfig);
+        sandboxed =
+          a.sandbox !== false ||
+          Object.values(a.agents ?? {}).some((x) => x?.sandbox === true);
+      } catch {
+        sandboxed = true;
+      }
     if (
       key === "install_mode" &&
       value !== "strict" &&
@@ -1163,7 +1279,20 @@ export function checkSettingChange(
       return no(
         "The distribution's den.yml sets install_mode: strict, and a person can't loosen it: this change would do nothing.",
       );
-    const kind = settingKind(key, mode, value);
+    const kindOf =
+      mode === "personal" &&
+      sandboxed &&
+      ROUTINE_ON_PERSONAL.some((pt) => matchesSetting(pt, key))
+        ? {
+            ...settingKind(key, "strict", value),
+            category: settingKind(key, mode, value).category,
+          }
+        : settingKind(key, mode, value);
+    // Issue 1391: a cap raised past twice its baseline is the person's.
+    const kind =
+      isCap(key) && capRaisePast(key, value, den, before as UserConfig)
+        ? { ...kindOf, widens: true }
+        : kindOf;
     // Issue 1371 Part 2: the person's choice for its category. Never
     // refuses here, naming the row that changes it.
     let set: ReturnType<typeof readPolicySetting>;
@@ -1267,7 +1396,7 @@ function backup(d: SettingChangeDeps): string | undefined {
 export function runSettingChange(
   d: SettingChangeDeps,
   raw: Record<string, unknown>,
-  asked?: { agent?: string; person?: boolean },
+  asked?: { agent?: string; person?: boolean; decidedBy?: string },
 ):
   | {
       ok: true;
@@ -1285,16 +1414,27 @@ export function runSettingChange(
   const c = checkSettingChange(d, raw, asked);
   if (!c.ok) return c;
   const { key, value, reason } = c.args;
+  // Issue 1391: a cap's baseline moves only on the person's set or Allow.
+  let text = c.text;
+  if (isCap(key)) {
+    const routine = asked?.decidedBy?.startsWith("auto:") === true;
+    const den = d.denConfig();
+    const b = baselinesAfter(c.before as UserConfig, key, routine, den);
+    const doc = yaml.parseDocument(text);
+    if (b) doc.set("setting_baselines", b);
+    else doc.delete("setting_baselines");
+    text = doc.toString({ lineWidth: 0 });
+  }
   const kept = backup(d);
   fs.mkdirSync(path.dirname(d.userFile), { recursive: true });
-  writeFileAtomic(d.userFile, c.text);
+  writeFileAtomic(d.userFile, text);
   d.audit(
     `setting_change ${trailChange(key, getPath(c.before, key.split(".")), value, "default")}${asked?.agent ? ` (asked by ${asked.agent})` : ""}`,
     reason,
   );
   const restart = c.kind.restart === "server";
   const parts = key.split(".");
-  const after = (yaml.parse(c.text) ?? {}) as Record<string, unknown>;
+  const after = (yaml.parse(text) ?? {}) as Record<string, unknown>;
   return {
     ok: true,
     key,
@@ -1343,10 +1483,20 @@ export function undoSettingChange(
     id: string;
     action: string;
     result?: unknown;
+    /** Who decided it: auto:… is the policy, run without asking. */
+    decidedBy?: string;
   },
 ): { ok: true; key: string; note: string } | { ok: false; error: string } {
   if (approval.action !== SETTING_CHANGE_ACTION)
     return { ok: false, error: "only a setting change can be undone here" };
+  // Builder 2: Undo is for what ran without asking (its bell row has it);
+  // a change the person allowed is changed back in Settings.
+  if (!approval.decidedBy?.startsWith("auto:"))
+    return {
+      ok: false,
+      error:
+        "only a change that ran without asking can be undone here: change it in Settings",
+    };
   const r = approval.result as
     | { ok?: unknown; key?: unknown; previous?: unknown; set?: unknown }
     | undefined;
