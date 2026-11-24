@@ -220,6 +220,29 @@ const refusedOf = (e: unknown): HubRefused | null => {
     ...(error ? { error } : {}),
   };
 };
+/** How many projects' work is asked of Hub at once. */
+export const HUB_WORK_AT_ONCE = 4;
+
+/** `fn` over `items`, at most `limit` running at once, results in order. */
+async function inBatches<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (x: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return out;
+}
+
 /** Hub's 404: a Hub without the route yet. */
 const missing = (e: unknown) => e instanceof HubCallError && e.status === 404;
 
@@ -246,33 +269,34 @@ export class HubWorkReader {
     const hub = await (this.deps.hub ?? connectedHub)();
     if (!hub) return { hub: "none" };
     const projectOf = this.deps.projectOf ?? ((ws) => hubProjectOf(ws));
-    const projects: {
-      project: string;
-      work: ProjectWork | null;
-      linked?: false;
-    }[] = [];
-    for (const ws of [...new Set(names)].slice(0, HUB_WORK_MAX)) {
+    type Row = { project: string; work: ProjectWork | null; linked?: false };
+    // Asked together, at most HUB_WORK_AT_ONCE at a time, so Hub down or
+    // slow costs about one timeout, not one per project. A 403 from any
+    // of them wins, checked once the batch is in.
+    let refused: HubRefused | null = null;
+    const one = async (ws: string): Promise<Row> => {
       const p = projectOf(ws);
-      if (!p) {
-        projects.push({ project: ws, work: null, linked: false });
-        continue;
-      }
-      let work: ProjectWork | null;
+      if (!p) return { project: ws, work: null, linked: false };
       try {
-        work = readProjectWork(
+        const work = readProjectWork(
           await hubProjectWork(hub.url, hub.token, p.id, this.opts),
         );
         if (work) this.lastWork.set(p.id, work);
         else this.lastWork.delete(p.id);
+        return { project: ws, work };
       } catch (e) {
-        const refused = refusedOf(e);
-        if (refused) return refused;
+        refused ??= refusedOf(e);
         // 404: an older Hub. Unreachable: the last answer, if any.
         if (missing(e)) this.lastWork.delete(p.id);
-        work = this.lastWork.get(p.id) ?? null;
+        return { project: ws, work: this.lastWork.get(p.id) ?? null };
       }
-      projects.push({ project: ws, work });
-    }
+    };
+    const projects = await inBatches(
+      [...new Set(names)].slice(0, HUB_WORK_MAX),
+      HUB_WORK_AT_ONCE,
+      one,
+    );
+    if (refused) return refused;
     return { hub: "ok", projects };
   }
 

@@ -232,6 +232,57 @@ describe("HubWorkReader against a stub Hub", () => {
     ]);
   });
 
+  // Reviewer's ask on 754: Hub down or slow must not hold the card for
+  // one timeout per project. Bounds are wide (1 s apart): serial would be
+  // 4 × 400 ms = 1.6 s, parallel about 0.4 s.
+  const hangs: typeof fetch = (_u, init) =>
+    new Promise((_, reject) =>
+      init?.signal?.addEventListener("abort", () =>
+        reject(new Error("timed out")),
+      ),
+    );
+  const four = ["a", "b", "c", "d"];
+  const linkAll = (ws: string) => ({ id: `proj_${ws}`, slug: ws, name: ws });
+
+  it("Hub not answering: the projects are asked together, not one timeout each", async () => {
+    const r = new HubWorkReader({
+      hub: async () => ({ url: "http://hub.test", token: "t" }),
+      projectOf: linkAll,
+      fetch: hangs,
+      timeoutMs: 400,
+    });
+    const t0 = Date.now();
+    const got = await r.projectWork(four);
+    expect(Date.now() - t0).toBeLessThan(1200);
+    expect(got).toEqual({
+      hub: "ok",
+      projects: four.map((project) => ({ project, work: null })),
+    });
+  });
+
+  it("a 403 among projects that time out still wins (checked after the batch)", async () => {
+    const f: typeof fetch = (u, init) =>
+      String(u).includes("proj_c")
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error: "Not in your plan",
+                code: "plan_required",
+              }),
+              { status: 403, headers: { "content-type": "application/json" } },
+            ),
+          )
+        : hangs(u, init);
+    const r = new HubWorkReader({
+      hub: async () => ({ url: "http://hub.test", token: "t" }),
+      projectOf: linkAll,
+      fetch: f,
+      timeoutMs: 400,
+    });
+    const got = await r.projectWork(four);
+    expect(got).toMatchObject({ hub: "refused" });
+  });
+
   it("Hub briefly unreachable: the last answer stays (memory only)", async () => {
     let up = true;
     const hub = await stubHub(() =>
