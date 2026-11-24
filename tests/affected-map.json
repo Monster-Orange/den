@@ -35,8 +35,7 @@
   ],
   "subjects": {
     "tests/unit/server/web-log-1344.integration.test.ts": [
-      "src/shared/web-log-file.ts",
-      "src/ui/server/index.ts"
+      "src/shared/web-log-file.ts"
     ],
     "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
       "src/shared/hub.ts",
@@ -3965,7 +3964,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/web-log-file.ts", "src/ui/server/index.ts"],
+      "when": ["src/shared/web-log-file.ts"],
       "run": ["tests/unit/server/web-log-1344.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
