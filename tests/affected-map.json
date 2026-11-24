@@ -1820,6 +1820,7 @@
         "src/ui/server/public/project-colour-picker.js",
         "src/ui/server/public/qr.js",
         "src/ui/server/public/restart-den.js",
+        "src/ui/server/public/restart-result.js",
         "src/ui/server/public/settings-registry.js",
         "src/ui/server/public/shell-pick.js",
         "src/ui/server/public/svc-panel.js",
