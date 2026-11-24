@@ -126,6 +126,16 @@ function layout(name: string) {
 }
 
 describe("agentSandboxPolicy (issue 936)", () => {
+  it("issue 1391: a personal install's trail is read back inside the state dir, and never written", () => {
+    const l = layout("trail");
+    const p = agentSandboxPolicy({ ...l, trailReadable: true });
+    const trail = path.join(l.stateDir, "audit.jsonl");
+    expect(p.readableFiles).toContain(trail);
+    expect(
+      p.writable.some((w) => trail === w || trail.startsWith(w + path.sep)),
+    ).toBe(false);
+  });
+
   it("makes the state dir, config/local and the denied folders read-only", () => {
     const l = layout("policy");
     const p = agentSandboxPolicy(l);

@@ -3383,8 +3383,14 @@
       "This widens what agents can do: only your own Allow runs it.",
     "ap.det.setting_change.key": "Setting: {key}",
     "ap.det.setting_change.now": "Now: {value}",
+    "ap.det.setting_change.nowDefault": "Now: {value} (Den's default)",
+    "ap.det.setting_change.nowDen": "Now: {value} (from den.yml)",
     "ap.det.setting_change.new": "New: {value}",
     "ap.det.setting_change.why": "Why: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Why: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den writes these in the gates folder's settings.json, under the gate's lock, and nothing else there.",
     "ap.det.setting_change.by": "Asked by {agent}",
     "ap.det.setting_change.writes":
       "Den writes only {key} in config/local/user.yml, keeps a copy of the file first, and notes the change in the audit.",
@@ -3394,6 +3400,9 @@
     "ap.do.setting_change": "Change {key}: {now} → {value}",
     "ap.do.setting_change.loosens":
       "This widens what agents can do: {key}: {now} → {value}",
+    "ap.do.gate_settings_set": "Change gate settings: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "This widens what agents can do: gate settings {keys}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
@@ -3815,6 +3824,11 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. Terminals that ended: {terminals}. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} was not restarted: still working after {min} min",
+    "bell.m.rsJob":
+      "{id} was not restarted: a background job is running ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} was not restarted",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
@@ -3864,6 +3878,22 @@
     "bell.ap.allow": "Allow",
     "bell.ap.deny": "Deny",
     "bell.ap.done": "Allowed: {what}",
+    "rs.now": "{id}: restarting now, in the same conversation.",
+    "rs.turn": "{id}: restarts when its turn ends, in the same conversation.",
+    "rs.job": "{id}: waiting: a background job ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den can't tell when its turn ends, so it isn't restarted yet.",
+    "rs.nowJob": "Restart now (ends the job)",
+    "rs.nowBtn": "Restart now",
+    "rs.all": "Restart all {n} now",
+    "rs.none": "No agents need a restart.",
+    "rs.bar": "{n} agents need a restart to load their tools.",
+    "rs.barBtn": "Restart all {n} at their next idle",
+    "rs.allName": "the agents",
+    "rs.done": "{id}: restarted, in the same conversation.",
+    "rs.timedOut":
+      "{id}: not restarted, still working after {min} min. Restart now ends its turn.",
+    "rs.failed": "{id}: not restarted. Restart it from the Agents page.",
     "bell.ap.denied": "Denied: {what}",
     "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
@@ -3963,6 +3993,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ updated to {v}: the branch needs a pull request; opened #{n} for its pin ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: the pin branch {branch} is pushed; open a pull request for it ({why})",
     "bell.m.pinHeld":

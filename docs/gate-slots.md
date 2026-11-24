@@ -106,7 +106,9 @@ den gate settings --local-browser-slots 2
 `gate status`, `gate_slot_status` and the runner route's `place` give a
 waiting run's place in its own kind's line (1 is next).
 
-On the machine itself, wrap the run:
+On the machine itself, wrap the run. The browser server at port 3000 is
+the one `npm run pw:server` starts in Den's repo: Playwright's image
+pinned by its multi-arch digest, so it runs the machine's own build.
 
 ```sh
 DEN_PW_WS=ws://127.0.0.1:3000/ den gate run --kind browser --estimate 6m --label "e2e" -- npm run test:e2e
@@ -142,6 +144,10 @@ declares one of:
 - `self`: the run starts its own browser container, so there is no
   address yet when it asks (`--browser-endpoint=self`). Its own setup
   keeps the browser in that container.
+
+On a Mac, a run with no `--box` and no browser of its own isn't refused when
+a test box can serve it: it waits for a box only, since a box's browser is in a
+container.
 
 Over MCP (`gate_slot_request`) and HTTP (`POST /api/gate-slots/ask`) the
 field is `browser_endpoint`. A run for a named test box uses that box's
@@ -364,6 +370,40 @@ den gate settings --class-order "release, lane, other" \
 A run its class's window holds waits at the back and blocks no one. Test
 box slots and MCP leases apply to whichever run this order starts.
 
+## An agent can ask to change the settings
+
+Settings › Gate (and `gate settings` for a person) write the gates
+folder's settings.json. An agent asks for a change instead, with the held
+write `gate_settings_set`, or with `gate settings` and a reason, which
+asks for it:
+
+```
+gate_settings_set { settings: { "gate.cpu_slots": 3 }, reason: "two browser runs wait" }
+gate settings --cpu-slots 3 --reason "two browser runs wait"
+```
+
+Den checks every key and value first, with Settings › Gate's names and
+ranges: an unknown key, a value out of range or no change is refused at
+once, and nothing is written. The card shows each key's value now and the
+one asked for.
+
+Gate keys are Limits and performance in the approval policy:
+
+- On a personal install (the default) each one is routine: Den writes it
+  at once and tells you in the bell.
+- On a strict install they follow your choice for Limits and performance
+  in Settings › Approvals: by default (Ask me) they wait for your Allow;
+  if you choose to let them change, Den writes them and tells you; with
+  "Never" an agent's ask is refused. One exception: `gate.browser_requires_container` going to 0
+  (browser runs on this machine's own browser, not in a container) waits
+  for your own Allow, whatever you chose. Turning it back on, and every
+  other gate key, is a plain limit. A key put back to its default is
+  judged by that default, which for this one depends on the platform.
+
+Den writes the change under the gate's lock (the one a slot decision
+holds), all of it or none, and the slot log names who asked. Every
+settings write, yours included, takes that lock now.
+
 ## A CI job in a runner VM
 
 A CI job running in a VM on this machine has no Den and no process Den can
@@ -568,8 +608,9 @@ who asked and who allowed. Deny changes nothing.
 ### Which runs go to a box
 
 A browser run with no `--box` takes whichever browser slot frees first:
-this machine's, then the first test box with a free slot. It needs
-`--base-url` for that (a box's browser reaches the app by it):
+this machine's, then the first test box with a free slot. A box's browser
+reaches the app by the run's `--base-url`; with none, it may reach only
+the ports the run opens itself (`http://127.0.0.1:*`, never 80 or 443):
 
 ```sh
 den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
@@ -590,8 +631,10 @@ A run with no `--box` stays on this machine, and says why in one line
 - its project or label is host-only (`browser_host_only`, below);
 - it brings its own browser: `--browser-endpoint` (an address, or `self`
   for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
-  `E2E_WEBKIT_WS` in its environment;
-- it has no `--base-url`, or one a box can't use;
+  `E2E_WEBKIT_WS` in its environment naming a container on another host.
+  One on this machine's loopback (`ws://127.0.0.1:…`) is what the run uses
+  if it stays here; given a box, `DEN_PW_WS` becomes the box's;
+- its `--base-url` is one a box can't use;
 - its Playwright version is unknown (no `--pw-version`, and none installed
   where it runs): a box's server would refuse it;
 - no box can serve it. By default a run skips a box that declares no

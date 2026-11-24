@@ -81,7 +81,8 @@ describe("setting_change: a known key (issue 1371)", () => {
     if (!c.ok) return;
     expect(c.personOnly).toBeUndefined();
     expect(c.details.join("\n")).toMatch(/Setting: sessions\.max_concurrent/);
-    expect(c.details.join("\n")).toMatch(/Now: not set/);
+    // Issue 1417: an unset limit shows the value in force, not "not set".
+    expect(c.details.join("\n")).toMatch(/Now: \d+ \(Den's default\)/);
     expect(c.details.join("\n")).toMatch(/New: 14/);
     expect(c.details.join("\n")).toMatch(/Why: the person runs 14/);
     // Nothing is written by the check.

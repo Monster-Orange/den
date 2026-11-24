@@ -118,6 +118,7 @@ describe("gate-slot routes", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      browserContainerStrict: false,
       browserBoxDefault: "any",
       browserHostOnly: "",
       remoteRenewSeconds: 30,

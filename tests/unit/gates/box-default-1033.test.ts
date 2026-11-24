@@ -210,15 +210,16 @@ describe("runs that stay on this machine", () => {
     );
   });
 
-  it("no --base-url: stays, in one line, and never fails for it", async () => {
+  // Issue 1198: no --base-url no longer keeps a run here; it may reach
+  // only the ports it opens itself (http://127.0.0.1:*).
+  it("no --base-url: it may still take a box, allowed only the ports it opens", async () => {
     const store = storeWith();
+    holdHost(store);
     const t = deps(store);
     expect(await cmdGate(plain(), t.d)).toBe(0);
-    expect(t.ran[0]!.env?.DEN_GATE_SLOT_BOX).toBe("local");
-    const why = t.err.filter((l) => /stays on this machine/.test(l));
-    expect(why).toEqual([
-      "gate: stays on this machine: no --base-url, so a test box can't reach the app",
-    ]);
+    expect(t.ran[0]!.env?.DEN_GATE_BOX).toBe("b1");
+    expect(t.ran[0]!.env?.DEN_GATE_ALLOW).toBe("127.0.0.1:*");
+    expect(t.err.filter((l) => /stays on this machine/.test(l))).toEqual([]);
   });
 
   it("no box serves its Playwright version: stays, saying why", async () => {

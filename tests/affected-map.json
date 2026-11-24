@@ -41,6 +41,9 @@
     "tests/unit/server/no-secrets-store.integration.test.ts": [
       "src/ui/cli/doctor-command.ts"
     ],
+    "tests/unit/server/settings-gate-lock-1395.integration.test.ts": [
+      "src/shared/gates/settings-set.ts"
+    ],
     "tests/unit/server/web-log-1344.integration.test.ts": [
       "src/shared/web-log-file.ts"
     ],
@@ -995,6 +998,7 @@
       ],
       "run": [
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
+        "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1013,6 +1017,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
@@ -1356,6 +1361,7 @@
       "when": ["src/ui/server/public/agent-start.js"],
       "run": [
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
+        "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1374,6 +1380,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
@@ -1701,6 +1708,7 @@
       "when": ["src/ui/server/public/ws-delete-agents.js"],
       "run": [
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
+        "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1719,6 +1727,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
@@ -1811,6 +1820,7 @@
         "src/ui/server/public/project-colour-picker.js",
         "src/ui/server/public/qr.js",
         "src/ui/server/public/restart-den.js",
+        "src/ui/server/public/restart-result.js",
         "src/ui/server/public/settings-registry.js",
         "src/ui/server/public/shell-pick.js",
         "src/ui/server/public/svc-panel.js",
@@ -1822,6 +1832,7 @@
       ],
       "run": [
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
+        "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1841,6 +1852,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/account-entry-parity.browser.test.ts",
@@ -2115,6 +2127,7 @@
         "tests/unit/plugins/plugin-command.test.ts",
         "tests/unit/review/review-rules-798.test.ts",
         "tests/unit/scripts/docs-links.test.ts",
+        "tests/unit/scripts/pw-server-635.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
         "tests/unit/server/agent-groups-view.test.ts",
@@ -2254,6 +2267,7 @@
     {
       "when": ["scripts/org-name-commits.mjs"],
       "run": [
+        "tests/unit/scripts/org-name-commits-main.test.ts",
         "tests/unit/scripts/org-name-commits.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
@@ -2273,6 +2287,11 @@
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
       "why": "tests that run scripts/org-names.js"
+    },
+    {
+      "when": ["scripts/pw-server.mjs"],
+      "run": ["tests/unit/scripts/pw-server-635.test.ts"],
+      "why": "tests that run scripts/pw-server.mjs"
     },
     {
       "when": ["scripts/release-ancestry.sh"],
@@ -2721,12 +2740,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/agent-view.ts"],
+      "when": ["src/shared/agent-view-note.ts", "src/shared/agent-view.ts"],
       "run": ["tests/unit/server/agent-view.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/agent-view.ts"],
+      "when": ["src/shared/agent-view-note.ts", "src/shared/agent-view.ts"],
       "run": ["tests/unit/server/agent-view.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3727,6 +3746,11 @@
     {
       "when": ["src/ui/server/edge-up-routes.ts"],
       "run": ["tests/unit/server/settings-edge-up.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/gates/settings-set.ts"],
+      "run": ["tests/unit/server/settings-gate-lock-1395.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

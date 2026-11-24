@@ -354,9 +354,66 @@ describe("the test operator reaches only the bed's own agents", () => {
   });
 });
 
+/**
+ * Issue 1407: gate/1407 restarts the bed's own agents (a row's Restart,
+ * Restart now, and the bulk restart-stale), under agent-relaunch's rules.
+ */
+describe("issue 1407: the test operator's restarts", () => {
+  it("a restart of one of the bed's own agents passes the gate, audited as the test operator", async () => {
+    s.seed({ id: "planner", workspace: "north", testBed: true });
+    const r = await asOperator(
+      "POST",
+      "/api/workspaces/north/agents/planner/restart",
+      { when: "now" },
+    );
+    expect(r.json.code).not.toBe("fixture_scope");
+    expect(r.status).not.toBe(403);
+    expect(
+      auditRows().some(
+        (e) =>
+          e.principal === "test:operator" &&
+          /^agent-restart /.test(String(e.detail)),
+      ),
+    ).toBe(true);
+  });
+
+  it("a restart of an agent Den didn't mark: refused", async () => {
+    s.seed({ id: "real", workspace: "north" });
+    const r = await asOperator(
+      "POST",
+      "/api/workspaces/north/agents/real/restart",
+      { when: "now" },
+    );
+    expect(r.status).toBe(403);
+    expect(r.body).toMatch(/only a person/);
+  });
+
+  it("restart-stale passes the gate, and answers only for the bed's own agents", async () => {
+    const r = await asOperator("POST", "/api/agents/restart-stale", {});
+    expect(r.json.code).not.toBe("fixture_scope");
+    expect(r.status).toBe(202);
+    expect(
+      auditRows().some(
+        (e) =>
+          e.principal === "test:operator" &&
+          /^agents-restart-stale /.test(String(e.detail)),
+      ),
+    ).toBe(true);
+  });
+
+  it("the person's restart of an unmarked agent is as before", async () => {
+    s.seed({ id: "real", workspace: "north" });
+    const r = await asPerson(
+      "POST",
+      "/api/workspaces/north/agents/real/restart",
+      { when: "now" },
+    );
+    expect(r.status === 403 && /only a person/.test(r.body)).toBe(false);
+  });
+});
+
 describe("what the test operator still can't do here", () => {
   it.each([
-    ["POST", "/api/workspaces/north/agents/planner/restart"],
     ["POST", "/api/workspaces/north/agents/planner/move"],
     ["POST", "/api/agents/runtimes/claude/path"],
     ["POST", "/api/approvals/a1/decide"],

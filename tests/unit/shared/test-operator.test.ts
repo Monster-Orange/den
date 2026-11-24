@@ -25,6 +25,7 @@ import {
   operatorAct,
   operatorRefusal,
   stateDirIsEmpty,
+  testBedOnly,
   verifiedCreationRecord,
   writeCreationRecord,
 } from "../../../src/shared/test-operator.js";
@@ -122,6 +123,9 @@ describe("the test operator's acts: a closed list", () => {
     ["POST", "/api/sessions/s1/close", "terminal-close"],
     ["POST", "/api/workspaces/notes/agents/a1/say", "agent-say"],
     ["POST", "/api/workspaces/notes/agents/a1/relaunch", "agent-relaunch"],
+    // Issue 1407: gate/1407 restarts the bed's own agents for its tools.
+    ["POST", "/api/workspaces/notes/agents/a1/restart", "agent-restart"],
+    ["POST", "/api/agents/restart-stale", "agents-restart-stale"],
   ])("%s %s is %s", (m, p, act) => {
     expect(operatorAct(m, p)).toBe(act);
   });
@@ -147,8 +151,10 @@ describe("the test operator's acts: a closed list", () => {
     ["GET", "/api/workspaces/notes/hub-project"],
     ["GET", "/api/hub/link-suggestions"],
     // Other agent verbs a person owns.
-    ["POST", "/api/workspaces/notes/agents/a1/restart"],
     ["POST", "/api/workspaces/notes/agents/a1/move"],
+    ["GET", "/api/workspaces/notes/agents/a1/restart"],
+    ["POST", "/api/agents/restart-stale/x"],
+    ["GET", "/api/agents/stale"],
     ["POST", "/api/workspaces/notes/agents/a1/mode"],
     // A session's other routes, and lookalikes.
     ["POST", "/api/sessions/s1/uploads"],
@@ -437,7 +443,7 @@ describe("the operator's own shells: by host id only, forgotten when closed", ()
   });
 });
 
-describe("say and relaunch reach project agents only", () => {
+describe("say, relaunch and restart reach project agents only", () => {
   const ok = {
     operatorInstall: true,
     via: "loopback" as const,
@@ -448,6 +454,7 @@ describe("say and relaunch reach project agents only", () => {
     ["POST", "/api/workspaces/den-server/agents/helper/say"],
     ["POST", "/api/workspaces/den-server/agents/helper/relaunch"],
     ["POST", "/api/workspaces/den%2Dserver/agents/helper/say"],
+    ["POST", "/api/workspaces/den-server/agents/helper/restart"],
   ])("%s %s: the server agent's, refused", (m, p) => {
     expect(operatorRefusal({ ...ok, method: m, pathname: p })).toBe(
       "server_agent",
@@ -461,5 +468,23 @@ describe("say and relaunch reach project agents only", () => {
         pathname: "/api/workspaces/north/agents/planner/say",
       }),
     ).toBeNull();
+  });
+});
+
+describe("issue 1407: the operator's restart-stale reaches only the bed's own agents", () => {
+  const list = [
+    { id: "bed-a", workspace: "north" },
+    { id: "real", workspace: "north" },
+    { id: "bed-b", workspace: "south" },
+    { id: "helper", workspace: "den-server" },
+  ];
+  const marked = new Set(["bed-a", "bed-b", "helper"]);
+  it("only agents Den marked testBed, never the server agent", () => {
+    expect(testBedOnly(list, (a) => marked.has(a.id)).map((a) => a.id)).toEqual(
+      ["bed-a", "bed-b"],
+    );
+  });
+  it("none marked: nothing", () => {
+    expect(testBedOnly(list, () => false)).toEqual([]);
   });
 });

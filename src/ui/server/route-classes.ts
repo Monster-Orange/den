@@ -241,6 +241,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
   ),
   R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
     "D32: one helper's transcript, tool calls summarized, read-only (no stop or steer)",
   ),

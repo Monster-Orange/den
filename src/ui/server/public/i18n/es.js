@@ -2477,8 +2477,14 @@
       "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
     "ap.det.setting_change.key": "Ajuste: {key}",
     "ap.det.setting_change.now": "Ahora: {value}",
+    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
     "ap.det.setting_change.new": "Nuevo: {value}",
     "ap.det.setting_change.why": "Por qué: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Por qué: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den los escribe en settings.json de la carpeta de la cola, con su bloqueo, y nada más allí.",
     "ap.det.setting_change.by": "Lo pide {agent}",
     "ap.det.setting_change.writes":
       "Den escribe solo {key} en config/local/user.yml, guarda antes una copia del archivo y anota el cambio en la auditoría.",
@@ -2488,6 +2494,10 @@
     "ap.do.setting_change": "Cambiar {key}: {now} → {value}",
     "ap.do.setting_change.loosens":
       "Esto amplía lo que pueden hacer los agentes: {key}: {now} → {value}",
+    "ap.do.gate_settings_set":
+      "Cambiar los ajustes de la cola de pruebas: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "Esto amplía lo que pueden hacer los agentes: ajustes de la cola de pruebas {keys}",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
@@ -2917,6 +2927,11 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} no se reinició: seguía trabajando tras {min} min",
+    "bell.m.rsJob":
+      "{id} no se reinició: hay una tarea en segundo plano ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} no se reinició",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":
@@ -2969,6 +2984,24 @@
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
     "bell.ap.done": "Permitido: {what}",
+    "rs.now": "{id}: reiniciando ahora, en la misma conversación.",
+    "rs.turn":
+      "{id}: se reinicia cuando termine su turno, en la misma conversación.",
+    "rs.job":
+      "{id}: en espera: un trabajo en segundo plano ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den no sabe cuándo termina su turno, así que aún no se reinicia.",
+    "rs.nowJob": "Reiniciar ahora (termina el trabajo)",
+    "rs.nowBtn": "Reiniciar ahora",
+    "rs.all": "Reiniciar los {n} ahora",
+    "rs.none": "Ningún agente necesita reiniciarse.",
+    "rs.bar": "{n} agentes necesitan reiniciarse para cargar sus herramientas.",
+    "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
+    "rs.allName": "los agentes",
+    "rs.done": "{id}: reiniciado, en la misma conversación.",
+    "rs.timedOut":
+      "{id}: no se reinició, seguía trabajando tras {min} min. Reiniciar ahora termina su turno.",
+    "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
@@ -3070,6 +3103,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ se actualizó a {v}: la rama necesita una solicitud de cambios; se abrió la #{n} para su versión fijada ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
     "bell.m.pinHeld":

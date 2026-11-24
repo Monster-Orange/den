@@ -60,6 +60,23 @@ export function explicitRestartAsk(c: {
   return c.selfUpdate === "ask" && c.selfUpdateFrom !== "default";
 }
 
+/**
+ * Issue 1403 (Den Builder): den_update follows server_agent.self_update as
+ * den_restart does. For either, an explicit ask (or a config that can't
+ * be read) asks on a personal install too; other writes never.
+ */
+export function selfUpdateAsks(
+  action: string,
+  read: () => Parameters<typeof explicitRestartAsk>[0],
+): boolean {
+  if (action !== "den_restart" && action !== "den_update") return false;
+  try {
+    return explicitRestartAsk(read());
+  } catch {
+    return true;
+  }
+}
+
 export interface RestartMarker {
   /** The approval it ran for. */
   id: string;

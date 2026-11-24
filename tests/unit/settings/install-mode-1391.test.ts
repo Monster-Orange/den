@@ -294,17 +294,12 @@ describe("held writes on a personal install (issue 1391)", () => {
         "agent_mode", // widens another agent's mode
         "agent_sandbox_set",
         "approval_policy",
-        "den_update",
         "embed_key_create",
         "embed_key_revoke",
-        "gate_box_remove",
         "gate_box_set", // a login to another machine
         "gate_runner_token_create", // a credential
         "hub_connect",
-        "hub_link", // a Hub other people read
-        "hub_project_create", // the same
-        "persona_create", // other agents' instructions and mode
-        "persona_update",
+        "hub_project_create", // a Hub project other people see
         "pr_close", // others see it on GitHub
         "project_mcp_add",
         "project_mcp_update",

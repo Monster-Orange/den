@@ -40,6 +40,14 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import {
+  followRestarts,
+  mergeLive,
+  restartResultHtml,
+  wireRestartNow,
+} from "./restart-result.js";
+
+export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
 import { projectColour, projectLabel } from "./workspace-picker.js";
@@ -3594,8 +3602,17 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.browser_requires_container"],
     control: { type: "toggle" },
     read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    // On keeps the strict level (2, set with gate settings) if it was set.
     write: (v, ctx) =>
-      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+      ctx.post({
+        gate_slots: {
+          browser_requires_container: v
+            ? ctx.data.gate_slots?.browserContainerStrict === true
+              ? 2
+              : 1
+            : 0,
+        },
+      }),
   },
   {
     // Issue 714: an agent's gate slot held over MCP.
@@ -6538,6 +6555,40 @@ export function restartOfferHtml(all) {
   );
 }
 
+/** Issue 1407: wire the per-agent result's Restart now and Restart all now. */
+function wireRestartResult(box, ctx) {
+  wireRestartNow(box, {
+    api: (...a) => ctx.shell.api(...a),
+    busyAction: ctx.shell.busyAction?.bind(ctx.shell),
+    t: (k, v) => ctx.shell.t(k, v),
+  });
+}
+
+/**
+ * Issue 1407 part 2: the answer box follows its agents live (restarted,
+ * a wait that ran out, failed) and goes once they are all done.
+ */
+function followRestartResult(box, ctx, plan) {
+  let shown = Array.isArray(plan) ? plan : [];
+  if (!shown.length) return;
+  const f = followRestarts({
+    api: (...a) => ctx.shell.api(...a),
+    onRows: (rows) => {
+      if (!box.isConnected) return f.stop();
+      const next = mergeLive(shown, rows);
+      if (JSON.stringify(next) === JSON.stringify(shown)) return;
+      shown = next;
+      if (!shown.length) {
+        f.stop();
+        box.remove();
+        return;
+      }
+      box.innerHTML = restartResultHtml(shown, (k, v) => ctx.shell.t(k, v));
+      wireRestartResult(box, ctx);
+    },
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6552,12 +6603,12 @@ function offerRestart(host, ctx, fresh) {
         ctx.shell
           .api("POST", "/api/agents/restart-stale", { only: "hub" })
           .then((x) => {
-            const k = Array.isArray(x?.pending) ? x.pending.length : 0;
-            box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
-              k === 1
-                ? "1 agent restarts at its next idle, in the same conversation."
-                : `${k} agents restart at their next idle, each in the same conversation.`,
-            )}</p>`;
+            // Issue 1407: each agent's own answer, never a fixed line.
+            box.innerHTML = restartResultHtml(x?.agents, (k, v) =>
+              ctx.shell.t(k, v),
+            );
+            wireRestartResult(box, ctx);
+            followRestartResult(box, ctx, x?.agents);
           })
           .catch((e) => {
             btn.disabled = false;

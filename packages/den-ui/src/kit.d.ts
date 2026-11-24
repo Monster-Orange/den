@@ -26,6 +26,7 @@ import type {
   hydrateAccount,
   attachMenuFilter,
   hydrateBell,
+  wireRowOpens,
   hydrateScope,
   hydrateSearch,
   PageMenuHydrateOptions,
@@ -259,6 +260,7 @@ export interface DenUIKit {
   hydrateScope: typeof hydrateScope;
   hydrateSearch: typeof hydrateSearch;
   hydrateBell: typeof hydrateBell;
+  wireRowOpens: typeof wireRowOpens;
   hydrateAccount: typeof hydrateAccount;
   attachMenuFilter: typeof attachMenuFilter;
   syncPinToggles: typeof syncPinToggles;

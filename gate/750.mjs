@@ -189,6 +189,22 @@ async function hubLeg(ctx) {
     const c = await d2.hubConnect("a", { company });
     if (!c?.ok)
       return { ...out, ...fail("connect", c?.why ?? "fixture Connect failed") };
+    // The check's own project on the throwaway Den (a test install's
+    // fixture person may make its own projects, issue 1215): the agents
+    // start in it. Already there (a rerun) is fine.
+    const mk = d2.cli(["workspace", "create", WS]);
+    const mkSaid = String(mk.all ?? "");
+    if (mk.code !== 0 && !/already/i.test(mkSaid))
+      return {
+        ...out,
+        ...fail("project", `workspace create ${WS}: ${mk.code} ${mkSaid.trim().slice(0, 160)}`),
+      };
+    const act = d2.cli(["workspace", "activate", WS]);
+    if (act.code !== 0)
+      return {
+        ...out,
+        ...fail("project", `workspace activate ${WS}: ${act.code}`),
+      };
     // Both agents tell Hub they exist (a Hub call through Den's proxy).
     const lead = d2.agent(LEAD, { workspace: WS });
     const held = d2.agent(HELD, { workspace: WS });
@@ -220,7 +236,7 @@ async function hubLeg(ctx) {
         ...fail("hub-identity", "Hub doesn't know the stub agents yet"),
       };
     await A.group(company, SLUG, {
-      name: "Gate 750 check",
+      name: "G750 check",
       leadAgent: `${idLead.install}:${idLead.agentKey}`,
       // escalates: left to the harness's default, the test Hub's fixture person.
       roles: { held: `${idHeld.install}:${idHeld.agentKey}` },
@@ -269,7 +285,7 @@ async function hubLeg(ctx) {
       ctx,
       async () => {
         const ss = await d2.api("/api/sessions");
-        const row = (ss?.rows ?? ss ?? []).find?.((x) => x.agent === HELD);
+        const row = (ss?.sessions ?? []).find((x) => x.agent === HELD);
         return Array.isArray(row?.mcpFailed) && row.mcpFailed.length
           ? row.mcpFailed
           : null;

@@ -11,6 +11,7 @@ import * as path from "path";
 import { z } from "zod";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 import { shotFileDataUrl } from "../../shared/report-shots.js";
+import { AGENT_VIEW_LINK_NOTE } from "../../shared/agent-view-note.js";
 import {
   GatePriorityRefused,
   GateStore,
@@ -19,7 +20,7 @@ import {
 import { gateView } from "../../shared/gates/view.js";
 import { gateWorkers } from "../../shared/gates/rules.js";
 import {
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { gateBoxTools } from "./gate-box-tools.js";
@@ -527,7 +528,8 @@ const READ_TOOLS: DenTool[] = [
   read(
     "page_view",
     "View this Den's pages, read-only",
-    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so.",
+    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so. Issue 1243: " +
+      AGENT_VIEW_LINK_NOTE,
     {
       next: z
         .string()
@@ -673,11 +675,9 @@ const READ_TOOLS: DenTool[] = [
       const kind = a.kind === "browser" ? "browser" : "cpu";
       // On macOS a browser slot declares a container browser (a Setting).
       const endpoint = str(a.browser_endpoint)?.trim();
-      const verdict = browserSlotCheck({
+      const verdict = await browserSlotCheckOn(store, {
         kind,
         ...(endpoint !== undefined ? { endpoint } : {}),
-        platform: store.platform,
-        requiresContainer: store.settings().browserRequiresContainer,
       });
       if (!verdict.ok)
         throw new Refusal(
@@ -2945,6 +2945,33 @@ const APPROVAL_TOOLS: DenTool[] = [
         "setting_change",
         "setting_change",
         { key, value: a.value ?? null, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "gate_settings_set",
+    title: "Change this machine's gate slot settings",
+    description:
+      "Issue 1395: propose a change to this machine's gate slot settings (Settings › Gate: the gates folder's settings.json, which setting_change can't reach), so the person never edits the file by hand. `settings` maps each key to its new value, with Settings › Gate's names and ranges (e.g. gate.cpu_slots, gate.local_browser_slots, gate.reap_grace_seconds, gate.priority_agents as 0 or 1; the gate. prefix may be left off; null puts a key's default back); `reason` says why, in one line. Den checks every key and value before anything is held: an unknown key, a value out of range or no change comes back at once, with why, and nothing is written. The person sees each key's value now and the new one. On a personal install it's written at once and the person is told; on a strict one it follows the person's choice for Limits and performance, and gate.browser_requires_container going to 0 waits for their own Allow. Den writes them under the gate's lock, all or none, and the slot log names who asked." +
+      HELD,
+    action: true,
+    shape: {
+      settings: z
+        .record(z.string(), z.union([z.number(), z.string(), z.null()]))
+        .describe(
+          "Each key (gate.<name>, as Settings › Gate) and its new value",
+        ),
+      reason: z.string().max(300).describe("Why they should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      return askPerson(
+        "gate_settings_set",
+        "gate_settings_set",
+        { settings: a.settings ?? {}, reason: str(a.reason) ?? "" },
         a,
         ctx,
       );
