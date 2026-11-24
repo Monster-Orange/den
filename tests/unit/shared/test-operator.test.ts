@@ -403,6 +403,80 @@ describe("claiming a state folder at the first start", () => {
     expect(fs.statSync(creationRecordPath(dir)).mode & 0o777).toBe(0o600);
   });
 
+  // A bed run (11-24) and a local probe of the real `web up`:
+  // it writes its log, starts the server, then writes web.json (the server's
+  // pid and port) at once, before the server's slow start reaches its first
+  // look. So the folder may hold both.
+  const webUpFolder = (dir: string) => {
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    fs.writeFileSync(
+      path.join(dir, "web.json"),
+      JSON.stringify({
+        pid: 4242,
+        port: 4317,
+        root: "/x",
+        logPath: "/x/web.log",
+      }),
+    );
+  };
+  it("the folder as `web up` leaves it (web.log, then web.json): claimed", () => {
+    const dir = path.join(tmp, "webupjson");
+    webUpFolder(dir);
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(true);
+    expect(fs.readFileSync(creationRecordPath(dir), "utf-8").trim()).toBe(
+      "pending",
+    );
+  });
+
+  it.each([
+    ["web.json as a link", "link"],
+    ["web.json as a folder", "folder"],
+  ])("%s: no claim", (_n, kind) => {
+    const dir = path.join(tmp, `wj-${kind}`);
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    if (kind === "link") {
+      fs.writeFileSync(path.join(tmp, "elsewhere.json"), "{}\n");
+      fs.symlinkSync(
+        path.join(tmp, "elsewhere.json"),
+        path.join(dir, "web.json"),
+      );
+    } else fs.mkdirSync(path.join(dir, "web.json"));
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("a real install whose secret was deleted, with `web up`'s files too: no claim, nothing changes", () => {
+    const dir = path.join(tmp, "nosecretjson");
+    webUpFolder(dir);
+    fs.writeFileSync(path.join(dir, "audit.jsonl"), "{}\n");
+    const before = snapshot(dir);
+    expect(
+      birthClaim({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
   // Builder 2's review: a real install whose secret was deleted by hand
   // (to sign everyone out) has no secret either; its other files keep it
   // from being claimed. Only `web up`'s own log may be there.
