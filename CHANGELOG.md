@@ -23,6 +23,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Manifest validation no longer quotes a value that isn't in a field's list of choices. It names the value's kind and length instead (`invalid value (a string of 4 characters) — must be one of: admin, user, beta`), as a wrong type already does, so validating a file by path never echoes what it holds. (issue 1412)
 - A Linux test box gets its browser slot again when the gate runs on macOS. Den read the box's /proc/meminfo with sftp into /dev/stdout, which macOS sftp can't write to, so every Linux box read "memory unknown" and was skipped. Den now copies the file into a new private folder, reads it and removes the folder. The box still runs nothing for the check. (issue 1381)
 - web.log keeps the server's lifecycle, warning and error lines when the server runs with `--silent`, as `web up` (by default) and a service run it. A test install's fixture sign-in line ("fixture person signed in (live checks, a test install)") was in audit.jsonl but not in web.log. With the server's output a terminal or a pipe, these lines are also added to `logs/<cli>/web.log` in Den's state folder. No line is written twice. (issue 1344)
 - Every line the web server writes to its own output (web.log under `web up` and a service) passes through secret redaction, as its other log files already did. A web.log that was readable by others is made private (0600) when the server next adds to it. (issue 1368)
