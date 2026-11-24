@@ -7,7 +7,14 @@
  * server whose principal and operator act are set as the request gate sets
  * them (index.ts, after operatorRefusal). Invented names only.
  */
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
@@ -36,21 +43,41 @@ import { approveKeyHash } from "../../../src/shared/web-session.js";
 
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-opallow-"));
 const ran: string[] = [];
-const actions: HeldActions = {
-  setting_change: {
-    check: (a: Record<string, unknown>) => ({
-      ok: true,
-      args: a,
-      summary: "change a setting",
-      params: {},
-      details: [],
-    }),
-    run: async (a: Record<string, unknown>) => {
-      ran.push(String(a.key));
-      return { ok: true };
-    },
-  },
-} as unknown as HeldActions;
+/**
+ * The check as setting-change.ts answers it, per key: "x.wide" widens
+ * (personOnly), "x.secret" touches secrets; "x.flip" is routine at the ask
+ * and widens at the decide (what was true then is checked again).
+ */
+let flipped = false;
+const checkOf = (a: Record<string, unknown>) => ({
+  ok: true,
+  args: a,
+  summary: "change a setting",
+  params: {},
+  details: [],
+  ...(a.key === "x.wide" || (a.key === "x.flip" && flipped)
+    ? { personOnly: true }
+    : {}),
+  ...(a.key === "x.secret" ? { areas: ["secrets"] } : {}),
+});
+const runs = (name: string) => async (a: Record<string, unknown>) => {
+  ran.push(name === "setting_change" ? String(a.key) : name);
+  return { ok: true };
+};
+/** Person-only held writes that reach past a test install. */
+const OTHERS = [
+  "host_restart",
+  "den_update",
+  "pr_close",
+  "gate_settings_set",
+  "agent_sandbox_set",
+] as const;
+const actions: HeldActions = Object.fromEntries(
+  ["setting_change", ...OTHERS].map((name) => [
+    name,
+    { check: checkOf, run: runs(name) },
+  ]),
+) as unknown as HeldActions;
 const queue = createApprovalQueue(actions, () => stateDir);
 let server: http.Server;
 let base = "";
@@ -131,6 +158,11 @@ beforeAll(async () => {
   await new Promise<void>((r) => server.listen(0, "localhost", r));
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
 });
+// Each test leaves its refused ask waiting: the person denies it after,
+// so no agent reaches the cap on waiting asks.
+afterEach(async () => {
+  for (const a of queue.pending()) await queue.decide(a.id, "deny", "s1");
+});
 afterAll(async () => {
   await new Promise((r) => server.close(r));
   fs.rmSync(stateDir, { recursive: true, force: true });
@@ -144,11 +176,15 @@ const post = (url: string, body: unknown, headers: Record<string, string>) =>
   });
 
 /** A held write asked by agent `id`; its approval id. */
-async function heldBy(id: string, key: string): Promise<string> {
+async function heldBy(
+  id: string,
+  key: string,
+  action = "setting_change",
+): Promise<string> {
   const r = await post(
     "/api/approvals",
     {
-      action: "setting_change",
+      action,
       args: { key, value: 1, reason: "r" },
       ask: true,
       note: "a live check of Allow",
@@ -224,6 +260,58 @@ describe("issue 1414: the test operator's Allow", () => {
       expect(queue.get(id)?.state).toBe("pending");
     } finally {
       wired = true;
+    }
+  });
+});
+
+describe("issue 1414: the operator Allows setting_change only, and never a person-only or critical one (Builder 2, Reviewer C)", () => {
+  it.each(OTHERS)(
+    "a test-bed agent's %s: refused, nothing runs, and it still waits",
+    async (action) => {
+      const id = await heldBy("bed", `k.${action}`, action);
+      const r = await decide(id, "allow");
+      expect(r.status).toBe(403);
+      expect(((await r.json()) as { code?: string }).code).toBe(
+        "operator_action_not_allowed",
+      );
+      expect(ran).not.toContain(action);
+      expect(queue.get(id)?.state).toBe("pending");
+      expect(
+        recentActions().some(
+          (e) =>
+            e.verb === "approval-decide" &&
+            e.detail === id &&
+            e.outcome === "refused" &&
+            e.reason === "operator_action_not_allowed",
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    ["one that widens (personOnly)", "x.wide"],
+    ["one that touches secrets", "x.secret"],
+  ])("a test-bed agent's setting_change, %s: refused", async (_n, key) => {
+    const id = await heldBy("bed", key);
+    const r = await decide(id, "allow");
+    expect(r.status).toBe(403);
+    expect(((await r.json()) as { code?: string }).code).toBe(
+      "operator_action_not_allowed",
+    );
+    expect(ran).not.toContain(key);
+    expect(queue.get(id)?.state).toBe("pending");
+  });
+
+  it("judged at the decide, not the ask: routine when asked, widening now, refused", async () => {
+    const id = await heldBy("bed", "x.flip");
+    flipped = true;
+    try {
+      const r = await decide(id, "allow");
+      expect(r.status).toBe(403);
+      expect(ran).not.toContain("x.flip");
+      expect(queue.get(id)?.state).toBe("pending");
+    } finally {
+      flipped = false;
     }
   });
 });

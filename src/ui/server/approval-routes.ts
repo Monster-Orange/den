@@ -50,7 +50,10 @@ import {
   principalOf,
   type GuardResult,
 } from "./request-guard.js";
-import { OPERATOR_PRINCIPAL } from "../../shared/test-operator.js";
+import {
+  OPERATOR_HELD_ACTIONS,
+  OPERATOR_PRINCIPAL,
+} from "../../shared/test-operator.js";
 
 export type HeldCheck =
   | {
@@ -704,6 +707,27 @@ export async function handleApprovalRoutes(
     return true;
   }
 
+  /**
+   * Issue 1414: whether the test operator's Allow may run held write `a`:
+   * its check, run again now (as the run does), passes, says nothing
+   * person-only, and is not critical on this install's mode. Anything that
+   * throws: no.
+   */
+  async function operatorMayRun(a: Approval): Promise<boolean> {
+    try {
+      const act = Object.hasOwn(deps.actions, a.action)
+        ? deps.actions[a.action]
+        : undefined;
+      if (!act) return false;
+      const again = await act.check({ ...a.args }, undefined, { again: true });
+      if (!again.ok || again.personOnly === true) return false;
+      const mode = deps.installMode?.() ?? "strict";
+      return !isCriticalWrite(a.action, false, again.areas, mode);
+    } catch {
+      return false;
+    }
+  }
+
   const dec = DECIDE_PATH.exec(pathname);
   if (dec && method === "POST") {
     // Issue 1414: the test operator's Allow (the request gate let this
@@ -725,12 +749,19 @@ export async function handleApprovalRoutes(
       } catch {
         bed = false;
       }
-      const refusal =
+      let refusal: string | null =
         body?.decision !== "allow"
           ? "operator_allow_only"
           : !bed
             ? "operator_not_test_bed"
-            : null;
+            : !OPERATOR_HELD_ACTIONS.includes(held!.action)
+              ? "operator_action_not_allowed"
+              : null;
+      // Builder 2, Reviewer C: never a person-only or critical one, judged
+      // now from the held record (the ask's answer may be stale).
+      if (!refusal && !(await operatorMayRun(held!))) {
+        refusal = "operator_action_not_allowed";
+      }
       if (refusal) {
         recordAction(
           auditActorOf(req),
@@ -748,7 +779,9 @@ export async function handleApprovalRoutes(
           refusal,
           refusal === "operator_allow_only"
             ? "The test operator may only Allow."
-            : "The test operator may Allow only what a test bed's own agent asked for.",
+            : refusal === "operator_action_not_allowed"
+              ? "The test operator may Allow only a routine setting change: this one is the person's."
+              : "The test operator may Allow only what a test bed's own agent asked for.",
         );
         return true;
       }
