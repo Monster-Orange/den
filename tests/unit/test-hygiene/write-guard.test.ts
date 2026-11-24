@@ -199,7 +199,7 @@ describe("a root set too wide (issue 1356)", () => {
 });
 
 describe("a folder a suite names (issue 1356)", () => {
-  it("allowWrites lets writes into that folder only, and its end-of-file check takes it away again", () => {
+  it("allowWrites lets writes into that folder only, until the next test file starts", () => {
     const r = rig();
     const shared = path.join(r.home, ".docker-share");
     expect(() => r.f.mkdirSync(shared)).toThrow(/outside its temp folders/);
@@ -214,6 +214,10 @@ describe("a folder a suite names (issue 1356)", () => {
     );
     guardedWrites(r.f).splice(0);
     end!();
+    // The file's own afterAll may still clean it up after the guard's.
+    r.f.rmSync(path.join(shared, "a"));
+    // The next test file starts without it.
+    armWriteGuard(() => {}, undefined, r.f);
     expect(() => r.f.writeFileSync(path.join(shared, "c"), "x")).toThrow(
       /outside its temp folders/,
     );

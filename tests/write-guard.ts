@@ -61,11 +61,12 @@ export function armWriteGuard(
 ): void {
   installWriteGuard(fsObj, roots);
   const before = guardedWrites(fsObj).length;
+  // A folder the last test file named (allowWrites) was its own: this one
+  // starts without it. Not at that file's end: its own afterAll may still
+  // clean the folder up after this check's.
   const live = rootsOf(fsObj);
-  const allowed = live?.allow?.length ?? 0;
+  if (live?.allow) live.allow.length = 0;
   afterAll(() => {
-    // A folder a suite named (allowWrites) is its own: gone after it.
-    if (live?.allow) live.allow.length = allowed;
     const refused = guardedWrites(fsObj).splice(before);
     if (refused.length)
       throw new Error(
@@ -83,7 +84,7 @@ const rootsOf = (fsObj: typeof fs): WriteGuardRoots | undefined =>
 /**
  * A suite names a folder it must write outside the temp folders (Docker
  * Desktop and OrbStack share only the home folder with their VM; a probe's
- * screenshot folder). Until that test file ends; never /, the home itself or
+ * screenshot folder). Until the next test file starts; never /, the home itself or
  * a folder above it.
  */
 export function allowWrites(

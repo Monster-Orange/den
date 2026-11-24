@@ -23,14 +23,13 @@ import { execFileSync } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { ChildProcess } from "child_process";
 import { DEFAULT_TRAEFIK_IMAGE } from "../../../src/shared/edge/config.js";
 import { edgeCommand } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
-import { dockerOk, freePort } from "./helpers/docker-edge.js";
+import { dockerOk, dockerShareTmp, freePort } from "./helpers/docker-edge.js";
 
 const ENGINE = path.join(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -102,10 +101,7 @@ function cfg(): EdgeConfig {
 beforeAll(async () => {
   ok = dockerOk();
   if (!ok) return;
-  // Under the home dir: Docker Desktop and OrbStack share it with the VM.
-  tmp = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.homedir(), ".den-test-edge-proof-")),
-  );
+  tmp = fs.realpathSync(dockerShareTmp("edge-proof-"));
   denPort = await freePort();
   const root = path.join(tmp, "dist");
   fs.mkdirSync(path.join(root, "config"), { recursive: true });
