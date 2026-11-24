@@ -425,6 +425,53 @@ function shown(v: unknown): string {
   return plainText(typeof v === "string" ? v : JSON.stringify(v));
 }
 
+/**
+ * Issue 1391: a value as the activity trail shows it. Agents may read the
+ * trail, so a text, list or mapping (a command may carry a password typed
+ * into it) is said by its length only; a number, a switch, "not set" and
+ * Den's default are said as they are.
+ */
+function trailValue(
+  v: unknown,
+  byDefault: string,
+): { text: string; plain: boolean } {
+  if (v === undefined) return { text: "not set", plain: true };
+  if (v === null) return { text: byDefault, plain: true };
+  if (typeof v === "number" || typeof v === "boolean")
+    return { text: String(v), plain: true };
+  return { text: `${shown(v).length} characters`, plain: false };
+}
+
+/** Issue 1391: `key: was → now`, or "changed" when either is free text. */
+function trailChange(
+  key: string,
+  was: unknown,
+  now: unknown,
+  byDefault: string,
+): string {
+  const a = trailValue(was, byDefault);
+  const b = trailValue(now, byDefault);
+  return a.plain && b.plain
+    ? `${key}: ${a.text} → ${b.text}`
+    : `${key}: changed (was ${a.text}, now ${b.text})`;
+}
+
+/**
+ * Issue 1391: an error goes into the trail as a refused ask's reason, so
+ * a free-text value it quotes is said by its length.
+ */
+function scrubbed(error: string, v: unknown): string {
+  if (trailValue(v, "").plain) return error;
+  const forms = new Set<string>([shown(v), JSON.stringify(v)]);
+  if (isObj(v))
+    for (const x of Object.values(v))
+      if (typeof x === "string") forms.add(plainText(x));
+  let out = error;
+  for (const f of [...forms].sort((a, b) => b.length - a.length))
+    if (f) out = out.split(f).join(`<${f.length} characters>`);
+  return out;
+}
+
 /** Only for a name refused before it is read: cut, as it is no setting. */
 function cut(v: string): string {
   const s = plainText(v);
@@ -571,7 +618,10 @@ export function checkSettingChange(
   raw: Record<string, unknown>,
   who: { agent?: string } = {},
 ): SettingChangeCheck {
-  const no = (error: string): SettingChangeCheck => ({ ok: false, error });
+  const no = (error: string): SettingChangeCheck => ({
+    ok: false,
+    error: scrubbed(error, raw.value),
+  });
   try {
     const key = typeof raw.key === "string" ? raw.key.trim() : "";
     if (!key)
@@ -608,7 +658,7 @@ export function checkSettingChange(
     const changed = changedPaths(before, after);
     if (!changed.length)
       return no(
-        `${key} is already ${value === null ? "Den's default" : shown(value)}: nothing to change`,
+        `${key} is already ${trailValue(value, "Den's default").text}: nothing to change`,
       );
     // The patch reaches only this key (or, for a block, inside it)...
     const parts = key.split(".");
@@ -670,7 +720,14 @@ export function checkSettingChange(
     return {
       ok: true,
       ...(kind.widens ? { personOnly: true } : {}),
-      summary: `${key}: ${now} → ${next}`,
+      // Issue 1391: every approval row copies it into the trail; the
+      // card's Now and New lines show the values whole.
+      summary: trailChange(
+        key,
+        getPath(before, parts),
+        value === null ? null : (stored ?? value),
+        "Den's default",
+      ),
       params: {
         key,
         now,
@@ -732,7 +789,7 @@ export function runSettingChange(
   fs.mkdirSync(path.dirname(d.userFile), { recursive: true });
   writeFileAtomic(d.userFile, c.text);
   d.audit(
-    `setting_change ${key}: ${shown(getPath(c.before, key.split(".")))} → ${value === null ? "default" : shown(value)}${asked?.agent ? ` (asked by ${asked.agent})` : ""}`,
+    `setting_change ${trailChange(key, getPath(c.before, key.split(".")), value, "default")}${asked?.agent ? ` (asked by ${asked.agent})` : ""}`,
     reason,
   );
   const restart = c.kind.restart === "server";

@@ -12,7 +12,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
-- Agents may read Den's activity trail again, to see who changed what. Only the web server writes it, so they still can't edit it. (issue 1391)
+- Agents may read Den's activity trail again, to see who changed what. Only the web server writes it, so they still can't edit it. Den redacts secret-shaped text (tokens, keys, credentials) from every row, and a setting changed to a text value (a command, for one) is noted by its length, never its text; the approval card still shows the person the whole value. (issue 1391)
 - The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
 
 ### Fixed
