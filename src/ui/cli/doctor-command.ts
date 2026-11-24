@@ -21,6 +21,7 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { MEMORY_NOT_MEASURED_WORDS } from "../../shared/gates/rules.js";
 import { fixturePersonPath } from "../../shared/fixture-person.js";
 import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
@@ -44,12 +45,26 @@ import {
 import type { ConfigError } from "../../shared/config-error.js";
 import {
   checkAgentSigning,
+  existingAgentSigningKey,
+  resolveAgentSigning,
   signingKeyAddLine,
+  signingReadFiles,
   type AgentGitSettings,
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
-import { getStateDir } from "../../shared/paths.js";
+import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { AUDIT_FILE } from "../../shared/audit-file.js";
+import {
+  SIGNIN_REQUEST_VERB,
+  signinRequestCounts,
+} from "../../shared/signin-request-count.js";
+import {
+  sandboxFor,
+  sandboxHidesFile,
+  sandboxSetting,
+} from "../../shared/agents/sandbox.js";
+import { agentSandboxInput } from "./agent-ops.js";
 import { localDateTime } from "../../shared/local-time.js";
 import {
   readRestartsWaiting,
@@ -173,9 +188,26 @@ export interface DoctorRow {
   warnings: string[];
   /** #63: what's healthy and worth saying (a ✓ line each). */
   notes?: string[];
+  /**
+   * Issue 1334: nothing uses it yet (an implicit default no one chose,
+   * no source found, no agents). Unavailable then is "not in use yet",
+   * ok, never a ⚠ an agent would turn into a question.
+   */
+  idle?: true;
 }
 
-type Selector = (env: NodeJS.ProcessEnv) => DoctorRow;
+/** What a row may need beyond the env (issue 1334). */
+export interface DoctorRowsOpts {
+  /** How many agents this install has (records); default: read them. */
+  agents?: () => number;
+}
+
+type Selector = (
+  env: NodeJS.ProcessEnv,
+  o: Required<DoctorRowsOpts>,
+) => DoctorRow;
+
+const idleIf = (b: boolean): { idle?: true } => (b ? { idle: true } : {});
 
 const SELECTORS: Record<string, Selector> = {
   secrets(env) {
@@ -204,6 +236,7 @@ const SELECTORS: Record<string, Selector> = {
       // The implicit default is used only when a secret is asked for.
       problem: !st.detect.available && !st.implicit,
       warnings: [],
+      ...idleIf(st.implicit && !st.detect.available),
     };
   },
   tls(env) {
@@ -253,7 +286,7 @@ const SELECTORS: Record<string, Selector> = {
   // Agents' terminals (AG-3a). Only den-pty exists, so it is the implicit
   // choice; unavailable is never a problem (nothing needs a session until
   // one is started, and `sessions start` says why).
-  [SESSION_BACKEND_KIND](env) {
+  [SESSION_BACKEND_KIND](env, o) {
     const d = getStrategy(SESSION_BACKEND_KIND, DEN_PTY_ID)?.detect(env) ?? {
       available: false,
       reason: "not registered",
@@ -266,12 +299,14 @@ const SELECTORS: Record<string, Selector> = {
       reason: d.reason,
       problem: false,
       warnings: [],
+      // Issue 1334: no agents yet, so no terminal is needed yet.
+      ...idleIf(!d.available && o.agents() === 0),
     };
   },
   // Agents' CLIs (AG-2a): the default runtime, chosen per persona or agent,
   // so it is implicit and its absence is never a problem (`agents start`
   // says why it can't run).
-  [RUNTIME_KIND](env) {
+  [RUNTIME_KIND](env, o) {
     const d = getStrategy(RUNTIME_KIND, DEFAULT_RUNTIME_ID)?.detect(env) ?? {
       available: false,
       reason: "not registered",
@@ -284,6 +319,8 @@ const SELECTORS: Record<string, Selector> = {
       reason: d.reason,
       problem: false,
       warnings: [],
+      // Issue 1334: no agents yet, so no agent CLI is needed yet.
+      ...idleIf(!d.available && o.agents() === 0),
     };
   },
 };
@@ -292,14 +329,32 @@ const SELECTORS: Record<string, Selector> = {
  * One row per registered kind (secrets, then tls, then any other kind in
  * registration order). Never spawns, never throws.
  */
-export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
+export function doctorRows(
+  env: NodeJS.ProcessEnv = process.env,
+  opts: DoctorRowsOpts = {},
+): DoctorRow[] {
+  let counted: number | undefined;
+  const o: Required<DoctorRowsOpts> = {
+    agents:
+      opts.agents ??
+      (() => {
+        if (counted === undefined)
+          try {
+            counted = listRecords(getStateDir()).length;
+          } catch {
+            // Can't tell: count one, so nothing hides behind an error.
+            counted = 1;
+          }
+        return counted;
+      }),
+  };
   const kinds = strategyKinds();
   const ordered = [
     ...Object.keys(SELECTORS).filter((k) => kinds.includes(k)),
     ...kinds.filter((k) => !(k in SELECTORS)),
   ];
   const rows = ordered.map(
-    (kind) => SELECTORS[kind]?.(env) ?? everyStrategyRow(kind, env),
+    (kind) => SELECTORS[kind]?.(env, o) ?? everyStrategyRow(kind, env),
   );
   const op = onePasswordTokenRow(env);
   if (op) rows.splice(rows.findIndex((r) => r.kind === "secrets") + 1, 0, op);
@@ -314,13 +369,18 @@ export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
  */
 function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
   const ids = strategyIds(kind);
-  const found = ids.map((id) => {
-    try {
-      return getStrategy(kind, id)?.detect(env) ?? { available: false };
-    } catch (e) {
-      return { available: false, reason: (e as Error).message };
-    }
-  });
+  const found: { available: boolean; reason?: string; threw?: true }[] =
+    ids.map((id) => {
+      try {
+        return getStrategy(kind, id)?.detect(env) ?? { available: false };
+      } catch (e) {
+        return {
+          available: false,
+          reason: (e as Error).message,
+          threw: true as const,
+        };
+      }
+    });
   const available = found.some((d) => d.available);
   return {
     kind,
@@ -335,6 +395,9 @@ function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
           .join("; ") || undefined,
     problem: false,
     warnings: [],
+    // Issue 1334: no source found yet (no transcripts): nothing to fix.
+    // A detect that threw is broken, not idle: it still warns.
+    ...idleIf(!available && !found.some((d) => d.threw)),
   };
 }
 
@@ -380,7 +443,9 @@ export function formatDoctor(rows: DoctorRow[], title: string): string[] {
     const sel = selOf(r);
     const state = r.available
       ? chalk.green("✓ available")
-      : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
+      : r.idle
+        ? chalk.dim("– not in use yet")
+        : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
     lines.push(
       `  ${r.kind.padEnd(width)}  ${sel.padEnd(selWidth)} ${state}${r.reason ? `: ${r.reason}` : ""}`,
     );
@@ -483,10 +548,10 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
     id: `strategy:${r.kind}`,
     status: r.problem
       ? "fail"
-      : !r.available || r.warnings.length
+      : (!r.available && !r.idle) || r.warnings.length
         ? "warn"
         : "ok",
-    detail: `${sel} ${r.available ? "available" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    detail: `${sel} ${r.available ? "available" : r.idle ? "not in use yet, unavailable" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
   };
 }
 
@@ -873,6 +938,9 @@ async function hubDeliveryDoctor(): Promise<
  * the command that shows Hub's suggestions and links one; with two or
  * more unlinked, one more line names `hub link --suggested`. Doctor doesn't
  * ask Hub for the suggestions itself: one call per project is too slow.
+ * Issue 1334: an empty project (no repos, services or agents, often the
+ * built-in `default`) is ✓ "nothing to link", never a warning: an agent
+ * reading Doctor would ask the person for a link nobody needs.
  */
 export function hubProjectLines(
   connected: boolean,
@@ -888,6 +956,8 @@ export function hubProjectLines(
       origin: string;
       company?: string;
     };
+    /** Issue 1334: no repos, no services, no agents. */
+    empty?: boolean;
   }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
@@ -912,7 +982,13 @@ export function hubProjectLines(
   }
   if (!connected || !projects.length) return { lines, checks };
   projects = projects.filter((p) => p.link || !p.lost);
-  for (const { ws, link } of projects) {
+  for (const { ws, link, empty } of projects) {
+    if (!link && empty) {
+      const detail = `${ws}: empty, nothing to link`;
+      lines.push(`  hub project  ✓  ${detail}`);
+      checks.push({ id: `hub:project:${ws}`, status: "ok", detail });
+      continue;
+    }
     const name = link
       ? link.name === link.slug
         ? link.slug
@@ -933,7 +1009,7 @@ export function hubProjectLines(
     });
   }
   // #68: two or more unlinked: one place links every suggestion at once.
-  const unlinked = projects.filter((p) => !p.link).length;
+  const unlinked = projects.filter((p) => !p.link && !p.empty).length;
   if (unlinked > 1)
     lines.push(
       `  hub project  ⚠  ${unlinked} projects aren't linked. See what Hub suggests for each, and link them in one go: \`${cli} hub link --suggested\``,
@@ -1083,10 +1159,13 @@ async function projectsWithHubProject(): Promise<
       origin: string;
       company?: string;
     };
+    empty: boolean;
   }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
+  const { emptyProjectTest } = await import("../../shared/empty-project.js");
+  const { listRecords } = await import("../../shared/agents/records.js");
   const { hubProjectOf, hubLinkElsewhere } =
     await import("../../shared/hub-project-link.js");
   const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
@@ -1094,6 +1173,11 @@ async function projectsWithHubProject(): Promise<
     const file = readWorkspacesFile();
     const all = file.workspaces;
     const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
+    // Issue 1334: an empty project has nothing to link.
+    const isEmpty = emptyProjectTest(
+      () => file,
+      () => listRecords(getStateDir()),
+    );
     return Object.keys(all).map((ws) => {
       const was = lost.get(ws);
       // Issue 646: a link to another Hub or company isn't this one's.
@@ -1101,6 +1185,7 @@ async function projectsWithHubProject(): Promise<
       return {
         ws,
         link: hubProjectOf(ws, () => file),
+        empty: isEmpty(ws),
         ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
         ...(e?.hub
           ? {
@@ -1332,6 +1417,8 @@ function fixtureLineNow(): string | null {
  * Secure. Without one it lives on the host the person uses (localhost
  * here), and browsers share a host's cookies across its ports: other apps
  * opened on that host could see it. A warning, with what to set.
+ * Issue 1334: with no address at all, the Address row already asks for
+ * one; this row says so (ℹ, ok) instead of a second ⚠ to ask about.
  */
 export function sessionHostLines(
   w: import("../../shared/web-url.js").WebUrl | null,
@@ -1340,10 +1427,17 @@ export function sessionHostLines(
   cli: string,
   lastAnswered: string | null = null,
 ): { lines: string[]; check: OnboardCheck } {
-  const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  if (!w) {
+    const detail = `no address yet: the Address row says what to set. Until one is set, the sign-in lives on localhost here`;
+    return {
+      lines: ["", `${title} doctor: Sign-in`, "", `  sign-in  ℹ  ${detail}`],
+      check: { id: "signin_host", status: "ok", detail },
+    };
+  }
+  const named = w.url.startsWith("https:") && works ? w.url : null;
   // When an https address stopped answering as this Den, say when.
   const since =
-    !named && w?.url.startsWith("https:") && lastAnswered
+    !named && w.url.startsWith("https:") && lastAnswered
       ? `${w.url} last answered as this ${title} at ${new Date(lastAnswered).toLocaleString()}; `
       : "";
   const detail = named
@@ -1356,7 +1450,7 @@ export function sessionHostLines(
       "",
       // An https address that doesn't reach this Den yet: "!", as the
       // address check beside it says it (not an install-wide ⚠).
-      `  sign-in  ${named ? "✓" : w?.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
+      `  sign-in  ${named ? "✓" : w.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
     ],
     check: {
       id: "signin_host",
@@ -1424,17 +1518,38 @@ export async function doctorAddress(
   return { state, edge: isEdgeAddress(w.url, domains) };
 }
 
+/** Issue 1334: phones and browsers with push on; unknown on an error. */
+async function pushSubscriptionCount(): Promise<number | undefined> {
+  try {
+    const { pushSubscriptionCount: count } =
+      await import("../../shared/push-subscription-count.js");
+    return count(getStateDir());
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Issue 367: the contact push alerts give the push services. With an
  * https address (web.url) they get it; without one, a mailto fallback
  * some refuse, so a phone may get no push: warn, and say what to set.
+ * Issue 1334: `subscriptions` is how many phones or browsers have push
+ * on. None: nothing is lost yet, so ℹ and ok. Unknown (left out): warn.
  */
 export function pushContactLines(
   w: import("../../shared/web-url.js").WebUrl | null,
   title: string,
   cli: string,
+  subscriptions?: number,
 ): { lines: string[]; check: OnboardCheck } {
   const c = pushContact(w?.url);
+  if (!c.accepted && subscriptions === 0) {
+    const detail = `no phone has push alerts on yet. When one does, it needs an https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK})`;
+    return {
+      lines: ["", `${title} doctor: Push alerts`, "", `  push  ℹ  ${detail}`],
+      check: { id: "push_contact", status: "ok", detail },
+    };
+  }
   const detail = c.accepted
     ? `push services are given ${c.subject} as the contact`
     : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
@@ -1706,6 +1821,60 @@ export function requestKeepLines(
 }
 
 /**
+ * Issue 1333: "Allow this computer?" requests in the last day, from the
+ * activity trail (audit.jsonl, verb signin-request), and how many nobody
+ * approved. Requests are named by count only here; the trail has each
+ * one's address. Never a code.
+ */
+export function signinRequestLines(
+  title: string,
+  o: { stateDir?: () => string; now?: number } = {},
+): { lines: string[]; check?: OnboardCheck } {
+  let text = "";
+  try {
+    text = fs.readFileSync(
+      path.join((o.stateDir ?? getStateDir)(), AUDIT_FILE),
+      "utf-8",
+    );
+  } catch {
+    /* no trail yet: none */
+  }
+  const entries: { ts: string; verb: string; detail: string }[] = [];
+  for (const l of text.split("\n")) {
+    if (!l.includes(SIGNIN_REQUEST_VERB)) continue;
+    try {
+      const e = JSON.parse(l) as {
+        ts?: unknown;
+        verb?: unknown;
+        detail?: unknown;
+      };
+      if (typeof e.ts === "string" && typeof e.verb === "string")
+        entries.push({
+          ts: e.ts,
+          verb: e.verb,
+          detail: String(e.detail ?? ""),
+        });
+    } catch {
+      /* a torn line */
+    }
+  }
+  const c = signinRequestCounts(entries, o.now);
+  const detail = c.requests
+    ? `${c.requests} sign-in request${c.requests === 1 ? "" : "s"} in the last day, ${c.notApproved} nobody approved. The activity trail (verb signin-request) says where each came from`
+    : "no sign-in requests in the last day";
+  const status = c.notApproved ? "warn" : "ok";
+  return {
+    lines: [
+      "",
+      `${title} doctor: Sign-in requests`,
+      "",
+      `  sign-in requests  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "signin_requests", status, detail },
+  };
+}
+
+/**
  * Issue 278: each running agent's instruction files (the ones its runtime
  * loads at start for its folder, by stat only) against a share of its
  * model's context (agent_context.instruction_share_percent). Over it: a
@@ -1768,21 +1937,29 @@ export function instructionSizeLines(
 }
 
 /**
- * agents.git.signing_key: whether agents' commits sign and verify with the
- * key (a commit in a temp repo, checkAgentSigning), and the line that adds
- * its .pub to GitHub as a signing key. Nothing when unset.
+ * agents.git: whether agents' commits sign and verify with their key
+ * (a commit in a temp repo, checkAgentSigning), and the line that adds its
+ * .pub to GitHub as a signing key. The key is agents.git.signing_key, or
+ * (issue 1316) the install's own once an agent start made it. Nothing when
+ * signing is off, or the person's git doesn't sign and none is set.
  */
 export function signingLines(
   title: string,
   readGit: () => AgentGitSettings | undefined = () => {
     try {
-      return readAgentsConfig().git;
+      return resolveAgentSigning({
+        git: readAgentsConfig().git,
+        stateDir: getStateDir(),
+        cwd: process.cwd(),
+        env: process.env,
+        ensure: existingAgentSigningKey,
+      });
     } catch {
       // A bad agents: block is configLines' row.
       return undefined;
     }
   },
-  check: (g: AgentGitSettings) => SigningCheck = (g) => checkAgentSigning(g),
+  check: (g: AgentGitSettings) => SigningCheck = signingInSandbox,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const git = readGit();
   if (!git) return { lines: [], problem: false, checks: [] };
@@ -1808,6 +1985,58 @@ export function signingLines(
       },
     ],
   };
+}
+
+/**
+ * Issue 1316: doctor's signing check as an agent's session runs it: git
+ * inside the agent sandbox (when it is on), with the key's files read
+ * back as a session's are. A key the sandbox hides fails, saying why.
+ */
+export function signingInSandbox(
+  g: AgentGitSettings,
+  o: {
+    stateDir?: string;
+    distRoot?: string;
+    env?: NodeJS.ProcessEnv;
+    on?: boolean;
+    tmp?: string;
+  } = {},
+): SigningCheck {
+  const env = o.env ?? process.env;
+  const on =
+    o.on ??
+    (() => {
+      try {
+        return sandboxSetting(readAgentsConfig(), "den-doctor-signing");
+      } catch {
+        return true;
+      }
+    })();
+  if (!on) return checkAgentSigning(g, { ...(o.tmp ? { tmp: o.tmp } : {}) });
+  const input = agentSandboxInput({
+    stateDir: o.stateDir ?? getStateDir(),
+    distRoot: o.distRoot ?? getDistRoot(),
+    env,
+    // Never an agent's own id: its folder isn't one a check writes.
+    agentId: "den-doctor-signing",
+    readableFiles: signingReadFiles(g),
+  });
+  for (const f of [g.signingKey, `${g.signingKey}.pub`])
+    if (fs.existsSync(f)) {
+      const why = sandboxHidesFile(f, input);
+      if (why)
+        return {
+          ok: false,
+          detail: `agents can't read their signing key: ${why}`,
+        };
+    }
+  return checkAgentSigning(g, {
+    ...(o.tmp ? { tmp: o.tmp } : {}),
+    wrap: (argv) => {
+      const w = sandboxFor(argv, input, { on: true });
+      return { argv: w.argv, env: w.env };
+    },
+  });
 }
 
 /**
@@ -2072,7 +2301,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
     }
     r.checks.push(
-      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+      pushContactLines(
+        readWebUrl(),
+        readBrand().name,
+        product().cli,
+        await pushSubscriptionCount(),
+      ).check,
     );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
@@ -2091,6 +2325,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    // Issue 1333: sign-in requests in the last day.
+    r.checks.push(signinRequestLines(readBrand().name).check!);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
     // Issue 636: whether this install is a test bed.
@@ -2248,15 +2484,23 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     readWebUrl(),
     readBrand().name,
     product().cli,
+    await pushSubscriptionCount(),
   ).lines)
     console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
+  // Issue 1349: the gate's memory guard is off on a platform it can't read.
+  {
+    const g = await import("../../shared/gates/store.js");
+    for (const l of memoryMeasureLines(g.realFreeMemory(), g.realSwapUsedGb()))
+      console.log(l);
+  }
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   // Issue 636: whether this install is a test bed.
   for (const l of (await import("./test-person.js")).testBedLines(
@@ -2441,4 +2685,18 @@ async function repoRootRows() {
   const { repoRootLines, defaultRepoRoots } =
     await import("./doctor-repo-roots.js");
   return repoRootLines(await defaultRepoRoots(), { stateDir: getStateDir() });
+}
+
+/**
+ * Issue 1349: doctor's line when this platform has no free-memory or swap
+ * reading: the gate's memory holds are off here, and the person should see
+ * that, not a healthy-looking number.
+ */
+export function memoryMeasureLines(
+  free: number | null,
+  swap: number | null,
+): string[] {
+  return free === null && swap === null
+    ? [`Gate slots: ${MEMORY_NOT_MEASURED_WORDS}.`]
+    : [];
 }

@@ -34,7 +34,7 @@
  * Nothing here takes a live holder's slot. Issue 1132: the one thing it
  * stops is what a run left in its own process group once its slot ended.
  */
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
@@ -99,6 +99,7 @@ import {
   type GateEntry,
   type GateKind,
   type GateSettings,
+  type MachineReading,
 } from "./rules.js";
 
 export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -143,6 +144,8 @@ export type GateSettingsPatch = {
   memory_free_min_percent?: number | null;
   /** Issue 1274: new runs here wait over this much swap in use, GB (0: off). */
   swap_hold_gb?: number | null;
+  /** Issue 1349: seconds a last good memory reading stands after a failed one. */
+  memory_reading_keep_seconds?: number | null;
   /** Issue 1274: doctor warns over this share of RAM promised to VMs. */
   vm_memory_share?: number | null;
   overrun_margin_minutes?: number | null;
@@ -224,6 +227,8 @@ export const GATE_LIMITS: Record<
   memory_free_min_percent: { min: 0, max: 90, int: false },
   // Issue 1274: GB of swap in use; 0 turns the hold off.
   swap_hold_gb: { min: 0, max: 1024, int: false },
+  // Issue 1349: seconds; past them an unread reading is unknown (and holds).
+  memory_reading_keep_seconds: { min: 0, max: 3600, int: true },
   // Issue 1274: a share of RAM (1: all of it); above 1 allows overcommit.
   vm_memory_share: { min: 0.1, max: 4, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
@@ -406,8 +411,8 @@ export interface GateEventRow {
    * the floor, or swap over it), when one does.
    */
   held?: {
-    memory?: { free: number; limit: number };
-    swap?: { usedGb: number; limitGb: number };
+    memory?: { free: number | null; limit: number; unavailable?: true };
+    swap?: { usedGb: number | null; limitGb: number; unavailable?: true };
   };
   /** ended-early: who ended it; priority: who asked (agent or person). */
   by?: string;
@@ -561,10 +566,10 @@ export interface GateStoreOpts {
   cores?: () => number;
   /** Issue 1132: process groups (default process-group.ts and kill); tests fake it. */
   groups?: GroupOps;
-  /** Issue 1274: free memory, percent (default realFreeMemory). */
-  free?: () => number;
-  /** Issue 1274: swap in use, GB (default realSwapUsedGb). */
-  swap?: () => number;
+  /** Issue 1274: free memory, percent (default realFreeMemory; null: not measured here). */
+  free?: () => MachineReading;
+  /** Issue 1274: swap in use, GB (default realSwapUsedGb; null: not measured here). */
+  swap?: () => MachineReading;
   /**
    * Issue 1274: a fixed VM reading (tests). Without it: null with
    * DEN_GATE_VMS=0 (the test setup), else read in the background.
@@ -607,9 +612,13 @@ export function freePercentFromMeminfo(text: string): number {
  * free level (kern.memorystatus_level, what memory_pressure prints);
  * Linux: MemAvailable. NaN: unread (no hold).
  */
-export function realFreeMemory(env: NodeJS.ProcessEnv = process.env): number {
+export function realFreeMemory(
+  env: NodeJS.ProcessEnv = process.env,
+): MachineReading {
   const fixed = Number((env.DEN_GATE_FREE_MEM ?? "").trim() || NaN);
   if (Number.isFinite(fixed)) return fixed;
+  // Issue 1349: no reading on this platform: not measured, not unknown.
+  if (!MEASURED_PLATFORMS.has(process.platform)) return null;
   // Read at most every 2 s: the store asks on every pass.
   const now = Date.now();
   if (freeCache && now - freeCache.at < 2_000) return freeCache.value;
@@ -645,13 +654,20 @@ export function swapGbFromMeminfo(text: string): number {
 
 let swapCache: { at: number; value: number } | undefined;
 
+/** Issue 1349: the platforms Den reads free memory and swap on. */
+const MEASURED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "linux"]);
+
 /**
  * Issue 1274: swap in use here, GB. DEN_GATE_SWAP_GB fixes it (the test
  * setup sets 0). Read at most every 2 s. NaN: unread (no hold).
  */
-export function realSwapUsedGb(env: NodeJS.ProcessEnv = process.env): number {
+export function realSwapUsedGb(
+  env: NodeJS.ProcessEnv = process.env,
+): MachineReading {
   const fixed = Number((env.DEN_GATE_SWAP_GB ?? "").trim() || NaN);
   if (Number.isFinite(fixed)) return fixed;
+  // Issue 1349: no reading on this platform: not measured, not unknown.
+  if (!MEASURED_PLATFORMS.has(process.platform)) return null;
   const now = Date.now();
   if (swapCache && now - swapCache.at < 2_000) return swapCache.value;
   let value = NaN;
@@ -664,9 +680,9 @@ export function realSwapUsedGb(env: NodeJS.ProcessEnv = process.env): number {
           stdio: ["ignore", "pipe", "ignore"],
         }),
       );
-    else if (process.platform === "linux")
-      value = swapGbFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
+    else value = swapGbFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
   } catch {
+    // Issue 1349: unknown, which holds.
     value = NaN;
   }
   swapCache = { at: now, value };
@@ -694,6 +710,152 @@ function readFreeMemory(): number {
     /* unread */
   }
   return NaN;
+}
+
+/** Issue 1349: `sysctl -n <key>`'s output, read by a child process the thread never waits on. */
+function sysctlAsync(key: string): Promise<string> {
+  return new Promise((res, rej) =>
+    execFile(
+      "/usr/sbin/sysctl",
+      ["-n", key],
+      { encoding: "utf-8", timeout: 2_000 },
+      (err, out) => (err ? rej(err) : res(String(out))),
+    ),
+  );
+}
+
+/** Issue 1349: realSwapUsedGb's machine read, without a synchronous process. */
+async function readSwapAsync(): Promise<MachineReading> {
+  if (process.platform === "darwin")
+    return swapGbFromSysctl(await sysctlAsync("vm.swapusage"));
+  if (process.platform === "linux")
+    return swapGbFromMeminfo(
+      await fs.promises.readFile("/proc/meminfo", "utf-8"),
+    );
+  return null;
+}
+
+/** Issue 1349: readFreeMemory's machine read, without a synchronous process. */
+async function readFreeMemoryAsync(): Promise<MachineReading> {
+  if (process.platform === "darwin") {
+    const n = Number((await sysctlAsync("kern.memorystatus_level")).trim());
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? n : NaN;
+  }
+  if (process.platform === "linux")
+    return freePercentFromMeminfo(
+      await fs.promises.readFile("/proc/meminfo", "utf-8"),
+    );
+  return null;
+}
+
+/** Issue 1349: backgroundReading's choices. */
+export interface BackgroundReadingOpts {
+  /** Read again when the value is older than this, ms (default 2000). */
+  everyMs?: number;
+  /**
+   * After a failed read, the last good value stands this long, ms (default
+   * 30 s, the setting memory_reading_keep_seconds); past it: NaN, unknown.
+   */
+  keepMs?: number | (() => number);
+  /** The value before the first read lands (a primed, synchronous read). */
+  first?: MachineReading;
+  now?: () => number;
+}
+
+/**
+ * Issue 1349: a machine reading for the server's thread. It answers at once
+ * with the last value, and a value older than everyMs is read again in the
+ * background, one read at a time. Unknown is NaN, and an unknown reading
+ * holds: before the first read (unless primed with `first`), and after a
+ * failed read once the last good value is older than keepMs. A failed read
+ * within keepMs keeps the last good value: sysctl fails under pressure,
+ * exactly when a hold matters. null (not measured here) passes through.
+ */
+export function backgroundReading(
+  read: () => Promise<MachineReading>,
+  o: BackgroundReadingOpts = {},
+): () => MachineReading {
+  const now = o.now ?? Date.now;
+  const everyMs = o.everyMs ?? 2_000;
+  const keepMs = () =>
+    typeof o.keepMs === "function" ? o.keepMs() : (o.keepMs ?? 30_000);
+  const primed = o.first !== undefined;
+  let value: MachineReading = primed ? o.first! : NaN;
+  let at = primed ? now() : -Infinity;
+  let goodAt =
+    primed && o.first !== null && Number.isFinite(o.first) ? at : -Infinity;
+  let reading = false;
+  const failed = () => {
+    if (now() - goodAt > keepMs()) value = NaN;
+  };
+  return () => {
+    if (!reading && now() - at >= everyMs) {
+      reading = true;
+      read()
+        .then((v) => {
+          if (v === null || Number.isFinite(v)) {
+            value = v;
+            goodAt = now();
+          } else failed();
+        }, failed)
+        .finally(() => {
+          at = now();
+          reading = false;
+        });
+    }
+    // A last good value past keepMs with no read landing is unknown too.
+    if (value !== null && Number.isFinite(value) && now() - goodAt > keepMs())
+      return NaN;
+    return value;
+  };
+}
+
+/** A fixed reading from the environment (the test setup, a drill), or NaN. */
+const fixedReading = (v: string | undefined) => Number((v ?? "").trim() || NaN);
+
+/** Issue 1349: the server's readers' choices (tests pass prime and read). */
+export interface ServerReadingOpts {
+  /** One synchronous read when the reader is made (the server's start). */
+  prime?: () => MachineReading;
+  /** The background read. */
+  read?: () => Promise<MachineReading>;
+  /** memory_reading_keep_seconds, as ms. */
+  keepMs?: () => number;
+}
+
+function serverReading(
+  env: "DEN_GATE_SWAP_GB" | "DEN_GATE_FREE_MEM",
+  prime: () => MachineReading,
+  read: () => Promise<MachineReading>,
+  o: ServerReadingOpts,
+): () => MachineReading {
+  const bg = backgroundReading(o.read ?? read, {
+    first: (o.prime ?? prime)(),
+    ...(o.keepMs ? { keepMs: o.keepMs } : {}),
+  });
+  return () => {
+    const fixed = fixedReading(process.env[env]);
+    return Number.isFinite(fixed) ? fixed : bg();
+  };
+}
+
+/**
+ * Issue 1349: the server's swap in use, GB: read once, synchronously, when
+ * made (before the server serves), then only in the background, never a
+ * synchronous process on a request. DEN_GATE_SWAP_GB still fixes it.
+ */
+export function serverSwapUsedGb(o: ServerReadingOpts = {}) {
+  return serverReading("DEN_GATE_SWAP_GB", realSwapUsedGb, readSwapAsync, o);
+}
+
+/** Issue 1349: the server's free memory, percent, as serverSwapUsedGb. */
+export function serverFreeMemory(o: ServerReadingOpts = {}) {
+  return serverReading(
+    "DEN_GATE_FREE_MEM",
+    realFreeMemory,
+    readFreeMemoryAsync,
+    o,
+  );
 }
 
 /** Issue 1048: this machine's cores. */
@@ -746,6 +908,43 @@ export class GateYieldRefused extends Error {}
 /** Issue 621: a runner token has as many slots as it may. */
 export class GateFullError extends Error {}
 
+/**
+ * Issue 1339: the gate-slot lock is held by another process past this
+ * store's lockWaitMs (at once, for the server's store: lockWaitMs 0).
+ */
+export class GateLockBusy extends Error {
+  constructor(lock: string) {
+    super(`the gate-slot lock (${lock}) stayed held`);
+    this.name = "GateLockBusy";
+  }
+}
+
+/** Issue 1339: gateLocked's defaults: the CLI's wait, in 25 ms looks. */
+export const GATE_LOCK_WAIT_MS = 10_000;
+export const GATE_LOCK_STEP_MS = 25;
+
+/**
+ * Issue 1339: `fn` (one GateStore call that takes the lock, on a store
+ * with lockWaitMs 0), tried again every `stepMs` while another process
+ * holds the lock, up to `waitMs`; then GateLockBusy. The wait is a timer,
+ * so the server's other requests run meanwhile; the CLI's store keeps its
+ * synchronous wait.
+ */
+export async function gateLocked<T>(
+  fn: () => T,
+  o: { waitMs?: number; stepMs?: number } = {},
+): Promise<T> {
+  const until = Date.now() + (o.waitMs ?? GATE_LOCK_WAIT_MS);
+  for (;;) {
+    try {
+      return fn();
+    } catch (e) {
+      if (!(e instanceof GateLockBusy) || Date.now() >= until) throw e;
+    }
+    await new Promise((r) => setTimeout(r, o.stepMs ?? GATE_LOCK_STEP_MS));
+  }
+}
+
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
@@ -757,8 +956,8 @@ export class GateStore {
   private readonly readLoad: () => number;
   private readonly readCores: () => number;
   private readonly groups: GroupOps;
-  private readonly readFree: () => number;
-  private readonly readSwap: () => number;
+  private readonly readFree: () => MachineReading;
+  private readonly readSwap: () => MachineReading;
   private readonly fixedVms: (() => VmReading | null) | undefined;
   private readonly vmsAsync:
     | ((share: number) => Promise<VmReading>)
@@ -783,10 +982,14 @@ export class GateStore {
     this.vmsAsync = o.vmsAsync;
   }
 
-  /** Issue 1274: swap in use here now, GB (NaN: unread). */
-  swapUsedGb(): number {
+  /**
+   * Issue 1274: swap in use here now, GB. NaN: unknown (it holds); null:
+   * not measured on this platform (issue 1349).
+   */
+  swapUsedGb(): MachineReading {
     try {
       const n = this.readSwap();
+      if (n === null) return null;
       return Number.isFinite(n) ? n : NaN;
     } catch {
       return NaN;
@@ -819,9 +1022,10 @@ export class GateStore {
   }
 
   /** Issue 1274: this machine's free memory now, percent (NaN: unread). */
-  freeMemory(): number {
+  freeMemory(): MachineReading {
     try {
       const n = this.readFree();
+      if (n === null) return null;
       return Number.isFinite(n) ? n : NaN;
     } catch {
       return NaN;
@@ -908,6 +1112,10 @@ export class GateStore {
         ),
         vmMemoryShare: num("vm_memory_share", GATE_DEFAULTS.vmMemoryShare),
         swapHoldGb: num("swap_hold_gb", GATE_DEFAULTS.swapHoldGb),
+        memoryReadingKeepSeconds: num(
+          "memory_reading_keep_seconds",
+          GATE_DEFAULTS.memoryReadingKeepSeconds,
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -1240,17 +1448,21 @@ export class GateStore {
         break;
       } catch (e) {
         if ((e as { code?: string }).code !== "EEXIST") throw e;
+        let tookBack = false;
         try {
           if (
             Date.now() - fs.statSync(lock).mtimeMs > 30_000 ||
             this.holderGone(lock)
-          )
+          ) {
             fs.rmSync(lock, { recursive: true, force: true });
+            tookBack = true;
+          }
         } catch {
           /* someone else took it back */
         }
-        if (Date.now() > until)
-          throw new Error(`the gate-slot lock (${lock}) stayed held`);
+        if (tookBack) continue;
+        // Issue 1339: with lockWaitMs 0 (the server's), busy at once.
+        if (Date.now() >= until) throw new GateLockBusy(lock);
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
       }
     }
@@ -1739,10 +1951,26 @@ export class GateStore {
         here && (mem || sw)
           ? {
               ...(mem
-                ? { memory: { free: Math.round(mem.free), limit: mem.limit } }
+                ? {
+                    memory: mem.unavailable
+                      ? {
+                          free: null,
+                          limit: mem.limit,
+                          unavailable: true as const,
+                        }
+                      : { free: Math.round(mem.free), limit: mem.limit },
+                  }
                 : {}),
               ...(sw
-                ? { swap: { usedGb: sw.usedGb, limitGb: sw.limitGb } }
+                ? {
+                    swap: sw.unavailable
+                      ? {
+                          usedGb: null,
+                          limitGb: sw.limitGb,
+                          unavailable: true as const,
+                        }
+                      : { usedGb: sw.usedGb, limitGb: sw.limitGb },
+                  }
                 : {}),
             }
           : undefined;
@@ -1857,6 +2085,30 @@ export class GateStore {
       }
       if (mine.length) this.settle();
       return mine.length;
+    });
+  }
+
+  /**
+   * Issue 1339: the live slots as their files stand, with no lock and no
+   * settle (each file is written whole, so a plain read is safe). For a
+   * reader on the server's one thread, the bell's refresh: list() waits on
+   * the machine-wide lock synchronously, up to lockWaitMs, and while a gate
+   * run held it the whole server stood still. What list() would take back
+   * (a gone run, a lapsed lease, a waiter whose run is gone) isn't shown;
+   * the next locked call takes it back.
+   */
+  peekAll(): GateEntry[] {
+    const s = this.settings();
+    const now = this.now();
+    return this.readAll().filter((e) => {
+      if (lapsed(e, now) || mcpLapsed(e, s, now)) return false;
+      if (!e.orphanedAt && !gone(e, this.alive)) return true;
+      // Issue 867: a waiter whose run is gone keeps its place a while.
+      return (
+        keptWaiter(e, s) &&
+        now - (e.orphanedAt ? Date.parse(e.orphanedAt) : now) <=
+          s.waiterReturnMinutes * 60_000
+      );
     });
   }
 
@@ -2412,7 +2664,7 @@ export class GateStore {
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
       );
       if (!want.length) {
-        this.locked(() => this.settle());
+        await gateLocked(() => this.locked(() => this.settle()));
         return;
       }
       const found = await Promise.all(
@@ -2437,19 +2689,21 @@ export class GateStore {
           }
         }),
       );
-      const no = this.locked(() => {
-        const st = readBoxStates(this.dir);
-        const at = new Date(this.now()).toISOString();
-        for (const { n, r } of found)
-          st[n] = {
-            state: r.state,
-            ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
-            at,
-          };
-        writeBoxStates(this.dir, st);
-        this.settle();
-        return found.some((f) => f.r.state !== "open");
-      });
+      const no = await gateLocked(() =>
+        this.locked(() => {
+          const st = readBoxStates(this.dir);
+          const at = new Date(this.now()).toISOString();
+          for (const { n, r } of found)
+            st[n] = {
+              state: r.state,
+              ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
+              at,
+            };
+          writeBoxStates(this.dir, st);
+          this.settle();
+          return found.some((f) => f.r.state !== "open");
+        }),
+      );
       if (!no) return;
     }
   }

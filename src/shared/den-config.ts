@@ -37,10 +37,7 @@ import {
   type RolesConfig,
 } from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
-import {
-  gitSigningBlock,
-  type AgentGitSettings,
-} from "./agents/git-signing.js";
+import { gitSigningBlock, type AgentGitBlock } from "./agents/git-signing.js";
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
@@ -673,6 +670,7 @@ export interface UserConfig {
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
      */
     shell_path_timeout_seconds?: unknown;
+    draft_hold_max_minutes?: unknown;
     /**
      * issue_write: the persona roles that write GitHub issues in their
      * project's repos (a list), and the install's writes an hour
@@ -1162,6 +1160,77 @@ export function setUserSandboxOn(): void {
     ...cfg,
     agents: { ...(cfg.agents ?? {}), sandbox: "on" },
   } as UserConfig);
+}
+
+/**
+ * Issue 1328: `agents.<id>.sandbox: on|off` in user.yml, for the held write
+ * agent_sandbox_set. Only that key changes: comments, the order and every
+ * other key stay (the file is edited as a YAML document, never rewritten
+ * from its values).
+ */
+export function setUserAgentSandbox(id: string, on: boolean): void {
+  if (!AGENT_KEY_RE.test(id) || AGENTS_RESERVED_KEYS.includes(id))
+    throw new Error(
+      `setUserAgentSandbox: ${JSON.stringify(id)} is not an agent id`,
+    );
+  let raw = "";
+  try {
+    raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  let doc: yaml.Document;
+  if (raw.trim()) {
+    doc = yaml.parseDocument(raw);
+    if (doc.errors.length)
+      throw new Error(`config/local/user.yml: ${doc.errors[0]!.message}`);
+  } else {
+    doc = new yaml.Document({});
+    doc.commentBefore =
+      " Per-engineer preferences — gitignored, never committed";
+  }
+  // An empty key (`agents:`) reads as a null scalar: the same as none.
+  const empty = (n: unknown) =>
+    n === undefined || n === null || (yaml.isScalar(n) && n.value == null);
+  const agents = doc.get("agents", true);
+  if (empty(agents)) doc.set("agents", doc.createNode({}));
+  else if (!yaml.isMap(agents))
+    throw new Error("config/local/user.yml: agents must be a mapping");
+  const block = doc.getIn(["agents", id], true);
+  if (empty(block)) doc.setIn(["agents", id], doc.createNode({}));
+  else if (!yaml.isMap(block))
+    throw new Error(`config/local/user.yml: agents.${id} must be a mapping`);
+  doc.setIn(["agents", id, "sandbox"], on ? "on" : "off");
+  fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
+  // lineWidth 0: long lines elsewhere in the file are never refolded.
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString({ lineWidth: 0 }));
+}
+
+/**
+ * Issue 1328: drops agents.<id>.sandbox from user.yml when an agent is
+ * removed, so its setting goes with it (and its block, when that was all
+ * it held). Whether it was there; nothing is written when it wasn't.
+ */
+export function clearUserAgentSandbox(id: string): boolean {
+  if (!AGENT_KEY_RE.test(id) || AGENTS_RESERVED_KEYS.includes(id)) return false;
+  let raw = "";
+  try {
+    raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+  if (!raw.trim()) return false;
+  const doc = yaml.parseDocument(raw);
+  if (doc.errors.length)
+    throw new Error(`config/local/user.yml: ${doc.errors[0]!.message}`);
+  if (!doc.hasIn(["agents", id, "sandbox"])) return false;
+  doc.deleteIn(["agents", id, "sandbox"]);
+  const block = doc.getIn(["agents", id], true);
+  if (yaml.isMap(block) && block.items.length === 0)
+    doc.deleteIn(["agents", id]);
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString({ lineWidth: 0 }));
+  return true;
 }
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
@@ -1996,6 +2065,38 @@ export const ROTATION_WAIT_MINUTES_DEFAULT = 240;
  * session ends without Den asking is brought back once in this window.
  */
 export const UNASKED_EXIT_WINDOW_MINUTES_DEFAULT = 10;
+/**
+ * Issue 1311: agents.draft_hold_max_minutes when unset: how long Den's held
+ * messages wait on a person's unsent draft before the bell says so. The
+ * draft is never sent for them; they go on waiting.
+ */
+export const DRAFT_HOLD_MAX_MINUTES = {
+  default: 30,
+  min: 1,
+  max: 1440,
+} as const;
+export const DRAFT_HOLD_MAX_MINUTES_DEFAULT = DRAFT_HOLD_MAX_MINUTES.default;
+
+/**
+ * Issue 1311: agents.draft_hold_max_minutes (user.yml) for Settings: 30
+ * when unset, 1 to 1440. A wrong value throws, naming the key.
+ */
+export function agentsDraftHoldMaxMinutes(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.draft_hold_max_minutes;
+  if (v === undefined || v === null) return DRAFT_HOLD_MAX_MINUTES.default;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v >= DRAFT_HOLD_MAX_MINUTES.min &&
+    v <= DRAFT_HOLD_MAX_MINUTES.max
+  )
+    return v;
+  throw new Error(
+    `agents.draft_hold_max_minutes: minutes, ${DRAFT_HOLD_MAX_MINUTES.min} to ${DRAFT_HOLD_MAX_MINUTES.max} (got ${JSON.stringify(v)})`,
+  );
+}
 
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
@@ -2019,6 +2120,8 @@ export const AGENTS_RESERVED_KEYS = [
   "rotation_wait_minutes",
   // Issue 926: bring back an agent whose session ended without Den asking.
   "unasked_exit_window_minutes",
+  // Issue 1311: how long held messages wait on a draft before the bell.
+  "draft_hold_max_minutes",
   // Issue 218: how long a change waits for another process's on one agent.
   "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
@@ -2137,8 +2240,8 @@ export interface ResolvedAgentsConfig {
   rotate?: RotateSettings;
   /** D28: agents.rotate as written, the org scope. */
   rotateOrg?: OrgRotate;
-  /** agents.git: the key agents Den starts sign commits with (unset: none). */
-  git?: AgentGitSettings;
+  /** agents.git: signing off, or the key agents sign with (unset: the default, issue 1316). */
+  git?: AgentGitBlock;
   /** agents.helpers (D32) with its defaults. */
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
@@ -2163,6 +2266,13 @@ export interface ResolvedAgentsConfig {
    * back. 0: never brought back (still recorded and told).
    */
   unaskedExitWindowMs: number;
+  /**
+   * Issue 1311: agents.draft_hold_max_minutes (default 30). Messages Den
+   * holds while its person's unsent draft is on an agent's input line wait
+   * this long before the bell says so. The draft is never sent for them:
+   * they go on waiting.
+   */
+  draftHoldMaxMs?: number;
   /**
    * Issue 218: agents.lock_wait_minutes (default LOCK_WAIT_MINUTES_DEFAULT):
    * how long a change to an agent waits while another process changes it.
@@ -2509,6 +2619,21 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.unasked_exit_window_minutes: minutes, 0 or more (got ${JSON.stringify(uw)})`,
       );
     out.unaskedExitWindowMs = Math.round(uw * 60_000);
+  }
+  const dh = (raw as { draft_hold_max_minutes?: unknown })
+    .draft_hold_max_minutes;
+  out.draftHoldMaxMs = DRAFT_HOLD_MAX_MINUTES_DEFAULT * 60_000;
+  if (dh !== undefined && dh !== null) {
+    if (
+      typeof dh !== "number" ||
+      !Number.isFinite(dh) ||
+      dh < DRAFT_HOLD_MAX_MINUTES.min ||
+      dh > DRAFT_HOLD_MAX_MINUTES.max
+    )
+      throw new Error(
+        `agents.draft_hold_max_minutes: minutes, ${DRAFT_HOLD_MAX_MINUTES.min} to ${DRAFT_HOLD_MAX_MINUTES.max} (got ${JSON.stringify(dh)})`,
+      );
+    out.draftHoldMaxMs = Math.round(dh * 60_000);
   }
   const lw = raw.lock_wait_minutes;
   if (lw !== undefined && lw !== null) {

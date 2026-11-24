@@ -989,6 +989,9 @@
     "err.signin.codeDenied": "このコンピューターは {host} で拒否されました。",
     "err.signin.codeFailed":
       "{name} からコードを取得できませんでした。もう一度お試しください。",
+    "err.signin.pairStartLead":
+      "{host} またはほかのコンピューターで、すでに {name} にサインインしているブラウザーからコードでサインインします。",
+    "err.signin.pairStart": "ほかのコンピューターからサインイン",
     "err.signin.newCode": "新しいコードを取得",
     "err.signin.youreIn": "サインインしました。",
     "err.signin.expiredLead":
@@ -1184,6 +1187,10 @@
       "スワップ使用量がこの値 (GB) を超えたらこのマシンの新しい実行を待たせる",
     "set.server.gate_swap_hold_gb.d":
       "このマシンのスワップ使用量がこの GB を超えている間、新しいテストは待ちます。ただし待つのはこのマシンで別の実行が動いている間だけで、動いているものがなければ次が始まります。空きメモリが十分に見えてもスワップが埋まっていくことがあります。テスト用マシンは引き続き実行を受け付けます。0 で待たせません。__DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "メモリの読み取りに失敗したとき、最後の値を保つ時間（秒）",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "空きメモリやスワップを読み取れないとき、最後の正しい値をこの秒数だけ使います。その後は不明となり、不明な値は、ここで別の実行が進んでいる間、新しい実行を待たせます。0 ですぐに待たせます。__DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
     "set.server.gate_vm_memory_share":
       "仮想マシンがメモリのこの割合を超えて予約したら警告する",
     "set.server.gate_vm_memory_share.d":
@@ -1334,6 +1341,9 @@
     "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
     "set.agents.shell_path_wait.d":
       "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、新しいシェルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "下書き中の保留から通知まで",
+    "set.agents.draft_hold_max.d":
+      "エージェントのターミナルに未送信のメッセージを入力している間、__DEN_TITLE__ はそこへ入力する予定のものを保留し、あなたの下書きを送信することはありません。この時間を過ぎると、ベルが待機中のメッセージを知らせます。__DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -1670,6 +1680,15 @@
     "set.agents.hub_delivery_loop": "Hub のデリバリーループ",
     "set.agents.hub_delivery_loop.d":
       "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
+    "set.agents.hub_groups": "Hub のグループ",
+    "set.agents.hub_groups.d":
+      "エージェントページに Hub のグループを表示するか（「プロジェクト別」の横の「グループ別」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+    "set.agents.hub_groups.o.auto": "自動",
+    "set.agents.hub_groups.o.on": "オン",
+    "set.agents.hub_groups.o.off": "オフ",
+    "set.agents.hub_groups_cache": "グループの保持時間",
+    "set.agents.hub_groups_cache.d":
+      "Den が Hub のグループのコピーをメモリに保持し、次に Hub にたずねるまでの時間: 5〜3600 秒。エージェントページの「再試行」ですぐに Hub にたずねます。__DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop":
       "Hub のデリバリーループ: このプロジェクト",
     "set.workspace.hub_delivery_loop.d":
@@ -2034,6 +2053,27 @@
       "このエージェントの開始後に Den が {to} に更新されたため、Den のツールはまだ {from} のコードで動いています。再起動すると、次のアイドル時に同じ会話のまま {to} のツールを読み込みます。",
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
+    "ag.by.label": "一覧の表示",
+    "ag.by.project": "プロジェクト別",
+    "ag.by.group": "グループ別",
+    "ag.grp.noHub": "グループは Den Hub の機能です。",
+    "ag.grp.connect": "Den Hub に接続",
+    "ag.grp.notInPlan":
+      "この会社の Den Hub プランにはグループが含まれていません。",
+    "ag.grp.openHub": "Hub を開く",
+    "ag.grp.guest":
+      "この Hub の会社ではゲストのため、グループはここに表示されません。",
+    "ag.grp.unreachable":
+      "Den Hub に接続できないため、グループを表示できません。",
+    "ag.grp.retry": "再試行",
+    "ag.grp.noGroups": "グループはまだありません",
+    "ag.grp.openGroups": "Hub でグループを開く",
+    "ag.grp.lead": "リード: {name}",
+    "ag.grp.open": "Hub で {group} を開く",
+    "ag.grp.message": "グループにメッセージ",
+    "ag.grp.messageName": "Hub で {group} にメッセージ",
+    "ag.grp.empty": "この Den で動いているメンバーはいません。",
+    "ag.grp.notIn": "グループなし",
     "ag.mcp.restarting": "{id} は次の待機時に同じ会話で再起動します。",
     "ag.det.label": "{id} の詳細",
     "ag.det.close": "閉じる",
@@ -2067,14 +2107,20 @@
     "pair.aDevice": "ブラウザー",
     "pair.local": "このコンピューター(localhost 経由)",
     "pair.help":
-      "そのコンピューターの画面に表示されているコードを入力してください。自分でサインインしているコンピューターだけを許可してください。",
+      "入力することで、そのコンピューターの前にいることを証明します。自分でサインインしているコンピューターだけを許可してください。",
     "pair.allow": "許可",
     "pair.allowed": "そのコンピューターはサインインしました。",
     "pair.ended":
       "そのリクエストは終了しました。そのコンピューターはページを閉じたか、すでにサインインしています。何も許可していません。",
     "pair.expired": "そのコードは期限切れです。何も許可していません。",
     "pair.close": "閉じる",
-    "pair.codeLabel": "そのコンピューターの画面のコード",
+    "pair.from": "{client} から、{host} を求めています（{time}）。",
+    "pair.fromNamed":
+      "{client}（自称 {name}）から、{host} を求めています（{time}）。",
+    "pair.unknownAddr": "Den が確認できなかったアドレス",
+    "pair.unexpected":
+      "今ほかのコンピューターでサインインしようとしていないなら、拒否してください。",
+    "pair.codeLabel": "そのコンピューターに表示されているコードを入力",
     "pair.age": "{n} 分前に要求。",
     "pair.ageNow": "たった今要求。",
     "pair.fromLogin": "{time} に実行した web login から。",
@@ -2285,6 +2331,10 @@
     "ap.det.agent_create.runtime": "ランタイム: {v}",
     "ap.det.agent_create.mode": "モード: {mode}（プロジェクトのモード: {cap}）",
     "ap.det.agent.who": "エージェント: {agent}、プロジェクト {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} はサンドボックスの外で始まります: config/local/user.yml の agents.{id}.sandbox が off です。",
+    "ap.det.agent.sandboxOffAll":
+      "ここのエージェントはサンドボックスの外で始まります (agents.sandbox: off)。このエージェントも同じです。",
     "ap.det.agent.whoId":
       "エージェント: {agent}（{id}）、プロジェクト {project}",
     "ap.det.agent_folder.from": "移動元: {v}",
@@ -2302,6 +2352,21 @@
     "ap.det.agent_mode.running":
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
+    "ap.det.agent_sandbox_set.self":
+      "{agent} が自分自身のために求めています: 自分のサンドボックスを {value} にしたいとしています。",
+    "ap.det.agent_sandbox_set.on":
+      "{agent} をサンドボックスに戻します: Den のファイルは再び読み取り専用になります。",
+    "ap.det.agent_sandbox_set.off":
+      "{agent} をサンドボックスの外に出します: Den のファイルに書き込めるようになり、サンドボックスが止めているものにも届きます。",
+    "ap.det.agent_sandbox_set.why": "理由: {why}",
+    "ap.det.agent_sandbox_set.writes":
+      "Den は config/local/user.yml に agents.{id}.sandbox: {value} だけを書き込みます。ほかは変えません。",
+    "ap.det.agent_sandbox_set.running":
+      "実行中です: Den はターンの後、同じ会話のまま、変更を入れて再起動します。",
+    "ap.det.agent_sandbox_set.stopped":
+      "停止中です: 次の起動で変更が入ります。",
+    "ap.do.agent_sandbox_set": "{agent}: サンドボックスに戻す",
+    "ap.do.agent_sandbox_set.loosens": "{agent} をサンドボックスの外に出す",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
@@ -2692,6 +2757,8 @@
     "bell.undo": "元に戻す",
     "bell.undoMsg": "「{kind}」を表示しなくなりました。",
     "bell.clearRead": "既読を消去",
+    "bell.marking": "既読にしています…",
+    "bell.clearing": "消去しています…",
     "bell.read": "既読にする",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
@@ -2796,6 +2863,10 @@
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den があなたが誰かを Hub にまだ問い合わせています",
     "bell.m.held.unread":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Den がエージェントの状態を時間内に読めませんでした",
+    "bell.m.held.draft":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: あなたがメッセージを入力中です。送るか消すと入ります",
+    "bell.m.held.hub_tools":
+      "{name}: {n} 件のメッセージが {m} 分待っています。待機中: Hub のツールが読み込まれていません。再起動してください",
     "bell.m.hubNoAnswer":
       "{name}: Hub コメント {n} 件を入力しましたが、{m} 分たってもまだ返事がありません",
     "bell.m.crashLoop":
@@ -2882,6 +2953,10 @@
       "指示ファイルが {size} あり、コンテキストの {share}% を超えています。最も大きいのは {path} ({big}) です。",
     "ag.hub.queued": "Hub のコメント {n} 件が待っています",
     "ag.hub.notAtPrompt": "待機中: エージェントが入力プロンプトにいません",
+    "ag.draftWaiting":
+      "{n} 件のメッセージが待機中: あなたの下書きの後に送られます",
+    "ag.draftWaitingTip":
+      "ここで入力している間、Den はこれらを保留します。メッセージを送るか消すと、順番に入ります。",
     "tx.asked": "依頼",
     "tx.result": "結果",
     "tx.error": "エラー",
@@ -3128,6 +3203,11 @@
     "gate.swapUsed": "スワップ使用量: {used} GB",
     "gate.memoryHold":
       "待機中: このマシンの空きメモリは {free}% で {limit}% を下回っており、このマシンで別の実行が動いています。メモリが空くかその実行が終わると始まります",
+    "gate.memoryUnavailableHold":
+      "待機中：メモリを読み取れません。ここで別の実行が進んでいる間は待ちます。読み取りが戻るか、その実行が終わると始まります",
+    "gate.memoryUnavailable": "このマシン：メモリを読み取れません",
+    "gate.memoryNotMeasured":
+      "このマシン：このプラットフォームではメモリを測りません。メモリによる待機は適用されません",
     "gate.freeMemory": "このマシン: 空きメモリ {free}%",
     "gate.vms":
       "ここの仮想マシンが予約したメモリは {promised} GB (許容 {limit} GB)",

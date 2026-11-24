@@ -252,6 +252,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
@@ -277,6 +278,7 @@ import {
   shellPathTimeoutMs,
   agentsResume,
   agentsShellPathTimeoutSeconds,
+  agentsDraftHoldMaxMinutes,
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
@@ -336,6 +338,8 @@ import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import {
   GateStore,
   checkGatePatch,
+  serverFreeMemory,
+  serverSwapUsedGb,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
 import { realDocker } from "../../shared/gates/ephemeral.js";
@@ -615,9 +619,15 @@ import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
 import {
   CREATE_REFUSED,
+  denAddressOf,
   handlePairRoutes,
   isPairRoute,
 } from "./pair-routes.js";
+import {
+  meshNameOf,
+  pairEventDetail,
+  SIGNIN_REQUEST_VERB,
+} from "./signin-request-log.js";
 import { mayWriteSessions } from "./session-writes.js";
 import {
   cliCommand,
@@ -647,6 +657,8 @@ import {
   forgetHubToken,
   hubTokenProblem,
   patchHubAllowTools,
+  patchHubGroups,
+  hubGroupsMode,
   patchHubUrl,
   readHubConfig,
   type HubConfig,
@@ -1343,7 +1355,7 @@ import {
   type HeldActions,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
-import { gateOverrunWaiting } from "./gate-overrun-bell.js";
+import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
   handleIssueWriteRoute,
@@ -1363,6 +1375,12 @@ import {
   legacyAgentIds,
   sandboxOnHeldOp,
 } from "../../shared/agents/sandbox-rollout.js";
+import {
+  checkAgentSandboxSet,
+  runAgentSandboxSet,
+  writeSandboxNote,
+  type SandboxSetDeps,
+} from "../../shared/agents/sandbox-set.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1457,6 +1475,7 @@ import {
   agentInputState,
   checkAgentCreate,
   checkAgentFolder,
+  agentRecord,
   checkAgentMode,
   checkPersonaCreate,
   checkPersonaUpdate,
@@ -1469,10 +1488,12 @@ import {
   runProjectMcpUpdate,
   createAgent,
   runAgentFolder,
+  restartAgent,
   runAgentMode,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
+  importSandboxOff,
   runAgentImport,
   personaLookup,
   hubUpstream,
@@ -2487,6 +2508,12 @@ function noteExpiringToken(): void {
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
 /** Issue 819: the new-device limits are Settings, read when used. */
 const PAIRS = new PairRequests({
+  // Issue 1333: each request's start and end, in the activity trail.
+  onEvent: (e) =>
+    void recordAction(null, {
+      verb: SIGNIN_REQUEST_VERB,
+      detail: pairEventDetail(e),
+    }),
   unseenMs: pairUnseenMs(),
   perClient: () => webAuthNow().pairRequestsPerMinute,
   maxAttempts: () => webAuthNow().approveAttempts,
@@ -3224,8 +3251,13 @@ function sendPairing(
   const r = PAIRS.tryCreate({
     userAgent: req.headers["user-agent"],
     client,
+    host: denAddressOf(req),
     ...(link ? { link: link.nonce, linkAt: link.startedAt } : {}),
   });
+  if (r.ok && client)
+    void meshNameOf(client).then((n) => {
+      if (n) PAIRS.setClientName(r.ref, n);
+    });
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   if (!r.ok)
@@ -5002,6 +5034,14 @@ function approvalDeps(): ApprovalDeps {
     testPersonSetup: testPersonSetupAction(testPersonSetupDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 1328: an agent brought in outside the sandbox needs the person.
+    agentImportSandbox: (persona) => {
+      try {
+        return importSandboxOff(agentWebDeps(), persona);
+      } catch {
+        return null;
+      }
+    },
     // Issue 160: an agent closes a stale or superseded pull request after
     // a Hub note (auto unless the repo is watched or pinned).
     prClose: async ({ repo, pr, comment }) => {
@@ -5165,6 +5205,8 @@ function approvalDeps(): ApprovalDeps {
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
     },
+    // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
+    agentSandbox: agentSandboxHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5352,6 +5394,36 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * expired: its item goes). Issue 742: the queue is made at the start, so
  * what waited before a restart is read back and shows in the bell.
  */
+/**
+ * Issue 1328: agent_sandbox_set on this install: the agent's record, the
+ * resolved agents config, the one user.yml key, the note in the state
+ * folder, and Restart after its turn (the conversation kept).
+ */
+function agentSandboxHeldOp() {
+  const deps = (): SandboxSetDeps => ({
+    record: (id, project) => agentRecord(agentWebDeps(), id, project),
+    agentsConfig: () => readAgentsConfig(),
+    write: (id, on) => setUserAgentSandbox(id, on),
+    note: (id, n) => writeSandboxNote(getStateDir(), id, n),
+    restart: (id, project) =>
+      restartAgent(agentWebDeps(), id, project, "after-turn").catch((e) => {
+        serverLog(
+          `  ⚠ agent_sandbox_set: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
+          "warn",
+        );
+      }),
+    now: () => new Date().toISOString(),
+  });
+  return {
+    check: (
+      a: Record<string, unknown>,
+      who?: { agent?: string; project?: string },
+    ) => checkAgentSandboxSet(deps(), a, who),
+    run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
 /** Issue 936: den_sandbox_on, counting the agents from before it now. */
 function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
   return sandboxOnHeldOp({
@@ -5750,7 +5822,22 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 
 /** Issue 144: the machine's gate slots, opened on first use. */
 let gateStore: GateStore | undefined;
-const gates = () => (gateStore ??= new GateStore());
+// Issue 1339: the server's store never waits on the gate-slot lock on its
+// one thread (lockWaitMs 0); its callers wait by timer, with gateLocked.
+// Issue 1349: and its swap and free-memory readings never start a process
+// synchronously (read in the background, the last value meanwhile).
+const gates = (): GateStore => {
+  if (gateStore) return gateStore;
+  // Issue 1349: a failed reading's last good value stands for the setting.
+  const keepMs = () =>
+    (gateStore?.settings().memoryReadingKeepSeconds ?? 30) * 1000;
+  gateStore = new GateStore({
+    lockWaitMs: 0,
+    swap: serverSwapUsedGb({ keepMs }),
+    free: serverFreeMemory({ keepMs }),
+  });
+  return gateStore;
+};
 
 /**
  * Issue 163 (b): the Settings row's view of the agents' sign-in token:
@@ -6020,6 +6107,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       try {
         return {
           path_timeout_seconds: agentsShellPathTimeoutSeconds(() => user),
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 1311: how long messages wait on a draft before the bell says so.
+    agents_draft: (() => {
+      try {
+        return {
+          hold_max_minutes: agentsDraftHoldMaxMinutes(() => user),
         };
       } catch {
         return null;
@@ -6459,10 +6556,9 @@ async function handleRequest(
       // Issue 746: what waits for the person's Allow leads Needs you.
       held: () => (approvals ? approvals.queue.pending() : []),
       // Issue 993: a gate slot held past the multiple of its estimate.
-      gateOverruns: () => {
-        const s = gates();
-        return gateOverrunWaiting(s.list(), s.settings(), Date.now());
-      },
+      // Issue 1339: read without the gate-slot lock, so a gate run that
+      // holds it never stalls the bell (or the server with it).
+      gateOverruns: () => bellGateOverruns(gates()),
     });
     return;
   }
@@ -6592,6 +6688,7 @@ async function handleRequest(
         const g = checkRequest(r, GUARD, product().cli, product().title);
         return g.ok ? g.client : undefined;
       },
+      clientName: (c) => meshNameOf(c),
       approver: deviceApproverRefusal,
       linkEnded: (link, how, r) => {
         if (how === "denied") return LOGIN_WAITS.denied(link);
@@ -9865,6 +9962,9 @@ async function handleRequest(
   //     Hub's tools without asking); null clears it (on)
   //   hub_delivery_loop: true | false, hub.delivery_loop (issue 158: the
   //     Hub delivery loop in agents' instructions); null clears it (on)
+  //   hub_groups: { mode?: auto | on | off, cache_seconds?: 5..3600 },
+  //     hub.groups and hub.groups_cache_seconds (issue 750: groups from
+  //     Hub on the agents page); null clears one (auto, 30)
   //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
   //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -9935,6 +10035,17 @@ async function handleRequest(
         agents_default_mode: user.agents?.default_mode ?? null,
         // Issue 1022: how often the page polls health, visible and hidden.
         health_poll: healthPollSeconds(() => user),
+        // Issue 750: groups from Hub (user.yml hub.groups, auto by default).
+        hub_groups: (() => {
+          const h = (user as Record<string, unknown>).hub as
+            | { groups?: unknown; groups_cache_seconds?: unknown }
+            | undefined;
+          const c = h?.groups_cache_seconds;
+          return {
+            mode: hubGroupsMode(h?.groups) ?? "auto",
+            cache_seconds: typeof c === "number" ? c : 30,
+          };
+        })(),
         // Issue 158: the Hub delivery loop in agents' instructions.
         hub_delivery_loop:
           (
@@ -10018,6 +10129,7 @@ async function handleRequest(
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_delivery_loop?: unknown;
+          hub_groups?: unknown;
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
@@ -10035,6 +10147,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_draft?: unknown;
           agents_resume?: unknown;
           restore_services_on_boot?: unknown;
           agent_issue_writes?: unknown;
@@ -10105,6 +10218,7 @@ async function handleRequest(
             web_sessions: body.web_sessions,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_draft: body.agents_draft,
             agents_resume: body.agents_resume,
             restore_services_on_boot: body.restore_services_on_boot,
             agent_issue_writes: body.agent_issue_writes,
@@ -10186,6 +10300,15 @@ async function handleRequest(
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // Issue 750: hub.groups and hub.groups_cache_seconds (Settings ›
+        // Hub › Groups from Hub); null clears one.
+        if (body.hub_groups !== undefined) {
+          const h = patchHubGroups(
+            user as Record<string, unknown>,
+            body.hub_groups,
           );
           if (!h.ok) return send400(res, h.error);
         }
@@ -11387,6 +11510,13 @@ try {
 void CRASH_GATE.then(() =>
   startLogoutWatch((line) => serverLog(line, "lifecycle")),
 );
+// Issue 1349: the gate store (and its one primed memory reading) is made
+// before the server serves, so its first settle is never on an unknown.
+try {
+  gates();
+} catch (e) {
+  serverLog(`gate store: ${(e as Error).message}`, "lifecycle");
+}
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());

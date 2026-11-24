@@ -59,6 +59,7 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
   type LoadHold,
+  MEMORY_NOT_MEASURED_WORDS,
   type MemoryHold,
   type SwapHold,
   expectedStart,
@@ -599,12 +600,19 @@ export function holdWords(h: LoadHold): string {
 
 /** Issue 1274: why a run here waits on swap, in words. */
 export function swapHoldWords(h: SwapHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
   return `waiting: this machine has ${h.usedGb} GB of swap in use, over ${h.limitGb} GB, while another run here is going; it starts once swap drops or that run ends (test boxes still take runs)`;
 }
 
 /** Issue 1274: why a run here waits on memory, in words. */
 export function memoryHoldWords(h: MemoryHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
   return `waiting: this machine has ${Math.round(h.free)}% of its memory free, under ${h.limit}%, while another run here is going; it starts once memory frees or that run ends (test boxes still take runs)`;
+}
+
+/** Issue 1349: an unknown memory reading holds; why, in words. */
+export function memoryUnavailableHoldWords(): string {
+  return "waiting: memory reading unavailable (this machine's free memory or swap couldn't be read), while another run here is going; it starts once a reading comes back or that run ends (test boxes still take runs)";
 }
 
 const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
@@ -613,6 +621,12 @@ const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
 export function machineLines(m: GateMachineView | undefined): string[] {
   if (!m) return [];
   const out: string[] = [];
+  // Issue 1349: the guard is off here, or its reading is unknown: say so.
+  if (m.notMeasured) out.push(`This machine: ${MEMORY_NOT_MEASURED_WORDS}.`);
+  else if (m.unavailable)
+    out.push(
+      "This machine: memory reading unavailable; new runs here wait while another run here is going.",
+    );
   if (m.freeMemory !== undefined)
     out.push(
       `This machine: ${m.freeMemory}% of memory free` +
@@ -650,9 +664,9 @@ export function slotLine(
       /** Issue 1048: the machine's cores. */
       cores?: number;
       /** Issue 1274: this machine's free memory, percent. */
-      freeMemory?: number;
+      freeMemory?: number | null;
       /** Issue 1274: swap in use here, GB. */
-      swapUsedGb?: number;
+      swapUsedGb?: number | null;
     },
 ): string {
   const yields = yieldedTo(e, all);
@@ -1559,6 +1573,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--reap-grace-seconds", "reap_grace_seconds"],
     ["--memory-free-min-percent", "memory_free_min_percent"],
     ["--swap-hold-gb", "swap_hold_gb"],
+    ["--memory-reading-keep-seconds", "memory_reading_keep_seconds"],
     ["--vm-memory-share", "vm_memory_share"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],

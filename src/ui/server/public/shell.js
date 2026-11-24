@@ -1974,6 +1974,9 @@
     "err.signin.codeExpired": "This code expired.",
     "err.signin.codeDenied": "This computer was denied on {host}.",
     "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
+    "err.signin.pairStartLead":
+      "Sign in with a code from a browser already signed in to {name}, on {host} or another computer.",
+    "err.signin.pairStart": "Sign in from another computer",
     "err.signin.newCode": "Get a new code",
     "err.signin.youreIn": "You're in.",
     "err.signin.expiredLead":
@@ -2269,6 +2272,15 @@
     "set.agents.hub_delivery_loop": "Hub delivery loop",
     "set.agents.hub_delivery_loop.d":
       "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    "set.agents.hub_groups": "Groups from Hub",
+    "set.agents.hub_groups.d":
+      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+    "set.agents.hub_groups.o.auto": "Auto",
+    "set.agents.hub_groups.o.on": "On",
+    "set.agents.hub_groups.o.off": "Off",
+    "set.agents.hub_groups_cache": "Groups kept for",
+    "set.agents.hub_groups_cache.d":
+      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop": "Hub delivery loop: this project",
     "set.workspace.hub_delivery_loop.d":
       "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
@@ -2401,6 +2413,10 @@
       "Hold new runs here over this much swap in use (GB)",
     "set.server.gate_swap_hold_gb.d":
       "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "If a memory reading fails, keep the last one for (seconds)",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
     "set.server.gate_vm_memory_share":
       "Warn when VMs promise more than this share of memory",
     "set.server.gate_vm_memory_share.d":
@@ -2552,6 +2568,9 @@
     "set.agents.shell_path_wait": "Shell PATH wait",
     "set.agents.shell_path_wait.d":
       "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "Draft hold before the bell",
+    "set.agents.draft_hold_max.d":
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -3019,6 +3038,25 @@
       "Den was updated to {to} after this agent started, so its Den tools still run {from}'s code. Restart loads {to}'s, at its next idle, on the same conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
+    "ag.by.label": "Show the list",
+    "ag.by.project": "By project",
+    "ag.by.group": "By group",
+    "ag.grp.noHub": "Groups come with Den Hub.",
+    "ag.grp.connect": "Connect Den Hub",
+    "ag.grp.notInPlan": "Groups aren't in this company's Den Hub plan.",
+    "ag.grp.openHub": "Open Hub",
+    "ag.grp.guest":
+      "You're a guest in this Hub company, so its groups aren't shown here.",
+    "ag.grp.unreachable": "Can't reach Den Hub, so groups aren't shown.",
+    "ag.grp.retry": "Try again",
+    "ag.grp.noGroups": "No groups yet",
+    "ag.grp.openGroups": "Open Groups in Hub",
+    "ag.grp.lead": "Lead: {name}",
+    "ag.grp.open": "Open {group} in Hub",
+    "ag.grp.message": "Message group",
+    "ag.grp.messageName": "Message {group} in Hub",
+    "ag.grp.empty": "None of its members run on this Den.",
+    "ag.grp.notIn": "Not in a group",
     "ag.mcp.restarting":
       "{id} restarts at its next idle, in the same conversation.",
     "ag.det.label": "Details for {id}",
@@ -3052,14 +3090,20 @@
     "pair.aDevice": "A browser",
     "pair.local": "on this computer, via localhost",
     "pair.help":
-      "Type the code shown on that computer's screen. Allow only a computer you are signing in yourself.",
+      "Typing it proves you are at that computer. Allow only a computer you are signing in yourself.",
     "pair.allow": "Allow",
     "pair.allowed": "That computer is signed in.",
     "pair.ended":
       "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
     "pair.expired": "That code expired. Nothing was allowed.",
     "pair.close": "Close",
-    "pair.codeLabel": "Code on that computer's screen",
+    "pair.from": "From {client}, asking for {host}, at {time}.",
+    "pair.fromNamed":
+      "From {client} (it calls itself {name}), asking for {host}, at {time}.",
+    "pair.unknownAddr": "an address Den couldn't see",
+    "pair.unexpected":
+      "If you didn't just try to sign in on another computer, Deny.",
+    "pair.codeLabel": "Type the code that computer shows",
     "pair.age": "Asked {n} min ago.",
     "pair.ageNow": "Asked just now.",
     "pair.fromLogin": "From the web login run at {time}.",
@@ -3259,6 +3303,10 @@
     "ap.det.agent_create.runtime": "Runtime: {v}",
     "ap.det.agent_create.mode": "Mode: {mode} (the project's: {cap})",
     "ap.det.agent.who": "Agent: {agent}, project {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} starts outside the sandbox: agents.{id}.sandbox is off in config/local/user.yml.",
+    "ap.det.agent.sandboxOffAll":
+      "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
     "ap.det.agent.whoId": "Agent: {agent} ({id}), project {project}",
     "ap.det.agent_folder.from": "From: {v}",
     "ap.det.agent_folder.to": "To: {v}",
@@ -3274,6 +3322,21 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.det.agent_sandbox_set.self":
+      "{agent} is asking for this itself: it wants its own sandbox {value}.",
+    "ap.det.agent_sandbox_set.on":
+      "This puts {agent} back in the sandbox: Den's own files are read-only to it again.",
+    "ap.det.agent_sandbox_set.off":
+      "This takes {agent} out of the sandbox: it can then write Den's own files and reach what the sandbox blocks.",
+    "ap.det.agent_sandbox_set.why": "Why: {why}",
+    "ap.det.agent_sandbox_set.writes":
+      "Den writes agents.{id}.sandbox: {value} in config/local/user.yml, and nothing else there.",
+    "ap.det.agent_sandbox_set.running":
+      "It is running: Den restarts it after its turn, on the same conversation, with the change.",
+    "ap.det.agent_sandbox_set.stopped":
+      "It is stopped: its next start has the change.",
+    "ap.do.agent_sandbox_set": "{agent}: back in the sandbox",
+    "ap.do.agent_sandbox_set.loosens": "This takes {agent} out of the sandbox",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
@@ -3660,6 +3723,8 @@
     "bell.undo": "Undo",
     "bell.undoMsg": "No longer showing “{kind}”.",
     "bell.clearRead": "Clear read",
+    "bell.marking": "Marking…",
+    "bell.clearing": "Clearing…",
     "bell.read": "Mark read",
     "bell.server": "__DEN_TITLE__ agent",
     "bell.hub": "Hub · {project}",
@@ -3790,6 +3855,14 @@
       "{name}: {n} messages wait for {m} min. Waiting: Den couldn't read the agent's state in time",
     "bell.m.held.unread.one":
       "{name}: {n} message waits for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.held.draft":
+      "{name}: {n} messages wait for {m} min. Waiting: you're typing a message to it; they go once you send or clear it",
+    "bell.m.held.draft.one":
+      "{name}: {n} message waits for {m} min. Waiting: you're typing a message to it; it goes once you send or clear yours",
+    "bell.m.held.hub_tools":
+      "{name}: {n} messages wait for {m} min. Waiting: its Hub tools didn't load; restart it",
+    "bell.m.held.hub_tools.one":
+      "{name}: {n} message waits for {m} min. Waiting: its Hub tools didn't load; restart it",
     "bell.m.hubNoAnswer":
       "{name}: {n} Hub comments typed in, no answer yet after {m} min",
     "bell.m.hubNoAnswer.one":
@@ -3882,6 +3955,10 @@
       "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
     "ag.hub.notAtPrompt": "Waiting: the agent isn't at its prompt",
+    "ag.draftWaiting": "{n} messages waiting: sent after your draft",
+    "ag.draftWaiting.one": "{n} message waiting: sent after your draft",
+    "ag.draftWaitingTip":
+      "Den holds these while you type here. Send or clear your message, and they go in, in order.",
     "tx.asked": "Asked",
     "tx.result": "Result",
     "tx.error": "Error",
@@ -4131,6 +4208,11 @@
     "gate.swapUsed": "Swap in use: {used} GB",
     "gate.memoryHold":
       "waiting: this machine has {free}% of its memory free, under {limit}%, while another run here is going; it starts once memory frees or that run ends",
+    "gate.memoryUnavailableHold":
+      "waiting: memory reading unavailable, while another run here is going; it starts once a reading comes back or that run ends",
+    "gate.memoryUnavailable": "This machine: memory reading unavailable",
+    "gate.memoryNotMeasured":
+      "This machine: memory isn't measured on this platform: memory holds don't apply",
     "gate.freeMemory": "This machine: {free}% of memory free",
     "gate.vms": "VMs here promise {promised} GB of {limit} GB allowed",
     "gate.vmsOver":
@@ -9321,10 +9403,14 @@
       '<form method="dialog" autocomplete="off">' +
       '<h2 id="den-pair-h"></h2>' +
       '<p class="den-ap-what" id="den-pair-what"></p>' +
+      '<p class="help" id="den-pair-from"></p>' +
       '<p class="help" id="den-pair-when"></p>' +
-      '<label for="den-pair-code-in" id="den-pair-code-label"></label>' +
-      '<input id="den-pair-code-in" class="den-pair-code" autofocus autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" ' +
-      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px">' +
+      '<p class="help den-ap-who" id="den-pair-unexpected"></p>' +
+      // Issue 1333: an empty box with a visible edge, and no example code
+      // in it (a grey "K7Q-42M" read as the code itself).
+      '<label for="den-pair-code-in" id="den-pair-code-label" style="display:block;font-weight:600;margin-top:8px"></label>' +
+      '<input id="den-pair-code-in" class="den-pair-code" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" ' +
+      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px;border:1px solid var(--line-strong, var(--line, currentColor));border-radius:6px;background:var(--bg, transparent);color:inherit">' +
       '<p class="help" id="den-pair-help"></p>' +
       '<p class="err" id="den-pair-err" role="alert" hidden></p>' +
       '<div class="btns">' +
@@ -9431,6 +9517,23 @@
         ? t("pair.local")
         : w.client || "",
     });
+    // Issue 1333: where it came from (its address, and mesh name when it
+    // has one), the Den address it opened, and when.
+    var addr = w.client || t("pair.unknownAddr");
+    var time = localTime(w.createdAt) || "";
+    $("den-pair-from").textContent = w.clientName
+      ? t("pair.fromNamed", {
+          name: w.clientName,
+          client: addr,
+          host: w.host || location.host,
+          time: time,
+        })
+      : t("pair.from", {
+          client: addr,
+          host: w.host || location.host,
+          time: time,
+        });
+    $("den-pair-unexpected").textContent = t("pair.unexpected");
     $("den-pair-when").textContent = prWhen(w);
     $("den-pair-code-label").textContent = t("pair.codeLabel");
     $("den-pair-code-label").hidden = false;
@@ -9445,7 +9548,8 @@
     $("den-pair-allow").hidden = false;
     $("den-pair-allow").disabled = true;
     if (!d.open) d.showModal();
-    $("den-pair-code-in").focus();
+    // Issue 1333: Deny first; Allow waits for a typed code.
+    $("den-pair-deny").focus();
   }
   function prPoll() {
     // One ask at a time; refused once (a session that may not read it, as

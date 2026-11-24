@@ -34,6 +34,11 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
+      "src/shared/hub.ts",
+      "src/shared/settings-cli-rows.ts",
+      "src/ui/server/index.ts"
+    ],
     "tests/unit/server/fixture-grant.integration.test.ts": [
       "src/shared/test-install-grant.ts",
       "src/ui/server/index.ts"
@@ -338,6 +343,10 @@
     "tests/unit/server/bell-needs-you.browser.test.ts": [
       "src/ui/server/notification-routes.ts",
       "src/ui/server/notification-service.ts"
+    ],
+    "tests/unit/server/bell-mark-all-1339.browser.test.ts": [
+      "src/ui/server/notification-routes.ts",
+      "src/shared/notifications.ts"
     ],
     "tests/unit/server/bell-row.browser.test.ts": [
       "src/ui/server/notification-routes.ts"
@@ -784,6 +793,7 @@
   "rules": [
     {
       "when": [
+        "src/ui/server/public/agent-groups.js",
         "src/ui/server/public/agent-helpers.js",
         "src/ui/server/public/agent-order.js",
         "src/ui/server/public/agents-page.js",
@@ -824,6 +834,7 @@
         "tests/unit/server/agents-terminal.browser.test.ts",
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -831,6 +842,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -977,6 +989,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1094,6 +1107,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
         "tests/unit/server/popup-font.browser.test.ts",
+        "tests/unit/server/project-colours.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -1112,6 +1126,7 @@
       "run": [
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1281,6 +1296,7 @@
         "tests/unit/server/agents-terminal.browser.test.ts",
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1288,6 +1304,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1333,6 +1350,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1373,6 +1391,7 @@
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1382,6 +1401,7 @@
         "tests/unit/server/confirm-busy.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
@@ -1475,6 +1495,7 @@
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1482,6 +1503,7 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
@@ -1559,6 +1581,7 @@
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
         "tests/unit/server/bell-decide-746.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1571,6 +1594,7 @@
         "tests/unit/server/d67-remote-approve.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
@@ -1671,6 +1695,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1687,6 +1712,7 @@
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1791,6 +1817,7 @@
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1833,6 +1860,7 @@
         "tests/unit/server/approval-dialog.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
         "tests/unit/server/bell-decide-746.browser.test.ts",
+        "tests/unit/server/bell-mark-all-1339.browser.test.ts",
         "tests/unit/server/bell-needs-you.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
         "tests/unit/server/bell-v6.browser.test.ts",
@@ -1846,6 +1874,7 @@
         "tests/unit/server/d67-remote-approve.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
+        "tests/unit/server/draft-hold-1311.browser.test.ts",
         "tests/unit/server/edge-page.browser.test.ts",
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/environments-dead-host.browser.test.ts",
@@ -2009,6 +2038,7 @@
         "tests/unit/server/busy-writes-ratchet.test.ts",
         "tests/unit/server/held-review-keys-205.test.ts",
         "tests/unit/server/i18n.test.ts",
+        "tests/unit/server/page-imports-served.test.ts",
         "tests/unit/server/product-tokens.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/public-tokens-parse.test.ts",
@@ -2044,6 +2074,7 @@
         "tests/unit/agents/personas.test.ts",
         "tests/unit/agents/project-mcp-edit.test.ts",
         "tests/unit/agents/runtimes.test.ts",
+        "tests/unit/agents/sandbox-refusal-1326.test.ts",
         "tests/unit/cli/dry-run-readonly.integration.test.ts",
         "tests/unit/cli/edge-rejoin.integration.test.ts",
         "tests/unit/cli/new-project-up-status.integration.test.ts",
@@ -2068,6 +2099,7 @@
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/agent-groups-view.test.ts",
         "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/hub-connect-648.test.ts",
         "tests/unit/server/hub-connect-review.test.ts",
@@ -2078,6 +2110,7 @@
         "tests/unit/server/update-security.test.ts",
         "tests/unit/shared/github-watch/watcher.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
+        "tests/unit/shared/hub-groups.test.ts",
         "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
@@ -2900,6 +2933,14 @@
     },
     {
       "when": [
+        "src/shared/notifications.ts",
+        "src/ui/server/notification-routes.ts"
+      ],
+      "run": ["tests/unit/server/bell-mark-all-1339.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/ui/server/notification-routes.ts",
         "src/ui/server/notification-service.ts"
       ],
@@ -3005,6 +3046,16 @@
     {
       "when": ["src/ui/server/public/dialog-den.js"],
       "run": ["tests/unit/server/dialogs-fit-ipad.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/draft-input.ts",
+        "src/ui/cli/agent-ops.ts",
+        "src/ui/server/hub-delivery-service.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/draft-hold-1311.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -3154,6 +3205,15 @@
     {
       "when": ["src/shared/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub.ts",
+        "src/shared/settings-cli-rows.ts",
+        "src/ui/server/index.ts"
+      ],
+      "run": ["tests/unit/server/hub-groups-settings-750.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

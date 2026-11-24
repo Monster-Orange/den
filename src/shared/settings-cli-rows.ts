@@ -37,6 +37,9 @@
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
+ *   agents_draft: { hold_max_minutes? }
+ *                                     user.yml agents.draft_hold_max_minutes
+ *                                     (issue 1311)
  *   agent_issue_writes: { roles?: [role, …] | null, per_hour? }
  *                                     user.yml agents.issue_writes and
  *                                     agents.issue_writes_per_hour (issue_write)
@@ -91,6 +94,7 @@ import {
   AGENTS_RESUME_LIMITS,
   HELD_WAIT_MINUTES,
   SESSIONS_SETTINGS_KEYS,
+  DRAFT_HOLD_MAX_MINUTES,
   SHELL_PATH_TIMEOUT,
   sessionsValueError,
 } from "./den-config.js";
@@ -132,6 +136,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_log",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // Issue 1311: how long messages wait on a draft before the bell says so.
+  "agents_draft",
   // Issue 1129: how many agents restart at a time, and how far apart.
   "agents_resume",
   // issue_write: which roles write GitHub issues, and how many an hour.
@@ -143,6 +149,8 @@ export const PERSON_ONLY_SETTINGS = [
   "hub_allow_tools",
   // Issue 158: the Hub delivery loop in every agent's instructions.
   "hub_delivery_loop",
+  // Issue 750: whether, and how long, Den reads Hub's groups.
+  "hub_groups",
   // Issue 267: Hub's address (an agent asks with hub_connect).
   "hub_url",
   // The programs Den runs when a person opens a file or a terminal.
@@ -383,6 +391,16 @@ const AGENTS_SHELL: Record<string, Limit> = {
     min: SHELL_PATH_TIMEOUT.min,
     max: SHELL_PATH_TIMEOUT.max,
     int: false,
+  },
+};
+
+/** Issue 1311: user.yml agents.draft_hold_max_minutes (den-config.ts). */
+const AGENTS_DRAFT: Record<string, Limit> = {
+  hold_max_minutes: {
+    key: "draft_hold_max_minutes",
+    min: DRAFT_HOLD_MAX_MINUTES.min,
+    max: DRAFT_HOLD_MAX_MINUTES.max,
+    int: true,
   },
 };
 
@@ -840,6 +858,14 @@ export function patchCliRows(
       "agents",
       AGENTS_SHELL,
       body.agents_shell,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agents_draft",
+      "agents",
+      AGENTS_DRAFT,
+      body.agents_draft,
       apply,
     ) ??
     patchBlock(

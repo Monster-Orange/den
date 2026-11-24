@@ -100,6 +100,15 @@ import {
   projectColour,
   projectLabel,
 } from "/workspace-picker.js";
+import {
+  groupsLineHtml,
+  groupsOffered,
+  groupsViewHtml,
+  toolsRestartButton,
+  toolsRestartHtml,
+  toolsStale,
+  viewSwitchHtml,
+} from "/agent-groups.js";
 import { focusBack, refindKey } from "/transcript-view.js";
 import { OPEN_MS } from "/kit/busy.js";
 import { formatTime, timeHtml } from "/kit/time.js";
@@ -220,6 +229,11 @@ const st = {
   projects: null,
   projectsAt: 0,
   scope: "all",
+  /** Issue 750: Hub's groups (GET /api/hub/groups), or null until read. */
+  groupsRead: null,
+  groupsAt: 0,
+  /** Issue 750: the list by project (as before) or by group. */
+  by: savedBy(),
   scopeLabel: "",
   data: null,
   signedOut: false,
@@ -247,6 +261,10 @@ const st = {
   // D54/D58: whether that pick also sizes the PTY (a pick from the list
   // does; a link that opens the page only puts the keyboard there).
   claimOnOpen: false,
+  // Issue 1315: a person picked a pane (a tab, a row) while the page was
+  // still opening its ?open= panes: their pick stays in front. Cleared
+  // once start-up has opened them.
+  picked: false,
   keyPane: null,
   // #80: ?open= ids of other projects' sessions, left out of this
   // project's tabs (one line offers them in All active).
@@ -1037,7 +1055,8 @@ function rowHtml(r) {
     r.kind === "agent"
       ? rotCalloutHtml(r) +
         modeApplyHtml(r) +
-        toolsRestartHtml(r) +
+        // Issues 750 and 1223: Restart for its tools, on the row too.
+        toolsRestartHtml(r, t) +
         compactingHtml(r)
       : "";
   // D32: the helpers it started in its own session, under it. #80: only
@@ -1218,22 +1237,35 @@ function paintList() {
       rows: inView.filter((s) => s.workspace === ws && !inStopped(s)),
     }))
     .filter((g) => g.rows.length > 0);
+  // Issue 750: without Hub's groups, one line says why (By project as
+  // before); with them, By project or By group.
+  const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
+  if (gLine) notes.push(gLine);
+  const byGroup =
+    PAGE !== "terminal" && st.by === "group" && groupsOffered(st.groupsRead);
   const body =
     PAGE === "terminal"
       ? terminalsBodyHtml()
-      : groups.length || stopped.length
-        ? groups
-            .map(
-              (g) =>
-                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
-                g.rows.map((r) => reorderRowHtml(g, r)).join("") +
-                `</div>`,
-            )
-            .join("") + stoppedGroupHtml(stopped)
-        : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
+      : byGroup
+        ? groupsViewHtml(inView, st.groupsRead.groups, {
+            t,
+            rowHtml,
+            groupsUrl: st.groupsRead.groupsUrl,
+          })
+        : groups.length || stopped.length
+          ? groups
+              .map(
+                (g) =>
+                  `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
+                  g.rows.map((r) => reorderRowHtml(g, r)).join("") +
+                  `</div>`,
+              )
+              .join("") + stoppedGroupHtml(stopped)
+          : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
   setList(
     el,
     notes.join("") +
+      viewSwitchHtml(st.groupsRead, st.by, t) +
       body +
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
@@ -1312,6 +1344,48 @@ function terminalsHref() {
   return view.length === 1
     ? `/terminals?project=${encodeURIComponent(view[0])}`
     : "/terminals";
+}
+
+/** Issue 750: the person's By project or By group, kept in this browser. */
+function savedBy() {
+  try {
+    return localStorage.getItem("den-agents-by") === "group"
+      ? "group"
+      : "project";
+  } catch {
+    return "project";
+  }
+}
+
+function setBy(by) {
+  st.by = by === "group" ? "group" : "project";
+  try {
+    localStorage.setItem("den-agents-by", st.by);
+  } catch {
+    /* this page only */
+  }
+  paintList();
+}
+
+/** Issue 750: how often the page asks Den for Hub's groups again (ms). */
+const GROUPS_EVERY_MS = 30_000;
+
+/**
+ * Issue 750: Hub's groups for the By group view (Den reads them from Hub,
+ * keeps them in memory only). `fresh`: Try again, past Den's copy.
+ */
+async function loadGroups(fresh = false) {
+  st.groupsAt = Date.now();
+  try {
+    const r = await fetch(`/api/hub/groups${fresh ? "?fresh=1" : ""}`, {
+      headers: { accept: "json" },
+    });
+    const b = r.ok ? await r.json() : null;
+    st.groupsRead = b?.state ? b : { state: "unreachable" };
+  } catch {
+    st.groupsRead = { state: "unreachable" };
+  }
+  if (st.data) paintList();
 }
 
 const STOPPED_OPEN_KEY = "den-agents-stopped-open";
@@ -1642,6 +1716,9 @@ async function refreshOnce() {
           if (changed) repaintNames();
         });
     }
+    // Issue 750: Hub's groups, now and then (Den keeps its own copy too).
+    if (!st.groupsAt || Date.now() - st.groupsAt > GROUPS_EVERY_MS)
+      void loadGroups();
     if (r.status === 401) {
       st.signedOut = true;
     } else if (r.ok) {
@@ -2059,6 +2136,7 @@ document.addEventListener("keydown", dropStalePick, true);
  * that pane is still in sight.
  */
 async function pick(id, add) {
+  st.picked = true;
   const layout = shownLayout();
   if (layout === "focus" && !add) {
     st.side.clear();
@@ -2186,42 +2264,29 @@ function apiOnlyTag(r) {
  * failed to load a server's tools, with the error in the tag's title.
  */
 function mcpStaleTag(r, withButton) {
+  const why = toolsStale(r);
+  if (!why) return "";
   // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
-  if (r?.kind === "agent" && r.toolsRestarting)
+  if (why === "restarting")
     return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  const live = r?.kind === "agent" && !isStopped(r);
-  // Issue 749: its session didn't get a server's tools (the error says why).
-  const fx = live && Array.isArray(r.mcpFailed) ? r.mcpFailed[0] : null;
-  const sx = live ? r.mcpStale : null;
   let tag;
-  if (fx) {
-    const tip = t("ag.mcp.failedTip", { error: String(fx.error ?? "") });
-    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
-  } else if (sx?.adds?.length || sx?.drops?.length) {
-    const k = sx.adds?.length ? "adds" : "drops";
-    tag = `<span class="tagx warn" data-mcp-stale="${k}" title="${esc(t(`ag.mcp.${k}Tip`))}">${esc(t(`ag.mcp.${k}`))}</span>`;
-  } else if (sx?.den) {
+  if (why === "failed") {
+    // Issue 749: its session didn't get a server's tools (the error says why).
+    const fx = r.mcpFailed[0];
+    const tip = t("ag.mcp.failedTip", { error: String(fx?.error ?? "") });
+    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx?.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
+  } else if (why === "den") {
     // Issue 1223: its Den tools are an older Den's (Den updated since).
-    const v = { from: String(sx.den.from), to: String(sx.den.to) };
+    const v = {
+      from: String(r.mcpStale.den.from),
+      to: String(r.mcpStale.den.to),
+    };
     tag = `<span class="tagx warn" data-mcp-stale="den" title="${esc(t("ag.mcp.denTip", v))}">${esc(t("ag.mcp.den", v))}</span>`;
-  } else return "";
+  } else {
+    tag = `<span class="tagx warn" data-mcp-stale="${why}" title="${esc(t(`ag.mcp.${why}Tip`))}">${esc(t(`ag.mcp.${why}`))}</span>`;
+  }
   if (!withButton) return tag;
-  return `<span class="agstale">${tag}${toolsRestartButton(r)}</span>`;
-}
-
-/** D44: Restart for its tools (at its next idle, same conversation). */
-function toolsRestartButton(r) {
-  const name = esc(t("ag.mcp.restartName", { id: r.agent }));
-  return `<button type="button" class="den-btn sm" data-act="tools-restart" aria-label="${name}" title="${name}">${esc(t("ag.mcp.restart"))}</button>`;
-}
-
-/**
- * Issue 1223: under a row whose tools are out of date, its Restart (the
- * pane bar's has it beside the tag); none while Den restarts it already.
- */
-function toolsRestartHtml(r) {
-  if (r?.toolsRestarting || !mcpStaleTag(r, false)) return "";
-  return toolsRestartButton(r);
+  return `<span class="agstale">${tag}${toolsRestartButton(r, t)}</span>`;
 }
 
 /**
@@ -2377,6 +2442,16 @@ function barFind(bar, k) {
   return bar.querySelectorAll("button, a, [tabindex]")[k.at] ?? null;
 }
 
+/**
+ * Issue 1311: "N messages waiting" on a pane whose person is typing a
+ * message: Den holds its own until theirs is sent or cleared.
+ */
+function draftWaitingTag(p) {
+  const n = p.draftWaiting ?? 0;
+  if (n <= 0) return "";
+  return `<span class="tagx" role="status" data-draft-waiting="${n}" title="${esc(t("ag.draftWaitingTip"))}">${esc(t("ag.draftWaiting", { n }))}</span>`;
+}
+
 function paintBar(p) {
   const r = rowOf(p.id);
   const bar = p.el.querySelector(".bar2");
@@ -2445,7 +2520,8 @@ function paintBar(p) {
     whereTag(r, true) +
     linkTag(r) +
     subagentTag(r) +
-    signInTag(r);
+    signInTag(r) +
+    draftWaitingTag(p);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
     // Issue 168: the agent's letter tile, in its project's colour.
@@ -2803,6 +2879,13 @@ function paneText(p, msg) {
     if (st.focusOnOpen === p.id) {
       if (p.exited) st.focusOnOpen = null;
       else focusTerm(p.id, st.claimOnOpen, { ifIdle: st.focusIfIdle });
+    }
+  } else if (msg?.type === "waiting") {
+    // Issue 1311: messages held while the person's draft is on the line.
+    const n = Number.isInteger(msg.n) && msg.n > 0 ? msg.n : 0;
+    if (n !== (p.draftWaiting ?? 0)) {
+      p.draftWaiting = n;
+      paintBar(p);
     }
   } else if (msg?.type === "viewers") {
     // D54: the view that sized the PTY went away: this one, alone now,
@@ -5791,9 +5874,14 @@ export async function mountAgentsPage(root) {
       saveStoppedOpen(!sum.parentElement.open);
       return;
     }
+    // Issue 750: By project or By group.
+    const by = e.target.closest("[data-by-switch] button[data-by]");
+    if (by) return void setBy(by.dataset.by);
     const act = e.target.closest("button[data-act]");
     if (act) {
       const which = act.dataset.act;
+      // Issue 750: Hub didn't answer for its groups: ask again now.
+      if (which === "groups-retry") return void loadGroups(true);
       if (which === "resume-all") return void resumeAll(act);
       if (which === "review") return review();
       if (which === "switch-ws") return void switchWorkspace(act);
@@ -5855,7 +5943,7 @@ export async function mountAgentsPage(root) {
       else if (which === "rot-write") void writeHandoff(r, act);
       else if (which === "rot-keep") void keepConversation(r, act);
       else if (which === "mode-apply") void applyMode(r, act);
-      // Issue 1223: the row's Restart for its tools, as the pane bar's.
+      // Issues 750 and 1223: the row's Restart for its tools, as the pane bar's.
       else if (which === "tools-restart") void restartForTools(r, act);
       // Issue 278: the row's Stop is its pane's Stop; Clear ends the hold.
       else if (which === "stop")
@@ -5906,6 +5994,7 @@ export async function mountAgentsPage(root) {
       // D58: a pointer's pick puts the keyboard in its terminal; Enter or
       // Space on the tab (a click with no pointer) keeps it on the tab.
       const pointer = e.detail > 0;
+      st.picked = true;
       if (st.cur !== tab.dataset.id) {
         st.cur = tab.dataset.id;
         paintLayout();
@@ -6138,13 +6227,21 @@ export async function mountAgentsPage(root) {
         if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
         continue;
       }
-      if (!st.data || rowOf(id)) await openPane(id);
+      // Issue 1315: once the person picks one, the rest open behind it.
+      if (!st.data || rowOf(id)) await openPane(id, { front: !st.picked });
     }
   // #80: ?front= (the tab that was in front) comes in front again.
-  if (frontAsked && st.open.includes(frontAsked) && st.cur !== frontAsked) {
+  if (
+    frontAsked &&
+    !st.picked &&
+    st.open.includes(frontAsked) &&
+    st.cur !== frontAsked
+  ) {
     st.cur = frontAsked;
     paintLayout();
   }
+  // Issue 1315: start-up's panes are open; later picks are plain picks.
+  st.picked = false;
   if (st.hiddenOpen.length) {
     // #80: the tabs were another project's: this project's agent instead.
     if (!linkedAgentAsked()) await paneFollowsProject();

@@ -74,6 +74,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     memory_free_min_percent: true,
     vm_memory_share: true,
     swap_hold_gb: true,
+    // Issue 1349: a failed reading's last good value stands this long.
+    memory_reading_keep_seconds: true,
     local_browser_slots: true,
     overrun_margin_minutes: true,
     // Issue 993: past this many times its estimate, in the bell.
@@ -122,6 +124,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   server_log: { max_mb: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
+  // Issue 1311: how long messages wait on a draft before the bell says so.
+  agents_draft: { hold_max_minutes: true },
   // Issue 1129: the restart queue.
   agents_resume: {
     batch: true,
@@ -193,6 +197,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
+  // Issue 750: groups from Hub (user.yml hub.groups, groups_cache_seconds).
+  hub_groups: { mode: true, cache_seconds: true },
 };
 
 /** Every key POST /api/settings accepts, from its handler's source. */
@@ -325,6 +331,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.mcp_lapse_minutes",
         "gate_slots.mcp_renew_minutes",
         "gate_slots.memory_free_min_percent",
+        "gate_slots.memory_reading_keep_seconds",
         "gate_slots.overrun_bell_multiple",
         "gate_slots.overrun_margin_minutes",
         "gate_slots.priority_agents",
@@ -351,6 +358,8 @@ describe("the settings inventory (R21)", () => {
         "server_log.max_mb",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
+        // Issue 1311: how long messages wait on a draft before the bell says so.
+        "agents_draft.hold_max_minutes",
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",
@@ -415,6 +424,9 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        // Issue 750: groups from Hub.
+        "hub_groups.mode",
+        "hub_groups.cache_seconds",
         // Issue 1129: the restart queue.
         "agents_resume.batch",
         "agents_resume.gap_seconds",

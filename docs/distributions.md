@@ -324,6 +324,8 @@ agent's held write into one of two groups.
   | Held write                                                   | Critical when                                                          |
   | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
   | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
+  | `agent_sandbox_set`                                          | the sandbox goes off (back on only narrows)                            |
+  | `agent_create`, `agent_import`                               | the new agent would start outside the sandbox                          |
   | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
@@ -4916,7 +4918,7 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. the distribution's: `GIT_CONFIG_*` when `agents.git.signing_key` is set
+4. the distribution's: `GIT_CONFIG_*` when agents sign commits
    ([Agents' commit signing](#agents-commit-signing));
 5. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
@@ -4941,19 +4943,49 @@ adds a note to run `<cli> doctor --probe`.
 
 ### Agents' commit signing
 
-Agents Den starts can sign their git commits with an SSH key of their own.
-A key is per machine, so it usually goes in `config/local/user.yml`; the
-org config can set one too, and user.yml's wins:
+Agents Den starts sign their git commits with an SSH key of their own,
+never with yours. The agent sandbox keeps your GPG agent out of their reach,
+so a commit your git would sign with GPG can't be signed by an agent.
+
+Which key, at each agent start:
+
+| `agents.git`          | Your git signs commits | The agent signs with              |
+| --------------------- | ---------------------- | --------------------------------- |
+| `signing: off`        | either                 | nothing (git as it is)            |
+| `signing_key: <path>` | either                 | that key                          |
+| unset                 | yes                    | the install's own key (made once) |
+| unset                 | no                     | nothing: nothing changes          |
+
+"Your git signs commits" is `commit.gpgsign` as your git sees it in the
+agent's folder: the repo's own config, then your `~/.gitconfig`.
+
+The install's own key is an ed25519 key with no passphrase in
+`<state>/agent-signing/key/` (`id_ed25519`, its `.pub` and an
+`allowed_signers` file). Den makes it at the first agent start that needs
+it, once, even when two starts race. Every agent of the install can read
+it in its sandbox; none can change, move or replace it (Den's state is
+read-only to them). The start line that made it prints the `gh` line below.
+
+A key of your own is per machine, so it usually goes in
+`config/local/user.yml`; the org config can set one too, and user.yml's
+wins. Agents read that key and its `.pub` in their sandbox as single
+files, never their folder. Keep it outside Den's state folder, or inside it
+only under `<state>/agent-signing/`: anywhere else in the state folder, and
+in an edge's key folders or another install's state folder, agents can't
+read it, and `<cli> doctor` says so.
 
 ```yaml
 agents:
   git:
+    signing: on # or off: agents' commits are left as git makes them
     signing_key: ~/.ssh/den_agents # absolute, or ~/; no passphrase
 ```
 
 Each agent gets it as git's own `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
 `GIT_CONFIG_VALUE_n` in its environment: `gpg.format ssh`,
-`user.signingkey <the key>`, `commit.gpgsign true`. These sit above every
+`user.signingkey <the key>`, `commit.gpgsign true`, and for the install's
+own key `gpg.ssh.allowedSignersFile` (so `git log --show-signature`
+verifies). These sit above every
 config file and write none, so your `~/.gitconfig` (and your own GPG or SSH
 signing) is never changed, and nothing you run yourself signs with the
 agents' key. An agent can't type a passphrase, so make the key without one:
@@ -5011,6 +5043,14 @@ runs as you, so each agent's session starts inside the OS sandbox:
   would run outside the sandbox. So `<cli> agents list`, `start` and
   `stop` don't work from an agent's shell. An agent starts another with
   the `agent_create` tool.
+- Programs that run as root (setuid: `ps`, `top`, `sudo`) can't start, and
+  Docker's socket, like every outside daemon's, is refused. `sudo` is
+  refused inside a session on purpose: an agent never runs as root. Agents
+  use `pgrep`/`pkill` and Den's status tools. Docker is full control of the
+  machine: whether an agent whose work needs it runs with its own sandbox
+  off (`agents.<id>.sandbox: off`, which lifts every other limit too) is
+  your call alone. Never add Docker's socket to `agents.sandbox_sockets`:
+  that hands it to every agent.
 - The agent's own folder (`<state>/agent-files/<id>`) stays writable:
   `handoff.md`, its notes, the hooks' counts. The launch files Den writes
   there (its Claude settings, its MCP config) don't.
@@ -5041,6 +5081,22 @@ agents:
   some-agent:
     sandbox: off # this agent's sessions start outside it
 ```
+
+An agent can ask for this instead, with the held write
+`agent_sandbox_set { agent, on, reason }` (issue 1328). Turning one
+agent's sandbox off always waits for your own Allow; the Review names the
+agent, the change and the reason, and says so when an agent asks for
+itself. Back on runs as the approval policy says. Den writes only
+`agents.<id>.sandbox` (comments and every other key stay), notes when,
+why and who asked, and restarts a running agent after its turn on the same
+conversation. `<cli> agents doctor` lists every agent whose sandbox is off,
+with when and why.
+
+The setting follows the agent's lifecycle. Removing an agent drops its
+`agents.<id>.sandbox` and its note (an agent brought back with Undo starts
+in the sandbox). Adding an agent (`agent_create` or `agent_import`) whose id
+has its sandbox off, or while `agents.sandbox` is off for the machine, waits
+for your own Allow too, and the Review says why.
 
 With `required`, an agent whose sandbox can't apply on this machine
 doesn't start: the start says why. On Linux, Den runs `bwrap` once to

@@ -3305,6 +3305,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { swap_hold_gb: v } }),
   },
   {
+    // Issue 1349: a failed memory reading's last good value stands this long.
+    id: "server.gate_memory_reading_keep_seconds",
+    category: "server",
+    label: "If a memory reading fails, keep the last one for (seconds)",
+    description:
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.memory_reading_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.memoryReadingKeepSeconds ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { memory_reading_keep_seconds: v } }),
+  },
+  {
     // Issue 1274: doctor warns over this share of RAM promised to VMs.
     id: "server.gate_vm_memory_share",
     category: "server",
@@ -4861,6 +4876,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
   },
   {
+    // Issue 1311: messages held on a person's unsent draft; the bell after this.
+    id: "agents.draft_hold_max",
+    category: "agents",
+    label: "Draft hold before the bell",
+    description:
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    keywords: [
+      "draft",
+      "typing",
+      "hold",
+      "wait",
+      "message",
+      "bell",
+      "terminal",
+    ],
+    scope: "user",
+    keys: ["agents_draft.hold_max_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.agents_draft?.hold_max_minutes ?? 30,
+    write: (v, ctx) => ctx.post({ agents_draft: { hold_max_minutes: v } }),
+  },
+  {
     id: "agents.list_refresh_wait",
     category: "agents",
     label: "Agents list wait",
@@ -5102,6 +5139,39 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.hub_delivery_loop !== false,
     write: (v, ctx) =>
       ctx.post({ hub_delivery_loop: v === true ? null : false }),
+  },
+  {
+    // Issue 750: groups from Hub on the agents page (user.yml hub.groups).
+    id: "agents.hub_groups",
+    category: "hub",
+    label: "Groups from Hub",
+    description:
+      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+    keywords: ["hub", "groups", "group", "team", "lead", "agents", "by group"],
+    scope: "user",
+    keys: ["hub_groups.mode"],
+    control: seg([
+      { value: "auto", label: "Auto" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) => ctx.data.hub_groups?.mode ?? "auto",
+    write: (v, ctx) =>
+      ctx.post({ hub_groups: { mode: v === "auto" ? null : v } }),
+  },
+  {
+    // Issue 750: how long Den keeps Hub's groups in memory.
+    id: "agents.hub_groups_cache",
+    category: "hub",
+    label: "Groups kept for",
+    description:
+      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
+    keywords: ["hub", "groups", "cache", "seconds", "memory", "refresh"],
+    scope: "user",
+    keys: ["hub_groups.cache_seconds"],
+    control: { type: "number", min: 5, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.hub_groups?.cache_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ hub_groups: { cache_seconds: v } }),
   },
 
   {
