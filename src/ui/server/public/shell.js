@@ -3383,6 +3383,8 @@
       "This widens what agents can do: only your own Allow runs it.",
     "ap.det.setting_change.key": "Setting: {key}",
     "ap.det.setting_change.now": "Now: {value}",
+    "ap.det.setting_change.nowDefault": "Now: {value} (Den's default)",
+    "ap.det.setting_change.nowDen": "Now: {value} (from den.yml)",
     "ap.det.setting_change.new": "New: {value}",
     "ap.det.setting_change.why": "Why: {why}",
     "ap.det.gate_settings_set.change": "{key}: {from} → {to}",

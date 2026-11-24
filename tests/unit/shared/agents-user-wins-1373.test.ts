@@ -75,11 +75,14 @@ describe("issue 1373: user.yml's agent limits win", () => {
       expect(cfg.AGENTS_USER_LIMIT_KEYS).not.toContain(widen);
   });
 
-  it("Settings and config set max_concurrent; the other limits are user.yml's by hand", () => {
-    expect([...cfg.AGENTS_SETTINGS_KEYS]).toEqual(["max_concurrent"]);
-    for (const k of cfg.AGENTS_SETTINGS_KEYS)
-      expect(cfg.AGENTS_USER_LIMIT_KEYS).toContain(k);
-    expect(cli.configKeyNames()).toContain("agents.max_concurrent");
+  // Issue 1417: every agent limit has an agent ask path, so Settings,
+  // config and setting_change set them all (before, max_concurrent only).
+  it("Settings and config set every agent limit", () => {
+    expect([...cfg.AGENTS_SETTINGS_KEYS]).toEqual([
+      ...cfg.AGENTS_USER_LIMIT_KEYS,
+    ]);
+    for (const k of cfg.AGENTS_USER_LIMIT_KEYS)
+      expect(cli.configKeyNames()).toContain(`agents.${k}`);
   });
 
   it("with only user.yml set, the cap follows it", () => {

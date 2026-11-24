@@ -255,6 +255,8 @@ export type OperatorAct =
   | "terminal-close"
   | "agent-say"
   | "agent-relaunch"
+  | "agent-restart"
+  | "agents-restart-stale"
   | "approval-allow"
   | "setting-undo";
 
@@ -269,6 +271,11 @@ export type OperatorAct =
  *    dialog (629, 659). Never the server agent.
  *  - agent-relaunch: Resume after a relaunch that exits early (658). A
  *    project agent only.
+ *  - agent-restart, agents-restart-stale: a restart for out-of-date tools,
+ *    one agent or the bulk one, and Restart now (1407). Under
+ *    agent-relaunch's rules: a project agent only, and (agent-routes.ts)
+ *    only the bed's own agents, those Den marked testBed; the bulk one
+ *    filters to them before it does anything (testBedOnly).
  *  - approval-allow: Allow of a held write (1391, 1414). Allow only, and
  *    only one a bed's own agent asked for (testBedAsker, checked in
  *    approval-routes.ts). Never through the edge.
@@ -285,10 +292,27 @@ const ACTS: readonly [OperatorAct, string, RegExp][] = [
     "POST",
     /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/relaunch$/,
   ],
+  [
+    "agent-restart",
+    "POST",
+    /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/restart$/,
+  ],
+  ["agents-restart-stale", "POST", /^\/api\/agents\/restart-stale$/],
   // A held write's id, as approval-routes.ts DECIDE_PATH has it.
   ["approval-allow", "POST", /^\/api\/approvals\/[A-Za-z0-9_-]{16}\/decide$/],
   ["setting-undo", "POST", /^\/api\/settings\/undo$/],
 ];
+
+/**
+ * Issue 1407: what the test operator's restart-stale may touch: only the
+ * agents Den marked testBed (the bed's own), never the server agent's.
+ */
+export function testBedOnly<T extends { id: string; workspace: string }>(
+  list: readonly T[],
+  isTestBed: (a: T) => boolean,
+): T[] {
+  return list.filter((a) => !isServerScope(a.workspace) && isTestBed(a));
+}
 
 /**
  * Issue 1414 (Builder 2, Reviewer C): the held writes the test operator
@@ -420,7 +444,11 @@ export function operatorRefusal(o: {
   }
   // say and relaunch reach this install's project agents only, never the
   // server agent (its held writes are not the checks' to drive).
-  if (act === "agent-say" || act === "agent-relaunch") {
+  if (
+    act === "agent-say" ||
+    act === "agent-relaunch" ||
+    act === "agent-restart"
+  ) {
     const ws = /^\/api\/workspaces\/([^/]+)\//.exec(o.pathname)?.[1] ?? "";
     let name = ws;
     try {
