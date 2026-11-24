@@ -20,8 +20,11 @@ import { LOCK_WAIT_MINUTES_DEFAULT } from "../../../src/shared/agents/agent-lock
 import { TURN_READ_MAX_BYTES } from "../../../src/shared/agents/conversations.js";
 import {
   checkSettingChange,
+  runSettingChange,
+  settingChangeKeys,
   type SettingChangeDeps,
 } from "../../../src/ui/cli/setting-change.js";
+import { settingChoice } from "../../../src/shared/approval-policy.js";
 
 const user = (agents?: Record<string, unknown>) =>
   (agents ? { agents } : {}) as UserConfig;
@@ -138,5 +141,65 @@ describe("the setting_change card's Now line names the value it replaces", () =>
     });
     if (!r.ok) throw new Error(r.error);
     expect(r.details.find((l) => /^Now: /.test(l))).toBe("Now: not set");
+  });
+});
+
+describe("every agent limit has an agent ask path (issue 1417, Den Builder)", () => {
+  let dir = "";
+  const deps = (): SettingChangeDeps => ({
+    userFile: path.join(dir, "config", "local", "user.yml"),
+    backupDir: path.join(dir, "state", "settings-backups"),
+    denConfig: () => den(),
+    audit: () => undefined,
+    now: () => "2026-11-24T08:00:00.000Z",
+  });
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "limit-ask-1417-"));
+    fs.mkdirSync(path.join(dir, "config", "local"), { recursive: true });
+  });
+  afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("agents.restart_wait_minutes: a limit, routine on personal, Now in force, and written", () => {
+    fs.writeFileSync(deps().userFile, "# mine\n");
+    const c = checkSettingChange(deps(), {
+      key: "agents.restart_wait_minutes",
+      value: 121,
+      reason: "test",
+    });
+    if (!c.ok) throw new Error(c.error);
+    expect(c.category).toBe("limits");
+    expect(c.personOnly).toBeUndefined();
+    expect(c.details).toContain("Now: 120 (Den's default)");
+    expect(settingChoice(c.category, "personal").choice).toBe("auto");
+    const a = {
+      id: "a1",
+      action: "setting_change",
+      agent: "g1",
+      params: { key: "agents.restart_wait_minutes", value: 121, reason: "t" },
+    };
+    const r = runSettingChange(deps(), a.params);
+    if (!r.ok) throw new Error(r.error);
+    expect(fs.readFileSync(deps().userFile, "utf8")).toMatch(
+      /restart_wait_minutes: 121/,
+    );
+  });
+
+  it("a bad value is refused in den-config's words", () => {
+    fs.writeFileSync(deps().userFile, "# mine\n");
+    const c = checkSettingChange(deps(), {
+      key: "agents.lock_wait_minutes",
+      value: -3,
+      reason: "test",
+    });
+    expect(c.ok).toBe(false);
+  });
+
+  it("the lookup and setting_change know the same agent limits", () => {
+    const asked = settingChangeKeys()
+      .filter((k) => /^agents\.[a-z_]+$/.test(k))
+      .filter((k) => agentLimitInForce(k.slice(7), user(), den()));
+    expect(asked.sort()).toEqual(
+      AGENTS_USER_LIMIT_KEYS.map((k) => `agents.${k}`).sort(),
+    );
   });
 });

@@ -38,6 +38,10 @@ import {
 } from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 import { gitSigningBlock, type AgentGitBlock } from "./agents/git-signing.js";
+import {
+  LOCK_WAIT_MINUTES_DEFAULT,
+  TURN_READ_MAX_BYTES,
+} from "./agents/limit-defaults.js";
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
@@ -2593,11 +2597,12 @@ export const AGENTS_USER_LIMIT_KEYS = [
 ] as const;
 
 /**
- * Issue 1373: the agent limits Settings and `config` set (the others of
- * AGENTS_USER_LIMIT_KEYS are written in user.yml by hand, until they get
- * their own Settings rows).
+ * Issue 1373: the agent limits Settings' agents_limits, `config` and an
+ * agent's setting_change set. Issue 1417 (Den Builder: every setting has
+ * an agent ask path): all of AGENTS_USER_LIMIT_KEYS, each checked by
+ * parseAgentsConfig.
  */
-export const AGENTS_SETTINGS_KEYS = ["max_concurrent"] as const;
+export const AGENTS_SETTINGS_KEYS = AGENTS_USER_LIMIT_KEYS;
 
 /** user.yml's agent limits that are set, each checked with den-config's words. */
 function userAgentsLimits(u: UserConfig): Record<string, unknown> {
@@ -2630,22 +2635,19 @@ export function agentsLimitValueError(
 }
 
 /**
- * Issue 1417: each agent limit's default, in its own units (as written).
- * lock_wait_minutes and turn_read_max_mb mirror agent-lock.ts's
- * LOCK_WAIT_MINUTES_DEFAULT and conversations.ts's TURN_READ_MAX_BYTES
- * (a test holds them equal; importing them here would pull in the agents'
- * modules).
+ * Issue 1417: each agent limit's default, in its own units (as written),
+ * from the constants the code that applies it uses.
  */
 const AGENT_LIMIT_DEFAULTS: Readonly<
   Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
 > = {
   max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
-  turn_read_max_mb: 8,
+  turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
   restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
   rotation_wait_minutes: ROTATION_WAIT_MINUTES_DEFAULT,
   unasked_exit_window_minutes: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
-  lock_wait_minutes: 30,
+  lock_wait_minutes: LOCK_WAIT_MINUTES_DEFAULT,
   exited_shell_minutes: DEFAULT_EXITED_SHELL_MINUTES,
 };
 
