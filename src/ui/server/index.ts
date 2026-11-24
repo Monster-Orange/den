@@ -98,6 +98,7 @@ import {
   type TestPersonSetupDeps,
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
+import { userConfigPath } from "../../shared/den-config.js";
 import { readWebSecret } from "../../shared/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
@@ -1385,6 +1386,11 @@ import {
   writeSandboxNote,
   type SandboxSetDeps,
 } from "../../shared/agents/sandbox-set.js";
+import {
+  checkSettingChange,
+  runSettingChange,
+  settingChangeDeps,
+} from "../cli/setting-change.js";
 import {
   approvalsView,
   patchApprovals,
@@ -5211,6 +5217,7 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
+    settingChange: settingChangeHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5425,6 +5432,35 @@ function agentSandboxHeldOp() {
     ) => checkAgentSandboxSet(deps(), a, who),
     run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
       runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
+/**
+ * Issue 1371: setting_change on this install: the person's user.yml, a
+ * backup in the state folder, and the server's audit. The card and args
+ * only go to the queue: never the file's text.
+ */
+function settingChangeHeldOp() {
+  const deps = () =>
+    settingChangeDeps({
+      userFile: userConfigPath(),
+      stateDir: getStateDir(),
+      audit: (detail, reason) =>
+        auditConfig({
+          verb: "config-write",
+          detail,
+          ...(reason ? { reason } : {}),
+        }),
+    });
+  return {
+    check: (a: Record<string, unknown>, who?: { agent?: string }) => {
+      const c = checkSettingChange(deps(), a, who);
+      if (!c.ok) return c;
+      const { text: _t, before: _b, kind: _k, ...card } = c;
+      return card;
+    },
+    run: async (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runSettingChange(deps(), a, asked),
   };
 }
 

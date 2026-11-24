@@ -2367,6 +2367,21 @@
       "停止中です: 次の起動で変更が入ります。",
     "ap.do.agent_sandbox_set": "{agent}: サンドボックスに戻す",
     "ap.do.agent_sandbox_set.loosens": "{agent} をサンドボックスの外に出す",
+    "ap.det.setting_change.widens":
+      "エージェントにできることが広がります。あなた自身の「許可」でのみ実行されます。",
+    "ap.det.setting_change.key": "設定: {key}",
+    "ap.det.setting_change.now": "現在: {value}",
+    "ap.det.setting_change.new": "新しい値: {value}",
+    "ap.det.setting_change.why": "理由: {why}",
+    "ap.det.setting_change.by": "依頼元: {agent}",
+    "ap.det.setting_change.writes":
+      "Den は config/local/user.yml の {key} だけを書き換え、先にファイルのコピーを残し、変更を監査に記録します。",
+    "ap.det.setting_change.restart":
+      "Den は起動時にこれを読みます。Den の再起動後に反映されます（den_restart_server）。",
+    "ap.det.setting_change.atOnce": "すぐに反映されます。",
+    "ap.do.setting_change": "{key} を変更: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "エージェントにできることが広がります: {key}: {now} → {value}",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",

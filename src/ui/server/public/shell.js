@@ -3337,6 +3337,21 @@
       "It is stopped: its next start has the change.",
     "ap.do.agent_sandbox_set": "{agent}: back in the sandbox",
     "ap.do.agent_sandbox_set.loosens": "This takes {agent} out of the sandbox",
+    "ap.det.setting_change.widens":
+      "This widens what agents can do: only your own Allow runs it.",
+    "ap.det.setting_change.key": "Setting: {key}",
+    "ap.det.setting_change.now": "Now: {value}",
+    "ap.det.setting_change.new": "New: {value}",
+    "ap.det.setting_change.why": "Why: {why}",
+    "ap.det.setting_change.by": "Asked by {agent}",
+    "ap.det.setting_change.writes":
+      "Den writes only {key} in config/local/user.yml, keeps a copy of the file first, and notes the change in the audit.",
+    "ap.det.setting_change.restart":
+      "Den reads it when it starts: it applies after a restart of Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "It applies at once.",
+    "ap.do.setting_change": "Change {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "This widens what agents can do: {key}: {now} → {value}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
