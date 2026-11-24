@@ -1717,7 +1717,7 @@ export function sharedUserLines(
   const regDetail = registered
     ? "this install is in the install registry, so other installs' agents on this login are denied its files"
     : running
-      ? `this install isn't in the install registry, though its server runs, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
+      ? `this install isn't in the install registry, though ${title} is running, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
       : `this install isn't in the install registry yet: ${title} adds it at its next start`;
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home),
