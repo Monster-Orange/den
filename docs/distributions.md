@@ -5895,12 +5895,22 @@ How the watcher paces itself:
   least. The calls left over the floor until GitHub's reset raise it (one
   look per watch per interval, the most a watch costs), up to 1000. Past
   it, a new watch is queued ("queued, N ahead") and starts when one ends.
+- A queued watch takes its pull request's head when it starts, not when it
+  was asked: a push in between is the head it watches.
 - A pull request's watch asks about the pull request again every 10
-  minutes. When it merges or closes, or a newer push replaces its head
-  ("replaced by <sha>"), the watch ends and its agent is told once.
-- A watch whose state hasn't changed for `github.watch_stale_minutes` (60)
-  ends, and its agent is told why. Its slot is freed. Time while all its
-  checks (or workflow runs) wait for a runner doesn't count.
+  minutes at most often. When it merges or closes, or a newer push replaces
+  its head ("replaced by <sha>"), the watch ends and its agent is told once.
+  Den asks about one pull request a round per repo, never two rounds
+  running, so with N watched pull requests in one repo each is asked about
+  once every 2N rounds at most often: at a 300-second interval a merged pull
+  request's watch can hold its slot for hours.
+- A watch with no progress for `github.watch_stale_minutes` (60) ends, and
+  its agent is told why. Its slot is freed. A check (or workflow run) still
+  queued or in progress counts as progress, up to a backstop: nothing
+  changed for 4 times the bound. Time while every check waits for a
+  runner counts toward neither. The bound is never shorter than twice the
+  interval in force, so a watch doesn't go stale only because Den didn't
+  look. The note says which bound fired.
 
 These five are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and

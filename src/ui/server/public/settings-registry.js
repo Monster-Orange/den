@@ -3044,7 +3044,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "GitHub watch: minutes with no progress",
     description:
-      "A watch whose checks haven't changed in this many minutes ends, and its agent is told why. Time while its checks wait for a runner doesn't count. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
     keywords: ["github", "watch", "stale", "github.watch_stale_minutes"],
     scope: "user",
     keys: ["github.watch_stale_minutes"],

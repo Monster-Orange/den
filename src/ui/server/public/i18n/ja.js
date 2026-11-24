@@ -1153,7 +1153,7 @@
       "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の最小の数です。GitHub API の残りに余裕があれば、もっと監視します。それを超える新しい監視は順番待ちになり、ほかの監視が終わると始まります。__DEN_CLI__ config github.watches_max=50",
     "set.server.github_watch_stale": "GitHub の監視: 進展のない時間 (分)",
     "set.server.github_watch_stale.d":
-      "チェックがこの分数のあいだ変わらない監視は終わり、その理由をエージェントに伝えます。チェックがランナーを待っている時間は数えません。プルリクエストがマージまたはクローズされたとき、または新しいプッシュで head が置き換わったときも、監視は終わります。__DEN_CLI__ config github.watch_stale_minutes=60",
+      "この分数のあいだ進展のない監視は終わり、その理由をエージェントに伝えます。待機中または実行中のチェックは進展と数えますが、何も変わらないままこの4倍の時間が過ぎると終わります。この上限は監視間隔の2倍より短くなりません。プルリクエストがマージまたはクローズされたとき、または新しいプッシュで head が置き換わったときも、監視は終わります。__DEN_CLI__ config github.watch_stale_minutes=60",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",

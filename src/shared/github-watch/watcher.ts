@@ -24,14 +24,19 @@
  * A finished watch is told to its agent once (the relayed-message path,
  * hub-delivery-service relayMessage: typed at its prompt, held while it
  * works), with the counts of passed, failed and skipped checks and each
- * failure's name and URL. A pull request is watched at the head it had when
- * asked: a new push needs a new watch.
+ * failure's name and URL. A pull request is watched at the head it has when
+ * its watch starts: when asked, or for a queued watch when a slot frees (a
+ * push in between is the head it takes). A new push after that needs a new
+ * watch.
  *
  * Issue 1166: no watch holds a slot forever. A pull request is asked about
  * again every PR_RECHECK_MS (never two rounds running in a repo): merged,
  * closed or a newer head ends its watch, told once. A watch with no
- * progress for github.watch_stale_minutes ends, saying why (time while all
- * its checks are still queued for a runner doesn't count). The cap is
+ * progress for github.watch_stale_minutes ends, saying why. A check or run
+ * still queued or in progress counts as progress (a slow shard, a browser
+ * run isn't a stall), up to a backstop: nothing changed for 4 x the stale
+ * bound. Time while every check waits for a runner counts toward neither. The stale bound is at least twice the interval
+ * in force, so a watch never goes stale only because Den didn't look. The cap is
  * github.watches_max at least, raised by the calls left before GitHub's
  * reset; past it a watch is queued and starts when a slot frees.
  */
@@ -148,13 +153,23 @@ interface Watch {
   queued?: boolean;
   /** Issue 1166: when it took a slot (createdAt when it never queued). */
   startedAt?: number;
-  /** Issue 1166: when its phase, head or checks last changed. */
+  /**
+   * Issue 1166: when it last made progress: its phase, head or checks
+   * changed, or a check of it was still queued or in progress.
+   */
   progressAt?: number;
+  /** Issue 1166: when its phase, head or checks last changed (the backstop). */
+  changedAt?: number;
   /** Issue 1166: when its pull request was last asked about. */
   resolvedAt?: number;
   /**
+   * Issue 1166: a check (or workflow run) of it is still queued or in
+   * progress: CI is working, so it counts as progress.
+   */
+  underway?: boolean;
+  /**
    * Issue 1166: every check (or workflow run) of it is still queued, waiting
-   * for a runner: that wait isn't a stall, so it doesn't count as no progress.
+   * for a runner: that wait counts toward neither bound.
    */
   allQueued?: boolean;
 }
@@ -400,21 +415,30 @@ export class GithubWatcher {
     if (!this.watches.some((w) => w.phase !== "done")) return;
     if (this.paused(now)) return this.writeStatus(now);
     // A pause that just ended was Den's wait, not the watches' own.
-    if (this.pause) for (const w of this.open()) w.progressAt = now;
+    if (this.pause)
+      for (const w of this.open()) w.progressAt = w.changedAt = now;
     this.pause = null;
     if (now < this.next) return;
     const s = this.d.settings();
     let changed = false;
     let limited = false;
-    // Issue 1166: no progress for github.watch_stale_minutes: it ends.
-    for (const w of this.open())
-      if (now - this.progressed(w) >= s.staleMinutes * 60_000) {
-        this.finish(w, now, {
-          note: `No progress for ${s.staleMinutes} minutes (github.watch_stale_minutes); Den stopped watching it.`,
-          text: `Den: GitHub watch ${w.id} ended: ${this.what(w)} made no progress for ${s.staleMinutes} minutes (last: ${w.note}). Watch it again if you still need it.`,
-        });
-        changed = true;
-      }
+    // Issue 1166: no progress for the stale bound, or nothing changed for
+    // the backstop: it ends, saying which bound fired.
+    const stale = this.stale(s);
+    for (const w of this.open()) {
+      const ended =
+        now - this.progressed(w) >= stale.ms
+          ? `no progress for ${stale.minutes} minutes (${stale.why})`
+          : now - this.changed(w) >= 4 * stale.ms
+            ? `checks still running, but nothing changed for ${4 * stale.minutes} minutes (4 x ${stale.why})`
+            : null;
+      if (!ended) continue;
+      this.finish(w, now, {
+        note: `${ended[0].toUpperCase()}${ended.slice(1)}; Den stopped watching it.`,
+        text: `Den: GitHub watch ${w.id} ended: ${this.what(w)}: ${ended} (last: ${w.note}). Watch it again if you still need it.`,
+      });
+      changed = true;
+    }
     const groups = new Map<string, Watch[]>();
     for (const w of this.open()) {
       const k = w.repo.toLowerCase();
@@ -439,8 +463,11 @@ export class GithubWatcher {
       }
       const before = new Map(ws.map((w) => [w, mark(w)]));
       if (this.apply(call, ws, r, now)) changed = true;
-      for (const w of ws)
-        if (mark(w) !== before.get(w) || w.allQueued) w.progressAt = now;
+      for (const w of ws) {
+        if (mark(w) !== before.get(w) || w.allQueued)
+          w.progressAt = w.changedAt = now;
+        else if (w.underway) w.progressAt = now;
+      }
       if (this.paused(now)) break; // under the floor: nothing more this hour
     }
     // A finished watch frees a slot for the first queued one.
@@ -655,6 +682,7 @@ export class GithubWatcher {
       if (print !== w.print) changed = true;
       w.print = print;
       const open = mine.filter((r) => r.status !== "completed").length;
+      w.underway = open > 0;
       w.allQueued = mine.every((r) => QUEUED.has(asStr(r.status)));
       w.phase = open ? "running" : "ready";
       w.note = open
@@ -683,6 +711,7 @@ export class GithubWatcher {
       );
       if (print !== w.print) changed = true;
       w.print = print;
+      w.underway = cs.some((c) => asStr(c.status) !== "completed");
       w.allQueued =
         cs.length > 0 && cs.every((c) => QUEUED.has(asStr(c.status)));
       if (!cs.length) {
@@ -823,6 +852,34 @@ export class GithubWatcher {
     return w.progressAt ?? this.since(w);
   }
 
+  private changed(w: Watch): number {
+    return w.changedAt ?? this.progressed(w);
+  }
+
+  /**
+   * Issue 1166: the stale bound, github.watch_stale_minutes or twice the
+   * interval in force, whichever is longer, and which of them it is.
+   */
+  private stale(s: GithubWatchSettings): {
+    ms: number;
+    minutes: number;
+    why: string;
+  } {
+    const set = s.staleMinutes * 60_000;
+    const look = 2 * this.interval * 1000;
+    if (set >= look)
+      return {
+        ms: set,
+        minutes: s.staleMinutes,
+        why: "github.watch_stale_minutes",
+      };
+    return {
+      ms: look,
+      minutes: Math.ceil(look / 60_000),
+      why: `twice Den's ${this.interval}-second interval; github.watch_stale_minutes is ${s.staleMinutes}`,
+    };
+  }
+
   private oldest(): string | null {
     const o = this.open();
     return o.length ? iso(Math.min(...o.map((w) => this.since(w)))) : null;
@@ -834,10 +891,9 @@ export class GithubWatcher {
     for (const w of open) n[w.phase === "waiting" ? "waiting" : "running"]++;
     const stale = open.filter(
       (w) =>
-        this.now() - this.progressed(w) >=
-        (this.d.settings().staleMinutes * 60_000) / 2,
+        this.now() - this.progressed(w) >= this.stale(this.d.settings()).ms / 2,
     ).length;
-    return `${n.waiting} waiting for checks, ${n.running} running, ${stale} with no progress for half of github.watch_stale_minutes`;
+    return `${n.waiting} waiting for checks, ${n.running} running, ${stale} with no progress for half the stale bound`;
   }
 
   /** Starts queued watches while there are slots; how many started. */
@@ -850,7 +906,7 @@ export class GithubWatcher {
       if (!w.queued) continue;
       w.queued = false;
       w.startedAt = now;
-      w.progressAt = now;
+      w.progressAt = w.changedAt = now;
       w.note = "Den looks at it on its next round.";
       room--;
       n++;
