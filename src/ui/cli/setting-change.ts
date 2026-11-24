@@ -145,6 +145,8 @@ export const NARROW_SETTINGS: readonly string[] = [
  */
 export const WIDENING_SETTINGS: readonly string[] = [
   ...USER_ONLY_WIDENING,
+  // Issue 1391: personal opens what agents may read (strict → personal).
+  "install.mode",
   "approvals",
   "approvals.**",
   "editor",
@@ -266,6 +268,15 @@ const SETTING_KEYS: readonly {
   refuse?: string;
 }[] = [
   { key: "agents.sandbox", check: (u, d) => void readAgentsConfig(d, u) },
+  // Issue 1391: personal or strict (anything else is strict).
+  {
+    key: "install.mode",
+    check: (u) => {
+      const m = u.install?.mode;
+      if (m !== undefined && m !== "personal" && m !== "strict")
+        throw new Error("install.mode is personal or strict");
+    },
+  },
   {
     key: "agents.sandbox_sockets",
     check: (u, d) => void readAgentsConfig(d, u),

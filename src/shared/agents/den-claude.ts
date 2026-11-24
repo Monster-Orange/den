@@ -81,7 +81,7 @@ import { product } from "../product.js";
 import { distributionBin, shellQuote } from "../cli-command.js";
 import { getDistRoot, getEngineRoot } from "../paths.js";
 import { gateDir } from "../gates/store.js";
-import { AUDIT_FILE } from "../audit-file.js";
+import { AUDIT_FILE, AUDIT_SET_ASIDE_DIR } from "../audit-file.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -425,7 +425,15 @@ function detect(
  *   `${HOME}/…`, and, when the path has a space, with each space
  *   backslash-escaped.
  */
-export function stateDirDenyRules(stateDir: string, home?: string): string[] {
+export function stateDirDenyRules(
+  stateDir: string,
+  home?: string,
+  /**
+   * Issue 1391: the install's own trail on a personal install: readable
+   * (Edit stays denied). Unset is denied, as for another install's.
+   */
+  o: { trailReadable?: boolean } = {},
+): string[] {
   const abs = path.resolve(stateDir);
   const secret = path.join(abs, "web.secret");
   const sessions = path.join(abs, "sessions");
@@ -437,7 +445,9 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   const sessionsLock = path.join(abs, "web-sessions.lock");
   // Issue 728: the activity trail. Since issue 1369 only the server
   // writes it (the CLI sends its entries), so an agent never edits it.
-  // Issue 1391: it may read it, to debug who changed what.
+  // Issue 1391: on a personal install it may read it, to debug who
+  // changed what; on a strict one, and another install's, it may not.
+  const trailRead = o.trailReadable === true;
   const trail = path.join(abs, AUDIT_FILE);
   // Issue 728: the state dir's other credential files and folders.
   const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
@@ -447,6 +457,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
     ...spellings(sessionsLock).map((p) => `${p}*`),
+    ...(trailRead ? [] : spellings(trail).map((p) => `${p}*`)),
     ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
     ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
@@ -458,6 +469,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${sessionsLock})`,
     // Edit(path) covers writes too (issue 660: no Write(path) rules).
     `Edit(/${sessionsLock})`,
+    ...(trailRead ? [] : [`Read(/${trail})`]),
     `Edit(/${trail})`,
     ...files.map((f) => `Read(/${f})`),
     // Issue 1299: copies beside each (a damaged file moved aside, a
@@ -500,7 +512,12 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
  * the old ones kept for a retried revoke. agent-files/ (an agent's MCP
  * config and settings, no secret) stays readable.
  */
-export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
+export const STATE_CREDENTIAL_DIRS: readonly string[] = [
+  "actor-token",
+  "hub",
+  // Issue 1391: the trail written before redaction, set aside.
+  AUDIT_SET_ASIDE_DIR,
+];
 
 /**
  * Issue 728: whether `rules`' Read rules cover an absolute file: as Claude
@@ -874,7 +891,9 @@ function common(input: LaunchInput): {
                     // given and their real paths (a symlink in either).
                     ...(input.stateDir
                       ? bothSpellings(input.stateDir).flatMap((d) =>
-                          stateDirDenyRules(d, input.env?.HOME),
+                          stateDirDenyRules(d, input.env?.HOME, {
+                            trailReadable: input.trailReadable === true,
+                          }),
                         )
                       : []),
                     // Issue 728: the edge's key folders.

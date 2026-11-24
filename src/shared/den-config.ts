@@ -197,6 +197,8 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  /** Issue 1391: the install's mode (installModeOf); strict here wins. */
+  install?: { mode?: unknown };
   /** Secrets backend strategy — see src/shared/secrets. */
   secrets?: SecretsConfig;
   /** Environments enabled for this deployment. */
@@ -338,6 +340,8 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
+  /** Issue 1391: the install's mode (installModeOf). */
+  install?: { mode?: unknown };
   /**
    * Review M4 (0.4.46): `server_agent.self_update: ask | auto`, the
    * person's: whether the server agent's own restarts and updates run
@@ -1264,6 +1268,31 @@ export const USER_ONLY_WIDENING: readonly string[] = [
   "web.allow_plain_http_remote",
   "secrets.onepassword.token",
 ];
+
+/**
+ * Issue 1391: an install's mode. personal: one person's own machine (the
+ * default); strict: a team or enterprise install, today's protections.
+ */
+export type InstallMode = "personal" | "strict";
+
+/**
+ * Issue 1391: `install.mode` from user.yml and the distribution's den.yml.
+ * Personal only when every value set is "personal", or none is: "strict",
+ * or anything else (a typo), is strict, so a team's den.yml makes it
+ * strict whatever user.yml says. It fails closed.
+ */
+export function installModeOf(
+  den: DenConfig | undefined,
+  user: UserConfig | undefined,
+): InstallMode {
+  const set = [den, user]
+    .map((c) => c?.install)
+    .filter((i) => i !== undefined)
+    .map((i) => (i && typeof i === "object" ? i.mode : i));
+  return set.every((m) => m === undefined || m === "personal")
+    ? "personal"
+    : "strict";
+}
 
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
@@ -2227,6 +2256,11 @@ function sandboxValue(
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
   /**
+   * Issue 1391: the install's mode (installModeOf). readAgentsConfig
+   * always sets it; a config built another way without it is strict.
+   */
+  installMode?: InstallMode;
+  /**
    * Issue 936: agents' sessions start in the OS sandbox, Den's state
    * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
    * off for one agent.
@@ -2489,6 +2523,7 @@ export function readAgentsConfig(
     );
     if (g) out.git = g;
   }
+  out.installMode = installModeOf(c, u);
   return out;
 }
 

@@ -3396,9 +3396,20 @@ it starts, marked as reported by a process, unverified. Den remembers each proje
 unlink, `doctor` warns, naming the project and the Hub project it had,
 even when Hub isn't connected.
 
-**Agents may read the trail** (0.4.89). An agent can read
-`<state>/audit.jsonl` (with Read, `tail` or `grep`) to see who changed
-what. It can never edit it. Den redacts secret-shaped text (tokens, keys,
+**Agents may read the trail** (0.4.89) on a personal install. An agent
+can read `<state>/audit.jsonl` (with Read, `tail` or `grep`) to see who
+changed what. It can never edit it. An install is personal unless
+`install.mode: strict` is set in `config/local/user.yml` or in the
+distribution's config (strict in either wins; any value but `personal`
+or `strict` counts as strict). On a strict install the trail stays
+denied to agents and unreadable in their sandbox, and another install's
+trail is denied in every mode. The mode is read when an agent starts:
+a change applies at its next start. Only the person's own Allow changes
+`install.mode`. At the first start of 0.4.89, Den moves the trail
+written before every row was redacted (and any copy beside it) into
+`<state>/audit-before-redaction/`, which agents can never read; the
+fresh trail notes it. Until that move is done, agents can't read the
+trail. Den redacts secret-shaped text (tokens, keys,
 passwords in a URL or a `key=value`) from every row before the row is
 kept. A setting changed to a text value (a command, a list, a mapping)
 is noted as changed with its length ("editor: changed (was 4

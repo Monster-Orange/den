@@ -23,6 +23,11 @@ import type { CliAuditRow, QueuedAuditRow } from "../../shared/audit-queue.js";
 import { auditVia } from "../../shared/test-person.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { redactSecrets } from "../../shared/redact.js";
+import {
+  AUDIT_FILE as TRAIL_NAME,
+  AUDIT_SET_ASIDE_DIR as SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK as SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
@@ -111,7 +116,7 @@ const ring: AuditEntry[] = [];
 let sink: Sink | null = null;
 
 /** The persisted ring's file name, in the state dir (shared/audit-file.ts). */
-export { AUDIT_FILE } from "../../shared/audit-file.js";
+export { AUDIT_FILE, AUDIT_SET_ASIDE_DIR } from "../../shared/audit-file.js";
 let file: string | null = null;
 let fileLines = 0;
 
@@ -163,6 +168,47 @@ function persist(entry: AuditEntry): void {
   } catch {
     /* the trail stays in memory; the log line still goes out */
   }
+}
+
+/**
+ * Issue 1391: agents may now read the trail, and rows written before
+ * every row was redacted may hold a value (a setting's text, an older
+ * CLI's command line). At the server's first start on this version,
+ * before the trail is read or added to, the trail and every copy beside
+ * it (audit.jsonl.*) move into AUDIT_SET_ASIDE_DIR, denied to agents.
+ * Moved whole, by rename, never rewritten: old free text can't be told
+ * apart safely. Once: a marker in the folder, written whole. A start
+ * that stopped part-way finishes the move under a new name, never over
+ * one moved before.
+ */
+export function setAsideOldTrail(
+  stateDir: string,
+  now: () => Date = () => new Date(),
+): { moved: number } {
+  const dir = path.join(stateDir, SET_ASIDE_DIR);
+  const mark = path.join(dir, SET_ASIDE_MARK);
+  if (fs.lstatSync(mark, { throwIfNoEntry: false })) return { moved: 0 };
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  const taken = (p: string) => !!fs.lstatSync(p, { throwIfNoEntry: false });
+  let moved = 0;
+  for (const name of fs.readdirSync(stateDir).sort()) {
+    if (name !== TRAIL_NAME && !name.startsWith(`${TRAIL_NAME}.`)) continue;
+    const from = path.join(stateDir, name);
+    const st = fs.lstatSync(from, { throwIfNoEntry: false });
+    // A file, or a link (moved as the link, never followed).
+    if (!st || !(st.isFile() || st.isSymbolicLink())) continue;
+    let to = path.join(dir, name);
+    for (let n = 1; taken(to); n++) to = path.join(dir, `${name}.${n}`);
+    fs.renameSync(from, to);
+    moved++;
+  }
+  writeFileAtomic(
+    mark,
+    JSON.stringify({ at: now().toISOString(), moved }) + "\n",
+    { mode: 0o600 },
+  );
+  return { moved };
 }
 
 /** Where audit lines go (the server log); null to disconnect. */

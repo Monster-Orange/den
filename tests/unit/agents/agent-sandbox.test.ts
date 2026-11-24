@@ -126,9 +126,9 @@ function layout(name: string) {
 }
 
 describe("agentSandboxPolicy (issue 936)", () => {
-  it("issue 1391: the activity trail is read back inside the state dir, and never written", () => {
+  it("issue 1391: a personal install's trail is read back inside the state dir, and never written", () => {
     const l = layout("trail");
-    const p = agentSandboxPolicy(l);
+    const p = agentSandboxPolicy({ ...l, trailReadable: true });
     const trail = path.join(l.stateDir, "audit.jsonl");
     expect(p.readableFiles).toContain(trail);
     expect(

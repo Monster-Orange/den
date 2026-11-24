@@ -51,6 +51,10 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import {
+  AUDIT_SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 import { readActivity } from "../../shared/agents/activity.js";
 import {
   denToolsOld,
@@ -953,6 +957,24 @@ function signingKeyRefusedDirs(
   return [...new Set(out)];
 }
 
+/**
+ * Issue 1391: whether this install's agents may read its activity trail:
+ * a personal install's, once the trail written before redaction is set
+ * aside (setAsideOldTrail's marker). Should that step fail, they don't.
+ */
+export function agentsMayReadTrail(
+  cfg: { installMode?: "personal" | "strict" },
+  stateDir: string,
+): boolean {
+  return (
+    cfg.installMode === "personal" &&
+    !!fs.lstatSync(
+      path.join(stateDir, AUDIT_SET_ASIDE_DIR, AUDIT_SET_ASIDE_MARK),
+      { throwIfNoEntry: false },
+    )
+  );
+}
+
 export function agentSandboxInput(o: {
   stateDir: string;
   distRoot: string;
@@ -965,9 +987,12 @@ export function agentSandboxInput(o: {
   readableFiles?: string[];
   /** Issue 1325: the session's own temp folder. */
   sessionTmp?: string;
+  /** Issue 1391: a personal install's trail is read back. */
+  trailReadable?: boolean;
 }): AgentSandboxInput {
   return {
     ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
+    ...(o.trailReadable === true ? { trailReadable: true } : {}),
     stateDir: o.stateDir,
     distRoot: o.distRoot,
     gateDir: gateDir(o.env),
@@ -1027,6 +1052,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
               .sandboxSockets,
             readableFiles: signingReadFiles(
               (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+            ),
+            // Issue 1391: read at this start, as the deny rules are.
+            trailReadable: agentsMayReadTrail(
+              (d.agentsConfig ?? (() => readAgentsConfig()))(),
+              base.stateDir(),
             ),
           }),
           {
@@ -3825,6 +3855,8 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 1391: read at this start; a change of mode waits for the next.
+    ...(agentsMayReadTrail(cfg, d.stateDir()) ? { trailReadable: true } : {}),
     // Issue 816: test installs announced on this computer; issue 728: the
     // other installs registered for this OS user, any distribution's.
     otherStateDirs: [

@@ -508,7 +508,31 @@ describe("den-claude launch", () => {
     expect(denied(deny, `cat ${entry}`)).toBe(true);
   });
 
-  it("issue 1391: an agent may read the activity trail (audit.jsonl), and never edit it", () => {
+  it("issue 1391: a personal install: an agent may read its activity trail (audit.jsonl), and never edit it", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+            trailReadable: true,
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    const trail = path.join(state, "audit.jsonl");
+    // To debug "who changed this": read it, by Read or a command.
+    expect(readDenied(deny, trail)).toBe(false);
+    expect(denied(deny, `tail ${trail}`)).toBe(false);
+    expect(denied(deny, `grep restart ${trail}`)).toBe(false);
+    // Only the server writes it (issue 1369).
+    expect(deny).toContain(`Edit(/${trail})`);
+  });
+
+  it("issue 1391: a strict install (trailReadable unset): the trail is denied to Read, Edit and Bash", () => {
     const state = path.join(tmp(), ".acme");
     const filesDir = path.join(state, "agent-files", "planner");
     const deny = (
@@ -524,9 +548,9 @@ describe("den-claude launch", () => {
     ).permissions.deny;
     const trail = path.join(state, "audit.jsonl");
     // To debug "who changed this": read it, by Read or a command.
-    expect(readDenied(deny, trail)).toBe(false);
-    expect(denied(deny, `tail ${trail}`)).toBe(false);
-    expect(denied(deny, `grep restart ${trail}`)).toBe(false);
+    expect(readDenied(deny, trail)).toBe(true);
+    expect(denied(deny, `tail ${trail}`)).toBe(true);
+    expect(denied(deny, `grep restart ${trail}`)).toBe(true);
     // Only the server writes it (issue 1369).
     expect(deny).toContain(`Edit(/${trail})`);
   });
