@@ -9,6 +9,7 @@
  * secret exists and the mark is read; otherwise it drops it.
  */
 import { getProfile, getStateDir } from "../../shared/paths.js";
+import { product } from "../../shared/product.js";
 import { readEnv } from "../../shared/profile.js";
 import { TEST_INSTALL_ENV_KEY } from "../../shared/fixture-person.js";
 import { birthClaim } from "../../shared/test-operator.js";
@@ -20,6 +21,8 @@ function born(): boolean {
       stateDir: getStateDir(),
       defaultStateDir: profile.stateDir,
       launchFlag: readEnv(profile, TEST_INSTALL_ENV_KEY) === "1",
+      // `web up` writes logs/<cli>/web.log before it starts the server.
+      cli: product().cli,
     });
   } catch {
     return false;

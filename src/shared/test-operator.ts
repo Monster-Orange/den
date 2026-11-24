@@ -75,8 +75,9 @@ function realOrResolved(p: string): string {
  * Vision's ruling): the birth of a test install is the start that has the
  * launcher's test flag and creates the install's secret. So: the flag,
  * a folder that isn't the product's default and isn't a link, and no
- * secret in it yet (no start has made one). The folder may hold what
- * `web up` wrote before the server started (its log). Then the folder
+ * secret in it yet (no start has made one), and nothing else in it but
+ * what `web up` wrote before the server started (its log) and a pending
+ * record a start that died left. Then the folder
  * is claimed with the pending creation record, made exclusively (0600),
  * which this start seals with the secret it creates. An install that ran
  * before has its secret, so it is never claimed, and nothing in it is
@@ -86,6 +87,8 @@ export function claimAtBirth(o: {
   stateDir: string;
   defaultStateDir: string;
   launchFlag: boolean;
+  /** The product's CLI name: `web up`'s log is logs/<cli>/web.log. */
+  cli?: string;
 }): boolean {
   if (!o.launchFlag) return false;
   if (realOrResolved(o.stateDir) === realOrResolved(o.defaultStateDir))
@@ -105,6 +108,11 @@ export function claimAtBirth(o: {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") return false;
     }
+    // Reviewer C and Builder 2: a real install that lost its secret (deleted
+    // by hand) has no secret either. So before the claim, the folder may
+    // hold only what the launcher writes before the server starts (`web
+    // up`'s own log) and a pending record a start that died left.
+    if (!onlyLauncherFiles(o.stateDir, o.cli)) return false;
     fs.mkdirSync(o.stateDir, { recursive: true, mode: 0o700 });
     const f = creationRecordPath(o.stateDir);
     try {
@@ -125,6 +133,38 @@ export function claimAtBirth(o: {
   }
 }
 
+/** Whether `p` is a real folder (not a link) holding exactly `names`. */
+function folderOf(p: string, names: readonly string[]): boolean {
+  const st = fs.lstatSync(p);
+  if (!st.isDirectory()) return false;
+  const have = fs.readdirSync(p).sort();
+  return have.length === names.length && have.every((n, i) => n === names[i]);
+}
+
+/**
+ * Whether the state folder (missing counts) holds nothing but what the
+ * launcher writes before the server's first start: logs/<cli>/web.log, a
+ * regular file, and the creation record. The record itself is judged by
+ * claimAtBirth (a 0600 file holding exactly the pending mark).
+ */
+function onlyLauncherFiles(stateDir: string, cli: string | undefined): boolean {
+  let top: string[];
+  try {
+    top = fs.readdirSync(stateDir);
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT";
+  }
+  for (const n of top) {
+    if (n === CREATION_RECORD_FILE) continue;
+    if (n !== "logs" || !cli) return false;
+    const logs = path.join(stateDir, "logs");
+    const own = path.join(logs, cli);
+    if (!folderOf(logs, [cli]) || !folderOf(own, ["web.log"])) return false;
+    if (!fs.lstatSync(path.join(own, "web.log")).isFile()) return false;
+  }
+  return true;
+}
+
 /**
  * The server's birth step: claim (claimAtBirth), or else drop a pending
  * record left there, so a pending record is only ever sealed by the start
@@ -135,6 +175,7 @@ export function birthClaim(o: {
   stateDir: string;
   defaultStateDir: string;
   launchFlag: boolean;
+  cli?: string;
 }): boolean {
   if (claimAtBirth(o)) return true;
   dropPendingRecord(o.stateDir);

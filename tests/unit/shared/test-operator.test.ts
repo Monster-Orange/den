@@ -390,12 +390,77 @@ describe("claiming a state folder at the first start", () => {
     fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
     fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
     expect(
-      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
     ).toBe(true);
     expect(fs.readFileSync(creationRecordPath(dir), "utf-8").trim()).toBe(
       "pending",
     );
     expect(fs.statSync(creationRecordPath(dir)).mode & 0o777).toBe(0o600);
+  });
+
+  // Builder 2's review: a real install whose secret was deleted by hand
+  // (to sign everyone out) has no secret either; its other files keep it
+  // from being claimed. Only `web up`'s own log may be there.
+  it("a real install whose secret was deleted by hand: no claim, nothing changes", () => {
+    const dir = path.join(tmp, "nosecret");
+    fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "agents", "planner.json"), "{}\n");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    const before = snapshot(dir);
+    expect(
+      birthClaim({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it.each([
+    ["another file beside the log", ["logs/den/web.log", "logs/den/other.log"]],
+    ["another product's log", ["logs/acme/web.log"]],
+    ["a file at the top", ["logs/den/web.log", "notes.txt"]],
+  ])("%s: no claim", (_n, files) => {
+    const dir = path.join(tmp, `x-${_n.replace(/\W+/g, "-")}`);
+    for (const f of files) {
+      fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+      fs.writeFileSync(path.join(dir, f), "x\n");
+    }
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("web.log as a link: no claim", () => {
+    const dir = path.join(tmp, "loglink");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "elsewhere.log"), "x\n");
+    fs.symlinkSync(
+      path.join(tmp, "elsewhere.log"),
+      path.join(dir, "logs", "den", "web.log"),
+    );
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
   });
 
   it("a first start that died before its secret: the next start is still the birth", () => {
