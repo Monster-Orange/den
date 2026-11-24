@@ -113,7 +113,7 @@ export function claimAtBirth(o: {
     // Reviewer C and Builder 2: a real install that lost its secret (deleted
     // by hand) has no secret either. So before the claim, the folder may
     // hold only what the launcher writes before the server starts (`web
-    // up`'s own log) and a pending record a start that died left.
+    // up`'s own log and web.json) and a pending record a start that died left.
     if (!onlyLauncherFiles(o.stateDir, o.cli)) return false;
     fs.mkdirSync(o.stateDir, { recursive: true, mode: 0o700 });
     const f = creationRecordPath(o.stateDir);
@@ -143,10 +143,13 @@ function folderOf(p: string, names: readonly string[]): boolean {
   return have.length === names.length && have.every((n, i) => n === names[i]);
 }
 
+/** `web up`'s own record of the server it started (web-command.ts). */
+const WEB_UP_STATE_FILE = "web.json";
+
 /**
  * Whether the state folder (missing counts) holds nothing but what the
- * launcher writes before the server's first start: logs/<cli>/web.log, a
- * regular file, and the creation record. The record itself is judged by
+ * launcher writes before the server's first look: logs/<cli>/web.log and
+ * web.json, regular files, and the creation record. The record itself is judged by
  * claimAtBirth (a 0600 file holding exactly the pending mark).
  */
 function onlyLauncherFiles(stateDir: string, cli: string | undefined): boolean {
@@ -158,6 +161,12 @@ function onlyLauncherFiles(stateDir: string, cli: string | undefined): boolean {
   }
   for (const n of top) {
     if (n === CREATION_RECORD_FILE) continue;
+    // `web up` writes web.json (the server's pid) once it has started the
+    // server, often before the server's first look: a regular file.
+    if (n === WEB_UP_STATE_FILE) {
+      if (!fs.lstatSync(path.join(stateDir, n)).isFile()) return false;
+      continue;
+    }
     if (n !== "logs" || !cli) return false;
     const logs = path.join(stateDir, "logs");
     const own = path.join(logs, cli);

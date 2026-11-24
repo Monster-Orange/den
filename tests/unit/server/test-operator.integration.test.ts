@@ -197,6 +197,12 @@ async function startDen(
       path.join(stateDir, "logs", "den", "web.log"),
       "\n--- den web start ---\n",
     );
+    // `web up` writes web.json (the server's pid) as soon as it starts the
+    // server, before the server's first look (a probe of the real `web up`).
+    fs.writeFileSync(
+      path.join(stateDir, "web.json"),
+      `${JSON.stringify({ pid: 4242, port: 4317, root, logPath: "web.log" }, null, 2)}\n`,
+    );
   }
   if (o.copyRecordFrom)
     fs.copyFileSync(
