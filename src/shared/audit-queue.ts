@@ -317,10 +317,11 @@ export function takeQueuedAuditRows(
     } catch {
       continue;
     }
-    // Young: written within the settle time. A time in the future (the
-    // writer sets it) counts as settled, so nothing waits forever.
+    // Young: written within the settle time. A time more than a second
+    // ahead (the writer sets it; a clock's own jitter is less) counts as
+    // settled, so nothing waits forever.
     const age = now - st.mtimeMs;
-    if (settleMs > 0 && st.isFile() && age >= 0 && age < settleMs) {
+    if (settleMs > 0 && st.isFile() && age >= -1000 && age < settleMs) {
       out.waiting++;
       continue;
     }
