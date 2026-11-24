@@ -2914,7 +2914,7 @@ export function sandboxLines(r: SandboxReport): string[] {
   // once: nothing to turn on, and no agent outside it is a warning.
   if (r.personalOff) {
     out.push(
-      "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared or team machine, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
+      "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
     );
   } else {
     if (r.mode === "strict")

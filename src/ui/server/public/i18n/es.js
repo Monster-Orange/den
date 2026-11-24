@@ -1491,7 +1491,7 @@
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.server.install_mode": "Esta instalación es",
     "set.server.install_mode.d":
-      "Personal: la máquina propia de una persona. Los agentes trabajan fuera del sandbox, así que Docker, los sockets y tus herramientas funcionan, y cambian ajustes sin preguntar, salvo dinero, borrados, seguridad y actuar sobre otras personas. Estricta: para un equipo o una máquina compartida. El sandbox está activo y lo que escriben los agentes sigue tu política de aprobación. Un ajuste que hiciste tú se queda como lo pusiste. __DEN_CLI__ config install_mode=strict",
+      "Personal: la máquina propia de una persona. Los agentes trabajan fuera del sandbox, así que Docker, los sockets y tus herramientas funcionan, y cambian ajustes sin preguntar, salvo dinero, borrados, seguridad y actuar sobre otras personas. Estricta: para la instalación de una empresa o una máquina compartida. El sandbox está activo y lo que escriben los agentes sigue tu política de aprobación. Un ajuste que hiciste tú se queda como lo pusiste. __DEN_CLI__ config install_mode=strict",
     "set.server.install_mode.o.personal": "Personal",
     "set.server.install_mode.o.strict": "Estricta",
     "set.agents.settings_limits":

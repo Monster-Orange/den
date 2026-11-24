@@ -4754,8 +4754,8 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "This install is",
     description:
-      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a team or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
-    keywords: ["personal", "strict", "mode", "sandbox", "team", "install"],
+      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
+    keywords: ["personal", "strict", "mode", "sandbox", "install"],
     scope: "user",
     keys: ["install_mode"],
     control: seg([
@@ -5311,7 +5311,7 @@ export const DEN_SETTINGS = [
     label: "Groups from Hub",
     description:
       "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
-    keywords: ["hub", "groups", "group", "team", "lead", "agents", "by group"],
+    keywords: ["hub", "groups", "group", "lead", "agents", "by group"],
     scope: "user",
     keys: ["hub_groups.mode"],
     control: seg([
