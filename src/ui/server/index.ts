@@ -359,6 +359,8 @@ import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
   recordAction,
+  recordQueuedAuditRow,
+  recordSentAuditRow,
   recordAgentRefusal,
   recordCrossWorkspace,
   repoAtPath,
@@ -367,6 +369,15 @@ import {
   AUDIT_FILE,
 } from "./audit.js";
 import { setConfigAuditSink } from "../../shared/config-audit.js";
+import { cliAuditRequest } from "./audit-cli-route.js";
+import {
+  droppedDetail,
+  QUEUE_DROPPED_VERB,
+  rememberSentAuditCopy,
+  sentAuditBudget,
+  startAuditQueueIntake,
+  wasSentAuditCopy,
+} from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
   defaultOnboardRouteDeps,
@@ -1170,6 +1181,18 @@ try {
 // 0.4.44: workspaces.yml writes and Hub link changes made in this process
 // go through the server's own audit (activity, the log, audit.jsonl).
 setConfigAuditSink((row) => void recordAction(null, row));
+/** Issue 1369: one principal's sent audit entries an hour. */
+const CLI_AUDIT_BUDGET = sentAuditBudget();
+// Issue 1369: the CLI's audit entries, queued outside this process, come
+// in now and while it runs: audit.jsonl has one writer.
+startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row), {
+  seen: wasSentAuditCopy,
+  onDropped: (c) =>
+    void recordAction(null, {
+      verb: QUEUE_DROPPED_VERB,
+      detail: droppedDetail(c),
+    }),
+});
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -7360,6 +7383,22 @@ async function handleRequest(
   // The MCP server's guards refuse some calls before they reach an action
   // route; it reports them here so the activity trail shows failed attempts.
   // Agents only (the audit header), and the entry is all it can write.
+  // Issue 1369: a CLI's audit entry, sent over its own authenticated call
+  // (the person token, or an agent's actor token). Recorded as that
+  // credential says, at this server's time: the body gives the verb,
+  // detail, outcome and reason only, never a who or a when.
+  if (pathname === "/api/audit/cli" && req.method === "POST") {
+    // Issue 1369: at most 8 KB read; the credential says who sent it.
+    const r = await cliAuditRequest(req, {
+      principal: principalOf(req),
+      actor: auditActorOf(req),
+      budget: CLI_AUDIT_BUDGET,
+      record: recordSentAuditRow,
+      remember: rememberSentAuditCopy,
+    });
+    return sendJson(res, r.body, r.status);
+  }
+
   if (pathname === "/api/activity" && req.method === "POST") {
     // An agent's token, or (unverified) an MCP server's audit headers.
     const actor = auditActorOf(req);

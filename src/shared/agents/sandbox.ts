@@ -544,18 +544,23 @@ export function macProfile(p: SandboxPolicy): string {
   ].join("\n");
 }
 
-/**
- * bwrap binds only what exists: a locked gate file not made yet is made
- * now, as "{}" (what the store reads as unset), so the bind covers it.
- * macOS needs none of this (its rule names the path).
- */
-export function ensureLockedGateFiles(p: SandboxPolicy): void {
+/** The policy's writable folders, made now where they aren't yet. */
+function makeWritableDirs(p: SandboxPolicy): void {
   for (const w of p.writable)
     try {
       fs.mkdirSync(w, { recursive: true, mode: 0o700 });
     } catch {
       /* made by Den as it starts the agent, or not makeable here */
     }
+}
+
+/**
+ * bwrap binds only what exists: a locked gate file not made yet is made
+ * now, as "{}" (what the store reads as unset), so the bind covers it.
+ * macOS needs none of this (its rule names the path).
+ */
+export function ensureLockedGateFiles(p: SandboxPolicy): void {
+  makeWritableDirs(p);
   for (const f of GATE_LOCKED_FILES) {
     const file = path.join(p.gateDir, f);
     try {
@@ -772,6 +777,10 @@ export function sandboxFor(
         env: {},
         reason: "sandbox-exec is missing",
       };
+    // Issue 1369: the session's writable state folders exist before it
+    // starts (its audit queue among them): the state dir around them is
+    // read-only inside, so the session can't make them.
+    makeWritableDirs(policy);
     return {
       applied: true,
       tool: "sandbox-exec",

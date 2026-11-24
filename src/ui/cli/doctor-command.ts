@@ -56,6 +56,7 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import { AUDIT_FILE } from "../../shared/audit-file.js";
+import { QUEUE_DROPPED_VERB, readAuditRows } from "../../shared/audit-queue.js";
 import {
   SIGNIN_REQUEST_VERB,
   signinRequestCounts,
@@ -1876,6 +1877,44 @@ export function signinRequestLines(
 }
 
 /**
+ * Issue 1369: the audit entries in the last day that came in as reports
+ * (a process queued them, unverified, no one's word: written while the
+ * server was down, by a process that exited before its send, or by
+ * something writing the queue itself), and how often the intake dropped
+ * queued entries. Counts only, never an entry's words.
+ */
+export function auditReportLines(
+  title: string,
+  o: { stateDir?: string; now?: Date } = {},
+): { lines: string[]; check: OnboardCheck } {
+  const since = (o.now ?? new Date()).getTime() - 24 * 3_600_000;
+  let reports = 0;
+  let drops = 0;
+  for (const e of readAuditRows(o.stateDir ?? getStateDir())) {
+    const at = Date.parse(String(e.ts ?? ""));
+    if (!(at >= since)) continue;
+    if (e.queued === true && e.unverified === true) reports++;
+    else if (e.verb === QUEUE_DROPPED_VERB) drops++;
+  }
+  const said = reports
+    ? `${reports} audit entr${reports === 1 ? "y" : "ies"} in the last day came in as reports: queued by a process, unverified, no one's word (the activity trail marks each)`
+    : "no audit entry in the last day came in as a report";
+  const detail = drops
+    ? `${said}. The intake dropped queued entries ${drops} time${drops === 1 ? "" : "s"} (verb ${QUEUE_DROPPED_VERB} says why)`
+    : said;
+  const status = drops ? "warn" : "ok";
+  return {
+    lines: [
+      "",
+      `${title} doctor: Audit reports`,
+      "",
+      `  audit reports  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "audit_reports", status, detail },
+  };
+}
+
+/**
  * Issue 278: each running agent's instruction files (the ones its runtime
  * loads at start for its folder, by stat only) against a share of its
  * model's context (agent_context.instruction_share_percent). Over it: a
@@ -2336,6 +2375,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
     // Issue 1333: sign-in requests in the last day.
     r.checks.push(signinRequestLines(readBrand().name).check!);
+    // Issue 1369: audit entries that came in as reports.
+    r.checks.push(auditReportLines(readBrand().name).check);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
     // Issue 636: whether this install is a test bed.
@@ -2510,6 +2551,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
+  for (const l of auditReportLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   // Issue 636: whether this install is a test bed.
   for (const l of (await import("./test-person.js")).testBedLines(
