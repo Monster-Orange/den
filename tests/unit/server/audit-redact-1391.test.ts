@@ -78,15 +78,9 @@ describe("issue 1391: the activity trail never keeps a secret", () => {
   it("a row a den command sent over /api/audit/cli: redacted", () => {
     const t = trail();
     recordSentAuditRow(
-      {
-        agent: "planner",
-        client: "den-cli",
-        clientVersion: "0",
-        mcpPid: 1,
-        session: "s",
-      },
+      null,
       { verb: "config-write", detail: `hub url https://x:${GH}@example.test/` },
-      "agent:planner",
+      "person:someone",
     );
     expect(leaks(t)).toBeNull();
   });
