@@ -341,3 +341,47 @@ describe("issue 1395: Vision's ruling, a browser run on the host", () => {
     expect(outcome("personal", c)).toBe("written and told");
   });
 });
+
+describe("issue 1395: what was judged at the ask is what runs (Reviewer C, Builder 2)", () => {
+  it("a value moved since the ask: refused on Allow, nothing written; the card's values are kept in its args", async () => {
+    const c = checkGateSettingsSet(deps("personal"), ASK);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.args.seen).toEqual({ cpu_slots: 2 });
+    // The person changes it by hand before the Allow.
+    store.writeSettings({ cpu_slots: 4 }, "a person");
+    const rows = store.settingsChanges().length;
+    const r = await runGateSettingsSet(deps("personal"), c.args, {
+      decidedBy: "person",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/changed since the ask.*ask again/);
+    expect(store.settings().cpuSlots).toBe(4);
+    expect(store.settingsChanges().length).toBe(rows);
+  });
+
+  it("run by the policy (auto) and it now widens: nothing written, it needs the person", async () => {
+    let widensNow = false;
+    const d: GateSettingsSetDeps = {
+      ...deps("strict", "auto"),
+      kind: (key, value, before) => ({
+        ...settingKind(key, "strict", value, before),
+        widens: widensNow,
+      }),
+    };
+    const c = checkGateSettingsSet(d, ASK);
+    expect(c.ok && c.personOnly).toBeFalsy();
+    if (!c.ok) return;
+    widensNow = true;
+    const auto = await runGateSettingsSet(d, c.args, {
+      decidedBy: "auto:approvals policy: auto",
+    });
+    expect(auto.ok).toBe(false);
+    if (!auto.ok) expect(auto.error).toMatch(/needs the person/);
+    expect(store.settings().cpuSlots).toBe(2);
+    // The person's own Allow runs it.
+    const person = await runGateSettingsSet(d, c.args, { decidedBy: "person" });
+    expect(person.ok).toBe(true);
+    expect(store.settings().cpuSlots).toBe(3);
+  });
+});

@@ -35,6 +35,12 @@ export const GATE_REASON_MAX = 300;
 export interface GateSettingsSetArgs {
   settings: GateSettingsPatch;
   reason: string;
+  /**
+   * Each changing key's value in effect at the ask (the card's "now").
+   * Kept in the held write's args: on Allow a key that moved since is
+   * refused, so what runs is what the person saw and was judged.
+   */
+  seen: Record<string, number | string | null>;
 }
 
 export interface GateSettingsSetDeps {
@@ -106,6 +112,14 @@ export function checkGateSettingsSet(
     if (!c.ok) return no(c.error.replace(/^gate_slots/, "settings"));
     if (!Object.values(c.patch).some((v) => v !== undefined))
       return no("settings is empty: name at least one key and its value");
+    // The values the card showed, when this is the check on Allow.
+    const seenRaw = raw.seen;
+    if (
+      seenRaw !== undefined &&
+      (!seenRaw || typeof seenRaw !== "object" || Array.isArray(seenRaw))
+    )
+      return no("seen is the values in effect at the ask, by key");
+    const seen = seenRaw as Record<string, unknown> | undefined;
     const now = d.settings();
     // Each value as it'd be in effect after the change (a cleared key's
     // default included, which may differ by platform).
@@ -123,6 +137,10 @@ export function checkGateSettingsSet(
       const from = gateSettingValue(now, k);
       const to = gateSettingValue(after, k);
       if (from === to) continue;
+      if (seen && Object.hasOwn(seen, k) && seen[k] !== from)
+        return no(
+          `gate.${k} changed since the ask (it was ${shown(seen[k] as number | string | null)}, it's ${shown(from)} now): nothing was written; ask again, so the person sees it`,
+        );
       (patch as Record<string, unknown>)[k] = v;
       changes.push({
         key: `gate.${k}`,
@@ -175,7 +193,13 @@ export function checkGateSettingsSet(
       },
       details: r.details,
       detailKeys: r.detailKeys,
-      args: { settings: patch, reason },
+      args: {
+        settings: patch,
+        reason,
+        seen: Object.fromEntries(
+          Object.keys(patch).map((k) => [k, gateSettingValue(now, k)]),
+        ),
+      },
     };
   } catch (e) {
     return no((e as Error).message);
@@ -186,7 +210,7 @@ export function checkGateSettingsSet(
 export async function runGateSettingsSet(
   d: GateSettingsSetDeps,
   raw: Record<string, unknown>,
-  asked?: { agent?: string },
+  asked?: { agent?: string; decidedBy?: string },
 ): Promise<
   { ok: true; changed: string[]; note?: string } | { ok: false; error: string }
 > {
@@ -196,6 +220,15 @@ export async function runGateSettingsSet(
   if (!c.ok && c.inEffect)
     return { ok: true, changed: [], note: "already in effect" };
   if (!c.ok) return { ok: false, error: c.error };
+  // Builder 2 (as issue 1404's den_update and host_restart): run by the
+  // policy at once, and it now widens what agents may do: it needs the
+  // person's own Allow, so nothing is written.
+  if (c.personOnly && asked?.decidedBy?.startsWith("auto:") === true)
+    return {
+      ok: false,
+      error:
+        "this change now widens what agents may do, so it needs the person's own Allow: nothing was written; ask again",
+    };
   try {
     await d.write(
       c.args.settings,

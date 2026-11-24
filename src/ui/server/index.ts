@@ -5582,8 +5582,10 @@ function gateSettingsHeldOp() {
   };
   return {
     check: (a: Record<string, unknown>) => checkGateSettingsSet(deps(), a),
-    run: async (a: Record<string, unknown>, asked?: { agent?: string }) =>
-      runGateSettingsSet(deps(), a, asked),
+    run: async (
+      a: Record<string, unknown>,
+      asked?: { agent?: string; decidedBy?: string },
+    ) => runGateSettingsSet(deps(), a, asked),
   };
 }
 
