@@ -110,7 +110,7 @@ const appendRow: Sink = (row, stateDir) => {
     });
     const send = sender;
     if (!send) return;
-    const p: Promise<void> = send(sent)
+    const p: Promise<void> = send({ ...sent, id })
       .then((ok) => {
         if (ok) unqueueAuditRow(dir, id);
       })

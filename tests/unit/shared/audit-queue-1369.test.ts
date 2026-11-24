@@ -27,9 +27,12 @@ import {
   AUDIT_QUEUE_DIR,
   MAX_PER_PASS,
   readAuditRows,
+  rememberSentAuditId,
+  sentAuditBudget,
   startAuditQueueIntake,
   takeQueuedAuditRows,
   type CliAuditRow,
+  wasSentAuditId,
   type QueuedAuditRow,
 } from "../../../src/shared/audit-queue.js";
 import {
@@ -115,6 +118,7 @@ describe("issue 1369: a CLI entry is sent, with a queued copy until it is", () =
         detail: "stop a1 in north: stopped",
         outcome: "refused",
         reason: "busy",
+        id: expect.stringMatching(/^\d{15}-\d+-\d{9}-[0-9a-f]{8}$/),
       },
     ]);
     expect(queued()).toEqual([]);
@@ -240,7 +244,7 @@ describe("issue 1369: the intake reads and removes nothing outside the queue", (
     fs.symlinkSync(elsewhere, queue());
     const r = take();
     expect(r.got).toEqual([]);
-    expect(r.refused).toBe(true);
+    expect(r.refused).toBe(1);
     expect(fs.existsSync(path.join(elsewhere, "x.json"))).toBe(true);
     expect(fs.existsSync(queue())).toBe(false);
   });
@@ -267,7 +271,8 @@ describe("issue 1369: the intake is capped, and says what it dropped", () => {
         auditConfig({ verb: "agents", detail: `a${i}` }, state);
       const stop = startAuditQueueIntake(state, (r) => got.push(r.detail), {
         intervalMs: 1000,
-        watch: false,
+        settleMs: 0,
+        windowMs: 0,
         perHour: 2,
         onDropped: (c) => told.push(c.overCap),
       });
@@ -290,7 +295,7 @@ describe("issue 1369: the intake is capped, and says what it dropped", () => {
       const got: string[] = [];
       const stop = startAuditQueueIntake(state, (r) => got.push(r.detail), {
         intervalMs: 1000,
-        watch: false,
+        settleMs: 0,
       });
       expect(got).toEqual(["before start"]);
       auditConfig({ verb: "agents", detail: "while it runs" }, state);
@@ -323,5 +328,131 @@ describe("issue 1369: readers outside the server see queued entries, as reports"
     expect(rows.map((r) => r.detail)).toEqual(["old", "new"]);
     expect(rows[1]).toMatchObject({ unverified: true, queued: true });
     expect(rows[1]).not.toHaveProperty("principal");
+  });
+});
+
+describe("issue 1369: a queued copy of an entry the server already took is dropped", () => {
+  it("the sender sends the entry's id; a copy left behind (the CLI ended first) never comes in twice", async () => {
+    const ids: string[] = [];
+    // The server took it, but this process ends before removing its copy.
+    setAuditSender(async (r) => {
+      ids.push(String(r.id));
+      rememberSentAuditId(String(r.id));
+      return false;
+    });
+    auditConfig({ verb: "agents", detail: "once" }, state);
+    await flushAuditSends();
+    expect(ids).toHaveLength(1);
+    expect(queued()).toEqual([`${ids[0]}.json`]);
+    const got: QueuedAuditRow[] = [];
+    const c = takeQueuedAuditRows(state, (row) => got.push(row), undefined, {
+      seen: wasSentAuditId,
+    });
+    expect(got).toEqual([]);
+    expect(c).toMatchObject({ taken: 0, duplicate: 1, dropped: 0 });
+    expect(queued()).toEqual([]);
+  });
+
+  it("the server remembers only recent ids, and only well-formed ones", () => {
+    rememberSentAuditId("not an id");
+    expect(wasSentAuditId("not an id")).toBe(false);
+    const first = "000000000000001-1-000000000-00000000";
+    rememberSentAuditId(first);
+    expect(wasSentAuditId(first)).toBe(true);
+    for (let i = 0; i < 5000; i++)
+      rememberSentAuditId(
+        `000000000000002-1-${String(i).padStart(9, "0")}-00000000`,
+      );
+    expect(wasSentAuditId(first)).toBe(false);
+  });
+});
+
+describe("issue 1369: a queued copy is left to settle before it's taken in", () => {
+  const age = (name: string, ms: number) => {
+    const t = new Date(Date.now() - ms);
+    fs.utimesSync(path.join(queue(), name), t, t);
+  };
+
+  it("a copy younger than the settle time stays queued, for its send to remove; an older one comes in", () => {
+    put("000000000000001-1-000000001-00000000.json", {
+      verb: "agents",
+      detail: "young",
+    });
+    put("000000000000001-1-000000002-00000000.json", {
+      verb: "agents",
+      detail: "old",
+    });
+    age("000000000000001-1-000000002-00000000.json", 20_000);
+    const got: QueuedAuditRow[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r), undefined, {
+      settleMs: 15_000,
+    });
+    expect(got.map((r) => r.detail)).toEqual(["old"]);
+    expect(c.waiting).toBe(1);
+    expect(queued()).toEqual(["000000000000001-1-000000001-00000000.json"]);
+  });
+
+  it("the server up and the send taken: one entry; the send failed: the report, after the settle", async () => {
+    setAuditSender(async () => true);
+    auditConfig({ verb: "agents", detail: "sent" }, state);
+    await flushAuditSends();
+    setAuditSender(async () => false);
+    auditConfig({ verb: "agents", detail: "not sent" }, state);
+    await flushAuditSends();
+    const first: string[] = [];
+    takeQueuedAuditRows(state, (r) => first.push(r.detail), undefined, {
+      settleMs: 15_000,
+    });
+    expect(first).toEqual([]);
+    age(queued()[0], 20_000);
+    const later: string[] = [];
+    takeQueuedAuditRows(state, (r) => later.push(r.detail), undefined, {
+      settleMs: 15_000,
+    });
+    expect(later).toEqual(["not sent"]);
+  });
+});
+
+describe("issue 1369: what the intake drops is told once a window, summed", () => {
+  it("50 passes each dropping one bad file: one note, with 50", () => {
+    jest.useFakeTimers();
+    try {
+      const told: number[] = [];
+      let t = 1_000_000;
+      const stop = startAuditQueueIntake(state, () => undefined, {
+        intervalMs: 1000,
+        settleMs: 0,
+        windowMs: 600_000,
+        now: () => t,
+        onDropped: (c) => told.push(c.dropped),
+      });
+      for (let i = 0; i < 50; i++) {
+        put(`${String(i).padStart(15, "0")}-1-000000000-00000000.json`, "{bad");
+        t += 1000;
+        jest.advanceTimersByTime(1000);
+      }
+      expect(told).toEqual([]);
+      t += 600_000;
+      jest.advanceTimersByTime(1000);
+      expect(told).toEqual([50]);
+      stop();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("issue 1369: one sender's entries are capped an hour", () => {
+  it("past the cap, the server takes no more from that principal this hour; another's still come in", () => {
+    const budget = sentAuditBudget(3);
+    const t0 = 5_000_000;
+    expect([1, 2, 3, 4].map(() => budget("agent:a1", t0))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+    expect(budget("agent:a2", t0)).toBe(true);
+    expect(budget("agent:a1", t0 + 3_600_000)).toBe(true);
   });
 });

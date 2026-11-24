@@ -367,8 +367,12 @@ import { setConfigAuditSink } from "../../shared/config-audit.js";
 import {
   cliAuditRowOf,
   droppedDetail,
+  isQueueId,
   QUEUE_DROPPED_VERB,
+  rememberSentAuditId,
+  sentAuditBudget,
   startAuditQueueIntake,
+  wasSentAuditId,
 } from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
@@ -1158,9 +1162,12 @@ try {
 // 0.4.44: workspaces.yml writes and Hub link changes made in this process
 // go through the server's own audit (activity, the log, audit.jsonl).
 setConfigAuditSink((row) => void recordAction(null, row));
+/** Issue 1369: one principal's sent audit entries an hour. */
+const CLI_AUDIT_BUDGET = sentAuditBudget();
 // Issue 1369: the CLI's audit entries, queued outside this process, come
 // in now and while it runs: audit.jsonl has one writer.
 startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row), {
+  seen: wasSentAuditId,
   onDropped: (c) =>
     void recordAction(null, {
       verb: QUEUE_DROPPED_VERB,
@@ -7326,7 +7333,11 @@ async function handleRequest(
         ? cliAuditRowOf(body)
         : null;
     if (!row) return send400(res, "not an audit entry");
+    if (!CLI_AUDIT_BUDGET(principal))
+      return sendJson(res, { error: "too many audit entries this hour" }, 429);
     const entry = recordSentAuditRow(auditActorOf(req), row, principal);
+    // Its queued copy, should its sender end before removing it.
+    if (isQueueId(body.id)) rememberSentAuditId(body.id);
     return sendJson(res, { recorded: true, ts: entry.ts });
   }
 

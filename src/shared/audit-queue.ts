@@ -21,8 +21,12 @@
  * server's own <state>/audit-intake (out of an agent's reach), and read
  * only there, so a link put in its place reads and removes nothing
  * outside it. A pass takes at most MAX_PER_PASS entries and
- * MAX_BYTES_PER_PASS bytes; startAuditQueueIntake caps an hour at
- * MAX_PER_HOUR. What it drops is counted, for an entry of the server's own.
+ * MAX_BYTES_PER_PASS bytes; startAuditQueueIntake sweeps every 5 s and
+ * caps an hour at MAX_PER_HOUR. A queued copy is left SETTLE_MS first (its
+ * send may still remove it), and one whose id the server took when it was
+ * sent is dropped as a duplicate. What passes drop is summed into one
+ * entry of the server's own a window (10 minutes). One principal's sent
+ * entries are capped an hour too (sentAuditBudget).
  */
 import { randomBytes } from "crypto";
 import * as fs from "fs";
@@ -64,6 +68,8 @@ export interface CliAuditRow {
   reason?: string;
   /** Issue 636: the test-person path, as the writer says. */
   via?: string;
+  /** Its queued copy's id, sent so the server drops that copy later. */
+  id?: string;
 }
 
 /** A queued entry: the row, and what its writer reported about itself. */
@@ -190,43 +196,122 @@ export interface IntakeCounts {
   dropped: number;
   /** Entries past this pass's cap. */
   overCap: number;
-  /** A queue folder that wasn't one (a link put in its place). */
-  refused: boolean;
+  /** Copies of entries the server already took when they were sent. */
+  duplicate: number;
+  /** Copies younger than the settle time, left for their send to remove. */
+  waiting: number;
+  /** Queue folders that weren't one (a link put in its place), removed. */
+  refused: number;
 }
 
 const uid = (): number | null =>
   typeof process.getuid === "function" ? process.getuid() : null;
 
+/** Whether `id` is a queue entry's id (queueAuditRow's shape). */
+export function isQueueId(id: unknown): id is string {
+  return typeof id === "string" && ID.test(id);
+}
+
 /**
- * The server's intake pass: the queue folder moved whole into its own
- * intake folder, each entry, oldest first, to `record` (at most `max`
- * entries and MAX_BYTES_PER_PASS bytes), then the moved folder removed.
+ * The ids of entries the server took when they were sent (its memory, the
+ * last RECENT_IDS): a queued copy of one, left by a sender that ended
+ * before removing it, is dropped as a duplicate.
+ */
+const RECENT_IDS = 4096;
+const sentIds = new Set<string>();
+export function rememberSentAuditId(id: string): void {
+  if (!isQueueId(id)) return;
+  sentIds.delete(id);
+  sentIds.add(id);
+  while (sentIds.size > RECENT_IDS)
+    sentIds.delete(sentIds.values().next().value as string);
+}
+export function wasSentAuditId(id: string): boolean {
+  return sentIds.has(id);
+}
+
+/**
+ * Issue 1369: a cap on one principal's sent entries an hour (`perHour`):
+ * true while it may send another. Its entries are its own, so this is
+ * against noise, not forgery.
+ */
+export function sentAuditBudget(
+  perHour: number = MAX_PER_HOUR,
+): (principal: string, now?: number) => boolean {
+  const seen = new Map<string, { start: number; n: number }>();
+  return (principal, now = Date.now()) => {
+    let b = seen.get(principal);
+    if (!b || now - b.start >= 3_600_000) {
+      b = { start: now, n: 0 };
+      seen.set(principal, b);
+      if (seen.size > RECENT_IDS) seen.delete(seen.keys().next().value!);
+    }
+    if (b.n >= perHour) return false;
+    b.n++;
+    return true;
+  };
+}
+
+/** How long a queued copy is left for its send to remove it. */
+export const SETTLE_MS = 15_000;
+
+/**
+ * The server's intake pass. Entries younger than `settleMs` are left (their
+ * sender may still remove them); when none is older, nothing moves. Else
+ * the queue folder is moved whole into the server's own intake folder,
+ * each settled entry, oldest first, goes to `record` (at most `max` and
+ * MAX_BYTES_PER_PASS bytes; a copy of one `seen` says the server took is
+ * dropped as a duplicate), the young ones go back, and the moved folder
+ * is removed.
  */
 export function takeQueuedAuditRows(
   stateDir: string,
   record: (row: QueuedAuditRow) => void,
   max: number = MAX_PER_PASS,
+  o: {
+    settleMs?: number;
+    now?: number;
+    seen?: (id: string) => boolean;
+  } = {},
 ): IntakeCounts {
   const out: IntakeCounts = {
     taken: 0,
     dropped: 0,
     overCap: 0,
-    refused: false,
+    duplicate: 0,
+    waiting: 0,
+    refused: 0,
   };
+  const settleMs = o.settleMs ?? 0;
+  const now = o.now ?? Date.now();
   const queue = path.join(stateDir, AUDIT_QUEUE_DIR);
   const isOwnDir = (p: string) => {
     const st = fs.lstatSync(p);
     return st.isDirectory() && (uid() === null || st.uid === uid());
+  };
+  const settled = (file: string) => {
+    if (settleMs <= 0) return true;
+    try {
+      return now - fs.lstatSync(file).mtimeMs >= settleMs;
+    } catch {
+      return false;
+    }
   };
   try {
     if (!isOwnDir(queue)) {
       // A link (or a file) in the queue's place: removed itself, never
       // followed.
       fs.unlinkSync(queue);
-      out.refused = true;
+      out.refused++;
       return out;
     }
   } catch {
+    return out;
+  }
+  // Nothing settled: nothing moves (names and times only, read in place).
+  const names = entryNames(queue);
+  if (!names.some((n) => settled(path.join(queue, n)))) {
+    out.waiting = names.length;
     return out;
   }
   const intake = path.join(stateDir, AUDIT_INTAKE_DIR);
@@ -241,9 +326,10 @@ export function takeQueuedAuditRows(
   } catch {
     return out;
   }
+  const young: string[] = [];
   try {
     if (!isOwnDir(moved)) {
-      out.refused = true;
+      out.refused++;
       return out;
     }
     let bytes = 0;
@@ -251,8 +337,17 @@ export function takeQueuedAuditRows(
       const file = path.join(moved, n);
       let size = 0;
       try {
-        size = fs.lstatSync(file).size;
+        const st = fs.lstatSync(file);
+        size = st.size;
+        if (settleMs > 0 && now - st.mtimeMs < settleMs && st.isFile()) {
+          young.push(n);
+          continue;
+        }
       } catch {
+        continue;
+      }
+      if (o.seen?.(n.slice(0, -".json".length))) {
+        out.duplicate++;
         continue;
       }
       if (out.taken >= max || bytes + size > MAX_BYTES_PER_PASS) {
@@ -273,6 +368,24 @@ export function takeQueuedAuditRows(
       bytes += size;
       out.taken++;
     }
+    // The young ones back, for their senders to remove.
+    if (young.length) {
+      try {
+        if (!isOwnDir(queue)) fs.unlinkSync(queue);
+      } catch {
+        /* not there: made below */
+      }
+      try {
+        fs.mkdirSync(queue, { recursive: true, mode: 0o700 });
+        if (isOwnDir(queue))
+          for (const n of young) {
+            fs.renameSync(path.join(moved, n), path.join(queue, n));
+            out.waiting++;
+          }
+      } catch {
+        /* lost with the moved folder: their senders' copies were kept */
+      }
+    }
     return out;
   } finally {
     // The moved folder, whatever it holds (rm never follows a link in it).
@@ -282,26 +395,31 @@ export function takeQueuedAuditRows(
 
 /**
  * The running server's intake: a pass now, then on each sweep
- * (`intervalMs`) and, with `watch`, when the folder changes; at most
- * `perHour` entries an hour. `onDropped` hears of each pass that dropped
- * or capped something, or found a link for its folder. Returns what
- * stops it; neither timer nor watcher keeps the process up.
+ * (`intervalMs`), at most `perHour` entries an hour, each queued copy left
+ * `settleMs` first. What passes drop is summed and told to `onDropped` at
+ * most once a `windowMs`, when the window ends. Returns what stops it; the
+ * timer never keeps the process up.
  */
 export function startAuditQueueIntake(
   stateDir: string,
   record: (row: QueuedAuditRow) => void,
   o: {
     intervalMs?: number;
-    watch?: boolean;
     perHour?: number;
+    settleMs?: number;
+    windowMs?: number;
     now?: () => number;
+    seen?: (id: string) => boolean;
     onDropped?: (c: IntakeCounts) => void;
   } = {},
 ): () => void {
   const now = o.now ?? Date.now;
   const perHour = o.perHour ?? MAX_PER_HOUR;
+  const windowMs = o.windowMs ?? 600_000;
   let hourStart = now();
   let thisHour = 0;
+  let windowStart: number | null = null;
+  let sum: IntakeCounts | null = null;
   let busy = false;
   const pass = () => {
     if (busy) return;
@@ -315,9 +433,29 @@ export function startAuditQueueIntake(
         stateDir,
         record,
         Math.max(0, Math.min(MAX_PER_PASS, perHour - thisHour)),
+        {
+          settleMs: o.settleMs ?? SETTLE_MS,
+          now: now(),
+          ...(o.seen ? { seen: o.seen } : {}),
+        },
       );
       thisHour += c.taken;
-      if (c.dropped || c.overCap || c.refused) o.onDropped?.(c);
+      if (c.dropped || c.overCap || c.refused) {
+        sum = sum
+          ? {
+              ...sum,
+              dropped: sum.dropped + c.dropped,
+              overCap: sum.overCap + c.overCap,
+              refused: sum.refused + c.refused,
+            }
+          : { ...c, taken: 0, duplicate: 0, waiting: 0 };
+        windowStart ??= now();
+      }
+      if (sum && windowStart !== null && now() - windowStart >= windowMs) {
+        o.onDropped?.(sum);
+        sum = null;
+        windowStart = null;
+      }
     } catch {
       /* the next sweep tries again */
     } finally {
@@ -327,22 +465,7 @@ export function startAuditQueueIntake(
   pass();
   const timer = setInterval(pass, o.intervalMs ?? 5000);
   timer.unref?.();
-  let watcher: fs.FSWatcher | null = null;
-  if (o.watch ?? true) {
-    try {
-      const dir = path.join(stateDir, "audit");
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      watcher = fs.watch(dir, () => pass());
-      watcher.unref?.();
-      watcher.on("error", () => watcher?.close());
-    } catch {
-      watcher = null;
-    }
-  }
-  return () => {
-    clearInterval(timer);
-    watcher?.close();
-  };
+  return () => clearInterval(timer);
 }
 
 /** The intake's own entry, in words, for what a pass dropped. */
@@ -350,7 +473,11 @@ export function droppedDetail(c: IntakeCounts): string {
   const parts = [
     ...(c.dropped ? [`${c.dropped} that weren't entries`] : []),
     ...(c.overCap ? [`${c.overCap} over the intake's cap`] : []),
-    ...(c.refused ? ["a link in the queue folder's place, removed"] : []),
+    ...(c.refused
+      ? [
+          `a link in the queue folder's place, removed ${c.refused} time${c.refused === 1 ? "" : "s"}`,
+        ]
+      : []),
   ];
   return `queued audit entries dropped: ${parts.join(", ")}`;
 }
