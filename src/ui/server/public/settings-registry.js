@@ -4848,6 +4848,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ panes_reconnect: { max_seconds: v } }),
   },
   {
+    // Issue 1373: how many agents run at once (user.yml agents.max_concurrent,
+    // over the distribution's den.yml).
+    id: "agents.max_concurrent",
+    category: "agents",
+    label: "Agents at once",
+    description:
+      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    keywords: [
+      "agents",
+      "limit",
+      "max_concurrent",
+      "concurrent",
+      "at once",
+      "cap",
+    ],
+    scope: "user",
+    keys: ["agents_limits.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_concurrent ?? 4,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
+  },
+  {
     // den#156: the Agents list's waits (user.yml agents_list.*).
     id: "agents.list_host_wait",
     category: "agents",

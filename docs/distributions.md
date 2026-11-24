@@ -3602,6 +3602,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
     max_concurrent: 4
   ```
 
+- Issue 1373: a person sets the agents' cap for this machine in
+  Settings › Agents › Agents at once, or with
+  `<cli> config agents.max_concurrent=14`. Both write
+  `config/local/user.yml`, and user.yml's value wins over the
+  distribution's, key by key: the cap the terminal host enforces, `<cli>
+agents` and `sessions`, the count the Agents page shows, and Doctor.
+  `<cli> config agents.max_concurrent` prints the value in force. The
+  agents' other limits and waits follow the same rule when set in
+  user.yml by hand: `token_peer_wait_ms`, `turn_read_max_mb`,
+  `restart_wait_minutes`, `rotation_wait_minutes`,
+  `unasked_exit_window_minutes`, `lock_wait_minutes` and
+  `exited_shell_minutes`. A key that widens what an agent may do (such as
+  `token_binding`, `files`, `issue_writes` or `api_only_engines`) is not
+  taken from user.yml's `agents:` block this way. When both files set a
+  limit to different values, Doctor notes it: "agents.max_concurrent:
+  user.yml's 14 wins over the distribution's 8". An agent can't save the
+  setting itself; it proposes the change, and the person allows it.
+
 - Issue 503: each terminal holds one PTY, and a machine has a fixed
   number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
   session gives its PTY back `sessions.pty_close_seconds` after its

@@ -2460,7 +2460,16 @@ export function readAgentsConfig(
 ): ResolvedAgentsConfig {
   const c = config ?? readDenConfig();
   const u = user ?? (config ? {} : readUserConfigQuiet());
-  const out = asConfigError(() => parseAgentsConfig(c));
+  // Issue 1373: the agents' limits set in user.yml win over den.yml's,
+  // key by key (as issue 532 for sessions.*); each checked first, so a
+  // bad one names user.yml.
+  const mine = userAgentsLimits(u);
+  const theirs = c.agents as unknown;
+  const merged =
+    Object.keys(mine).length && (theirs === undefined || isMapping(theirs))
+      ? { ...c, agents: { ...(theirs ?? {}), ...mine } as DenConfig["agents"] }
+      : c;
+  const out = asConfigError(() => parseAgentsConfig(merged));
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => applyUserSandbox(out, u.agents),
@@ -2482,20 +2491,122 @@ export function readAgentsConfig(
       path.relative(ROOT, USER_CONFIG_PATH),
     );
   // A signing key is per machine: user.yml's agents.git wins.
-  const mine = u.agents?.git;
+  const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.
   const agentCalledGit =
-    isMapping(mine) &&
-    Object.keys(mine).length > 0 &&
-    Object.keys(mine).every((k) => k === "grants" || k === "sandbox");
-  if (mine !== undefined && mine !== null && !agentCalledGit) {
+    isMapping(myGit) &&
+    Object.keys(myGit).length > 0 &&
+    Object.keys(myGit).every((k) => k === "grants" || k === "sandbox");
+  if (myGit !== undefined && myGit !== null && !agentCalledGit) {
     const g = asConfigError(
-      () => gitSigningBlock(mine),
+      () => gitSigningBlock(myGit),
       path.relative(ROOT, USER_CONFIG_PATH),
     );
     if (g) out.git = g;
   }
   return out;
+}
+
+/**
+ * Issue 1373: the agents' limits a person may set in user.yml (Settings,
+ * `config`), each winning over the distribution's den.yml. Only limits
+ * and waits: keys that widen what an agent may do (token_binding, files,
+ * issue_writes, api_only_engines, persona packs, helpers, subagents,
+ * connectors, sandbox) are never taken from user.yml's agents block here.
+ * draft_hold_max_minutes and issue_writes_per_hour are user.yml's already
+ * (their own readers).
+ */
+export const AGENTS_USER_LIMIT_KEYS = [
+  "max_concurrent",
+  "token_peer_wait_ms",
+  "turn_read_max_mb",
+  "restart_wait_minutes",
+  "rotation_wait_minutes",
+  "unasked_exit_window_minutes",
+  "lock_wait_minutes",
+  "exited_shell_minutes",
+] as const;
+
+/**
+ * Issue 1373: the agent limits Settings and `config` set (the others of
+ * AGENTS_USER_LIMIT_KEYS are written in user.yml by hand, until they get
+ * their own Settings rows).
+ */
+export const AGENTS_SETTINGS_KEYS = ["max_concurrent"] as const;
+
+/** user.yml's agent limits that are set, each checked with den-config's words. */
+function userAgentsLimits(u: UserConfig): Record<string, unknown> {
+  const a = u.agents as unknown;
+  if (!isMapping(a)) return {};
+  const mine: Record<string, unknown> = {};
+  for (const k of AGENTS_USER_LIMIT_KEYS)
+    if (a[k] !== undefined && a[k] !== null) mine[k] = a[k];
+  if (Object.keys(mine).length)
+    asConfigError(
+      () => parseAgentsConfig({ agents: mine } as unknown as DenConfig),
+      path.relative(ROOT, USER_CONFIG_PATH),
+    );
+  return mine;
+}
+
+/** What is wrong with one agents.<limit> value, in den-config's words; null: fine. */
+export function agentsLimitValueError(
+  key: string,
+  value: unknown,
+): string | null {
+  if (!(AGENTS_SETTINGS_KEYS as readonly string[]).includes(key))
+    return `agents.${key}: not a limit Settings sets (it takes ${AGENTS_SETTINGS_KEYS.join(", ")})`;
+  try {
+    parseAgentsConfig({ agents: { [key]: value } } as unknown as DenConfig);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
+/**
+ * Issue 1373: one agent limit as it is in force, in its own units (as
+ * written): user.yml's, else den.yml's; max_concurrent's default when
+ * neither sets it. undefined: not a limit, or unset with no plain default.
+ */
+export function agentsLimitInForce(key: string): unknown {
+  if (!(AGENTS_USER_LIMIT_KEYS as readonly string[]).includes(key))
+    return undefined;
+  const pick = (b: unknown) =>
+    isMapping(b) ? (b as Record<string, unknown>)[key] : undefined;
+  const v = pick(readUserConfigQuiet().agents) ?? pick(readDenConfig().agents);
+  if (v !== undefined && v !== null) return v;
+  return key === "max_concurrent" ? DEFAULT_AGENTS_MAX_CONCURRENT : undefined;
+}
+
+/**
+ * Issue 1373, for Doctor: each agent limit both files set, to different
+ * values (user.yml's wins). A file that can't be read: none.
+ */
+export function agentsUserDrift(
+  config?: DenConfig,
+  user?: UserConfig,
+): { key: string; mine: unknown; theirs: unknown }[] {
+  try {
+    const c = config ?? readDenConfig();
+    const u = user ?? (config ? {} : readUserConfigQuiet());
+    const theirs = isMapping(c.agents)
+      ? (c.agents as Record<string, unknown>)
+      : {};
+    const mine = isMapping(u.agents)
+      ? (u.agents as Record<string, unknown>)
+      : {};
+    return AGENTS_USER_LIMIT_KEYS.filter(
+      (k) =>
+        mine[k] !== undefined &&
+        mine[k] !== null &&
+        theirs[k] !== undefined &&
+        theirs[k] !== null &&
+        JSON.stringify(mine[k]) !== JSON.stringify(theirs[k]),
+    ).map((key) => ({ key, mine: mine[key], theirs: theirs[key] }));
+  } catch {
+    return [];
+  }
 }
 
 /**
