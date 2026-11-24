@@ -2934,6 +2934,11 @@ async function rotationRoute(
           { usage: true },
         );
     const out = setRotationSetting(d, body);
+    // Issue 1391: agents may read the trail, and this row holds no free
+    // text. setRotationSetting throws before it on anything unchecked: a
+    // scope from OVERRIDE_SCOPES or install, a name-shaped target, a key
+    // from ROTATE_KEYS, and a value checkRotateValue takes (1–100,
+    // "never", auto, ask, off, true, false) or null.
     recordAction(
       null,
       {

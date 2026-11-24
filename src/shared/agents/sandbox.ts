@@ -149,6 +149,11 @@ export interface AgentSandboxInput {
    */
   readableFiles?: string[];
   /**
+   * Issue 1391: a personal install's own activity trail is read back
+   * (audit.jsonl itself, never a copy beside it); unset is not.
+   */
+  trailReadable?: boolean;
+  /**
    * Issue 1316: folders a readableFiles entry may never be in (the edge's
    * key folders, other installs' state folders): issue 728 denies them.
    * A `*` segment matches any one name.
@@ -386,6 +391,8 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
     ],
     readableFiles: [
       ...SESSION_READ_FILES.map((f) => path.join(state, f)),
+      // Issue 1391: redacted, and only the server writes it (issue 1369).
+      ...(i.trailReadable === true ? [path.join(state, "audit.jsonl")] : []),
       ...(i.readableFiles ?? [])
         .filter((f) => sandboxHidesFile(f, i) === null)
         .map(realPath),

@@ -88,7 +88,7 @@ import {
   sandboxHidesFile,
   sandboxSetting,
 } from "../../shared/agents/sandbox.js";
-import { agentSandboxInput } from "./agent-ops.js";
+import { agentSandboxInput, agentsMayReadTrail } from "./agent-ops.js";
 import { localDateTime } from "../../shared/local-time.js";
 import {
   readRestartsWaiting,
@@ -1709,6 +1709,11 @@ export function sharedUserLines(
     maxDepth?: number;
     /** Whether this install's server runs now (its den-procs record). */
     serverRunning?: () => boolean;
+    /**
+     * Issue 1391: agents may read the trail (a personal install). Default:
+     * from install_mode; a config that can't be read counts as strict.
+     */
+    trailReadable?: boolean;
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
@@ -1731,12 +1736,27 @@ export function sharedUserLines(
     : running
       ? `this install isn't in the install registry, though ${title} is running, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
       : `this install isn't in the install registry yet: ${title} adds it at its next start`;
+  const trailReadable =
+    o.trailReadable ??
+    (() => {
+      try {
+        return agentsMayReadTrail(readAgentsConfig(), stateDir);
+      } catch {
+        return false;
+      }
+    })();
   const rules = bothSpellings(stateDir).flatMap((d) =>
-    stateDirDenyRules(d, home),
+    stateDirDenyRules(d, home, { trailReadable }),
   );
   const maxEntries = o.maxEntries ?? 20000;
   const maxDepth = o.maxDepth ?? 8;
-  const walked = uncoveredSecretFiles(stateDir, rules, maxEntries, maxDepth);
+  const walked = uncoveredSecretFiles(
+    stateDir,
+    rules,
+    maxEntries,
+    maxDepth,
+    trailReadable,
+  );
   const loose = walked.files.map(safeShownPath);
   const partial = walked.capped
     ? `checked the first ${maxEntries} entries only`
@@ -1787,6 +1807,14 @@ export function sharedUserLines(
  * folder (its guardrail log, its audit queue: issue 1369), the person's
  * CLI's audit queue and the server's intake of both.
  */
+/**
+ * Issue 1391: state files of 0600 that hold no credential, left out of
+ * the walk: the activity trail, which agents may read (only the server
+ * writes it), and the copies beside it a compaction leaves.
+ */
+const NOT_CREDENTIAL_FILE = (name: string) =>
+  name === AUDIT_FILE || name.startsWith(`${AUDIT_FILE}.`);
+
 const NOT_CREDENTIAL_DIRS: readonly string[] = [
   DEN_PROCS_DIR,
   "audit",
@@ -1816,6 +1844,8 @@ function uncoveredSecretFiles(
   rules: string[],
   maxEntries: number,
   maxDepth: number,
+  /** Issue 1391: the trail is readable by design, so it isn't listed. */
+  trailReadable: boolean,
 ): { files: string[]; capped: boolean; deep: boolean } {
   const out: string[] = [];
   let seen = 0;
@@ -1839,6 +1869,8 @@ function uncoveredSecretFiles(
         if (depth >= maxDepth) deep = true;
         else walk(p, depth + 1);
       } else if (e.isFile()) {
+        if (trailReadable && depth === 0 && NOT_CREDENTIAL_FILE(e.name))
+          continue;
         try {
           if ((fs.lstatSync(p).mode & 0o777) !== 0o600) continue;
         } catch {
