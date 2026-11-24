@@ -265,11 +265,6 @@ const SETTING_KEYS: readonly {
   /** Refused, with this: another way changes it. */
   refuse?: string;
 }[] = [
-  // The cap on agents running at once (per machine, issue 1371).
-  {
-    key: "agents.max_concurrent",
-    check: (u, d) => void readAgentsConfig(d, u),
-  },
   { key: "agents.sandbox", check: (u, d) => void readAgentsConfig(d, u) },
   {
     key: "agents.sandbox_sockets",

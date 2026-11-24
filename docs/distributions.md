@@ -5180,8 +5180,8 @@ the rest). `value: null` puts Den's default back.
   a value you later take out of `user.yml` stays in them until they roll
   over (the newest 20 are kept).
 
-`agents.max_concurrent` may now be set per machine in `user.yml`, over the
-distribution's, as the terminal limits are (`sessions.*`, issue 532).
+`agents.max_concurrent` is one of the agent limits set per machine in
+`user.yml` (issue 1373, above), so `setting_change` can ask for it too.
 
 With `required`, an agent whose sandbox can't apply on this machine
 doesn't start: the start says why. On Linux, Den runs `bwrap` once to

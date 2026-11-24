@@ -2475,21 +2475,6 @@ export function readAgentsConfig(
     () => applyUserSandbox(out, u.agents),
     path.relative(ROOT, USER_CONFIG_PATH),
   );
-  // Issue 1371: the cap on agents running at once, per machine as the
-  // terminal limits are (issue 532): user.yml's wins over the distribution's.
-  const myMax = (u.agents as Record<string, unknown> | undefined)
-    ?.max_concurrent;
-  if (myMax !== undefined && myMax !== null)
-    out.maxConcurrent = asConfigError(
-      () => {
-        if (typeof myMax !== "number" || !Number.isInteger(myMax) || myMax < 1)
-          throw new Error(
-            `agents.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(myMax)})`,
-          );
-        return myMax;
-      },
-      path.relative(ROOT, USER_CONFIG_PATH),
-    );
   // A signing key is per machine: user.yml's agents.git wins.
   const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.
