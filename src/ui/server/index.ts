@@ -5545,7 +5545,7 @@ function gateSettingsHeldOp() {
         await gateLocked(() => gates().writeSettings(patch, by));
       },
       installMode: () => mode,
-      kind: (key) => settingKind(key, mode),
+      kind: (key, value) => settingKind(key, mode, value),
       choices: () => readPolicySetting(user.approvals)?.settings,
     };
   };

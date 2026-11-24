@@ -388,8 +388,11 @@ Gate keys are Limits and performance in the approval policy:
 - On a strict install they follow your choice for Limits and performance
   in Settings › Approvals: by default Den writes them and tells you; with
   "Ask me" they wait for your Allow; with "Never" an agent's ask is
-  refused. Every gate key is alike here: they're scheduling on your own
-  machine.
+  refused. One exception: `gate.browser_requires_container` going to 0
+  (browser runs on this machine's own browser, not in a container) waits
+  for your own Allow, whatever you chose. Turning it back on, and every
+  other gate key, is a plain limit. A key put back to its default is
+  judged by that default, which for this one depends on the platform.
 
 Den writes the change under the gate's lock (the one a slot decision
 holds), all of it or none, and the slot log names who asked. Every

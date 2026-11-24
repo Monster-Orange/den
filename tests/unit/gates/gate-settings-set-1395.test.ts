@@ -51,7 +51,7 @@ function deps(mode: InstallMode, limits?: "auto" | "ask" | "never") {
     settings: (patch) => store.settings(patch),
     write: async (patch, by) => store.writeSettings(patch, by),
     installMode: () => mode,
-    kind: (key) => settingKind(key, mode),
+    kind: (key, value) => settingKind(key, mode, value),
     choices: () =>
       readPolicySetting(limits ? { settings: { limits } } : {})?.settings,
   };
@@ -251,5 +251,69 @@ describe("issue 1395: the policy sees each value as it'd be in effect", () => {
       );
     // The preview wrote nothing.
     expect(linux.settings().browserRequiresContainer).toBe(true);
+  });
+});
+
+describe("issue 1395: Vision's ruling, a browser run on the host", () => {
+  const OFF = {
+    settings: { browser_requires_container: 0 },
+    reason: "the container image is broken tonight",
+  };
+  const mac = () => {
+    const s = new GateStore({ dir, lockWaitMs: 1_000, platform: "darwin" });
+    return {
+      store: s,
+      deps: (mode: InstallMode, limits?: "auto" | "ask" | "never") => ({
+        ...deps(mode, limits),
+        settings: (patch?: Parameters<GateStore["settings"]>[0]) =>
+          s.settings(patch),
+        write: async (
+          patch: Parameters<GateStore["writeSettings"]>[0],
+          by: string,
+        ) => s.writeSettings(patch, by),
+      }),
+    };
+  };
+
+  it("strict: turning the container off widens, so it waits for the person's Allow", async () => {
+    const m = mac();
+    const c = checkGateSettingsSet(m.deps("strict"), OFF);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.personOnly).toBe(true);
+    expect(outcome("strict", c)).toBe("held");
+    expect(m.store.settings().browserRequiresContainer).toBe(true);
+    await runGateSettingsSet(m.deps("strict"), OFF, { agent: "agent:x" });
+    expect(m.store.settings().browserRequiresContainer).toBe(false);
+  });
+
+  it("strict: turning it back on is a plain limit", () => {
+    const m = mac();
+    m.store.writeSettings({ browser_requires_container: 0 }, "a person");
+    const c = checkGateSettingsSet(m.deps("strict"), {
+      settings: { browser_requires_container: 1 },
+      reason: "the image is fixed",
+    });
+    expect(c.ok && c.personOnly).toBeFalsy();
+    if (c.ok) expect(outcome("strict", c)).toBe("written and told");
+  });
+
+  it("strict: a reset to a default of 0 (not a Mac) widens too", () => {
+    const linux = new GateStore({ dir, lockWaitMs: 1_000, platform: "linux" });
+    linux.writeSettings({ browser_requires_container: 1 }, "a person");
+    const c = checkGateSettingsSet(
+      { ...deps("strict"), settings: (p) => linux.settings(p) },
+      { settings: { browser_requires_container: null }, reason: "default" },
+    );
+    expect(c.ok && c.personOnly).toBe(true);
+  });
+
+  it("personal: routine, written at once, and the person is told", () => {
+    const m = mac();
+    const c = checkGateSettingsSet(m.deps("personal"), OFF);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.personOnly).toBeUndefined();
+    expect(outcome("personal", c)).toBe("written and told");
   });
 });
