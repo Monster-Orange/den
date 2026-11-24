@@ -8,10 +8,11 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. The activity trail is now denied to agents too. (issue 728)
+- `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. (issue 728)
 
 ### Changed
 
+- On a personal install (`install_mode`, personal unless set to strict), agents may read Den's activity trail again, to see who changed what; on a strict one it stays denied. Only the web server writes it, so they still can't edit it. At its first start, Den moves the trail written before this into a folder agents can't read. Den redacts secret-shaped text (tokens, keys, credentials) from every string in every row, and a setting changed to a text value (a command, for one) is noted by its length, never its text; the approval card still shows the person the whole value. (issue 1391)
 - The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
 
 ### Fixed
