@@ -98,6 +98,7 @@ import {
   type TestPersonSetupDeps,
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
+import { userConfigPath } from "../../shared/den-config.js";
 import { readWebSecret } from "../../shared/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
@@ -282,6 +283,10 @@ import {
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
 import {
   CONFIG_ERROR_STATUS,
   configErrorBody,
@@ -1005,9 +1010,24 @@ const toServerLogFile = serverLogWriter({
   },
 });
 
+/**
+ * Issue 1344: lifecycle, warn and error lines always reach web.log: on
+ * stdout when it is a file (web up, a service), also under --silent;
+ * else appended to <state>/logs/<cli>/web.log. Never twice.
+ */
+const STDOUT_IS_FILE = fdIsFile(1);
+const toWebLog = webLogWriter({
+  stdoutIsFile: () => STDOUT_IS_FILE && !outputLost(),
+  writeStdout: (s) => void process.stdout.write(s),
+  path: () => webLogPath(getStateDir(), product().cli),
+});
+
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
-  if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
+  const onStdout = !SILENT && !outputLost();
+  // Issue 1368: redacted, as every other log path is.
+  if (onStdout) process.stdout.write(stdoutLine(msg));
+  toWebLog(kind, stripAnsi(msg), onStdout);
   if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
 
@@ -1405,6 +1425,11 @@ import {
   type SandboxSetDeps,
 } from "../../shared/agents/sandbox-set.js";
 import {
+  checkSettingChange,
+  runSettingChange,
+  settingChangeDeps,
+} from "../cli/setting-change.js";
+import {
   approvalsView,
   patchApprovals,
   pinsAsWatched,
@@ -1589,6 +1614,12 @@ import {
 } from "../../shared/open-url.js";
 
 import { product } from "../../shared/product.js";
+import {
+  fdIsFile,
+  stdoutLine,
+  webLogPath,
+  webLogWriter,
+} from "../../shared/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
@@ -5230,6 +5261,7 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
+    settingChange: settingChangeHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5444,6 +5476,35 @@ function agentSandboxHeldOp() {
     ) => checkAgentSandboxSet(deps(), a, who),
     run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
       runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
+/**
+ * Issue 1371: setting_change on this install: the person's user.yml, a
+ * backup in the state folder, and the server's audit. The card and args
+ * only go to the queue: never the file's text.
+ */
+function settingChangeHeldOp() {
+  const deps = () =>
+    settingChangeDeps({
+      userFile: userConfigPath(),
+      stateDir: getStateDir(),
+      audit: (detail, reason) =>
+        auditConfig({
+          verb: "config-write",
+          detail,
+          ...(reason ? { reason } : {}),
+        }),
+    });
+  return {
+    check: (a: Record<string, unknown>, who?: { agent?: string }) => {
+      const c = checkSettingChange(deps(), a, who);
+      if (!c.ok) return c;
+      const { text: _t, before: _b, kind: _k, ...card } = c;
+      return card;
+    },
+    run: async (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runSettingChange(deps(), a, asked),
   };
 }
 
@@ -6082,6 +6143,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           pty_close_seconds: c.ptyCloseSeconds,
           pty_warn_above: c.ptyWarnAbove,
           pty_machine_warn_percent: c.ptyMachineWarnPercent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 1373: the agents' cap in force (user.yml over den.yml).
+    agents_limits: (() => {
+      try {
+        return {
+          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
         };
       } catch {
         return null;
@@ -10198,6 +10269,7 @@ async function handleRequest(
           process_lookup?: unknown;
           agent_hooks?: unknown;
           sessions?: unknown;
+          agents_limits?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           github?: unknown;
@@ -10269,6 +10341,7 @@ async function handleRequest(
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
             sessions: body.sessions,
+            agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
             github: body.github,

@@ -1347,6 +1347,9 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_concurrent": "同時に動かせるエージェント数",
+    "set.agents.max_concurrent.d":
+      "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
@@ -2367,6 +2370,21 @@
       "停止中です: 次の起動で変更が入ります。",
     "ap.do.agent_sandbox_set": "{agent}: サンドボックスに戻す",
     "ap.do.agent_sandbox_set.loosens": "{agent} をサンドボックスの外に出す",
+    "ap.det.setting_change.widens":
+      "エージェントにできることが広がります。あなた自身の「許可」でのみ実行されます。",
+    "ap.det.setting_change.key": "設定: {key}",
+    "ap.det.setting_change.now": "現在: {value}",
+    "ap.det.setting_change.new": "新しい値: {value}",
+    "ap.det.setting_change.why": "理由: {why}",
+    "ap.det.setting_change.by": "依頼元: {agent}",
+    "ap.det.setting_change.writes":
+      "Den は config/local/user.yml の {key} だけを書き換え、先にファイルのコピーを残し、変更を監査に記録します。",
+    "ap.det.setting_change.restart":
+      "Den は起動時にこれを読みます。Den の再起動後に反映されます（den_restart_server）。",
+    "ap.det.setting_change.atOnce": "すぐに反映されます。",
+    "ap.do.setting_change": "{key} を変更: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "エージェントにできることが広がります: {key}: {now} → {value}",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",

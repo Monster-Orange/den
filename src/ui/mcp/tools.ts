@@ -2880,6 +2880,44 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "setting_change",
+    title: "Change one of Den's settings",
+    description:
+      "Propose one of Den's settings, `key` = `value`, for the person to Allow, so they never edit config/local/user.yml by hand. `key` is the setting's dotted name as `config` and Settings know it (e.g. sessions.max_concurrent, agents.max_concurrent, web.agent_view, held_writes.wait_minutes); `value` is its new value (a number, true/false, text or a list), or null for Den's default; `reason` says why, in one line. Den checks the key and value with its own parser before anything is held: an unknown key or a refused value comes back at once, with why. The person sees the key, its value now, the new one and the reason. A setting that widens what agents can do (an agent's grants or sandbox, mcp.actions, web.edge_unattested, the approval policy and the like) waits for the person's own Allow. On Allow Den writes only that key, keeps a copy of the file and notes the change in the audit. A setting Den reads when it starts says so: then ask for den_restart_server." +
+      HELD,
+    action: true,
+    shape: {
+      key: z.string().max(200).describe("The setting's dotted name"),
+      value: z
+        .union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.null(),
+          z.array(z.union([z.string(), z.number()])),
+        ])
+        .describe("Its new value; null puts Den's default back"),
+      reason: z.string().max(300).describe("Why it should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const key = needArg(
+        "setting_change",
+        a,
+        "key",
+        "the setting's dotted name",
+      );
+      return askPerson(
+        "setting_change",
+        "setting_change",
+        { key, value: a.value ?? null, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "gate_runner_token_create",
     title: "Make a gate-only token for a CI runner",
     description:

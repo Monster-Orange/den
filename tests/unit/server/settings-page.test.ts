@@ -72,6 +72,8 @@ describe("search", () => {
           "agents.pane_reconnect",
           "agents.pane_reconnect_window",
           "agents.pane_reconnect_wait",
+          // Issue 1373: Agents at once (plain terminals never count).
+          "agents.max_concurrent",
           // den#156: the Agents list's wait for the terminal host.
           "agents.list_host_wait",
           "agents.draft_hold_max",

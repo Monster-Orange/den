@@ -326,6 +326,7 @@ agent's held write into one of two groups.
   | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
   | `agent_sandbox_set`                                          | the sandbox goes off (back on only narrows)                            |
   | `agent_create`, `agent_import`                               | the new agent would start outside the sandbox                          |
+  | `setting_change`                                             | the setting widens what agents can do (`USER_ONLY_WIDENING` and more)  |
   | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
@@ -2991,8 +2992,12 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
-A service starts the web server with `--silent`, so `web.log` stops at the
-start banner. While it runs that way, the server's warning lines (Hub
+A service starts the web server with `--silent`, and so does `web up` by
+default, so `web.log` holds no request lines. Its lifecycle, warning and error
+lines still go to `web.log`: on the server's output when that is a file (as
+`web up` and a service start it), or added to `logs/<cli>/web.log` in Den's
+state folder when the output is a terminal or a pipe, never twice. While it
+runs silent, the server's warning lines (Hub
 deliveries held or typed, among others) also go to `logs/server.log` in Den's
 state folder, so they are still there after a restart. `server_log.max_mb` in
 `user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
@@ -3398,6 +3403,21 @@ panel. Items are kept in
 `<state>/notifications.json` (0600), the newest 500; one unread item per
 agent and kind.
 
+Every process that writes it (the server, the CLI, agents' hooks) takes a
+short lock, `notifications.json.lock`, so no write is lost. The lock is
+tried once. If it's busy, the change shows at once in that process and is
+saved when the lock frees, or when the process exits. user.yml
+`notifications:` sets the times, in seconds:
+
+- `lock_exit_wait_seconds` (default 2, 0 to 60): at exit only, how long
+  waiting changes wait for the lock.
+- `lock_no_pid_seconds` (default 10, 1 to 3600): when a lock with no
+  holder pid is taken back.
+- `lock_live_seconds` (default 60, 1 to 86400): when a live holder's lock
+  is taken back. A gone holder's lock is taken back at once.
+
+A value outside its range keeps its default, and the log says so.
+
 - **An agent waits** (NT-1). Claude Code's `Notification` hook (a
   permission prompt, or waiting for input) and `Stop` hook (its turn
   ended) post to `POST /api/agents/self/attention` with the agent's own
@@ -3581,6 +3601,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   agents:
     max_concurrent: 4
   ```
+
+- Issue 1373: a person sets the agents' cap for this machine in
+  Settings › Agents › Agents at once, or with
+  `<cli> config agents.max_concurrent=14`. Both write
+  `config/local/user.yml`, and user.yml's value wins over the
+  distribution's, key by key: the cap the terminal host enforces, `<cli>
+agents` and `sessions`, the count the Agents page shows, and Doctor.
+  `<cli> config agents.max_concurrent` prints the value in force. The
+  agents' other limits and waits follow the same rule when set in
+  user.yml by hand: `token_peer_wait_ms`, `turn_read_max_mb`,
+  `restart_wait_minutes`, `rotation_wait_minutes`,
+  `unasked_exit_window_minutes`, `lock_wait_minutes` and
+  `exited_shell_minutes`. A key that widens what an agent may do (such as
+  `token_binding`, `files`, `issue_writes` or `api_only_engines`) is not
+  taken from user.yml's `agents:` block this way. When both files set a
+  limit to different values, Doctor notes it: "agents.max_concurrent:
+  user.yml's 14 wins over the distribution's 8". An agent can't save the
+  setting itself; it proposes the change, and the person allows it.
 
 - Issue 503: each terminal holds one PTY, and a machine has a fixed
   number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
@@ -5097,6 +5135,53 @@ The setting follows the agent's lifecycle. Removing an agent drops its
 in the sandbox). Adding an agent (`agent_create` or `agent_import`) whose id
 has its sandbox off, or while `agents.sandbox` is off for the machine, waits
 for your own Allow too, and the Review says why.
+
+### Changing a setting for the person: `setting_change` (issue 1371)
+
+An agent can't write `config/local/user.yml` (its sandbox closes the file),
+so it asks for a setting instead of handing you a YAML edit. The held write
+`setting_change { key, value, reason }` (or `<cli> config propose
+<key>=<value> --reason "<why>"`) names one setting by its dotted name, as
+`<cli> config` and Settings know it (`sessions.max_concurrent`,
+`agents.max_concurrent`, `web.agent_view`, `held_writes.wait_minutes`, and
+the rest). `value: null` puts Den's default back.
+
+- Den checks the key and the value with the same checks Settings and
+  `config` use, and den-config's own readers, before anything is held. An
+  unknown key (a typo names the key it is closest to), or a value they
+  refuse, comes back at once with why.
+- The Review shows the key, its value now, the new one and the reason.
+- A setting that widens what agents can do is marked so, and only your own
+  Allow runs it: every key in `USER_ONLY_WIDENING` (`src/shared/den-config.ts`:
+  an agent's grants and sandbox, `agents.sandbox_sockets`, `mcp.actions`,
+  `web.edge_unattested`, `web.allow_plain_http_remote`, the 1Password token
+  source), the approval policy itself (`approvals.*`), and the programs and
+  runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`). One agent's
+  sandbox stays `agent_sandbox_set`'s; secrets and runtimes are set in
+  Settings only.
+- It fails closed: a setting is routine only when `NARROW_SETTINGS`
+  (`src/ui/cli/setting-change.ts`) names it, a timeout, interval, cap or
+  retention that changes how fast or how much Den does. Every other one
+  widens, among them the limits that guard sign-in (`web.approve_*`,
+  `web.pair_requests_per_minute`), agents' views of your pages
+  (`web.agent_view*`), `web.bridge_listen`, `agents.issue_writes*`, what
+  keeps running (`agents.keep_running_after_logout`,
+  `services.restore_on_boot`) and `held_writes.wait_minutes`. A test places
+  every key `setting_change` takes on one list or the other.
+- The card shows the new value whole, never cut. A value too long to read
+  there (over 2000 characters) or text with control characters is refused.
+- Routine settings ask too, for now (its own kind is `ask`).
+- On Allow, Den checks again, keeps a copy of the file (the state folder's
+  `settings-backups/`, the newest 20), writes only that key (comments, order
+  and every other key stay) and adds an audit line naming the key, the old
+  and new values and who asked. A setting Den reads when it starts says so,
+  and the agent then asks for `den_restart_server`.
+  The backups are copies of the whole file, mode 600 in the state folder:
+  a value you later take out of `user.yml` stays in them until they roll
+  over (the newest 20 are kept).
+
+`agents.max_concurrent` may now be set per machine in `user.yml`, over the
+distribution's, as the terminal limits are (`sessions.*`, issue 532).
 
 With `required`, an agent whose sandbox can't apply on this machine
 doesn't start: the start says why. On Linux, Den runs `bwrap` once to

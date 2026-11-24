@@ -14,6 +14,13 @@ config and manifest changes a distribution must make to move to it under
 
 - The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
 
+### Fixed
+
+- A Linux test box gets its browser slot again when the gate runs on macOS. Den read the box's /proc/meminfo with sftp into /dev/stdout, which macOS sftp can't write to, so every Linux box read "memory unknown" and was skipped. Den now copies the file into a new private folder, reads it and removes the folder. The box still runs nothing for the check. (issue 1381)
+- web.log keeps the server's lifecycle, warning and error lines when the server runs with `--silent`, as `web up` (by default) and a service run it. A test install's fixture sign-in line ("fixture person signed in (live checks, a test install)") was in audit.jsonl but not in web.log. With the server's output a terminal or a pipe, these lines are also added to `logs/<cli>/web.log` in Den's state folder. No line is written twice. (issue 1344)
+- Every line the web server writes to its own output (web.log under `web up` and a service) passes through secret redaction, as its other log files already did. A web.log that was readable by others is made private (0600) when the server next adds to it. (issue 1368)
+- The agents' cap set on this machine wins. `agents.max_concurrent` in `config/local/user.yml` was ignored, so a person had to set it in the distribution's config too. Now user.yml's value wins over the distribution's, key by key, everywhere the cap is read: the terminal host's cap, the CLI, the Agents page's count and Doctor. Settings › Agents gets an "Agents at once" row, and `config agents.max_concurrent` sets and reads it. The agents' other limits and waits follow the same rule in user.yml. Doctor notes when the two files differ. (issue 1373)
+
 ## [0.4.88] - unreleased
 
 ### Added
@@ -24,6 +31,7 @@ config and manifest changes a distribution must make to move to it under
 - Doctor: an "Installs on this login" section shows how many other Den installs run as this login (a count), whether this install is in the install registry, and any private state file no agent rule covers yet (paths only). (issue 728)
 
 ### Fixed
+
 
 - UI kit 0.14.1: the rail's foot (Settings, the account entry, Collapse, and the drawer's Report) stays in view when the rail's groups are taller than the window; the groups scroll above it, and an entry reached by keyboard stops above the foot, never under it. The foot entries now sit in one `.den-rail-foot` element after the spacer: a host that walks the rail's children finds them there. (issue 1341)
 - Agents' git commits sign again inside the sandbox when the person's git signs with GPG. The sandbox keeps the person's GPG key out of reach, so agents now sign with their own SSH key by default when the person's git signs commits: an install-owned key, made once, readable to agent sessions and never writable by them. `agents.git.signing_key` still picks a key, which must sit outside Den's state folder or in its `agent-signing` folder (Doctor says so if not), and `agents.git.signing: off` keeps the old behaviour. Doctor checks signing inside the sandbox and shows the one-time step that makes GitHub show the agents' commits as Verified. When gpg fails inside a session, the note says why. (issue 1316)

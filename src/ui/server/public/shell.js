@@ -2571,6 +2571,9 @@
     "set.agents.draft_hold_max": "Draft hold before the bell",
     "set.agents.draft_hold_max.d":
       "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    "set.agents.max_concurrent": "Agents at once",
+    "set.agents.max_concurrent.d":
+      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -3337,6 +3340,21 @@
       "It is stopped: its next start has the change.",
     "ap.do.agent_sandbox_set": "{agent}: back in the sandbox",
     "ap.do.agent_sandbox_set.loosens": "This takes {agent} out of the sandbox",
+    "ap.det.setting_change.widens":
+      "This widens what agents can do: only your own Allow runs it.",
+    "ap.det.setting_change.key": "Setting: {key}",
+    "ap.det.setting_change.now": "Now: {value}",
+    "ap.det.setting_change.new": "New: {value}",
+    "ap.det.setting_change.why": "Why: {why}",
+    "ap.det.setting_change.by": "Asked by {agent}",
+    "ap.det.setting_change.writes":
+      "Den writes only {key} in config/local/user.yml, keeps a copy of the file first, and notes the change in the audit.",
+    "ap.det.setting_change.restart":
+      "Den reads it when it starts: it applies after a restart of Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "It applies at once.",
+    "ap.do.setting_change": "Change {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "This widens what agents can do: {key}: {now} → {value}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",

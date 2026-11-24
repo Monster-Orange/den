@@ -6,6 +6,8 @@ import {
   readSessionsConfig,
   readUserConfig,
   SESSIONS_SETTINGS_KEYS,
+  AGENTS_SETTINGS_KEYS,
+  agentsLimitInForce,
   writeUserConfig,
   type ResolvedSessionsConfig,
   type UserConfig,
@@ -19,6 +21,10 @@ import { testInstallByHandRefusal } from "../../shared/fixture-person.js";
 const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 
 import { product } from "../../shared/product.js";
+import { DEFAULT_PORT } from "../../shared/constants.js";
+import { readWebPort } from "../../shared/edge/config.js";
+import { cliAuthHeaders } from "../../shared/web-secret.js";
+import { denWebBase } from "../../shared/web-dial.js";
 type ConfigKey = keyof UserConfig;
 
 const KEY_ALIASES: Record<string, ConfigKey> = {
@@ -142,6 +148,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   ...Object.fromEntries(
     SESSIONS_SETTINGS_KEYS.map((k) => [`sessions.${k}`, ["sessions", k]]),
   ),
+  // Issue 1373: the agents' limits (agents.max_concurrent and the waits),
+  // user.yml's winning over den.yml's.
+  ...Object.fromEntries(
+    AGENTS_SETTINGS_KEYS.map((k) => [`agents.${k}`, ["agents_limits", k]]),
+  ),
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
   // Issue 1022: how often the page polls health, visible and hidden.
@@ -155,6 +166,13 @@ function sessionsValue(name: string): number | undefined {
   if (field !== "sessions" || !limit) return undefined;
   const camel = limit.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
   return readSessionsConfig()[camel as keyof ResolvedSessionsConfig] as number;
+}
+
+/** Issue 1373: an agent limit's value in force (user.yml over den.yml). */
+function agentsLimitValue(name: string): unknown {
+  const [field, limit] = DOTTED[name] ?? [];
+  if (field !== "agents_limits" || !limit) return undefined;
+  return agentsLimitInForce(limit);
 }
 
 /**
@@ -214,35 +232,37 @@ function hubGroupsValue(name: string): string | undefined {
   return String(v);
 }
 
-/** Issue 750: a groups setting set (or, with null, cleared) as Settings would. */
-function setHubGroups(name: string, value: unknown): void {
-  const user = readUserConfig() as Record<string, unknown>;
-  const r = patchHubGroups(user, { [HUB_GROUPS[name]!]: value });
-  if (!r.ok) throw new Error(r.error);
-  writeUserConfig(user as UserConfig);
-}
-
-/** A dotted switch set (or, with null, cleared) as Settings would. */
-function setSwitch(name: string, value: unknown): void {
-  const user = readUserConfig() as Record<string, unknown>;
-  const r = patchCliRows(
-    user,
-    { [DOTTED_SWITCH[name]!]: value },
-    { cli: true },
-  );
-  if (!r.ok) throw new Error(r.error);
-  writeUserConfig(user as UserConfig);
-}
-
-/** A dotted limit set (or, with null, cleared) as Settings would. */
-function setDotted(name: string, value: unknown): void {
-  const [field, limit] = DOTTED[name]!;
-  const user = readUserConfig() as Record<string, unknown>;
-  // Issue 367: alerts are checked as the Settings page checks them.
-  const r =
-    field === "alerts"
+/**
+ * Issue 1371: one setting set (or, with null, cleared) on `user`, as
+ * Settings and `config` check it: a dotted limit, a dotted switch or a Hub
+ * groups setting. `unknown` when `config` has no such dotted key (the
+ * top-level ones are `canonicalKey`'s). setting_change checks with it too.
+ */
+export function patchConfigKey(
+  user: Record<string, unknown>,
+  name: string,
+  value: unknown,
+): { ok: true } | { ok: false; error: string; unknown?: true } {
+  if (TEST_INSTALL_KEYS.has(name))
+    return { ok: false, error: testInstallByHandRefusal(product().configFile) };
+  if (HUB_GROUPS[name])
+    return patchHubGroups(user, { [HUB_GROUPS[name]]: value });
+  if (DOTTED_SWITCH[name])
+    return patchCliRows(user, { [DOTTED_SWITCH[name]]: value }, { cli: true });
+  if (DOTTED[name]) {
+    const [field, limit] = DOTTED[name];
+    // Issue 367: alerts are checked as the Settings page checks them.
+    return field === "alerts"
       ? patchAlerts(user as UserConfig, { [limit]: value })
       : patchCliRows(user, { [field]: { [limit]: value } }, { cli: true });
+  }
+  return { ok: false, unknown: true, error: `unknown setting ${name}` };
+}
+
+/** A dotted setting set (or, with null, cleared) as Settings would. */
+function setDotted(name: string, value: unknown): void {
+  const user = readUserConfig() as Record<string, unknown>;
+  const r = patchConfigKey(user, name, value);
   if (!r.ok) throw new Error(r.error);
   writeUserConfig(user as UserConfig);
 }
@@ -262,7 +282,89 @@ function parseValue(raw: string): unknown {
   return parsed === null ? "" : parsed;
 }
 
+/** The server's API, as `config propose` calls it (tests pass their own). */
+export type ConfigApi = (
+  method: "POST",
+  path: string,
+  body: unknown,
+) => Promise<{ status: number; data: Record<string, unknown> }>;
+
+const httpApi: ConfigApi = async (method, p, body) => {
+  let port: number;
+  try {
+    port = readWebPort();
+  } catch {
+    port = DEFAULT_PORT;
+  }
+  const r = await fetch(`${denWebBase(port)}${p}`, {
+    method,
+    headers: { "content-type": "application/json", ...cliAuthHeaders() },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60_000),
+  });
+  const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  return { status: r.status, data };
+};
+
+/**
+ * Issue 1371: `config propose <key>=<value> --reason "<why>"`: asks Den
+ * for the held write setting_change, as the MCP tool does, so an agent
+ * (whose sandbox can't write user.yml) never hands the person a YAML
+ * edit. Den checks it before holding; the person allows it in Den.
+ */
+export async function proposeSetting(
+  args: string[],
+  api: ConfigApi = httpApi,
+  out: (s: string) => void = (s) => process.stdout.write(s),
+): Promise<number> {
+  const cli = product().cli;
+  const usage = `Usage: ${cli} config propose <key>=<value> --reason "<why>" (null puts Den's default back)`;
+  const at = args.indexOf("--reason");
+  const reason = at >= 0 ? args[at + 1] : undefined;
+  const rest = at >= 0 ? args.filter((_, i) => i !== at && i !== at + 1) : args;
+  const assignment = rest[0] ?? "";
+  const eq = assignment.indexOf("=");
+  if (eq <= 0 || rest.length !== 1 || !reason?.trim()) {
+    out(`${usage}\n`);
+    return 2;
+  }
+  const key = assignment.slice(0, eq);
+  const raw = assignment.slice(eq + 1);
+  let value: unknown;
+  try {
+    value = yaml.parse(raw);
+  } catch {
+    value = raw;
+  }
+  const r = await api("POST", "/api/approvals", {
+    action: "setting_change",
+    args: { key, value: value ?? null, reason },
+  });
+  const d = r.data;
+  if (r.status !== 200 && r.status !== 202) {
+    out(`✗ ${String(d.error ?? `Den answered ${r.status}`)}\n`);
+    return 1;
+  }
+  const result = (d.result ?? {}) as Record<string, unknown>;
+  if (d.state === "done" && result.ok === false) {
+    out(`✗ ${String(result.error ?? "it failed")}\n`);
+    return 1;
+  }
+  if (d.state === "done") {
+    out(`✓ ${String(result.note ?? `${key} is set`)}\n`);
+    return 0;
+  }
+  out(
+    `Waiting for the person's Allow in Den (request ${String(d.id ?? "")}). Check it with the MCP tool approval_check.\n`,
+  );
+  return 0;
+}
+
 export async function cmdConfig(args: string[]): Promise<void> {
+  if (args[0] === "propose") {
+    process.exitCode = await proposeSetting(args.slice(1));
+    return;
+  }
   if (args.length === 0) {
     const current = readUserConfig();
     const output = yaml.stringify(current).trim();
@@ -276,7 +378,7 @@ export async function cmdConfig(args: string[]): Promise<void> {
     if (TEST_INSTALL_KEYS.has(keyArg))
       throw new Error(testInstallByHandRefusal(product().configFile));
     if (DOTTED_SWITCH[keyArg]) {
-      setSwitch(keyArg, null);
+      setDotted(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
       return;
     }
@@ -286,7 +388,7 @@ export async function cmdConfig(args: string[]): Promise<void> {
       return;
     }
     if (HUB_GROUPS[keyArg]) {
-      setHubGroups(keyArg, null);
+      setDotted(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
       return;
     }
@@ -299,7 +401,10 @@ export async function cmdConfig(args: string[]): Promise<void> {
   const assignment = args[0];
   const eq = assignment.indexOf("=");
   // Issue 532: `config sessions.<key>` prints the value in force.
-  const effective = eq < 0 ? sessionsValue(assignment) : undefined;
+  const effective =
+    eq < 0
+      ? (sessionsValue(assignment) ?? agentsLimitValue(assignment))
+      : undefined;
   if (effective !== undefined) {
     console.log(String(effective));
     return;
@@ -321,7 +426,7 @@ export async function cmdConfig(args: string[]): Promise<void> {
   if (TEST_INSTALL_KEYS.has(name))
     throw new Error(testInstallByHandRefusal(product().configFile));
   if (DOTTED_SWITCH[name]) {
-    setSwitch(name, parseValue(assignment.slice(eq + 1)));
+    setDotted(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));
     return;
   }
@@ -331,7 +436,7 @@ export async function cmdConfig(args: string[]): Promise<void> {
     return;
   }
   if (HUB_GROUPS[name]) {
-    setHubGroups(name, parseValue(assignment.slice(eq + 1)));
+    setDotted(name, parseValue(assignment.slice(eq + 1)));
     console.log(chalk.green(`  ✓ Set ${name}`));
     return;
   }

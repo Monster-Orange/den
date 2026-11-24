@@ -180,6 +180,11 @@ Held (each waits for the person's Allow):
   reason. Off runs only on the person's own Allow, and the Review says so
   when an agent asks for itself; back on follows the policy. Den restarts
   a running agent after its turn, on the same conversation.
+- `setting_change`: change one of Den's settings (`key`, `value`, a
+  `reason`) so the person never edits config/local/user.yml by hand. Den
+  checks the key and value first; a setting that widens what agents can
+  do runs only on the person's own Allow. One Den reads when it starts
+  says so: then ask for `den_restart_server`.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.

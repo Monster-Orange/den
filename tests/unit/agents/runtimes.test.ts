@@ -270,6 +270,10 @@ describe("den-claude launch", () => {
     expect(prompt).toMatch(/docs\/specs/);
     // NT-1: how it asks its person for a decision.
     expect(prompt).toMatch(/call ask_human .* then end your turn/);
+    // Issue 1371: a setting is asked for, never handed over as a YAML edit.
+    expect(prompt).toMatch(
+      /When one of Den's settings needs changing, ask for it with setting_change.*Never hand your person a YAML edit/,
+    );
     expect(out.env).toEqual({});
     expect(Object.keys(out.files ?? {})).toEqual([mcpFile, settingsFile]);
     // SEC-1 §6c.1: Den's state dir is denied to the agent (binds a

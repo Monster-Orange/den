@@ -1391,6 +1391,9 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_concurrent": "Agentes a la vez",
+    "set.agents.max_concurrent.d":
+      "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",
     "set.server.sessions_max": "Terminales a la vez",
     "set.server.sessions_max.d":
       "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",
@@ -2432,6 +2435,21 @@
       "Está detenido: su próximo inicio tiene el cambio.",
     "ap.do.agent_sandbox_set": "{agent}: de vuelta en el sandbox",
     "ap.do.agent_sandbox_set.loosens": "Esto saca a {agent} del sandbox",
+    "ap.det.setting_change.widens":
+      "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
+    "ap.det.setting_change.key": "Ajuste: {key}",
+    "ap.det.setting_change.now": "Ahora: {value}",
+    "ap.det.setting_change.new": "Nuevo: {value}",
+    "ap.det.setting_change.why": "Por qué: {why}",
+    "ap.det.setting_change.by": "Lo pide {agent}",
+    "ap.det.setting_change.writes":
+      "Den escribe solo {key} en config/local/user.yml, guarda antes una copia del archivo y anota el cambio en la auditoría.",
+    "ap.det.setting_change.restart":
+      "Den lo lee al arrancar: se aplica tras reiniciar Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "Se aplica al momento.",
+    "ap.do.setting_change": "Cambiar {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "Esto amplía lo que pueden hacer los agentes: {key}: {now} → {value}",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
