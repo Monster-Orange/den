@@ -104,6 +104,8 @@ export const HUB_WORK_MAX = 200;
 const text = (v: unknown, max = 300): string =>
   typeof v === "string"
     ? v
+        // Control characters become spaces (a row is one line). Intentional.
+        // eslint-disable-next-line no-control-regex
         .replace(/[\u0000-\u001f\u007f]/g, " ")
         .trim()
         .slice(0, max)
