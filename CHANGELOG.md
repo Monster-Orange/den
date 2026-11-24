@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.89] - unreleased
 
+### Added
+
+- `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. The activity trail is now denied to agents too. (issue 728)
+
 ### Changed
 
 - The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
@@ -24,6 +28,7 @@ config and manifest changes a distribution must make to move to it under
 - Groups from Den Hub. They show by themselves when your Den Hub supports groups. Set this in Settings › Hub › Groups from Hub (Auto, On or Off), or with `den config hub.groups=auto|on|off`. Off never asks Hub. The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30, from 5 to 3600; also in Settings). `den hub groups` prints the same read as the page. (issue 750)
 - UI kit 0.14.0: a group header component.
 - Agents: a person can turn one agent's sandbox off, or back on, from a held write the agent asks for (`agent_sandbox_set`). Turning it off always waits for the person's own Allow, and the card says when an agent asks for itself; turning it back on runs at once. The setting follows the agent: it goes when the agent is removed, and creating or importing an agent that would start outside the sandbox needs the person too. Den restarts only that agent, and Doctor lists every agent running outside the sandbox with who turned it off and why. (issue 1328)
+- Doctor: an "Installs on this login" section shows how many other Den installs run as this login (a count), whether this install is in the install registry, and any private state file no agent rule covers yet (paths only). (issue 728)
 
 ### Fixed
 

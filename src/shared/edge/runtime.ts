@@ -149,6 +149,38 @@ export function rotateEdgeProofOnce(
 }
 
 /**
+ * Issue 728: the rotation as Den's start runs it. No edge config here is
+ * quiet ("no-config"); a config whose rotation throws (a write refused,
+ * say) is warned with the reason, never swallowed ("failed"), and the next
+ * start tries again (no marker was written).
+ */
+export function rotateEdgeProofAtStart(o: {
+  readConfig: () => EdgeConfig;
+  ports: ReadonlySet<number>;
+  now?: Date;
+  rotate?: typeof rotateEdgeProofOnce;
+  onRotated: () => void;
+  warn: (message: string) => void;
+}): "rotated" | "done" | "no-edge" | "no-config" | "failed" {
+  let cfg: EdgeConfig;
+  try {
+    cfg = o.readConfig();
+  } catch {
+    return "no-config";
+  }
+  try {
+    const r = (o.rotate ?? rotateEdgeProofOnce)(cfg, o.ports, o.now);
+    if (r === "rotated") o.onRotated();
+    return r;
+  } catch (e) {
+    o.warn(
+      `the edge's proof was not rotated (the next start tries again): ${(e as Error).message}`,
+    );
+    return "failed";
+  }
+}
+
+/**
  * Issue 728: the stacks (their Compose project folders) holding generated
  * secrets in the edge's state folder, which agents could read before. Only
  * names: never a value. They're never regenerated here (that would lock a

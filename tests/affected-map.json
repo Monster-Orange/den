@@ -35,6 +35,12 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/cli/repo-add-no-run.integration.test.ts": [
+      "src/ui/cli/doctor-command.ts"
+    ],
+    "tests/unit/server/no-secrets-store.integration.test.ts": [
+      "src/ui/cli/doctor-command.ts"
+    ],
     "tests/unit/server/web-log-1344.integration.test.ts": [
       "src/shared/web-log-file.ts"
     ],
@@ -4048,6 +4054,24 @@
       "when": ["tests/child-servers.ts"],
       "run": ["tests/unit/test-infra/start-den-server.test.ts"],
       "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/cli/doctor-command.ts"],
+      "run": ["tests/unit/cli/repo-add-no-run.integration.test.ts"],
+      "why": "runs Den as a process (declared): its subject"
+    },
+    {
+      "when": ["src/ui/cli/doctor-command.ts"],
+      "run": ["tests/unit/server/no-secrets-store.integration.test.ts"],
+      "why": "runs Den as a process (declared): its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/settings-page.js",
+        "src/ui/server/public/settings-registry.js"
+      ],
+      "run": ["tests/unit/server/settings-page.integration.test.ts"],
+      "why": "runs Den as a process (declared): its subject"
     }
   ]
 }
