@@ -43,6 +43,15 @@ describe("jobCommandOf: what a background shell runs", () => {
       "gate run -- npx jest x",
     );
   });
+  it("a secret on the command line is redacted (it reaches a page and a 409)", () => {
+    const shown = jobCommandOf(
+      SHELL(
+        'curl -H "Authorization: Bearer abcdEFGH12345678xyz" https://x.test',
+      ),
+    );
+    expect(shown).not.toContain("abcdEFGH12345678xyz");
+    expect(shown).toContain("[REDACTED]");
+  });
   it("anything else: the command line itself, on one line and short", () => {
     expect(jobCommandOf("node server.js\n--port 3")).toBe(
       "node server.js --port 3",

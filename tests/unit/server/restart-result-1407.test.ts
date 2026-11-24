@@ -64,7 +64,7 @@ describe("issue 1407: the page shows each agent's answer", () => {
           job: { command: "<b>x</b>", minutes: 1 },
         },
       ],
-      (k, v) => `${k} ${v?.cmd ?? ""}`,
+      (k: string, v?: Record<string, unknown>) => `${k} ${v?.cmd ?? ""}`,
     );
     expect(h).not.toContain("<b>");
     expect(h).toContain("&lt;b&gt;");
