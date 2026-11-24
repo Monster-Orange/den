@@ -65,6 +65,28 @@ async function bare(ctx, path, method = "GET") {
   }
 }
 
+/**
+ * GET / with nothing, from the bed's loopback: the page itself, read as
+ * text. The sign-in page is served inside the shell too, but with its
+ * polls off (`data-api-off="1"` on #den-shell, index.ts sendErrorPage) and
+ * its code, signin_required; a page to look at has neither.
+ */
+async function lookPage(ctx) {
+  if (!ctx.hostUrl) return { status: 0 };
+  try {
+    const r = await fetch(new URL("/", ctx.hostUrl), { redirect: "manual" });
+    const html = await r.text().catch(() => "");
+    return {
+      status: r.status,
+      shell: html.includes('<script src="/shell.js"></script>'),
+      apiOff: html.includes('data-api-off="1"'),
+      signin: html.includes("signin_required"),
+    };
+  } catch (e) {
+    return { status: 0, error: String(e?.message ?? e).slice(0, 80) };
+  }
+}
+
 /** GET /api/session with nothing, from the bed's loopback, as the shell asks. */
 async function session(ctx) {
   if (!ctx.hostUrl) return { status: 0 };
@@ -95,7 +117,7 @@ export async function run(ctx) {
   const read = await bare(ctx, "/api/health");
   // Look only, on this machine: the shell page itself, from the bed's own
   // loopback address with nothing (issue 542's look-only clause).
-  const look = await bare(ctx, "/");
+  const look = await lookPage(ctx);
   const lookSession = await session(ctx);
   const signedRepos = (await ctx.fetch("/api/github/repos")).status;
   const signedSettings = (await ctx.fetch("/api/settings")).status;
@@ -172,11 +194,14 @@ export function expect(cells) {
       clause: clauses[4],
       ok:
         r.look?.status === 200 &&
+        r.look?.shell === true &&
+        r.look?.apiOff === false &&
+        r.look?.signin === false &&
         r.lookSession?.status === 200 &&
         r.lookSession?.signedIn === false &&
         r.lookSession?.actor === null &&
         r.lookSession?.csrf === null,
-      note: `GET / → ${note(r.look)}; session ${r.lookSession?.status} signedIn ${r.lookSession?.signedIn}, actor ${r.lookSession?.actor}, csrf ${r.lookSession?.csrf === null ? "none" : "set"}`,
+      note: `GET / → ${r.look?.status}, shell ${r.look?.shell}, polls off ${r.look?.apiOff}, sign-in code ${r.look?.signin}; session ${r.lookSession?.status} signedIn ${r.lookSession?.signedIn}, actor ${r.lookSession?.actor}, csrf ${r.lookSession?.csrf === null ? "none" : "set"}`,
     },
     {
       clause: clauses[5],
