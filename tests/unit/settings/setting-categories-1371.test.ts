@@ -254,11 +254,14 @@ describe("every person-only setting has an ask path (Vision's ruling, issue 1391
     ["web.machine_name", "laptop-2", false],
     ["shell.dock", true, false],
     ["shell.pins", ["den"], true],
-  ] as const)("%s can be asked for (widens: %s)", (key, value, widens) => {
-    const c = ask(key, value);
-    if (!c.ok) throw new Error(`${key}: ${c.error}`);
-    expect([key, c.personOnly === true]).toEqual([key, widens]);
-  });
+  ] as [string, unknown, boolean][])(
+    "%s can be asked for (widens: %s)",
+    (key, value, widens) => {
+      const c = ask(key, value);
+      if (!c.ok) throw new Error(`${key}: ${c.error}`);
+      expect([key, c.personOnly === true]).toEqual([key, widens]);
+    },
+  );
 
   it.each([
     ["agents.default_mode", "anything-goes"],
@@ -270,9 +273,12 @@ describe("every person-only setting has an ask path (Vision's ruling, issue 1391
     ["embed.origins", ["not an origin"]],
     ["web.machine_name", "a b\nc"],
     ["shell.pins", "den"],
-  ] as const)("%s refuses what Settings refuses", (key, value) => {
-    expect(ask(key, value).ok).toBe(false);
-  });
+  ] as [string, unknown][])(
+    "%s refuses what Settings refuses",
+    (key, value) => {
+      expect(ask(key, value).ok).toBe(false);
+    },
+  );
 
   it("a new Hub address drops the old token, as Settings does", () => {
     writeUser(
