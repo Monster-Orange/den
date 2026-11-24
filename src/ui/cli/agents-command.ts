@@ -2917,6 +2917,11 @@ export function sandboxLines(r: SandboxReport): string[] {
   const out = ["Agent sandbox (agents can't write Den's state)"];
   // Issue 1391: off by default on a personal install, so information, said
   // once: nothing to turn on, and no agent outside it is a warning.
+  // Vision's ruling (issue 1391): after the upgrade, one info row.
+  if (r.mode === "personal" && r.modeFrom === "default")
+    out.push(
+      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or in Settings › Server", // words-ok: the Settings section's own name
+    );
   if (r.personalOff) {
     out.push(
       "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",

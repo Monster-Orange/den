@@ -327,6 +327,11 @@ or **strict** (a company's install or a shared machine): `install_mode`.
 - Doctor says which file set it.
 - For an agent, moving strict to personal widens (the person's Allow, through
   `setting_change`); personal to strict is routine.
+- On a personal install with the sandbox off, an agent can write
+  `config/local/user.yml` itself. There, "only the person's Allow" (for
+  `install_mode`, `approvals` and `mcp.actions`) guards against an agent's
+  mistakes, not against a hostile agent. For that, use strict, or turn the
+  sandbox on.
 
 - **Personal.** `agents.sandbox` is off unless set, so Docker, sockets
   and the person's tools are reachable from agents' sessions. Doctor says

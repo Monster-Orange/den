@@ -129,9 +129,9 @@ describe("the person's choice per category (issue 1371 Part 2)", () => {
   const change = (category: Parameters<typeof settingChoice>[0], o = {}) =>
     policyFor("setting_change", { setting: { category }, ...o }).kind;
 
-  it("strict defaults: limits and look tell, the rest ask", () => {
-    expect(change("limits")).toBe("notify");
-    expect(change("look")).toBe("notify");
+  it("strict defaults: every category asks (Den Builder's ruling)", () => {
+    expect(change("limits")).toBe("ask");
+    expect(change("look")).toBe("ask");
     expect(change("integrations")).toBe("ask");
     expect(change("network")).toBe("ask");
     expect(change("agent_powers")).toBe("ask");
@@ -359,8 +359,20 @@ describe("Undo, in the bell, of a setting changed without asking (issue 1371 Par
   const ran = (key: string, value: unknown) => {
     const r = runSettingChange(deps(), { key, value, reason: "faster" });
     if (!r.ok) throw new Error(r.error);
-    return { id: "ap-1", action: "setting_change", result: r };
+    return {
+      id: "ap-1",
+      action: "setting_change",
+      result: r,
+      decidedBy: "auto:notify",
+    };
   };
+
+  it("only a change that ran without asking: the person's own Allow isn't undone here", () => {
+    const a = ran("sessions.close_grace_seconds", 45);
+    const u = undoSettingChange(deps(), { ...a, decidedBy: "person:web" });
+    expect(u.ok).toBe(false);
+    if (!u.ok) expect(u.error).toMatch(/ran without asking/);
+  });
 
   it("puts the value before back, once", () => {
     writeUser("sessions:\n  close_grace_seconds: 30\n");
@@ -412,6 +424,7 @@ describe("Undo, in the bell, of a setting changed without asking (issue 1371 Par
         id: "x",
         action: "setting_change",
         result: { ok: false, error: "no" },
+        decidedBy: "auto:notify",
       }).ok,
     ).toBe(false);
   });
@@ -474,5 +487,96 @@ describe("install_mode through setting_change (issue 1391)", () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.error).toMatch(/den\.yml sets install_mode: strict/);
     }
+  });
+});
+
+describe("a personal install with the sandbox on (Reviewer D, issue 1391)", () => {
+  it("editor, terminal and runtimes stay asked while any agent is sandboxed", () => {
+    for (const user of [
+      "agents:\n  sandbox: on\n",
+      "agents:\n  a1:\n    sandbox: on\n",
+    ]) {
+      writeUser(user);
+      const t = ask("terminal", "iterm2");
+      if (!t.ok) throw new Error(t.error);
+      expect([user, t.personOnly]).toEqual([user, true]);
+    }
+  });
+
+  it("with the sandbox off for every agent, they're routine", () => {
+    writeUser("# personal, nothing set\n");
+    const t = ask("terminal", "iterm2");
+    if (!t.ok) throw new Error(t.error);
+    expect(t.personOnly).toBeFalsy();
+  });
+});
+
+describe("concurrency raises measured from the person's baseline (Den Builder, issue 1391)", () => {
+  const routine = { decidedBy: "auto:notify" };
+  const personal = { decidedBy: "person:web" };
+  const run = (value: number, asked = routine) => {
+    const r = runSettingChange(
+      deps(),
+      { key: "agents.max_concurrent", value, reason: "more" },
+      asked,
+    );
+    if (!r.ok) throw new Error(r.error);
+  };
+  const raise = (value: number) => {
+    const c = ask("agents.max_concurrent", value);
+    if (!c.ok) throw new Error(c.error);
+    return c.personOnly === true ? "asks" : "routine";
+  };
+
+  beforeEach(() => writeUser("agents:\n  max_concurrent: 4\n"));
+
+  it("baseline 4: up to 8 is routine, 9 asks", () => {
+    expect(raise(8)).toBe("routine");
+    expect(raise(9)).toBe("asks");
+  });
+
+  it("can't be chained: after a routine 4 → 8, 8 → 9 asks", () => {
+    run(8);
+    expect(raise(9)).toBe("asks");
+    expect(raise(8 - 1)).toBe("routine");
+  });
+
+  it("the person's Allow of 16 makes 16 the baseline", () => {
+    run(8);
+    run(16, personal);
+    expect(raise(32)).toBe("routine");
+    expect(raise(33)).toBe("asks");
+  });
+
+  it("lowering is always routine", () => {
+    run(8);
+    expect(raise(2)).toBe("routine");
+  });
+
+  it("the other two caps follow the same rule", () => {
+    writeUser(
+      "sessions:\n  max_concurrent: 3\nagents:\n  resume:\n    load_ceiling: 10\n",
+    );
+    const k = (key: string, v: number) => {
+      const c = ask(key, v);
+      if (!c.ok) throw new Error(c.error);
+      return c.personOnly === true;
+    };
+    expect([
+      k("sessions.max_concurrent", 6),
+      k("sessions.max_concurrent", 7),
+    ]).toEqual([false, true]);
+    expect([
+      k("agents.resume.load_ceiling", 20),
+      k("agents.resume.load_ceiling", 21),
+    ]).toEqual([false, true]);
+    // 0 is no ceiling at all: a raise past any baseline.
+    expect(k("agents.resume.load_ceiling", 0)).toBe(true);
+  });
+
+  it("an agent can't set the baseline itself", () => {
+    expect(ask("setting_baselines", { "agents.max_concurrent": 100 }).ok).toBe(
+      false,
+    );
   });
 });

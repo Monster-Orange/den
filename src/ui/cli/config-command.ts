@@ -15,6 +15,15 @@ import {
   type UserConfig,
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
+import { personSetCaps } from "./setting-change.js";
+
+function readDenConfigOrEmpty(): DenConfig {
+  try {
+    return readDenConfig();
+  } catch {
+    return {} as DenConfig;
+  }
+}
 import { hubGroupsMode, patchHubGroups } from "../../shared/hub.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { testInstallByHandRefusal } from "../../shared/fixture-person.js";
@@ -461,6 +470,12 @@ export async function cmdConfig(args: string[]): Promise<void> {
         "The distribution's den.yml sets install_mode: strict, and a person can't loosen it.",
       );
   }
+  const was = readUserConfig();
   mergeUserConfig({ [key]: value } as Partial<UserConfig>);
+  // Issue 1391: a cap the person moved here takes it as its baseline.
+  const now = readUserConfig();
+  const had = JSON.stringify(now.setting_baselines);
+  personSetCaps(was, now, readDenConfigOrEmpty());
+  if (JSON.stringify(now.setting_baselines) !== had) writeUserConfig(now);
   console.log(chalk.green(`  ✓ Set ${key}`));
 }

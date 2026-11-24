@@ -370,6 +370,12 @@ export interface UserConfig {
    */
   approvals?: unknown;
   /**
+   * Issue 1391 (Den Builder): the concurrency caps' baselines, the last
+   * value the person set or allowed, kept while agents' routine raises
+   * move the value (setting-change.ts CAP_KEYS). The person's only.
+   */
+  setting_baselines?: unknown;
+  /**
    * Issue 1391: `install_mode: personal | strict`, the person's. Unset is
    * personal: one person's own machine (see readInstallMode).
    */
@@ -2265,7 +2271,8 @@ function installModeValue(v: unknown): InstallMode | undefined {
  */
 export function resolveInstallMode(
   u: UserConfig,
-  d: Pick<DenConfig, "install_mode"> = {},
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
 ): { mode: InstallMode; from: InstallModeFrom } {
   const den = installModeValue(d.install_mode);
   const mine = installModeValue(u.install_mode);
@@ -2278,7 +2285,8 @@ export function resolveInstallMode(
 /** The install's mode (resolveInstallMode); never throws. */
 export function readInstallMode(
   u: UserConfig,
-  d: Pick<DenConfig, "install_mode"> = {},
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
 ): InstallMode {
   return resolveInstallMode(u, d).mode;
 }
@@ -2736,12 +2744,21 @@ export function applyUserSandbox(
 }
 
 /** user.yml, or {} when it can't be read (a bad one is its own row). */
-function readUserConfigQuiet(): UserConfig {
+/**
+ * Issue 1391 (Builder 2's review): a user.yml that exists but can't be read
+ * or parsed is strict, never personal: the sandbox keeps den.yml's value
+ * (on by default; required stays required). A missing file is {}.
+ */
+export function userConfigOrStrict(read: () => UserConfig): UserConfig {
   try {
-    return readUserConfig();
+    return read();
   } catch {
-    return {};
+    return { install_mode: "strict" };
   }
+}
+
+function readUserConfigQuiet(): UserConfig {
+  return userConfigOrStrict(readUserConfig);
 }
 
 function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {

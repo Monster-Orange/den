@@ -117,10 +117,12 @@ export const HELD_WRITE_RISK: Readonly<
   >
 > = {
   project_mode: {
+    personal: "keep",
     risk: "widens",
     why: "a looser mode lets agents act without asking; a stricter one only narrows",
   },
   agent_mode: {
+    personal: "keep",
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
   },
@@ -150,10 +152,12 @@ export const HELD_WRITE_RISK: Readonly<
     why: "sends a project's agents' calls, and maybe a bearer, to another address",
   },
   persona_create: {
+    personal: "keep",
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",
   },
   persona_update: {
+    personal: "keep",
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access",
   },
@@ -168,19 +172,23 @@ export const HELD_WRITE_RISK: Readonly<
     why: "installs another Den version (a release)",
   },
   den_restart: {
+    personal: "keep",
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
   hub_project_create: {
+    personal: "keep",
     risk: "routine",
     why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
   },
   hub_link: {
+    personal: "keep",
     risk: "routine",
     kind: "ask",
     why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
   },
   agent_create: {
+    personal: "keep",
     risk: "widens",
     why: "starts an agent in the project's mode or a stricter one; one that would start outside the sandbox is the person's (issue 1328)",
   },
@@ -216,15 +224,18 @@ export const HELD_WRITE_RISK: Readonly<
     why: "a person's own ask, from Settings › Embedding",
   },
   gate_runner_token_create: {
+    personal: "keep",
     risk: "critical",
     areas: ["secrets"],
     why: "makes a token a CI runner uses to take gate slots on this machine",
   },
   gate_box_set: {
+    personal: "keep",
     risk: "critical",
     why: "adds or changes a test box whose browsers take agents' gate runs (CRITICAL_HELD_ACTIONS)",
   },
   gate_box_remove: {
+    personal: "keep",
     risk: "critical",
     why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS)",
   },
@@ -248,11 +259,13 @@ export const HELD_WRITE_RISK: Readonly<
     why: "changes the approval policy itself: a person's only",
   },
   agent_import: {
+    personal: "keep",
     risk: "widens",
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it; one that would start outside the sandbox is the person's (issue 1328)",
   },
   pr_close: {
+    personal: "keep",
     risk: "routine",
     kind: "auto",
     why: "closes a stale or superseded PR after a Hub note: runs unless watched",
@@ -341,8 +354,11 @@ export function settingChoiceDefault(
   category: SettingCategory,
   mode: InstallMode = "strict",
 ): SettingChoice {
+  // Den Builder's ruling: strict keeps today's asks for every category
+  // (a person may set one to auto); change-and-tell is personal's default.
+  if (mode !== "personal") return "ask";
   if (category === "limits" || category === "look") return "auto";
-  if (category === "integrations") return mode === "personal" ? "auto" : "ask";
+  if (category === "integrations") return "auto";
   return "ask";
 }
 
