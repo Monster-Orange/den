@@ -34,6 +34,11 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
+      "src/shared/hub.ts",
+      "src/shared/settings-cli-rows.ts",
+      "src/ui/server/index.ts"
+    ],
     "tests/unit/server/fixture-grant.integration.test.ts": [
       "src/shared/test-install-grant.ts",
       "src/ui/server/index.ts"
@@ -984,6 +989,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1344,6 +1350,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1688,6 +1695,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -1809,6 +1817,7 @@
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
+        "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
@@ -3196,6 +3205,15 @@
     {
       "when": ["src/shared/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub.ts",
+        "src/shared/settings-cli-rows.ts",
+        "src/ui/server/index.ts"
+      ],
+      "run": ["tests/unit/server/hub-groups-settings-750.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

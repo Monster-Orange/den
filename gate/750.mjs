@@ -29,11 +29,12 @@ export const clauses = [
   "no Hub connected: only the line Groups come with Den Hub, with Connect Den Hub, and no group UI",
   "403 groups_not_in_plan and a guest's 403 each show their own line, and no group UI",
   "Den reads the bed's own Hub for groups",
-  "hub.groups off (the default): the page's groups read answers off, and Hub isn't asked",
+  "hub.groups off: the groups read answers off, and Hub isn't asked",
   "real Hub: By group reads the test group from Hub, its lead marked, and this Den's agents under it",
   "real Hub: Message group opens the test Hub's composer for the group",
   "real Hub: a group message to an agent whose Hub tools failed to load is acked held, and Hub's thread shows exactly the reason Den sent",
   "real Hub: with hub.groups off, the Den reads off and the test Hub sees no groups request",
+  "real Hub: hub.groups auto (the default) reads the test group from a Hub whose whoami lists groups.read",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 120000;
@@ -83,6 +84,60 @@ let D2 = null;
 const msg = (e) => String(e?.message ?? e).slice(0, 200);
 // A missing harness piece skips (needs-*); a product step that fails fails.
 const fail = (why, detail) => ({ fail: why, why: detail ?? why });
+
+/**
+ * The groups read as the Agents page gets it, from an install's own CLI
+ * (`hub groups --fresh`, issue 750): a page's /api/hub/ read isn't open
+ * to the fixture person. A CLI that fails says how, never a bare null.
+ */
+function groupsRead(cli) {
+  const r = cli(["hub", "groups", "--fresh"]);
+  const line =
+    String(r?.out ?? "")
+      .trim()
+      .split("\n")
+      .pop() ?? "";
+  try {
+    if (r?.code === 0) return JSON.parse(line);
+  } catch {
+    /* said below */
+  }
+  return {
+    error: `hub groups: ${r?.code}: ${String(r?.all ?? "")
+      .trim()
+      .slice(0, 200)}`,
+  };
+}
+
+/**
+ * Rows 7 and 8 on the bed's own Den: hub.groups on, its read of the bed's
+ * Hub; then off, its read. After, the value in force before is put back:
+ * the key removed when that restores it, else set to it.
+ */
+export function bedGroups(ctx) {
+  if (!ctx.cli) return skip("needs-bed-cli", "the bed gives no ctx.cli");
+  const now = () => {
+    const r = ctx.cli(["config", "hub.groups"]);
+    const v = String(r.out ?? "").trim();
+    return r.code === 0 && ["auto", "on", "off"].includes(v) ? v : null;
+  };
+  const was = now();
+  if (!was)
+    return fail("config", "`config hub.groups` didn't print auto, on or off");
+  const set = (v) => ctx.cli(["config", `hub.groups=${v}`]);
+  try {
+    const on = set("on");
+    if (on.code !== 0) return fail("config", `hub.groups=on: ${on.code}`);
+    const real = groupsRead(ctx.cli);
+    const off = set("off");
+    if (off.code !== 0)
+      return { real, off: fail("config", `hub.groups=off: ${off.code}`) };
+    return { real, off: groupsRead(ctx.cli) };
+  } finally {
+    ctx.cli(["config", "rm", "hub.groups"]);
+    if (now() !== was) set(was);
+  }
+}
 const skip = (why, detail) => ({
   skip: why,
   ...(detail ? { why: detail } : {}),
@@ -128,9 +183,9 @@ async function hubLeg(ctx) {
     );
   const out = { fixture: "allowed by test fixture", hub: A.url, company };
   try {
-    const on = d2.cli(["config", "hub.groups=true"]);
+    const on = d2.cli(["config", "hub.groups=on"]);
     if (on.code !== 0)
-      return { ...out, ...fail("config", `hub.groups=true: ${on.code}`) };
+      return { ...out, ...fail("config", `hub.groups=on: ${on.code}`) };
     const c = await d2.hubConnect("a", { company });
     if (!c?.ok)
       return { ...out, ...fail("connect", c?.why ?? "fixture Connect failed") };
@@ -175,7 +230,7 @@ async function hubLeg(ctx) {
     const read = await poll(
       ctx,
       async () => {
-        const r = await d2.api("/api/hub/groups?fresh=1");
+        const r = groupsRead(d2.cli);
         return r?.state === "ok" && r.groups?.some((g) => g.slug === SLUG)
           ? r
           : null;
@@ -251,18 +306,18 @@ async function hubLeg(ctx) {
       out.off = skip("needs-hub-request-count", "no requests() on test Hub A");
     else {
       const onSince = new Date().toISOString();
-      await d2.api("/api/hub/groups?fresh=1");
+      groupsRead(d2.cli);
       await ctx.sleep(2000);
       const onRequests = await A.requests("/api/groups", { since: onSince });
-      const off = d2.cli(["config", "hub.groups=false"]);
+      const off = d2.cli(["config", "hub.groups=off"]);
       if (off.code !== 0)
         out.off = {
           onRequests,
-          ...fail("config", `hub.groups=false: ${off.code}`),
+          ...fail("config", `hub.groups=off: ${off.code}`),
         };
       else {
         const since = new Date().toISOString();
-        const r = await d2.api("/api/hub/groups?fresh=1");
+        const r = groupsRead(d2.cli);
         await ctx.sleep(2000);
         out.off = {
           state: r?.state ?? null,
@@ -270,6 +325,20 @@ async function hubLeg(ctx) {
           requests: await A.requests("/api/groups", { since }),
         };
       }
+    }
+
+    // (5) Auto, the default: on by itself when the test Hub's whoami
+    // lists groups.read. Den says when Hub doesn't (a named skip).
+    const au = d2.cli(["config", "hub.groups=auto"]);
+    if (au.code !== 0) out.auto = fail("config", `hub.groups=auto: ${au.code}`);
+    else {
+      const r = groupsRead(d2.cli);
+      out.auto = {
+        state: r?.state ?? null,
+        why: r?.why ?? null,
+        found: !!r?.groups?.some((g) => g.slug === SLUG),
+        ...(r?.error ? { error: r.error } : {}),
+      };
     }
   } catch (e) {
     out.error = msg(e);
@@ -281,6 +350,11 @@ export async function setup(ctx) {
   const a = ctx.agent(AGENT);
   a.start("tester");
   const s = { runMs: await a.running(20000) };
+  try {
+    s.bed = bedGroups(ctx);
+  } catch (e) {
+    s.bed = { error: msg(e) };
+  }
   s.hubLeg = await hubLeg(ctx).catch((e) => ({ error: msg(e) }));
   return s;
 }
@@ -404,13 +478,6 @@ export async function run(ctx, s) {
   } finally {
     await p.close().catch(() => {});
   }
-  // The bed's own Hub, through Den (no page routes).
-  // A failed read says why (status, message), never a bare null.
-  const real = await ctx.api("/api/hub/groups").catch((e) => ({
-    error: String(e?.message ?? e).slice(0, 200),
-  }));
-  out.real = real?.state ?? null;
-  if (real?.error) out.realError = real.error;
   return out;
 }
 
@@ -505,48 +572,90 @@ export function expect(cells) {
       evidence: [...shots("line-unavailable"), ...shots("line-refused")],
     },
   ];
-  const real = list[0]?.result?.real ?? null;
-  const realError = list[0]?.result?.realError ?? null;
-  // Until the bed's Hub serves GET /api/groups (G1), Den says it can't.
-  if (real === "ok" || real === "unavailable" || real === "refused")
-    rows.push({
-      clause: clauses[6],
-      ok: true,
-      detail: `the bed's Hub: ${real}`,
-    });
-  else
-    rows.push({
-      clause: clauses[6],
-      ok: null,
-      skip: "needs-hub-groups",
-      detail: `the bed's Hub: ${real}${realError ? ` (${realError})` : ""}`,
-    });
-  // The bed runs with hub.groups at its default (off): nothing new.
-  rows.push(
-    real === "off"
-      ? { clause: clauses[7], ok: true, detail: "the bed's Den: off" }
-      : {
-          clause: clauses[7],
-          ok: null,
-          skip: "needs-hub-groups-off",
-          why: "the bed's Den has hub.groups on",
-          detail: `the bed's Den: ${real}${realError ? ` (${realError})` : ""}`,
-        },
-  );
+  rows.push(...bedRows(list[0]?.result?.bed ?? null));
   rows.push(...hubRows(list[0]?.result?.hubLeg ?? null));
   return rows;
 }
 
-/** The real-Hub leg's four rows: a skip names the missing harness piece;
- *  a product step that failed fails all four, with its reason. */
+/**
+ * Rows 7 and 8, from the bed's own Den (bedGroups). A read of the bed's
+ * Hub that finds no groups there skips by name; a CLI or config that
+ * fails is the product's, and fails.
+ */
+export function bedRows(b) {
+  const [c7, c8] = [clauses[6], clauses[7]];
+  if (!b)
+    return [c7, c8].map((clause) => ({
+      clause,
+      ok: null,
+      skip: "needs-bed-groups",
+      detail: "the bed's groups step didn't run",
+    }));
+  if (b.skip)
+    return [c7, c8].map((clause) => ({
+      clause,
+      ok: null,
+      skip: b.skip,
+      detail: b.why ?? b.skip,
+    }));
+  if (b.fail || b.error)
+    return [c7, c8].map((clause) => ({
+      clause,
+      ok: false,
+      detail: b.fail ? `${b.fail}: ${b.why}` : `error: ${b.error}`,
+    }));
+  const real = b.real ?? {};
+  const said = (r) =>
+    r.error ? r.error : `${r.state}${r.why ? ` (${r.why})` : ""}`;
+  const rows = [];
+  if (real.error)
+    rows.push({
+      clause: c7,
+      ok: false,
+      detail: `the bed's Den: ${real.error}`,
+    });
+  else if (["ok", "unavailable", "refused"].includes(real.state))
+    rows.push({ clause: c7, ok: true, detail: `the bed's Hub: ${real.state}` });
+  else if (real.state === "rejected")
+    // Hub refused Den's own token: Den's credential, never "not run".
+    rows.push({
+      clause: c7,
+      ok: false,
+      detail: "the bed's Hub refused Den's token (rejected)",
+    });
+  else
+    // off: the bed's Hub has no groups route; none: no Hub connected;
+    // unreachable: the bed's Hub didn't answer.
+    rows.push({
+      clause: c7,
+      ok: null,
+      skip: real.state === "none" ? "needs-bed-hub" : "needs-hub-groups",
+      detail: `the bed's Hub: ${said(real)}`,
+    });
+  const off = b.off ?? {};
+  rows.push(
+    off.fail
+      ? { clause: c8, ok: false, detail: `${off.fail}: ${off.why}` }
+      : {
+          clause: c8,
+          ok: off.state === "off" && !off.error,
+          detail: `the bed's Den with hub.groups off: ${said(off)}`,
+        },
+  );
+  return rows;
+}
+
+/** The real-Hub leg's five rows: a skip names the missing harness piece;
+ *  a product step that failed fails all five, with its reason. */
 export function hubRows(h) {
   const at = (i) => clauses[8 + i];
+  const ALL = [0, 1, 2, 3, 4];
   const skipped = (why, detail) =>
-    [0, 1, 2, 3].map((i) => ({ clause: at(i), ok: null, skip: why, detail }));
+    ALL.map((i) => ({ clause: at(i), ok: null, skip: why, detail }));
   if (!h) return skipped("needs-hub-leg", "the leg didn't run");
   if (h.skip) return skipped(h.skip, h.why ?? h.skip);
   if (h.fail || (h.error && !h.read))
-    return [0, 1, 2, 3].map((i) => ({
+    return ALL.map((i) => ({
       clause: at(i),
       ok: false,
       detail: h.fail ? `${h.fail}: ${h.why}` : `error: ${h.error}`,
@@ -594,6 +703,25 @@ export function hubRows(h) {
               off.onRequests >= 1 && off.state === "off" && off.requests === 0,
             detail: `groups requests to Hub while on: ${off.onRequests}; read ${off.state} when off; requests since: ${off.requests}`,
           },
+  );
+  const au = h.auto;
+  rows.push(
+    !au
+      ? { clause: at(4), ok: false, detail: "auto was not read" }
+      : au.fail
+        ? { clause: at(4), ok: false, detail: `${au.fail}: ${au.why}` }
+        : au.state === "off" && au.why === "hub-lacks-groups-read"
+          ? {
+              clause: at(4),
+              ok: null,
+              skip: "needs-hub-groups-read",
+              detail: "the test Hub's whoami lists no groups.read yet",
+            }
+          : {
+              clause: at(4),
+              ok: au.state === "ok" && au.found === true,
+              detail: `auto read ${au.error ?? au.state}; group ${au.found ? "found" : "missing"}`,
+            },
   );
   // An error thrown after the read: the rows it cut short say so.
   if (h.error)

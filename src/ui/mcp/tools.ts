@@ -2841,6 +2841,45 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "agent_sandbox_set",
+    title: "Turn an agent's sandbox off or on",
+    description:
+      "Turn one agent's sandbox off (`on: false`) or back on (`on: true`), so the person never edits config/local/user.yml by hand. `agent` is its id; `reason` says what it needs that the sandbox blocks (required to turn it off, one line). Off widens what the agent may do: it always waits for the person's own Allow, and the Review says so when an agent asks for itself. Back on runs as the approval policy says. Den writes only agents.<id>.sandbox, and restarts a running agent after its turn, on the same conversation. A project's agent asks for its own project's agents; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      on: z.boolean().describe("true: back in the sandbox; false: out of it"),
+      reason: z
+        .string()
+        .max(300)
+        .optional()
+        .describe("What it needs that the sandbox blocks (required for off)"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_sandbox_set", a, "agent", "the agent's id");
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_sandbox_set",
+        "agent_sandbox_set",
+        {
+          agent,
+          on: a.on,
+          ...(str(a.reason) ? { reason: str(a.reason) } : {}),
+          ...(project ? { project } : {}),
+        },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "gate_runner_token_create",
     title: "Make a gate-only token for a CI runner",
     description:
