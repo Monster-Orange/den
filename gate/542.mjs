@@ -1,20 +1,28 @@
 // Live check for PR 542: sign-in on this machine too. A request with no
 // session and no token, even from this machine, changes nothing and runs
 // nothing: a write or a GET that runs a command is asked to sign in (401).
-// A plain read still answers. The signed-in person is unaffected. Nothing
-// here changes the bed: the only write is a sign-out with no session.
+// A plain read still answers, and on this machine a page with no session
+// still opens (look only). The signed-in person is unaffected. A browser
+// from beyond this machine (the bed's browser box, through the edge) gets
+// the sign-in page, which starts no sign-in request until asked (issue
+// 1333). Nothing here changes the bed: the only write is a sign-out with
+// no session.
 export const issue = 542;
 export const clauses = [
   "with no session or token, a write on this machine is asked to sign in (401)",
   "with no session or token, a GET that runs a command is asked to sign in (401)",
   "with no session or token, a plain read still answers",
   "the signed-in person still lists repos and reads settings",
-  "a browser with no session shows the sign-in line, and can still look",
+  "with no session, a page on this machine still opens to look (200, not the sign-in page)",
+  "a browser from beyond this machine with no session gets the sign-in page, and it starts no sign-in request until asked",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 90000;
 
-const LINE = "Sign in to make changes here.";
+// The sign-in page's marks (error-page.js): its heading line, and the
+// button that starts a request. A request already on screen shows its code
+// (#den-pair-code) and countdown (#den-pair-left).
+const SIGNED_OUT_SUB = "This browser isn't signed in";
 
 /**
  * A request with nothing: no cookie, no bearer, no Origin. It runs on the
@@ -50,26 +58,48 @@ export async function run(ctx) {
   const write = await bare(ctx, "/api/session/logout", "POST");
   const runs = await bare(ctx, "/api/github/repos");
   const read = await bare(ctx, "/api/health");
+  // Look only, on this machine: the shell page itself, from the bed's own
+  // loopback address with nothing (issue 542's look-only clause).
+  const look = await bare(ctx, "/");
   const signedRepos = (await ctx.fetch("/api/github/repos")).status;
   const signedSettings = (await ctx.fetch("/api/settings")).status;
 
-  let page = { line: false, title: false };
+  let page = { signin: false, title: false, button: false, asked: false };
   const out = await ctx.signedOut(ctx.browser, ctx.width);
   try {
     await ctx.goto(out.page, "/");
     const ms = await ctx.until(
-      async () => (await out.page.content()).includes(LINE),
+      async () =>
+        (await out.page.content()).includes(SIGNED_OUT_SUB) &&
+        (await out.page.locator("#den-pair-start").count()) > 0,
       15000,
     );
+    // A request started by itself showed its code at once (before issue
+    // 1333): watch a while for its code or countdown.
+    const askedMs = await ctx.until(
+      async () =>
+        (await out.page.locator("#den-pair-code, #den-pair-left").count()) > 0,
+      3000,
+    );
     page = {
-      line: ms !== null,
+      signin: (await out.page.content()).includes(SIGNED_OUT_SUB),
       title: /<title>/.test(await out.page.content()),
+      button: ms !== null,
+      asked: askedMs !== null,
     };
     await ctx.shotOf(out.page, "542-signed-out");
   } finally {
     await out.ctx?.close?.().catch(() => undefined);
   }
-  const seen = { write, runs, read, signedRepos, signedSettings, page };
+  const seen = {
+    write,
+    runs,
+    read,
+    look,
+    signedRepos,
+    signedSettings,
+    page,
+  };
   ctx.log?.(`542: ${JSON.stringify(seen)}`);
   return seen;
 }
@@ -103,7 +133,18 @@ export function expect(cells) {
     },
     {
       clause: clauses[4],
-      ok: !!(r.page?.line && r.page?.title),
+      ok: r.look?.status === 200,
+      note: `GET / → ${note(r.look)}`,
+    },
+    {
+      clause: clauses[5],
+      ok: !!(
+        r.page?.signin &&
+        r.page?.title &&
+        r.page?.button &&
+        r.page?.asked === false
+      ),
+      note: `sign-in page ${!!r.page?.signin}, button ${!!r.page?.button}, request started by itself ${!!r.page?.asked}`,
       evidence: ["542-signed-out"],
     },
   ];
