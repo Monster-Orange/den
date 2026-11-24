@@ -75,6 +75,11 @@ const A = "aaaaaaaaaaaaaaaa";
 const B = "bbbbbbbbbbbbbbbb";
 const C = "cccccccccccccccc";
 const three = [ask(A, "ana", 1), ask(B, "bo", 2), ask(C, "cy", 3)];
+/** The panel's Needs you section ("" when the panel is empty). */
+const needsOf = (p: object): string =>
+  "sections" in p
+    ? String((p as { sections: { needs: string } }).sections.needs)
+    : "";
 const held = (s: NotificationStore) =>
   s.list().filter((n) => n.subject.startsWith("record:held-"));
 
@@ -119,7 +124,7 @@ describe("issue 1406: the bell groups restart asks", () => {
   it("Needs you shows one card with a row per agent and one Allow", async () => {
     const { bellPanel } = await import("../../../src/ui/server/public/bell.js");
     const p = bellPanel({ groups: [], waiting: three.map(waiting), unread: 1 });
-    const needs: string = p.sections.needs;
+    const needs: string = needsOf(p);
     expect(needs.match(/data-kind="restart-group"/g)).toHaveLength(1);
     expect(needs).toContain("[bell.rg.title:3]");
     for (const id of [A, B, C])
@@ -136,7 +141,7 @@ describe("issue 1406: the bell groups restart asks", () => {
       { groups: [], waiting: three.map(waiting), unread: 1 },
       { restartOut: new Set([B]) },
     );
-    const needs: string = p.sections.needs;
+    const needs: string = needsOf(p);
     expect(needs).toContain(`data-ids="${A},${C}"`);
     expect(needs).toContain("[bell.rg.allow:2]");
     expect(needs).toContain(`data-bell="restart-in" data-ap="${B}"`);
@@ -149,8 +154,8 @@ describe("issue 1406: the bell groups restart asks", () => {
       waiting: [waiting(three[0])],
       unread: 1,
     });
-    expect(p.sections.needs).toContain(`data-bell="allow" data-ap="${A}"`);
-    expect(p.sections.needs).not.toContain("restart-group");
+    expect(needsOf(p)).toContain(`data-bell="allow" data-ap="${A}"`);
+    expect(needsOf(p)).not.toContain("restart-group");
   });
 
   it("the card's own bell item is not shown a second time", async () => {
@@ -175,6 +180,35 @@ describe("issue 1406: the bell groups restart asks", () => {
       waiting: three.map(waiting),
       unread: 1,
     });
-    expect(p.sections.needs).not.toContain('data-id="g1"');
+    expect(needsOf(p)).not.toContain('data-id="g1"');
+  });
+
+  it("every key the card and the ask use is in en, es and ja", () => {
+    const root = path.join(__dirname, "../../../src/ui/server/public");
+    const keys = [
+      "bell.m.restartGroup",
+      "bell.rg.title",
+      "bell.rg.sub",
+      "bell.rg.allow",
+      "bell.rg.allowing",
+      "bell.rg.takeOut",
+      "bell.rg.putBack",
+      "bell.rg.out",
+      "bell.rg.done",
+      "bell.rg.partly",
+      "ap.det.agent_restart_self.when",
+      "ap.det.agent_restart_self.tools",
+      "ap.det.agent_restart_self.update",
+      "ap.det.agent_restart_self.why",
+    ];
+    for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
+      const src = fs.readFileSync(path.join(root, f), "utf-8");
+      for (const k of keys)
+        expect({ f, k, has: src.includes(`"${k}"`) }).toEqual({
+          f,
+          k,
+          has: true,
+        });
+    }
   });
 });

@@ -2451,6 +2451,13 @@
       "Está detenido y sigue así: su próximo arranque es una conversación nueva allí.",
     "ap.det.agent_folder.self":
       "Es el agente que lo pidió: se detiene cuando lo permites, y su respuesta para ti termina ahí.",
+    "ap.det.agent_restart_self.when":
+      "Reinicia {agent} en su próximo momento libre, en la misma conversación. Nunca corta un turno.",
+    "ap.det.agent_restart_self.tools":
+      "Motivo: cargar herramientas nuevas de sus servidores MCP.",
+    "ap.det.agent_restart_self.update":
+      "Motivo: funcionar con el Den actualizado y sus herramientas.",
+    "ap.det.agent_restart_self.why": "Motivo: {why}",
     "ap.det.agent_mode.loosens": "Esto deja que {agent} actúe sin preguntarte.",
     "ap.det.agent_mode.now": "Ahora: su propio modo, {mode}",
     "ap.det.agent_mode.then": "Después: sigue al proyecto, {mode}",
@@ -2477,7 +2484,8 @@
       "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
     "ap.det.setting_change.key": "Ajuste: {key}",
     "ap.det.setting_change.now": "Ahora: {value}",
-    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDefault":
+      "Ahora: {value} (el valor predeterminado de Den)",
     "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
     "ap.det.setting_change.new": "Nuevo: {value}",
     "ap.det.setting_change.why": "Por qué: {why}",
@@ -2932,6 +2940,7 @@
     "bell.m.rsJob":
       "{id} no se reinició: hay una tarea en segundo plano ({cmd}, {min} min)",
     "bell.m.rsFailed": "{id} no se reinició",
+    "bell.m.restartGroup": "Reiniciar {n} agentes cuando estén libres: {names}",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":
@@ -3001,6 +3010,16 @@
     "rs.done": "{id}: reiniciado, en la misma conversación.",
     "rs.timedOut":
       "{id}: no se reinició, seguía trabajando tras {min} min. Reiniciar ahora termina su turno.",
+    "bell.rg.title": "Reiniciar {n} agentes cuando estén libres",
+    "bell.rg.sub":
+      "Cada uno se reinicia en su próximo momento libre, en la misma conversación.",
+    "bell.rg.allow": "Permitir {n}",
+    "bell.rg.allowing": "Permitiendo…",
+    "bell.rg.takeOut": "Quitar",
+    "bell.rg.putBack": "Volver a poner",
+    "bell.rg.out": "{name} (fuera)",
+    "bell.rg.done": "Permitido: {n} agentes se reinician cuando estén libres",
+    "bell.rg.partly": "Permitidos {n}; {failed} no se pudieron permitir",
     "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",

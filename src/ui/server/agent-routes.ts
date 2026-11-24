@@ -147,10 +147,8 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
-  restartMany,
   restartOutcomeOf,
   restartWaitOf,
-  type RestartOutcome,
   restartStateOf,
   staleAgents,
   agentHelpers,
@@ -226,8 +224,7 @@ import {
   runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
-import type { NotificationStore } from "../../shared/notifications.js";
-import { RestartLive } from "./restart-live.js";
+import { restartFollowed, restartLive } from "./restart-live.js";
 import { recordAction } from "./audit.js";
 import {
   agentFile,
@@ -3154,21 +3151,6 @@ async function toolsRoute(
   return true;
 }
 
-/** Issue 1407, part 2: this server's live restart status (one per server). */
-let LIVE: RestartLive | null = null;
-async function restartLive(): Promise<RestartLive> {
-  if (LIVE) return LIVE;
-  let store: Pick<NotificationStore, "add" | "remove"> | null = null;
-  try {
-    store = (await import("./notification-service.js")).notificationDeps()
-      .store;
-  } catch {
-    /* no bell here: the page still has it */
-  }
-  LIVE ??= new RestartLive({ store });
-  return LIVE;
-}
-
 /**
  * Issue 1407, part 2: GET /api/agents/restart-status: each agent of a bulk
  * restart, live (its state, and why it waits); a signed-in person's read
@@ -3288,17 +3270,12 @@ async function staleRoute(
     const one = (id: string, ws: string) =>
       `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
     // Part 2: the page and the bell follow each agent live (restartLive).
-    const live = await restartLive();
-    const outcomes: RestartOutcome[] = [];
-    let begun = false;
-    const plan = await restartMany(
+    const plan = await restartFollowed(
       d,
       list.map((a) => ({ id: a.id, workspace: a.workspace })),
       {
         ...(deps.personaWait ?? {}),
         onDone: (o) => {
-          if (begun) live.done(o);
-          else outcomes.push(o);
           if (o.outcome === "restarted") audit(one(o.id, o.workspace));
           else
             audit(
@@ -3312,9 +3289,6 @@ async function staleRoute(
         },
       },
     );
-    live.begin(plan);
-    begun = true;
-    for (const o of outcomes.splice(0)) live.done(o);
     for (const p of plan)
       if (p.state === "job" || p.state === "unknown")
         audit(

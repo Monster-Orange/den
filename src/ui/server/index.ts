@@ -1414,6 +1414,7 @@ import {
   type HeldCheck,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import { restartFollowed } from "./restart-live.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
@@ -5554,8 +5555,19 @@ function agentSandboxHeldOp() {
 function agentRestartSelfHeldOp() {
   const deps = (): RestartSelfDeps => ({
     record: (id) => agentRecord(agentWebDeps(), id),
+    // Issue 1406 on 1407: each Allowed agent restarts the way restart-stale
+    // does, checked first and followed live (the Agents page, and the bell
+    // when a job, a wait that ran out or a failure stops it).
     restart: (id, project) =>
-      restartAgent(agentWebDeps(), id, project, "after-turn").catch((e) => {
+      restartFollowed(agentWebDeps(), [{ id, workspace: project }], {
+        onDone: (o) => {
+          if (o.outcome !== "restarted")
+            serverLog(
+              `  ⚠ agent_restart_self: ${id} didn't restart (${o.outcome}). Restart it from the Agents page`,
+              "warn",
+            );
+        },
+      }).catch((e) => {
         serverLog(
           `  ⚠ agent_restart_self: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
           "warn",

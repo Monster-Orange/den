@@ -10,10 +10,12 @@
 import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
 import { jobCommandOf } from "../../shared/process/jobs.js";
 import { redactSecrets } from "../../shared/redact.js";
-import type {
-  RestartOutcome,
-  RestartPlan,
-  RestartState,
+import {
+  restartMany,
+  type AgentsResolved,
+  type RestartOutcome,
+  type RestartPlan,
+  type RestartState,
 } from "../cli/agent-ops.js";
 
 export type LiveState = RestartState | "restarted" | "timedOut" | "failed";
@@ -174,4 +176,48 @@ export class RestartLive {
       /* the bell is best effort: the audit has it */
     }
   }
+}
+
+/** This server's live restart status (one per server; its bell rows). */
+let SHARED: RestartLive | null = null;
+export async function restartLive(): Promise<RestartLive> {
+  if (SHARED) return SHARED;
+  let store: Pick<NotificationStore, "add" | "remove"> | null = null;
+  try {
+    store = (await import("./notification-service.js")).notificationDeps()
+      .store;
+  } catch {
+    /* no bell here: the page still has it */
+  }
+  SHARED ??= new RestartLive({ store });
+  return SHARED;
+}
+
+/**
+ * restartMany, followed live: each agent's plan goes into the live status,
+ * and each outcome after it (one that comes before the plan is in, held
+ * until it is). `o.onDone` hears each too (the audit). Issue 1406: the
+ * bell's grouped Allow restarts this way, as restart-stale does.
+ */
+export async function restartFollowed(
+  d: AgentsResolved,
+  agents: readonly { id: string; workspace: string }[],
+  o: Parameters<typeof restartMany>[2] = {},
+  live?: RestartLive,
+): Promise<RestartPlan[]> {
+  const l = live ?? (await restartLive());
+  const early: RestartOutcome[] = [];
+  let begun = false;
+  const plan = await restartMany(d, agents, {
+    ...o,
+    onDone: (x) => {
+      if (begun) l.done(x);
+      else early.push(x);
+      o?.onDone?.(x);
+    },
+  });
+  l.begin(plan);
+  begun = true;
+  for (const x of early.splice(0)) l.done(x);
+  return plan;
 }
