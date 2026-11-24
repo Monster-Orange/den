@@ -236,7 +236,7 @@ async function hubLeg(ctx) {
         ...fail("hub-identity", "Hub doesn't know the stub agents yet"),
       };
     await A.group(company, SLUG, {
-      name: "Gate 750 check",
+      name: "G750 check",
       leadAgent: `${idLead.install}:${idLead.agentKey}`,
       // escalates: left to the harness's default, the test Hub's fixture person.
       roles: { held: `${idHeld.install}:${idHeld.agentKey}` },
