@@ -231,3 +231,51 @@ describe("secrets: a reference may be asked for, never a value (issue 1391)", ()
     expect(c.error).not.toMatch(/ops_eyJ/);
   });
 });
+
+describe("every person-only setting has an ask path (Vision's ruling, issue 1391)", () => {
+  it.each([
+    ["agents.default_mode", "ask", true],
+    ["server_agent.self_update", "auto", true],
+    ["hub.allow_tools", false, true],
+    ["hub.delivery_loop", false, false],
+    ["hub.url", "https://hub.example.com", true],
+    ["alerts.desktop", false, false],
+    ["alerts.phone", true, false],
+    ["alerts.quiet.from", "22:00", false],
+    ["alerts.quiet.to", "07:00", false],
+    ["editor_open", "zed", false],
+    ["embed.origins", ["https://app.example.com"], true],
+    ["embed.url_max_chars", 4000, false],
+    ["web.machine_name", "studio", false],
+    ["shell.dock", true, false],
+    ["shell.pins", ["den"], true],
+  ] as const)("%s can be asked for (widens: %s)", (key, value, widens) => {
+    const c = ask(key, value);
+    if (!c.ok) throw new Error(`${key}: ${c.error}`);
+    expect([key, c.personOnly === true]).toEqual([key, widens]);
+  });
+
+  it.each([
+    ["agents.default_mode", "anything-goes"],
+    ["server_agent.self_update", "always"],
+    ["hub.allow_tools", "yes"],
+    ["hub.url", "ftp://hub.example.com"],
+    ["alerts.quiet.from", "25:99"],
+    ["editor_open", "notepad"],
+    ["embed.origins", ["not an origin"]],
+    ["web.machine_name", "a b\nc"],
+    ["shell.pins", "den"],
+  ] as const)("%s refuses what Settings refuses", (key, value) => {
+    expect(ask(key, value).ok).toBe(false);
+  });
+
+  it("a new Hub address drops the old token, as Settings does", () => {
+    writeUser(
+      "hub:\n  url: https://old.example.com\n  token: t0k\n  mcp_url: https://old.example.com/mcp\n",
+    );
+    const c = ask("hub.url", "https://new.example.com");
+    if (!c.ok) throw new Error(c.error);
+    expect(c.text).toMatch(/url: https:\/\/new\.example\.com/);
+    expect(c.text).not.toMatch(/token|mcp_url/);
+  });
+});

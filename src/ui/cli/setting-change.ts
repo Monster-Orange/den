@@ -42,6 +42,13 @@ import {
   settingChoice,
   type SettingCategory,
 } from "../../shared/approval-policy.js";
+import { patchHubAllowTools, patchHubUrl } from "../../shared/hub.js";
+import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchAlerts } from "../../shared/alerts.js";
+import { checkIntent } from "../../shared/agents/permissions.js";
+import { parseMachineName } from "../../shared/cli-command.js";
+import { patchEditorOpen } from "../server/editor-open-pref.js";
+import { patchEmbed } from "../server/embed-settings.js";
 import {
   isKnownEditorKey,
   isKnownTerminalKey,
@@ -146,6 +153,26 @@ export const NARROW_SETTINGS: readonly string[] = [
   "health_poll.visible_seconds",
   "health_poll.hidden_seconds",
   "hub.groups_cache_seconds",
+  // Vision's ruling (issue 1391): Settings' own fields, each named.
+  "hub.delivery_loop",
+  "alerts.desktop",
+  "alerts.phone",
+  "alerts.quiet.from",
+  "alerts.quiet.to",
+  "editor_open",
+  "web.machine_name",
+  "shell.dock",
+  "shell.collapsed",
+  "embed.url_max_chars",
+  "embed.feed_event_max_kb",
+  "embed.feed_events_per_minute",
+  "embed.feed_keep_events",
+  "embed.feed_list_max_mb",
+  "embed.feed_list_timeout_seconds",
+  "embed.feed_max_streams",
+  "embed.feed_read_max_kb",
+  "embed.context_max_kb",
+  "embed.paste_max_kb",
 ];
 
 /**
@@ -158,6 +185,16 @@ export const WIDENING_SETTINGS: readonly string[] = [
   ...USER_ONLY_WIDENING,
   // Issue 1391: the install's mode (personal opens it up).
   "install_mode",
+  // Vision's ruling (issue 1391): Settings' own fields an agent may ask for.
+  "agents.default_mode",
+  "server_agent.self_update",
+  "hub.allow_tools",
+  "hub.url",
+  "embed",
+  "embed.origins",
+  "embed.key_minutes",
+  "embed.app_key_audit_window_seconds",
+  "shell.pins",
   "approvals",
   "approvals.**",
   "editor",
@@ -223,9 +260,12 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "agents.keep_running_after_logout",
       "services.restore_on_boot",
       "local_dev",
+      "agents.default_mode",
+      "server_agent.self_update",
     ],
   ],
-  ["network", ["web.**", "embed.**"]],
+  ["look", ["web.machine_name"]],
+  ["network", ["web.**", "embed", "embed.**", "hub.url"]],
   [
     "integrations",
     [
@@ -553,6 +593,150 @@ function checkRuntimes(raw: unknown): void {
   }
 }
 
+type FieldPatch = (
+  user: Record<string, unknown>,
+  v: unknown,
+) => { ok: true } | { ok: false; error: string };
+
+/**
+ * Vision's ruling (issue 1391): no setting is the person's with no way for
+ * an agent to ask. Settings' own fields, each through the check Settings
+ * applies to it, and the other keys it may change with it (`also`).
+ */
+const FIELD_KEYS: readonly {
+  key: string;
+  patch: FieldPatch;
+  also?: readonly string[];
+}[] = [
+  {
+    key: "agents.default_mode",
+    patch: (u, v) => {
+      const agents = { ...((u.agents as Record<string, unknown>) ?? {}) };
+      if (v === null || v === "") delete agents.default_mode;
+      else
+        try {
+          agents.default_mode = checkIntent(v, "agents.default_mode");
+        } catch (e) {
+          return { ok: false, error: (e as Error).message };
+        }
+      if (Object.keys(agents).length) u.agents = agents;
+      else delete u.agents;
+      return { ok: true };
+    },
+  },
+  {
+    key: "server_agent.self_update",
+    also: ["server_agent.self_update_from"],
+    patch: (u, v) => {
+      const x = v ?? "ask";
+      if (x !== "ask" && x !== "auto")
+        return {
+          ok: false,
+          error: "server_agent.self_update: ask, auto or null",
+        };
+      const sa = { ...((u.server_agent as Record<string, unknown>) ?? {}) };
+      delete sa.self_update_from;
+      sa.self_update = x;
+      u.server_agent = sa;
+      return { ok: true };
+    },
+  },
+  { key: "hub.allow_tools", patch: patchHubAllowTools },
+  { key: "hub.delivery_loop", patch: patchHubDeliveryLoop },
+  {
+    key: "hub.url",
+    // A new address drops the token, never sent to another Hub.
+    also: ["hub.token", "hub.mcp_url"],
+    patch: (u, v) => {
+      const h = patchHubUrl(u, v);
+      return h.ok ? { ok: true } : h;
+    },
+  },
+  ...(["desktop", "phone"] as const).map((k) => ({
+    key: `alerts.${k}`,
+    patch: ((u, v) => patchAlerts(u as UserConfig, { [k]: v })) as FieldPatch,
+  })),
+  ...(["from", "to"] as const).map((k) => ({
+    key: `alerts.quiet.${k}`,
+    patch: ((u, v) =>
+      patchAlerts(u as UserConfig, { [`quiet_${k}`]: v })) as FieldPatch,
+  })),
+  { key: "editor_open", patch: (u, v) => patchEditorOpen(u as UserConfig, v) },
+  { key: "embed", patch: (u, v) => patchEmbed(u as UserConfig, v) },
+  {
+    key: "web.machine_name",
+    patch: (u, v) => {
+      let name: string | null;
+      try {
+        name = parseMachineName(v);
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+      const web = { ...((u.web as Record<string, unknown>) ?? {}) };
+      if (name) web.machine_name = name;
+      else delete web.machine_name;
+      if (Object.keys(web).length) u.web = web;
+      else delete u.web;
+      return { ok: true };
+    },
+  },
+  ...(["dock", "collapsed"] as const).map((k) => ({
+    key: `shell.${k}`,
+    patch: ((u, v) => {
+      if (v !== null && typeof v !== "boolean")
+        return { ok: false, error: `shell.${k}: true, false or null` };
+      setPath(u, `shell.${k}`, v);
+      return { ok: true };
+    }) as FieldPatch,
+  })),
+  {
+    key: "shell.pins",
+    patch: (u, v) => {
+      if (
+        v !== null &&
+        (!Array.isArray(v) ||
+          v.length > 200 ||
+          !v.every(
+            (x) =>
+              typeof x === "string" &&
+              /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(x),
+          ))
+      )
+        return {
+          ok: false,
+          error: "shell.pins: a list of repos or repo/service names, or null",
+        };
+      setPath(u, "shell.pins", v);
+      return { ok: true };
+    },
+  },
+];
+
+/** Issue 1391: Settings › Embedding's keys, each asked for on its own. */
+const EMBED_KEYS: readonly string[] = [
+  "origins",
+  "url_max_chars",
+  "key_minutes",
+  "context_max_kb",
+  "app_key_audit_window_seconds",
+  "feed_event_max_kb",
+  "feed_events_per_minute",
+  "feed_keep_events",
+  "feed_list_max_mb",
+  "feed_list_timeout_seconds",
+  "feed_max_streams",
+  "feed_read_max_kb",
+  "paste_max_kb",
+];
+
+/** Issue 1391: one embed setting, as Settings › Embedding checks it. */
+function embedPatch(u: Record<string, unknown>, key: string, v: unknown) {
+  const sub = key.slice("embed.".length);
+  if (!EMBED_KEYS.includes(sub))
+    return { ok: false as const, error: "", unknown: true as const };
+  return patchEmbed(u as UserConfig, { [sub]: v });
+}
+
 /** `config`'s top-level keys setting_change takes. */
 const TOP_LEVEL = [
   "install_mode",
@@ -621,6 +805,9 @@ function patchKey(
 ): Patch {
   const top = patchTopLevel(user, key, value);
   if (top) return top;
+  if (key.startsWith("embed.")) return embedPatch(user, key, value);
+  const field = FIELD_KEYS.find((f) => matchesSetting(f.key, key));
+  if (field) return field.patch(user, value);
   if (configKeyNames().includes(key)) return patchConfigKey(user, key, value);
   const entry = SETTING_KEYS.find((e) => matchesSetting(e.key, key));
   if (!entry)
@@ -705,6 +892,8 @@ export function settingChangeKeys(): string[] {
     ...TOP_LEVEL,
     ...configKeyNames().filter((k) => k.includes(".")),
     ...SETTING_KEYS.map((e) => e.key),
+    ...FIELD_KEYS.map((e) => e.key),
+    ...EMBED_KEYS.map((k) => `embed.${k}`),
   ];
 }
 
@@ -713,6 +902,7 @@ function nearest(key: string): string | undefined {
   const known = [
     ...configKeyNames().filter((k) => k.includes(".")),
     ...SETTING_KEYS.filter((e) => !e.key.includes("*")).map((e) => e.key),
+    ...FIELD_KEYS.map((e) => e.key),
   ];
   const dist = (a: string, b: string) => {
     const d = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -857,7 +1047,8 @@ export function checkSettingChange(
     const parts = key.split(".");
     const own = (c: string[]) =>
       parts.every((s, i) => c[i] === s) || c.every((s, i) => parts[i] === s);
-    const stray = changed.find((c) => !own(c));
+    const also = FIELD_KEYS.find((f) => matchesSetting(f.key, key))?.also ?? [];
+    const stray = changed.find((c) => !own(c) && !also.includes(c.join(".")));
     if (stray)
       return no(
         `${key} would also change ${stray.join(".")}: ask for each setting on its own`,
