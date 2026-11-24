@@ -377,8 +377,12 @@ function groupsHtml(groups, ui, needs = false) {
     .map(
       (g) =>
         `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
-        (!needs && g.subjects.some((s) => s.items.some((n) => !n.read))
-          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
+        // Issue 1339: while a Mark read runs, its button stays, busy in
+        // itself, and the others wait.
+        (!needs &&
+        (ui?.busy === `scope:${g.scope}` ||
+          g.subjects.some((s) => s.items.some((n) => !n.read)))
+          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy ? ' disabled aria-busy="true"' : ""}>${esc(tr(ui?.busy === `scope:${g.scope}` ? "bell.marking" : "bell.read"))}</button>`
           : "") +
         `</div>` +
         g.subjects.map((s) => subjectHtml(g.scope, s, ui)).join("") +
@@ -515,24 +519,64 @@ async function post(path, body) {
   }
 }
 
-/** Each group's items through `f` (null drops it); empty groups go. */
+/**
+ * Issue 1339: a project's Mark read: the server marks its items read in
+ * every list (Needs you, Updates, Older); the unread counts drop to match.
+ */
+function scopeRead(b, scope) {
+  let marked = 0;
+  const f = (n, g) => {
+    if (g.scope !== scope || n.read) return n;
+    marked++;
+    return { ...n, read: true };
+  };
+  const taken = () => {
+    const k = marked;
+    marked = 0;
+    return k;
+  };
+  const groups = eachItem(b.groups, f);
+  const fromNeeds = taken();
+  const upd = b.updates ?? { count: 0, unread: 0, groups: [] };
+  const updGroups = eachItem(upd.groups, f);
+  const fromUpdates = taken();
+  const old = b.older ?? { count: 0, groups: [] };
+  return {
+    ...b,
+    unread: Math.max(0, (b.unread ?? 0) - fromNeeds),
+    groups,
+    updates: {
+      ...upd,
+      groups: updGroups,
+      unread: Math.max(0, (upd.unread ?? 0) - fromUpdates),
+    },
+    older: { ...old, groups: eachItem(old.groups, f) },
+  };
+}
+
+/** Each group's items through `f(n, g)` (null drops it); empty groups go. */
 function eachItem(groups, f) {
   return (groups ?? [])
     .map((g) => ({
       ...g,
       subjects: g.subjects
-        .map((sub) => ({ ...sub, items: sub.items.map(f).filter(Boolean) }))
+        .map((sub) => ({
+          ...sub,
+          items: sub.items.map((n) => f(n, g)).filter(Boolean),
+        }))
         .filter((sub) => sub.items.length),
     }))
     .filter((g) => g.subjects.length);
 }
 
 /**
- * Issue 1339: the bell as it will be once "Mark all read" (`all`) or
- * "Clear read" (`clear`) is done, to show at once while the POST runs.
+ * Issue 1339: the bell as it will be once "Mark all read" (`all`), "Clear
+ * read" (`clear`) or a project's Mark read (`scope`, with its scope) is
+ * done, to show at once while the POST runs.
  */
-export function bellAfter(b, what) {
+export function bellAfter(b, what, scope) {
   if (!b) return b;
+  if (what === "scope") return scopeRead(b, scope);
   const f =
     what === "all"
       ? (n) => (n.read ? n : { ...n, read: true })
@@ -729,18 +773,21 @@ export function initBell(doc = document) {
       await refresh();
       return;
     }
-    if (what === "all" || what === "clear") {
+    if (what === "all" || what === "clear" || what === "scope") {
       // Issue 1339: the rows change at once, the button shows busy in
       // itself, and an error puts the rows back (with its toast).
       if (ui.busy || !last) return;
       const before = last;
-      ui.busy = what;
-      last = bellAfter(last, what);
+      const scope = el.dataset.scope;
+      ui.busy = what === "scope" ? `scope:${scope}` : what;
+      last = bellAfter(last, what, scope);
       bell.setCount((last.unread ?? 0) + overrunsOf(last).length);
       paint();
       const ok = await post(
-        what === "all" ? "/api/notifications/read" : "/api/notifications/clear",
-        what === "all" ? { all: true } : {},
+        what === "clear"
+          ? "/api/notifications/clear"
+          : "/api/notifications/read",
+        what === "all" ? { all: true } : what === "scope" ? { scope } : {},
       );
       ui.busy = null;
       if (!ok) {
@@ -750,9 +797,7 @@ export function initBell(doc = document) {
       paint();
       if (ok) await refresh();
       return;
-    } else if (what === "scope")
-      await post("/api/notifications/read", { scope: el.dataset.scope });
-    else if (what === "fold" || what === "older" || what === "updates") {
+    } else if (what === "fold" || what === "older" || what === "updates") {
       if (what === "older") ui.older = !ui.older;
       else if (what === "updates") ui.updates = !ui.updates;
       else if (!ui.folds.delete(el.dataset.key)) ui.folds.add(el.dataset.key);

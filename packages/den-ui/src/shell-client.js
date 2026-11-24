@@ -174,6 +174,28 @@ export function hydrateShell(root, opts = {}) {
     for (const a of links) a.tabIndex = a === stop ? 0 : -1;
   }
 
+  // Issue 1341: the sticky foot's height, as the rail's scroll padding,
+  // so a focused entry scrolls to above the foot. Kept as the foot
+  // changes size (the account's lines, the drawer's Report).
+  const footRo =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => padFoot())
+      : null;
+  function padFoot() {
+    const f = nav && nav.querySelector(".den-rail-foot");
+    if (!nav) return;
+    if (f) nav.style.setProperty("--den-rail-foot-h", f.offsetHeight + "px");
+    else nav.style.removeProperty("--den-rail-foot-h");
+  }
+  function watchFoot() {
+    if (!nav) return;
+    if (footRo) footRo.disconnect();
+    const f = nav.querySelector(".den-rail-foot");
+    if (f && footRo) footRo.observe(f);
+    padFoot();
+  }
+  watchFoot();
+
   let lastHtml = null;
   function paint(html, force) {
     if (!nav || (!force && html === lastHtml)) return false;
@@ -185,6 +207,7 @@ export function hydrateShell(root, opts = {}) {
         : null;
     lastHtml = html;
     nav.innerHTML = html;
+    watchFoot();
     rove();
     if (keep) {
       const again = nav.querySelector('[data-nav="' + keep + '"]');
@@ -250,9 +273,10 @@ export function hydrateShell(root, opts = {}) {
     railBox.setAttribute("aria-label", kitT(lang(), "kit.pages"));
     // Issue 81: the drawer's scrim covers the top bar (and its Report), so
     // the drawer has Report of its own while it is open; never on the
-    // wide rail (issue 94: Report is in the top bar there).
+    // wide rail (issue 94: Report is in the top bar there). It ends the
+    // rail's foot, so it stays in view with it (issue 1341).
     if (nav && !nav.querySelector(".den-rb-drawer"))
-      nav.insertAdjacentHTML(
+      (nav.querySelector(".den-rail-foot") || nav).insertAdjacentHTML(
         "beforeend",
         '<div class="den-rb-foot den-rb-drawer" data-den-drawer-report>' +
           reportButtonHtml({ inFoot: true, lang: lang() }) +

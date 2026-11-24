@@ -149,6 +149,8 @@ export const PERSON_ONLY_SETTINGS = [
   "hub_allow_tools",
   // Issue 158: the Hub delivery loop in every agent's instructions.
   "hub_delivery_loop",
+  // Issue 750: whether, and how long, Den reads Hub's groups.
+  "hub_groups",
   // Issue 267: Hub's address (an agent asks with hub_connect).
   "hub_url",
   // The programs Den runs when a person opens a file or a terminal.

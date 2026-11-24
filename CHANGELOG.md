@@ -4,17 +4,23 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.88] - unreleased
-
-### Added
-
-- Groups (off by default; turn on with `hub.groups`). The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30). (issue 750)
-- UI kit 0.14.0: a group header component.
+## [0.4.89] - unreleased
 
 ### Fixed
 
 - web.log keeps the server's lifecycle, warning and error lines when the server runs with `--silent`, as `web up` (by default) and a service run it. A test install's fixture sign-in line ("fixture person signed in (live checks, a test install)") was in audit.jsonl but not in web.log. With the server's output a terminal or a pipe, these lines are also added to `logs/<cli>/web.log` in Den's state folder. No line is written twice. (issue 1344)
 
+## [0.4.88] - unreleased
+
+### Added
+
+- Groups from Den Hub. They show by themselves when your Den Hub supports groups. Set this in Settings › Hub › Groups from Hub (Auto, On or Off), or with `den config hub.groups=auto|on|off`. Off never asks Hub. The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30, from 5 to 3600; also in Settings). `den hub groups` prints the same read as the page. (issue 750)
+- UI kit 0.14.0: a group header component.
+- Agents: a person can turn one agent's sandbox off, or back on, from a held write the agent asks for (`agent_sandbox_set`). Turning it off always waits for the person's own Allow, and the card says when an agent asks for itself; turning it back on runs at once. The setting follows the agent: it goes when the agent is removed, and creating or importing an agent that would start outside the sandbox needs the person too. Den restarts only that agent, and Doctor lists every agent running outside the sandbox with who turned it off and why. (issue 1328)
+
+### Fixed
+
+- UI kit 0.14.1: the rail's foot (Settings, the account entry, Collapse, and the drawer's Report) stays in view when the rail's groups are taller than the window; the groups scroll above it, and an entry reached by keyboard stops above the foot, never under it. The foot entries now sit in one `.den-rail-foot` element after the spacer: a host that walks the rail's children finds them there. (issue 1341)
 - Agents' git commits sign again inside the sandbox when the person's git signs with GPG. The sandbox keeps the person's GPG key out of reach, so agents now sign with their own SSH key by default when the person's git signs commits: an install-owned key, made once, readable to agent sessions and never writable by them. `agents.git.signing_key` still picks a key, which must sit outside Den's state folder or in its `agent-signing` folder (Doctor says so if not), and `agents.git.signing: off` keeps the old behaviour. Doctor checks signing inside the sandbox and shows the one-time step that makes GitHub show the agents' commits as Verified. When gpg fails inside a session, the note says why. (issue 1316)
 - A message Den delivers to an agent (a Hub comment, a lead or group message, the tools note) no longer sends the person's unsent draft with it. While the person has text on the agent's input line, deliveries wait in order, and the agent's terminal shows how many are waiting. Den never submits a draft; after `agents.draft_hold_max_minutes` (default 30) the person is belled once and deliveries keep waiting. A draft typed outside Den's terminal (for example a local tmux attach) isn't seen. (issue 1311)
 - On the Agents page, a tab or row the person picks while the page is still opening the panes its link asked for stays in front; the rest open behind it. Once every pane is open, picks and `?front=` work as before. (issue 1315)
@@ -23,6 +29,9 @@ config and manifest changes a distribution must make to move to it under
 - Doctor and Hub link suggestions skip a project with no repos, services or agents, the built-in `default` included: no warning and no suggestion. Rows for things not set up or not in use yet (sign-in with no address, push, the secrets, usage, runtime and session strategies) say so instead of warning. (issue 1334)
 - The bell's "Mark all read" and "Clear read" are quick again: one write for all entries, the button shows busy in itself, and the rows change at once (and come back with a message if the change fails). Refreshing the bell no longer waits for the machine-wide test-run lock, which could stall every page while a test run held it. (issue 1339)
 - The Tests module picker moves into place when its list finishes loading after it opened, so no rows are left out of view or under the output pane. (issue 1343)
+- Agents: when the sandbox refuses `ps`, `top`, `sudo` or the Docker socket, the note says it's the sandbox, why, and what to use instead, rather than blaming Den's state. A call that succeeded gets no note, even when its output mentions "Operation not permitted". (issues 1326, 1357)
+- The server never waits on its own thread for the machine-wide test-run lock or for a memory reading: it waits by timer, and a request that can't get the lock in time gets "busy, try again" (503 with Retry-After) instead of stalling every page. When the memory reading is missing or stale, new test runs hold until it's known again; the last good reading counts for the gate setting `memory_reading_keep_seconds` (default 30). Platforms with no reading say "not measured". (issue 1349)
+- The bell's per-project "Mark read" shows busy in its button and marks that project's rows at once, and puts them back with a message if the change fails. (issue 1339)
 
 ## [0.4.87] - 2026-11-23
 

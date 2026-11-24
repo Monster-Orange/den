@@ -717,6 +717,41 @@ describe("issue 199: agent_mode", () => {
   });
 });
 
+describe("issue 1328: agent_sandbox_set", () => {
+  it("asks with the agent, on and the reason; a project's agent's ask names its project", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, agent: "ana", sandbox: "off", restarts: true },
+    }));
+    const r = await callTool(
+      "agent_sandbox_set",
+      { agent: "ana", on: false, reason: "it needs Docker" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "agent_sandbox_set",
+      args: { agent: "ana", on: false, reason: "it needs Docker" },
+    });
+    const n = calls.length;
+    await callTool(
+      "agent_sandbox_set",
+      { agent: "ana", on: true },
+      ctx(api, true),
+    );
+    expect(
+      calls.slice(n).find((c) => c.path === "/api/approvals")?.body,
+    ).toEqual({
+      action: "agent_sandbox_set",
+      args: { agent: "ana", on: true, project: "north" },
+    });
+    const none = await callTool("agent_sandbox_set", { on: false }, ctx(api));
+    expect(none.isError).toBe(true);
+    expect(none.text).toMatch(/agent/);
+  });
+});
+
 describe("issue 271: hub_project_create", () => {
   it("asks with the project and the name; the name may be left to Den", async () => {
     const { api, calls } = fakeApi([], () => ({

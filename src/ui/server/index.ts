@@ -252,6 +252,7 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
@@ -656,6 +657,8 @@ import {
   forgetHubToken,
   hubTokenProblem,
   patchHubAllowTools,
+  patchHubGroups,
+  hubGroupsMode,
   patchHubUrl,
   readHubConfig,
   type HubConfig,
@@ -1387,6 +1390,12 @@ import {
   sandboxOnHeldOp,
 } from "../../shared/agents/sandbox-rollout.js";
 import {
+  checkAgentSandboxSet,
+  runAgentSandboxSet,
+  writeSandboxNote,
+  type SandboxSetDeps,
+} from "../../shared/agents/sandbox-set.js";
+import {
   approvalsView,
   patchApprovals,
   pinsAsWatched,
@@ -1480,6 +1489,7 @@ import {
   agentInputState,
   checkAgentCreate,
   checkAgentFolder,
+  agentRecord,
   checkAgentMode,
   checkPersonaCreate,
   checkPersonaUpdate,
@@ -1492,10 +1502,12 @@ import {
   runProjectMcpUpdate,
   createAgent,
   runAgentFolder,
+  restartAgent,
   runAgentMode,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
+  importSandboxOff,
   runAgentImport,
   personaLookup,
   hubUpstream,
@@ -5041,6 +5053,14 @@ function approvalDeps(): ApprovalDeps {
     testPersonSetup: testPersonSetupAction(testPersonSetupDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 1328: an agent brought in outside the sandbox needs the person.
+    agentImportSandbox: (persona) => {
+      try {
+        return importSandboxOff(agentWebDeps(), persona);
+      } catch {
+        return null;
+      }
+    },
     // Issue 160: an agent closes a stale or superseded pull request after
     // a Hub note (auto unless the repo is watched or pinned).
     prClose: async ({ repo, pr, comment }) => {
@@ -5204,6 +5224,8 @@ function approvalDeps(): ApprovalDeps {
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
     },
+    // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
+    agentSandbox: agentSandboxHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5391,6 +5413,36 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * expired: its item goes). Issue 742: the queue is made at the start, so
  * what waited before a restart is read back and shows in the bell.
  */
+/**
+ * Issue 1328: agent_sandbox_set on this install: the agent's record, the
+ * resolved agents config, the one user.yml key, the note in the state
+ * folder, and Restart after its turn (the conversation kept).
+ */
+function agentSandboxHeldOp() {
+  const deps = (): SandboxSetDeps => ({
+    record: (id, project) => agentRecord(agentWebDeps(), id, project),
+    agentsConfig: () => readAgentsConfig(),
+    write: (id, on) => setUserAgentSandbox(id, on),
+    note: (id, n) => writeSandboxNote(getStateDir(), id, n),
+    restart: (id, project) =>
+      restartAgent(agentWebDeps(), id, project, "after-turn").catch((e) => {
+        serverLog(
+          `  ⚠ agent_sandbox_set: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
+          "warn",
+        );
+      }),
+    now: () => new Date().toISOString(),
+  });
+  return {
+    check: (
+      a: Record<string, unknown>,
+      who?: { agent?: string; project?: string },
+    ) => checkAgentSandboxSet(deps(), a, who),
+    run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
 /** Issue 936: den_sandbox_on, counting the agents from before it now. */
 function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
   return sandboxOnHeldOp({
@@ -9929,6 +9981,9 @@ async function handleRequest(
   //     Hub's tools without asking); null clears it (on)
   //   hub_delivery_loop: true | false, hub.delivery_loop (issue 158: the
   //     Hub delivery loop in agents' instructions); null clears it (on)
+  //   hub_groups: { mode?: auto | on | off, cache_seconds?: 5..3600 },
+  //     hub.groups and hub.groups_cache_seconds (issue 750: groups from
+  //     Hub on the agents page); null clears one (auto, 30)
   //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
   //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -9999,6 +10054,17 @@ async function handleRequest(
         agents_default_mode: user.agents?.default_mode ?? null,
         // Issue 1022: how often the page polls health, visible and hidden.
         health_poll: healthPollSeconds(() => user),
+        // Issue 750: groups from Hub (user.yml hub.groups, auto by default).
+        hub_groups: (() => {
+          const h = (user as Record<string, unknown>).hub as
+            | { groups?: unknown; groups_cache_seconds?: unknown }
+            | undefined;
+          const c = h?.groups_cache_seconds;
+          return {
+            mode: hubGroupsMode(h?.groups) ?? "auto",
+            cache_seconds: typeof c === "number" ? c : 30,
+          };
+        })(),
         // Issue 158: the Hub delivery loop in agents' instructions.
         hub_delivery_loop:
           (
@@ -10082,6 +10148,7 @@ async function handleRequest(
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_delivery_loop?: unknown;
+          hub_groups?: unknown;
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
@@ -10252,6 +10319,15 @@ async function handleRequest(
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // Issue 750: hub.groups and hub.groups_cache_seconds (Settings ›
+        // Hub › Groups from Hub); null clears one.
+        if (body.hub_groups !== undefined) {
+          const h = patchHubGroups(
+            user as Record<string, unknown>,
+            body.hub_groups,
           );
           if (!h.ok) return send400(res, h.error);
         }
