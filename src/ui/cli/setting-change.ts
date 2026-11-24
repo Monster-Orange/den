@@ -1172,7 +1172,7 @@ function baselinesAfter(
 export function personSetCaps(
   was: UserConfig,
   now: UserConfig,
-  den: DenConfig = {} as DenConfig,
+  den: DenConfig,
 ): void {
   for (const key of CAP_KEYS) {
     if (storedBaseline(now, key) === undefined) continue;

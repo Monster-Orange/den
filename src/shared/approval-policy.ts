@@ -172,7 +172,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "installs another Den version (a release)",
   },
   den_restart: {
-    personal: "keep",
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
@@ -188,7 +187,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
   },
   agent_create: {
-    personal: "keep",
     risk: "widens",
     why: "starts an agent in the project's mode or a stricter one; one that would start outside the sandbox is the person's (issue 1328)",
   },
@@ -259,7 +257,6 @@ export const HELD_WRITE_RISK: Readonly<
     why: "changes the approval policy itself: a person's only",
   },
   agent_import: {
-    personal: "keep",
     risk: "widens",
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it; one that would start outside the sandbox is the person's (issue 1328)",
