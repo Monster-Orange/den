@@ -292,7 +292,7 @@ export async function run(ctx, s) {
   return out;
 }
 
-export async function teardown(ctx) {
+export async function teardown() {
   const d = D2;
   D2 = null;
   if (!d) return;
@@ -313,7 +313,8 @@ export async function teardown(ctx) {
 
 export function expect(cells) {
   // With a matrix the bed passes [{ cell, result }]: one cell here.
-  const r = (Array.isArray(cells) ? cells[0]?.result : cells) ?? {};
+  const [only] = Array.isArray(cells) ? cells : [{ result: cells }];
+  const r = only?.result ?? {};
   if (r.skip === "needs-den2")
     return skipAll("needs-den2", "the bed gives no ctx.den2");
   if (r.skip === "needs-den2-person")
