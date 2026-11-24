@@ -830,7 +830,11 @@ function runOnce(
  * ssh that connects but stalls at the banner is unreachable and never
  * hangs its callers.
  */
-export function sftpProbe(start: typeof spawn): BoxProbe {
+export function sftpProbe(
+  start: typeof spawn,
+  /** Issue 1381: where the private folder is made (tests give one). */
+  tmpRoot: () => string = os.tmpdir,
+): BoxProbe {
   return async (box, timeoutMs) => {
     // Issue 1017: with several Playwright servers, the first is reached.
     // Issue 625: by a WebSocket upgrade, never a bare TCP connect.
@@ -856,7 +860,7 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
     // macOS sftp can't write a -get to a pipe (/dev/stdout): no text.
     let dir: string;
     try {
-      dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-box-"));
+      dir = fs.mkdtempSync(path.join(tmpRoot(), "den-box-"));
       fs.chmodSync(dir, 0o700);
     } catch (e) {
       return {
@@ -867,6 +871,17 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       };
     }
     const meminfo = path.join(dir, "meminfo");
+    // The path goes into the batch in quotes: one with a quote, a backslash
+    // or a line break (TMPDIR is the environment's) could end it or add a
+    // command (a local `!` shell, a remote rm).
+    if (/["\\\r\n]/.test(meminfo)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return {
+        state: "unknown",
+        reason:
+          "memory unknown: the temp folder's path can't go in an sftp batch",
+      };
+    }
     let r: Awaited<ReturnType<typeof runOnce>>;
     let memText = "";
     try {
@@ -880,7 +895,18 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
         capMs,
       );
       try {
-        memText = fs.readFileSync(meminfo, "utf-8").slice(0, 65536);
+        // At most 64 KB is read, whatever the box sent.
+        const fd = fs.openSync(meminfo, "r");
+        try {
+          const buf = Buffer.alloc(65536);
+          memText = buf.toString(
+            "utf-8",
+            0,
+            fs.readSync(fd, buf, 0, buf.length, 0),
+          );
+        } finally {
+          fs.closeSync(fd);
+        }
       } catch {
         // Not there (no /proc/meminfo, or the box wasn't reached).
       }

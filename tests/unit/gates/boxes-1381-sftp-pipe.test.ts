@@ -11,6 +11,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { EventEmitter } from "events";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { sftpProbe, type GateBox } from "../../../src/shared/gates/boxes.js";
 
@@ -140,5 +141,45 @@ describe("issue 1381: a Linux box's memory from a macOS gate host", () => {
     // The fake answers no ssh: the macOS path ran, and its answer is unknown.
     expect(seen.cmds).toEqual(["sftp", "ssh"]);
     expect(r.state).toBe("unknown");
+  });
+
+  it.each([
+    ["a quote", 'a"b'],
+    ["a backslash", "a\\b"],
+  ])(
+    "a temp folder whose path holds %s: unknown, and sftp never starts",
+    async (_what, name) => {
+      const base = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), "den-1381-")),
+      );
+      const odd = path.join(base, name);
+      fs.mkdirSync(odd);
+      try {
+        const seen: Seen = { stdin: "", cmds: [] };
+        // As a TMPDIR naming that folder would make os.tmpdir() say.
+        const r = await sftpProbe(
+          macSftp({ "/proc/meminfo": LINUX_MEMINFO }, seen) as never,
+          () => odd,
+        )(BOX, 2000);
+        expect(r.state).toBe("unknown");
+        expect(r.reason).toMatch(/memory unknown/);
+        expect(seen.cmds).toEqual([]);
+        // Nothing is left in the odd folder.
+        expect(fs.readdirSync(odd)).toEqual([]);
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("a huge meminfo is read only to 64 KB: MemAvailable within it still counts", async () => {
+    const seen: Seen = { stdin: "", cmds: [] };
+    const big = LINUX_MEMINFO + "x".repeat(70_000) + "\nMemAvailable: 1 kB\n";
+    const r = await sftpProbe(macSftp({ "/proc/meminfo": big }, seen) as never)(
+      BOX,
+      2000,
+    );
+    expect(r.state).toBe("open");
+    expect(r.freeMemMb).toBeCloseTo(8000000 / 1024);
   });
 });
