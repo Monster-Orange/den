@@ -35,9 +35,23 @@ import * as path from "path";
 import { AUDIT_FILE } from "./audit-file.js";
 import { writeFileAtomic } from "./atomic-write.js";
 
+/** The queue an agent's sandbox may write (its one writable state folder). */
 export const AUDIT_QUEUE_DIR = path.join("audit", "cli-queue");
+/**
+ * The person's CLI's own queue: in the state folder, which an agent's
+ * sandbox makes read-only, so an agent can't change or remove what's in
+ * it. A process that can't write it (a sandboxed one) queues in
+ * AUDIT_QUEUE_DIR instead.
+ */
+export const AUDIT_PERSON_QUEUE_DIR = "audit-person-queue";
 /** The server's own folder a queue is moved into to be read. */
 export const AUDIT_INTAKE_DIR = "audit-intake";
+/** In AUDIT_INTAKE_DIR: queues moved in whole, read a part a pass. */
+const BATCHES = "batches";
+/** In AUDIT_INTAKE_DIR: entries in the order they arrived, to take in. */
+export const AUDIT_PENDING_DIR = "pending";
+/** In AUDIT_INTAKE_DIR: what isn't an entry, removed a part a pass. */
+const TRASH = "trash";
 
 /** The verbs a process outside the server records (ConfigAuditRow's). */
 export const QUEUED_VERBS: readonly string[] = [
@@ -87,11 +101,9 @@ export interface QueuedAuditRow extends CliAuditRow {
 
 /** One line, printable characters only, at most `max` long. */
 export function cleanLine(v: unknown, max: number): string {
-  const line = String(v ?? "").split(/[\r\n]/)[0];
-  return [...line]
-    .filter((c) => c >= " " && c !== "\u007f")
-    .join("")
-    .slice(0, max);
+  const line = String(v ?? "").split(/[\r\n\u0085\u2028\u2029]/)[0];
+  // Controls (C0, C1), format and bidi marks, line and paragraph breaks.
+  return line.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").slice(0, max);
 }
 
 /** A row's fields as the server keeps them, or null when it isn't one. */
@@ -120,20 +132,28 @@ export function queueAuditRow(
   stateDir: string,
   row: CliAuditRow & { principal?: string; at?: string },
 ): string {
-  const dir = path.join(stateDir, AUDIT_QUEUE_DIR);
   // Sorted by name in the order written: the time, then a tie-breaker.
   const id = `${Date.now().toString().padStart(15, "0")}-${process.pid}-${String(seq++ % 1e9).padStart(9, "0")}-${randomBytes(4).toString("hex")}`;
-  const write = () => {
+  const write = (rel: string) => {
+    const dir = path.join(stateDir, rel);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileAtomic(path.join(dir, `${id}.json`), JSON.stringify(row) + "\n", {
       mode: 0o600,
     });
   };
+  const tryBoth = () => {
+    try {
+      write(AUDIT_PERSON_QUEUE_DIR);
+    } catch {
+      // Not writable here (an agent's sandbox): the queue it may write.
+      write(AUDIT_QUEUE_DIR);
+    }
+  };
   try {
-    write();
+    tryBoth();
   } catch {
     // The server may have just moved the folder in for its intake.
-    write();
+    tryBoth();
   }
   return id;
 }
@@ -141,11 +161,12 @@ export function queueAuditRow(
 /** Remove a queued entry the server has recorded (the sender's own). */
 export function unqueueAuditRow(stateDir: string, id: string): void {
   if (!ID.test(id)) return;
-  try {
-    fs.unlinkSync(path.join(stateDir, AUDIT_QUEUE_DIR, `${id}.json`));
-  } catch {
-    /* taken in already */
-  }
+  for (const rel of [AUDIT_PERSON_QUEUE_DIR, AUDIT_QUEUE_DIR])
+    try {
+      fs.unlinkSync(path.join(stateDir, rel, `${id}.json`));
+    } catch {
+      /* not this queue's, or taken in already */
+    }
 }
 
 /** One queued entry, or null when it isn't one. Never follows a link. */
@@ -193,16 +214,18 @@ function entryNames(dir: string): string[] {
 
 export interface IntakeCounts {
   taken: number;
-  /** Not entries: bad JSON, another verb, too big, a link. */
+  /** Not entries (a name not an id, bad JSON, another verb, too big, a link), removed. */
   dropped: number;
-  /** Entries past this pass's cap. */
-  overCap: number;
   /** Copies of entries the server already took when they were sent. */
   duplicate: number;
-  /** Copies younger than the settle time, left for their send to remove. */
+  /** Younger than the settle time, left for a later pass. */
   waiting: number;
+  /** Past this pass's cap, left pending for a later pass (never removed). */
+  deferred: number;
   /** Queue folders that weren't one (a link put in its place), removed. */
   refused: number;
+  /** Passes that left a queue where it was: the intake was full. */
+  full: number;
 }
 
 const uid = (): number | null =>
@@ -255,25 +278,88 @@ export function sentAuditBudget(
 
 /** How long a queued copy is left for its send to remove it. */
 export const SETTLE_MS = 15_000;
-
-/** The server's own folder (in AUDIT_INTAKE_DIR) where copies settle. */
-export const AUDIT_PENDING_DIR = "pending";
-/** At most this many copies wait to settle; more are dropped, counted. */
+/** At most this many entries wait pending; past it, queues wait where they are. */
 const MAX_PENDING = 2 * MAX_PER_HOUR;
+/** At most this many queues moved in and not read through yet. */
+const MAX_BATCHES = 8;
+/** Names a pass reads from moved-in queues, and removals it makes. */
+const SCAN_PER_PASS = 2000;
+const NAME = /^(\d{15}-\d{1,10}-\d{9}-[0-9a-f]{8})\.json$/;
+/** Arrival order of what this server moves pending. */
+let arrived = 0;
+const arrival = () =>
+  `${Date.now().toString().padStart(15, "0")}-${String(arrived++ % 1e9).padStart(9, "0")}`;
+
+/** At most `max` names in `dir` (a directory read, never all of it). */
+function someNames(dir: string, max: number): fs.Dirent[] {
+  const out: fs.Dirent[] = [];
+  let d: fs.Dir | null = null;
+  try {
+    d = fs.opendirSync(dir);
+    for (let e = d.readSync(); e && out.length < max; e = d.readSync())
+      out.push(e);
+  } catch {
+    /* gone */
+  } finally {
+    d?.closeSync();
+  }
+  return out;
+}
 
 /**
- * The server's intake pass, in two steps.
+ * Removes at most `budget` things under `dir` (files, links, then the
+ * emptied folders), never following a link; `dir` itself stays.
+ */
+function removeSome(dir: string, budget: number): void {
+  let ops = 0;
+  const stack = [dir];
+  while (stack.length && ops < budget) {
+    const top = stack[stack.length - 1];
+    const [e] = someNames(top, 1);
+    if (!e) {
+      stack.pop();
+      if (top !== dir) {
+        ops++;
+        try {
+          fs.rmdirSync(top);
+        } catch {
+          /* tried again next pass */
+        }
+      }
+      continue;
+    }
+    const p = path.join(top, e.name);
+    if (e.isDirectory()) {
+      stack.push(p);
+      continue;
+    }
+    ops++;
+    try {
+      fs.unlinkSync(p);
+    } catch {
+      return;
+    }
+  }
+}
+
+/**
+ * The server's intake pass. Every path it reads, moves or removes is in
+ * its own AUDIT_INTAKE_DIR, but for the one lstat and one rename that
+ * move each queue in; nothing is ever written back to a queue's path.
  *
- * 1. In: the queue folder is moved whole into the server's own intake
- *    folder, and each entry in it into AUDIT_PENDING_DIR there. After its
- *    move nothing in the pass goes back to the queue's path: nothing is
- *    ever written where an agent may write (or where a link it put there
- *    points).
- * 2. Take: each pending entry at least `settleMs` old (its sender may
- *    still send it), oldest first, goes to `record`, at most `max` and
- *    MAX_BYTES_PER_PASS bytes; a copy of one `seen` says the server took
- *    when it was sent is dropped as a duplicate. Younger ones wait for a
- *    later pass.
+ * 1. What isn't an entry is removed, a part a pass (SCAN_PER_PASS).
+ * 2. Each queue (the person's, then the agents') is moved in whole, while
+ *    there is room (pending under `maxPending`, under MAX_BATCHES queues
+ *    not read through); else it waits where it is (`full`).
+ * 3. Moved-in queues are read a part a pass (`scanPerPass` names): each
+ *    entry named by an id, a plain file of one link and at most 8 KB,
+ *    goes pending under its arrival (the server's order, never the
+ *    writer's names); anything else goes to be removed (`dropped`).
+ * 4. Pending entries, in arrival order: one younger than `settleMs` waits;
+ *    a copy of one `seen` says the server took when sent is removed as a
+ *    duplicate; past `max` entries or MAX_BYTES_PER_PASS bytes the rest
+ *    wait for a later pass (`deferred`); the others go to `record`.
+ *    Only what was read is removed.
  */
 export function takeQueuedAuditRows(
   stateDir: string,
@@ -283,34 +369,141 @@ export function takeQueuedAuditRows(
     settleMs?: number;
     now?: number;
     seen?: (id: string) => boolean;
+    maxPending?: number;
+    scanPerPass?: number;
   } = {},
 ): IntakeCounts {
   const out: IntakeCounts = {
     taken: 0,
     dropped: 0,
-    overCap: 0,
     duplicate: 0,
     waiting: 0,
+    deferred: 0,
     refused: 0,
+    full: 0,
   };
   const settleMs = o.settleMs ?? 0;
   const now = o.now ?? Date.now();
+  const maxPending = o.maxPending ?? MAX_PENDING;
+  const scan = o.scanPerPass ?? SCAN_PER_PASS;
   const isOwnDir = (p: string) => {
     const st = fs.lstatSync(p);
     return st.isDirectory() && (uid() === null || st.uid === uid());
   };
   const intake = path.join(stateDir, AUDIT_INTAKE_DIR);
-  const pending = path.join(intake, AUDIT_PENDING_DIR);
+  const [batches, pending, trash] = [BATCHES, AUDIT_PENDING_DIR, TRASH].map(
+    (d) => path.join(intake, d),
+  );
   try {
-    fs.mkdirSync(pending, { recursive: true, mode: 0o700 });
-    if (!isOwnDir(intake) || !isOwnDir(pending)) return out;
+    for (const d of [batches, pending, trash])
+      fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+    if (![intake, batches, pending, trash].every(isOwnDir)) return out;
   } catch {
     return out;
   }
-  moveIn(stateDir, intake, pending, isOwnDir, out);
+  const toTrash = (p: string) => {
+    try {
+      fs.renameSync(
+        p,
+        path.join(trash, `${arrival()}-${randomBytes(4).toString("hex")}`),
+      );
+    } catch {
+      /* gone */
+    }
+  };
+
+  // 1. What isn't an entry, removed a part a pass.
+  removeSome(trash, scan);
+
+  // 2. The queues in, while there's room.
+  let pendingCount = someNames(pending, maxPending + 1).length;
+  for (const rel of [AUDIT_PERSON_QUEUE_DIR, AUDIT_QUEUE_DIR]) {
+    const queue = path.join(stateDir, rel);
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(queue);
+    } catch {
+      continue;
+    }
+    if (!st.isDirectory() || (uid() !== null && st.uid !== uid())) {
+      // A link (or a file) in the queue's place: moved away itself (a
+      // rename never follows a link), then removed.
+      toTrash(queue);
+      out.refused++;
+      continue;
+    }
+    if (
+      pendingCount >= maxPending ||
+      someNames(batches, MAX_BATCHES + 1).length >= MAX_BATCHES
+    ) {
+      out.full++;
+      continue;
+    }
+    try {
+      fs.renameSync(queue, path.join(batches, arrival()));
+    } catch {
+      /* the next pass */
+    }
+  }
+
+  // 3. Moved-in queues, a part a pass, to pending in arrival order.
+  let budget = scan;
+  for (const b of someNames(batches, MAX_BATCHES + 1)
+    .map((e) => e.name)
+    .sort()) {
+    if (budget <= 0 || pendingCount >= maxPending) break;
+    const dir = path.join(batches, b);
+    try {
+      if (!isOwnDir(dir)) {
+        toTrash(dir);
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    const names = someNames(dir, budget)
+      .map((e) => e.name)
+      .sort();
+    budget -= names.length;
+    for (const n of names) {
+      const file = path.join(dir, n);
+      const id = NAME.exec(n)?.[1];
+      let st: fs.Stats | null = null;
+      try {
+        st = fs.lstatSync(file);
+      } catch {
+        continue;
+      }
+      if (!id || !st.isFile() || st.nlink !== 1 || st.size > ENTRY_MAX_BYTES) {
+        toTrash(file);
+        out.dropped++;
+        continue;
+      }
+      if (pendingCount >= maxPending) break;
+      try {
+        fs.renameSync(file, path.join(pending, `${arrival()}--${id}.json`));
+        pendingCount++;
+      } catch {
+        /* the next pass */
+      }
+    }
+    // Read through: the emptied folder goes.
+    if (someNames(dir, 1).length === 0) {
+      try {
+        fs.rmdirSync(dir);
+      } catch {
+        toTrash(dir);
+      }
+    }
+  }
+
+  // 4. Pending, in arrival order.
   let bytes = 0;
-  for (const n of entryNames(pending)) {
+  for (const n of someNames(pending, maxPending + scan)
+    .map((e) => e.name)
+    .sort()) {
     const file = path.join(pending, n);
+    const id = n.slice(n.indexOf("--") + 2, -".json".length);
     let st: fs.Stats;
     try {
       st = fs.lstatSync(file);
@@ -321,100 +514,43 @@ export function takeQueuedAuditRows(
     // ahead (the writer sets it; a clock's own jitter is less) counts as
     // settled, so nothing waits forever.
     const age = now - st.mtimeMs;
-    if (settleMs > 0 && st.isFile() && age >= -1000 && age < settleMs) {
+    if (settleMs > 0 && age >= -1000 && age < settleMs) {
       out.waiting++;
       continue;
     }
+    if (o.seen?.(id)) {
+      out.duplicate++;
+      fs.rmSync(file, { force: true });
+      continue;
+    }
+    if (out.taken >= max || bytes + st.size > MAX_BYTES_PER_PASS) {
+      out.deferred++;
+      continue;
+    }
+    const row = readQueued(file);
+    fs.rmSync(file, { force: true });
+    if (!row) {
+      out.dropped++;
+      continue;
+    }
     try {
-      if (o.seen?.(n.slice(0, -".json".length))) out.duplicate++;
-      else if (out.taken >= max || bytes + st.size > MAX_BYTES_PER_PASS)
-        out.overCap++;
-      else {
-        const row = readQueued(file);
-        if (!row) out.dropped++;
-        else {
-          try {
-            record(row);
-            bytes += st.size;
-            out.taken++;
-          } catch {
-            out.dropped++;
-          }
-        }
-      }
-    } finally {
-      // An entry that's a folder too (rm never follows a link in it).
-      fs.rmSync(file, { recursive: true, force: true });
+      record(row);
+      bytes += st.size;
+      out.taken++;
+    } catch {
+      out.dropped++;
     }
   }
   return out;
 }
 
-/** Step 1 of a pass: the queue's entries into the server's pending folder. */
-function moveIn(
-  stateDir: string,
-  intake: string,
-  pending: string,
-  isOwnDir: (p: string) => boolean,
-  out: IntakeCounts,
-): void {
-  const queue = path.join(stateDir, AUDIT_QUEUE_DIR);
-  try {
-    if (!isOwnDir(queue)) {
-      // A link (or a file) in the queue's place: removed itself, never
-      // followed.
-      fs.unlinkSync(queue);
-      out.refused++;
-      return;
-    }
-  } catch {
-    return;
-  }
-  const moved = path.join(
-    intake,
-    `${Date.now()}-${randomBytes(4).toString("hex")}`,
-  );
-  try {
-    // A rename moves a link itself, never what it points at. From here
-    // on, every path is the server's own.
-    fs.renameSync(queue, moved);
-  } catch {
-    return;
-  }
-  try {
-    if (!isOwnDir(moved)) {
-      out.refused++;
-      return;
-    }
-    let waiting = entryNames(pending).length;
-    for (const n of fs.readdirSync(moved)) {
-      if (!n.endsWith(".json")) continue;
-      const to = path.join(pending, n);
-      if (waiting >= MAX_PENDING || fs.existsSync(to)) {
-        out.overCap++;
-        continue;
-      }
-      try {
-        fs.renameSync(path.join(moved, n), to);
-        waiting++;
-      } catch {
-        out.dropped++;
-      }
-    }
-  } catch {
-    /* what is left goes with the moved folder */
-  } finally {
-    // The moved folder, whatever it holds (rm never follows a link in it).
-    fs.rmSync(moved, { recursive: true, force: true });
-  }
-}
-
 /**
  * The running server's intake: a pass now, then on each sweep
  * (`intervalMs`), at most `perHour` entries an hour, each queued copy left
- * `settleMs` first. What passes drop is summed and told to `onDropped` at
- * most once a `windowMs`, when the window ends. Returns what stops it; the
- * timer never keeps the process up.
+ * `settleMs` first. What passes drop, refuse or leave for want of room is
+ * summed and told to `onDropped` at most once a `windowMs`, when the
+ * window ends. Returns what stops it; the timer never keeps the process
+ * up.
  */
 export function startAuditQueueIntake(
   stateDir: string,
@@ -456,15 +592,15 @@ export function startAuditQueueIntake(
         },
       );
       thisHour += c.taken;
-      if (c.dropped || c.overCap || c.refused) {
+      if (c.dropped || c.refused || c.full) {
         sum = sum
           ? {
               ...sum,
               dropped: sum.dropped + c.dropped,
-              overCap: sum.overCap + c.overCap,
               refused: sum.refused + c.refused,
+              full: sum.full + c.full,
             }
-          : { ...c, taken: 0, duplicate: 0, waiting: 0 };
+          : { ...c, taken: 0, duplicate: 0, waiting: 0, deferred: 0 };
         windowStart ??= now();
       }
       if (sum && windowStart !== null && now() - windowStart >= windowMs) {
@@ -488,14 +624,18 @@ export function startAuditQueueIntake(
 export function droppedDetail(c: IntakeCounts): string {
   const parts = [
     ...(c.dropped ? [`${c.dropped} that weren't entries`] : []),
-    ...(c.overCap ? [`${c.overCap} over the intake's cap`] : []),
+    ...(c.full
+      ? [
+          `none: the intake was full, so queues waited where they were ${c.full} time${c.full === 1 ? "" : "s"}`,
+        ]
+      : []),
     ...(c.refused
       ? [
           `a link in the queue folder's place, removed ${c.refused} time${c.refused === 1 ? "" : "s"}`,
         ]
       : []),
   ];
-  return `queued audit entries dropped: ${parts.join(", ")}`;
+  return `queued audit entries: ${parts.join(", ")}`;
 }
 
 /**
@@ -519,15 +659,18 @@ export function readAuditRows(stateDir: string): Record<string, unknown>[] {
   } catch {
     /* no file yet */
   }
-  const dir = path.join(stateDir, AUDIT_QUEUE_DIR);
-  try {
-    if (!fs.lstatSync(dir).isDirectory()) return rows;
-  } catch {
-    return rows;
-  }
-  for (const n of entryNames(dir)) {
-    const row = readQueued(path.join(dir, n));
-    if (row) rows.push(queuedEntryOf(row, row.reported.written));
+  // Then what waits in the queues, read only (a link is never followed).
+  for (const rel of [AUDIT_PERSON_QUEUE_DIR, AUDIT_QUEUE_DIR]) {
+    const dir = path.join(stateDir, rel);
+    try {
+      if (!fs.lstatSync(dir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    for (const n of entryNames(dir)) {
+      const row = readQueued(path.join(dir, n));
+      if (row) rows.push(queuedEntryOf(row, row.reported.written));
+    }
   }
   return rows;
 }

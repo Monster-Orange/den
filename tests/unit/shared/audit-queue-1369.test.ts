@@ -24,7 +24,9 @@ import {
   type AuditSender,
 } from "../../../src/shared/config-audit.js";
 import {
+  AUDIT_PERSON_QUEUE_DIR,
   AUDIT_QUEUE_DIR,
+  cleanLine,
   MAX_PER_PASS,
   queueAuditRow,
   readAuditRows,
@@ -59,13 +61,21 @@ afterEach(() => {
 });
 
 const queue = () => path.join(state, AUDIT_QUEUE_DIR);
-const queued = () => {
+const personQueue = () => path.join(state, AUDIT_PERSON_QUEUE_DIR);
+const list = (d: string) => {
   try {
-    return fs.readdirSync(queue()).filter((n) => n.endsWith(".json"));
+    return fs.readdirSync(d).filter((n) => n.endsWith(".json"));
   } catch {
     return [];
   }
 };
+/** Both queues: the person's CLI's own, and the one agents may write. */
+const queued = () => [...list(personQueue()), ...list(queue())];
+/** Where a queued file is, in either queue. */
+const queuedPath = (n: string) =>
+  fs.existsSync(path.join(personQueue(), n))
+    ? path.join(personQueue(), n)
+    : path.join(queue(), n);
 const take = (max?: number) => {
   const got: QueuedAuditRow[] = [];
   const c = takeQueuedAuditRows(state, (row) => got.push(row), max);
@@ -91,10 +101,8 @@ describe("issue 1369: a CLI entry is sent, with a queued copy until it is", () =
     auditConfig({ verb: "config-write", detail: "workspaces.yml by x" }, state);
     expect(fs.existsSync(path.join(state, "audit.jsonl"))).toBe(false);
     expect(queued()).toHaveLength(1);
-    expect(fs.statSync(path.join(queue(), queued()[0])).mode & 0o777).toBe(
-      0o600,
-    );
-    expect(fs.statSync(queue()).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(queuedPath(queued()[0])).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(personQueue()).mode & 0o777).toBe(0o700);
   });
 
   it("the server up: the entry is sent (its words only, no who, no when) and the queued copy removed", async () => {
@@ -173,7 +181,7 @@ describe("issue 1369: a sent entry is recorded as its credential says", () => {
 describe("issue 1369: a queued entry comes in as a report, never anyone's word", () => {
   it("one claiming the person, written by an agent while the server is up: unverified, no principal, the server's time", () => {
     setAuditFile(path.join(state, "audit.jsonl"));
-    put("000000000000001-1-00000000.json", {
+    put("000000000000001-1-000000000-00000000.json", {
       verb: "agents",
       detail: "restart a1 in north: ok",
       principal: "person:someone",
@@ -197,7 +205,7 @@ describe("issue 1369: a queued entry comes in as a report, never anyone's word",
   });
 
   it("control characters are stripped from what it reports and says", () => {
-    put("000000000000001-1-00000000.json", {
+    put("000000000000001-1-000000000-00000000.json", {
       verb: "agents",
       detail: "ok\u001b[31m red",
       reason: "line\u0007 one\nline two",
@@ -252,18 +260,19 @@ describe("issue 1369: the intake reads and removes nothing outside the queue", (
 });
 
 describe("issue 1369: the intake is capped, and says what it dropped", () => {
-  it("a pass takes at most its cap; the rest are counted, not recorded", () => {
+  it("a pass takes at most its cap; the rest wait pending for the next", () => {
     for (let i = 0; i < MAX_PER_PASS + 5; i++)
-      put(`${String(i).padStart(15, "0")}-1-00000000.json`, {
+      put(`${String(i).padStart(15, "0")}-1-000000000-00000000.json`, {
         verb: "agents",
         detail: `n${i}`,
       });
     const r = take();
     expect(r.taken).toBe(MAX_PER_PASS);
-    expect(r.overCap).toBe(5);
+    expect(r.deferred).toBe(5);
+    expect(take().taken).toBe(5);
   });
 
-  it("an hour's cap across passes, and each pass that dropped something is told", () => {
+  it("an hour's cap across passes: the rest wait, none dropped", () => {
     jest.useFakeTimers();
     try {
       const got: string[] = [];
@@ -275,14 +284,14 @@ describe("issue 1369: the intake is capped, and says what it dropped", () => {
         settleMs: 0,
         windowMs: 0,
         perHour: 2,
-        onDropped: (c) => told.push(c.overCap),
+        onDropped: (c) => told.push(c.dropped),
       });
+      // Past the hour's cap the rest wait pending; none is dropped.
       expect(got).toEqual(["a0", "a1"]);
-      expect(told).toEqual([1]);
       auditConfig({ verb: "agents", detail: "b" }, state);
       jest.advanceTimersByTime(1000);
       expect(got).toHaveLength(2);
-      expect(told).toEqual([1, 1]);
+      expect(told).toEqual([]);
       stop();
     } finally {
       jest.useRealTimers();
@@ -552,5 +561,116 @@ describe("issue 1369: one sender's entries are capped an hour", () => {
     ]);
     expect(budget("agent:a2", t0)).toBe(true);
     expect(budget("agent:a1", t0 + 3_600_000)).toBe(true);
+  });
+});
+
+describe("issue 1369: the person's CLI queues where agents can't write", () => {
+  it("outside a sandbox: the person's own queue, and nothing in the one agents may write", () => {
+    auditConfig({ verb: "agents", detail: "person" }, state);
+    expect(list(personQueue())).toHaveLength(1);
+    expect(list(queue())).toEqual([]);
+  });
+
+  it("inside an agent's sandbox (state read-only, audit/ writable): the agents' queue", () => {
+    fs.mkdirSync(path.join(state, "audit"), { mode: 0o700 });
+    fs.chmodSync(state, 0o500);
+    try {
+      auditConfig({ verb: "agents", detail: "agent" }, state);
+    } finally {
+      fs.chmodSync(state, 0o700);
+    }
+    expect(list(personQueue())).toEqual([]);
+    expect(list(queue())).toHaveLength(1);
+  });
+});
+
+describe("issue 1369: nothing is removed unread, and the server's arrival orders the take", () => {
+  const big = (i: number) =>
+    put(`000000000000000-1-${String(i).padStart(9, "0")}-00000000.json`, {
+      verb: "agents",
+      detail: "x".repeat(3900),
+      reason: "y".repeat(290),
+    });
+
+  it("an agent filling a pass with large entries erases nothing: every entry comes in over later passes, the person's too", () => {
+    for (let i = 0; i < 80; i++) big(i);
+    auditConfig({ verb: "agents", detail: "the person's" }, state);
+    const got: string[] = [];
+    let dropped = 0;
+    for (let p = 0; p < 10; p++) {
+      const c = takeQueuedAuditRows(state, (r) => got.push(r.detail));
+      dropped += c.dropped;
+    }
+    expect(dropped).toBe(0);
+    expect(got).toHaveLength(81);
+    expect(got).toContain("the person's");
+  });
+
+  it("an entry that arrived first is taken first, whatever name a later one has", () => {
+    auditConfig({ verb: "agents", detail: "first" }, state);
+    // Moved in, none taken (the hour's cap reached).
+    takeQueuedAuditRows(state, () => undefined, 0);
+    put("000000000000000-1-000000000-00000000.json", {
+      verb: "agents",
+      detail: "later, named to sort first",
+    });
+    const got: string[] = [];
+    takeQueuedAuditRows(state, (r) => got.push(r.detail), 10);
+    takeQueuedAuditRows(state, (r) => got.push(r.detail), 10);
+    expect(got).toEqual(["first", "later, named to sort first"]);
+  });
+
+  it("a name that isn't an entry's id is dropped, counted, never taken", () => {
+    put("evil.json", { verb: "agents", detail: "no id" });
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail));
+    expect(got).toEqual([]);
+    expect(c.dropped).toBe(1);
+  });
+
+  it("pending full: the queue is left where it is, not dropped", () => {
+    for (let i = 0; i < 3; i++) big(i);
+    takeQueuedAuditRows(state, () => undefined, 0, { maxPending: 2 });
+    big(10);
+    const c = takeQueuedAuditRows(state, () => undefined, 0, {
+      maxPending: 2,
+    });
+    expect(c.full).toBe(1);
+    expect(list(queue())).toEqual([
+      "000000000000000-1-000000010-00000000.json",
+    ]);
+    // Room again: all four come in, none lost.
+    const got: string[] = [];
+    for (let p = 0; p < 6; p++)
+      takeQueuedAuditRows(state, (r) => got.push(r.detail), 200, {
+        maxPending: 2,
+      });
+    expect(got).toHaveLength(4);
+  });
+
+  it("a pass reads a bounded number of names; the rest wait in the server's folder for later passes", () => {
+    for (let i = 0; i < 120; i++)
+      put(`000000000000000-1-${String(i).padStart(9, "0")}-00000000.json`, {
+        verb: "agents",
+        detail: String(i),
+      });
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail), 200, {
+      scanPerPass: 50,
+    });
+    expect(c.taken).toBeLessThanOrEqual(50);
+    for (let p = 0; p < 4; p++)
+      takeQueuedAuditRows(state, (r) => got.push(r.detail), 200, {
+        scanPerPass: 50,
+      });
+    expect(got).toHaveLength(120);
+  });
+});
+
+describe("issue 1369: what an entry says is one plain line", () => {
+  it("line and paragraph separators, C1, format and bidi controls are stripped", () => {
+    expect(cleanLine("a\u2028b", 100)).toBe("a");
+    expect(cleanLine("ok\u202e\u200bfine\u0085x", 100)).toBe("okfine");
+    expect(cleanLine("tab\there", 100)).toBe("tabhere");
   });
 });

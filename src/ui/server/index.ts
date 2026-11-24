@@ -364,10 +364,9 @@ import {
   AUDIT_FILE,
 } from "./audit.js";
 import { setConfigAuditSink } from "../../shared/config-audit.js";
+import { cliAuditRequest } from "./audit-cli-route.js";
 import {
-  cliAuditRowOf,
   droppedDetail,
-  isQueueId,
   QUEUE_DROPPED_VERB,
   rememberSentAuditId,
   sentAuditBudget,
@@ -7318,27 +7317,15 @@ async function handleRequest(
   // credential says, at this server's time: the body gives the verb,
   // detail, outcome and reason only, never a who or a when.
   if (pathname === "/api/audit/cli" && req.method === "POST") {
-    const principal = principalOf(req);
-    if (!principal) return sendJson(res, { error: "sign in first" }, 401);
-    const raw = await readBody(req).catch(() => "");
-    if (raw.length > 8192) return send400(res, "entry too large");
-    let body: Record<string, unknown>;
-    try {
-      body = JSON.parse(raw || "{}") as Record<string, unknown>;
-    } catch {
-      return send400(res, "invalid JSON");
-    }
-    const row =
-      body && typeof body === "object" && !Array.isArray(body)
-        ? cliAuditRowOf(body)
-        : null;
-    if (!row) return send400(res, "not an audit entry");
-    if (!CLI_AUDIT_BUDGET(principal))
-      return sendJson(res, { error: "too many audit entries this hour" }, 429);
-    const entry = recordSentAuditRow(auditActorOf(req), row, principal);
-    // Its queued copy, should its sender end before removing it.
-    if (isQueueId(body.id)) rememberSentAuditId(body.id);
-    return sendJson(res, { recorded: true, ts: entry.ts });
+    // Issue 1369: at most 8 KB read; the credential says who sent it.
+    const r = await cliAuditRequest(req, {
+      principal: principalOf(req),
+      actor: auditActorOf(req),
+      budget: CLI_AUDIT_BUDGET,
+      record: recordSentAuditRow,
+      remember: rememberSentAuditId,
+    });
+    return sendJson(res, r.body, r.status);
   }
 
   if (pathname === "/api/activity" && req.method === "POST") {
