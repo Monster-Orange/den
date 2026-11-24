@@ -11,6 +11,7 @@ import * as path from "path";
 import { z } from "zod";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 import { shotFileDataUrl } from "../../shared/report-shots.js";
+import { AGENT_VIEW_LINK_NOTE } from "../../shared/agent-view-note.js";
 import {
   GatePriorityRefused,
   GateStore,
@@ -527,7 +528,8 @@ const READ_TOOLS: DenTool[] = [
   read(
     "page_view",
     "View this Den's pages, read-only",
-    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so.",
+    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so. Issue 1243: " +
+      AGENT_VIEW_LINK_NOTE,
     {
       next: z
         .string()

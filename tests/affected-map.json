@@ -2721,12 +2721,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/agent-view.ts"],
+      "when": ["src/shared/agent-view-note.ts", "src/shared/agent-view.ts"],
       "run": ["tests/unit/server/agent-view.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/agent-view.ts"],
+      "when": ["src/shared/agent-view-note.ts", "src/shared/agent-view.ts"],
       "run": ["tests/unit/server/agent-view.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
