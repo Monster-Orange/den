@@ -70,28 +70,46 @@ export interface SettingKind {
  * Review D (issue 1371): setting_change fails closed. A key is routine
  * only when it is here: a timeout, an interval, a cap or a retention that
  * changes how fast or how much Den does, never who may sign in, what
- * agents reach, what runs, or what leaves this machine. Every other key
+ * agents reach, what runs, or what leaves this machine. Each is named
+ * exactly (review D): a new key under one of these blocks widens until it
+ * is placed here. Every other key
  * widens what agents can do (a test places every key setting_change takes
  * on this list or WIDENING_SETTINGS).
  */
 export const NARROW_SETTINGS: readonly string[] = [
   "cli_tabs",
   "log_window_lines",
-  "panes.*",
-  "web.crash_loop_*",
+  "panes.reconnect_seconds",
+  "panes.reconnect_max_seconds",
+  "panes.reconnect_max_failures",
+  "panes.reconnect_window_seconds",
+  "panes.connect_timeout_seconds",
+  "web.crash_loop_restarts",
+  "web.crash_loop_minutes",
+  "web.crash_loop_max_wait_seconds",
   "web.bridge_probe_seconds",
   "web.owner_name_timeout_seconds",
   "web.ready_probe_seconds",
   "web.start_wait_seconds",
   "web.sessions_lock_wait_ms",
-  "web.address_check_*",
+  "web.address_check_timeout_seconds",
+  "web.address_check_retries",
+  "web.address_check_cache_seconds",
+  "web.address_check_drop_after",
   "web.address_unknown_keep_seconds",
-  "github.*",
-  "agents_list.*",
+  "github.watch_interval_seconds",
+  "github.watch_max_interval_seconds",
+  "github.api_budget_floor",
+  "github.watches_max",
+  "agents_list.host_timeout_seconds",
+  "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
   "agents.shell_path_timeout_seconds",
   "agents.draft_hold_max_minutes",
-  "agents.resume.*",
+  "agents.resume.batch",
+  "agents.resume.gap_seconds",
+  "agents.resume.load_ceiling",
+  "agents.resume.max_wait_seconds",
   "reports.screenshot_keep_days",
   "reports.screenshot_max_mb",
   "reports.hub_timeout_seconds",
@@ -99,12 +117,23 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agent_context.compaction_loop_count",
   "agent_context.compaction_loop_minutes",
   "agent_context.pause_after_loop",
-  "alerts.push_*",
-  "feedback.visibility_*",
-  "process_lookup.*",
-  "agent_hooks.*",
-  "sessions.*",
-  "health_poll.*",
+  "alerts.push_timeout_seconds",
+  "alerts.push_ttl_seconds",
+  "feedback.visibility_cache_hours",
+  "feedback.visibility_timeout_seconds",
+  "feedback.visibility_retry_seconds",
+  "process_lookup.first_seconds",
+  "process_lookup.retry_seconds",
+  "agent_hooks.timeout_seconds",
+  "agent_hooks.retries",
+  "agent_hooks.backoff_seconds",
+  "sessions.max_concurrent",
+  "sessions.close_grace_seconds",
+  "sessions.pty_close_seconds",
+  "sessions.pty_warn_above",
+  "sessions.pty_machine_warn_percent",
+  "health_poll.visible_seconds",
+  "health_poll.hidden_seconds",
   "hub.groups_cache_seconds",
 ];
 
@@ -425,7 +454,7 @@ function valueProblem(v: unknown): string | null {
       }
   };
   walk(v);
-  if (texts.some((t) => /[\p{Cc}\p{Cf}]/u.test(t)))
+  if (texts.some((t) => /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(t)))
     return "the value has control characters (new lines, terminal escapes, direction marks): the card couldn't show it as written";
   return null;
 }

