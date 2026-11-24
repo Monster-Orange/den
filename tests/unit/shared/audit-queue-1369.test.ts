@@ -26,6 +26,7 @@ import {
 import {
   AUDIT_QUEUE_DIR,
   MAX_PER_PASS,
+  queueAuditRow,
   readAuditRows,
   rememberSentAuditId,
   sentAuditBudget,
@@ -368,12 +369,9 @@ describe("issue 1369: a queued copy of an entry the server already took is dropp
 });
 
 describe("issue 1369: a queued copy is left to settle before it's taken in", () => {
-  const age = (name: string, ms: number) => {
-    const t = new Date(Date.now() - ms);
-    fs.utimesSync(path.join(queue(), name), t, t);
-  };
+  const later = () => Date.now() + 20_000;
 
-  it("a copy younger than the settle time stays queued, for its send to remove; an older one comes in", () => {
+  it("a copy younger than the settle time waits in the server's own folder, never the queue; an older one comes in", () => {
     put("000000000000001-1-000000001-00000000.json", {
       verb: "agents",
       detail: "young",
@@ -382,14 +380,26 @@ describe("issue 1369: a queued copy is left to settle before it's taken in", () 
       verb: "agents",
       detail: "old",
     });
-    age("000000000000001-1-000000002-00000000.json", 20_000);
+    const t = new Date(Date.now() - 20_000);
+    fs.utimesSync(
+      path.join(queue(), "000000000000001-1-000000002-00000000.json"),
+      t,
+      t,
+    );
     const got: QueuedAuditRow[] = [];
     const c = takeQueuedAuditRows(state, (r) => got.push(r), undefined, {
       settleMs: 15_000,
     });
     expect(got.map((r) => r.detail)).toEqual(["old"]);
     expect(c.waiting).toBe(1);
-    expect(queued()).toEqual(["000000000000001-1-000000001-00000000.json"]);
+    // Nothing is put back where an agent may write.
+    expect(queued()).toEqual([]);
+    const next: QueuedAuditRow[] = [];
+    takeQueuedAuditRows(state, (r) => next.push(r), undefined, {
+      settleMs: 15_000,
+      now: later(),
+    });
+    expect(next.map((r) => r.detail)).toEqual(["young"]);
   });
 
   it("the server up and the send taken: one entry; the send failed: the report, after the settle", async () => {
@@ -404,12 +414,81 @@ describe("issue 1369: a queued copy is left to settle before it's taken in", () 
       settleMs: 15_000,
     });
     expect(first).toEqual([]);
-    age(queued()[0], 20_000);
-    const later: string[] = [];
-    takeQueuedAuditRows(state, (r) => later.push(r.detail), undefined, {
+    const next: string[] = [];
+    takeQueuedAuditRows(state, (r) => next.push(r.detail), undefined, {
+      settleMs: 15_000,
+      now: later(),
+    });
+    expect(next).toEqual(["not sent"]);
+  });
+
+  it("a copy taken in while its send is on the way: dropped as the duplicate it is, once settled", () => {
+    const id = queueAuditRow(state, { verb: "agents", detail: "racing" });
+    takeQueuedAuditRows(state, () => undefined, undefined, {
       settleMs: 15_000,
     });
-    expect(later).toEqual(["not sent"]);
+    // The send lands after the intake moved the copy.
+    rememberSentAuditId(id);
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail), undefined, {
+      settleMs: 15_000,
+      now: later(),
+      seen: wasSentAuditId,
+    });
+    expect(got).toEqual([]);
+    expect(c.duplicate).toBe(1);
+  });
+
+  it("a folder named like an entry is dropped, and the entries after it still come in", () => {
+    fs.mkdirSync(
+      path.join(queue(), "000000000000001-1-000000001-00000000.json"),
+      {
+        recursive: true,
+      },
+    );
+    put("000000000000001-1-000000002-00000000.json", {
+      verb: "agents",
+      detail: "after",
+    });
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail));
+    expect(got).toEqual(["after"]);
+    expect(c.dropped).toBe(1);
+  });
+
+  it("the queue folder swapped for a link while entries wait: nothing is ever written through it", () => {
+    const outside = path.join(state, "outside");
+    fs.mkdirSync(outside);
+    put("000000000000001-1-000000001-00000000.json", {
+      verb: "agents",
+      detail: "young",
+    });
+    put("000000000000001-1-000000002-00000000.json", {
+      verb: "agents",
+      detail: "old",
+    });
+    const t = new Date(Date.now() - 20_000);
+    fs.utimesSync(
+      path.join(queue(), "000000000000001-1-000000002-00000000.json"),
+      t,
+      t,
+    );
+    // An agent swaps the queue for a link mid-pass (as an entry is recorded).
+    const swap = () => {
+      fs.rmSync(queue(), { recursive: true, force: true });
+      fs.symlinkSync(outside, queue());
+    };
+    takeQueuedAuditRows(state, swap, undefined, { settleMs: 15_000 });
+    // After its move, the pass never goes back to the queue's path: the
+    // link is as the agent left it, and nothing went through it.
+    expect(fs.lstatSync(queue()).isSymbolicLink()).toBe(true);
+    expect(fs.readdirSync(outside)).toEqual([]);
+    swap();
+    takeQueuedAuditRows(state, () => undefined, undefined, {
+      settleMs: 15_000,
+      now: later(),
+    });
+    expect(fs.readdirSync(outside)).toEqual([]);
   });
 });
 

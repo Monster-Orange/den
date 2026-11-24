@@ -18,9 +18,10 @@
  * server's word; doctor counts them.
  *
  * Intake (the server): the queue folder is first moved, whole, into the
- * server's own <state>/audit-intake (out of an agent's reach), and read
- * only there, so a link put in its place reads and removes nothing
- * outside it. A pass takes at most MAX_PER_PASS entries and
+ * server's own <state>/audit-intake (out of an agent's reach), its entries
+ * into audit-intake/pending, and read only there; nothing is ever moved or
+ * written back where an agent may write, so a link put in the queue's
+ * place reads, removes and receives nothing. A pass takes at most MAX_PER_PASS entries and
  * MAX_BYTES_PER_PASS bytes; startAuditQueueIntake sweeps every 5 s and
  * caps an hour at MAX_PER_HOUR. A queued copy is left SETTLE_MS first (its
  * send may still remove it), and one whose id the server took when it was
@@ -255,14 +256,24 @@ export function sentAuditBudget(
 /** How long a queued copy is left for its send to remove it. */
 export const SETTLE_MS = 15_000;
 
+/** The server's own folder (in AUDIT_INTAKE_DIR) where copies settle. */
+export const AUDIT_PENDING_DIR = "pending";
+/** At most this many copies wait to settle; more are dropped, counted. */
+const MAX_PENDING = 2 * MAX_PER_HOUR;
+
 /**
- * The server's intake pass. Entries younger than `settleMs` are left (their
- * sender may still remove them); when none is older, nothing moves. Else
- * the queue folder is moved whole into the server's own intake folder,
- * each settled entry, oldest first, goes to `record` (at most `max` and
- * MAX_BYTES_PER_PASS bytes; a copy of one `seen` says the server took is
- * dropped as a duplicate), the young ones go back, and the moved folder
- * is removed.
+ * The server's intake pass, in two steps.
+ *
+ * 1. In: the queue folder is moved whole into the server's own intake
+ *    folder, and each entry in it into AUDIT_PENDING_DIR there. After its
+ *    move nothing in the pass goes back to the queue's path: nothing is
+ *    ever written where an agent may write (or where a link it put there
+ *    points).
+ * 2. Take: each pending entry at least `settleMs` old (its sender may
+ *    still send it), oldest first, goes to `record`, at most `max` and
+ *    MAX_BYTES_PER_PASS bytes; a copy of one `seen` says the server took
+ *    when it was sent is dropped as a duplicate. Younger ones wait for a
+ *    later pass.
  */
 export function takeQueuedAuditRows(
   stateDir: string,
@@ -284,109 +295,110 @@ export function takeQueuedAuditRows(
   };
   const settleMs = o.settleMs ?? 0;
   const now = o.now ?? Date.now();
-  const queue = path.join(stateDir, AUDIT_QUEUE_DIR);
   const isOwnDir = (p: string) => {
     const st = fs.lstatSync(p);
     return st.isDirectory() && (uid() === null || st.uid === uid());
   };
-  const settled = (file: string) => {
-    if (settleMs <= 0) return true;
+  const intake = path.join(stateDir, AUDIT_INTAKE_DIR);
+  const pending = path.join(intake, AUDIT_PENDING_DIR);
+  try {
+    fs.mkdirSync(pending, { recursive: true, mode: 0o700 });
+    if (!isOwnDir(intake) || !isOwnDir(pending)) return out;
+  } catch {
+    return out;
+  }
+  moveIn(stateDir, intake, pending, isOwnDir, out);
+  let bytes = 0;
+  for (const n of entryNames(pending)) {
+    const file = path.join(pending, n);
+    let st: fs.Stats;
     try {
-      return now - fs.lstatSync(file).mtimeMs >= settleMs;
+      st = fs.lstatSync(file);
     } catch {
-      return false;
+      continue;
     }
-  };
+    if (settleMs > 0 && st.isFile() && now - st.mtimeMs < settleMs) {
+      out.waiting++;
+      continue;
+    }
+    try {
+      if (o.seen?.(n.slice(0, -".json".length))) out.duplicate++;
+      else if (out.taken >= max || bytes + st.size > MAX_BYTES_PER_PASS)
+        out.overCap++;
+      else {
+        const row = readQueued(file);
+        if (!row) out.dropped++;
+        else {
+          try {
+            record(row);
+            bytes += st.size;
+            out.taken++;
+          } catch {
+            out.dropped++;
+          }
+        }
+      }
+    } finally {
+      // An entry that's a folder too (rm never follows a link in it).
+      fs.rmSync(file, { recursive: true, force: true });
+    }
+  }
+  return out;
+}
+
+/** Step 1 of a pass: the queue's entries into the server's pending folder. */
+function moveIn(
+  stateDir: string,
+  intake: string,
+  pending: string,
+  isOwnDir: (p: string) => boolean,
+  out: IntakeCounts,
+): void {
+  const queue = path.join(stateDir, AUDIT_QUEUE_DIR);
   try {
     if (!isOwnDir(queue)) {
       // A link (or a file) in the queue's place: removed itself, never
       // followed.
       fs.unlinkSync(queue);
       out.refused++;
-      return out;
+      return;
     }
   } catch {
-    return out;
+    return;
   }
-  // Nothing settled: nothing moves (names and times only, read in place).
-  const names = entryNames(queue);
-  if (!names.some((n) => settled(path.join(queue, n)))) {
-    out.waiting = names.length;
-    return out;
-  }
-  const intake = path.join(stateDir, AUDIT_INTAKE_DIR);
   const moved = path.join(
     intake,
     `${Date.now()}-${randomBytes(4).toString("hex")}`,
   );
   try {
-    fs.mkdirSync(intake, { recursive: true, mode: 0o700 });
-    // A rename moves a link itself, never what it points at.
+    // A rename moves a link itself, never what it points at. From here
+    // on, every path is the server's own.
     fs.renameSync(queue, moved);
   } catch {
-    return out;
+    return;
   }
-  const young: string[] = [];
   try {
     if (!isOwnDir(moved)) {
       out.refused++;
-      return out;
+      return;
     }
-    let bytes = 0;
-    for (const n of entryNames(moved)) {
-      const file = path.join(moved, n);
-      let size = 0;
-      try {
-        const st = fs.lstatSync(file);
-        size = st.size;
-        if (settleMs > 0 && now - st.mtimeMs < settleMs && st.isFile()) {
-          young.push(n);
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      if (o.seen?.(n.slice(0, -".json".length))) {
-        out.duplicate++;
-        continue;
-      }
-      if (out.taken >= max || bytes + size > MAX_BYTES_PER_PASS) {
+    let waiting = entryNames(pending).length;
+    for (const n of fs.readdirSync(moved)) {
+      if (!n.endsWith(".json")) continue;
+      const to = path.join(pending, n);
+      if (waiting >= MAX_PENDING || fs.existsSync(to)) {
         out.overCap++;
         continue;
       }
-      const row = readQueued(file);
-      if (!row) {
-        out.dropped++;
-        continue;
-      }
       try {
-        record(row);
+        fs.renameSync(path.join(moved, n), to);
+        waiting++;
       } catch {
         out.dropped++;
-        continue;
-      }
-      bytes += size;
-      out.taken++;
-    }
-    // The young ones back, for their senders to remove.
-    if (young.length) {
-      try {
-        if (!isOwnDir(queue)) fs.unlinkSync(queue);
-      } catch {
-        /* not there: made below */
-      }
-      try {
-        fs.mkdirSync(queue, { recursive: true, mode: 0o700 });
-        if (isOwnDir(queue))
-          for (const n of young) {
-            fs.renameSync(path.join(moved, n), path.join(queue, n));
-            out.waiting++;
-          }
-      } catch {
-        /* lost with the moved folder: their senders' copies were kept */
       }
     }
-    return out;
+  } catch {
+    /* what is left goes with the moved folder */
   } finally {
     // The moved folder, whatever it holds (rm never follows a link in it).
     fs.rmSync(moved, { recursive: true, force: true });
