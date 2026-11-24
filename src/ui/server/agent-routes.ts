@@ -145,7 +145,7 @@ import {
   agentTools,
   restartAgent,
   restartMany,
-  askAboutJob,
+  restartStateOf,
   staleAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -1478,16 +1478,25 @@ export async function handleAgentRoutes(
         });
       what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
       if (when === "after-turn") {
-        // 0.4.48: a job it left running is asked about first (job_running).
-        await askAboutJob(d, id!, ws);
+        // Issue 1407: where it stands first, never a silent wait. A job it
+        // left running (job_running, with what it runs and how long) or a
+        // turn Den can't read (turn_unknown) is the person's: Restart now.
+        const plan = await restartStateOf(d, id!, ws);
+        if (plan.state === "job")
+          throw new AgentError(
+            `agent ${id}: a background job it started is still running (${plan.job?.command ?? "?"}, ${plan.job?.minutes ?? 0} min). Restart now ends the job.`,
+            { status: 409, code: "job_running", job: plan.job },
+          );
+        if (plan.state === "unknown")
+          throw new AgentError(
+            `agent ${id}: Den can't tell when its turn ends, so it can't wait for it. Restart it now instead.`,
+            { status: 409, code: "turn_unknown" },
+          );
         // It may wait for a long turn: answer now, audit when it's done.
-        void restartAgent(
-          d,
-          id!,
-          ws,
-          "after-turn",
-          deps.personaWait ?? {},
-        ).then(
+        void restartAgent(d, id!, ws, "after-turn", {
+          ...(deps.personaWait ?? {}),
+          jobStops: true,
+        }).then(
           (s) =>
             audit(
               restarted(what, s) + onSignIn(s.rec),
@@ -1496,7 +1505,11 @@ export async function handleAgentRoutes(
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
-        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        sendJson(
+          res,
+          { ok: true, agent: id, pending: true, state: plan.state },
+          202,
+        );
         return true;
       }
       const s = await restartAgent(d, id!, ws, "now");

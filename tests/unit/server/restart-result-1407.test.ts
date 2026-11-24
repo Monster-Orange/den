@@ -83,6 +83,9 @@ describe("issue 1407: the page shows each agent's answer", () => {
       "rs.none",
       "rs.done",
       "rs.failed",
+      "rs.bar",
+      "rs.barBtn",
+      "rs.allName",
     ];
     for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
       const src = fs.readFileSync(path.join(root, f), "utf-8");
