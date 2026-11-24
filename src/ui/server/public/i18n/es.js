@@ -3078,6 +3078,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ se actualizó a {v}: la rama necesita una solicitud de cambios; se abrió la #{n} para su versión fijada ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
     "bell.m.pinHeld":

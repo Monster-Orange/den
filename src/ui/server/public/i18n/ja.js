@@ -2970,6 +2970,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ は {v} に更新されました: このブランチにはプルリクエストが必要なため、固定バージョンの #{n} を作成しました ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: 固定バージョンのブランチ {branch} はプッシュされました。プルリクエストを作成してください ({why})",
     "bell.m.pinHeld":
