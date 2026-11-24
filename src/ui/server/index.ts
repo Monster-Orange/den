@@ -345,6 +345,7 @@ import {
 } from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import {
+  GateLockBusy,
   GateStore,
   gateLocked,
   checkGatePatch,
@@ -10714,6 +10715,34 @@ async function handleRequest(
             delete user.editor_overrides;
           }
         }
+        // Issue 963: who changed it, in the slot log (named as an ask is).
+        // Issue 1395: first, under the gate-slot lock (waited for a
+        // moment), so a busy lock saves nothing at all: neither file.
+        if (gatePatch) {
+          const a = auditActorOf(req);
+          const patch = gatePatch;
+          try {
+            await gateLocked(() =>
+              gates().writeSettings(
+                patch,
+                a
+                  ? actorLabel(a)
+                  : `${product().title} · Settings page · a person`,
+              ),
+            );
+          } catch (e) {
+            if (!(e instanceof GateLockBusy)) throw e;
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error:
+                  "the gate's lock stayed busy (a slot decision was being made), so nothing was saved: save again",
+              },
+              503,
+            );
+          }
+        }
         // Issue 1391: a cap the person moved here takes it as its baseline.
         personSetCaps(readUserConfig(), user, denForCaps());
         writeUserConfig(user);
@@ -10732,20 +10761,6 @@ async function handleRequest(
                 "warn",
               ),
             );
-        }
-        // Issue 963: who changed it, in the slot log (named as an ask is).
-        if (gatePatch) {
-          const a = auditActorOf(req);
-          // Issue 1395: under the gate-slot lock, waited for a moment.
-          const patch = gatePatch;
-          await gateLocked(() =>
-            gates().writeSettings(
-              patch,
-              a
-                ? actorLabel(a)
-                : `${product().title} · Settings page · a person`,
-            ),
-          );
         }
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());

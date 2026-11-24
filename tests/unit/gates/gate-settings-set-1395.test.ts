@@ -188,22 +188,28 @@ describe("issue 1395: gate_settings_set", () => {
       { settings: { not_a_gate_key: 1 }, reason: "x" },
       { settings: {}, reason: "x" },
       { settings: { cpu_slots: 3 } },
-      { settings: { cpu_slots: 2 }, reason: "x" },
     ]) {
       const c = checkGateSettingsSet(deps("personal"), bad);
       expect(c.ok).toBe(false);
       const r = await runGateSettingsSet(deps("personal"), bad);
       expect(r.ok).toBe(false);
     }
+    // No change: refused at the ask; on Allow, done with nothing written.
+    const same = { settings: { cpu_slots: 2 }, reason: "x" };
+    expect(checkGateSettingsSet(deps("personal"), same).ok).toBe(false);
+    expect(await runGateSettingsSet(deps("personal"), same)).toMatchObject({
+      ok: true,
+      changed: [],
+    });
     expect(store.settings().cpuSlots).toBe(2);
     expect(store.settingsChanges().length).toBe(rows);
   });
 
-  it("checked again on Allow: a value that is now in place is not written twice", async () => {
+  it("checked again on Allow: a value now in place is done, and not written twice", async () => {
     store.writeSettings({ cpu_slots: 3 }, "a person");
     const rows = store.settingsChanges().length;
     const r = await runGateSettingsSet(deps("personal"), ASK);
-    expect(r.ok).toBe(false);
+    expect(r).toEqual({ ok: true, changed: [], note: "already in effect" });
     expect(store.settingsChanges().length).toBe(rows);
   });
 });

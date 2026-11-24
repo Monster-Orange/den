@@ -64,7 +64,12 @@ export type GateSettingsSetCheck =
       detailKeys: DetailKey[];
       args: GateSettingsSetArgs;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /** Every value asked for is already in effect. */
+      inEffect?: true;
+    };
 
 const shown = (v: number | string | null) =>
   v === null || v === "" ? "unset" : String(v);
@@ -97,6 +102,8 @@ export function checkGateSettingsSet(
         : raw.settings;
     const c = checkGatePatch(asked);
     if (!c.ok) return no(c.error.replace(/^gate_slots/, "settings"));
+    if (!Object.values(c.patch).some((v) => v !== undefined))
+      return no("settings is empty: name at least one key and its value");
     const now = d.settings();
     // Each value as it'd be in effect after the change (a cleared key's
     // default included, which may differ by platform).
@@ -122,7 +129,11 @@ export function checkGateSettingsSet(
       });
     }
     if (!changes.length)
-      return no("nothing to change: each value asked for is the one in effect");
+      return {
+        ok: false,
+        error: "nothing to change: each value asked for is the one in effect",
+        inEffect: true,
+      };
     const kinds = changes.map((x) => d.kind(x.key, x.value));
     const widens = kinds.some((k) => k.widens);
     const category = kinds[0]!.category;
@@ -172,9 +183,15 @@ export async function runGateSettingsSet(
   d: GateSettingsSetDeps,
   raw: Record<string, unknown>,
   asked?: { agent?: string },
-): Promise<{ ok: true; changed: string[] } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; changed: string[]; note?: string } | { ok: false; error: string }
+> {
   const c = checkGateSettingsSet(d, raw);
-  if (!c.ok) return c;
+  // An Allow that finds it all in place already (set by hand since the
+  // ask) is done: nothing to write, and no error.
+  if (!c.ok && c.inEffect)
+    return { ok: true, changed: [], note: "already in effect" };
+  if (!c.ok) return { ok: false, error: c.error };
   try {
     await d.write(
       c.args.settings,

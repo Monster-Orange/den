@@ -1690,7 +1690,11 @@ async function askGateSettings(
   }
   if (j.state === "done") {
     const changed = Array.isArray(result.changed) ? result.changed : [];
-    d.out(`✓ gate settings changed: ${changed.join(", ")}`);
+    d.out(
+      changed.length
+        ? `✓ gate settings changed: ${changed.join(", ")}`
+        : `✓ gate settings: ${String(result.note ?? "already in effect")}`,
+    );
     return 0;
   }
   d.out(
