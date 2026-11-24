@@ -388,9 +388,8 @@ Gate keys are Limits and performance in the approval policy:
 - On a strict install they follow your choice for Limits and performance
   in Settings › Approvals: by default Den writes them and tells you; with
   "Ask me" they wait for your Allow; with "Never" an agent's ask is
-  refused. `gate.priority_agents`, which lets agents take release
-  priority, widens what agents may do, so on a strict install it always
-  waits for your own Allow.
+  refused. Every gate key is alike here: they're scheduling on your own
+  machine.
 
 Den writes the change under the gate's lock (the one a slot decision
 holds), all of it or none, and the slot log names who asked. Every

@@ -7,9 +7,8 @@
  *  - a personal install: every key is routine (Den Builder's ruling),
  *    so it is written at once and the person is told;
  *  - a strict install: they follow the person's choice for Limits (by
- *    default written and told; "Ask me" holds it for Allow), and
- *    gate.priority_agents, which lets agents take release priority,
- *    widens and is held.
+ *    default written and told; "Ask me" holds it for Allow), every key
+ *    alike: none of them widens what agents may do.
  * On Allow the one writer (GateStore.writeSettings, under the gate's
  * lock) writes them; a refused value writes nothing. A temp gates
  * folder; invented names only.
@@ -36,10 +35,7 @@ import {
   readPolicySetting,
 } from "../../../src/shared/approval-policy.js";
 import type { InstallMode } from "../../../src/shared/den-config.js";
-import {
-  GATE_SETTING_KEYS,
-  settingKind,
-} from "../../../src/ui/cli/setting-change.js";
+import { settingKind } from "../../../src/ui/cli/setting-change.js";
 
 let dir = "";
 let store: GateStore;
@@ -158,7 +154,7 @@ describe("issue 1395: gate_settings_set", () => {
     expect(store.settings().cpuSlots).toBe(3);
   });
 
-  it("a strict install: priority_agents widens, so it is held whatever Limits says", () => {
+  it("a strict install: priority_agents follows the Limits choice too (it doesn't widen)", () => {
     // Off first (a person's choice), so the ask turns it back on.
     store.writeSettings({ priority_agents: 0 }, "a person");
     const c = checkGateSettingsSet(deps("strict"), {
@@ -167,8 +163,9 @@ describe("issue 1395: gate_settings_set", () => {
     });
     expect(c.ok).toBe(true);
     if (!c.ok) return;
-    expect(c.personOnly).toBe(true);
-    expect(outcome("strict", c)).toBe("held");
+    expect(c.personOnly).toBeUndefined();
+    expect(outcome("strict", c)).toBe("written and told");
+    expect(outcome("strict", c, "ask")).toBe("held");
   });
 
   it("Limits on Never: refused, nothing written", async () => {
@@ -208,17 +205,13 @@ describe("issue 1395: gate_settings_set", () => {
 });
 
 describe("issue 1395: every gate key is placed for the approval policy", () => {
-  it("each of Settings › Gate's keys is named, routine on personal, and only priority_agents widens on strict", () => {
-    const all = [...Object.keys(GATE_LIMITS), ...Object.keys(GATE_TEXT)]
-      .map((k) => `gate.${k}`)
-      .sort();
-    expect([...GATE_SETTING_KEYS].sort()).toEqual(all);
+  it("each of Settings › Gate's keys is a limit that doesn't widen, on both modes", () => {
+    const all = [...Object.keys(GATE_LIMITS), ...Object.keys(GATE_TEXT)].map(
+      (k) => `gate.${k}`,
+    );
     for (const k of all) {
       expect([k, settingKind(k, "personal").widens]).toEqual([k, false]);
-      expect([k, settingKind(k, "strict").widens]).toEqual([
-        k,
-        k === "gate.priority_agents",
-      ]);
+      expect([k, settingKind(k, "strict").widens]).toEqual([k, false]);
       expect([k, settingKind(k).category]).toEqual([k, "limits"]);
     }
   });

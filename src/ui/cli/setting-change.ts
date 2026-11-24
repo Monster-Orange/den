@@ -94,53 +94,7 @@ export interface SettingKind {
  * widens what agents can do (a test places every key setting_change takes
  * on this list or WIDENING_SETTINGS).
  */
-/**
- * Issue 1395: the gate's slot settings (gate_settings_set), each by name:
- * Settings › Gate's keys (GATE_LIMITS, GATE_TEXT). Scheduling on this
- * machine; gate.priority_agents widens (WIDENING_SETTINGS). A new gate
- * key is placed here by hand (a test checks every one is).
- */
-export const GATE_SETTING_KEYS: readonly string[] = [
-  "gate.cpu_slots",
-  "gate.cpu_slots_beside_browser",
-  "gate.cpu_slots_beside_release_browser",
-  "gate.local_browser_slots",
-  "gate.cpu_hold_load",
-  "gate.load_hold_per_core",
-  "gate.max_start_load",
-  "gate.max_start_wait_minutes",
-  "gate.reap_grace_seconds",
-  "gate.memory_free_min_percent",
-  "gate.swap_hold_gb",
-  "gate.memory_reading_keep_seconds",
-  "gate.vm_memory_share",
-  "gate.overrun_margin_minutes",
-  "gate.overrun_bell_multiple",
-  "gate.remote_renew_seconds",
-  "gate.remote_lapse_seconds",
-  "gate.remote_max_slots",
-  "gate.remote_max_asks",
-  "gate.priority_max",
-  "gate.priority_pass_limit_minutes",
-  "gate.priority_agents",
-  "gate.priority_runners",
-  "gate.claim_minutes",
-  "gate.mcp_renew_minutes",
-  "gate.mcp_lapse_minutes",
-  "gate.mcp_grace_minutes",
-  "gate.waiter_return_minutes",
-  "gate.box_check_timeout_seconds",
-  "gate.box_recheck_seconds",
-  "gate.browser_requires_container",
-  "gate.class_order",
-  "gate.class_map",
-  "gate.class_windows",
-  "gate.browser_box_default",
-  "gate.browser_host_only",
-];
-
 export const NARROW_SETTINGS: readonly string[] = [
-  ...GATE_SETTING_KEYS.filter((k) => k !== "gate.priority_agents"),
   "cli_tabs",
   "log_window_lines",
   "panes.reconnect_seconds",
@@ -231,8 +185,6 @@ export const WIDENING_SETTINGS: readonly string[] = [
   ...USER_ONLY_WIDENING,
   // Issue 1391: the install's mode (personal opens it up).
   "install_mode",
-  // Issue 1395: lets agents take release priority over people.
-  "gate.priority_agents",
   // Vision's ruling (issue 1391): Settings' own fields an agent may ask for.
   "agents.default_mode",
   "server_agent.self_update",
@@ -278,8 +230,6 @@ export const WIDENING_SETTINGS: readonly string[] = [
  * absolute path to a program).
  */
 export const ROUTINE_ON_PERSONAL: readonly string[] = [
-  // Issue 1395: every gate key, on the person's own machine.
-  ...GATE_SETTING_KEYS,
   "editor",
   "terminal",
   "editor_overrides",
@@ -292,6 +242,8 @@ export const ROUTINE_ON_PERSONAL: readonly string[] = [
  * every other key is a limit (a timeout, an interval, a cap).
  */
 const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
+  // Issue 1395: the gates folder's settings (slots, waits), its own writer.
+  ["limits", ["gate.**"]],
   [
     "agent_powers",
     [
@@ -397,8 +349,10 @@ export function settingKind(
   const category = CATEGORY_OF.find(([, ps]) => is(ps))?.[0] ?? "limits";
   // Fails closed: routine only when NARROW_SETTINGS names it (or, on a
   // personal install, ROUTINE_ON_PERSONAL). Agent powers always widen.
+  // Issue 1395: the gate's settings are scheduling on this machine, never
+  // security: routine on both modes (its writer checks each value).
   const routine =
-    mode === "personal" && is(ROUTINE_ON_PERSONAL)
+    (mode === "personal" && is(ROUTINE_ON_PERSONAL)) || is(["gate.**"])
       ? true
       : !is(WIDENING_SETTINGS) && is(NARROW_SETTINGS);
   const widens = category === "agent_powers" || !routine;
@@ -1052,7 +1006,8 @@ function readDoc(file: string): yaml.Document {
 export function checkSettingChange(
   d: SettingChangeDeps,
   raw: Record<string, unknown>,
-  who: { agent?: string } = {},
+  /** person: the person's own change (Undo): a category's Never doesn't apply. */
+  who: { agent?: string; person?: boolean } = {},
 ): SettingChangeCheck {
   const no = (error: string): SettingChangeCheck => ({ ok: false, error });
   try {
@@ -1132,7 +1087,7 @@ export function checkSettingChange(
       set = undefined; // a bad policy is its own error; the ask still holds
     }
     const choice = settingChoice(kind.category, mode, set?.settings);
-    if (choice.choice === "never")
+    if (choice.choice === "never" && !who.person)
       return no(
         `${key} isn't changed by agents: ${CATEGORY_LABEL[kind.category]} is set to Never in Settings › Approvals › Agents changing settings (approvals.settings.${kind.category}). A person changes it there.`,
       );
@@ -1219,12 +1174,16 @@ function backup(d: SettingChangeDeps): string | undefined {
 export function runSettingChange(
   d: SettingChangeDeps,
   raw: Record<string, unknown>,
-  asked?: { agent?: string },
+  asked?: { agent?: string; person?: boolean },
 ):
   | {
       ok: true;
       key: string;
       value: unknown;
+      /** Issue 1371 Part 2: the value before (null: unset), for Undo. */
+      previous: unknown;
+      /** What the key holds after (null: unset), for Undo's check. */
+      set: unknown;
       restart: boolean;
       note: string;
       backup?: string;
@@ -1241,10 +1200,14 @@ export function runSettingChange(
     reason,
   );
   const restart = c.kind.restart === "server";
+  const parts = key.split(".");
+  const after = (yaml.parse(c.text) ?? {}) as Record<string, unknown>;
   return {
     ok: true,
     key,
     value,
+    previous: getPath(c.before, parts) ?? null,
+    set: getPath(after, parts) ?? null,
     restart,
     note: restart
       ? `${key} is set. Den reads it when it starts: ask for den_restart_server to apply it.`
@@ -1272,4 +1235,54 @@ export function settingChangeDeps(o: {
     audit: o.audit,
     now: () => new Date().toISOString(),
   };
+}
+
+/**
+ * Issue 1371 Part 2: Undo, the person's, of a setting an agent changed
+ * without asking (`approval` is that held write as it ran). Puts the value
+ * before back, as the person's own change: only when the key still holds
+ * what that change set, so a second Undo, or one after a later change,
+ * is refused.
+ */
+export function undoSettingChange(
+  d: SettingChangeDeps,
+  approval: {
+    id: string;
+    action: string;
+    result?: unknown;
+  },
+): { ok: true; key: string; note: string } | { ok: false; error: string } {
+  if (approval.action !== SETTING_CHANGE_ACTION)
+    return { ok: false, error: "only a setting change can be undone here" };
+  const r = approval.result as
+    | { ok?: unknown; key?: unknown; previous?: unknown; set?: unknown }
+    | undefined;
+  if (r?.ok !== true || typeof r.key !== "string" || !Object.hasOwn(r, "set"))
+    return {
+      ok: false,
+      error: "that change didn't run, so there is nothing to undo",
+    };
+  const key = r.key;
+  let now: unknown;
+  try {
+    now =
+      getPath(
+        (readDoc(d.userFile).toJS() ?? {}) as Record<string, unknown>,
+        key.split("."),
+      ) ?? null;
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  if (JSON.stringify(now) !== JSON.stringify(r.set))
+    return {
+      ok: false,
+      error: `${key} has changed since, so Undo would lose that: change it in Settings`,
+    };
+  const back = runSettingChange(
+    d,
+    { key, value: r.previous ?? null, reason: `Undo of ${approval.id}` },
+    { person: true },
+  );
+  if (!back.ok) return back;
+  return { ok: true, key, note: back.note };
 }

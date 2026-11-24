@@ -6,10 +6,9 @@
  * The keys and ranges are Settings › Gate's (checkGatePatch). The card
  * shows each key's value in effect now and the one asked for. Each key is
  * named gate.<key> for the approval policy, where gate keys are Limits
- * and performance (issue 1391): on a personal install they're routine,
- * so the change is written at once and the person is told; on a strict
- * one they follow the person's choice for Limits, and a key that widens
- * what agents may do (gate.priority_agents) is held for the person. On
+ * and performance (issue 1391), scheduling on the person's own machine:
+ * on a personal install the change is written at once and the person is
+ * told; on a strict one it follows the person's choice for Limits. On
  * Allow it's checked again and written by the gate's one writer,
  * GateStore.writeSettings, under the gate-slot lock; a refused value
  * writes nothing.
