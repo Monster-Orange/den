@@ -143,6 +143,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "an agent out of the sandbox can write Den's own files (issue 1328); back in only narrows",
   },
+  agent_restart_self: {
+    risk: "routine",
+    kind: "ask",
+    why: "restarts one agent at its next idle on the same conversation (issue 1406); it asks on a strict install, so several asks share one card",
+  },
   project_mcp_add: {
     personal: "keep",
     risk: "critical",
