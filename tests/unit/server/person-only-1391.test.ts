@@ -169,6 +169,30 @@ describe("personOnly asks on every mode (the approval route)", () => {
     },
   );
 
+  // Issue 1403: these run at once on personal when their check says no
+  // personOnly; on strict they still wait.
+  it.each([
+    "den_update",
+    "gate_box_remove",
+    "host_restart",
+    "hub_link",
+    "persona_create",
+    "persona_update",
+    "project_mcp_remove",
+  ])(
+    "personal: %s with no personOnly runs at once; strict waits",
+    async (w) => {
+      mode = "personal";
+      ran.length = 0;
+      expect(await ask(w, false)).toBe("done");
+      expect(ran).toEqual([w]);
+      mode = "strict";
+      ran.length = 0;
+      expect(await ask(w, false)).toBe("pending");
+      expect(ran).toEqual([]);
+    },
+  );
+
   it("personal: agent_create with no personOnly runs at once", async () => {
     mode = "personal";
     ran.length = 0;

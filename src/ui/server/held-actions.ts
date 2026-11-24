@@ -118,13 +118,17 @@ import {
   reviewLines,
   type ReviewLine,
 } from "../../shared/review-lines.js";
-import { UPDATE_SPEC_RE } from "./den-update.js";
+import { stableNotOlder, UPDATE_SPEC_RE } from "./den-update.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import {
   cloneTarget,
   runClone,
   type GitRunner,
 } from "../../shared/repo-clone.js";
-import { isServerScope } from "../../shared/agents/server-agent.js";
+import {
+  isServerScope,
+  SERVER_AGENT_ID,
+} from "../../shared/agents/server-agent.js";
 import {
   readPolicySetting,
   type PolicySetting,
@@ -194,7 +198,23 @@ export interface HeldActionDeps {
     version: string,
     reason: string,
     asked?: AskedBy,
-  ) => Promise<{ ok: boolean; restarting?: boolean; error?: string }>;
+    /** Issue 1403: a routine run on personal (den-update.ts stableNotOlder). */
+    o?: { stableNotOlder: true },
+  ) => Promise<{
+    ok: boolean;
+    restarting?: boolean;
+    error?: string;
+    needsPerson?: true;
+  }>;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  installPersonal?: () => boolean;
+  /** Issue 1403: the Den version running now (engineVersion). */
+  denVersion?: () => string | null;
+  /**
+   * Issue 1403: hold `action` for the person's Allow (pending in the bell),
+   * with `card` its check, asked by `agent`: a routine run that stopped.
+   */
+  holdForPerson?: (action: string, card: HeldCheck, agent?: string) => void;
   /** SRV-P1: agent_create's check and start (agent-ops.ts). */
   agentCreate?: {
     check: (args: Record<string, unknown>, who?: HeldAsker) => AgentCreateCheck;
@@ -325,7 +345,7 @@ export interface HeldOp {
   check: (
     args: Record<string, unknown>,
     who?: HeldAsker,
-  ) => HeldOpCheck<object>;
+  ) => HeldOpCheck<object> | Promise<HeldOpCheck<object>>;
   run: (args: Record<string, unknown>, asked?: AskedBy) => Promise<unknown>;
 }
 
@@ -614,7 +634,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const denUpdate: HeldAction = {
-    check(a): HeldCheck {
+    check(a, who): HeldCheck {
       const reason = str(a.reason)?.replace(/\s+/g, " ");
       if (!reason) return { ok: false, error: "give reason (one line: why)" };
       if (reason.length > RESTART_REASON_MAX)
@@ -627,8 +647,21 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: "version: latest, or one like 0.4.44" };
       if (!d.updateDen)
         return { ok: false, error: "this Den can't update itself" };
+      // Issue 1403 (Den Builder): on personal, routine only for the server
+      // agent, to latest or a stable release not older than the running
+      // one ("latest" is checked again at the run). Anything else is the
+      // person's. Strict: critical by its placement, as before (SRV-1a).
+      const personOnly =
+        isPersonal(d.installPersonal) &&
+        !(
+          who?.agent === SERVER_AGENT_ID &&
+          isServerScope(who.project) &&
+          (version === "latest" ||
+            stableNotOlder(version, d.denVersion?.() ?? null))
+        );
       return {
         ok: true,
+        ...(personOnly ? { personOnly: true as const } : {}),
         args: { version, reason },
         summary: `update Den to ${version} (${reason})`,
         params: { version, reason },
@@ -652,7 +685,23 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       };
     },
     async run(a, asked) {
-      return d.updateDen!(String(a.version), String(a.reason), asked);
+      // Issue 1403: a routine run on personal checks the version again,
+      // as npm resolves it, against the one running now.
+      const routine =
+        !!asked?.decidedBy?.startsWith("auto:") &&
+        isPersonal(d.installPersonal);
+      const r = routine
+        ? await d.updateDen!(String(a.version), String(a.reason), asked, {
+            stableNotOlder: true,
+          })
+        : await d.updateDen!(String(a.version), String(a.reason), asked);
+      if (!r.needsPerson) return r;
+      const c = await denUpdate.check(a, {});
+      if (c.ok && d.holdForPerson) {
+        d.holdForPerson("den_update", { ...c, personOnly: true }, asked?.agent);
+        return { ok: true, held: true, note: r.error };
+      }
+      return r;
     },
   };
 
@@ -684,10 +733,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const op = (o: HeldOp | undefined, missing: string): HeldAction => ({
-    check(a, who): HeldCheck {
+    check(a, who): HeldCheck | Promise<HeldCheck> {
       if (!o) return { ok: false, error: missing };
+      const copy = (c: HeldOpCheck<object>): HeldCheck =>
+        c.ok ? { ...c, args: { ...c.args } } : c;
       const c = o.check(a, who);
-      return c.ok ? { ...c, args: { ...c.args } } : c;
+      // Issue 1403: host_restart's check looks at the agents' turns.
+      return c instanceof Promise ? c.then(copy) : copy(c);
     },
     run: (a, asked) => o!.run(a, asked),
   });

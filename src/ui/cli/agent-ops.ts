@@ -164,6 +164,7 @@ import {
 } from "../../shared/den-config.js";
 import {
   newAgentSandboxOff,
+  personalNoSandbox,
   SANDBOX_OFF_SINCE_ASK,
   writeSandboxNote,
 } from "../../shared/agents/sandbox-set.js";
@@ -2712,8 +2713,30 @@ export type PersonaHeldCheck =
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
       args: Record<string, unknown>;
+      /** Issue 1403: the person's own Allow (see personaPersonOnly). */
+      personOnly?: true;
     }
   | { ok: false; error: string };
+
+/**
+ * Issue 1403 (Den Builder): a persona's mode and commands are new tool
+ * access, the person's, unless the install is personal with the sandbox
+ * off and no agent in it (as agent_create, issue 1391). A config that
+ * can't be read keeps it the person's.
+ */
+function personaPersonOnly(
+  d: AgentsResolved,
+  c: PersonaHeldCheck,
+): PersonaHeldCheck {
+  if (!c.ok) return c;
+  let routine = false;
+  try {
+    routine = personalNoSandbox(d.agentsConfig());
+  } catch {
+    routine = false;
+  }
+  return routine ? c : { ...c, personOnly: true };
+}
 
 /** Who asked (HeldAsker): an agent's id and the project its token is for. */
 export interface PersonaAsker {
@@ -2846,6 +2869,14 @@ export function checkPersonaCreate(
   raw: unknown,
   who: PersonaAsker = {},
 ): PersonaHeldCheck {
+  return personaPersonOnly(d, personaCreateCheck(d, raw, who));
+}
+
+function personaCreateCheck(
+  d: AgentsResolved,
+  raw: unknown,
+  who: PersonaAsker,
+): PersonaHeldCheck {
   try {
     const r = (raw ?? {}) as Record<string, unknown>;
     const home = personaHome(d, r, who, "add");
@@ -2930,6 +2961,14 @@ export function checkPersonaUpdate(
   d: AgentsResolved,
   raw: Record<string, unknown>,
   who: PersonaAsker = {},
+): PersonaHeldCheck {
+  return personaPersonOnly(d, personaUpdateCheck(d, raw, who));
+}
+
+function personaUpdateCheck(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: PersonaAsker,
 ): PersonaHeldCheck {
   try {
     const id = typeof raw.id === "string" ? raw.id.trim() : "";

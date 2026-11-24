@@ -2241,6 +2241,8 @@ export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
   by: "start" | "held" = "start",
+  /** Issue 1403: a routine host_restart: never wait and cut a turn. */
+  o: { idleOnly?: boolean } = {},
 ): Promise<
   import("../../shared/sessions/host-refresh.js").RefreshResult | null
 > {
@@ -2261,7 +2263,13 @@ export async function refreshTerminalHost(
   if (hostRefreshing) return null; // Issue 731: one at a time
   hostRefreshing = true;
   try {
-    return await refreshAndReport(d, log, { waitS, note, checkS, by });
+    return await refreshAndReport(d, log, {
+      waitS,
+      note,
+      checkS,
+      by,
+      idleOnly: o.idleOnly === true,
+    });
   } finally {
     hostRefreshing = false;
   }
@@ -2287,7 +2295,13 @@ export function hostRefreshFailedLine(why: string): string {
 async function refreshAndReport(
   d: AgentsResolved,
   log: (line: string) => void,
-  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+  o: {
+    waitS: number;
+    note: boolean;
+    checkS: number;
+    by: "start" | "held";
+    idleOnly?: boolean;
+  },
 ): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
   const { refreshSessionHost, HOST_RESTART_NOTE } =
     await import("../../shared/sessions/host-refresh.js");
@@ -2350,6 +2364,7 @@ async function refreshAndReport(
     ended: (ids) => endedAfterHostRestart(d, ids),
     checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
+    ...(o.idleOnly ? { idleOnly: true } : {}),
   });
   const endedAt = new Date().toISOString();
   if (r.did === "failed") {
