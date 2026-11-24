@@ -18,6 +18,8 @@
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { execFileSync, spawn, spawnSync } from "child_process";
+import { EventEmitter } from "events";
+import { PassThrough } from "stream";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -38,6 +40,9 @@ import type { BoxCpuRun } from "../../../src/shared/gates/box-cpu.js";
 import {
   BOX_RUN_ROOT,
   boxRunIdOk,
+  boxSshArgs,
+  startBoxCpuRun,
+  stopScript,
   boxSecretRefusal,
   depsScript,
   runScript,
@@ -618,5 +623,124 @@ describe("issue 790: gate run --kind cpu --box", () => {
     expect(
       await cmdGate(["run", "--env", "FOO", "--", "npm", "test"], t.d),
     ).toBe(2);
+  });
+});
+
+describe("issue 790: ssh itself carries nothing of this machine's", () => {
+  it("no agent, X11 or port forwarding, no local command, no SendEnv", () => {
+    const a = boxSshArgs(box()).join(" ");
+    for (const o of [
+      "ForwardAgent=no",
+      "ForwardX11=no",
+      "ClearAllForwardings=yes",
+      "PermitLocalCommand=no",
+      "ControlMaster=no",
+      "ControlPath=none",
+      "SetEnv=DEN_GATE_BOX_RUN=1",
+      "SendEnv=-*",
+    ])
+      expect([o, a.includes(`-o ${o}`)]).toEqual([o, true]);
+  });
+
+  it("every ssh and tar it starts gets a small env, never this machine's secrets", async () => {
+    const was = { ...process.env };
+    process.env.OP_SERVICE_ACCOUNT_TOKEN = "op-secret";
+    process.env.FOO_TOKEN = "foo-secret";
+    const seen: { cmd: string; env: NodeJS.ProcessEnv | undefined }[] = [];
+    const fake = ((
+      cmd: string,
+      _a: string[],
+      o: { env?: NodeJS.ProcessEnv },
+    ) => {
+      seen.push({ cmd, env: o.env });
+      const k = new EventEmitter() as EventEmitter & Record<string, unknown>;
+      k.stdout = new PassThrough();
+      k.stderr = new PassThrough();
+      k.stdin = new PassThrough();
+      k.kill = () => true;
+      setImmediate(() => {
+        (k.stdout as PassThrough).end();
+        k.emit("close", 0, null);
+      });
+      return k;
+    }) as unknown as typeof spawn;
+    try {
+      const st = startBoxCpuRun(
+        box(),
+        {
+          id: "r9",
+          argv: ["npm", "test"],
+          env: { CI: "true" },
+          tree: {
+            root: "/t",
+            sub: "",
+            files: ["package.json", "package-lock.json"],
+            untracked: new Set(),
+          },
+          live: ["r9"],
+        },
+        {
+          spawn: fake,
+          readFile: () => Buffer.from("{}"),
+          out: () => {},
+          err: () => {},
+        },
+      );
+      expect(st.ok).toBe(true);
+      if (st.ok) expect(await st.done).toBe(0);
+    } finally {
+      process.env = was;
+    }
+    expect(seen.map((x) => x.cmd).sort()).toEqual([
+      "ssh",
+      "ssh",
+      "ssh",
+      "ssh",
+      "tar",
+    ]);
+    for (const x of seen) {
+      expect([x.cmd, !!x.env]).toEqual([x.cmd, true]);
+      const vals = Object.values(x.env!).join(" ");
+      expect(vals).not.toContain("op-secret");
+      expect(vals).not.toContain("foo-secret");
+      expect(
+        Object.keys(x.env!).every((k) =>
+          [
+            "PATH",
+            "HOME",
+            "USER",
+            "LOGNAME",
+            "SSH_AUTH_SOCK",
+            "LANG",
+            "TERM",
+            "COPYFILE_DISABLE",
+          ].includes(k),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  // `kill` is shadowed by a shell function that only logs: nothing is
+  // ever signalled here, whatever the pid file says.
+  it("a pid of 0 or 1 sends no kill at all; a real pid is signalled", () => {
+    const sent = (pid: string) => {
+      const home = tmp();
+      const dir = path.join(home, BOX_RUN_ROOT, "runs", "r1");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "pid"), pid);
+      const r = spawnSync(
+        "/bin/sh",
+        [
+          "-c",
+          `kill() { echo "kill $*"; }; sleep() { :; }\n${stopScript("r1")}`,
+        ],
+        { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf-8" },
+      );
+      expect(r.status).toBe(0);
+      return r.stdout.trim();
+    };
+    expect(sent("0")).toBe("");
+    expect(sent("1")).toBe("");
+    expect(sent("4242")).toContain("kill -TERM -4242");
   });
 });

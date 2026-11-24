@@ -251,10 +251,11 @@ export function runScript(
 /** Stops one run's process (its group first), as a shell snippet. */
 const stopPid = (pidFile: string) =>
   [
-    `if [ -f ${pidFile} ]; then p=$(cat ${pidFile}); case "$p" in ''|*[!0-9]*) ;; *)`,
+    // A pid of 1 or less is never a group: kill -1 is every process.
+    `if [ -f ${pidFile} ]; then p=$(cat ${pidFile}); case "$p" in ''|*[!0-9]*) ;; *) if [ "$p" -gt 1 ]; then`,
     '  kill -TERM -"$p" 2>/dev/null || kill -TERM "$p" 2>/dev/null || true',
     "  sleep 1",
-    '  kill -KILL -"$p" 2>/dev/null || kill -KILL "$p" 2>/dev/null || true;;',
+    '  kill -KILL -"$p" 2>/dev/null || kill -KILL "$p" 2>/dev/null || true; fi;;',
     "esac; fi",
   ].join("\n");
 
@@ -310,6 +311,28 @@ export function boxSshArgs(box: GateBox, connectSecs = 15): string[] {
     "-T",
     "-o",
     "BatchMode=yes",
+    // Nothing of this machine's rides along: not its ssh agent, its X
+    // display, a port forward, a local command or a variable.
+    "-o",
+    "ForwardAgent=no",
+    "-o",
+    "ForwardX11=no",
+    "-o",
+    "ClearAllForwardings=yes",
+    "-o",
+    "PermitLocalCommand=no",
+    "-o",
+    "ControlMaster=no",
+    "-o",
+    "ControlPath=none",
+    // ssh keeps the first SetEnv it reads: ours, not one in ssh_config.
+    // SendEnv can't be cleared from here (a config's list still applies),
+    // so ssh is started with a small environment (sshEnv): what a
+    // config's SendEnv names isn't there to send.
+    "-o",
+    "SetEnv=DEN_GATE_BOX_RUN=1",
+    "-o",
+    "SendEnv=-*",
     "-o",
     `ConnectTimeout=${connectSecs}`,
     "-o",
@@ -321,6 +344,26 @@ export function boxSshArgs(box: GateBox, connectSecs = 15): string[] {
     "--",
     box.ssh,
   ];
+}
+
+/** What ssh itself may see of this machine's environment. */
+const SSH_ENV = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SSH_AUTH_SOCK",
+  "LANG",
+  "TERM",
+];
+
+/** A small environment for ssh (its own key's agent, its locale). */
+export function sshEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const k of SSH_ENV) if (env[k] !== undefined) out[k] = env[k];
+  return out;
 }
 
 /** The tree a run ships: git's files under its top folder. */
@@ -442,6 +485,7 @@ export function startBoxCpuRun(
     new Promise<{ code: number; saw: boolean }>((resolve) => {
       const k = sp("ssh", [...ssh, script], {
         stdio: [o.stdin ? "pipe" : "ignore", "pipe", "pipe"],
+        env: sshEnv(),
       });
       running = k;
       let saw = false;
@@ -471,7 +515,10 @@ export function startBoxCpuRun(
       const tar = sp("tar", ["-cf", "-", "--null", "-T", "-"], {
         cwd: r.tree.root,
         stdio: ["pipe", "pipe", "inherit"],
-        env: { ...process.env, COPYFILE_DISABLE: "1" },
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          COPYFILE_DISABLE: "1",
+        },
       });
       tar.stdin?.end(plan.ship.join("\0") + "\0");
       const dir = `${ROOT}/runs/${r.id}/tree`;
@@ -502,7 +549,10 @@ export function startBoxCpuRun(
       return run.code;
     } finally {
       await new Promise<void>((res) => {
-        const k = sp("ssh", [...ssh, cleanScript(r.id)], { stdio: "ignore" });
+        const k = sp("ssh", [...ssh, cleanScript(r.id)], {
+          stdio: "ignore",
+          env: sshEnv(),
+        });
         k.on("error", () => res());
         k.on("close", () => res());
       });
@@ -517,6 +567,7 @@ export function startBoxCpuRun(
       stopped = true;
       const k = sp("ssh", [...boxSshArgs(box, 10), stopScript(r.id)], {
         stdio: "ignore",
+        env: sshEnv(),
       });
       k.on("error", () => {});
       if (s === "SIGKILL" && running)
