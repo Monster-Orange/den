@@ -39,8 +39,8 @@ const SHELL = (cmd: string) =>
 describe("jobCommandOf: what a background shell runs", () => {
   it("the command inside the runtime's shell", () => {
     expect(jobCommandOf(SHELL("npm run dev"))).toBe("npm run dev");
-    expect(jobCommandOf(SHELL("lair gate run -- npx jest x"))).toBe(
-      "lair gate run -- npx jest x",
+    expect(jobCommandOf(SHELL("gate run -- npx jest x"))).toBe(
+      "gate run -- npx jest x",
     );
   });
   it("anything else: the command line itself, on one line and short", () => {
