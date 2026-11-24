@@ -198,6 +198,10 @@ export const PERSON_ONLY_SETTINGS = [
   "approvals_policy",
   "approvals_watch",
   "approvals_critical",
+  // Issue 1371 Part 2: agents changing settings, per category.
+  "approvals_settings",
+  // Issue 1391: personal or strict.
+  "install_mode",
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes",
   // Issue 1022: how often the page polls health, visible and hidden.

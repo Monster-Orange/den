@@ -400,6 +400,10 @@ describe("the settings inventory (R21)", () => {
         "approvals_policy",
         "approvals_watch",
         "approvals_critical",
+        // Issue 1371 Part 2: agents changing settings, per category.
+        "approvals_settings",
+        // Issue 1391: personal or strict.
+        "install_mode",
         // Issue 415: a Report destination's visibility, kept and waited for.
         "feedback.visibility_cache_hours",
         "feedback.visibility_timeout_seconds",

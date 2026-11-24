@@ -5561,17 +5561,31 @@ function startHeldWritesBell(): void {
   }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
-export function approvalsSettings(raw: unknown): {
+export function approvalsSettings(
+  raw: unknown,
+  mode: InstallMode = "strict",
+): {
   approvals_policy: string | null;
   approvals_watch: string[];
   approvals_critical: string[];
+  approvals_settings: ReturnType<typeof approvalsView>["settings"];
 } {
-  const v = approvalsView(raw);
+  const v = approvalsView(raw, mode);
   return {
     approvals_policy: v.policy,
     approvals_watch: v.watch,
     approvals_critical: v.critical,
+    approvals_settings: v.settings,
   };
+}
+
+/** Issue 1391: the install's mode for Settings; a bad value says strict. */
+function installModeOf(user: UserConfig): InstallMode {
+  try {
+    return readInstallMode(user);
+  } catch {
+    return "strict";
+  }
 }
 /**
  * Issue 160: write the approval policy, the install's (user.yml) or one
@@ -10174,7 +10188,8 @@ async function handleRequest(
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
         // Issue 160: the install's approval policy (user.yml approvals).
-        ...approvalsSettings(user.approvals),
+        ...approvalsSettings(user.approvals, installModeOf(user)),
+        install_mode: installModeOf(user),
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
@@ -10284,6 +10299,8 @@ async function handleRequest(
           approvals_policy?: unknown;
           approvals_watch?: unknown;
           approvals_critical?: unknown;
+          approvals_settings?: unknown;
+          install_mode?: unknown;
         };
         // Issue 810: the test-install mark is a person's, by hand, in the
         // distribution config: never written here, by anyone.
@@ -10402,16 +10419,26 @@ async function handleRequest(
         if (
           body.approvals_policy !== undefined ||
           body.approvals_watch !== undefined ||
-          body.approvals_critical !== undefined
+          body.approvals_critical !== undefined ||
+          body.approvals_settings !== undefined
         ) {
           const a = patchApprovals(user.approvals, {
             policy: body.approvals_policy,
             watch: body.approvals_watch,
             critical: body.approvals_critical,
+            settings: body.approvals_settings,
           });
           if (!a.ok) return send400(res, a.error);
           if (a.value) user.approvals = a.value;
           else delete user.approvals;
+        }
+        // Issue 1391: the install's mode, personal or strict; null puts the
+        // default (personal) back. A person's only (PERSON_ONLY_SETTINGS).
+        if (body.install_mode !== undefined) {
+          const v = body.install_mode;
+          if (v === null || v === "") delete user.install_mode;
+          else if (v === "personal" || v === "strict") user.install_mode = v;
+          else return send400(res, "install_mode is personal, strict or null");
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Hub); null clears it (the default, on).
@@ -10655,7 +10682,8 @@ async function handleRequest(
                 | undefined
             )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
-          ...approvalsSettings(user.approvals),
+          ...approvalsSettings(user.approvals, installModeOf(user)),
+          install_mode: installModeOf(user),
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},

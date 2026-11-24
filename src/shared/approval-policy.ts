@@ -629,7 +629,13 @@ export function policyFor(
  */
 export function patchApprovals(
   current: unknown,
-  patch: { policy?: unknown; watch?: unknown; critical?: unknown },
+  patch: {
+    policy?: unknown;
+    watch?: unknown;
+    critical?: unknown;
+    /** Issue 1371 Part 2: { <category>: auto | ask | never | null }. */
+    settings?: unknown;
+  },
   key = "approvals",
 ):
   | { ok: true; value: PolicySetting | undefined }
@@ -655,6 +661,22 @@ export function patchApprovals(
       if (checked.length) cur[k] = checked;
       else delete cur[k];
     }
+    if (patch.settings !== undefined) {
+      if (patch.settings === null) delete cur.settings;
+      else {
+        if (typeof patch.settings !== "object" || Array.isArray(patch.settings))
+          throw new Error(`${key}_settings: a mapping of category to choice`);
+        const next: Record<string, unknown> = { ...(cur.settings ?? {}) };
+        for (const [c, v] of Object.entries(
+          patch.settings as Record<string, unknown>,
+        ))
+          if (v === null) delete next[c];
+          else next[c] = v;
+        const checked = readPolicySetting({ settings: next }, key)?.settings;
+        if (checked && Object.keys(checked).length) cur.settings = checked;
+        else delete cur.settings;
+      }
+    }
     return {
       ok: true,
       value: Object.keys(cur).length ? cur : undefined,
@@ -665,10 +687,15 @@ export function patchApprovals(
 }
 
 /** Issue 160: what Settings shows for one level's policy. */
-export function approvalsView(raw: unknown): {
+export function approvalsView(
+  raw: unknown,
+  mode: InstallMode = "strict",
+): {
   policy: PolicyKind | null;
   watch: string[];
   critical: string[];
+  /** Issue 1371 Part 2: each category's choice in force, and whether set. */
+  settings: Record<SettingCategory, { choice: SettingChoice; set: boolean }>;
 } {
   let s: PolicySetting | undefined;
   try {
@@ -680,5 +707,14 @@ export function approvalsView(raw: unknown): {
     policy: s?.policy ?? null,
     watch: s?.watch ?? [],
     critical: s?.critical ?? [],
+    settings: Object.fromEntries(
+      SETTING_CATEGORIES.map((c) => [
+        c,
+        {
+          choice: settingChoice(c, mode, s?.settings).choice,
+          set: !!s?.settings && Object.hasOwn(s.settings, c),
+        },
+      ]),
+    ) as Record<SettingCategory, { choice: SettingChoice; set: boolean }>,
   };
 }

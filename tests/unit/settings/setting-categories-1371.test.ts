@@ -19,6 +19,8 @@ import {
 } from "../../../src/ui/cli/setting-change.js";
 import type { DenConfig } from "../../../src/shared/den-config.js";
 import {
+  approvalsView,
+  patchApprovals,
   policyFor,
   readPolicySetting,
   settingChoice,
@@ -277,5 +279,42 @@ describe("every person-only setting has an ask path (Vision's ruling, issue 1391
     if (!c.ok) throw new Error(c.error);
     expect(c.text).toMatch(/url: https:\/\/new\.example\.com/);
     expect(c.text).not.toMatch(/token|mcp_url/);
+  });
+});
+
+describe("Settings › Approvals › Agents changing settings (issue 1371 Part 2)", () => {
+  it("shows each category's choice in force, and whether the person set it", () => {
+    const strict = approvalsView({ settings: { network: "auto" } }, "strict");
+    expect(strict.settings.network).toEqual({ choice: "auto", set: true });
+    expect(strict.settings.integrations).toEqual({ choice: "ask", set: false });
+    const personal = approvalsView(undefined, "personal");
+    expect(personal.settings.integrations).toEqual({
+      choice: "auto",
+      set: false,
+    });
+    expect(personal.settings.agent_powers).toEqual({
+      choice: "ask",
+      set: false,
+    });
+  });
+
+  it("a row's change patches one category; null puts the default back", () => {
+    const a = patchApprovals(
+      { policy: "notify", settings: { look: "ask" } },
+      { settings: { network: "never", look: null } },
+    );
+    if (!a.ok) throw new Error(a.error);
+    expect(a.value).toEqual({
+      policy: "notify",
+      settings: { network: "never" },
+    });
+    const b = patchApprovals(a.value, { settings: { network: null } });
+    if (!b.ok) throw new Error(b.error);
+    expect(b.value).toEqual({ policy: "notify" });
+  });
+
+  it("refuses Change without asking for agent powers", () => {
+    const a = patchApprovals(undefined, { settings: { agent_powers: "auto" } });
+    expect(a.ok).toBe(false);
   });
 });

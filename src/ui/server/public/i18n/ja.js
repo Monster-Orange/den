@@ -1442,6 +1442,43 @@
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "このインストールの種類",
+    "set.server.install_mode.d":
+      "個人用: 一人の自分のマシン。エージェントはサンドボックスの外で動くので、Docker、ソケット、あなたのツールが使えます。お金、削除、セキュリティ、他の人への操作を除き、設定を確認なしで変更します。厳格: チームや共有マシン向け。サンドボックスが有効で、エージェントの書き込みは承認ポリシーに従います。あなたが自分で設定した値はそのまま残ります。__DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "個人用",
+    "set.server.install_mode.o.strict": "厳格",
+    "set.agents.settings_limits":
+      "設定を変えるエージェント: 上限とパフォーマンス",
+    "set.agents.settings_limits.d":
+      "上限、タイムアウト、間隔: 同時に動くエージェントの数、Den の待ち時間。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_limits.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_limits.o.ask": "確認する",
+    "set.agents.settings_limits.o.never": "許可しない",
+    "set.agents.settings_look": "設定を変えるエージェント: 見た目とレイアウト",
+    "set.agents.settings_look.d":
+      "Den の見た目と知らせ方: タブ、レール、アラート、通知を止める時間。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_look.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_look.o.ask": "確認する",
+    "set.agents.settings_look.o.never": "許可しない",
+    "set.agents.settings_integrations": "設定を変えるエージェント: 連携",
+    "set.agents.settings_integrations.d":
+      "エディター、ターミナル、ランタイム、Hub、GitHub。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_integrations.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_integrations.o.ask": "確認する",
+    "set.agents.settings_integrations.o.never": "許可しない",
+    "set.agents.settings_network":
+      "設定を変えるエージェント: ネットワークとアクセス",
+    "set.agents.settings_network.d":
+      "Den のアドレス、エッジ、サインインの制限、埋め込み。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_network.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_network.o.ask": "確認する",
+    "set.agents.settings_network.o.never": "許可しない",
+    "set.agents.settings_agent_powers":
+      "設定を変えるエージェント: エージェントの権限",
+    "set.agents.settings_agent_powers.d":
+      "サンドボックス、権限付与、承認、シークレット、インストールの種類。常に確認するか、拒否されます。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_agent_powers.o.ask": "確認する",
+    "set.agents.settings_agent_powers.o.never": "許可しない",
     "set.server.restore_services": "再起動後にサービスを再開する",
     "set.server.restore_services.d":
       "オンにすると、マシンまたは __DEN_TITLE__ の再起動後、動いていたサービスが数件ずつ自動で再開します。あなたが停止したサービスは停止したままです。再開したものはベルでお知らせします。__DEN_CLI__ config services.restore_on_boot=true",
