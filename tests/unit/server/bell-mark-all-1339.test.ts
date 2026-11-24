@@ -81,15 +81,46 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** `n` unread entries, each its own agent (so none fold into another). */
+/**
+ * `n` unread entries, each its own agent (so none fold into another),
+ * oldest first. Issue 1385: written to the store's file at once. 100
+ * add() calls were 100 whole-file reads and writes (about 0.5 s alone, and
+ * past jest's 10 s under a full suite's load); the store's own add is
+ * tested elsewhere.
+ */
 function fill(n: number, kinds: NotificationKind[] = ["waiting", "service"]) {
-  for (let i = 0; i < n; i++)
-    store.add({
-      kind: kinds[i % kinds.length],
-      subject: `agent:a${i}`,
-      scope: "workspace/north",
-      text: `Entry ${i} says something a person might read in the bell.`,
-    });
+  const now = Date.now();
+  const items = Array.from({ length: n }, (_, i) => ({
+    id: `n1339-${i}`,
+    source: "den",
+    kind: kinds[i % kinds.length],
+    subject: `agent:a${i}`,
+    scope: "workspace/north",
+    text: `Entry ${i} says something a person might read in the bell.`,
+    at: new Date(now - (n - i) * 1000).toISOString(),
+    read: false,
+  }));
+  fs.writeFileSync(
+    path.join(dir, "notifications.json"),
+    `${JSON.stringify({ items, mutes: [] })}\n`,
+    { mode: 0o600 },
+  );
+}
+
+/**
+ * Issue 1385: runs `check`, and a failure says where the time went (the
+ * fill, the POST), so a slow CI run can be read from its message.
+ */
+function saysTimes(times: Record<string, number>, check: () => void): void {
+  try {
+    check();
+  } catch (e) {
+    const said = Object.entries(times)
+      .map(([k, ms]) => `${k} ${ms.toFixed(1)} ms`)
+      .join(", ");
+    if (e instanceof Error) e.message += `\n\nTimes: ${said}`;
+    throw e;
+  }
 }
 
 /** Counts the store's whole-file writes from here on. */
@@ -141,18 +172,22 @@ describe("markReadMany (issue 1339)", () => {
 
 describe("POST /api/notifications/read {all: true} (issue 1339)", () => {
   it("100 unread: one write, well under 1 s, all marked", async () => {
+    let t0 = performance.now();
     fill(100);
+    const fillMs = performance.now() - t0;
     const writes = countWrites();
-    const t0 = performance.now();
+    t0 = performance.now();
     const r = await post("/api/notifications/read", { all: true });
     const ms = performance.now() - t0;
-    expect(r.status).toBe(200);
-    expect(r.json.changed).toBe(100);
-    expect(r.json.unread).toBe(0);
-    expect(writes()).toBe(1);
-    // The one write is the proof; the bound only catches a gross slowdown.
-    expect(ms).toBeLessThan(1_000);
-    expect(store.list().every((n) => n.read)).toBe(true);
+    saysTimes({ fill: fillMs, POST: ms }, () => {
+      expect(r.status).toBe(200);
+      expect(r.json.changed).toBe(100);
+      expect(r.json.unread).toBe(0);
+      expect(writes()).toBe(1);
+      // The one write is the proof; the bound only catches a gross slowdown.
+      expect(ms).toBeLessThan(1_000);
+      expect(store.list().every((n) => n.read)).toBe(true);
+    });
   });
 
   it("a kind that is off stays unread (marks what is shown)", async () => {
