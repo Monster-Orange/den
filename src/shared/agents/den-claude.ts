@@ -81,6 +81,7 @@ import { product } from "../product.js";
 import { distributionBin, shellQuote } from "../cli-command.js";
 import { getDistRoot, getEngineRoot } from "../paths.js";
 import { gateDir } from "../gates/store.js";
+import { AUDIT_FILE } from "../audit-file.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -434,6 +435,9 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   // Issue 1299 review: the sessions lock; a live pid written there would
   // hold every sign-in for its wait, then refuse it.
   const sessionsLock = path.join(abs, "web-sessions.lock");
+  // Issue 728: the activity trail. Since issue 1369 only the server
+  // writes it (the CLI sends its entries), so an agent never needs it.
+  const trail = path.join(abs, AUDIT_FILE);
   // Issue 728: the state dir's other credential files and folders.
   const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
   const dirs = STATE_CREDENTIAL_DIRS.map((d) => path.join(abs, d));
@@ -442,6 +446,7 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
     ...spellings(sessionsLock).map((p) => `${p}*`),
+    ...spellings(trail).map((p) => `${p}*`),
     ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
     ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
@@ -453,6 +458,8 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${sessionsLock})`,
     // Edit(path) covers writes too (issue 660: no Write(path) rules).
     `Edit(/${sessionsLock})`,
+    `Read(/${trail})`,
+    `Edit(/${trail})`,
     ...files.map((f) => `Read(/${f})`),
     // Issue 1299: copies beside each (a damaged file moved aside, a
     // write's temporary file) hold the same records.

@@ -65,7 +65,12 @@ import {
   registryDir,
 } from "../../shared/install-registry.js";
 import { AUDIT_FILE } from "../../shared/audit-file.js";
-import { QUEUE_DROPPED_VERB, readAuditRows } from "../../shared/audit-queue.js";
+import {
+  AUDIT_INTAKE_DIR,
+  QUEUE_DROPPED_VERB,
+  readAuditRows,
+} from "../../shared/audit-queue.js";
+import { DEN_PROCS_DIR, pidAlive } from "../../shared/den-procs.js";
 import {
   SIGNIN_REQUEST_VERB,
   signinRequestCounts,
@@ -1689,6 +1694,8 @@ export function sharedUserLines(
     /** The walk's caps (default 20,000 entries, 8 folders deep). */
     maxEntries?: number;
     maxDepth?: number;
+    /** Whether this install's server runs now (its den-procs record). */
+    serverRunning?: () => boolean;
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
@@ -1702,9 +1709,15 @@ export function sharedUserLines(
     ? `${others} other install${others === 1 ? " runs" : "s run"} as this login on this computer. Their agents are kept out of ${title}'s credentials by deny rules, which bind an agent that follows them; a separate login for each install keeps them apart for certain`
     : "no other install runs as this login on this computer";
   const registered = isRegistered(reg, stateDir);
+  // A fresh install (its server not started yet) is registered at its
+  // start: only a running server that isn't registered is a warning.
+  const running = (o.serverRunning ?? (() => serverRecorded(stateDir)))();
+  const regOk = registered || !running;
   const regDetail = registered
     ? "this install is in the install registry, so other installs' agents on this login are denied its files"
-    : `this install isn't in the install registry yet, so other installs' agents on this login aren't denied its files. ${title} adds it at its next start`;
+    : running
+      ? `this install isn't in the install registry, though its server runs, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
+      : `this install isn't in the install registry yet: ${title} adds it at its next start`;
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home),
   );
@@ -1736,14 +1749,14 @@ export function sharedUserLines(
       `${title} doctor: Installs on this login`,
       "",
       `  same login  ${mark(!others)}  ${shared}`,
-      `  registry  ${mark(registered)}  ${regDetail}`,
+      `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
     ],
     checks: [
       { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
       {
         id: "install_registry",
-        status: registered ? "ok" : "warn",
+        status: regOk ? "ok" : "warn",
         detail: regDetail,
       },
       {
@@ -1753,6 +1766,30 @@ export function sharedUserLines(
       },
     ],
   };
+}
+
+/**
+ * Issue 728: state folders of 0600 files that hold no credential, left out
+ * of the walk: the process records (pids only), a session's own writable
+ * folder (its guardrail log, its audit queue: issue 1369) and the
+ * server's intake of that queue.
+ */
+const NOT_CREDENTIAL_DIRS: readonly string[] = [
+  DEN_PROCS_DIR,
+  "audit",
+  AUDIT_INTAKE_DIR,
+];
+
+/** Whether a server of this install records itself as running. */
+function serverRecorded(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, DEN_PROCS_DIR))
+      .map((n) => /^server-(\d+)\.json$/.exec(n))
+      .some((m) => !!m && pidAlive(Number(m[1])));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1784,6 +1821,7 @@ function uncoveredSecretFiles(
       }
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
+        if (depth === 0 && NOT_CREDENTIAL_DIRS.includes(e.name)) continue;
         if (depth >= maxDepth) deep = true;
         else walk(p, depth + 1);
       } else if (e.isFile()) {
