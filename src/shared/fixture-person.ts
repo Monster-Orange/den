@@ -322,6 +322,10 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/report\/drafts$/],
   ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
+  // Issue 1407: a restart for out-of-date tools (gate/1407's page row).
+  // agent-routes.ts lets it reach only agents Den marked testBed, never
+  // the server agent's; an unknown id answers the same 403.
+  ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/restart$/],
   // Issue 1215: a live check's own project (fixture-projects.ts narrows
   // these to create, activate, deactivate and delete, on its own projects,
   // on a test install).

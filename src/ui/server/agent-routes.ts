@@ -241,6 +241,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
   operatorActOf,
   personOrOperator,
   principalOf,
@@ -1031,28 +1032,43 @@ export async function handleAgentRoutes(
     );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Issue 1407: its restart too, and a
+    // test install's fixture person's restart. Any other agent: refused,
+    // as a person-only act is. Checked before the 404 below, so an id
+    // that doesn't exist answers the same 403: they can't learn which
+    // agents are there. Never the server agent's.
+    const opAct = operatorActOf(req);
+    const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    if (
+      opAct === "agent-say" ||
+      opAct === "agent-relaunch" ||
+      opAct === "agent-restart" ||
+      fixtureRestart
+    ) {
+      let marked = false;
+      try {
+        marked =
+          id !== undefined &&
+          !isServerScope(ws) &&
+          agentRecord(d, id, ws).testBed === true;
+      } catch {
+        marked = false;
+      }
+      if (!marked)
+        throw new AgentError(
+          opAct === "agent-say"
+            ? "only a person can send an agent a message"
+            : opAct === "agent-relaunch"
+              ? "only a person can relaunch an agent"
+              : "only a person can restart an agent",
+          { status: 403 },
+        );
+    }
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    // Issue 956: the test operator's message and relaunch reach only the
-    // bed's own agents, those Den marked when it started them on the
-    // test-person path (issue 943). Any other agent: refused, as a
-    // person-only act is.
-    const opAct = operatorActOf(req);
-    if (
-      (opAct === "agent-say" ||
-        opAct === "agent-relaunch" ||
-        opAct === "agent-restart") &&
-      (id === undefined || agentRecord(d, id, ws).testBed !== true)
-    )
-      throw new AgentError(
-        opAct === "agent-say"
-          ? "only a person can send an agent a message"
-          : opAct === "agent-restart"
-            ? "only a person can restart an agent"
-            : "only a person can relaunch an agent",
-        { status: 403 },
-      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -1082,7 +1098,11 @@ export async function handleAgentRoutes(
       );
     // D44: a restart is the person's (it stops a session). Issue 1407: and
     // the test operator's, for the bed's own agents only (checked above).
-    if (verb === "restart" && !personOrOperator(req, "agent-restart"))
+    if (
+      verb === "restart" &&
+      !fixtureRestart &&
+      !personOrOperator(req, "agent-restart")
+    )
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
