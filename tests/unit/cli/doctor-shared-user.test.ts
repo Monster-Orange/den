@@ -33,12 +33,13 @@ const install = (name: string) => {
   return d;
 };
 const reg = () => path.join(root, "installs");
-const rows = (stateDir: string) =>
+const rows = (stateDir: string, trailReadable = true) =>
   sharedUserLines("Den", {
     stateDir,
     registry: reg(),
     home: root,
     serverRunning: () => false,
+    trailReadable,
   });
 const check = (r: ReturnType<typeof rows>, id: string) =>
   r.checks.find((c) => c.id === id)!;
@@ -97,7 +98,7 @@ describe("issue 728: doctor's same-login rows", () => {
     expect(s.detail).toMatch(/next start/);
   });
 
-  it("the activity trail is denied to agents, so it is never listed; process records (pids only) aren't counted", () => {
+  it("the activity trail and the audit queues hold no credential, so they're never listed, readable or not; process records (pids only) aren't counted", () => {
     const own = install("own");
     registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
     put(own, "audit.jsonl");
@@ -107,6 +108,22 @@ describe("issue 728: doctor's same-login rows", () => {
     put(own, "audit-intake/pending/x--y.json");
     const s = check(rows(own), "uncovered_files");
     expect(s.status).toBe("ok");
+  });
+
+  it("issue 1391: a strict install's trail isn't skipped, it is covered: denied to agents, so never listed", () => {
+    const own = install("own");
+    registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
+    put(own, "audit.jsonl");
+    expect(check(rows(own, false), "uncovered_files").status).toBe("ok");
+  });
+
+  it("issue 1391: a personal install skips the trail only, never a file beside it in a folder", () => {
+    const own = install("own");
+    registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
+    put(own, "loose/audit.jsonl");
+    const s = check(rows(own), "uncovered_files");
+    expect(s.status).toBe("warn");
+    expect(s.detail).toContain("loose/audit.jsonl");
   });
 
   it("a 0600 file the deny rules don't cover: named by its path in the state folder, never read", () => {
