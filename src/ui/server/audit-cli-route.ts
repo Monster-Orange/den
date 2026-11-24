@@ -6,6 +6,7 @@
  */
 import type * as http from "http";
 import {
+  auditRowHash,
   cliAuditRowOf,
   isQueueId,
   type CliAuditRow,
@@ -22,8 +23,11 @@ export interface CliAuditDeps<A> {
   /** True while this principal may send another entry this hour. */
   budget: (principal: string) => boolean;
   record: (actor: A, row: CliAuditRow, principal: string) => { ts: string };
-  /** Its queued copy's id, so a copy left behind is dropped. */
-  remember: (id: string) => void;
+  /**
+   * Its queued copy's id, with who sent it and its words' hash, so a copy
+   * left behind (and only that copy) is dropped.
+   */
+  remember: (id: string, principal: string, hash: string) => void;
 }
 
 export async function cliAuditRequest<A>(
@@ -49,6 +53,6 @@ export async function cliAuditRequest<A>(
   if (!d.budget(principal))
     return { status: 429, body: { error: "too many audit entries this hour" } };
   const entry = d.record(d.actor, row, principal);
-  if (isQueueId(v.id)) d.remember(v.id);
+  if (isQueueId(v.id)) d.remember(v.id, principal, auditRowHash(row));
   return { status: 200, body: { recorded: true, ts: entry.ts } };
 }

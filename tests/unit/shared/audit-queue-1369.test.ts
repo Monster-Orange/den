@@ -30,12 +30,13 @@ import {
   MAX_PER_PASS,
   queueAuditRow,
   readAuditRows,
-  rememberSentAuditId,
+  auditRowHash,
+  rememberSentAuditCopy,
   sentAuditBudget,
   startAuditQueueIntake,
   takeQueuedAuditRows,
   type CliAuditRow,
-  wasSentAuditId,
+  wasSentAuditCopy,
   type QueuedAuditRow,
 } from "../../../src/shared/audit-queue.js";
 import {
@@ -342,12 +343,14 @@ describe("issue 1369: readers outside the server see queued entries, as reports"
 });
 
 describe("issue 1369: a queued copy of an entry the server already took is dropped", () => {
+  const PERSON = "person:someone";
+
   it("the sender sends the entry's id; a copy left behind (the CLI ended first) never comes in twice", async () => {
     const ids: string[] = [];
     // The server took it, but this process ends before removing its copy.
     setAuditSender(async (r) => {
       ids.push(String(r.id));
-      rememberSentAuditId(String(r.id));
+      rememberSentAuditCopy(String(r.id), PERSON, auditRowHash(r));
       return false;
     });
     auditConfig({ verb: "agents", detail: "once" }, state);
@@ -356,24 +359,66 @@ describe("issue 1369: a queued copy of an entry the server already took is dropp
     expect(queued()).toEqual([`${ids[0]}.json`]);
     const got: QueuedAuditRow[] = [];
     const c = takeQueuedAuditRows(state, (row) => got.push(row), undefined, {
-      seen: wasSentAuditId,
+      seen: wasSentAuditCopy,
     });
     expect(got).toEqual([]);
     expect(c).toMatchObject({ taken: 0, duplicate: 1, dropped: 0 });
     expect(queued()).toEqual([]);
   });
 
+  it("an agent sending a person's queued id, with another row: the person's entry still comes in", () => {
+    auditConfig({ verb: "agents", detail: "the person's" }, state);
+    const [name] = list(personQueue());
+    const id = name.slice(0, -".json".length);
+    rememberSentAuditCopy(
+      id,
+      "agent:a1",
+      auditRowHash({ verb: "agents", detail: "throwaway" }),
+    );
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail), undefined, {
+      seen: wasSentAuditCopy,
+    });
+    expect(got).toEqual(["the person's"]);
+    expect(c.duplicate).toBe(0);
+  });
+
+  it("an agent sending the very row with the person's id: still the person's to drop, so it comes in", () => {
+    auditConfig({ verb: "agents", detail: "the person's" }, state);
+    const [name] = list(personQueue());
+    rememberSentAuditCopy(
+      name.slice(0, -".json".length),
+      "agent:a1",
+      auditRowHash({ verb: "agents", detail: "the person's" }),
+    );
+    const got: string[] = [];
+    takeQueuedAuditRows(state, (r) => got.push(r.detail), undefined, {
+      seen: wasSentAuditCopy,
+    });
+    expect(got).toEqual(["the person's"]);
+  });
+
   it("the server remembers only recent ids, and only well-formed ones", () => {
-    rememberSentAuditId("not an id");
-    expect(wasSentAuditId("not an id")).toBe(false);
+    const h = auditRowHash({ verb: "agents", detail: "x" });
+    rememberSentAuditCopy("not an id", PERSON, h);
+    expect(wasSentAuditCopy("not an id", h, false)).toBe(false);
     const first = "000000000000001-1-000000000-00000000";
-    rememberSentAuditId(first);
-    expect(wasSentAuditId(first)).toBe(true);
+    rememberSentAuditCopy(first, PERSON, h);
+    expect(wasSentAuditCopy(first, h, true)).toBe(true);
+    expect(
+      wasSentAuditCopy(
+        first,
+        auditRowHash({ verb: "agents", detail: "y" }),
+        true,
+      ),
+    ).toBe(false);
     for (let i = 0; i < 5000; i++)
-      rememberSentAuditId(
+      rememberSentAuditCopy(
         `000000000000002-1-${String(i).padStart(9, "0")}-00000000`,
+        PERSON,
+        h,
       );
-    expect(wasSentAuditId(first)).toBe(false);
+    expect(wasSentAuditCopy(first, h, true)).toBe(false);
   });
 });
 
@@ -437,12 +482,16 @@ describe("issue 1369: a queued copy is left to settle before it's taken in", () 
       settleMs: 15_000,
     });
     // The send lands after the intake moved the copy.
-    rememberSentAuditId(id);
+    rememberSentAuditCopy(
+      id,
+      "person:someone",
+      auditRowHash({ verb: "agents", detail: "racing" }),
+    );
     const got: string[] = [];
     const c = takeQueuedAuditRows(state, (r) => got.push(r.detail), undefined, {
       settleMs: 15_000,
       now: later(),
-      seen: wasSentAuditId,
+      seen: wasSentAuditCopy,
     });
     expect(got).toEqual([]);
     expect(c.duplicate).toBe(1);
@@ -672,5 +721,100 @@ describe("issue 1369: what an entry says is one plain line", () => {
     expect(cleanLine("a\u2028b", 100)).toBe("a");
     expect(cleanLine("ok\u202e\u200bfine\u0085x", 100)).toBe("okfine");
     expect(cleanLine("tab\there", 100)).toBe("tabhere");
+  });
+});
+
+describe("issue 1369: the server never walks into a folder an agent made", () => {
+  const intake = (...p: string[]) => path.join(state, "audit-intake", ...p);
+
+  it("a nested folder from a queue is taken apart one level a pass, and in the end nothing is left", () => {
+    fs.mkdirSync(path.join(queue(), "sub", "a", "b", "c"), { recursive: true });
+    fs.writeFileSync(path.join(queue(), "sub", "a", "b", "c", "f"), "x");
+    fs.writeFileSync(path.join(queue(), "sub", "g"), "x");
+    for (let p = 0; p < 12; p++) takeQueuedAuditRows(state, () => undefined);
+    expect(fs.readdirSync(intake("trash"))).toEqual([]);
+  });
+
+  it("a subfolder in trash swapped for a link between passes: what the link points at is never touched", () => {
+    const outside = path.join(state, "outside");
+    fs.mkdirSync(path.join(outside, "inner"), { recursive: true });
+    fs.writeFileSync(path.join(outside, "keep"), "x");
+    fs.writeFileSync(path.join(outside, "inner", "keep2"), "x");
+    fs.mkdirSync(path.join(queue(), "sub", "inner"), { recursive: true });
+    fs.writeFileSync(path.join(queue(), "sub", "inner", "f"), "x");
+    // In: the queue moved, "sub" sent to trash.
+    takeQueuedAuditRows(state, () => undefined);
+    const [x] = fs.readdirSync(intake("trash"));
+    expect(x).toBeDefined();
+    // An agent holding "sub" open swaps its subfolder for a link.
+    fs.rmSync(path.join(intake("trash"), x, "inner"), { recursive: true });
+    fs.symlinkSync(outside, path.join(intake("trash"), x, "inner"));
+    for (let p = 0; p < 6; p++) takeQueuedAuditRows(state, () => undefined);
+    expect(fs.existsSync(path.join(outside, "keep"))).toBe(true);
+    expect(fs.existsSync(path.join(outside, "inner", "keep2"))).toBe(true);
+    expect(fs.readdirSync(intake("trash"))).toEqual([]);
+  });
+
+  it("an empty folder an agent left is removed, and links and files in trash are unlinked themselves", () => {
+    const outside = path.join(state, "outside");
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, "keep"), "x");
+    fs.mkdirSync(path.join(queue(), "empty"), { recursive: true });
+    fs.symlinkSync(outside, path.join(queue(), "link"));
+    for (let p = 0; p < 5; p++) takeQueuedAuditRows(state, () => undefined);
+    expect(fs.existsSync(path.join(outside, "keep"))).toBe(true);
+    expect(fs.readdirSync(intake("trash"))).toEqual([]);
+  });
+
+  it("a folder where a pending entry should be: set aside, and every pass after still runs", () => {
+    fs.mkdirSync(
+      intake(
+        "pending",
+        "000000000000001-000000000-a--000000000000001-1-000000000-00000000.json",
+      ),
+      {
+        recursive: true,
+      },
+    );
+    fs.writeFileSync(
+      path.join(
+        intake(
+          "pending",
+          "000000000000001-000000000-a--000000000000001-1-000000000-00000000.json",
+        ),
+        "f",
+      ),
+      "x",
+    );
+    put("000000000000002-1-000000000-00000000.json", {
+      verb: "agents",
+      detail: "after",
+    });
+    const got: string[] = [];
+    expect(() =>
+      takeQueuedAuditRows(state, (r) => got.push(r.detail)),
+    ).not.toThrow();
+    takeQueuedAuditRows(state, (r) => got.push(r.detail));
+    expect(got).toEqual(["after"]);
+    expect(
+      fs.readdirSync(intake("pending")).filter((n) => !n.endsWith(".json")),
+    ).toEqual([]);
+  });
+});
+
+describe("issue 1369: the person's entries have their own hour", () => {
+  it("the agents' cap reached: the person's entries still come in, first", () => {
+    put("000000000000001-1-000000000-00000000.json", {
+      verb: "agents",
+      detail: "agent's",
+    });
+    auditConfig({ verb: "agents", detail: "the person's" }, state);
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail), 0, {
+      personMax: 5,
+    });
+    expect(got).toEqual(["the person's"]);
+    expect(c.takenPerson).toBe(1);
+    expect(c.deferred).toBe(1);
   });
 });

@@ -6,6 +6,7 @@
 import { describe, expect, it } from "@jest/globals";
 import type * as http from "http";
 import { Readable } from "stream";
+import { auditRowHash } from "../../../src/shared/audit-queue.js";
 import { cliAuditRequest } from "../../../src/ui/server/audit-cli-route.js";
 
 const req = (body: string | Buffer[]) =>
@@ -15,7 +16,7 @@ const req = (body: string | Buffer[]) =>
 
 const deps = () => {
   const recorded: unknown[] = [];
-  const remembered: string[] = [];
+  const remembered: unknown[] = [];
   return {
     recorded,
     remembered,
@@ -27,7 +28,8 @@ const deps = () => {
         recorded.push({ actor, row, principal });
         return { ts: "2026-01-01T00:00:00.000Z" };
       },
-      remember: (id: string) => remembered.push(id),
+      remember: (id: string, principal: string, hash: string) =>
+        remembered.push({ id, principal, hash }),
     },
   };
 };
@@ -54,7 +56,14 @@ describe("issue 1369: POST /api/audit/cli", () => {
         principal: "agent:a1",
       },
     ]);
-    expect(t.remembered).toEqual(["000000000000001-1-000000000-00000000"]);
+    // With who sent it and what it said, so only its own copy is dropped.
+    expect(t.remembered).toEqual([
+      {
+        id: "000000000000001-1-000000000-00000000",
+        principal: "agent:a1",
+        hash: auditRowHash({ verb: "agents", detail: "ok" }),
+      },
+    ]);
   });
 
   it("a body past 8 KB is refused unparsed, however large, and nothing recorded", async () => {

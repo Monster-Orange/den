@@ -29,7 +29,7 @@
  * entry of the server's own a window (10 minutes). One principal's sent
  * entries are capped an hour too (sentAuditBudget).
  */
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { AUDIT_FILE } from "./audit-file.js";
@@ -226,6 +226,8 @@ export interface IntakeCounts {
   refused: number;
   /** Passes that left a queue where it was: the intake was full. */
   full: number;
+  /** Of `taken`, the person's queue's. */
+  takenPerson: number;
 }
 
 const uid = (): number | null =>
@@ -237,21 +239,49 @@ export function isQueueId(id: unknown): id is string {
 }
 
 /**
- * The ids of entries the server took when they were sent (its memory, the
- * last RECENT_IDS): a queued copy of one, left by a sender that ended
- * before removing it, is dropped as a duplicate.
+ * The entries the server took when they were sent (its memory, the last
+ * RECENT_IDS): each id with who sent it and its words' hash. A queued
+ * copy of one, left by a sender that ended before removing it, is dropped
+ * as a duplicate, but only when its own words hash the same and, for a
+ * copy from the person's queue, the sender was the person: an id alone
+ * (anyone who can read a queue can learn one) never drops an entry.
  */
 const RECENT_IDS = 4096;
-const sentIds = new Set<string>();
-export function rememberSentAuditId(id: string): void {
-  if (!isQueueId(id)) return;
-  sentIds.delete(id);
-  sentIds.add(id);
-  while (sentIds.size > RECENT_IDS)
-    sentIds.delete(sentIds.values().next().value as string);
+const sent = new Map<string, { principal: string; hash: string }>();
+
+/** A row's words (verb, detail, outcome, reason), as a hash. */
+export function auditRowHash(row: CliAuditRow): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        row.verb,
+        row.detail,
+        row.outcome ?? null,
+        row.reason ?? null,
+      ]),
+    )
+    .digest("hex");
 }
-export function wasSentAuditId(id: string): boolean {
-  return sentIds.has(id);
+
+export function rememberSentAuditCopy(
+  id: string,
+  principal: string,
+  hash: string,
+): void {
+  if (!isQueueId(id)) return;
+  sent.delete(id);
+  sent.set(id, { principal, hash });
+  while (sent.size > RECENT_IDS) sent.delete(sent.keys().next().value!);
+}
+
+export function wasSentAuditCopy(
+  id: string,
+  hash: string,
+  fromPerson: boolean,
+): boolean {
+  const s = sent.get(id);
+  if (!s || s.hash !== hash) return false;
+  return !fromPerson || s.principal.startsWith("person:");
 }
 
 /**
@@ -307,37 +337,48 @@ function someNames(dir: string, max: number): fs.Dirent[] {
 }
 
 /**
- * Removes at most `budget` things under `dir` (files, links, then the
- * emptied folders), never following a link; `dir` itself stays.
+ * Removes at most `budget` of what's in `trash`, never more than one
+ * component deep into a folder that came from a queue: under a sandbox
+ * that grants writes by mount, an agent holding one open can change what's
+ * in it (never the folder itself: trash is the server's). So in a trashed
+ * folder X, each entry is lstat'd and a file or link unlinked as X/name
+ * (unlink never follows the last component), a subfolder renamed up into
+ * trash for a later pass (a rename never follows it either), and X removed
+ * once it's empty. No recursive remove, and a deep tree costs one pass a
+ * level, never a wedge.
  */
-function removeSome(dir: string, budget: number): void {
+function clearTrash(
+  trash: string,
+  budget: number,
+  toTrash: (p: string) => void,
+): void {
   let ops = 0;
-  const stack = [dir];
-  while (stack.length && ops < budget) {
-    const top = stack[stack.length - 1];
-    const [e] = someNames(top, 1);
-    if (!e) {
-      stack.pop();
-      if (top !== dir) {
-        ops++;
-        try {
-          fs.rmdirSync(top);
-        } catch {
-          /* tried again next pass */
-        }
-      }
-      continue;
-    }
-    const p = path.join(top, e.name);
-    if (e.isDirectory()) {
-      stack.push(p);
-      continue;
-    }
+  for (const e of someNames(trash, budget)) {
+    if (ops >= budget) return;
+    const x = path.join(trash, e.name);
     ops++;
     try {
-      fs.unlinkSync(p);
+      if (!fs.lstatSync(x).isDirectory()) {
+        fs.unlinkSync(x);
+        continue;
+      }
+      const inner = someNames(x, budget - ops);
+      if (!inner.length) {
+        fs.rmdirSync(x);
+        continue;
+      }
+      for (const i of inner) {
+        ops++;
+        const p = path.join(x, i.name);
+        try {
+          if (fs.lstatSync(p).isDirectory()) toTrash(p);
+          else fs.unlinkSync(p);
+        } catch {
+          /* the next pass */
+        }
+      }
     } catch {
-      return;
+      /* the next pass */
     }
   }
 }
@@ -356,7 +397,8 @@ function removeSome(dir: string, budget: number): void {
  *    goes pending under its arrival (the server's order, never the
  *    writer's names); anything else goes to be removed (`dropped`).
  * 4. Pending entries, in arrival order: one younger than `settleMs` waits;
- *    a copy of one `seen` says the server took when sent is removed as a
+ *    a copy of one `seen` says the server took when sent (its sender and
+ *    words matching) is removed as a
  *    duplicate; past `max` entries or MAX_BYTES_PER_PASS bytes the rest
  *    wait for a later pass (`deferred`); the others go to `record`.
  *    Only what was read is removed.
@@ -368,9 +410,11 @@ export function takeQueuedAuditRows(
   o: {
     settleMs?: number;
     now?: number;
-    seen?: (id: string) => boolean;
+    seen?: (id: string, hash: string, fromPerson: boolean) => boolean;
     maxPending?: number;
     scanPerPass?: number;
+    /** The person's queue's own cap this pass (default `max`). */
+    personMax?: number;
   } = {},
 ): IntakeCounts {
   const out: IntakeCounts = {
@@ -381,6 +425,7 @@ export function takeQueuedAuditRows(
     deferred: 0,
     refused: 0,
     full: 0,
+    takenPerson: 0,
   };
   const settleMs = o.settleMs ?? 0;
   const now = o.now ?? Date.now();
@@ -413,11 +458,22 @@ export function takeQueuedAuditRows(
   };
 
   // 1. What isn't an entry, removed a part a pass.
-  removeSome(trash, scan);
+  clearTrash(trash, scan, toTrash);
 
-  // 2. The queues in, while there's room.
-  let pendingCount = someNames(pending, maxPending + 1).length;
-  for (const rel of [AUDIT_PERSON_QUEUE_DIR, AUDIT_QUEUE_DIR]) {
+  // 2. The queues in, each while its own part has room: the person's
+  // queue ("p") and the agents' ("a") have their own room in pending and
+  // in moved-in queues, so one never waits behind the other.
+  const SOURCES = [
+    { tag: "p", rel: AUDIT_PERSON_QUEUE_DIR },
+    { tag: "a", rel: AUDIT_QUEUE_DIR },
+  ] as const;
+  const tagOf = (n: string) => /^\d{15}-\d{9}-([pa])/.exec(n)?.[1] ?? "a";
+  const count = (dir: string, tag: string, max: number) =>
+    someNames(dir, 2 * max + 2).filter((e) => tagOf(e.name) === tag).length;
+  const room: Record<string, number> = {};
+  for (const { tag } of SOURCES)
+    room[tag] = maxPending - count(pending, tag, maxPending);
+  for (const { tag, rel } of SOURCES) {
     const queue = path.join(stateDir, rel);
     let st: fs.Stats;
     try {
@@ -432,26 +488,36 @@ export function takeQueuedAuditRows(
       out.refused++;
       continue;
     }
-    if (
-      pendingCount >= maxPending ||
-      someNames(batches, MAX_BATCHES + 1).length >= MAX_BATCHES
-    ) {
+    if (room[tag] <= 0 || count(batches, tag, MAX_BATCHES) >= MAX_BATCHES) {
       out.full++;
       continue;
     }
     try {
-      fs.renameSync(queue, path.join(batches, arrival()));
+      fs.renameSync(queue, path.join(batches, `${arrival()}-${tag}`));
     } catch {
       /* the next pass */
     }
   }
 
-  // 3. Moved-in queues, a part a pass, to pending in arrival order.
+  // 3. Moved-in queues, a part a pass, to pending in arrival order (the
+  // person's first).
+  const byPersonFirst = (x: string, y: string) =>
+    tagOf(x) === tagOf(y)
+      ? x < y
+        ? -1
+        : x > y
+          ? 1
+          : 0
+      : tagOf(x) === "p"
+        ? -1
+        : 1;
   let budget = scan;
-  for (const b of someNames(batches, MAX_BATCHES + 1)
+  for (const b of someNames(batches, 2 * MAX_BATCHES + 2)
     .map((e) => e.name)
-    .sort()) {
-    if (budget <= 0 || pendingCount >= maxPending) break;
+    .sort(byPersonFirst)) {
+    if (budget <= 0) break;
+    const tag = tagOf(b);
+    if (room[tag] <= 0) continue;
     const dir = path.join(batches, b);
     try {
       if (!isOwnDir(dir)) {
@@ -479,10 +545,17 @@ export function takeQueuedAuditRows(
         out.dropped++;
         continue;
       }
-      if (pendingCount >= maxPending) break;
+      if (room[tag] <= 0) break;
       try {
-        fs.renameSync(file, path.join(pending, `${arrival()}--${id}.json`));
-        pendingCount++;
+        const to = path.join(pending, `${arrival()}-${tag}--${id}.json`);
+        fs.renameSync(file, to);
+        // Swapped between the check and the move: not a plain file, out.
+        if (!fs.lstatSync(to).isFile()) {
+          toTrash(to);
+          out.dropped++;
+          continue;
+        }
+        room[tag]--;
       } catch {
         /* the next pass */
       }
@@ -497,11 +570,11 @@ export function takeQueuedAuditRows(
     }
   }
 
-  // 4. Pending, in arrival order.
+  // 4. Pending, the person's first, each in arrival order.
   let bytes = 0;
-  for (const n of someNames(pending, maxPending + scan)
+  for (const n of someNames(pending, 2 * maxPending + 2)
     .map((e) => e.name)
-    .sort()) {
+    .sort(byPersonFirst)) {
     const file = path.join(pending, n);
     const id = n.slice(n.indexOf("--") + 2, -".json".length);
     let st: fs.Stats;
@@ -513,30 +586,47 @@ export function takeQueuedAuditRows(
     // Young: written within the settle time. A time more than a second
     // ahead (the writer sets it; a clock's own jitter is less) counts as
     // settled, so nothing waits forever.
+    if (!st.isFile()) {
+      toTrash(file);
+      out.dropped++;
+      continue;
+    }
     const age = now - st.mtimeMs;
     if (settleMs > 0 && age >= -1000 && age < settleMs) {
       out.waiting++;
       continue;
     }
-    if (o.seen?.(id)) {
-      out.duplicate++;
-      fs.rmSync(file, { force: true });
-      continue;
-    }
-    if (out.taken >= max || bytes + st.size > MAX_BYTES_PER_PASS) {
+    const fromPerson = tagOf(n) === "p";
+    const cap = fromPerson ? (o.personMax ?? max) : max;
+    const takenHere = fromPerson
+      ? out.takenPerson
+      : out.taken - out.takenPerson;
+    if (takenHere >= cap || bytes + st.size > MAX_BYTES_PER_PASS) {
       out.deferred++;
       continue;
     }
     const row = readQueued(file);
-    fs.rmSync(file, { force: true });
+    try {
+      fs.unlinkSync(file);
+    } catch {
+      toTrash(file);
+    }
     if (!row) {
       out.dropped++;
+      continue;
+    }
+    // A copy of one sent and taken: dropped only when the sender is one
+    // who may (the person, for the person's queue) and its words are
+    // this copy's own, so no one can erase another's entry by its id.
+    if (o.seen?.(id, auditRowHash(row), fromPerson)) {
+      out.duplicate++;
       continue;
     }
     try {
       record(row);
       bytes += st.size;
       out.taken++;
+      if (fromPerson) out.takenPerson++;
     } catch {
       out.dropped++;
     }
@@ -561,7 +651,7 @@ export function startAuditQueueIntake(
     settleMs?: number;
     windowMs?: number;
     now?: () => number;
-    seen?: (id: string) => boolean;
+    seen?: (id: string, hash: string, fromPerson: boolean) => boolean;
     onDropped?: (c: IntakeCounts) => void;
   } = {},
 ): () => void {
@@ -569,7 +659,9 @@ export function startAuditQueueIntake(
   const perHour = o.perHour ?? MAX_PER_HOUR;
   const windowMs = o.windowMs ?? 600_000;
   let hourStart = now();
+  // Each queue's own hour: the agents' entries never use up the person's.
   let thisHour = 0;
+  let thisHourPerson = 0;
   let windowStart: number | null = null;
   let sum: IntakeCounts | null = null;
   let busy = false;
@@ -580,18 +672,24 @@ export function startAuditQueueIntake(
       if (now() - hourStart >= 3_600_000) {
         hourStart = now();
         thisHour = 0;
+        thisHourPerson = 0;
       }
       const c = takeQueuedAuditRows(
         stateDir,
         record,
         Math.max(0, Math.min(MAX_PER_PASS, perHour - thisHour)),
         {
+          personMax: Math.max(
+            0,
+            Math.min(MAX_PER_PASS, perHour - thisHourPerson),
+          ),
           settleMs: o.settleMs ?? SETTLE_MS,
           now: now(),
           ...(o.seen ? { seen: o.seen } : {}),
         },
       );
-      thisHour += c.taken;
+      thisHour += c.taken - c.takenPerson;
+      thisHourPerson += c.takenPerson;
       if (c.dropped || c.refused || c.full) {
         sum = sum
           ? {
@@ -600,7 +698,14 @@ export function startAuditQueueIntake(
               refused: sum.refused + c.refused,
               full: sum.full + c.full,
             }
-          : { ...c, taken: 0, duplicate: 0, waiting: 0, deferred: 0 };
+          : {
+              ...c,
+              taken: 0,
+              takenPerson: 0,
+              duplicate: 0,
+              waiting: 0,
+              deferred: 0,
+            };
         windowStart ??= now();
       }
       if (sum && windowStart !== null && now() - windowStart >= windowMs) {

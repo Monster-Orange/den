@@ -368,10 +368,10 @@ import { cliAuditRequest } from "./audit-cli-route.js";
 import {
   droppedDetail,
   QUEUE_DROPPED_VERB,
-  rememberSentAuditId,
+  rememberSentAuditCopy,
   sentAuditBudget,
   startAuditQueueIntake,
-  wasSentAuditId,
+  wasSentAuditCopy,
 } from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
@@ -1166,7 +1166,7 @@ const CLI_AUDIT_BUDGET = sentAuditBudget();
 // Issue 1369: the CLI's audit entries, queued outside this process, come
 // in now and while it runs: audit.jsonl has one writer.
 startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row), {
-  seen: wasSentAuditId,
+  seen: wasSentAuditCopy,
   onDropped: (c) =>
     void recordAction(null, {
       verb: QUEUE_DROPPED_VERB,
@@ -7323,7 +7323,7 @@ async function handleRequest(
       actor: auditActorOf(req),
       budget: CLI_AUDIT_BUDGET,
       record: recordSentAuditRow,
-      remember: rememberSentAuditId,
+      remember: rememberSentAuditCopy,
     });
     return sendJson(res, r.body, r.status);
   }
