@@ -103,6 +103,25 @@ describe("setting_change: a known key (issue 1371)", () => {
     expect(readAgentsConfig({} as DenConfig, u).maxConcurrent).toBe(14);
   });
 
+  it("agents.max_concurrent stays proposable, not widening, asking, and applied", () => {
+    // Issue 1373 owns the per-machine merge; setting_change reaches the key
+    // through config's dotted keys. Same before and after the duplicate goes.
+    const ask = {
+      key: "agents.max_concurrent",
+      value: 14,
+      reason: "more agents",
+    };
+    const c = checkSettingChange(deps(), ask);
+    if (!c.ok) throw new Error(c.error);
+    expect(settingKind("agents.max_concurrent").widens).toBe(false);
+    expect(c.personOnly).toBeUndefined();
+    expect(policyFor("setting_change", { widens: false }).kind).toBe("ask");
+    expect(runSettingChange(deps(), ask).ok).toBe(true);
+    const u = yaml.parse(readUser()) as UserConfig;
+    expect(u.agents).toEqual({ max_concurrent: 14 });
+    expect(readAgentsConfig({} as DenConfig, u).maxConcurrent).toBe(14);
+  });
+
   it("changes only that key: comments, order and every other key stay", () => {
     runSettingChange(deps(), {
       key: "sessions.max_concurrent",
