@@ -10,6 +10,8 @@ config and manifest changes a distribution must make to move to it under
 
 - `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. (issue 728)
 - An agent can ask to change this machine's gate slot settings, with the held write `gate_settings_set` (or `gate settings … --reason`), which `setting_change` couldn't reach. Den checks the keys and values as Settings › Gate does, and the card shows each key's value now and the new one. On a personal install it's written at once and you're told; on a strict install it follows your choice for Limits and performance, except that turning `gate.browser_requires_container` off waits for your Allow. Every gate settings write now takes the gate's lock. (issue 1395)
+- An agent can ask for any Den setting it may not change itself, with the held write `setting_change`: the card shows the key, its value now and the new one, and nothing is written until the person allows it. Settings are grouped by category (limits, look, integrations, network, agent powers). On a personal install, limits, look and integrations change at once and the person is told, with Undo on the bell row; network and agent powers ask. On a strict install every category asks unless the person chooses otherwise. Raising how many agents or sessions run at once past twice the person's own value always asks. (issue 1371)
+- Restarting agents for new tools answers for each agent before anything waits: restarting now, after its turn, waiting on a background job it started (with the job's command and how long it has run), or Den can't tell. An agent waiting on a job gets "Restart now (ends the job)", and with two or more waiting there's "Restart all now", on the Agents page and in Settings › Hub. A restart no longer waits silently for a background job and then gives up. (issue 1407)
 
 ### Changed
 
@@ -25,6 +27,12 @@ config and manifest changes a distribution must make to move to it under
 - web.log keeps the server's lifecycle, warning and error lines when the server runs with `--silent`, as `web up` (by default) and a service run it. A test install's fixture sign-in line ("fixture person signed in (live checks, a test install)") was in audit.jsonl but not in web.log. With the server's output a terminal or a pipe, these lines are also added to `logs/<cli>/web.log` in Den's state folder. No line is written twice. (issue 1344)
 - Every line the web server writes to its own output (web.log under `web up` and a service) passes through secret redaction, as its other log files already did. A web.log that was readable by others is made private (0600) when the server next adds to it. (issue 1368)
 - The agents' cap set on this machine wins. `agents.max_concurrent` in `config/local/user.yml` was ignored, so a person had to set it in the distribution's config too. Now user.yml's value wins over the distribution's, key by key, everywhere the cap is read: the terminal host's cap, the CLI, the Agents page's count and Doctor. Settings › Agents gets an "Agents at once" row, and `config agents.max_concurrent` sets and reads it. The agents' other limits and waits follow the same rule in user.yml. Doctor notes when the two files differ. (issue 1373)
+- A pin in the old format no longer vanishes, and one bad entry in the pins file no longer drops all the others. (issue 1217)
+- When Den's own agent updates the pinned Den version and a branch rule refuses the push, the change goes to a pull request instead of failing. (issue 1189)
+- On a Mac, a browser test run with no `--box` goes to a free test box instead of the host. (issue 1198)
+- The notification store takes its lock for every write, so a write from another process is never lost. (issue 1348)
+- `page_view` says its view link is the agent's own, never a person's. (issue 1243)
+- UI kit 0.14.2: a bell row opens on a click anywhere on it (issue 420), and a question asked over What's new is the only pop-up (issue 864).
 
 ### Migrations
 
