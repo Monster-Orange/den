@@ -30,8 +30,10 @@ export const timeoutMs = 300000;
 
 const WS = "proj-gate";
 const AGENT = "g1391-agent";
-const KEY = "agents.restart_wait_minutes";
-const VALUE = 121; // the default is 120: a limit, routine on personal
+// A limit setting_change accepts (the agent limits other than
+// max_concurrent are written by hand, issue 1373). Its default is 5 s.
+const KEY = "sessions.close_grace_seconds";
+const VALUE = 7;
 const REASON = "gate check 1391";
 const D2S = [];
 
@@ -58,9 +60,26 @@ async function poll(ctx, f, ms, every = 1000) {
 function configValue(d2) {
   const text = d2.readBed("config/local/user.yml");
   if (typeof text !== "string") return null;
-  const agents = /^agents:\n((?:[ \t]+.*\n?|\n)*)/m.exec(text)?.[1] ?? "";
-  const m = /^[ \t]+restart_wait_minutes:[ \t]*["']?(\d+)/m.exec(agents);
+  const block = /^sessions:\n((?:[ \t]+.*\n?|\n)*)/m.exec(text)?.[1] ?? "";
+  const m = /^[ \t]+close_grace_seconds:[ \t]*["']?(\d+)/m.exec(block);
   return m ? m[1] : "unset";
+}
+
+/** What Den answered the agent's call, from the stub's log (codes masked). */
+function mcpSaid(d2) {
+  try {
+    const rows = d2.stubLog?.(AGENT, { k: "sh" }) ?? [];
+    const mine = rows.filter((r) => String(r?.v?.cmd ?? "").includes(KEY));
+    const last = mine.at(-1)?.v;
+    return last
+      ? {
+          status: last.status ?? null,
+          said: cut(`${last.out ?? ""} ${last.err ?? ""}`, 200),
+        }
+      : null;
+  } catch (e) {
+    return { error: msg(e) };
+  }
 }
 
 /** Every bell item, flattened (groups, updates and items alike). */
@@ -136,6 +155,7 @@ async function personalLeg(ctx) {
     30000,
   );
   out.after = configValue(d2);
+  out.mcp = mcpSaid(d2);
   const bell = await poll(
     ctx,
     async () => {
@@ -203,6 +223,7 @@ async function strictLeg(ctx) {
       30000,
     );
     out.held = held ? { id: held.id, what: cut(held.what) } : null;
+    out.mcp = mcpSaid(d2);
     out.whileHeld = configValue(d2);
     if (held?.id) {
       const r = await d2
@@ -305,7 +326,7 @@ export function expect(cells) {
         p.fixtureUndo?.ok === false &&
         p.afterUndo === String(VALUE),
       pe ??
-        `before ${p.before}, after ${p.after}; bell: ${JSON.stringify(p.bell)}; fixture's Undo: ${JSON.stringify(p.fixtureUndo)}, then ${p.afterUndo}`,
+        `before ${p.before}, after ${p.after}; agent's call ${JSON.stringify(p.mcp)}; bell: ${JSON.stringify(p.bell)}; fixture's Undo: ${JSON.stringify(p.fixtureUndo)}, then ${p.afterUndo}`,
     ),
     row(
       clauses[3],
@@ -317,7 +338,7 @@ export function expect(cells) {
         t.fixtureAllow?.status === 403 &&
         t.after === t.before,
       te ??
-        `mode ${JSON.stringify(t.mode)}; held ${JSON.stringify(t.held)}; while held ${t.whileHeld} (before ${t.before}); fixture's Allow ${JSON.stringify(t.fixtureAllow)}; after ${t.after}`,
+        `mode ${JSON.stringify(t.mode)}; agent's call ${JSON.stringify(t.mcp)}; held ${JSON.stringify(t.held)}; while held ${t.whileHeld} (before ${t.before}); fixture's Allow ${JSON.stringify(t.fixtureAllow)}; after ${t.after}`,
     ),
     row(
       clauses[4],
