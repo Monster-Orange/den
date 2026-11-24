@@ -123,18 +123,6 @@ async function endTurn(d2, a, id, text) {
   return !!file;
 }
 
-async function say(d2, id, text) {
-  const r = await d2.fetch(
-    `/api/workspaces/${encodeURIComponent(WS)}/agents/${encodeURIComponent(id)}/say`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
-    },
-  );
-  return r?.status ?? null;
-}
-
 async function restartNowApi(d2, id) {
   const r = await d2.fetch(
     `/api/workspaces/${encodeURIComponent(WS)}/agents/${encodeURIComponent(id)}/restart`,
@@ -180,7 +168,11 @@ export async function setup(ctx) {
       (await endTurn(d2, idle, IDLE, "Done for now.")) &&
       (await endTurn(d2, job, JOB, "Done for now."));
     if (!s.transcript) return { ...s, skip: "needs-transcript" };
-    s.bg = await say(d2, JOB, `/bg ${JOB_S} ${JOB_NAME}`);
+    // Typed straight into the stub (agent.line), never Den's /say: a
+    // test install's fixture person may not send an agent a message.
+    if (!job.line) return { ...s, skip: "needs-stub-line" };
+    job.line(`/bg ${JOB_S} ${JOB_NAME}`);
+    s.bg = "line";
     await ctx.sleep(2000);
     await endTurn(d2, job, JOB, "Started the watcher in the background.");
     await ctx.sleep(2000);
@@ -231,16 +223,41 @@ export async function setup(ctx) {
   return s;
 }
 
+/** A page on den2, signed in by den2's own login link (else signedIn). */
+async function den2Page(ctx, d2) {
+  const which = ctx.browser ?? "chromium";
+  const width = ctx.width ?? 1280;
+  if (d2.loginLink && d2.browsers) {
+    const link = d2.loginLink({ origin: d2.url });
+    const b = await d2.browsers(which);
+    const c = await b.newContext({
+      viewport: { width, height: 900 },
+      ignoreHTTPSErrors: true,
+    });
+    const page = await c.newPage();
+    await page.goto(link, { waitUntil: "load", timeout: 60000 });
+    await page
+      .waitForURL((u) => !/\/auth\b/.test(u.pathname), { timeout: 30000 })
+      .catch(() => {});
+    return { ctx: c, page, how: "login-link" };
+  }
+  const o = await d2.signedIn(which, width);
+  return { ...o, how: "signedIn" };
+}
+
 export async function run(ctx, s) {
   const out = { ...s };
   if (s?.skip || s?.fail || !D2) return out;
   const d2 = D2;
   // Clauses 3 and 4: the Agents page on den2.
-  if (d2.signedIn && d2.goto) {
-    // A page signed in to den2 (its own fixture person), not the bed's.
+  if ((d2.loginLink && d2.browsers) || d2.signedIn) {
+    // A page signed in to den2 as its own fixture person, never the bed's:
+    // den2's ctx keeps the bed's state folder, so signedIn() alone would
+    // carry the bed's cookies. Its own login link first.
     let opened = null;
     try {
-      opened = await d2.signedIn(ctx.browser ?? "chromium", ctx.width ?? 1280);
+      opened = await den2Page(ctx, d2);
+      out.signIn = opened.how;
       const p = opened.page;
       await d2.goto(p, "/agents");
       const row = `#agl .agst[data-agent="${JOB}"]`;
@@ -297,7 +314,11 @@ export async function teardown() {
   D2 = null;
   if (!d) return;
   try {
-    await say(d, JOB, "/bg-stop").catch(() => null);
+    try {
+      d.agent(JOB, { workspace: WS }).line?.("/bg-stop");
+    } catch {
+      /* the stub's exit ends its jobs too */
+    }
     for (const id of [IDLE, JOB]) {
       try {
         const a = d.agent(id, { workspace: WS });
@@ -326,6 +347,11 @@ export function expect(cells) {
     return skipAll(
       "needs-transcript",
       "the stubs wrote no conversation file, so Den can't read their turns",
+    );
+  if (r.skip === "needs-stub-line")
+    return skipAll(
+      "needs-stub-line",
+      "the bed gives no ctx.agent(id).line(text)",
     );
   if (r.skip === "needs-background-job")
     return skipAll(
@@ -372,7 +398,7 @@ export function expect(cells) {
             r.pageState === "job" &&
             /sleep 270/.test(String(r.pageLine)) &&
             r.pageNow === 1,
-          detail: `row seen ${r.rowSeen}; state ${r.pageState}; line ${JSON.stringify(r.pageLine)}; Restart now ${r.pageNow}${r.pageError ? `; ${r.pageError}` : ""}`,
+          detail: `row seen ${r.rowSeen}; state ${r.pageState}; line ${JSON.stringify(r.pageLine)}; Restart now ${r.pageNow}; signed in by ${r.signIn}${r.pageError ? `; ${r.pageError}` : ""}`,
         };
   const row4 = {
     clause: clauses[3],
