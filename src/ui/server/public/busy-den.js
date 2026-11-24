@@ -69,6 +69,16 @@ export const DEN_ACTIONS = {
       failure: "busy.delProjF",
     },
   },
+  // Issue 1371 Part 2: Undo in the bell, of a setting an agent changed.
+  "setting-undo": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.setUndoW",
+      success: "busy.setUndoS",
+      failure: "busy.setUndoF",
+    },
+  },
   // Issue 144: a person ends a gate slot early (the run goes on).
   "gate-end": {
     who: "__DEN_TITLE__",

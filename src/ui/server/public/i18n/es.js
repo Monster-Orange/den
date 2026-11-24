@@ -1489,6 +1489,44 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "Esta instalación es",
+    "set.server.install_mode.d":
+      "Personal: la máquina propia de una persona. Los agentes trabajan fuera del sandbox, así que Docker, los sockets y tus herramientas funcionan, y cambian ajustes sin preguntar, salvo dinero, borrados, seguridad y actuar sobre otras personas. Estricta: para la instalación de una empresa o una máquina compartida. El sandbox está activo y lo que escriben los agentes sigue tu política de aprobación. Un ajuste que hiciste tú se queda como lo pusiste. __DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "Personal",
+    "set.server.install_mode.o.strict": "Estricta",
+    "set.agents.settings_limits":
+      "Agentes que cambian ajustes: Límites y rendimiento",
+    "set.agents.settings_limits.d":
+      "Topes, tiempos de espera e intervalos: cuántos agentes a la vez, cuánto espera Den. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_limits.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_limits.o.ask": "Preguntarme",
+    "set.agents.settings_limits.o.never": "Nunca",
+    "set.agents.settings_look": "Agentes que cambian ajustes: Aspecto y diseño",
+    "set.agents.settings_look.d":
+      "Cómo se ve Den y cómo te avisa: pestañas, la barra lateral, alertas y horas de silencio. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_look.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_look.o.ask": "Preguntarme",
+    "set.agents.settings_look.o.never": "Nunca",
+    "set.agents.settings_integrations":
+      "Agentes que cambian ajustes: Integraciones",
+    "set.agents.settings_integrations.d":
+      "Editores, terminales, runtimes, Hub y GitHub. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_integrations.o.auto":
+      "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_integrations.o.ask": "Preguntarme",
+    "set.agents.settings_integrations.o.never": "Nunca",
+    "set.agents.settings_network": "Agentes que cambian ajustes: Red y acceso",
+    "set.agents.settings_network.d":
+      "La dirección de Den, el edge, los límites de inicio de sesión y la inserción. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_network.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_network.o.ask": "Preguntarme",
+    "set.agents.settings_network.o.never": "Nunca",
+    "set.agents.settings_agent_powers":
+      "Agentes que cambian ajustes: Poderes de los agentes",
+    "set.agents.settings_agent_powers.d":
+      "El sandbox, los permisos, las aprobaciones, los secretos y el tipo de instalación. Siempre te preguntan, o se rechazan. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_agent_powers.o.ask": "Preguntarme",
+    "set.agents.settings_agent_powers.o.never": "Nunca",
     "set.server.restore_services":
       "Volver a iniciar los servicios después de un reinicio",
     "set.server.restore_services.d":
@@ -3373,6 +3411,9 @@
     "gate.leftoversH": "Detenidos al terminar su ejecución",
     "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
     "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
+    "busy.setUndoW": "Devolviendo el ajuste…",
+    "busy.setUndoS": "El ajuste vuelve a estar como antes.",
+    "busy.setUndoF": "No se pudo devolver el ajuste.",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

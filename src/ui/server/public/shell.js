@@ -2668,6 +2668,45 @@
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "This install is",
+    "set.server.install_mode.d":
+      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "Personal",
+    "set.server.install_mode.o.strict": "Strict",
+    "set.agents.settings_limits":
+      "Agents changing settings: Limits and performance",
+    "set.agents.settings_limits.d":
+      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_limits.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_limits.o.ask": "Ask me",
+    "set.agents.settings_limits.o.never": "Never",
+    "set.agents.settings_look": "Agents changing settings: Look and layout",
+    "set.agents.settings_look.d":
+      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_look.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_look.o.ask": "Ask me",
+    "set.agents.settings_look.o.never": "Never",
+    "set.agents.settings_integrations":
+      "Agents changing settings: Integrations",
+    "set.agents.settings_integrations.d":
+      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_integrations.o.auto":
+      "Change without asking (tell me)",
+    "set.agents.settings_integrations.o.ask": "Ask me",
+    "set.agents.settings_integrations.o.never": "Never",
+    "set.agents.settings_network":
+      "Agents changing settings: Network and access",
+    "set.agents.settings_network.d":
+      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_network.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_network.o.ask": "Ask me",
+    "set.agents.settings_network.o.never": "Never",
+    "set.agents.settings_agent_powers":
+      "Agents changing settings: Agent powers",
+    "set.agents.settings_agent_powers.d":
+      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_agent_powers.o.ask": "Ask me",
+    "set.agents.settings_agent_powers.o.never": "Never",
     "set.server.restore_services": "Bring back services after a restart",
     "set.server.restore_services.d":
       "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
@@ -4257,6 +4296,9 @@
     "gate.leftoversH": "Stopped after their run ended",
     "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
     "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
+    "busy.setUndoW": "Putting the setting back…",
+    "busy.setUndoS": "The setting is back as it was.",
+    "busy.setUndoF": "Couldn't put the setting back.",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

@@ -196,6 +196,10 @@ function rowHtml(n, fold) {
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
       : "") +
+    // Issue 1371 Part 2: a setting an agent changed without asking.
+    (n.undo?.approval
+      ? `<button type="button" class="den-btn" data-bell="setting-undo" data-ap="${esc(n.undo.approval)}">${esc(tr("bell.undo"))}</button>`
+      : "") +
     // issue 206: the full local date-time on hover.
     `<time datetime="${esc(n.at)}" title="${esc(formatTitle(n.at))}">${esc(bellAgo(n.at))}</time>` +
     (fold && !fold.rep && sw !== "waiting"
@@ -509,6 +513,25 @@ async function load() {
 }
 
 /** POST; false (after an error toast) when it failed. */
+/**
+ * Issue 1371 Part 2: Undo, the person-only POST /api/settings/undo: the
+ * setting goes back to its value before. Busy shows in the button.
+ */
+async function undoSetting(el) {
+  const approval = el.dataset.ap;
+  if (!approval) return;
+  const shell = window.denShell;
+  const run = (headers) =>
+    shell.api("POST", "/api/settings/undo", { approval }, { headers });
+  try {
+    if (shell?.busyAction)
+      await shell.busyAction("setting-undo", run, { button: el, vars: {} });
+    else await run({});
+  } catch (err) {
+    shell?.errorToast?.(err);
+  }
+}
+
 async function post(path, body) {
   try {
     await window.denShell?.api?.("POST", path, body);
@@ -758,6 +781,11 @@ export function initBell(doc = document) {
     e.preventDefault();
     if (what === "gate-end") {
       await endSlot(el);
+      await refresh();
+      return;
+    }
+    if (what === "setting-undo") {
+      await undoSetting(el);
       await refresh();
       return;
     }

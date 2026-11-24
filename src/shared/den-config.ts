@@ -197,6 +197,11 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  /**
+   * Issue 1391: the distribution's default install mode (its den.yml):
+   * strict here can't be loosened by a person (see resolveInstallMode).
+   */
+  install_mode?: unknown;
   /** Secrets backend strategy — see src/shared/secrets. */
   secrets?: SecretsConfig;
   /** Environments enabled for this deployment. */
@@ -364,6 +369,17 @@ export interface UserConfig {
    * ones always ask). See shared/approval-policy.ts.
    */
   approvals?: unknown;
+  /**
+   * Issue 1391 (Den Builder): the concurrency caps' baselines, the last
+   * value the person set or allowed, kept while agents' routine raises
+   * move the value (setting-change.ts CAP_KEYS). The person's only.
+   */
+  setting_baselines?: unknown;
+  /**
+   * Issue 1391: `install_mode: personal | strict`, the person's. Unset is
+   * personal: one person's own machine (see readInstallMode).
+   */
+  install_mode?: unknown;
   /**
    * Issue 1072: settings that widen what agents may do, read from here
    * only (an agent's sandbox can't write this file): mcp.actions.
@@ -1495,6 +1511,8 @@ export function readDenConfig(): DenConfig {
       // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
+      // Issue 1391: the distribution's den.yml, else this file.
+      install_mode: denYmlKey("install_mode") ?? parsed?.install_mode,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -2223,9 +2241,63 @@ function sandboxValue(
   );
 }
 
+/**
+ * Issue 1391: how open an install is. personal (the default): one person's
+ * own machine; the agent sandbox is off unless set, and held writes ask
+ * only for money, deletes, real security and acting on others. strict
+ * (opt-in): team and enterprise installs, the sandbox on and every held
+ * write as the approval policy says.
+ */
+export type InstallMode = "personal" | "strict";
+export const INSTALL_MODES: readonly InstallMode[] = ["personal", "strict"];
+
+/** Which file set the install's mode, for Doctor. */
+export type InstallModeFrom = "den.yml" | "user.yml" | "default";
+
+/**
+ * One file's install_mode. Fails closed: unset is undefined (no say), and
+ * "personal" is personal; null, a typo or any other value is strict.
+ */
+function installModeValue(v: unknown): InstallMode | undefined {
+  if (v === undefined) return undefined;
+  return v === "personal" ? "personal" : "strict";
+}
+
+/**
+ * Issue 1391: the install's mode and which file set it. The distribution's
+ * den.yml sets the default (unset: personal); the person's user.yml may
+ * choose; strict in either wins, so a person can't loosen a distribution's
+ * strict. Never throws: a bad value in either file is strict.
+ */
+export function resolveInstallMode(
+  u: UserConfig,
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
+): { mode: InstallMode; from: InstallModeFrom } {
+  const den = installModeValue(d.install_mode);
+  const mine = installModeValue(u.install_mode);
+  if (den === "strict") return { mode: "strict", from: "den.yml" };
+  if (mine) return { mode: mine, from: "user.yml" };
+  if (den) return { mode: den, from: "den.yml" };
+  return { mode: "personal", from: "default" };
+}
+
+/** The install's mode (resolveInstallMode); never throws. */
+export function readInstallMode(
+  u: UserConfig,
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
+): InstallMode {
+  return resolveInstallMode(u, d).mode;
+}
+
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  /** Issue 1391: the install's mode (resolveInstallMode). */
+  mode?: InstallMode;
+  /** Issue 1391: which file set it. */
+  modeFrom?: InstallModeFrom;
   /**
    * Issue 936: agents' sessions start in the OS sandbox, Den's state
    * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
@@ -2472,7 +2544,15 @@ export function readAgentsConfig(
   const out = asConfigError(() => parseAgentsConfig(merged));
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
-    () => applyUserSandbox(out, u.agents),
+    () => {
+      // Issue 1391: on a personal install the sandbox is off unless
+      // user.yml sets it; strict keeps it on. A value set always wins.
+      const m = resolveInstallMode(u, c);
+      out.mode = m.mode;
+      out.modeFrom = m.from;
+      if (out.mode === "personal") out.sandbox = false;
+      applyUserSandbox(out, u.agents);
+    },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
   // A signing key is per machine: user.yml's agents.git wins.
@@ -2664,12 +2744,21 @@ export function applyUserSandbox(
 }
 
 /** user.yml, or {} when it can't be read (a bad one is its own row). */
-function readUserConfigQuiet(): UserConfig {
+/**
+ * Issue 1391 (Builder 2's review): a user.yml that exists but can't be read
+ * or parsed is strict, never personal: the sandbox keeps den.yml's value
+ * (on by default; required stays required). A missing file is {}.
+ */
+export function userConfigOrStrict(read: () => UserConfig): UserConfig {
   try {
-    return readUserConfig();
+    return read();
   } catch {
-    return {};
+    return { install_mode: "strict" };
   }
+}
+
+function readUserConfigQuiet(): UserConfig {
+  return userConfigOrStrict(readUserConfig);
 }
 
 function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
