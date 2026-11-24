@@ -50,16 +50,17 @@ async function poll(ctx, f, ms, every = 1000) {
   }
 }
 
-/** The key's value as `config` prints it (its last line), or null. */
+/**
+ * The key's value in den2's config/local/user.yml, the file a
+ * setting_change writes: its digits, "unset" when the file has no such
+ * key, or null when the file can't be read.
+ */
 function configValue(d2) {
-  const r = d2.cli(["config", KEY]);
-  if (r?.code !== 0) return null;
-  return (
-    String(r.out ?? "")
-      .trim()
-      .split("\n")
-      .pop() ?? null
-  );
+  const text = d2.readBed("config/local/user.yml");
+  if (typeof text !== "string") return null;
+  const agents = /^agents:\n((?:[ \t]+.*\n?|\n)*)/m.exec(text)?.[1] ?? "";
+  const m = /^[ \t]+restart_wait_minutes:[ \t]*["']?(\d+)/m.exec(agents);
+  return m ? m[1] : "unset";
 }
 
 /** Every bell item, flattened (groups, updates and items alike). */
@@ -267,7 +268,8 @@ const row = (clause, ok, detail) => ({
 });
 
 export function expect(cells) {
-  const r = (Array.isArray(cells) ? cells[0]?.result : cells) ?? {};
+  const r =
+    (Array.isArray(cells) ? cells.find((c) => c?.result)?.result : cells) ?? {};
   if (r.error) return clauses.map((c) => row(c, false, r.error));
   const p = r.personal ?? {};
   const t = r.strict ?? {};
