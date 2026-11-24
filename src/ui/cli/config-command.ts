@@ -9,6 +9,8 @@ import {
   AGENTS_SETTINGS_KEYS,
   agentsLimitInForce,
   writeUserConfig,
+  readInstallMode,
+  type DenConfig,
   type ResolvedSessionsConfig,
   type UserConfig,
 } from "../../shared/den-config.js";
@@ -446,6 +448,19 @@ export async function cmdConfig(args: string[]): Promise<void> {
   const value = parseValue(assignment.slice(eq + 1));
   if (key === "install_mode" && value !== "personal" && value !== "strict")
     throw new Error("install_mode is personal or strict");
+  // Issue 1391: strict in the distribution's den.yml wins.
+  if (key === "install_mode" && value !== "strict") {
+    let den: DenConfig["install_mode"] = "strict";
+    try {
+      den = readDenConfig().install_mode;
+    } catch {
+      /* unreadable: fails closed */
+    }
+    if (readInstallMode({}, { install_mode: den }) === "strict")
+      throw new Error(
+        "The distribution's den.yml sets install_mode: strict, and a person can't loosen it.",
+      );
+  }
   mergeUserConfig({ [key]: value } as Partial<UserConfig>);
   console.log(chalk.green(`  ✓ Set ${key}`));
 }

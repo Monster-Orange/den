@@ -10,11 +10,13 @@ import { describe, expect, it } from "@jest/globals";
 import {
   readAgentsConfig,
   readInstallMode,
+  resolveInstallMode,
   type DenConfig,
   type UserConfig,
 } from "../../../src/shared/den-config.js";
 import { legacyAgentIds } from "../../../src/shared/agents/sandbox-rollout.js";
 import { sandboxLines } from "../../../src/ui/cli/agents-command.js";
+import { settingKind } from "../../../src/ui/cli/setting-change.js";
 import {
   criticalWhy,
   policyFor,
@@ -30,10 +32,82 @@ describe("install mode (issue 1391)", () => {
     expect(readInstallMode({ install_mode: "strict" })).toBe("strict");
   });
 
-  it("refuses a value that is neither, naming the key", () => {
-    expect(() => readInstallMode({ install_mode: "open" })).toThrow(
-      /install_mode: personal or strict/,
+  it("fails closed: null, a typo or any other value is strict", () => {
+    for (const v of [null, "open", "Personal", "", 3, true, ["personal"]])
+      expect([v, readInstallMode({ install_mode: v })]).toEqual([v, "strict"]);
+  });
+});
+
+describe("den.yml and user.yml: strict in either wins (issue 1391)", () => {
+  const den = (v: unknown) => ({ install_mode: v }) as Partial<DenConfig>;
+
+  it("both unset: personal, Den's default", () => {
+    expect(resolveInstallMode({}, {})).toEqual({
+      mode: "personal",
+      from: "default",
+    });
+    expect(readInstallMode({})).toBe("personal");
+  });
+
+  it("den.yml strict, user.yml personal: strict, from den.yml", () => {
+    expect(
+      resolveInstallMode({ install_mode: "personal" }, den("strict")),
+    ).toEqual({ mode: "strict", from: "den.yml" });
+  });
+
+  it("user.yml strict: strict, from user.yml (den.yml unset or personal)", () => {
+    expect(resolveInstallMode({ install_mode: "strict" }, {})).toEqual({
+      mode: "strict",
+      from: "user.yml",
+    });
+    expect(
+      resolveInstallMode({ install_mode: "strict" }, den("personal")),
+    ).toEqual({ mode: "strict", from: "user.yml" });
+  });
+
+  it("den.yml sets the default; user.yml unset keeps it", () => {
+    expect(resolveInstallMode({}, den("personal"))).toEqual({
+      mode: "personal",
+      from: "den.yml",
+    });
+    expect(resolveInstallMode({}, den("strict"))).toEqual({
+      mode: "strict",
+      from: "den.yml",
+    });
+  });
+
+  it("a bad value in den.yml is strict too", () => {
+    expect(
+      resolveInstallMode({ install_mode: "personal" }, den("opne")),
+    ).toEqual({ mode: "strict", from: "den.yml" });
+  });
+
+  it("the agent sandbox follows den.yml's strict over user.yml's personal", () => {
+    const a = readAgentsConfig(
+      { install_mode: "strict" } as unknown as DenConfig,
+      { install_mode: "personal" },
     );
+    expect(a.mode).toBe("strict");
+    expect(a.sandbox).toBe(true);
+  });
+});
+
+describe("changing install_mode (issue 1391)", () => {
+  it("strict to personal widens: the person's Allow", () => {
+    expect(settingKind("install_mode", "strict", "personal").widens).toBe(true);
+    // Back to Den's default (personal, unless den.yml says strict).
+    expect(settingKind("install_mode", "strict", null).widens).toBe(true);
+  });
+
+  it("to strict is routine, on either mode", () => {
+    expect(settingKind("install_mode", "personal", "strict").widens).toBe(
+      false,
+    );
+    expect(settingKind("install_mode", "strict", "strict").widens).toBe(false);
+  });
+
+  it("with no value given, the key alone widens", () => {
+    expect(settingKind("install_mode", "strict").widens).toBe(true);
   });
 });
 
@@ -97,6 +171,19 @@ describe("no sandbox nags on a personal install (issue 1391)", () => {
     expect(text).not.toMatch(/⚠/);
     expect(text.match(/personal install/g)).toHaveLength(1);
     expect(text).toMatch(/install_mode: strict/);
+  });
+
+  it("Doctor says which file set the mode", () => {
+    const line = (from: "den.yml" | "user.yml" | "default") =>
+      sandboxLines({
+        here: { applied: true },
+        outside: [],
+        fromBefore: 0,
+        mode: "strict",
+        modeFrom: from,
+      }).join("\n");
+    expect(line("den.yml")).toMatch(/strict install .*set in den\.yml/);
+    expect(line("user.yml")).toMatch(/set in config\/local\/user\.yml/);
   });
 
   it("strict, or an explicit on, still warns as today", () => {

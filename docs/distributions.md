@@ -315,9 +315,18 @@ with "If you didn't ask an agent to do this, Deny." under it.
 ### Personal and strict installs (issue 1391)
 
 An install is **personal** (one person, their own machine: the default)
-or **strict** (a company's install or a shared machine), `install_mode`
-in `config/local/user.yml`, set in Settings › Server › "This install is"
-or with `<cli> config install_mode=strict`.
+or **strict** (a company's install or a shared machine): `install_mode`.
+
+- The distribution's `den.yml` sets the default (unset: personal).
+- The person's `config/local/user.yml` may choose: Settings › Server ›
+  "This install is", or `<cli> config install_mode=strict`.
+- Strict in either file wins, so a person can't loosen a distribution's
+  strict. Settings and the CLI refuse to try.
+- It fails closed: any value but `personal` (a typo, `null`, `true`) is
+  strict, never an error.
+- Doctor says which file set it.
+- For an agent, moving strict to personal widens (the person's Allow, through
+  `setting_change`); personal to strict is routine.
 
 - **Personal.** `agents.sandbox` is off unless set, so Docker, sockets
   and the person's tools are reachable from agents' sessions. Doctor says
@@ -5241,7 +5250,8 @@ the rest). `value: null` puts Den's default back.
   and performance, look and layout (low), integrations (editors,
   terminals, runtimes, Hub, GitHub: medium), network and access (`web.*`,
   `embed.*`, `hub.url`: high), and agent powers (the sandbox, grants,
-  approvals, `mcp.*`, secrets, `install_mode`: high, and always widening).
+  approvals, `mcp.*`, secrets: high, and always widening; `install_mode`
+  widens unless the new value is `strict`).
   Settings › Agents › "Agents changing settings" holds one choice per
   category (`approvals.settings` in `user.yml`): change without asking
   (tell me), ask me, or never. Agent powers offer only ask or never. With

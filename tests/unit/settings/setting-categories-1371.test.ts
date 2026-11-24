@@ -445,3 +445,34 @@ describe("Undo, in the bell, of a setting changed without asking (issue 1371 Par
     expect(added[1]!.undo).toBeUndefined();
   });
 });
+
+describe("install_mode through setting_change (issue 1391)", () => {
+  const denStrict = (): SettingChangeDeps => ({
+    ...deps(),
+    denConfig: () => ({ install_mode: "strict" }) as unknown as DenConfig,
+  });
+
+  it("strict to personal is asked for (widens); to strict is routine", () => {
+    writeUser("install_mode: strict\n");
+    const loosen = ask("install_mode", "personal");
+    if (!loosen.ok) throw new Error(loosen.error);
+    expect(loosen.personOnly).toBe(true);
+    writeUser("install_mode: personal\n");
+    const tighten = ask("install_mode", "strict");
+    if (!tighten.ok) throw new Error(tighten.error);
+    expect(tighten.personOnly).toBeFalsy();
+  });
+
+  it("can't loosen a distribution's strict (den.yml)", () => {
+    writeUser("install_mode: strict\n");
+    for (const v of ["personal", null]) {
+      const r = checkSettingChange(denStrict(), {
+        key: "install_mode",
+        value: v,
+        reason: "test",
+      });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/den\.yml sets install_mode: strict/);
+    }
+  });
+});

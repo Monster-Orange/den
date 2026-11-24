@@ -2768,6 +2768,8 @@ export interface SandboxReport {
   personalOff?: boolean;
   /** Issue 1391: the install's mode, said once (install_mode). */
   mode?: "personal" | "strict";
+  /** Issue 1391: which file set it. */
+  modeFrom?: "den.yml" | "user.yml" | "default";
 }
 
 /**
@@ -2881,9 +2883,11 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
   const notes = readSandboxNotes(d.stateDir());
   let personalOff = false;
   let mode: SandboxReport["mode"];
+  let modeFrom: SandboxReport["modeFrom"];
   try {
     const c = d.agentsConfig();
     mode = c.mode;
+    modeFrom = c.modeFrom;
     personalOff = c.mode === "personal" && c.sandbox === false;
   } catch {
     /* a bad config is its own row */
@@ -2896,6 +2900,7 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     ...(turnedOff.length ? { turnedOff } : {}),
     ...(personalOff ? { personalOff } : {}),
     ...(mode ? { mode } : {}),
+    ...(modeFrom ? { modeFrom } : {}),
     fromBefore: fromBefore.length,
     ...(tmp.length ? { tmp } : {}),
     ...(leftoverTmp.length ? { leftoverTmp } : {}),
@@ -2919,7 +2924,7 @@ export function sandboxLines(r: SandboxReport): string[] {
   } else {
     if (r.mode === "strict")
       out.push(
-        "  ℹ a strict install (install_mode: strict): the sandbox is on, and agents' held writes follow the approval policy",
+        `  ℹ a strict install (install_mode: strict${r.modeFrom === "den.yml" ? ", set in den.yml by the distribution" : r.modeFrom === "user.yml" ? ", set in config/local/user.yml" : ""}): the sandbox is on, and agents' held writes follow the approval policy`,
       );
     else if (r.mode === "personal")
       out.push(

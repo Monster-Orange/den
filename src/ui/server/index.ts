@@ -261,6 +261,8 @@ import {
   isLocalEnabled,
   readUserConfig,
   readInstallMode,
+  resolveInstallMode,
+  type DenConfig,
   type InstallMode,
   mergeUserConfig,
   type UserConfig,
@@ -5334,12 +5336,12 @@ function approvalDeps(): ApprovalDeps {
     // Issue 160: what the write is on, against what the person watches
     // (approvals.watch) and pinned to the rail (their favorites).
     // Issue 1391: personal (the default) or strict, read per ask.
-    installMode: () => readInstallMode(readUserConfig()),
+    installMode: () => installModeOf(readUserConfig()),
     policy: (action, project, widens, ask) => {
       const user = readUserConfig();
       return policyFor(action, {
         widens,
-        mode: readInstallMode(user),
+        mode: installModeOf(user),
         ...(ask?.category ? { setting: { category: ask.category } } : {}),
         areas: ask?.areas,
         install: readPolicySetting(user.approvals),
@@ -5599,12 +5601,20 @@ export function approvalsSettings(
 }
 
 /** Issue 1391: the install's mode for Settings; a bad value says strict. */
-function installModeOf(user: UserConfig): InstallMode {
+/**
+ * Issue 1391: den.yml's install_mode, for the mode; strict when the
+ * distribution's config can't be read (fails closed).
+ */
+function denModeConfig(): Pick<DenConfig, "install_mode"> {
   try {
-    return readInstallMode(user);
+    return { install_mode: readDenConfig().install_mode };
   } catch {
-    return "strict";
+    return { install_mode: "strict" };
   }
+}
+/** Issue 1391: the install's mode (den.yml and user.yml); never throws. */
+function installModeOf(user: UserConfig): InstallMode {
+  return readInstallMode(user, denModeConfig());
 }
 /**
  * Issue 160: write the approval policy, the install's (user.yml) or one
@@ -10253,6 +10263,7 @@ async function handleRequest(
         // Issue 160: the install's approval policy (user.yml approvals).
         ...approvalsSettings(user.approvals, installModeOf(user)),
         install_mode: installModeOf(user),
+        install_mode_from: resolveInstallMode(user, denModeConfig()).from,
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
@@ -10499,9 +10510,23 @@ async function handleRequest(
         // default (personal) back. A person's only (PERSON_ONLY_SETTINGS).
         if (body.install_mode !== undefined) {
           const v = body.install_mode;
+          if (v !== null && v !== "" && v !== "personal" && v !== "strict")
+            return send400(res, "install_mode is personal, strict or null");
+          if (
+            v !== "strict" &&
+            readInstallMode({}, denModeConfig()) === "strict"
+          )
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error:
+                  "The distribution's den.yml sets install_mode: strict, and a person can't loosen it.",
+              },
+              409,
+            );
           if (v === null || v === "") delete user.install_mode;
-          else if (v === "personal" || v === "strict") user.install_mode = v;
-          else return send400(res, "install_mode is personal, strict or null");
+          else user.install_mode = v;
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Hub); null clears it (the default, on).
@@ -10747,6 +10772,7 @@ async function handleRequest(
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
           ...approvalsSettings(user.approvals, installModeOf(user)),
           install_mode: installModeOf(user),
+          install_mode_from: resolveInstallMode(user, denModeConfig()).from,
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
