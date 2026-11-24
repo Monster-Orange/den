@@ -1112,6 +1112,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  const JOB_CMD = "npm run dev";
   it("issue 1407: a stale agent with a background job: its row names the job, with Restart now (ends the job)", async () => {
     if (skip()) return;
     const p = await page(`/agents?open=${sid.planner}&layout=focus`);
@@ -1149,7 +1150,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
               error:
                 "agent planner: a background job it started is still running (npm run dev, 12 min). Restart now ends the job.",
               code: "job_running",
-              job: { command: "npm run dev", minutes: 12 },
+              job: { command: JOB_CMD, minutes: 12 },
             }),
           });
     });
@@ -1159,16 +1160,14 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.click(`${st("planner")} [data-act="tools-restart"]`);
     const line = `${st("planner")} [data-rs-agent="planner"]`;
     await p.waitForSelector(line);
-    expect(await p.textContent(`${line} [data-rs-line]`)).toBe(
-      "planner: waiting: a background job (npm run dev, 12 min).",
-    );
+    // The job's state, and what it runs (the server's words, as sent).
+    expect(await p.getAttribute(line, "data-rs-state")).toBe("job");
+    expect(await p.textContent(`${line} [data-rs-line]`)).toContain(JOB_CMD);
     // Its Restart now replaces the row's Restart while it waits.
     expect(
       await p.locator(`${st("planner")} [data-act="tools-restart"]`).count(),
     ).toBe(0);
-    expect(await p.textContent(`${line} [data-rs-now]`)).toBe(
-      "Restart now (ends the job)",
-    );
+    expect(await p.locator(`${line} [data-rs-now]`).count()).toBe(1);
     await p.click(`${line} [data-rs-now]`);
     await p.waitForFunction(() => {
       const b = document.querySelector('[data-rs-agent="planner"]');

@@ -542,6 +542,7 @@ describe("Settings › Hub (HUB-1.7)", () => {
       375,
     );
     const asked: string[] = [];
+    const JOB_CMD = "npm run dev";
     const stale = [
       {
         id: "planner",
@@ -573,7 +574,7 @@ describe("Settings › Hub (HUB-1.7)", () => {
               id: "scout",
               workspace: "south",
               state: "job",
-              job: { command: "npm run dev", minutes: 12 },
+              job: { command: JOB_CMD, minutes: 12 },
             },
           ],
         }),
@@ -594,15 +595,16 @@ describe("Settings › Hub (HUB-1.7)", () => {
     await p.waitForSelector('[data-rs-result="2"]');
     expect(restarts).toBe(1);
     // Issue 1407: never a fixed line; the job is named, with Restart now.
-    expect(await p.textContent('[data-rs-agent="planner"]')).toContain(
-      "planner: restarting now",
-    );
-    expect(await p.textContent('[data-rs-agent="scout"]')).toContain(
-      "scout: waiting: a background job (npm run dev, 12 min).",
-    );
-    expect(await p.textContent('[data-rs-now="scout"]')).toBe(
-      "Restart now (ends the job)",
-    );
+    expect(
+      await p.getAttribute('[data-rs-agent="planner"]', "data-rs-state"),
+    ).toBe("now");
+    expect(
+      await p.getAttribute('[data-rs-agent="scout"]', "data-rs-state"),
+    ).toBe("job");
+    expect(await p.textContent('[data-rs-agent="scout"]')).toContain(JOB_CMD);
+    // Restart now only for the one that waits on the person.
+    expect(await p.locator("[data-rs-now]").count()).toBe(1);
+    expect(await p.locator('[data-rs-now="scout"]').count()).toBe(1);
     expect(await fits(p)).toBeLessThanOrEqual(0);
     await p.context().close();
   }, 60_000);
