@@ -48,7 +48,7 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 function deps(mode: InstallMode, limits?: "auto" | "ask" | "never") {
   const d: GateSettingsSetDeps = {
-    settings: () => store.settings(),
+    settings: (patch) => store.settings(patch),
     write: async (patch, by) => store.writeSettings(patch, by),
     installMode: () => mode,
     kind: (key) => settingKind(key, mode),
@@ -222,5 +222,34 @@ describe("issue 1395: every gate key is placed for the approval policy", () => {
       reason: "two browser runs wait",
     });
     expect(c.ok && c.args.settings).toEqual({ cpu_slots: 3 });
+  });
+});
+
+describe("issue 1395: the policy sees each value as it'd be in effect", () => {
+  it("a key put back to its default is judged by that default, which depends on the platform", () => {
+    // Not a Mac: browser_requires_container defaults to 0.
+    const linux = new GateStore({ dir, lockWaitMs: 1_000, platform: "linux" });
+    linux.writeSettings({ browser_requires_container: 1 }, "a person");
+    const seen: [string, unknown][] = [];
+    const d: GateSettingsSetDeps = {
+      ...deps("strict"),
+      settings: (patch) => linux.settings(patch),
+      kind: (key, value) => {
+        seen.push([key, value]);
+        return settingKind(key, "strict");
+      },
+    };
+    const c = checkGateSettingsSet(d, {
+      settings: { browser_requires_container: null },
+      reason: "back to the default",
+    });
+    expect(c.ok).toBe(true);
+    expect(seen).toEqual([["gate.browser_requires_container", 0]]);
+    if (c.ok)
+      expect(c.details).toContain(
+        "gate.browser_requires_container: 1 → default (0)",
+      );
+    // The preview wrote nothing.
+    expect(linux.settings().browserRequiresContainer).toBe(true);
   });
 });

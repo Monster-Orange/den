@@ -1064,11 +1064,27 @@ export class GateStore {
     return this.now();
   }
 
-  settings(): GateSettings & BoxSettings {
+  settings(
+    /** Issue 1395: the settings as they'd be with this patch (a preview). */
+    patch?: GateSettingsPatch,
+  ): GateSettings & BoxSettings {
     try {
-      const v = JSON.parse(
-        fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
-      ) as Record<string, unknown>;
+      let v: Record<string, unknown>;
+      try {
+        v = JSON.parse(
+          fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
+        ) as Record<string, unknown>;
+      } catch (e) {
+        if (!patch) throw e;
+        v = {};
+      }
+      if (patch) {
+        v = { ...v };
+        for (const [k, x] of Object.entries(patch)) {
+          if (x === null) delete v[k];
+          else if (x !== undefined) v[k] = x;
+        }
+      }
       const text = (k: keyof typeof GATE_TEXT) =>
         typeof v[k] === "string" ? (v[k] as string) : "";
       const num = (k: GateNumberKey, d: number) => {

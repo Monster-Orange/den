@@ -5540,7 +5540,7 @@ function gateSettingsHeldOp() {
       mode = "strict";
     }
     return {
-      settings: () => gates().settings(),
+      settings: (patch) => gates().settings(patch),
       write: async (patch, by) => {
         await gateLocked(() => gates().writeSettings(patch, by));
       },

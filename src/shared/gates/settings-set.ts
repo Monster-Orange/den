@@ -38,14 +38,17 @@ export interface GateSettingsSetArgs {
 }
 
 export interface GateSettingsSetDeps {
-  /** The settings in effect now. */
-  settings: () => GateSettings;
+  /** The settings in effect now, or (with a patch) as they'd be after it. */
+  settings: (patch?: GateSettingsPatch) => GateSettings;
   /** The one writer: GateStore.writeSettings under the gate-slot lock. */
   write: (patch: GateSettingsPatch, by: string) => Promise<void>;
   /** The install's mode (issue 1391). */
   installMode: () => InstallMode;
   /** A dotted key's kind for the policy (setting-change.ts settingKind). */
-  kind: (key: string) => { category: SettingCategory; widens: boolean };
+  kind: (
+    key: string,
+    value: number | string | null,
+  ) => { category: SettingCategory; widens: boolean };
   /** The person's per-category choices (approvals.settings). */
   choices: () => PolicySetting["settings"];
 }
@@ -95,25 +98,32 @@ export function checkGateSettingsSet(
     const c = checkGatePatch(asked);
     if (!c.ok) return no(c.error.replace(/^gate_slots/, "settings"));
     const now = d.settings();
+    // Each value as it'd be in effect after the change (a cleared key's
+    // default included, which may differ by platform).
+    const after = d.settings(c.patch);
     const patch: GateSettingsPatch = {};
-    const changes: { key: string; from: string; to: string }[] = [];
+    const changes: {
+      key: string;
+      from: string;
+      to: string;
+      value: number | string | null;
+    }[] = [];
     for (const [k, v] of Object.entries(c.patch)) {
       if (v === undefined) continue;
       const from = gateSettingValue(now, k);
-      // A cleared key is its default again: shown as "default".
-      const to =
-        v === null ? null : gateSettingValue({ ...now, ...camel(k, v) }, k);
-      if (v !== null && from === to) continue;
+      const to = gateSettingValue(after, k);
+      if (from === to) continue;
       (patch as Record<string, unknown>)[k] = v;
       changes.push({
         key: `gate.${k}`,
         from: shown(from),
-        to: v === null ? "default" : shown(to),
+        to: v === null ? `default (${shown(to)})` : shown(to),
+        value: to,
       });
     }
     if (!changes.length)
       return no("nothing to change: each value asked for is the one in effect");
-    const kinds = changes.map((x) => d.kind(x.key));
+    const kinds = changes.map((x) => d.kind(x.key, x.value));
     const widens = kinds.some((k) => k.widens);
     const category = kinds[0]!.category;
     const choice = settingChoice(category, d.installMode(), d.choices());
@@ -155,12 +165,6 @@ export function checkGateSettingsSet(
   } catch (e) {
     return no((e as Error).message);
   }
-}
-
-/** A snake_case key and value as a GateSettings fragment. */
-function camel(k: string, v: unknown): Partial<GateSettings> {
-  const name = k.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
-  return { [name]: v } as Partial<GateSettings>;
 }
 
 /** On Allow (or at once, by the policy): checked again, then written. */
