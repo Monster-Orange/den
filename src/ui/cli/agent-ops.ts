@@ -47,9 +47,15 @@
  *           resumes the standing personas and those with
  *           `resume_on_restart: true`.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import { readActivity } from "../../shared/agents/activity.js";
+import {
+  denToolsOld,
+  type DenToolsOld,
+} from "../../shared/agents/den-tools-version.js";
 import { auditVia } from "../../shared/test-person.js";
 import {
   addressBriefLine,
@@ -78,6 +84,7 @@ import {
   type CommandLineOf,
 } from "../../shared/agents/running-mode.js";
 import {
+  inputLineEmpty,
   plainTerminalText,
   trustAnswerKey,
   promptOnScreen,
@@ -85,6 +92,11 @@ import {
   typingCheck,
   type TypingCheck,
 } from "../../shared/agents/trust-prompt.js";
+import {
+  clearDraft,
+  clearDraftSeenEmpty,
+  draftPending,
+} from "../../shared/agents/draft-input.js";
 import {
   resolveMode,
   type EffectiveMode,
@@ -96,6 +108,12 @@ import {
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
+import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
+import {
+  listOtherInstalls,
+  registerInstall,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
@@ -128,16 +146,23 @@ import {
   shellPathTimeoutMs,
   configuredRuntimeCatalog,
   readAgentsConfig,
+  readMcpConfig,
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
   ROTATION_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
+  clearUserAgentSandbox,
   setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
 } from "../../shared/den-config.js";
+import {
+  newAgentSandboxOff,
+  SANDBOX_OFF_SINCE_ASK,
+  writeSandboxNote,
+} from "../../shared/agents/sandbox-set.js";
 import {
   contextTokensFor,
   contextWatchSettings,
@@ -175,7 +200,7 @@ import {
   peerSessionName,
 } from "../../shared/agents/session-name.js";
 import { cliEntrypoint } from "../../shared/engine.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { engineVersion, getDistRoot } from "../../shared/paths.js";
 import {
   operatorStubArgv,
   operatorStubEnv,
@@ -183,7 +208,14 @@ import {
 import { NotificationStore } from "../../shared/notifications.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { checkHandoff } from "../../shared/agents/handoff.js";
-import { installLocationEnv, product } from "../../shared/product.js";
+import { envKey, installLocationEnv, product } from "../../shared/product.js";
+import {
+  isFromBefore,
+  LEGACY_SANDBOX_REASON,
+  sandboxSetByPerson,
+} from "../../shared/agents/sandbox-rollout.js";
+import * as os from "os";
+import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   loadPersonas,
@@ -248,7 +280,13 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
-import { agentGitEnv } from "../../shared/agents/git-signing.js";
+import {
+  agentGitEnv,
+  resolveAgentSigning,
+  signingKeyAddLine,
+  signingReadFiles,
+  type AgentSigning,
+} from "../../shared/agents/git-signing.js";
 import {
   mcpLoadFailures,
   noteHubMcpInit,
@@ -357,7 +395,20 @@ import {
   type SessionsDeps,
 } from "./sessions-command.js";
 import { denWebBase } from "../../shared/web-dial.js";
+import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
+import {
+  type AgentSandboxInput,
+  localProofDirs,
+  defaultSessionTmpBase,
+  makeSessionTmp,
+  removeSessionTmp,
+  sandboxFor,
+  sandboxRequired,
+  sandboxSetting,
+  type SandboxWrap,
+} from "../../shared/agents/sandbox.js";
+import { gateDir } from "../../shared/gates/store.js";
 import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
@@ -374,7 +425,37 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 
 export interface AgentsDeps extends SessionsDeps {
+  /**
+   * Issue 989: this install's server, called with the person token. A
+   * test gives one that answers null (no server) unless it asks for one.
+   */
+  server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
+  /**
+   * Issue 1328: drops a removed agent's agents.<id>.sandbox from user.yml
+   * and its note, so the setting goes with the agent. Default: the
+   * person's user.yml and this install's notes.
+   */
+  forgetSandbox?: (id: string) => void;
+  /**
+   * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
+   * read-only to it). Default: sandboxFor with the person's setting.
+   */
+  agentSandbox?: AgentSandboxFn;
+  /**
+   * Issue 1325: makes a sandboxed session's own temp folder (default
+   * makeSessionTmp under /tmp); undefined: none (the system's TMPDIR).
+   */
+  sessionTmp?: () => string | undefined;
+  /**
+   * Issue 1325: the folder session temp folders are made in (default
+   * /tmp); Den removes one only right inside it.
+   */
+  sessionTmpBase?: string;
+  /** Issue 1316: the key an agent working in `cwd` signs commits with. */
+  agentSigning?: (cwd: string) => AgentSigning | undefined;
+  /** Issue 1072: mcp.actions in the distribution's config, not read. */
+  mcpNotReadFromOrg?: () => string[];
   distRoot?: () => string;
   /** SRV-1b: the server agent's folder (server_agent.folder, resolved). */
   serverAgentFolder?: () => string;
@@ -509,8 +590,25 @@ export interface AgentsDeps extends SessionsDeps {
   denBase?: () => string;
 }
 
+/** Issue 936: an agent's argv, wrapped (or not, and why). */
+export type AgentSandboxFn = (
+  argv: string[],
+  agentId: string,
+  /** Issue 1325: the session's own temp folder (makeSessionTmp). */
+  sessionTmp?: string,
+) => SandboxWrap;
+
 export interface AgentsResolved extends Resolved {
+  /** Issue 989: this install's server, for person-only verbs. */
+  server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
+  forgetSandbox: (id: string) => void;
+  agentSandbox: AgentSandboxFn;
+  sessionTmp: () => string | undefined;
+  sessionTmpBase: string;
+  /** Issue 1316: the key an agent working in `cwd` signs commits with. */
+  agentSigning: (cwd: string) => AgentSigning | undefined;
+  mcpNotReadFromOrg: () => string[];
   distRoot: () => string;
   serverAgentFolder: () => string;
   workspaceDir: (ws: string) => string;
@@ -827,11 +925,125 @@ function defaultMcpServer(cli: string): {
   return { command: [e.command, ...e.args], env: s.env };
 }
 
+/**
+ * Issue 936: what an agent's sandbox is built from on this machine: Den's
+ * state, the distribution, the gate store, the socket folders allowed, and
+ * the folders no session reads (the machine's local proof).
+ */
+/**
+ * Issue 1316: where a signing key agents read may never be: what issue 728
+ * denies outside the state folder (this install's edge key folders, the
+ * other installs' state folders and their edges').
+ */
+function signingKeyRefusedDirs(
+  stateDir: string,
+  distRoot: string,
+  env: NodeJS.ProcessEnv,
+): string[] {
+  const out = [...edgeKeyDirs(distRoot)];
+  try {
+    for (const o of listOtherInstalls(registryDir({ ...process.env, ...env }), {
+      ownStateDir: stateDir,
+      home: { ...process.env, ...env }.HOME,
+    }))
+      out.push(o.stateDir, ...o.edgeKeyDirs);
+  } catch {
+    /* no registry: nothing more to refuse */
+  }
+  return [...new Set(out)];
+}
+
+export function agentSandboxInput(o: {
+  stateDir: string;
+  distRoot: string;
+  env: NodeJS.ProcessEnv;
+  agentId: string;
+  sockets?: string[];
+  platform?: NodeJS.Platform;
+  home?: string;
+  /** Issue 1316: agents.git.signing_key's files, read wherever they are. */
+  readableFiles?: string[];
+  /** Issue 1325: the session's own temp folder. */
+  sessionTmp?: string;
+}): AgentSandboxInput {
+  return {
+    ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
+    stateDir: o.stateDir,
+    distRoot: o.distRoot,
+    gateDir: gateDir(o.env),
+    agentId: o.agentId,
+    env: o.env,
+    socketsAllowed: o.sockets ?? [],
+    ...(o.readableFiles?.length
+      ? {
+          readableFiles: o.readableFiles,
+          keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
+        }
+      : {}),
+    deniedDirs: localProofDirs(
+      o.env,
+      o.platform ?? process.platform,
+      o.home ?? os.homedir(),
+      envKey("LOCAL_PROOF_DIR"),
+    ),
+  };
+}
+
 export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
   const base = resolveDeps(d);
   return withServerScope({
     ...base,
+    server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    forgetSandbox:
+      d.forgetSandbox ??
+      ((id) => {
+        clearUserAgentSandbox(id);
+        writeSandboxNote(base.stateDir(), id, null);
+      }),
+    mcpNotReadFromOrg:
+      d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
+    agentSigning:
+      d.agentSigning ??
+      ((cwd) =>
+        resolveAgentSigning({
+          git: (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+          stateDir: base.stateDir(),
+          cwd,
+          env: base.env,
+        })),
+    agentSandbox:
+      d.agentSandbox ??
+      ((argv, agentId, sessionTmp) =>
+        sandboxFor(
+          argv,
+          agentSandboxInput({
+            sessionTmp,
+            stateDir: base.stateDir(),
+            distRoot: (d.distRoot ?? getDistRoot)(),
+            env: base.env,
+            agentId,
+            sockets: (d.agentsConfig ?? (() => readAgentsConfig()))()
+              .sandboxSockets,
+            readableFiles: signingReadFiles(
+              (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+            ),
+          }),
+          {
+            on: sandboxSetting(
+              (d.agentsConfig ?? (() => readAgentsConfig()))(),
+              agentId,
+            ),
+          },
+        )),
+    // Issue 1331: on every platform, in a base no other session reaches.
+    sessionTmp:
+      d.sessionTmp ??
+      (() =>
+        makeSessionTmp(
+          d.sessionTmpBase ?? defaultSessionTmpBase(base.stateDir()),
+        )),
+    sessionTmpBase: d.sessionTmpBase ?? defaultSessionTmpBase(base.stateDir()),
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
       d.serverAgentFolder ??
@@ -1429,10 +1641,19 @@ export function noteEnded(
   stateDir: string,
   sessions: SessionInfo[],
   records: AgentRecord[],
+  /** Issue 1325: where session temp folders are made (AgentsDeps). */
+  sessionTmpBase = defaultSessionTmpBase(stateDir),
 ): void {
   const byId = new Map(sessions.map((s) => [s.ref.id, s]));
   for (const rec of records) {
     const s = byId.get(rec.session.id);
+    // Issue 1325: an exited session's temp folder goes, however it ended
+    // (never for one the host doesn't list: the host may just be away).
+    if (s?.exited && rec.sessionTmp) {
+      removeSessionTmp(rec.sessionTmp, sessionTmpBase);
+      delete rec.sessionTmp;
+      writeRecord(stateDir, rec);
+    }
     // An exit with no code is a host that went down: interrupted, not ended.
     if (!s?.exited || s.exitCode === undefined) continue;
     if (rec.endedAt || rec.stoppedAt || rec.restartFailed) continue;
@@ -1474,7 +1695,7 @@ export async function listAgents(
   } else all = await withClient(d, (c) => c.list());
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
-  noteEnded(d.stateDir(), sessions, records);
+  noteEnded(d.stateDir(), sessions, records, d.sessionTmpBase);
   const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
@@ -1578,6 +1799,17 @@ export function resumesOnRestart(rec: AgentRecord, p?: Persona): boolean {
 export interface McpStale {
   adds: string[];
   drops: string[];
+  /** Issue 1223: its Den tools are an older Den's. */
+  den?: DenToolsOld;
+}
+
+/** Issue 1223: Hub's change and its Den tools' age, in one; or none. */
+export function withDenTools(
+  st: McpStale | undefined,
+  den: DenToolsOld | undefined,
+): McpStale | undefined {
+  if (!den) return st;
+  return { ...(st ?? { adds: [], drops: [] }), den };
 }
 
 /** How long what Hub gives agents now is trusted (the token read is slow). */
@@ -1684,9 +1916,13 @@ async function addMcpStale(d: AgentsResolved, rows: AgentRow[]): Promise<void> {
   const url = await hubNow(d);
   const waiting = d.hubProblem() !== null;
   for (const r of running) {
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, {
-      waiting,
-    });
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), r.agent), url, { waiting }),
+      (() => {
+        const rec = readRecord(d.stateDir(), r.agent);
+        return rec ? denToolsOld(rec, r.startedAt, d.stateDir()) : undefined;
+      })(),
+    );
     if (st) r.mcpStale = st;
     const rec = r.startedAt ? { id: r.agent, startedAt: r.startedAt } : null;
     const failed = rec ? mcpLoadFailures(d.stateDir(), rec) : [];
@@ -1709,10 +1945,14 @@ export async function staleAgents(
   }
   const out: { id: string; workspace: string; stale: McpStale }[] = [];
   for (const rec of listRecords(d.stateDir())) {
-    if (!live.some((s) => sessionOf([s], rec))) continue;
-    const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
-      waiting: d.hubProblem() !== null,
-    });
+    const s = sessionOf(live, rec);
+    if (!s) continue;
+    const st = withDenTools(
+      mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), url, {
+        waiting: d.hubProblem() !== null,
+      }),
+      denToolsOld(rec, s.startedAt ?? rec.startedAt, d.stateDir()),
+    );
     if (st) out.push({ id: rec.id, workspace: rec.workspace, stale: st });
   }
   return out;
@@ -3172,12 +3412,23 @@ async function namedId(
         running: { id: rec.id, sessionId: s.ref.id },
       });
   }
+  return namedIdChoice(d.stateDir(), name);
+}
+
+/**
+ * The id a start with display name `name` gets (namedId, without its
+ * live-session check): the name's slug, or slug-2, slug-3 … when taken;
+ * null when the name has no slug. Issue 1328: agent_create's sandbox check
+ * calls this too, so it checks the id the start picks.
+ */
+function namedIdChoice(stateDir: string, name: string): string | null {
+  const slug = nameSlug(name);
   if (!slug) return null;
-  if (!readRecord(d.stateDir(), slug)) return slug;
+  if (!readRecord(stateDir, slug)) return slug;
   const stem = slug.slice(0, 58);
   for (let n = 2; n < 1000; n++) {
     const id = `${stem}-${n}`;
-    if (!readRecord(d.stateDir(), id)) return id;
+    if (!readRecord(stateDir, id)) return id;
   }
   throw refused(`no free agent id for ${slug}: give one with --id`);
 }
@@ -3209,6 +3460,8 @@ function checkId(where: string, id: string): void {
 
 interface Launch {
   rec: Omit<AgentRecord, "session" | "startedAt">;
+  /** Issue 936: an agent that has a record already (resume, relaunch). */
+  existing?: boolean;
   argv: string[];
   env: Record<string, string>;
   /** The runtime's envPassthrough. */
@@ -3261,7 +3514,13 @@ async function startSession(
   launch: Launch,
   old: SessionInfo | undefined,
   extra: Partial<AgentRecord>,
-): Promise<{ rec: AgentRecord; info: SessionInfo; signInWarning?: string }> {
+): Promise<{
+  rec: AgentRecord;
+  info: SessionInfo;
+  signInWarning?: string;
+  sandboxWarning?: string;
+  signingWarning?: string;
+}> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
@@ -3277,6 +3536,12 @@ async function startSession(
     sessionName: launch.rec.sessionName,
   });
   let info: SessionInfo;
+  let box: SandboxWrap;
+  let legacy = false;
+  // Issue 1325: a sandboxed session's own temp folder (its sockets work).
+  let sessionTmp: string | undefined;
+  let signing: AgentSigning | undefined;
+  let signingWarning: string | undefined;
   try {
     // #70: the token in a file of the agent's own; the env names the file.
     const tokenFile = writeActorTokenFile(
@@ -3284,12 +3549,59 @@ async function startSession(
       launch.rec.id,
       minted.token,
     );
+    // Issue 1316: its commits signed with the agents' own SSH key, never
+    // the person's GPG (the sandbox refuses gpg's agent socket). Before
+    // the sandbox: bwrap binds only the folders that exist.
+    try {
+      signing = d.agentSigning(launch.rec.cwd);
+      if (signing?.made)
+        signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
+    } catch (e) {
+      signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    // Issue 936: Den's state read-only to the session (the OS sandbox).
+    // An agent from before the sandbox starts outside it until the person
+    // turns it on (the rollout, sandbox-rollout.ts).
+    legacy =
+      launch.existing === true &&
+      isFromBefore(launch.rec as AgentRecord) &&
+      !sandboxSetByPerson(d.agentsConfig(), launch.rec.id);
+    box = legacy
+      ? {
+          applied: false,
+          argv: launch.argv,
+          env: {},
+          reason: LEGACY_SANDBOX_REASON,
+        }
+      : (() => {
+          // The last session's folder, if it outlived it, goes first.
+          removeSessionTmp(launch.rec.sessionTmp, d.sessionTmpBase);
+          if (sandboxSetting(d.agentsConfig(), launch.rec.id)) {
+            try {
+              sessionTmp = d.sessionTmp();
+            } catch {
+              sessionTmp = undefined; // the system's TMPDIR, as before
+            }
+          }
+          const w = d.agentSandbox(launch.argv, launch.rec.id, sessionTmp);
+          if (!w.applied) {
+            removeSessionTmp(sessionTmp, d.sessionTmpBase);
+            sessionTmp = undefined;
+          }
+          return w;
+        })();
+    if (!box.applied && sandboxRequired(d.agentsConfig(), launch.rec.id))
+      throw refused(
+        `agents start: ${launch.rec.id} needs the agent sandbox (agents.sandbox: required), and it can't apply here: ${box.reason ?? "no sandbox"}`,
+        [`\`${d.cli} agents doctor\` shows why.`],
+        409,
+      );
     info = await c
       .start(
         {
           name: launch.rec.sessionName,
           cwd: launch.rec.cwd,
-          argv: launch.argv,
+          argv: box.argv,
           // Never the caller's whole env: the allowlist, then the runtime's.
           env: agentSessionEnv(
             d.env,
@@ -3298,8 +3610,8 @@ async function startSession(
             launch.rec.id,
             tokenFile,
             launch.binDir ? [launch.binDir] : [],
-            // agents.git.signing_key: its commits signed with that key.
-            agentGitEnv(d.agentsConfig().git),
+            // agents.git (issue 1316): its commits signed with its key.
+            { ...agentGitEnv(signing), ...box.env },
             signIn.env,
           ),
           cols: (tty && d.stdout.columns) || 80,
@@ -3311,6 +3623,7 @@ async function startSession(
   } catch (e) {
     revokeActorToken(d.stateDir(), minted.key);
     removeActorTokenFile(d.stateDir(), launch.rec.id);
+    removeSessionTmp(sessionTmp, d.sessionTmpBase);
     throw e;
   }
   bindActorSession(d.stateDir(), minted.key, info.ref.id);
@@ -3321,6 +3634,12 @@ async function startSession(
     grants: [...launch.grants],
     ...extra,
   };
+  // Issue 1223: the Den its tools start on (they keep its code).
+  const denV = engineVersion();
+  if (denV) rec.denVersion = denV;
+  else delete rec.denVersion;
+  if (sessionTmp) rec.sessionTmp = sessionTmp;
+  else delete rec.sessionTmp;
   // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
   delete rec.endedAt;
@@ -3335,11 +3654,26 @@ async function startSession(
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
+  // Issue 936: whether its session is sandboxed, and why not.
+  rec.sandbox = box.applied
+    ? { applied: true, ...(box.tool ? { tool: box.tool } : {}) }
+    : {
+        applied: false,
+        ...(legacy ? { legacy: true as const } : {}),
+        ...(box.reason ? { reason: box.reason } : {}),
+      };
   writeRecord(d.stateDir(), rec);
   return {
     rec,
     info,
     ...(signIn.warning ? { signInWarning: signIn.warning } : {}),
+    // Issue 936: the start line names an agent that runs unsandboxed.
+    ...(box.applied
+      ? {}
+      : {
+          sandboxWarning: `${rec.id} runs outside the agent sandbox (Den's state is writable to it): ${box.reason ?? "no sandbox here"}`,
+        }),
+    ...(signingWarning ? { signingWarning } : {}),
   };
 }
 
@@ -3456,6 +3790,32 @@ function launchInput(
     { id, persona: persona.id, workspace: ws, cwd: dir },
     persona,
   ).afterCompactions;
+  // Issue 728: this install registers itself (its server does at start too),
+  // then reads the others.
+  const ownEdgeKeys = edgeKeyDirs(d.distRoot());
+  // ...narrowed where the edge folder holds this install's own folders.
+  const ownEdgeDeny = narrowEdgeDirs(ownEdgeKeys, [
+    path.resolve(d.stateDir()),
+    path.resolve(d.distRoot()),
+    path.resolve(dir),
+  ]);
+  const reg = registryDir({ ...process.env, ...d.env });
+  const others = (() => {
+    try {
+      registerInstall(reg, {
+        stateDir: d.stateDir(),
+        edgeKeyDirs: ownEdgeKeys,
+      });
+    } catch {
+      /* listed at its server's next start */
+    }
+    return listOtherInstalls(reg, {
+      ownStateDir: d.stateDir(),
+      home: { ...process.env, ...d.env }.HOME,
+      // No entry may deny this install's own checkout or workspace.
+      protect: [d.distRoot(), dir],
+    });
+  })();
   return {
     persona,
     workspace: { name: ws, dir },
@@ -3465,7 +3825,25 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 816: test installs announced on this computer; issue 728: the
+    // other installs registered for this OS user, any distribution's.
+    otherStateDirs: [
+      ...new Set([
+        ...listAnnounced(announceDir(), { ownStateDir: d.stateDir() }).map(
+          (a) => a.stateDir,
+        ),
+        ...others.map((o) => o.stateDir),
+      ]),
+    ],
+    // ...and where they announce, for those announced after this launch.
+    testAnnounceDir: announceDir(),
+    installRegistryDir: reg,
     personConfigDir: path.join(d.distRoot(), "config", "local"),
+    // Issue 728: the edge's key folders, wherever its config puts them, and
+    // the other installs' edges'.
+    edgeKeyDirs: [
+      ...new Set([...ownEdgeDeny, ...others.flatMap((o) => o.edgeKeyDirs)]),
+    ],
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
@@ -4000,71 +4378,77 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
-      const { rec, info, signInWarning } = await startSession(
-        d,
-        c,
-        {
-          rec: {
-            id,
-            persona: persona.id,
-            // PSN-3: the persona as it started.
-            personaOrigin: persona.origin,
-            ...(personaHashOf(persona)
-              ? { personaHash: personaHashOf(persona) }
-              : {}),
-            runtime: rt.id,
-            ...(ch.model ? { model: ch.model } : {}),
-            ...(ch.model ? { version: ch.version } : {}),
-            ...(ch.permission ? { permission: ch.permission } : {}),
-            ...(req.allow !== undefined ? { allow: ch.extras } : {}),
-            ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
-            ...subagentsField(rt, persona, cfg),
-            workspace: ws,
-            cwd: input.worktree,
-            // D65 v2: its project and repo outlive every new conversation.
-            ...linkFields(d, ws, input.worktree, req.repo, prev),
-            sessionName: sessionName(d.dist, ws, id),
-            peerName,
-            // AG-4b: a name given to the agent is the agent's, not its
-            // conversation's: Start fresh and Relaunch keep it. AG-10.8:
-            // else its persona's name ("Rita").
-            // AG-10.10: a name given at start wins.
-            ...(given
-              ? { displayName: given, displayNameAt: new Date().toISOString() }
-              : prev?.displayName
+      const { rec, info, signInWarning, sandboxWarning, signingWarning } =
+        await startSession(
+          d,
+          c,
+          {
+            rec: {
+              id,
+              persona: persona.id,
+              // PSN-3: the persona as it started.
+              personaOrigin: persona.origin,
+              ...(personaHashOf(persona)
+                ? { personaHash: personaHashOf(persona) }
+                : {}),
+              runtime: rt.id,
+              ...(ch.model ? { model: ch.model } : {}),
+              ...(ch.model ? { version: ch.version } : {}),
+              ...(ch.permission ? { permission: ch.permission } : {}),
+              ...(req.allow !== undefined ? { allow: ch.extras } : {}),
+              ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
+              ...subagentsField(rt, persona, cfg),
+              workspace: ws,
+              cwd: input.worktree,
+              // D65 v2: its project and repo outlive every new conversation.
+              ...linkFields(d, ws, input.worktree, req.repo, prev),
+              sessionName: sessionName(d.dist, ws, id),
+              peerName,
+              // AG-4b: a name given to the agent is the agent's, not its
+              // conversation's: Start fresh and Relaunch keep it. AG-10.8:
+              // else its persona's name ("Rita").
+              // AG-10.10: a name given at start wins.
+              ...(given
                 ? {
-                    displayName: prev.displayName,
-                    ...(prev.displayNameAt
-                      ? { displayNameAt: prev.displayNameAt }
-                      : {}),
+                    displayName: given,
+                    displayNameAt: new Date().toISOString(),
                   }
-                : persona.displayName
-                  ? { displayName: persona.displayName }
-                  : {}),
-            // 0.4.8: launched on this token, so a resume continues it.
-            ...(out.resumeToken
-              ? { resumeToken: out.resumeToken, launched: true }
-              : {}),
-            ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
-            // Issue 943: started on the test-person path, never brought in.
-            ...(auditVia() === "test-person" && !more.bringIn
-              ? { testBed: true as const }
-              : {}),
-            // D56: started outside its project, brought in by an ask naming
-            // that folder.
-            ...(more.bringIn?.outside ? { outside: true } : {}),
+                : prev?.displayName
+                  ? {
+                      displayName: prev.displayName,
+                      ...(prev.displayNameAt
+                        ? { displayNameAt: prev.displayNameAt }
+                        : {}),
+                    }
+                  : persona.displayName
+                    ? { displayName: persona.displayName }
+                    : {}),
+              // 0.4.8: launched on this token, so a resume continues it.
+              ...(out.resumeToken
+                ? { resumeToken: out.resumeToken, launched: true }
+                : {}),
+              ...(more.bringIn
+                ? { broughtInAt: new Date().toISOString() }
+                : {}),
+              // Issue 943: started on the test-person path, never brought in.
+              ...(auditVia() === "test-person" && !more.bringIn
+                ? { testBed: true as const }
+                : {}),
+              // D56: started outside its project, brought in by an ask naming
+              // that folder.
+              ...(more.bringIn?.outside ? { outside: true } : {}),
+            },
+            argv: out.argv,
+            env: out.env,
+            passthrough: rt.envPassthrough,
+            launchEnv: rt.launchEnv,
+            tokenEnv: rt.signInTokenEnv,
+            grants: cfg.agents[id]?.grants ?? [],
+            ...binDirOf(det),
           },
-          argv: out.argv,
-          env: out.env,
-          passthrough: rt.envPassthrough,
-          launchEnv: rt.launchEnv,
-          tokenEnv: rt.signInTokenEnv,
-          grants: cfg.agents[id]?.grants ?? [],
-          ...binDirOf(det),
-        },
-        old,
-        more.rotations?.length ? { rotations: more.rotations } : {},
-      );
+          old,
+          more.rotations?.length ? { rotations: more.rotations } : {},
+        );
       // 0.4.48: launched with no Hub because its token couldn't be read:
       // noted as a failed connect, so once Den reads it again the agent is
       // restarted to load Hub's tools, as after a Hub outage (mcp-reconnect).
@@ -4085,6 +4469,8 @@ export async function startAgent(
           ...unexpressed,
           ...sized,
           ...(signInWarning ? [signInWarning] : []),
+          ...(sandboxWarning ? [sandboxWarning] : []),
+          ...(signingWarning ? [signingWarning] : []),
         ],
         early,
       };
@@ -4407,12 +4793,21 @@ function freeId(d: AgentsResolved, persona: string): string {
  */
 export async function runAgentImport(
   d: AgentsResolved,
-  a: { project: string; session: string; persona: string; runtime?: string },
+  a: {
+    project: string;
+    session: string;
+    persona: string;
+    runtime?: string;
+    /** Issue 1328: asked for knowing it starts outside the sandbox. */
+    sandboxOff?: boolean;
+  },
 ): Promise<
   | { ok: true; id: string; project: string; persona: string }
   | { ok: false; error: string }
 > {
   try {
+    if (importSandboxOff(d, a.persona) && a.sandboxOff !== true)
+      return { ok: false, error: SANDBOX_OFF_SINCE_ASK };
     const s = await importAgent(d, {
       workspace: a.project,
       session: a.session,
@@ -4681,6 +5076,8 @@ export type AgentCreateCheck =
       details: string[];
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
+      /** Issue 1328: it starts outside the sandbox: the person's own Allow. */
+      personOnly?: boolean;
       args: AgentCreateArgs;
     }
   | { ok: false; error: string };
@@ -4693,6 +5090,8 @@ export interface AgentCreateArgs {
   mode: PermissionIntent;
   repo?: string;
   folder?: string;
+  /** Issue 1328: asked for knowing it starts outside the sandbox. */
+  sandboxOff?: boolean;
 }
 
 const INTENT_RANK: Record<PermissionIntent, number> = {
@@ -4764,8 +5163,10 @@ export function checkAgentCreate(
         : ws;
     const shown = name ?? persona.displayName ?? persona.id;
     const rt = runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID;
+    const off = createSandboxOff(d, ws, persona.id, name);
     return {
       ok: true,
+      ...(off ? { personOnly: true } : {}),
       summary: `start agent ${shown} (${persona.id}) in ${where}, mode ${mode}${runtime ? `, runtime ${runtime}` : ""}`,
       params: { name: shown, persona: persona.id, where, mode },
       ...review([
@@ -4784,6 +5185,7 @@ export function checkAgentCreate(
           "ap.det.agent_create.mode",
           { mode, cap: String(cap) },
         ),
+        ...(off ? [off] : []),
       ]),
       args: {
         project: ws,
@@ -4793,11 +5195,42 @@ export function checkAgentCreate(
         mode,
         ...(repo !== undefined ? { repo } : {}),
         ...(folder !== undefined ? { folder: dir ?? folder } : {}),
+        ...(off ? { sandboxOff: true } : {}),
       },
     };
   } catch (e) {
     return no((e as Error).message);
   }
+}
+
+/**
+ * Issue 1328: whether the agent agent_create starts would be outside the
+ * sandbox, for the id startAgent picks, the same way: the name's
+ * (namedIdChoice), else the persona's (defaultId). The run checks again,
+ * so an id that changes between ask and Allow is caught there.
+ */
+function createSandboxOff(
+  d: AgentsResolved,
+  ws: string,
+  persona: string,
+  name: string | undefined,
+): ReviewLine | null {
+  const given = name !== undefined ? checkDisplayName(name) : null;
+  const id =
+    (given ? namedIdChoice(d.stateDir(), given) : null) ??
+    defaultId(d.stateDir(), persona, ws);
+  return newAgentSandboxOff(d.agentsConfig(), [id]);
+}
+
+/**
+ * Issue 1328: whether the agent agent_import makes of `persona` would start
+ * outside the sandbox (the id it gets, as importAgent picks it).
+ */
+export function importSandboxOff(
+  d: AgentsResolved,
+  persona: string,
+): ReviewLine | null {
+  return newAgentSandboxOff(d.agentsConfig(), [freeId(d, persona)]);
 }
 
 /** SRV-P1: on Allow, starts it as `agents start` does. */
@@ -4810,6 +5243,9 @@ export async function createAgent(
 > {
   const c = checkAgentCreate(d, raw);
   if (!c.ok) return c;
+  // Issue 1328: asked for in the sandbox, it now starts outside it.
+  if (c.personOnly && raw.sandboxOff !== true)
+    return { ok: false, error: SANDBOX_OFF_SINCE_ASK };
   const a = c.args;
   const s = await startAgent(d, {
     workspace: a.project,
@@ -6101,6 +6537,13 @@ export async function stopAgent(
           await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
         }
       }
+      // Issue 1325: its temp folder goes once its session has (one still
+      // stopping: noteEnded takes it when the host lists it exited).
+      if (!stillStopping && next.sessionTmp) {
+        removeSessionTmp(next.sessionTmp, d.sessionTmpBase);
+        delete next.sessionTmp;
+        writeRecord(d.stateDir(), next);
+      }
       return {
         rec: next,
         ...(live ? { session: s! } : {}),
@@ -6370,6 +6813,8 @@ export async function resumeAgent(
           rec: next,
           info,
           signInWarning,
+          sandboxWarning,
+          signingWarning,
         } = await startSession(
           d,
           c,
@@ -6393,12 +6838,21 @@ export async function resumeAgent(
             tokenEnv: rt.signInTokenEnv,
             grants,
             ...binDirOf(det),
+            existing: true,
           },
           prior,
           asFresh ? {} : { resumedAt: new Date().toISOString() },
         );
         const early = await exitedAtOnce(d, c, info);
-        return { out, next, info, early, signInWarning };
+        return {
+          out,
+          next,
+          info,
+          early,
+          signInWarning,
+          sandboxWarning,
+          signingWarning,
+        };
       };
       let fresh = !known && Boolean(token);
       let newConversation = false;
@@ -6464,6 +6918,8 @@ export async function resumeAgent(
         warnings: [
           ...(r.out.warnings ?? []),
           ...(r.signInWarning ? [r.signInWarning] : []),
+          ...(r.sandboxWarning ? [r.sandboxWarning] : []),
+          ...(r.signingWarning ? [r.signingWarning] : []),
         ],
         early: r.early,
         fresh,
@@ -7982,6 +8438,8 @@ async function removeRecords(
       const s = sessionOf(sessions, rec);
       revokeAgentTokens(d.stateDir(), rec.id);
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
+      removeSessionTmp(rec.sessionTmp, d.sessionTmpBase); // issue 1325
+      d.forgetSandbox(rec.id); // issue 1328: its sandbox setting goes too
       if (removeRecord(d.stateDir(), rec.id))
         out.push({ agent: rec.id, workspace: rec.workspace });
     }
@@ -8046,6 +8504,8 @@ export async function pruneStopped(
   });
   for (const r of old) {
     revokeAgentTokens(d.stateDir(), r.id);
+    removeSessionTmp(r.sessionTmp, d.sessionTmpBase); // issue 1325
+    d.forgetSandbox(r.id); // issue 1328
     removeRecord(d.stateDir(), r.id);
   }
   purgeRemoved(d.stateDir(), 0, now);
@@ -8108,6 +8568,12 @@ export async function markInterrupted(
     /** agents.restore_hub_wait_seconds, in ms. */
     hubWaitMs?: number;
     hubPollMs?: number;
+    /**
+     * Issue 1129: the restart queue they go through (agents.resume): a
+     * batch at a time, the ones that were working first. None: all at
+     * once, as before.
+     */
+    queue?: RestartQueue;
   } = {},
 ): Promise<RestartFound> {
   const sessions = await hostSessions(d);
@@ -8143,19 +8609,46 @@ export async function markInterrupted(
   const hubAnswered = opts.hubUp
     ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)
     : true;
+  // den#4: a rotated one relaunches from its handoff instead.
+  const bring = (rec: AgentRecord) =>
+    rotationOf(d, rec)?.ready
+      ? relaunchAgent(d, rec.id)
+      : resumeAgent(d, rec.id);
+  const note = (rec: AgentRecord, r: { early?: unknown }) => {
+    if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
+    else {
+      found.resumed.push(rec.id);
+      if (!hubAnswered) found.withoutHub.push(rec.id);
+    }
+  };
+  const failed = (rec: AgentRecord, e: unknown) =>
+    found.failed.push({ agent: rec.id, why: (e as Error).message });
+  if (opts.queue) {
+    // Issue 1129: a batch at a time; the ones working when Den stopped first.
+    const activity = readActivity(d.stateDir());
+    const q = opts.queue;
+    await Promise.all(
+      due.map((rec) =>
+        q
+          .add({
+            id: rec.id,
+            why: "resume",
+            working: activity[rec.id]?.working === true,
+            run: () => bring(rec),
+          })
+          .then(
+            (r) => note(rec, r as { early?: unknown }),
+            (e) => failed(rec, e),
+          ),
+      ),
+    );
+    return found;
+  }
   for (const rec of due) {
     try {
-      // den#4: a rotated one relaunches from its handoff instead.
-      const r = rotationOf(d, rec)?.ready
-        ? await relaunchAgent(d, rec.id)
-        : await resumeAgent(d, rec.id);
-      if (r.early) found.failed.push({ agent: rec.id, why: "exited at once" });
-      else {
-        found.resumed.push(rec.id);
-        if (!hubAnswered) found.withoutHub.push(rec.id);
-      }
+      note(rec, await bring(rec));
     } catch (e) {
-      found.failed.push({ agent: rec.id, why: (e as Error).message });
+      failed(rec, e);
     }
   }
   return found;
@@ -8459,6 +8952,26 @@ export function heldNotAtPrompt(id: string): boolean {
 }
 
 /**
+ * Issue 1311: agents whose last look found their person's unsent draft on
+ * the input line: what Den would type waits for it.
+ */
+const draftHeld = new Set<string>();
+
+/** Issue 1311: whether agent `id`'s text waits for its person's draft. */
+export function heldForDraft(id: string): boolean {
+  return draftHeld.has(id);
+}
+
+/**
+ * Issue 1311: how many texts Den holds for agent `id` while its person's
+ * draft is on the line (typeIntoAgent's queue; Hub's own queue counts
+ * apart). 0 when no draft holds it.
+ */
+export function draftWaiting(id: string): number {
+  return draftHeld.has(id) ? (typingQueued.get(id) ?? 0) : 0;
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
@@ -8481,6 +8994,11 @@ export async function sendFirstInstruction(
     onDialog?: () => void;
     /** Issue 664: called when it wasn't at its input prompt (text held). */
     onNotAtPrompt?: () => void;
+    /**
+     * Issue 1311: asked just before the text is typed; true (its person
+     * has an unsent draft on the line) holds it: nothing typed, false.
+     */
+    held?: () => boolean;
   } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
@@ -8523,6 +9041,8 @@ export async function sendFirstInstruction(
       o.onNotAtPrompt?.();
       return false;
     }
+    // Issue 1311: never into a prompt that holds its person's draft.
+    if (o.held?.()) return false;
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
     const b = instructionBytes(text, said, soft);
     c.write(sessionId, Buffer.from(b.body, "utf-8"));
@@ -8669,21 +9189,43 @@ async function inputState(
     if (!c) return "stopped";
     let live = false;
     let screen: TypingCheck = "not_at_prompt";
+    let out = "";
+    let sid = rec.session.id;
+    let readAt = 0;
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
+      if (s) sid = s.ref.id;
       // A dialog waiting for the person: not at its prompt, whatever its
       // transcript or quiet output says.
-      if (live && s)
-        screen = agentScreenCheck(
-          rec.runtime,
-          (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
-        );
+      if (live && s) {
+        readAt = Date.now();
+        out = (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8");
+        screen = agentScreenCheck(rec.runtime, out);
+      }
     } finally {
       c.close();
     }
     if (o.promptCheck !== false) notAtPrompt.delete(id);
-    if (!live) return "stopped";
+    if (!live) {
+      // Issue 1311: a draft dies with its session.
+      clearDraft(sid);
+      draftHeld.delete(id);
+      return "stopped";
+    }
+    // Issue 1311: its person's unsent draft on the line holds what Den
+    // types, until it is sent or cleared (an empty input line on screen
+    // clears it too). Not for the restart waits (promptCheck false).
+    if (o.promptCheck !== false) {
+      // An empty line read before the draft (or its echo) can't clear it.
+      if (draftPending(sid) && inputLineEmpty(out, getRuntime(rec.runtime)))
+        clearDraftSeenEmpty(sid, readAt);
+      if (draftPending(sid)) {
+        draftHeld.add(id);
+        return "busy";
+      }
+      draftHeld.delete(id);
+    }
     if (screen === "dialog") return "busy";
     if (waiting.has(id)) return "busy";
     // Issue 732: its turn alone. A background shell it left running (a
@@ -8969,35 +9511,60 @@ export function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
+  opts?: { onDraft?: "wait" | "refuse" },
 ): Promise<boolean>;
 /**
  * Issue 629: with `ready`, it is asked once this text's turn in the queue
  * comes (what was typed just ahead may have started a turn); "not-ready"
  * when it says no, and nothing is typed.
+ *
+ * Issue 1311: while its person has an unsent draft on the input line,
+ * nothing is typed. `onDraft` "wait" (the default): it waits, in order,
+ * until the draft is sent or cleared (the agent stopping ends the wait:
+ * false). "refuse": false at once, for a caller that keeps its own queue.
  */
 export function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-  opts: { ready: () => Promise<boolean> },
+  opts: { ready: () => Promise<boolean>; onDraft?: "wait" | "refuse" },
 ): Promise<boolean | "not-ready">;
 export async function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-  opts?: { ready: () => Promise<boolean> },
+  opts?: { ready?: () => Promise<boolean>; onDraft?: "wait" | "refuse" },
 ): Promise<boolean | "not-ready"> {
   // Everything Den types into one agent (Hub comments, the tools note)
   // goes one at a time: two texts at once would land mixed in the pane.
   const before = typing.get(id) ?? Promise.resolve();
+  typingQueued.set(id, (typingQueued.get(id) ?? 0) + 1);
   const mine = before.then(async (): Promise<boolean | "not-ready"> => {
-    if (opts && !(await opts.ready())) return "not-ready";
-    const rec = readRecord(d.stateDir(), id);
-    if (!rec) return false;
-    return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
-      quietMs: 1500,
-      maxMs: 10_000,
-    });
+    for (;;) {
+      if (opts?.ready && !(await opts.ready())) return "not-ready";
+      const rec = readRecord(d.stateDir(), id);
+      if (!rec) return false;
+      const sid = rec.session.id;
+      if (draftPending(sid)) {
+        draftHeld.add(id);
+        if (opts?.onDraft === "refuse") return false;
+        if (!(await draftCleared(d, rec))) return false;
+        continue;
+      }
+      let heldByDraft = false;
+      const sent = await sendFirstInstruction(d, sid, rec.runtime, text, {
+        quietMs: 1500,
+        maxMs: 10_000,
+        held: () => (heldByDraft = draftPending(sid)),
+      });
+      if (!heldByDraft) {
+        if (sent) draftHeld.delete(id);
+        return sent;
+      }
+      // A draft began while it waited for quiet: as above.
+      draftHeld.add(id);
+      if (opts?.onDraft === "refuse") return false;
+    }
   });
   const done = mine.then(
     () => undefined,
@@ -9005,11 +9572,60 @@ export async function typeIntoAgent(
   );
   typing.set(id, done);
   void done.then(() => {
+    const n = (typingQueued.get(id) ?? 1) - 1;
+    if (n > 0) typingQueued.set(id, n);
+    else typingQueued.delete(id);
     if (typing.get(id) === done) typing.delete(id);
   });
   return mine;
 }
 const typing = new Map<string, Promise<void>>();
+/** Issue 1311: texts in each agent's typing queue (draftWaiting). */
+const typingQueued = new Map<string, number>();
+
+/** Issue 1311: how often a held text looks again for its draft's end. */
+const DRAFT_LOOK_MS = 500;
+/** Issue 1311: the same, once a draft has held it for a minute. */
+const DRAFT_LOOK_SLOW_MS = 2000;
+
+/**
+ * Issue 1311: waits until agent `rec`'s person's draft is sent or cleared
+ * (by their keys, or an empty input line on its screen): true. False when
+ * its session ends first (the draft dies with it). Never throws.
+ */
+async function draftCleared(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<boolean> {
+  const sid = rec.session.id;
+  const began = Date.now();
+  for (;;) {
+    if (!draftPending(sid)) return true;
+    try {
+      const c = await d.connectExisting();
+      if (!c) return (clearDraft(sid), false);
+      try {
+        const s = (await c.list()).find((x) => x.ref.id === sid);
+        if (!s || s.exited) return (clearDraft(sid), false);
+        const readAt = Date.now();
+        const out = (await c.scrollback(sid, 64 * 1024)).toString("utf-8");
+        if (
+          inputLineEmpty(out, getRuntime(rec.runtime)) &&
+          clearDraftSeenEmpty(sid, readAt)
+        )
+          return true;
+      } finally {
+        c.close();
+      }
+    } catch {
+      /* the host didn't answer: look again */
+    }
+    // A draft left a while: look less often (each look reads its screen).
+    const wait =
+      Date.now() - began > 60_000 ? DRAFT_LOOK_SLOW_MS : DRAFT_LOOK_MS;
+    await new Promise((r) => setTimeout(r, wait));
+  }
+}
 
 /** A plain session started from the page (AG-10.1 "Plain session"). */
 export interface PlainStarted {

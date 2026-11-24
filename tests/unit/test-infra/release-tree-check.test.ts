@@ -487,8 +487,10 @@ describe("ci.yml: tests run on the pull request, not again on main", () => {
     expect(ci.jobs.pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    // pr-shards follows pr (it needs pr's shard list)
+    // pr-shards follows pr (it needs pr's shard list), and the fast
+    // static checks (issue 843)
     expect(([] as string[]).concat(ci.jobs["pr-shards"].needs ?? [])).toEqual([
+      "fast",
       "pr",
     ]);
     const raw = fs.readFileSync(path.join(DIR, "ci.yml"), "utf8");
@@ -505,7 +507,8 @@ describe("release.yml: no test suite, only a tested tree", () => {
   const rel = wf("release.yml");
 
   it("calls the gates without their tests", () => {
-    expect(rel.jobs.gates.with).toEqual({ tests: false });
+    // Issue 922: and the promoted commit to build (ref, dev-tag, dev-commit).
+    expect(rel.jobs.gates.with).toMatchObject({ tests: false });
   });
 
   it("hands the script the bed's switch and poster from the repository variables", () => {

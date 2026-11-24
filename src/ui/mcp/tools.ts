@@ -11,6 +11,7 @@ import * as path from "path";
 import { z } from "zod";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 import { shotFileDataUrl } from "../../shared/report-shots.js";
+import { AGENT_VIEW_LINK_NOTE } from "../../shared/agent-view-note.js";
 import {
   GatePriorityRefused,
   GateStore,
@@ -527,7 +528,8 @@ const READ_TOOLS: DenTool[] = [
   read(
     "page_view",
     "View this Den's pages, read-only",
-    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so.",
+    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so. Issue 1243: " +
+      AGENT_VIEW_LINK_NOTE,
     {
       next: z
         .string()
@@ -836,7 +838,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2841,6 +2843,83 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "agent_sandbox_set",
+    title: "Turn an agent's sandbox off or on",
+    description:
+      "Turn one agent's sandbox off (`on: false`) or back on (`on: true`), so the person never edits config/local/user.yml by hand. `agent` is its id; `reason` says what it needs that the sandbox blocks (required to turn it off, one line). Off widens what the agent may do: it always waits for the person's own Allow, and the Review says so when an agent asks for itself. Back on runs as the approval policy says. Den writes only agents.<id>.sandbox, and restarts a running agent after its turn, on the same conversation. A project's agent asks for its own project's agents; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      on: z.boolean().describe("true: back in the sandbox; false: out of it"),
+      reason: z
+        .string()
+        .max(300)
+        .optional()
+        .describe("What it needs that the sandbox blocks (required for off)"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_sandbox_set", a, "agent", "the agent's id");
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_sandbox_set",
+        "agent_sandbox_set",
+        {
+          agent,
+          on: a.on,
+          ...(str(a.reason) ? { reason: str(a.reason) } : {}),
+          ...(project ? { project } : {}),
+        },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "setting_change",
+    title: "Change one of Den's settings",
+    description:
+      "Propose one of Den's settings, `key` = `value`, for the person to Allow, so they never edit config/local/user.yml by hand. `key` is the setting's dotted name as `config` and Settings know it (e.g. sessions.max_concurrent, agents.max_concurrent, web.agent_view, held_writes.wait_minutes); `value` is its new value (a number, true/false, text or a list), or null for Den's default; `reason` says why, in one line. Den checks the key and value with its own parser before anything is held: an unknown key or a refused value comes back at once, with why. The person sees the key, its value now, the new one and the reason. A setting that widens what agents can do (an agent's grants or sandbox, mcp.actions, web.edge_unattested, the approval policy and the like) waits for the person's own Allow. On Allow Den writes only that key, keeps a copy of the file and notes the change in the audit. A setting Den reads when it starts says so: then ask for den_restart_server." +
+      HELD,
+    action: true,
+    shape: {
+      key: z.string().max(200).describe("The setting's dotted name"),
+      value: z
+        .union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.null(),
+          z.array(z.union([z.string(), z.number()])),
+        ])
+        .describe("Its new value; null puts Den's default back"),
+      reason: z.string().max(300).describe("Why it should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const key = needArg(
+        "setting_change",
+        a,
+        "key",
+        "the setting's dotted name",
+      );
+      return askPerson(
+        "setting_change",
+        "setting_change",
+        { key, value: a.value ?? null, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "gate_runner_token_create",
     title: "Make a gate-only token for a CI runner",
     description:
@@ -2888,6 +2967,33 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "web_url_set",
+    title: "Propose this install's address",
+    description:
+      "Issue 869: when this install's address (web.url) is wrong or missing, propose the right one instead of asking the person to type a command. Check it first: the name answers (curl it) and an edge route sends it to this Den (edge_status). Den checks it answers as this Den, at the ask and again at the Allow; an address that doesn't is never written. On the person's Allow it is saved as confirmed, the way Settings' address saves it, takes effect without a restart, and Den tells the connected Hub. Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      url: z
+        .string()
+        .describe(
+          "The address other machines open, e.g. https://den.example.com (never localhost)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("web_url_set", ctx.scope);
+      return askPerson(
+        "web_url_set",
+        "web_url_set",
+        { url: str(a.url) },
+        a,
+        ctx,
+      );
     },
   },
   {

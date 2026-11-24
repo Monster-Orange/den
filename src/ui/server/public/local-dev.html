@@ -1112,6 +1112,16 @@
       .ws-head-link:hover {
         text-decoration-color: currentColor;
       }
+      /* Issue 646: a link to another Hub, in the warn colour; on a phone
+         the Hub chip names the company only. */
+      .ws-head-link.ws-hub-away {
+        color: var(--warn);
+      }
+      @media (max-width: 480px) {
+        #ws-hub-project .ws-hub-pj {
+          display: none;
+        }
+      }
       .ws-more {
         position: relative;
       }
@@ -1603,6 +1613,7 @@
         import {
           moveProject,
           orderProjects,
+          hubChipModel,
           projectLabel,
           projectNameSource,
           projectColour,
@@ -1688,6 +1699,50 @@
           const v = window.denShell?.t?.(key);
           return v && v !== key ? v : fallback;
         };
+
+        // Issue 646: the project header's Hub chip (hubChipModel's rules).
+        const fill = (str, vars) =>
+          Object.entries(vars).reduce(
+            (a, [k, v]) => a.split(`{${k}}`).join(String(v)),
+            str,
+          );
+        function hubChipHtml(data, slug) {
+          const m = hubChipModel(data, slug, window.denShell?.hub?.() || null);
+          if (!m) return "";
+          if (m.kind === "elsewhere")
+            return `<a class="ws-head-link ws-hub-away" id="ws-hub-project" data-hub-chip="elsewhere" href="${escHtml(m.href)}" title="${escHtml(wsT("ws.hubAwayTip", "This project's link points at another Hub, so it doesn't count here. Relink it in Project setup."))}">${escHtml(wsT("ws.hubAway", "Another Hub"))}</a>`;
+          const v = { company: m.company, name: m.project, host: m.host };
+          const title = m.company
+            ? fill(
+                wsT(
+                  "ws.hubChipTip",
+                  "Connected to {company} ({host}). This project: {name}.",
+                ),
+                v,
+              )
+            : wsT(
+                "ws.hubTip",
+                "This project's agents file their Hub work in this Hub project. Change it in Project setup.",
+              );
+          // ws.hubChipCo ("{company} · {name}"): the company in its own
+          // span; the rest (" · <project>") in the span a phone hides.
+          const co = wsT("ws.hubChipCo", "{company} · {name}");
+          const rest = `<span class="ws-hub-pj" data-hub-pj>${escHtml(fill(co.replace("{company}", ""), v))}</span>`;
+          const coSpan = `<span class="ws-hub-co" data-hub-co>${escHtml(m.company)}</span>`;
+          const text = m.company
+            ? co.indexOf("{company}") <= co.indexOf("{name}")
+              ? coSpan + rest
+              : rest + coSpan
+            : escHtml(fill(wsT("ws.hubChip", "Hub: {name}"), v));
+          return `<a class="ws-head-link" id="ws-hub-project" data-hub-chip="linked" href="${escHtml(m.href)}" title="${escHtml(title)}">${text}</a>`;
+        }
+        window.addEventListener("den:hub", () => {
+          const el = document.getElementById("ws-hub-project");
+          const ws = document.getElementById("content")?.dataset?.ws;
+          if (!el || !wsData || !ws) return;
+          const html = hubChipHtml(wsData, ws);
+          if (html) el.outerHTML = html;
+        });
 
         // ── The admin password (R8, LK-0) ─────────────────────────────────────────
         // It is for sudo, and nothing else: no action here asks for it up
@@ -2250,15 +2305,10 @@
           const stackNsChip = stackNs?.differs
             ? `<span class="badge stack-ns" id="ws-stack-ns" title="Compose projects run as &lt;stack&gt;-${escHtml(stackNs.stack_namespace)} (stack_namespace from ${escHtml(stackNs.source)}; default ${escHtml(stackNs.default)})">stacks: ${escHtml(stackNs.stack_namespace)}</span>`
             : "";
-          // H5: the Hub project this project's agents file their Hub work in.
-          const hubP = wsData?.workspaces?.[wsName]?.hub_project;
-          const hubName =
-            hubP && typeof hubP === "object" && typeof hubP.name === "string"
-              ? hubP.name
-              : "";
-          const hubChip = hubName
-            ? `<a class="ws-head-link" id="ws-hub-project" href="/settings?project=${encodeURIComponent(wsName)}#workspace" title="${escHtml(wsT("ws.hubTip", "This project's agents file their Hub work in this Hub project. Change it in Project setup."))}">${escHtml(wsT("ws.hubChip", "Hub: {name}").replace("{name}", hubName))}</a>`
-            : "";
+          // H5: the Hub project this project's agents file their Hub work
+          // in. Issue 646 (mock v2, part 2): "<company> · <project>" (the
+          // company alone on a phone); a link to another Hub: "Another Hub".
+          const hubChip = hubChipHtml(wsData, wsName);
           // H5: repos Den Hub's GitHub App can't see: a warning, to Project setup.
           const unseen = wsData?.hubUncovered?.[wsName] ?? [];
           const hubWarn = unseen.length

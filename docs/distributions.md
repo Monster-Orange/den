@@ -312,6 +312,47 @@ with "If you didn't ask an agent to do this, Deny." under it.
   project-scoped MCP server refuses `workspace_create` and `repo_add`:
   they change Den beyond its project.
 
+### Personal and strict installs (issue 1391)
+
+An install is **personal** (one person, their own machine: the default)
+or **strict** (a company's install or a shared machine): `install_mode`.
+
+- The distribution's `den.yml` sets the default (unset: personal).
+- The person's `config/local/user.yml` may choose: Settings › Server ›
+  "This install is", or `<cli> config install_mode=strict`.
+- Strict in either file wins, so a person can't loosen a distribution's
+  strict. Settings and the CLI refuse to try.
+- It fails closed: any value but `personal` (a typo, `null`, `true`) is
+  strict, never an error.
+- Doctor says which file set it.
+- For an agent, moving strict to personal widens (the person's Allow, through
+  `setting_change`); personal to strict is routine.
+- On a personal install with the sandbox off, an agent can write
+  `config/local/user.yml` itself. There, "only the person's Allow" (for
+  `install_mode`, `approvals` and `mcp.actions`) guards against an agent's
+  mistakes, not against a hostile agent. For that, use strict, or turn the
+  sandbox on.
+
+- **Personal.** `agents.sandbox` is off unless set, so Docker, sockets
+  and the person's tools are reachable from agents' sessions. Doctor says
+  so once, as information: no "Sandbox is off for N agents" and no bell
+  offer to turn it on. Held writes ask only for real security (the
+  sandbox, the approval policy, credentials, who may sign in, network
+  exposure), money, deletes and acting on others; every other placed one
+  follows the approval policy (by default it runs and tells you). The
+  writes that still ask are marked `personal: "keep"` in
+  `HELD_WRITE_RISK`: `agent_sandbox_set`, `approval_policy`,
+  `project_mcp_add`, `project_mcp_update`, `hub_connect`, `den_update`,
+  `verify_run`, `embed_key_create`, `embed_key_revoke`, `web_url_set`,
+  `test_person_setup`, `report` and `setting_change`'s widening keys. A
+  write touching secrets, deletes or money asks on both. A write no one
+  placed still asks.
+- **Strict.** Today's behaviour: the sandbox on unless set off, and every
+  held write as the approval policy says.
+- A value set explicitly always wins: `agents.sandbox: on` (or
+  `required`, or one agent's `on`) survives the upgrade to a personal
+  default.
+
 ### The approval policy (0.4.52, issue 160)
 
 The person gets an Allow only for a real decision. Den sorts each
@@ -324,6 +365,9 @@ agent's held write into one of two groups.
   | Held write                                                   | Critical when                                                          |
   | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
   | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
+  | `agent_sandbox_set`                                          | the sandbox goes off (back on only narrows)                            |
+  | `agent_create`, `agent_import`                               | the new agent would start outside the sandbox                          |
+  | `setting_change`                                             | the setting widens what agents can do (`USER_ONLY_WIDENING` and more)  |
   | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
@@ -1436,8 +1480,11 @@ hub:
   than the watcher's first run, and comments Hub already delivered, are
   passed over. Hub has no ack for inbox items, so none is sent. While
   Hub doesn't answer the wait doubles, up to
-  `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
-  turns it off.
+  `hub.inbox_backoff_max_seconds` (default 600), plus up to a quarter
+  more by chance. The whole install reads at most
+  `hub.inbox_reads_per_second` (default 2), and each agent at most once
+  per poll, counted from when its last read ended. An agent's Stop hook
+  reuses Hub's answer for 30 s. `hub.inbox_watch: false` turns it off.
 - Hub's tool changes reach a resumed agent (0.4.52, issue 193). An agent
   resumed on the same conversation keeps the tool list its client read
   when that conversation began, so it doesn't know a parameter Hub added
@@ -1823,6 +1870,19 @@ and the guide to making your own
   text in `accent-text`. Two colors are optional in each mode: `info`
   (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
   checked when a theme sets them; unset, the UI kit's defaults hold.
+- `shape` (optional): `radius`, `radius-button` and `density`, and two
+  keys for how the kit draws edges and buttons:
+  - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
+    Added in 0.4.87.
+  - `buttons`: `filled` (the default) or `outline`. With `outline`, the
+    primary and danger buttons have no fill: a `border-strong` edge and
+    `text` words, danger in `bad`. Added in 0.4.87.
+
+  A theme that sets neither draws as before. The built-in `sketch` theme
+  (greys only, dashed, outline, one face) ships in the UI kit as
+  `themes/sketch.css`, so a page with the kit and no Den server can link
+  it after `tokens.css`.
+
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -2973,6 +3033,19 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
+A service starts the web server with `--silent`, and so does `web up` by
+default, so `web.log` holds no request lines. Its lifecycle, warning and error
+lines still go to `web.log`: on the server's output when that is a file (as
+`web up` and a service start it), or added to `logs/<cli>/web.log` in Den's
+state folder when the output is a terminal or a pipe, never twice. While it
+runs silent, the server's warning lines (Hub
+deliveries held or typed, among others) also go to `logs/server.log` in Den's
+state folder, so they are still there after a restart. `server_log.max_mb` in
+`user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
+size it moves to `server.log.1`, replacing the one there, and starts again.
+The lines are the server's own log lines, which carry no tokens. Doctor names
+the file and its size (`server_log`).
+
 `web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
 server keeps an idle connection open. It sits above the page's own poll and
 a proxy's usual idle time, so a client never reuses a connection the server
@@ -3108,7 +3181,7 @@ to one project for one agent:
 (agent:<id>; no grants); "<other>" is another project`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
   says how to get more: a person adds `<other>` to `agents.<id>.grants` in
-  the org config and restarts the agent; an agent can't grant itself one. A
+  `config/local/user.yml` and restarts the agent; an agent can't grant itself one. A
   refused call is recorded in the activity trail, read tools included.
 - **Says so.** Every scoped answer (`status`, `services`, `applications`,
   `graph`, `stacks`, `workspaces`) carries a `scope` block: the project
@@ -3142,7 +3215,7 @@ to one project for one agent:
 agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
 - **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
-  when the org config's `agents.<id>.grants` lists it; otherwise the server
+  when `agents.<id>.grants` in `config/local/user.yml` lists it; otherwise the server
   exits 2 (an agent can't grant itself one). A call naming a granted
   project is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
@@ -3189,13 +3262,21 @@ refusal, a failed action, the web server down).
 
 ### Config
 
-Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
-tools are registered. Actions are opt-in, by name:
+Without `mcp.actions` in `config/local/user.yml`, only the read tools are
+registered. Actions widen what agents may do, so they are opt-in, by name,
+in that file only (an agent's sandbox can't write it):
 
 ```yaml
+# config/local/user.yml
 mcp:
   actions:
     [service_up, service_down, service_restart, workspace_sync, run_tests]
+```
+
+The rest of the `mcp:` block stays in the org config (`config/<name>.yml`):
+
+```yaml
+mcp:
   run_tests:
     envs: [local] # the default; production is refused even if listed
   logs:
@@ -3206,6 +3287,11 @@ mcp:
 An unknown action or environment name is an error, so a typo never turns a
 guard off; so is an `approvals` that isn't `true` or `false`. See
 [Onboarding writes, held for the person](#onboarding-writes-held-for-the-person).
+
+Migrating (issue 1072): Den no longer reads `mcp.actions` or
+`agents.<id>.grants` from the org config. `<cli> agents doctor` names each
+one still there ("Settings read from config/local only"). Move them to
+`config/local/user.yml`. A later release refuses them in the org config.
 
 ### Tools
 
@@ -3357,6 +3443,21 @@ it read. Mark all read, Clear read and a project's Mark read are in its
 panel. Items are kept in
 `<state>/notifications.json` (0600), the newest 500; one unread item per
 agent and kind.
+
+Every process that writes it (the server, the CLI, agents' hooks) takes a
+short lock, `notifications.json.lock`, so no write is lost. The lock is
+tried once. If it's busy, the change shows at once in that process and is
+saved when the lock frees, or when the process exits. user.yml
+`notifications:` sets the times, in seconds:
+
+- `lock_exit_wait_seconds` (default 2, 0 to 60): at exit only, how long
+  waiting changes wait for the lock.
+- `lock_no_pid_seconds` (default 10, 1 to 3600): when a lock with no
+  holder pid is taken back.
+- `lock_live_seconds` (default 60, 1 to 86400): when a live holder's lock
+  is taken back. A gone holder's lock is taken back at once.
+
+A value outside its range keeps its default, and the log says so.
 
 - **An agent waits** (NT-1). Claude Code's `Notification` hook (a
   permission prompt, or waiting for input) and `Stop` hook (its turn
@@ -3541,6 +3642,24 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
   agents:
     max_concurrent: 4
   ```
+
+- Issue 1373: a person sets the agents' cap for this machine in
+  Settings › Agents › Agents at once, or with
+  `<cli> config agents.max_concurrent=14`. Both write
+  `config/local/user.yml`, and user.yml's value wins over the
+  distribution's, key by key: the cap the terminal host enforces, `<cli>
+agents` and `sessions`, the count the Agents page shows, and Doctor.
+  `<cli> config agents.max_concurrent` prints the value in force. The
+  agents' other limits and waits follow the same rule when set in
+  user.yml by hand: `token_peer_wait_ms`, `turn_read_max_mb`,
+  `restart_wait_minutes`, `rotation_wait_minutes`,
+  `unasked_exit_window_minutes`, `lock_wait_minutes` and
+  `exited_shell_minutes`. A key that widens what an agent may do (such as
+  `token_binding`, `files`, `issue_writes` or `api_only_engines`) is not
+  taken from user.yml's `agents:` block this way. When both files set a
+  limit to different values, Doctor notes it: "agents.max_concurrent:
+  user.yml's 14 wins over the distribution's 8". An agent can't save the
+  setting itself; it proposes the change, and the person allows it.
 
 - Issue 503: each terminal holds one PTY, and a machine has a fixed
   number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
@@ -4878,7 +4997,7 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. the distribution's: `GIT_CONFIG_*` when `agents.git.signing_key` is set
+4. the distribution's: `GIT_CONFIG_*` when agents sign commits
    ([Agents' commit signing](#agents-commit-signing));
 5. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
@@ -4903,19 +5022,49 @@ adds a note to run `<cli> doctor --probe`.
 
 ### Agents' commit signing
 
-Agents Den starts can sign their git commits with an SSH key of their own.
-A key is per machine, so it usually goes in `config/local/user.yml`; the
-org config can set one too, and user.yml's wins:
+Agents Den starts sign their git commits with an SSH key of their own,
+never with yours. The agent sandbox keeps your GPG agent out of their reach,
+so a commit your git would sign with GPG can't be signed by an agent.
+
+Which key, at each agent start:
+
+| `agents.git`          | Your git signs commits | The agent signs with              |
+| --------------------- | ---------------------- | --------------------------------- |
+| `signing: off`        | either                 | nothing (git as it is)            |
+| `signing_key: <path>` | either                 | that key                          |
+| unset                 | yes                    | the install's own key (made once) |
+| unset                 | no                     | nothing: nothing changes          |
+
+"Your git signs commits" is `commit.gpgsign` as your git sees it in the
+agent's folder: the repo's own config, then your `~/.gitconfig`.
+
+The install's own key is an ed25519 key with no passphrase in
+`<state>/agent-signing/key/` (`id_ed25519`, its `.pub` and an
+`allowed_signers` file). Den makes it at the first agent start that needs
+it, once, even when two starts race. Every agent of the install can read
+it in its sandbox; none can change, move or replace it (Den's state is
+read-only to them). The start line that made it prints the `gh` line below.
+
+A key of your own is per machine, so it usually goes in
+`config/local/user.yml`; the org config can set one too, and user.yml's
+wins. Agents read that key and its `.pub` in their sandbox as single
+files, never their folder. Keep it outside Den's state folder, or inside it
+only under `<state>/agent-signing/`: anywhere else in the state folder, and
+in an edge's key folders or another install's state folder, agents can't
+read it, and `<cli> doctor` says so.
 
 ```yaml
 agents:
   git:
+    signing: on # or off: agents' commits are left as git makes them
     signing_key: ~/.ssh/den_agents # absolute, or ~/; no passphrase
 ```
 
 Each agent gets it as git's own `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
 `GIT_CONFIG_VALUE_n` in its environment: `gpg.format ssh`,
-`user.signingkey <the key>`, `commit.gpgsign true`. These sit above every
+`user.signingkey <the key>`, `commit.gpgsign true`, and for the install's
+own key `gpg.ssh.allowedSignersFile` (so `git log --show-signature`
+verifies). These sit above every
 config file and write none, so your `~/.gitconfig` (and your own GPG or SSH
 signing) is never changed, and nothing you run yourself signs with the
 agents' key. An agent can't type a passphrase, so make the key without one:
@@ -4950,6 +5099,177 @@ working. The `<cli>` and the MCP server Den starts for the agent send it, so
 the server audits their calls as the agent, from the token, never from a
 header (agent headers without the token are recorded as an unverified
 claim).
+
+**Den's state is read-only to an agent's session** (issue 936). An agent
+runs as you, so each agent's session starts inside the OS sandbox:
+`sandbox-exec` on macOS, `bwrap` (bubblewrap) on Linux. Inside it:
+
+- Den's state folder and the install's `config/local` (where `user.yml`
+  is) can't be written. The agent can't change its own record, its mode or
+  the settings. Den's server does the writing an agent asks for: its MCP
+  server is a client of the server.
+- The gate store's settings (the machine's gate settings and test boxes)
+  can't be written. Its slot queue can, so `gate run` and the MCP slot
+  tools work as before.
+- The agent's own token can be read. Den's other files are read only
+  where the agent's tools need them.
+- On macOS, unix sockets can't be reached, except the system's own and
+  the agents' message sockets (and the SSH agent's, when the session has
+  one). On Linux, the sockets in your tmux and runtime folders
+  (`XDG_RUNTIME_DIR`) and the container engines' sockets are hidden;
+  sockets elsewhere can still be reached. On both, the terminal host's
+  socket can't be reached. A session started there
+  would run outside the sandbox. So `<cli> agents list`, `start` and
+  `stop` don't work from an agent's shell. An agent starts another with
+  the `agent_create` tool.
+- Programs that run as root (setuid: `ps`, `top`, `sudo`) can't start, and
+  Docker's socket, like every outside daemon's, is refused. `sudo` is
+  refused inside a session on purpose: an agent never runs as root. Agents
+  use `pgrep`/`pkill` and Den's status tools. Docker is full control of the
+  machine: whether an agent whose work needs it runs with its own sandbox
+  off (`agents.<id>.sandbox: off`, which lifts every other limit too) is
+  your call alone. Never add Docker's socket to `agents.sandbox_sockets`:
+  that hands it to every agent.
+- The agent's own folder (`<state>/agent-files/<id>`) stays writable:
+  `handoff.md`, its notes, the hooks' counts. The launch files Den writes
+  there (its Claude settings, its MCP config) don't.
+
+The start line and `<cli> agents doctor` name every agent that runs
+outside the sandbox, and why: no `bwrap` on this Linux machine, an agent
+from before the sandbox, or the setting below. A write the sandbox
+refuses shows the agent a plain reason and what to use instead (a Den
+hook after each tool, for personas with Den's hooks on), never only a
+permission error.
+
+The sandbox is on for every agent started new. An agent that existed
+before your Den had the sandbox keeps starting as before until you turn
+it on: Den asks once, as a held write in the bell (Turn on), and
+`<cli> agents doctor` warns "Sandbox is off for N agents". Turn on sets
+`agents.sandbox: on` in `config/local/user.yml`; each of those agents goes
+into the sandbox at its next start, and one you set to `off` stays off.
+
+The sandbox is on by default. To turn it off, for every agent or for one,
+set it in `config/local/user.yml` (agents can't write that file). Den
+refuses this setting in the distribution's config, since agents may edit
+that file:
+
+```yaml
+agents:
+  sandbox: on # or off, or required
+  sandbox_sockets: [/var/run/some-tool] # more socket folders it may reach
+  some-agent:
+    sandbox: off # this agent's sessions start outside it
+```
+
+An agent can ask for this instead, with the held write
+`agent_sandbox_set { agent, on, reason }` (issue 1328). Turning one
+agent's sandbox off always waits for your own Allow; the Review names the
+agent, the change and the reason, and says so when an agent asks for
+itself. Back on runs as the approval policy says. Den writes only
+`agents.<id>.sandbox` (comments and every other key stay), notes when,
+why and who asked, and restarts a running agent after its turn on the same
+conversation. `<cli> agents doctor` lists every agent whose sandbox is off,
+with when and why.
+
+The setting follows the agent's lifecycle. Removing an agent drops its
+`agents.<id>.sandbox` and its note (an agent brought back with Undo starts
+in the sandbox). Adding an agent (`agent_create` or `agent_import`) whose id
+has its sandbox off, or while `agents.sandbox` is off for the machine, waits
+for your own Allow too, and the Review says why.
+
+### Changing a setting for the person: `setting_change` (issue 1371)
+
+An agent can't write `config/local/user.yml` (its sandbox closes the file),
+so it asks for a setting instead of handing you a YAML edit. The held write
+`setting_change { key, value, reason }` (or `<cli> config propose
+<key>=<value> --reason "<why>"`) names one setting by its dotted name, as
+`<cli> config` and Settings know it (`sessions.max_concurrent`,
+`agents.max_concurrent`, `web.agent_view`, `held_writes.wait_minutes`, and
+the rest). `value: null` puts Den's default back.
+
+- Den checks the key and the value with the same checks Settings and
+  `config` use, and den-config's own readers, before anything is held. An
+  unknown key (a typo names the key it is closest to), or a value they
+  refuse, comes back at once with why.
+- The Review shows the key, its value now, the new one and the reason.
+- A setting that widens what agents can do is marked so, and only your own
+  Allow runs it: every key in `USER_ONLY_WIDENING` (`src/shared/den-config.ts`:
+  an agent's grants and sandbox, `agents.sandbox_sockets`, `mcp.actions`,
+  `web.edge_unattested`, `web.allow_plain_http_remote`, the 1Password token
+  source), the approval policy itself (`approvals.*`), and the programs and
+  runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`) on a strict
+  install. One agent's sandbox stays `agent_sandbox_set`'s.
+- Every setting Settings keeps as the person's can be asked for (issue
+  1391): `agents.default_mode`, `server_agent.self_update`,
+  `hub.allow_tools`, `hub.delivery_loop`, `hub.url` (a new address drops
+  the old token, as Settings does), `alerts.desktop`, `alerts.phone`,
+  `alerts.quiet.from`/`to`, `editor_open`, each `embed.*` setting,
+  `web.machine_name` and the rail's `shell.dock`, `shell.collapsed` and
+  `shell.pins`, each checked as Settings checks it. `editor`, `terminal`
+  and `editor_overrides.<language>` take only an editor or terminal Den
+  knows; `agents.runtimes.<id>.bin` an absolute path to a program.
+- `secrets.*` takes references only: `env:NAME`, `file:/path`,
+  `keychain:service` or `op://vault/item/field` for the 1Password token,
+  `{ vault, item, field }` for a ref, an env var's NAME for a key. A raw
+  secret is refused, without being shown, with "did you mean a
+  reference?".
+- It fails closed: a setting is routine only when `NARROW_SETTINGS`
+  (`src/ui/cli/setting-change.ts`) names it, a timeout, interval, cap or
+  retention that changes how fast or how much Den does. Every other one
+  widens, among them the limits that guard sign-in (`web.approve_*`,
+  `web.pair_requests_per_minute`), agents' views of your pages
+  (`web.agent_view*`), `web.bridge_listen`, `agents.issue_writes*`, what
+  keeps running (`agents.keep_running_after_logout`,
+  `services.restore_on_boot`) and `held_writes.wait_minutes`. A test places
+  every key `setting_change` takes on one list or the other.
+- The card shows the new value whole, never cut. A value too long to read
+  there (over 2000 characters) or text with control characters is refused.
+- **Per category (issue 1371 Part 2).** Each key has a category: limits
+  and performance, look and layout (low), integrations (editors,
+  terminals, runtimes, Hub, GitHub: medium), network and access (`web.*`,
+  `embed.*`, `hub.url`: high), and agent powers (the sandbox, grants,
+  approvals, `mcp.*`, secrets: high, and always widening; `install_mode`
+  widens unless the new value is `strict`).
+  Settings › Agents › "Agents changing settings" holds one choice per
+  category (`approvals.settings` in `user.yml`): change without asking
+  (tell me), ask me, or never. Agent powers offer only ask or never. With
+  none set, limits and look change without asking; network and agent
+  powers ask; integrations ask on a strict install and change without
+  asking on a personal one. Never refuses the ask and names the row. A
+  widening key always waits for your own Allow, whatever the choice. A
+  change made without asking still writes its audit line, and your updates
+  say so.
+- On Allow, Den checks again, keeps a copy of the file (the state folder's
+  `settings-backups/`, the newest 20), writes only that key (comments, order
+  and every other key stay) and adds an audit line naming the key, the old
+  and new values and who asked. A setting Den reads when it starts says so,
+  and the agent then asks for `den_restart_server`.
+  The backups are copies of the whole file, mode 600 in the state folder:
+  a value you later take out of `user.yml` stays in them until they roll
+  over (the newest 20 are kept).
+
+`agents.max_concurrent` is one of the agent limits set per machine in
+`user.yml` (issue 1373, above), so `setting_change` can ask for it too.
+
+With `required`, an agent whose sandbox can't apply on this machine
+doesn't start: the start says why. On Linux, Den runs `bwrap` once to
+check it works here, not only that it is installed.
+
+This first slice covers Den's state. It doesn't limit what a session can
+reach over the network on this machine, or files outside Den's state that
+you can write. Agents' messages to each other's sessions stay open inside
+it, so an agent can ask another session, which may run outside a sandbox,
+to act for it. Later slices do, when an agent runs as its own OS user.
+
+Migrating: nothing to do. Agents you start after the update run in the
+sandbox; your existing agents keep running as before until you Allow
+Turn on (or set `agents.sandbox: on`). On Linux, install `bubblewrap`
+(`bwrap`) first; without it agents start outside the sandbox and doctor
+says so, unless you set `agents.sandbox: required`.
+
+On macOS a program inside the sandbox can't start a sandbox of its own,
+so Claude Code's own Bash sandbox setting doesn't work in an agent's
+session. Den's sandbox covers that session.
 
 **The token counts only from the agent's own processes.** For each
 connection, Den finds the process on the other end (macOS: `lsof`;
@@ -5957,7 +6277,7 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
 - Held past `overrun_bell_multiple` times its estimate (default 2; `gate
-  settings --overrun-bell-multiple`, or Settings), a slot is one line in
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
   the bell's Needs you: who holds it, what it runs, since when and its
   estimate, with End for the person. When an agent holds it, Den types one
   line at that agent's prompt, once per slot, to release it with

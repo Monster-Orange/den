@@ -96,12 +96,35 @@ function protectedPaths(rules, home) {
   return out;
 }
 
-/** The service a path is under, or null. */
+/**
+ * Where `abs` really is: its links followed (issue 362). A tail not there
+ * yet is kept on the real folder above it; anything unreadable stays as
+ * spelled.
+ */
+function real(abs) {
+  let head = abs;
+  const tail = [];
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync.native(head), ...tail);
+    } catch {
+      const up = path.dirname(head);
+      if (up === head) return abs;
+      tail.unshift(path.basename(head));
+      head = up;
+    }
+  }
+}
+
+/** The service a path is under, or null: as spelled and where it really is. */
 export function pathService(p, rules, opts = {}) {
   if (!rules || typeof p !== "string" || !p) return null;
   const abs = expand(p, opts.cwd, opts.home);
-  for (const x of protectedPaths(rules, opts.home))
-    if (under(abs, x.path)) return x.service;
+  const spellings = [...new Set([abs, real(abs)])];
+  for (const x of protectedPaths(rules, opts.home)) {
+    const roots = [...new Set([x.path, real(x.path)])];
+    if (spellings.some((a) => roots.some((r) => under(a, r)))) return x.service;
+  }
   return null;
 }
 
