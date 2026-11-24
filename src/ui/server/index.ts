@@ -123,7 +123,7 @@ import { edgeProofChecker } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
-  rotateEdgeProofAtStart,
+  rotateEdgeProofOnce,
   syncEdgeProof,
 } from "../../shared/edge/runtime.js";
 import {
@@ -11546,17 +11546,21 @@ void CRASH_GATE.then(() =>
     );
     // Issue 728: once agents can't read the edge's state folder, its proof
     // is rotated once (edge.yml rewritten; Traefik reloads it by itself).
-    rotateEdgeProofAtStart({
-      readConfig: readEdgeConfig,
-      ports: new Set([PORT, readWebPortSafe()]),
-      onRotated: () => {
+    try {
+      if (
+        rotateEdgeProofOnce(
+          readEdgeConfig(),
+          new Set([PORT, readWebPortSafe()]),
+        ) === "rotated"
+      ) {
         const line =
           "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
         serverLog(`  Edge: ${line}`, "lifecycle");
         recordAction(null, { verb: "edge-proof-rotated", detail: line });
-      },
-      warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
-    });
+      }
+    } catch {
+      /* no edge configured here */
+    }
     // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
     try {
       const r = syncEdgeProof(
