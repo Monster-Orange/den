@@ -439,6 +439,25 @@ describe("issue 1369: a queued copy is left to settle before it's taken in", () 
     expect(c.duplicate).toBe(1);
   });
 
+  it("a copy whose writer set its time in the future is settled at once, never left to wait", () => {
+    put("000000000000001-1-000000001-00000000.json", {
+      verb: "agents",
+      detail: "future",
+    });
+    const t = new Date(Date.now() + 10 * 365 * 86_400_000);
+    fs.utimesSync(
+      path.join(queue(), "000000000000001-1-000000001-00000000.json"),
+      t,
+      t,
+    );
+    const got: string[] = [];
+    const c = takeQueuedAuditRows(state, (r) => got.push(r.detail), undefined, {
+      settleMs: 15_000,
+    });
+    expect(got).toEqual(["future"]);
+    expect(c.waiting).toBe(0);
+  });
+
   it("a folder named like an entry is dropped, and the entries after it still come in", () => {
     fs.mkdirSync(
       path.join(queue(), "000000000000001-1-000000001-00000000.json"),

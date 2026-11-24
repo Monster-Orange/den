@@ -317,7 +317,10 @@ export function takeQueuedAuditRows(
     } catch {
       continue;
     }
-    if (settleMs > 0 && st.isFile() && now - st.mtimeMs < settleMs) {
+    // Young: written within the settle time. A time in the future (the
+    // writer sets it) counts as settled, so nothing waits forever.
+    const age = now - st.mtimeMs;
+    if (settleMs > 0 && st.isFile() && age >= 0 && age < settleMs) {
       out.waiting++;
       continue;
     }
