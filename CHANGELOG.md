@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.89] - unreleased
 
+### Changed
+
+- The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
+
 ## [0.4.88] - unreleased
 
 ### Added
