@@ -246,7 +246,7 @@ describe("held writes on a personal install (issue 1391)", () => {
       "workspace_create",
       "service_try",
     ])
-      expect([w, policyFor(w, { widens: true, ...personal }).kind]).toEqual([
+      expect([w, policyFor(w, { widens: false, ...personal }).kind]).toEqual([
         w,
         "notify",
       ]);
@@ -382,7 +382,7 @@ describe("Den Builder's calls: agents and restarts on personal (issue 1391)", ()
 
   it("starting or importing an agent: routine on personal, asks on strict", () => {
     for (const w of ["agent_create", "agent_import"]) {
-      expect([w, policyFor(w, { widens: true, ...personal }).kind]).toEqual([
+      expect([w, policyFor(w, { widens: false, ...personal }).kind]).toEqual([
         w,
         "notify",
       ]);
