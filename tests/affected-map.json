@@ -34,6 +34,12 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/cli/repo-add-no-run.integration.test.ts": [
+      "src/ui/cli/doctor-command.ts"
+    ],
+    "tests/unit/server/no-secrets-store.integration.test.ts": [
+      "src/ui/cli/doctor-command.ts"
+    ],
     "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
       "src/shared/hub.ts",
       "src/shared/settings-cli-rows.ts",
