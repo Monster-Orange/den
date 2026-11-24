@@ -425,6 +425,18 @@ export interface UserConfig {
     max_answer_kb?: number;
   };
   /**
+   * Issue 1348: the bell's store lock (notifications.json.lock).
+   * lock_exit_wait_seconds (default 2): at exit only, how long changes
+   * still waiting for the lock wait for it. lock_no_pid_seconds (default
+   * 10): when a lock with no holder pid is taken back.
+   * lock_live_seconds (default 60): when a live holder's lock is.
+   */
+  notifications?: {
+    lock_exit_wait_seconds?: number;
+    lock_no_pid_seconds?: number;
+    lock_live_seconds?: number;
+  };
+  /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
    * Stored as a key; the server resolves the actual executable path at open time.
    */

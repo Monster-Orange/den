@@ -3398,6 +3398,21 @@ panel. Items are kept in
 `<state>/notifications.json` (0600), the newest 500; one unread item per
 agent and kind.
 
+Every process that writes it (the server, the CLI, agents' hooks) takes a
+short lock, `notifications.json.lock`, so no write is lost. The lock is
+tried once. If it's busy, the change shows at once in that process and is
+saved when the lock frees, or when the process exits. user.yml
+`notifications:` sets the times, in seconds:
+
+- `lock_exit_wait_seconds` (default 2, 0 to 60): at exit only, how long
+  waiting changes wait for the lock.
+- `lock_no_pid_seconds` (default 10, 1 to 3600): when a lock with no
+  holder pid is taken back.
+- `lock_live_seconds` (default 60, 1 to 86400): when a live holder's lock
+  is taken back. A gone holder's lock is taken back at once.
+
+A value outside its range keeps its default, and the log says so.
+
 - **An agent waits** (NT-1). Claude Code's `Notification` hook (a
   permission prompt, or waiting for input) and `Stop` hook (its turn
   ended) post to `POST /api/agents/self/attention` with the agent's own

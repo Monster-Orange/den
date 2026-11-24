@@ -271,6 +271,10 @@ import {
   workspaceViaServer,
   type WorkspaceVerb,
 } from "./workspace-person.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
 
 /**
  * Issue 989: a person's project change, through the running server. True
