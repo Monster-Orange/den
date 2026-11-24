@@ -137,10 +137,14 @@ describe("issue 1395: gate_settings_set", () => {
     expect(row.changes.cpu_slots).toEqual({ from: 2, to: 3 });
   });
 
-  it("a strict install, Limits on its default: written, and the person is told", () => {
+  it("a strict install, Limits on its default (ask): held; on auto: written, and the person is told", () => {
     const c = checkGateSettingsSet(deps("strict"), ASK);
     expect(c.ok).toBe(true);
-    if (c.ok) expect(outcome("strict", c)).toBe("written and told");
+    if (c.ok) expect(outcome("strict", c)).toBe("held");
+    const auto = checkGateSettingsSet(deps("strict", "auto"), ASK);
+    expect(auto.ok).toBe(true);
+    if (auto.ok)
+      expect(outcome("strict", auto, "auto")).toBe("written and told");
   });
 
   it("a strict install, Limits on Ask me: held, and written only after Allow", async () => {
@@ -164,8 +168,8 @@ describe("issue 1395: gate_settings_set", () => {
     expect(c.ok).toBe(true);
     if (!c.ok) return;
     expect(c.personOnly).toBeUndefined();
-    expect(outcome("strict", c)).toBe("written and told");
-    expect(outcome("strict", c, "ask")).toBe("held");
+    expect(outcome("strict", c, "auto")).toBe("written and told");
+    expect(outcome("strict", c)).toBe("held");
   });
 
   it("Limits on Never: refused, nothing written", async () => {
@@ -295,7 +299,7 @@ describe("issue 1395: Vision's ruling, a browser run on the host", () => {
       reason: "the image is fixed",
     });
     expect(c.ok && c.personOnly).toBeFalsy();
-    if (c.ok) expect(outcome("strict", c)).toBe("written and told");
+    if (c.ok) expect(outcome("strict", c, "auto")).toBe("written and told");
   });
 
   it("strict: a reset to a default of 0 (not a Mac) widens too", () => {

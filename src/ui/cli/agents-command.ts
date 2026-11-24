@@ -2768,6 +2768,8 @@ export interface SandboxReport {
   personalOff?: boolean;
   /** Issue 1391: the install's mode, said once (install_mode). */
   mode?: "personal" | "strict";
+  /** Issue 1391: which file set it. */
+  modeFrom?: "den.yml" | "user.yml" | "default";
 }
 
 /**
@@ -2881,9 +2883,11 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
   const notes = readSandboxNotes(d.stateDir());
   let personalOff = false;
   let mode: SandboxReport["mode"];
+  let modeFrom: SandboxReport["modeFrom"];
   try {
     const c = d.agentsConfig();
     mode = c.mode;
+    modeFrom = c.modeFrom;
     personalOff = c.mode === "personal" && c.sandbox === false;
   } catch {
     /* a bad config is its own row */
@@ -2896,6 +2900,7 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     ...(turnedOff.length ? { turnedOff } : {}),
     ...(personalOff ? { personalOff } : {}),
     ...(mode ? { mode } : {}),
+    ...(modeFrom ? { modeFrom } : {}),
     fromBefore: fromBefore.length,
     ...(tmp.length ? { tmp } : {}),
     ...(leftoverTmp.length ? { leftoverTmp } : {}),
@@ -2912,6 +2917,11 @@ export function sandboxLines(r: SandboxReport): string[] {
   const out = ["Agent sandbox (agents can't write Den's state)"];
   // Issue 1391: off by default on a personal install, so information, said
   // once: nothing to turn on, and no agent outside it is a warning.
+  // Vision's ruling (issue 1391): after the upgrade, one info row.
+  if (r.mode === "personal" && r.modeFrom === "default")
+    out.push(
+      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or choose it in Settings",
+    );
   if (r.personalOff) {
     out.push(
       "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
@@ -2919,7 +2929,7 @@ export function sandboxLines(r: SandboxReport): string[] {
   } else {
     if (r.mode === "strict")
       out.push(
-        "  ℹ a strict install (install_mode: strict): the sandbox is on, and agents' held writes follow the approval policy",
+        `  ℹ a strict install (install_mode: strict${r.modeFrom === "den.yml" ? ", set in den.yml by the distribution" : r.modeFrom === "user.yml" ? ", set in config/local/user.yml" : ""}): the sandbox is on, and agents' held writes follow the approval policy`,
       );
     else if (r.mode === "personal")
       out.push(

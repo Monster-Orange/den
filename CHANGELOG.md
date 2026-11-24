@@ -22,6 +22,10 @@ config and manifest changes a distribution must make to move to it under
 - Every line the web server writes to its own output (web.log under `web up` and a service) passes through secret redaction, as its other log files already did. A web.log that was readable by others is made private (0600) when the server next adds to it. (issue 1368)
 - The agents' cap set on this machine wins. `agents.max_concurrent` in `config/local/user.yml` was ignored, so a person had to set it in the distribution's config too. Now user.yml's value wins over the distribution's, key by key, everywhere the cap is read: the terminal host's cap, the CLI, the Agents page's count and Doctor. Settings › Agents gets an "Agents at once" row, and `config agents.max_concurrent` sets and reads it. The agents' other limits and waits follow the same rule in user.yml. Doctor notes when the two files differ. (issue 1373)
 
+### Migrations
+
+- Installs with no install_mode become personal: the sandbox turns off unless you set it. To keep it, set install_mode: strict in den.yml. An explicit `agents.sandbox` (on or required) and each `agents.<id>.sandbox` stay as set. Doctor shows "Install mode: personal (default)" once, as information, with how to switch. (issue 1391)
+
 ## [0.4.88] - unreleased
 
 ### Added

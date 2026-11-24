@@ -9,15 +9,19 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   readAgentsConfig,
+  userConfigOrStrict,
   readInstallMode,
+  resolveInstallMode,
   type DenConfig,
   type UserConfig,
 } from "../../../src/shared/den-config.js";
 import { legacyAgentIds } from "../../../src/shared/agents/sandbox-rollout.js";
 import { sandboxLines } from "../../../src/ui/cli/agents-command.js";
+import { settingKind } from "../../../src/ui/cli/setting-change.js";
 import {
   criticalWhy,
   policyFor,
+  settingChoiceDefault,
   HELD_WRITE_RISK,
 } from "../../../src/shared/approval-policy.js";
 
@@ -25,15 +29,90 @@ const agents = (u: UserConfig) => readAgentsConfig({} as DenConfig, u);
 
 describe("install mode (issue 1391)", () => {
   it("is personal when nothing is set, strict only when asked", () => {
-    expect(readInstallMode({})).toBe("personal");
-    expect(readInstallMode({ install_mode: "personal" })).toBe("personal");
-    expect(readInstallMode({ install_mode: "strict" })).toBe("strict");
+    expect(readInstallMode({}, {})).toBe("personal");
+    expect(readInstallMode({ install_mode: "personal" }, {})).toBe("personal");
+    expect(readInstallMode({ install_mode: "strict" }, {})).toBe("strict");
   });
 
-  it("refuses a value that is neither, naming the key", () => {
-    expect(() => readInstallMode({ install_mode: "open" })).toThrow(
-      /install_mode: personal or strict/,
+  it("fails closed: null, a typo or any other value is strict", () => {
+    for (const v of [null, "open", "Personal", "", 3, true, ["personal"]])
+      expect([v, readInstallMode({ install_mode: v }, {})]).toEqual([
+        v,
+        "strict",
+      ]);
+  });
+});
+
+describe("den.yml and user.yml: strict in either wins (issue 1391)", () => {
+  const den = (v: unknown) => ({ install_mode: v }) as Partial<DenConfig>;
+
+  it("both unset: personal, Den's default", () => {
+    expect(resolveInstallMode({}, {})).toEqual({
+      mode: "personal",
+      from: "default",
+    });
+    expect(readInstallMode({}, {})).toBe("personal");
+  });
+
+  it("den.yml strict, user.yml personal: strict, from den.yml", () => {
+    expect(
+      resolveInstallMode({ install_mode: "personal" }, den("strict")),
+    ).toEqual({ mode: "strict", from: "den.yml" });
+  });
+
+  it("user.yml strict: strict, from user.yml (den.yml unset or personal)", () => {
+    expect(resolveInstallMode({ install_mode: "strict" }, {})).toEqual({
+      mode: "strict",
+      from: "user.yml",
+    });
+    expect(
+      resolveInstallMode({ install_mode: "strict" }, den("personal")),
+    ).toEqual({ mode: "strict", from: "user.yml" });
+  });
+
+  it("den.yml sets the default; user.yml unset keeps it", () => {
+    expect(resolveInstallMode({}, den("personal"))).toEqual({
+      mode: "personal",
+      from: "den.yml",
+    });
+    expect(resolveInstallMode({}, den("strict"))).toEqual({
+      mode: "strict",
+      from: "den.yml",
+    });
+  });
+
+  it("a bad value in den.yml is strict too", () => {
+    expect(
+      resolveInstallMode({ install_mode: "personal" }, den("opne")),
+    ).toEqual({ mode: "strict", from: "den.yml" });
+  });
+
+  it("the agent sandbox follows den.yml's strict over user.yml's personal", () => {
+    const a = readAgentsConfig(
+      { install_mode: "strict" } as unknown as DenConfig,
+      { install_mode: "personal" },
     );
+    expect(a.mode).toBe("strict");
+    expect(a.sandbox).toBe(true);
+  });
+});
+
+describe("changing install_mode (issue 1391)", () => {
+  it("strict to personal widens: the person's Allow", () => {
+    expect(settingKind("install_mode", "strict", "personal").widens).toBe(true);
+    // Back to Den's default (personal, unless den.yml says strict).
+    expect(settingKind("install_mode", "strict", null).widens).toBe(true);
+  });
+
+  it("to strict is routine, on either mode", () => {
+    expect(settingKind("install_mode", "personal", "strict").widens).toBe(
+      false,
+    );
+    expect(settingKind("install_mode", "strict", "strict").widens).toBe(false);
+  });
+
+  it("with no value given, the key alone widens", () => {
+    expect(settingKind("install_mode", "strict").widens).toBe(true);
   });
 });
 
@@ -56,6 +135,24 @@ describe("the agent sandbox's default follows the mode (issue 1391)", () => {
     const req = agents({ agents: { sandbox: "required" } } as UserConfig);
     expect(req.sandbox).toBe(true);
     expect(req.sandboxRequired).toBe(true);
+  });
+
+  it("upgrading with no install_mode: agents.sandbox: on in user.yml keeps the sandbox", () => {
+    const a = agents({ agents: { sandbox: "on" } } as UserConfig);
+    expect([a.mode, a.modeFrom, a.sandbox]).toEqual([
+      "personal",
+      "default",
+      true,
+    ]);
+  });
+
+  it("one agent's own sandbox: off stays off, on strict too", () => {
+    const a = agents({
+      install_mode: "strict",
+      agents: { a1: { sandbox: "off" } },
+    } as UserConfig);
+    expect(a.sandbox).toBe(true);
+    expect(a.agents?.a1?.sandbox).toBe(false);
   });
 
   it("an explicit off stays off on strict too", () => {
@@ -99,6 +196,33 @@ describe("no sandbox nags on a personal install (issue 1391)", () => {
     expect(text).toMatch(/install_mode: strict/);
   });
 
+  it("after the upgrade, Doctor says the mode once, as information", () => {
+    const text = sandboxLines({
+      here: { applied: false, reason: "off on this personal install" },
+      outside: [],
+      fromBefore: 0,
+      personalOff: true,
+      mode: "personal",
+      modeFrom: "default",
+    }).join("\n");
+    expect(text.match(/Install mode: personal \(default\)/g)).toHaveLength(1);
+    expect(text).toMatch(/install_mode: strict in den\.yml/);
+    expect(text).not.toMatch(/⚠/);
+  });
+
+  it("Doctor says which file set the mode", () => {
+    const line = (from: "den.yml" | "user.yml" | "default") =>
+      sandboxLines({
+        here: { applied: true },
+        outside: [],
+        fromBefore: 0,
+        mode: "strict",
+        modeFrom: from,
+      }).join("\n");
+    expect(line("den.yml")).toMatch(/strict install .*set in den\.yml/);
+    expect(line("user.yml")).toMatch(/set in config\/local\/user\.yml/);
+  });
+
   it("strict, or an explicit on, still warns as today", () => {
     const text = sandboxLines({
       here: { applied: false, reason: "no sandbox" },
@@ -113,14 +237,17 @@ describe("no sandbox nags on a personal install (issue 1391)", () => {
 describe("held writes on a personal install (issue 1391)", () => {
   const personal = { mode: "personal" as const };
 
-  it("a write that widens agents' reach runs at once and tells the person", () => {
-    for (const w of ["project_mode", "agent_mode", "agent_create", "repo_add"])
+  it("a routine write on the person's own machine runs at once and tells the person", () => {
+    for (const w of [
+      "repo_add",
+      "repo_clone",
+      "workspace_create",
+      "service_try",
+    ])
       expect([w, policyFor(w, { widens: true, ...personal }).kind]).toEqual([
         w,
         "notify",
       ]);
-    // A write whose own kind is ask (hub_link) follows the policy too.
-    expect(policyFor("hub_link", personal).kind).toBe("notify");
   });
 
   it("real security, money, deletes and acting on others still ask", () => {
@@ -135,6 +262,10 @@ describe("held writes on a personal install (issue 1391)", () => {
       "report", // acting on others (public)
       "verify_run", // a shared environment
       "setting_change", // a setting that widens
+      "hub_link", // a Hub others read
+      "gate_box_set", // a login to another machine
+      "project_mode", // another agent's mode
+      "persona_update", // other agents' instructions
     ])
       expect([w, policyFor(w, { widens: true, ...personal }).kind]).toEqual([
         w,
@@ -158,14 +289,27 @@ describe("held writes on a personal install (issue 1391)", () => {
       .sort();
     expect(kept).toEqual(
       [
+        "agent_create", // may start one outside the sandbox (issue 1328)
+        "agent_import", // the same
+        "agent_mode", // widens another agent's mode
         "agent_sandbox_set",
         "approval_policy",
+        "den_restart", // server_agent.self_update is the person's say
         "den_update",
         "embed_key_create",
         "embed_key_revoke",
+        "gate_box_remove",
+        "gate_box_set", // a login to another machine
+        "gate_runner_token_create", // a credential
         "hub_connect",
+        "hub_link", // a Hub other people read
+        "hub_project_create", // the same
+        "persona_create", // other agents' instructions and mode
+        "persona_update",
+        "pr_close", // others see it on GitHub
         "project_mcp_add",
         "project_mcp_update",
+        "project_mode", // widens every agent in the project
         "report",
         "setting_change",
         "test_person_setup",
@@ -182,5 +326,54 @@ describe("held writes on a personal install (issue 1391)", () => {
     ).toBe("ask");
     expect(policyFor("hub_link", { mode: "strict" }).kind).toBe("ask");
     expect(criticalWhy("repo_add", false, [], "strict")).toBe("critical");
+  });
+});
+
+describe("Builder 2's blockers, as Den Builder ruled (issue 1391)", () => {
+  it("strict: every category asks by default, so caps can't rise unasked", () => {
+    for (const c of [
+      "limits",
+      "look",
+      "integrations",
+      "network",
+      "agent_powers",
+    ] as const)
+      expect([c, settingChoiceDefault(c, "strict")]).toEqual([c, "ask"]);
+    expect(
+      policyFor("setting_change", {
+        mode: "strict",
+        setting: { category: "limits" },
+      }).kind,
+    ).toBe("ask");
+  });
+
+  it("strict: a person who sets Limits to auto gets auto", () => {
+    expect(
+      policyFor("setting_change", {
+        mode: "strict",
+        setting: { category: "limits" },
+        install: { settings: { limits: "auto" } },
+      }).kind,
+    ).toBe("notify");
+  });
+
+  it("personal: limits and look change and tell, by default", () => {
+    expect(settingChoiceDefault("limits", "personal")).toBe("auto");
+    expect(settingChoiceDefault("look", "personal")).toBe("auto");
+  });
+
+  it("an unreadable or unparseable user.yml is strict, never personal", () => {
+    const u = userConfigOrStrict(() => {
+      throw new Error("bad YAML");
+    });
+    expect(readInstallMode(u, {})).toBe("strict");
+    const a = readAgentsConfig({} as DenConfig, u);
+    expect([a.mode, a.sandbox]).toEqual(["strict", true]);
+    // (The sandbox is set in user.yml only, issue 936: unreadable, it
+    // stays on, strict's default.)
+    // A readable file is passed through as it is.
+    expect(userConfigOrStrict(() => ({ install_mode: "personal" }))).toEqual({
+      install_mode: "personal",
+    });
   });
 });

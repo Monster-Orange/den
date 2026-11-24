@@ -386,9 +386,9 @@ Gate keys are Limits and performance in the approval policy:
 - On a personal install (the default) each one is routine: Den writes it
   at once and tells you in the bell.
 - On a strict install they follow your choice for Limits and performance
-  in Settings › Approvals: by default Den writes them and tells you; with
-  "Ask me" they wait for your Allow; with "Never" an agent's ask is
-  refused. One exception: `gate.browser_requires_container` going to 0
+  in Settings › Approvals: by default (Ask me) they wait for your Allow;
+  if you choose to let them change, Den writes them and tells you; with
+  "Never" an agent's ask is refused. One exception: `gate.browser_requires_container` going to 0
   (browser runs on this machine's own browser, not in a container) waits
   for your own Allow, whatever you chose. Turning it back on, and every
   other gate key, is a plain limit. A key put back to its default is

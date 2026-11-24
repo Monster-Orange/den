@@ -108,8 +108,9 @@ describe("setting_change: a known key (issue 1371)", () => {
     // through config's dotted keys. Same before and after the duplicate goes.
     const ask = {
       key: "agents.max_concurrent",
-      value: 14,
-      reason: "more agents",
+      // Issue 1391: lower than Den's default (a raise past twice it asks).
+      value: 2,
+      reason: "fewer agents",
     };
     const c = checkSettingChange(deps(), ask);
     if (!c.ok) throw new Error(c.error);
@@ -118,8 +119,8 @@ describe("setting_change: a known key (issue 1371)", () => {
     expect(policyFor("setting_change", { widens: false }).kind).toBe("ask");
     expect(runSettingChange(deps(), ask).ok).toBe(true);
     const u = yaml.parse(readUser()) as UserConfig;
-    expect(u.agents).toEqual({ max_concurrent: 14 });
-    expect(readAgentsConfig({} as DenConfig, u).maxConcurrent).toBe(14);
+    expect(u.agents).toEqual({ max_concurrent: 2 });
+    expect(readAgentsConfig({} as DenConfig, u).maxConcurrent).toBe(2);
   });
 
   it("changes only that key: comments, order and every other key stay", () => {
