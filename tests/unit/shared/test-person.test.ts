@@ -127,8 +127,15 @@ describe("audit rows name the test-person path", () => {
     auditConfig({ verb: "agents", detail: "stop stub in p: stopped" }, tmp);
     // Issue 1369: queued for the server.
     const [row] = readAuditRows(tmp);
-    expect(row).toMatchObject({ verb: "agents", via: "test-person" });
-    expect(String(row.principal)).toMatch(/^person:/);
+    // As the writer's report (no server took it here).
+    expect(row).toMatchObject({
+      verb: "agents",
+      unverified: true,
+      reported: { via: "test-person" },
+    });
+    expect(String((row.reported as { principal?: string }).principal)).toMatch(
+      /^person:/,
+    );
   });
 });
 

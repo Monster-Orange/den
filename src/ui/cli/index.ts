@@ -854,6 +854,16 @@ class DenCLI {
     const stopTimer = startTimer();
     // The exit hook can't await a send; hand it to a detached sender.
     shipFromDetachedSender();
+    // Issue 1369: audit entries go to the running server over this CLI's
+    // own authenticated call; queued when none takes them.
+    {
+      const { setAuditSender } = await import("../../shared/config-audit.js");
+      const { personServerFor } = await import("./person-server.js");
+      setAuditSender(async (row) => {
+        const r = await personServerFor()("POST", "/api/audit/cli", row);
+        return !!r && r.status >= 200 && r.status < 300;
+      });
+    }
     let telCmd = telemetryCommandName(args.find((a) => !a.startsWith("-")));
     process.once("exit", (code) => {
       recordInvocation({
@@ -884,6 +894,8 @@ class DenCLI {
         await this.handleCommand(
           parsed.command ? [parsed.command, ...parsed.args] : [],
         );
+        // Issue 1369: its audit entries sent before it ends.
+        await (await import("../../shared/config-audit.js")).flushAuditSends();
       } catch (error) {
         recordFailure({
           command: telCmd,
@@ -893,6 +905,8 @@ class DenCLI {
         });
         console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
         printSandboxHint(error);
+        // Issue 1369: a refusal's audit entry sent before it ends.
+        await (await import("../../shared/config-audit.js")).flushAuditSends();
         process.exit(1);
       }
       return;

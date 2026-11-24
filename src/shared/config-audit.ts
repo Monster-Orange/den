@@ -14,7 +14,11 @@
 import * as os from "os";
 import * as path from "path";
 import { getStateDir } from "./paths.js";
-import { queueAuditRow } from "./audit-queue.js";
+import {
+  queueAuditRow,
+  unqueueAuditRow,
+  type CliAuditRow,
+} from "./audit-queue.js";
 import { auditVia } from "./test-person.js";
 
 export interface ConfigAuditRow {
@@ -50,24 +54,71 @@ function processWho(): string {
 }
 
 /**
- * Issue 1369: outside the server, the entry is queued for the server to
- * take in (the audit file has one writer; an agent's sandbox can write
- * the queue).
+ * Issue 1369: what sends a row to the running server, over the process's
+ * own authenticated call; true once the server has recorded it, false
+ * when no server took it. The CLI sets it at its start (person-server);
+ * with none set, rows stay queued for the server to take in.
+ */
+export type AuditSender = (row: CliAuditRow) => Promise<boolean>;
+let sender: AuditSender | null = null;
+const pending = new Set<Promise<void>>();
+
+export function setAuditSender(fn: AuditSender | null): void {
+  sender = fn;
+}
+
+/**
+ * Waits (at most `ms`) for the sends still running, so a CLI that is
+ * about to exit has them recorded as sent. What is still queued after is
+ * taken in later, as a report.
+ */
+export async function flushAuditSends(ms = 3000): Promise<void> {
+  if (!pending.size) return;
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    Promise.allSettled([...pending]),
+    new Promise<void>((res) => {
+      timer = setTimeout(res, ms);
+      timer.unref?.();
+    }),
+  ]);
+  clearTimeout(timer);
+}
+
+/**
+ * Issue 1369: outside the server, the row is queued (so it outlives a
+ * server that's down, or this process exiting first), then sent; once
+ * the server has recorded it, the queued copy is removed.
  */
 const appendRow: Sink = (row, stateDir) => {
   try {
-    queueAuditRow(stateDir ?? getStateDir(), {
-      ts: new Date().toISOString(),
-      principal: processWho(),
-      // Issue 636: a CLI on a test bed's test-person path.
-      ...(auditVia() ? { via: auditVia() } : {}),
+    const dir = stateDir ?? getStateDir();
+    const sent: CliAuditRow = {
       verb: row.verb,
       detail: row.detail,
       ...(row.outcome ? { outcome: row.outcome } : {}),
       ...(row.reason
         ? { reason: row.reason.split(/[\r\n]/)[0].slice(0, 300) }
         : {}),
+      // Issue 636: a CLI on a test bed's test-person path.
+      ...(auditVia() ? { via: auditVia() } : {}),
+    };
+    const id = queueAuditRow(dir, {
+      ...sent,
+      principal: processWho(),
+      at: new Date().toISOString(),
     });
+    const send = sender;
+    if (!send) return;
+    const p: Promise<void> = send(sent)
+      .then((ok) => {
+        if (ok) unqueueAuditRow(dir, id);
+      })
+      .catch(() => {
+        /* stays queued */
+      })
+      .finally(() => pending.delete(p));
+    pending.add(p);
   } catch {
     /* best effort: a write never fails for want of its audit row */
   }

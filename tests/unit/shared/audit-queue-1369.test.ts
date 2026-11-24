@@ -1,9 +1,10 @@
 /**
  * Issue 1369: the audit file has one writer, the web server. A process
- * outside it (the CLI, a script, an agent's `den` command) queues its
- * entry in <state>/audit/cli-queue, the one state folder an agent's
- * sandbox may write; the server takes the queue in at its start and while
- * it runs. Readers outside the server see queued entries too.
+ * outside it sends each entry over its own authenticated call, and the
+ * server records who the credential says sent it, at its own time. Each
+ * entry is first queued in <state>/audit/cli-queue (the one state folder
+ * an agent's sandbox may write) and removed once sent; what is left, the
+ * server takes in later as a report: unverified, never anyone's word.
  */
 import {
   afterEach,
@@ -16,24 +17,35 @@ import {
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { auditConfig } from "../../../src/shared/config-audit.js";
+import {
+  auditConfig,
+  flushAuditSends,
+  setAuditSender,
+  type AuditSender,
+} from "../../../src/shared/config-audit.js";
 import {
   AUDIT_QUEUE_DIR,
+  MAX_PER_PASS,
   readAuditRows,
   startAuditQueueIntake,
   takeQueuedAuditRows,
+  type CliAuditRow,
   type QueuedAuditRow,
 } from "../../../src/shared/audit-queue.js";
 import {
   recordQueuedAuditRow,
+  recordSentAuditRow,
   setAuditFile,
 } from "../../../src/ui/server/audit.js";
 
 let state = "";
 beforeEach(() => {
   state = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-aq-")));
+  setAuditSender(null);
 });
 afterEach(() => {
+  setAuditSender(null);
+  setAuditFile(null);
   try {
     fs.chmodSync(state, 0o700);
   } catch {
@@ -50,126 +62,228 @@ const queued = () => {
     return [];
   }
 };
-const take = () => {
+const take = (max?: number) => {
   const got: QueuedAuditRow[] = [];
-  const r = takeQueuedAuditRows(state, (row) => got.push(row));
-  return { got, ...r };
+  const c = takeQueuedAuditRows(state, (row) => got.push(row), max);
+  return { got, ...c };
 };
+const put = (name: string, body: unknown) => {
+  fs.mkdirSync(queue(), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(
+    path.join(queue(), name),
+    typeof body === "string" ? body : JSON.stringify(body),
+    { mode: 0o600 },
+  );
+};
+const trail = () =>
+  fs
+    .readFileSync(path.join(state, "audit.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l) as Record<string, unknown>);
 
-describe("issue 1369: a CLI audit entry is queued, never appended", () => {
-  it("auditConfig outside the server: one 0600 queue entry, and no audit.jsonl written", () => {
+describe("issue 1369: a CLI entry is sent, with a queued copy until it is", () => {
+  it("no server: one 0600 queue entry, and no audit.jsonl written", () => {
     auditConfig({ verb: "config-write", detail: "workspaces.yml by x" }, state);
     expect(fs.existsSync(path.join(state, "audit.jsonl"))).toBe(false);
-    const names = queued();
-    expect(names).toHaveLength(1);
-    expect(fs.statSync(path.join(queue(), names[0])).mode & 0o777).toBe(0o600);
+    expect(queued()).toHaveLength(1);
+    expect(fs.statSync(path.join(queue(), queued()[0])).mode & 0o777).toBe(
+      0o600,
+    );
     expect(fs.statSync(queue()).mode & 0o777).toBe(0o700);
   });
 
-  it("inside an agent's sandbox (the state folder read-only, audit/ writable): the entry is still recorded", () => {
-    fs.mkdirSync(path.join(state, "audit"), { mode: 0o700 });
-    fs.chmodSync(state, 0o500);
+  it("the server up: the entry is sent (its words only, no who, no when) and the queued copy removed", async () => {
+    const sent: CliAuditRow[] = [];
+    setAuditSender(async (r) => {
+      sent.push(r);
+      return true;
+    });
     auditConfig(
-      { verb: "agents", detail: "restart planner in north: ok" },
+      {
+        verb: "agents",
+        detail: "stop a1 in north: stopped",
+        outcome: "refused",
+        reason: "busy",
+      },
       state,
     );
+    await flushAuditSends();
+    expect(sent).toEqual([
+      {
+        verb: "agents",
+        detail: "stop a1 in north: stopped",
+        outcome: "refused",
+        reason: "busy",
+      },
+    ]);
+    expect(queued()).toEqual([]);
+  });
+
+  it("a send no server took (down, refused, or failed): the queued copy stays", async () => {
+    for (const s of [
+      async () => false,
+      async () => {
+        throw new Error("ECONNRESET");
+      },
+    ] as AuditSender[]) {
+      setAuditSender(s);
+      auditConfig({ verb: "agents", detail: "kept" }, state);
+    }
+    await flushAuditSends();
+    expect(queued()).toHaveLength(2);
+  });
+
+  it("inside an agent's sandbox (the state folder read-only, audit/ writable): the entry is still kept", () => {
+    fs.mkdirSync(path.join(state, "audit"), { mode: 0o700 });
+    fs.chmodSync(state, 0o500);
+    auditConfig({ verb: "agents", detail: "restart a1 in north: ok" }, state);
     fs.chmodSync(state, 0o700);
-    const { got } = take();
-    expect(got.map((r) => r.detail)).toEqual(["restart planner in north: ok"]);
+    expect(take().got.map((r) => r.detail)).toEqual([
+      "restart a1 in north: ok",
+    ]);
   });
 });
 
-describe("issue 1369: the server takes the queue in", () => {
-  it("in the order written, with each entry's own time and who; the queue is emptied", () => {
+describe("issue 1369: a sent entry is recorded as its credential says", () => {
+  it("the token's principal and the server's time; a who or a when in the body is never read", () => {
+    setAuditFile(path.join(state, "audit.jsonl"));
+    const body = {
+      verb: "agents",
+      detail: "restart a1 in north: ok",
+      principal: "person:someone",
+      actor: "user",
+      ts: "1999-01-01T00:00:00.000Z",
+    };
+    const before = Date.now();
+    const e = recordSentAuditRow(null, body as CliAuditRow, "agent:a1");
+    expect(e.principal).toBe("agent:a1");
+    expect(Date.parse(e.ts)).toBeGreaterThanOrEqual(before);
+    expect(e).not.toHaveProperty("queued");
+    expect(JSON.stringify(trail())).not.toContain("person:someone");
+    expect(JSON.stringify(trail())).not.toContain("1999");
+  });
+});
+
+describe("issue 1369: a queued entry comes in as a report, never anyone's word", () => {
+  it("one claiming the person, written by an agent while the server is up: unverified, no principal, the server's time", () => {
+    setAuditFile(path.join(state, "audit.jsonl"));
+    put("000000000000001-1-00000000.json", {
+      verb: "agents",
+      detail: "restart a1 in north: ok",
+      principal: "person:someone",
+      actor: "user",
+      at: "1999-01-01T00:00:00.000Z",
+    });
+    const before = Date.now();
+    const { got } = take();
+    const e = recordQueuedAuditRow(got[0]);
+    expect(e).toMatchObject({ queued: true, unverified: true });
+    expect(e.principal).toBeUndefined();
+    expect(Date.parse(e.ts)).toBeGreaterThanOrEqual(before);
+    expect(e.reported).toMatchObject({
+      principal: "person:someone",
+      at: "1999-01-01T00:00:00.000Z",
+    });
+    expect(typeof e.reported?.uid).toBe("number");
+    expect(Date.parse(String(e.reported?.written))).not.toBeNaN();
+    expect(trail().at(-1)).toMatchObject({ unverified: true, queued: true });
+    expect(trail().at(-1)).not.toHaveProperty("principal");
+  });
+
+  it("control characters are stripped from what it reports and says", () => {
+    put("000000000000001-1-00000000.json", {
+      verb: "agents",
+      detail: "ok\u001b[31m red",
+      reason: "line\u0007 one\nline two",
+      principal: "person:x\u001b]0;title\u0007",
+    });
+    const [r] = take().got;
+    expect(r.detail).toBe("ok[31m red");
+    expect(r.reason).toBe("line one");
+    expect(r.reported.principal).toBe("person:x]0;title");
+  });
+
+  it("in the order written; the queue is emptied", () => {
     auditConfig({ verb: "hub-link", detail: "first" }, state);
-    auditConfig(
-      { verb: "agents", detail: "second", outcome: "refused", reason: "busy" },
-      state,
-    );
+    auditConfig({ verb: "agents", detail: "second" }, state);
     const { got, dropped } = take();
     expect(dropped).toBe(0);
-    expect(got.map((r) => [r.verb, r.detail])).toEqual([
-      ["hub-link", "first"],
-      ["agents", "second"],
-    ]);
-    expect(got[1]).toMatchObject({ outcome: "refused", reason: "busy" });
-    expect(Date.parse(got[0].ts)).not.toBeNaN();
-    expect(got[0].principal).toMatch(/pid \d+/);
+    expect(got.map((r) => r.detail)).toEqual(["first", "second"]);
     expect(queued()).toEqual([]);
     expect(take().got).toEqual([]);
   });
 
-  it("an entry that isn't one is dropped, never recorded: bad JSON, an unknown verb, too big, a link, a write in progress", () => {
-    fs.mkdirSync(queue(), { recursive: true, mode: 0o700 });
-    const put = (n: string, body: string) =>
-      fs.writeFileSync(path.join(queue(), n), body, { mode: 0o600 });
+  it("an entry that isn't one is dropped and counted: bad JSON, another verb, too big, a link", () => {
     put("1.json", "{not json");
-    put(
-      "2.json",
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        verb: "web-login",
-        detail: "x",
-      }),
-    );
-    put(
-      "3.json",
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        verb: "agents",
-        detail: "y".repeat(20000),
-      }),
-    );
+    put("2.json", { verb: "web-login", detail: "x" });
+    put("3.json", { verb: "agents", detail: "y".repeat(20000) });
     const outside = path.join(state, "outside.json");
-    fs.writeFileSync(
-      outside,
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        verb: "agents",
-        detail: "z",
-      }),
-    );
+    fs.writeFileSync(outside, JSON.stringify({ verb: "agents", detail: "z" }));
     fs.symlinkSync(outside, path.join(queue(), "4.json"));
-    put("5.json.123.abcd.tmp", "partial");
     const { got, dropped } = take();
     expect(got).toEqual([]);
     expect(dropped).toBe(4);
-    // A write in progress is left for its writer to finish.
-    expect(fs.readdirSync(queue())).toEqual(["5.json.123.abcd.tmp"]);
     expect(fs.existsSync(outside)).toBe(true);
   });
-
-  it("a record that throws keeps its entry for the next pass", () => {
-    auditConfig({ verb: "agents", detail: "kept" }, state);
-    expect(() =>
-      takeQueuedAuditRows(state, () => {
-        throw new Error("disk full");
-      }),
-    ).not.toThrow();
-    expect(queued()).toHaveLength(1);
-    expect(take().got.map((r) => r.detail)).toEqual(["kept"]);
-  });
 });
 
-describe("issue 1369: readers outside the server see queued entries too", () => {
-  it("readAuditRows: audit.jsonl's rows, then the queue's not taken in yet", () => {
+describe("issue 1369: the intake reads and removes nothing outside the queue", () => {
+  it("a link put in the queue folder's place: the link removed, the folder it named untouched", () => {
+    const elsewhere = path.join(state, "elsewhere");
+    fs.mkdirSync(elsewhere);
     fs.writeFileSync(
-      path.join(state, "audit.jsonl"),
-      JSON.stringify({
-        ts: "2026-11-23T08:00:00.000Z",
-        actor: "user",
-        verb: "agents",
-        detail: "old",
-      }) + "\n",
-      { mode: 0o600 },
+      path.join(elsewhere, "x.json"),
+      JSON.stringify({ verb: "agents", detail: "not the queue's" }),
     );
-    auditConfig({ verb: "agents", detail: "new" }, state);
-    expect(readAuditRows(state).map((r) => r.detail)).toEqual(["old", "new"]);
+    fs.mkdirSync(path.join(state, "audit"), { mode: 0o700 });
+    fs.symlinkSync(elsewhere, queue());
+    const r = take();
+    expect(r.got).toEqual([]);
+    expect(r.refused).toBe(true);
+    expect(fs.existsSync(path.join(elsewhere, "x.json"))).toBe(true);
+    expect(fs.existsSync(queue())).toBe(false);
   });
 });
 
-describe("issue 1369: the running server takes in what is queued after its start", () => {
-  it("at its start, then on each sweep while it runs; stop ends it", () => {
+describe("issue 1369: the intake is capped, and says what it dropped", () => {
+  it("a pass takes at most its cap; the rest are counted, not recorded", () => {
+    for (let i = 0; i < MAX_PER_PASS + 5; i++)
+      put(`${String(i).padStart(15, "0")}-1-00000000.json`, {
+        verb: "agents",
+        detail: `n${i}`,
+      });
+    const r = take();
+    expect(r.taken).toBe(MAX_PER_PASS);
+    expect(r.overCap).toBe(5);
+  });
+
+  it("an hour's cap across passes, and each pass that dropped something is told", () => {
+    jest.useFakeTimers();
+    try {
+      const got: string[] = [];
+      const told: number[] = [];
+      for (let i = 0; i < 3; i++)
+        auditConfig({ verb: "agents", detail: `a${i}` }, state);
+      const stop = startAuditQueueIntake(state, (r) => got.push(r.detail), {
+        intervalMs: 1000,
+        watch: false,
+        perHour: 2,
+        onDropped: (c) => told.push(c.overCap),
+      });
+      expect(got).toEqual(["a0", "a1"]);
+      expect(told).toEqual([1]);
+      auditConfig({ verb: "agents", detail: "b" }, state);
+      jest.advanceTimersByTime(1000);
+      expect(got).toHaveLength(2);
+      expect(told).toEqual([1, 1]);
+      stop();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("the running server takes in what is queued after its start, until stopped", () => {
     jest.useFakeTimers();
     try {
       auditConfig({ verb: "agents", detail: "before start" }, state);
@@ -192,36 +306,22 @@ describe("issue 1369: the running server takes in what is queued after its start
   });
 });
 
-describe("issue 1369: the server records a queued entry as written", () => {
-  it("its own time, who and test-person path, marked as queued, in audit.jsonl", () => {
-    const f = path.join(state, "audit.jsonl");
-    setAuditFile(f);
-    try {
-      const e = recordQueuedAuditRow({
-        ts: "2026-11-23T08:00:00.000Z",
-        verb: "agents",
-        detail: "restart planner in north: ok",
-        principal: "person:p (den agents restart, pid 9)",
-        via: "test-person",
-      });
-      expect(e).toMatchObject({
+describe("issue 1369: readers outside the server see queued entries, as reports", () => {
+  it("readAuditRows: audit.jsonl's rows, then the queue's, unverified with no principal", () => {
+    fs.writeFileSync(
+      path.join(state, "audit.jsonl"),
+      JSON.stringify({
         ts: "2026-11-23T08:00:00.000Z",
         actor: "user",
-        principal: "person:p (den agents restart, pid 9)",
-        via: "test-person",
-        queued: true,
-      });
-      const rows = fs
-        .readFileSync(f, "utf8")
-        .trim()
-        .split("\n")
-        .map((l) => JSON.parse(l) as Record<string, unknown>);
-      expect(rows.at(-1)).toMatchObject({
-        detail: "restart planner in north: ok",
-        queued: true,
-      });
-    } finally {
-      setAuditFile(null);
-    }
+        verb: "agents",
+        detail: "old",
+      }) + "\n",
+      { mode: 0o600 },
+    );
+    auditConfig({ verb: "agents", detail: "new" }, state);
+    const rows = readAuditRows(state);
+    expect(rows.map((r) => r.detail)).toEqual(["old", "new"]);
+    expect(rows[1]).toMatchObject({ unverified: true, queued: true });
+    expect(rows[1]).not.toHaveProperty("principal");
   });
 });

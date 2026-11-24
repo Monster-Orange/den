@@ -113,7 +113,11 @@ describe("workspaces.yml rows", () => {
     expect(w[0].detail).toMatch(/^workspaces\.yml by setFocusedWorkspace \(/);
     expect(w[0].detail).toContain("focus alpha → beta");
     expect(w[0].actor).toBe("user");
-    expect(w[0].principal).toMatch(/^person:/);
+    // Issue 1369: queued with no server here, so the writer's report.
+    expect(
+      (w[0] as unknown as { reported: { principal: string } }).reported
+        .principal,
+    ).toMatch(/^person:/);
   });
 
   it("a write that changes nothing leaves no row", () => {

@@ -355,6 +355,7 @@ import {
   actorSuffix,
   recordAction,
   recordQueuedAuditRow,
+  recordSentAuditRow,
   recordAgentRefusal,
   recordCrossWorkspace,
   repoAtPath,
@@ -363,7 +364,12 @@ import {
   AUDIT_FILE,
 } from "./audit.js";
 import { setConfigAuditSink } from "../../shared/config-audit.js";
-import { startAuditQueueIntake } from "../../shared/audit-queue.js";
+import {
+  cliAuditRowOf,
+  droppedDetail,
+  QUEUE_DROPPED_VERB,
+  startAuditQueueIntake,
+} from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
   defaultOnboardRouteDeps,
@@ -1154,7 +1160,13 @@ try {
 setConfigAuditSink((row) => void recordAction(null, row));
 // Issue 1369: the CLI's audit entries, queued outside this process, come
 // in now and while it runs: audit.jsonl has one writer.
-startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row));
+startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row), {
+  onDropped: (c) =>
+    void recordAction(null, {
+      verb: QUEUE_DROPPED_VERB,
+      detail: droppedDetail(c),
+    }),
+});
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -7294,6 +7306,30 @@ async function handleRequest(
   // The MCP server's guards refuse some calls before they reach an action
   // route; it reports them here so the activity trail shows failed attempts.
   // Agents only (the audit header), and the entry is all it can write.
+  // Issue 1369: a CLI's audit entry, sent over its own authenticated call
+  // (the person token, or an agent's actor token). Recorded as that
+  // credential says, at this server's time: the body gives the verb,
+  // detail, outcome and reason only, never a who or a when.
+  if (pathname === "/api/audit/cli" && req.method === "POST") {
+    const principal = principalOf(req);
+    if (!principal) return sendJson(res, { error: "sign in first" }, 401);
+    const raw = await readBody(req).catch(() => "");
+    if (raw.length > 8192) return send400(res, "entry too large");
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(raw || "{}") as Record<string, unknown>;
+    } catch {
+      return send400(res, "invalid JSON");
+    }
+    const row =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? cliAuditRowOf(body)
+        : null;
+    if (!row) return send400(res, "not an audit entry");
+    const entry = recordSentAuditRow(auditActorOf(req), row, principal);
+    return sendJson(res, { recorded: true, ts: entry.ts });
+  }
+
   if (pathname === "/api/activity" && req.method === "POST") {
     // An agent's token, or (unverified) an MCP server's audit headers.
     const actor = auditActorOf(req);

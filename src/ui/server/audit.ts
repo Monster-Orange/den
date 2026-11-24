@@ -19,7 +19,7 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
-import type { QueuedAuditRow } from "../../shared/audit-queue.js";
+import type { CliAuditRow, QueuedAuditRow } from "../../shared/audit-queue.js";
 import { auditVia } from "../../shared/test-person.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
@@ -28,11 +28,20 @@ export { actorFromHeaders } from "../../shared/agent-actor.js";
 export interface AuditEntry {
   ts: string;
   /**
-   * Issue 1369: written by a process outside the server (the CLI, a
-   * script, an agent's `den` command) and taken in from its queue: its
-   * principal and time are as that process wrote them.
+   * Issue 1369: taken in from the queue a process outside the server
+   * (the CLI, a script, an agent's `den` command) writes when it couldn't
+   * send its entry. A report, never anyone's word: it has no principal,
+   * is marked unverified, and its time is the server's; what the writer
+   * said of itself, its OS user and the file's time are in `reported`.
    */
   queued?: true;
+  reported?: {
+    principal?: string;
+    at?: string;
+    via?: string;
+    uid: number;
+    written: string;
+  };
   /** "agent" only for an agent's actor token (SEC-1c); a claim never is. */
   actor: "agent" | "user";
   /**
@@ -176,19 +185,27 @@ export function recordAction(
     targetWorkspace?: string;
     /** Issue 597: the agents it touched, in full. */
     agents?: Record<string, unknown>;
-    /** Issue 1369: a queued entry's own time, path and mark. */
-    queued?: { at: string; via?: string };
+    /** Issue 1369: a queued entry's report (it is no one's word). */
+    queued?: NonNullable<AuditEntry["reported"]>;
   },
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
 ): AuditEntry {
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
-  const via = action.queued ? action.queued.via : auditVia();
+  const via = action.queued ? undefined : auditVia();
+  // Issue 1369: a queued entry is no one's word: never a principal.
+  if (action.queued) principal = undefined;
   const entry: AuditEntry = {
-    ts: action.queued?.at ?? new Date().toISOString(),
+    ts: new Date().toISOString(),
     actor: verified ? "agent" : "user",
-    ...(action.queued ? { queued: true as const } : {}),
+    ...(action.queued
+      ? {
+          queued: true as const,
+          unverified: true as const,
+          reported: action.queued,
+        }
+      : {}),
     ...(principal ? { principal } : {}),
     ...(via ? { via } : {}),
     ...(claim
@@ -238,7 +255,8 @@ export function recordAction(
   sink?.(
     `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
       (principal && !verified ? ` · as ${principal}` : "") +
-      (via ? " · by the test-person path" : ""),
+      (via ? " · by the test-person path" : "") +
+      (action.queued ? " · queued by a process, unverified" : ""),
     actor,
   );
   return entry;
@@ -246,19 +264,39 @@ export function recordAction(
 
 /**
  * Issue 1369: a queued entry from a process outside the server (the CLI's
- * auditConfig, through audit-queue.ts), recorded as it was written.
+ * auditConfig, through audit-queue.ts), recorded as a report: unverified,
+ * no principal, at the server's time.
  */
 export function recordQueuedAuditRow(row: QueuedAuditRow): AuditEntry {
+  return recordAction(null, {
+    verb: row.verb,
+    detail: row.detail,
+    ...(row.outcome ? { outcome: row.outcome } : {}),
+    ...(row.reason ? { reason: row.reason } : {}),
+    queued: { ...row.reported, ...(row.via ? { via: row.via } : {}) },
+  });
+}
+
+/**
+ * Issue 1369: an entry a process outside the server sent over its
+ * authenticated call: recorded as the request's credential says (its
+ * actor and principal), at the server's time. The body's verb, detail,
+ * outcome and reason only (cliAuditRowOf): never a who or a when.
+ */
+export function recordSentAuditRow(
+  actor: Actor,
+  row: CliAuditRow,
+  principal?: string,
+): AuditEntry {
   return recordAction(
-    null,
+    actor,
     {
       verb: row.verb,
       detail: row.detail,
       ...(row.outcome ? { outcome: row.outcome } : {}),
       ...(row.reason ? { reason: row.reason } : {}),
-      queued: { at: row.ts, ...(row.via ? { via: row.via } : {}) },
     },
-    row.principal,
+    principal,
   );
 }
 
