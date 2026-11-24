@@ -289,6 +289,17 @@ export function newAgentSandboxOff(
   cfg: ReturnType<SandboxSetDeps["agentsConfig"]>,
   ids: readonly string[],
 ): ReviewLine | null {
+  // Den Builder's call (issue 1391): on a personal install with the
+  // sandbox off by default and no agent in it, a new agent outside it is
+  // no new power: routine (the person told). With any sandboxed, or the
+  // default on, one that would start outside it asks.
+  const c = cfg as typeof cfg & { mode?: string };
+  if (
+    c.mode === "personal" &&
+    c.sandbox === false &&
+    !Object.values(c.agents ?? {}).some((a) => a?.sandbox === true)
+  )
+    return null;
   for (const id of ids) {
     if (sandboxSetting(cfg, id) || sandboxRequired(cfg, id)) continue;
     return cfg.agents?.[id]?.sandbox === false

@@ -1504,6 +1504,7 @@ import {
   recordPageRestart,
   restartMarkerPath,
   selfUpdateAutoAllow,
+  explicitRestartAsk,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
@@ -5322,6 +5323,18 @@ function approvalDeps(): ApprovalDeps {
     installMode: () => installModeOf(readUserConfig()),
     policy: (action, project, widens, ask) => {
       const user = readUserConfig();
+      // Den Builder's call (issue 1391): an explicit self_update: ask is
+      // the person's say on a restart, on a personal install too.
+      if (action === "den_restart") {
+        let explicit = true;
+        try {
+          explicit = explicitRestartAsk(readServerAgentConfig());
+        } catch {
+          explicit = true;
+        }
+        if (explicit)
+          return { kind: "ask", from: "server_agent.self_update: ask" };
+      }
       return policyFor(action, {
         widens,
         mode: installModeOf(user),
