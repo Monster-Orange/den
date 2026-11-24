@@ -45,10 +45,26 @@ function tmp(): string {
   tmps.push(d);
   return d;
 }
+const den = (mode?: unknown) =>
+  (mode === undefined ? {} : { install_mode: mode }) as unknown as DenConfig;
 const user = (mode?: unknown) =>
   (mode === undefined ? {} : { install_mode: mode }) as unknown as UserConfig;
 
 describe("issue 1391: the install's mode", () => {
+  it("strict in either file wins: a team's den.yml over user.yml's personal", () => {
+    expect(readAgentsConfig(den("strict"), user("personal")).mode).toBe(
+      "strict",
+    );
+    expect(readAgentsConfig(den("strict"), user()).mode).toBe("strict");
+    expect(readAgentsConfig(den("personal"), user()).mode).toBe("personal");
+    expect(readAgentsConfig(den(), user("strict")).mode).toBe("strict");
+  });
+
+  it("a bad value in either file is strict, never an error", () => {
+    expect(readAgentsConfig(den(), user("Personal ")).mode).toBe("strict");
+    expect(readAgentsConfig(den(true), user()).mode).toBe("strict");
+  });
+
   it("readAgentsConfig carries it: unset is personal, strict is strict", () => {
     expect(readAgentsConfig({} as DenConfig, user()).mode).toBe("personal");
     expect(readAgentsConfig({} as DenConfig, user("strict")).mode).toBe(
