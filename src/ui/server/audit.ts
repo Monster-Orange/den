@@ -22,6 +22,7 @@ import {
 import type { CliAuditRow, QueuedAuditRow } from "../../shared/audit-queue.js";
 import { auditVia } from "../../shared/test-person.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { redactSecrets } from "../../shared/redact.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
@@ -191,6 +192,22 @@ export function recordAction(
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
 ): AuditEntry {
+  // Issue 1391: agents may read the trail, so its free text never keeps
+  // a secret, whoever wrote it (a setting's value, a den command's row,
+  // a queued report's command line). The log line uses the same text.
+  action = {
+    ...action,
+    detail: redactSecrets(action.detail),
+    ...(action.reason ? { reason: redactSecrets(action.reason) } : {}),
+    ...(action.queued?.principal
+      ? {
+          queued: {
+            ...action.queued,
+            principal: redactSecrets(action.queued.principal),
+          },
+        }
+      : {}),
+  };
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
   const via = action.queued ? undefined : auditVia();
