@@ -1400,6 +1400,7 @@ import {
   isApprovalPath,
   notePolicyRun,
   type HeldActions,
+  type HeldCheck,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
@@ -5005,7 +5006,10 @@ function approvalDeps(): ApprovalDeps {
       return { ok: true, restarting: true, pid: process.pid };
     },
     // SRV-1b: update from npm, the watch to roll back, then the restart.
-    updateDen: async (version, reason, asked) => {
+    installPersonal: isPersonalInstall,
+    denVersion: () => engineVersion() ?? null,
+    holdForPerson: (action, card, agent) => holdForPerson(action, card, agent),
+    updateDen: async (version, reason, asked, o) => {
       const u = await import("./den-update.js");
       const auto = !!asked?.decidedBy?.startsWith("auto:");
       const by = asked?.agent ? `agent:${asked.agent}` : "the person";
@@ -5067,6 +5071,7 @@ function approvalDeps(): ApprovalDeps {
           writeRestartMarker(stateDir, marker);
           return { path: restartMarkerPath(stateDir), marker };
         },
+        ...(o?.stableNotOlder ? { stableNotOlder: true } : {}),
         // Issue 562 review: Den's own auto update reads the wait again.
         ...(auto && autoRestartHold ? { beforeRestart: autoRestartHold } : {}),
         restart: () => {
@@ -5196,7 +5201,11 @@ function approvalDeps(): ApprovalDeps {
     // Issue 647: an agent asks to link a project to an existing Hub project.
     hubLink: {
       check: async (a, who) =>
-        checkHubLinkHeld(await defaultHubLinkHeldDeps(), a, who),
+        checkHubLinkHeld(
+          { ...(await defaultHubLinkHeldDeps()), personal: isPersonalInstall },
+          a,
+          who,
+        ),
       run: async (a, asked) =>
         runHubLinkHeld(await defaultHubLinkHeldDeps(), a, asked),
     },
@@ -5262,13 +5271,16 @@ function approvalDeps(): ApprovalDeps {
           return 900;
         }
       },
-      start: () =>
+      start: (o) =>
         refreshTerminalHost(
           agentWebDeps(),
           (line) => serverLog(line, "lifecycle"),
           "held",
+          o ?? {},
         ),
       log: (line) => serverLog(line, "lifecycle"),
+      hold: (card, agent) =>
+        holdForPerson("host_restart", card as HeldCheck, agent),
     }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
@@ -5626,6 +5638,32 @@ function denForCaps(): DenConfig {
     return readDenConfig();
   } catch {
     return {} as DenConfig;
+  }
+}
+/**
+ * Issue 1403: a routine run that stopped (a turn started, or the version
+ * npm gives is older or a prerelease) waits for the person instead: the
+ * same ask, pending in the bell, for the agent that asked.
+ */
+function holdForPerson(action: string, card: HeldCheck, agent?: string): void {
+  if (!card.ok) return;
+  try {
+    approvalDeps().queue.request({
+      actor: agent ? `agent:${agent}` : "den",
+      ...(agent ? { agent } : {}),
+      action,
+      args: card.args,
+      summary: card.summary,
+      params: card.params,
+      details: card.details,
+      ...(card.detailKeys?.length ? { detailKeys: card.detailKeys } : {}),
+    });
+    syncHeldWrites();
+  } catch (e) {
+    serverLog(
+      `  ⚠ ${action}: not held for the person: ${(e as Error).message}`,
+      "lifecycle",
+    );
   }
 }
 /** Issue 1403: the install is personal; a throw means strict. */

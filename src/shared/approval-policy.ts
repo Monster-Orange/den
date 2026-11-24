@@ -65,9 +65,9 @@ export type HeldWriteRisk = "critical" | "widens" | "routine";
 /**
  * Issue 160: what makes a write critical by what it touches, whatever its
  * placement: secrets, deletes of data, money. A held write's check may say
- * so (`areas`), and so may its placement. A write's own name does
- * (`areasOf`) only for a write no one placed (issue 1403): a placed one
- * names its areas itself, so a name like project_mcp_remove can't trip it.
+ * so (`areas`), and so do its placement and its own name (`areasOf`). A
+ * placed write leaves a name's area only by declaring it (`notAreas`,
+ * issue 1403): project_mcp_remove's "remove" deletes no data.
  */
 export type CriticalArea = "secrets" | "deletes" | "money";
 export const CRITICAL_AREAS: Readonly<
@@ -107,6 +107,12 @@ export const HELD_WRITE_RISK: Readonly<
       why: string;
       /** What it touches (CRITICAL_AREAS): critical whatever `risk` says. */
       areas?: CriticalArea[];
+      /**
+       * Issue 1403 (Reviewer D): an area its name says that it doesn't
+       * touch, declared here, on its own entry (project_mcp_remove takes
+       * tools away; it deletes no data). Without it the name's area holds.
+       */
+      notAreas?: CriticalArea[];
       /**
        * Issue 160: the kind it follows when no setting names it. Ask is
        * stricter than any `policy`; only `writes.<it>` lowers it. A looser
@@ -152,6 +158,7 @@ export const HELD_WRITE_RISK: Readonly<
   },
   project_mcp_remove: {
     risk: "critical",
+    notAreas: ["deletes"],
     why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow); it narrows, so routine on a personal install (issue 1403)",
   },
   project_mcp_update: {
@@ -238,6 +245,7 @@ export const HELD_WRITE_RISK: Readonly<
   },
   gate_box_remove: {
     risk: "critical",
+    notAreas: ["deletes"],
     why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS); on a personal install routine, since a box can be added back (issue 1403)",
   },
   web_url_set: {
@@ -280,9 +288,8 @@ export const HELD_WRITE_RISK: Readonly<
 /**
  * Why held write `action` is critical ("critical", or "critical: <area>"),
  * or null when it is routine: it touches secrets, deletes or money (its
- * placement or its check's `areas` say so, or for a write no one placed its
- * name), it is named
- * critical, or it widens and its check says this ask widens. Unknown
+ * name, its placement or its check's `areas` say so; a placed write may
+ * opt out of its name's area with `notAreas`), it is named critical, or it widens and its check says this ask widens. Unknown
  * writes are critical.
  */
 export function criticalWhy(
@@ -297,7 +304,8 @@ export function criticalWhy(
     : undefined;
   const touches = [
     ...new Set([
-      ...(placed ? (placed.areas ?? []) : areasOf(action)),
+      ...areasOf(action).filter((a) => !placed?.notAreas?.includes(a)),
+      ...(placed?.areas ?? []),
       ...areas,
     ]),
   ].filter((a) => Object.hasOwn(CRITICAL_AREAS, a));

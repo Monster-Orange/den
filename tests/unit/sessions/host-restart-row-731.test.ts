@@ -237,6 +237,40 @@ describe("issue 731: the refresh state doctor reads", () => {
   });
 });
 
+describe("issue 1403: an idle-only refresh (a routine host_restart)", () => {
+  it("an agent mid-turn at its look: held, with no stop and no wait", async () => {
+    const f = fakeHost();
+    const waits: unknown[] = [];
+    const r = await refreshSessionHost({
+      ...f.deps,
+      idleOnly: true,
+      busy: async () => ["a1"],
+      onWait: (w) => waits.push(w),
+    });
+    expect(r).toEqual({ did: "held", busy: ["a1"] });
+    expect(f.events).toEqual([]);
+    expect(waits).toEqual([]);
+  });
+  it("busy can't be read: held too", async () => {
+    const f = fakeHost();
+    const r = await refreshSessionHost({
+      ...f.deps,
+      idleOnly: true,
+      busy: async () => {
+        throw new Error("no answer");
+      },
+    });
+    expect(r.did).toBe("held");
+    expect(f.events).toEqual([]);
+  });
+  it("all idle: it restarts", async () => {
+    const f = fakeHost();
+    const r = await refreshSessionHost({ ...f.deps, idleOnly: true });
+    expect(r.did).toBe("restarted");
+    expect(f.events[0]).toBe("stop");
+  });
+});
+
 /**
  * A fake host: hello says old code; shutdown records the stop; connect
  * brings back one on the installed code. `events` is the order of what

@@ -15,6 +15,7 @@ import { line, reviewLines } from "../../shared/review-lines.js";
 import type { RefreshResult } from "../../shared/sessions/host-refresh.js";
 import { HOST_RESTART_TITLE } from "../../shared/sessions/host-refresh-state.js";
 import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
+import type { HeldOpCheck } from "../cli/agent-ops.js";
 import type { HeldOp } from "./held-actions.js";
 
 export interface HostRestartOpDeps {
@@ -22,13 +23,21 @@ export interface HostRestartOpDeps {
   refreshing: () => boolean;
   /** sessions.host_restart_wait_seconds. */
   waitSeconds: () => number;
-  /** Starts the refresh; resolves when it ends (null: one already ran). */
-  start: () => Promise<RefreshResult | null>;
+  /**
+   * Starts the refresh; resolves when it ends (null: one already ran).
+   * idleOnly (issue 1403): restart only with no agent mid-turn, else held.
+   */
+  start: (o?: { idleOnly: true }) => Promise<RefreshResult | null>;
   log?: (line: string) => void;
   /** Issue 1403: the install is personal. Unknown: strict. */
   personal?: () => boolean;
   /** Issue 1403: an agent is mid-turn now (a restart could cut it). */
   turnsRunning?: () => Promise<boolean>;
+  /**
+   * Issue 1403: hold a host_restart for the person's Allow (pending in the
+   * bell, `card` its check), for `agent`, the agent that asked.
+   */
+  hold?: (card: HeldOpCheck<object>, agent?: string) => void;
 }
 
 /**
@@ -47,7 +56,7 @@ async function hostRestartPersonOnly(d: HostRestartOpDeps): Promise<boolean> {
 }
 
 export function hostRestartOp(d: HostRestartOpDeps): HeldOp {
-  return {
+  const op: HeldOp = {
     async check() {
       if (d.refreshing())
         return {
@@ -78,22 +87,46 @@ export function hostRestartOp(d: HostRestartOpDeps): HeldOp {
         ]),
       };
     },
-    run() {
+    async run(_a, asked) {
       if (d.refreshing())
-        return Promise.resolve({
+        return {
           ok: true,
           already: true,
           note: "Den is already restarting the terminal host when agents are idle",
-        });
+        };
+      // Issue 1403 (Den Builder): routine only because no turn ran at the
+      // ask. Look again now; a turn started since holds it for the person.
+      const routine = !!asked?.decidedBy?.startsWith("auto:");
+      const holdIt = async (): Promise<boolean> => {
+        const c = await op.check({});
+        if (!c.ok || !d.hold) return false;
+        d.hold({ ...c, personOnly: true }, asked?.agent);
+        return true;
+      };
+      if (routine && (await hostRestartPersonOnly(d))) {
+        const held = await holdIt();
+        return {
+          ok: true,
+          held,
+          note: "An agent turn started since the ask: Den didn't restart the terminal host. It waits for the person's Allow in the bell.",
+        };
+      }
       // The wait can be minutes: the Allow answers now.
-      d.start().catch((e: unknown) =>
-        d.log?.(`  ⚠ terminal host restart: ${(e as Error).message}`),
-      );
-      return Promise.resolve({
+      (routine ? d.start({ idleOnly: true }) : d.start())
+        .then(async (r) => {
+          if (r?.did === "held") await holdIt();
+        })
+        .catch((e: unknown) =>
+          d.log?.(`  ⚠ terminal host restart: ${(e as Error).message}`),
+        );
+      return {
         ok: true,
         started: true,
-        note: "Den restarts the terminal host once no agent is mid-turn; the activity trail (terminal-host) and doctor say how it went",
-      });
+        note: routine
+          ? "Den restarts the terminal host now if no agent is mid-turn; a turn running then holds it for the person's Allow"
+          : "Den restarts the terminal host once no agent is mid-turn; the activity trail (terminal-host) and doctor say how it went",
+      };
     },
   };
+  return op;
 }
