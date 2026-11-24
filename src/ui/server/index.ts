@@ -999,9 +999,24 @@ const toServerLogFile = serverLogWriter({
   },
 });
 
+/**
+ * Issue 1344: lifecycle, warn and error lines always reach web.log: on
+ * stdout when it is a file (web up, a service), also under --silent;
+ * else appended to <state>/logs/<cli>/web.log. Never twice.
+ */
+const STDOUT_IS_FILE = fdIsFile(1);
+const toWebLog = webLogWriter({
+  stdoutIsFile: () => STDOUT_IS_FILE && !outputLost(),
+  writeStdout: (s) => void process.stdout.write(s),
+  path: () => webLogPath(getStateDir(), product().cli),
+});
+
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
-  if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
+  const onStdout = !SILENT && !outputLost();
+  // Issue 1368: redacted, as every other log path is.
+  if (onStdout) process.stdout.write(stdoutLine(msg));
+  toWebLog(kind, stripAnsi(msg), onStdout);
   if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
 
@@ -1576,6 +1591,12 @@ import {
 } from "../../shared/open-url.js";
 
 import { product } from "../../shared/product.js";
+import {
+  fdIsFile,
+  stdoutLine,
+  webLogPath,
+  webLogWriter,
+} from "../../shared/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";

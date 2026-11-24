@@ -2992,8 +2992,12 @@ distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
 
-A service starts the web server with `--silent`, so `web.log` stops at the
-start banner. While it runs that way, the server's warning lines (Hub
+A service starts the web server with `--silent`, and so does `web up` by
+default, so `web.log` holds no request lines. Its lifecycle, warning and error
+lines still go to `web.log`: on the server's output when that is a file (as
+`web up` and a service start it), or added to `logs/<cli>/web.log` in Den's
+state folder when the output is a terminal or a pipe, never twice. While it
+runs silent, the server's warning lines (Hub
 deliveries held or typed, among others) also go to `logs/server.log` in Den's
 state folder, so they are still there after a restart. `server_log.max_mb` in
 `user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
