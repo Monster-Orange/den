@@ -39,6 +39,10 @@
       "src/shared/settings-cli-rows.ts",
       "src/ui/server/index.ts"
     ],
+    "tests/unit/server/settings-page.integration.test.ts": [
+      "src/ui/server/public/settings-page.js",
+      "src/ui/server/public/settings-registry.js"
+    ],
     "tests/unit/server/agents-max-1373.integration.test.ts": [
       "src/shared/den-config.ts",
       "src/shared/settings-cli-rows.ts"

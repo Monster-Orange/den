@@ -306,9 +306,10 @@ describe("the Settings page writes only what you change (R21)", () => {
     // 0.4.46: Agents › the terminals' three reconnect limits match too,
     // and (den#156) the Agents list's wait for the terminal host. Issue
     // 532: Server › the five terminal limits. Issue 1311: Agents › the
-    // draft hold (an agent's terminal).
+    // draft hold (an agent's terminal). Issue 1373: Agents › Agents at
+    // once (plain terminals never count against it).
     expect(await sectionIds(p)).toEqual(["editor", "agents", "server", "cli"]);
-    expect(await p.textContent("#set-count")).toBe("12 settings match");
+    expect(await p.textContent("#set-count")).toBe("13 settings match");
     expect(new URL(p.url()).searchParams.get("q")).toBe("terminal");
     expect(
       await p.$$eval("#cat-editor .set-row", (r) =>
