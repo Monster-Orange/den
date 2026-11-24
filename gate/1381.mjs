@@ -244,7 +244,7 @@ const row = (clause, ok, detail, skip) =>
     : { clause, ok, detail, evidence: ["1381-boxes.json"] };
 
 export function expect(cells) {
-  const r = cells[0]?.result ?? {};
+  const r = cells.find((c) => c?.result)?.result ?? {};
   if (r.skip)
     return clauses.map((c) => row(c, null, r.detail ?? r.skip, r.skip));
   const tried = (r.boxes ?? []).filter((b) => !b.unusable);
