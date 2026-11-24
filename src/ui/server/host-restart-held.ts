@@ -14,6 +14,7 @@
 import { line, reviewLines } from "../../shared/review-lines.js";
 import type { RefreshResult } from "../../shared/sessions/host-refresh.js";
 import { HOST_RESTART_TITLE } from "../../shared/sessions/host-refresh-state.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import type { HeldOp } from "./held-actions.js";
 
 export interface HostRestartOpDeps {
@@ -24,11 +25,30 @@ export interface HostRestartOpDeps {
   /** Starts the refresh; resolves when it ends (null: one already ran). */
   start: () => Promise<RefreshResult | null>;
   log?: (line: string) => void;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  personal?: () => boolean;
+  /** Issue 1403: an agent is mid-turn now (a restart could cut it). */
+  turnsRunning?: () => Promise<boolean>;
+}
+
+/**
+ * Issue 1403 (Den Builder): on a personal install an agent's ask is
+ * routine while no agent turn is running. A turn it could cut (the
+ * person's own agents' work counts), turns that can't be read, or a
+ * strict install keep it the person's.
+ */
+async function hostRestartPersonOnly(d: HostRestartOpDeps): Promise<boolean> {
+  if (!isPersonal(d.personal) || !d.turnsRunning) return true;
+  try {
+    return await d.turnsRunning();
+  } catch {
+    return true;
+  }
 }
 
 export function hostRestartOp(d: HostRestartOpDeps): HeldOp {
   return {
-    check() {
+    async check() {
       if (d.refreshing())
         return {
           ok: false,
@@ -39,7 +59,9 @@ export function hostRestartOp(d: HostRestartOpDeps): HeldOp {
       return {
         ok: true,
         // It can cut an agent's turn when the wait runs out: the person's.
-        personOnly: true,
+        ...((await hostRestartPersonOnly(d))
+          ? { personOnly: true as const }
+          : {}),
         args: {},
         summary: HOST_RESTART_TITLE.replace(/^R/, "r"),
         params: { min },

@@ -325,7 +325,7 @@ export interface HeldOp {
   check: (
     args: Record<string, unknown>,
     who?: HeldAsker,
-  ) => HeldOpCheck<object>;
+  ) => HeldOpCheck<object> | Promise<HeldOpCheck<object>>;
   run: (args: Record<string, unknown>, asked?: AskedBy) => Promise<unknown>;
 }
 
@@ -684,10 +684,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const op = (o: HeldOp | undefined, missing: string): HeldAction => ({
-    check(a, who): HeldCheck {
+    check(a, who): HeldCheck | Promise<HeldCheck> {
       if (!o) return { ok: false, error: missing };
+      const copy = (c: HeldOpCheck<object>): HeldCheck =>
+        c.ok ? { ...c, args: { ...c.args } } : c;
       const c = o.check(a, who);
-      return c.ok ? { ...c, args: { ...c.args } } : c;
+      // Issue 1403: host_restart's check looks at the agents' turns.
+      return c instanceof Promise ? c.then(copy) : copy(c);
     },
     run: (a, asked) => o!.run(a, asked),
   });

@@ -342,11 +342,19 @@ or **strict** (a company's install or a shared machine): `install_mode`.
   follows the approval policy (by default it runs and tells you). The
   writes that still ask are marked `personal: "keep"` in
   `HELD_WRITE_RISK`: `agent_sandbox_set`, `approval_policy`,
-  `project_mcp_add`, `project_mcp_update`, `hub_connect`, `den_update`,
+  `project_mcp_add`, `project_mcp_update`, `hub_connect`,
   `verify_run`, `embed_key_create`, `embed_key_revoke`, `web_url_set`,
   `test_person_setup`, `report` and `setting_change`'s widening keys. A
   write touching secrets, deletes or money asks on both. A write no one
-  placed still asks.
+  placed still asks, and is judged by its name too (a placed write names
+  its areas itself).
+- **What only narrows, or can be undone (personal).** These run and tell
+  you: `project_mcp_remove`, `den_sandbox_on`, `gate_box_remove`,
+  `hub_link`, `den_update` (unless `server_agent.self_update: ask`, as
+  `den_restart`), `host_restart` (unless an agent turn is running that it
+  could cut), and `persona_create` and `persona_update` (unless an agent is
+  sandboxed or the sandbox default is on). Each write's own check decides:
+  a check that says the write is the person's always asks, on both modes.
 - **Strict.** Today's behaviour: the sandbox on unless set off, and every
   held write as the approval policy says.
 - A value set explicitly always wins: `agents.sandbox: on` (or

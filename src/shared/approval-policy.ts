@@ -65,7 +65,9 @@ export type HeldWriteRisk = "critical" | "widens" | "routine";
 /**
  * Issue 160: what makes a write critical by what it touches, whatever its
  * placement: secrets, deletes of data, money. A held write's check may say
- * so (`areas`), and a write's own name does (`areasOf`).
+ * so (`areas`), and so may its placement. A write's own name does
+ * (`areasOf`) only for a write no one placed (issue 1403): a placed one
+ * names its areas itself, so a name like project_mcp_remove can't trip it.
  */
 export type CriticalArea = "secrets" | "deletes" | "money";
 export const CRITICAL_AREAS: Readonly<
@@ -150,7 +152,7 @@ export const HELD_WRITE_RISK: Readonly<
   },
   project_mcp_remove: {
     risk: "critical",
-    why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow)",
+    why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow); it narrows, so routine on a personal install (issue 1403)",
   },
   project_mcp_update: {
     personal: "keep",
@@ -158,14 +160,12 @@ export const HELD_WRITE_RISK: Readonly<
     why: "sends a project's agents' calls, and maybe a bearer, to another address",
   },
   persona_create: {
-    personal: "keep",
     risk: "critical",
-    why: "a persona carries a mode and commands it may run: new tool access",
+    why: "a persona carries a mode and commands it may run: new tool access; on a personal install with nothing sandboxed, routine (issue 1403)",
   },
   persona_update: {
-    personal: "keep",
     risk: "critical",
-    why: "a persona carries a mode and commands it may run: new tool access",
+    why: "a persona carries a mode and commands it may run: new tool access; on a personal install with nothing sandboxed, routine (issue 1403)",
   },
   hub_connect: {
     personal: "keep",
@@ -173,9 +173,8 @@ export const HELD_WRITE_RISK: Readonly<
     why: "points Den at another Hub, or none: where agents publish and read",
   },
   den_update: {
-    personal: "keep",
     risk: "critical",
-    why: "installs another Den version (a release)",
+    why: "installs another Den version (a release); on a personal install routine unless server_agent.self_update: ask (issue 1403)",
   },
   den_restart: {
     risk: "critical",
@@ -187,10 +186,9 @@ export const HELD_WRITE_RISK: Readonly<
     why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
   },
   hub_link: {
-    personal: "keep",
     risk: "routine",
     kind: "ask",
-    why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
+    why: "moves where a project's agents file their Hub work: asks unless the person lowers it; routine on a personal install (issue 1403)",
   },
   agent_create: {
     risk: "widens",
@@ -239,9 +237,8 @@ export const HELD_WRITE_RISK: Readonly<
     why: "adds or changes a test box whose browsers take agents' gate runs (CRITICAL_HELD_ACTIONS)",
   },
   gate_box_remove: {
-    personal: "keep",
     risk: "critical",
-    why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+    why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS); on a personal install routine, since a box can be added back (issue 1403)",
   },
   web_url_set: {
     personal: "keep",
@@ -283,7 +280,8 @@ export const HELD_WRITE_RISK: Readonly<
 /**
  * Why held write `action` is critical ("critical", or "critical: <area>"),
  * or null when it is routine: it touches secrets, deletes or money (its
- * name, its placement or its check's `areas` say so), it is named
+ * placement or its check's `areas` say so, or for a write no one placed its
+ * name), it is named
  * critical, or it widens and its check says this ask widens. Unknown
  * writes are critical.
  */
@@ -298,7 +296,10 @@ export function criticalWhy(
     ? HELD_WRITE_RISK[action]
     : undefined;
   const touches = [
-    ...new Set([...areasOf(action), ...(placed?.areas ?? []), ...areas]),
+    ...new Set([
+      ...(placed ? (placed.areas ?? []) : areasOf(action)),
+      ...areas,
+    ]),
   ].filter((a) => Object.hasOwn(CRITICAL_AREAS, a));
   if (touches.length) return `critical: ${touches.join(", ")}`;
   // Issue 1391's rule: the check said personOnly, so the person's, on

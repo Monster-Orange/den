@@ -74,6 +74,7 @@ import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
 import type { AskedBy } from "./approvals.js";
 import type { HeldOp } from "./held-actions.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
@@ -847,6 +848,8 @@ const endpointsText = (m: Record<string, string>) =>
 export function gateBoxOps(d: {
   store: () => GateStore;
   audit?: typeof recordAction;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  personal?: () => boolean;
 }): { set: HeldOp; remove: HeldOp } {
   const audit = (detail: string) =>
     (d.audit ?? recordAction)(null, { verb: "gate-box", detail });
@@ -921,7 +924,9 @@ export function gateBoxOps(d: {
         return { ok: false, error: `no test box ${name}` };
       return {
         ok: true,
-        personOnly: true,
+        // Issue 1403: a box can be added back, so on a personal install
+        // an agent's ask is routine; strict keeps it the person's.
+        ...(isPersonal(d.personal) ? {} : { personOnly: true as const }),
         args: { name },
         summary: `remove the test box "${name}"`,
         params: { name },

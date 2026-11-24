@@ -294,7 +294,7 @@ describe("issue 731: the held write host_restart", () => {
       waitSeconds: () => 900,
       start: async () => ({ did: "current" }),
     });
-    const c = op.check({}, { agent: "den-server" });
+    const c = await op.check({}, { agent: "den-server" });
     expect(c.ok).toBe(true);
     if (!c.ok) return;
     expect(c.personOnly).toBe(true);
@@ -306,13 +306,13 @@ describe("issue 731: the held write host_restart", () => {
     expect(c.details.join(" ")).not.toMatch(STOP_ALL);
   });
 
-  it("refuses while Den's own refresh already waits (nothing asked twice)", () => {
+  it("refuses while Den's own refresh already waits (nothing asked twice)", async () => {
     const op = hostRestartOp({
       refreshing: () => true,
       waitSeconds: () => 900,
       start: async () => ({ did: "current" }),
     });
-    const c = op.check({});
+    const c = await op.check({});
     expect(c.ok).toBe(false);
   });
 

@@ -1504,7 +1504,7 @@ import {
   recordPageRestart,
   restartMarkerPath,
   selfUpdateAutoAllow,
-  explicitRestartAsk,
+  selfUpdateAsks,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
@@ -1555,6 +1555,8 @@ import {
   policyResolver,
   restartResolver,
   modeResolver,
+  busyAgentHolds,
+  runningAgentIds,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -5235,7 +5237,10 @@ function approvalDeps(): ApprovalDeps {
     }),
     // Issue 625: an agent asks to add or remove a test box; the person allows.
     ...(() => {
-      const box = gateBoxOps({ store: () => gates() });
+      const box = gateBoxOps({
+        store: () => gates(),
+        personal: isPersonalInstall,
+      });
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
@@ -5244,6 +5249,12 @@ function approvalDeps(): ApprovalDeps {
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
       refreshing: terminalHostRefreshing,
+      personal: isPersonalInstall,
+      // Issue 1403: any agent mid-turn (or a background job it started).
+      turnsRunning: async () => {
+        const d = agentWebDeps();
+        return (await busyAgentHolds(d, await runningAgentIds(d))).length > 0;
+      },
       waitSeconds: () => {
         try {
           return readSessionsConfig().hostRestartWaitSeconds;
@@ -5325,16 +5336,9 @@ function approvalDeps(): ApprovalDeps {
       const user = readUserConfig();
       // Den Builder's call (issue 1391): an explicit self_update: ask is
       // the person's say on a restart, on a personal install too.
-      if (action === "den_restart") {
-        let explicit = true;
-        try {
-          explicit = explicitRestartAsk(readServerAgentConfig());
-        } catch {
-          explicit = true;
-        }
-        if (explicit)
-          return { kind: "ask", from: "server_agent.self_update: ask" };
-      }
+      // Issue 1403: den_update follows server_agent.self_update, too.
+      if (selfUpdateAsks(action, readServerAgentConfig))
+        return { kind: "ask", from: "server_agent.self_update: ask" };
       return policyFor(action, {
         widens,
         mode: installModeOf(user),
@@ -5546,6 +5550,7 @@ function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
       legacyAgentIds(listAgentRecords(getStateDir()), readAgentsConfig())
         .length,
     turnOn: () => setUserSandboxOn(),
+    personal: isPersonalInstall,
   });
 }
 
@@ -5621,6 +5626,14 @@ function denForCaps(): DenConfig {
     return readDenConfig();
   } catch {
     return {} as DenConfig;
+  }
+}
+/** Issue 1403: the install is personal; a throw means strict. */
+function isPersonalInstall(): boolean {
+  try {
+    return installModeOf(readUserConfig()) === "personal";
+  } catch {
+    return false;
   }
 }
 /** Issue 1391: the install's mode (den.yml and user.yml); never throws. */
