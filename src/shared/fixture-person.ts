@@ -328,7 +328,18 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/workspaces\/create$/],
   ["POST", /^\/api\/workspaces$/],
   ["DELETE", /^\/api\/workspaces$/],
+  // Issue 1391 (the bed's 573): checks posted manifest text; writes
+  // nothing (route-classes.ts: "validates posted content (no write)").
+  ["POST", /^\/api\/manifest\/validate$/],
 ];
+
+/**
+ * Issue 1391 (the bed's 542): GETs a fixture session may make though the
+ * route table doesn't class them readonly. /api/github/repos reads the
+ * person's repo list through gh (classed for gh's sign-in and quota); it
+ * writes nothing. A fixture session exists only on a test install.
+ */
+export const FIXTURE_GETS: readonly RegExp[] = [/^\/api\/github\/repos$/];
 
 /**
  * Reads never open to a fixture session (or, issue 796, an agent's view),
@@ -368,7 +379,8 @@ export function fixtureScopeRefusal(
           ? null
           : refused
         : null;
-    if (cls !== "readonly") return refused;
+    if (cls !== "readonly" && !FIXTURE_GETS.some((re) => re.test(pathname)))
+      return refused;
     if (FIXTURE_READ_DENY.some((re) => re.test(pathname))) return refused;
     return null;
   }
