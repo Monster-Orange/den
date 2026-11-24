@@ -19,11 +19,14 @@
 //      token, its session is new, and it is no longer out of date).
 //   2. job "job", with the job's command (the sleep) and its minutes; it
 //      is not restarted: the same session a few seconds on.
-//   3. On the Agents page (one browser read), job's row Restart shows the
-//      answer under the row (data-rs-state "job", the command), with
-//      Restart now.
-//   4. Restart now (the row's button, else the agent route's when: now)
-//      ends the job and restarts it: a new session, and the sleep is gone.
+//   3. The Agents page (one browser read), on the bed's own Den, since a
+//      bed browser can't reach den2's loopback: the check's own stub agent
+//      there, with its own background job and made out of date the same
+//      way. Its row's Restart (that one agent) shows the answer under the
+//      row (data-rs-state "job", the command) with Restart now, which
+//      restarts it and ends its job. Nothing else on the bed is touched.
+//   4. On den2, Restart now (the agent route's when: now) ends the job and
+//      restarts it: a new session, and the sleep is gone.
 //
 // Every row skips by name while the bed lacks what it needs (den2, the
 // stub's /bg verb, a transcript Den can read). Teardown stops the job,
@@ -229,83 +232,120 @@ export async function setup(ctx) {
   return s;
 }
 
-/** A page on den2, signed in by den2's own login link (else signedIn). */
-async function den2Page(ctx, d2) {
-  const which = ctx.browser ?? "chromium";
-  const width = ctx.width ?? 1280;
-  if (d2.loginLink && d2.browsers) {
-    const link = d2.loginLink({ origin: d2.url });
-    const b = await d2.browsers(which);
-    const c = await b.newContext({
-      viewport: { width, height: 900 },
-      ignoreHTTPSErrors: true,
+const BED_WS = "proj-gate";
+const PAGE_AGENT = "g1407-page";
+const PAGE_JOB = "g1407p";
+let PAGE_STARTED = false;
+
+/** Whether a background shell named `name` (the stub's /bg) still runs. */
+function jobAliveNamed(name) {
+  try {
+    execFileSync("pgrep", ["-f", `snapshot-zsh-[0-9]+-${name}\\.sh`], {
+      stdio: "ignore",
     });
-    const page = await c.newPage();
-    await page.goto(link, { waitUntil: "load", timeout: 60000 });
-    await page
-      .waitForURL((u) => !/\/auth\b/.test(u.pathname), { timeout: 30000 })
-      .catch(() => {});
-    return { ctx: c, page, how: "login-link" };
+    return true;
+  } catch {
+    return false;
   }
-  const o = await d2.signedIn(which, width);
-  return { ...o, how: "signedIn" };
+}
+
+/** The bed's own Den's state folder, as readBed reads it. */
+function bedHome(ctx) {
+  return (
+    ctx.o?.denHome ||
+    path.join(ctx.o?.home || process.env.HOME || "", ".den-gate")
+  );
+}
+
+/** Its record's denVersion set to an older Den's, on the bed's own Den. */
+function makeOldOnBed(ctx, id) {
+  const f = path.join(bedHome(ctx), "agents", `${id}.json`);
+  try {
+    const rec = JSON.parse(fs.readFileSync(f, "utf8"));
+    rec.denVersion = OLD;
+    fs.writeFileSync(f, JSON.stringify(rec, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Clause 3 on the bed's own Den: a stub agent whose turn ended with a
+ * background shell, out of date; its row's Restart on the Agents page.
+ * What the row shows, then its Restart now.
+ */
+async function pageRow(ctx) {
+  const r = {};
+  const a = ctx.agent(PAGE_AGENT, { workspace: BED_WS });
+  if (!a.line) return { skip: "needs-stub-line" };
+  r.start = a.start("tester")?.code ?? null;
+  PAGE_STARTED = true;
+  if ((await a.running(30000)) == null) return { ...r, fail: "didn't start" };
+  await ctx.sleep(2000);
+  r.transcript = await endTurn(ctx, a, PAGE_AGENT, "Done for now.");
+  if (!r.transcript) return { ...r, skip: "needs-transcript" };
+  a.line(`/bg ${JOB_S} ${PAGE_JOB}`);
+  await ctx.sleep(2000);
+  await endTurn(ctx, a, PAGE_AGENT, "Started the watcher in the background.");
+  await ctx.sleep(2000);
+  if (!jobAliveNamed(PAGE_JOB)) return { ...r, skip: "needs-background-job" };
+  if (!makeOldOnBed(ctx, PAGE_AGENT))
+    return { ...r, fail: "couldn't mark it out of date" };
+  const before = parse(ctx.readBed(`state:agents/${PAGE_AGENT}.json`))?.session
+    ?.id;
+  const p = await ctx.page.context().newPage();
+  try {
+    await ctx.goto(p, "/agents");
+    const row = `#agl .agst[data-agent="${PAGE_AGENT}"]`;
+    const btn = `${row} [data-act="tools-restart"]`;
+    r.rowSeen = await p
+      .locator(btn)
+      .waitFor({ timeout: 20000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!r.rowSeen) return r;
+    await p.click(btn);
+    const ans = `${row} [data-rs-agent="${PAGE_AGENT}"]`;
+    await p
+      .locator(ans)
+      .waitFor({ timeout: 20000 })
+      .catch(() => {});
+    r.state = await p.getAttribute(ans, "data-rs-state").catch(() => null);
+    r.line = clean(
+      (await p.textContent(`${ans} [data-rs-line]`).catch(() => "")) ?? "",
+    ).slice(0, 200);
+    r.now = await p.locator(`${ans} [data-rs-now]`).count();
+    try {
+      await ctx.shotOf?.(p, "1407-row-job");
+    } catch {
+      /* a missing screenshot fails nothing */
+    }
+    if (r.now === 1) {
+      await p.click(`${ans} [data-rs-now]`);
+      r.nowMs = await ctx.until(() => {
+        const id = parse(ctx.readBed(`state:agents/${PAGE_AGENT}.json`))
+          ?.session?.id;
+        return !!id && id !== before && !jobAliveNamed(PAGE_JOB);
+      }, 60000);
+    }
+  } finally {
+    await p.close().catch(() => {});
+  }
+  return r;
 }
 
 export async function run(ctx, s) {
   const out = { ...s };
   if (s?.skip || s?.fail || !D2) return out;
   const d2 = D2;
-  // Clauses 3 and 4: the Agents page on den2.
-  if ((d2.loginLink && d2.browsers) || d2.signedIn) {
-    // A page signed in to den2 as its own fixture person, never the bed's:
-    // den2's ctx keeps the bed's state folder, so signedIn() alone would
-    // carry the bed's cookies. Its own login link first.
-    let opened = null;
-    try {
-      opened = await den2Page(ctx, d2);
-      out.signIn = opened.how;
-      const p = opened.page;
-      await d2.goto(p, "/agents");
-      const row = `#agl .agst[data-agent="${JOB}"]`;
-      const btn = `${row} [data-act="tools-restart"]`;
-      out.rowSeen = await p
-        .locator(btn)
-        .waitFor({ timeout: 20000 })
-        .then(() => true)
-        .catch(() => false);
-      if (out.rowSeen) {
-        await p.click(btn);
-        const ans = `${row} [data-rs-agent="${JOB}"]`;
-        await p
-          .locator(ans)
-          .waitFor({ timeout: 20000 })
-          .catch(() => {});
-        out.pageState = await p
-          .getAttribute(ans, "data-rs-state")
-          .catch(() => null);
-        out.pageLine =
-          (await p.textContent(`${ans} [data-rs-line]`).catch(() => "")) ?? "";
-        out.pageNow = await p.locator(`${ans} [data-rs-now]`).count();
-        try {
-          await ctx.shotOf?.(p, "1407-row-job");
-        } catch {
-          /* a missing screenshot fails nothing */
-        }
-        if (out.pageNow === 1) {
-          await p.click(`${ans} [data-rs-now]`);
-          out.nowBy = "page";
-        }
-      }
-    } catch (e) {
-      out.pageError = msg(e);
-    } finally {
-      await opened?.ctx?.close().catch(() => {});
-    }
-  }
-  if (!out.nowBy) {
-    out.nowStatus = await restartNowApi(d2, JOB).catch(() => null);
-    out.nowBy = "api";
-  }
+  // Clause 3: the Agents page, on the bed's own Den (a bed browser can't
+  // reach den2, which listens on loopback only). Its own stub agent only,
+  // with its own background job, made out of date the same way; the row's
+  // own Restart (one agent, the person's page), never the bulk one.
+  if (ctx.page) out.page = await pageRow(ctx).catch((e) => ({ error: msg(e) }));
+  out.nowStatus = await restartNowApi(d2, JOB).catch(() => null);
+  out.nowBy = "api";
   out.nowMs = await ctx.until(() => {
     const id = sessionOf(d2, JOB);
     return !!id && id !== s.before?.job?.session && !jobAlive();
@@ -315,7 +355,21 @@ export async function run(ctx, s) {
   return out;
 }
 
-export async function teardown() {
+export async function teardown(ctx) {
+  if (PAGE_STARTED) {
+    PAGE_STARTED = false;
+    try {
+      const a = ctx.agent(PAGE_AGENT, { workspace: BED_WS });
+      try {
+        a.line?.("/bg-stop");
+      } catch {
+        /* its exit ends its jobs too */
+      }
+      if (a.state()) a.remove();
+    } catch {
+      /* none */
+    }
+  }
   const d = D2;
   D2 = null;
   IDLE_RESUME = null;
@@ -390,22 +444,33 @@ export function expect(cells) {
       r.jobAliveAfter === true,
     detail: `answer ${JSON.stringify(job ?? null)}; same session after 4 s ${r.jobSameSession}; job still running ${r.jobAliveAfter}`,
   };
-  const row3 =
-    r.rowSeen === undefined
+  // Clause 3 ran on the bed's own Den (pageRow): its own stub agent.
+  const pg = r.page ?? null;
+  const row3 = !pg
+    ? {
+        clause: clauses[2],
+        ok: null,
+        skip: "needs-page",
+        detail: "the bed gave this cell no browser page",
+      }
+    : pg.skip
       ? {
           clause: clauses[2],
           ok: null,
-          skip: "needs-page",
-          detail: "den2 gives no signed-in page (signedIn, goto)",
+          skip: pg.skip,
+          detail: `on the bed's own Den: ${pg.skip}`,
         }
       : {
           clause: clauses[2],
           ok:
-            r.rowSeen === true &&
-            r.pageState === "job" &&
-            /sleep 270/.test(String(r.pageLine)) &&
-            r.pageNow === 1,
-          detail: `row seen ${r.rowSeen}; state ${r.pageState}; line ${JSON.stringify(r.pageLine)}; Restart now ${r.pageNow}; signed in by ${r.signIn}${r.pageError ? `; ${clean(r.pageError)}` : ""}`,
+            !pg.error &&
+            !pg.fail &&
+            pg.rowSeen === true &&
+            pg.state === "job" &&
+            /sleep 270/.test(String(pg.line)) &&
+            pg.now === 1 &&
+            pg.nowMs != null,
+          detail: `on the bed's own Den: row seen ${pg.rowSeen}; state ${pg.state}; line ${JSON.stringify(pg.line ?? "")}; Restart now ${pg.now}, then restarted with the job gone in ${pg.nowMs} ms${pg.fail ? `; ${pg.fail}` : ""}${pg.error ? `; ${clean(pg.error)}` : ""}`,
         };
   const row4 = {
     clause: clauses[3],

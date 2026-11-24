@@ -54,11 +54,14 @@ const good = {
   idleAfter: { session: "s3", sameConversation: true, denVersion: "9.9.9" },
   jobSameSession: true,
   jobAliveAfter: true,
-  rowSeen: true,
-  pageState: "job",
-  pageLine: "g1407-job: waiting: a background job (sleep 270; :, 0 min).",
-  pageNow: 1,
-  nowBy: "page",
+  page: {
+    rowSeen: true,
+    state: "job",
+    line: "g1407-page: waiting: a background job (sleep 270; :, 0 min).",
+    now: 1,
+    nowMs: 2000,
+  },
+  nowBy: "api",
   nowMs: 3000,
   jobAliveEnd: false,
 };
@@ -67,10 +70,10 @@ describe("gate/1407.mjs: what it writes", () => {
   it("a page error's sign-in link shows without its code", () => {
     const rows3 = rows({
       ...good,
-      pageState: null,
-      pageNow: 0,
-      pageError:
-        "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:5/auth?fixture=SECRETCODE123&next=%2F",
+      page: {
+        error:
+          "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:5/auth?fixture=SECRETCODE123&next=%2F",
+      },
     });
     expect(JSON.stringify(rows3).includes("SECRETCODE123")).toBe(false);
   });
@@ -101,10 +104,12 @@ describe("gate/1407.mjs: a restart answers per agent", () => {
         good.agents[0],
         { id: "g1407-job", workspace: "gate-1407", state: "turn" },
       ],
-      pageState: "turn",
-      pageLine: "g1407-job: restarts when its turn ends",
-      pageNow: 0,
-      nowBy: "api",
+      page: {
+        rowSeen: true,
+        state: "turn",
+        line: "g1407-page: restarts when its turn ends",
+        now: 0,
+      },
     };
     expect(rows(silent).map((r) => r.ok)).toEqual([true, false, false, true]);
   });
@@ -115,6 +120,12 @@ describe("gate/1407.mjs: a restart answers per agent", () => {
       idleAfter: { ...good.idleAfter, sameConversation: false },
     };
     expect(rows(lost)[0].ok).toBe(false);
+  });
+
+  it("the bed's page has no background job: only row 3 skips, by name", () => {
+    const r = rows({ ...good, page: { skip: "needs-background-job" } });
+    expect(r.map((x) => x.ok)).toEqual([true, true, null, true]);
+    expect(r[2].skip).toBe("needs-background-job");
   });
 
   it("no den2, or no background shell: every row skips by name", () => {
