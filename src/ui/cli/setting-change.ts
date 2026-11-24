@@ -95,6 +95,8 @@ export interface SettingKind {
  * on this list or WIDENING_SETTINGS).
  */
 export const NARROW_SETTINGS: readonly string[] = [
+  // Issue 1391: judged by its value (WIDENS_AT): to strict is routine.
+  "install_mode",
   "cli_tabs",
   "log_window_lines",
   "panes.reconnect_seconds",
@@ -183,8 +185,6 @@ export const NARROW_SETTINGS: readonly string[] = [
  */
 export const WIDENING_SETTINGS: readonly string[] = [
   ...USER_ONLY_WIDENING,
-  // Issue 1391: the install's mode (personal opens it up).
-  "install_mode",
   // Vision's ruling (issue 1391): Settings' own fields an agent may ask for.
   "agents.default_mode",
   "server_agent.self_update",
@@ -344,8 +344,19 @@ export function matchesSetting(pattern: string, key: string): boolean {
  * strict install. gate.browser_requires_container 0 runs browsers on the
  * host, not in a container. On personal installs the gate stays routine.
  */
-const WIDENS_AT: readonly [key: string, widens: (v: unknown) => boolean][] = [
-  ["gate.browser_requires_container", (v) => v === 0 || v === false],
+const WIDENS_AT: readonly [
+  key: string,
+  widens: (v: unknown) => boolean,
+  modes: readonly InstallMode[],
+][] = [
+  [
+    "gate.browser_requires_container",
+    (v) => v === 0 || v === false,
+    ["strict"],
+  ],
+  // Issue 1391: to strict is routine; anything else (personal, or back to
+  // the default) opens the install up: the person's Allow.
+  ["install_mode", (v) => v !== "strict", ["personal", "strict"]],
 ];
 
 export function settingKind(
@@ -369,11 +380,13 @@ export function settingKind(
     (mode === "personal" && is(ROUTINE_ON_PERSONAL)) || is(["gate.**"])
       ? true
       : !is(WIDENING_SETTINGS) && is(NARROW_SETTINGS);
-  const widensAt =
-    mode === "strict" &&
-    value.length > 0 &&
-    WIDENS_AT.some(([k, w]) => k === key && w(value[0]));
-  const widens = category === "agent_powers" || !routine || widensAt;
+  // A value rule, given the value, decides for its key (and modes).
+  const rule = value.length
+    ? WIDENS_AT.find(([k, , modes]) => k === key && modes.includes(mode))
+    : undefined;
+  const widens = rule
+    ? rule[1](value[0])
+    : category === "agent_powers" || !routine;
   const restart = is(AT_START) ? ("server" as const) : undefined;
   return {
     category,
@@ -1088,13 +1101,18 @@ export function checkSettingChange(
       }
     }
     const text = doc.toString({ lineWidth: 0 });
-    // Issue 1391: the mode the install is in now (a bad value: strict).
-    let mode: InstallMode = "strict";
-    try {
-      mode = readInstallMode(before as UserConfig);
-    } catch {
-      mode = "strict";
-    }
+    // Issue 1391: the mode the install is in now (never throws; a bad
+    // value in either file is strict).
+    const den = d.denConfig();
+    const mode: InstallMode = readInstallMode(before as UserConfig, den);
+    if (
+      key === "install_mode" &&
+      value !== "strict" &&
+      readInstallMode({}, den) === "strict"
+    )
+      return no(
+        "The distribution's den.yml sets install_mode: strict, and a person can't loosen it: this change would do nothing.",
+      );
     const kind = settingKind(key, mode, value);
     // Issue 1371 Part 2: the person's choice for its category. Never
     // refuses here, naming the row that changes it.

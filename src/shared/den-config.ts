@@ -197,6 +197,11 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  /**
+   * Issue 1391: the distribution's default install mode (its den.yml):
+   * strict here can't be loosened by a person (see resolveInstallMode).
+   */
+  install_mode?: unknown;
   /** Secrets backend strategy — see src/shared/secrets. */
   secrets?: SecretsConfig;
   /** Environments enabled for this deployment. */
@@ -1500,6 +1505,8 @@ export function readDenConfig(): DenConfig {
       // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
+      // Issue 1391: the distribution's den.yml, else this file.
+      install_mode: denYmlKey("install_mode") ?? parsed?.install_mode,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -2238,22 +2245,51 @@ function sandboxValue(
 export type InstallMode = "personal" | "strict";
 export const INSTALL_MODES: readonly InstallMode[] = ["personal", "strict"];
 
-/** user.yml's install_mode, checked; personal when unset. */
-export function readInstallMode(u: UserConfig): InstallMode {
-  const v = u.install_mode;
-  if (v === undefined || v === null) return "personal";
-  if (typeof v === "string" && (INSTALL_MODES as string[]).includes(v))
-    return v as InstallMode;
-  throw new Error(
-    `install_mode: personal or strict (got ${JSON.stringify(v)})`,
-  );
+/** Which file set the install's mode, for Doctor. */
+export type InstallModeFrom = "den.yml" | "user.yml" | "default";
+
+/**
+ * One file's install_mode. Fails closed: unset is undefined (no say), and
+ * "personal" is personal; null, a typo or any other value is strict.
+ */
+function installModeValue(v: unknown): InstallMode | undefined {
+  if (v === undefined) return undefined;
+  return v === "personal" ? "personal" : "strict";
+}
+
+/**
+ * Issue 1391: the install's mode and which file set it. The distribution's
+ * den.yml sets the default (unset: personal); the person's user.yml may
+ * choose; strict in either wins, so a person can't loosen a distribution's
+ * strict. Never throws: a bad value in either file is strict.
+ */
+export function resolveInstallMode(
+  u: UserConfig,
+  d: Pick<DenConfig, "install_mode"> = {},
+): { mode: InstallMode; from: InstallModeFrom } {
+  const den = installModeValue(d.install_mode);
+  const mine = installModeValue(u.install_mode);
+  if (den === "strict") return { mode: "strict", from: "den.yml" };
+  if (mine) return { mode: mine, from: "user.yml" };
+  if (den) return { mode: den, from: "den.yml" };
+  return { mode: "personal", from: "default" };
+}
+
+/** The install's mode (resolveInstallMode); never throws. */
+export function readInstallMode(
+  u: UserConfig,
+  d: Pick<DenConfig, "install_mode"> = {},
+): InstallMode {
+  return resolveInstallMode(u, d).mode;
 }
 
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
-  /** Issue 1391: the install's mode (user.yml install_mode). */
+  /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
+  /** Issue 1391: which file set it. */
+  modeFrom?: InstallModeFrom;
   /**
    * Issue 936: agents' sessions start in the OS sandbox, Den's state
    * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
@@ -2503,7 +2539,9 @@ export function readAgentsConfig(
     () => {
       // Issue 1391: on a personal install the sandbox is off unless
       // user.yml sets it; strict keeps it on. A value set always wins.
-      out.mode = readInstallMode(u);
+      const m = resolveInstallMode(u, c);
+      out.mode = m.mode;
+      out.modeFrom = m.from;
       if (out.mode === "personal") out.sandbox = false;
       applyUserSandbox(out, u.agents);
     },
