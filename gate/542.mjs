@@ -78,7 +78,8 @@ async function lookPage(ctx) {
     const html = await r.text().catch(() => "");
     return {
       status: r.status,
-      shell: html.includes('<script src="/shell.js"></script>'),
+      // An installed Den stamps its asset URLs (asset-stamp.ts: ?v=<version>).
+      shell: /<script src="\/shell\.js(\?v=[^"]*)?"><\/script>/.test(html),
       apiOff: html.includes('data-api-off="1"'),
       signin: html.includes("signin_required"),
     };
