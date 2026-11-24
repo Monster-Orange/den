@@ -260,6 +260,8 @@ import {
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  readInstallMode,
+  type InstallMode,
   mergeUserConfig,
   type UserConfig,
   writeUserConfig,
@@ -4782,6 +4784,7 @@ type ApprovalDeps = {
     workspace: string | undefined,
   ) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
+  installMode: () => InstallMode;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
@@ -5311,10 +5314,14 @@ function approvalDeps(): ApprovalDeps {
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches
     // (approvals.watch) and pinned to the rail (their favorites).
+    // Issue 1391: personal (the default) or strict, read per ask.
+    installMode: () => readInstallMode(readUserConfig()),
     policy: (action, project, widens, ask) => {
       const user = readUserConfig();
       return policyFor(action, {
         widens,
+        mode: readInstallMode(user),
+        ...(ask?.category ? { setting: { category: ask.category } } : {}),
         areas: ask?.areas,
         install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,

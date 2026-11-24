@@ -27,14 +27,26 @@ import * as path from "path";
 import * as yaml from "yaml";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import {
+  configuredRuntimeCatalog,
   readAgentsConfig,
   readDenConfig,
+  readInstallMode,
   readMcpConfig,
   USER_ONLY_WIDENING,
   type DenConfig,
+  type InstallMode,
   type UserConfig,
 } from "../../shared/den-config.js";
-import { readPolicySetting } from "../../shared/approval-policy.js";
+import {
+  readPolicySetting,
+  settingChoice,
+  type SettingCategory,
+} from "../../shared/approval-policy.js";
+import {
+  isKnownEditorKey,
+  isKnownTerminalKey,
+  SUPPORTED_LANGUAGES,
+} from "../server/editor-manager.js";
 import { plainText } from "../../shared/agents/sandbox-set.js";
 import {
   line,
@@ -54,8 +66,7 @@ const SHOWN_MAX = 200;
 export const SETTING_BACKUPS_KEPT = 20;
 
 export type SettingSeverity = "low" | "medium" | "high";
-/** Part 2 adds more; "agent_powers" always asks the person. */
-export type SettingCategory = "agent_powers" | "settings";
+export type { SettingCategory };
 
 export interface SettingKind {
   category: SettingCategory;
@@ -145,6 +156,8 @@ export const NARROW_SETTINGS: readonly string[] = [
  */
 export const WIDENING_SETTINGS: readonly string[] = [
   ...USER_ONLY_WIDENING,
+  // Issue 1391: the install's mode (personal opens it up).
+  "install_mode",
   "approvals",
   "approvals.**",
   "editor",
@@ -172,6 +185,86 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "agent_context.instruction_share_percent",
   "agent_context.context_tokens",
 ];
+
+/**
+ * Issue 1391 (Vision): on a personal install the programs agents and the
+ * person use are routine: editors, terminals, the runtimes' paths. Each
+ * is still checked as Settings checks it (a known editor or terminal, an
+ * absolute path to a program).
+ */
+export const ROUTINE_ON_PERSONAL: readonly string[] = [
+  "editor",
+  "terminal",
+  "editor_overrides",
+  "editor_overrides.*",
+  "agents.runtimes.**",
+];
+
+/**
+ * Issue 1371 Part 2: each key's category, the first pattern that matches;
+ * every other key is a limit (a timeout, an interval, a cap).
+ */
+const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
+  [
+    "agent_powers",
+    [
+      "install_mode",
+      "agents.sandbox",
+      "agents.sandbox_sockets",
+      "agents.*.sandbox",
+      "agents.*.grants",
+      "approvals",
+      "approvals.**",
+      "mcp.**",
+      "secrets.**",
+      "held_writes.**",
+      "agents.issue_writes",
+      "agents.issue_writes_per_hour",
+      "agents.keep_running_after_logout",
+      "services.restore_on_boot",
+      "local_dev",
+    ],
+  ],
+  ["network", ["web.**", "embed.**"]],
+  [
+    "integrations",
+    [
+      "hub.**",
+      "github.**",
+      "editor",
+      "terminal",
+      "editor_overrides",
+      "editor_overrides.*",
+      "agents.runtimes.**",
+      "agents.runtime_catalog",
+      "agents.runtime_catalog.**",
+      "reports.**",
+      "feedback.**",
+      "agent_hooks.**",
+    ],
+  ],
+  [
+    "look",
+    ["cli_tabs", "log_window_lines", "shell.**", "editor_open", "alerts.**"],
+  ],
+];
+
+const SEVERITY: Readonly<Record<SettingCategory, SettingSeverity>> = {
+  limits: "low",
+  look: "low",
+  integrations: "medium",
+  network: "high",
+  agent_powers: "high",
+};
+
+/** The Settings › Approvals row's name for each category (en). */
+export const CATEGORY_LABEL: Readonly<Record<SettingCategory, string>> = {
+  limits: "Limits and performance",
+  look: "Look and layout",
+  integrations: "Integrations",
+  network: "Network and access",
+  agent_powers: "Agent powers",
+};
 
 /** Keys read only when the server starts (`web up`, the launcher). */
 const AT_START: readonly string[] = [
@@ -204,27 +297,28 @@ export function matchesSetting(pattern: string, key: string): boolean {
 }
 
 /** The key's category and severity: the one place either is decided. */
-export function settingKind(key: string): SettingKind {
-  // Fails closed: routine only when NARROW_SETTINGS names it.
-  const widens =
-    WIDENING_SETTINGS.some((p) => matchesSetting(p, key)) ||
-    !NARROW_SETTINGS.some((p) => matchesSetting(p, key));
-  const restart = AT_START.some((p) => matchesSetting(p, key))
-    ? ("server" as const)
-    : undefined;
-  return widens
-    ? {
-        category: "agent_powers",
-        severity: "high",
-        widens: true,
-        ...(restart ? { restart } : {}),
-      }
-    : {
-        category: "settings",
-        severity: "medium",
-        widens: false,
-        ...(restart ? { restart } : {}),
-      };
+export function settingKind(
+  key: string,
+  /** Issue 1391: the install's mode; strict when not given. */
+  mode: InstallMode = "strict",
+): SettingKind {
+  const is = (list: readonly string[]) =>
+    list.some((p) => matchesSetting(p, key));
+  const category = CATEGORY_OF.find(([, ps]) => is(ps))?.[0] ?? "limits";
+  // Fails closed: routine only when NARROW_SETTINGS names it (or, on a
+  // personal install, ROUTINE_ON_PERSONAL). Agent powers always widen.
+  const routine =
+    mode === "personal" && is(ROUTINE_ON_PERSONAL)
+      ? true
+      : !is(WIDENING_SETTINGS) && is(NARROW_SETTINGS);
+  const widens = category === "agent_powers" || !routine;
+  const restart = is(AT_START) ? ("server" as const) : undefined;
+  return {
+    category,
+    severity: SEVERITY[category],
+    widens,
+    ...(restart ? { restart } : {}),
+  };
 }
 
 type Patch = { ok: true } | { ok: false; error: string; unknown?: true };
@@ -307,30 +401,161 @@ const SETTING_KEYS: readonly {
         );
     },
   },
-  {
-    key: "secrets.**",
-    check: () => undefined,
-    refuse: "where secrets come from is set by the person, in Settings",
-  },
+  // Issue 1391: where secrets come from, as references only: never a value.
+  { key: "secrets.**", check: (u) => checkSecretRefs(u.secrets) },
   {
     key: "agents.runtime_catalog",
-    check: () => undefined,
-    refuse: "the runtimes agents run as are set by the person, in Settings",
+    check: (u, d) => {
+      readAgentsConfig(d, u);
+      configuredRuntimeCatalog([], () => u);
+    },
   },
   {
     key: "agents.runtime_catalog.**",
-    check: () => undefined,
-    refuse: "the runtimes agents run as are set by the person, in Settings",
+    check: (u, d) => {
+      readAgentsConfig(d, u);
+      configuredRuntimeCatalog([], () => u);
+    },
   },
+  // Issue 1391: a runtime's path, an absolute path to a program.
   {
     key: "agents.runtimes.**",
-    check: () => undefined,
-    refuse: "the runtimes agents run as are set by the person, in Settings",
+    check: (u) => checkRuntimes(u.agents?.runtimes),
   },
 ];
 
+/** A short name: a word, a path-like name or a FLAT_KEY; one line. */
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 ._/@:-]{0,199}$/;
+const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]{0,127}$/;
+/** Where a secret comes from: a reference, never the secret itself. */
+const SECRET_SOURCE_RE =
+  /^(env:[A-Z_][A-Z0-9_]{0,127}|file:\/\S{1,500}|keychain:[^\s]{1,200}|op:\/\/\S{1,500})$/;
+const NOT_A_VALUE =
+  "a reference (env:NAME, file:/path, keychain:service or op://vault/item/field), never the secret itself: did you mean a reference?";
+
+/**
+ * Issue 1391: secrets.* as references only (the card shows what is set, so
+ * a value would be shown). Each error names the key, never the value.
+ */
+function checkSecretRefs(raw: unknown): void {
+  if (raw === undefined || raw === null) return;
+  if (!isObj(raw)) throw new Error("secrets: a mapping");
+  const s = raw as Record<string, unknown>;
+  const name = (v: unknown, key: string) => {
+    if (v === undefined || v === null) return;
+    if (typeof v !== "string" || !NAME_RE.test(v))
+      throw new Error(`${key}: a name (one line), or ${NOT_A_VALUE}`);
+  };
+  for (const k of Object.keys(s))
+    if (
+      ![
+        "provider",
+        "required",
+        "doppler",
+        "onepassword",
+        "keys",
+        "refs",
+      ].includes(k)
+    )
+      throw new Error(`secrets.${k} is not a setting Den reads`);
+  if (
+    s.provider !== undefined &&
+    s.provider !== null &&
+    !["none", "doppler", "1password", "env"].includes(s.provider as string)
+  )
+    throw new Error("secrets.provider: none, doppler, 1password or env");
+  if (
+    s.required !== undefined &&
+    s.required !== null &&
+    typeof s.required !== "boolean"
+  )
+    throw new Error("secrets.required: true or false");
+  for (const [blk, keys] of [
+    ["doppler", ["project", "config"]],
+    ["onepassword", ["account", "token"]],
+  ] as const) {
+    const b = s[blk];
+    if (b === undefined || b === null) continue;
+    if (!isObj(b)) throw new Error(`secrets.${blk}: a mapping`);
+    for (const k of Object.keys(b)) {
+      if (!(keys as readonly string[]).includes(k))
+        throw new Error(`secrets.${blk}.${k} is not a setting Den reads`);
+      const v = (b as Record<string, unknown>)[k];
+      if (blk === "onepassword" && k === "token") {
+        if (
+          v !== undefined &&
+          v !== null &&
+          (typeof v !== "string" || !SECRET_SOURCE_RE.test(v))
+        )
+          throw new Error(`secrets.onepassword.token: ${NOT_A_VALUE}`);
+      } else name(v, `secrets.${blk}.${k}`);
+    }
+  }
+  if (s.keys !== undefined && s.keys !== null) {
+    if (!isObj(s.keys))
+      throw new Error("secrets.keys: a mapping of vault/item/field to a NAME");
+    for (const [k, v] of Object.entries(s.keys)) {
+      name(k, "secrets.keys");
+      if (typeof v !== "string" || !ENV_NAME_RE.test(v))
+        throw new Error(`secrets.keys.${k}: an env var's NAME, ${NOT_A_VALUE}`);
+    }
+  }
+  if (s.refs !== undefined && s.refs !== null) {
+    if (!isObj(s.refs))
+      throw new Error(
+        "secrets.refs: a mapping of name to { vault, item, field }",
+      );
+    for (const [k, v] of Object.entries(s.refs)) {
+      if (typeof v === "string") {
+        if (!SECRET_SOURCE_RE.test(v))
+          throw new Error(`secrets.refs.${k}: ${NOT_A_VALUE}`);
+        continue;
+      }
+      if (!isObj(v))
+        throw new Error(`secrets.refs.${k}: { vault, item, field }`);
+      for (const [f, x] of Object.entries(v)) {
+        if (!["vault", "item", "field"].includes(f))
+          throw new Error(`secrets.refs.${k}.${f}: vault, item or field only`);
+        name(x, `secrets.refs.${k}.${f}`);
+      }
+    }
+  }
+}
+
+/** Issue 1391: agents.runtimes.<id>.bin, an absolute path to a program. */
+function checkRuntimes(raw: unknown): void {
+  if (raw === undefined || raw === null) return;
+  if (!isObj(raw))
+    throw new Error("agents.runtimes: a mapping of runtime to { bin }");
+  for (const [id, r] of Object.entries(raw)) {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(id))
+      throw new Error(`agents.runtimes.${cut(id)}: not a runtime's id`);
+    if (r === null) continue;
+    if (!isObj(r) || Object.keys(r).some((k) => k !== "bin"))
+      throw new Error(`agents.runtimes.${id}: { bin: /path/to/program }`);
+    const bin = (r as Record<string, unknown>).bin;
+    if (bin === undefined || bin === null) continue;
+    if (typeof bin !== "string" || !path.isAbsolute(bin))
+      throw new Error(
+        `agents.runtimes.${id}.bin: an absolute path to a program`,
+      );
+    let ok = false;
+    try {
+      const st = fs.statSync(bin);
+      ok = st.isFile() && (st.mode & 0o111) !== 0;
+    } catch {
+      ok = false;
+    }
+    if (!ok)
+      throw new Error(
+        `agents.runtimes.${id}.bin: no program there (${cut(bin)})`,
+      );
+  }
+}
+
 /** `config`'s top-level keys setting_change takes. */
 const TOP_LEVEL = [
+  "install_mode",
   "local_dev",
   "cli_tabs",
   "log_window_lines",
@@ -347,23 +572,39 @@ function patchTopLevel(
 ): Patch | null {
   if (["local_dev", "cli_tabs", "log_window_lines"].includes(key))
     return patchCliRows(user, { [key]: v }, { cli: true });
+  if (key === "install_mode") {
+    if (v !== null && v !== "personal" && v !== "strict")
+      return { ok: false, error: "install_mode: personal or strict, or null" };
+    setPath(user, key, v);
+    return { ok: true };
+  }
+  // Issue 1391: checked as Settings checks them, a known editor or
+  // terminal, by its key (never an arbitrary command).
   if (key === "editor" || key === "terminal") {
-    if (v !== null && (typeof v !== "string" || !v.trim()))
-      return { ok: false, error: `${key} is a command (text), or null` };
+    const known = key === "editor" ? isKnownEditorKey : isKnownTerminalKey;
+    if (v !== null && (typeof v !== "string" || !known(v)))
+      return {
+        ok: false,
+        error: `${key}: one Den knows (as Settings lists them), or null`,
+      };
     setPath(user, key, v);
     return { ok: true };
   }
   if (key === "editor_overrides" || key.startsWith("editor_overrides.")) {
-    const ok = (x: unknown) =>
-      x === null ||
-      (typeof x === "string" && !!x.trim()) ||
-      (key === "editor_overrides" &&
-        isObj(x) &&
-        Object.values(x).every((y) => typeof y === "string" && !!y.trim()));
-    if (!ok(v))
+    const langs = new Set<string>(SUPPORTED_LANGUAGES.map((l) => l.key));
+    const one = (lang: string, x: unknown) =>
+      langs.has(lang) &&
+      (x === null || (typeof x === "string" && isKnownEditorKey(x)));
+    const lang = key.slice("editor_overrides.".length);
+    const ok =
+      key === "editor_overrides"
+        ? v === null ||
+          (isObj(v) && Object.entries(v).every(([l, x]) => one(l, x)))
+        : one(lang, v);
+    if (!ok)
       return {
         ok: false,
-        error: `${key} is ${key === "editor_overrides" ? "a mapping of" : ""} a command (text), or null`,
+        error: `${key}: a language Den knows and an editor it knows (as Settings lists them), or null`,
       };
     setPath(user, key, v);
     return { ok: true };
@@ -522,6 +763,8 @@ export type SettingChangeCheck =
   | {
       ok: true;
       personOnly?: boolean;
+      /** Issue 1371 Part 2: its category, for the approval policy. */
+      category: SettingCategory;
       summary: string;
       params: Record<string, string>;
       details: string[];
@@ -631,7 +874,27 @@ export function checkSettingChange(
       }
     }
     const text = doc.toString({ lineWidth: 0 });
-    const kind = settingKind(key);
+    // Issue 1391: the mode the install is in now (a bad value: strict).
+    let mode: InstallMode = "strict";
+    try {
+      mode = readInstallMode(before as UserConfig);
+    } catch {
+      mode = "strict";
+    }
+    const kind = settingKind(key, mode);
+    // Issue 1371 Part 2: the person's choice for its category. Never
+    // refuses here, naming the row that changes it.
+    let set: ReturnType<typeof readPolicySetting>;
+    try {
+      set = readPolicySetting(before.approvals);
+    } catch {
+      set = undefined; // a bad policy is its own error; the ask still holds
+    }
+    const choice = settingChoice(kind.category, mode, set?.settings);
+    if (choice.choice === "never")
+      return no(
+        `${key} isn't changed by agents: ${CATEGORY_LABEL[kind.category]} is set to Never in Settings › Approvals › Agents changing settings (approvals.settings.${kind.category}). A person changes it there.`,
+      );
     const now = shown(getPath(before, parts));
     const next = value === null ? "Den's default" : shown(stored ?? value);
     const lines: ReviewLine[] = [
@@ -670,6 +933,7 @@ export function checkSettingChange(
     return {
       ok: true,
       ...(kind.widens ? { personOnly: true } : {}),
+      category: kind.category,
       summary: `${key}: ${now} → ${next}`,
       params: {
         key,

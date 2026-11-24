@@ -180,6 +180,16 @@ const KNOWN_TERMINALS: readonly TerminalDef[] = [
 ];
 
 /** JetBrains editors that open via CLI but need special `--line` arg handling. */
+/** Issue 1391: whether `key` is an editor Den knows (Settings' check). */
+export function isKnownEditorKey(key: string): boolean {
+  return KNOWN_EDITORS.some((e) => e.key === key);
+}
+
+/** Issue 1391: whether `key` is a terminal Den knows (Settings' check). */
+export function isKnownTerminalKey(key: string): boolean {
+  return KNOWN_TERMINALS.some((t) => t.key === key);
+}
+
 export const JETBRAINS_EDITORS = new Set(["webstorm", "idea"]);
 
 // ── Supported languages for per-language IDE overrides ───────────────────────
