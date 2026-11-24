@@ -88,7 +88,14 @@ export const JOB_COMMAND_MAX = 80;
  */
 export function jobCommandOf(command: string): string {
   const m = /\beval '((?:[^']|'\\'')*)'/.exec(command);
-  const raw = m ? m[1].replace(/'\\''/g, "'") : command;
+  // No eval: a shell that sources its snapshot first (`sh -c . <snap>;
+  // cmd`, `zsh -c -l source <snap> && cmd`) shows what it runs after it.
+  const raw = m
+    ? m[1].replace(/'\\''/g, "'")
+    : command.replace(
+        /^\S*sh\s+-c\s+(?:-l\s+)?(?:\.|source)\s+\S*shell-snapshots\/\S+\s*(?:;|&&)\s*/,
+        "",
+      );
   // A command line can carry a token (curl -H "Authorization: Bearer …"):
   // redacted before a page or an error shows it.
   const one = redactSecrets(raw)
