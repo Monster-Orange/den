@@ -26,6 +26,8 @@ import {
   operatorStubArgv,
   operatorStubEnv,
 } from "../../../src/shared/test-operator.js";
+import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 
 let s: AgentsPageServer;
 let fx: { cookie: string; csrf: string };
@@ -379,5 +381,111 @@ describe("what the test operator still can't do here", () => {
       { text: "hello" },
     );
     expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+  });
+});
+
+/**
+ * Issue 1414: the test operator may Allow and Undo a held write that one
+ * of the bed's own agents asked for (testBed, issue 943), on this test
+ * install, on loopback. Another agent's: refused. The trail names the test
+ * operator. One started agent: unmarked first, then marked as Den marks
+ * the bed's (the record's testBed).
+ */
+describe("issue 1414: the operator's Allow and Undo", () => {
+  const AGENT = "reviewer";
+  let token = "";
+  const ask = async (key: string, value: number, held: boolean) => {
+    const r = await raw(
+      "POST",
+      "/api/approvals",
+      { authorization: `Bearer ${token}` },
+      {
+        action: "setting_change",
+        args: { key, value, reason: "a live check" },
+        ...(held ? { ask: true, note: "a live check of Allow" } : {}),
+      },
+    );
+    if (r.status >= 300) throw new Error(`${r.status} ${r.body}`);
+    return String(r.json.id ?? "");
+  };
+  const opRow = (verb: string, re: RegExp) =>
+    auditRows().some(
+      (e) =>
+        e.principal === "test:operator" &&
+        e.verb === verb &&
+        re.test(String(e.detail)) &&
+        e.outcome !== "refused",
+    );
+  const markBed = () => {
+    const rec = readRecord(s.stateDir, AGENT);
+    if (!rec) throw new Error("no record");
+    writeRecord(s.stateDir, { ...rec, testBed: true });
+  };
+
+  beforeAll(async () => {
+    // Routine limits run at once on personal: an Undo waits in the bell.
+    const m = await asPerson("POST", "/api/settings", {
+      install_mode: "personal",
+    });
+    expect(m.status).toBe(200);
+    const before = s.made.length;
+    const r = await asPerson("POST", "/api/workspaces/north/agents", {
+      persona: AGENT,
+    });
+    expect(r.status).toBe(200);
+    expect(s.made.length).toBeGreaterThan(before);
+    token = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";
+    expect(token).toBeTruthy();
+  });
+
+  it("an agent Den didn't mark: Allow and Undo refused, and its ask still waits", async () => {
+    const held = await ask("sessions.close_grace_seconds", 7, true);
+    const a = await asOperator("POST", `/api/approvals/${held}/decide`, {
+      decision: "allow",
+    });
+    expect(a.status).toBe(403);
+    // The asker reads its own ask (a person's read needs a signed-in browser).
+    const one = await raw("GET", `/api/approvals/${held}`, {
+      authorization: `Bearer ${token}`,
+    });
+    expect(one.json.state).toBe("pending");
+    const ran = await ask("sessions.close_grace_seconds", 8, false);
+    const u = await asOperator("POST", "/api/settings/undo", { approval: ran });
+    expect(u.status).toBe(403);
+  });
+
+  it("a test-bed agent's held write: Allow runs it, and the trail names the test operator", async () => {
+    markBed();
+    const id = await ask("sessions.close_grace_seconds", 9, true);
+    const r = await asOperator("POST", `/api/approvals/${id}/decide`, {
+      decision: "allow",
+    });
+    expect([r.status, r.json.state]).toEqual([200, "done"]);
+    expect(opRow("approval-decide", new RegExp(`\\[${id}\\]`))).toBe(true);
+  });
+
+  it("a test-bed agent's change: Undo puts it back, and the trail names the test operator", async () => {
+    markBed();
+    const id = await ask("sessions.close_grace_seconds", 10, false);
+    const r = await asOperator("POST", "/api/settings/undo", { approval: id });
+    expect([r.status, r.json.ok]).toEqual([200, true]);
+    expect(opRow("test-operator", /^setting-undo /)).toBe(true);
+  });
+
+  it("Allow or Undo through a proxy: refused", async () => {
+    markBed();
+    const id = await ask("sessions.close_grace_seconds", 11, true);
+    const fwd = {
+      cookie: fx.cookie,
+      origin: s.base,
+      "x-den-csrf": fx.csrf,
+      "x-forwarded-for": "10.1.2.3",
+    };
+    const a = await raw("POST", `/api/approvals/${id}/decide`, fwd, {
+      decision: "allow",
+    });
+    expect(a.status).toBe(403);
+    const u = await raw("POST", "/api/settings/undo", fwd, { approval: id });
+    expect(u.status).toBe(403);
   });
 });

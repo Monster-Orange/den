@@ -399,6 +399,7 @@ import {
   notAPersonOf,
   fixturePersonOf,
   markOperatorAct,
+  operatorActOf,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -494,6 +495,7 @@ import {
   OPERATOR_PRINCIPAL,
   operatorAct,
   operatorRefusal,
+  testBedAsker,
   verifiedCreationRecord,
   writeCreationRecord,
 } from "../../shared/test-operator.js";
@@ -4817,6 +4819,7 @@ type ApprovalDeps = {
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
   webUrl: () => string | null;
+  testBedAsker: (actor: string) => boolean;
 };
 let approvals: ApprovalDeps | null = null;
 /**
@@ -5391,6 +5394,8 @@ function approvalDeps(): ApprovalDeps {
     changed: syncHeldWrites,
     // Issue 1016: an agent's held write carries its full Allow link.
     webUrl: () => peopleWebUrl(),
+    // Issue 1414: what the test operator may Allow.
+    testBedAsker: (actor) => testBedAsker(getStateDir(), actor),
   };
   return approvals;
 }
@@ -10212,8 +10217,11 @@ async function handleRequest(
 
   // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
   // without asking. The person's only: never an agent, never the fixture.
+  // Issue 1414: and the test operator's, for a change one of the bed's own
+  // agents made (the request gate let it through as the act).
   if (pathname === "/api/settings/undo" && req.method === "POST") {
-    if (notAPersonOf(req) || fixturePersonOf(req))
+    const opUndo = operatorActOf(req) === "setting-undo";
+    if (!opUndo && (notAPersonOf(req) || fixturePersonOf(req)))
       return sendJson(
         res,
         { ok: false, error: "only a person can undo a setting change" },
@@ -10231,6 +10239,17 @@ async function handleRequest(
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(id))
       return send400(res, "approval: the held write's id");
     const a = approvalDeps().queue.get(id);
+    // The operator is never told whether an id it may not undo exists.
+    if (opUndo && !(a && testBedAsker(getStateDir(), a.actor)))
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error:
+            "the test operator may undo only what a test bed's own agent changed",
+        },
+        403,
+      );
     if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
     const r = undoSettingChange(
       settingChangeDeps({

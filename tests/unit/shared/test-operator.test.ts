@@ -123,6 +123,9 @@ describe("the test operator's acts: a closed list", () => {
     ["POST", "/api/sessions/s1/close", "terminal-close"],
     ["POST", "/api/workspaces/notes/agents/a1/say", "agent-say"],
     ["POST", "/api/workspaces/notes/agents/a1/relaunch", "agent-relaunch"],
+    // Issue 1414: Allow and Undo of the bed's own agents' held writes.
+    ["POST", "/api/approvals/AbCdEfGh_-123456/decide", "approval-allow"],
+    ["POST", "/api/settings/undo", "setting-undo"],
   ])("%s %s is %s", (m, p, act) => {
     expect(operatorAct(m, p)).toBe(act);
   });
@@ -158,6 +161,14 @@ describe("the test operator's acts: a closed list", () => {
     ["POST", "/api/workspaces/a/b/agents/a1/say"],
     ["GET", "/api/workspaces/notes/agents/a1/say"],
     ["POST", "/api/agents/runtimes/claude/path/x"],
+    // Issue 1414's lookalikes: only a held write's own id, POST only.
+    ["GET", "/api/approvals/AbCdEfGh_-123456/decide"],
+    ["POST", "/api/approvals/AbCdEfGh_-123456/decide/x"],
+    ["POST", "/api/approvals/AbCdEfGh_-1234567/decide"],
+    ["POST", "/api/approvals"],
+    ["POST", "/api/approvals/AbCdEfGh_-123456/withdraw"],
+    ["GET", "/api/settings/undo"],
+    ["POST", "/api/settings/undo/x"],
   ])("%s %s is not an act", (m, p) => {
     expect(operatorAct(m, p)).toBeNull();
   });
@@ -180,6 +191,38 @@ describe("the per-request rule", () => {
     expect(operatorRefusal({ ...ok, operatorInstall: false })).toBe(
       "not_operator_install",
     );
+  });
+
+  // Issue 1414: Allow and Undo are loopback-only, unforwarded, on an
+  // operator install (a copied creation record never makes one: see "the
+  // creation record" above). Never through the edge, its own included.
+  describe.each([
+    ["approval-allow", "/api/approvals/AbCdEfGh_-123456/decide"],
+    ["setting-undo", "/api/settings/undo"],
+  ])("%s", (_act, pathname) => {
+    const o = { ...ok, pathname };
+    it("allowed on an operator install, on loopback", () => {
+      expect(operatorRefusal(o)).toBeNull();
+    });
+    it("refused on an install that isn't an operator install", () => {
+      expect(operatorRefusal({ ...o, operatorInstall: false })).toBe(
+        "not_operator_install",
+      );
+    });
+    it.each([
+      ["the edge", { via: "edge" as const, beyond: true }],
+      [
+        "the install's own edge, from this machine",
+        { via: "edge" as const, beyond: false, edgeLocal: true },
+      ],
+      ["a LAN name", { via: "lan" as const, beyond: true }],
+      ["a non-loopback peer", { via: "loopback" as const, beyond: true }],
+    ])("refused through %s", (_n, x) => {
+      expect(operatorRefusal({ ...o, ...x })).toBe("not_loopback");
+    });
+    it("refused when a proxy forwarded it", () => {
+      expect(operatorRefusal({ ...o, forwarded: true })).toBe("forwarded");
+    });
   });
 
   it.each([
