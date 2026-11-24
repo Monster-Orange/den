@@ -10,6 +10,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Groups from Den Hub. They show by themselves when your Den Hub supports groups. Set this in Settings › Hub › Groups from Hub (Auto, On or Off), or with `den config hub.groups=auto|on|off`. Off never asks Hub. The Agents page gets a "By group" view beside "By project": each Hub group with its lead marked, and this Den's agents under their group. "Message group" opens Hub's own composer in a new tab, where the person sends with their Hub sign-in. A group message to an agent whose Hub tools didn't load is acknowledged as held, with the reason. Den reads groups with the install's token and keeps them in memory for `hub.groups_cache_seconds` (default 30, from 5 to 3600; also in Settings). `den hub groups` prints the same read as the page. (issue 750)
 - UI kit 0.14.0: a group header component.
+- Agents: a person can turn one agent's sandbox off, or back on, from a held write the agent asks for (`agent_sandbox_set`). Turning it off always waits for the person's own Allow, and the card says when an agent asks for itself; turning it back on runs at once. The setting follows the agent: it goes when the agent is removed, and creating or importing an agent that would start outside the sandbox needs the person too. Den restarts only that agent, and Doctor lists every agent running outside the sandbox with who turned it off and why. (issue 1328)
+- Doctor: an "Installs on this login" section shows how many other Den installs run as this login (a count), whether this install is in the install registry, and any private state file no agent rule covers yet (paths only). (issue 728)
 
 ### Fixed
 
@@ -22,6 +24,9 @@ config and manifest changes a distribution must make to move to it under
 - Doctor and Hub link suggestions skip a project with no repos, services or agents, the built-in `default` included: no warning and no suggestion. Rows for things not set up or not in use yet (sign-in with no address, push, the secrets, usage, runtime and session strategies) say so instead of warning. (issue 1334)
 - The bell's "Mark all read" and "Clear read" are quick again: one write for all entries, the button shows busy in itself, and the rows change at once (and come back with a message if the change fails). Refreshing the bell no longer waits for the machine-wide test-run lock, which could stall every page while a test run held it. (issue 1339)
 - The Tests module picker moves into place when its list finishes loading after it opened, so no rows are left out of view or under the output pane. (issue 1343)
+- Agents: when the sandbox refuses `ps`, `top`, `sudo` or the Docker socket, the note says it's the sandbox, why, and what to use instead, rather than blaming Den's state. A call that succeeded gets no note, even when its output mentions "Operation not permitted". (issues 1326, 1357)
+- The server never waits on its own thread for the machine-wide test-run lock or for a memory reading: it waits by timer, and a request that can't get the lock in time gets "busy, try again" (503 with Retry-After) instead of stalling every page. When the memory reading is missing or stale, new test runs hold until it's known again; the last good reading counts for the gate setting `memory_reading_keep_seconds` (default 30). Platforms with no reading say "not measured". (issue 1349)
+- The bell's per-project "Mark read" shows busy in its button and marks that project's rows at once, and puts them back with a message if the change fails. (issue 1339)
 
 ## [0.4.87] - 2026-11-23
 
