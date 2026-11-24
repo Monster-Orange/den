@@ -138,6 +138,11 @@ syncPinToggles }`.
   script puts in `body` falls back to the browser's serif.
   `focusWhenFree(el)` (`dialog.js`) focuses a page's own field now, or
   when the open kit pop-up over it closes.
+- Issue 864: one pop-up at a time, both ways. What's new waits behind a
+  pop-up already open, and a kit question (`askConfirm`, `askText`,
+  `tell`) asked while What's new is open makes it step aside: it isn't
+  counted as seen, and it opens again once the question is answered.
+  `onAsk(fn)` in `dialog.js` is how a pop-up hears of each question.
 
 ### The client entry: `src/kit.js` (`window.DenUI`)
 
