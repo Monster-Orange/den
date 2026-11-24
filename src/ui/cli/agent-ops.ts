@@ -164,6 +164,7 @@ import {
 } from "../../shared/den-config.js";
 import {
   newAgentSandboxOff,
+  personalNoSandbox,
   SANDBOX_OFF_SINCE_ASK,
   writeSandboxNote,
 } from "../../shared/agents/sandbox-set.js";
@@ -385,6 +386,7 @@ import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
 import {
+  jobCommandOf,
   jobsUnder,
   readProcesses,
   type ProcessRow,
@@ -696,8 +698,11 @@ export class AgentError extends Error {
   readonly hints: string[];
   /** AG-10.10: the running agent a start collided with, so a page can open it. */
   readonly running?: { id: string; sessionId: string };
-  /** 0.4.48: job_running: how long the job it left running has run. */
-  readonly job?: { minutes: number };
+  /**
+   * 0.4.48: job_running: how long the job it left running has run; issue
+   * 1407: what it runs, when known.
+   */
+  readonly job?: { minutes: number; command?: string };
   /**
    * Issue 479: runtime_quarantined: the copy it would run, and the
    * choices, so a page can offer them.
@@ -711,7 +716,7 @@ export class AgentError extends Error {
       code?: string;
       hints?: string[];
       running?: { id: string; sessionId: string };
-      job?: { minutes: number };
+      job?: { minutes: number; command?: string };
       quarantined?: QuarantinedRuntime;
     } = {},
   ) {
@@ -2712,8 +2717,30 @@ export type PersonaHeldCheck =
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
       args: Record<string, unknown>;
+      /** Issue 1403: the person's own Allow (see personaPersonOnly). */
+      personOnly?: true;
     }
   | { ok: false; error: string };
+
+/**
+ * Issue 1403 (Den Builder): a persona's mode and commands are new tool
+ * access, the person's, unless the install is personal with the sandbox
+ * off and no agent in it (as agent_create, issue 1391). A config that
+ * can't be read keeps it the person's.
+ */
+function personaPersonOnly(
+  d: AgentsResolved,
+  c: PersonaHeldCheck,
+): PersonaHeldCheck {
+  if (!c.ok) return c;
+  let routine = false;
+  try {
+    routine = personalNoSandbox(d.agentsConfig());
+  } catch {
+    routine = false;
+  }
+  return routine ? c : { ...c, personOnly: true };
+}
 
 /** Who asked (HeldAsker): an agent's id and the project its token is for. */
 export interface PersonaAsker {
@@ -2846,6 +2873,14 @@ export function checkPersonaCreate(
   raw: unknown,
   who: PersonaAsker = {},
 ): PersonaHeldCheck {
+  return personaPersonOnly(d, personaCreateCheck(d, raw, who));
+}
+
+function personaCreateCheck(
+  d: AgentsResolved,
+  raw: unknown,
+  who: PersonaAsker,
+): PersonaHeldCheck {
   try {
     const r = (raw ?? {}) as Record<string, unknown>;
     const home = personaHome(d, r, who, "add");
@@ -2930,6 +2965,14 @@ export function checkPersonaUpdate(
   d: AgentsResolved,
   raw: Record<string, unknown>,
   who: PersonaAsker = {},
+): PersonaHeldCheck {
+  return personaPersonOnly(d, personaUpdateCheck(d, raw, who));
+}
+
+function personaUpdateCheck(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: PersonaAsker,
 ): PersonaHeldCheck {
   try {
     const id = typeof raw.id === "string" ? raw.id.trim() : "";
@@ -7139,6 +7182,134 @@ export async function agentJob(
 }
 
 /**
+ * Issue 1407: the job agent `rec` left running (the longest running one),
+ * with what it runs, for a person; null: none, or its runtime can't tell.
+ */
+export async function agentJobDetail(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  pid?: number | null,
+): Promise<{ minutes: number; command: string } | null> {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.jobPattern) return null;
+  const root =
+    pid ??
+    (await withClient(d, async (c) => {
+      const s = sessionOf(await c.list(), rec);
+      return s && !s.exited ? s.pid : null;
+    }));
+  if (root === null || root === undefined) return null;
+  const jobs = jobsUnder(root, rt.jobPattern, d.processes());
+  if (!jobs.length) return null;
+  const top = jobs.reduce((a, b) => ((b.secs ?? 0) > (a.secs ?? 0) ? b : a));
+  return {
+    minutes: Math.round((top.secs ?? 0) / 60),
+    command: jobCommandOf(top.command),
+  };
+}
+
+/** Issue 1407: where one agent of a bulk restart stands, before it waits. */
+export type RestartState = "now" | "turn" | "job" | "unknown";
+export interface RestartPlan {
+  id: string;
+  workspace: string;
+  state: RestartState;
+  job?: { command: string; minutes: number };
+}
+/** Issue 1407: how one agent's restart ended (onDone). */
+export interface RestartOutcome {
+  id: string;
+  workspace: string;
+  outcome: "restarted" | "job" | "failed";
+  job?: { command: string; minutes: number };
+  error?: string;
+}
+
+/**
+ * Issue 1407: where agent `id` stands for a restart: idle (now), mid-turn
+ * (turn), its turn ended with a job it started still running (job, with
+ * what and how long), or Den can't tell when its turn ends (unknown). A
+ * stopped agent just resumes: now.
+ */
+export async function restartStateOf(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<RestartPlan> {
+  const rec = agentRecord(d, id, ws);
+  const base = { id: rec.id, workspace: rec.workspace };
+  const live = await withClient(d, async (c) => {
+    const s = sessionOf(await c.list(), rec);
+    return s && !s.exited ? s : null;
+  });
+  if (!live) return { ...base, state: "now" };
+  const turn = await agentTurnBusy(d, rec, live).catch(() => null);
+  if (turn === null) return { ...base, state: "unknown" };
+  if (turn) return { ...base, state: "turn" };
+  const job = await agentJobDetail(d, rec, live.pid).catch(() => null);
+  if (job) return { ...base, state: "job", job };
+  return { ...base, state: "now" };
+}
+
+/**
+ * Issue 1407: a bulk restart (restart-stale). Each agent is checked first
+ * and the answer is per agent (restartStateOf). Those idle or mid-turn
+ * restart at their next idle, on the same conversation; a job found when
+ * the turn ends is reported (onDone, outcome "job"), never waited out
+ * silently. One with a job, or whose turn Den can't read, is not
+ * restarted: the person decides (Restart now). Resolves with the plan
+ * before anything waits; onDone says how each restart ended.
+ */
+export async function restartMany(
+  d: AgentsResolved,
+  agents: readonly { id: string; workspace: string }[],
+  o: {
+    pollMs?: number;
+    maxMs?: number;
+    onDone?: (r: RestartOutcome) => void;
+  } = {},
+): Promise<RestartPlan[]> {
+  const plan: RestartPlan[] = [];
+  for (const a of agents) {
+    let p: RestartPlan;
+    try {
+      p = await restartStateOf(d, a.id, a.workspace);
+    } catch {
+      p = { id: a.id, workspace: a.workspace, state: "unknown" };
+    }
+    plan.push(p);
+    if (p.state !== "now" && p.state !== "turn") continue;
+    const base = { id: p.id, workspace: p.workspace };
+    void restartAgent(d, p.id, p.workspace, "after-turn", {
+      ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
+      ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
+      jobStops: true,
+    }).then(
+      () => o.onDone?.({ ...base, outcome: "restarted" }),
+      (e: unknown) => {
+        const err = e as AgentError;
+        if (err?.code === "job_running" && err.job)
+          o.onDone?.({
+            ...base,
+            outcome: "job",
+            job: {
+              command: err.job.command ?? "",
+              minutes: err.job.minutes,
+            },
+          });
+        else
+          o.onDone?.({
+            ...base,
+            outcome: "failed",
+            error: e instanceof Error ? e.message : String(e),
+          });
+      },
+    );
+  }
+  return plan;
+}
+
+/**
  * 0.4.48: a person's Restart at the agent's next idle, while a job it left
  * running still runs: asked first (job_running, with its minutes), never
  * waited out silently. Restart now ends the job.
@@ -7153,6 +7324,23 @@ export async function askAboutJob(
   if (job)
     throw new AgentError(
       `agent ${rec.id}: a background job it started is still running (${job.minutes} min). Restart anyway? That ends the job (--now).`,
+      { status: 409, code: "job_running", job },
+    );
+}
+
+/**
+ * Issue 1407: its turn has ended and a job it started still runs: the
+ * wait stops (job_running, with what it runs and how long).
+ */
+async function jobStopsWait(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<void> {
+  if ((await agentTurnBusy(d, rec).catch(() => null)) !== false) return;
+  const job = await agentJobDetail(d, rec).catch(() => null);
+  if (job)
+    throw new AgentError(
+      `agent ${rec.id}: its turn ended, but a background job it started is still running (${job.command}, ${job.minutes} min). Restart now ends the job.`,
       { status: 409, code: "job_running", job },
     );
 }
@@ -7361,6 +7549,11 @@ export async function restartAgent(
      * first (job_running) rather than waited for; Restart now ends it.
      */
     askIfJob?: boolean;
+    /**
+     * Issue 1407: a job found once its turn has ended stops the wait
+     * (job_running, with what it runs), never waited out silently.
+     */
+    jobStops?: boolean;
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
@@ -7397,6 +7590,7 @@ export async function restartAgent(
           opts.maxMs ?? restartWaitOf(d),
           "not restarted",
         );
+      if (opts.jobStops) await jobStopsWait(d, agentRecord(d, id, ws));
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
     }

@@ -346,14 +346,27 @@ export function matchesSetting(pattern: string, key: string): boolean {
  * strict install. gate.browser_requires_container 0 runs browsers on the
  * host, not in a container. On personal installs the gate stays routine.
  */
+/** A level as a number (true/false as 1/0); null when it isn't one. */
+const level = (v: unknown): number | null =>
+  typeof v === "boolean" ? (v ? 1 : 0) : typeof v === "number" ? v : null;
+
 const WIDENS_AT: readonly [
   key: string,
-  widens: (v: unknown) => boolean,
+  /** `before`: the value in effect now, when the caller knows it. */
+  widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
+  // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
+  // lowering of the container requirement widens on strict; with no old
+  // value known, off (0) does.
   [
     "gate.browser_requires_container",
-    (v) => v === 0 || v === false,
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
     ["strict"],
   ],
   // Issue 1391: to strict is routine; anything else (personal, or back to
@@ -366,10 +379,11 @@ export function settingKind(
   /** Issue 1391: the install's mode; strict when not given. */
   mode: InstallMode = "strict",
   /**
-   * Issue 1395: the value in effect after the change, defaults resolved.
-   * Given, WIDENS_AT may make it widen on strict.
+   * Issue 1395: the value in effect after the change, defaults resolved,
+   * and (when known) the value in effect now. Given, WIDENS_AT may make
+   * it widen on strict.
    */
-  ...value: [] | [unknown]
+  ...value: [] | [unknown] | [unknown, unknown]
 ): SettingKind {
   const is = (list: readonly string[]) =>
     list.some((p) => matchesSetting(p, key));
@@ -387,7 +401,7 @@ export function settingKind(
     ? WIDENS_AT.find(([k, , modes]) => k === key && modes.includes(mode))
     : undefined;
   const widens = rule
-    ? rule[1](value[0])
+    ? rule[1](value[0], value[1])
     : category === "agent_powers" || !routine;
   const restart = is(AT_START) ? ("server" as const) : undefined;
   return {

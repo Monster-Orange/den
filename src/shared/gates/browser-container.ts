@@ -102,10 +102,15 @@ export interface BrowserSlotAsk {
   platform: NodeJS.Platform;
   /** The Setting; absent: the platform's default. */
   requiresContainer?: boolean;
+  /**
+   * Issue 1198: some test box could take it (boxCouldServe). "any" with no
+   * browser of its own waits for a box only when one could.
+   */
+  boxCouldServe?: boolean;
 }
 
 export type BrowserSlotVerdict =
-  | { ok: true; declared?: string }
+  | { ok: true; declared?: string; boxesOnly?: true }
   | { ok: false; code: "browser_needs_container" | "browser_endpoint_bad" };
 
 /** Whether this ask may queue for a slot, and what it declared. */
@@ -119,9 +124,12 @@ export function browserSlotCheck(a: BrowserSlotAsk): BrowserSlotVerdict {
   if (a.where && a.where !== "local" && a.where !== "any") return { ok: true };
   const requires =
     a.requiresContainer ?? browserRequiresContainerDefault(a.platform);
-  return requires
-    ? { ok: false, code: "browser_needs_container" }
-    : { ok: true };
+  if (!requires) return { ok: true };
+  // Issue 1198: one that may take a box (whose browser is a container)
+  // waits for a box, never this machine.
+  if (a.where === "any" && a.boxCouldServe)
+    return { ok: true, boxesOnly: true };
+  return { ok: false, code: "browser_needs_container" };
 }
 
 type Word = "needsCli" | "needsField" | "bad";

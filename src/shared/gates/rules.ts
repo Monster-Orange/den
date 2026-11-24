@@ -180,6 +180,11 @@ export interface GateEntry {
    * that doesn't serve the run's).
    */
   onlyBoxes?: string[];
+  /**
+   * Issue 1198: a default pick on a host whose browser runs need a
+   * container, with no browser of its own: it may take a box only.
+   */
+  boxesOnly?: true;
   box?: string;
   boxTimeScale?: number;
   /**

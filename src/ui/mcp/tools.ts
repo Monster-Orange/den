@@ -2920,6 +2920,33 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "gate_settings_set",
+    title: "Change this machine's gate slot settings",
+    description:
+      "Issue 1395: propose a change to this machine's gate slot settings (Settings › Gate: the gates folder's settings.json, which setting_change can't reach), so the person never edits the file by hand. `settings` maps each key to its new value, with Settings › Gate's names and ranges (e.g. gate.cpu_slots, gate.local_browser_slots, gate.reap_grace_seconds, gate.priority_agents as 0 or 1; the gate. prefix may be left off; null puts a key's default back); `reason` says why, in one line. Den checks every key and value before anything is held: an unknown key, a value out of range or no change comes back at once, with why, and nothing is written. The person sees each key's value now and the new one. On a personal install it's written at once and the person is told; on a strict one it follows the person's choice for Limits and performance, and gate.browser_requires_container going to 0 waits for their own Allow. Den writes them under the gate's lock, all or none, and the slot log names who asked." +
+      HELD,
+    action: true,
+    shape: {
+      settings: z
+        .record(z.string(), z.union([z.number(), z.string(), z.null()]))
+        .describe(
+          "Each key (gate.<name>, as Settings › Gate) and its new value",
+        ),
+      reason: z.string().max(300).describe("Why they should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      return askPerson(
+        "gate_settings_set",
+        "gate_settings_set",
+        { settings: a.settings ?? {}, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "gate_runner_token_create",
     title: "Make a gate-only token for a CI runner",
     description:

@@ -144,7 +144,8 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
-  askAboutJob,
+  restartMany,
+  restartStateOf,
   staleAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -1477,16 +1478,25 @@ export async function handleAgentRoutes(
         });
       what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
       if (when === "after-turn") {
-        // 0.4.48: a job it left running is asked about first (job_running).
-        await askAboutJob(d, id!, ws);
+        // Issue 1407: where it stands first, never a silent wait. A job it
+        // left running (job_running, with what it runs and how long) or a
+        // turn Den can't read (turn_unknown) is the person's: Restart now.
+        const plan = await restartStateOf(d, id!, ws);
+        if (plan.state === "job")
+          throw new AgentError(
+            `agent ${id}: a background job it started is still running (${plan.job?.command ?? "?"}, ${plan.job?.minutes ?? 0} min). Restart now ends the job.`,
+            { status: 409, code: "job_running", job: plan.job },
+          );
+        if (plan.state === "unknown")
+          throw new AgentError(
+            `agent ${id}: Den can't tell when its turn ends, so it can't wait for it. Restart it now instead.`,
+            { status: 409, code: "turn_unknown" },
+          );
         // It may wait for a long turn: answer now, audit when it's done.
-        void restartAgent(
-          d,
-          id!,
-          ws,
-          "after-turn",
-          deps.personaWait ?? {},
-        ).then(
+        void restartAgent(d, id!, ws, "after-turn", {
+          ...(deps.personaWait ?? {}),
+          jobStops: true,
+        }).then(
           (s) =>
             audit(
               restarted(what, s) + onSignIn(s.rec),
@@ -1495,7 +1505,11 @@ export async function handleAgentRoutes(
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
-        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        sendJson(
+          res,
+          { ok: true, agent: id, pending: true, state: plan.state },
+          202,
+        );
         return true;
       }
       const s = await restartAgent(d, id!, ws, "now");
@@ -2241,6 +2255,8 @@ export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
   by: "start" | "held" = "start",
+  /** Issue 1403: a routine host_restart: never wait and cut a turn. */
+  o: { idleOnly?: boolean } = {},
 ): Promise<
   import("../../shared/sessions/host-refresh.js").RefreshResult | null
 > {
@@ -2261,7 +2277,13 @@ export async function refreshTerminalHost(
   if (hostRefreshing) return null; // Issue 731: one at a time
   hostRefreshing = true;
   try {
-    return await refreshAndReport(d, log, { waitS, note, checkS, by });
+    return await refreshAndReport(d, log, {
+      waitS,
+      note,
+      checkS,
+      by,
+      idleOnly: o.idleOnly === true,
+    });
   } finally {
     hostRefreshing = false;
   }
@@ -2287,7 +2309,13 @@ export function hostRefreshFailedLine(why: string): string {
 async function refreshAndReport(
   d: AgentsResolved,
   log: (line: string) => void,
-  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+  o: {
+    waitS: number;
+    note: boolean;
+    checkS: number;
+    by: "start" | "held";
+    idleOnly?: boolean;
+  },
 ): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
   const { refreshSessionHost, HOST_RESTART_NOTE } =
     await import("../../shared/sessions/host-refresh.js");
@@ -2350,6 +2378,7 @@ async function refreshAndReport(
     ended: (ids) => endedAfterHostRestart(d, ids),
     checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
+    ...(o.idleOnly ? { idleOnly: true } : {}),
   });
   const endedAt = new Date().toISOString();
   if (r.did === "failed") {
@@ -3124,20 +3153,37 @@ async function staleRoute(
     );
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
-        d,
-        a.id,
-        a.workspace,
-        "after-turn",
-        deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
-      );
-    }
-    sendJson(res, { ok: true, pending: list }, 202);
+    // Issue 1407: each agent is checked first and answered for: restarting
+    // now, after its turn, a background job (what, how long) or can't
+    // tell. Only the first two restart; the person decides the others
+    // (Restart now). How each restart ended reaches the trail.
+    const one = (id: string, ws: string) =>
+      `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
+    const plan = await restartMany(
+      d,
+      list.map((a) => ({ id: a.id, workspace: a.workspace })),
+      {
+        ...(deps.personaWait ?? {}),
+        onDone: (o) =>
+          o.outcome === "restarted"
+            ? audit(one(o.id, o.workspace))
+            : audit(
+                one(o.id, o.workspace),
+                o.outcome === "job"
+                  ? `a background job is still running (${o.job?.command ?? "?"}, ${o.job?.minutes ?? 0} min)`
+                  : (o.error ?? "not restarted"),
+              ),
+      },
+    );
+    for (const p of plan)
+      if (p.state === "job" || p.state === "unknown")
+        audit(
+          one(p.id, p.workspace),
+          p.state === "job"
+            ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
+            : "waits for the person: Den can't tell when its turn ends",
+        );
+    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);

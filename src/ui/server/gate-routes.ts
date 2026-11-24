@@ -57,7 +57,11 @@ import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import { checkBox, type GateBox } from "../../shared/gates/boxes.js";
+import {
+  boxCouldServe,
+  checkBox,
+  type GateBox,
+} from "../../shared/gates/boxes.js";
 import {
   browserSlotCheck,
   browserSlotRefusal,
@@ -74,6 +78,7 @@ import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
 import type { AskedBy } from "./approvals.js";
 import type { HeldOp } from "./held-actions.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
@@ -229,6 +234,7 @@ async function askAndWait(
     reason?: string;
     where?: string;
     browserEndpoint?: string;
+    boxesOnly?: boolean;
   },
 ): Promise<void> {
   let e: GateEntry | null;
@@ -244,6 +250,7 @@ async function askAndWait(
         ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
         ...(a.where ? { where: a.where } : {}),
         ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
+        ...(a.boxesOnly ? { boxesOnly: true } : {}),
       }),
     );
   } catch (err) {
@@ -422,6 +429,11 @@ async function handleRunnerRoute(
       ...(typeof where === "string" ? { where } : {}),
       platform: store.platform,
       requiresContainer: store.settings().browserRequiresContainer,
+      // Issue 1198: a runner's "any" waits only for a box that could
+      // ever take it (its Playwright version isn't known here).
+      ...(where === "any"
+        ? { boxCouldServe: boxCouldServe(store.boxes(), undefined) }
+        : {}),
     });
     if (!verdict.ok)
       return sendJson(
@@ -464,6 +476,7 @@ async function handleRunnerRoute(
         ...(reason !== undefined ? { reason } : {}),
         ...(typeof where === "string" ? { where } : {}),
         ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
+        ...(verdict.boxesOnly ? { boxesOnly: true } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;
@@ -849,6 +862,8 @@ const endpointsText = (m: Record<string, string>) =>
 export function gateBoxOps(d: {
   store: () => GateStore;
   audit?: typeof recordAction;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  personal?: () => boolean;
 }): { set: HeldOp; remove: HeldOp } {
   const audit = (detail: string) =>
     (d.audit ?? recordAction)(null, { verb: "gate-box", detail });
@@ -923,7 +938,9 @@ export function gateBoxOps(d: {
         return { ok: false, error: `no test box ${name}` };
       return {
         ok: true,
-        personOnly: true,
+        // Issue 1403: a box can be added back, so on a personal install
+        // an agent's ask is routine; strict keeps it the person's.
+        ...(isPersonal(d.personal) ? {} : { personOnly: true as const }),
         args: { name },
         summary: `remove the test box "${name}"`,
         params: { name },

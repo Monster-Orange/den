@@ -40,6 +40,9 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+
+export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
 import { projectColour, projectLabel } from "./workspace-picker.js";
@@ -6538,6 +6541,15 @@ export function restartOfferHtml(all) {
   );
 }
 
+/** Issue 1407: wire the per-agent result's Restart now and Restart all now. */
+function wireRestartResult(box, ctx) {
+  wireRestartNow(box, {
+    api: (...a) => ctx.shell.api(...a),
+    busyAction: ctx.shell.busyAction?.bind(ctx.shell),
+    t: (k, v) => ctx.shell.t(k, v),
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6552,12 +6564,11 @@ function offerRestart(host, ctx, fresh) {
         ctx.shell
           .api("POST", "/api/agents/restart-stale", { only: "hub" })
           .then((x) => {
-            const k = Array.isArray(x?.pending) ? x.pending.length : 0;
-            box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
-              k === 1
-                ? "1 agent restarts at its next idle, in the same conversation."
-                : `${k} agents restart at their next idle, each in the same conversation.`,
-            )}</p>`;
+            // Issue 1407: each agent's own answer, never a fixed line.
+            box.innerHTML = restartResultHtml(x?.agents, (k, v) =>
+              ctx.shell.t(k, v),
+            );
+            wireRestartResult(box, ctx);
           })
           .catch((e) => {
             btn.disabled = false;

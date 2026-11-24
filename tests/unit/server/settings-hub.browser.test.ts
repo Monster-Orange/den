@@ -542,6 +542,7 @@ describe("Settings › Hub (HUB-1.7)", () => {
       375,
     );
     const asked: string[] = [];
+    const JOB_CMD = "npm run dev";
     const stale = [
       {
         id: "planner",
@@ -563,7 +564,20 @@ describe("Settings › Hub (HUB-1.7)", () => {
       return r.fulfill({
         status: 202,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, pending: stale }),
+        // Issue 1407: each agent's own answer.
+        body: JSON.stringify({
+          ok: true,
+          pending: stale,
+          agents: [
+            { id: "planner", workspace: "north", state: "now" },
+            {
+              id: "scout",
+              workspace: "south",
+              state: "job",
+              job: { command: JOB_CMD, minutes: 12 },
+            },
+          ],
+        }),
       });
     });
     await p.reload();
@@ -578,8 +592,20 @@ describe("Settings › Hub (HUB-1.7)", () => {
     );
     expect(await fits(p)).toBeLessThanOrEqual(0);
     await p.click('[data-hub-action="restart-stale"]');
-    await p.waitForSelector('[data-hub-restarting="2"]');
+    await p.waitForSelector('[data-rs-result="2"]');
     expect(restarts).toBe(1);
+    // Issue 1407: never a fixed line; the job is named, with Restart now.
+    expect(
+      await p.getAttribute('[data-rs-agent="planner"]', "data-rs-state"),
+    ).toBe("now");
+    expect(
+      await p.getAttribute('[data-rs-agent="scout"]', "data-rs-state"),
+    ).toBe("job");
+    expect(await p.textContent('[data-rs-agent="scout"]')).toContain(JOB_CMD);
+    // Restart now only for the one that waits on the person.
+    expect(await p.locator("[data-rs-now]").count()).toBe(1);
+    expect(await p.locator('[data-rs-now="scout"]').count()).toBe(1);
+    expect(await fits(p)).toBeLessThanOrEqual(0);
     await p.context().close();
   }, 60_000);
 

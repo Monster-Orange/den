@@ -107,6 +107,7 @@ import {
 } from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
+  boxCouldServe,
   boxEnv,
   checkBox,
   defaultPlace,
@@ -131,7 +132,11 @@ import {
   START_HOLD_WORDS,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
-import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
+import {
+  allowOf,
+  checkBaseUrl,
+  isLoopbackHost,
+} from "../../shared/gates/pw-guard.js";
 import {
   boxOffWords,
   gateBoxesView,
@@ -294,6 +299,22 @@ const WATCH_LOOK_MS = 1_000;
 
 /** Issue 1132: how often a held run looks at the load again. */
 const HOLD_LOOK_MS = 2_000;
+
+/**
+ * Issue 1198: a default pick's base URL when the run gives none: any port
+ * on 127.0.0.1 but 80 and 443, and in the box guard (issue 991) only the
+ * ports the run itself opens.
+ */
+const DEFAULT_BASE = "http://127.0.0.1:*";
+
+/** Whether a Playwright endpoint is on this machine's loopback. */
+function loopbackEndpoint(raw: string): boolean {
+  try {
+    return isLoopbackHost(new URL(raw).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 1023: how often a run looks whether its command is dumping core. */
 const DUMP_LOOK_MS = 100;
@@ -1014,6 +1035,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+  // Issue 1198: a loopback container named in the run's environment is
+  // what this machine's browser runs use here; a box replaces it. One on
+  // another host, or one given with --browser-endpoint, the run keeps.
+  const envLoopback =
+    flagEndpoint === undefined &&
+    fromEnv !== undefined &&
+    loopbackEndpoint(fromEnv.endpoint);
   const pwFlag =
     typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
   // Issue 1033: no --box: the first free browser slot, here or on a test
@@ -1030,11 +1058,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           label,
           project: path.basename(d.cwd),
           boxes: d.store.boxes(),
-          baseUrl: urls.length > 0,
+          // Issue 1198: none given: the ports the run opens (DEFAULT_BASE).
+          baseUrl: true,
           pwVersion: pwFlag ?? playwrightVersion(d.cwd),
           // A run that brings its own browser (the flag, or its
           // environment) keeps it: a box would only change DEN_PW_WS.
-          ...(endpoint !== undefined
+          ...(endpoint !== undefined && !envLoopback
             ? {
                 ownBrowser:
                   endpoint === SELF
@@ -1046,6 +1075,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     where = pick.where;
     hostWhy = pick.why;
     onlyBoxes = pick.only;
+    if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
@@ -1055,6 +1085,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     ...(where ? { where } : {}),
     platform: d.store.platform,
     requiresContainer: d.store.settings().browserRequiresContainer,
+    // Issue 1198: "any" with none of its own waits only for a box that
+    // could ever take it; else it is refused at once.
+    ...(where === "any"
+      ? {
+          boxCouldServe: boxCouldServe(
+            d.store.boxes(),
+            pwFlag ?? playwrightVersion(d.cwd),
+            onlyBoxes,
+          ),
+        }
+      : {}),
   });
   if (!verdict.ok)
     throw new GateUsage(
@@ -1138,6 +1179,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       ...(hostWhy ? { hostWhy } : {}),
       ...(onlyBoxes ? { onlyBoxes } : {}),
+      ...(verdict.ok && verdict.boxesOnly ? { boxesOnly: true } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -1679,6 +1721,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-box-default": true,
     "--browser-host-only": true,
     "--yes": false,
+    // Issue 1395: an agent's ask says why.
+    "--reason": true,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -1730,12 +1774,14 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     if (typeof v === "string") raw[key] = v.trim() || null;
   }
   if (Object.keys(raw).length) {
-    if (isAgentEnv(d.env))
-      throw new GateUsage(
-        "gate settings: only a person can change them (this is an agent)",
-      );
     const c = checkGatePatch(raw);
     if (!c.ok) throw new GateUsage(c.error);
+    // Issue 1395: an agent asks for gate_settings_set; never writes here.
+    if (isAgentEnv(d.env)) {
+      const done = await askGateSettings(d, c.patch, f["--reason"]);
+      if (done !== 0) return done;
+      return showSettings(d);
+    }
     // Issue 963: turning release priority off warns first; --yes goes on.
     const lang = d.lang ?? personLanguage();
     if (
@@ -1759,6 +1805,68 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
         whoAsks(d.env, d.cwd),
       );
   }
+  return showSettings(d);
+}
+
+/**
+ * Issue 1395: an agent's `gate settings` change, asked of Den as the held
+ * write gate_settings_set (the approval policy decides: written at once,
+ * or held for the person's Allow). 0 when written or held; 1 when refused
+ * or no server answered. The CLI writes nothing itself for an agent.
+ */
+async function askGateSettings(
+  d: GateDeps,
+  patch: GateSettingsPatch,
+  reasonFlag: string | boolean | string[] | undefined,
+): Promise<number> {
+  const reason = typeof reasonFlag === "string" ? reasonFlag.trim() : "";
+  if (!reason)
+    throw new GateUsage(
+      'gate settings: an agent asks the person for a change: add --reason "<why>"',
+    );
+  let r: Awaited<ReturnType<PersonServer>>;
+  try {
+    r = await (d.server ?? personServerFor())("POST", "/api/approvals", {
+      action: "gate_settings_set",
+      args: { settings: patch, reason },
+    });
+  } catch (e) {
+    d.err(`gate settings: ${(e as Error).message}; nothing was changed`);
+    return 1;
+  }
+  if (r === null) {
+    d.err(
+      "gate settings: Den's web app isn't answering, so nothing was asked or changed",
+    );
+    return 1;
+  }
+  const j = r.json ?? {};
+  const result = (j.result ?? {}) as Record<string, unknown>;
+  if ((r.status !== 200 && r.status !== 202) || j.ok === false) {
+    d.err(`gate settings: ${String(j.error ?? `Den answered ${r.status}`)}`);
+    return 1;
+  }
+  if (j.state === "done" && result.ok === false) {
+    d.err(`gate settings: ${String(result.error ?? "it failed")}`);
+    return 1;
+  }
+  if (j.state === "done") {
+    const changed = Array.isArray(result.changed) ? result.changed : [];
+    d.out(
+      changed.length
+        ? `✓ gate settings changed: ${changed.join(", ")}`
+        : `✓ gate settings: ${String(result.note ?? "already in effect")}`,
+    );
+    return 0;
+  }
+  d.out(
+    `gate settings: waiting for the person's Allow in Den (request ${String(j.id ?? "")}); check it with the MCP tool approval_check`,
+  );
+  return 0;
+}
+
+/** The settings, each with its meaning and value, and the summary line. */
+function showSettings(d: GateDeps): number {
   const s = d.store.settings();
   // Issue 963: each setting, its value and what it means.
   const meanings = GATE_MEANINGS[d.lang ?? personLanguage()];
