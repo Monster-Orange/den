@@ -120,7 +120,10 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
-import { rememberOperatorShell } from "../../shared/test-operator.js";
+import {
+  rememberOperatorShell,
+  testBedOnly,
+} from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
@@ -243,6 +246,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
   operatorActOf,
   personOrOperator,
   principalOf,
@@ -1035,24 +1039,43 @@ export async function handleAgentRoutes(
     );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Issue 1407: its restart too, and a
+    // test install's fixture person's restart. Any other agent: refused,
+    // as a person-only act is. Checked before the 404 below, so an id
+    // that doesn't exist answers the same 403: they can't learn which
+    // agents are there. Never the server agent's.
+    const opAct = operatorActOf(req);
+    const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    if (
+      opAct === "agent-say" ||
+      opAct === "agent-relaunch" ||
+      opAct === "agent-restart" ||
+      fixtureRestart
+    ) {
+      let marked = false;
+      try {
+        marked =
+          id !== undefined &&
+          !isServerScope(ws) &&
+          agentRecord(d, id, ws).testBed === true;
+      } catch {
+        marked = false;
+      }
+      if (!marked)
+        throw new AgentError(
+          opAct === "agent-say"
+            ? "only a person can send an agent a message"
+            : opAct === "agent-relaunch"
+              ? "only a person can relaunch an agent"
+              : "only a person can restart an agent",
+          { status: 403 },
+        );
+    }
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    // Issue 956: the test operator's message and relaunch reach only the
-    // bed's own agents, those Den marked when it started them on the
-    // test-person path (issue 943). Any other agent: refused, as a
-    // person-only act is.
-    const opAct = operatorActOf(req);
-    if (
-      (opAct === "agent-say" || opAct === "agent-relaunch") &&
-      (id === undefined || agentRecord(d, id, ws).testBed !== true)
-    )
-      throw new AgentError(
-        opAct === "agent-say"
-          ? "only a person can send an agent a message"
-          : "only a person can relaunch an agent",
-        { status: 403 },
-      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -1080,8 +1103,13 @@ export async function handleAgentRoutes(
         "only a person can change an agent's mode (an agent asks with agent_mode)",
         { status: 403 },
       );
-    // D44: a restart is the person's (it stops a session).
-    if (verb === "restart" && (agent || actor))
+    // D44: a restart is the person's (it stops a session). Issue 1407: and
+    // the test operator's, for the bed's own agents only (checked above).
+    if (
+      verb === "restart" &&
+      !fixtureRestart &&
+      !personOrOperator(req, "agent-restart")
+    )
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
@@ -3197,11 +3225,13 @@ async function staleRoute(
       principalOf(req),
     );
   try {
-    if (agentPrincipalOf(req) || actor)
+    // Issue 1407: the test operator too, for the bed's own agents only.
+    const operator = operatorActOf(req) === "agents-restart-stale";
+    if (!personOrOperator(req, "agents-restart-stale"))
       throw new AgentError("only a person can restart agents", {
         status: 403,
       });
-    guard(actor);
+    if (!operator) guard(actor);
     const body = await jsonBody(req);
     for (const k of Object.keys(body))
       if (k !== "only")
@@ -3216,12 +3246,22 @@ async function staleRoute(
         `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
         { usage: true },
       );
-    const list = (await staleAgents(d, { fresh: true })).filter(
+    const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
         body.only !== "hub" ||
         a.stale.adds.length > 0 ||
         a.stale.drops.length > 0,
     );
+    // Before anything is restarted, checked or audited by name.
+    const list = operator
+      ? testBedOnly(all, (a) => {
+          try {
+            return agentRecord(d, a.id, a.workspace).testBed === true;
+          } catch {
+            return false;
+          }
+        })
+      : all;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     // Issue 1407: each agent is checked first and answered for: restarting

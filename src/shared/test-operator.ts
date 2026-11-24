@@ -166,7 +166,9 @@ export type OperatorAct =
   | "terminal-attach"
   | "terminal-close"
   | "agent-say"
-  | "agent-relaunch";
+  | "agent-relaunch"
+  | "agent-restart"
+  | "agents-restart-stale";
 
 /**
  * The person-only requests the test operator may make, and nothing else.
@@ -179,6 +181,11 @@ export type OperatorAct =
  *    dialog (629, 659). Never the server agent.
  *  - agent-relaunch: Resume after a relaunch that exits early (658). A
  *    project agent only.
+ *  - agent-restart, agents-restart-stale: a restart for out-of-date tools,
+ *    one agent or the bulk one, and Restart now (1407). Under
+ *    agent-relaunch's rules: a project agent only, and (agent-routes.ts)
+ *    only the bed's own agents, those Den marked testBed; the bulk one
+ *    filters to them before it does anything (testBedOnly).
  */
 const ACTS: readonly [OperatorAct, string, RegExp][] = [
   ["terminal-start", "POST", /^\/api\/workspaces\/[^/]+\/sessions$/],
@@ -190,7 +197,24 @@ const ACTS: readonly [OperatorAct, string, RegExp][] = [
     "POST",
     /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/relaunch$/,
   ],
+  [
+    "agent-restart",
+    "POST",
+    /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/restart$/,
+  ],
+  ["agents-restart-stale", "POST", /^\/api\/agents\/restart-stale$/],
 ];
+
+/**
+ * Issue 1407: what the test operator's restart-stale may touch: only the
+ * agents Den marked testBed (the bed's own), never the server agent's.
+ */
+export function testBedOnly<T extends { id: string; workspace: string }>(
+  list: readonly T[],
+  isTestBed: (a: T) => boolean,
+): T[] {
+  return list.filter((a) => !isServerScope(a.workspace) && isTestBed(a));
+}
 
 /** The act a request is, or null when it is none of them. */
 export function operatorAct(
@@ -296,7 +320,11 @@ export function operatorRefusal(o: {
   }
   // say and relaunch reach this install's project agents only, never the
   // server agent (its held writes are not the checks' to drive).
-  if (act === "agent-say" || act === "agent-relaunch") {
+  if (
+    act === "agent-say" ||
+    act === "agent-relaunch" ||
+    act === "agent-restart"
+  ) {
     const ws = /^\/api\/workspaces\/([^/]+)\//.exec(o.pathname)?.[1] ?? "";
     let name = ws;
     try {
