@@ -40,7 +40,9 @@ import type { BoxCpuRun } from "../../../src/shared/gates/box-cpu.js";
 import {
   BOX_RUN_ROOT,
   boxRunIdOk,
+  boxRunName,
   boxSshArgs,
+  gitTree,
   startBoxCpuRun,
   stopScript,
   boxSecretRefusal,
@@ -375,14 +377,18 @@ describe("issue 790: the remote side", () => {
     const src = tmp();
     fs.writeFileSync(path.join(src, "a.txt"), "hello");
     const tar = execFileSync("tar", ["-cf", "-", "a.txt"], { cwd: src });
-    const r = spawnSync("/bin/sh", ["-c", shipScript("r2", ["r2"])], {
-      env: { HOME: home, PATH: process.env.PATH },
-      input: tar,
-    });
+    const r = spawnSync(
+      "/bin/sh",
+      ["-c", shipScript("t1.r2", "t1", ["t1.r2"])],
+      {
+        env: { HOME: home, PATH: process.env.PATH },
+        input: tar,
+      },
+    );
     expect(r.status).toBe(0);
     expect(
       fs.readFileSync(
-        path.join(home, BOX_RUN_ROOT, "runs", "r2", "tree", "a.txt"),
+        path.join(home, BOX_RUN_ROOT, "runs", "t1.r2", "tree", "a.txt"),
         "utf-8",
       ),
     ).toBe("hello");
@@ -390,7 +396,9 @@ describe("issue 790: the remote side", () => {
 
   it("the run script refuses a bad id before any path", () => {
     expect(() => runScript("../x", ["true"], {})).toThrow(/id/);
-    expect(() => sweepScript(["ok", "a b"])).toThrow(/id/);
+    expect(() => sweepScript("t1", ["ok", "a b"])).toThrow(/id/);
+    expect(() => sweepScript("a b", [])).toThrow(/tag/);
+    expect(() => boxRunName("t1", "../x")).toThrow();
   });
 
   /** A stub npm: `ci` writes node_modules/dep, or sleeps when SLOW is set. */
@@ -423,7 +431,7 @@ describe("issue 790: the remote side", () => {
   const done = (k: ReturnType<typeof spawn>) =>
     new Promise<number | null>((res) => k.on("close", (c) => res(c)));
 
-  it("deps: installed once, read-only, linked into the run; a run can't change them", async () => {
+  it("deps: installed once, read-only; the run gets its own copy, so it can't change the cache", async () => {
     const home = tmp();
     const tree = treeWithLock(home);
     expect(await done(deps(home, tree, stubNpm()))).toBe(0);
@@ -431,13 +439,22 @@ describe("issue 790: the remote side", () => {
     expect(
       fs.readFileSync(path.join(tree, "node_modules/dep/index.js"), "utf-8"),
     ).toBe("ok\n");
-    expect(fs.realpathSync(path.join(tree, "node_modules"))).toBe(
-      fs.realpathSync(path.join(cached, "node_modules")),
+    expect(fs.lstatSync(path.join(tree, "node_modules")).isSymbolicLink()).toBe(
+      false,
     );
     const w = spawnSync("sh", ["-c", "echo bad > node_modules/dep/index.js"], {
       cwd: tree,
     });
-    expect(w.status).not.toBe(0);
+    expect(w.status).toBe(0);
+    expect(
+      fs.readFileSync(path.join(tree, "node_modules/dep/index.js"), "utf-8"),
+    ).toBe("bad\n");
+    // The cache itself stays read-only.
+    expect(
+      spawnSync("sh", ["-c", "echo x > dep/index.js"], {
+        cwd: path.join(cached, "node_modules"),
+      }).status,
+    ).not.toBe(0);
     expect(
       fs.readFileSync(path.join(cached, "node_modules/dep/index.js"), "utf-8"),
     ).toBe("ok\n");
@@ -471,17 +488,19 @@ describe("issue 790: the remote side", () => {
   it("the sweep stops a run whose slot is gone, removes its folder, keeps live ones", async () => {
     const home = tmp();
     const runs = path.join(home, BOX_RUN_ROOT, "runs");
-    fs.mkdirSync(path.join(runs, "gone", "tree"), { recursive: true });
-    fs.mkdirSync(path.join(runs, "live", "tree"), { recursive: true });
+    fs.mkdirSync(path.join(runs, "t1.gone", "tree"), { recursive: true });
+    fs.mkdirSync(path.join(runs, "t1.live", "tree"), { recursive: true });
+    // Another install's run on the same box: never touched.
+    fs.mkdirSync(path.join(runs, "t2.theirs", "tree"), { recursive: true });
     const orphan = spawn("sleep", ["60"], { detached: true, stdio: "ignore" });
-    fs.writeFileSync(path.join(runs, "gone", "pid"), String(orphan.pid));
+    fs.writeFileSync(path.join(runs, "t1.gone", "pid"), String(orphan.pid));
     const ended = done(orphan);
-    const r = spawnSync("sh", ["-c", sweepScript(["live"])], {
+    const r = spawnSync("sh", ["-c", sweepScript("t1", ["t1.live"])], {
       env: { HOME: home, PATH: process.env.PATH },
       encoding: "utf-8",
     });
     expect(r.status).toBe(0);
-    expect(fs.readdirSync(runs)).toEqual(["live"]);
+    expect(fs.readdirSync(runs).sort()).toEqual(["t1.live", "t2.theirs"]);
     await ended;
     expect(
       orphan.killed || orphan.exitCode !== null || orphan.signalCode !== null,
@@ -503,9 +522,11 @@ describe("issue 790: gate run --kind cpu --box", () => {
     const git = (a: string[]) =>
       a[0] === "rev-parse"
         ? `${fs.realpathSync(root)}\n`
-        : a.includes("-co")
-          ? [...Object.keys(tracked), ...Object.keys(untracked)].join("\0")
-          : Object.keys(untracked).join("\0");
+        : a.includes("diff") || a.includes("-s")
+          ? ""
+          : a.includes("-co")
+            ? [...Object.keys(tracked), ...Object.keys(untracked)].join("\0")
+            : Object.keys(untracked).join("\0");
     return { root, git };
   };
 
@@ -568,7 +589,12 @@ describe("issue 790: gate run --kind cpu --box", () => {
     expect(t.onBox).toHaveLength(1);
     const run = t.onBox[0]!;
     expect(run.argv).toEqual(["npx", "jest", "a.test.ts"]);
-    expect(run.env.FOO).toBe("bar");
+    expect(run.pass).toEqual({ FOO: "bar" });
+    expect(run.env).not.toHaveProperty("FOO");
+    expect(run.id).toMatch(/^[0-9a-f]{12}\./);
+    expect(
+      run.id.endsWith(run.tag ? run.id.slice(run.tag.length + 1) : ""),
+    ).toBe(true);
     expect(run.env.CI).toBe("true");
     expect(run.env).not.toHaveProperty("HOME");
     expect(run.env).not.toHaveProperty("GITHUB_TOKEN");
@@ -668,16 +694,20 @@ describe("issue 790: ssh itself carries nothing of this machine's", () => {
       const st = startBoxCpuRun(
         box(),
         {
-          id: "r9",
+          id: "t1.r9",
+          tag: "t1",
           argv: ["npm", "test"],
           env: { CI: "true" },
+          pass: {},
           tree: {
             root: "/t",
             sub: "",
             files: ["package.json", "package-lock.json"],
             untracked: new Set(),
+            changed: new Set(),
+            gitlinks: new Set(),
           },
-          live: ["r9"],
+          live: ["t1.r9"],
         },
         {
           spawn: fake,
@@ -742,5 +772,152 @@ describe("issue 790: ssh itself carries nothing of this machine's", () => {
     expect(sent("0")).toBe("");
     expect(sent("1")).toBe("");
     expect(sent("4242")).toContain("kill -TERM -4242");
+  });
+});
+
+describe("issue 790: Builder 2's review", () => {
+  const read = (m: Record<string, string>) => (f: string) =>
+    m[f] === undefined ? null : Buffer.from(m[f]!);
+  const tok = "ghp_" + "Q1w2E3r4T5y6U7i8O9p0A1s2D3f4G5h6J7k8";
+  const base = { "package.json": "{}", "package-lock.json": "{}" };
+
+  it("1: a submodule is left out whole and named; tar never recurses", () => {
+    const files = { ...base, vendor: "" };
+    const p = shipPlan(
+      Object.keys(files),
+      new Set(),
+      read(files),
+      new Set(["vendor"]),
+    );
+    expect(p.ship).not.toContain("vendor");
+    expect(p.submodules).toEqual(["vendor"]);
+  });
+
+  it("1: gitTree finds submodules (mode 160000) and changed files", () => {
+    const root = tmp();
+    const git = (a: string[]) =>
+      a[0] === "rev-parse"
+        ? `${fs.realpathSync(root)}\n`
+        : a.includes("-s")
+          ? ["100644 aaa 0\tpackage.json", "160000 bbb 0\tvendor"].join("\0")
+          : a.includes("diff")
+            ? "src/edited.ts\0"
+            : a.includes("-co")
+              ? "package.json\0vendor\0src/edited.ts\0"
+              : "";
+    const t = gitTree(root, git);
+    expect([...t.gitlinks]).toEqual(["vendor"]);
+    expect([...t.changed]).toEqual(["src/edited.ts"]);
+  });
+
+  it("1: the tar it starts has --no-recursion", async () => {
+    const seen: string[][] = [];
+    const fake = ((cmd: string, a: string[]) => {
+      seen.push([cmd, ...a]);
+      const k = new EventEmitter() as EventEmitter & Record<string, unknown>;
+      k.stdout = new PassThrough();
+      k.stderr = new PassThrough();
+      k.stdin = new PassThrough();
+      k.kill = () => true;
+      setImmediate(() => {
+        (k.stdout as PassThrough).end();
+        k.emit("close", 0, null);
+      });
+      return k;
+    }) as unknown as typeof spawn;
+    const st = startBoxCpuRun(
+      box(),
+      {
+        id: "t1.r1",
+        tag: "t1",
+        argv: ["npm", "test"],
+        env: {},
+        pass: {},
+        tree: {
+          root: "/t",
+          sub: "",
+          files: Object.keys(base),
+          untracked: new Set(),
+          changed: new Set(),
+          gitlinks: new Set(),
+        },
+        live: ["t1.r1"],
+      },
+      { spawn: fake, readFile: read(base), out: () => {}, err: () => {} },
+    );
+    if (st.ok) await st.done;
+    expect(seen.find((x) => x[0] === "tar")).toContain("--no-recursion");
+  });
+
+  it("2: a tracked file edited to hold a token refuses", () => {
+    const files = { ...base, "src/a.ts": `const t = "${tok}";` };
+    const p = shipPlan(Object.keys(files), new Set(["src/a.ts"]), read(files));
+    expect(p.refused).toMatch(/src\/a\.ts/);
+    expect(p.refused).not.toContain(tok);
+  });
+
+  it("3: the deny list's gaps are closed, case ignored", () => {
+    const names = [
+      "credentials",
+      "config/credentials.yml",
+      ".den/state.json",
+      "Secrets/a.txt",
+      "keys/id_ed25519_sk",
+      "keys/id_rsa-work",
+      ".ENV",
+      "certs/DEV.PEM",
+    ];
+    const files = {
+      ...base,
+      ...Object.fromEntries(names.map((n) => [n, "x"])),
+    };
+    const p = shipPlan(Object.keys(files), new Set(), read(files));
+    expect(p.left.sort()).toEqual([...names].sort());
+    expect(p.ship.sort()).toEqual(["package-lock.json", "package.json"]);
+  });
+
+  it("8: --env can't send the box's own or the gate's variables", () => {
+    for (const k of [
+      "PATH",
+      "HOME",
+      "CI",
+      "GATE_SLOT",
+      "DEN_GATE_BOX",
+      "LD_PRELOAD",
+    ])
+      expect([k, boxSecretRefusal(["npm", "test"], { [k]: "x" })]).toEqual([
+        k,
+        expect.stringMatching(new RegExp(`--env ${k} is the box's own`)),
+      ]);
+  });
+
+  it("8: the box's own HOME and PATH come after anything given", () => {
+    const sc = runScript("t1.r1", ["true"], { FOO: "1" });
+    expect(sc.indexOf("'FOO=1'")).toBeLessThan(sc.indexOf('HOME="$HOME"'));
+  });
+
+  it("9: a --env name like CI_JOB_TOKEN is checked, never skipped by a prefix", () => {
+    const st = startBoxCpuRun(
+      box(),
+      {
+        id: "t1.r1",
+        tag: "t1",
+        argv: ["npm", "test"],
+        env: { CI: "true" },
+        pass: { CI_JOB_TOKEN: "x" },
+        tree: {
+          root: "/t",
+          sub: "",
+          files: Object.keys(base),
+          untracked: new Set(),
+          changed: new Set(),
+          gitlinks: new Set(),
+        },
+        live: [],
+      },
+      { readFile: read(base) },
+    );
+    expect(st.ok).toBe(false);
+    if (!st.ok) expect(st.error).toMatch(/--env CI_JOB_TOKEN/);
   });
 });

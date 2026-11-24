@@ -100,6 +100,10 @@ const STORE_PROGRAMS = new Set([
 
 const local = "It can run on this machine instead: --box local.";
 
+/** The box's own variables, and the gate's: never sent with --env. */
+const RESERVED_ENV =
+  /^(HOME|PATH|CI|USER|LOGNAME|SHELL|PWD|TMPDIR|IFS|ENV|BASH_ENV)$|^(GATE_|DEN_GATE_|LD_|DYLD_)/;
+
 /**
  * Why `args` (the command and its arguments) and `env` (the --env names,
  * with this machine's values) can't go to a box, or null when they can.
@@ -116,6 +120,8 @@ export function boxSecretRefusal(
       return `argument ${i + 1} holds or names a secret (a store reference, a token or a secret variable): secrets never leave this machine. ${local}`;
   for (const [k, v] of Object.entries(env)) {
     if (!ENV_NAME.test(k)) return `--env ${JSON.stringify(k)} isn't a name.`;
+    if (RESERVED_ENV.test(k))
+      return `--env ${k} is the box's own or the gate's: it isn't sent from this machine.`;
     if (SECRET_NAME.test(k) || looksSecret(v))
       return `--env ${k} is, or holds, a secret: secrets never leave this machine. ${local}`;
   }
@@ -124,12 +130,20 @@ export function boxSecretRefusal(
 
 /** Files that are never shipped, by name or folder. */
 const DENY_BASE =
-  /^(\.env(\..*)?|\.dev\.vars|\.netrc|\.git-credentials|\.npmrc|\.pypirc|\.yarnrc(\.yml)?|credentials.*\.json|settings\.local\.json|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?)$/i;
-const DENY_EXT = /\.(pem|key|p12|pfx|kdbx|tfvars|keystore|jks|ppk|age)$/i;
-const DENY_DIR = new Set([".aws", ".ssh", ".gnupg", ".docker", "secrets"]);
+  /^(\.env(\..*)?|\.dev\.vars|\.netrc|\.git-credentials|\.npmrc|\.pypirc|\.yarnrc(\.yml)?|credentials([-_.].*)?|.*[-_.]credentials(\..*)?|settings\.local\.json|id_[a-z0-9_-]+(\.pub)?)$/;
+const DENY_EXT = /\.(pem|key|p12|pfx|kdbx|tfvars|keystore|jks|ppk|age)$/;
+const DENY_DIR = new Set([
+  ".aws",
+  ".ssh",
+  ".gnupg",
+  ".docker",
+  ".den",
+  "secrets",
+]);
 
 function denied(f: string): boolean {
-  const parts = f.split("/");
+  // Lowercased: Secrets/ and .ENV are the same as secrets/ and .env.
+  const parts = f.toLowerCase().split("/");
   const base = parts[parts.length - 1]!;
   return (
     DENY_BASE.test(base) ||
@@ -144,6 +158,8 @@ export interface ShipPlan {
   ship: string[];
   /** Left out by name (a secret file). */
   left: string[];
+  /** Submodules (gitlinks): left out whole, never shipped unscanned. */
+  submodules: string[];
   /** Untracked files too large, or binary, to scan: not shipped. */
   skipped: string[];
   /** Why the run is refused, when it is. */
@@ -152,21 +168,28 @@ export interface ShipPlan {
 
 /**
  * What ships from `files` (the tree's tracked and untracked files).
- * Untracked ones are read and scanned: a new, uncommitted file is where
- * a pasted token is likeliest. Tracked files are already in git.
+ * `scan` (untracked files, and tracked ones with uncommitted changes) is
+ * read and scanned: what isn't committed is where a pasted token is
+ * likeliest. Committed contents are already in git. A submodule
+ * (`gitlinks`) is left out whole: tar would ship its files unscanned.
  */
 export function shipPlan(
   files: readonly string[],
-  untracked: ReadonlySet<string>,
+  scan: ReadonlySet<string>,
   read: (f: string) => Buffer | null,
+  gitlinks: ReadonlySet<string> = new Set(),
 ): ShipPlan {
-  const p: ShipPlan = { ship: [], left: [], skipped: [] };
+  const p: ShipPlan = { ship: [], left: [], submodules: [], skipped: [] };
   for (const f of files) {
+    if (gitlinks.has(f)) {
+      p.submodules.push(f);
+      continue;
+    }
     if (denied(f)) {
       p.left.push(f);
       continue;
     }
-    if (untracked.has(f)) {
+    if (scan.has(f)) {
       const b = read(f);
       if (!b) continue;
       if (b.length > SHIP_SCAN_MAX_BYTES || b.subarray(0, 8192).includes(0)) {
@@ -189,7 +212,11 @@ const ROOT = `"$HOME/${BOX_RUN_ROOT}"`;
 
 /**
  * Installs node_modules for the lockfile in the current folder (the run's
- * tree) once per box, read-only, and links it in. Run in the tree.
+ * tree) once per box, read-only, and gives the run its own copy (a clone
+ * where the file system has one), so what the run writes never reaches
+ * the cache. The run is the same box user as the cache's owner, so code
+ * set on it could still reach the cache's folder; only a separate cache
+ * user would stop that (not done here).
  */
 export function depsScript(lockSha: string): string {
   if (!LOCK_SHA.test(lockSha)) throw new Error("a lockfile id is its sha256");
@@ -215,7 +242,9 @@ export function depsScript(lockSha: string): string {
     "  fi",
     "fi",
     'touch "$F" 2>/dev/null || true',
-    'rm -rf node_modules; ln -s "$F/node_modules" node_modules',
+    "rm -rf node_modules",
+    'if cp -a --reflink=auto "$F/node_modules" node_modules 2>/dev/null; then :; else rm -rf node_modules; if cp -c -R -p "$F/node_modules" node_modules 2>/dev/null; then :; else rm -rf node_modules; cp -R -p "$F/node_modules" node_modules; fi; fi',
+    "chmod -R u+w node_modules",
   ].join("\n");
 }
 
@@ -244,7 +273,7 @@ export function runScript(
   return [
     `cd ${dir}/tree${sub ? `/${shQuote(sub)}` : ""} || exit 125`,
     'if command -v setsid >/dev/null 2>&1 && setsid -w true 2>/dev/null; then S="setsid -w"; else S=""; fi',
-    `exec $S env -i HOME="$HOME" PATH="$PATH" ${vars.join(" ")} sh -c 'echo $$ > "$0"; exec "$@"' ${dir}/pid ${argv.map(shQuote).join(" ")}`,
+    `exec $S env -i ${vars.join(" ")} HOME="$HOME" PATH="$PATH" sh -c 'echo $$ > "$0"; exec "$@"' ${dir}/pid ${argv.map(shQuote).join(" ")}`,
   ].join("\n");
 }
 
@@ -269,17 +298,31 @@ export function cleanScript(id: string): string {
   return `rm -rf -- ${ROOT}/runs/${mustId(id)}`;
 }
 
+const TAG = /^[A-Za-z0-9_-]{1,40}$/;
+
 /**
- * At each box run's start: every run folder whose slot is no longer
- * granted (`live`: the box's granted run ids) is stopped and removed,
- * left by a dropped ssh. Dependencies unused for 7 days, and leftover
- * temp installs, go too.
+ * A box run's folder name: this install's tag (its slot store's), a dot,
+ * the slot's id. Two installs sharing a box each sweep only their own.
  */
-export function sweepScript(live: readonly string[]): string {
+export function boxRunName(tag: string, slot: string): string {
+  if (!TAG.test(tag) || !boxRunIdOk(slot))
+    throw new Error("a box run's tag or slot id can't go in a path");
+  return `${tag}.${slot}`;
+}
+
+/**
+ * At each box run's start: every run folder of this install (`tag`)
+ * whose slot is no longer granted (`live`: its granted runs' folder
+ * names) is stopped and removed, left by a dropped ssh. Another
+ * install's runs are never touched. Dependencies unused for 7 days, and
+ * leftover temp installs, go too.
+ */
+export function sweepScript(tag: string, live: readonly string[]): string {
+  if (!TAG.test(tag)) throw new Error("an install's tag can't go in a path");
   for (const id of live) mustId(id);
   return [
     `R=${ROOT}/runs`,
-    'if [ -d "$R" ]; then for d in "$R"/*; do',
+    `if [ -d "$R" ]; then for d in "$R"/${tag}.*; do`,
     '  [ -d "$d" ] || continue',
     "  n=${d##*/}",
     `  case " ${live.join(" ")} " in *" $n "*) continue;; esac`,
@@ -299,9 +342,13 @@ export function sweepScript(live: readonly string[]): string {
 }
 
 /** The sweep, then the tree (a tar on stdin) unpacked into run `id`. */
-export function shipScript(id: string, live: readonly string[]): string {
+export function shipScript(
+  id: string,
+  tag: string,
+  live: readonly string[],
+): string {
   const dir = `${ROOT}/runs/${mustId(id)}/tree`;
-  return `${sweepScript(live)}\nmkdir -p ${dir} && tar -xf - -C ${dir}`;
+  return `${sweepScript(tag, live)}\nmkdir -p ${dir} && tar -xf - -C ${dir}`;
 }
 
 /** ssh's arguments for `box` (keys only), as the box check uses them. */
@@ -373,7 +420,15 @@ export interface BoxTree {
   sub: string;
   files: string[];
   untracked: Set<string>;
+  /** Issue 790: tracked files with uncommitted changes (staged or not). */
+  changed: Set<string>;
+  /** Submodules (mode 160000): never shipped. */
+  gitlinks: Set<string>;
 }
+
+/** What a box run scans: untracked files and uncommitted changes. */
+export const scanSet = (t: BoxTree): Set<string> =>
+  new Set([...t.untracked, ...t.changed]);
 
 /** The tree for `cwd`, from git (tracked plus untracked, not ignored). */
 export function gitTree(cwd: string, git: (args: string[]) => string): BoxTree {
@@ -389,17 +444,35 @@ export function gitTree(cwd: string, git: (args: string[]) => string): BoxTree {
   const untracked = new Set(
     z(git(["-C", root, "ls-files", "-o", "--exclude-standard", "-z"])),
   );
-  return { root, sub, files, untracked };
+  // No commit yet: nothing is committed, so every file is scanned.
+  let changed: Set<string>;
+  try {
+    changed = new Set(
+      z(git(["-C", root, "diff", "--name-only", "-z", "HEAD", "--"])),
+    );
+  } catch {
+    changed = new Set(files);
+  }
+  const gitlinks = new Set(
+    z(git(["-C", root, "ls-files", "-s", "-z"]))
+      .filter((l) => l.startsWith("160000 "))
+      .map((l) => l.slice(l.indexOf("\t") + 1)),
+  );
+  return { root, sub, files, untracked, changed, gitlinks };
 }
 
 export interface BoxCpuRun {
-  /** The slot's id (checked: a remote path). */
+  /** The run's folder name on the box (boxRunName: tag.slot). */
   id: string;
+  /** This install's tag: its sweep touches only its own runs. */
+  tag: string;
   argv: string[];
-  /** Allowed environment: CI, the slot's variables and the --env names. */
+  /** The gate's own variables: CI and the slot's. */
   env: Record<string, string>;
+  /** The --env names with this machine's values: checked. */
+  pass: Record<string, string>;
   tree: BoxTree;
-  /** The box's granted run ids, kept by the sweep. */
+  /** This install's granted runs on the box (folder names), kept. */
   live: string[];
 }
 
@@ -439,12 +512,9 @@ export function startBoxCpuRun(
       ok: false,
       error: `box ${box.name} has no ssh: cpu runs need one`,
     };
-  const refusedArgs = boxSecretRefusal(
-    r.argv,
-    Object.fromEntries(
-      Object.entries(r.env).filter(([k]) => !/^(CI|GATE_|DEN_GATE_)/.test(k)),
-    ),
-  );
+  // Only what comes from this machine is checked: the gate's own
+  // variables are given by name, never matched by a prefix.
+  const refusedArgs = boxSecretRefusal(r.argv, r.pass);
   if (refusedArgs) return { ok: false, error: refusedArgs };
   const read =
     d.readFile ??
@@ -455,7 +525,7 @@ export function startBoxCpuRun(
         return null;
       }
     });
-  const plan = shipPlan(r.tree.files, r.tree.untracked, read);
+  const plan = shipPlan(r.tree.files, scanSet(r.tree), read, r.tree.gitlinks);
   if (plan.refused) return { ok: false, error: plan.refused };
   const lock = read("package-lock.json");
   if (!lock)
@@ -465,6 +535,8 @@ export function startBoxCpuRun(
     };
   const sha = createHash("sha256").update(lock).digest("hex");
   const say = d.say ?? (() => {});
+  if (plan.submodules.length)
+    say(`Not shipped (submodules): ${plan.submodules.join(", ")}`);
   if (plan.left.length)
     say(`Not shipped (secret files): ${plan.left.join(", ")}`);
   if (plan.skipped.length)
@@ -512,17 +584,22 @@ export function startBoxCpuRun(
 
   const done = (async (): Promise<number> => {
     try {
-      const tar = sp("tar", ["-cf", "-", "--null", "-T", "-"], {
-        cwd: r.tree.root,
-        stdio: ["pipe", "pipe", "inherit"],
-        env: {
-          PATH: process.env.PATH ?? "/usr/bin:/bin",
-          COPYFILE_DISABLE: "1",
+      // --no-recursion: only the listed files, never a folder's contents.
+      const tar = sp(
+        "tar",
+        ["-cf", "-", "--no-recursion", "--null", "-T", "-"],
+        {
+          cwd: r.tree.root,
+          stdio: ["pipe", "pipe", "inherit"],
+          env: {
+            PATH: process.env.PATH ?? "/usr/bin:/bin",
+            COPYFILE_DISABLE: "1",
+          },
         },
-      });
+      );
       tar.stdin?.end(plan.ship.join("\0") + "\0");
       const dir = `${ROOT}/runs/${r.id}/tree`;
-      const ship = await remote(shipScript(r.id, r.live), {
+      const ship = await remote(shipScript(r.id, r.tag, r.live), {
         stdin: tar.stdout!,
       });
       if (stopped) return 130;
@@ -542,9 +619,12 @@ export function startBoxCpuRun(
           );
         return deps.code;
       }
-      const run = await remote(runScript(r.id, r.argv, r.env, r.tree.sub), {
-        stream: true,
-      });
+      const run = await remote(
+        runScript(r.id, r.argv, { ...r.pass, ...r.env }, r.tree.sub),
+        {
+          stream: true,
+        },
+      );
       if (run.code === 255 && !run.saw) return unreachable();
       return run.code;
     } finally {

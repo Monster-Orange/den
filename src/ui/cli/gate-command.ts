@@ -48,8 +48,10 @@
  */
 import { execFileSync, spawn } from "child_process";
 import {
+  boxRunName,
   boxSecretRefusal,
   gitTree,
+  scanSet,
   shipPlan,
   startBoxCpuRun,
   type BoxCpuRun,
@@ -844,13 +846,18 @@ async function boxCpuRefusal(
   } catch {
     return "this folder isn't in a git checkout: a test box gets git's files only. It can run on this machine instead: --box local.";
   }
-  const plan = shipPlan(tree.files, tree.untracked, (f) => {
-    try {
-      return fs.readFileSync(path.join(tree.root, f));
-    } catch {
-      return null;
-    }
-  });
+  const plan = shipPlan(
+    tree.files,
+    scanSet(tree),
+    (f) => {
+      try {
+        return fs.readFileSync(path.join(tree.root, f));
+      } catch {
+        return null;
+      }
+    },
+    tree.gitlinks,
+  );
   return plan.refused ?? { tree };
 }
 
@@ -1237,14 +1244,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       );
     child = cpuOnBox
       ? boxCpuChild(d, box!, {
-          id,
+          // Issue 790: the folder on the box is this install's (its tag).
+          id: boxRunName(storeTag(s.dir), id),
+          tag: storeTag(s.dir),
           argv: pos,
-          env: { CI: "true", [GATE_WORKERS_ENV]: "1", ...slotEnv, ...envVals },
+          env: { CI: "true", [GATE_WORKERS_ENV]: "1", ...slotEnv },
+          pass: envVals,
           tree: boxTree ?? (await boxCpuTreeOf(d)),
           live: s
             .list()
             .filter((x) => x.box === box!.name && x.grantedAt)
-            .map((x) => x.id),
+            .map((x) => boxRunName(storeTag(s.dir), x.id)),
         })
       : box
         ? d.exec(pos[0]!, pos.slice(1), {
