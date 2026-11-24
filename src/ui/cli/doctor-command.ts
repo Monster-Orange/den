@@ -1776,6 +1776,14 @@ export function sharedUserLines(
  * folder (its guardrail log, its audit queue: issue 1369), the person's
  * CLI's audit queue and the server's intake of both.
  */
+/**
+ * Issue 1391: state files of 0600 that hold no credential, left out of
+ * the walk: the activity trail, which agents may read (only the server
+ * writes it), and the copies beside it a compaction leaves.
+ */
+const NOT_CREDENTIAL_FILE = (name: string) =>
+  name === AUDIT_FILE || name.startsWith(`${AUDIT_FILE}.`);
+
 const NOT_CREDENTIAL_DIRS: readonly string[] = [
   DEN_PROCS_DIR,
   "audit",
@@ -1828,6 +1836,7 @@ function uncoveredSecretFiles(
         if (depth >= maxDepth) deep = true;
         else walk(p, depth + 1);
       } else if (e.isFile()) {
+        if (depth === 0 && NOT_CREDENTIAL_FILE(e.name)) continue;
         try {
           if ((fs.lstatSync(p).mode & 0o777) !== 0o600) continue;
         } catch {

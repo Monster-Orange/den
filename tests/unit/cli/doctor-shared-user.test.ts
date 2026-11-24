@@ -97,7 +97,7 @@ describe("issue 728: doctor's same-login rows", () => {
     expect(s.detail).toMatch(/next start/);
   });
 
-  it("the activity trail is denied to agents, so it is never listed; process records (pids only) aren't counted", () => {
+  it("the activity trail and the audit queues hold no credential, so they're never listed, readable or not; process records (pids only) aren't counted", () => {
     const own = install("own");
     registerInstall(reg(), { stateDir: own, edgeKeyDirs: [] });
     put(own, "audit.jsonl");

@@ -436,7 +436,8 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
   // hold every sign-in for its wait, then refuse it.
   const sessionsLock = path.join(abs, "web-sessions.lock");
   // Issue 728: the activity trail. Since issue 1369 only the server
-  // writes it (the CLI sends its entries), so an agent never needs it.
+  // writes it (the CLI sends its entries), so an agent never edits it.
+  // Issue 1391: it may read it, to debug who changed what.
   const trail = path.join(abs, AUDIT_FILE);
   // Issue 728: the state dir's other credential files and folders.
   const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
@@ -446,7 +447,6 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
     ...spellings(sessionsLock).map((p) => `${p}*`),
-    ...spellings(trail).map((p) => `${p}*`),
     ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
     ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
@@ -458,7 +458,6 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${sessionsLock})`,
     // Edit(path) covers writes too (issue 660: no Write(path) rules).
     `Edit(/${sessionsLock})`,
-    `Read(/${trail})`,
     `Edit(/${trail})`,
     ...files.map((f) => `Read(/${f})`),
     // Issue 1299: copies beside each (a damaged file moved aside, a

@@ -87,6 +87,9 @@ export const SESSION_READ_FILES: readonly string[] = [
   "actor-tokens.json",
   // The api_only guardrail's rules (the PreToolUse hook reads them).
   path.join("guardrails", "api-only.json"),
+  // Issue 1391: the activity trail, to debug who changed what. Words
+  // only, never a secret; only the server writes it (issue 1369).
+  "audit.jsonl",
   // Status doctor shows.
   path.join("server-agent", "update", "check.json"),
   path.join("server-agent", "update", "state.json"),
