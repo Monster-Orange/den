@@ -65,6 +65,11 @@ export interface Notification {
    * no longer needs the person: the bell lists it with the updates.
    */
   settled?: Settled;
+  /**
+   * Issue 1371 Part 2: a setting an agent changed without asking: the held
+   * write to undo (POST /api/settings/undo, the person's only).
+   */
+  undo?: { approval: string };
 }
 
 /** Issue 1008: how a withdrawn question was settled. */
@@ -644,6 +649,7 @@ export class NotificationStore {
     text: string;
     msg?: NoteMsg;
     link?: string;
+    undo?: { approval: string };
   }): Notification | null {
     if (this.muted(n.subject, n.scope)) return null;
     const at = this.now().toISOString();
@@ -662,6 +668,7 @@ export class NotificationStore {
         else delete same.msg;
         same.at = at;
         if (n.link) same.link = n.link;
+        if (n.undo) same.undo = { approval: String(n.undo.approval) };
         out = same;
       } else {
         out = {
@@ -673,6 +680,7 @@ export class NotificationStore {
           text,
           ...(msg ? { msg } : {}),
           ...(n.link ? { link: n.link } : {}),
+          ...(n.undo ? { undo: { approval: String(n.undo.approval) } } : {}),
           at,
           read: false,
         };
@@ -860,6 +868,23 @@ export class NotificationStore {
   }
 
   /** Mark read; how many changed. */
+  /**
+   * Issue 1371 Part 2: an Undo used (or no longer possible): the rows for
+   * that held write lose their Undo, and are read. How many changed.
+   */
+  dropUndo(approval: string): number {
+    return this.change((f) => {
+      let n = 0;
+      for (const x of f.items)
+        if (x.undo?.approval === approval) {
+          delete x.undo;
+          x.read = true;
+          n++;
+        }
+      return { out: n, changed: n > 0 };
+    });
+  }
+
   markRead(w: Which): number {
     return this.change((f) => {
       let n = 0;

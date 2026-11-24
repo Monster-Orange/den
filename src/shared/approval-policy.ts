@@ -569,7 +569,7 @@ export function policyFor(
     pins?: readonly string[];
     /** Issue 1391: the install's mode; strict when not given. */
     mode?: InstallMode;
-    /** Issue 1371 Part 2: a setting_change's category (its check says). */
+    /** Issue 1371 Part 2: a setting write's category (its check says). */
     setting?: { category: SettingCategory };
   },
 ): { kind: PolicyKind; from: string } {
@@ -590,7 +590,9 @@ export function policyFor(
   if (pinned) return { kind: "ask", from: `favorited ${pinned}` };
   // Issue 1371 Part 2: a setting follows the person's choice for its
   // category (one setting for the install), else the mode's default.
-  if (action === "setting_change" && o.setting) {
+  // Any held write whose check names a category (setting_change, issue
+  // 1395's gate_settings_set) follows it.
+  if (o.setting) {
     const c = settingChoice(o.setting.category, mode, o.install?.settings);
     return c.choice === "auto"
       ? { kind: "notify", from: c.from }

@@ -1430,6 +1430,7 @@ import {
   checkSettingChange,
   runSettingChange,
   settingChangeDeps,
+  undoSettingChange,
 } from "../cli/setting-change.js";
 import {
   approvalsView,
@@ -10123,6 +10124,50 @@ async function handleRequest(
       writeUserConfig(user);
       return sendJson(res, scopePayload(scopeView(parsed.value)));
     }
+  }
+
+  // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
+  // without asking. The person's only: never an agent, never the fixture.
+  if (pathname === "/api/settings/undo" && req.method === "POST") {
+    if (notAPersonOf(req) || fixturePersonOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can undo a setting change" },
+        403,
+      );
+    let id = "";
+    try {
+      const b = JSON.parse((await readBody(req)) || "{}") as {
+        approval?: unknown;
+      };
+      id = typeof b.approval === "string" ? b.approval.trim() : "";
+    } catch {
+      id = "";
+    }
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id))
+      return send400(res, "approval: the held write's id");
+    const a = approvalDeps().queue.get(id);
+    if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    const r = undoSettingChange(
+      settingChangeDeps({
+        userFile: userConfigPath(),
+        stateDir: getStateDir(),
+        audit: (detail, reason) =>
+          auditConfig({
+            verb: "config-write",
+            detail: `undo: ${detail}`,
+            ...(reason ? { reason } : {}),
+          }),
+      }),
+      a,
+    );
+    if (!r.ok) return sendJson(res, { ok: false, error: r.error }, 409);
+    try {
+      notificationDeps().store.dropUndo(id);
+    } catch {
+      /* the bell is best effort: the change is undone */
+    }
+    return sendJson(res, { ok: true, key: r.key, note: r.note });
   }
 
   if (pathname === "/api/settings") {

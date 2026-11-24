@@ -14,9 +14,12 @@ import * as os from "os";
 import * as path from "path";
 import {
   checkSettingChange,
+  runSettingChange,
   settingKind,
+  undoSettingChange,
   type SettingChangeDeps,
 } from "../../../src/ui/cli/setting-change.js";
+import { notePolicyRun } from "../../../src/ui/server/approval-routes.js";
 import type { DenConfig } from "../../../src/shared/den-config.js";
 import {
   approvalsView,
@@ -316,5 +319,97 @@ describe("Settings › Approvals › Agents changing settings (issue 1371 Part 2
   it("refuses Change without asking for agent powers", () => {
     const a = patchApprovals(undefined, { settings: { agent_powers: "auto" } });
     expect(a.ok).toBe(false);
+  });
+});
+
+describe("Undo, in the bell, of a setting changed without asking (issue 1371 Part 2)", () => {
+  const read = () => fs.readFileSync(deps().userFile, "utf8");
+  const ran = (key: string, value: unknown) => {
+    const r = runSettingChange(deps(), { key, value, reason: "faster" });
+    if (!r.ok) throw new Error(r.error);
+    return { id: "ap-1", action: "setting_change", result: r };
+  };
+
+  it("puts the value before back, once", () => {
+    writeUser("sessions:\n  close_grace_seconds: 30\n");
+    const a = ran("sessions.close_grace_seconds", 45);
+    expect(read()).toMatch(/close_grace_seconds: 45/);
+    const u = undoSettingChange(deps(), a);
+    if (!u.ok) throw new Error(u.error);
+    expect(read()).toMatch(/close_grace_seconds: 30/);
+    // A second Undo would lose nothing new, but is refused: it is done.
+    expect(undoSettingChange(deps(), a).ok).toBe(false);
+  });
+
+  it("a key that was unset goes back to unset", () => {
+    const a = ran("sessions.close_grace_seconds", 45);
+    const u = undoSettingChange(deps(), a);
+    if (!u.ok) throw new Error(u.error);
+    expect(read()).not.toMatch(/close_grace_seconds/);
+  });
+
+  it("refuses when the key changed since, so nothing is lost", () => {
+    const a = ran("sessions.close_grace_seconds", 45);
+    ran("sessions.close_grace_seconds", 60);
+    const u = undoSettingChange(deps(), a);
+    expect(u.ok).toBe(false);
+    if (!u.ok) expect(u.error).toMatch(/has changed since/);
+    expect(read()).toMatch(/close_grace_seconds: 60/);
+  });
+
+  it("the person's Undo runs even where the category now says Never", () => {
+    const a = ran("sessions.close_grace_seconds", 45);
+    const text = read().replace(
+      /^/,
+      "approvals:\n  settings:\n    limits: never\n",
+    );
+    fs.writeFileSync(deps().userFile, text);
+    expect(undoSettingChange(deps(), a).ok).toBe(true);
+  });
+
+  it("only a setting change that ran can be undone", () => {
+    expect(
+      undoSettingChange(deps(), {
+        id: "x",
+        action: "repo_clone",
+        result: { ok: true },
+      }).ok,
+    ).toBe(false);
+    expect(
+      undoSettingChange(deps(), {
+        id: "x",
+        action: "setting_change",
+        result: { ok: false, error: "no" },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("the bell row of a setting the policy ran carries Undo; other writes' don't", () => {
+    const added: { undo?: { approval: string } }[] = [];
+    const store = { add: (n: (typeof added)[number]) => (added.push(n), null) };
+    notePolicyRun(
+      store,
+      {
+        id: "ap-9",
+        agent: "a1",
+        summary: "s",
+        action: "setting_change",
+        result: { ok: true },
+      },
+      "p",
+    );
+    notePolicyRun(
+      store,
+      {
+        id: "ap-8",
+        agent: "a1",
+        summary: "s",
+        action: "repo_clone",
+        result: { ok: true },
+      },
+      "p",
+    );
+    expect(added[0]!.undo).toEqual({ approval: "ap-9" });
+    expect(added[1]!.undo).toBeUndefined();
   });
 });

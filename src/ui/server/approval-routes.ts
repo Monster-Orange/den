@@ -835,11 +835,17 @@ export async function handleApprovalRoutes(
  */
 export function notePolicyRun(
   store: Pick<NotificationStore, "add">,
-  a: Pick<Approval, "id" | "agent" | "summary">,
+  a: Pick<Approval, "id" | "agent" | "summary"> &
+    Partial<Pick<Approval, "action" | "result">>,
   project: string | undefined,
 ): void {
   const name = a.agent ?? "An agent";
+  // Issue 1371 Part 2: a setting changed without asking can be undone.
+  const undoable =
+    a.action === "setting_change" &&
+    (a.result as { ok?: unknown } | undefined)?.ok === true;
   store.add({
+    ...(undoable ? { undo: { approval: a.id } } : {}),
     kind: "service",
     subject: `record:approval-${a.id}`,
     scope: `workspace/${project ?? "den-server"}`,
