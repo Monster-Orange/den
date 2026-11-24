@@ -185,6 +185,11 @@ Held (each waits for the person's Allow):
   checks the key and value first; a setting that widens what agents can
   do runs only on the person's own Allow. One Den reads when it starts
   says so: then ask for `den_restart_server`.
+- `gate_settings_set`: change this machine's gate slot settings
+  (`settings`, Settings › Gate's keys and values, and a `reason`), which
+  `setting_change` can't reach. Den checks every value first; on a
+  personal install it's written at once and the person is told; on a
+  strict one it follows their choice for Limits and performance.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.

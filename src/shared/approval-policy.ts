@@ -146,6 +146,10 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "ask",
     why: "a setting that widens what agents can do needs the person's own Allow (issue 1371); every other one asks until the person chooses per category",
   },
+  gate_settings_set: {
+    risk: "widens",
+    why: "the gate's settings are scheduling on the person's own machine: routine limits, so they follow the person's choice for Limits and performance (issue 1395)",
+  },
   agent_sandbox_set: {
     personal: "keep",
     risk: "widens",

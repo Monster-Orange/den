@@ -9,6 +9,7 @@ config and manifest changes a distribution must make to move to it under
 ### Added
 
 - `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. (issue 728)
+- An agent can ask to change this machine's gate slot settings, with the held write `gate_settings_set` (or `gate settings … --reason`), which `setting_change` couldn't reach. Den checks the keys and values as Settings › Gate does, and the card shows each key's value now and the new one. On a personal install it's written at once and you're told; on a strict install it follows your choice for Limits and performance, except that turning `gate.browser_requires_container` off waits for your Allow. Every gate settings write now takes the gate's lock. (issue 1395)
 
 ### Changed
 

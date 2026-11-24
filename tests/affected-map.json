@@ -41,6 +41,9 @@
     "tests/unit/server/no-secrets-store.integration.test.ts": [
       "src/ui/cli/doctor-command.ts"
     ],
+    "tests/unit/server/settings-gate-lock-1395.integration.test.ts": [
+      "src/shared/gates/settings-set.ts"
+    ],
     "tests/unit/server/web-log-1344.integration.test.ts": [
       "src/shared/web-log-file.ts"
     ],
@@ -3742,6 +3745,11 @@
     {
       "when": ["src/ui/server/edge-up-routes.ts"],
       "run": ["tests/unit/server/settings-edge-up.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/gates/settings-set.ts"],
+      "run": ["tests/unit/server/settings-gate-lock-1395.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

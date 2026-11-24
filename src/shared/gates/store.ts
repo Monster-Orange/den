@@ -350,7 +350,10 @@ export interface GateSettingsRow {
 }
 
 /** A settings key's value in effect, as stored (true/false as 1/0). */
-function settingValue(s: GateSettings, key: string): number | string | null {
+export function gateSettingValue(
+  s: GateSettings,
+  key: string,
+): number | string | null {
   const camel = key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
   const v = (s as unknown as Record<string, unknown>)[camel];
   if (typeof v === "boolean") return v ? 1 : 0;
@@ -1061,11 +1064,27 @@ export class GateStore {
     return this.now();
   }
 
-  settings(): GateSettings & BoxSettings {
+  settings(
+    /** Issue 1395: the settings as they'd be with this patch (a preview). */
+    patch?: GateSettingsPatch,
+  ): GateSettings & BoxSettings {
     try {
-      const v = JSON.parse(
-        fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
-      ) as Record<string, unknown>;
+      let v: Record<string, unknown>;
+      try {
+        v = JSON.parse(
+          fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
+        ) as Record<string, unknown>;
+      } catch (e) {
+        if (!patch) throw e;
+        v = {};
+      }
+      if (patch) {
+        v = { ...v };
+        for (const [k, x] of Object.entries(patch)) {
+          if (x === null) delete v[k];
+          else if (x !== undefined) v[k] = x;
+        }
+      }
       const text = (k: keyof typeof GATE_TEXT) =>
         typeof v[k] === "string" ? (v[k] as string) : "";
       const num = (k: GateNumberKey, d: number) => {
@@ -1201,15 +1220,22 @@ export class GateStore {
    * Issue 963: each change is in the slot log, with `by` (who changed it,
    * named as an ask is), when, and each key's value before and after (the
    * value in effect: a cleared key's is its default). No change, no row.
+   * Issue 1395: the one writer of settings.json, under the gate-slot lock
+   * the grant decision holds (GateLockBusy past the store's wait); the
+   * file is replaced whole, so a reader never sees half of it.
    */
   writeSettings(patch: GateSettingsPatch, by = "unknown"): void {
+    this.locked(() => this.writeSettingsLocked(patch, by));
+  }
+
+  private writeSettingsLocked(patch: GateSettingsPatch, by: string): void {
     const before = this.settings();
     this.writeSettingsFile(patch);
     const after = this.settings();
     const changes: Record<string, GateSettingChange> = {};
     for (const k of Object.keys(patch)) {
-      const from = settingValue(before, k);
-      const to = settingValue(after, k);
+      const from = gateSettingValue(before, k);
+      const to = gateSettingValue(after, k);
       if (from !== to) changes[k] = { from, to };
     }
     if (!Object.keys(changes).length) return;
