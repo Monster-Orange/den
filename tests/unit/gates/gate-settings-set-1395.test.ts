@@ -351,9 +351,13 @@ describe("issue 1395: what was judged at the ask is what runs (Reviewer C, Build
     // The person changes it by hand before the Allow.
     store.writeSettings({ cpu_slots: 4 }, "a person");
     const rows = store.settingsChanges().length;
-    const r = await runGateSettingsSet(deps("personal"), c.args, {
-      decidedBy: "person",
-    });
+    const r = await runGateSettingsSet(
+      deps("personal"),
+      { ...c.args },
+      {
+        decidedBy: "person",
+      },
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/changed since the ask.*ask again/);
     expect(store.settings().cpuSlots).toBe(4);
@@ -373,14 +377,22 @@ describe("issue 1395: what was judged at the ask is what runs (Reviewer C, Build
     expect(c.ok && c.personOnly).toBeFalsy();
     if (!c.ok) return;
     widensNow = true;
-    const auto = await runGateSettingsSet(d, c.args, {
-      decidedBy: "auto:approvals policy: auto",
-    });
+    const auto = await runGateSettingsSet(
+      d,
+      { ...c.args },
+      {
+        decidedBy: "auto:approvals policy: auto",
+      },
+    );
     expect(auto.ok).toBe(false);
     if (!auto.ok) expect(auto.error).toMatch(/needs the person/);
     expect(store.settings().cpuSlots).toBe(2);
     // The person's own Allow runs it.
-    const person = await runGateSettingsSet(d, c.args, { decidedBy: "person" });
+    const person = await runGateSettingsSet(
+      d,
+      { ...c.args },
+      { decidedBy: "person" },
+    );
     expect(person.ok).toBe(true);
     expect(store.settings().cpuSlots).toBe(3);
   });
