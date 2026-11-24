@@ -25,7 +25,7 @@ config and manifest changes a distribution must make to move to it under
 
 - Installs with no install_mode become personal: the sandbox turns off unless you set it. To keep it, set install_mode: strict in den.yml. An explicit `agents.sandbox` (on or required) and each `agents.<id>.sandbox` stay as set. Doctor shows "Install mode: personal (default)" once, as information, with how to switch. (issue 1391)
 
-## [0.4.88] - unreleased
+## [0.4.88] - 2026-11-23
 
 ### Added
 
