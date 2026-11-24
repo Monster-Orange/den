@@ -7220,8 +7220,10 @@ export interface RestartPlan {
 export interface RestartOutcome {
   id: string;
   workspace: string;
-  outcome: "restarted" | "job" | "failed";
+  outcome: "restarted" | "job" | "timedOut" | "failed";
   job?: { command: string; minutes: number };
+  /** timedOut: the minutes it waited for the turn to end. */
+  minutes?: number;
   error?: string;
 }
 
@@ -7252,6 +7254,40 @@ export async function restartStateOf(
 }
 
 /**
+ * Issue 1407: how a restart at the agent's next idle that did not happen
+ * ended: a job found when its turn ended (job), a wait of `waitedMs` that
+ * ran out (timedOut), or anything else (failed, with why).
+ */
+export function restartOutcomeOf(
+  id: string,
+  workspace: string,
+  e: unknown,
+  waitedMs: number,
+): RestartOutcome {
+  const err = e as AgentError;
+  if (err?.code === "job_running" && err.job)
+    return {
+      id,
+      workspace,
+      outcome: "job",
+      job: { command: err.job.command ?? "", minutes: err.job.minutes },
+    };
+  if (err?.code === "still_busy")
+    return {
+      id,
+      workspace,
+      outcome: "timedOut",
+      minutes: Math.round(waitedMs / 60_000),
+    };
+  return {
+    id,
+    workspace,
+    outcome: "failed",
+    error: e instanceof Error ? e.message : String(e),
+  };
+}
+
+/**
  * Issue 1407: a bulk restart (restart-stale). Each agent is checked first
  * and the answer is per agent (restartStateOf). Those idle or mid-turn
  * restart at their next idle, on the same conversation; a job found when
@@ -7270,6 +7306,7 @@ export async function restartMany(
   } = {},
 ): Promise<RestartPlan[]> {
   const plan: RestartPlan[] = [];
+  const waited = o.maxMs ?? restartWaitOf(d);
   for (const a of agents) {
     let p: RestartPlan;
     try {
@@ -7286,24 +7323,8 @@ export async function restartMany(
       jobStops: true,
     }).then(
       () => o.onDone?.({ ...base, outcome: "restarted" }),
-      (e: unknown) => {
-        const err = e as AgentError;
-        if (err?.code === "job_running" && err.job)
-          o.onDone?.({
-            ...base,
-            outcome: "job",
-            job: {
-              command: err.job.command ?? "",
-              minutes: err.job.minutes,
-            },
-          });
-        else
-          o.onDone?.({
-            ...base,
-            outcome: "failed",
-            error: e instanceof Error ? e.message : String(e),
-          });
-      },
+      (e: unknown) =>
+        o.onDone?.(restartOutcomeOf(p.id, p.workspace, e, waited)),
     );
   }
   return plan;
@@ -7346,7 +7367,7 @@ async function jobStopsWait(
 }
 
 /** 0.4.48: agents.restart_wait_minutes, in ms (its default if unreadable). */
-function restartWaitOf(d: AgentsResolved): number {
+export function restartWaitOf(d: AgentsResolved): number {
   try {
     return d.agentsConfig().restartWaitMs;
   } catch {

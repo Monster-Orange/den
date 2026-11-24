@@ -585,6 +585,38 @@ describe("D44: the routes", () => {
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
   });
 
+  it("issue 1407 part 2: restart-status follows each agent live; the stale list drops it once back", async () => {
+    const { r } = await startedBeforeHub();
+    const call = await api(r);
+    await call("POST", "/api/agents/restart-stale", {});
+    const st = await call("GET", "/api/agents/restart-status");
+    expect(st.status).toBe(200);
+    expect(
+      (st.json.agents as { id: string; state: string }[]).find(
+        (a) => a.id === "planner",
+      )?.state,
+    ).toMatch(/^(now|restarted)$/);
+    for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
+    let state = "";
+    for (let i = 0; i < 100 && state !== "restarted"; i++) {
+      await settle(20);
+      state =
+        (
+          (await call("GET", "/api/agents/restart-status")).json.agents as {
+            id: string;
+            state: string;
+          }[]
+        ).find((a) => a.id === "planner")?.state ?? "";
+    }
+    expect(state).toBe("restarted");
+    expect(
+      (await call("GET", "/api/agents/stale?fresh=1")).json.agents,
+    ).toEqual([]);
+    expect((await call("POST", "/api/agents/restart-status", {})).status).toBe(
+      405,
+    );
+  });
+
   it("tools: what the agent's MCP whoami reads", async () => {
     const { r } = await startedBeforeHub();
     const call = await api(r);

@@ -88,6 +88,7 @@
  * as a tag.
  */
 import {
+  followRestarts,
   restartAllHtml,
   restartNow,
   restartRowHtml,
@@ -2454,6 +2455,48 @@ async function restartForTools(r, button) {
   );
   if (answer) st.restarts.set(restartKey(r.workspace, r.agent), answer);
   await refresh();
+  followAgentRestarts();
+}
+
+let restartFollow = null;
+
+/**
+ * Issue 1407 part 2: the asked restarts, followed live: each row takes the
+ * server's state (restarted, a wait that ran out, failed); one the server
+ * no longer lists has cleared. The list refreshes on each change, so the
+ * stale bar drops an agent the moment it is back.
+ */
+function followAgentRestarts() {
+  if (restartFollow || !st.restarts.size) return;
+  restartFollow = followRestarts({
+    api,
+    onRows: (rows) => {
+      if (!st.root?.isConnected || !st.restarts.size) {
+        restartFollow?.stop();
+        restartFollow = null;
+        return;
+      }
+      let changed = false;
+      for (const [k, a] of [...st.restarts]) {
+        const live = rows.find((b) => restartKey(b.workspace, b.id) === k);
+        if (!live) {
+          st.restarts.delete(k);
+          changed = true;
+        } else if (live.state !== a.state) {
+          st.restarts.set(k, live);
+          changed = true;
+        }
+      }
+      if (!st.restarts.size) {
+        restartFollow?.stop();
+        restartFollow = null;
+      }
+      if (changed) void refresh();
+    },
+    onEnd: () => {
+      restartFollow = null;
+    },
+  });
 }
 
 /** Issue 1407: Restart all the stale agents at their next idle (restart-stale). */
@@ -2466,6 +2509,7 @@ async function restartAllForTools(button) {
   for (const a of Array.isArray(out?.agents) ? out.agents : [])
     st.restarts.set(restartKey(a.workspace, a.id), a);
   await refresh();
+  followAgentRestarts();
 }
 
 /** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
@@ -2484,6 +2528,7 @@ async function restartNowFor(buttons) {
     st.restarts.set(k, { ...a, state: ok ? "done" : "failed" });
   }
   await refresh();
+  followAgentRestarts();
 }
 
 /** Which of the bar's controls `el` is: its data-act, or its place. */
