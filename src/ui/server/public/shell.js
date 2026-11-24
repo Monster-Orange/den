@@ -3303,6 +3303,10 @@
     "ap.det.agent_create.runtime": "Runtime: {v}",
     "ap.det.agent_create.mode": "Mode: {mode} (the project's: {cap})",
     "ap.det.agent.who": "Agent: {agent}, project {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} starts outside the sandbox: agents.{id}.sandbox is off in config/local/user.yml.",
+    "ap.det.agent.sandboxOffAll":
+      "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
     "ap.det.agent.whoId": "Agent: {agent} ({id}), project {project}",
     "ap.det.agent_folder.from": "From: {v}",
     "ap.det.agent_folder.to": "To: {v}",
@@ -3318,6 +3322,21 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.det.agent_sandbox_set.self":
+      "{agent} is asking for this itself: it wants its own sandbox {value}.",
+    "ap.det.agent_sandbox_set.on":
+      "This puts {agent} back in the sandbox: Den's own files are read-only to it again.",
+    "ap.det.agent_sandbox_set.off":
+      "This takes {agent} out of the sandbox: it can then write Den's own files and reach what the sandbox blocks.",
+    "ap.det.agent_sandbox_set.why": "Why: {why}",
+    "ap.det.agent_sandbox_set.writes":
+      "Den writes agents.{id}.sandbox: {value} in config/local/user.yml, and nothing else there.",
+    "ap.det.agent_sandbox_set.running":
+      "It is running: Den restarts it after its turn, on the same conversation, with the change.",
+    "ap.det.agent_sandbox_set.stopped":
+      "It is stopped: its next start has the change.",
+    "ap.do.agent_sandbox_set": "{agent}: back in the sandbox",
+    "ap.do.agent_sandbox_set.loosens": "This takes {agent} out of the sandbox",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",

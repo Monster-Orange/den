@@ -2331,6 +2331,10 @@
     "ap.det.agent_create.runtime": "ランタイム: {v}",
     "ap.det.agent_create.mode": "モード: {mode}（プロジェクトのモード: {cap}）",
     "ap.det.agent.who": "エージェント: {agent}、プロジェクト {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} はサンドボックスの外で始まります: config/local/user.yml の agents.{id}.sandbox が off です。",
+    "ap.det.agent.sandboxOffAll":
+      "ここのエージェントはサンドボックスの外で始まります (agents.sandbox: off)。このエージェントも同じです。",
     "ap.det.agent.whoId":
       "エージェント: {agent}（{id}）、プロジェクト {project}",
     "ap.det.agent_folder.from": "移動元: {v}",
@@ -2348,6 +2352,21 @@
     "ap.det.agent_mode.running":
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
+    "ap.det.agent_sandbox_set.self":
+      "{agent} が自分自身のために求めています: 自分のサンドボックスを {value} にしたいとしています。",
+    "ap.det.agent_sandbox_set.on":
+      "{agent} をサンドボックスに戻します: Den のファイルは再び読み取り専用になります。",
+    "ap.det.agent_sandbox_set.off":
+      "{agent} をサンドボックスの外に出します: Den のファイルに書き込めるようになり、サンドボックスが止めているものにも届きます。",
+    "ap.det.agent_sandbox_set.why": "理由: {why}",
+    "ap.det.agent_sandbox_set.writes":
+      "Den は config/local/user.yml に agents.{id}.sandbox: {value} だけを書き込みます。ほかは変えません。",
+    "ap.det.agent_sandbox_set.running":
+      "実行中です: Den はターンの後、同じ会話のまま、変更を入れて再起動します。",
+    "ap.det.agent_sandbox_set.stopped":
+      "停止中です: 次の起動で変更が入ります。",
+    "ap.do.agent_sandbox_set": "{agent}: サンドボックスに戻す",
+    "ap.do.agent_sandbox_set.loosens": "{agent} をサンドボックスの外に出す",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
