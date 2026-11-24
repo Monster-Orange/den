@@ -120,7 +120,13 @@ describe("two restarts of one agent at once (issue 216)", () => {
     const rows = agentRows(r);
     expect(rows).toHaveLength(2);
     for (const row of rows) {
-      expect(String(row.principal)).toMatch(/^person:/);
+      // Issue 1369: no server here, so each is queued: the person's
+      // CLI's report, unverified, its who kept as what it reported.
+      expect(row.unverified).toBe(true);
+      expect(row).not.toHaveProperty("principal");
+      expect(
+        String((row.reported as { principal?: string }).principal),
+      ).toMatch(/^person:/);
       expect(String(row.detail)).toMatch(/restart planner in north/);
       expect(row.outcome).toBeUndefined();
     }
