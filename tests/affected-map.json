@@ -39,6 +39,10 @@
       "src/shared/settings-cli-rows.ts",
       "src/ui/server/index.ts"
     ],
+    "tests/unit/server/agents-max-1373.integration.test.ts": [
+      "src/shared/den-config.ts",
+      "src/shared/settings-cli-rows.ts"
+    ],
     "tests/unit/server/fixture-grant.integration.test.ts": [
       "src/shared/test-install-grant.ts",
       "src/ui/server/index.ts"
@@ -2788,6 +2792,11 @@
     {
       "when": ["src/ui/server/agents-layout-pref.ts"],
       "run": ["tests/unit/server/agents-layout.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/den-config.ts", "src/shared/settings-cli-rows.ts"],
+      "run": ["tests/unit/server/agents-max-1373.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

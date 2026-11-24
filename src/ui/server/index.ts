@@ -6064,6 +6064,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    // Issue 1373: the agents' cap in force (user.yml over den.yml).
+    agents_limits: (() => {
+      try {
+        return {
+          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 742: how long a held write waits for the person's Allow.
     held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
@@ -10230,6 +10240,7 @@ async function handleRequest(
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
             sessions: body.sessions,
+            agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
             github: body.github,

@@ -40,6 +40,7 @@ import {
   type UserConfig,
   readMcpConfig,
   sectionConfigError,
+  agentsUserDrift,
   type DenConfig,
 } from "../../shared/den-config.js";
 import type { ConfigError } from "../../shared/config-error.js";
@@ -2050,11 +2051,19 @@ export function configLines(
     s: "agents" | "sessions" | "web",
   ) => ConfigError | null = sectionConfigError,
   deprecated: () => string[] = () => deprecatedKeys(),
+  /** Issue 1373: agent limits both files set, to different values. */
+  drift: () => { key: string; mine: unknown; theirs: unknown }[] = () =>
+    agentsUserDrift(),
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
   // Keys still accepted that no longer do anything: a note, not a problem.
   for (const l of deprecated()) lines.push(`  agents  ℹ  ${l}`);
+  // Issue 1373: user.yml's limit wins; a note, so the person knows which.
+  for (const d of drift())
+    lines.push(
+      `  agents  ℹ  agents.${d.key}: user.yml's ${JSON.stringify(d.mine)} wins over the distribution's ${JSON.stringify(d.theirs)}`,
+    );
   for (const section of ["agents", "sessions", "web"] as const) {
     const e = errorOf(section);
     const issues = e

@@ -6,6 +6,8 @@ import {
   readSessionsConfig,
   readUserConfig,
   SESSIONS_SETTINGS_KEYS,
+  AGENTS_SETTINGS_KEYS,
+  agentsLimitInForce,
   writeUserConfig,
   type ResolvedSessionsConfig,
   type UserConfig,
@@ -142,6 +144,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   ...Object.fromEntries(
     SESSIONS_SETTINGS_KEYS.map((k) => [`sessions.${k}`, ["sessions", k]]),
   ),
+  // Issue 1373: the agents' limits (agents.max_concurrent and the waits),
+  // user.yml's winning over den.yml's.
+  ...Object.fromEntries(
+    AGENTS_SETTINGS_KEYS.map((k) => [`agents.${k}`, ["agents_limits", k]]),
+  ),
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes.wait_minutes": ["held_writes", "wait_minutes"],
   // Issue 1022: how often the page polls health, visible and hidden.
@@ -155,6 +162,13 @@ function sessionsValue(name: string): number | undefined {
   if (field !== "sessions" || !limit) return undefined;
   const camel = limit.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
   return readSessionsConfig()[camel as keyof ResolvedSessionsConfig] as number;
+}
+
+/** Issue 1373: an agent limit's value in force (user.yml over den.yml). */
+function agentsLimitValue(name: string): unknown {
+  const [field, limit] = DOTTED[name] ?? [];
+  if (field !== "agents_limits" || !limit) return undefined;
+  return agentsLimitInForce(limit);
 }
 
 /**
@@ -299,7 +313,10 @@ export async function cmdConfig(args: string[]): Promise<void> {
   const assignment = args[0];
   const eq = assignment.indexOf("=");
   // Issue 532: `config sessions.<key>` prints the value in force.
-  const effective = eq < 0 ? sessionsValue(assignment) : undefined;
+  const effective =
+    eq < 0
+      ? (sessionsValue(assignment) ?? agentsLimitValue(assignment))
+      : undefined;
   if (effective !== undefined) {
     console.log(String(effective));
     return;
