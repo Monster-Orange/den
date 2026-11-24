@@ -341,9 +341,15 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
  * Issue 1391 (the bed's 542): GETs a fixture session may make though the
  * route table doesn't class them readonly. /api/github/repos reads the
  * person's repo list through gh (classed for gh's sign-in and quota); it
- * writes nothing. A fixture session exists only on a test install.
+ * writes nothing. /api/manifest/validate?path= (the bed's 573, Vision's
+ * ruling) validates a manifest by path; the route reads only inside a
+ * project's repos and quotes nothing it refuses. A fixture session exists
+ * only on a test install.
  */
-export const FIXTURE_GETS: readonly RegExp[] = [/^\/api\/github\/repos$/];
+export const FIXTURE_GETS: readonly RegExp[] = [
+  /^\/api\/github\/repos$/,
+  /^\/api\/manifest\/validate$/,
+];
 
 /**
  * Reads never open to a fixture session (or, issue 796, an agent's view),
