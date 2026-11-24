@@ -124,7 +124,9 @@ describe("issue 1344: the server's own log file", () => {
     const got = stdoutLine(
       "failed: Authorization: Bearer \x1b[33mabcDEF123456\x1b[0m.xyz-_~+/=",
     );
-    expect(got.replace(/\x1b\[[0-9;]*m/g, "")).not.toContain("abcDEF123456");
+    expect(
+      got.split("\x1b[33m").join("").split("\x1b[0m").join(""),
+    ).not.toContain("abcDEF123456");
   });
 
   it("a file it can't write never throws", () => {
