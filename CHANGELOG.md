@@ -8,11 +8,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. The activity trail is now denied to agents too. (issue 728)
+- `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. (issue 728)
 
 ### Changed
 
 - Personal installs: agents' asks that only narrow what agents may do, or can be undone, run and tell you instead of waiting: removing a project's MCP server, turning the agent sandbox on, removing a test box, linking a project to the Hub project Connect pairs it with, Den's own agent updating Den to a stable release at or above the running one (unless `server_agent.self_update: ask`), restarting the terminal host while no agent turn runs (a turn that starts first holds it for you), and adding or changing a persona while nothing is sandboxed. Strict installs are unchanged. (issue 1403)
+- On a personal install (`install_mode`, personal unless set to strict), agents may read Den's activity trail again, to see who changed what; on a strict one it stays denied. Only the web server writes it, so they still can't edit it. At its first start, Den moves the trail written before this into a folder agents can't read. Den redacts secret-shaped text (tokens, keys, credentials) from every string in every row, and a setting changed to a text value (a command, for one) is noted by its length, never its text; the approval card still shows the person the whole value. (issue 1391)
 - The activity trail has one writer: the web server. A `den` command sends each of its audit entries to the running server, which records whom the command's credential names. While the server is down, entries wait in a queue and come in later as reports, marked unverified; `den doctor` counts the last day's. Commands an agent runs keep their audit entries now. (issue 1369)
 
 ### Fixed
@@ -26,7 +27,7 @@ config and manifest changes a distribution must make to move to it under
 
 - Installs with no install_mode become personal: the sandbox turns off unless you set it. To keep it, set install_mode: strict in den.yml. An explicit `agents.sandbox` (on or required) and each `agents.<id>.sandbox` stay as set. Doctor shows "Install mode: personal (default)" once, as information, with how to switch. (issue 1391)
 
-## [0.4.88] - unreleased
+## [0.4.88] - 2026-11-23
 
 ### Added
 

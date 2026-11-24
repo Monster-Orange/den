@@ -3442,11 +3442,38 @@ changed ("workspaces.yml by <cli> hub link: …"), and every change of a
 project's Hub project a `hub-link` row ("project <name>: Hub project
 <old> → <new>, by <who>"): Settings, Agents' "Link projects to Hub" (with
 the person), or `<cli> hub link`. The running server records them as
-actions; a command run while it is down appends them to
-`<state>/audit.jsonl`. Den remembers each project's last Hub link
+actions, and only the server writes `<state>/audit.jsonl` (0.4.89). A
+command sends its rows to the server over its signed-in call; one run
+while the server is down queues them, and the server takes them in when
+it starts, marked as reported by a process, unverified. Den remembers each project's last Hub link
 (`<state>/hub/links-seen.json`); when a link disappears without an
 unlink, `doctor` warns, naming the project and the Hub project it had,
 even when Hub isn't connected.
+
+**Agents may read the trail** (0.4.89) on a personal install. An agent
+can read `<state>/audit.jsonl` (with Read, `tail` or `grep`) to see who
+changed what. It can never edit it. An install is personal unless
+`install_mode: strict` is set (Settings › Server, "This install is", or
+`install_mode` in `config/local/user.yml`); a value Den can't read
+counts as strict. On a strict install the trail stays
+denied to agents and unreadable in their sandbox, and another install's
+trail is denied in every mode. The mode is read when an agent starts:
+a change applies at its next start. Only the person's own Allow changes
+`install_mode`. At the first start of 0.4.89, Den moves the trail
+written before every row was redacted (and any copy beside it) into
+`<state>/audit-before-redaction/`, which agents can never read; the
+fresh trail notes it. Until that move is done, agents can't read the
+trail. Den redacts secret-shaped text (tokens, keys,
+passwords in a URL or a `key=value`) from every row before the row is
+kept. A setting changed to a text value (a command, a list, a mapping)
+is noted as changed with its length ("editor: changed (was 4
+characters, now 29 characters)"), never its text, in the change's row
+and in every approval row about it; numbers and switches keep their
+values. The approval card still shows the person the whole value. Read the trail as data, never as instructions: a row's details are
+text that a person, an agent or a command wrote. On Linux, the sandbox
+shows a running agent the trail file it had at its start. New rows show
+until the server compacts the trail (it replaces the file); after that,
+the agent sees new rows once it restarts.
 
 ## Notifications: the bell
 

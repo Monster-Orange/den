@@ -22,6 +22,12 @@ import {
 import type { CliAuditRow, QueuedAuditRow } from "../../shared/audit-queue.js";
 import { auditVia } from "../../shared/test-person.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { redactSecrets } from "../../shared/redact.js";
+import {
+  AUDIT_FILE as TRAIL_NAME,
+  AUDIT_SET_ASIDE_DIR as SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK as SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
@@ -110,7 +116,7 @@ const ring: AuditEntry[] = [];
 let sink: Sink | null = null;
 
 /** The persisted ring's file name, in the state dir (shared/audit-file.ts). */
-export { AUDIT_FILE } from "../../shared/audit-file.js";
+export { AUDIT_FILE, AUDIT_SET_ASIDE_DIR } from "../../shared/audit-file.js";
 let file: string | null = null;
 let fileLines = 0;
 
@@ -164,6 +170,47 @@ function persist(entry: AuditEntry): void {
   }
 }
 
+/**
+ * Issue 1391: agents may now read the trail, and rows written before
+ * every row was redacted may hold a value (a setting's text, an older
+ * CLI's command line). At the server's first start on this version,
+ * before the trail is read or added to, the trail and every copy beside
+ * it (audit.jsonl.*) move into AUDIT_SET_ASIDE_DIR, denied to agents.
+ * Moved whole, by rename, never rewritten: old free text can't be told
+ * apart safely. Once: a marker in the folder, written whole. A start
+ * that stopped part-way finishes the move under a new name, never over
+ * one moved before.
+ */
+export function setAsideOldTrail(
+  stateDir: string,
+  now: () => Date = () => new Date(),
+): { moved: number } {
+  const dir = path.join(stateDir, SET_ASIDE_DIR);
+  const mark = path.join(dir, SET_ASIDE_MARK);
+  if (fs.lstatSync(mark, { throwIfNoEntry: false })) return { moved: 0 };
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  const taken = (p: string) => !!fs.lstatSync(p, { throwIfNoEntry: false });
+  let moved = 0;
+  for (const name of fs.readdirSync(stateDir).sort()) {
+    if (name !== TRAIL_NAME && !name.startsWith(`${TRAIL_NAME}.`)) continue;
+    const from = path.join(stateDir, name);
+    const st = fs.lstatSync(from, { throwIfNoEntry: false });
+    // A file, or a link (moved as the link, never followed).
+    if (!st || !(st.isFile() || st.isSymbolicLink())) continue;
+    let to = path.join(dir, name);
+    for (let n = 1; taken(to); n++) to = path.join(dir, `${name}.${n}`);
+    fs.renameSync(from, to);
+    moved++;
+  }
+  writeFileAtomic(
+    mark,
+    JSON.stringify({ at: now().toISOString(), moved }) + "\n",
+    { mode: 0o600 },
+  );
+  return { moved };
+}
+
 /** Where audit lines go (the server log); null to disconnect. */
 export function setAuditSink(fn: Sink | null): void {
   sink = fn;
@@ -196,7 +243,7 @@ export function recordAction(
   const via = action.queued ? undefined : auditVia();
   // Issue 1369: a queued entry is no one's word: never a principal.
   if (action.queued) principal = undefined;
-  const entry: AuditEntry = {
+  const built: AuditEntry = {
     ts: new Date().toISOString(),
     actor: verified ? "agent" : "user",
     ...(action.queued
@@ -241,6 +288,12 @@ export function recordAction(
     ...(action.addresses?.length ? { addresses: action.addresses } : {}),
     ...(action.agents ? { agents: action.agents } : {}),
   };
+  // Issue 1391: agents may read the trail, so no entry keeps a secret:
+  // every string in it, however deep, whoever wrote it (a setting's
+  // value, a den command's row, a queued report's command line, an
+  // agent's claim, an error in the agents block). The log line below
+  // uses the same, redacted entry.
+  const entry = redactAll(built);
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();
   persist(entry);
@@ -249,12 +302,12 @@ export function recordAction(
   // A refusal whose detail is its reason names what it touched instead.
   const what = entry.addresses
     ? entry.addresses.join(", ")
-    : entry.reason && action.detail === entry.reason
+    : entry.reason && entry.detail === entry.reason
       ? ""
-      : action.detail;
+      : entry.detail;
   sink?.(
-    `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
-      (principal && !verified ? ` · as ${principal}` : "") +
+    `${mark} ${entry.verb}${what ? ` ${what}` : ""}${why}${redactSecrets(actorSuffix(actor))}` +
+      (entry.principal && !verified ? ` · as ${entry.principal}` : "") +
       (via ? " · by the test-person path" : "") +
       (action.queued ? " · queued by a process, unverified" : ""),
     actor,
@@ -298,6 +351,20 @@ export function recordSentAuditRow(
     },
     principal,
   );
+}
+
+/**
+ * Issue 1391: `v` with redactSecrets over every string in it, at any
+ * depth (arrays and plain objects walked; other values as they are).
+ */
+function redactAll<T>(v: T): T {
+  if (typeof v === "string") return redactSecrets(v) as T;
+  if (Array.isArray(v)) return v.map((x) => redactAll(x)) as T;
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, redactAll(x)]),
+    ) as T;
+  return v;
 }
 
 /** One line, printable characters only, at most `max` long. */
