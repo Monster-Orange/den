@@ -34,6 +34,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/web-log-1344.integration.test.ts": [
+      "src/shared/web-log-file.ts",
+      "src/ui/server/index.ts"
+    ],
     "tests/unit/server/fixture-grant.integration.test.ts": [
       "src/shared/test-install-grant.ts",
       "src/ui/server/index.ts"
@@ -3940,6 +3944,11 @@
     {
       "when": ["src/shared/environment-manager/scope.ts"],
       "run": ["tests/unit/server/view-scope.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/shared/web-log-file.ts", "src/ui/server/index.ts"],
+      "run": ["tests/unit/server/web-log-1344.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
