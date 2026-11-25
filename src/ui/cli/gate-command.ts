@@ -252,8 +252,13 @@ export interface GateDeps {
   err: (line: string) => void;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
-  /** Starts the command (issue 625: `env` adds to the environment). */
-  exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
+  /** Starts the command; `env` adds to its environment, `held` holds it until `start()`. */
+  exec: (
+    cmd: string,
+    args: string[],
+    env?: Record<string, string>,
+    opts?: { held?: boolean },
+  ) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
   every: (ms: number, fn: () => void) => () => void;
   /** Calls `h` on each of GATE_RUN_SIGNALS; returns a stop. */
@@ -435,21 +440,22 @@ const realExec = (
   cmd: string,
   args: string[],
   env?: Record<string, string>,
+  opts?: { held?: boolean },
 ): GateRun => {
   // Issue 1132: in its own process group (it leads it), so what it
   // starts can be stopped with it, and nothing else is. Signals reach it
   // through gate run, which passes them on to the whole group.
-  const held = process.platform !== "win32";
-  const opts = {
+  const held = opts?.held === true && process.platform !== "win32";
+  const how = {
     detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
   };
   const k = held
     ? spawn("/bin/sh", ["-c", GATE_HOLD_SHIM, "den-gate-hold", cmd, ...args], {
-        ...opts,
+        ...how,
         stdio: ["inherit", "inherit", "inherit", "pipe"],
       })
-    : spawn(cmd, args, { ...opts, stdio: "inherit" });
+    : spawn(cmd, args, { ...how, stdio: "inherit" });
   const go = held ? (k.stdio[3] as Writable | null) : null;
   // a write after the shim died is no error of gate run's
   go?.on("error", () => {});
@@ -993,8 +999,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: --browser-endpoint is not used inside ${inside.id}: the held slot's browser is`,
       );
     const child = d.exec(pos[0]!, pos.slice(1));
-    // Inside a held slot no group is recorded, so it starts now.
-    child.start?.();
     const off = d.onSignal((sig) => child.kill(sig));
     // Never past its slot: when the outer run gives it back (it ended),
     // this command stops too, so two runs never share a slot unheld.
@@ -1331,20 +1335,28 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       slotEnv[GATE_WORKERS_ENV] = String(
         gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
       );
+    const hold = { held: true };
     child = box
-      ? d.exec(pos[0]!, pos.slice(1), {
-          // Issue 1017: the box's endpoint for this run's version.
-          ...boxEnv(box, e.pwVersion),
-          DEN_GATE_ALLOW: allow.join(","),
-          ...slotEnv,
-        })
+      ? d.exec(
+          pos[0]!,
+          pos.slice(1),
+          {
+            // The box's endpoint for this run's version.
+            ...boxEnv(box, e.pwVersion),
+            DEN_GATE_ALLOW: allow.join(","),
+            ...slotEnv,
+          },
+          hold,
+        )
       : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
         ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), {
-            DEN_PW_WS: flagEndpoint,
-            ...slotEnv,
-          })
-        : d.exec(pos[0]!, pos.slice(1), slotEnv);
+          d.exec(
+            pos[0]!,
+            pos.slice(1),
+            { DEN_PW_WS: flagEndpoint, ...slotEnv },
+            hold,
+          )
+        : d.exec(pos[0]!, pos.slice(1), slotEnv, hold);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
     // Only now, with its group recorded, may the command run.
