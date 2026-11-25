@@ -21,6 +21,7 @@ import * as fs from "fs";
 import {
   boxesOf,
   checkBox,
+  holdReading,
   marksDirOf,
   sftpProbe,
   type GateBox,
@@ -32,10 +33,27 @@ MemFree:        23193240 kB
 MemAvailable:   24135428 kB
 `;
 
-/** sftp over a file tree: `files` and `dirs` are absolute paths. */
-function fakeSftp(tree: { files: string[]; dirs: string[] }) {
+/**
+ * sftp over a file tree, in the sftp client's own words (captured on the
+ * gate host's sftp against OpenSSH's sftp-server: the client prints them;
+ * the server only returns a status). Each batch line is echoed on stdout.
+ * - `-ls "f"`, one file: its name; missing, or in a folder it can't read:
+ *   `Can't ls: "<abs>" not found` (so a hold can't be read from that).
+ * - `-cd "d"`: only a stat, so a folder it can't read passes; missing:
+ *   `stat remote: No such file or directory`.
+ * - `-ls -1 "d"`, a folder: `d/<name>` lines ("." gives `./<name>`);
+ *   a file: its own bare name; missing: `Can't ls: "<abs>" not found`;
+ *   a folder it can't read: `remote readdir("<abs>/"): Permission denied`.
+ * `files` and `dirs` are absolute; `locked` dirs can't be read.
+ */
+function fakeSftp(tree: {
+  files: string[];
+  dirs: string[];
+  locked?: string[];
+}) {
   const batches: string[] = [];
-  const abs = (p: string) => (p.startsWith("/") ? p : `${HOME}/${p}`);
+  const abs = (p: string) =>
+    p === "." ? HOME : p.startsWith("/") ? p : `${HOME}/${p}`;
   const start = (cmd: string) => {
     const k = new EventEmitter() as EventEmitter & Record<string, unknown>;
     const stdout = new EventEmitter();
@@ -50,24 +68,37 @@ function fakeSftp(tree: { files: string[]; dirs: string[] }) {
         let out = "";
         let err = "";
         for (const line of batch.split("\n")) {
+          if (!line) continue;
+          out += `sftp> ${line}\n`;
           let m: RegExpExecArray | null;
           if ((m = /^-ls -1 "([^"]+)"$/.exec(line))) {
             const d = abs(m[1]);
-            if (!tree.dirs.includes(d)) err += `Can't ls: "${d}" not found\n`;
+            if (tree.files.includes(d)) out += `${m[1]}\n`;
+            else if (!tree.dirs.includes(d))
+              err += `Can't ls: "${d}" not found\n`;
+            else if (tree.locked?.includes(d))
+              err += `remote readdir("${d}/"): Permission denied\n`;
             else
-              for (const f of tree.files)
-                if (f.startsWith(`${d}/`))
-                  out += `${m[1]}/${f.slice(d.length + 1)}\n`;
+              for (const f of [...tree.files, ...tree.dirs]) {
+                const rest = f.slice(d.length + 1);
+                if (f.startsWith(`${d}/`) && rest && !rest.includes("/"))
+                  out += `${m[1]}/${rest}\n`;
+              }
           } else if ((m = /^-ls "([^"]+)"$/.exec(line))) {
-            const p = abs(m[1]);
-            if (tree.files.includes(p)) out += `${m[1]}\n`;
-            else if (!tree.dirs.includes(p))
-              err += `Can't ls: "${p}" not found\n`;
-          } else if ((m = /^-get \/proc\/meminfo "([^"]+)"$/.exec(line))) {
-            fs.writeFileSync(m[1], MEMINFO);
+            // One file: sftp says "not found" when it can't read the
+            // folder it is in, there or not (what the check used to ask).
+            const f = abs(m[1]);
+            const inLocked = tree.locked?.some((d) => f.startsWith(`${d}/`));
+            if (tree.files.includes(f) && !inLocked) out += `${m[1]}\n`;
+            else err += `Can't ls: "${f}" not found\n`;
           } else if ((m = /^-cd "([^"]+)"$/.exec(line))) {
+            // cd only stats the folder: one it can't read still passes.
             if (!tree.dirs.includes(abs(m[1])))
               err += "stat remote: No such file or directory\n";
+          } else if ((m = /^-get \/proc\/meminfo "([^"]+)"$/.exec(line))) {
+            fs.writeFileSync(m[1], MEMINFO);
+          } else {
+            throw new Error(`the fake doesn't know: ${line}`);
           }
         }
         setImmediate(() => {
@@ -149,32 +180,135 @@ describe("a test box's hold file given as ~/… (issue 1597)", () => {
 });
 
 describe("the hold check fails closed (issue 1597)", () => {
-  it("a hold file whose folder isn't there: held, saying a hold can't be seen", async () => {
-    const f = fakeSftp({ dirs: [HOME], files: [] });
-    const r = await sftpProbe(f.start as never)(box("den-capacity/hold"), 2000);
+  const probe = (tree: Parameters<typeof fakeSftp>[0], hold: string) =>
+    sftpProbe(fakeSftp(tree).start as never)(box(hold), 2000);
+
+  it("the hold folder isn't there: held, saying the hold can't be checked", async () => {
+    const r = await probe({ dirs: [HOME], files: [] }, "den-capacity/hold");
     expect(r.state).toBe("held");
-    expect(r.reason).toMatch(/den-capacity/);
-    expect(r.reason).toMatch(/can't be seen/);
+    expect(r.reason).toMatch(/can't be checked \(den-capacity: Can't ls/);
   });
 
-  it("an absolute hold path whose folder is there: open without the file, held with it", async () => {
-    const dirs = [HOME, "/srv/hold"];
-    const open = fakeSftp({ dirs, files: [] });
+  it("a folder sftp can't read, with the hold in it, is held (sftp says the hold file is 'not found')", async () => {
+    const r = await probe(
+      {
+        dirs: [HOME, `${HOME}/den-capacity`],
+        locked: [`${HOME}/den-capacity`],
+        files: [`${HOME}/den-capacity/hold`],
+      },
+      "den-capacity/hold",
+    );
+    expect(r.state).toBe("held");
+    expect(r.reason).toMatch(/Permission denied/);
+  });
+
+  it("a hold 'folder' that is a file: held", async () => {
+    const r = await probe(
+      { dirs: [HOME], files: [`${HOME}/den-capacity`] },
+      "den-capacity/hold",
+    );
+    expect(r.state).toBe("held");
+    expect(r.reason).toMatch(/is a file, not a folder/);
+  });
+
+  it("an error line the gate doesn't know: held, naming it", async () => {
+    const f = fakeSftp({ dirs: [HOME, `${HOME}/den-capacity`], files: [] });
+    const start = (cmd: string) => {
+      const k = f.start(cmd);
+      const stderr = k.stderr as EventEmitter;
+      const emit = stderr.emit.bind(stderr);
+      setImmediate(() =>
+        emit("data", Buffer.from("Couldn't stat remote file: Failure\n")),
+      );
+      return k;
+    };
+    const r = await sftpProbe(start as never)(box("den-capacity/hold"), 2000);
+    expect(r.state).toBe("held");
+    expect(r.reason).toMatch(/Couldn't stat remote file/);
+  });
+
+  it("a listing cut short at the gate's limit: held", () => {
     expect(
-      (await sftpProbe(open.start as never)(box("/srv/hold/den.hold"), 2000))
-        .state,
+      holdReading(
+        "den-capacity/hold",
+        "den-capacity",
+        "den-capacity/hold.jobs",
+        {
+          out: "x".repeat(65536),
+          err: "",
+        },
+      ),
+    ).toMatchObject({
+      gone: false,
+      why: expect.stringMatching(/more than the gate reads/),
+    });
+  });
+
+  it("the marks folder's 'not found' and the memory lines aren't about the hold", () => {
+    expect(
+      holdReading(
+        "den-capacity/hold",
+        "den-capacity",
+        "den-capacity/hold.jobs",
+        {
+          out: 'sftp> -ls -1 "den-capacity"\nden-capacity/status\nden-capacity/hold.jobs\n',
+          err:
+            'Can\'t ls: "/home/ci/den-capacity/hold.jobs" not found\n' +
+            'File "/proc/meminfo" not found.\n',
+        },
+      ),
+    ).toEqual({ gone: true });
+  });
+
+  it("a hold file in the home folder: its listing is of '.'", async () => {
+    const absent = fakeSftp({ dirs: [HOME], files: [`${HOME}/other`] });
+    expect(
+      (await sftpProbe(absent.start as never)(box("heavy.hold"), 2000)).state,
     ).toBe("open");
-    const held = fakeSftp({ dirs, files: ["/srv/hold/den.hold"] });
+    expect(absent.batches[0]).toMatch(/^-ls -1 "\."$/m);
     expect(
-      (await sftpProbe(held.start as never)(box("/srv/hold/den.hold"), 2000))
-        .state,
+      (
+        await probe(
+          { dirs: [HOME], files: [`${HOME}/heavy.hold`] },
+          "heavy.hold",
+        )
+      ).state,
     ).toBe("held");
   });
 
-  it("a hold file in the home folder itself needs no folder check", async () => {
-    const f = fakeSftp({ dirs: [HOME], files: [] });
-    const r = await sftpProbe(f.start as never)(box("heavy.hold"), 2000);
-    expect(r.state).toBe("open");
-    expect(f.batches.join("")).not.toMatch(/^-cd /m);
+  it("an absolute hold path: open without the file, held with it", async () => {
+    const dirs = [HOME, "/srv", "/srv/hold"];
+    expect((await probe({ dirs, files: [] }, "/srv/hold/den.hold")).state).toBe(
+      "open",
+    );
+    expect(
+      (
+        await probe(
+          { dirs, files: ["/srv/hold/den.hold"] },
+          "/srv/hold/den.hold",
+        )
+      ).state,
+    ).toBe("held");
+  });
+
+  it("the check never asks sftp for the hold file itself, which reads 'not found' when unreadable", async () => {
+    const f = fakeSftp({ dirs: [HOME, `${HOME}/den-capacity`], files: [] });
+    await sftpProbe(f.start as never)(box("den-capacity/hold"), 2000);
+    expect(f.batches[0]).not.toMatch(/^-ls "den-capacity\/hold"$/m);
+  });
+});
+
+describe("hold paths checkBox refuses (issue 1597)", () => {
+  const refused = (hold_file: string) =>
+    !checkBox({
+      name: "box1",
+      ssh: "ci@box1.test",
+      browser_slots: 1,
+      hold_file,
+    }).ok;
+  it("'~/-l' (the dash rule holds after the ~/ comes off), and a file right under /", () => {
+    expect(refused("~/-l")).toBe(true);
+    expect(refused("/hold")).toBe(true);
+    expect(refused("/srv/hold/den.hold")).toBe(false);
   });
 });

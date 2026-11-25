@@ -370,7 +370,20 @@ export function checkBox(
           error: `box ${name}: hold_file can start with ~ only as ~/ (the home folder of the box's ssh login); give a path in that folder, or an absolute one`,
         };
       p = p.slice(2);
+      // The rule again on what is saved: "~/-l" must not become "-l".
+      if (!PLAIN_PATH.test(p))
+        return {
+          ok: false,
+          error: `box ${name}: ${k} is a plain path (no quotes, wildcards or leading dash)`,
+        };
     }
+    // Issue 1597: the check lists the hold file's folder; a file right
+    // under "/" has none it can list by name.
+    if (k === "hold_file" && /^\/+[^/]*$/.test(p))
+      return {
+        ok: false,
+        error: `box ${name}: hold_file goes in a folder, not right under /`,
+      };
     box[k] = p;
   }
   if (box.hold_file && !box.ssh)
@@ -854,6 +867,52 @@ export function marksDirOf(box: GateBox): string {
   return `${homeRelative(box.hold_file) ?? "den-hold"}.jobs`;
 }
 
+/**
+ * Issue 1597: what the sftp batch says about the hold file, read on
+ * positive evidence only. The words are the sftp client's own (the gate's
+ * sftp prints them; the box's server only returns a status):
+ * - a folder: `-ls -1 "d"` prints `d/<name>` lines ("." prints `./<name>`);
+ * - a file: it prints the file's own bare name;
+ * - missing: `Can't ls: "<abs>/d" not found` on stderr;
+ * - unreadable: `remote readdir("<abs>/d/"): Permission denied`.
+ */
+export function holdReading(
+  holdFile: string,
+  holdDir: string,
+  marksDir: string,
+  r: { out: string; err: string },
+): { gone: true; why?: undefined } | { gone: false; why?: string } {
+  const folder = holdDir || ".";
+  const base = holdFile.slice(holdFile.lastIndexOf("/") + 1);
+  const cantSee = (what: string) => ({
+    gone: false as const,
+    why: `its hold file can't be checked (${what}), so it counts as held`,
+  });
+  // runOnce keeps at most 64 KB of stdout and 4 KB of stderr.
+  if (r.out.length >= 65536 || r.err.length >= 4096)
+    return cantSee("sftp said more than the gate reads");
+  const other = r.err
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l &&
+        !/^open local /.test(l) &&
+        !l.includes("/proc/meminfo") &&
+        !(
+          /^Can't ls: ".*" not found$/.test(l) &&
+          (l.endsWith(`/${marksDir}" not found`) ||
+            l.endsWith(`"${marksDir}" not found`))
+        ),
+    );
+  if (other.length) return cantSee(`${folder}: ${oneLine(other[0])}`);
+  const out = r.out.split("\n").map((l) => l.trim());
+  if (holdDir && out.includes(holdDir))
+    return cantSee(`${holdDir} is a file, not a folder`);
+  if (out.includes(`${folder}/${base}`)) return { gone: false };
+  return { gone: true };
+}
+
 /** A runner's mark as sftp's `ls -1` lists it: "<folder>/<id>" or "<id>". */
 const MARK_LINE = /^(?:.*\.jobs\/)?([A-Za-z0-9][A-Za-z0-9_-]{0,63})$/;
 
@@ -979,14 +1038,13 @@ export function sftpProbe(
         start,
         "sftp",
         ["-q", "-b", "-", ...conn("-P")],
-        (holdFile ? `-ls "${holdFile}"\n` : "") +
+        // Issue 1597: the hold file's folder is listed, never the hold
+        // file itself: sftp says "not found" for a file it can't read, so
+        // only a listing that worked can show the hold is gone.
+        (holdFile ? `-ls -1 "${holdDir || "."}"\n` : "") +
           // Issue 921: the job marks folder, one name a line, on stdout.
           `-ls -1 "${marksDirOf(box)}"\n` +
-          `-get /proc/meminfo "${meminfo}"\n` +
-          // Issue 1597: the hold file's folder, last (sftp says only
-          // "stat remote: …" when it can't change to it, naming no path,
-          // and a later relative path would read from there).
-          (holdDir ? `-cd "${holdDir}"\n` : ""),
+          `-get /proc/meminfo "${meminfo}"\n`,
         capMs,
       );
       try {
@@ -1018,27 +1076,19 @@ export function sftpProbe(
           oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
           `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-    // Issue 1597: fail closed. A hold file whose folder isn't there, or
-    // can't be read, could never be seen: the box is held, saying why.
-    if (holdDir && r.err.split("\n").some((l) => /^stat remote: /.test(l)))
-      return {
-        state: "held",
-        reason: `its hold file's folder (${holdDir}) isn't there or can't be read, so a hold can't be seen`,
-      };
-    // Issue 1381: each line read by what it is. A "Can't ls" is the hold
-    // file's or the marks folder's (issue 921), told apart by the name
-    // below; a failed local copy ("open local …") is neither the hold file
-    // gone nor no /proc/meminfo.
+    // Issue 1381: each line read by what it is. A failed local copy
+    // ("open local …") is neither the hold gone nor no /proc/meminfo.
     const lines = r.err.split("\n");
-    // Issue 921: only a line naming the hold file itself, never its marks
-    // folder ("<hold>.jobs"), says the hold file is gone.
-    const holdGone =
-      !!holdFile &&
-      lines.some(
-        (l) =>
-          /^Can't ls: .*not found/.test(l) &&
-          (l.includes(`/${holdFile}"`) || l.includes(`"${holdFile}"`)),
-      );
+    const marksDir = marksDirOf(box);
+    // Issue 1597: the hold is gone only on positive evidence: the folder's
+    // own listing worked (no error line sftp can print but the ones known
+    // to be about the marks folder or the memory), the folder is a folder
+    // (a file lists as its own bare name), nothing was cut short, and the
+    // hold file isn't in the listing. Anything else is held.
+    const holdCheck = holdFile
+      ? holdReading(holdFile, holdDir, marksDir, r)
+      : { gone: true as const };
+    const holdGone = holdCheck.gone;
     const noMeminfo = lines.some(
       (l) =>
         !/^open local /.test(l) &&
@@ -1055,7 +1105,7 @@ export function sftpProbe(
     if (holdFile && !holdGone)
       return {
         state: "held",
-        reason: `its hold file (${holdFile}) is there`,
+        reason: holdCheck.why ?? `its hold file (${holdFile}) is there`,
         ...mem(),
       };
     if (marks.length)
