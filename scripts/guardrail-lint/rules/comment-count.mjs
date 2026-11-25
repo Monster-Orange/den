@@ -7,13 +7,17 @@
 // line's own "#" comment.
 import { codeOnly } from "./brittle-scan.mjs";
 
-const DIRECTIVE =
-  /^\s*(?:eslint(?:-|\s|$)|@ts-|prettier-ignore|istanbul\s|c8\s|v8\s|@jest-environment|<reference\s|global\s|jshint|@license|@preserve|shellcheck\s|noqa\b|type:\s|pylint:|pyright:|mypy:|-\*-)/i;
+const JS_DIRECTIVE =
+  /^\s*(?:eslint(?:-|\s|$)|@ts-|prettier-ignore\b|(?:istanbul|c8|v8)\s+ignore\b|@jest-environment\s|<reference\s|jshint\s|@license\b|@preserve\b)/;
+// "/* global name */" is a directive only as a block comment.
+const JS_BLOCK_DIRECTIVE = /^\s*\/\*\s*(?:global|globals|exported)\s/;
+const HASH_DIRECTIVE = /^\s*(?:shellcheck\s|noqa\b|type:\s*ignore\b|pylint:\s|pyright:\s|mypy:\s|-\*-)/;
 const LICENSE = /\b(?:copyright|licen[cs]ed?|spdx-license-identifier)\b/i;
 
 /** The comment's own words: its markers and leading stars taken off. */
 const words = (text) => text.replace(/^\s*(?:\/\/+|\/\*+|\*+\/?|#+)?/, "").replace(/\*+\/\s*$/, "");
-const counts = (text) => /\w/.test(text) && !DIRECTIVE.test(words(text));
+const jsCounts = (text) => /\w/.test(text) && !JS_DIRECTIVE.test(words(text)) && !JS_BLOCK_DIRECTIVE.test(text);
+const hashCounts = (text) => /\w/.test(text) && !HASH_DIRECTIVE.test(text);
 
 function jsComments(src) {
   const lines = src.split("\n");
@@ -40,7 +44,7 @@ function jsComments(src) {
   const out = [];
   rows.forEach((r, i) => {
     if (i >= skip[0] && i < skip[1]) return;
-    if (r.comment && counts(r.comment)) out.push(i + 1);
+    if (r.comment && jsCounts(r.comment)) out.push(i + 1);
   });
   return out;
 }
@@ -55,7 +59,7 @@ function hashComments(src) {
   lines.forEach((line, n) => {
     if (n >= skip[0] && n < skip[1]) return;
     const m = /^\s*#(?!!)(.*)$/.exec(line);
-    if (m && counts(m[1])) out.push(n + 1);
+    if (m && hashCounts(m[1])) out.push(n + 1);
   });
   return out;
 }

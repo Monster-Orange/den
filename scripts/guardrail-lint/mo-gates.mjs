@@ -14,7 +14,8 @@
  * It is read from the base's tree, so a change can't move it. In a PR's merge commit, pass --base HEAD^1.
  * A ratchet rule counts lines across the change: its module's count(src, path) lists them, summed over the files
  * the change touched at the base (from the newer of the merge base and "since") and at HEAD. It fails when the sum
- * rises. A new file starts at its own count; a deleted file's count comes off. A rule marked opt_in runs only when
+ * rises. A new file is not counted: it starts at its own count. A deleted file's count comes off. A file with a
+ * side that can't be read (binary, over 2 MB) is left out. A rule marked opt_in runs only when
  * the base's .guardrail-lint.json lists its id in "on". Ratchets judge only with --base.
  * Exit 0 clean, 1 on a hit, 2 on a usage, config or git error. Plain Node, no dependencies.
  */
@@ -156,7 +157,7 @@ export function ratchetCompare(rule, files) {
   rows.sort((x, y) => y.d - x.d);
   const top = rows[0];
   const each = rows.map((r) => `${r.path} ${r.d > 0 ? "+" : ""}${r.d}`).join(", ");
-  return [{ rule, path: top.path, line: top.lines[0] ?? 0, text: `${was} -> ${now} across the files this change touched (${each})` }];
+  return [{ rule, path: top.path, line: top.lines[0] ?? 0, text: `${was} -> ${now} across the files this change changed, new files aside (${each})` }];
 }
 
 /** The touched files of a change, both sides, for the ratchet rules: [{ path, base, head }]. */
@@ -180,7 +181,9 @@ export function changedPairs(root, base, excluded = () => false) {
     if (excluded(cur) || excluded(old)) continue;
     const baseSide = st[0] === "A" || st[0] === "C" ? null : show(from, old);
     const headSide = st[0] === "D" ? null : show("HEAD", cur);
-    if (st[0] !== "A" && st[0] !== "C" && baseSide === null) continue;
+    // A side that can't be read (binary, too big) skips the file: never counted as deleted, so it can't pay
+    // for comments added elsewhere.
+    if ((st[0] !== "A" && st[0] !== "C" && baseSide === null) || (st[0] !== "D" && headSide === null)) continue;
     out.push({ path: cur, base: baseSide, head: headSide });
   }
   return { pairs: out, on: cfg.on ?? [] };

@@ -99,7 +99,7 @@
       "files": [
         "**/*.{ts,tsx,js,jsx,mjs,cjs,py,sh}"
       ],
-      "message": "This change adds comment lines: the count across the files it touched went up. Say it in the code (a clearer name, a smaller function, a test), or put it in the commit and the PR. Moving a comment between files is fine; the count is per change."
+      "message": "This change adds comment lines: the count across the files it changed (new files aside) went up. Say it in the code (a clearer name, a smaller function, a test), or put it in the commit and the PR. Nothing excuses this rule: to add a comment, remove one in the files you change. Moving a comment between files is fine; the count is per change."
     },
     {
       "id": "mo/no-close-keywords",
