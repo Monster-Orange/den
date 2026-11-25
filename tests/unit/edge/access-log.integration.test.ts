@@ -14,7 +14,6 @@ import { execFileSync } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import {
@@ -33,7 +32,7 @@ import {
   renderEdgeDynamic,
 } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
-import { dockerOk, freePort } from "./helpers/docker-edge.js";
+import { dockerOk, dockerShareTmp, freePort } from "./helpers/docker-edge.js";
 
 const NAME = `den-test-edge-access-${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
 const SECRET = `tok-${crypto.randomBytes(8).toString("hex")}`;
@@ -89,8 +88,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => upstream!.listen(0, "0.0.0.0", r));
   const up = (upstream.address() as AddressInfo).port;
   edgePort = await freePort();
-  // Under the home dir: Docker Desktop and OrbStack share it with the VM.
-  dir = fs.mkdtempSync(path.join(os.homedir(), ".den-test-edge-access-"));
+  dir = dockerShareTmp("edge-access-");
   const cfg: EdgeConfig = {
     org: "access",
     domain: "access.localhost",

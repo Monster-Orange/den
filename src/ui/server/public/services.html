@@ -461,7 +461,8 @@
               .join("");
         }
 
-        window.createWorkspace = async function () {
+        // button: the button pressed, held until the answer.
+        window.createWorkspace = async function (button) {
           const name = document.getElementById("ws-name-input").value.trim();
           const msg = document.getElementById("ws-create-msg");
           if (!name) {
@@ -469,6 +470,9 @@
             msg.className = "ws-msg err";
             return;
           }
+          const release = window.denShell?.holdDots
+            ? window.denShell.holdDots(button)
+            : () => {};
           try {
             await window.denShell.api("POST", "/api/workspaces/create", {
               name,
@@ -478,6 +482,8 @@
             msg.textContent = err.message;
             msg.className = "ws-msg err";
             return;
+          } finally {
+            release();
           }
           msg.textContent = t("svc.ws.created", { name });
           msg.className = "ws-msg ok";
@@ -498,21 +504,33 @@
             }
             return;
           }
-          const sure = await askConfirm({
-            title: t("dlg.delProjT"),
-            message: t("dlg.delProj", { ws: name }),
-            okLabel: t("dlg.delete"),
-            danger: true,
-          });
-          if (!sure) return;
           // D71: its agents: stop them or move them, never left behind.
-          let agentsChoice = {};
           const preview = await fetch(
             `/api/workspaces/cleanup-preview?name=${encodeURIComponent(name)}`,
           )
             .then((r) => r.json())
             .catch(() => ({}));
-          if (preview.agents?.length) {
+          // Issue 1054: the last dialog's own button sends the delete and
+          // holds the kit's dots until the answer; the dialog then closes.
+          // A refusal is said in that dialog. No Working pop-up.
+          let deleted = false;
+          const send = (agentsChoice) =>
+            // busy-ok: sent from the last dialog's button, which the kit dialog holds
+            window.denShell
+              .api("DELETE", "/api/workspaces", { name, ...agentsChoice })
+              .then(() => (deleted = true));
+          const hasAgents = !!preview.agents?.length;
+          const sure = await askConfirm({
+            title: t("dlg.delProjT"),
+            message: t("dlg.delProj", { ws: name }),
+            okLabel: t("dlg.delete"),
+            danger: true,
+            onAnswer: hasAgents
+              ? undefined
+              : (yes) => (yes ? send({}) : undefined),
+          });
+          if (!sure) return;
+          if (hasAgents) {
             const { askWorkspaceAgents } = await import("/ws-delete-agents.js");
             const picked = await askWorkspaceAgents({
               ws: name,
@@ -520,24 +538,10 @@
               others: Object.keys(data.workspaces ?? {}).filter(
                 (w) => w !== name,
               ),
+              onGo: (choice) => send(choice ?? {}),
             });
             if (!picked) return;
-            agentsChoice = picked;
           }
-          // Issue 133: through the working pop-up (a slow answer shows it;
-          // a failure says so there, with Try again).
-          let deleted = false;
-          await window.denShell.busyAction(
-            "delete-project",
-            (headers) =>
-              window.denShell.api(
-                "DELETE",
-                "/api/workspaces",
-                { name, ...agentsChoice },
-                { headers },
-              ),
-            { vars: { name }, onDone: () => (deleted = true) },
-          );
           if (!deleted) return;
           if (msg) {
             msg.textContent = t("svc.ws.deleted", { name });
@@ -546,7 +550,8 @@
           await Promise.all([loadServices(), refreshWsPanel()]);
         };
 
-        window.addService = async function () {
+        // button: the button pressed, held until the answer.
+        window.addService = async function (button) {
           const repoSel = document.getElementById("ws-repo-sel");
           const mode = document.getElementById("ws-mode-sel").value;
           const msg = document.getElementById("ws-add-msg");
@@ -558,6 +563,9 @@
           }
           const opt = repoSel.options[repoSel.selectedIndex];
           const linkedPath = opt.dataset.path;
+          const release = window.denShell?.holdDots
+            ? window.denShell.holdDots(button)
+            : () => {};
           try {
             await window.denShell.api("POST", "/api/workspaces/services", {
               address: repoName,
@@ -569,6 +577,8 @@
             msg.textContent = err.message;
             msg.className = "ws-msg err";
             return;
+          } finally {
+            release();
           }
           msg.textContent = t("svc.ws.addedRepo", { repo: repoName });
           msg.className = "ws-msg ok";

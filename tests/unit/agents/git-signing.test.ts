@@ -56,9 +56,14 @@ describe("agents.git.signing_key: the setting", () => {
     const cfg = readAgentsConfig({ agents: { git: { signing_key: key } } } as never);
     expect(cfg.git).toEqual({ signingKey: key });
     expect(cfg.agents.git).toBeUndefined();
-    const old = readAgentsConfig({ agents: { git: { grants: ["north"] } } } as never);
-    expect(old.git).toBeUndefined();
-    expect(old.agents.git).toEqual({ grants: ["north"] });
+    // Issue 1072: grants come from user.yml only; the org's is named, not read.
+    const org = readAgentsConfig({ agents: { git: { grants: ["north"] } } } as never);
+    expect(org.git).toBeUndefined();
+    expect(org.agents.git).toBeUndefined();
+    expect(org.notReadFromOrg).toEqual(["agents.git.grants"]);
+    const mine = readAgentsConfig({} as never, { agents: { git: { grants: ["north"] } } } as never);
+    expect(mine.git).toBeUndefined();
+    expect(mine.agents.git).toEqual({ grants: ["north"] });
     expect(readAgentsConfig({} as never).git).toBeUndefined();
   });
 
