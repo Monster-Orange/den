@@ -692,6 +692,44 @@ all run on the box. The answer says `box` once it holds the slot.
 The queue stays first come, first served: a run that waits keeps the slots
 it waits for from the runs behind it, and never blocks a slot it can't use.
 
+### Visual-reference tests go where their references were taken
+
+Some tests compare a render against a stored reference: pixels, or measured
+rects and styles kept in a committed file. A box can serve another build of
+the same Playwright: an Apple-silicon box runs the image's arm64 build
+natively, and text lands differently there. Chromium's user agent says
+`X11; Linux x86_64` on both, so the user agent can't tell them apart.
+
+Such a test names its references' record in its top comment:
+`@visual-reference tests/unit/den-ui/fixtures/visual-env.json`. The record
+(`visual-env.json`, next to the references) holds the platform
+(`linux/amd64`), the Chromium build, and the width of one line in each of
+ten system faces. The test's capture writes it. A browser run that includes
+a tagged test (by file, by a folder holding one, or with `--all-tests`)
+goes only to a box whose browser matches every record it names: the same
+platform, the same build, and every face the same width. The gate reads
+each candidate box once, through its Playwright server, in a stub page (the
+architecture comes from `navigator.userAgentData`). The whole read has one
+deadline, the box check timeout, so a box that connects and then stalls
+doesn't hold the run.
+
+- With `--box any`, or no `--box`, a box that differs is skipped: `gate:
+skips box arm is linux/arm64; the references were taken on linux/amd64`.
+  With none that matches, `--box any` is refused, and a run with no `--box`
+  stays on this machine, saying why.
+- A box named with `--box` that differs refuses the run before it starts,
+  saying how it differs.
+- A box whose browser can't be read, or doesn't answer in time, is never a
+  match. Nor is any box when a tag names no record, or a missing one.
+- Runs with no tagged test go anywhere, as before.
+
+`gate status` shows each box's browser as last read, next to its Playwright
+version (`playwright 1.61.1, chromium 149.0.7827.0 linux/arm64`). Repo tests
+fail a browser test that keeps a stored reference (a `DEN_UI_…CAPTURE…`
+switch, or the nav inventory's references) without the tag. They also fail
+a record that isn't `linux/amd64` at the pinned Chromium build, and
+references whose own note of their browser disagrees with their record.
+
 ### Checking a box
 
 A box is checked only when a slot on it is about to be given, never on a

@@ -136,6 +136,14 @@ import {
 import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
 import { emptyTestList } from "./gate-test-list.js";
+import {
+  readBoxBrowsers,
+  realBrowserRead,
+  visualFit,
+  visualFilesInRun,
+  visualRecords,
+  type BrowserRead,
+} from "../../shared/gates/visual.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
@@ -250,6 +258,11 @@ export interface GateDeps {
    * when its slot ends (absent: nothing is removed; tests pass a fake).
    */
   docker?: Docker;
+  /**
+   * Issue 1527: reads a box's Chromium build through its Playwright
+   * server (default: one connect; tests pass a stub).
+   */
+  browserRead?: BrowserRead;
 }
 
 /**
@@ -752,15 +765,24 @@ export function slotLine(
 
 /** Issue 625: one line per test box: its slots, or why it is skipped. */
 export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
+  // Issue 1527: each box's Chromium build, as last read.
+  const browsers = readBoxBrowsers(store.dir);
   return gateBoxesView(
     store,
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
     // Issue 1017: the Playwright versions it serves.
-    const pw = b.playwrightVersions?.length
-      ? `, playwright ${b.playwrightVersions.join(", ")}`
-      : "";
+    const read = browsers[b.name];
+    const pw =
+      (b.playwrightVersions?.length
+        ? `, playwright ${b.playwrightVersions.join(", ")}`
+        : "") +
+      (read?.chromium
+        ? `, chromium ${read.chromium} ${read.platform ?? ""}`.trimEnd()
+        : read?.error
+          ? ", chromium unread"
+          : "");
     // A run already on it finishes; it shows beside why the box is skipped.
     const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
     const off = boxOffWords(b);
@@ -1003,6 +1025,57 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
+  }
+  // Issue 1527: a run with a visual-reference test goes only to a box whose
+  // Chromium is the build its references were taken on (the one the
+  // run's pinned Playwright installs). Another build is skipped, saying
+  // why, or refused when named; never assumed to match.
+  if (kind === "browser" && where && where !== "local") {
+    const visual = visualFilesInRun(
+      d.cwd,
+      pos,
+      !!f["--all-tests"],
+      repoTop(d.cwd),
+    );
+    if (visual.length) {
+      const named = where !== "any";
+      const fit = await visualFit({
+        boxes: d.store
+          .boxes()
+          .filter((b) =>
+            named ? b.name === where : !onlyBoxes || onlyBoxes.includes(b.name),
+          ),
+        records: visualRecords(visual, d.cwd, repoTop(d.cwd)),
+        pwVersion: pwFlag ?? playwrightVersion(d.cwd),
+        read: d.browserRead ?? realBrowserRead,
+        timeoutMs: d.store.settings().boxCheckTimeoutSeconds * 1000,
+        dir: d.store.dir,
+        now: d.now,
+      });
+      const what =
+        visual.length === 1
+          ? visual[0]!
+          : `${visual.length} visual-reference tests (${visual[0]}, …)`;
+      if (named && !fit.fit.length)
+        throw new GateUsage(
+          `${fit.unfit[0]?.why ?? `box ${where} can't be read`}. ${what} runs only on a box with the browser its references were taken on: --box any, or CI`,
+        );
+      if (!named) {
+        for (const u of fit.unfit) d.err(`gate: skips ${u.why}`);
+        if (!fit.fit.length) {
+          const none =
+            "no test box serves the browser the visual references were taken on";
+          if (f["--box"] === "any")
+            throw new GateUsage(
+              `${none}. ${what} runs on such a box, or in CI`,
+            );
+          // The default pick: it stays here, saying why (never a failure).
+          d.err(`gate: stays on this machine: ${none}`);
+          where = undefined;
+          onlyBoxes = undefined;
+        } else onlyBoxes = fit.fit;
+      }
+    }
   }
   const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
