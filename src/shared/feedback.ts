@@ -10,7 +10,7 @@
  * <org-N>, <ws-N>, <repo-N>, <svc-N>. The screenshot is not text-redacted;
  * the mask tool and the public-repository warning are for it.
  */
-import { REDACTED, redactSecrets } from "./redact.js";
+import { REDACTED, redactSecrets, STORE_REF } from "./redact.js";
 
 /** The names this install knows, to turn into placeholders. */
 export interface RedactNames {
@@ -32,9 +32,6 @@ const IPV4 = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
 /** Full and compressed IPv6 (at least two colons, hex groups). */
 const IPV6 =
   /(?<![\w:])(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{1,4}(?![\w:])|(?<![\w:])(?:[0-9A-Fa-f]{1,4}:){1,6}(?::[0-9A-Fa-f]{1,4}){1,6}(?![\w:])|(?<![\w:])::(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4}(?![\w:])/g;
-/** Secret-store references: op://, doppler://, vault://, keychain:… */
-const STORE_REF =
-  /\b(?:op|doppler|vault|keychain|bws|infisical|aws-sm|gcp-sm|azure-kv):\/\/[^\s"'`<>)]+/gi;
 /**
  * A host name: dotted labels ending in a top-level name. Listed, not any
  * letters, so file names (package.json) and versions stay readable.

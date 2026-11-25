@@ -42,6 +42,7 @@ function boxOf(a: Args): Args {
     "playwright_version",
     "min_free_mem_mb",
     "playwright_endpoints",
+    "cpu_slots",
   ];
   const box: Args = {};
   for (const k of keys) if (a[k] !== undefined) box[k] = a[k];
@@ -93,6 +94,15 @@ export function gateBoxTools(k: GateBoxToolKit): DenTool[] {
           .max(L.browser_slots.max)
           .optional()
           .describe("Browser runs the box takes at once (default 1)"),
+        cpu_slots: z
+          .number()
+          .int()
+          .min(L.cpu_slots.min)
+          .max(L.cpu_slots.max)
+          .optional()
+          .describe(
+            "Issue 790: cpu runs (unit tests, lint) the box takes at once, with the run's git tree shipped over ssh and none of this machine's secrets (default 0: none; needs ssh)",
+          ),
         hold_file: z
           .string()
           .optional()

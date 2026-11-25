@@ -2298,6 +2298,8 @@
     "ap.det.gate_box_set.ssh_identity": "Archivo de clave SSH: {v}",
     "ap.det.gate_box_set.playwright": "Dirección de Playwright: {v}",
     "ap.det.gate_box_set.slots": "Turnos de navegador: {v}",
+    "ap.det.gate_box_set.cpu_slots":
+      "Turnos de CPU (pruebas unitarias, lint: el árbol se envía por ssh): {v}",
     "ap.det.gate_box_set.hold_file": "Archivo de pausa: {v}",
     "ap.det.gate_box_set.time_scale": "Escala de tiempo: {v}",
     "ap.det.gate_box_set.playwright_version": "Versión de Playwright: {v}",

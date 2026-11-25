@@ -1738,7 +1738,8 @@ export class GateStore {
         minutes: (now - Date.parse(e.askedAt)) / 60_000,
         ...(e.mcp?.claimBy ? { claimBy: e.mcp.claimBy } : {}),
         // Issue 1033: the machine a browser run got, and why it stayed.
-        ...(e.kind === "browser" ? { machine: e.box ?? "local" } : {}),
+        // Issue 790: and the box a cpu run got.
+        ...(e.kind === "browser" || e.box ? { machine: e.box ?? "local" } : {}),
         ...(e.hostWhy ? { hostWhy: e.hostWhy } : {}),
       });
     }
@@ -2769,7 +2770,12 @@ export class GateStore {
   }
 }
 
-/** Issue 625: where a browser run may go, as stored (local is the default). */
+/**
+ * Issue 625: where a browser run may go, as stored (local is the default).
+ * Issue 790: a cpu run too.
+ */
 function whereOf(kind: GateKind, where: string | undefined) {
-  return kind === "browser" && where && where !== "local" ? { where } : {};
+  return (kind === "browser" || kind === "cpu") && where && where !== "local"
+    ? { where }
+    : {};
 }

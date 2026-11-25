@@ -2229,6 +2229,8 @@
     "ap.det.gate_box_set.ssh_identity": "SSH 鍵ファイル: {v}",
     "ap.det.gate_box_set.playwright": "Playwright のアドレス: {v}",
     "ap.det.gate_box_set.slots": "ブラウザスロット: {v}",
+    "ap.det.gate_box_set.cpu_slots":
+      "CPU スロット (単体テスト、lint: ツリーを ssh で送ります): {v}",
     "ap.det.gate_box_set.hold_file": "保留ファイル: {v}",
     "ap.det.gate_box_set.time_scale": "時間倍率: {v}",
     "ap.det.gate_box_set.playwright_version": "Playwright のバージョン: {v}",

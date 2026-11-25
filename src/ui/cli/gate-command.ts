@@ -46,7 +46,17 @@
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
-import { spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
+import {
+  boxRunName,
+  boxSecretRefusal,
+  gitTree,
+  scanSet,
+  shipPlan,
+  startBoxCpuRun,
+  type BoxCpuRun,
+  type BoxTree,
+} from "../../shared/gates/box-cpu.js";
 import * as os from "os";
 import * as path from "path";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
@@ -102,6 +112,7 @@ import {
   checkBox,
   defaultPlace,
   hostOnlyMatch,
+  type GateBox,
 } from "../../shared/gates/boxes.js";
 import {
   SELF,
@@ -157,13 +168,17 @@ export const GATE_HELP = {
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
+    "    a cpu run with --box <name>|any runs on a test box with cpu slots:",
+    "    git's files ship over ssh (secret files left out), npm ci from the",
+    "    lockfile there, and none of this machine's environment but CI and",
+    "    --env NAME (repeat it). One that names a secret is refused there",
     "    a jest, vitest or playwright test run that names no test files and",
     "    no filter is refused (it would run every test); --all-tests allows it.",
     "    npm/pnpm/yarn test is judged by its package.json script; a command",
     "    inside sh -c is not read",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
-    "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
+    "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N] [--cpu-slots N]",
     "    [--hold-file <path>] [--time-scale X] [--min-free-mem-mb N]",
     "    [--playwright-version X.Y.Z]   test boxes (a person's)",
     "    [--pw <version>=ws://…] (repeat it): a box with a Playwright address",
@@ -245,6 +260,10 @@ export interface GateDeps {
   watch?: { folderGone: () => boolean; parentGone: () => boolean };
   /** Issue 989: the running server (default: this install's). */
   server?: PersonServer;
+  /** Issue 790: starts a cpu run on a test box (tests pass a fake). */
+  boxCpu?: typeof startBoxCpuRun;
+  /** Issue 790: git in the run's folder (its output), for the tree. */
+  git?: (args: string[]) => string;
   /**
    * Issue 1263: the docker CLI, to remove the run's throwaway containers
    * when its slot ends (absent: nothing is removed; tests pass a fake).
@@ -823,6 +842,63 @@ function flags(args: string[], known: Record<string, boolean | "many">) {
   return { f, pos, rest: false };
 }
 
+/** Issue 790: the run's tree, from git in its folder. */
+async function boxCpuTreeOf(d: GateDeps): Promise<BoxTree> {
+  const git =
+    d.git ??
+    ((a: string[]) =>
+      execFileSync("git", a, {
+        cwd: d.cwd,
+        encoding: "utf-8",
+        maxBuffer: 256 * 1024 * 1024,
+      }));
+  return gitTree(d.cwd, git);
+}
+
+/**
+ * Issue 790: why this cpu run can't go to a test box (the arguments, the
+ * --env values, the tree), or the tree it would ship.
+ */
+async function boxCpuRefusal(
+  argv: string[],
+  env: Record<string, string>,
+  d: GateDeps,
+): Promise<string | { tree: BoxTree }> {
+  const why = boxSecretRefusal(argv, env);
+  if (why) return why;
+  let tree: BoxTree;
+  try {
+    tree = await boxCpuTreeOf(d);
+  } catch {
+    return "this folder isn't in a git checkout: a test box gets git's files only. It can run on this machine instead: --box local.";
+  }
+  const plan = shipPlan(
+    tree.files,
+    scanSet(tree),
+    (f) => {
+      try {
+        return fs.readFileSync(path.join(tree.root, f));
+      } catch {
+        return null;
+      }
+    },
+    tree.gitlinks,
+  );
+  return plan.refused ?? { tree };
+}
+
+/** Issue 790: the box run as gate run's command (no process here). */
+function boxCpuChild(d: GateDeps, box: GateBox, r: BoxCpuRun): GateRun {
+  const st = (d.boxCpu ?? startBoxCpuRun)(box, r, {
+    say: (line) => d.err(`gate: ${line}`),
+  });
+  if (!st.ok) {
+    d.err(`gate: not on test box ${box.name}: ${st.error}`);
+    return { pid: undefined, kill: () => {}, done: Promise.resolve(2) };
+  }
+  return { pid: undefined, kill: st.kill, done: st.done };
+}
+
 function packageScript(cwd: string, name: string): string | undefined {
   try {
     const pkg = JSON.parse(
@@ -846,6 +922,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--base-url": true,
     "--pw-version": true,
     "--browser-endpoint": true,
+    "--env": "many",
     "--all-tests": false,
   });
   if (!rest || pos.length === 0)
@@ -871,8 +948,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   )
     where = "local";
   if (where !== undefined) {
-    if (kind !== "browser")
-      throw new GateUsage("--box goes with --kind browser");
     if (
       where !== "any" &&
       where !== "local" &&
@@ -887,6 +962,32 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         })`,
       );
   }
+  // Issue 790: a cpu run on a test box: what may go, checked before the ask.
+  const envNames = Array.isArray(f["--env"]) ? f["--env"] : [];
+  let boxTree: BoxTree | undefined;
+  const envVals: Record<string, string> = {};
+  if (kind === "cpu" && where !== undefined && where !== "local") {
+    const fit = d.store
+      .boxes()
+      .filter((b) => (b.cpu_slots ?? 0) > 0 && !!b.ssh);
+    if (where !== "any" && !fit.some((b) => b.name === where))
+      throw new GateUsage(
+        `test box ${where} takes no cpu runs (it needs ssh and cpu_slots: gate box add ${where} --cpu-slots N)`,
+      );
+    for (const n of envNames) {
+      const v = d.env[n];
+      if (v !== undefined) envVals[n] = v;
+    }
+    const why = await boxCpuRefusal(pos, envVals, d);
+    if (typeof why === "string") {
+      if (where !== "any") throw new GateUsage(`not on a test box: ${why}`);
+      d.err(`gate: this run stays on this machine: ${why}`);
+      where = "local";
+    } else boxTree = why.tree;
+  } else if (envNames.length)
+    throw new GateUsage(
+      "--env goes with --kind cpu --box <name|any> (a run here has this machine's environment)",
+    );
   const label =
     typeof f["--label"] === "string" ? f["--label"] : path.basename(pos[0]!);
   // Issue 1033: with no --box, a browser run may go anywhere (the
@@ -1034,7 +1135,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   // each loopback with an explicit port other than 80 or 443. The run is
   // handed them (DEN_GATE_ALLOW) to guard every browser context.
   const allow: string[] = [];
-  if (where && where !== "local") {
+  // Issue 790: a cpu run on a box opens no browser (no base URLs).
+  if (kind === "browser" && where && where !== "local") {
     if (!urls.length)
       throw new GateUsage(
         "a box run needs --base-url http://<name>.localhost:<port>[,…] (or http://127.0.0.1:* for the ports the run opens itself): the app's loopback addresses, never port 80 or 443",
@@ -1183,8 +1285,10 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     }
     const box = e.box ? s.boxes().find((b) => b.name === e!.box) : undefined;
     // Issue 1132: no start at or over the load ceiling; past the wait
-    // limit it starts anyway, recorded as busy.
-    const held = await waitForLoad(d, id, label);
+    // limit it starts anyway, recorded as busy. Issue 790: a cpu run on a
+    // box doesn't load this machine.
+    const cpuOnBox = kind === "cpu" && !!box;
+    const held = cpuOnBox ? "start" : await waitForLoad(d, id, label);
     if (cancelled !== undefined) return cancelled;
     if (held === "gone")
       throw new Error(`the slot ${id} was ended while waiting`);
@@ -1204,20 +1308,34 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       slotEnv[GATE_WORKERS_ENV] = String(
         gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
       );
-    child = box
-      ? d.exec(pos[0]!, pos.slice(1), {
-          // Issue 1017: the box's endpoint for this run's version.
-          ...boxEnv(box, e.pwVersion),
-          DEN_GATE_ALLOW: allow.join(","),
-          ...slotEnv,
+    child = cpuOnBox
+      ? boxCpuChild(d, box!, {
+          // Issue 790: the folder on the box is this install's (its tag).
+          id: boxRunName(storeTag(s.dir), id),
+          tag: storeTag(s.dir),
+          argv: pos,
+          env: { CI: "true", [GATE_WORKERS_ENV]: "1", ...slotEnv },
+          pass: envVals,
+          tree: boxTree ?? (await boxCpuTreeOf(d)),
+          live: s
+            .list()
+            .filter((x) => x.box === box!.name && x.grantedAt)
+            .map((x) => boxRunName(storeTag(s.dir), x.id)),
         })
-      : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
-        ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), {
-            DEN_PW_WS: flagEndpoint,
+      : box
+        ? d.exec(pos[0]!, pos.slice(1), {
+            // Issue 1017: the box's endpoint for this run's version.
+            ...boxEnv(box, e.pwVersion),
+            DEN_GATE_ALLOW: allow.join(","),
             ...slotEnv,
           })
-        : d.exec(pos[0]!, pos.slice(1), slotEnv);
+        : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
+          ? // The address given on the command line reaches the run.
+            d.exec(pos[0]!, pos.slice(1), {
+              DEN_PW_WS: flagEndpoint,
+              ...slotEnv,
+            })
+          : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
     // Issue 1132: the group as the store recorded it (with its leader's
@@ -1443,6 +1561,7 @@ async function boxCmd(args: string[], d: GateDeps): Promise<number> {
     "--ssh-identity": true,
     "--playwright": true,
     "--slots": true,
+    "--cpu-slots": true,
     "--hold-file": true,
     "--time-scale": true,
     "--min-free-mem-mb": true,
@@ -1511,6 +1630,7 @@ async function boxCmd(args: string[], d: GateDeps): Promise<number> {
     ssh_identity: f["--ssh-identity"],
     playwright: f["--playwright"],
     browser_slots: num("--slots"),
+    cpu_slots: num("--cpu-slots"),
     hold_file: f["--hold-file"],
     time_scale: num("--time-scale"),
     min_free_mem_mb: num("--min-free-mem-mb"),
@@ -1527,7 +1647,7 @@ async function boxCmd(args: string[], d: GateDeps): Promise<number> {
   if (via === false) return 1;
   if (!via) d.store.setBox(c.box);
   d.out(
-    `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}. A browser run with --base-url takes it when it is free (gate settings --browser-box-default local: only with --box).`,
+    `Box ${name} set: ${c.box.browser_slots} browser slot${c.box.browser_slots === 1 ? "" : "s"}${c.box.cpu_slots ? `, ${c.box.cpu_slots} cpu slot${c.box.cpu_slots === 1 ? "" : "s"} (gate run --kind cpu --box ${name})` : ""}. A browser run with --base-url takes it when it is free (gate settings --browser-box-default local: only with --box).`,
   );
   return 0;
 }
