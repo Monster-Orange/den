@@ -81,10 +81,6 @@ export interface AgentRecord {
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
   /**
-   * Issue 249: this record's own id, made when the record is first written
-   * and kept by every rewrite. An agent made again with the same agent id
-   * gets a new one, so nothing bound to the earlier record (its Hub token)
-   * passes to it. Records from before it have none.
    */
   recordId?: string;
   /**
@@ -354,8 +350,6 @@ export function writeRecord(stateDir: string, rec: AgentRecord): void {
 }
 
 /**
- * Issue 249: the record id the record at `file` has, or a new one when
- * there is no record there; undefined for an earlier record without one.
  */
 function keptRecordId(file: string): string | undefined {
   let raw: string;

@@ -689,9 +689,6 @@ function signInTag(r) {
 }
 
 /**
- * Issue 249: whether Hub knows the agent by its own token (its work and
- * approvals count as its own there), or by the install's. Nothing when
- * Hub isn't connected, and for the server agent.
  */
 function hubBoundTag(r) {
   if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";

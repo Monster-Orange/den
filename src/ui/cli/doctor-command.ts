@@ -982,9 +982,6 @@ async function hubDeliveryDoctor(): Promise<
 }
 
 /**
- * Issue 249: an agent's own Hub token that Hub didn't mint, Den couldn't
- * store or revoke, or Hub turned down (401): one ✗ row per agent, with
- * Hub's status and error code. Never a token. Nothing kept: no rows.
  */
 export function hubAgentTokenLines(
   problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],

@@ -152,7 +152,6 @@ describe("agents start", () => {
         "project",
         // Issue 936: whether it started in the agent sandbox.
         "sandbox",
-        // Issue 249: this record's own id; a token never passes to another.
         "recordId",
       ].sort(),
     );

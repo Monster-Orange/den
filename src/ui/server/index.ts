@@ -10104,8 +10104,6 @@ async function handleRequest(
   // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
   if (
     await handleHubProxy(req, res, pathname, {
-      // Issue 249: each agent's own Hub token (bound to it on Hub). A mint
-      // that says agents_not_covered posts the one reconnect item.
       upstream: (who) =>
         hubUpstream(
           agentWebDeps({
@@ -10129,7 +10127,6 @@ async function handleRequest(
       onHubAnswer: (agentId, o) => {
         if (o.status === 401) {
           forgetHubToken();
-          // Issue 249: its own token, if it had one, is minted anew.
           serverHubAgentTokens().rejected(agentId);
         }
         if (o.sub === "/mcp")
@@ -12393,9 +12390,6 @@ void CRASH_GATE.then(() =>
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
-    // Issue 249: agent-token revokes Hub didn't answer are tried again now
-    // and every hub.agent_token_revoke_retry_seconds, with the install's
-    // token (a forced Disconnect's go on issue 726's record instead).
     void hubChecked
       .then(() => import("../../shared/hub-agent-tokens.js"))
       .then((m) =>

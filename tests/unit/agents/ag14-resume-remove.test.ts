@@ -565,9 +565,6 @@ describe("Remove (AG-14.1b)", () => {
 });
 
 describe("issue 249: a removed agent's Hub token is unbound after its record is gone", () => {
-  // A mint in flight checks the record after it stores the token: the
-  // record must be gone before the unbind reads the store, or a mint that
-  // lands between them leaves a live token for a removed agent.
   it("remove and prune each unbind with the record already moved aside", async () => {
     const r = await rig();
     await prompted(r);

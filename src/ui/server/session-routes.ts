@@ -420,9 +420,6 @@ export interface ListedSession {
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
   /**
-   * Issue 249: Hub is connected and this agent calls it with its own
-   * token, bound to it on Hub (true), or with the install's (false).
-   * Unset: Hub isn't connected, or the server agent.
    */
   hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
@@ -790,8 +787,6 @@ export function listedSessions(
         const failed = mcpLoadFailures(d.stateDir(), rec);
         return failed.length ? { mcpFailed: failed } : {};
       })(),
-      // Issue 249: whether Hub knows it by its own token (Hub connected;
-      // never the server agent, which keeps the install's).
       ...(typeof hubUrl === "string" && !usesInstallToken(rec)
         ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
         : {}),

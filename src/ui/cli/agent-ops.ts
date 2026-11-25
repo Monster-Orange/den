@@ -574,17 +574,12 @@ export interface AgentsDeps extends SessionsDeps {
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
   /**
-   * Issue 249: the Hub token agent `a` calls Hub with, bound to it on Hub
-   * (hub-agent-tokens.ts), or null for the install's. Den's web server
-   * sets it; default: the install's token for every agent.
    */
   hubAgentToken?: (
     hub: { url: string; token: string },
     a: { id: string; name: string; workspace: string },
   ) => Promise<string | null>;
   /**
-   * Issue 249: agent `id` is removed: revoke its Hub token on Hub and
-   * forget it (default: the server's store, when it keeps one for `id`).
    */
   hubAgentUnbind?: (id: string) => Promise<void>;
   /**
@@ -917,9 +912,6 @@ function defaultDenBase(): string {
 /**
  * D52: Hub as Den's proxy calls it for agent `agentId` (its actor token
  * proved it): Hub's base URL, its MCP endpoint, and the headers Den sets
- * from its own records. The token is the agent's own (issue 249,
- * hubAgentToken), else the install's; neither leaves Den's server. Null
- * when Hub isn't set up or its token can't be read.
  */
 export async function hubUpstream(
   d: AgentsResolved,
@@ -953,8 +945,6 @@ export async function hubUpstream(
   const projectWs = [linked, who.workspace].find(
     (w): w is string => !!w && !isServerScope(w),
   );
-  // Issue 249: the agent's own Hub token, bound to it on Hub, when Hub gave
-  // one; the install's for the server agent and when Hub didn't.
   const own = await d
     .hubAgentToken(
       { url: h.url, token: h.token },
@@ -9166,8 +9156,6 @@ async function removeRecords(
       removeSessionTmp(rec.sessionTmp, d.sessionTmpBase); // issue 1325
       d.forgetSandbox(rec.id); // issue 1328: its sandbox setting goes too
       const moved = removeRecord(d.stateDir(), rec.id);
-      // Issue 249: its Hub token too, on Hub; after the record is gone, so
-      // a mint that lands meanwhile sees no agent and revokes its token.
       await d
         .hubAgentUnbind(rec.id)
         .catch((e) => noteHubUnbindFailed(d.stateDir(), rec.id, e));
@@ -9237,7 +9225,6 @@ export async function pruneStopped(
     removeSessionTmp(r.sessionTmp, d.sessionTmpBase); // issue 1325
     d.forgetSandbox(r.id); // issue 1328
     removeRecord(d.stateDir(), r.id);
-    // Issue 249: after the record is gone (see removeRecords).
     await d
       .hubAgentUnbind(r.id)
       .catch((e) => noteHubUnbindFailed(d.stateDir(), r.id, e));

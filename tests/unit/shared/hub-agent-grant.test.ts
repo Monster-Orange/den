@@ -1,10 +1,4 @@
 /**
- * Issue 249 (b, c): Den learns that the install's grant doesn't cover its
- * agents only from Hub's mint answer (403 agents_not_covered), never from
- * whoami's connect.agents feature (that only says Hub can do agent
- * grants). Then: one attention item, "Reconnect to Hub so your agents sign
- * their own work", which opens Settings › Hub (Connect), and no more mints
- * until the install connects again. Temp dirs only.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -36,7 +30,6 @@ const HUB = "https://hub.example.test";
 
 describe("issue 249 (b): coverage comes from the mint, never from whoami's feature", () => {
   it("connect.agents in whoami is a capability only: Den keeps no 'grant took' from it", () => {
-    // No helper reads the feature as coverage, and no config key records it.
     expect(Object.keys(grant)).not.toEqual(
       expect.arrayContaining(["noteHubFeatures"]),
     );
@@ -80,7 +73,6 @@ describe("issue 249 (c): one attention item to reconnect", () => {
       msg: { key: "bell.m.hubAgentsReconnect", vars: {} },
       link: "/settings#agents.hub",
     });
-    // Read, and still not reconnected: not posted again.
     s.markRead({ subject: AGENT_GRANT_NOTE_SUBJECT });
     syncAgentGrantNote(s, st);
     expect(

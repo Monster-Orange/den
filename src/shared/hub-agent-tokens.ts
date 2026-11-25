@@ -1,39 +1,9 @@
 /**
- * Issue 249: each Hub-connected agent calls Hub with a token bound to it
- * on Hub, so Hub sees the agent as a verified actor (its approvals can
- * count). The install connects once; under that one grant Den asks Hub for
- * each agent's token with the install's own token, the first time the
- * agent calls Hub. Agents added later bind with no further click.
  *
- * Where the tokens are: the server's own store, one 0600 file per agent
- * under <state dir>/hub/agents (folder 0700), beside the install's own
- * token file. Never the agent's env, its files (agent-files/<id>), its MCP
- * config, a log, or an API answer: the proxy (hub-proxy-routes.ts) swaps
- * the agent's Den token for its Hub token on the way out.
  *
- * Who keeps the install token: the server agent and every call with no
- * agent. A Hub that doesn't give agent tokens (404 or 405) leaves every
- * agent on the install token, as before, and is asked again after
- * hub.agent_token_retry_seconds.
  *
- * Rotation (Hub's rule): Den mints the agent a new token, keeps it, uses
- * it from the next call, and drops the old one here. Den never revokes the
- * old one: Hub ends it at the new one's first use or after its grace
- * period, whichever comes first. A revoke by either token's id would end
- * BOTH, the new one too.
  *
- * Revoking: removing an agent revokes its token on Hub by its id (unbind);
- * Hub marking an agent gone in its agent list does not. Disconnect revokes
- * them all (unbindAll) before the install's own. A revoke Hub couldn't
- * take is kept, marked, never used again, and tried again at the next
- * unbindAll.
  *
- * Mint refusals, by Hub's `error` value:
- *   - 403 agents_not_covered: the install's grant doesn't cover agents (it
- *     connected before them). Den posts its one reconnect item and asks
- *     no more until the install connects again (hub-agent-grant.ts).
- *   - 403 install_token_required: an agent's own token asked to mint. A
- *     Den bug: logged once, and never asked again with that token.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -51,44 +21,33 @@ import {
 import { getStateDir } from "./paths.js";
 import { createHash } from "crypto";
 import {
+  bestEffort,
   RECONNECT_CODES,
   INSTALL_TOKEN_REQUIRED,
   agentsNotCovered,
   markAgentsNotCovered,
 } from "./hub-agent-grant.js";
 
-/** One agent's Hub token, as the server keeps it. */
 export interface AgentHubToken {
   agentId: string;
-  /** The name Hub was given (display only on Hub). */
   agentName: string;
-  /** The Hub that minted it: never sent to another. */
   hubUrl: string;
-  /** Hub's id for it: what a revoke names. */
   tokenId: string;
   token: string;
-  /** When Hub minted it (ISO 8601). */
   at: string;
-  /** Removed here, but Hub couldn't revoke it yet: never used again. */
   revokePending?: true;
   /**
-   * The agent record it was minted for (records.ts recordId). Another
-   * record of the same agent id never uses it: Den revokes it.
    */
   recordId?: string;
 }
 
-/** hub.agent_tokens, hub.agent_token_retry_seconds, hub.agent_token_max_age_days. */
 export interface AgentHubTokenSettings {
   enabled: boolean;
   retrySeconds: number;
-  /** 0: never too old. */
   maxAgeDays: number;
-  /** hub.agent_token_revoke_retry_seconds: how often a waiting revoke is tried again. */
   revokeRetrySeconds?: number;
 }
 
-/** The server's folder of agent Hub tokens. */
 export function agentHubTokenDir(stateDir: string): string {
   return path.join(stateDir, "hub", "agents");
 }
@@ -99,7 +58,6 @@ function fileOf(stateDir: string, id: string): string | null {
     : null;
 }
 
-/** Agent `id`'s kept Hub token, or null. */
 export function readAgentHubToken(
   stateDir: string,
   id: string,
@@ -120,7 +78,6 @@ export function readAgentHubToken(
   }
 }
 
-/** Whether agent `id` calls Hub with its own token now. */
 export function agentHubBound(stateDir: string, id: string): boolean {
   const t = readAgentHubToken(stateDir, id);
   return !!t && !t.revokePending;
@@ -141,17 +98,11 @@ function dropAgentHubToken(stateDir: string, id: string): void {
   if (f) fs.rmSync(f, { force: true });
 }
 
-/** What `den doctor` shows for one agent's Hub token (never a token). */
 export interface AgentTokenProblem {
   agentId: string;
-  /** mint: Hub didn't mint; store: minted, not stored; revoke: Hub
-   * couldn't revoke; rejected: Hub answered 401 to it (not Den's revoke). */
   what: "mint" | "store" | "revoke" | "rejected";
-  /** Hub's HTTP status, when it answered one. */
   status?: number;
-  /** Hub's `error` code, when it gave one. */
   code?: string;
-  /** In plain words, for the line. */
   detail: string;
   at: string;
 }
@@ -159,7 +110,6 @@ export interface AgentTokenProblem {
 const problemFile = (stateDir: string) =>
   path.join(stateDir, "hub", "agent-token-problems.json");
 
-/** The latest Hub-token problem per agent, for `den doctor`. */
 export function readAgentTokenProblems(stateDir: string): AgentTokenProblem[] {
   try {
     const v = JSON.parse(
@@ -178,7 +128,6 @@ export function readAgentTokenProblems(stateDir: string): AgentTokenProblem[] {
   }
 }
 
-/** Keep (`p`) or clear (`p` null) agent `id`'s problem. Never throws. */
 function noteAgentTokenProblem(
   stateDir: string,
   id: string,
@@ -199,11 +148,10 @@ function noteAgentTokenProblem(
     fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
     writeFileAtomic(f, JSON.stringify(all) + "\n", { mode: 0o600 });
   } catch {
-    /* doctor's record is best effort */
+    return;
   }
 }
 
-/** Every kept agent token (any state). */
 export function listAgentHubTokens(stateDir: string): AgentHubToken[] {
   let names: string[];
   try {
@@ -218,15 +166,12 @@ export function listAgentHubTokens(stateDir: string): AgentHubToken[] {
 }
 
 /**
- * The name Hub is given: printable ASCII, spaces folded, at most 80
- * characters (Hub's rule); else the agent's id.
  */
 export function hubAgentName(id: string, name: string): string {
   const n = name.replace(/\s+/g, " ").trim().slice(0, 80).trimEnd();
   return n && /^[\x20-\x7e]+$/.test(n) ? n : id;
 }
 
-/** The server agent and calls with no agent keep the install token. */
 export function usesInstallToken(a: { id: string; workspace: string }) {
   return a.id === SERVER_AGENT_ID || isServerScope(a.workspace);
 }
@@ -237,30 +182,19 @@ export interface HubAgentTokensDeps {
   now?: () => number;
   mint?: typeof hubMintAgentToken;
   revoke?: typeof hubRevokeAgentToken;
-  /** Hub said 403 agents_not_covered for Hub `url`: post the reconnect item. */
   onNotCovered?: (url: string) => void;
-  /** A line for the server's log (never a token). */
   log?: (line: string) => void;
   /**
-   * A forced Disconnect: a token Hub couldn't revoke goes on issue 726's
-   * record (hub-binding recordUnrevoked): doctor lists it, and each start's
-   * retry revokes it with that token itself (Hub's bare /connect/revoke
-   * takes an agent token: it carries its install). Absent: kept pending.
    */
   unrevoked?: (u: { url: string; why: string; token: string }) => void;
   /**
-   * Whether agent `id` still exists. A mint that lands after its agent was
-   * removed is revoked at once and never stored. Absent: always.
    */
   agentExists?: (id: string) => boolean;
   /**
-   * Agent `id`'s record id now (undefined: a record from before record ids,
-   * or none). Absent, or it throws: not compared.
    */
   recordIdOf?: (id: string) => string | undefined;
 }
 
-/** Hub as the caller has it now: its address and the install's token. */
 export interface HubInstall {
   url: string;
   token: string;
@@ -268,13 +202,9 @@ export interface HubInstall {
 
 export class HubAgentTokens {
   private readonly inflight = new Map<string, Promise<string | null>>();
-  /** Hub said it has no agent grant: not asked again until `until`. */
   private notOffered: { url: string; until: number } | null = null;
-  /** An agent whose mint (or revoke) failed: not asked again until then. */
   private readonly failedUntil = new Map<string, number>();
   /**
-   * Hub said install_token_required to the token Den minted with (a Den
-   * bug): that token (its hash, per Hub) never mints again.
    */
   private readonly notInstall = new Set<string>();
 
@@ -284,14 +214,29 @@ export class HubAgentTokens {
     return (this.deps.now ?? Date.now)();
   }
 
-  /** One [hub] line for the server's log: never a token. */
+  private handedToUnrevoked(url: string, t: AgentHubToken): boolean {
+    if (!this.deps.unrevoked) return false;
+    try {
+      this.deps.unrevoked({
+        url,
+        why: `agent ${t.agentId}'s Hub token ${t.tokenId}: Hub couldn't revoke it at a forced disconnect`,
+        token: t.token,
+      });
+      dropAgentHubToken(this.deps.stateDir(), t.agentId);
+      this.problem(t.agentId, null);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private log(line: string): void {
     try {
       (this.deps.log ?? ((l: string) => console.error(`[hub] ${l}`)))(
         `issue 249: ${line}`,
       );
     } catch {
-      /* a log line never stops a call */
+      return;
     }
   }
 
@@ -308,9 +253,6 @@ export class HubAgentTokens {
   }
 
   /**
-   * A token Hub couldn't revoke: kept, marked revokePending (never used),
-   * with a doctor row naming the agent and the token id. retryPending
-   * revokes it when Hub answers (at start, and on a timer).
    */
   private keepPending(
     url: string,
@@ -349,9 +291,6 @@ export class HubAgentTokens {
   }
 
   /**
-   * Whether `t` was minted for an earlier record of its agent id: its agent
-   * is gone (an unbind that didn't mark it), or made again since. Unknown
-   * (no check given, or it can't read): no.
    */
   private orphaned(t: AgentHubToken): boolean {
     try {
@@ -366,12 +305,10 @@ export class HubAgentTokens {
     }
   }
 
-  /** Whether a token waits to be revoked: marked, or orphaned. */
   private waitsRevoke(t: AgentHubToken): boolean {
     return !!t.revokePending || this.orphaned(t);
   }
 
-  /** Whether any kept token waits to be revoked (the retry's check). */
   hasWaiting(): boolean {
     return listAgentHubTokens(this.deps.stateDir()).some((t) =>
       this.waitsRevoke(t),
@@ -386,16 +323,11 @@ export class HubAgentTokens {
     }
   }
 
-  /** Whether agent `id` calls Hub with its own token now. */
   bound(id: string): boolean {
     return agentHubBound(this.deps.stateDir(), id);
   }
 
   /**
-   * The token agent `a` calls Hub with: its own (minted the first time,
-   * rotated when older than hub.agent_token_max_age_days), or null for
-   * the install's (the server agent, the setting off, a Hub without agent
-   * tokens, or a first mint that failed). Never throws.
    */
   async tokenFor(
     hub: HubInstall,
@@ -421,7 +353,6 @@ export class HubAgentTokens {
     return `${hub.url} ${createHash("sha256").update(hub.token).digest("hex")}`;
   }
 
-  /** Whether no mint may go out for `hub` until it connects again. */
   private held(hub: HubInstall): boolean {
     return (
       agentsNotCovered(this.deps.stateDir(), hub.url) ||
@@ -449,28 +380,22 @@ export class HubAgentTokens {
   ): Promise<string | null> {
     const stateDir = this.deps.stateDir();
     let cur = readAgentHubToken(stateDir, a.id);
-    // Another Hub's: that Hub revoked it at its Disconnect.
     if (cur && cur.hubUrl !== hub.url) {
       dropAgentHubToken(stateDir, a.id);
       cur = null;
     }
     if (cur && !cur.revokePending && this.orphaned(cur)) {
-      // Minted for an earlier agent of this id: never used, revoked first.
       this.log(
         `agent ${a.id}'s Hub token ${cur.tokenId} was minted for an earlier agent of that id: revoking it, never used`,
       );
       cur = { ...cur, revokePending: true };
-      try {
-        writeAgentHubToken(stateDir, cur);
-      } catch {
-        /* not used either way; the retry finds it orphaned */
-      }
+      const pending = cur;
+      bestEffort(() => writeAgentHubToken(stateDir, pending));
     }
     const usable = cur && !cur.revokePending ? cur : null;
     if (usable && !this.tooOld(usable, s)) return usable.token;
     if (this.waiting(hub, a.id)) return usable?.token ?? null;
     if (cur?.revokePending) {
-      // A removed agent back (Undo): its old token goes first, never used.
       const gone = await this.revokeOne(hub, cur.tokenId).then(
         () => true,
         () => false,
@@ -484,8 +409,6 @@ export class HubAgentTokens {
       }
       dropAgentHubToken(stateDir, a.id);
     }
-    // A first token, or rotation: mint the new one first. A mint that
-    // fails keeps the old one in use, and is tried again after the wait.
     const name = hubAgentName(a.id, a.name);
     const rid = this.recordIdNow(a.id);
     let g: { token: string; tokenId: string };
@@ -508,17 +431,9 @@ export class HubAgentTokens {
           `Hub didn't mint agent ${a.id}'s token (${mintFailure(e)})${usable ? ": it keeps its current token" : ": it uses the install's token"}`,
         );
       if (code && RECONNECT_CODES.includes(code)) {
-        // The install's grant doesn't cover agents: one reconnect item, and
-        // no more mints until the install connects again.
         markAgentsNotCovered(stateDir, hub.url);
-        try {
-          this.deps.onNotCovered?.(hub.url);
-        } catch {
-          /* the item is best effort; the hold stands */
-        }
+        bestEffort(() => this.deps.onNotCovered?.(hub.url));
       } else if (code === INSTALL_TOKEN_REQUIRED) {
-        // An agent's own token tried to mint: a Den bug. Logged once; that
-        // token never mints again (no loop).
         this.notInstall.add(this.installKey(hub));
         this.log(
           `Hub refused an agent-token mint for agent ${a.id} (status 403, error install_token_required): Den sent an agent's token, not the install's. No more mints with that token.`,
@@ -531,10 +446,6 @@ export class HubAgentTokens {
       else this.failedUntil.set(a.id, until);
       return usable?.token ?? null;
     }
-    // Swap it in: from the next call only the new one goes out. The old
-    // one is dropped here and never revoked by Den: Hub ends it at the new
-    // one's first use or after its grace period, and a revoke by either id
-    // would end both.
     try {
       writeAgentHubToken(stateDir, {
         agentId: a.id,
@@ -556,8 +467,6 @@ export class HubAgentTokens {
       this.failedUntil.set(a.id, this.now() + s.retrySeconds * 1000);
       return usable?.token ?? null;
     }
-    // Removed while the mint was in flight: its unbind found nothing to
-    // revoke, so this one goes now, and is never used.
     if (this.deps.agentExists && !this.deps.agentExists(a.id)) {
       dropAgentHubToken(stateDir, a.id);
       const gone = await this.revokeOne(hub, g.tokenId).then(
@@ -579,14 +488,11 @@ export class HubAgentTokens {
     return g.token;
   }
 
-  /** Hub no longer takes agent `id`'s token (a 401): forget it here. */
   rejected(id: string): void {
     const stateDir = this.deps.stateDir();
     const t = readAgentHubToken(stateDir, id);
     if (t && !t.revokePending) {
       dropAgentHubToken(stateDir, id);
-      // No mint storm: the next mint waits the retry time; meanwhile the
-      // install's token, as before agent tokens.
       this.failedUntil.set(
         id,
         this.now() + this.deps.settings().retrySeconds * 1000,
@@ -602,7 +508,6 @@ export class HubAgentTokens {
     }
   }
 
-  /** Revoke `t` by its id: whether Hub revoked it now, or didn't answer. */
   private async revokeEvery(
     hub: HubInstall,
     t: AgentHubToken,
@@ -615,10 +520,6 @@ export class HubAgentTokens {
   }
 
   /**
-   * Agent `id` is removed: revoke its token on Hub by its id and forget it
-   * here (Hub's agent list marking it gone doesn't revoke it). `hub` null (not connected now) or Hub not
-   * answering: kept, marked, never used, and revoked at the agent's next
-   * call (an Undo) or the next unbindAll.
    */
   async unbind(
     hub: HubInstall | null,
@@ -653,10 +554,6 @@ export class HubAgentTokens {
   }
 
   /**
-   * Revokes still waiting (an agent removed while Hub didn't answer): try
-   * each of this Hub's again with the install's token. The server runs it
-   * at start and every hub.agent_token_revoke_retry_seconds, so a removed
-   * agent's token doesn't live on Hub until an Undo or a Disconnect.
    */
   async retryPending(
     hub: HubInstall,
@@ -667,13 +564,10 @@ export class HubAgentTokens {
     for (const t of listAgentHubTokens(stateDir)) {
       if (!this.waitsRevoke(t) || t.hubUrl !== hub.url) continue;
       const orphan = !t.revokePending;
-      if (orphan) {
-        try {
-          writeAgentHubToken(stateDir, { ...t, revokePending: true });
-        } catch {
-          /* still never used: orphaned is checked at every call */
-        }
-      }
+      if (orphan)
+        bestEffort(() =>
+          writeAgentHubToken(stateDir, { ...t, revokePending: true }),
+        );
       const r = await this.revokeEvery(hub, t);
       if (r.failed) {
         failed += 1;
@@ -695,11 +589,6 @@ export class HubAgentTokens {
   }
 
   /**
-   * Disconnect: revoke every agent token this Hub minted, each by its id,
-   * and forget them here. One Hub couldn't revoke stays (marked) unless
-   * `force`; another Hub's are forgotten. Hub 0.2.11 ends all of an
-   * install's agent tokens when the install disconnects; Den's own revoke
-   * per agent is still needed until then, and stays harmless after.
    */
   async unbindAll(
     hub: HubInstall,
@@ -721,25 +610,7 @@ export class HubAgentTokens {
       if (!r.failed) dropAgentHubToken(stateDir, t.agentId);
       else {
         failed += 1;
-        if (opts.force && this.deps.unrevoked) {
-          // The install's token goes too, so the retry can't use it: on
-          // issue 726's record (by id; doctor lists it), revoked at each
-          // start with the agent's token itself.
-          try {
-            this.deps.unrevoked({
-              url: hub.url,
-              why: `agent ${t.agentId}'s Hub token ${t.tokenId}: Hub couldn't revoke it at a forced disconnect`,
-              token: t.token,
-            });
-            dropAgentHubToken(stateDir, t.agentId);
-            this.problem(t.agentId, null);
-            continue;
-          } catch {
-            /* kept pending below: doctor still names it */
-          }
-        }
-        // Kept, marked, never used: doctor names it, and retryPending
-        // revokes it once Hub answers.
+        if (opts.force && this.handedToUnrevoked(hub.url, t)) continue;
         this.keepPending(hub.url, t.agentId, t.agentName, t, "disconnect");
       }
     }
@@ -750,7 +621,6 @@ export class HubAgentTokens {
   }
 }
 
-/** Hub's HTTP status in a HubCallError, when it answered one. */
 function hubStatusOf(e: unknown): number | undefined {
   if (!(e instanceof HubCallError)) return undefined;
   return (
@@ -759,7 +629,6 @@ function hubStatusOf(e: unknown): number | undefined {
   );
 }
 
-/** Hub's answer to a failed mint, for a log line: status and error code. */
 function mintFailure(e: unknown): string {
   if (!(e instanceof HubCallError))
     return `error: ${(e as Error)?.message ?? String(e)}`;
@@ -770,9 +639,6 @@ function mintFailure(e: unknown): string {
 }
 
 /**
- * Issue 249: agent `id` is removed: when the server keeps a Hub token for
- * it, revoke that on Hub (the install's token, as `hub` reads it now) and
- * forget it here. Nothing kept: nothing is read and Hub hears nothing.
  */
 export async function unbindAgentHubToken(
   stateDir: () => string,
@@ -788,10 +654,6 @@ export async function unbindAgentHubToken(
 }
 
 /**
- * An agent's remove couldn't unbind its Hub token (`e`; a disk error, say):
- * a [hub] log line and a doctor row naming the agent and the token id,
- * never the token. The token is never used (its record is gone), and the
- * revoke retry takes it as orphaned. Never throws.
  */
 export function noteHubUnbindFailed(
   stateDir: string,
@@ -816,11 +678,10 @@ export function noteHubUnbindFailed(
       new Date().toISOString(),
     );
   } catch {
-    /* best effort: the revoke retry still finds it orphaned */
+    return;
   }
 }
 
-/** The defaults: on, ask again after 10 minutes, rotate every 30 days. */
 export const AGENT_HUB_TOKEN_DEFAULTS: AgentHubTokenSettings = {
   enabled: true,
   retrySeconds: 600,
@@ -828,7 +689,6 @@ export const AGENT_HUB_TOKEN_DEFAULTS: AgentHubTokenSettings = {
   revokeRetrySeconds: 600,
 };
 
-/** The settings from hub.* as read (readHubConfig), defaults for the rest. */
 export function agentHubTokenSettingsOf(
   c: Partial<
     Pick<
@@ -851,13 +711,12 @@ export function agentHubTokenSettingsOf(
   };
 }
 
-/** hub.agent_token* as configured now (a bad hub block: the defaults). */
 export function agentHubTokenSettings(): AgentHubTokenSettings {
   try {
     const c = readHubConfig();
     if (c) return agentHubTokenSettingsOf(c);
   } catch {
-    /* the defaults */
+    return AGENT_HUB_TOKEN_DEFAULTS;
   }
   return AGENT_HUB_TOKEN_DEFAULTS;
 }
@@ -866,9 +725,6 @@ let serverOne: HubAgentTokens | null = null;
 let serverNotCovered: ((url: string) => void) | null = null;
 
 /**
- * The web server's one store of agent Hub tokens (its state dir).
- * `onNotCovered`: how the server posts its reconnect item when a mint says
- * agents_not_covered (the latest given wins).
  */
 export function serverHubAgentTokens(
   onNotCovered?: (url: string) => void,
@@ -883,7 +739,7 @@ export function serverHubAgentTokens(
       try {
         return !!readRecord(getStateDir(), id);
       } catch {
-        return true; // unreadable is not removed: the token stays
+        return true;
       }
     },
     recordIdOf: (id) => readRecord(getStateDir(), id)?.recordId,
@@ -893,9 +749,6 @@ export function serverHubAgentTokens(
 let revokeTimer: NodeJS.Timeout | null = null;
 
 /**
- * Issue 249: retry the revokes still waiting, once now (server start) and
- * every hub.agent_token_revoke_retry_seconds after, with the install's
- * token as `hub` reads it then. Not connected: nothing to try with.
  */
 export function startAgentTokenRevokeRetry(
   hub: () => Promise<HubInstall | null>,

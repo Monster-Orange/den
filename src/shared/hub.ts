@@ -202,28 +202,15 @@ export interface HubConfig {
    */
   toolsRestart: boolean;
   /**
-   * Issue 249 hub.agent_tokens (default true): each agent calls Hub with a
-   * token bound to it on Hub (minted under the install's grant), so Hub
-   * sees it as a verified actor. False: every agent uses the install's.
    */
   agentTokens: boolean;
   /**
-   * Issue 249 hub.agent_token_retry_seconds (default 600, at least 5): how
-   * long Den waits to ask again when Hub couldn't give an agent a token.
    */
   agentTokenRetrySeconds: number;
   /**
-   * Issue 249 hub.agent_token_revoke_retry_seconds (default 600, at least
-   * 5): how often Den tries again a revoke Hub didn't answer (a removed
-   * agent's token), besides at each start.
    */
   agentTokenRevokeRetrySeconds: number;
   /**
-   * Issue 249 hub.agent_token_max_age_days (default 30; 0: never): an
-   * agent's token older than this is replaced at its next Hub call, with
-   * no person act: Den mints the new one and uses it from then on. Den
-   * never revokes the old one: Hub ends it (the new one's first use, or
-   * Hub's grace period).
    */
   agentTokenMaxAgeDays: number;
   /**
@@ -1819,16 +1806,6 @@ export async function hubRevoke(
 }
 
 /**
- * Issue 249: a token bound to one agent of this install, minted by Hub
- * with the install's own token (the install's one grant covers its
- * agents): POST <url>/connect/agent {agent_id, agent_name}. Hub answers
- * {token, token_id, agent}; an answer for another agent is refused. A Hub
- * without agent tokens answers 404 or 405: a HubCallError ("refused") with
- * that status. A 403 is a HubCallError ("forbidden") whose `code` is Hub's
- * `error` value: agents_not_covered (the install's grant doesn't cover
- * agents) or install_token_required (an agent's token tried to mint). The
- * token never leaves Den's server: the caller keeps it in the server's
- * store.
  */
 export async function hubMintAgentToken(
   url: string,
@@ -1863,9 +1840,6 @@ export async function hubMintAgentToken(
 }
 
 /**
- * Issue 249: revoke one agent's token with the install's token: POST
- * <url>/connect/revoke {token_id}. The install stays connected. True when
- * Hub revoked it now; false when Hub has no such live token (404).
  */
 export async function hubRevokeAgentToken(
   url: string,

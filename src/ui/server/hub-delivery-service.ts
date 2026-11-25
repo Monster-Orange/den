@@ -165,9 +165,6 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
 }
 
 /**
- * Issue 249: post or take back the reconnect item, from the mark the agent
- * mint left (403 agents_not_covered) for Hub `url`. Whoami's features are
- * not read for it: connect.agents only says Hub can do agent grants.
  */
 async function syncAgentGrant(url: string): Promise<void> {
   try {
@@ -179,7 +176,7 @@ async function syncAgentGrant(url: string): Promise<void> {
       notCovered: g.agentsNotCovered(getStateDir(), url),
     });
   } catch {
-    /* a note that can't be kept never stops deliveries */
+    return;
   }
 }
 
@@ -646,8 +643,6 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
       feedCarries = feedKinds(w.features);
-      // Issue 249: the one reconnect item, when the agent mint said this
-      // install's grant doesn't cover agents.
       void syncAgentGrant(a.url);
       noteWhoami(w);
     } catch {
