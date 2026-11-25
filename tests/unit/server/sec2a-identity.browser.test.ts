@@ -189,6 +189,24 @@ describe("the identity chip", () => {
       extraHTTPHeaders: AWAY,
     });
     await seeWhatsNew(ctx);
+    // Every toast's text, as it appears (a toast can close before a poll
+    // sees it): recorded from the first paint of every page.
+    await ctx.addInitScript(() => {
+      const seen: string[] = [];
+      (window as unknown as { __toasts: string[] }).__toasts = seen;
+      new MutationObserver((ms) => {
+        for (const m of ms)
+          for (const n of m.addedNodes) {
+            const el = n instanceof Element ? n : null;
+            // The toast's own role (shell.js toast()), not its class.
+            const t = el?.matches('[role="status"]')
+              ? el
+              : el?.querySelector('[role="status"]');
+            const text = t?.textContent?.trim();
+            if (text) seen.push(text);
+          }
+      }).observe(document, { childList: true, subtree: true });
+    });
     const p = await ctx.newPage();
     const origin = `http://${EDGE}:${port}`;
     // Issue 819: the link opens the pairing screen; a person's signed-in
@@ -197,6 +215,32 @@ describe("the identity chip", () => {
     expect(r?.status()).toBe(401);
     await p.waitForSelector("#den-pair-code");
     const code = ((await p.textContent("#den-pair-code")) ?? "").trim();
+    // The race the 0.4.87 dry run lost: another GET /api/session on the
+    // page after the sign-in (Settings' signed-in row) answers before the shell's own. It
+    // must not spend the welcome: the toast still shows, once.
+    await ctx.addInitScript(() => {
+      void fetch("/api/session", {
+        cache: "no-store",
+        headers: { "x-test-first": "1" },
+      }).catch(() => {});
+    });
+    let firstDone: Promise<void> = Promise.resolve();
+    await ctx.route(
+      (u) => u.pathname === "/api/session",
+      async (route) => {
+        if (route.request().headers()["x-test-first"]) {
+          let done!: () => void;
+          firstDone = new Promise((r) => (done = r));
+          const res = await route.fetch();
+          await route.fulfill({ response: res });
+          done();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 50));
+        await firstDone;
+        await route.continue();
+      },
+    );
     const me = await signedIn(stateDir, `http://localhost:${port}`);
     const ok = await fetch(`http://localhost:${port}/api/web/approve`, {
       method: "POST",
@@ -213,10 +257,12 @@ describe("the identity chip", () => {
     // The first load after the sign-in: the toast, once.
     // Read the toast's text in the same step that sees it: a toast can
     // close between a wait and a later read.
-    const toast = await p.waitForFunction(() => {
-      const t = document.querySelector(".den-toast")?.textContent?.trim();
-      return t || null;
-    });
+    const toast = await p.waitForFunction(
+      () =>
+        (window as unknown as { __toasts?: string[] }).__toasts?.find((t) =>
+          t.includes("signed in"),
+        ) ?? null,
+    );
     expect(await toast.jsonValue()).toBe(
       `This device is signed in to Den on ${SHORT}`,
     );
@@ -237,6 +283,11 @@ describe("the identity chip", () => {
     await p.reload();
     expect((await chip(p)).kind).toBe("device");
     expect(await p.locator(".den-toast").count()).toBe(0);
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { __toasts?: string[] }).__toasts ?? [],
+      ),
+    ).not.toContainEqual(expect.stringContaining("signed in"));
     await ctx.close();
   }, 60_000);
 });

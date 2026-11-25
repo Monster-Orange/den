@@ -23,20 +23,52 @@
  *
  * Only containers carrying den.ephemeral=1, a run label and this store's
  * tag are ever removed.
+ *
+ * Issue 1289: den.ephemeral=stop marks a container kept per checkout (a
+ * test database slow to make). It carries den.gate.checkout (gate run's
+ * DEN_GATE_CHECKOUT) and is stopped, never removed, when it is running and
+ * no live slot comes from its checkout. Its run label is never used to
+ * judge it: labels can't change, so a later run reusing it would still
+ * carry the first run's id.
  * A throwaway container with no run label (started outside a gate run) is
  * listed by `den doctor`, never removed. The slot log records the count and
  * image names, never a command line or environment.
  */
 import { execFile } from "child_process";
 import { createHash } from "crypto";
+import * as fs from "fs";
 import * as path from "path";
-import { gateDir, type GateStore } from "./store.js";
+import { gateDir, gateLocked, type GateStore } from "./store.js";
 
 export const EPHEMERAL_LABEL = "den.ephemeral";
 export const RUN_LABEL = "den.gate.run";
 export const STORE_LABEL = "den.gate.store";
 /** `gate run` gives its command its store's tag in this variable. */
 export const GATE_STORE_ENV = "DEN_GATE_STORE";
+/** Issue 1289: a kept container's checkout (den.ephemeral=stop). */
+export const CHECKOUT_LABEL = "den.gate.checkout";
+/** Issue 1289: `gate run` gives its command its checkout's tag here. */
+export const GATE_CHECKOUT_ENV = "DEN_GATE_CHECKOUT";
+
+const TAG = /^[0-9a-f]{12}$/;
+
+/**
+ * Issue 1289: the checkout `dir` is in: the nearest folder up holding
+ * `.git` (a folder, or a worktree's file); `dir` itself when none is.
+ */
+export function checkoutOf(dir: string): string {
+  let d = path.resolve(dir);
+  for (;;) {
+    if (fs.existsSync(path.join(d, ".git"))) return d;
+    const up = path.dirname(d);
+    if (up === d) return path.resolve(dir);
+    d = up;
+  }
+}
+
+/** Issue 1289: a checkout's tag: a short hash of its top folder. */
+export const checkoutTag = (dir: string): string =>
+  createHash("sha256").update(path.resolve(dir)).digest("hex").slice(0, 12);
 
 /** A slot store's tag: a short hash of its folder (never the path itself). */
 export const storeTag = (dir: string): string =>
@@ -56,6 +88,12 @@ export interface Throwaway {
   run: string | null;
   /** The slot store its run is in (storeTag); null when not labelled. */
   store: string | null;
+  /** Issue 1289: "remove" (den.ephemeral=1) or "stop" (=stop: kept). */
+  mode?: "remove" | "stop";
+  /** Issue 1289: docker's state ("running", "exited", …). */
+  state?: string;
+  /** Issue 1289: a kept container's checkout tag; null when not labelled. */
+  checkout?: string | null;
   /** Docker's own created time, as it prints it. */
   created: string;
 }
@@ -72,19 +110,31 @@ const storeOf = (env: NodeJS.ProcessEnv): string => {
   return given && /^[0-9a-f]{12}$/.test(given) ? given : storeTag(gateDir(env));
 };
 
-/** The labels a helper adds to `docker run` (in argv form). */
-export function ephemeralLabels(env: NodeJS.ProcessEnv): string[] {
+/**
+ * The labels a helper adds to `docker run` (in argv form). `keep` (issue
+ * 1289): a container kept per checkout: stopped when its checkout's runs
+ * end, never removed.
+ */
+export function ephemeralLabels(
+  env: NodeJS.ProcessEnv,
+  o: { keep?: boolean } = {},
+): string[] {
   const run = env.DEN_GATE_SLOT;
+  const inRun = !!run && SLOT_ID.test(run);
+  const checkout = env[GATE_CHECKOUT_ENV]?.trim();
   return [
     "--label",
-    `${EPHEMERAL_LABEL}=1`,
-    ...(run && SLOT_ID.test(run)
+    `${EPHEMERAL_LABEL}=${o.keep ? "stop" : "1"}`,
+    ...(inRun
       ? [
           "--label",
           `${RUN_LABEL}=${run}`,
           "--label",
           `${STORE_LABEL}=${storeOf(env)}`,
         ]
+      : []),
+    ...(o.keep && inRun && checkout && TAG.test(checkout)
+      ? ["--label", `${CHECKOUT_LABEL}=${checkout}`]
       : []),
   ];
 }
@@ -110,7 +160,7 @@ export function realDocker(timeoutMs = 5_000): Docker {
     });
 }
 
-const FORMAT = `{{.ID}}\t{{.Image}}\t{{.Label "${RUN_LABEL}"}}\t{{.CreatedAt}}\t{{.Label "${STORE_LABEL}"}}`;
+const FORMAT = `{{.ID}}\t{{.Image}}\t{{.Label "${RUN_LABEL}"}}\t{{.CreatedAt}}\t{{.Label "${STORE_LABEL}"}}\t{{.Label "${EPHEMERAL_LABEL}"}}\t{{.State}}\t{{.Label "${CHECKOUT_LABEL}"}}`;
 
 /**
  * Throwaway containers (running or stopped), optionally one run's; null
@@ -121,7 +171,8 @@ export async function listThrowaway(
   run?: string,
 ): Promise<Throwaway[] | null> {
   if (run !== undefined && !SLOT_ID.test(run)) return [];
-  const args = ["ps", "-a", "--filter", `label=${EPHEMERAL_LABEL}=1`];
+  // Issue 1289: both modes (=1 and =stop); others are skipped below.
+  const args = ["ps", "-a", "--filter", `label=${EPHEMERAL_LABEL}`];
   if (run !== undefined) args.push("--filter", `label=${RUN_LABEL}=${run}`);
   args.push("--format", FORMAT);
   let r: { code: number; out: string };
@@ -131,17 +182,25 @@ export async function listThrowaway(
     return null;
   }
   if (r.code !== 0) return null;
-  return r.out
-    .split("\n")
-    .map((l) => l.split("\t"))
-    .filter((p) => p[0])
-    .map(([id, image, label, created, store]) => ({
-      id: id!,
-      image: image ?? "",
-      run: label && SLOT_ID.test(label) ? label : null,
-      created: created ?? "",
-      store: store && /^[0-9a-f]{12}$/.test(store) ? store : null,
-    }));
+  return (
+    r.out
+      .split("\n")
+      .map((l) => l.split("\t"))
+      .filter((p) => p[0])
+      // Issue 1289 review: only the two exact values; anything else is never
+      // removed or stopped.
+      .filter((p) => p[5] === "1" || p[5] === "stop")
+      .map(([id, image, label, created, store, mode, state, checkout]) => ({
+        id: id!,
+        image: image ?? "",
+        run: label && SLOT_ID.test(label) ? label : null,
+        created: created ?? "",
+        store: store && TAG.test(store) ? store : null,
+        mode: mode === "1" ? ("remove" as const) : ("stop" as const),
+        state: state ?? "",
+        checkout: checkout && TAG.test(checkout) ? checkout : null,
+      }))
+  );
 }
 
 /** Stops and removes `boxes`; what went. Never throws. */
@@ -160,6 +219,78 @@ async function removeAll(docker: Docker, boxes: Throwaway[]): Promise<Removed> {
   return { count: boxes.length, images };
 }
 
+/** Issue 1289: stops `boxes` (kept: never removed); what stopped. */
+async function stopAll(docker: Docker, boxes: Throwaway[]): Promise<Removed> {
+  if (!boxes.length) return { count: 0, images: [] };
+  try {
+    const r = await docker(["stop", ...boxes.map((b) => b.id)]);
+    if (r.code !== 0) return { count: 0, images: [] };
+  } catch {
+    return { count: 0, images: [] };
+  }
+  const images = [...new Set(boxes.map((b) => b.image.slice(0, 200)))]
+    .filter(Boolean)
+    .sort()
+    .slice(0, 10);
+  return { count: boxes.length, images };
+}
+
+/**
+ * Issue 1289 review: when each of `ids` last started (ms), by one `docker
+ * inspect`; null when docker didn't answer (then nothing is stopped).
+ */
+async function startedAt(
+  docker: Docker,
+  ids: string[],
+): Promise<Map<string, number> | null> {
+  let r: { code: number; out: string };
+  try {
+    r = await docker(["inspect", "-f", "{{.Id}} {{.State.StartedAt}}", ...ids]);
+  } catch {
+    return null;
+  }
+  if (r.code !== 0) return null;
+  const full = new Map<string, number>();
+  for (const line of r.out.split("\n")) {
+    const [id, at] = line.trim().split(" ");
+    // Docker gives nanoseconds; milliseconds are enough.
+    const t = Date.parse((at ?? "").replace(/(\.\d{3})\d+/, "$1"));
+    if (id && Number.isFinite(t)) full.set(id, t);
+  }
+  const out = new Map<string, number>();
+  for (const id of ids)
+    for (const [f, t] of full) if (f.startsWith(id)) out.set(id, t);
+  return out;
+}
+
+/**
+ * Issue 1289 review: of `boxes` (idle kept containers), the ones a gate run
+ * left running: started before their checkout's last slot ended. One
+ * started since is someone's own use outside the gate: left alone. No end
+ * in the log, no start time, or docker not answering: none.
+ */
+async function leftByRuns(
+  store: GateStore,
+  docker: Docker,
+  boxes: Throwaway[],
+): Promise<Throwaway[]> {
+  if (!boxes.length) return [];
+  const started = await startedAt(
+    docker,
+    boxes.map((b) => b.id),
+  );
+  if (!started) return [];
+  return boxes.filter((b) => {
+    const end = store.lastEndFor(b.checkout!);
+    const t = started.get(b.id);
+    return end !== null && t !== undefined && t < end;
+  });
+}
+
+/** Issue 1289: a kept container of this store, running, with a checkout. */
+const keptRunning = (b: Throwaway, tag: string) =>
+  b.mode === "stop" && b.state === "running" && b.store === tag && !!b.checkout;
+
 /**
  * Removes run `id`'s throwaway containers and logs what went. Called once
  * its slot is released, outside the store's lock. Never throws.
@@ -168,15 +299,43 @@ export async function cleanRun(
   store: GateStore,
   id: string,
   docker: Docker,
+  /** Issue 1289: the run's checkout tag: its kept containers stop too. */
+  checkout?: string,
 ): Promise<Removed> {
   const tag = storeTag(store.dir);
   const boxes = (await listThrowaway(docker, id)) ?? [];
   const r = await removeAll(
     docker,
-    boxes.filter((b) => b.run === id && b.store === tag),
+    boxes.filter((b) => b.mode !== "stop" && b.run === id && b.store === tag),
   );
-  if (r.count) store.noteContainersRemoved(id, r);
+  if (r.count) await gateLocked(() => store.noteContainersRemoved(id, r));
+  if (checkout && TAG.test(checkout))
+    await stopCheckout(store, docker, checkout);
   return r;
+}
+
+/**
+ * Issue 1289: stops `checkout`'s kept containers when no live slot has that
+ * checkout (the run that ended has given its slot back). Read strictly:
+ * when the slots can't be read for sure, nothing is stopped.
+ */
+async function stopCheckout(
+  store: GateStore,
+  docker: Docker,
+  checkout: string,
+): Promise<void> {
+  const live = await gateLocked(() => store.liveSlots());
+  if (!live || live.some((e) => e.checkout === checkout)) return;
+  const tag = storeTag(store.dir);
+  const all = (await listThrowaway(docker)) ?? [];
+  await stopAll(
+    docker,
+    await leftByRuns(
+      store,
+      docker,
+      all.filter((b) => keptRunning(b, tag) && b.checkout === checkout),
+    ),
+  );
 }
 
 /** Issue 1263 review: an orphan is removed only when seen this long apart. */
@@ -198,16 +357,22 @@ export async function sweepThrowaway(
   seen: Map<string, number>,
   now: number,
   confirmMs = CONFIRM_MS,
-): Promise<({ id: string } & Removed)[] | null> {
+): Promise<Swept[] | null> {
   const boxes = await listThrowaway(docker);
   if (boxes === null) return null;
-  const live = store.liveIds();
-  if (live === null) return [];
+  const slots = await gateLocked(() => store.liveSlots());
+  if (slots === null) return [];
+  const live = new Set(slots.map((e) => e.id));
+  const busy = new Set(slots.flatMap((e) => (e.checkout ? [e.checkout] : [])));
   const tag = storeTag(store.dir);
   const orphans = boxes.filter(
-    (b) => b.run && b.store === tag && !live.has(b.run),
+    (b) => b.mode !== "stop" && b.run && b.store === tag && !live.has(b.run),
   );
-  const orphanIds = new Set(orphans.map((b) => b.id));
+  // Issue 1289: kept containers running with no live run from their checkout.
+  const idle = boxes.filter(
+    (b) => keptRunning(b, tag) && !busy.has(b.checkout!),
+  );
+  const orphanIds = new Set([...orphans, ...idle].map((b) => b.id));
   for (const id of [...seen.keys()]) if (!orphanIds.has(id)) seen.delete(id);
   const byRun = new Map<string, Throwaway[]>();
   for (const b of orphans) {
@@ -219,16 +384,35 @@ export async function sweepThrowaway(
     if (now - first < confirmMs) continue;
     byRun.set(b.run!, [...(byRun.get(b.run!) ?? []), b]);
   }
-  const out: ({ id: string } & Removed)[] = [];
+  const out: Swept[] = [];
   for (const [id, list] of byRun) {
     const r = await removeAll(docker, list);
     for (const b of list) seen.delete(b.id);
     if (!r.count) continue;
-    store.noteContainersRemoved(id, r);
+    await gateLocked(() => store.noteContainersRemoved(id, r));
     out.push({ id, ...r });
+  }
+  // Issue 1289: idle kept ones stop on the same two-look rule.
+  const byCheckout = new Map<string, Throwaway[]>();
+  for (const b of idle) {
+    const first = seen.get(b.id);
+    if (first === undefined) {
+      seen.set(b.id, now);
+      continue;
+    }
+    if (now - first < confirmMs) continue;
+    byCheckout.set(b.checkout!, [...(byCheckout.get(b.checkout!) ?? []), b]);
+  }
+  for (const [checkout, list] of byCheckout) {
+    const r = await stopAll(docker, await leftByRuns(store, docker, list));
+    for (const b of list) seen.delete(b.id);
+    if (r.count) out.push({ id: checkout, ...r, stopped: true });
   }
   return out;
 }
+
+/** One sweep's result: a run's containers removed, or a checkout's stopped. */
+export type Swept = { id: string; stopped?: true } & Removed;
 
 /** When the server's sweeper looks: cheap on a loaded machine. */
 export interface SweeperTiming {
@@ -278,7 +462,7 @@ export class ThrowawaySweeper {
   }
 
   /** Looks if due; what it removed (empty when it didn't look). */
-  async tick(ended: boolean): Promise<({ id: string } & Removed)[]> {
+  async tick(ended: boolean): Promise<Swept[]> {
     if (!this.due(ended)) return [];
     this.busy = true;
     try {

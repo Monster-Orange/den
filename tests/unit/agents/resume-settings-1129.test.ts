@@ -115,10 +115,10 @@ describe("issue 1129: agents.resume is a setting, never an agent", () => {
         environments: [],
         agents: {
           resume: { batch: 2, gap_seconds: 10 },
-          planner: { grants: ["south"] },
         } as unknown as Record<string, never>,
       },
-      {},
+      // Issue 1072: an agent's grants come from user.yml only.
+      { agents: { planner: { grants: ["south"] } } } as never,
     );
     expect(r.agents).toEqual({ planner: { grants: ["south"] } });
   });

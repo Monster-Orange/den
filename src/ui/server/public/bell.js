@@ -186,7 +186,7 @@ function rowHtml(n, fold) {
   const alert = !n.read && n.msg?.key === "bell.m.vschedFail";
   return (
     // Issue 187: a row that opens on a click looks it (the pointer).
-    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}"${alert ? ' role="alert"' : ""}>` +
+    `<div class="den-bell-row${n.read ? " read" : ""}${fold?.rep ? " rep" : ""}${link ? " opens" : ""}" data-id="${esc(n.id)}" data-kind="${esc(n.kind)}" data-read="${n.read ? "true" : "false"}"${alert ? ' role="alert"' : ""}>` +
     `<span class="den-dot ${n.read ? "off" : n.kind === "waiting" || alert ? "warn" : "ok"}" aria-hidden="true"></span>` +
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
@@ -195,6 +195,10 @@ function rowHtml(n, fold) {
       : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
+      : "") +
+    // Issue 1371 Part 2: a setting an agent changed without asking.
+    (n.undo?.approval
+      ? `<button type="button" class="den-btn" data-bell="setting-undo" data-ap="${esc(n.undo.approval)}">${esc(tr("bell.undo"))}</button>`
       : "") +
     // issue 206: the full local date-time on hover.
     `<time datetime="${esc(n.at)}" title="${esc(formatTitle(n.at))}">${esc(bellAgo(n.at))}</time>` +
@@ -380,8 +384,12 @@ function groupsHtml(groups, ui, needs = false) {
     .map(
       (g) =>
         `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
-        (!needs && g.subjects.some((s) => s.items.some((n) => !n.read))
-          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}">${esc(tr("bell.read"))}</button>`
+        // Issue 1339: while a Mark read runs, its button stays, held with
+        // the kit's dots (data-bell-held, issue 1054), and the others wait.
+        (!needs &&
+        (ui?.busy === `scope:${g.scope}` ||
+          g.subjects.some((s) => s.items.some((n) => !n.read)))
+          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy === `scope:${g.scope}` ? " data-bell-held" : ui?.busy ? " disabled" : ""}>${esc(tr("bell.read"))}</button>`
           : "") +
         `</div>` +
         g.subjects.map((s) => subjectHtml(g.scope, s, ui)).join("") +
@@ -415,6 +423,7 @@ export function bellPanel(b, ui = {}) {
     older: !!ui.older,
     updates: !!ui.updates,
     ask: ui.ask,
+    busy: ui.busy ?? null,
   };
   // Issue 746: what waits for the person's Allow leads Needs you.
   const allows = allowsOf(b);
@@ -422,12 +431,18 @@ export function bellPanel(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
+  // Issue 1339: while its POST runs, the button stays, held with the
+  // kit's dots (data-bell-held: paint holds it, issue 1054), and the other
+  // one waits too.
+  const attr = (what) =>
+    u.busy === what ? " data-bell-held" : u.busy ? " disabled" : "";
   const actions =
-    (b?.unread || updates.unread
-      ? `<button type="button" data-bell="all">${esc(tr("bell.markAll"))}</button>`
+    (u.busy === "all" || b?.unread || updates.unread
+      ? `<button type="button" data-bell="all"${attr("all")}>${esc(tr("bell.markAll"))}</button>`
       : "") +
-    (all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
-      ? `<button type="button" data-bell="clear">${esc(tr("bell.clearRead"))}</button>`
+    (u.busy === "clear" ||
+    all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
+      ? `<button type="button" data-bell="clear"${attr("clear")}>${esc(tr("bell.clearRead"))}</button>`
       : "");
   const panel = {
     title: tr("bell.title"),
@@ -499,12 +514,126 @@ async function load() {
   }
 }
 
+/** POST; false (after an error toast) when it failed. */
+/**
+ * Issue 1371 Part 2: Undo, the person-only POST /api/settings/undo: the
+ * setting goes back to its value before. Busy shows in the button.
+ */
+async function undoSetting(el) {
+  const approval = el.dataset.ap;
+  if (!approval) return;
+  const shell = window.denShell;
+  const run = (headers) =>
+    shell.api("POST", "/api/settings/undo", { approval }, { headers });
+  try {
+    if (shell?.busyAction)
+      await shell.busyAction("setting-undo", run, { button: el, vars: {} });
+    else await run({});
+  } catch (err) {
+    shell?.errorToast?.(err);
+  }
+}
+
 async function post(path, body) {
   try {
+    // busy-ok: Mark read and Clear hold their button in paint()
+    // (data-bell-held); Stop's ask closes on Yes; Undo is a toast's.
     await window.denShell?.api?.("POST", path, body);
+    return true;
   } catch (err) {
     window.denShell?.errorToast?.(err);
+    return false;
   }
+}
+
+/**
+ * Issue 1339: a project's Mark read: the server marks its items read in
+ * every list (Needs you, Updates, Older); the unread counts drop to match.
+ */
+function scopeRead(b, scope) {
+  let marked = 0;
+  const f = (n, g) => {
+    if (g.scope !== scope || n.read) return n;
+    marked++;
+    return { ...n, read: true };
+  };
+  const taken = () => {
+    const k = marked;
+    marked = 0;
+    return k;
+  };
+  const groups = eachItem(b.groups, f);
+  const fromNeeds = taken();
+  const upd = b.updates ?? { count: 0, unread: 0, groups: [] };
+  const updGroups = eachItem(upd.groups, f);
+  const fromUpdates = taken();
+  const old = b.older ?? { count: 0, groups: [] };
+  return {
+    ...b,
+    unread: Math.max(0, (b.unread ?? 0) - fromNeeds),
+    groups,
+    updates: {
+      ...upd,
+      groups: updGroups,
+      unread: Math.max(0, (upd.unread ?? 0) - fromUpdates),
+    },
+    older: { ...old, groups: eachItem(old.groups, f) },
+  };
+}
+
+/** Each group's items through `f(n, g)` (null drops it); empty groups go. */
+function eachItem(groups, f) {
+  return (groups ?? [])
+    .map((g) => ({
+      ...g,
+      subjects: g.subjects
+        .map((sub) => ({
+          ...sub,
+          items: sub.items.map((n) => f(n, g)).filter(Boolean),
+        }))
+        .filter((sub) => sub.items.length),
+    }))
+    .filter((g) => g.subjects.length);
+}
+
+/**
+ * Issue 1339: the bell as it will be once "Mark all read" (`all`), "Clear
+ * read" (`clear`) or a project's Mark read (`scope`, with its scope) is
+ * done, to show at once while the POST runs.
+ */
+export function bellAfter(b, what, scope) {
+  if (!b) return b;
+  if (what === "scope") return scopeRead(b, scope);
+  const f =
+    what === "all"
+      ? (n) => (n.read ? n : { ...n, read: true })
+      : (n) => (n.read ? null : n);
+  const count = (gs) =>
+    gs.reduce(
+      (k, g) => k + g.subjects.reduce((j, sub) => j + sub.items.length, 0),
+      0,
+    );
+  const groups = eachItem(b.groups, f);
+  const upd = b.updates ?? { count: 0, unread: 0, groups: [] };
+  const updGroups = eachItem(upd.groups, f);
+  const old = b.older ?? { count: 0, groups: [] };
+  const oldGroups = eachItem(old.groups, f);
+  return {
+    ...b,
+    unread: what === "all" ? 0 : b.unread,
+    groups,
+    updates: {
+      ...upd,
+      groups: updGroups,
+      unread: what === "all" ? 0 : upd.unread,
+      count: what === "clear" ? count(updGroups) : upd.count,
+    },
+    older: {
+      ...old,
+      groups: oldGroups,
+      count: what === "clear" ? count(oldGroups) : old.count,
+    },
+  };
 }
 
 /**
@@ -576,6 +705,7 @@ export function initBell(doc = document) {
     older: false,
     updates: false,
     ask: null,
+    busy: null,
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
@@ -602,6 +732,9 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
+  // Issue 1054: the button held with the kit's dots, and how to let it go.
+  let heldBtn = null;
+  let letGo = null;
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -615,11 +748,23 @@ export function initBell(doc = document) {
             : "")
         : "";
     bell.paint();
+    // Issue 1054: the pressed button holds the kit's dots while its POST
+    // runs. A paint keeps it when the button is the same one (issue 1024
+    // patches in place), holds the new one when it isn't, and lets go of
+    // the old: none is left held once the answer is in.
+    const b = ui.busy ? pop.querySelector("[data-bell-held]") : null;
+    if (b !== heldBtn) {
+      letGo?.();
+      heldBtn = b;
+      letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
+    }
     if (keep) pop.querySelector(keep)?.focus?.();
   };
   const refresh = async () => {
     const b = await load();
-    if (!b) return;
+    // Issue 1339: a refresh while Mark all read or Clear read runs would
+    // put back what the person just saw go.
+    if (!b || ui.busy) return;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
@@ -641,6 +786,7 @@ export function initBell(doc = document) {
     if (what === "open") {
       const id = el.closest("[data-id]")?.dataset.id;
       // Marked read first; the link then opens the agent.
+      // busy-ok: marked read in the background as the link opens
       if (id)
         void fetch("/api/notifications/read", {
           method: "POST",
@@ -656,6 +802,11 @@ export function initBell(doc = document) {
       await refresh();
       return;
     }
+    if (what === "setting-undo") {
+      await undoSetting(el);
+      await refresh();
+      return;
+    }
     if (what === "review") {
       // Issue 746: a tap opens the held write's lines; another closes them.
       const id = el.dataset.ap;
@@ -668,11 +819,31 @@ export function initBell(doc = document) {
       await refresh();
       return;
     }
-    if (what === "all") await post("/api/notifications/read", { all: true });
-    else if (what === "clear") await post("/api/notifications/clear", {});
-    else if (what === "scope")
-      await post("/api/notifications/read", { scope: el.dataset.scope });
-    else if (what === "fold" || what === "older" || what === "updates") {
+    if (what === "all" || what === "clear" || what === "scope") {
+      // Issue 1339: the rows change at once, the button shows busy in
+      // itself, and an error puts the rows back (with its toast).
+      if (ui.busy || !last) return;
+      const before = last;
+      const scope = el.dataset.scope;
+      ui.busy = what === "scope" ? `scope:${scope}` : what;
+      last = bellAfter(last, what, scope);
+      bell.setCount((last.unread ?? 0) + overrunsOf(last).length);
+      paint();
+      const ok = await post(
+        what === "clear"
+          ? "/api/notifications/clear"
+          : "/api/notifications/read",
+        what === "all" ? { all: true } : what === "scope" ? { scope } : {},
+      );
+      ui.busy = null;
+      if (!ok) {
+        last = before;
+        bell.setCount((last.unread ?? 0) + overrunsOf(last).length);
+      }
+      paint();
+      if (ok) await refresh();
+      return;
+    } else if (what === "fold" || what === "older" || what === "updates") {
       if (what === "older") ui.older = !ui.older;
       else if (what === "updates") ui.updates = !ui.updates;
       else if (!ui.folds.delete(el.dataset.key)) ui.folds.add(el.dataset.key);

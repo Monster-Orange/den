@@ -95,7 +95,9 @@ describe("the VM reading never blocks a request (issue 1274)", () => {
   describe("the gate view (what the Gate page's request reads)", () => {
     const tmps: string[] = [];
     const saved = process.env.DEN_GATE_VMS;
-    beforeEach(() => delete process.env.DEN_GATE_VMS);
+    beforeEach(() => {
+      delete process.env.DEN_GATE_VMS;
+    });
     afterEach(() => {
       process.env.DEN_GATE_VMS = saved;
       for (const d of tmps.splice(0))

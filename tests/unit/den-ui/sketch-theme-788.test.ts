@@ -198,13 +198,13 @@ describe("issue 788: the schema and its doc", () => {
     expect(shape.buttons.default).toBe("filled");
   });
 
-  it("the theme doc lists both keys, their defaults and 0.4.88", () => {
+  it("the theme doc lists both keys, their defaults and 0.4.87", () => {
     const doc = read(path.join(ROOT, "docs/distributions.md"));
     expect(doc).toMatch(
-      /`edge`: `solid` \(the default\) or `dashed`[^]{0,120}0\.4\.88/,
+      /`edge`: `solid` \(the default\) or `dashed`[^]{0,120}0\.4\.87/,
     );
     expect(doc).toMatch(
-      /`buttons`: `filled` \(the default\) or `outline`[^]{0,240}0\.4\.88/,
+      /`buttons`: `filled` \(the default\) or `outline`[^]{0,240}0\.4\.87/,
     );
   });
 });

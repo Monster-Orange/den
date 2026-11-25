@@ -81,6 +81,10 @@ function world(boxes: Box[]) {
               b.labels[RUN_LABEL] ?? "",
               b.created ?? "",
               b.labels[STORE_LABEL] ?? "",
+              // Issue 1289: the mode, the state and the checkout.
+              b.labels[EPHEMERAL_LABEL] ?? "",
+              "running",
+              "",
             ].join("\t"),
           )
           .join("\n"),
