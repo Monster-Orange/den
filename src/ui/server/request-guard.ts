@@ -62,7 +62,9 @@
  */
 import { timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
-import { readMcpConfig } from "../../shared/den-config.js";
+import { readMcpConfig, type InstallMode } from "../../shared/den-config.js";
+import { installModeNow } from "../../shared/gates/browser-container.js";
+import { scopeReaches, scopeWords } from "../../shared/agents/scope-rule.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
 import {
   AGENT_IMPORT_HELD,
@@ -98,6 +100,7 @@ import {
   RUNNER_ROUTES,
   isMutatingGet,
   pathMatches,
+  ROUTES,
   routeClass,
   SIGNIN_CSRF_FREE,
   SIGNIN_ID_BEACONS,
@@ -1099,8 +1102,12 @@ const SESSION_ROUTE = /^\/api\/sessions\/([^/]+)(?:\/|$)/;
  *  - a shell-grade route, unless it is its own session's
  *    (`/api/sessions/<its session id or name>/…`): agent start and resume
  *    mint tokens, the browser sessions are a person's.
- * Seam (WS-3a, 0.4.2): the route's workspace against `p.workspace` and
- * `p.grants` is checked here; nothing is yet.
+ *  - a project the agent's scope doesn't reach (scopeReaches: its own,
+ *    its grants; the server agent's reaches all), named in the path
+ *    (`/api/workspaces/<ws>/…`) or the query (`?ws=`, `?workspace=`):
+ *    a write, on every install; a read, on a strict install only (a
+ *    personal install is one person's machine: names, sessions and states
+ *    of its projects stay readable to its agents).
  */
 export function agentRefusal(
   p: AgentPrincipal,
@@ -1109,6 +1116,8 @@ export function agentRefusal(
   cls: RouteClass,
   /** The query: service exec's command and environment are checked. */
   search?: URLSearchParams,
+  /** The install's mode, read only when a read names another project. */
+  mode: () => InstallMode = installModeNow,
 ): string | null {
   // An agent runs a service's up, down or restart, and only on local
   // (the MCP tool's rule, held here too: a token can skip the tool).
@@ -1154,7 +1163,7 @@ export function agentRefusal(
   if (target)
     return (
       agentResumeRefusal(p, target.ws, target.id, mcpActions()) ??
-      workspaceRefusal(p, pathname)
+      workspaceRefusal(p, method, pathname, cls, search, mode)
     );
   // AG-17.1: MCP agent_import, opted in, inside the agent's scope (its
   // list as well as its import: conversation titles are a person's).
@@ -1164,11 +1173,11 @@ export function agentRefusal(
       // Issue 160: the bring-in itself is a held write, never the route.
       (imp.imports ? `${p.actor}: ${AGENT_IMPORT_HELD}.` : null) ??
       agentImportRefusal(p, imp.ws, mcpActions()) ??
-      workspaceRefusal(p, pathname)
+      workspaceRefusal(p, method, pathname, cls, search, mode)
     );
   if (cls === "shell-grade")
     return `${p.actor} can't ${method === "GET" ? "open" : "use"} ${pathname}: starting or resuming an agent, and the browser sessions, are a person's.`;
-  return workspaceRefusal(p, pathname);
+  return workspaceRefusal(p, method, pathname, cls, search, mode);
 }
 
 /** The org config's mcp.actions; none when it can't be read. */
@@ -1180,9 +1189,85 @@ function mcpActions(): readonly string[] {
   }
 }
 
-/** WS-3a's seam (0.4.2): an agent's route outside its workspace. Not yet. */
-function workspaceRefusal(_p: AgentPrincipal, _pathname: string): null {
-  return null;
+/** The literal routes under /api/workspaces/ (never a project's name). */
+const LITERAL_PATHS = new Set(
+  ROUTES.filter((r) => !/[:*]/.test(r.path)).map((r) => r.path),
+);
+/** The routes that name a project in the path, and that segment's index. */
+const WS_ROUTES = ROUTES.filter((r) => r.path.split("/").includes(":ws")).map(
+  (r) => ({ path: r.path, at: r.path.split("/").indexOf(":ws") }),
+);
+
+/** The project a route names in its path (`:ws`), decoded; else null. */
+export function routeWorkspace(pathname: string): string | null {
+  if (LITERAL_PATHS.has(pathname)) return null;
+  const hit = WS_ROUTES.find((r) => pathMatches(r.path, pathname));
+  if (!hit) return null;
+  const seg = pathname.split("/")[hit.at] ?? "";
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+/** The projects a request names: its path's, then `?ws=` and `?workspace=`. */
+export function requestWorkspaces(
+  pathname: string,
+  search?: URLSearchParams,
+): string[] {
+  const out: string[] = [];
+  const inPath = routeWorkspace(pathname);
+  if (inPath !== null) out.push(inPath);
+  for (const k of ["ws", "workspace"])
+    for (const v of search?.getAll(k) ?? []) if (v) out.push(v);
+  return out;
+}
+
+/** A request that reads only: a GET or HEAD the table calls readonly. */
+function readsOnly(method: string, cls: RouteClass): boolean {
+  return (method === "GET" || method === "HEAD") && cls === "readonly";
+}
+
+/**
+ * An agent's request naming a project outside its scope (scope-rule.ts,
+ * the MCP server's own rule): a write always; a read on a strict install.
+ * An unknown project is refused the same way as another one: the answer
+ * never says which projects exist.
+ */
+function workspaceRefusal(
+  p: AgentPrincipal,
+  method: string,
+  pathname: string,
+  cls: RouteClass,
+  search: URLSearchParams | undefined,
+  mode: () => InstallMode,
+): string | null {
+  const outside = requestWorkspaces(pathname, search).find(
+    (ws) => !scopeReaches(p, ws),
+  );
+  if (outside === undefined) return null;
+  if (readsOnly(method, cls) && mode() !== "strict") return null;
+  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(outside)}". A person adds a project to agents.<id>.grants in the org config to widen it.`;
+}
+
+/** A name echoed back: one printable line, bounded. */
+function printableName(v: string): string {
+  return v.replace(/[^\x20-\x7e]/g, "?").slice(0, 80);
+}
+
+/**
+ * For list handlers: which projects' rows an agent's
+ * request may see. Null for a person, or an agent on a personal install
+ * (every row); else the scope's test.
+ */
+export function agentRowFilter(
+  req: http.IncomingMessage,
+  mode: () => InstallMode = installModeNow,
+): ((ws: string) => boolean) | null {
+  const p = agentPrincipalOf(req);
+  if (!p || mode() !== "strict") return null;
+  return (ws) => scopeReaches(p, ws);
 }
 
 /**
