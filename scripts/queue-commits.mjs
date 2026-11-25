@@ -6,17 +6,24 @@
  * in the range must be signed by a key in the allowed-signers file, and
  * its message must not match the names list (scripts/org-names.js).
  *
+ *   node scripts/queue-commits.mjs <base>..<head> --trusted <ref>      CI
  *   node scripts/queue-commits.mjs <base>..<head> [--signers <file>] [--allow <file>]
  *
- * --signers defaults to .github/release-signers and --allow to
- * scripts/queue-commits-allow.json, both in this checkout. The allow-list
- * holds known commits, each by its full SHA with a reason; they pass.
+ * With --trusted, the allowed-signers file (.github/release-signers) and
+ * the allow-list (scripts/queue-commits-allow.json) are read at that ref,
+ * the base the change is judged against, never from the change: a change
+ * can't allow-list its own commit or add its own key, and an entry counts
+ * only once it is on the base. Without it, both come from files
+ * (default: this checkout's), for a run by hand. The allow-list holds
+ * known commits, each by its full SHA with a reason; they pass. None on
+ * the ref, or no default file: nothing passes by SHA.
  * Output names only a SHA and the rule it broke, never a message: CI logs
  * are public. Exit 1 on a hit; 2 on bad input, a bad allow-list, or no
  * names list (a missing secret never passes silently).
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,17 +47,54 @@ function flag(name, fallback) {
 }
 if (!range || !range.includes("..")) {
   fail(
-    "usage: queue-commits.mjs <base>..<head> [--signers <file>] [--allow <file>]",
+    "usage: queue-commits.mjs <base>..<head> [--trusted <ref> | --signers <file> --allow <file>]",
   );
 }
-const signers = flag(
-  "--signers",
-  path.join(ROOT, ".github", "release-signers"),
-);
-const allowFile = flag(
-  "--allow",
-  path.join(ROOT, "scripts", "queue-commits-allow.json"),
-);
+const SIGNERS_PATH = ".github/release-signers";
+const ALLOW_PATH = "scripts/queue-commits-allow.json";
+const trustedAt = args.indexOf("--trusted");
+const trusted = trustedAt === -1 ? undefined : args[trustedAt + 1];
+if (trustedAt !== -1 && !trusted) fail("--trusted needs a ref");
+
+/**
+ * A file's text at the trusted ref, or null when the ref hasn't got it.
+ * The change being judged never supplies its own allow-list or keys.
+ */
+function atTrusted(rel) {
+  const r = spawnSync("git", ["show", `${trusted}:${rel}`], {
+    encoding: "utf-8",
+  });
+  return r.status === 0 ? r.stdout : null;
+}
+
+let signersText;
+let allowText;
+let allowName;
+let signersName;
+if (trusted) {
+  signersName = `${trusted}:${SIGNERS_PATH}`;
+  allowName = `${trusted}:${ALLOW_PATH}`;
+  signersText = atTrusted(SIGNERS_PATH);
+  // No allow-list on the trusted ref yet: nothing passes by SHA.
+  allowText = atTrusted(ALLOW_PATH) ?? "[]";
+} else {
+  signersName = flag("--signers", path.join(ROOT, SIGNERS_PATH));
+  allowName = flag("--allow", path.join(ROOT, ALLOW_PATH));
+  try {
+    signersText = readFileSync(signersName, "utf-8");
+  } catch {
+    signersText = null;
+  }
+  try {
+    allowText = readFileSync(allowName, "utf-8");
+  } catch (e) {
+    if (args.includes("--allow")) {
+      fail(`the allow-list ${allowName} can't be used: ${e.message}`);
+    }
+    allowText = "[]";
+  }
+}
+if (signersText === null) fail(`no allowed-signers file at ${signersName}`);
 
 const patterns = orgPatterns();
 if (patterns.length === 0) {
@@ -59,7 +103,7 @@ if (patterns.length === 0) {
 
 let allowed;
 try {
-  const list = JSON.parse(readFileSync(allowFile, "utf-8"));
+  const list = JSON.parse(allowText);
   if (!Array.isArray(list)) throw new Error("not a list");
   allowed = new Set(
     list.map((e, i) => {
@@ -75,13 +119,13 @@ try {
     }),
   );
 } catch (e) {
-  fail(`the allow-list ${allowFile} can't be used: ${e.message}`);
+  fail(`the allow-list ${allowName} can't be used: ${e.message}`);
 }
-try {
-  readFileSync(signers);
-} catch {
-  fail(`no allowed-signers file at ${signers}`);
-}
+// verify-commit reads the signers from a file: a private copy of the text.
+const signersDir = mkdtempSync(path.join(os.tmpdir(), "queue-commits-"));
+const signers = path.join(signersDir, "allowed_signers");
+writeFileSync(signers, signersText);
+process.on("exit", () => rmSync(signersDir, { recursive: true, force: true }));
 
 let shas;
 try {
@@ -122,9 +166,10 @@ for (const sha of shas) {
   console.log(`${sha.slice(0, 12)} ${broke.join("; ")}`);
 }
 if (bad) {
-  const shownAllow = allowFile.startsWith(ROOT + path.sep)
-    ? path.relative(ROOT, allowFile)
-    : allowFile;
+  const shownAllow =
+    trusted || !allowName.startsWith(ROOT + path.sep)
+      ? allowName
+      : path.relative(ROOT, allowName);
   console.error(
     `queue commits: ${bad} of ${checked} commit(s) broke a rule. A commit already on the queue can't be reworded: put its full SHA, with a reason, in ${shownAllow}, and find how it got there.`,
   );

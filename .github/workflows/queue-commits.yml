@@ -3,7 +3,9 @@
 # check skips what is already there. Every commit on the queue that main
 # hasn't got must be signed by a key in .github/release-signers, and its
 # message must not match the names list (the DEN_ORG_NAMES secret). Known
-# commits pass by full SHA in scripts/queue-commits-allow.json.
+# commits pass by full SHA in scripts/queue-commits-allow.json. The
+# checker, the signers and the allow-list are main's, never the change's:
+# a change can't allow-list its own commit or add its own key.
 name: queue-commits
 on:
   push:
@@ -30,4 +32,11 @@ jobs:
         env:
           DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
           RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/queue-commits.mjs "origin/main..$RANGE_HEAD"
+        run: |
+          check=scripts/queue-commits.mjs
+          if git cat-file -e origin/main:scripts/queue-commits.mjs 2>/dev/null; then
+            git archive origin/main scripts/queue-commits.mjs scripts/org-names.js src/shared/org-names.js |
+              tar -x -C "$RUNNER_TEMP"
+            check="$RUNNER_TEMP/scripts/queue-commits.mjs"
+          fi
+          node "$check" "origin/main..$RANGE_HEAD" --trusted origin/main

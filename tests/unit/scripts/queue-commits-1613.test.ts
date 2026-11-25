@@ -186,3 +186,154 @@ describe("issue 1613: the queue's commits", () => {
     expect(r.stderr).toMatch(/no patterns/);
   });
 });
+
+/**
+ * With --trusted <ref>, the allow-list and the signers come from that ref
+ * (the base the change is judged against), never from the change itself:
+ * a change can't allow-list its own commit or add its own key.
+ */
+describe("issue 1613: the trusted base's allow-list and signers", () => {
+  const SIGNERS = path.join(".github", "release-signers");
+  const ALLOW = path.join("scripts", "queue-commits-allow.json");
+  let trustedBase: string;
+
+  function put(rel: string, text: string) {
+    fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true });
+    fs.writeFileSync(path.join(repo, rel), text);
+    git("add", rel);
+  }
+
+  function signedCommitOf(msg: string, signWith: string): string {
+    git(
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.com",
+      "-c",
+      "gpg.format=ssh",
+      "-c",
+      `user.signingkey=${signWith}`,
+      "-c",
+      "commit.gpgsign=true",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "commit",
+      "-q",
+      "-m",
+      msg,
+    );
+    return git("rev-parse", "HEAD");
+  }
+
+  function checkTrusted(range: string, ref: string) {
+    return spawnSync("node", [SCRIPT, range, "--trusted", ref], {
+      cwd: repo,
+      encoding: "utf-8",
+      env: { PATH: process.env.PATH ?? "", DEN_ORG_NAMES_FILE: names },
+    });
+  }
+
+  const pub = (k: string) => fs.readFileSync(`${k}.pub`, "utf-8").trim();
+
+  /** The same check with the change's own files: the attack works there. */
+  function checkOwnFiles(range: string) {
+    return spawnSync(
+      "node",
+      [
+        SCRIPT,
+        range,
+        "--signers",
+        path.join(repo, SIGNERS),
+        "--allow",
+        path.join(repo, ALLOW),
+      ],
+      {
+        cwd: repo,
+        encoding: "utf-8",
+        env: { PATH: process.env.PATH ?? "", DEN_ORG_NAMES_FILE: names },
+      },
+    );
+  }
+
+  beforeAll(() => {
+    repo = path.join(dir, "repo-trusted");
+    fs.mkdirSync(repo);
+    git("init", "-q", "-b", "main");
+    put(SIGNERS, `den-agents namespaces="git" ${pub(key)}\n`);
+    put(ALLOW, "[]\n");
+    trustedBase = signedCommitOf(
+      "The base: signers and an empty allow-list",
+      key,
+    );
+  });
+
+  it("a change that allow-lists its own earlier commit still fails", () => {
+    git("checkout", "-q", "-b", "self-allow", trustedBase);
+    const bad = commit("An unsigned change");
+    put(ALLOW, JSON.stringify([{ sha: bad, reason: "trust me" }]));
+    signedCommitOf("Allow-list the change above", key);
+    expect(checkOwnFiles(`${trustedBase}..HEAD`).status).toBe(0);
+    const r = checkTrusted(`${trustedBase}..HEAD`, trustedBase);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`${bad.slice(0, 12)} not signed`);
+  });
+
+  it("a change that adds its own signer key still fails", () => {
+    git("checkout", "-q", "-b", "self-key", trustedBase);
+    put(
+      SIGNERS,
+      `den-agents namespaces="git" ${pub(key)}\nmine namespaces="git" ${pub(otherKey)}\n`,
+    );
+    signedCommitOf("Add a key", key);
+    fs.writeFileSync(path.join(repo, "f.txt"), "x");
+    git("add", "f.txt");
+    const theirs = signedCommitOf("Signed by the added key", otherKey);
+    expect(checkOwnFiles(`${trustedBase}..HEAD`).status).toBe(0);
+    const r = checkTrusted(`${trustedBase}..HEAD`, trustedBase);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`${theirs.slice(0, 12)} not signed`);
+  });
+
+  it("an entry already on the trusted base counts", () => {
+    git("checkout", "-q", "-b", "side", trustedBase);
+    const old = commit("An old unsigned change");
+    git("checkout", "-q", "-b", "base-with-entry", trustedBase);
+    put(ALLOW, JSON.stringify([{ sha: old, reason: "known and public" }]));
+    const withEntry = signedCommitOf("Allow-list the old change", key);
+    git("checkout", "-q", "-b", "feature", withEntry);
+    git(
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.com",
+      "-c",
+      "gpg.format=ssh",
+      "-c",
+      `user.signingkey=${key}`,
+      "-c",
+      "commit.gpgsign=true",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "merge",
+      "-q",
+      "--no-ff",
+      "-m",
+      "Merge side",
+      "side",
+    );
+    const r = checkTrusted(`${withEntry}..HEAD`, withEntry);
+    expect(r.stdout).toMatch(
+      /1 commit\(s\) signed and clean; 1 passed by the allow-list/,
+    );
+    expect(r.status).toBe(0);
+  });
+
+  it("no signers file on the trusted base: refused (2)", () => {
+    git("checkout", "-q", "-b", "no-signers", trustedBase);
+    git("rm", "-q", SIGNERS);
+    const without = signedCommitOf("Drop the signers", key);
+    const r = checkTrusted(`${without}..${without}`, without);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/allowed-signers/);
+  });
+});

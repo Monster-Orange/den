@@ -1,6 +1,0 @@
-[
-  {
-    "sha": "e4d4a5f33c23c2261235b747f7e76ab7ab99c888",
-    "reason": "A hosted merge button's commit for PR 1606: signed by the host's key, and its title names the org's branch. Public history; it cannot be reworded."
-  }
-]
