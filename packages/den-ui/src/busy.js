@@ -333,31 +333,34 @@ export function instantProblems(html) {
 const held = new Map();
 
 /**
- * Issue 1434: a held button is aria-disabled, not disabled, so the
- * keyboard's focus stays on it (a disabled button that has focus drops it
- * to <body>). Its clicks stop here instead, before the page's own
- * listeners: a mouse click, Enter or Space, or a form's implicit submit.
+ * Issue 1434: a held button is aria-disabled with aria-busy, never
+ * disabled: a disabled button that has focus drops it to <body>. A click
+ * on a held button (a mouse click, Enter or Space, a form's implicit
+ * submit) stops here, at the window in the capture phase, before the
+ * page's own click listeners. A capture listener on window that a page
+ * added before busy.js loaded still runs first, and pointerdown,
+ * mousedown and keydown still reach the page (Den's handlers listen on
+ * click). Den's shell (shell.js) and dialog.js's fallback hold the same
+ * way and stop the same clicks before the kit has loaded.
  */
-const guarded = new Set();
-/** The held buttons the kit set aria-disabled on (to take it off again). */
+const isHeld = (n) =>
+  n?.getAttribute?.("aria-busy") === "true" &&
+  n.getAttribute("aria-disabled") === "true";
+/** Every button held now, and those whose aria-disabled is the hold's. */
+const holding = new Set();
 const offByKit = new Set();
-let guarding = false;
-function guardClicks() {
-  if (guarding || !globalThis.window?.addEventListener) return;
-  guarding = true;
-  window.addEventListener(
-    "click",
-    (e) => {
-      for (let n = e.target; n; n = n.parentNode)
-        if (guarded.has(n)) {
-          e.preventDefault?.();
-          e.stopImmediatePropagation?.();
-          return;
-        }
-    },
-    true,
-  );
-}
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (isHeld(n)) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
 
 /**
  * Holds a button (aria-disabled, aria-busy) or lets it go. dots: the label
@@ -369,7 +372,7 @@ function holdButton(b, on, dots) {
   if (!on) {
     b.disabled = false;
     b.removeAttribute("aria-busy");
-    guarded.delete(b);
+    holding.delete(b);
     if (offByKit.delete(b)) b.removeAttribute("aria-disabled");
     const h = held.get(b);
     if (!h) return;
@@ -385,13 +388,16 @@ function holdButton(b, on, dots) {
     if (h.name == null) b.removeAttribute("aria-label");
     return;
   }
-  b.setAttribute("aria-busy", "true");
-  if (b.getAttribute("aria-disabled") !== "true") {
-    b.setAttribute("aria-disabled", "true");
-    offByKit.add(b);
+  // Held already by Den's shell or the dialog before the kit loaded
+  // (aria-busy too): that aria-disabled is the hold's, the kit's to clear.
+  // The page's own aria-disabled (no aria-busy) stays.
+  if (!holding.has(b)) {
+    holding.add(b);
+    if (b.getAttribute("aria-disabled") !== "true" || isHeld(b))
+      offByKit.add(b);
   }
-  guarded.add(b);
-  guardClicks();
+  b.setAttribute("aria-busy", "true");
+  b.setAttribute("aria-disabled", "true");
   if (!dots || held.has(b)) return;
   ensureCss();
   const name = b.getAttribute("aria-label");

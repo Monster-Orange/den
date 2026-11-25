@@ -9879,6 +9879,33 @@
    * download; a failed load is tried again on the next action.
    */
   var busyMod = null;
+  /**
+   * Issue 1434: hold a button at once, as the kit does (aria-busy and
+   * aria-disabled, never disabled, which drops focus to <body>). True when
+   * the aria-disabled is the hold's own.
+   */
+  function preHold(b) {
+    var own = b.getAttribute("aria-disabled") !== "true";
+    b.setAttribute("aria-busy", "true");
+    b.setAttribute("aria-disabled", "true");
+    return own;
+  }
+  /** Issue 1434: a click on a held button stops here, before the page's. */
+  window.addEventListener(
+    "click",
+    function (e) {
+      for (var n = e.target; n && n.getAttribute; n = n.parentNode)
+        if (
+          n.getAttribute("aria-busy") === "true" &&
+          n.getAttribute("aria-disabled") === "true"
+        ) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+    },
+    true,
+  );
   function loadBusy() {
     if (!busyMod)
       busyMod = import("/busy-den.js").catch(function (err) {
@@ -9981,12 +10008,10 @@
      * names Den's actions): busyAction(name, run(headers), opts).
      */
     busyAction: function (name, run, opts) {
-      // The button disables at once, before the kit has loaded.
+      // Held at once, before the kit has loaded (issue 1434: aria-disabled,
+      // not disabled, so it keeps focus; the click guard stops its clicks).
       var b = opts && opts.button;
-      if (b) {
-        b.disabled = true;
-        b.setAttribute("aria-busy", "true");
-      }
+      if (b) preHold(b);
       return loadBusy().then(function (m) {
         return m.busyAction(name, run, opts);
       });
@@ -9999,8 +10024,7 @@
      */
     holdDots: function (button) {
       if (!button) return function () {};
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
+      var own = preHold(button);
       var held = loadBusy()
         .then(function (m) {
           m.holdDots(button, true);
@@ -10016,8 +10040,8 @@
         return held.then(function (m) {
           if (m) m.holdDots(button, false);
           else {
-            button.disabled = false;
             button.removeAttribute("aria-busy");
+            if (own) button.removeAttribute("aria-disabled");
           }
         });
       };

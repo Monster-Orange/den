@@ -424,7 +424,11 @@ label at once, until the server answers: busyAction's `opts.button`,
 its size (the label stays, hidden, and stays its accessible name), is
 `aria-disabled="true"` with `aria-busy="true"`, and keeps its own colours.
 It is never `disabled` (issue 1434): it keeps the keyboard's focus, and a
-click, Enter or Space on it while held does nothing.
+click, Enter or Space on it while held does nothing. The kit stops the
+`click` at the window, in the capture phase, when busy.js loads: a capture
+listener on window added before that still runs first, and `pointerdown`,
+`mousedown` and `keydown` still reach the page. Act on `click`, not on
+those, or check `aria-busy` yourself.
 
 Issue 1054: for one request, that is all. No Working pop-up opens, and
 the dots stay until the answer. The Working pop-up is only for an
