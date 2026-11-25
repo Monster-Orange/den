@@ -1,5 +1,5 @@
 /**
- * Issue 1575: `gate run` starts its command through a shim that waits for
+ * `gate run` starts its command through a shim that waits for
  * a line on fd 3, sent once the command's group is recorded. Then it
  * becomes the command (the same pid, group and start time). If gate run
  * is gone before it sends the line, the command never runs.

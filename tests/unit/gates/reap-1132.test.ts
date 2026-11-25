@@ -11,7 +11,7 @@
  *     stops the group it left, and the slot log says what, never how
  *   - a process outside the run's group, the same command line, is never
  *     touched
- *   - issue 1575: with a slow `ps` (a loaded box), the command still can't
+ *   - With a slow `ps` (a loaded box), the command still can't
  *     exit before its group is recorded, so its workers are still stopped
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
@@ -58,7 +58,7 @@ async function within(ms: number, ok: () => boolean): Promise<number> {
 }
 
 /**
- * Issue 1575: PATH with a `ps` first that takes a second, then runs the
+ * PATH with a `ps` first that takes a second, then runs the
  * real one: the record of a run's group comes late, as on a loaded box.
  */
 function slowPsPath(): string {
@@ -151,7 +151,7 @@ describe("a run's worker tree", () => {
     expect(JSON.stringify(rows[0])).not.toMatch(/spawn|setInterval|REAP_/);
   });
 
-  // Issue 1575: the command waits until its group is recorded, however
+  // The command waits until its group is recorded, however
   // long `ps` takes, so an early exit can't leave its workers unrecorded.
   it("with a slow ps, the command exits and leaves its workers: they are still stopped", async () => {
     const r = await start({ mode: "exit", slowPs: true });

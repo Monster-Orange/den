@@ -236,7 +236,7 @@ export interface GateRun {
    */
   group?: number;
   /**
-   * Issue 1575: lets the command start. Until then it waits, held, so it
+   * Lets the command start. Until then it waits, held, so it
    * can't exit (or leave workers) before its group is recorded. Absent:
    * it started at once.
    */
@@ -417,7 +417,7 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
 ];
 
 /**
- * Issue 1575: the shim a command starts through. It waits for a line on fd
+ * The shim a command starts through. It waits for a line on fd
  * 3, which gate run writes once the group is recorded, then becomes the
  * command (exec keeps its pid, group and start time, which the record
  * holds). If gate run is gone first, the pipe closes, and nothing runs.
@@ -993,7 +993,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: --browser-endpoint is not used inside ${inside.id}: the held slot's browser is`,
       );
     const child = d.exec(pos[0]!, pos.slice(1));
-    // Issue 1575: inside a held slot no group is recorded, so it starts now.
+    // Inside a held slot no group is recorded, so it starts now.
     child.start?.();
     const off = d.onSignal((sig) => child.kill(sig));
     // Never past its slot: when the outer run gives it back (it ended),
@@ -1347,7 +1347,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
-    // Issue 1575: only now, with its group recorded, may the command run.
+    // Only now, with its group recorded, may the command run.
     child.start?.();
     // Issue 1132: the group as the store recorded it (with its leader's
     // record and the boot), for a reap after a dump gave the slot back.
