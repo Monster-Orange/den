@@ -993,6 +993,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: --browser-endpoint is not used inside ${inside.id}: the held slot's browser is`,
       );
     const child = d.exec(pos[0]!, pos.slice(1));
+    // Issue 1575: inside a held slot no group is recorded, so it starts now.
+    child.start?.();
     const off = d.onSignal((sig) => child.kill(sig));
     // Never past its slot: when the outer run gives it back (it ended),
     // this command stops too, so two runs never share a slot unheld.
