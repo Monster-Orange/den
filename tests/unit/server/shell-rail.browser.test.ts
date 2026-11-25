@@ -363,7 +363,7 @@ describe("the rail", () => {
     // Issue 559: the kit's toast sits clear of Den's bottom bar (70 px up,
     // as Den's own toast did), not the kit's 20 px.
     const gap = await p.evaluate(() => {
-      const t = document.querySelector(".den-toast")!;
+      const t = document.querySelector("[data-den-toast] > [data-kind]")!;
       // Where it comes to rest: past its slide in.
       for (const a of t.getAnimations()) a.finish();
       return window.innerHeight - t.getBoundingClientRect().bottom;
