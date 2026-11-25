@@ -451,7 +451,7 @@ export async function openReport(opts = {}) {
     if (st.shotWait)
       return `<div class="fb-shot" data-shot-box data-wait${late}${where === "write" && st.noShot ? " hidden" : ""} style="--shot-ar: ${w} / ${h}; --shot-k: ${(w / h).toFixed(4)}"><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
     if (where === "review")
-      return `<div class="fb-shot" data-shot-box${late}><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
+      return `<div class="fb-shot" data-shot-box${late}><img data-shot-review alt="${esc(late ? t("kit.report.shotNotIn") : t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
     return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
   }
   /**

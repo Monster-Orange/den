@@ -116,6 +116,7 @@ export const en = {
   "kit.report.rmMask": "Remove",
   "kit.report.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
   "kit.report.revShot": "Screenshot after masking ({n} areas hidden)",
+  "kit.report.shotNotIn": "Screenshot, not included",
   "kit.report.revShot.one": "Screenshot after masking ({n} area hidden)",
   "kit.report.shareTo": "Your masked screenshot goes to {recipient}",
   "kit.report.shareNo": "Text only; the screenshot stays on your machine.",
@@ -373,6 +374,7 @@ export const es = {
   "kit.report.rmMask": "Quitar",
   "kit.report.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
   "kit.report.revShot": "Captura tras ocultar ({n} zonas tapadas)",
+  "kit.report.shotNotIn": "Captura, no incluida",
   "kit.report.revShot.one": "Captura tras ocultar ({n} zona tapada)",
   "kit.report.shareTo": "Tu captura con las zonas tapadas va a {recipient}",
   "kit.report.shareNo": "Solo texto; la captura se queda en tu equipo.",
@@ -621,6 +623,7 @@ export const ja = {
   "kit.report.rmMask": "削除",
   "kit.report.area": "左から {x}%、上から {y}%、{w}% × {h}%",
   "kit.report.revShot": "マスク後のスクリーンショット({n} か所を非表示)",
+  "kit.report.shotNotIn": "スクリーンショット（含まれていません）",
   "kit.report.shareTo": "マスクしたスクリーンショットは {recipient} に届きます",
   "kit.report.shareNo":
     "テキストのみです。スクリーンショットはこのコンピューターに残ります。",

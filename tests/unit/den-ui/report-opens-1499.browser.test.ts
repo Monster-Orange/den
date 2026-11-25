@@ -274,6 +274,10 @@ for (const name of ["chromium", "webkit"]) {
           expect(await p.textContent("[data-shot-late]")).toBe(
             kitT("en", "kit.report.shotLateIn"),
           );
+          // A screen reader hears it won't go (Reviewer E).
+          expect(await p.getAttribute("img[data-shot-review]", "alt")).toBe(
+            kitT("en", "kit.report.shotNotIn"),
+          );
           await send(p);
           expect(await sent(p)).toEqual([{ title: "Slow page", shot: 0 }]);
         } finally {
@@ -345,6 +349,10 @@ for (const name of ["chromium", "webkit"]) {
           await p.click('[data-act="review"]');
           await p.waitForSelector("[data-shot-box] img[data-shot-review]");
           expect(await p.locator("[data-shot-late]").count()).toBe(0);
+          // Included: it says it's the one that goes, as before.
+          expect(await p.getAttribute("img[data-shot-review]", "alt")).toBe(
+            kitT("en", "kit.report.revShot", { n: 0 }),
+          );
           await send(p);
           const [r] = await sent(p);
           expect(r!.shot).toBeGreaterThan(0);
