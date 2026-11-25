@@ -220,8 +220,6 @@ describe("translated pages fit", () => {
       if (!browser) return;
       // Issue 448: Terminal reopens a running shell (no toast then), so
       // each case starts its own and ends it: the toast is its "started".
-      // Issue 1306: a fresh one (the shell bar's New terminal), since the
-      // case before's may still be listed as running when this page asks.
       const before = s!.made.length;
       const p = await open(lang, width, "/agents?terminal=1&fresh=1");
       await p.waitForSelector(".den-toast");
@@ -246,9 +244,8 @@ describe("translated pages fit", () => {
       body: "{}",
     });
     const { session } = (await r.json()) as { session: { id: string } };
-    // Issue 1306: the pty this POST made, never whichever came last.
-    const pty = s!.made[before];
-    if (!pty) throw new Error(`no shell was started for session ${session.id}`);
+    const ptyThisPostMade = s!.made[before];
+    if (!ptyThisPostMade) throw new Error(`no shell was started for session ${session.id}`);
     // Issue 482: a shell's row is on the Terminals page.
     const p = await open("ja", 1280, "/terminals?ws=north");
     const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
@@ -274,7 +271,7 @@ describe("translated pages fit", () => {
     await p.waitForTimeout(400);
     const overlap = await toastOverTo(p);
     await p.close();
-    pty.exit(0);
+    ptyThisPostMade.exit(0);
     expect(overlap).toBe(0);
   }, 60_000);
 });
