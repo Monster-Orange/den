@@ -24,6 +24,7 @@ const ENGINES = ["chromium", "webkit"] as const;
 const WIDTHS = [1280, 375] as const;
 const PROBE = "/api/busy-probe";
 const TOKEN = "den_hub_LIVETOKENabcdef0123456789";
+const EDITED = "t177-edited-title";
 const browsers: Partial<Record<(typeof ENGINES)[number], Browser>> = {};
 let s: AgentsPageServer | null = null;
 
@@ -131,13 +132,13 @@ describe("issue 177: Report from a failure pop-up", () => {
         if (!browsers[engine]) return;
         const { p, seen } = await page(engine, width);
         await start(p);
-        const bz = p.locator("dialog.bz-dlg");
+        const bz = p.locator("dialog:has([data-bz])");
         await bz.locator('[data-bz="retry"]').waitFor({ timeout: 10_000 });
         const failure = (await bz.locator("h2").textContent())!.trim();
         expect(failure.length).toBeGreaterThan(0);
         await bz.locator('[data-bz="report"]').click();
 
-        const fb = p.locator("dialog.fb-dlg");
+        const fb = p.locator("dialog:has([data-f=title])");
         const title = fb.locator('[data-f="title"]');
         await title.waitFor({ timeout: 10_000 });
         const what = failure.replace(/[.。]+$/u, "");
@@ -151,17 +152,16 @@ describe("issue 177: Report from a failure pop-up", () => {
           expect(v).not.toContain("token=");
         }
 
-        await title.fill("Linking failed on the settings page");
-        await expect(title.inputValue()).resolves.toBe(
-          "Linking failed on the settings page",
-        );
+        await title.fill(EDITED);
+        await expect(title.inputValue()).resolves.toBe(EDITED);
         await fb.locator('[data-act="next"]').click();
         await fb.locator('[data-act="review"]').click();
-        for (let i = 0; i < 50 && !seen.previews.length; i++)
-          await p.waitForTimeout(100);
-        expect(seen.previews[0]).toMatchObject({
-          title: "Linking failed on the settings page",
+        // The preview's answer is in the form: its request was made.
+        await p.waitForFunction(() => {
+          const pre = document.querySelector("[data-preview]");
+          return !!pre && pre.textContent !== "…";
         });
+        expect(seen.previews[0]).toMatchObject({ title: EDITED });
         expect(seen.previews[0]!.redact).not.toBe(false);
         await p.context().close();
       });
