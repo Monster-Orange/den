@@ -62,6 +62,8 @@ const NOT_TOOLS: Readonly<Record<string, string>> = {
   no_run: "repo_add's and manifest_draft's parameter",
   // A parameter of gate_slot_request (a browser slot's container browser).
   browser_endpoint: "gate_slot_request's parameter",
+  // Issue 642: a parameter of gate_runner_entry_set (the repo variable).
+  routing_variable: "gate_runner_entry_set's parameter",
   node_modules: "npm's folder",
   // A value of Den's update state (release_status's denUpdate.state).
   rolled_back: "an update's state",

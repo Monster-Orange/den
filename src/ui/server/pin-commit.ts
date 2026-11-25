@@ -8,9 +8,12 @@
  * is verified (the watch wrote "good" and this Den runs it), on the lead
  * install only (LEAD-1..4: a follower applies the pin, never moves it):
  *
- *   1. Only the two pin files are staged, by path, and the commit takes
- *      only them (`git commit --only`): anything else dirty or staged in
- *      the checkout stays as it was.
+ *   1. Only the two pin files go in, from a scratch index read from the
+ *      branch's tip on the remote (issue 1195: fetched first, or the last
+ *      one fetched; never local HEAD, so commits not pushed yet never ride
+ *      along). Anything else dirty or staged in the checkout stays as it
+ *      was. In push mode the checkout's branch takes the pin commit only
+ *      when it was on that tip.
  *   2. Signing as the install is set up: agents.git.signing_key signs it
  *      (an SSH key, gpg.format ssh, ssh-keygen as the signer); with no key
  *      set it is unsigned (commit.gpgsign false). Never the person's GPG
@@ -21,8 +24,8 @@
  *      in <state>/server-agent/update/pin.json; the next check pushes it
  *      again. `first` is true once per version, so the bell says it once.
  *   5. server_agent.pin_commit: pr: the commit goes on its own branch,
- *      den/pin-<version>, built from a scratch index so the checkout's
- *      branch and index don't move, and gh opens the pull request. If gh
+ *      den/pin-<version> (the checkout's branch and index don't move), and
+ *      gh opens the pull request. If gh
  *      can't, the branch is pushed and the bell links where to open one;
  *      the next check tries gh again.
  *   6. Issue 160: the approval policy decides (held write den_pin_commit,
@@ -68,7 +71,13 @@ export type PinMode = "push" | "pr";
 
 export type PinStep =
   /** Committed (now or before) and pushed. */
-  | { did: "pushed"; version: string; sha: string }
+  | {
+      did: "pushed";
+      version: string;
+      sha: string;
+      /** Issue 1202: the checkout is behind and couldn't catch up. */
+      why?: string;
+    }
   | {
       did: "push_failed";
       version: string;
@@ -305,11 +314,27 @@ export async function commitPin(
         why: "the distribution's checkout is on no branch (detached HEAD)",
       };
 
+    // Issue 1195: the remote branch's tip, fetched once per pass.
+    let tipRead: Promise<RemoteTip | null> | undefined;
+    const tipOf = () => (tipRead ??= remoteTip(d.git, up));
+
     // A commit an earlier pass made (its push or its pull request failed).
     let sha =
       same?.state === "push_failed" || same?.state === "branch_pushed"
         ? same.sha
         : undefined;
+    // Issue 1195: a pin whose push failed, built on a tip the remote has
+    // since moved past, is built again on the new tip (its push would only
+    // ever be refused). A checkout's branch that took it steps back first.
+    if (sha && same?.state === "push_failed") {
+      const t = await tipOf();
+      const parent = await d.git(["rev-parse", "--verify", "-q", `${sha}^`]);
+      if (t?.fresh && parent.code === 0 && parent.out.trim() !== t.sha) {
+        const h = await d.git(["rev-parse", "HEAD"]);
+        if (h.code === 0 && h.out.trim() === sha) await stepBack(d.git, sha);
+        sha = undefined;
+      }
+    }
     const branch = same?.branch ?? pinBranch(version);
     if (!sha) {
       const files = PIN_FILES.filter((f) =>
@@ -353,61 +378,65 @@ export async function commitPin(
         mode = "pr";
         via = "rules";
       }
+      // Issue 1195: the pin goes on the branch's tip on the remote, fetched
+      // now, never local HEAD: commits not pushed yet never ride along.
+      const t = await tipOf();
+      if (!t)
+        return failCommit(
+          `can't reach ${up.remote} to find the tip of ${up.branch}, and it was never fetched`,
+        );
+      const tip = t.sha;
+      // Issue 1195: a checkout with commits the remote doesn't have: a push
+      // of the pin alone would leave it ahead with the pin files dirty, so
+      // the pin goes to a pull request, and says why. (A check that fails
+      // counts as ahead.)
+      if (mode === "push") {
+        const a = await d.git(["merge-base", "--is-ancestor", "HEAD", tip]);
+        if (a.code !== 0) {
+          mode = "pr";
+          via = "ahead";
+        }
+      }
       const subject = `Den ${version}: pin the distribution to Den ${version}`;
       const body =
         "Den committed this pin itself after its update to this version was verified.";
-      if (mode === "pr") {
-        // A scratch index: the checkout's branch and index stay as they are.
-        const idx = path.join(
-          path.dirname(pinRecordFile(d.stateDir)),
-          "pin-index",
-        );
-        fs.mkdirSync(path.dirname(idx), { recursive: true, mode: 0o700 });
-        fs.rmSync(idx, { force: true });
-        const ienv = { GIT_INDEX_FILE: idx };
-        try {
-          const rt = await d.git(["read-tree", "HEAD"], ienv);
-          if (rt.code !== 0)
-            return failCommit(`git read-tree: ${tail(rt.out)}`);
-          const add = await d.git(["add", "--", ...files], ienv);
-          if (add.code !== 0) return failCommit(`git add: ${tail(add.out)}`);
-          const wt = await d.git(["write-tree"], ienv);
-          if (wt.code !== 0)
-            return failCommit(`git write-tree: ${tail(wt.out)}`);
-          const ct = await d.git([
-            "commit-tree",
-            wt.out.trim(),
-            "-p",
-            "HEAD",
-            "-m",
-            subject,
-            "-m",
-            body,
-          ]);
-          if (ct.code !== 0)
-            return failCommit(`git commit-tree: ${tail(ct.out)}`);
-          sha = ct.out.trim();
-        } finally {
-          fs.rmSync(idx, { force: true });
-        }
-      } else {
-        const add = await d.git(["add", "--", ...files]);
+      // A scratch index from the tip: the checkout's branch and index stay
+      // as they are, and the commit's tree is the tip's with only the pin
+      // files from the checkout.
+      const idx = path.join(
+        path.dirname(pinRecordFile(d.stateDir)),
+        "pin-index",
+      );
+      fs.mkdirSync(path.dirname(idx), { recursive: true, mode: 0o700 });
+      fs.rmSync(idx, { force: true });
+      const ienv = { GIT_INDEX_FILE: idx };
+      try {
+        const rt = await d.git(["read-tree", tip], ienv);
+        if (rt.code !== 0) return failCommit(`git read-tree: ${tail(rt.out)}`);
+        const add = await d.git(["add", "--", ...files], ienv);
         if (add.code !== 0) return failCommit(`git add: ${tail(add.out)}`);
-        const c = await d.git([
-          "commit",
-          "--only",
-          "-q",
+        const wt = await d.git(["write-tree"], ienv);
+        if (wt.code !== 0) return failCommit(`git write-tree: ${tail(wt.out)}`);
+        const ct = await d.git([
+          "commit-tree",
+          wt.out.trim(),
+          "-p",
+          tip,
           "-m",
           subject,
           "-m",
           body,
-          "--",
-          ...files,
         ]);
-        if (c.code !== 0) return failCommit(`git commit: ${tail(c.out)}`);
-        const h = await d.git(["rev-parse", "HEAD"]);
-        sha = h.out.trim();
+        if (ct.code !== 0)
+          return failCommit(`git commit-tree: ${tail(ct.out)}`);
+        sha = ct.out.trim();
+      } finally {
+        fs.rmSync(idx, { force: true });
       }
+      // Push mode, a checkout on that tip (nothing unpushed): its branch
+      // takes the pin commit, as a commit there would have, and the pin
+      // files' index entries match it. Behind or ahead: it stays as it is.
+      if (mode === "push") await takePin(d.git, tip, sha);
     }
 
     if (mode === "pr")
@@ -420,14 +449,23 @@ export async function commitPin(
       `${sha}:refs/heads/${up.branch}`,
     ]);
     if (p.code === 0) {
-      writePinRecord(d.stateDir, { version, state: "pushed", sha, at: at() });
-      return { did: "pushed", version, sha };
+      const why = await catchUp(d.git, sha, up);
+      writePinRecord(d.stateDir, {
+        version,
+        state: "pushed",
+        sha,
+        at: at(),
+        ...(why ? { why } : {}),
+      });
+      return { did: "pushed", version, sha, ...(why ? { why } : {}) };
     }
     // Issue 1189: a branch rule said no: the pin goes to a pull request.
     if (ruleRejected(p.out)) {
-      // The branch moved meanwhile (or wasn't on the commit): it keeps the
-      // pin commit, and the record says so (doctor shows it).
-      const back = await stepBack(d.git, sha);
+      // A branch that took the pin commit steps back off it; one that moved
+      // meanwhile keeps it, and the record says so (doctor shows it).
+      const h = await d.git(["rev-parse", "HEAD"]);
+      const onPin = h.code === 0 && h.out.trim() === sha;
+      const back = onPin ? await stepBack(d.git, sha) : true;
       return await openPr(
         version,
         sha,
@@ -460,6 +498,115 @@ export async function commitPin(
     });
     return { did: "commit_failed", version, why, first };
   }
+}
+
+/** The remote branch's tip, and whether it was fetched just now. */
+interface RemoteTip {
+  sha: string;
+  fresh: boolean;
+}
+
+/** Issue 1195: Den's own ref for the fetched tip (never FETCH_HEAD). */
+const PIN_TIP_REF = "refs/den/pin-tip";
+
+/**
+ * Issue 1195: the tip of the branch the pin goes to, on the remote:
+ * fetched now into Den's own ref (FETCH_HEAD is shared with every other
+ * fetch in the checkout, so another fetch could swap it for another
+ * branch), or the last one fetched when the remote can't be reached. null
+ * when there is neither (a pin built on local HEAD could carry commits
+ * that were never pushed).
+ */
+async function remoteTip(
+  git: GitRun,
+  up: { remote: string; branch: string },
+): Promise<RemoteTip | null> {
+  const f = await git([
+    "fetch",
+    "--quiet",
+    "--no-tags",
+    up.remote,
+    `+refs/heads/${up.branch}:${PIN_TIP_REF}`,
+  ]);
+  const fresh = f.code === 0;
+  const ref = fresh ? PIN_TIP_REF : `refs/remotes/${up.remote}/${up.branch}`;
+  const r = await git(["rev-parse", "--verify", "-q", `${ref}^{commit}`]);
+  return r.code === 0 && r.out.trim() ? { sha: r.out.trim(), fresh } : null;
+}
+
+/**
+ * Issue 1195: the checkout's branch takes the pin commit only when it is
+ * on `tip` (update-ref checks it); the pin files' index entries then match
+ * it, as `git commit --only` left them. Nothing else moves.
+ */
+async function takePin(git: GitRun, tip: string, sha: string): Promise<void> {
+  const b = await git(["symbolic-ref", "-q", "HEAD"]);
+  const ref = b.code === 0 ? b.out.trim() : "";
+  if (!ref) return;
+  const moved = await git(["update-ref", ref, sha, tip]);
+  if (moved.code !== 0) return;
+  await git(["reset", "-q", "--", ...PIN_FILES]);
+}
+
+/**
+ * Issue 1202: after the pin is pushed, a checkout whose branch is behind
+ * it (an ancestor, not the pin itself) fast-forwards to the pin commit, so
+ * its next pull isn't stopped by the pin files it still has changed. The
+ * pin commit holds those files as the working tree has them, so they are
+ * put back to HEAD's first and nothing is lost. When git won't
+ * fast-forward (another local change in the way) the files go back as
+ * they were, the branch stays, and the answer says why (doctor shows it).
+ * Only the branch the pin was pushed for: one checked out since, even from
+ * the same base, never moves (Reviewer E).
+ */
+async function catchUp(
+  git: GitRun,
+  sha: string,
+  pushed: { remote: string; branch: string },
+): Promise<string | undefined> {
+  const h = await git(["rev-parse", "HEAD"]);
+  if (h.code !== 0 || h.out.trim() === sha) return undefined;
+  const now = await upstream(git);
+  if (!now || now.remote !== pushed.remote || now.branch !== pushed.branch)
+    return undefined;
+  const behind = await git(["merge-base", "--is-ancestor", "HEAD", sha]);
+  if (behind.code !== 0) return undefined;
+  const later =
+    "the checkout is behind and has local changes, so pull to get the pin";
+  // Only when the pin files are exactly the pin's, in the working tree and
+  // in the index: a staged copy of the person's own is never dropped.
+  const same = await git(["diff", "--quiet", sha, "--", ...PIN_FILES]);
+  if (same.code !== 0) return later;
+  const staged = await git([
+    "diff",
+    "--cached",
+    "--quiet",
+    "HEAD",
+    "--",
+    ...PIN_FILES,
+  ]);
+  if (staged.code !== 0) {
+    const asPin = await git([
+      "diff",
+      "--cached",
+      "--quiet",
+      sha,
+      "--",
+      ...PIN_FILES,
+    ]);
+    if (asPin.code !== 0) return later;
+  }
+  const reset = await git(["checkout", "-q", "HEAD", "--", ...PIN_FILES]);
+  if (reset.code === 0) {
+    const ff = await git(["merge", "--ff-only", "--quiet", sha]);
+    if (ff.code === 0) return undefined;
+  }
+  // Back as they were: the pin's content in the working tree, the index at
+  // HEAD's. A pin file the person had staged is unstaged here (its content
+  // is unchanged, and it is in the pushed pin).
+  await git(["checkout", "-q", sha, "--", ...PIN_FILES]);
+  await git(["reset", "-q", "--", ...PIN_FILES]);
+  return later;
 }
 
 /**
@@ -693,6 +840,13 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
   switch (step.did) {
     case "pushed": {
       const sha = step.sha.slice(0, 12);
+      // Issue 1202: pushed, but the checkout is behind and couldn't catch up.
+      if (step.why)
+        return item(
+          `${t} updated to ${v}: its pin is pushed (${sha}), but the checkout is behind and has local changes, so pull to get the pin`,
+          "bell.m.pinPushedBehind",
+          { sha },
+        );
       return item(
         `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
         "bell.m.pinPushed",
@@ -714,6 +868,15 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
         { why: step.why },
       );
     case "pr": {
+      if (step.via === "ahead") {
+        const n = pullNumber(step.url) ?? "";
+        return item(
+          `${t} updated to ${v}: the checkout has commits not pushed, so its pin went to a pull request; opened #${n} (${step.branch})`,
+          "bell.m.pinPrAhead",
+          { branch: step.branch, n },
+          step.url,
+        );
+      }
       if (step.via) {
         const n = pullNumber(step.url) ?? "";
         return item(

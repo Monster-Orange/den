@@ -1820,6 +1820,153 @@ function drawGateBoxes(host, ctx) {
   draw();
 }
 
+/**
+ * Issue 642: the CI runner entries, one repo's jobs on one test box. A
+ * person adds one (repo, box, labels, routing variable, at a time, heavy
+ * or light, who answers for it) and removes one. Saving the same repo on
+ * the same box replaces it. Settings only: nothing starts a runner yet.
+ */
+function drawRunnerEntries(host, ctx) {
+  const shell = ctx.shell;
+  const field = (id, key, en, type, extra) =>
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L(key, en))}</span>` +
+    `<input id="${id}" type="${type}" ${extra || ""}></label>`;
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;flex-basis:100%">` +
+    field(
+      "set-re-repo",
+      "set.ui.reRepo",
+      "Repo (owner/name)",
+      "text",
+      'maxlength="141"',
+    ) +
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L("set.ui.reBox", "Test box"))}</span>` +
+    `<select id="set-re-box"></select></label>` +
+    field(
+      "set-re-labels",
+      "set.ui.reLabels",
+      "Runner labels (comma-separated)",
+      "text",
+      'maxlength="1300"',
+    ) +
+    field(
+      "set-re-var",
+      "set.ui.reVar",
+      "Routing variable",
+      "text",
+      'maxlength="100"',
+    ) +
+    field(
+      "set-re-slots",
+      "set.ui.reSlots",
+      "At a time",
+      "number",
+      'min="1" max="64" step="1" value="1"',
+    ) +
+    field(
+      "set-re-owner",
+      "set.ui.reOwner",
+      "Who answers for it",
+      "text",
+      'maxlength="64"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center;flex:1 1 140px">` +
+    `<input id="set-re-heavy" type="checkbox" checked>` +
+    `<span class="set-note">${escHtml(L("set.ui.reHeavy", "Takes the box's heavy slot"))}</span></label>` +
+    `<button type="button" class="den-btn sm" id="set-re-save">${escHtml(L("set.ui.reSave", "Save entry"))}</button>` +
+    `</div>` +
+    `<div id="set-re-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-re-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-re-out");
+  const list = host.querySelector("#set-re-list");
+  const save = host.querySelector("#set-re-save");
+  const boxSel = host.querySelector("#set-re-box");
+  const val = (id) => host.querySelector(id).value.trim();
+  const warn = (e) => {
+    out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+  };
+  const post = (path, body, button) =>
+    shell
+      .busyAction(
+        "save",
+        (headers) => shell.api("POST", path, body, { headers }),
+        { button },
+      )
+      .then(() => {
+        out.innerHTML = "";
+        draw();
+      });
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/runner-entries")
+      .then((b) => {
+        const boxes = (b && b.boxes) || [];
+        const entries = (b && b.entries) || [];
+        const picked = boxSel.value;
+        boxSel.innerHTML = boxes
+          .map((n) => `<option value="${escHtml(n)}">${escHtml(n)}</option>`)
+          .join("");
+        if (boxes.includes(picked)) boxSel.value = picked;
+        save.disabled = !boxes.length;
+        if (!boxes.length)
+          out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.reNoBox", "Set a test box first, under Test boxes."))}</span>`;
+        if (!entries.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.reNone", "No runner entries. CI jobs use hosted runners."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          entries
+            .map(
+              (x) =>
+                `<li style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span class="mono">${escHtml(x.repo)}</span>` +
+                `<span>→ ${escHtml(x.box)}</span>` +
+                `<span class="set-note">${escHtml(
+                  x.heavy
+                    ? L("set.ui.reHeavyIs", "heavy")
+                    : L("set.ui.reLightIs", "light"),
+                )}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reSlotsN", "{n} at a time", { n: x.slots }))}</span>` +
+                `<span class="set-note mono">${escHtml(x.labels.join(", "))}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reVarIs", "variable {v}", { v: x.routing_variable }))}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reOwnerIs", "owner {who}", { who: x.owner }))}</span>` +
+                `<button type="button" class="den-btn sm" data-re-repo="${escHtml(x.repo)}" data-re-box="${escHtml(x.box)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-re-repo]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/runner-entries/remove",
+              {
+                repo: btn.getAttribute("data-re-repo"),
+                box: btn.getAttribute("data-re-box"),
+              },
+              btn,
+            ).catch(warn);
+          });
+      })
+      .catch(() => {});
+  save.addEventListener("click", () => {
+    const slots = val("#set-re-slots");
+    const entry = {
+      repo: val("#set-re-repo"),
+      box: boxSel.value,
+      labels: val("#set-re-labels"),
+      routing_variable: val("#set-re-var"),
+      slots: slots === "" ? undefined : Number(slots),
+      heavy: host.querySelector("#set-re-heavy").checked,
+      owner: val("#set-re-owner"),
+    };
+    post("/api/gate-slots/runner-entries", { entry }, save).catch(warn);
+  });
+  draw();
+}
+
 /** Issue 103: Settings › Embedding (user.yml embed.*, embed-settings.ts). */
 const EMBED_ROWS = [
   {
@@ -3171,13 +3318,58 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "GitHub watch: watches at once",
     description:
-      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+      "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
     keywords: ["github", "watch", "limit", "github.watches_max"],
     scope: "user",
     keys: ["github.watches_max"],
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.github?.watches_max ?? 50,
     write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
+  {
+    // Issue 1166: a watch with no progress this long ends (user.yml
+    // github.watch_stale_minutes). A person's only.
+    id: "server.github_watch_stale",
+    category: "server",
+    label: "GitHub watch: minutes with no progress",
+    description:
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    keywords: ["github", "watch", "stale", "github.watch_stale_minutes"],
+    scope: "user",
+    keys: ["github.watch_stale_minutes"],
+    control: { type: "number", min: 5, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_stale_minutes ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_stale_minutes: v } }),
+  },
+  {
+    // Issue 1194: any watch open this long ends (user.yml
+    // github.watch_max_open_hours). A person's only.
+    id: "server.github_watch_max_open",
+    category: "server",
+    label: "GitHub watch: most hours open",
+    description:
+      "Any watch open this many hours ends, whatever its checks say, and its agent is told why. This catches a check that never reports. __DEN_CLI__ config github.watch_max_open_hours=24",
+    keywords: ["github", "watch", "ceiling", "github.watch_max_open_hours"],
+    scope: "user",
+    keys: ["github.watch_max_open_hours"],
+    control: { type: "number", min: 1, max: 720, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_max_open_hours ?? 24,
+    write: (v, ctx) => ctx.post({ github: { watch_max_open_hours: v } }),
+  },
+  {
+    // Issue 1214: how often a finished run is looked at for a re-run
+    // (user.yml github.rerun_look_minutes). A person's only.
+    id: "server.github_rerun_look",
+    category: "server",
+    label: "GitHub watch: minutes between re-run looks",
+    description:
+      "For an hour after a run's result is told, the GitHub watcher looks this often for a re-run of it, and a re-run opens the watch again. Fewer looks spend less of GitHub's hourly budget. __DEN_CLI__ config github.rerun_look_minutes=5",
+    keywords: ["github", "watch", "re-run", "github.rerun_look_minutes"],
+    scope: "user",
+    keys: ["github.rerun_look_minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1 },
+    read: (ctx) => ctx.data.github?.rerun_look_minutes ?? 5,
+    write: (v, ctx) => ctx.post({ github: { rerun_look_minutes: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml
@@ -3780,6 +3972,18 @@ export const DEN_SETTINGS = [
     ],
     scope: "user",
     control: { type: "custom", render: drawGateBoxes },
+    read: () => null,
+  },
+  {
+    // Issue 642: a repo's CI jobs on a test box (settings only, slice 1).
+    id: "server.gate_runner_entries",
+    category: "server",
+    label: "CI runner entries",
+    description:
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
+    keywords: ["gate", "runner", "ci", "box", "repo", "labels", "routing"],
+    scope: "user",
+    control: { type: "custom", render: drawRunnerEntries },
     read: () => null,
   },
   {
@@ -5257,6 +5461,22 @@ export const DEN_SETTINGS = [
     keys: ["agents_layout"],
     read: (ctx) => ctx.data.agents_layout ?? "focus",
     write: (v, ctx) => ctx.post({ agents_layout: v }),
+  },
+  {
+    id: "agents.coach_counts",
+    category: "agents",
+    label: "Coach tab: show counts as",
+    description:
+      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+    keywords: ["coach", "counts", "total", "per day", "usage", "tokens"],
+    scope: "user",
+    control: seg([
+      { value: "total", label: "Total" },
+      { value: "per_day", label: "Per day" },
+    ]),
+    keys: ["coach_counts"],
+    read: (ctx) => ctx.data.coach_counts ?? "total",
+    write: (v, ctx) => ctx.post({ coach_counts: v }),
   },
   ...bellRows(),
   {
