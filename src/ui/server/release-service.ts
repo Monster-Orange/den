@@ -30,6 +30,7 @@ import {
   resolveReleaseTarget,
 } from "../../shared/den-config.js";
 import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import { redactSecrets } from "../../shared/redact.js";
 import { orgOf } from "../../shared/manifest/service-links.js";
 import {
   ghOwnerOf,
@@ -212,7 +213,9 @@ function ghReason(e: unknown): string {
     (typeof err?.stderr === "string" && err.stderr.trim()) ||
     (typeof err?.message === "string" ? err.message : "") ||
     "gh failed";
-  const last = text.trim().split("\n").filter(Boolean).pop() ?? "gh failed";
+  const last = redactSecrets(
+    text.trim().split("\n").filter(Boolean).pop() ?? "gh failed",
+  );
   return last.length > 200 ? `${last.slice(0, 200)}…` : last;
 }
 

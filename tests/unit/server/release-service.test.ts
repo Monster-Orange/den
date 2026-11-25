@@ -821,6 +821,18 @@ describe("deploy — gh can't read a run (issue 129)", () => {
     });
   });
 
+  it("gh's reason is redacted: a token in its error never reaches the log", async () => {
+    mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 1 }));
+    const token = `ghp_${"A1b2C3d4".repeat(5)}`;
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    unreadable("111", `HTTP 401: Bad credentials for Bearer ${token}`);
+    await runDeploy([entry("files-api", 0)]);
+    const all = JSON.stringify(events);
+    expect(all).not.toContain(token);
+    expect(texts().join("\n")).toContain("HTTP 401: Bad credentials");
+  });
+
   it("an unreadable run in an early wave cancels the later waves", async () => {
     mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 2 }));
     on("workflow run cd.yml --repo TestOrg/files-api", "");
