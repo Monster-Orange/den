@@ -1,15 +1,13 @@
 /**
  * The agents page fits its window: the list never makes the page scroll
- * sideways. A person saw the list break the page's width, so it scrolled
- * both ways, with long agent names and many groups.
+ * sideways, with long agent names and many groups.
  *
  * By project and By group; no agent open, and three running agents open
  * in Focus, Tabs and Tile; at 1280 and 390 wide: the page and every box
  * that scrolls on its own (the list too) fit their width. Agent names, a
  * persona and a model label are long with nowhere to break, and the
- * order error line under the list (a move Den refused, issue 1054) shows
- * at its longest. That line had no style, so at 390 it made the page
- * 644px wide.
+ * order error line under the list (a move Den refused) shows at its
+ * longest, and wraps inside the list's width.
  *
  * Hub's groups are this test's own answer to GET /api/hub/groups (Den
  * reads them from Hub; here there is no Hub). Invented names only.
