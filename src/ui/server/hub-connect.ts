@@ -99,11 +99,9 @@ interface Pending {
   review?:
     | { hash: string; keys: string[] }
     | { why: string; code: FallbackCode };
-  /** Issue 1632: this sign-in finishes a pending switch to another Hub. */
   switching?: true;
 }
 
-/** Issue 1632: two Hub addresses on the same origin. */
 const sameHub = (a: string, b: string): boolean => {
   const x = hubOrigin(a);
   return !!x && x === hubOrigin(b);
@@ -172,16 +170,7 @@ export interface HubConnectDeps {
   linkOf?: (ws: string) => HubProjectLink | null;
   /** Issue 648: the origin hub/bound.json names now (after the rebind). */
   boundOrigin?: () => string | null;
-  /**
-   * Issue 1632: the switch to another Hub the person allowed (hub_connect),
-   * waiting for this sign-in, or null. Connect with no typed address goes
-   * to its Hub.
-   */
   hubSwitch?: () => { to: string; from: string } | null;
-  /**
-   * Issue 1632: how that sign-in ended. ok: the address is the new Hub's
-   * now; else `why`, and the install is still on the old Hub.
-   */
   switched?: (r: { ok: boolean; why?: string }) => void;
 }
 
@@ -460,7 +449,6 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     linkOf: (ws) =>
       parseHubProjectLink(readWorkspacesFile().workspaces[ws]?.hub_project),
     boundOrigin: () => readHubBinding(getStateDir())?.origin ?? null,
-    // Issue 1632: a switch to another Hub waiting for this sign-in.
     hubSwitch: () => readHubSwitch(getStateDir()),
     switched: (r) =>
       void hubSwitchDeps()
@@ -555,7 +543,6 @@ export class HubConnect {
     url?: unknown,
   ): { ok: true; location: string } | { ok: false; error: string } {
     const typed = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
-    // Issue 1632: a pending switch's Hub, before the one in use.
     let sw: { to: string } | null = null;
     try {
       sw = this.deps.hubSwitch?.() ?? null;
@@ -637,13 +624,8 @@ export class HubConnect {
   async finish(q: URLSearchParams): Promise<ConnectResult> {
     const switching = !!this.pending.get(q.get("state") ?? "")?.switching;
     const r = await this.finishOnce(q);
-    // Issue 1632: a switch's sign-in reports how it ended (never throws).
     if (switching)
-      try {
-        this.deps.switched?.(r.ok ? { ok: true } : { ok: false, why: r.message });
-      } catch {
-        /* best effort */
-      }
+      this.deps.switched?.(r.ok ? { ok: true } : { ok: false, why: r.message });
     // `message` is the plain English line for logs and older pages; the
     // page words `words` itself (issue 648, en/es/ja).
     const message = r.ok

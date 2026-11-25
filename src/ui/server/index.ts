@@ -5412,8 +5412,6 @@ function approvalDeps(): ApprovalDeps {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
             },
-            // Issue 1632: connected, to another Hub: keep the old one, and
-            // wait for the sign-in (hub-switch.ts).
             switching: async (s) => {
               const m = await import("./hub-switch.js");
               m.beginHubSwitch(await m.hubSwitchDeps(), s);

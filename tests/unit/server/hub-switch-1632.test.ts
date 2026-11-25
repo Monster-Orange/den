@@ -1,13 +1,3 @@
-/**
- * Issue 1632 part 1: hub_connect to a different Hub, held for the person's
- * Allow. After the Allow, Den keeps the old address and its token, records
- * a pending switch (it outlives a restart) and sends the person to the new
- * Hub's sign-in. Only a code the new Hub exchanges swaps the address and
- * then revokes the old token; any failure leaves the install on the old
- * Hub, and says why.
- *
- * Fakes for Hub and the store; a temp state dir. Invented names only.
- */
 import { afterAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -202,7 +192,10 @@ function harness(over: Partial<HubConnectDeps> = {}, pending?: HubSwitch) {
 
 const PENDING: HubSwitch = { to: NEW, from: OLD, at: "2026-11-25T00:00:00Z" };
 
-async function signIn(h: ReturnType<typeof harness>, q: Record<string, string>) {
+async function signIn(
+  h: ReturnType<typeof harness>,
+  q: Record<string, string>,
+) {
   const r = h.hc.start(ORIGIN, "");
   if (!r.ok) throw new Error(r.error);
   const state = new URL(r.location).searchParams.get("state") ?? "";
@@ -292,7 +285,11 @@ describe("issue 1632: Settings › Hub shows a switch waiting for the sign-in", 
       url: OLD,
       team: "Acme Co",
     };
-    const waiting = hubHtml({ ...b, switching: { to: NEW, from: OLD } }, null, t);
+    const waiting = hubHtml(
+      { ...b, switching: { to: NEW, from: OLD } },
+      null,
+      t,
+    );
     const row = /<p[^>]*data-hub-switching[^>]*>(.*?)<\/p>/s.exec(waiting)?.[1];
     expect(row).toContain(NEW);
     expect(row).toContain(OLD);

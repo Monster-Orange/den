@@ -97,7 +97,6 @@ export async function noteHub(
 }> {
   const stateDir = d.stateDir();
   const bound = readHubBinding(stateDir);
-  // Issue 1632: a pending switch ends with any Hub change, or a clear.
   const sw = readHubSwitch(stateDir);
   if (sw && (!now.url || hubOrigin(now.url) !== hubOrigin(sw.from)))
     clearHubSwitch(stateDir);

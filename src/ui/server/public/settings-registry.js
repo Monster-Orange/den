@@ -6773,8 +6773,6 @@ export function hubHtml(b, flash, t = (k) => k) {
         : "") +
       `</div>${acts}</div>`
     : "";
-  // Issue 1632: a switch to another Hub waits for the person's sign-in
-  // there; this Hub stays in use until it answers.
   const sw =
     b.switching && typeof b.switching.to === "string"
       ? `<p class="set-note set-warn" role="status" data-hub-switching>${escR(t("hub.switching", { to: b.switching.to, from: b.url || "" }))} ` +

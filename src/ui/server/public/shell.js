@@ -9702,8 +9702,6 @@
             res.connect === true &&
             a.action === "hub_connect"
           ) {
-            // Issue 1632: Den stays on the old Hub; the person signs in to
-            // the new one now (Connect goes to the pending switch's Hub).
             apClose();
             toast(t("ap.hubSwitchSignin", { url: res.url || "" }));
             fetch("/api/hub/connect", {
@@ -9716,8 +9714,7 @@
               })
               .then(function (b) {
                 if (b && b.ok && b.location) location.assign(b.location);
-                else
-                  toast(t("ap.failed", { error: (b && b.error) || "?" }));
+                else toast(t("ap.failed", { error: (b && b.error) || "?" }));
               })
               .catch(function (e) {
                 toast(t("ap.failed", { error: (e && e.message) || "?" }));
