@@ -130,10 +130,12 @@ import {
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   fixturePersonOf,
   principalOf,
 } from "./request-guard.js";
+import { narrowByWorkspace } from "../../shared/agents/scope-rule.js";
 import { approvalsView, patchApprovals } from "../../shared/approval-policy.js";
 
 /** Issue 160: a project's approval policy rows (null policy: the install's). */
@@ -390,6 +392,21 @@ type AvailableRepos = Awaited<ReturnType<typeof buildAvailableRepos>>;
 /** Shared by concurrent requests, reused briefly; cleared by any mutation. */
 const availableReposCache = singleFlight<AvailableRepos>(2_000);
 
+/** GET /api/workspaces: the parts that are per project. */
+export const WORKSPACES_SHAPE = {
+  maps: [
+    "workspaces",
+    "resolvedDirs",
+    "codeWorkspacePaths",
+    "stackNamespaces",
+    "hubUncovered",
+    "hubElsewhere",
+    "projectColours",
+  ],
+  lists: ["active", "projectOrder"],
+  names: ["focus"],
+} as const;
+
 /**
  * Handle all /api/workspaces/* and /api/workspace/* routes.
  *
@@ -402,6 +419,7 @@ const availableReposCache = singleFlight<AvailableRepos>(2_000);
  * page's create and ON-3's held workspace_create (approval-routes.ts) both
  * ask this.
  */
+
 export function workspaceCreateRefusal(
   name: string | undefined,
 ): string | null {
@@ -837,7 +855,7 @@ export async function handleWorkspaceRoutes(
     const projectOrder = prefs.projectOrder;
     // Issue 168: the colours this person chose (the rest are Automatic).
     const projectColours = prefs.projectColours;
-    return sendJson(res, {
+    const body = {
       ...wsFile,
       resolvedDirs,
       codeWorkspacePaths,
@@ -846,7 +864,13 @@ export async function handleWorkspaceRoutes(
       hubElsewhere,
       projectOrder,
       projectColours,
-    });
+    };
+    // An agent on a strict install sees its own projects only.
+    const keep = agentRowFilter(req);
+    return sendJson(
+      res,
+      keep ? narrowByWorkspace(body, keep, WORKSPACES_SHAPE) : body,
+    );
   }
 
   // ── API: rename workspace ─────────────────────────────────────────────────

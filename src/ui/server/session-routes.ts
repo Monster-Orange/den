@@ -129,6 +129,7 @@ import {
 } from "../../shared/agents/draft-input.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   operatorActOf,
   principalOf,
@@ -903,14 +904,18 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  // An agent on a strict install sees its own projects' sessions only (a
+  // ?ws= outside its scope was refused by the request guard).
+  const keep = agentRowFilter(req);
+  const listed = listedSessions(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
-    workspaces: d.activeWorkspaces(),
+    sessions: keep ? listed.filter((r) => keep(r.workspace)) : listed,
+    workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
