@@ -151,7 +151,7 @@ const head = (p: Page, id: string): Promise<Head> =>
         .filter((e) => e.getClientRects().length > 0)
         .map((e) => (e as HTMLElement).dataset.nav!),
       count: bdg && bdg.getClientRects().length > 0 ? bdg.textContent : null,
-      countBad: !!bdg && bdg.matches("[data-den-fold-n].bad"),
+      countBad: !!bdg && bdg.classList.contains("bad"),
       chevron: chev ? getComputedStyle(chev).transform : "",
       height: g.getBoundingClientRect().height,
     };
