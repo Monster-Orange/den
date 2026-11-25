@@ -58,6 +58,23 @@ async function rounds(w: GithubWatcher, n: number) {
   }
 }
 
+/** A workflow run on SHA1: check suite `suite`, of workflow `wf`. */
+const wfRun = (
+  suite: number,
+  wf: number,
+  status = "completed",
+  conclusion: string | null = "success",
+) =>
+  gh.run(A, {
+    id: 500 + suite,
+    name: `wf-${wf}`,
+    status,
+    conclusion,
+    head_sha: SHA1,
+    check_suite_id: suite,
+    workflow_id: wf,
+  });
+
 const told = (id: string) => sent.filter((d) => (d.text ?? "").includes(id));
 
 beforeEach(() => {
@@ -118,13 +135,78 @@ describe("issue 1279: a check superseded on the same head", () => {
       conclusion: "success",
       suite: 5,
     });
+    // Suite 1: one workflow; 2 and 3: runs of another (pr-text); 4 and 5:
+    // runs of a third (ci).
+    wfRun(1, 70);
+    wfRun(2, 71, "completed", "cancelled");
+    wfRun(3, 71);
+    wfRun(4, 72, "completed", "failure");
+    wfRun(5, 72);
     const r = await w.create(ask({ pr: 1 }));
     if (!r.ok) throw new Error("not created");
-    await rounds(w, 4);
+    await rounds(w, 5);
     const mine = told(r.watch.id);
     expect(mine).toHaveLength(1);
     expect(mine[0]!.text).toContain("3 passed, 0 failed, 0 skipped.");
     expect(mine[0]!.text).toContain("All passed.");
+  });
+
+  it("two workflows with a job of the same name: both count, the older one's failure too", async () => {
+    const w = watcher();
+    // ci.yml and release-gates.yml on one head, each with a job "test".
+    gh.check(A, SHA1, {
+      id: 31,
+      name: "test",
+      status: "completed",
+      conclusion: "failure",
+      suite: 6,
+      started_at: "2030-01-01T11:10:00Z",
+    });
+    gh.check(A, SHA1, {
+      id: 32,
+      name: "test",
+      status: "completed",
+      conclusion: "success",
+      suite: 7,
+      started_at: "2030-01-01T11:30:00Z",
+    });
+    wfRun(6, 80, "completed", "failure");
+    wfRun(7, 81);
+    const r = await w.create(ask({ pr: 1 }));
+    if (!r.ok) throw new Error("not created");
+    await rounds(w, 5);
+    const mine = told(r.watch.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.text).toContain("1 passed, 1 failed, 0 skipped.");
+    expect(mine[0]!.text).toContain(
+      "Failed: test (https://github.example/acme/north/runs/31)",
+    );
+  });
+
+  it("checks of another app (no workflow run) are never merged, after one look", async () => {
+    const w = watcher();
+    gh.check(A, SHA1, {
+      id: 41,
+      name: "deploy",
+      status: "completed",
+      conclusion: "failure",
+      suite: 8,
+    });
+    gh.check(A, SHA1, {
+      id: 42,
+      name: "deploy",
+      status: "completed",
+      conclusion: "success",
+      suite: 9,
+    });
+    const r = await w.create(ask({ pr: 1 }));
+    if (!r.ok) throw new Error("not created");
+    await rounds(w, 6);
+    const mine = told(r.watch.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.text).toContain("1 passed, 1 failed");
+    // GitHub was asked which workflow they belong to, once.
+    expect(gh.calls.filter((c) => c.includes("head_sha="))).toHaveLength(1);
   });
 
   it("a newer run still going: it isn't finished on the older run's result", async () => {
@@ -143,6 +225,8 @@ describe("issue 1279: a check superseded on the same head", () => {
       conclusion: null,
       suite: 5,
     });
+    wfRun(4, 72, "completed", "failure");
+    wfRun(5, 72, "in_progress", null);
     const r = await w.create(ask({ pr: 1 }));
     if (!r.ok) throw new Error("not created");
     await rounds(w, 3);
@@ -186,7 +270,7 @@ describe("issue 1065: cancelled is not failed", () => {
     expect(mine[0]!.text).toContain(
       "1 passed, 0 failed, 0 skipped, 1 cancelled.",
     );
-    expect(mine[0]!.text).toContain("Cancelled: shard 2 (");
+    expect(mine[0]!.text).toContain("Cancelled, not passed: shard 2 (");
     expect(mine[0]!.text).not.toContain("Failed:");
     expect(mine[0]!.text).not.toContain("All passed.");
     // The pull request was looked at before it was reported.

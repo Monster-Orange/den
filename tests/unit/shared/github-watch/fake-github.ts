@@ -17,7 +17,8 @@ export interface FakeRun {
   head_sha: string;
   check_suite_id: number;
   /** Issue 1214: which attempt (1 unless re-run). */
-  run_attempt?: number;
+  run_attempt?: number; /** Issue 1279: its workflow (ci.yml, release-gates.yml…). */
+  workflow_id?: number;
 }
 
 export interface FakeJob {

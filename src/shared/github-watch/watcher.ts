@@ -182,6 +182,16 @@ interface Watch {
    */
   headCheck?: "due" | "done";
   /**
+   * Issue 1279: check suite id → its workflow (workflow_id), from the runs
+   * Den has listed. Two runs of one workflow are the same checks, re-run;
+   * two workflows' jobs of one name are not.
+   */
+  suites?: Record<string, number>;
+  /** Suites whose workflow Den asks for next (listing the head's runs). */
+  suitesDue?: number[];
+  /** Suites it asked for: never asked again (another app's has none). */
+  suitesAsked?: number[];
+  /**
    * Issue 1166: a check (or workflow run) of it is still queued or in
    * progress: CI is working, so it counts as progress.
    */
@@ -714,6 +724,14 @@ export class GithubWatcher {
     }
     this.lastResolve.delete(key);
     const repo = ws[0].repo;
+    // Issue 1279: which workflow some checks belong to, from the head's runs.
+    const place = ws.find((w) => w.suitesDue?.length);
+    if (place)
+      return {
+        path: `repos/${repo}/actions/runs?head_sha=${place.head}&per_page=${RUNS_PAGE}`,
+        kind: "headRuns",
+        head: place.head,
+      };
     const heads = [...new Set(ws.map((w) => w.head!))];
     if (heads.length === 1) {
       this.lastChecks.delete(key);
@@ -927,6 +945,12 @@ export class GithubWatcher {
         w.kind === "run"
           ? runs.filter((r) => r.id === w.number)
           : runs.filter((r) => r.head_sha === w.head);
+      if (!mine.length && byHead && w.suitesDue?.length) {
+        // Issue 1279: no runs for them: another app's checks.
+        w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
+        w.suitesDue = undefined;
+        changed = true;
+      }
       if (!mine.length) {
         // Issue 1560: a full page is the newest runs only, and a busy
         // repo's older ones aren't on it. A head whose runs are off it has
@@ -948,6 +972,18 @@ export class GithubWatcher {
         continue;
       }
       if (w.kind === "run") w.suite = asNum(mine[0].check_suite_id) ?? w.suite;
+      if (w.kind === "pr") {
+        for (const r of mine) {
+          const sid = asNum(r.check_suite_id);
+          const wf = asNum(r.workflow_id);
+          if (sid !== undefined && wf !== undefined)
+            (w.suites ??= {})[String(sid)] = wf;
+        }
+        if (byHead && w.suitesDue?.length) {
+          w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
+          w.suitesDue = undefined;
+        }
+      }
       const print = JSON.stringify(
         mine
           .map((r) => [asNum(r.id), asStr(r.status), asStr(r.conclusion)])
@@ -977,7 +1013,22 @@ export class GithubWatcher {
           ? all.filter(
               (c) => isObj(c.check_suite) && c.check_suite.id === w.suite,
             )
-          : latest(all);
+          : latest(all, w.suites ?? {});
+      if (w.kind === "pr") {
+        const due = unmapped(all, w.suites ?? {}).filter(
+          (id) => !(w.suitesAsked ?? []).includes(id),
+        );
+        if (due.length) {
+          // Issue 1279: checks of one name in suites Den can't place yet:
+          // the head's runs say which workflow each is, then they count.
+          if (!w.suitesDue?.length) changed = true;
+          w.suitesDue = due;
+          w.phase = "running";
+          w.note =
+            "Some checks share a name across runs; Den reads which workflow each belongs to next.";
+          continue;
+        }
+      }
       const print = JSON.stringify(
         cs
           .map((c) => [asNum(c.id), asStr(c.status), asStr(c.conclusion)])
@@ -1318,13 +1369,17 @@ function tally(cs: Record<string, unknown>[]): {
 }
 
 /**
- * Issue 1279: the newest check run of each name (and app) on a head.
+ * Issue 1279: the newest check run of each workflow and name on a head.
  * filter=latest keeps the newest per check suite, but every workflow run
  * is a suite of its own: a re-run, a label added or a PR's text edited
- * leaves the older run beside it, superseded. Newest: the later started_at,
- * else the higher id.
+ * leaves the older run beside it, superseded. Two workflows' jobs of one
+ * name are different checks, and a suite whose workflow isn't known is
+ * never merged (checkKey). Newest: the later started_at, else the higher id.
  */
-function latest(cs: Record<string, unknown>[]): Record<string, unknown>[] {
+function latest(
+  cs: Record<string, unknown>[],
+  suites: Record<string, number>,
+): Record<string, unknown>[] {
   const at = (c: Record<string, unknown>) => Date.parse(asStr(c.started_at));
   const newer = (a: Record<string, unknown>, b: Record<string, unknown>) => {
     const ta = at(a);
@@ -1334,12 +1389,45 @@ function latest(cs: Record<string, unknown>[]): Record<string, unknown>[] {
   };
   const by = new Map<string, Record<string, unknown>>();
   for (const c of cs) {
-    const app = isObj(c.app) ? (asNum(c.app.id) ?? asStr(c.app.slug)) : "";
-    const key = `${app}|${asStr(c.name)}`;
+    const key = checkKey(c, suites);
     const had = by.get(key);
     if (!had || newer(c, had)) by.set(key, c);
   }
   return [...by.values()];
+}
+
+const suiteOf = (c: Record<string, unknown>) =>
+  isObj(c.check_suite) ? asNum(c.check_suite.id) : undefined;
+
+/** Its workflow and name; unplaced, its app, suite and name (its own). */
+function checkKey(
+  c: Record<string, unknown>,
+  suites: Record<string, number>,
+): string {
+  const sid = suiteOf(c);
+  const wf = sid === undefined ? undefined : suites[String(sid)];
+  if (wf !== undefined) return `wf:${wf}|${asStr(c.name)}`;
+  const app = isObj(c.app) ? (asNum(c.app.id) ?? asStr(c.app.slug)) : "";
+  return `app:${app}|${sid ?? `id:${asNum(c.id)}`}|${asStr(c.name)}`;
+}
+
+/** Suites (unplaced) holding a check whose name another suite has too. */
+function unmapped(
+  cs: Record<string, unknown>[],
+  suites: Record<string, number>,
+): number[] {
+  const by = new Map<string, Set<number>>();
+  for (const c of cs) {
+    const sid = suiteOf(c);
+    if (sid === undefined) continue;
+    const n = asStr(c.name);
+    by.set(n, (by.get(n) ?? new Set()).add(sid));
+  }
+  const out = new Set<number>();
+  for (const ids of by.values())
+    if (ids.size > 1)
+      for (const id of ids) if (suites[String(id)] === undefined) out.add(id);
+  return [...out].sort((a, b) => a - b);
 }
 
 /** "3 passed, 1 failed, 0 skipped[, 2 cancelled]" and its lists. */
@@ -1355,7 +1443,7 @@ function summary(
     l.map((f) => `${f.name} (${f.url})`).join("; ");
   const lists =
     (failed.length ? ` Failed: ${list(failed)}.` : "") +
-      (cancelled.length ? ` Cancelled: ${list(cancelled)}.` : "") ||
+      (cancelled.length ? ` Cancelled, not passed: ${list(cancelled)}.` : "") ||
     " All passed.";
   return { sum, lists };
 }

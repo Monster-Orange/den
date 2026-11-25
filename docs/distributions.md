@@ -6282,12 +6282,15 @@ What counts:
 - Only the newest run of each check on the head, as the pull request's own
   check list shows. A re-run, a label added or an edited description starts
   a new run of a workflow; the older run's checks, cancelled or failed, are
-  superseded and not counted.
-- A cancelled check or job isn't a failure: it is counted as cancelled
-  ("2 passed, 0 failed, 0 skipped, 1 cancelled") and listed by name. When a
-  pull request's checks end with some cancelled, Den first looks at the pull
-  request: a push that moved its head ends the watch as replaced, with no
-  failures listed; on the same head, the result is told.
+  superseded and not counted. Two workflows' jobs of one name are different
+  checks, and both count: Den reads which workflow each belongs to from the
+  head's runs first. Checks of another app are never merged.
+- A cancelled check or job isn't a failure, nor a pass: it is counted as
+  cancelled ("2 passed, 0 failed, 0 skipped, 1 cancelled") and listed as
+  "Cancelled, not passed". When a pull request's checks end with some
+  cancelled, Den first looks at the pull request: a push that moved its head
+  ends the watch as replaced, with no failures listed; on the same head, the
+  result is told.
 
 How the watcher paces itself:
 
