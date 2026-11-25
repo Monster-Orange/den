@@ -70,6 +70,17 @@ export const ISSUE_WRITES_PER_HOUR = {
   max: 10_000,
 } as const;
 
+/**
+ * Issue 1127: agents.issue_writes_visibility_minutes, how old a repo's
+ * visibility may be when the words check asks it (a repo made public is
+ * checked from then on, at most this late). Default and range.
+ */
+export const ISSUE_WRITES_VISIBILITY_MINUTES = {
+  default: 10,
+  min: 1,
+  max: 1440,
+} as const;
+
 /** A title's length, GitHub's own limit. */
 export const ISSUE_TITLE_MAX = 256;
 /** A body's or comment's length, in characters (GitHub's own limit). */
@@ -84,6 +95,8 @@ const REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 export interface IssueWriteSettings {
   roles: string[];
   perHour: number;
+  /** Issue 1127: agents.issue_writes_visibility_minutes. */
+  visibilityMinutes: number;
 }
 
 type UserLike = { agents?: Record<string, unknown> | null } | null | undefined;
@@ -132,7 +145,21 @@ export function issueWriteSettings(
       );
     perHour = p;
   }
-  return { roles, perHour };
+  const [v, vFrom] = pick("issue_writes_visibility_minutes");
+  let visibilityMinutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  if (v !== undefined && v !== null) {
+    if (
+      typeof v !== "number" ||
+      !Number.isInteger(v) ||
+      v < ISSUE_WRITES_VISIBILITY_MINUTES.min ||
+      v > ISSUE_WRITES_VISIBILITY_MINUTES.max
+    )
+      throw new Error(
+        `agents.issue_writes_visibility_minutes must be a whole number from ${ISSUE_WRITES_VISIBILITY_MINUTES.min} to ${ISSUE_WRITES_VISIBILITY_MINUTES.max} (${vFrom}; got ${JSON.stringify(v)})`,
+      );
+    visibilityMinutes = v;
+  }
+  return { roles, perHour, visibilityMinutes };
 }
 
 /** One checked write. */

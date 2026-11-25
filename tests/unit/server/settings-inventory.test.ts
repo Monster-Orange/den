@@ -136,7 +136,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     max_wait_seconds: true,
   },
   // issue_write: which roles write GitHub issues, and how many an hour.
-  agent_issue_writes: { roles: true, per_hour: true },
+  // Issue 1127: and how old a repo's visibility may be for the words check.
+  agent_issue_writes: { roles: true, per_hour: true, visibility_minutes: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -274,6 +275,8 @@ describe("the settings inventory (R21)", () => {
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",
+        // Issue 1444: the rail sections the person folded.
+        "shell.folded",
         "shell.hidden",
         "shell.order",
         "shell.pins",
@@ -367,6 +370,7 @@ describe("the settings inventory (R21)", () => {
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",
+        "agent_issue_writes.visibility_minutes",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",

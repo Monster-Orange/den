@@ -368,6 +368,74 @@ describe("issue 103: a listed origin frames the pane", () => {
   }, 90_000);
 });
 
+describe("issue 104: the pane's way back to Den", () => {
+  it("once connected, Open in Den names that agent's page and opens it in a new tab", async () => {
+    if (!browser) return;
+    await list([LISTED]);
+    const p = await newPage();
+    await signInPage(p, s.stateDir, s.base, "/settings");
+    await frame(p, LISTED, "/embed/p/north/agents/scout");
+    const f = await denFrame(p, 15_000);
+    expect(f).not.toBeNull();
+    const open = f!.locator("#emb-open");
+    // Hidden until the pane knows its agent.
+    expect(await open.isVisible()).toBe(false);
+    await allowInPopUp(p, f!);
+    await p.waitForFunction(isConnected, undefined, { timeout: 20_000 });
+    await open.waitFor({ state: "visible", timeout: 10_000 });
+    // Its words: the catalog's emb.open in the pane's language, the Den's
+    // title filled in. Found by role and that name, not only by id.
+    const words = await f!.evaluate(() => {
+      const m = (
+        window as unknown as {
+          denMessages?: Record<string, Record<string, string>>;
+        }
+      ).denMessages;
+      const lang = document.documentElement.lang || "en";
+      return (m?.[lang]?.["emb.open"] ?? m?.en?.["emb.open"] ?? "").trim();
+    });
+    expect({
+      worded: words.length > 0,
+      filled: !/__\w+__/.test(words),
+    }).toEqual({ worded: true, filled: true });
+    const named = f!.getByRole("link", { name: words, exact: true });
+    await named.waitFor({ state: "visible", timeout: 5_000 });
+    expect(await named.getAttribute("id")).toBe("emb-open");
+    const link = await open.evaluate((a: HTMLAnchorElement) => ({
+      href: a.getAttribute("href"),
+      target: a.target,
+      rel: a.rel,
+      key: a.dataset.t,
+    }));
+    expect(link).toMatchObject({
+      href: "/p/north/agents/scout",
+      target: "_blank",
+      rel: "noopener noreferrer",
+      key: "emb.open",
+    });
+    // The server answers the deep link itself (issue 103) ...
+    const answered = p.context().waitForEvent("response", {
+      predicate: (r) => new URL(r.url()).pathname === "/p/north/agents/scout",
+      timeout: 10_000,
+    });
+    const opened = p.context().waitForEvent("page");
+    await open.click();
+    const tab = await opened;
+    const first = await answered;
+    expect(first.status()).toBe(200);
+    // ... and the Agents page reads it as its own address for that agent.
+    await tab.waitForURL(
+      (u) =>
+        u.pathname === "/agents" &&
+        u.searchParams.get("agent") === "scout" &&
+        u.searchParams.get("ws") === "north",
+      { timeout: 10_000 },
+    );
+    expect(new URL(tab.url()).origin).toBe(new URL(s.base).origin);
+    await tab.close();
+  });
+});
+
 describe("0.4.71: the pane on this computer", () => {
   it("asks once per load: one click on Allow connects; a reload asks again, in one click (the key lives in the frame's memory only)", async () => {
     if (!browser) return;

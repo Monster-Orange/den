@@ -6,7 +6,15 @@
  * refused and what to do. A caller that had gone isn't counted: nothing
  * was refused. Never a token: anything shaped like one is cut out.
  */
+import * as fs from "fs";
+import * as path from "path";
+import {
+  AUDIT_FILE,
+  AUDIT_SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 import { readTailLines } from "../../shared/dev-metrics/polling.js";
+import { redactSecrets } from "../../shared/redact.js";
 import type { OnboardCheck } from "./doctor-onboard.js";
 
 export interface RefusalEntry {
@@ -88,4 +96,63 @@ export function readRefusalEntries(
     }
   }
   return out;
+}
+
+/**
+ * Issue 1509: the refusals doctor counts, from `stateDir`. The live trail;
+ * and, for the hour after the first start that redacts the audit moved
+ * the trail aside (issue 1391's marker says when), the set-aside trail
+ * too, so a refusal written just before an update isn't lost from the
+ * row. From that folder, which may hold values never redacted, only
+ * refused agent tokens are kept, only from plain files (never a link),
+ * and each is redacted (redactSecrets) before doctor shows it.
+ */
+export function readRefusalTrail(
+  stateDir: string,
+  now: Date = new Date(),
+): RefusalEntry[] {
+  const out = readRefusalEntries(path.join(stateDir, AUDIT_FILE));
+  const aside = path.join(stateDir, AUDIT_SET_ASIDE_DIR);
+  let at = NaN;
+  try {
+    const mark = JSON.parse(
+      fs.readFileSync(path.join(aside, AUDIT_SET_ASIDE_MARK), "utf-8"),
+    ) as { at?: unknown };
+    at = typeof mark.at === "string" ? Date.parse(mark.at) : NaN;
+  } catch {
+    return out;
+  }
+  // Only within the hour after the move: a marker ahead of now (a clock
+  // set back) never opens the folder for good.
+  const since = now.getTime() - at;
+  if (!Number.isFinite(since) || since < 0 || since > HOUR_MS) return out;
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(aside).sort();
+  } catch {
+    return out;
+  }
+  for (const name of names) {
+    if (name !== AUDIT_FILE && !name.startsWith(`${AUDIT_FILE}.`)) continue;
+    const file = path.join(aside, name);
+    if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) continue;
+    for (const e of readRefusalEntries(file))
+      if (e.verb === "agent-token" && e.outcome === "refused")
+        out.push(redactedRow(e));
+  }
+  return out;
+}
+
+/** A set-aside row with its text redacted (issue 1391: never trusted). */
+function redactedRow(e: RefusalEntry): RefusalEntry {
+  const r = (v: unknown) =>
+    typeof v === "string" ? redactSecrets(v) : undefined;
+  return {
+    ts: e.ts,
+    verb: e.verb,
+    outcome: "refused",
+    detail: r(e.detail) ?? "",
+    ...(r(e.principal) !== undefined ? { principal: r(e.principal) } : {}),
+    ...(r(e.reason) !== undefined ? { reason: r(e.reason) } : {}),
+  };
 }
