@@ -205,6 +205,11 @@
   height: 16px;
   flex: none;
 }
+/* Issue 1499: the first step's screenshot part, swapped in place when
+   the capture ends. It adds no box. */
+[data-shot-area] {
+  display: contents;
+}
 .fb-shot {
   border: 1px var(--edge-style, solid) var(--border);
   border-radius: 6px;

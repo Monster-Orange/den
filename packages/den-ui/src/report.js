@@ -277,6 +277,11 @@ export async function openReport(opts = {}) {
     viaApp: false,
     // The screenshot: a canvas, or null when the page couldn't be taken.
     shot: null,
+    // Issue 1499: the form opens at once; the shot fills in when taken.
+    // shotWait: still being taken. shotSeen: shown on the first step,
+    // where the person blacks out anything private: only then can it go.
+    shotWait: false,
+    shotSeen: false,
     masks: [],
     noShot: false,
     drag: null,
@@ -291,7 +296,8 @@ export async function openReport(opts = {}) {
   current = self;
 
   const ad = cfg.adapter || {};
-  const [info, diag, shots] = await Promise.all([
+  let shots = null;
+  const [info, diag, shotsMod] = await Promise.all([
     ad.info ? Promise.resolve(ad.info()).catch(() => ({})) : {},
     ad.diagnostics ? Promise.resolve(ad.diagnostics()).catch(() => ({})) : {},
     // Loaded only when a report opens: a page without the screenshot
@@ -307,8 +313,11 @@ export async function openReport(opts = {}) {
     ensureCss(),
   ]);
   st.info = info || {};
-  // Taken before the dialog is on the page, so it shows what the person
-  // saw: the page and any pop-up open over it.
+  shots = shotsMod;
+  // Started before the dialog is on the page, and never awaited before it
+  // opens (issue 1499): the form shows at once, the shot fills in. It
+  // skips the dialog, so it shows what the person saw: the page and any
+  // pop-up open over it.
   // A draft brings its own: Finish later's from this browser (with its
   // masks), an agent's from its record.
   const fromDraft = async () => {
@@ -321,15 +330,32 @@ export async function openReport(opts = {}) {
     }
     return typeof d.shot === "string" ? shots.canvasOf(d.shot) : null;
   };
-  st.shot = !shots
+  const taking = !shots
     ? null
     : opts.draft
-      ? await fromDraft()
-      : await shots.capture({
+      ? fromDraft()
+      : shots.capture({
           seconds: st.info.captureSeconds || 15,
           skip: (el) => el.classList?.contains("fb-dlg"),
         });
   if (current !== self) return self;
+  if (taking) {
+    st.shotWait = true;
+    Promise.resolve(taking)
+      .catch(() => null)
+      .then((canvas) => {
+        if (current !== self) return;
+        st.shot = canvas || null;
+        st.shotWait = false;
+        // Only the shot's part of the first step: the words being typed
+        // and the focus stay as they are.
+        const area = dlg.querySelector("[data-shot-area]");
+        if (st.step === "write" && area) {
+          area.outerHTML = shotAreaHtml();
+          paintShot();
+        }
+      });
+  }
   document.body.append(dlg);
   st.diag = diag?.sections || diag || {};
   st.repo = st.repo || st.info.repos?.[0]?.repo || "";
@@ -347,7 +373,7 @@ export async function openReport(opts = {}) {
   const visNote = (repos) => reportVisibility(selected(repos), lang()).note;
   /** Whether a screenshot goes with the report. */
   function shotOn() {
-    return !!st.shot && !st.noShot;
+    return !!st.shot && st.shotSeen && !st.noShot;
   }
   function maskedShot() {
     return shots.masked(st.shot, st.masks);
@@ -396,6 +422,47 @@ export async function openReport(opts = {}) {
     if (st.share.share && !st.share.recipient) st.share.share = false;
   }
   const pct = (v) => Math.round(v * 100);
+  /**
+   * The first step's screenshot part (issue 1499: "being taken" until the
+   * capture ends, then the shot, or the no-screenshot words). Marks the
+   * shot seen: only a shot shown here can go with the report.
+   */
+  function shotAreaHtml() {
+    if (st.shot) st.shotSeen = true;
+    return `<div data-shot-area>${
+      st.shotWait
+        ? `<p class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</p>`
+        : st.shot
+          ? `<p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
+<div class="fb-shot"${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>
+<div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
+${
+  st.noShot
+    ? ""
+    : `<details class="fb-kbd"${st.kbd ? " open" : ""}><summary>${esc(t("kit.report.kbdMask"))}</summary>
+<div class="fb-tools">${[
+        ["x", "kit.report.mx"],
+        ["y", "kit.report.my"],
+        ["w", "kit.report.mw"],
+        ["h", "kit.report.mh"],
+      ]
+        .map(
+          ([k, l]) =>
+            `<label>${esc(t(l))} <input type="number" data-m="${k}" min="0" max="100" step="1" value="${k === "w" || k === "h" ? 20 : 0}"></label>`,
+        )
+        .join(
+          "",
+        )}${btn("addmask", t("kit.report.addMask"))}${btn("maskall", t("kit.report.maskAll"))}</div>
+<ul class="fb-masks">${st.masks
+        .map(
+          (m, i) =>
+            `<li>${esc(t("kit.report.area", { x: pct(m.x), y: pct(m.y), w: pct(m.w), h: pct(m.h) }))} <button type="button" data-act="rmmask" data-i="${i}">${esc(t("kit.report.rmMask"))}</button></li>`,
+        )
+        .join("")}</ul></details>`
+}`
+          : `<p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p>`
+    }</div>`;
+  }
   /** Draws the screenshot with its masks (and one being dragged). */
   function paintShot() {
     const c = dlg.querySelector("canvas[data-shot]");
@@ -474,37 +541,7 @@ export async function openReport(opts = {}) {
 <label class="fb-f">${esc(t("kit.report.titleL"))}<input type="text" data-f="title" maxlength="200" value="${esc(st.title)}"></label>
 <label class="fb-f">${esc(t("kit.report.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
 <div class="fb-h">${esc(t("kit.report.shot"))}</div>
-${
-  st.shot
-    ? `<p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
-<div class="fb-shot"${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>
-<div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
-${
-  st.noShot
-    ? ""
-    : `<details class="fb-kbd"${st.kbd ? " open" : ""}><summary>${esc(t("kit.report.kbdMask"))}</summary>
-<div class="fb-tools">${[
-        ["x", "kit.report.mx"],
-        ["y", "kit.report.my"],
-        ["w", "kit.report.mw"],
-        ["h", "kit.report.mh"],
-      ]
-        .map(
-          ([k, l]) =>
-            `<label>${esc(t(l))} <input type="number" data-m="${k}" min="0" max="100" step="1" value="${k === "w" || k === "h" ? 20 : 0}"></label>`,
-        )
-        .join(
-          "",
-        )}${btn("addmask", t("kit.report.addMask"))}${btn("maskall", t("kit.report.maskAll"))}</div>
-<ul class="fb-masks">${st.masks
-        .map(
-          (m, i) =>
-            `<li>${esc(t("kit.report.area", { x: pct(m.x), y: pct(m.y), w: pct(m.w), h: pct(m.h) }))} <button type="button" data-act="rmmask" data-i="${i}">${esc(t("kit.report.rmMask"))}</button></li>`,
-        )
-        .join("")}</ul></details>`
-}`
-    : `<p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p>`
-}${err}
+${shotAreaHtml()}${err}
 <div class="fb-btns">${btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
     } else if (st.step === "include") {
       label = t("kit.report.incH");
@@ -547,7 +584,9 @@ ${
 <pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
         shotOn()
           ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>${shareHtml()}`
-          : ""
+          : !st.noShot && (st.shotWait || (st.shot && !st.shotSeen))
+            ? `<p class="fb-fine" role="status" data-shot-late>${esc(t("kit.report.shotLate"))}</p>`
+            : ""
       }
 ${sends() ? visNote(repos) : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
 <div class="fb-btns">${sends() ? btn("send", t("kit.report.send"), true) : btn("copy", t("kit.report.copy"), true)}${laterBtn(t("kit.report.later"))}${btn("back-include", t("kit.report.back"))}</div>`;

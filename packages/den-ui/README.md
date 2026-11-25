@@ -1158,6 +1158,19 @@ spacing, motion or layers, so layouts stay the same.
   the remote colour on its 16% disc.
 - The fonts stay within 120 KB.
 
+## Report opens at once (0.17.0, issue 1499)
+
+`openReport()` shows the form as soon as it's picked, and no longer waits
+for the screenshot. The capture starts before the form is on the page, and
+leaves the form and everything inside it out. The first step says "Taking
+the screenshot…" (`kit.report.shotWait`), and the shot fills in when it's
+ready, without taking the focus or the words being typed. A shot that fails
+shows the no-screenshot words, as before.
+
+A report can go before the shot is there. It then goes without one, and
+Review says so (`kit.report.shotLate`). A shot only goes once the person has
+seen it on the first step, where they black out anything private.
+
 ## Licence
 
 MIT (`LICENSE`). The fonts are under the SIL Open Font License 1.1

@@ -91,6 +91,9 @@ export const en = {
   "kit.report.shot": "Screenshot of this page",
   "kit.report.ncap":
     "This page couldn't be captured. You can send the report without a screenshot.",
+  "kit.report.shotWait": "Taking the screenshot…",
+  "kit.report.shotLate":
+    "No screenshot: it wasn't ready when you went on. Go back to the first step to add it.",
   "kit.report.shotNote":
     "Includes the open dialog or drawer. Drag on it to black out anything private.",
   "kit.report.nos": "Don't include a screenshot",
@@ -339,6 +342,9 @@ export const es = {
   "kit.report.shot": "Captura de esta página",
   "kit.report.ncap":
     "No se pudo capturar esta página. Puedes enviar el informe sin captura.",
+  "kit.report.shotWait": "Tomando la captura…",
+  "kit.report.shotLate":
+    "Sin captura: no estaba lista cuando continuaste. Vuelve al primer paso para añadirla.",
   "kit.report.shotNote":
     "Incluye el diálogo o panel abierto. Arrastra sobre ella para tapar lo privado.",
   "kit.report.nos": "No incluir captura",
@@ -579,6 +585,9 @@ export const ja = {
   "kit.report.shot": "このページのスクリーンショット",
   "kit.report.ncap":
     "このページは撮影できませんでした。スクリーンショットなしで送れます。",
+  "kit.report.shotWait": "スクリーンショットを撮っています…",
+  "kit.report.shotLate":
+    "スクリーンショットなし：次へ進んだときにまだ準備できていませんでした。最初のステップに戻ると追加できます。",
   "kit.report.shotNote":
     "開いているダイアログやドロワーも入ります。ドラッグして、見せたくない部分を黒く塗れます。",
   "kit.report.nos": "スクリーンショットを含めない",

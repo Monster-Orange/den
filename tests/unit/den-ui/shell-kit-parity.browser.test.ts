@@ -469,6 +469,12 @@ async function show(p: Page, area: Area): Promise<void> {
       state: "visible",
       timeout: 20_000,
     });
+    // Issue 1499: the form opens before the screenshot is taken; it is
+    // measured as it was, with the shot in.
+    await p.waitForSelector("dialog.fb-dlg [data-shot-wait]", {
+      state: "detached",
+      timeout: 30_000,
+    });
   } else if (area === "working") {
     await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
     await p.evaluate(() => {
@@ -509,7 +515,16 @@ async function measure(p: Page, area: Area): Promise<Shot> {
             attrs[a.name] = a.value;
         const kids: Node[] = [];
         let text = "";
-        for (const c of Array.from(el.childNodes)) {
+        // Issue 1499: Report's screenshot part is a wrapper with no box
+        // (display: contents), swapped in when the capture ends; its
+        // children count as its parent's, as before it was there.
+        const nodes = (e: Element): ChildNode[] =>
+          Array.from(e.childNodes).flatMap((c) =>
+            c.nodeType === 1 && (c as Element).hasAttribute("data-shot-area")
+              ? nodes(c as Element)
+              : [c],
+          );
+        for (const c of nodes(el)) {
           if (c.nodeType === 3) text += c.textContent ?? "";
           else if (c.nodeType === 1 && depth < 40)
             kids.push(tree(c as Element, depth + 1));
