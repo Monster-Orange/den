@@ -854,7 +854,6 @@ export function initBell(doc = document) {
     if (what === "open" || what === "page" || what === "open-done") {
       const rowEl = el.closest("[data-id]");
       const id = rowEl?.dataset.id;
-      // busy-ok: marked in the background as the link opens
       const agent = el.closest("[data-agent]")?.dataset.agent;
       // Issue 791: a plain click on an agent's row peeks (a modified
       // click, a new tab, still opens the page).
@@ -879,6 +878,7 @@ export function initBell(doc = document) {
                   ? { id }
                   : null,
             ];
+      // busy-ok: marked in the background as the link opens
       if (body)
         void fetch(path, {
           method: "POST",
