@@ -128,6 +128,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   agents_shell: { path_timeout_seconds: true },
   // Issue 1311: how long messages wait on a draft before the bell says so.
   agents_draft: { hold_max_minutes: true },
+  // Issue 785: how a resume report's conversation-file check is limited.
+  agents_resume_report: { first_line_max_bytes: true, min_seconds: true },
   // Issue 1129: the restart queue.
   agents_resume: {
     batch: true,
@@ -364,6 +366,9 @@ describe("the settings inventory (R21)", () => {
         "agents_shell.path_timeout_seconds",
         // Issue 1311: how long messages wait on a draft before the bell says so.
         "agents_draft.hold_max_minutes",
+        // Issue 785: how a resume report's conversation-file check is limited.
+        "agents_resume_report.first_line_max_bytes",
+        "agents_resume_report.min_seconds",
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",
