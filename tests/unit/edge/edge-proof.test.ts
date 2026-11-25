@@ -147,6 +147,25 @@ describe("Den checks the proof on each request (H1)", () => {
     expect(proved(req(next))).toBe(true);
   });
 
+  it("issue 1592: a proof rewritten in one tick, same inode and size, is read again", async () => {
+    const { edgeProofChecker } =
+      await import("../../../src/shared/edge/proof.js");
+    const file = edgeProofFile(dir);
+    const old = ensureEdgeProof(dir);
+    // A whole-ms stamp, now: utimes keeps no sub-ms part.
+    const tick = new Date();
+    fs.utimesSync(file, tick, tick);
+    const proved = edgeProofChecker(() => dir);
+    expect(proved(req(old))).toBe(true);
+    // A new proof in the same file, at the same size, in the same tick of
+    // a coarse file clock (or a rename onto a reused inode).
+    const next = "cd".repeat(32);
+    fs.writeFileSync(file, `${next}\n`, { mode: 0o600 });
+    fs.utimesSync(file, tick, tick);
+    expect(proved(req(old))).toBe(false);
+    expect(proved(req(next))).toBe(true);
+  });
+
   it("no proof file (no edge, or not synced yet): nothing proves (fails closed)", async () => {
     const { edgeProofChecker } =
       await import("../../../src/shared/edge/proof.js");

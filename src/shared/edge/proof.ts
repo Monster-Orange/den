@@ -15,6 +15,7 @@ import { randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { statSettled } from "../stat-settled.js";
 
 /** The request header the edge adds (Den deletes it once read). */
 export const EDGE_PROOF_HEADER = "x-den-edge-proof";
@@ -157,26 +158,46 @@ export function edgeProofChecker(
   dir: () => string | null,
 ): (req: ProofRequest) => boolean {
   const seen = new WeakMap<ProofRequest, boolean>();
-  let cache: { key: string; proof: string | null } = { key: "", proof: null };
+  let cache: { key: string; proof: string | null; readAt: number } = {
+    key: "",
+    proof: null,
+    readAt: 0,
+  };
   const current = (): string | null => {
     const d = dir();
     if (!d) return null;
     if (fs.existsSync(edgeTrustHeldFile(d))) return null;
     let key: string;
+    // Issue 1592: the newest stamp of the two files.
+    let changed: { mtimeMs: number; ctimeMs: number };
     try {
       const st = fs.statSync(edgeProofFile(d));
-      key = `${d}:${st.ino}:${st.mtimeMs}:${st.size}`;
+      key = `${d}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
+      changed = { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs };
     } catch {
       return null;
     }
     try {
       const g = fs.statSync(edgeProofGenerationFile(d));
-      key += `:${g.ino}:${g.mtimeMs}:${g.size}`;
+      key += `:${g.ino}:${g.mtimeMs}:${g.ctimeMs}:${g.size}`;
+      changed = {
+        mtimeMs: Math.max(changed.mtimeMs, g.mtimeMs),
+        ctimeMs: Math.max(changed.ctimeMs, g.ctimeMs),
+      };
     } catch {
       key += ":-";
     }
-    if (key !== cache.key)
-      cache = { key, proof: proofIsCurrent(d) ? readEdgeProof(d) : null };
+    // Kept only while both stats stay the same, and (issue 1592) only once
+    // both were written more than a clock tick before the read: a proof
+    // rewritten in one tick (a rename onto a reused inode) is read again.
+    if (key !== cache.key || !statSettled(changed, cache.readAt)) {
+      const readAt = Date.now();
+      cache = {
+        key,
+        proof: proofIsCurrent(d) ? readEdgeProof(d) : null,
+        readAt,
+      };
+    }
     return cache.proof;
   };
   return (req) => {

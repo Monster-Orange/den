@@ -23,6 +23,7 @@ import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName } from "./transcript-follow.js";
 import { endingQuestion } from "./guardrails/attention-hook.js";
 import { TURN_READ_MAX_BYTES } from "./limit-defaults.js";
+import { MTIME_TICK_MS, statSettled } from "../stat-settled.js";
 
 /** One of a runtime's conversations, as Bring in lists it. */
 export interface RuntimeConversation {
@@ -271,14 +272,7 @@ const turnCache = new Map<
   }
 >();
 
-/**
- * Issue 1592: how coarse a file system's clock may be (ms). A file stamps
- * its mtime by that clock (Linux by its timer tick; some file systems by
- * the second or two), so a write just after a read can leave the same
- * mtime. A verdict is kept only when its file's mtime is older than its
- * read by more than this: any write after the read then moves the mtime.
- */
-export const MTIME_TICK_MS = 2_000;
+export { MTIME_TICK_MS };
 const TURN_CACHE_MAX = 256;
 
 /** Forget the cached verdicts (tests). */
@@ -330,7 +324,7 @@ export function transcriptBusy(
     hit &&
     hit.size === st.size &&
     hit.mtimeMs === st.mtimeMs &&
-    hit.mtimeMs < hit.readAt - MTIME_TICK_MS &&
+    statSettled(hit, hit.readAt) &&
     hit.bytes === bytes &&
     hit.max === maxBytes
       ? hit.r
