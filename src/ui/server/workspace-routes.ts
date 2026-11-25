@@ -135,7 +135,11 @@ import {
   fixturePersonOf,
   principalOf,
 } from "./request-guard.js";
-import { narrowByWorkspace } from "../../shared/agents/scope-rule.js";
+import {
+  narrowByWorkspace,
+  scopeReaches,
+  scopeWords,
+} from "../../shared/agents/scope-rule.js";
 import { approvalsView, patchApprovals } from "../../shared/approval-policy.js";
 
 /** Issue 160: a project's approval policy rows (null policy: the install's). */
@@ -2443,6 +2447,20 @@ export async function handleWorkspaceRoutes(
   if (pathname === "/api/workspace/sync") {
     // The page streams it with GET; the MCP sync tool calls it with POST.
     if (!readMethodOnly(req, res, ["POST"])) return;
+    // It syncs the focused project: an agent's token only when that
+    // project is in its scope, on every install (a write).
+    const syncAgent = agentPrincipalOf(req);
+    const focused = getActiveWorkspace()?.name;
+    if (syncAgent && focused && !scopeReaches(syncAgent, focused))
+      return sendJson(
+        res,
+        {
+          ok: false,
+          code: "agent_forbidden",
+          error: `${syncAgent.actor} can reach ${scopeWords(syncAgent)} only, not "${focused}" (the focused project this syncs).`,
+        },
+        403,
+      );
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

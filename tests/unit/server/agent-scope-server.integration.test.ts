@@ -103,6 +103,23 @@ function token(workspace: string, grants?: string[], id = "builder"): string {
   return t.token;
 }
 
+/** The two projects, `focus` the focused one. */
+function setFocus(focus: string): void {
+  fs.writeFileSync(
+    path.join(root, "config", "local", "workspaces.yml"),
+    [
+      "active: [north, south]",
+      `focus: ${focus}`,
+      "workspaces:",
+      "  north:",
+      "    services: []",
+      "  south:",
+      "    services: []",
+      "",
+    ].join("\n"),
+  );
+}
+
 function setMode(mode: "strict" | "personal"): void {
   fs.writeFileSync(
     path.join(root, "config", "local", "user.yml"),
@@ -129,19 +146,7 @@ beforeAll(async () => {
       "\n",
     ),
   );
-  fs.writeFileSync(
-    path.join(root, "config", "local", "workspaces.yml"),
-    [
-      "active: [north, south]",
-      "focus: north",
-      "workspaces:",
-      "  north:",
-      "    services: []",
-      "  south:",
-      "    services: []",
-      "",
-    ].join("\n"),
-  );
+  setFocus("north");
   for (const [id, ws] of [
     ["scout", "north"],
     ["rover", "south"],
@@ -236,9 +241,7 @@ describe("strict install", () => {
       (await call("GET", "/api/workspaces/south/agents", server)).status,
     ).toBe(200);
     const s = await call("GET", "/api/sessions", server);
-    expect(new Set(rowsOf(s, "sessions"))).toEqual(
-      new Set(["north", "south"]),
-    );
+    expect(new Set(rowsOf(s, "sessions"))).toEqual(new Set(["north", "south"]));
   });
 });
 
@@ -247,14 +250,12 @@ describe("personal install", () => {
 
   it("reads of another project are served, and lists show every project", async () => {
     const t = token("north");
-    expect(
-      (await call("GET", "/api/workspaces/south/agents", t)).status,
-    ).toBe(200);
+    expect((await call("GET", "/api/workspaces/south/agents", t)).status).toBe(
+      200,
+    );
     expect((await call("GET", "/api/sessions?ws=south", t)).status).toBe(200);
     const s = await call("GET", "/api/sessions", t);
-    expect(new Set(rowsOf(s, "sessions"))).toEqual(
-      new Set(["north", "south"]),
-    );
+    expect(new Set(rowsOf(s, "sessions"))).toEqual(new Set(["north", "south"]));
     const w = await call("GET", "/api/workspaces", t);
     expect(Object.keys(w.json.workspaces as object).sort()).toEqual([
       "north",
@@ -266,5 +267,20 @@ describe("personal install", () => {
     const t = token("north");
     const r = await call("POST", "/api/workspace/sync?workspace=south", t, {});
     expect([r.status, r.json.code]).toEqual([403, "agent_forbidden"]);
+  });
+
+  it("a sync of the focused project: refused when it is another project, run when it is the agent's", async () => {
+    const t = token("north");
+    try {
+      setFocus("south");
+      const r = await call("POST", "/api/workspace/sync", t, {});
+      expect([r.status, r.json.code]).toEqual([403, "agent_forbidden"]);
+      setFocus("north");
+      expect((await call("POST", "/api/workspace/sync", t, {})).status).toBe(
+        200,
+      );
+    } finally {
+      setFocus("north");
+    }
   });
 });
