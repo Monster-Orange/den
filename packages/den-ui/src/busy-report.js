@@ -41,10 +41,11 @@ function pathOf(url) {
 }
 
 /**
- * A plain word stays; anything else (a digit, a capital, a long run, an
- * escape) may be an id or a bearer, and becomes ":id".
+ * A plain word (or two, hyphened) stays; anything else (a digit, a
+ * capital, a long run, a passphrase, an escape) may be an id or a bearer,
+ * and becomes ":id".
  */
-const WORD = /^[a-z]{1,12}(-[a-z]{1,12}){0,3}$/;
+const WORD = /^(?=.{1,24}$)[a-z]{1,12}(-[a-z]{1,12})?$/;
 const template = (path) =>
   path
     .split("/")

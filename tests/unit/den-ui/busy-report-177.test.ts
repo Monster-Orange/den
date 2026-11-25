@@ -115,6 +115,7 @@ describe("issue 177: the report a failure pop-up starts", () => {
     expect(t("/api/report/github-send")).toBe("/api/report/github-send");
     expect(t("/api/agents/report-resume")).toBe("/api/agents/report-resume");
     expect(t("/requests/x%2Fy")).toBe("/requests/:id");
+    expect(t("/api/share/correct-horse-battery-staple")).toBe("/api/share/:id");
   });
 
   it("a request id or route that isn't one is left out", () => {
