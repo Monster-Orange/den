@@ -100,6 +100,12 @@ export interface AttentionDeps {
    * question (that needs its person).
    */
   turnEnded?: (agent: string, at: number) => void;
+  /**
+   * Issue 1129: the agent is working (a tool ran, a prompt came) or idle
+   * (its turn ended, it waits for its person), kept so a resume after a
+   * restart starts the working ones first. A new session says neither.
+   */
+  activity?: (agent: string, working: boolean) => void;
   /** A short mark of the agent's output now (a hash of its tail), or null. */
   outputMark: (agent: string) => Promise<string | null>;
   /** The agent's display name, for the text. */
@@ -353,6 +359,12 @@ export class Attention {
     const name = this.d.nameOf(agent);
     const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
     const seq = ++this.seq;
+    try {
+      if (ev.event !== "resumed") this.d.activity?.(agent, false);
+      else if (ev.from !== "session") this.d.activity?.(agent, true);
+    } catch {
+      /* best effort: only the resume order uses it */
+    }
     const arrived = this.now();
     if (ev.event === "resumed") {
       // Issue 609: a named tool run is kept, so a dialog for it applied

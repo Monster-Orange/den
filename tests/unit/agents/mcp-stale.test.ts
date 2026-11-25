@@ -15,7 +15,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
   noteHubMcpInit,
   noteHubMcpTools,
@@ -542,6 +542,28 @@ describe("D44: the routes", () => {
     };
   }
 
+  it("issue 1223: only: hub restarts the Hub-stale only (Settings' Hub offer); an agent on an older Den's tools waits for the bell's", async () => {
+    const r = await rig();
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    const rec = readRecord(r.stateDir, "planner")!;
+    writeRecord(r.stateDir, { ...rec, denVersion: "0.0.1-old" });
+    const call = await api(r);
+    const hub = await call("POST", "/api/agents/restart-stale", {
+      only: "hub",
+    });
+    expect(hub.status).toBe(202);
+    expect(hub.json.pending).toEqual([]);
+    expect(
+      (await call("POST", "/api/agents/restart-stale", { only: "den" })).status,
+    ).toBe(400);
+    const all = await call("POST", "/api/agents/restart-stale", {});
+    expect((all.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
+      "planner",
+    ]);
+  });
+
   it("stale lists it; restart-stale restarts it at its next idle (202), the same conversation", async () => {
     const { r, token } = await startedBeforeHub();
     const call = await api(r);
@@ -554,6 +576,10 @@ describe("D44: the routes", () => {
     expect(go.status).toBe(202);
     expect((go.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
       "planner",
+    ]);
+    // Issue 1407: each agent's own answer, before anything waits.
+    expect(go.json.agents).toEqual([
+      { id: "planner", workspace: "north", state: "now" },
     ]);
     for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);

@@ -316,7 +316,12 @@ function collapseHtml(collapsed, lang) {
   );
 }
 
-/** The rail's content: the groups, the spacer, the foot, the toggle. */
+/**
+ * The rail's content: the groups, the spacer, then the foot (a host's
+ * foot entries, Settings, the account entry, the toggle) in one
+ * .den-rail-foot. The foot stays pinned at the rail's bottom while the
+ * groups scroll above it (issue 1341).
+ */
 export function railHtml({
   nav = [],
   groups = [],
@@ -337,12 +342,14 @@ export function railHtml({
     );
   }
   html += '<div class="den-rail-grow"></div>';
+  html += '<div class="den-rail-foot">';
   html += foot
     .map((n) => (typeof n === "string" ? n : navItemHtml(n, undefined, lang)))
     .join("");
   html += settingsHtml(settings, lang);
   html += accountHtml(account);
   html += collapseHtml(!!collapsed, lang);
+  html += "</div>";
   return html;
 }
 

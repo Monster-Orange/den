@@ -156,6 +156,149 @@
           min-height: 40px;
         }
       }
+      /* Issue 646: Connect's review (mock v4, shape B): a row per project,
+         the picker opens in the row; at 700px and under the rows stack. */
+      .hub-rv {
+        margin: 12px 0 0;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: grid;
+        gap: 10px;
+      }
+      .hub-rv-h {
+        margin: 0;
+        font-size: 16px;
+      }
+      .hub-rv-rows {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .hub-rv-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 160px) 1fr auto;
+        gap: 6px 14px;
+        padding: 10px 12px;
+        border-top: 1px solid var(--border);
+        align-items: center;
+      }
+      .hub-rv-row:first-child {
+        border-top: 0;
+      }
+      .hub-rv-row.chg {
+        background: color-mix(in srgb, var(--accent) 6%, transparent);
+      }
+      .hub-rv-pj {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .hub-rv-key {
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .hub-rv-pp {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+      .hub-rv-pp:has(.hub-pick) {
+        grid-column: 2 / -1;
+      }
+      .hub-rv-why {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .hub-rv-why.new {
+        color: var(--accent-text);
+      }
+      .hub-rv-why.warn {
+        color: var(--warn);
+      }
+      .hub-rv-row button {
+        min-height: 40px;
+      }
+      .hub-rv-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .hub-rv-prog {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      .hub-pick {
+        display: grid;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        grid-column: 1 / -1;
+      }
+      .hub-pick h4 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .hub-pick-list {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        max-height: 260px;
+        overflow-y: auto;
+        display: grid;
+      }
+      .hub-pick-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 2px 10px;
+        text-align: left;
+        border: 0;
+        border-top: 1px solid var(--border);
+        background: none;
+        color: inherit;
+        font: inherit;
+        padding: 8px 10px;
+        min-height: 40px;
+        cursor: pointer;
+      }
+      .hub-pick-row:first-child {
+        border-top: 0;
+      }
+      .hub-pick-row[hidden] {
+        display: none;
+      }
+      .hub-pick-row.sel {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .hub-pick-row small {
+        grid-column: 1 / -1;
+        color: var(--muted);
+      }
+      .hub-pick-tag {
+        font-size: 12px;
+        color: var(--ok);
+      }
+      .hub-pick-q {
+        padding: 6px 10px;
+        min-height: 40px;
+      }
+      .hub-pick-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      @media (max-width: 700px) {
+        .hub-rv-row {
+          grid-template-columns: 1fr auto;
+        }
+        .hub-rv-pj,
+        .hub-rv-pp:has(.hub-pick) {
+          grid-column: 1 / -1;
+        }
+      }
       /* The Settings page (R21): the prototype's (den-shell.html) page
          header, sections, rows, segmented buttons, swatches and navigation
          list, ported as they are; --r is --radius, --r-btn is
@@ -659,6 +802,23 @@
         margin-top: 10px;
       }
       /* HUB-1.5: Settings › Hub. */
+      /* Issue 646 (mock v2, 1b): the connected company first and big. */
+      .hub-co {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin-bottom: 8px;
+      }
+      .hub-co-name {
+        display: block;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .hub-co .set-note {
+        margin: 2px 0 0;
+      }
       .hub-st {
         display: grid;
         grid-template-columns: max-content 1fr;

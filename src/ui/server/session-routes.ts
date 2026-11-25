@@ -44,6 +44,7 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import { denToolsOld } from "../../shared/agents/den-tools-version.js";
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import { SizeLead } from "./term-size-lead.js";
 import * as fs from "fs";
@@ -115,6 +116,7 @@ import {
   defaultHubNow,
   isStoppedState,
   mcpStaleOf,
+  withDenTools,
   newerOf,
   noteEnded,
   rowHelpers,
@@ -132,6 +134,11 @@ import {
 import { agentHubWork } from "./hub-delivery-service.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
+import {
+  clearDraft,
+  draftPending,
+  noteInput,
+} from "../../shared/agents/draft-input.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -164,6 +171,11 @@ export interface SessionRouteDeps {
   waitingWhy?: () => ReadonlyMap<string, string>;
   /** The person typed into session `id` (its pane): its agent's wait ends. */
   typed?: (id: string) => void;
+  /**
+   * Issue 1311: how many messages wait for agent `agent` while its
+   * person's unsent draft is on its input line (its terminal says so).
+   */
+  draftWaiting?: (agent: string) => number;
   /** D28: each agent's effective rotation settings (one resolver per list). */
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
   /** D59: whether each agent resumes on its own after a restart. */
@@ -222,6 +234,7 @@ interface Resolved {
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
   typed: (id: string) => void;
+  draftWaiting: (agent: string) => number;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   modeOf?: SessionRouteDeps["modeOf"];
@@ -289,6 +302,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
         void import("./notification-service.js")
           .then((m) => m.personTyped(id))
           .catch(() => undefined)),
+    draftWaiting: d.draftWaiting ?? defaultDraftWaiting,
     hubNow: d.hubNow ?? (() => defaultHubNow()),
     closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
     uploadSettings:
@@ -348,6 +362,33 @@ const VIEWERS = new Map<
  * last active viewer (term-size-lead.ts). By session id, beside VIEWERS.
  */
 const LEADS = new Map<string, SizeLead<object>>();
+
+/**
+ * Issue 1311: Den's typing queue's and Hub's held messages for `agent`
+ * while its person's draft holds them. Loaded on first use (the server's
+ * own modules); 0 until then.
+ */
+let draftCounts: ((agent: string) => number) | null = null;
+let draftCountsLoading = false;
+function defaultDraftWaiting(agent: string): number {
+  if (!draftCounts && !draftCountsLoading) {
+    draftCountsLoading = true;
+    void Promise.all([
+      import("../cli/agent-ops.js"),
+      import("./hub-delivery-service.js"),
+    ])
+      .then(([ops, hub]) => {
+        draftCounts = (a) => ops.draftWaiting(a) + hub.hubWaitingOnDraft(a);
+      })
+      .catch(() => {
+        draftCountsLoading = false;
+      });
+  }
+  return draftCounts ? draftCounts(agent) : 0;
+}
+
+/** Issue 1311: how often an open terminal's "N waiting" is looked at. */
+const DRAFT_WAITING_LOOK_MS = 1000;
 
 function tellViewers(id: string): void {
   const set = VIEWERS.get(id);
@@ -762,10 +803,18 @@ export function listedSessions(
         return w ? { hubWork: w } : {};
       })(),
       ...(() => {
-        if (hubUrl === undefined || r.state !== "running") return {};
-        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
-          waiting: hubUrl === null && hubTokenProblem() !== null,
-        });
+        if (r.state !== "running") return {};
+        const hub =
+          hubUrl === undefined
+            ? undefined
+            : mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
+                waiting: hubUrl === null && hubTokenProblem() !== null,
+              });
+        // Issue 1223: its Den tools are an older Den's.
+        const st = withDenTools(
+          hub,
+          denToolsOld(rec, r.startedAt, d.stateDir()),
+        );
         return st ? { mcpStale: st } : {};
       })(),
       ...(() => {
@@ -1552,6 +1601,8 @@ export async function handleSessionUpgrade(
     },
     onExit: (exitCode) => {
       exited = true;
+      // Issue 1311: a draft dies with its session.
+      clearDraft(s.ref.id);
       ws.send(
         JSON.stringify({
           type: "exit",
@@ -1572,7 +1623,11 @@ export async function handleSessionUpgrade(
         if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
-        if (!terminalReportOnly(data)) d.typed(s.ref.id);
+        if (!terminalReportOnly(data)) {
+          d.typed(s.ref.id);
+          // Issue 1311: the person's draft on its input line, if any.
+          noteInput(s.ref.id, data);
+        }
       }
       return;
     }
@@ -1610,14 +1665,34 @@ export async function handleSessionUpgrade(
         const data = Buffer.from(msg.data, "utf-8");
         if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
-        if (!terminalReportOnly(data)) d.typed(s.ref.id);
+        if (!terminalReportOnly(data)) {
+          d.typed(s.ref.id);
+          noteInput(s.ref.id, data);
+        }
       }
     }
   });
+  // Issue 1311: messages waiting on the person's draft: the pane says how
+  // many (sent when it changes; 0 clears it).
+  let waitingSaid = 0;
+  const waitingTimer = setInterval(() => {
+    if (!ws.open) return;
+    let n = 0;
+    try {
+      n = draftPending(s.ref.id) ? d.draftWaiting(p.name) : 0;
+    } catch {
+      n = 0;
+    }
+    if (n === waitingSaid) return;
+    waitingSaid = n;
+    ws.send(JSON.stringify({ type: "waiting", n }));
+  }, DRAFT_WAITING_LOOK_MS);
+  waitingTimer.unref?.();
   let done = false;
   const detach = () => {
     if (done) return;
     done = true;
+    clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
     // Issue 791: the view that led went: the newest one left leads.

@@ -194,6 +194,11 @@ export interface RefreshDeps {
    */
   cutNote?: string | null;
   log(line: string): void;
+  /**
+   * Issue 1403: restart only if no agent is mid-turn at the look; never
+   * wait and cut (a routine host_restart). Otherwise held.
+   */
+  idleOnly?: boolean;
 }
 
 export type RefreshResult =
@@ -218,7 +223,12 @@ export type RefreshResult =
       /** Terminals (not agents) that ended. */
       terminals: number;
     }
-  | { did: "failed"; why: string };
+  | { did: "failed"; why: string }
+  /**
+   * Issue 1403: an idle-only refresh found an agent mid-turn (or couldn't
+   * tell): nothing restarted, nothing cut; the person decides.
+   */
+  | { did: "held"; busy: string[] };
 
 /** Ask the running host what it runs; restart it when it isn't current. */
 export async function refreshSessionHost(
@@ -258,6 +268,18 @@ export async function refreshSessionHost(
   }
   c.close();
   const why = need.why;
+  // Issue 1403 (Den Builder): a routine restart never cuts a turn. One look
+  // right before it: an agent mid-turn, or no answer, holds it instead.
+  if (d.idleOnly) {
+    const ids = await d.running().catch(() => null);
+    const now = ids ? await d.busy(ids).catch(() => null) : null;
+    if (!now || now.length) {
+      d.log(
+        `terminal host: ${why}: not restarted, ${now ? `agents mid-turn: ${now.join(", ")}` : "agents' turns unknown"}; the person decides`,
+      );
+      return { did: "held", busy: now ?? [] };
+    }
+  }
   d.log(`terminal host: ${why}: it restarts once no agent is mid-turn`);
   try {
     d.onWait?.({ why, waitMs: d.waitMs });

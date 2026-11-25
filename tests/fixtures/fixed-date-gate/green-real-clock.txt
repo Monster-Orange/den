@@ -1,0 +1,5 @@
+it("counts reports in the last day", () => {
+  const ago = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+  line({ ts: ago(2) });
+  expect(report({ now: new Date() }).count).toBe(1);
+});
