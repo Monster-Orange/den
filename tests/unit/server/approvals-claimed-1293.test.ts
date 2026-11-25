@@ -122,7 +122,6 @@ const as = (who: Record<string, string>, body?: unknown, method = "POST") => ({
   ...(body ? { body: JSON.stringify(body) } : {}),
 });
 const AGENT = { "x-test-agent": "asker" };
-const OTHER = { "x-test-agent": "other" };
 const PAT = { "x-test-person": "pat" };
 const SAM = { "x-test-person": "sam" };
 const ANON = { "x-test-anon": "1" };
@@ -229,7 +228,7 @@ describe("issue 1293: an unverified agent claim on a person's ask", () => {
     syncHeldBell(
       {
         list: () => [],
-        add: (n) => (added.push(n as Record<string, unknown>), null),
+        add: (n: unknown) => (added.push(n as Record<string, unknown>), null),
         remove: () => 0,
       } as unknown as Parameters<typeof syncHeldBell>[0],
       [a],
