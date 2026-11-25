@@ -102,6 +102,10 @@ describe("gate-slot routes", () => {
       maxStartLoad: GATE_DEFAULTS.maxStartLoad,
       maxStartWaitMinutes: 10,
       reapGraceSeconds: 10,
+      memoryFreeMinPercent: 10,
+      memoryReadingKeepSeconds: 30,
+      swapHoldGb: 8,
+      vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       overrunBellMultiple: 2,
@@ -114,6 +118,7 @@ describe("gate-slot routes", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      browserContainerStrict: false,
       browserBoxDefault: "any",
       browserHostOnly: "",
       // Issue 1264: Den's agent hook routes heavy runs, with the default list.

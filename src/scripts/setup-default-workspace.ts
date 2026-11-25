@@ -177,10 +177,11 @@ async function main() {
 
   const wsFile = readWorkspacesFile();
   // Its services only: its other keys (hub_project, name, …) stay.
-  wsFile.workspaces[WORKSPACE_KEY] = {
-    ...wsFile.workspaces[WORKSPACE_KEY],
-    services,
-  };
+  // Issue 1215: never the fixture person's marker on a seeded project.
+  const { fixture_made: _never, ...kept } =
+    wsFile.workspaces[WORKSPACE_KEY] ?? {};
+  void _never;
+  wsFile.workspaces[WORKSPACE_KEY] = { ...kept, services };
   writeWorkspacesFile(wsFile);
 
   console.log(

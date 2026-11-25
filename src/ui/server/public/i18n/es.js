@@ -1011,6 +1011,9 @@
     "err.signin.codeDenied": "Este ordenador fue rechazado en {host}.",
     "err.signin.codeFailed":
       "{name} no dio un código a esta página. Inténtalo de nuevo.",
+    "err.signin.pairStartLead":
+      "Inicia sesión con un código desde un navegador que ya tenga la sesión iniciada en {name}, en {host} u otro ordenador.",
+    "err.signin.pairStart": "Iniciar sesión desde otro ordenador",
     "err.signin.newCode": "Obtener un código nuevo",
     "err.signin.youreIn": "Ya estás dentro.",
     "err.signin.expiredLead":
@@ -1207,6 +1210,22 @@
       "Esperar nuevas pruebas unitarias por encima de esta carga por núcleo",
     "set.server.gate_load_hold_per_core.d":
       "Las nuevas pruebas unitarias esperan mientras la carga media de 5 minutos de esta máquina supere este número de veces sus núcleos, pero solo mientras otra prueba unitaria se ejecuta: si no hay ninguna, la siguiente empieza con cualquier carga. Las pruebas de versión y las que ya se ejecutan nunca esperan. Cada prueba unitaria recibe también su parte de los núcleos en DEN_GATE_WORKERS. 0 desactiva la espera. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Esperar nuevas pruebas aquí con menos memoria libre que esta (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "Las nuevas pruebas en esta máquina (unitarias y de navegador, también las de versión) esperan mientras su memoria libre esté por debajo de este porcentaje, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "Esperar nuevas pruebas aquí con más intercambio en uso que esto (GB)",
+    "set.server.gate_swap_hold_gb.d":
+      "Las nuevas pruebas en esta máquina esperan mientras el intercambio en uso supere estos GB, pero solo mientras otra prueba se ejecuta aquí: si no hay ninguna, la siguiente empieza. Una máquina puede mostrar mucha memoria libre mientras el intercambio se llena. Las máquinas de prueba siguen recibiendo sus pruebas. 0 desactiva la espera. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "Si falla una lectura de memoria, conservar la última durante (segundos)",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "Cuando no se puede leer la memoria libre o el swap, la última lectura válida vale durante estos segundos. Después, la lectura es desconocida, y una lectura desconocida retiene las nuevas ejecuciones aquí mientras otra está en marcha. 0 retiene al instante. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
+    "set.server.gate_vm_memory_share":
+      "Avisar cuando las máquinas virtuales reserven más que esta parte de la memoria",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor avisa cuando la memoria reservada por las máquinas virtuales en marcha (máquinas de OrbStack, la máquina virtual de Docker) supera esta parte de la RAM de la máquina. 1 es toda; por debajo de 1 avisa antes. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Carga de la máquina que detiene las pruebas unitarias durante una prueba de navegador de versión",
     "set.server.gate_cpu_hold_load.d":
@@ -1380,9 +1399,15 @@
     "set.agents.shell_path_wait": "Espera al PATH del shell",
     "set.agents.shell_path_wait.d":
       "Cuánto espera __DEN_TITLE__ a que tu shell diga su PATH al buscar las CLI de agentes: el PATH que recibe un shell nuevo, con sus archivos de inicio. Pasado este tiempo, busca en los lugares habituales. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "Espera por un borrador antes del aviso",
+    "set.agents.draft_hold_max.d":
+      "Mientras tienes un mensaje sin enviar escrito en la terminal de un agente, __DEN_TITLE__ retiene lo que escribiría allí y nunca envía tu borrador. Pasado este tiempo, la campana avisa de que hay mensajes esperando. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_concurrent": "Agentes a la vez",
+    "set.agents.max_concurrent.d":
+      "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",
     "set.server.sessions_max": "Terminales a la vez",
     "set.server.sessions_max.d":
       "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",
@@ -1478,6 +1503,48 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "Esta instalación es",
+    "set.server.install_mode.d":
+      "Personal: la máquina propia de una persona. Los agentes trabajan fuera del sandbox, así que Docker, los sockets y tus herramientas funcionan, y cambian ajustes sin preguntar, salvo dinero, borrados, seguridad y actuar sobre otras personas. Estricta: para la instalación de una empresa o una máquina compartida. El sandbox está activo y lo que escriben los agentes sigue tu política de aprobación. Un ajuste que hiciste tú se queda como lo pusiste. __DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "Personal",
+    "set.server.install_mode.o.strict": "Estricta",
+    "set.agents.settings_limits":
+      "Agentes que cambian ajustes: Límites y rendimiento",
+    "set.agents.settings_limits.d":
+      "Topes, tiempos de espera e intervalos: cuántos agentes a la vez, cuánto espera Den. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_limits.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_limits.o.ask": "Preguntarme",
+    "set.agents.settings_limits.o.never": "Nunca",
+    "set.agents.settings_look": "Agentes que cambian ajustes: Aspecto y diseño",
+    "set.agents.settings_look.d":
+      "Cómo se ve Den y cómo te avisa: pestañas, la barra lateral, alertas y horas de silencio. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_look.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_look.o.ask": "Preguntarme",
+    "set.agents.settings_look.o.never": "Nunca",
+    "set.agents.settings_integrations":
+      "Agentes que cambian ajustes: Integraciones",
+    "set.agents.settings_integrations.d":
+      "Editores, terminales, runtimes, Hub y GitHub. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_integrations.o.auto":
+      "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_integrations.o.ask": "Preguntarme",
+    "set.agents.settings_integrations.o.never": "Nunca",
+    "set.agents.settings_network": "Agentes que cambian ajustes: Red y acceso",
+    "set.agents.settings_network.d":
+      "La dirección de Den, el edge, los límites de inicio de sesión y la inserción. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_network.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_network.o.ask": "Preguntarme",
+    "set.agents.settings_network.o.never": "Nunca",
+    "set.agents.settings_agent_powers":
+      "Agentes que cambian ajustes: Poderes de los agentes",
+    "set.agents.settings_agent_powers.d":
+      "El sandbox, los permisos, las aprobaciones, los secretos y el tipo de instalación. Siempre te preguntan, o se rechazan. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_agent_powers.o.ask": "Preguntarme",
+    "set.agents.settings_agent_powers.o.never": "Nunca",
+    "set.server.restore_services":
+      "Volver a iniciar los servicios después de un reinicio",
+    "set.server.restore_services.d":
+      "Activado, después de que la máquina o __DEN_TITLE__ se reinicie, los servicios que estaban activos vuelven a iniciarse solos, unos pocos a la vez. Un servicio que detuviste sigue detenido. La campana dice cuáles volvieron. __DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "Agentes reiniciados a la vez",
     "set.agents.resume_batch.d":
       "Tras un reinicio, o cuando cambian las herramientas de Hub, los agentes se reinician de este número en este número; primero los que estaban trabajando. 0 reinicia todos a la vez. __DEN_CLI__ config agents.resume.batch=4",
@@ -1497,6 +1564,10 @@
       "Escrituras de issues de GitHub por hora",
     "set.agents.issue_writes_per_hour.d":
       "Cuántas escrituras de issues pueden hacer todos los agentes juntos en una hora. Pasado ese número, al agente se le dice cuánto esperar. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    "set.agents.issue_writes_visibility_minutes":
+      "Volver a comprobar la visibilidad de un repositorio tras",
+    "set.agents.issue_writes_visibility_minutes.d":
+      "El texto que un agente publica en un repositorio público, o en uno cuya visibilidad no se conoce, se revisa primero en busca de nombres de la lista. Estos son los minutos que se guarda la visibilidad de un repositorio antes de volver a preguntar a GitHub, así que un repositorio que se hace público se revisa poco después. De 1 a 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     "ap.do.agent_import":
       'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
     "ap.do.approval_policy":
@@ -1724,6 +1795,15 @@
     "set.agents.hub_delivery_loop": "Ciclo de entrega de Hub",
     "set.agents.hub_delivery_loop.d":
       "Activado, cada agente que Den inicia en un proyecto conectado a Hub recibe el ciclo de entrega en sus instrucciones: documentos de requisitos en Hub, issues enlazados completos, revisión y comentarios en los hilos de Hub, estado desde git. Desactivado para todos los proyectos de aquí, salvo que un proyecto lo active. Llega a un agente en su próximo inicio.",
+    "set.agents.hub_groups": "Grupos de Hub",
+    "set.agents.hub_groups.d":
+      "Si la página Agentes muestra los grupos de tu Hub (Por grupo, junto a Por proyecto). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
+    "set.agents.hub_groups.o.auto": "Automático",
+    "set.agents.hub_groups.o.on": "Activado",
+    "set.agents.hub_groups.o.off": "Desactivado",
+    "set.agents.hub_groups_cache": "Grupos guardados durante",
+    "set.agents.hub_groups_cache.d":
+      "Cuánto tiempo guarda Den en memoria una copia de los grupos de Hub antes de volver a pedírselos: de 5 a 3600 segundos. Reintentar en la página Agentes se los pide a Hub en el momento. __DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop": "Ciclo de entrega de Hub: este proyecto",
     "set.workspace.hub_delivery_loop.d":
       "Si los agentes de este proyecto reciben el ciclo de entrega de Hub en sus instrucciones, por encima del ajuste de la instalación. Llega a un agente en su próximo inicio.",
@@ -1802,6 +1882,10 @@
       "Duración de la vista de un agente, en minutos",
     "set.access.agent_view_minutes.d":
       "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.sessions_lock_wait":
+      "Espera al archivo de accesos al entrar, en ms",
+    "set.access.sessions_lock_wait.d":
+      "Cuánto espera la entrada mientras otro comando cambia el archivo de accesos; después pide intentarlo de nuevo. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
     "set.access.test_installs_here": "Instalaciones de prueba en esta máquina",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
@@ -2096,6 +2180,27 @@
       "Den se actualizó a {to} después de que este agente empezara, así que sus herramientas de Den siguen con el código de {from}. Reiniciar carga las de {to}, en su próxima pausa, en la misma conversación.",
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
+    "ag.by.label": "Mostrar la lista",
+    "ag.by.project": "Por proyecto",
+    "ag.by.group": "Por grupo",
+    "ag.grp.noHub": "Los grupos vienen con Den Hub.",
+    "ag.grp.connect": "Conectar Den Hub",
+    "ag.grp.notInPlan":
+      "Los grupos no están en el plan de Den Hub de esta empresa.",
+    "ag.grp.openHub": "Abrir Hub",
+    "ag.grp.guest":
+      "Eres invitado en esta empresa de Hub, así que sus grupos no se muestran aquí.",
+    "ag.grp.unreachable":
+      "No se puede contactar con Den Hub, así que los grupos no se muestran.",
+    "ag.grp.retry": "Intentar de nuevo",
+    "ag.grp.noGroups": "Aún no hay grupos",
+    "ag.grp.openGroups": "Abrir Grupos en Hub",
+    "ag.grp.lead": "Responsable: {name}",
+    "ag.grp.open": "Abrir {group} en Hub",
+    "ag.grp.message": "Escribir al grupo",
+    "ag.grp.messageName": "Escribir a {group} en Hub",
+    "ag.grp.empty": "Ninguno de sus miembros se ejecuta en este Den.",
+    "ag.grp.notIn": "Sin grupo",
     "ag.mcp.restarting":
       "{id} se reinicia cuando quede libre, en la misma conversación.",
     "ag.det.label": "Detalles de {id}",
@@ -2129,14 +2234,20 @@
     "pair.aDevice": "Un navegador",
     "pair.local": "en este ordenador, por localhost",
     "pair.help":
-      "Escribe el código que se muestra en la pantalla de ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
+      "Escribirlo demuestra que estás en ese ordenador. Permite solo un ordenador en el que estés iniciando sesión tú.",
     "pair.allow": "Permitir",
     "pair.allowed": "Ese equipo ya inició sesión.",
     "pair.ended":
       "Esa solicitud terminó: ese ordenador cerró su página o ya inició sesión. No se permitió nada.",
     "pair.expired": "Ese código caducó. No se permitió nada.",
     "pair.close": "Cerrar",
-    "pair.codeLabel": "Código en la pantalla de ese ordenador",
+    "pair.from": "Desde {client}, pide {host}, a las {time}.",
+    "pair.fromNamed":
+      "Desde {client} (se hace llamar {name}), pide {host}, a las {time}.",
+    "pair.unknownAddr": "una dirección que Den no pudo ver",
+    "pair.unexpected":
+      "Si no acabas de intentar iniciar sesión en otro ordenador, deniégalo.",
+    "pair.codeLabel": "Escribe el código que muestra ese ordenador",
     "pair.age": "Lo pidió hace {n} min.",
     "pair.ageNow": "Lo pidió ahora mismo.",
     "pair.fromLogin": "Del web login ejecutado a las {time}.",
@@ -2345,6 +2456,10 @@
     "ap.det.agent_create.runtime": "Motor: {v}",
     "ap.det.agent_create.mode": "Modo: {mode} (el del proyecto: {cap})",
     "ap.det.agent.who": "Agente: {agent}, proyecto {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} empieza fuera del sandbox: agents.{id}.sandbox está en off en config/local/user.yml.",
+    "ap.det.agent.sandboxOffAll":
+      "Los agentes de aquí empiezan fuera del sandbox (agents.sandbox: off), y este también.",
     "ap.det.agent.whoId": "Agente: {agent} ({id}), proyecto {project}",
     "ap.det.agent_folder.from": "Desde: {v}",
     "ap.det.agent_folder.to": "A: {v}",
@@ -2361,6 +2476,46 @@
       "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
     "ap.det.agent_mode.stopped":
       "Está detenido: su próximo arranque es en {mode}.",
+    "ap.det.agent_sandbox_set.self":
+      "{agent} lo pide para sí mismo: quiere su propio sandbox en {value}.",
+    "ap.det.agent_sandbox_set.on":
+      "Esto devuelve a {agent} al sandbox: los archivos de Den vuelven a ser de solo lectura para él.",
+    "ap.det.agent_sandbox_set.off":
+      "Esto saca a {agent} del sandbox: podrá escribir los archivos de Den y usar lo que el sandbox bloquea.",
+    "ap.det.agent_sandbox_set.why": "Por qué: {why}",
+    "ap.det.agent_sandbox_set.writes":
+      "Den escribe agents.{id}.sandbox: {value} en config/local/user.yml, y nada más ahí.",
+    "ap.det.agent_sandbox_set.running":
+      "Está en marcha: Den lo reinicia tras su turno, en la misma conversación, con el cambio.",
+    "ap.det.agent_sandbox_set.stopped":
+      "Está detenido: su próximo inicio tiene el cambio.",
+    "ap.do.agent_sandbox_set": "{agent}: de vuelta en el sandbox",
+    "ap.do.agent_sandbox_set.loosens": "Esto saca a {agent} del sandbox",
+    "ap.det.setting_change.widens":
+      "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
+    "ap.det.setting_change.key": "Ajuste: {key}",
+    "ap.det.setting_change.now": "Ahora: {value}",
+    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
+    "ap.det.setting_change.new": "Nuevo: {value}",
+    "ap.det.setting_change.why": "Por qué: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Por qué: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den los escribe en settings.json de la carpeta de la cola, con su bloqueo, y nada más allí.",
+    "ap.det.setting_change.by": "Lo pide {agent}",
+    "ap.det.setting_change.writes":
+      "Den escribe solo {key} en config/local/user.yml, guarda antes una copia del archivo y anota el cambio en la auditoría.",
+    "ap.det.setting_change.restart":
+      "Den lo lee al arrancar: se aplica tras reiniciar Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "Se aplica al momento.",
+    "ap.do.setting_change": "Cambiar {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "Esto amplía lo que pueden hacer los agentes: {key}: {now} → {value}",
+    "ap.do.gate_settings_set":
+      "Cambiar los ajustes de la cola de pruebas: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "Esto amplía lo que pueden hacer los agentes: ajustes de la cola de pruebas {keys}",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
@@ -2488,7 +2643,7 @@
     "pmcp.none": "No hay MCP adicionales para los agentes de este proyecto.",
     "set.workspace.event_feeds": "Flujos de eventos de apps: este proyecto",
     "set.workspace.event_feeds.d":
-      "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade uno en agents.event_feeds; el bearer es un nombre de secrets.refs.",
+      "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade o quita uno aquí; un agente lo pide con project_event_feed_add o project_event_feed_remove. El bearer es un nombre de secrets.refs, nunca un valor.",
     "set.embed.feed_max_streams": "Flujos de apps leídos a la vez",
     "set.embed.feed_max_streams.d":
       "El máximo de flujos de eventos de apps que Den lee a la vez, en todos los proyectos. Por encima, un flujo no se lee y las notificaciones de su proyecto lo dicen.",
@@ -2520,6 +2675,30 @@
     "feed.unread": "Sin leer: {n}.",
     "bell.m.appFeed.dropped":
       "Flujo {name} para {agent}: se fueron eventos sin leer porque el flujo guarda como máximo su límite.",
+    "feed.add": "Añadir flujo",
+    "feed.name": "Nombre",
+    "feed.agent": "Agente",
+    "feed.url": "Dirección del flujo",
+    "feed.bearer": "Bearer (un nombre de secrets.refs)",
+    "feed.bearerNone": "ninguno",
+    "feed.noAgents": "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
+    "feed.addW": "Añadiendo el flujo…",
+    "feed.addS": "Añadido.",
+    "feed.addF": "No se pudo añadir el flujo.",
+    "feed.remove": "Quitar",
+    "feed.removeL": "Quitar el flujo {name}",
+    "feed.rmT": "¿Quitar el flujo?",
+    "feed.rmAsk": "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
+    "feed.rmW": "Quitando el flujo…",
+    "feed.rmS": "Quitado.",
+    "feed.rmF": "No se pudo quitar el flujo.",
+    "ap.do.project_event_feed_add": "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
+    "ap.do.project_event_feed_remove": "Quitar el flujo de eventos {name} del proyecto {project}",
+    "ap.feed.warn": "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
+    "ap.feed.feed": "Flujo: {name}, para {agent}",
+    "ap.feed.bearer": "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
+    "ap.feed.noBearer": "Sin bearer: el flujo se abre sin cabecera Authorization.",
+    "ap.feed.removeWarn": "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
     "feed.problems":
       "Entradas de agents.event_feeds que no se pueden leer: {n}.",
     "feed.failed":
@@ -2840,6 +3019,22 @@
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
     "bell.ap.done": "Permitido: {what}",
+    "rs.now": "{id}: reiniciando ahora, en la misma conversación.",
+    "rs.turn":
+      "{id}: se reinicia cuando termine su turno, en la misma conversación.",
+    "rs.job":
+      "{id}: en espera: un trabajo en segundo plano ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den no sabe cuándo termina su turno, así que aún no se reinicia.",
+    "rs.nowJob": "Reiniciar ahora (termina el trabajo)",
+    "rs.nowBtn": "Reiniciar ahora",
+    "rs.all": "Reiniciar los {n} ahora",
+    "rs.none": "Ningún agente necesita reiniciarse.",
+    "rs.bar": "{n} agentes necesitan reiniciarse para cargar sus herramientas.",
+    "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
+    "rs.allName": "los agentes",
+    "rs.done": "{id}: reiniciado, en la misma conversación.",
+    "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
@@ -2888,6 +3083,14 @@
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
     "bell.m.held.unread.one":
       "{name}: {n} mensaje espera desde hace {m} min. En espera: Den no pudo leer el estado del agente a tiempo",
+    "bell.m.held.draft":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: le estás escribiendo un mensaje; entran cuando lo envíes o lo borres",
+    "bell.m.held.draft.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: le estás escribiendo un mensaje; entra cuando envíes o borres el tuyo",
+    "bell.m.held.hub_tools":
+      "{name}: {n} mensajes esperan desde hace {m} min. En espera: sus herramientas de Hub no se cargaron; reinícialo",
+    "bell.m.held.hub_tools.one":
+      "{name}: {n} mensaje espera desde hace {m} min. En espera: sus herramientas de Hub no se cargaron; reinícialo",
     "bell.m.hubNoAnswer":
       "{name}: {n} comentarios de Hub escritos, aún sin respuesta tras {m} min",
     "bell.m.hubNoAnswer.one":
@@ -2905,6 +3108,14 @@
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso: {what} (desde {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ se actualizó por una corrección de seguridad mientras {agent} te esperaba; su pregunta sigue abierta",
+    "bell.m.serviceBack":
+      "Se volvió a iniciar 1 servicio después del reinicio.",
+    "bell.m.servicesBack":
+      "Se volvieron a iniciar {n} servicios después del reinicio.",
+    "bell.m.serviceBackFailed":
+      "Se volvió a iniciar 1 servicio después del reinicio. No se pudieron iniciar: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Se volvieron a iniciar {n} servicios después del reinicio. No se pudieron iniciar: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ volvió a conectar las herramientas de Hub de {agent}; su nota espera hasta que respondas a {agent} en su terminal",
     "bell.m.toolsListFailed":
@@ -2925,6 +3136,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ se actualizó a {v}: la rama necesita una solicitud de cambios; se abrió la #{n} para su versión fijada ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
     "bell.m.pinHeld":
@@ -2976,6 +3189,12 @@
     "ag.hub.queued": "{n} comentarios de Hub lo esperan",
     "ag.hub.notAtPrompt":
       "En espera: el agente no está en su indicador de entrada",
+    "ag.draftWaiting":
+      "{n} mensajes en espera: se envían después de tu borrador",
+    "ag.draftWaiting.one":
+      "{n} mensaje en espera: se envía después de tu borrador",
+    "ag.draftWaitingTip":
+      "Den los retiene mientras escribes aquí. Envía o borra tu mensaje y entran, en orden.",
     "tx.asked": "Pedido",
     "tx.result": "Resultado",
     "tx.error": "Error",
@@ -3223,6 +3442,22 @@
     "gate.onBox": "en la máquina de pruebas {box}",
     "gate.anyBox": "aquí o en una máquina de pruebas",
     "gate.boxesH": "Máquinas de pruebas",
+    "gate.swapHold":
+      "esperando: esta máquina usa {used} GB de intercambio, más de {limit} GB, mientras se ejecuta otra prueba aquí; empieza cuando baje el intercambio o termine esa prueba",
+    "gate.swapUsed": "Intercambio en uso: {used} GB",
+    "gate.memoryHold":
+      "esperando: esta máquina tiene {free}% de memoria libre, menos del {limit}%, mientras se ejecuta otra prueba aquí; empieza cuando se libere memoria o termine esa prueba",
+    "gate.memoryUnavailableHold":
+      "esperando: lectura de memoria no disponible, mientras otra ejecución está en marcha aquí; empieza cuando vuelva una lectura o termine esa ejecución",
+    "gate.memoryUnavailable": "Esta máquina: lectura de memoria no disponible",
+    "gate.memoryNotMeasured":
+      "Esta máquina: la memoria no se mide en esta plataforma: las retenciones por memoria no se aplican",
+    "gate.freeMemory": "Esta máquina: {free}% de memoria libre",
+    "gate.vms":
+      "Las máquinas virtuales aquí reservan {promised} GB de {limit} GB permitidos",
+    "gate.vmsOver":
+      "Las máquinas virtuales aquí reservan {promised} GB, más de los {limit} GB permitidos: la máquina puede quedarse sin memoria",
+    "gate.vmsNotCounted": "{runtime}: sin contar (no se pudo leer)",
     "gate.boxSlots": "{box}: {held} de {n} turnos de navegador en uso",
     "gate.boxHeld": "{box}: omitida, en pausa ({reason})",
     "gate.boxDown": "{box}: omitida, no responde ({reason})",
@@ -3244,6 +3479,9 @@
     "gate.leftoversH": "Detenidos al terminar su ejecución",
     "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
     "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
+    "busy.setUndoW": "Devolviendo el ajuste…",
+    "busy.setUndoS": "El ajuste vuelve a estar como antes.",
+    "busy.setUndoF": "No se pudo devolver el ajuste.",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

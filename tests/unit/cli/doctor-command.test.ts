@@ -187,6 +187,76 @@ describe("doctor", () => {
     });
   });
 
+  it("issue 1334: the implicit secrets default, unavailable, is idle: ok and 'not in use yet', never ⚠", () => {
+    const rows = doctorRows(dist("environments: [local]\n"));
+    const secrets = rows.find((r) => r.kind === "secrets")!;
+    expect(secrets).toMatchObject({
+      implicit: true,
+      available: false,
+      idle: true,
+    });
+    expect(strategyCheck(secrets).status).toBe("ok");
+    expect(strategyCheck(secrets).detail).toContain("not in use yet");
+    const line = formatDoctor([secrets], "Den").find((l) =>
+      l.includes("secrets"),
+    )!;
+    expect(line).toContain("– not in use yet");
+    expect(line).not.toContain("✗");
+  });
+
+  it("issue 1334: a secrets provider someone chose, unavailable, still fails", () => {
+    const secrets = doctorRows(
+      dist("environments: [local]\nsecrets:\n  provider: doppler\n"),
+    ).find((r) => r.kind === "secrets")!;
+    expect(secrets.idle).toBeUndefined();
+    expect(strategyCheck(secrets).status).toBe("fail");
+  });
+
+  it("issue 1334: a kind no config selects (usage) with no source found yet (no transcripts) is idle, not ⚠", () => {
+    registerStrategy({
+      id: "off-a",
+      kind: "off-kind",
+      detect: () => ({ available: false, reason: "no transcripts yet" }),
+      capabilities: {},
+    });
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "off-kind",
+    )!;
+    expect(row).toMatchObject({ available: false, idle: true, problem: false });
+    expect(strategyCheck(row).status).toBe("ok");
+  });
+
+  it("issue 1334: a source whose detect throws is never idle: still ✗ unavailable and warn", () => {
+    registerStrategy({
+      id: "throw-a",
+      kind: "throw-kind",
+      detect: () => {
+        throw new Error("probe broke");
+      },
+      capabilities: {},
+    });
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "throw-kind",
+    )!;
+    expect(row).toMatchObject({ available: false, reason: "probe broke" });
+    expect(row.idle).toBeUndefined();
+    expect(strategyCheck(row).status).toBe("warn");
+    expect(formatDoctor([row], "Den").join("\n")).toContain("✗ unavailable");
+  });
+
+  it("issue 1334: the agent runtime missing with no agents is idle; with an agent it still warns", () => {
+    const none = doctorRows(dist("environments: [local]\n"), {
+      agents: () => 0,
+    }).find((r) => r.kind === "runtime")!;
+    expect(none).toMatchObject({ available: false, idle: true });
+    expect(strategyCheck(none).status).toBe("ok");
+    const some = doctorRows(dist("environments: [local]\n"), {
+      agents: () => 1,
+    }).find((r) => r.kind === "runtime")!;
+    expect(some.idle).toBeUndefined();
+    expect(strategyCheck(some).status).toBe("warn");
+  });
+
   it("an invalid edge.tls is reported, not thrown", () => {
     const [, tls] = doctorRows(
       dist("edge:\n  org: acme\n  domain: acme.localhost\n  tls: acme\n"),
@@ -453,6 +523,72 @@ describe("hubProjectLines (H5)", () => {
     expect(r.lines[2]).toContain("2 projects aren't linked");
     expect(r.lines[2]).toContain("`acme hub link --suggested`");
     expect(r.checks).toHaveLength(2);
+  });
+
+  it("issue 1334: an empty unlinked project (the built-in default) is ✓ nothing to link, never ⚠ or a link command", () => {
+    const r = hubProjectLines(
+      true,
+      [{ ws: "default", link: null, empty: true }],
+      "acme",
+    );
+    expect(r.checks).toEqual([
+      {
+        id: "hub:project:default",
+        status: "ok",
+        detail: "default: empty, nothing to link",
+      },
+    ]);
+    expect(r.lines).toEqual([
+      "  hub project  ✓  default: empty, nothing to link",
+    ]);
+    expect(r.lines.join("\n")).not.toContain("hub link");
+  });
+
+  it("issue 1334: a project with a repo and no link still warns; empties don't count toward --suggested", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        { ws: "default", link: null, empty: true },
+        { ws: "shop", link: null, empty: false },
+      ],
+      "acme",
+    );
+    expect(r.checks.map((c) => [c.id, c.status])).toEqual([
+      ["hub:project:default", "ok"],
+      ["hub:project:shop", "warn"],
+    ]);
+    // One unlinked that matters: no "in one go" line.
+    expect(r.lines).toHaveLength(2);
+    expect(r.lines[1]).toContain("`acme hub link -p shop`");
+  });
+
+  it("issue 1334: an empty project linked is still ✓ linked, and a lost link on one still warns", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        {
+          ws: "default",
+          link: { slug: "home", name: "home" },
+          empty: true,
+        },
+      ],
+      "acme",
+    );
+    expect(r.checks[0]).toMatchObject({ status: "ok" });
+    expect(r.checks[0].detail).toContain("linked to Hub project home");
+    const lost = hubProjectLines(
+      true,
+      [
+        {
+          ws: "default",
+          link: null,
+          empty: true,
+          lost: { slug: "home", at: "2026-11-12T10:00:00.000Z" },
+        },
+      ],
+      "acme",
+    );
+    expect(lost.checks[0]).toMatchObject({ status: "warn" });
   });
 });
 

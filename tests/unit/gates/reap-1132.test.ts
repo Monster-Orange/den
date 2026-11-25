@@ -13,12 +13,13 @@
  *     touched
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
-import { spawn, type ChildProcess } from "child_process";
+import { execFileSync, spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { pidRunning } from "../../../src/shared/process/process-group.js";
 
 const tmps: string[] = [];
 const kids: ChildProcess[] = [];
@@ -35,14 +36,8 @@ afterEach(() => {
     fs.rmSync(d, { recursive: true, force: true });
 });
 
-const alive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
+/** Running, as the store judges it (a zombie is not: issue 1320). */
+const alive = (pid: number): boolean => pidRunning(pid);
 
 const tmp = (name: string) => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), `den-gate1132-${name}-`));
@@ -183,12 +178,39 @@ describe("a run's worker tree", () => {
     // Any store on the machine: the next pass takes the slot back and
     // stops what it left (and KILLs it after the grace, on a later pass).
     const look = new GateStore({ platform: "linux", dir: r.dir });
-    expect(
-      await within(6_000, () => {
-        look.list();
-        return !r.workers.some(alive);
-      }),
-    ).not.toBe(-1);
+    // Issue 1320: well past one pass and the grace; the bad path is never.
+    const took = await within(20_000, () => {
+      look.list();
+      return !r.workers.some(alive);
+    });
+    if (took === -1) {
+      const ps = (pid: number) => {
+        try {
+          return execFileSync(
+            "ps",
+            ["-o", "pid=,ppid=,pgid=,stat=", "-p", String(pid)],
+            { encoding: "utf-8" },
+          ).trim();
+        } catch {
+          return `${pid} not in ps`;
+        }
+      };
+      const leftovers = (() => {
+        try {
+          return JSON.parse(
+            fs.readFileSync(path.join(r.dir, "leftovers.json"), "utf-8"),
+          );
+        } catch (e) {
+          return String(e);
+        }
+      })();
+      expect({
+        took,
+        workers: r.workers.map(ps),
+        leftovers,
+        events: look.events().slice(-8),
+      }).toEqual({ took: "any" });
+    }
     const rows = leftoverRows(look);
     expect(rows[0]).toMatchObject({
       count: 3,
@@ -196,7 +218,7 @@ describe("a run's worker tree", () => {
       label: "reaper",
       reason: "gone",
     });
-  });
+  }, 40_000);
 
   it("a process outside the run's group, with the same command line, is never stopped", async () => {
     const same = spawn(

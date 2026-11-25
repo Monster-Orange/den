@@ -686,6 +686,85 @@ describe("issue 989: the agents' sign-in goes through the server", () => {
   });
 });
 
+describe("issue 1182: agents accounts remove goes through the server", () => {
+  const TOKEN = "fake-token-for-1182-0123456789abcdef";
+  function accountsRig(r: Rig, server: PersonServer) {
+    const local = { cleared: 0 };
+    const run = (...args: string[]) =>
+      cmdAgents(args, {
+        ...r.deps,
+        server,
+        loginPath: async () => {},
+        tokenInput: async () => TOKEN,
+        tokenConfirm: async () => true,
+        tokenClear: async () => {
+          local.cleared++;
+          return {
+            cleared: true,
+            how: "item",
+            store: "Local store",
+            refDropped: false,
+          };
+        },
+        tokenDeps: {
+          status: () => ({
+            backend: "1password",
+            label: "1Password",
+            implicit: false,
+            detect: { available: true },
+          }),
+        },
+      } as Parameters<typeof cmdAgents>[1]);
+    return { run, local };
+  }
+
+  it("the server removes it; a refusal removes nothing; no server: removed here", async () => {
+    const r = await rig();
+    const made = accountsRig(r, fake(null).server);
+    expect(await made.run("accounts", "add", "--name", "two")).toBe(0);
+    const before = written(r);
+
+    const yes = fake({
+      status: 200,
+      json: { ok: true, removed: "Account B", store: "1Password" },
+    });
+    expect(
+      await accountsRig(r, yes.server).run(
+        "accounts",
+        "remove",
+        "two",
+        "--yes",
+      ),
+    ).toBe(0);
+    expect(yes.calls).toEqual([
+      {
+        method: "POST",
+        path: "/api/agents/accounts/remove",
+        body: { runtime: "den-claude", account: "2" },
+      },
+    ]);
+    expect(written(r)).toBe(before);
+    expect(r.out.at(-1)).toMatch(/removed Account B/);
+
+    const no = fake({ status: 403, json: { ok: false, error: "nope" } });
+    expect(
+      await accountsRig(r, no.server).run("accounts", "remove", "two", "--yes"),
+    ).not.toBe(0);
+    expect(written(r)).toBe(before);
+    expect(r.err.join("\n")).toContain("nope");
+
+    expect(
+      await accountsRig(r, fake(null).server).run(
+        "accounts",
+        "remove",
+        "two",
+        "--yes",
+      ),
+    ).toBe(0);
+    expect(written(r)).not.toBe(before);
+  });
+});
+
 describe("issue 989: notifications read and clear go through the server", () => {
   const cases: { args: string[]; path: string; body: unknown; said: RegExp }[] =
     [
@@ -835,6 +914,96 @@ describe("issue 989: web owner link and unlink go through the server", () => {
     const a = await owner(["link"], s.server);
     expect(a.code).not.toBe(0);
     expect(a.err).toContain("The code expired");
+  });
+});
+
+describe("issue 1182: gate settings goes through the server", () => {
+  async function gate(server: PersonServer, dir: string) {
+    const { GateStore } = await import("../../../src/shared/gates/store.js");
+    const { cmdGate } = await import("../../../src/ui/cli/gate-command.js");
+    const store = new GateStore({ dir, alive: () => true });
+    const out: string[] = [];
+    const err: string[] = [];
+    const run = (...args: string[]) =>
+      cmdGate(args, {
+        store,
+        env: {},
+        server,
+        out: (l) => out.push(l),
+        err: (l) => err.push(l),
+        now: Date.now,
+        sleep: () => Promise.resolve(),
+        exec: () => ({ pid: 1, kill: () => {}, done: Promise.resolve(0) }),
+        every: () => () => {},
+        onSignal: () => () => {},
+        exit: () => {},
+        pid: 4242,
+        cwd: "/tmp/repo",
+        lang: "en",
+      });
+    return { run, out, err, store };
+  }
+  const settingsFile = (dir: string) => path.join(dir, "settings.json");
+  const read = (dir: string) =>
+    fs.existsSync(settingsFile(dir))
+      ? fs.readFileSync(settingsFile(dir), "utf-8")
+      : "";
+
+  it("the server saves it (POST /api/settings {gate_slots}); the CLI writes nothing", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const yes = fake({ status: 200, json: { ok: true, gate_slots: {} } });
+    const g = await gate(yes.server, dir);
+    const before = read(dir);
+    expect(await g.run("settings", "--cpu-slots", "3")).toBe(0);
+    expect(yes.calls).toEqual([
+      {
+        method: "POST",
+        path: "/api/settings",
+        body: { gate_slots: { cpu_slots: 3 } },
+      },
+    ]);
+    expect(read(dir)).toBe(before);
+  });
+
+  it("a refusal is shown, exits non-zero and changes nothing", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const no = fake({
+      status: 403,
+      json: { ok: false, error: "only a person can do that" },
+    });
+    const g = await gate(no.server, dir);
+    const before = read(dir);
+    expect(await g.run("settings", "--cpu-slots", "3")).not.toBe(0);
+    expect(read(dir)).toBe(before);
+    expect(g.err.join("\n")).toContain("only a person can do that");
+  });
+
+  it("with no server, the CLI writes it as before; a bad value never reaches the server", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const none = fake(null);
+    const g = await gate(none.server, dir);
+    expect(await g.run("settings", "--cpu-slots", "3")).toBe(0);
+    expect(g.store.settings().cpuSlots).toBe(3);
+    const bad = fake({ status: 200, json: { ok: true } });
+    const g2 = await gate(bad.server, dir);
+    expect(await g2.run("settings", "--cpu-slots", "-1")).not.toBe(0);
+    expect(bad.calls).toEqual([]);
+  });
+
+  it("only showing them (no flags) asks no server", async () => {
+    const r = await rig();
+    const dir = path.join(r.dir, "gate");
+    fs.mkdirSync(dir, { recursive: true });
+    const s = fake({ status: 200, json: { ok: true } });
+    const g = await gate(s.server, dir);
+    expect(await g.run("settings")).toBe(0);
+    expect(s.calls).toEqual([]);
   });
 });
 

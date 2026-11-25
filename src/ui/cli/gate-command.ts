@@ -60,10 +60,15 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
   type LoadHold,
+  MEMORY_NOT_MEASURED_WORDS,
+  type MemoryHold,
+  type SwapHold,
   expectedStart,
   GATE_DEFAULTS,
   loadHold,
   startHold,
+  memoryHold,
+  swapHold,
   queueEnd,
   queueMinOf,
   overrun,
@@ -81,8 +86,19 @@ import {
   realCores,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import {
+  GATE_CHECKOUT_ENV,
+  GATE_STORE_ENV,
+  checkoutOf,
+  checkoutTag,
+  cleanRun,
+  realDocker,
+  storeTag,
+  type Docker,
+} from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
+  boxCouldServe,
   boxEnv,
   checkBox,
   defaultPlace,
@@ -90,7 +106,7 @@ import {
 } from "../../shared/gates/boxes.js";
 import {
   SELF,
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
   endpointFromEnv,
   personLanguage,
@@ -106,13 +122,21 @@ import {
   START_HOLD_WORDS,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
-import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
+import {
+  allowOf,
+  checkBaseUrl,
+  isLoopbackHost,
+} from "../../shared/gates/pw-guard.js";
 import {
   boxOffWords,
   gateBoxesView,
   gateView,
+  type GateMachineView,
+  removedView,
 } from "../../shared/gates/view.js";
+import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
+import { emptyTestList } from "./gate-test-list.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
@@ -134,6 +158,10 @@ export const GATE_HELP = {
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
+    "    a jest, vitest or playwright test run that names no test files and",
+    "    no filter is refused (it would run every test); --all-tests allows it.",
+    "    npm/pnpm/yarn test is judged by its package.json script; a command",
+    "    inside sh -c is not read",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
@@ -220,6 +248,11 @@ export interface GateDeps {
   watch?: { folderGone: () => boolean; parentGone: () => boolean };
   /** Issue 989: the running server (default: this install's). */
   server?: PersonServer;
+  /**
+   * Issue 1263: the docker CLI, to remove the run's throwaway containers
+   * when its slot ends (absent: nothing is removed; tests pass a fake).
+   */
+  docker?: Docker;
 }
 
 /**
@@ -255,6 +288,22 @@ const WATCH_LOOK_MS = 1_000;
 
 /** Issue 1132: how often a held run looks at the load again. */
 const HOLD_LOOK_MS = 2_000;
+
+/**
+ * Issue 1198: a default pick's base URL when the run gives none: any port
+ * on 127.0.0.1 but 80 and 443, and in the box guard (issue 991) only the
+ * ports the run itself opens.
+ */
+const DEFAULT_BASE = "http://127.0.0.1:*";
+
+/** Whether a Playwright endpoint is on this machine's loopback. */
+function loopbackEndpoint(raw: string): boolean {
+  try {
+    return isLoopbackHost(new URL(raw).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 1023: how often a run looks whether its command is dumping core. */
 const DUMP_LOOK_MS = 100;
@@ -400,6 +449,7 @@ export function realGateDeps(): GateDeps {
     now: Date.now,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     exec: realExec,
+    docker: realDocker(),
     every: (ms, fn) => {
       const h = setInterval(fn, ms);
       h.unref();
@@ -577,6 +627,59 @@ export function holdWords(h: LoadHold): string {
     : `waiting: this machine's load is ${h.load.toFixed(1)}, over ${h.perCore} × ${h.cores} cores (${h.limit}), while another unit test run is going; it starts once the load drops or that run ends`;
 }
 
+/** Issue 1274: why a run here waits on swap, in words. */
+export function swapHoldWords(h: SwapHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
+  return `waiting: this machine has ${h.usedGb} GB of swap in use, over ${h.limitGb} GB, while another run here is going; it starts once swap drops or that run ends (test boxes still take runs)`;
+}
+
+/** Issue 1274: why a run here waits on memory, in words. */
+export function memoryHoldWords(h: MemoryHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
+  return `waiting: this machine has ${Math.round(h.free)}% of its memory free, under ${h.limit}%, while another run here is going; it starts once memory frees or that run ends (test boxes still take runs)`;
+}
+
+/** Issue 1349: an unknown memory reading holds; why, in words. */
+export function memoryUnavailableHoldWords(): string {
+  return "waiting: memory reading unavailable (this machine's free memory or swap couldn't be read), while another run here is going; it starts once a reading comes back or that run ends (test boxes still take runs)";
+}
+
+const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
+
+/** Issue 1274: gate status's lines for this machine's memory and VMs. */
+export function machineLines(m: GateMachineView | undefined): string[] {
+  if (!m) return [];
+  const out: string[] = [];
+  // Issue 1349: the guard is off here, or its reading is unknown: say so.
+  if (m.notMeasured) out.push(`This machine: ${MEMORY_NOT_MEASURED_WORDS}.`);
+  else if (m.unavailable)
+    out.push(
+      "This machine: memory reading unavailable; new runs here wait while another run here is going.",
+    );
+  if (m.freeMemory !== undefined)
+    out.push(
+      `This machine: ${m.freeMemory}% of memory free` +
+        (m.swapUsedGb ? `, ${m.swapUsedGb} GB of swap in use.` : "."),
+    );
+  if (m.vms && m.ramBytes !== undefined && m.promisedBytes !== undefined) {
+    const limit = gbWords(Math.round(m.ramBytes * (m.share ?? 1)));
+    const of = `${m.share ?? 1} × ${gbWords(m.ramBytes)} RAM`;
+    if (m.vms.length || m.notCounted?.length)
+      out.push(
+        m.over
+          ? `⚠ VMs here promise ${gbWords(m.promisedBytes)}, over ${limit} (${of}): the machine can run out of memory`
+          : `VMs here promise ${gbWords(m.promisedBytes)} of ${limit} (${of}).`,
+      );
+    for (const v of m.vms)
+      out.push(
+        `  ${v.name} (${v.runtime}) ${gbWords(v.memBytes)}, ${v.cpus} cpus`,
+      );
+    for (const n of m.notCounted ?? [])
+      out.push(`  ${n}: not counted (couldn't read it)`);
+  }
+  return out;
+}
+
 /** One line for a holder or waiter. */
 export function slotLine(
   e: GateEntry,
@@ -589,6 +692,10 @@ export function slotLine(
       lang?: UiLanguage;
       /** Issue 1048: the machine's cores. */
       cores?: number;
+      /** Issue 1274: this machine's free memory, percent. */
+      freeMemory?: number | null;
+      /** Issue 1274: swap in use here, GB. */
+      swapUsedGb?: number | null;
     },
 ): string {
   const yields = yieldedTo(e, all);
@@ -596,6 +703,15 @@ export function slotLine(
   const hold =
     !e.grantedAt && e.kind === "cpu" && !e.priority
       ? loadHold(all, margin, margin.load, margin.cores)
+      : undefined;
+  // Issue 1274: a run here held by low memory.
+  const mem =
+    !e.grantedAt && (!e.where || e.where === "local" || e.where === "any")
+      ? memoryHold(all, margin, margin.freeMemory)
+      : undefined;
+  const swap =
+    !e.grantedAt && (!e.where || e.where === "local" || e.where === "any")
+      ? swapHold(all, margin, margin.swapUsedGb)
       : undefined;
   // Issue 803: its class, and a wait for its class's window.
   const cls = classOf(e, margin.classes);
@@ -605,6 +721,8 @@ export function slotLine(
     (cls ? `  class ${cls}` : "") +
     (win ? `  waits for its ${win.text} window` : "") +
     (hold ? `  ${holdWords(hold)}` : "") +
+    (mem ? `  ${memoryHoldWords(mem)}` : "") +
+    (swap ? `  ${swapHoldWords(swap)}` : "") +
     // Issue 1132: granted, its command waiting for the load to drop.
     (e.grantedAt && e.startHold
       ? `  ${START_HOLD_WORDS[margin.lang ?? "en"](e.startHold.load, e.startHold.limit)}`
@@ -708,6 +826,18 @@ function flags(args: string[], known: Record<string, boolean | "many">) {
   return { f, pos, rest: false };
 }
 
+function packageScript(cwd: string, name: string): string | undefined {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cwd, "package.json"), "utf-8"),
+    ) as { scripts?: Record<string, unknown> };
+    const s = pkg.scripts?.[name];
+    return typeof s === "string" ? s : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function run(args: string[], d: GateDeps): Promise<number> {
   const { f, pos, rest } = flags(args, {
     "--kind": true,
@@ -719,12 +849,21 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--base-url": true,
     "--pw-version": true,
     "--browser-endpoint": true,
+    "--all-tests": false,
   });
   if (!rest || pos.length === 0)
     throw new GateUsage("gate run needs -- <command> [args]");
   const kind = (f["--kind"] ?? "cpu") as string;
   if (kind !== "browser" && kind !== "cpu")
     throw new GateUsage("--kind is browser or cpu");
+  const everything = f["--all-tests"]
+    ? null
+    : emptyTestList(pos, (name) => packageScript(d.cwd, name));
+  if (everything)
+    throw new GateUsage(
+      `this ${everything} run names no test files and no filter, so it would run every test. ` +
+        "Name the files (build the list first and check it isn't empty), or pass --all-tests when a full run is meant",
+    );
   // Issue 625: a browser run that can use a test box's browser says so.
   let where = typeof f["--box"] === "string" ? f["--box"] : undefined;
   // Issue 1033: this machine's own name (not a box's) is local.
@@ -824,6 +963,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+  // Issue 1198: a loopback container named in the run's environment is
+  // what this machine's browser runs use here; a box replaces it. One on
+  // another host, or one given with --browser-endpoint, the run keeps.
+  const envLoopback =
+    flagEndpoint === undefined &&
+    fromEnv !== undefined &&
+    loopbackEndpoint(fromEnv.endpoint);
   const pwFlag =
     typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
   // Issue 1033: no --box: the first free browser slot, here or on a test
@@ -840,11 +986,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           label,
           project: path.basename(d.cwd),
           boxes: d.store.boxes(),
-          baseUrl: urls.length > 0,
+          // Issue 1198: none given: the ports the run opens (DEFAULT_BASE).
+          baseUrl: true,
           pwVersion: pwFlag ?? playwrightVersion(d.cwd),
           // A run that brings its own browser (the flag, or its
           // environment) keeps it: a box would only change DEN_PW_WS.
-          ...(endpoint !== undefined
+          ...(endpoint !== undefined && !envLoopback
             ? {
                 ownBrowser:
                   endpoint === SELF
@@ -856,15 +1003,25 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     where = pick.where;
     hostWhy = pick.why;
     onlyBoxes = pick.only;
+    if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
-  const verdict = browserSlotCheck({
+  const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
     ...(where ? { where } : {}),
-    platform: d.store.platform,
-    requiresContainer: d.store.settings().browserRequiresContainer,
+    // Issue 1198: "any" with none of its own waits only for a box that
+    // could ever take it; else it is refused at once.
+    ...(where === "any"
+      ? {
+          boxCouldServe: boxCouldServe(
+            d.store.boxes(),
+            pwFlag ?? playwrightVersion(d.cwd),
+            onlyBoxes,
+          ),
+        }
+      : {}),
   });
   if (!verdict.ok)
     throw new GateUsage(
@@ -927,6 +1084,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     throw new GateUsage("--reason goes with --priority release");
   const s = d.store;
   const actor = d.env[AGENT_ACTOR_ENV]?.trim();
+  // Issue 1289: the checkout this run is in (its kept containers' owner).
+  const checkout = checkoutTag(checkoutOf(d.cwd));
   let e: GateEntry | null;
   try {
     e = s.ask({
@@ -937,6 +1096,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       estimateMin,
       agent: isAgentEnv(d.env),
       project: path.basename(d.cwd),
+      checkout,
       ...(actor ? { actor } : {}),
       ...(priority ? { priority: { reason } } : {}),
       ...(where ? { where } : {}),
@@ -944,6 +1104,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       ...(hostWhy ? { hostWhy } : {}),
       ...(onlyBoxes ? { onlyBoxes } : {}),
+      ...(verdict.ok && verdict.boxesOnly ? { boxesOnly: true } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -965,6 +1126,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   if (priority && s.settings().priorityMax === 0)
     d.err(`gate: ${PRIORITY_OFF_RUN[d.lang ?? personLanguage()]}`);
   const id = e.id;
+  const onBox = !!e.box;
   let child: GateRun | undefined;
   let released = false;
   let dumped = false;
@@ -1002,6 +1164,17 @@ async function run(args: string[], d: GateDeps): Promise<number> {
             ? loadHold(all, set, s.load(), s.cores())
             : undefined;
         if (hold) d.err(holdWords(hold));
+        // Issue 1274: a run here held by low memory says so.
+        const mem =
+          !where || where === "local"
+            ? memoryHold(all, set, s.freeMemory())
+            : undefined;
+        if (mem) d.err(memoryHoldWords(mem));
+        const sw =
+          !where || where === "local"
+            ? swapHold(all, set, s.swapUsedGb())
+            : undefined;
+        if (sw) d.err(swapHoldWords(sw));
         said = d.now();
       }
       await d.sleep(2_000);
@@ -1024,6 +1197,10 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       [GATE_SLOT_ENV]: id,
       [GATE_SLOT_KIND_ENV]: kind,
       [GATE_SLOT_BOX_ENV]: e.box ?? "local",
+      // Issue 1263: the store's tag, for a throwaway container's labels.
+      [GATE_STORE_ENV]: storeTag(s.dir),
+      // Issue 1289: the checkout's tag, for a kept container's label.
+      [GATE_CHECKOUT_ENV]: checkout,
     };
     // Issue 1048: a cpu run here uses its share of the cores, no more.
     if (kind === "cpu" && !e.box)
@@ -1127,6 +1304,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   } finally {
     off();
     release();
+    // Issue 1263: the run's throwaway containers go with its slot (a box
+    // run's are on the box, swept there). Never fails the run.
+    if (d.docker && !onBox) await cleanRun(s, id, d.docker, checkout);
   }
 }
 
@@ -1186,11 +1366,23 @@ function status(args: string[], d: GateDeps): number {
     ...d.store.settings(),
     load: d.store.load(),
     cores: d.store.cores(),
+    freeMemory: d.store.freeMemory(),
+    swapUsedGb: d.store.swapUsedGb(),
     lang: d.lang ?? personLanguage(),
   };
   if (all.length === 0) d.out("No gate runs hold or wait.");
   for (const e of all) d.out(slotLine(e, all, d.now(), set));
   for (const l of boxStatusLines(d.store, all)) d.out(l);
+  // Issue 1274: free memory, and what running VMs reserve.
+  for (const l of machineLines(
+    gateView(d.store, d.now(), { vmsNow: true }).machine,
+  ))
+    d.out(l);
+  // Issue 1263: throwaway containers removed after their run ended.
+  for (const r of removedView(d.store, d.now()))
+    d.out(
+      `Gate: removed ${r.count} container${r.count === 1 ? "" : "s"} for ${r.label} (${r.id}) at ${localDateTime(r.at)}${r.images.length ? `: ${r.images.join(", ")}` : ""}`,
+    );
   // Issue 1132: what was stopped of ended runs in the last hour.
   for (const r of d.store.stoppedLeftovers(d.now() - 60 * 60_000))
     if (r.signal !== "KILL")
@@ -1398,7 +1590,7 @@ function yieldPlace(args: string[], d: GateDeps): number {
   return 0;
 }
 
-function settings(args: string[], d: GateDeps): number {
+async function settings(args: string[], d: GateDeps): Promise<number> {
   const { f } = flags(args, {
     "--cpu-slots": true,
     "--overrun-margin-minutes": true,
@@ -1415,6 +1607,9 @@ function settings(args: string[], d: GateDeps): number {
     "--max-start-load": true,
     "--max-start-wait-minutes": true,
     "--reap-grace-seconds": true,
+    "--memory-free-min-percent": true,
+    "--swap-hold-gb": true,
+    "--vm-memory-share": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
     "--priority-agents": true,
@@ -1435,6 +1630,8 @@ function settings(args: string[], d: GateDeps): number {
     "--route-agents": true,
     "--route-commands": true,
     "--yes": false,
+    // Issue 1395: an agent's ask says why.
+    "--reason": true,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -1447,6 +1644,10 @@ function settings(args: string[], d: GateDeps): number {
     ["--max-start-load", "max_start_load"],
     ["--max-start-wait-minutes", "max_start_wait_minutes"],
     ["--reap-grace-seconds", "reap_grace_seconds"],
+    ["--memory-free-min-percent", "memory_free_min_percent"],
+    ["--swap-hold-gb", "swap_hold_gb"],
+    ["--memory-reading-keep-seconds", "memory_reading_keep_seconds"],
+    ["--vm-memory-share", "vm_memory_share"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
     ["--remote-renew-seconds", "remote_renew_seconds"],
@@ -1486,12 +1687,14 @@ function settings(args: string[], d: GateDeps): number {
     if (typeof v === "string") raw[key] = v.trim() || null;
   }
   if (Object.keys(raw).length) {
-    if (isAgentEnv(d.env))
-      throw new GateUsage(
-        "gate settings: only a person can change them (this is an agent)",
-      );
     const c = checkGatePatch(raw);
     if (!c.ok) throw new GateUsage(c.error);
+    // Issue 1395: an agent asks for gate_settings_set; never writes here.
+    if (isAgentEnv(d.env)) {
+      const done = await askGateSettings(d, c.patch, f["--reason"]);
+      if (done !== 0) return done;
+      return showSettings(d);
+    }
     // Issue 963: turning release priority off warns first; --yes goes on.
     const lang = d.lang ?? personLanguage();
     if (
@@ -1502,8 +1705,81 @@ function settings(args: string[], d: GateDeps): number {
       d.err(`gate settings: ${PRIORITY_OFF_WARNING[lang]}`);
       return 1;
     }
-    d.store.writeSettings(c.patch as GateSettingsPatch, whoAsks(d.env, d.cwd));
+    // Issue 1182: the running server saves it, audited as the person
+    // (POST /api/settings, which refuses agents); with none listening the
+    // CLI writes it as before.
+    const via = await viaServer(d, "gate settings", "/api/settings", {
+      gate_slots: c.patch,
+    });
+    if (via === false) return 1;
+    if (via === null)
+      d.store.writeSettings(
+        c.patch as GateSettingsPatch,
+        whoAsks(d.env, d.cwd),
+      );
   }
+  return showSettings(d);
+}
+
+/**
+ * Issue 1395: an agent's `gate settings` change, asked of Den as the held
+ * write gate_settings_set (the approval policy decides: written at once,
+ * or held for the person's Allow). 0 when written or held; 1 when refused
+ * or no server answered. The CLI writes nothing itself for an agent.
+ */
+async function askGateSettings(
+  d: GateDeps,
+  patch: GateSettingsPatch,
+  reasonFlag: string | boolean | string[] | undefined,
+): Promise<number> {
+  const reason = typeof reasonFlag === "string" ? reasonFlag.trim() : "";
+  if (!reason)
+    throw new GateUsage(
+      'gate settings: an agent asks the person for a change: add --reason "<why>"',
+    );
+  let r: Awaited<ReturnType<PersonServer>>;
+  try {
+    r = await (d.server ?? personServerFor())("POST", "/api/approvals", {
+      action: "gate_settings_set",
+      args: { settings: patch, reason },
+    });
+  } catch (e) {
+    d.err(`gate settings: ${(e as Error).message}; nothing was changed`);
+    return 1;
+  }
+  if (r === null) {
+    d.err(
+      "gate settings: Den's web app isn't answering, so nothing was asked or changed",
+    );
+    return 1;
+  }
+  const j = r.json ?? {};
+  const result = (j.result ?? {}) as Record<string, unknown>;
+  if ((r.status !== 200 && r.status !== 202) || j.ok === false) {
+    d.err(`gate settings: ${String(j.error ?? `Den answered ${r.status}`)}`);
+    return 1;
+  }
+  if (j.state === "done" && result.ok === false) {
+    d.err(`gate settings: ${String(result.error ?? "it failed")}`);
+    return 1;
+  }
+  if (j.state === "done") {
+    const changed = Array.isArray(result.changed) ? result.changed : [];
+    d.out(
+      changed.length
+        ? `✓ gate settings changed: ${changed.join(", ")}`
+        : `✓ gate settings: ${String(result.note ?? "already in effect")}`,
+    );
+    return 0;
+  }
+  d.out(
+    `gate settings: waiting for the person's Allow in Den (request ${String(j.id ?? "")}); check it with the MCP tool approval_check`,
+  );
+  return 0;
+}
+
+/** The settings, each with its meaning and value, and the summary line. */
+function showSettings(d: GateDeps): number {
   const s = d.store.settings();
   // Issue 963: each setting, its value and what it means.
   const meanings = GATE_MEANINGS[d.lang ?? personLanguage()];
@@ -1515,7 +1791,7 @@ function settings(args: string[], d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserContainerStrict ? "yes, strict" : s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""
@@ -1541,7 +1817,7 @@ export async function cmdGate(
       case "yield":
         return yieldPlace(args.slice(1), d);
       case "settings":
-        return settings(args.slice(1), d);
+        return await settings(args.slice(1), d);
       default:
         d.err(`usage: ${GATE_HELP.usage}`);
         return 2;

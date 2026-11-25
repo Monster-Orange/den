@@ -40,6 +40,9 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+
+export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
 import { projectColour, projectLabel } from "./workspace-picker.js";
@@ -813,11 +816,15 @@ function drawOwner(host, ctx) {
       host.innerHTML =
         `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.ownerIs", "Owner:"))} <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
         `<button type="button" class="den-btn" id="set-owner-unlink">${escHtml(L("set.ui.unlink", "Unlink"))}</button>`;
-      host.querySelector("#set-owner-unlink").addEventListener("click", () =>
+      const unlink = host.querySelector("#set-owner-unlink");
+      unlink.addEventListener("click", () => {
+        // Issue 1054: the button shows the kit's dots until the answer.
+        const release = window.denShell?.holdDots?.(unlink) ?? (async () => {});
         api("POST", "/api/web/owner/unlink", {})
           .then(load)
-          .catch((e) => fail(e.message)),
-      );
+          .catch((e) => fail(e.message))
+          .finally(release);
+      });
       return;
     }
     host.innerHTML =
@@ -858,9 +865,19 @@ function drawOwner(host, ctx) {
       );
   function startLink() {
     const b = host.querySelector("#set-owner-link");
-    if (b) b.disabled = true;
+    // Issue 1054: the dots until the code comes; then it stays off while
+    // the code is shown (fail() turns it on again).
+    const release = window.denShell?.holdDots?.(b) ?? (async () => {});
     api("POST", "/api/web/owner/link", {})
+      .then(
+        (f) => Promise.resolve(release()).then(() => f),
+        (e) =>
+          Promise.resolve(release()).then(() => {
+            throw e;
+          }),
+      )
       .then((f) => {
+        if (b) b.disabled = true;
         const box = host.querySelector("#set-owner-flow");
         const url = f.verificationUri || "https://github.com/login/device";
         box.innerHTML =
@@ -964,13 +981,14 @@ function drawDevices(host, ctx) {
         });
         host.querySelectorAll("[data-revoke]").forEach((btn) =>
           btn.addEventListener("click", () => {
-            btn.disabled = true;
+            // Issue 1054: the kit's dots until the answer.
+            const release =
+              window.denShell?.holdDots?.(btn) ?? (async () => {});
             ctx.shell
               .api("POST", "/api/web/logout", { id: btn.dataset.revoke })
               .then(load)
-              .catch(() => {
-                btn.disabled = false;
-              });
+              .catch(() => {})
+              .finally(release);
           }),
         );
       })
@@ -1222,6 +1240,10 @@ function drawPair(host, ctx) {
       const out = host.querySelector("#set-pair-out");
       const go = () => {
         clearTimeout(timer);
+        // Issue 1054: Pair shows the kit's dots until the link comes.
+        const release =
+          window.denShell?.holdDots?.(host.querySelector("#set-pair-go")) ??
+          (async () => {});
         ctx.shell
           .api("POST", "/api/web/pair", {
             host: host.querySelector("#set-pair-host").value,
@@ -1249,7 +1271,8 @@ function drawPair(host, ctx) {
           })
           .catch((e) => {
             out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
-          });
+          })
+          .finally(release);
       };
       host.querySelector("#set-pair-go").addEventListener("click", go);
     })
@@ -2131,6 +2154,21 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
   },
   {
+    // Issue 1299: how long a sign-in waits while another process writes
+    // the sign-ins file, before it says "try again".
+    id: "access.sessions_lock_wait",
+    category: "access",
+    label: "Sign-in waits for the sign-ins file, in ms",
+    description:
+      "How long a sign-in waits while another command changes the sign-ins file, then it asks to try again. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+    keywords: ["sign-in", "lock", "wait", "busy", "web.sessions_lock_wait_ms"],
+    scope: "user",
+    keys: ["web_sessions.lock_wait_ms"],
+    control: { type: "number", min: 0, max: 30000, step: 100, unit: "ms" },
+    read: (ctx) => ctx.data.web_sessions?.lockWaitMs ?? 2000,
+    write: (v, ctx) => ctx.post({ web_sessions: { lock_wait_ms: v } }),
+  },
+  {
     id: "access.machine_name",
     category: "access",
     label: "Machine name",
@@ -2712,7 +2750,7 @@ function renderKeepRunning(host, ctx) {
     say("");
     try {
       const r = await applyKeepRunning(on, {
-        // The working pop-up while the server answers.
+        // The kit's dots on Apply while the server answers (issue 1054).
         post: (body) =>
           ctx.shell.busyAction(
             "keep-running",
@@ -3295,6 +3333,63 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { load_hold_per_core: v } }),
   },
   {
+    // Issue 1274: new runs here wait while free memory is under this.
+    id: "server.gate_memory_free_min_percent",
+    category: "server",
+    label: "Hold new runs here under this much free memory (%)",
+    description:
+      "New test runs on this machine (unit and browser, release ones too) wait while its free memory is under this percent, but only while another run here is going: with none going, the next one starts. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "ram", "swap"],
+    scope: "user",
+    keys: ["gate_slots.memory_free_min_percent"],
+    control: { type: "number", min: 0, max: 90, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.memoryFreeMinPercent ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { memory_free_min_percent: v } }),
+  },
+  {
+    // Issue 1274: new runs here wait while swap in use is over this.
+    id: "server.gate_swap_hold_gb",
+    category: "server",
+    label: "Hold new runs here over this much swap in use (GB)",
+    description:
+      "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.swap_hold_gb"],
+    control: { type: "number", min: 0, max: 1024, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.swapHoldGb ?? 8,
+    write: (v, ctx) => ctx.post({ gate_slots: { swap_hold_gb: v } }),
+  },
+  {
+    // Issue 1349: a failed memory reading's last good value stands this long.
+    id: "server.gate_memory_reading_keep_seconds",
+    category: "server",
+    label: "If a memory reading fails, keep the last one for (seconds)",
+    description:
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.memory_reading_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.memoryReadingKeepSeconds ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { memory_reading_keep_seconds: v } }),
+  },
+  {
+    // Issue 1274: doctor warns over this share of RAM promised to VMs.
+    id: "server.gate_vm_memory_share",
+    category: "server",
+    label: "Warn when VMs promise more than this share of memory",
+    description:
+      "Doctor warns when the memory that running VMs (OrbStack machines, Docker's VM) have reserved adds up to more than this share of the machine's RAM. 1 is all of it; under 1 warns sooner. __DEN_CLI__ gate settings --vm-memory-share 1",
+    keywords: ["gate", "vm", "orbstack", "docker", "memory", "ram", "doctor"],
+    scope: "user",
+    keys: ["gate_slots.vm_memory_share"],
+    control: { type: "number", min: 0.1, max: 4, step: 0.05 },
+    read: (ctx) => ctx.data.gate_slots?.vmMemoryShare ?? 1,
+    write: (v, ctx) => ctx.post({ gate_slots: { vm_memory_share: v } }),
+  },
+  {
     // Issue 1009: cpu runs wait at this load under a release browser run.
     id: "server.gate_cpu_hold_load",
     category: "server",
@@ -3555,8 +3650,17 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.browser_requires_container"],
     control: { type: "toggle" },
     read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    // On keeps the strict level (2, set with gate settings) if it was set.
     write: (v, ctx) =>
-      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+      ctx.post({
+        gate_slots: {
+          browser_requires_container: v
+            ? ctx.data.gate_slots?.browserContainerStrict === true
+              ? 2
+              : 1
+            : 0,
+        },
+      }),
   },
   {
     // Issue 714: an agent's gate slot held over MCP.
@@ -4212,7 +4316,9 @@ export const DEN_SETTINGS = [
     keywords: ["rail", "sidebar", "hide", "order", "reorder", "pages", "menu"],
     scope: "user",
     control: { type: "navlist" },
-    keys: ["shell.hidden", "shell.order"],
+    // Issue 1444: the rail's folded sections are the rail's layout too;
+    // they are set from the rail's own section headers.
+    keys: ["shell.hidden", "shell.order", "shell.folded"],
     read: (ctx) => {
       const s = ctx.shell.getState();
       return { hidden: s.hidden || [], order: s.order || [] };
@@ -4550,7 +4656,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "App event feeds: this project",
     description:
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
     keywords: ["feed", "events", "stream", "app", "sse"],
     scope: "workspace",
     control: { type: "custom", render: renderAppFeeds },
@@ -4576,6 +4682,130 @@ export const DEN_SETTINGS = [
     ]),
     read: (ctx) => ctx.data.approvals_policy ?? "notify",
     write: (v, ctx) => ctx.post({ approvals_policy: v }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for limits settings.
+    id: "agents.settings_limits",
+    category: "agents",
+    label: "Agents changing settings: Limits and performance",
+    description:
+      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.limits?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { limits: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for look settings.
+    id: "agents.settings_look",
+    category: "agents",
+    label: "Agents changing settings: Look and layout",
+    description:
+      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.look?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { look: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for integrations settings.
+    id: "agents.settings_integrations",
+    category: "agents",
+    label: "Agents changing settings: Integrations",
+    description:
+      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.integrations?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { integrations: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for network settings.
+    id: "agents.settings_network",
+    category: "agents",
+    label: "Agents changing settings: Network and access",
+    description:
+      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.network?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { network: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for agent_powers settings.
+    id: "agents.settings_agent_powers",
+    category: "agents",
+    label: "Agents changing settings: Agent powers",
+    description:
+      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.agent_powers?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { agent_powers: v } }),
   },
   {
     id: "agents.approvals_watch",
@@ -4627,6 +4857,38 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
     read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
+  },
+  {
+    // Issue 1391: personal (one person's own machine, the default) or
+    // strict (team and enterprise installs). A person's only.
+    id: "server.install_mode",
+    category: "server",
+    label: "This install is",
+    description:
+      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
+    keywords: ["personal", "strict", "mode", "sandbox", "install"],
+    scope: "user",
+    keys: ["install_mode"],
+    control: seg([
+      { value: "personal", label: "Personal" },
+      { value: "strict", label: "Strict" },
+    ]),
+    read: (ctx) => ctx.data.install_mode ?? "personal",
+    write: (v, ctx) => ctx.post({ install_mode: v }),
+  },
+  {
+    // Issue 1225: 0.4.46's services.restore_on_boot, now in Settings.
+    id: "server.restore_services",
+    category: "server",
+    label: "Bring back services after a restart",
+    description:
+      "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
+    keywords: ["restart", "reboot", "services", "restore", "resume", "boot"],
+    scope: "user",
+    keys: ["restore_services_on_boot"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.restore_services_on_boot !== false,
+    write: (v, ctx) => ctx.post({ restore_services_on_boot: !!v }),
   },
   {
     // Issue 1129: the restart queue (user.yml agents.resume.*).
@@ -4771,6 +5033,29 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
     write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
   },
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  {
+    id: "agents.issue_writes_visibility_minutes",
+    category: "agents",
+    label: "Recheck a repo's visibility after",
+    description:
+      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    keywords: [
+      "issue",
+      "github",
+      "visibility",
+      "public",
+      "names",
+      "words",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.visibility_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.visibility_minutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
+  },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
@@ -4839,6 +5124,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ panes_reconnect: { max_seconds: v } }),
   },
   {
+    // Issue 1373: how many agents run at once (user.yml agents.max_concurrent,
+    // over the distribution's den.yml).
+    id: "agents.max_concurrent",
+    category: "agents",
+    label: "Agents at once",
+    description:
+      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    keywords: [
+      "agents",
+      "limit",
+      "max_concurrent",
+      "concurrent",
+      "at once",
+      "cap",
+    ],
+    scope: "user",
+    keys: ["agents_limits.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_concurrent ?? 4,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
+  },
+  {
     // den#156: the Agents list's waits (user.yml agents_list.*).
     id: "agents.list_host_wait",
     category: "agents",
@@ -4865,6 +5172,28 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 120, step: 1, unit: "s" },
     read: (ctx) => ctx.data.agents_shell?.path_timeout_seconds ?? 10,
     write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
+  },
+  {
+    // Issue 1311: messages held on a person's unsent draft; the bell after this.
+    id: "agents.draft_hold_max",
+    category: "agents",
+    label: "Draft hold before the bell",
+    description:
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    keywords: [
+      "draft",
+      "typing",
+      "hold",
+      "wait",
+      "message",
+      "bell",
+      "terminal",
+    ],
+    scope: "user",
+    keys: ["agents_draft.hold_max_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.agents_draft?.hold_max_minutes ?? 30,
+    write: (v, ctx) => ctx.post({ agents_draft: { hold_max_minutes: v } }),
   },
   {
     id: "agents.list_refresh_wait",
@@ -5109,6 +5438,39 @@ export const DEN_SETTINGS = [
     write: (v, ctx) =>
       ctx.post({ hub_delivery_loop: v === true ? null : false }),
   },
+  {
+    // Issue 750: groups from Hub on the agents page (user.yml hub.groups).
+    id: "agents.hub_groups",
+    category: "hub",
+    label: "Groups from Hub",
+    description:
+      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+    keywords: ["hub", "groups", "group", "lead", "agents", "by group"],
+    scope: "user",
+    keys: ["hub_groups.mode"],
+    control: seg([
+      { value: "auto", label: "Auto" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) => ctx.data.hub_groups?.mode ?? "auto",
+    write: (v, ctx) =>
+      ctx.post({ hub_groups: { mode: v === "auto" ? null : v } }),
+  },
+  {
+    // Issue 750: how long Den keeps Hub's groups in memory.
+    id: "agents.hub_groups_cache",
+    category: "hub",
+    label: "Groups kept for",
+    description:
+      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
+    keywords: ["hub", "groups", "cache", "seconds", "memory", "refresh"],
+    scope: "user",
+    keys: ["hub_groups.cache_seconds"],
+    control: { type: "number", min: 5, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.hub_groups?.cache_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ hub_groups: { cache_seconds: v } }),
+  },
 
   {
     id: "agents.hub_link_all",
@@ -5266,12 +5628,15 @@ export const DEN_SETTINGS = [
                   ),
               ),
             );
-          host.querySelector("#set-signout")?.addEventListener("click", () =>
+          host.querySelector("#set-signout")?.addEventListener("click", (e) => {
+            // Issue 1054: Sign out shows the kit's dots until the answer.
+            const release =
+              window.denShell?.holdDots?.(e.currentTarget) ?? (async () => {});
             ctx.shell
               .api("POST", "/api/session/logout", {})
               .then(() => draw(false))
-              .catch(() => {}),
-          );
+              .catch(() => release());
+          });
         };
         // Until /api/session answers, an unseen button holds the row at its
         // drawn height: a row that grows later moves the sections below it,
@@ -5318,12 +5683,16 @@ export const DEN_SETTINGS = [
           host.querySelector("output").textContent = where;
           host
             .querySelector("#set-sudo-forget")
-            ?.addEventListener("click", () =>
+            ?.addEventListener("click", (e) => {
+              // Issue 1054: Forget shows the kit's dots until the answer.
+              const release =
+                window.denShell?.holdDots?.(e.currentTarget) ??
+                (async () => {});
               ctx.shell
                 .api("POST", "/api/sudo-password/forget", {})
-                .then(load)
-                .catch(load),
-            );
+                .finally(release)
+                .then(load, load);
+            });
         };
         const load = () =>
           fetch("/api/sudo-password/status", { cache: "no-store" })
@@ -5630,10 +5999,10 @@ function renderRuntimes(host, ctx) {
     } else if (b.hasAttribute("data-cancel-path") && form) {
       form.hidden = true;
     } else if (b.dataset.clearPath) {
-      await savePath(b.dataset.clearPath, null, form);
+      await savePath(b.dataset.clearPath, null, form, b);
     } else if (b.dataset.pinPath && b.dataset.bin) {
       // Issue 456: one click pins that copy; a refusal shows under the list.
-      await savePath(b.dataset.pinPath, b.dataset.bin, b.closest(".rt-o"));
+      await savePath(b.dataset.pinPath, b.dataset.bin, b.closest(".rt-o"), b);
     }
   });
   host.addEventListener("submit", async (e) => {
@@ -5642,12 +6011,14 @@ function renderRuntimes(host, ctx) {
     if (!form) return;
     const bin = form.querySelector("input").value.trim();
     if (!bin) return;
-    await savePath(form.dataset.pathForm, bin, form);
+    await savePath(form.dataset.pathForm, bin, form, e.submitter);
   });
-  async function savePath(id, bin, form) {
+  async function savePath(id, bin, form, pressed) {
     const err = form?.querySelector(".rt-err");
     const btns = form ? [...form.querySelectorAll("button")] : [];
     btns.forEach((x) => (x.disabled = true));
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(pressed) ?? (async () => {});
     try {
       await ctx.shell.api(
         "POST",
@@ -5666,6 +6037,7 @@ function renderRuntimes(host, ctx) {
         err.hidden = false;
       }
     } finally {
+      await release();
       btns.forEach((x) => (x.disabled = false));
     }
   }
@@ -6310,6 +6682,16 @@ export function restartOfferHtml(all) {
   );
 }
 
+/** Issue 1407: wire the per-agent result's Restart now and Restart all now. */
+function wireRestartResult(box, ctx) {
+  wireRestartNow(box, {
+    api: (...a) => ctx.shell.api(...a),
+    busyAction: ctx.shell.busyAction?.bind(ctx.shell),
+    holdDots: (b) => window.denShell?.holdDots?.(b),
+    t: (k, v) => ctx.shell.t(k, v),
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6320,19 +6702,19 @@ function offerRestart(host, ctx, fresh) {
       const box = host.querySelector("[data-hub-restart]");
       const btn = box?.querySelector('[data-hub-action="restart-stale"]');
       btn?.addEventListener("click", () => {
-        btn.disabled = true;
+        // Issue 1054: the kit's dots until the answer.
+        const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
         ctx.shell
           .api("POST", "/api/agents/restart-stale", { only: "hub" })
+          .finally(release)
           .then((x) => {
-            const k = Array.isArray(x?.pending) ? x.pending.length : 0;
-            box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
-              k === 1
-                ? "1 agent restarts at its next idle, in the same conversation."
-                : `${k} agents restart at their next idle, each in the same conversation.`,
-            )}</p>`;
+            // Issue 1407: each agent's own answer, never a fixed line.
+            box.innerHTML = restartResultHtml(x?.agents, (k, v) =>
+              ctx.shell.t(k, v),
+            );
+            wireRestartResult(box, ctx);
           })
           .catch((e) => {
-            btn.disabled = false;
             box.insertAdjacentHTML(
               "beforeend",
               `<p class="set-note set-warn" role="alert">${escR(e?.message || "Not restarted")}</p>`,
@@ -6588,7 +6970,12 @@ export function projectMcpHtml(v, t) {
  * /api/workspaces/:ws/event-feeds serves them: each feed's name, agent,
  * address and state, with its last event's time. `fmt`: a time's words.
  */
-export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
+export function appFeedsHtml(
+  v,
+  t,
+  fmt = (ms) => new Date(ms).toISOString(),
+  edit = false,
+) {
   const feeds = Array.isArray(v?.feeds) ? v.feeds : [];
   const problems = Array.isArray(v?.problems) ? v.problems : [];
   const STATES = [
@@ -6611,7 +6998,12 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
       `<li data-feed="${escR(f.name)}" data-feed-state="${escR(state)}">` +
       `<span data-feed-text>${escR(t("feed.row", { name: f.name, agent: f.agent, url: f.url }))}</span> ` +
       `<strong data-feed-st>${escR(t(`feed.st.${state}`))}</strong>` +
-      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span></li>`
+      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span>` +
+      // Issue 1480: Remove, when the row is the person's to change.
+      (edit
+        ? ` <button type="button" class="den-btn sm" data-feed-remove="${escR(f.name)}" data-feed-agent="${escR(f.agent)}" aria-label="${escR(t("feed.removeL", { name: f.name }))}">${escR(t("feed.remove"))}</button>`
+        : "") +
+      `</li>`
     );
   });
   const list = rows.length
@@ -6621,7 +7013,28 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
     ? `<p class="set-note" data-feed-problems>${escR(t("feed.problems", { n: problems.length }))}</p>` +
       `<ul class="set-note">${problems.map((p) => `<li>${escR(p)}</li>`).join("")}</ul>`
     : "";
-  return list + bad;
+  return list + bad + (edit ? appFeedAddHtml(v, t) : "");
+}
+
+/** Issue 1480: the row's Add form: name, the agent, the address, a bearer ref. */
+function appFeedAddHtml(v, t) {
+  const agents = Array.isArray(v?.agents)
+    ? v.agents.filter((a) => typeof a === "string")
+    : [];
+  if (!agents.length)
+    return `<p class="set-note" data-feed-noagents>${escR(t("feed.noAgents"))}</p>`;
+  const opts = agents
+    .map((a) => `<option value="${escR(a)}">${escR(a)}</option>`)
+    .join("");
+  return (
+    `<div data-feed-add style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
+    `<label>${escR(t("feed.name"))} <input type="text" spellcheck="false" autocomplete="off" data-feed-name></label>` +
+    `<label>${escR(t("feed.agent"))} <select data-feed-agent-pick>${opts}</select></label>` +
+    `<label>${escR(t("feed.url"))} <input type="url" spellcheck="false" autocomplete="off" data-feed-url placeholder="https://"></label>` +
+    `<label>${escR(t("feed.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-feed-bearer placeholder="${escR(t("feed.bearerNone"))}"></label>` +
+    `<button type="button" class="den-btn sm primary" data-feed-addbtn>${escR(t("feed.add"))}</button>` +
+    `</div><div class="rt-err" role="alert" hidden></div>`
+  );
 }
 
 function renderAppFeeds(host, ctx) {
@@ -6631,11 +7044,76 @@ function renderAppFeeds(host, ctx) {
     return Promise.resolve();
   }
   const t = (k, v) => ctx.shell.t(k, v);
+  const base = `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  // Issue 1480: a person's own click is the decision; the server checks
+  // it as the held writes are, and the row is read again after.
+  const send = (kind, method, url, body, button, fallback) =>
+    ctx.shell
+      .busyAction(
+        kind,
+        (headers) => ctx.shell.api(method, url, body, { headers }),
+        { button, onFail: (e) => fail(e, fallback) },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) return renderAppFeeds(host, ctx);
+      });
   return ctx.shell
-    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`)
+    .api("GET", base)
     .then((v) => {
-      host.innerHTML = appFeedsHtml(v, t, (ms) =>
-        formatTime(new Date(ms).toISOString()),
+      host.innerHTML = appFeedsHtml(
+        v,
+        t,
+        (ms) => formatTime(new Date(ms).toISOString()),
+        true,
+      );
+      const add = host.querySelector("[data-feed-addbtn]");
+      add?.addEventListener("click", () => {
+        const val = (sel) => host.querySelector(sel)?.value.trim() ?? "";
+        const bearer = val("[data-feed-bearer]");
+        return send(
+          "add-feed",
+          "POST",
+          base,
+          {
+            name: val("[data-feed-name]"),
+            agent: val("[data-feed-agent-pick]"),
+            url: val("[data-feed-url]"),
+            ...(bearer ? { bearer } : {}),
+          },
+          add,
+          t("feed.addF"),
+        );
+      });
+      host.querySelectorAll("[data-feed-remove]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const name = b.getAttribute("data-feed-remove");
+          const { askConfirm } = await import("/dialog-den.js");
+          const ok = await askConfirm({
+            title: t("feed.rmT"),
+            message: t("feed.rmAsk", {
+              name,
+              project: ws,
+              agent: b.getAttribute("data-feed-agent"),
+            }),
+            okLabel: t("feed.remove"),
+            danger: true,
+          });
+          if (!ok) return;
+          return send(
+            "remove-feed",
+            "DELETE",
+            `${base}/${encodeURIComponent(name)}`,
+            undefined,
+            b,
+            t("feed.rmF"),
+          );
+        }),
       );
     })
     .catch(() => {
@@ -7068,7 +7546,8 @@ function renderProjectName(host, ctx) {
           say(c.why === "empty" ? t("pname.empty") : "");
           return;
         }
-        save.disabled = true;
+        // Issue 1054: Save shows the kit's dots until the answer.
+        const release = window.denShell?.holdDots?.(save) ?? (async () => {});
         ctx.shell
           .api("POST", "/api/workspaces/rename", {
             oldName: ws,
@@ -7080,9 +7559,9 @@ function renderProjectName(host, ctx) {
             if (done) done.hidden = false;
           })
           .catch((x) => {
-            save.disabled = false;
             say(x?.message || t("pname.failed"));
-          });
+          })
+          .finally(release);
       });
     })
     .catch((e) => {
@@ -7461,11 +7940,14 @@ function wireHubProject(host, ctx, url, t, b) {
     e.hidden = !msg;
     e.textContent = msg || "";
   };
-  const put = (hub) => {
+  const put = (hub, pressed) => {
     host.querySelectorAll("button, select").forEach((x) => (x.disabled = true));
     err("");
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(pressed) ?? (async () => {});
     return ctx.shell
       .api("PUT", url, { hub })
+      .finally(release)
       .then(() => renderHubProject(host, ctx))
       .catch((e) => {
         host
@@ -7525,7 +8007,7 @@ function wireHubProject(host, ctx, url, t, b) {
           if (r !== undefined && r !== null) return renderHubProject(host, ctx);
         });
     }
-    if (v) put(v);
+    if (v) put(v, go);
   });
   // Issue 271: a create waiting in Hub: read again while it shows, so the
   // row links on its own once an owner allows it.
@@ -7539,18 +8021,17 @@ function wireHubProject(host, ctx, url, t, b) {
         renderHubProject(host, ctx);
     }, HUBP_POLL_MS);
   }
-  host
-    .querySelector('[data-hubp-action="unlink"]')
-    ?.addEventListener("click", () =>
-      askHubUnlink(
-        ctx,
-        t,
-        String(b?.project ?? ""),
-        b?.hub?.name || b?.hub?.slug || b?.elsewhere?.name || "",
-      ).then((yes) => {
-        if (yes) put(null);
-      }),
-    );
+  const unlinkBtn = host.querySelector('[data-hubp-action="unlink"]');
+  unlinkBtn?.addEventListener("click", () =>
+    askHubUnlink(
+      ctx,
+      t,
+      String(b?.project ?? ""),
+      b?.hub?.name || b?.hub?.slug || b?.elsewhere?.name || "",
+    ).then((yes) => {
+      if (yes) put(null, unlinkBtn);
+    }),
+  );
 }
 
 /**
@@ -7833,6 +8314,7 @@ function renderHubGithub(host, ctx) {
         host.innerHTML = `<p class="set-note" data-hubgh data-hubgh-state="error">${escR(e?.message || t("hubgh.failed"))}</p>`;
       });
   const resync = () => {
+    // busy-ok: a background read-again when the page comes back into view
     hubResync ??= ctx.shell
       .api("POST", "/api/hub/sync", {})
       .catch(() => null)
@@ -7953,12 +8435,15 @@ function wireHub(host, ctx) {
   const disconnect = (force, btn) => {
     busy(true);
     err("");
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
     ctx.shell
       .api("POST", "/api/hub/disconnect", force ? { force: true } : {})
+      .finally(release)
       .then((r) => drawHub(host, ctx, null, { ok: true, message: r.message }))
       .catch((e) => {
         busy(false);
-        if (btn) btn.remove();
+        if (btn && force) btn.remove();
         err(e?.message || "Not disconnected", !force);
       });
   };
@@ -8015,15 +8500,17 @@ function wireHub(host, ctx) {
   });
   host
     .querySelector('[data-hub-action="disconnect-yes"]')
-    ?.addEventListener("click", () => {
+    ?.addEventListener("click", (e) => {
+      const yes = e.currentTarget;
       if (ask) ask.hidden = true;
       if (acts) acts.hidden = false;
-      disconnect(false);
+      disconnect(false, yes);
     });
   const box = host.querySelector("#hub-allow-tools");
   if (box)
     box.addEventListener("change", () => {
       box.disabled = true;
+      // busy-ok: a checkbox that saves on change; it is off until the answer
       ctx.shell
         .api("POST", "/api/settings", { hub_allow_tools: box.checked })
         .then(() => drawHub(host, ctx, null, null))
@@ -8489,12 +8976,17 @@ function renderRotation(host, ctx) {
     if (host.querySelector("#rot-a-never").checked) return "never";
     return Number(host.querySelector("#rot-a-n").value);
   };
-  const put = async (body) => {
+  // A select saves on change (no button); Save, Clear and Add pass theirs.
+  const put = async (body, pressed) => {
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(pressed) ?? (async () => {});
     try {
       await ctx.shell.api("PUT", "/api/agents/rotation", body);
       await load();
     } catch (x) {
       fail(x);
+    } finally {
+      await release();
     }
   };
   host.addEventListener("change", (e) => {
@@ -8520,18 +9012,24 @@ function renderRotation(host, ctx) {
     if (!b) return;
     if (b.hasAttribute("data-rot-save-after")) {
       const v = host.querySelector("#rot-after_compactions")?.value.trim();
-      void put({
-        scope: "install",
-        key: "after_compactions",
-        value: v ? rotationValue("after_compactions", v) : null,
-      });
+      void put(
+        {
+          scope: "install",
+          key: "after_compactions",
+          value: v ? rotationValue("after_compactions", v) : null,
+        },
+        b,
+      );
     } else if (b.hasAttribute("data-rot-clear"))
-      void put({
-        scope: b.dataset.scope,
-        target: b.dataset.target,
-        key: b.dataset.key,
-        value: null,
-      });
+      void put(
+        {
+          scope: b.dataset.scope,
+          target: b.dataset.target,
+          key: b.dataset.key,
+          value: null,
+        },
+        b,
+      );
   });
   host.addEventListener("submit", (e) => {
     const f = e.target.closest("[data-rot-add]");
@@ -8552,7 +9050,7 @@ function renderRotation(host, ctx) {
       });
       return;
     }
-    void put({ scope, target, key, value: valueOf(key) });
+    void put({ scope, target, key, value: valueOf(key) }, e.submitter);
   });
   void load();
 }

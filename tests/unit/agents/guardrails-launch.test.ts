@@ -172,6 +172,18 @@ describe("a default-pack persona's launch", () => {
     expect(rules.join("\n")).not.toContain("events.jsonl");
   });
 
+  it("issue 1334: a Doctor ⚠ alone is no reason to ask the person, for build agents and the server agent", () => {
+    for (const t of [
+      sharedInstructions(),
+      sharedInstructions(undefined, { handback: false }),
+    ]) {
+      expect(t).toContain(
+        "A Doctor ⚠ isn't by itself a reason to ask the person.",
+      );
+      expect(t).toContain("an empty project needs no Hub link");
+    }
+  });
+
   it("appends the shared persona instructions to the role prompt", () => {
     const l = launch(planner);
     expect(l.prompt).toContain(planner.prompt);

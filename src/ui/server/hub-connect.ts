@@ -53,6 +53,8 @@ import {
   recordUnrevoked,
 } from "../../shared/hub-binding.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import { emptyProjectTest } from "../../shared/empty-project.js";
+import { listRecords } from "../../shared/agents/records.js";
 import { projectRepos } from "../../shared/project-repos.js";
 import { workspaceDisplayName } from "../../shared/workspace-name.js";
 import {
@@ -188,6 +190,11 @@ export function connectRepos(
 
 function defaultReviewProjects(): ReviewProject[] {
   const file = readWorkspacesFile();
+  // Issue 1334: an empty project never goes to Hub's review page.
+  const isEmpty = emptyProjectTest(
+    () => file,
+    () => listRecords(getStateDir()),
+  );
   return Object.keys(file.workspaces ?? {})
     .sort()
     .filter((ws) => !isServerScope(ws))
@@ -195,6 +202,7 @@ function defaultReviewProjects(): ReviewProject[] {
       key: ws,
       name: workspaceDisplayName(ws, file.workspaces[ws]),
       repos: connectRepos([ws], projectRepos),
+      ...(isEmpty(ws) ? { empty: true } : {}),
     }));
 }
 

@@ -97,7 +97,9 @@ const SERVER_TIMER_FILES = new Set([
 /**
  * Every file of Den's (the distribution, and Den's state home DEN_HOME)
  * → sha256. Not the rest of the throwaway HOME: other tools' state. Not
- * the server's timer writes (SERVER_TIMER_FILES).
+ * the server's timer writes (SERVER_TIMER_FILES), and not a lock folder
+ * (`<name>.lock/`): another part of Den takes and drops one while it
+ * writes its own file, so one can appear or vanish during any request.
  */
 function snapshot(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -105,8 +107,9 @@ function snapshot(): Record<string, string> {
     if (!fs.existsSync(dir)) return;
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
-      if (e.isDirectory()) walk(abs);
-      else if (e.isFile() && !SERVER_TIMER_FILES.has(path.relative(tmp, abs)))
+      if (e.isDirectory()) {
+        if (!e.name.endsWith(".lock")) walk(abs);
+      } else if (e.isFile() && !SERVER_TIMER_FILES.has(path.relative(tmp, abs)))
         out[path.relative(tmp, abs)] = createHash("sha256")
           .update(fs.readFileSync(abs))
           .digest("hex");
@@ -467,6 +470,8 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       dockHeight: 0,
       // Manage projects' order (0.4.45): none set, unwritten.
       projectOrder: [],
+      // Folded rail sections (issue 1444): none, unwritten.
+      folded: [],
       // Project colours (issue 168): the one chosen; null is Automatic.
       projectColours: { shop: "teal" },
     });
