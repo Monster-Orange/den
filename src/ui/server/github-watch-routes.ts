@@ -19,7 +19,10 @@ import { isServerScope } from "../../shared/agents/server-agent.js";
 import type { GithubWatcher } from "../../shared/github-watch/watcher.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, type AgentPrincipal } from "./request-guard.js";
-import { WATCH_REPOS_SETTING } from "../../shared/github-watch/watch-repos.js";
+import {
+  stripGit,
+  WATCH_REPOS_SETTING,
+} from "../../shared/github-watch/watch-repos.js";
 
 export const GITHUB_WATCH_PATHS = [
   "/api/agents/self/github-watches",
@@ -101,9 +104,10 @@ function scopeRepos(
   // the list is ignored (fails closed).
   if (!d.allRepos) return { allowed: out, otherDen };
   const den = d.allRepos();
-  for (const r of d.watchReposOf?.(p.workspace) ?? []) {
+  for (const raw of d.watchReposOf?.(p.workspace) ?? []) {
+    const r = stripGit(raw);
     if (out.some((o) => same(o, r))) continue;
-    if (den.some((o) => same(o, r))) otherDen.push(r);
+    if (den.some((o) => same(stripGit(o), r))) otherDen.push(r);
     else add(r);
   }
   return { allowed: out, otherDen };
@@ -149,7 +153,8 @@ export async function handleGithubWatchRoutes(
       );
       return true;
     }
-    const repo = typeof b.repo === "string" ? b.repo.trim() : "";
+    // owner/name.git is the same repo: compared, and watched, without it.
+    const repo = typeof b.repo === "string" ? stripGit(b.repo.trim()) : "";
     const scope = scopeRepos(p, d);
     if (scope.otherDen.some((o) => same(o, repo))) {
       refuse(

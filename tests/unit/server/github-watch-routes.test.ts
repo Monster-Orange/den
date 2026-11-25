@@ -42,7 +42,10 @@ function res() {
   return { r, out };
 }
 
-function setup(principal: unknown, { noAllRepos = false } = {}) {
+function setup(
+  principal: unknown,
+  { noAllRepos = false, northList = null as string[] | null } = {},
+) {
   const gh = new FakeGithub(Date.now);
   gh.pr("acme/north", 5, SHA);
   gh.pr("other/elsewhere", 5, SHA);
@@ -75,7 +78,7 @@ function setup(principal: unknown, { noAllRepos = false } = {}) {
     watchReposOf: (project: string) =>
       // acme/south is another Den project's repo (not granted to north).
       project === "north"
-        ? ["shared/pipeline", "ACME/South"]
+        ? (northList ?? ["shared/pipeline", "ACME/South"])
         : project === "west"
           ? ["acme/westshared"]
           : [],
@@ -259,5 +262,34 @@ describe("issue 1270: a project's agents.watch_repos", () => {
       pr: 5,
     });
     expect(own.status).toBe(200);
+  });
+  it.each([
+    ["acme/south.git", "acme/south"],
+    ["acme/south.git", "acme/south.git"],
+    ["acme/South.GIT", "ACME/south.Git"],
+  ])(
+    "another Den project's repo listed as %s, asked as %s: still refused, pointing to grants",
+    async (listed, asked) => {
+      const { call, gh } = setup(agent, { northList: [listed] });
+      const r = await call("POST", "/api/agents/self/github-watches", {
+        repo: asked,
+        pr: 3,
+      });
+      expect(r.status).toBe(403);
+      expect(String((r.body as { error: string }).error)).toMatch(
+        /is a repo of another Den project/,
+      );
+      expect(gh.calls).toEqual([]);
+    },
+  );
+
+  it("a repo outside Den asked as owner/name.git is watched as owner/name", async () => {
+    const { call } = setup(agent);
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "shared/pipeline.git",
+      pr: 7,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ watch: { repo: "shared/pipeline" } });
   });
 });

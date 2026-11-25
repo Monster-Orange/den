@@ -19,6 +19,17 @@ describe("issue 1270: parseWatchRepos", () => {
     ).toEqual(["shared/pipeline", "acme/tools"]);
   });
 
+  it("a trailing .git is the same repo: dropped (any case), then each once", () => {
+    expect(
+      parseWatchRepos([
+        "acme/south.git",
+        "acme/South.GIT",
+        "acme/south",
+        "acme/.git",
+      ]),
+    ).toEqual(["acme/south"]);
+  });
+
   it("drops what isn't owner/name: a URL, a path, a dot segment, a number, an object", () => {
     expect(
       parseWatchRepos([
