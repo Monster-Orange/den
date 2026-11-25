@@ -16,7 +16,7 @@ import type {
   Notification,
   NotificationStore,
 } from "../../shared/notifications.js";
-import type { Approval } from "./approvals.js";
+import { claimantIsPerson, type Approval } from "./approvals.js";
 import { allowPath } from "../../shared/agent-links.js";
 
 /** A held write's bell item: `record:held-<request id>`. */
@@ -72,6 +72,7 @@ export function syncHeldBell(
       project = undefined;
     }
     const what = a.summary;
+    const claimed = claimantIsPerson(a.actor) ? a.claimedAs : undefined;
     const n = store.add({
       kind: "decision",
       subject,
@@ -80,15 +81,15 @@ export function syncHeldBell(
       // says so, never as though that agent asked.
       text: a.agent
         ? `${a.agent} waits for your Allow: ${what}`
-        : a.claimedAs
-          ? `Waiting for your Allow: ${what}. You asked, as ${a.claimedAs} (not verified).`
+        : claimed
+          ? `Waiting for your Allow: ${what}. You asked, as ${claimed} (not verified).`
           : `Waiting for your Allow: ${what}`,
       msg: a.agent
         ? { key: "bell.m.heldAllow", vars: { name: a.agent, what } }
-        : a.claimedAs
+        : claimed
           ? {
               key: "bell.m.heldAllowClaimed",
-              vars: { name: a.claimedAs, what },
+              vars: { name: claimed, what },
             }
           : { key: "bell.m.heldAllowAsk", vars: { what } },
       link: heldLink(a.agent, project),
@@ -138,7 +139,9 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       action: a.action,
       what: a.summary,
       ...(a.agent ? { agent: a.agent } : {}),
-      ...(a.claimedAs && !a.agent ? { claimedAs: a.claimedAs } : {}),
+      ...(a.claimedAs && !a.agent && claimantIsPerson(a.actor)
+        ? { claimedAs: a.claimedAs }
+        : {}),
       since: new Date(a.requestedAt).toISOString(),
       expiresAt: new Date(a.expiresAt).toISOString(),
       ...(a.params ? { params: a.params } : {}),

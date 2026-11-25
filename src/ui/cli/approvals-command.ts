@@ -137,7 +137,7 @@ export async function cmdApprovals(
     for (const a of waiting) {
       const claim =
         typeof a.claimedAs === "string"
-          ? ` (you asked, as ${a.claimedAs} (not verified))`
+          ? ` (you asked, as ${a.claimedAs}; not verified)`
           : "";
       io.out(
         `${String(a.id)}  ${String(a.action)}: ${String(a.summary)}${claim}`,

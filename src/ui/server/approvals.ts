@@ -64,6 +64,15 @@ import { redactSecrets } from "../../shared/redact.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** The header an anonymous asker reads its own request with. */
+/**
+ * Issue 1293: an unverified agent claim is kept and shown only on a
+ * verified person's own ask, never on an anonymous ("loopback"), fixture,
+ * test-operator or agent asker.
+ */
+export function claimantIsPerson(actor: string | undefined): boolean {
+  return typeof actor === "string" && actor.startsWith("person:");
+}
+
 export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
 
 /** A new ticket and its hash (only the hash is kept). */
@@ -758,7 +767,7 @@ export class ApprovalQueue {
           }
         : {}),
       ...(r.agent ? { agent: r.agent.slice(0, 64) } : {}),
-      ...(r.claimedAs && !r.agent
+      ...(r.claimedAs && !r.agent && claimantIsPerson(r.actor)
         ? { claimedAs: r.claimedAs.slice(0, 80) }
         : {}),
       ...(r.note?.trim()

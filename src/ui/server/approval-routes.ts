@@ -27,6 +27,7 @@ import {
   APPROVAL_TICKET_HEADER,
   ApprovalQueue,
   approverAllowed,
+  claimantIsPerson,
   newApprovalTicket,
   type Approval,
   type AskedBy,
@@ -200,6 +201,11 @@ function askerOf(req: http.IncomingMessage): string {
  * when well-formed (actorFromHeaders drops a malformed id). Never verified.
  */
 function claimedAgentOf(req: http.IncomingMessage): { claimedAs?: string } {
+  // Only on a verified person's own ask (a person's token or the OS user's
+  // browser). Anonymous asks ("loopback": any local program with no
+  // credential), the fixture person, the test operator and an agent's view
+  // send the headers too, but their claim would read as "You asked".
+  if (!claimantIsPerson(principalOf(req))) return {};
   const c = actorFromHeaders(req.headers);
   return c?.kind === "agent" && c.agent ? { claimedAs: c.agent } : {};
 }

@@ -213,6 +213,62 @@ describe("issue 1293: an unverified agent claim on a person's ask", () => {
     expect(a.claimedAs).toBeUndefined();
   });
 
+  it("nobody signed in: a claim is dropped, so no anonymous ask reads as the person's or the agent's", async () => {
+    // Any local program with no credential can send the audit headers.
+    // Its ask stays anonymous: no claimedAs, the plain bell wording.
+    const id = await ask({ ...ANON, ...CLAIM }, "fen");
+    const a = queue.pending().find((x) => x.id === id)!;
+    expect(a.actor).toBe("loopback");
+    expect(a.claimedAs).toBeUndefined();
+    const added: Record<string, unknown>[] = [];
+    syncHeldBell(
+      {
+        list: () => [],
+        add: (n: unknown) => (added.push(n as Record<string, unknown>), null),
+        remove: () => 0,
+      } as unknown as Parameters<typeof syncHeldBell>[0],
+      [a],
+    );
+    expect(added[0].text).toBe(`Waiting for your Allow: ${a.summary}`);
+    expect(added[0].msg).toEqual({
+      key: "bell.m.heldAllowAsk",
+      vars: { what: a.summary },
+    });
+  });
+
+  it("the bell trusts a claim only on a person's own ask", () => {
+    // A record that somehow carries a claim on a non-person ask (an older
+    // queue file, say) still reads as anonymous.
+    const added: Record<string, unknown>[] = [];
+    syncHeldBell(
+      {
+        list: () => [],
+        add: (n: unknown) => (added.push(n as Record<string, unknown>), null),
+        remove: () => 0,
+      } as unknown as Parameters<typeof syncHeldBell>[0],
+      [
+        {
+          ...queue.pending()[0],
+          id: "x-1293",
+          actor: "loopback",
+          agent: undefined,
+          claimedAs: "agent:planner",
+        },
+      ],
+    );
+    expect(added[0].msg).toMatchObject({ key: "bell.m.heldAllowAsk" });
+    expect(
+      heldWaiting([
+        {
+          ...queue.pending()[0],
+          actor: "fixture:person",
+          agent: undefined,
+          claimedAs: "agent:planner",
+        },
+      ])[0].claimedAs,
+    ).toBeUndefined();
+  });
+
   it("a malformed claim is dropped, never kept", async () => {
     const id = await ask(
       { ...PAT, "x-den-actor": "agent", "x-den-mcp-agent": "agent:Bad Name!" },

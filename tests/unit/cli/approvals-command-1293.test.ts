@@ -117,7 +117,7 @@ describe("issue 1293: approvals list --mine", () => {
     const text = t.out.join("\n");
     expect(text).toContain(ID);
     expect(text).toContain('create the workspace "north"');
-    expect(text).toContain("as agent:helper (not verified)");
+    expect(text).toContain("(you asked, as agent:helper; not verified)");
     expect(text).not.toContain("south");
   });
 
