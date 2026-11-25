@@ -16,6 +16,7 @@ import type { AgentsResolved } from "../cli/agent-ops.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
+  toolsHeldAck,
   SeenDeliveries,
   writeDeliveryHealth,
   type Delivery,
@@ -35,6 +36,7 @@ import {
   type AgentRecord,
 } from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import { hubToolsFailed } from "../../shared/agents/hub-mcp-connect.js";
 import {
   feedKinds,
   InboxWatcher,
@@ -71,6 +73,8 @@ let ownerAskedAt = 0;
 let ownerWanted: () => void = () => undefined;
 /** #65: the inbox kinds Hub's feed carries (whoami features). */
 let feedCarries: ReadonlySet<string> = new Set();
+/** Issue 750: Hub takes the `held` ack (whoami lists deliveries.ack_held). */
+let ackHeldOn = false;
 interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
@@ -108,7 +112,10 @@ const MARK_CODES: ReadonlySet<string> = new Set([
  * which the screen check reads as a dialog: the agent isn't at its prompt.
  */
 export async function heldWhyOf(
-  ops: Pick<typeof AgentOps, "agentDialogKind" | "agentScreenShowsDialog">,
+  ops: Pick<
+    typeof AgentOps,
+    "agentDialogKind" | "agentScreenShowsDialog" | "heldForDraft"
+  >,
   d: AgentsResolved,
   id: string,
   waitingWhy?: (id: string) => string | null,
@@ -117,6 +124,8 @@ export async function heldWhyOf(
   if (dialog) return dialog;
   const why = waitingWhy?.(id) ?? null;
   if (why && MARK_CODES.has(why)) return why as HeldCode;
+  // Issue 1311: its person's unsent draft on the line.
+  if (ops.heldForDraft(id)) return "draft";
   return (await ops.agentScreenShowsDialog(d, id)) ? "not_at_prompt" : null;
 }
 
@@ -126,6 +135,23 @@ function heldBellAfter(why: HeldCode | undefined): number {
   return (lastOpts?.heldBellMinutes ?? 5) * 60;
 }
 let lastOpts: StartOpts | null = null;
+
+/** Issue 1311: agents.draft_hold_max_minutes, in s (its default if unreadable). */
+function draftBellAfter(d: AgentsResolved): number {
+  try {
+    return (d.agentsConfig().draftHoldMaxMs ?? 30 * 60_000) / 1000;
+  } catch {
+    return 30 * 60;
+  }
+}
+
+/**
+ * Issue 1311: how many Hub items wait for agent `agent` on its person's
+ * unsent draft (the terminal's "N messages waiting").
+ */
+export function hubWaitingOnDraft(agent: string): number {
+  return loop?.waitingOnDraft(agent) ?? 0;
+}
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
 let inboxTimer: NodeJS.Timeout | null = null;
@@ -412,9 +438,16 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     agents: {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
-      type: (id, text) => ops.typeIntoAgent(d, id, text),
+      // Issue 1311: a draft on the line: false at once; this queue keeps
+      // the items, in order, and types them once the draft is gone.
+      type: (id, text) => ops.typeIntoAgent(d, id, text, { onDraft: "refuse" }),
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
       why: (id) => heldWhyOf(ops, d, id, (x) => o.waitingWhy?.(x) ?? null),
+      // Issue 750: its Hub tools failed to load (issue 749's record).
+      hubTools: (id) => {
+        const rec = readRecord(getStateDir(), id);
+        return rec && hubToolsFailed(getStateDir(), rec) ? false : null;
+      },
     },
     // Issue 701: the person's comment answers the agent's question.
     answered: (agent) => {
@@ -449,8 +482,15 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     // keeps saying it (refreshed each minute) until it's typed.
     // Issue 701: and for every other reason, after
     // hub.delivery_held_bell_minutes.
+    // Issue 1311: held on a draft, after agents.draft_hold_max_minutes.
     heldNote: (agent, n, waitedMs, why) =>
-      heldBell(agent, n, waitedMs, heldBellAfter(why), { why }),
+      heldBell(
+        agent,
+        n,
+        waitedMs,
+        why === "draft" ? draftBellAfter(d) : heldBellAfter(why),
+        { why },
+      ),
     stateTimeoutMs: (o.stateTimeoutSeconds ?? 60) * 1000,
     typeTimeoutMs: (o.typeTimeoutSeconds ?? 120) * 1000,
     answerTimeoutMs: (o.answerMinutes ?? 30) * 60_000,
@@ -466,6 +506,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
+    ackHeld: () => deliveryAckHeld(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
     ),
@@ -528,6 +569,24 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
 }
 
 /**
+ * Issue 750 step 4: what Hub's whoami lists, kept for the loop: the inbox
+ * kinds its feed carries (#65), and whether an agent whose Hub tools
+ * failed gets a `held` ack (deliveries.ack_held) or `queued` (an older
+ * Hub, or no answer). Reads only whoami: hub.groups never changes it.
+ */
+export function noteWhoami(
+  w: { features?: readonly string[] } | null | undefined,
+): void {
+  feedCarries = feedKinds(w?.features);
+  ackHeldOn = toolsHeldAck(w?.features).state === "held";
+}
+
+/** Issue 750 step 4: whether the loop acks `held` (else `queued`). */
+export function deliveryAckHeld(): boolean {
+  return ackHeldOn;
+}
+
+/**
  * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
  * a held Allow, a permission prompt or an ask_human question waiting for
  * their person (never typed into then); an idle one is not among them.
@@ -554,7 +613,7 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
-      feedCarries = feedKinds(w.features);
+      noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {
@@ -565,8 +624,10 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
     if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
   };
   // A new connection may be a different person: never keep the old one.
+  // Issue 750: nor the old Hub's features (until it says, `queued`).
   owner = null;
   loop?.ownerReset();
+  ackHeldOn = false;
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);

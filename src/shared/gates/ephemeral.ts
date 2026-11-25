@@ -38,7 +38,7 @@ import { execFile } from "child_process";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { gateDir, type GateStore } from "./store.js";
+import { gateDir, gateLocked, type GateStore } from "./store.js";
 
 export const EPHEMERAL_LABEL = "den.ephemeral";
 export const RUN_LABEL = "den.gate.run";
@@ -308,7 +308,7 @@ export async function cleanRun(
     docker,
     boxes.filter((b) => b.mode !== "stop" && b.run === id && b.store === tag),
   );
-  if (r.count) store.noteContainersRemoved(id, r);
+  if (r.count) await gateLocked(() => store.noteContainersRemoved(id, r));
   if (checkout && TAG.test(checkout))
     await stopCheckout(store, docker, checkout);
   return r;
@@ -324,7 +324,7 @@ async function stopCheckout(
   docker: Docker,
   checkout: string,
 ): Promise<void> {
-  const live = store.liveSlots();
+  const live = await gateLocked(() => store.liveSlots());
   if (!live || live.some((e) => e.checkout === checkout)) return;
   const tag = storeTag(store.dir);
   const all = (await listThrowaway(docker)) ?? [];
@@ -360,7 +360,7 @@ export async function sweepThrowaway(
 ): Promise<Swept[] | null> {
   const boxes = await listThrowaway(docker);
   if (boxes === null) return null;
-  const slots = store.liveSlots();
+  const slots = await gateLocked(() => store.liveSlots());
   if (slots === null) return [];
   const live = new Set(slots.map((e) => e.id));
   const busy = new Set(slots.flatMap((e) => (e.checkout ? [e.checkout] : [])));
@@ -389,7 +389,7 @@ export async function sweepThrowaway(
     const r = await removeAll(docker, list);
     for (const b of list) seen.delete(b.id);
     if (!r.count) continue;
-    store.noteContainersRemoved(id, r);
+    await gateLocked(() => store.noteContainersRemoved(id, r));
     out.push({ id, ...r });
   }
   // Issue 1289: idle kept ones stop on the same two-look rule.

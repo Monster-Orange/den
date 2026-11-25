@@ -230,8 +230,9 @@ describe("gate run", () => {
           ...process.env,
           DEN_GATE_DIR: dir,
           TSX_DISABLE_CACHE: "1",
-          // A browser run declares a container browser (macOS hosts).
-          DEN_PW_WS: "ws://127.0.0.1:9",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
         },
         stdio: ["ignore", "ignore", "pipe"],
       },
@@ -277,8 +278,9 @@ describe("gate run", () => {
           ...process.env,
           DEN_GATE_DIR: dir,
           TSX_DISABLE_CACHE: "1",
-          // A browser run declares a container browser (macOS hosts).
-          DEN_PW_WS: "ws://127.0.0.1:9",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
         },
         stdio: ["ignore", "ignore", "pipe"],
       },

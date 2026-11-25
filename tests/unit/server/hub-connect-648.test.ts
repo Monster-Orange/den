@@ -121,6 +121,24 @@ describe("issue 648: Connect sends the projects for Hub's page", () => {
     ]);
   });
 
+  it("issue 1334: an empty project never goes to Hub's review page", () => {
+    const f = hc(() => undefined, {
+      reviewProjects: () => [
+        ...PROJECTS,
+        { key: "spare", name: "Spare", repos: [], empty: true },
+      ],
+    });
+    const q = f.start();
+    const list = JSON.parse(
+      Buffer.from(q.get("projects")!, "base64url").toString("utf8"),
+    );
+    expect(list.map((p: { key: string }) => p.key)).toEqual([
+      "north",
+      "south",
+      "east",
+    ]);
+  });
+
   it("past a cap: no review param (issue 646's flow), and Connect still starts", () => {
     const many = Array.from({ length: 51 }, (_, i) => ({
       key: `p${i}`,
