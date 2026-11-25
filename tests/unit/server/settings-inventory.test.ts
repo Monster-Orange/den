@@ -136,7 +136,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     max_wait_seconds: true,
   },
   // issue_write: which roles write GitHub issues, and how many an hour.
-  agent_issue_writes: { roles: true, per_hour: true },
+  // Issue 1127: and how old a repo's visibility may be for the words check.
+  agent_issue_writes: { roles: true, per_hour: true, visibility_minutes: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -194,6 +195,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     watch_max_interval_seconds: true,
     api_budget_floor: true,
     watches_max: true,
+    // Issue 1166: a watch with no progress this long ends.
+    watch_stale_minutes: true,
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
@@ -274,6 +277,8 @@ describe("the settings inventory (R21)", () => {
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",
+        // Issue 1444: the rail sections the person folded.
+        "shell.folded",
         "shell.hidden",
         "shell.order",
         "shell.pins",
@@ -304,6 +309,7 @@ describe("the settings inventory (R21)", () => {
         "github.watch_max_interval_seconds",
         "github.api_budget_floor",
         "github.watches_max",
+        "github.watch_stale_minutes",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
@@ -367,6 +373,7 @@ describe("the settings inventory (R21)", () => {
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",
+        "agent_issue_writes.visibility_minutes",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",

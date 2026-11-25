@@ -84,6 +84,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],
   "github.api_budget_floor": ["github", "api_budget_floor"],
   "github.watches_max": ["github", "watches_max"],
+  "github.watch_stale_minutes": ["github", "watch_stale_minutes"],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
@@ -110,6 +111,11 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // install's writes an hour.
   "agents.issue_writes": ["agent_issue_writes", "roles"],
   "agents.issue_writes_per_hour": ["agent_issue_writes", "per_hour"],
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  "agents.issue_writes_visibility_minutes": [
+    "agent_issue_writes",
+    "visibility_minutes",
+  ],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",

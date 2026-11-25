@@ -482,6 +482,11 @@ trusted publishing (no token anywhere):
   already has its version, bump the kit's version (its `package.json` and
   its entry in `package-lock.json`) in the candidate before the dev tag.
   The dry run fails and says so otherwise.
+- A release that publishes the kit carries next/queue's kit files at that
+  version. When next/queue has the same kit version with other kit files
+  (a kit change merged after the candidate's branch was cut), the dry run
+  and the promote step fail: bump next/queue's den-ui first, then cut the
+  candidate again.
 - The release commit changes only Den's version and the changelog entry's
   date: everything else was in the candidate the dry run checked.
 - Bump the version in `package.json`, `package-lock.json` and

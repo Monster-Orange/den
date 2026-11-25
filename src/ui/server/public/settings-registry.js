@@ -816,11 +816,15 @@ function drawOwner(host, ctx) {
       host.innerHTML =
         `<output class="set-ro" id="set-owner">${escHtml(L("set.ui.ownerIs", "Owner:"))} <b>@${escHtml(o.owner.login)}</b> <span class="set-note">(${escHtml(o.owner.id)})</span></output> ` +
         `<button type="button" class="den-btn" id="set-owner-unlink">${escHtml(L("set.ui.unlink", "Unlink"))}</button>`;
-      host.querySelector("#set-owner-unlink").addEventListener("click", () =>
+      const unlink = host.querySelector("#set-owner-unlink");
+      unlink.addEventListener("click", () => {
+        // Issue 1054: the button shows the kit's dots until the answer.
+        const release = window.denShell?.holdDots?.(unlink) ?? (async () => {});
         api("POST", "/api/web/owner/unlink", {})
           .then(load)
-          .catch((e) => fail(e.message)),
-      );
+          .catch((e) => fail(e.message))
+          .finally(release);
+      });
       return;
     }
     host.innerHTML =
@@ -861,9 +865,19 @@ function drawOwner(host, ctx) {
       );
   function startLink() {
     const b = host.querySelector("#set-owner-link");
-    if (b) b.disabled = true;
+    // Issue 1054: the dots until the code comes; then it stays off while
+    // the code is shown (fail() turns it on again).
+    const release = window.denShell?.holdDots?.(b) ?? (async () => {});
     api("POST", "/api/web/owner/link", {})
+      .then(
+        (f) => Promise.resolve(release()).then(() => f),
+        (e) =>
+          Promise.resolve(release()).then(() => {
+            throw e;
+          }),
+      )
       .then((f) => {
+        if (b) b.disabled = true;
         const box = host.querySelector("#set-owner-flow");
         const url = f.verificationUri || "https://github.com/login/device";
         box.innerHTML =
@@ -967,13 +981,14 @@ function drawDevices(host, ctx) {
         });
         host.querySelectorAll("[data-revoke]").forEach((btn) =>
           btn.addEventListener("click", () => {
-            btn.disabled = true;
+            // Issue 1054: the kit's dots until the answer.
+            const release =
+              window.denShell?.holdDots?.(btn) ?? (async () => {});
             ctx.shell
               .api("POST", "/api/web/logout", { id: btn.dataset.revoke })
               .then(load)
-              .catch(() => {
-                btn.disabled = false;
-              });
+              .catch(() => {})
+              .finally(release);
           }),
         );
       })
@@ -1225,6 +1240,10 @@ function drawPair(host, ctx) {
       const out = host.querySelector("#set-pair-out");
       const go = () => {
         clearTimeout(timer);
+        // Issue 1054: Pair shows the kit's dots until the link comes.
+        const release =
+          window.denShell?.holdDots?.(host.querySelector("#set-pair-go")) ??
+          (async () => {});
         ctx.shell
           .api("POST", "/api/web/pair", {
             host: host.querySelector("#set-pair-host").value,
@@ -1252,7 +1271,8 @@ function drawPair(host, ctx) {
           })
           .catch((e) => {
             out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
-          });
+          })
+          .finally(release);
       };
       host.querySelector("#set-pair-go").addEventListener("click", go);
     })
@@ -2697,7 +2717,7 @@ function renderKeepRunning(host, ctx) {
     say("");
     try {
       const r = await applyKeepRunning(on, {
-        // The working pop-up while the server answers.
+        // The kit's dots on Apply while the server answers (issue 1054).
         post: (body) =>
           ctx.shell.busyAction(
             "keep-running",
@@ -3151,13 +3171,28 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "GitHub watch: watches at once",
     description:
-      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+      "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
     keywords: ["github", "watch", "limit", "github.watches_max"],
     scope: "user",
     keys: ["github.watches_max"],
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.github?.watches_max ?? 50,
     write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
+  {
+    // Issue 1166: a watch with no progress this long ends (user.yml
+    // github.watch_stale_minutes). A person's only.
+    id: "server.github_watch_stale",
+    category: "server",
+    label: "GitHub watch: minutes with no progress",
+    description:
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    keywords: ["github", "watch", "stale", "github.watch_stale_minutes"],
+    scope: "user",
+    keys: ["github.watch_stale_minutes"],
+    control: { type: "number", min: 5, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_stale_minutes ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_stale_minutes: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml
@@ -4219,7 +4254,9 @@ export const DEN_SETTINGS = [
     keywords: ["rail", "sidebar", "hide", "order", "reorder", "pages", "menu"],
     scope: "user",
     control: { type: "navlist" },
-    keys: ["shell.hidden", "shell.order"],
+    // Issue 1444: the rail's folded sections are the rail's layout too;
+    // they are set from the rail's own section headers.
+    keys: ["shell.hidden", "shell.order", "shell.folded"],
     read: (ctx) => {
       const s = ctx.shell.getState();
       return { hidden: s.hidden || [], order: s.order || [] };
@@ -4557,7 +4594,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "App event feeds: this project",
     description:
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
     keywords: ["feed", "events", "stream", "app", "sse"],
     scope: "workspace",
     control: { type: "custom", render: renderAppFeeds },
@@ -4933,6 +4970,29 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 10000, step: 1 },
     read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
     write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
+  },
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  {
+    id: "agents.issue_writes_visibility_minutes",
+    category: "agents",
+    label: "Recheck a repo's visibility after",
+    description:
+      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    keywords: [
+      "issue",
+      "github",
+      "visibility",
+      "public",
+      "names",
+      "words",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.visibility_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.visibility_minutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
   },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
@@ -5506,12 +5566,15 @@ export const DEN_SETTINGS = [
                   ),
               ),
             );
-          host.querySelector("#set-signout")?.addEventListener("click", () =>
+          host.querySelector("#set-signout")?.addEventListener("click", (e) => {
+            // Issue 1054: Sign out shows the kit's dots until the answer.
+            const release =
+              window.denShell?.holdDots?.(e.currentTarget) ?? (async () => {});
             ctx.shell
               .api("POST", "/api/session/logout", {})
               .then(() => draw(false))
-              .catch(() => {}),
-          );
+              .catch(() => release());
+          });
         };
         // Until /api/session answers, an unseen button holds the row at its
         // drawn height: a row that grows later moves the sections below it,
@@ -5558,12 +5621,16 @@ export const DEN_SETTINGS = [
           host.querySelector("output").textContent = where;
           host
             .querySelector("#set-sudo-forget")
-            ?.addEventListener("click", () =>
+            ?.addEventListener("click", (e) => {
+              // Issue 1054: Forget shows the kit's dots until the answer.
+              const release =
+                window.denShell?.holdDots?.(e.currentTarget) ??
+                (async () => {});
               ctx.shell
                 .api("POST", "/api/sudo-password/forget", {})
-                .then(load)
-                .catch(load),
-            );
+                .finally(release)
+                .then(load, load);
+            });
         };
         const load = () =>
           fetch("/api/sudo-password/status", { cache: "no-store" })
@@ -5870,10 +5937,10 @@ function renderRuntimes(host, ctx) {
     } else if (b.hasAttribute("data-cancel-path") && form) {
       form.hidden = true;
     } else if (b.dataset.clearPath) {
-      await savePath(b.dataset.clearPath, null, form);
+      await savePath(b.dataset.clearPath, null, form, b);
     } else if (b.dataset.pinPath && b.dataset.bin) {
       // Issue 456: one click pins that copy; a refusal shows under the list.
-      await savePath(b.dataset.pinPath, b.dataset.bin, b.closest(".rt-o"));
+      await savePath(b.dataset.pinPath, b.dataset.bin, b.closest(".rt-o"), b);
     }
   });
   host.addEventListener("submit", async (e) => {
@@ -5882,12 +5949,14 @@ function renderRuntimes(host, ctx) {
     if (!form) return;
     const bin = form.querySelector("input").value.trim();
     if (!bin) return;
-    await savePath(form.dataset.pathForm, bin, form);
+    await savePath(form.dataset.pathForm, bin, form, e.submitter);
   });
-  async function savePath(id, bin, form) {
+  async function savePath(id, bin, form, pressed) {
     const err = form?.querySelector(".rt-err");
     const btns = form ? [...form.querySelectorAll("button")] : [];
     btns.forEach((x) => (x.disabled = true));
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(pressed) ?? (async () => {});
     try {
       await ctx.shell.api(
         "POST",
@@ -5906,6 +5975,7 @@ function renderRuntimes(host, ctx) {
         err.hidden = false;
       }
     } finally {
+      await release();
       btns.forEach((x) => (x.disabled = false));
     }
   }
@@ -6555,6 +6625,7 @@ function wireRestartResult(box, ctx) {
   wireRestartNow(box, {
     api: (...a) => ctx.shell.api(...a),
     busyAction: ctx.shell.busyAction?.bind(ctx.shell),
+    holdDots: (b) => window.denShell?.holdDots?.(b),
     t: (k, v) => ctx.shell.t(k, v),
   });
 }
@@ -6569,9 +6640,11 @@ function offerRestart(host, ctx, fresh) {
       const box = host.querySelector("[data-hub-restart]");
       const btn = box?.querySelector('[data-hub-action="restart-stale"]');
       btn?.addEventListener("click", () => {
-        btn.disabled = true;
+        // Issue 1054: the kit's dots until the answer.
+        const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
         ctx.shell
           .api("POST", "/api/agents/restart-stale", { only: "hub" })
+          .finally(release)
           .then((x) => {
             // Issue 1407: each agent's own answer, never a fixed line.
             box.innerHTML = restartResultHtml(x?.agents, (k, v) =>
@@ -6580,7 +6653,6 @@ function offerRestart(host, ctx, fresh) {
             wireRestartResult(box, ctx);
           })
           .catch((e) => {
-            btn.disabled = false;
             box.insertAdjacentHTML(
               "beforeend",
               `<p class="set-note set-warn" role="alert">${escR(e?.message || "Not restarted")}</p>`,
@@ -6836,7 +6908,12 @@ export function projectMcpHtml(v, t) {
  * /api/workspaces/:ws/event-feeds serves them: each feed's name, agent,
  * address and state, with its last event's time. `fmt`: a time's words.
  */
-export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
+export function appFeedsHtml(
+  v,
+  t,
+  fmt = (ms) => new Date(ms).toISOString(),
+  edit = false,
+) {
   const feeds = Array.isArray(v?.feeds) ? v.feeds : [];
   const problems = Array.isArray(v?.problems) ? v.problems : [];
   const STATES = [
@@ -6859,7 +6936,12 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
       `<li data-feed="${escR(f.name)}" data-feed-state="${escR(state)}">` +
       `<span data-feed-text>${escR(t("feed.row", { name: f.name, agent: f.agent, url: f.url }))}</span> ` +
       `<strong data-feed-st>${escR(t(`feed.st.${state}`))}</strong>` +
-      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span></li>`
+      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span>` +
+      // Issue 1480: Remove, when the row is the person's to change.
+      (edit
+        ? ` <button type="button" class="den-btn sm" data-feed-remove="${escR(f.name)}" data-feed-agent="${escR(f.agent)}" aria-label="${escR(t("feed.removeL", { name: f.name }))}">${escR(t("feed.remove"))}</button>`
+        : "") +
+      `</li>`
     );
   });
   const list = rows.length
@@ -6869,7 +6951,28 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
     ? `<p class="set-note" data-feed-problems>${escR(t("feed.problems", { n: problems.length }))}</p>` +
       `<ul class="set-note">${problems.map((p) => `<li>${escR(p)}</li>`).join("")}</ul>`
     : "";
-  return list + bad;
+  return list + bad + (edit ? appFeedAddHtml(v, t) : "");
+}
+
+/** Issue 1480: the row's Add form: name, the agent, the address, a bearer ref. */
+function appFeedAddHtml(v, t) {
+  const agents = Array.isArray(v?.agents)
+    ? v.agents.filter((a) => typeof a === "string")
+    : [];
+  if (!agents.length)
+    return `<p class="set-note" data-feed-noagents>${escR(t("feed.noAgents"))}</p>`;
+  const opts = agents
+    .map((a) => `<option value="${escR(a)}">${escR(a)}</option>`)
+    .join("");
+  return (
+    `<div data-feed-add style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
+    `<label>${escR(t("feed.name"))} <input type="text" spellcheck="false" autocomplete="off" data-feed-name></label>` +
+    `<label>${escR(t("feed.agent"))} <select data-feed-agent-pick>${opts}</select></label>` +
+    `<label>${escR(t("feed.url"))} <input type="url" spellcheck="false" autocomplete="off" data-feed-url placeholder="https://"></label>` +
+    `<label>${escR(t("feed.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-feed-bearer placeholder="${escR(t("feed.bearerNone"))}"></label>` +
+    `<button type="button" class="den-btn sm primary" data-feed-addbtn>${escR(t("feed.add"))}</button>` +
+    `</div><div class="rt-err" role="alert" hidden></div>`
+  );
 }
 
 function renderAppFeeds(host, ctx) {
@@ -6879,11 +6982,76 @@ function renderAppFeeds(host, ctx) {
     return Promise.resolve();
   }
   const t = (k, v) => ctx.shell.t(k, v);
+  const base = `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  // Issue 1480: a person's own click is the decision; the server checks
+  // it as the held writes are, and the row is read again after.
+  const send = (kind, method, url, body, button, fallback) =>
+    ctx.shell
+      .busyAction(
+        kind,
+        (headers) => ctx.shell.api(method, url, body, { headers }),
+        { button, onFail: (e) => fail(e, fallback) },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) return renderAppFeeds(host, ctx);
+      });
   return ctx.shell
-    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`)
+    .api("GET", base)
     .then((v) => {
-      host.innerHTML = appFeedsHtml(v, t, (ms) =>
-        formatTime(new Date(ms).toISOString()),
+      host.innerHTML = appFeedsHtml(
+        v,
+        t,
+        (ms) => formatTime(new Date(ms).toISOString()),
+        true,
+      );
+      const add = host.querySelector("[data-feed-addbtn]");
+      add?.addEventListener("click", () => {
+        const val = (sel) => host.querySelector(sel)?.value.trim() ?? "";
+        const bearer = val("[data-feed-bearer]");
+        return send(
+          "add-feed",
+          "POST",
+          base,
+          {
+            name: val("[data-feed-name]"),
+            agent: val("[data-feed-agent-pick]"),
+            url: val("[data-feed-url]"),
+            ...(bearer ? { bearer } : {}),
+          },
+          add,
+          t("feed.addF"),
+        );
+      });
+      host.querySelectorAll("[data-feed-remove]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const name = b.getAttribute("data-feed-remove");
+          const { askConfirm } = await import("/dialog-den.js");
+          const ok = await askConfirm({
+            title: t("feed.rmT"),
+            message: t("feed.rmAsk", {
+              name,
+              project: ws,
+              agent: b.getAttribute("data-feed-agent"),
+            }),
+            okLabel: t("feed.remove"),
+            danger: true,
+          });
+          if (!ok) return;
+          return send(
+            "remove-feed",
+            "DELETE",
+            `${base}/${encodeURIComponent(name)}`,
+            undefined,
+            b,
+            t("feed.rmF"),
+          );
+        }),
       );
     })
     .catch(() => {
@@ -7316,7 +7484,8 @@ function renderProjectName(host, ctx) {
           say(c.why === "empty" ? t("pname.empty") : "");
           return;
         }
-        save.disabled = true;
+        // Issue 1054: Save shows the kit's dots until the answer.
+        const release = window.denShell?.holdDots?.(save) ?? (async () => {});
         ctx.shell
           .api("POST", "/api/workspaces/rename", {
             oldName: ws,
@@ -7328,9 +7497,9 @@ function renderProjectName(host, ctx) {
             if (done) done.hidden = false;
           })
           .catch((x) => {
-            save.disabled = false;
             say(x?.message || t("pname.failed"));
-          });
+          })
+          .finally(release);
       });
     })
     .catch((e) => {
@@ -7709,11 +7878,14 @@ function wireHubProject(host, ctx, url, t, b) {
     e.hidden = !msg;
     e.textContent = msg || "";
   };
-  const put = (hub) => {
+  const put = (hub, pressed) => {
     host.querySelectorAll("button, select").forEach((x) => (x.disabled = true));
     err("");
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(pressed) ?? (async () => {});
     return ctx.shell
       .api("PUT", url, { hub })
+      .finally(release)
       .then(() => renderHubProject(host, ctx))
       .catch((e) => {
         host
@@ -7773,7 +7945,7 @@ function wireHubProject(host, ctx, url, t, b) {
           if (r !== undefined && r !== null) return renderHubProject(host, ctx);
         });
     }
-    if (v) put(v);
+    if (v) put(v, go);
   });
   // Issue 271: a create waiting in Hub: read again while it shows, so the
   // row links on its own once an owner allows it.
@@ -7787,18 +7959,17 @@ function wireHubProject(host, ctx, url, t, b) {
         renderHubProject(host, ctx);
     }, HUBP_POLL_MS);
   }
-  host
-    .querySelector('[data-hubp-action="unlink"]')
-    ?.addEventListener("click", () =>
-      askHubUnlink(
-        ctx,
-        t,
-        String(b?.project ?? ""),
-        b?.hub?.name || b?.hub?.slug || b?.elsewhere?.name || "",
-      ).then((yes) => {
-        if (yes) put(null);
-      }),
-    );
+  const unlinkBtn = host.querySelector('[data-hubp-action="unlink"]');
+  unlinkBtn?.addEventListener("click", () =>
+    askHubUnlink(
+      ctx,
+      t,
+      String(b?.project ?? ""),
+      b?.hub?.name || b?.hub?.slug || b?.elsewhere?.name || "",
+    ).then((yes) => {
+      if (yes) put(null, unlinkBtn);
+    }),
+  );
 }
 
 /**
@@ -8081,6 +8252,7 @@ function renderHubGithub(host, ctx) {
         host.innerHTML = `<p class="set-note" data-hubgh data-hubgh-state="error">${escR(e?.message || t("hubgh.failed"))}</p>`;
       });
   const resync = () => {
+    // busy-ok: a background read-again when the page comes back into view
     hubResync ??= ctx.shell
       .api("POST", "/api/hub/sync", {})
       .catch(() => null)
@@ -8201,12 +8373,15 @@ function wireHub(host, ctx) {
   const disconnect = (force, btn) => {
     busy(true);
     err("");
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(btn) ?? (async () => {});
     ctx.shell
       .api("POST", "/api/hub/disconnect", force ? { force: true } : {})
+      .finally(release)
       .then((r) => drawHub(host, ctx, null, { ok: true, message: r.message }))
       .catch((e) => {
         busy(false);
-        if (btn) btn.remove();
+        if (btn && force) btn.remove();
         err(e?.message || "Not disconnected", !force);
       });
   };
@@ -8263,15 +8438,17 @@ function wireHub(host, ctx) {
   });
   host
     .querySelector('[data-hub-action="disconnect-yes"]')
-    ?.addEventListener("click", () => {
+    ?.addEventListener("click", (e) => {
+      const yes = e.currentTarget;
       if (ask) ask.hidden = true;
       if (acts) acts.hidden = false;
-      disconnect(false);
+      disconnect(false, yes);
     });
   const box = host.querySelector("#hub-allow-tools");
   if (box)
     box.addEventListener("change", () => {
       box.disabled = true;
+      // busy-ok: a checkbox that saves on change; it is off until the answer
       ctx.shell
         .api("POST", "/api/settings", { hub_allow_tools: box.checked })
         .then(() => drawHub(host, ctx, null, null))
@@ -8737,12 +8914,17 @@ function renderRotation(host, ctx) {
     if (host.querySelector("#rot-a-never").checked) return "never";
     return Number(host.querySelector("#rot-a-n").value);
   };
-  const put = async (body) => {
+  // A select saves on change (no button); Save, Clear and Add pass theirs.
+  const put = async (body, pressed) => {
+    // Issue 1054: the pressed button shows the kit's dots until the answer.
+    const release = window.denShell?.holdDots?.(pressed) ?? (async () => {});
     try {
       await ctx.shell.api("PUT", "/api/agents/rotation", body);
       await load();
     } catch (x) {
       fail(x);
+    } finally {
+      await release();
     }
   };
   host.addEventListener("change", (e) => {
@@ -8768,18 +8950,24 @@ function renderRotation(host, ctx) {
     if (!b) return;
     if (b.hasAttribute("data-rot-save-after")) {
       const v = host.querySelector("#rot-after_compactions")?.value.trim();
-      void put({
-        scope: "install",
-        key: "after_compactions",
-        value: v ? rotationValue("after_compactions", v) : null,
-      });
+      void put(
+        {
+          scope: "install",
+          key: "after_compactions",
+          value: v ? rotationValue("after_compactions", v) : null,
+        },
+        b,
+      );
     } else if (b.hasAttribute("data-rot-clear"))
-      void put({
-        scope: b.dataset.scope,
-        target: b.dataset.target,
-        key: b.dataset.key,
-        value: null,
-      });
+      void put(
+        {
+          scope: b.dataset.scope,
+          target: b.dataset.target,
+          key: b.dataset.key,
+          value: null,
+        },
+        b,
+      );
   });
   host.addEventListener("submit", (e) => {
     const f = e.target.closest("[data-rot-add]");
@@ -8800,7 +8988,7 @@ function renderRotation(host, ctx) {
       });
       return;
     }
-    void put({ scope, target, key, value: valueOf(key) });
+    void put({ scope, target, key, value: valueOf(key) }, e.submitter);
   });
   void load();
 }

@@ -23,7 +23,10 @@
  * 2. The pixels, when the baseline PNGs are on this machine
  *    (DEN_UI_DIFF_DIR, default ~/Library/Logs/den-probe/den-ui-diff/
  *    baseline): a 0-pixel difference, compared in the browser. The PNGs
- *    are not in the repo (each is ~100 KB); CI runs check 1 only.
+ *    are not in the repo (each is ~100 KB); CI runs check 1 only. This
+ *    run's own shots go to a temp folder (DEN_UI_AFTER_DIR, default
+ *    <tmp>/den-ui-diff-after), never beside the baseline: a test writes
+ *    only under the temp folders (issue 1356; issue 1478).
  *
  * Where it runs: the fixture keeps the browser's fingerprint from the
  * capture (its user agent, pixel ratio and the width of one line of text in
@@ -58,7 +61,10 @@ const OUT_DIR =
   process.env.DEN_UI_DIFF_DIR ??
   path.join(os.homedir(), "Library", "Logs", "den-probe", "den-ui-diff");
 const BASE_DIR = path.join(OUT_DIR, "baseline");
-const AFTER_DIR = path.join(OUT_DIR, "after");
+// Issue 1478: written, so under the temp folders (the write guard).
+const AFTER_DIR =
+  process.env.DEN_UI_AFTER_DIR ?? path.join(os.tmpdir(), "den-ui-diff-after");
+let afterSaid = false;
 
 const AREAS = ["shell", "version", "update", "report", "working"] as const;
 type Area = (typeof AREAS)[number];
@@ -197,6 +203,27 @@ const ALLOWED_STYLES: Record<string, Array<[string, string]>> = {
   "header.den-top margin-left": [["-233px", "0px"]],
 };
 
+/**
+ * Boxes the kit may move, each with its reason: "area-width selector" →
+ * [dx, dy, dw, dh] added to the baseline's rect.
+ */
+const ALLOWED_MOVES: Record<string, [number, number, number, number]> = {
+  // Issue 1444, Hub Design's spec for the fold toggle: on a phone a
+  // section's heading is a tap high (min-height var(--tap), 44px; it was
+  // 22px), so the entries below it sit 22px lower.
+  "shell-390 .den-rail .den-ni": [0, 22, 0, 0],
+};
+
+/** `want` with the allowed moves applied. */
+function allowMoves(key: string, want: Measure[]): Measure[] {
+  return want.map((m) => {
+    const d = ALLOWED_MOVES[`${key} ${m.sel}`];
+    if (!d || !m.rect) return m;
+    const rect = m.rect.map((v, i) => +(v + d[i]!).toFixed(2));
+    return { ...m, rect: rect as Measure["rect"] };
+  });
+}
+
 /** `want` with the allowed style changes applied. */
 function allowStyles(want: Measure[]): Measure[] {
   return want.map((m) => {
@@ -232,6 +259,9 @@ const ALLOWED_ATTRS = new Set([
   "data-nav-shape",
   "data-nav-legacy",
   "data-nav-kit",
+  // Issue 1499: Report's mark for the shot's box, where the shot swaps in
+  // for "Taking the screenshot…". It changes no look.
+  "data-shot-box",
 ]);
 
 interface Node {
@@ -443,6 +473,16 @@ async function show(p: Page, area: Area): Promise<void> {
       state: "visible",
       timeout: 20_000,
     });
+    // Issue 1478: the pill empties its live status and fills it again a
+    // moment later, so a screen reader announces it; the look is the
+    // settled one, with the words in place.
+    const status = await p
+      .getByRole("region", { name: "Update" })
+      .getByRole("status")
+      .elementHandle();
+    await p.waitForFunction((el) => !!el && el.textContent !== "", status, {
+      timeout: 10_000,
+    });
   } else if (area === "report") {
     await p.evaluate(() =>
       (
@@ -452,6 +492,12 @@ async function show(p: Page, area: Area): Promise<void> {
     await p.waitForSelector("dialog.fb-dlg[open]", {
       state: "visible",
       timeout: 20_000,
+    });
+    // Issue 1499: the form opens before the screenshot is taken; it is
+    // measured as it was, with the shot in.
+    await p.waitForSelector("[data-shot-wait]", {
+      state: "detached",
+      timeout: 30_000,
     });
   } else if (area === "working") {
     await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
@@ -493,7 +539,16 @@ async function measure(p: Page, area: Area): Promise<Shot> {
             attrs[a.name] = a.value;
         const kids: Node[] = [];
         let text = "";
-        for (const c of Array.from(el.childNodes)) {
+        // Issue 1499: Report's screenshot part is a wrapper with no box
+        // (display: contents), swapped in when the capture ends; its
+        // children count as its parent's, as before it was there.
+        const nodes = (e: Element): ChildNode[] =>
+          Array.from(e.childNodes).flatMap((c) =>
+            c.nodeType === 1 && (c as Element).hasAttribute("data-shot-area")
+              ? nodes(c as Element)
+              : [c],
+          );
+        for (const c of nodes(el)) {
           if (c.nodeType === 3) text += c.textContent ?? "";
           else if (c.nodeType === 1 && depth < 40)
             kids.push(tree(c as Element, depth + 1));
@@ -644,7 +699,7 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           expect(treeDiff(want.tree, shot.tree)).toEqual([]);
           const same =
             (fixture as unknown as Record<string, string>)[ENV_KEY] === env;
-          const wantM = allowStyles(want.measures);
+          const wantM = allowMoves(key, allowStyles(want.measures));
           if (same) expect(shot.measures).toEqual(wantM);
           else {
             // Another browser: all but the rects exactly, the rects within
@@ -659,6 +714,13 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           if (same && fs.existsSync(base)) {
             fs.mkdirSync(AFTER_DIR, { recursive: true });
             fs.writeFileSync(path.join(AFTER_DIR, name), png);
+            // Issue 1478: say where this run's shots are, once.
+            if (!afterSaid) {
+              afterSaid = true;
+              process.stdout.write(
+                `shell-kit-parity: this run's shots are in ${AFTER_DIR}\n`,
+              );
+            }
             // Report's screenshot preview is a picture of the page, not the
             // kit's look: left out.
             const skipRects = await p.evaluate(() =>
