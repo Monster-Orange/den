@@ -49,7 +49,10 @@ jobs:
   # variable is 'on' and the code came from this repo (a push, or a pull
   # request whose head branch lives here). The runner's
   # labels come from DEN_SELF_HOSTED_LABELS, a JSON array such as
-  # ["self-hosted","devbox"]; unset, ["self-hosted","den-wsl"]. A fork's pull request always runs GitHub-hosted, so
+  # ["self-hosted","devbox"]. Issue 1581: there's no default. With the switch
+  # on and no labels, every job runs GitHub-hosted and each job that could
+  # reach the box stops at its first step with the reason: nothing waits for
+  # a runner. A fork's pull request always runs GitHub-hosted, so
   # code from outside never reaches the box. The variable is the off switch:
   # unset or anything but 'on' puts every job back on GitHub-hosted runners.
   # The self-hosted runners are ephemeral containers that take one job each
@@ -102,13 +105,19 @@ jobs:
   checks:
     needs: [fast]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.DEN_SELF_HOSTED_LABELS) && fromJSON(vars.DEN_SELF_HOSTED_LABELS) || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         node: ["22.13.0", "24.13.0"]
     steps:
+      # Issue 1581: the switch alone sends nothing to a box.
+      - name: The box's labels are set when its switch is on
+        if: vars.DEN_SELF_HOSTED == 'on' && vars.DEN_SELF_HOSTED_LABELS == ''
+        run: |
+          echo "::error::DEN_SELF_HOSTED is on but DEN_SELF_HOSTED_LABELS is not set. Set it to the runners' labels as a JSON array, such as [\"self-hosted\",\"linux\"], or turn DEN_SELF_HOSTED off. No job was sent to a self-hosted runner."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The words gate diffs against a base commit (scripts/words-base.txt).
@@ -260,13 +269,19 @@ jobs:
   dist-smoke:
     needs: [fast]
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && vars.DEN_SELF_HOSTED_LABELS) && fromJSON(vars.DEN_SELF_HOSTED_LABELS) || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         node: ["22.13.0", "24.13.0"] # as gates: the supported range's ends
     steps:
+      # Issue 1581: the switch alone sends nothing to a box.
+      - name: The box's labels are set when its switch is on
+        if: vars.DEN_SELF_HOSTED == 'on' && vars.DEN_SELF_HOSTED_LABELS == ''
+        run: |
+          echo "::error::DEN_SELF_HOSTED is on but DEN_SELF_HOSTED_LABELS is not set. Set it to the runners' labels as a JSON array, such as [\"self-hosted\",\"linux\"], or turn DEN_SELF_HOSTED off. No job was sent to a self-hosted runner."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -289,7 +304,7 @@ jobs:
   pr:
     needs: [fast]
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && github.event.pull_request.head.repo.full_name == github.repository) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && github.event.pull_request.head.repo.full_name == github.repository && vars.DEN_SELF_HOSTED_LABELS) && fromJSON(vars.DEN_SELF_HOSTED_LABELS) || 'ubuntu-latest' }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -305,6 +320,12 @@ jobs:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
     steps:
+      # Issue 1581: the switch alone sends nothing to a box.
+      - name: The box's labels are set when its switch is on
+        if: vars.DEN_SELF_HOSTED == 'on' && vars.DEN_SELF_HOSTED_LABELS == ''
+        run: |
+          echo "::error::DEN_SELF_HOSTED is on but DEN_SELF_HOSTED_LABELS is not set. Set it to the runners' labels as a JSON array, such as [\"self-hosted\",\"linux\"], or turn DEN_SELF_HOSTED off. No job was sent to a self-hosted runner."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The words gate, the subset and the brittle ratchet diff against
@@ -447,7 +468,7 @@ jobs:
   pr-shards:
     needs: [fast, pr]
     if: needs.pr.outputs.shards != '[]'
-    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && github.event.pull_request.head.repo.full_name == github.repository) && fromJSON(vars.DEN_SELF_HOSTED_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.DEN_SELF_HOSTED == 'on' && github.event.pull_request.head.repo.full_name == github.repository && vars.DEN_SELF_HOSTED_LABELS) && fromJSON(vars.DEN_SELF_HOSTED_LABELS) || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       DEN_TEST_WORKERS: "2"
@@ -458,6 +479,12 @@ jobs:
         node: ["24.13.0"] # issue 998, as pr
         shard: ${{ fromJSON(needs.pr.outputs.shards) }}
     steps:
+      # Issue 1581: the switch alone sends nothing to a box.
+      - name: The box's labels are set when its switch is on
+        if: vars.DEN_SELF_HOSTED == 'on' && vars.DEN_SELF_HOSTED_LABELS == ''
+        run: |
+          echo "::error::DEN_SELF_HOSTED is on but DEN_SELF_HOSTED_LABELS is not set. Set it to the runners' labels as a JSON array, such as [\"self-hosted\",\"linux\"], or turn DEN_SELF_HOSTED off. No job was sent to a self-hosted runner."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
