@@ -378,12 +378,23 @@ export function buildRules(map = readMap()) {
       });
   }
   // Tests that start Den as a process: each runs when its subject changes.
-  for (const [t, subject] of starterSubjects(map, tests))
+  const starters = starterSubjects(map, tests);
+  for (const [t, subject] of starters)
     if (subject.length)
       rules.push({
         when: subject,
         run: [t],
         why: "starts Den as a process: its subject",
+      });
+  // Issue 728: a test declared in `subjects` that STARTS can't see (it
+  // runs a scaffolded distribution's own bin) runs on its globs too.
+  const seen = new Set(starters.map(([t]) => t));
+  for (const [t, globs] of Object.entries(map.subjects ?? {}))
+    if (!seen.has(t))
+      rules.push({
+        when: [globs].flat().sort(),
+        run: [t],
+        why: "runs Den as a process (declared): its subject",
       });
   return rules.filter((r) => r.run.length);
 }

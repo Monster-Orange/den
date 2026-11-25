@@ -59,6 +59,7 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
   type LoadHold,
+  MEMORY_NOT_MEASURED_WORDS,
   type MemoryHold,
   type SwapHold,
   expectedStart,
@@ -96,6 +97,7 @@ import {
 } from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
+  boxCouldServe,
   boxEnv,
   checkBox,
   defaultPlace,
@@ -103,7 +105,7 @@ import {
 } from "../../shared/gates/boxes.js";
 import {
   SELF,
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
   endpointFromEnv,
   personLanguage,
@@ -119,7 +121,11 @@ import {
   START_HOLD_WORDS,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
-import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
+import {
+  allowOf,
+  checkBaseUrl,
+  isLoopbackHost,
+} from "../../shared/gates/pw-guard.js";
 import {
   boxOffWords,
   gateBoxesView,
@@ -274,6 +280,22 @@ const WATCH_LOOK_MS = 1_000;
 
 /** Issue 1132: how often a held run looks at the load again. */
 const HOLD_LOOK_MS = 2_000;
+
+/**
+ * Issue 1198: a default pick's base URL when the run gives none: any port
+ * on 127.0.0.1 but 80 and 443, and in the box guard (issue 991) only the
+ * ports the run itself opens.
+ */
+const DEFAULT_BASE = "http://127.0.0.1:*";
+
+/** Whether a Playwright endpoint is on this machine's loopback. */
+function loopbackEndpoint(raw: string): boolean {
+  try {
+    return isLoopbackHost(new URL(raw).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 1023: how often a run looks whether its command is dumping core. */
 const DUMP_LOOK_MS = 100;
@@ -599,12 +621,19 @@ export function holdWords(h: LoadHold): string {
 
 /** Issue 1274: why a run here waits on swap, in words. */
 export function swapHoldWords(h: SwapHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
   return `waiting: this machine has ${h.usedGb} GB of swap in use, over ${h.limitGb} GB, while another run here is going; it starts once swap drops or that run ends (test boxes still take runs)`;
 }
 
 /** Issue 1274: why a run here waits on memory, in words. */
 export function memoryHoldWords(h: MemoryHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
   return `waiting: this machine has ${Math.round(h.free)}% of its memory free, under ${h.limit}%, while another run here is going; it starts once memory frees or that run ends (test boxes still take runs)`;
+}
+
+/** Issue 1349: an unknown memory reading holds; why, in words. */
+export function memoryUnavailableHoldWords(): string {
+  return "waiting: memory reading unavailable (this machine's free memory or swap couldn't be read), while another run here is going; it starts once a reading comes back or that run ends (test boxes still take runs)";
 }
 
 const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
@@ -613,6 +642,12 @@ const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
 export function machineLines(m: GateMachineView | undefined): string[] {
   if (!m) return [];
   const out: string[] = [];
+  // Issue 1349: the guard is off here, or its reading is unknown: say so.
+  if (m.notMeasured) out.push(`This machine: ${MEMORY_NOT_MEASURED_WORDS}.`);
+  else if (m.unavailable)
+    out.push(
+      "This machine: memory reading unavailable; new runs here wait while another run here is going.",
+    );
   if (m.freeMemory !== undefined)
     out.push(
       `This machine: ${m.freeMemory}% of memory free` +
@@ -650,9 +685,9 @@ export function slotLine(
       /** Issue 1048: the machine's cores. */
       cores?: number;
       /** Issue 1274: this machine's free memory, percent. */
-      freeMemory?: number;
+      freeMemory?: number | null;
       /** Issue 1274: swap in use here, GB. */
-      swapUsedGb?: number;
+      swapUsedGb?: number | null;
     },
 ): string {
   const yields = yieldedTo(e, all);
@@ -899,6 +934,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+  // Issue 1198: a loopback container named in the run's environment is
+  // what this machine's browser runs use here; a box replaces it. One on
+  // another host, or one given with --browser-endpoint, the run keeps.
+  const envLoopback =
+    flagEndpoint === undefined &&
+    fromEnv !== undefined &&
+    loopbackEndpoint(fromEnv.endpoint);
   const pwFlag =
     typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
   // Issue 1033: no --box: the first free browser slot, here or on a test
@@ -915,11 +957,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           label,
           project: path.basename(d.cwd),
           boxes: d.store.boxes(),
-          baseUrl: urls.length > 0,
+          // Issue 1198: none given: the ports the run opens (DEFAULT_BASE).
+          baseUrl: true,
           pwVersion: pwFlag ?? playwrightVersion(d.cwd),
           // A run that brings its own browser (the flag, or its
           // environment) keeps it: a box would only change DEN_PW_WS.
-          ...(endpoint !== undefined
+          ...(endpoint !== undefined && !envLoopback
             ? {
                 ownBrowser:
                   endpoint === SELF
@@ -931,15 +974,25 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     where = pick.where;
     hostWhy = pick.why;
     onlyBoxes = pick.only;
+    if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
-  const verdict = browserSlotCheck({
+  const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
     ...(where ? { where } : {}),
-    platform: d.store.platform,
-    requiresContainer: d.store.settings().browserRequiresContainer,
+    // Issue 1198: "any" with none of its own waits only for a box that
+    // could ever take it; else it is refused at once.
+    ...(where === "any"
+      ? {
+          boxCouldServe: boxCouldServe(
+            d.store.boxes(),
+            pwFlag ?? playwrightVersion(d.cwd),
+            onlyBoxes,
+          ),
+        }
+      : {}),
   });
   if (!verdict.ok)
     throw new GateUsage(
@@ -1022,6 +1075,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       ...(hostWhy ? { hostWhy } : {}),
       ...(onlyBoxes ? { onlyBoxes } : {}),
+      ...(verdict.ok && verdict.boxesOnly ? { boxesOnly: true } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -1545,6 +1599,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-box-default": true,
     "--browser-host-only": true,
     "--yes": false,
+    // Issue 1395: an agent's ask says why.
+    "--reason": true,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -1559,6 +1615,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--reap-grace-seconds", "reap_grace_seconds"],
     ["--memory-free-min-percent", "memory_free_min_percent"],
     ["--swap-hold-gb", "swap_hold_gb"],
+    ["--memory-reading-keep-seconds", "memory_reading_keep_seconds"],
     ["--vm-memory-share", "vm_memory_share"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
@@ -1595,12 +1652,14 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     if (typeof v === "string") raw[key] = v.trim() || null;
   }
   if (Object.keys(raw).length) {
-    if (isAgentEnv(d.env))
-      throw new GateUsage(
-        "gate settings: only a person can change them (this is an agent)",
-      );
     const c = checkGatePatch(raw);
     if (!c.ok) throw new GateUsage(c.error);
+    // Issue 1395: an agent asks for gate_settings_set; never writes here.
+    if (isAgentEnv(d.env)) {
+      const done = await askGateSettings(d, c.patch, f["--reason"]);
+      if (done !== 0) return done;
+      return showSettings(d);
+    }
     // Issue 963: turning release priority off warns first; --yes goes on.
     const lang = d.lang ?? personLanguage();
     if (
@@ -1624,6 +1683,68 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
         whoAsks(d.env, d.cwd),
       );
   }
+  return showSettings(d);
+}
+
+/**
+ * Issue 1395: an agent's `gate settings` change, asked of Den as the held
+ * write gate_settings_set (the approval policy decides: written at once,
+ * or held for the person's Allow). 0 when written or held; 1 when refused
+ * or no server answered. The CLI writes nothing itself for an agent.
+ */
+async function askGateSettings(
+  d: GateDeps,
+  patch: GateSettingsPatch,
+  reasonFlag: string | boolean | string[] | undefined,
+): Promise<number> {
+  const reason = typeof reasonFlag === "string" ? reasonFlag.trim() : "";
+  if (!reason)
+    throw new GateUsage(
+      'gate settings: an agent asks the person for a change: add --reason "<why>"',
+    );
+  let r: Awaited<ReturnType<PersonServer>>;
+  try {
+    r = await (d.server ?? personServerFor())("POST", "/api/approvals", {
+      action: "gate_settings_set",
+      args: { settings: patch, reason },
+    });
+  } catch (e) {
+    d.err(`gate settings: ${(e as Error).message}; nothing was changed`);
+    return 1;
+  }
+  if (r === null) {
+    d.err(
+      "gate settings: Den's web app isn't answering, so nothing was asked or changed",
+    );
+    return 1;
+  }
+  const j = r.json ?? {};
+  const result = (j.result ?? {}) as Record<string, unknown>;
+  if ((r.status !== 200 && r.status !== 202) || j.ok === false) {
+    d.err(`gate settings: ${String(j.error ?? `Den answered ${r.status}`)}`);
+    return 1;
+  }
+  if (j.state === "done" && result.ok === false) {
+    d.err(`gate settings: ${String(result.error ?? "it failed")}`);
+    return 1;
+  }
+  if (j.state === "done") {
+    const changed = Array.isArray(result.changed) ? result.changed : [];
+    d.out(
+      changed.length
+        ? `✓ gate settings changed: ${changed.join(", ")}`
+        : `✓ gate settings: ${String(result.note ?? "already in effect")}`,
+    );
+    return 0;
+  }
+  d.out(
+    `gate settings: waiting for the person's Allow in Den (request ${String(j.id ?? "")}); check it with the MCP tool approval_check`,
+  );
+  return 0;
+}
+
+/** The settings, each with its meaning and value, and the summary line. */
+function showSettings(d: GateDeps): number {
   const s = d.store.settings();
   // Issue 963: each setting, its value and what it means.
   const meanings = GATE_MEANINGS[d.lang ?? personLanguage()];
@@ -1635,7 +1756,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserContainerStrict ? "yes, strict" : s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

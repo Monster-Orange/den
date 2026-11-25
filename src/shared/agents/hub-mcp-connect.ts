@@ -180,3 +180,15 @@ export function readHubMcpInit(
     ? (v as HubMcpInit)
     : null;
 }
+
+/**
+ * Issue 750: whether this agent's Hub tools failed to load in its current
+ * session (issue 749's record). A group message to it is acked `held`
+ * (hub_tools_unavailable), and Hub shows Can't reach Hub with Restart.
+ */
+export function hubToolsFailed(
+  stateDir: string,
+  rec: { id: string; startedAt: string },
+): boolean {
+  return mcpLoadFailures(stateDir, rec).some((f) => f.server === HUB_SERVER);
+}

@@ -28,9 +28,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { readStateJson } from "../../shared/state-backup.js";
+import { PUSH_SUBSCRIPTIONS_FILE } from "../../shared/push-subscription-count.js";
 
 export const VAPID_FILE = "push-vapid.json";
-export const SUBSCRIPTIONS_FILE = "push-subscriptions.json";
+export const SUBSCRIPTIONS_FILE = PUSH_SUBSCRIPTIONS_FILE;
 /** The most devices kept; the oldest goes first. */
 export const MAX_SUBSCRIPTIONS = 20;
 
