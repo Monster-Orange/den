@@ -771,7 +771,7 @@ import {
   isUiLanguage,
   localizePage,
   uiLanguage,
-} from "./ui-language.js";
+} from "../../shared/ui-language.js";
 import { isTimeZone, timeZonePref, zonePage } from "./time-zone-pref.js";
 import { singleFlight } from "./single-flight.js";
 import { graphOrder } from "./graph-order.js";
