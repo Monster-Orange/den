@@ -142,9 +142,18 @@ function scrollPlan(skip) {
       // that the moved content is positioned too.
       if (m.sticky && cs.zIndex === "auto") css += "z-index:1;";
     }
-    if (css || m.text) plan.push({ el, css, text: m.text });
+    if (css || m.text)
+      plan.push({
+        el,
+        css,
+        text: m.text,
+        still: m.sticky && !m.dx && !m.dy && !m.clip && !m.text,
+      });
   }
-  return plan;
+  // Issue 1341: sticky parts sticky hasn't moved (the rail's foot in a
+  // rail that fits) need nothing when nothing else moved either: the
+  // plain capture, as before they were sticky.
+  return plan.every((x) => x.still) ? [] : plan.map(({ still, ...x }) => x);
 }
 
 /** The SVG (a data: URL) with each tagged clone changed as planned. */

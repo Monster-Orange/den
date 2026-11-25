@@ -12,5 +12,5 @@
  * `npm run build:pw-guard` (the release packs without scripts, so they
  * are committed; a test checks they match this source).
  */
-export { allowedUrl, allowFromEnv, allowOf, checkBaseUrl, connectGuarded, connectOptions, guardBrowser, guardContext, isLoopbackHost, pinLoopbackNames, PW_EXPOSE_ENV, warnBoxExpose, type ContextLike, } from "./pw-guard.js";
+export { allowedUrl, allowFromEnv, allowOf, checkBaseUrl, connectGuarded, type ConnectGuard, connectOptions, guardBrowser, guardContext, isLoopbackHost, pinLoopbackNames, PW_EXPOSE_ENV, warnBoxExpose, type ContextLike, } from "./pw-guard.js";
 export { boxOwnPort, ownPorts } from "./own-ports.js";

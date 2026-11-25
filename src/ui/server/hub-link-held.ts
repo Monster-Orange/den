@@ -20,6 +20,7 @@ import { isServerScope } from "../../shared/agents/server-agent.js";
 import type { HeldAsker, HeldCheck } from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
 import { hubMatchOf } from "./hub-link-all-routes.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 
 export interface HubLinkHeldDeps {
   /** Whether project `ws` exists here. */
@@ -37,6 +38,21 @@ export interface HubLinkHeldDeps {
   changed: () => void;
   /** Issue 167: a project Den couldn't match was just linked. */
   picked?: (n: number) => void;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  personal?: () => boolean;
+}
+
+/**
+ * Issue 1403 (Den Builder): on a personal install hub_link is routine only
+ * to the Hub project Connect pairs this project with (hubMatchOf's clear
+ * match). Any other target may be someone else's: the person's.
+ */
+function pairedTarget(
+  suggestions: HubProjectChoice[],
+  pick: HubProjectChoice,
+): boolean {
+  const m = hubMatchOf(suggestions);
+  return "clear" in m && m.clear.id === pick.id;
 }
 
 const label = (p: { name: string; slug: string }) =>
@@ -109,8 +125,11 @@ export async function checkHubLinkHeld(
       { key: "ap.hl.filed" },
     ],
   ];
+  const personOnly =
+    isPersonal(d.personal) && !pairedTarget(c.suggestions, pick);
   return {
     ok: true,
+    ...(personOnly ? { personOnly: true as const } : {}),
     summary: `link project ${ws} to the Hub project ${then}`,
     params: { project: ws, hub: then },
     details: lines.map(([l]) => l),

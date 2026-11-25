@@ -747,7 +747,31 @@ export type AckState =
   | "refused"
   | "working"
   | "done"
-  | "failed";
+  | "failed"
+  // Issue 750: held here, with a reason (Hub shows "Held: {reason}", or
+  // "Can't reach Hub" for HUB_TOOLS_UNAVAILABLE). Only to a Hub that
+  // lists ACK_HELD_FEATURE: an older one refuses it.
+  | "held";
+
+/** Issue 750: the feature a Hub lists (whoami features) when it takes `held`. */
+export const ACK_HELD_FEATURE = "deliveries.ack_held";
+/** Issue 750: the reason for an agent whose Hub tools failed to load. */
+export const HUB_TOOLS_UNAVAILABLE = "hub_tools_unavailable";
+
+/**
+ * Issue 750: the ack for a delivery held because its agent's Hub tools
+ * failed to load: `held` when Hub lists ACK_HELD_FEATURE, else `queued`
+ * (every Hub takes it), with the same reason either way.
+ */
+export function toolsHeldAck(features: readonly string[] | undefined): {
+  state: "held" | "queued";
+  reason: typeof HUB_TOOLS_UNAVAILABLE;
+} {
+  return {
+    state: features?.includes(ACK_HELD_FEATURE) ? "held" : "queued",
+    reason: HUB_TOOLS_UNAVAILABLE,
+  };
+}
 
 /** The ack's JSON body: a reason is plain text, at most 300 characters. */
 export function ackBody(
