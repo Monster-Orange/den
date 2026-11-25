@@ -32,7 +32,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { allowWrites } from "../../write-guard.js";
 import type { Browser, Page } from "playwright";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
@@ -55,8 +54,6 @@ const browsers: Partial<Record<Engine, Browser>> = {};
 type Engine = "chromium" | "webkit";
 const ENGINES: Engine[] = ["chromium", "webkit"];
 beforeAll(async () => {
-  // Issue 1356: the screenshot's folder (a probe folder under the home).
-  if (!SHOT.startsWith(os.tmpdir())) allowWrites(path.dirname(SHOT));
   try {
     const pw = await import("playwright");
     for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
