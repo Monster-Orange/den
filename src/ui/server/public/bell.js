@@ -276,6 +276,7 @@ export function allowsOf(b) {
  * (shell.js's denApDetailLines). `open`: Review is open.
  */
 function allowRowHtml(w, open) {
+  if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
@@ -310,6 +311,35 @@ function allowRowHtml(w, open) {
 /** The badge's count: Needs you plus Done, not seen. */
 export function bellCountOf(b) {
   return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
+}
+
+/**
+ * Issue 110 (mock v3, in Hub, Den project): a Coach Apply's held write is
+ * one card: who asks, the finding it came from, Change, Why, whether it is
+ * reversible, then the bell's own Allow and Deny. Every word is a key, its
+ * numbers the finding's (Den's, from the stored finding: never an agent's).
+ */
+function coachRowHtml(w) {
+  const c = w.coach;
+  const kind = String(c.kind ?? "");
+  const vars = { ...(c.vars ?? {}), persona: c.persona ?? "" };
+  const row = (label, text) =>
+    `<div class="den-bell-cr"><dt>${esc(tr(label))}</dt><dd>${esc(text)}</dd></div>`;
+  return (
+    `<div class="den-bell-row den-bell-allow den-bell-coach" data-kind="allow" data-bell-coach data-ap-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t"><b>${esc(tr("bell.coach.asks", { persona: vars.persona }))}</b>` +
+    `<span class="den-bell-sub">${esc(tr("bell.coach.from", { title: tr(`co.f.${kind}.t`, vars) }))}</span>` +
+    `<dl class="den-bell-cdl">` +
+    row("bell.coach.change", tr(`co.ap.change.${kind}`, vars)) +
+    row("bell.coach.why", tr(`co.f.${kind}.why`, vars)) +
+    row("bell.coach.rev", tr(`co.ap.rev.${kind}`, vars)) +
+    `</dl></span>` +
+    `<span class="den-bell-cb">` +
+    `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
+    `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
+    `</span></div>`
+  );
 }
 
 /**
@@ -588,8 +618,9 @@ async function post(path, body) {
  */
 function scopeRead(b, scope) {
   let marked = 0;
-  const f = (n, g) => {
-    if (g.scope !== scope || n.read) return n;
+  const f = (n) => {
+    // The server's rule (notifications.ts, matches): the item's own scope.
+    if (n.scope !== scope || n.read) return n;
     marked++;
     return { ...n, read: true };
   };
@@ -745,6 +776,10 @@ export function initBell(doc = document) {
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
+  // Issue 1332: the control a paint couldn't give the keyboard back to (its
+  // row wasn't drawn: a refresh that came back without it). The next paint
+  // that draws it again focuses it, unless the person moved on meanwhile.
+  let lost = "";
   const bell = hydrateBell(btn, {
     lang: () => window.denShell?.lang?.() ?? "en",
     // den#143: its Report footer drawn with it, so a repaint (every
@@ -756,6 +791,7 @@ export function initBell(doc = document) {
     onOpen: () => void refresh(),
     onClose: () => {
       ui.ask = null;
+      lost = "";
     },
     // Esc in the ⊘'s question cancels it; the panel stays.
     onEscape: () => {
@@ -771,6 +807,13 @@ export function initBell(doc = document) {
   // Issue 1054: the button held with the kit's dots, and how to let it go.
   let heldBtn = null;
   let letGo = null;
+  const loose = () => {
+    const a = doc.activeElement;
+    return !a || a === doc.body || a === doc.documentElement;
+  };
+  doc.addEventListener("focusin", (e) => {
+    if (lost && !pop.contains(e.target)) lost = "";
+  });
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -789,12 +832,24 @@ export function initBell(doc = document) {
     // patches in place), holds the new one when it isn't, and lets go of
     // the old: none is left held once the answer is in.
     const b = ui.busy ? pop.querySelector("[data-bell-held]") : null;
-    if (b !== heldBtn) {
+    // Issue 1524: the patch takes the drawn attributes and children, so a
+    // repaint takes the hold off the same button too (aria-busy, disabled,
+    // the dots): it is let go and held again. Letting go first keeps the
+    // kit's order: its release runs before the new hold.
+    const dropped =
+      b && b === heldBtn && b.getAttribute("aria-busy") !== "true";
+    if (b !== heldBtn || dropped) {
       letGo?.();
       heldBtn = b;
       letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
     }
-    if (keep) pop.querySelector(keep)?.focus?.();
+    const want = keep || (lost && loose() ? lost : "");
+    if (!want) return;
+    const el = pop.querySelector(want);
+    if (el) {
+      el.focus?.();
+      lost = "";
+    } else if (loose()) lost = want;
   };
   const refresh = async () => {
     const b = await load();
