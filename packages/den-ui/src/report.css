@@ -241,6 +241,16 @@
   box-sizing: border-box;
   width: 240px;
   max-width: 100%;
+  /* Faded through its colours, not opacity: its words keep full contrast
+     (Hub Design). */
+  background: color-mix(in srgb, var(--sunken, var(--bg)) 50%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--border-strong, var(--border)) 50%,
+    transparent
+  );
+}
+.fb-shot[data-late] img {
   opacity: 0.5;
 }
 .fb-shot-wait {

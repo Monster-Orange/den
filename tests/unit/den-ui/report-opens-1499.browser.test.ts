@@ -240,6 +240,18 @@ for (const name of ["chromium", "webkit"]) {
         expect(await p.textContent("[data-shot-late]")).toBe(
           kitT("en", "kit.report.shotLateWait"),
         );
+        // The faded box's words keep full contrast: nothing around them
+        // is see-through.
+        expect(
+          await p.evaluate(() => {
+            let e: Element | null = document.querySelector(
+              "[data-shot-box] [data-shot-wait]",
+            );
+            const o: string[] = [];
+            for (; e; e = e.parentElement) o.push(getComputedStyle(e).opacity);
+            return o.every((x) => x === "1");
+          }),
+        ).toBe(true);
         await send(p);
         expect(Date.now() - t0).toBeLessThan(DELAY);
         expect(await sent(p)).toEqual([{ title: "Slow page", shot: 0 }]);
@@ -296,12 +308,12 @@ for (const name of ["chromium", "webkit"]) {
                 x.bottom <= Math.min(dlg.bottom, window.innerHeight);
               const note = r("[data-shot-late]");
               const inc = r('[data-act="shotinclude"]');
-              const el = document.querySelector("[data-shot-box]")!;
+              const img = document.querySelector("[data-shot-box] img")!;
               return {
                 above: note.bottom <= box.top && inc.bottom <= box.top,
                 seen: seen(note) && seen(inc),
                 thumb: box.width <= 240.5,
-                opacity: getComputedStyle(el).opacity,
+                opacity: getComputedStyle(img).opacity,
               };
             });
             expect(got).toEqual({
