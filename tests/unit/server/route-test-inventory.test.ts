@@ -70,10 +70,10 @@ function pathPattern(route: string): RegExp {
     .replace(/\*$/, "")
     .split(/(:[A-Za-z0-9_]+)/)
     .map((part) =>
-      part.startsWith(":") ? "(?:[^/\"'\`\\s]+|\\$\\{[^}]+\\})" : escape(part),
+      part.startsWith(":") ? "(?:[^/\"'`\\s]+|\\$\\{[^}]+\\})" : escape(part),
     )
     .join("");
-  return new RegExp(`[\"'\`}\\s]${body}${prefix ? "" : "(?![\\w/-])"}`);
+  return new RegExp(`["'\`}\\s]${body}${prefix ? "" : "(?![\\w/-])"}`);
 }
 
 const key = (r: (typeof ROUTES)[number]) => `${r.methods.join("/")} ${r.path}`;
