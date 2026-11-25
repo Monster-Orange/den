@@ -839,13 +839,28 @@ es, ja), the roles, the timing and the look.
 - `ensureToastRegions(doc)`: call once at start. It puts both live regions
   on the page, empty (a polite `role="status"` and an assertive
   `role="alert"`). A page's own `#art-toast` counts as the status region.
-- `showToast({ message, detail?, kind?, onUndo?, actions?, link?, ms? })`
-  shows one toast and returns `{ close }`. A new toast closes the old one,
-  and the old Undo never runs. If the region has to be made, the toast goes
-  in 50 ms after it, so a screen reader hears it.
-- `toastHtml({ message, kind?, undo?, link? })` is the same toast as a
-  string for a server's page. Undo can be a POST form that works with no
-  script. `hydrateToast(doc)` times that toast and announces it.
+- `showToast({ message, detail?, kind?, onUndo?, actions?, link?, ms?, until?, lang? })`
+  shows one toast and returns `{ close }`. `detail` is a second, smaller
+  line (a request id, say). `kind` is `"status"` (the default) or
+  `"error"`. `onUndo` shows Undo, which runs once and then says "Undone."
+  for 3 s. `actions` are the host's buttons, `[{ label, onClick }]`: an
+  `onClick` that returns a string changes the button's words ("Copied",
+  say) and the toast stays. `ms` replaces the kit's time. `lang` defaults
+  to `<html lang>`. A new toast closes the old one, and the old Undo never
+  runs. If the region has to be made, the toast goes in 50 ms
+  (`ANNOUNCE_MS`) after it, so a screen reader hears it.
+- `toastHtml({ message, detail?, kind?, undo?, link?, until?, lang })` is
+  the same toast as a string, inside its live region, for a server's page.
+  `undo` is `true` (a button the client wires) or
+  `{ form: { action, fields?, method? } }`: a POST form that works with no
+  script (any method but `"post"` throws). `hydrateToast(doc)` times that
+  toast and announces it.
+- `toastClock({ kind?, ms?, undo?, onExpire })` is the timing with no DOM:
+  `start()`, `hold(why)` and `release(why)` (`"hover"`, `"focus"`,
+  `"hidden"`), `undone()`, `stop()`.
+- **Hooks for tests:** the region has `data-den-toast` (`status` or
+  `alert`), the toast `data-kind`, and its parts `data-toast-msg`,
+  `-detail`, `-words`, `-acts`, `-undo`, `-act`, `-link` and `-close`.
 - **Times:** 3 s plain, 10 s with Undo, and an error stays until it is
   closed (Close, Esc, or the next toast). Hover, focus inside and a hidden
   page hold the timer, and a full 3 s starts when they end.
