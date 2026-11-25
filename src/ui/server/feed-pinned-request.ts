@@ -10,7 +10,9 @@
  * A redirect is never followed (it would carry the bearer elsewhere): it
  * rejects with `redirect: true`, as fetch's redirect: "error" refuses one.
  * An aborted signal rejects with the signal's reason, so a timeout stays a
- * TimeoutError. The answer is a WHATWG Response, read as fetch's is.
+ * TimeoutError. A status outside 200 to 599, or headers a Response
+ * can't hold, reject too: nothing an app answers throws outside the
+ * promise. The answer is a WHATWG Response, read as fetch's is.
  */
 import http from "node:http";
 import https from "node:https";
@@ -76,16 +78,34 @@ export const pinnedFetch: PinnedFetch = (url, init) =>
         );
         return;
       }
-      const headers = new Headers();
-      for (const [k, v] of Object.entries(res.headers)) {
-        if (Array.isArray(v)) for (const x of v) headers.append(k, x);
-        else if (v !== undefined) headers.set(k, v);
+      // Reviewer C: Node's parser takes any 3-digit status, and Response
+      // refuses one outside 200 to 599: refuse it here, never throw.
+      if (status < 200 || status > 599) {
+        res.resume();
+        req.destroy();
+        reject(
+          Object.assign(new Error(`the app answered status ${status}`), {
+            status,
+          }),
+        );
+        return;
       }
-      const body =
-        status === 204 || status === 304
-          ? null
-          : (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>);
-      resolve(new Response(body, { status, headers }));
+      try {
+        const headers = new Headers();
+        for (const [k, v] of Object.entries(res.headers)) {
+          if (Array.isArray(v)) for (const x of v) headers.append(k, x);
+          else if (v !== undefined) headers.set(k, v);
+        }
+        const body =
+          status === 204 || status === 304
+            ? null
+            : (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>);
+        resolve(new Response(body, { status, headers }));
+      } catch (e) {
+        res.resume();
+        req.destroy();
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
     });
     const onAbort = () => req.destroy(signal!.reason as Error);
     signal?.addEventListener("abort", onAbort, { once: true });

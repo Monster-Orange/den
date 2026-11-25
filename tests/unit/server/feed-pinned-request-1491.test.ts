@@ -16,18 +16,18 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
-import type { AddressInfo } from "node:net";
+import net, { type AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { pinnedFetch } from "../../../src/ui/server/feed-pinned-request";
 
 const NAME = "feed.example.test";
-const servers: (http.Server | https.Server)[] = [];
+const servers: (http.Server | https.Server | net.Server)[] = [];
 const dirs: string[] = [];
 
 afterEach(async () => {
   for (const s of servers.splice(0)) {
-    s.closeAllConnections();
+    if ("closeAllConnections" in s) s.closeAllConnections();
     await new Promise<void>((r) => s.close(() => r()));
   }
   for (const d of dirs.splice(0))
@@ -41,7 +41,9 @@ interface Seen {
   path?: string;
 }
 
-async function listen(s: http.Server | https.Server): Promise<number> {
+async function listen(
+  s: http.Server | https.Server | net.Server,
+): Promise<number> {
   servers.push(s);
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", () => r()));
   return (s.address() as AddressInfo).port;
@@ -183,5 +185,37 @@ describe("issue 1491: pinnedFetch connects to the checked address", () => {
         signal: AbortSignal.timeout(200),
       }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("Reviewer C: a status outside 200 to 599 rejects, with no uncaught error", async () => {
+    // Node's parser takes any 3-digit status; new Response() throws on one
+    // outside 200 to 599, which would escape the promise.
+    const sockets: net.Socket[] = [];
+    const port = await listen(
+      net.createServer((c) => {
+        sockets.push(c);
+        c.once("data", () =>
+          c.end("HTTP/1.1 999 X\r\ncontent-length: 0\r\n\r\n"),
+        );
+      }),
+    );
+    const uncaught: unknown[] = [];
+    const onUncaught = (e: unknown) => uncaught.push(e);
+    process.on("uncaughtException", onUncaught);
+    try {
+      await expect(
+        pinnedFetch(`http://${NAME}:${port}/events`, {
+          headers: {},
+          address: "127.0.0.1",
+          family: 4,
+          signal: AbortSignal.timeout(5000),
+        }),
+      ).rejects.toMatchObject({ status: 999 });
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      process.off("uncaughtException", onUncaught);
+      for (const c of sockets) c.destroy();
+    }
+    expect(uncaught).toEqual([]);
   });
 });
