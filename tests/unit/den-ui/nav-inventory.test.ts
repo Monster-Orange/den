@@ -242,6 +242,40 @@ describe("nav inventory: red cases on the reference", () => {
     expect(ids(withShape("name,login", 1), r)).toEqual([`${ACCT} shape`]);
   });
 
+  // Issue 1341: the rail's foot is one .den-rail-foot holding the account
+  // entry. An entry of another line count than the reference's makes the
+  // foot taller or shorter by exactly its own change, and no more.
+  const FOOT = "#den-rail > div.den-rail-foot";
+  const oneLine = (extra = 0) => {
+    const s = withShape("login", 1);
+    const a = at(s, ACCT);
+    const d = 16;
+    a.box.h -= d;
+    a.box.y += d;
+    a.style.height = `${parseFloat(a.style.height) - d}px`;
+    const f = at(s, FOOT);
+    f.box.h -= d + extra;
+    f.box.y += d + extra;
+    f.style.height = `${parseFloat(f.style.height) - d - extra}px`;
+    return s;
+  };
+  it("issue 1341: the foot follows the account entry's own height change", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(oneLine(), r).filter((x) => x.startsWith(FOOT + " "))).toEqual(
+      [],
+    );
+  });
+  it("issue 1341: a foot that changes by more than the account entry fails", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(oneLine(8), r)).toContain(`${FOOT} style.height`);
+  });
+  it("issue 1341: the foot's height still holds when the account's line count matches", () => {
+    const r = withShape("name,login", 2);
+    const s = withShape("name,login", 2);
+    at(s, FOOT).style.height = `${parseFloat(at(s, FOOT).style.height) - 16}px`;
+    expect(ids(s, r)).toContain(`${FOOT} style.height`);
+  });
+
   it("an account given the old label/detail fails: flagged as deprecated", () => {
     const r = withShape("name,login", 2);
     const s = withShape("name,login", 2);

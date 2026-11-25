@@ -12,9 +12,12 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export type HostRefreshPhase =
   | "waiting"
+  /** Issue 1403: a routine restart found a turn running: the person's. */
+  | "held"
   | "restarted"
   | "failed"
   | "kept"
@@ -54,9 +57,7 @@ export function writeHostRefreshState(
   const file = hostRefreshFile(stateDir);
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(s) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, file);
+    writeFileAtomic(file, JSON.stringify(s) + "\n", { mode: 0o600 });
   } catch {
     /* doctor then offers the held write: never worse than before */
   }

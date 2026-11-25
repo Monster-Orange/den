@@ -18,8 +18,9 @@
  * every element under them that has a box (display: none, `hidden` and
  * what sits inside them are left out; an <svg> is one element, its shapes
  * are not). Each element's slot is "top", "rail" or "foot" (the rail's
- * entries after its spacer, .den-rail-grow: Settings, the collapse
- * toggle). For each: its key (below), its parent's key, slot, role, tag,
+ * entries after its spacer, .den-rail-grow: the .den-rail-foot box and
+ * what it holds, Settings, the account entry, the collapse toggle). For
+ * each: its key (below), its parent's key, slot, role, tag,
  * accessible name, classes, box { x, y, w, h } and computed styles
  * (STYLE_PROPS), and a rail entry's kind tag (0.7.3: `kind`, compared on
  * every entry both sides draw) and why it is off (0.7.4: `off`, compared
@@ -1090,8 +1091,35 @@ export function compareNav(actual, reference, opts = {}) {
   const ka = kids(actual);
   const kr = kids(reference);
   const emptyOneSide = (k) => !ka.get(k) !== !kr.get(k);
+  // Issue 1341: the boxes holding the account entry (the rail's foot)
+  // change height by exactly the entry's own change, and no more.
+  const acctBy = new Map(actual.elements.map((e) => [e.key, e]));
+  const refBy = new Map(reference.elements.map((e) => [e.key, e]));
+  const acctHolders = new Set();
+  if (acct && acctRef && (acct.lines ?? 0) !== (acctRef.lines ?? 0))
+    for (let k = acct.parent; k && acctBy.has(k); k = acctBy.get(k).parent)
+      acctHolders.add(k);
+  const acctDh = acct && acctRef ? acct.box.h - acctRef.box.h : 0;
+  const holdsAcct = (d) => {
+    if (!acctHolders.has(d.key)) return false;
+    const a = acctBy.get(d.key);
+    const r = refBy.get(d.key);
+    if (!r) return false;
+    const dh = /height/.test(d.property)
+      ? (parseFloat(a.style.height) || a.box.h) -
+        (parseFloat(r.style.height) || r.box.h)
+      : null;
+    if (d.property === "box.top")
+      return Math.abs(a.box.y - r.box.y + acctDh) <= tol;
+    if (d.property === "box.bottom") return false;
+    return dh != null && Math.abs(dh - acctDh) <= tol;
+  };
   return diffs.filter(
-    (d) => !(tall.test(d.property) && (acctOwn(d.key) || emptyOneSide(d.key))),
+    (d) =>
+      !(
+        tall.test(d.property) &&
+        (acctOwn(d.key) || emptyOneSide(d.key) || holdsAcct(d))
+      ),
   );
   function styles(w, g, skip) {
     for (const p of STYLE_PROPS) {

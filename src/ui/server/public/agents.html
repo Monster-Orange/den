@@ -1141,6 +1141,24 @@
         font-size: 12.5px;
         color: var(--muted);
       }
+      /* Issue 750: By project | By group, at the top of the list. */
+      .agl .agby {
+        margin: 8px 12px 2px;
+        font-size: 12.5px;
+      }
+      .agl .agby button {
+        padding: 4px 10px;
+      }
+      @media (pointer: coarse) {
+        .agl .agby button {
+          min-height: 44px;
+        }
+      }
+      /* Issue 750: a line's button (Connect Den Hub, Open Hub, Try again). */
+      .agnote .den-btn {
+        margin-left: 4px;
+        text-decoration: none;
+      }
       .agl .none {
         padding: 12px;
         color: var(--muted);

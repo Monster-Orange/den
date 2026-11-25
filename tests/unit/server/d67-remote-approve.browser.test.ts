@@ -161,6 +161,11 @@ async function allowFrom(a: Page, code: string): Promise<void> {
 
 /** The signed-out page's code: the browser way first, commands folded. */
 async function codeOn(b: Page): Promise<string> {
+  // Issue 1333: the page asks for a code only on its button.
+
+  await b.waitForSelector("#den-pair-start, #den-pair-code");
+
+  if (await b.$("#den-pair-start")) await b.click("#den-pair-start");
   await b.waitForSelector("#den-pair-code", { timeout: 15_000 });
   expect(await b.isVisible("#den-pair-browser")).toBe(true);
   expect(await b.isVisible("#den-pair-cmd")).toBe(false);

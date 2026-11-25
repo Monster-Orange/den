@@ -690,7 +690,9 @@ describe("its messages (den#145: zod v4 dropped `received`)", () => {
     ]);
   });
 
-  it("a value not in the list names it, and the list", () => {
+  // Issue 1412: a value not in the list is named by its kind and length,
+  // never quoted (a file read by path may hold anything at that key).
+  it("a value not in the list names its kind and length, and the list", () => {
     expect(
       errs({
         name: "a",
@@ -698,7 +700,28 @@ describe("its messages (den#145: zod v4 dropped `received`)", () => {
       }),
     ).toContainEqual([
       "smoke.api.auth[0]",
-      'invalid value "root" — must be one of: admin, user, beta',
+      "invalid value (a string of 4 characters) — must be one of: admin, user, beta",
+    ]);
+  });
+
+  it("never quotes the value, whatever it holds (issue 1412)", () => {
+    const secretish = "sk_live_0123456789abcdefABCDEF";
+    const all = errs({
+      name: "a",
+      smoke: {
+        api: { testDir: "t", testMatch: "*", auth: [secretish, 7, "x"] },
+      },
+    });
+    const said = JSON.stringify(all);
+    expect(said).not.toContain(secretish);
+    expect(said).not.toContain("sk_live");
+    expect(all).toContainEqual([
+      "smoke.api.auth[0]",
+      `invalid value (a string of ${secretish.length} characters) — must be one of: admin, user, beta`,
+    ]);
+    expect(all).toContainEqual([
+      "smoke.api.auth[2]",
+      "invalid value (a string of 1 character) — must be one of: admin, user, beta",
     ]);
   });
 });

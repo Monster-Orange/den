@@ -1,0 +1,65 @@
+/* den-ui: the group header (issue 750), one group's line in a list of
+   agents by group. Tokens only. The name opens the group in Hub; the lead
+   is marked; Message group is a small link-button (button.css). At phone
+   width it wraps, and its button keeps the 44px tap. */
+.den-grph {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding: 10px 12px 4px;
+  border-top: 1px var(--edge-style, solid) var(--border);
+}
+.den-grph:first-child {
+  border-top: 0;
+}
+.den-grph-t {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.den-grph-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+a.den-grph-name {
+  text-decoration: none;
+}
+a.den-grph-name:hover {
+  text-decoration: underline;
+}
+a.den-grph-name:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+.den-grph-lead {
+  font-size: 12px;
+  color: var(--faint);
+}
+.den-grph-mark {
+  color: var(--accent);
+  margin-right: 3px;
+}
+.den-grph-r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.den-grph-n {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+a.den-grph-act {
+  text-decoration: none;
+}
+@media (pointer: coarse) {
+  a.den-grph-act {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
