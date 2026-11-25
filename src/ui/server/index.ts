@@ -12232,23 +12232,26 @@ function startUpdateCheck(): void {
   const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
     void import("./update-check.js")
       .then((m) => {
-        // At a start, the pass before the restart stays the last one.
         const was = last ?? m.readCheckState(getStateDir())?.last;
         m.writeCheckState(getStateDir(), {
           everyMinutes,
-          next:
-            firstMs === null
-              ? null
-              : new Date(
-                  last ? Date.now() + every : startedAt + firstMs,
-                ).toISOString(),
+          next: every ? new Date(Date.now() + every).toISOString() : null,
           ...(was ? { last: was } : {}),
         });
       })
       .catch(() => {
         /* best effort: doctor says "no check yet" */
       });
-  noteState();
+  try {
+    writeCheckStateSync(getStateDir(), {
+      everyMinutes,
+      next:
+        firstMs === null ? null : new Date(startedAt + firstMs).toISOString(),
+      ...(before?.last ? { last: before.last } : {}),
+    });
+  } catch {
+    /* best effort: doctor says "no check yet" */
+  }
   // #142: an update ask for a version this Den already runs (or passed)
   // is done with.
   try {
