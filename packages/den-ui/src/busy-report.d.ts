@@ -1,4 +1,3 @@
-/** Issue 177: what Report from a failure pop-up starts with. */
 export declare function failureReport(o: {
   lang?: string;
   failure?: string;

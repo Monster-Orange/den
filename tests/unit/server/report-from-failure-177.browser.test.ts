@@ -1,12 +1,3 @@
-/**
- * Issue 177: Report from a failure pop-up starts filled in. A working
- * pop-up's failure (a stubbed 500) → Report → the form's title names the
- * action and the answer, its description carries the request id and the
- * route, the person can still change the title, and the report keeps the
- * secret scrub. Chromium and WebKit, 1280 and 375.
- *
- * The demo distribution (helpers/agents-page-server.ts). Invented names only.
- */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
@@ -106,8 +97,7 @@ async function page(
   return { p, seen };
 }
 
-/** Den's "link" action against the stubbed route, on a page button. */
-const start = (p: Page) =>
+const startLinkActionOnStubbedRoute = (p: Page) =>
   p.evaluate((url) => {
     const b = document.createElement("button");
     b.id = "bz-btn";
@@ -131,7 +121,7 @@ describe("issue 177: Report from a failure pop-up", () => {
       it(`${engine} ${width}: the title names the action and the answer; the request id and route are in`, async () => {
         if (!browsers[engine]) return;
         const { p, seen } = await page(engine, width);
-        await start(p);
+        await startLinkActionOnStubbedRoute(p);
         const bz = p.locator("dialog:has([data-bz])");
         await bz.locator('[data-bz="retry"]').waitFor({ timeout: 10_000 });
         const failure = (await bz.locator("h2").textContent())!.trim();
@@ -140,7 +130,6 @@ describe("issue 177: Report from a failure pop-up", () => {
 
         const field = p.locator('dialog [data-f="title"]');
         await field.waitFor({ timeout: 10_000 });
-        // The Report form's own dialog, kept past its first step.
         await field.evaluate((el) =>
           el.closest("dialog")!.setAttribute("data-t177", "report"),
         );
@@ -161,7 +150,6 @@ describe("issue 177: Report from a failure pop-up", () => {
         await expect(title.inputValue()).resolves.toBe(EDITED);
         await fb.locator('[data-act="next"]').click();
         await fb.locator('[data-act="review"]').click();
-        // The preview's answer is in the form: its request was made.
         await p.waitForFunction(() => {
           const pre = document.querySelector("[data-preview]");
           return !!pre && pre.textContent !== "…";

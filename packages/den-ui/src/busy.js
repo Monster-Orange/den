@@ -14,8 +14,7 @@
  *     request: (id) => Promise<state>  Check again through the product's
  *                                   adapter instead ({ state, result?,
  *                                   error? }); statusUrl is then unused
- *     report: (info) => void,       Report: { title, details, requestId,
- *                                   route } (busy-report.js, issue 177)
+ *     report: (info) => void,       Report: { title, details, requestId, route }
  *     toast: (text) => void,        a fast success, said without a pop-up
  *     open: (url) => void,          a held answer's page (default: go)
  *     logUrl: "/logs",              Open the log (reconnect mode)

@@ -1,9 +1,3 @@
-/**
- * Issue 177: Report from a failure pop-up starts filled in. Its title names
- * the action and the answer ("Couldn't save: error 500"); its description
- * carries the request id and the route. Nothing secret goes in: never the
- * request's body, a query string, a token or the server's own words.
- */
 import { describe, expect, it } from "@jest/globals";
 import { failureReport } from "../../../packages/den-ui/src/busy-report.js";
 

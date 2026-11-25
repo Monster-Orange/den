@@ -1,15 +1,3 @@
-/**
- * Issue 177: what Report from a failure pop-up starts with.
- *
- *   failureReport({ lang, failure, err, id, at, words? })
- *     → { title, description, requestId, route }
- *
- * The title names the action and the answer ("Couldn't save: error 500",
- * or "…: no answer"); the description carries the status, the request id,
- * the route (method and path, each id in it ":id") and the time. Never
- * the request's body, a query string, the server's own words or anything
- * the error carries beyond those: the person can add what they saw.
- */
 import { BUSY_WORDS } from "./busy-words.js";
 
 const ID = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -28,8 +16,7 @@ function pick(words, lang, key, vars) {
   );
 }
 
-/** The path of err.url (no origin, query or hash), or "". */
-function pathOf(url) {
+function pathWithoutOriginQueryOrHash(url) {
   if (typeof url !== "string" || !url) return "";
   let p;
   try {
@@ -40,22 +27,16 @@ function pathOf(url) {
   return PATH.test(p) && url.trim() === url && !/\s/.test(url) ? p : "";
 }
 
-/**
- * A plain word (or two, hyphened) stays; anything else (a digit, a
- * capital, a long run, a passphrase, an escape) may be an id or a bearer,
- * and becomes ":id".
- */
-const WORD = /^(?=.{1,24}$)[a-z]{1,12}(-[a-z]{1,12})?$/;
-const template = (path) =>
+const PLAIN_WORD_ELSE_ID = /^(?=.{1,24}$)[a-z]{1,12}(-[a-z]{1,12})?$/;
+const idsAsPlaceholders = (path) =>
   path
     .split("/")
-    .map((seg) => (seg === "" || WORD.test(seg) ? seg : ":id"))
+    .map((seg) => (seg === "" || PLAIN_WORD_ELSE_ID.test(seg) ? seg : ":id"))
     .join("/");
 
-/** "POST /api/x/:id", "/api/x", or "" when the error doesn't say. */
 function routeOf(err) {
-  const raw = pathOf(err?.url);
-  const path = raw ? template(raw) : "";
+  const raw = pathWithoutOriginQueryOrHash(err?.url);
+  const path = raw ? idsAsPlaceholders(raw) : "";
   if (!path) return "";
   const m = typeof err?.method === "string" ? err.method.toUpperCase() : "";
   return METHOD.test(m) ? `${m} ${path}` : path;
