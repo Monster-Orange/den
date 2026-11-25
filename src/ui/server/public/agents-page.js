@@ -1507,11 +1507,11 @@ function fitListFloor() {
   let px = upTo(rows[Math.min(LIST_FLOOR_ROWS, rows.length) - 1]);
   const right = agx.querySelector("#agr");
   const pane = right?.querySelector(".pane:not([hidden])");
-  if (pane && document.querySelector(".den-dock.open")) {
-    // The runs dock open takes up to half the screen: the page scrolls to
-    // the pane's To line above it anyway, and the list keeps its first row.
-    px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
-  } else if (pane) {
+  if (pane) {
+    // The runs dock open takes up to half the screen: the list keeps its
+    // first row (a band's heading above it included) within the room.
+    if (document.querySelector(".den-dock.open"))
+      px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
     const gap = parseFloat(getComputedStyle(agx).rowGap) || 0;
     // The right side's least: the pane's minimum, plus what sits beside it
     // there (the tab strip in Tabs).
