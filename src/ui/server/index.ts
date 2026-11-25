@@ -1518,6 +1518,7 @@ import {
   callerMiss,
   peerSettled,
   personCallerRefusal,
+  refusalConnection,
   requestRefusalDetail,
   tokenCaller,
   watchPeer,
@@ -2466,6 +2467,8 @@ const GUARD: GuardContext = {
               }),
               ...(gone ? {} : { outcome: "refused" as const }),
               reason: gone ? "token_caller_gone" : `token_${from}`,
+              // Issue 1509: the connection, so its caller can be found.
+              connection: refusalConnection(req, EDGE_PROVED(req)),
             },
             rec.actor,
           );

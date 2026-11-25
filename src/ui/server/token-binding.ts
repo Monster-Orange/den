@@ -19,9 +19,10 @@
  * is there to answer, so it is audited apart from a live agent's refusal.
  */
 import type * as http from "http";
-import * as net from "net";
 import type { Socket } from "net";
 import {
+  addressOf,
+  forwardedEntries,
   hostAllowed,
   isLoopbackAddress,
   type GuardContext,
@@ -316,6 +317,41 @@ export function refusalDetail(o: {
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
 }
 
+/** Issue 1509: the connection a refused agent token came on. */
+export interface RefusalConnection {
+  /** The socket's remote address, as an IP, or "unknown". */
+  remote: string;
+  /** The Host it dialed, when it is a host name or address. */
+  host?: string;
+  /** What a forwarded-for header said, as IPs only: recorded, not believed. */
+  forwardedFor?: string[];
+  /** Whether the edge proved the request (its proof header checked). */
+  edgeProved: boolean;
+}
+
+const HOST = /^(?:[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:.]{2,45}\])(?::\d{1,5})?$/;
+
+/**
+ * Issue 1509: what an audit row keeps of a refused agent token's
+ * connection, so its caller can be found afterwards. Addresses as IPs and
+ * a Host that is a name: nothing a caller can write free text into.
+ */
+export function refusalConnection(
+  req: http.IncomingMessage,
+  edgeProved: boolean,
+): RefusalConnection {
+  const h = req.headers ?? {};
+  const host = Array.isArray(h.host) ? h.host[0] : h.host;
+  const xff = h["x-forwarded-for"];
+  const fwd = forwardedEntries(Array.isArray(xff) ? xff.join(",") : xff);
+  return {
+    remote: addressOf(req.socket?.remoteAddress),
+    ...(typeof host === "string" && HOST.test(host) ? { host } : {}),
+    ...(fwd.length ? { forwardedFor: fwd } : {}),
+    edgeProved,
+  };
+}
+
 /**
  * Issue 1340: the audit detail of a refused agent token, from its request.
  * Off loopback (a bound LAN or mesh address, a proxy on another address),
@@ -335,7 +371,7 @@ export function requestRefusalDetail(
   const path = new URL(req.url ?? "/", "http://x").pathname;
   const addr = req.socket?.remoteAddress;
   if (!isLoopbackAddress(addr)) {
-    const at = typeof addr === "string" && net.isIP(addr) ? addr : "unknown";
+    const at = addressOf(addr);
     return `${o.actor}'s token from a connection off this machine's loopback (address ${at}, agent pid ${o.root ?? "?"}): ${method} ${path}`;
   }
   return refusalDetail({ ...o, caller: callerPid(req), method, path });
