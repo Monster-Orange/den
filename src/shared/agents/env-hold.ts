@@ -30,8 +30,8 @@
  *   user.yml agents.env_allow_agents: { <agent id>: [NAME] } names one
  *                                     agent keeps
  *   workspaces.yml <project>.agents.env_allow: names a project's agents keep
- *   user.yml agents.env_guard:        false stops refusing commands that
- *                                     print the whole environment
+ *   user.yml agents.env_guard:        false stops masking secret-looking
+ *                                     values in env, printenv, set and kin
  *   user.yml agents.env_hold_existing: true holds them back for agents
  *                                     started before the hold too (the
  *                                     held write den_env_hold_on sets it)
@@ -68,7 +68,29 @@ export const PERSON_CREDENTIAL_NAMES: readonly string[] = [
 export const ALWAYS_HELD_PREFIXES: readonly string[] = ["GIT_CONFIG_"];
 
 /** Values that make a variable a person's credential, whatever its name. */
-const PERSON_VALUE_GLOBS = ["*den_pt_*", "*web.secret*"];
+export const PERSON_VALUE_GLOBS: readonly string[] = [
+  "*den_pt_*",
+  "*web.secret*",
+];
+
+/**
+ * Issue 974: the env guard's masked set, for Den's PreToolUse hook (it has
+ * no list of its own): the hold's patterns (agents.env_hold, else the
+ * default list, also on a personal install that holds nothing back) and a
+ * person's credentials, by name and by value. `[]` set masks only those.
+ */
+export function envMaskArgs(s: EnvHoldSettings): string[] {
+  const names = [
+    ...(s.holdSet ? s.hold : DEFAULT_ENV_HOLD),
+    ...PERSON_CREDENTIAL_NAMES,
+  ].filter((p) => PATTERN_RE.test(p) && /[^*]/.test(p));
+  return [
+    "--env-mask",
+    [...new Set(names)].join(","),
+    "--env-mask-values",
+    PERSON_VALUE_GLOBS.join(","),
+  ];
+}
 
 /** The file the agent's shell runs before each command. */
 export const ENV_HOLD_FILE = "env-hold.sh";

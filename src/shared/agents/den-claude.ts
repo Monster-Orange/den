@@ -72,6 +72,7 @@ import {
   hookCommands,
   mergeHooks,
   envGuardHooks,
+  withEnvMask,
   withoutEnvGuard,
   sandboxRefusalHooks,
   type GateRouteArgs,
@@ -816,6 +817,8 @@ function common(input: LaunchInput): {
       ? mergeHooks(baseHooks, envGuardHooks(GUARDRAILS_DIR, process.execPath))
       : baseHooks;
   if (envGuard === false && guarded) withoutEnvGuard(guarded);
+  else if (guarded && input.envHold?.mask?.length)
+    withEnvMask(guarded, input.envHold.mask);
   // NT-1: every agent tells Den when it waits for its person.
   if (inbox && guarded)
     widenHookTimeouts(

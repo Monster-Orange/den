@@ -92,8 +92,8 @@ export function envHoldLines(
   }
   lines.push(
     s.guard
-      ? "  env guard ✓  commands that print the whole environment are refused (a guard against printing by accident, not a boundary)"
-      : "  env guard ⚠  agents.env_guard is false: commands that print the whole environment run",
+      ? "  env guard ✓  env, printenv, set and the like show secret-looking values masked (against printing by accident, not a boundary: a held name never reaches the agent at all)"
+      : "  env guard ⚠  agents.env_guard is false: env, printenv and set print secret-looking values as they are",
   );
   return { lines, problem: false };
 }

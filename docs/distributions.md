@@ -6376,7 +6376,7 @@ agents:
   env_allow: [OP_SERVICE_ACCOUNT_TOKEN] # every agent keeps these
   env_allow_agents: # one agent keeps these
     release-bot: [NPM_TOKEN]
-  env_guard: true # refuse commands that print the whole environment
+  env_guard: true # mask secret-looking values in env, printenv, set and the like
   env_hold_existing: false # true: agents from before the hold get it too
 
 # config/local/workspaces.yml
@@ -6389,11 +6389,22 @@ The three allow levels add up. `env_hold: []` holds nothing back on any
 install, and `den doctor` says so. These keys in a distribution's `den.yml` are refused,
 with a message naming `user.yml`.
 
-**The guard.** A PreToolUse hook refuses `env`, `printenv`, `set`,
-`export -p`, `declare -x` and the like when they would print the whole
-environment, and says to run `printenv NAME` instead. It guards against
-printing by accident. It is not a boundary: an agent that means to read a
-variable can. `env_guard: false` turns it off.
+**The guard.** These commands run, and show the values of secret-looking
+names masked, as `NAME=•••• (held)`: `env`, `printenv`, `printenv NAME`,
+`set`, `export -p`, `declare -x` and `-p`, `typeset -x` and `-p`, and the
+same through `builtin`, `command`, `\env` or `/usr/bin/env`, anywhere in a
+pipeline or list. A PreToolUse hook rewrites the printing part into
+`{ <it>; } | <Den's masker>`, ahead of any pipe or redirect, so a later
+stage or a file (`env > f`) gets the masked text too. The masked names are
+the hold's list (`agents.env_hold`, else the default, on a personal
+install too) and a person's credentials, by name or by value. A mask keeps
+no part of a value: no prefix, suffix or length.
+
+The guard stops a secret being printed into a transcript by accident. It
+is not a boundary: an interpreter, `ps eww`, `$VAR` or `eval` still read a
+value, and the masking covers only the commands listed. The hold is the
+real control, on a strict install: a held name isn't in the session at
+all. `env_guard: false` turns the guard off.
 
 The script reads the shell's own variable list (zsh's parameters, bash's
 `compgen -v`, and `set` in a plain sh such as dash), so it finds a

@@ -1,9 +1,10 @@
 /**
- * Issue 974 (2): Den's PreToolUse hook refuses a shell command that prints
- * the whole environment, says why and what to run instead; a command for
- * one variable passes, and agents.env_guard: false (the hook's
- * --no-env-guard) turns the refusal off. It runs even when a persona's
- * other guardrails are off (--no-guardrails).
+ * Issue 974 (2), as ruled: Den's PreToolUse hook never refuses a shell
+ * command that prints the environment. It rewrites it (updatedInput) so the
+ * values of secret-looking names are masked; agents.env_guard: false (the
+ * hook's --no-env-guard) leaves it as it is. It runs even when a persona's
+ * other guardrails are off (--no-guardrails). What the masked output holds
+ * is env-mask-974.test.ts.
  */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
@@ -14,7 +15,7 @@ const HOOK = path.resolve("src/shared/agents/guardrails/pretooluse.mjs");
 function bash(
   command: string,
   flags: string[] = [],
-): { code: number | null; stderr: string } {
+): { code: number | null; stderr: string; rewritten: string | null } {
   const r = spawnSync(process.execPath, [HOOK, ...flags], {
     input: JSON.stringify({
       tool_name: "Bash",
@@ -24,10 +25,17 @@ function bash(
     encoding: "utf-8",
     env: { PATH: process.env.PATH ?? "", HOME: "/nowhere" },
   });
-  return { code: r.status, stderr: r.stderr };
+  let rewritten: string | null = null;
+  try {
+    rewritten =
+      JSON.parse(r.stdout).hookSpecificOutput?.updatedInput?.command ?? null;
+  } catch {
+    rewritten = null;
+  }
+  return { code: r.status, stderr: r.stderr, rewritten };
 }
 
-describe("commands that print the whole environment are refused", () => {
+describe("commands that print the environment run, masked", () => {
   it.each([
     "env",
     "printenv",
@@ -53,16 +61,15 @@ describe("commands that print the whole environment are refused", () => {
     "typeset",
     "command env",
     "(env)",
-  ])("`%s` is refused, saying why and what to run instead", (cmd) => {
+    "printenv HOME",
+    "printenv PATH HOME",
+  ])("`%s` runs through Den's masker, never refused", (cmd) => {
     const r = bash(cmd);
-    expect(r.code).toBe(2);
-    expect(r.stderr).toMatch(/prints the whole environment/);
-    expect(r.stderr).toMatch(/printenv NAME/);
+    expect(r.code).toBe(0);
+    expect(r.rewritten).toMatch(/\} \| .*env-mask\.mjs/);
   });
 
   it.each([
-    "printenv HOME",
-    "printenv PATH HOME",
     "echo $HOME",
     "env FOO=1 node -v",
     "env -i PATH=/bin ls",
@@ -74,17 +81,19 @@ describe("commands that print the whole environment are refused", () => {
     "set -- a b",
     "git log --format=%G?",
     "cat environment.md",
-  ])("`%s` passes", (cmd) => {
-    expect(bash(cmd).code).toBe(0);
+  ])("`%s` is left as it is", (cmd) => {
+    const r = bash(cmd);
+    expect(r.code).toBe(0);
+    expect(r.rewritten).toBeNull();
   });
 
   it("agents.env_guard: false (--no-env-guard) turns it off", () => {
-    expect(bash("env", ["--no-env-guard"]).code).toBe(0);
-    expect(bash("printenv", ["--no-env-guard"]).code).toBe(0);
+    expect(bash("env", ["--no-env-guard"]).rewritten).toBeNull();
+    expect(bash("printenv", ["--no-env-guard"]).rewritten).toBeNull();
   });
 
-  it("it still refuses with a persona's other guardrails off (--no-guardrails)", () => {
-    expect(bash("env", ["--no-guardrails"]).code).toBe(2);
+  it("it still masks with a persona's other guardrails off (--no-guardrails)", () => {
+    expect(bash("env", ["--no-guardrails"]).rewritten).toMatch(/env-mask/);
     // The other guardrails are off there: a sleep passes.
     expect(bash("sleep 5", ["--no-guardrails"]).code).toBe(0);
   });

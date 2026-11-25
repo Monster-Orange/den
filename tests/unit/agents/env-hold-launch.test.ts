@@ -105,6 +105,23 @@ describe("a launch with the hold", () => {
     expect(l.pretool.join(" ")).not.toContain("--no-env-guard");
   });
 
+  it("its PreToolUse hook gets the masked set from env-hold.ts, on its own and with a persona's guardrails off", () => {
+    const mask = [
+      "--env-mask",
+      "*_TOKEN,DEN_PERSON_TOKEN",
+      "--env-mask-values",
+      "*den_pt_*",
+    ];
+    for (const p of [planner, bare]) {
+      const cmd = launch(p, { ...hold, mask }).pretool.join(" ");
+      expect(cmd).toContain("'--env-mask' '*_TOKEN,DEN_PERSON_TOKEN'");
+      expect(cmd).toContain("'--env-mask-values' '*den_pt_*'");
+    }
+    expect(
+      launch(planner, { ...hold, mask, guard: false }).pretool.join(" "),
+    ).not.toContain("--env-mask");
+  });
+
   it("agents.env_guard: false passes --no-env-guard", () => {
     const l = launch(planner, { ...hold, guard: false });
     expect(l.pretool.join(" ")).toContain("--no-env-guard");

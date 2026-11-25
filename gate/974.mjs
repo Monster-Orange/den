@@ -1,5 +1,6 @@
 // gate/974.mjs: secret-looking variables are held out of agent sessions,
-// and a command that prints the whole environment is refused.
+// and a command that prints the environment shows secret-looking values
+// masked.
 //
 // A stub agent of its own on the bed (gate-974-<run>), started the way Den
 // starts any agent. Inside its session (ctx.agent(id).sh):
@@ -9,8 +10,9 @@
 //     whose profile exports a fake secret (CANARY) shows it without that
 //     file and not with it (the order the runtime uses: profile, the file,
 //     the command);
-//   - the PreToolUse hook in its settings.json refuses `env`, `printenv`
-//     and `set`, and lets `printenv HOME` through.
+//   - the PreToolUse hook in its settings.json rewrites `env`, `printenv`
+//     and `set` through Den's masker; each, run with a planted fake token,
+//     shows the token's name and never its value.
 // Then one real turn of the runtime's CLI on the host, when it is there
 // and signed in (else that clause skips, needs-claude): the profile
 // exports CANARY, the agent's env-hold.sh is named, and it runs
@@ -31,9 +33,9 @@ export const issue = 974;
 export const clauses = [
   "an agent session starts without secret-looking variables, and its shell commands don't get them back from the profile",
   "a name agents.env_allow lists for the agent reaches it",
-  "a bare env, printenv or set is refused, saying what to run instead; printenv HOME isn't",
+  "a bare env, printenv or set runs, with a planted fake token's name shown and its value masked",
   "a real agent turn with a fake secret in the profile: printenv prints nothing, and the transcript has no trace of it",
-  "on a personal install with agents.env_hold unset, nothing is held back (the open default), and the guard still refuses",
+  "on a personal install with agents.env_hold unset, nothing is held back (the open default), and the guard still masks",
 ];
 export const timeoutMs = 240000;
 
@@ -131,16 +133,29 @@ export async function run(ctx, s) {
       .flatMap((m) => (m.hooks ?? []).map((h) => h.command))
       .find((c) => typeof c === "string" && c.includes("pretooluse.mjs"));
     out.hook = cmd ? true : false;
+    // The hook's node: the first word of its command.
+    const node = /^'([^']+)'|^(\S+)/.exec(cmd ?? "");
+    const nodeBin = node ? (node[1] ?? node[2]) : "node";
     if (cmd)
-      for (const c of ["env", "printenv", "set", "printenv HOME"]) {
+      for (const c of ["env", "printenv", "set"]) {
         const r = await a.sh(
-          `printf '%s' '${probe(c)}' | ${cmd} >/dev/null 2>"$TMPDIR/g974.err"; e=$?; echo "exit=$e"; grep -c 'printenv NAME' "$TMPDIR/g974.err"; rm -f "$TMPDIR/g974.err"`,
-          15000,
+          [
+            `printf '%s' '${probe(c)}' | ${cmd} >"$TMPDIR/g974.json"; echo "exit=$?"`,
+            `c=$('${nodeBin}' -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hookSpecificOutput.updatedInput.command)' "$TMPDIR/g974.json" 2>/dev/null)`,
+            `case "$c" in *env-mask.mjs*) echo masker=1 ;; *) echo masker=0 ;; esac`,
+            `o=$(CANARY_TOKEN='${CANARY}' sh -c "$c" 2>&1)`,
+            `case "$o" in *${CANARY}*) echo leak=1 ;; *) echo leak=0 ;; esac`,
+            `case "$o" in *CANARY_TOKEN*) echo name=1 ;; *) echo name=0 ;; esac`,
+            'rm -f "$TMPDIR/g974.json"',
+          ].join("\n"),
+          20000,
         );
         const t = String(r?.out ?? "");
         out.guard[c] = {
           exit: Number(/exit=(\d+)/.exec(t)?.[1] ?? NaN),
-          hint: /\n[1-9]/.test(t),
+          masker: /masker=1/.test(t),
+          leak: !/leak=0/.test(t),
+          name: /name=1/.test(t),
         };
       }
   }
@@ -248,8 +263,8 @@ export function expect(cells) {
   const r = cells.find((c) => c?.result)?.result ?? {};
   const fileOk = !!r.envFile && path.basename(r.envFile) === "env-hold.sh";
   const g = r.guard ?? {};
-  const refused = ["env", "printenv", "set"].every(
-    (c) => g[c]?.exit === 2 && g[c]?.hint,
+  const masked = ["env", "printenv", "set"].every(
+    (c) => g[c]?.exit === 0 && g[c]?.masker && !g[c]?.leak && g[c]?.name,
   );
   const t = r.turn ?? {};
   const open = r.emptyList === true;
@@ -260,7 +275,7 @@ export function expect(cells) {
     detail:
       "the bed is a personal install with agents.env_hold unset: nothing is held back there; tests/unit/agents/env-hold.test.ts proves the hold",
   });
-  const guardOk = r.hook === true && refused && g["printenv HOME"]?.exit === 0;
+  const guardOk = r.hook === true && masked;
   return [
     open
       ? strictOnly(clauses[0])
@@ -290,7 +305,7 @@ export function expect(cells) {
         ? Object.entries(g)
             .map(
               ([c, v]) =>
-                `${c}: exit ${v.exit}${v.hint ? ", says printenv NAME" : ""}`,
+                `${c}: exit ${v.exit}, ${v.masker ? "masked" : "not rewritten"}, name ${v.name ? "shown" : "missing"}, value ${v.leak ? "SEEN" : "never seen"}`,
             )
             .join("; ")
         : "no PreToolUse hook with pretooluse.mjs in the agent's settings.json",
@@ -313,7 +328,7 @@ export function expect(cells) {
       ? {
           clause: clauses[4],
           ok: fileOk && r.withFile === CANARY && guardOk,
-          detail: `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`} and says the list is empty; profile canary with it: ${r.withFile === CANARY ? "passes (nothing held)" : "gone"}; guard ${guardOk ? "refuses" : "doesn't refuse"}`,
+          detail: `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`} and says the list is empty; profile canary with it: ${r.withFile === CANARY ? "passes (nothing held)" : "gone"}; guard ${guardOk ? "masks" : "doesn't mask"}`,
         }
       : {
           clause: clauses[4],

@@ -339,9 +339,9 @@ export function mergeHooks(
 
 /**
  * Issue 974: the PreToolUse hook with the env guard alone, for an agent
- * whose persona has no guardrail hooks and no API-only rules: it refuses a
- * command that prints the whole environment (`--no-guardrails`: no log or
- * sleep checks).
+ * whose persona has no guardrail hooks and no API-only rules: a command that
+ * prints the environment runs with secret-looking values masked
+ * (`--no-guardrails`: no log or sleep checks).
  */
 export function envGuardHooks(
   dir: string = GUARDRAILS_DIR,
@@ -368,6 +368,26 @@ export function envGuardHooks(
 
 /** The flag that turns the env guard off (agents.env_guard: false). */
 export const NO_ENV_GUARD_FLAG = "--no-env-guard";
+
+/**
+ * Issue 974: `hooks` with the env guard's masked set (envMaskArgs) on each
+ * command that runs Den's PreToolUse hook. The values are checked patterns
+ * (letters, digits, _ and *) and globs; each is single-quoted.
+ */
+export function withEnvMask(
+  hooks: Record<string, unknown>,
+  args: readonly string[],
+): void {
+  const q = (a: string) => `'${a.replace(/'/g, `'\\''`)}'`;
+  const tail = args.map(q).join(" ");
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${tail}`;
+}
 
 /**
  * Issue 974: `hooks` with --no-env-guard on each command that runs Den's

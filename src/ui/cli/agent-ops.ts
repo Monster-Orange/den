@@ -277,6 +277,7 @@ import {
   allowedFor as envAllowedFor,
   checkProjectEnvAllow,
   defaultEnvHold,
+  envMaskArgs,
   type EnvHoldSettings,
 } from "../../shared/agents/env-hold.js";
 import {
@@ -3964,6 +3965,7 @@ function launchInput(
     envHold: {
       ...agentEnvHold(d, cfg.envHold, id, ws, cfg.git),
       guard: cfg.envHold?.guard ?? true,
+      mask: envMaskArgs(cfg.envHold ?? defaultEnvHold()),
     },
     // D47: services it may reach only through their API.
     ...(() => {

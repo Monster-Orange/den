@@ -12,11 +12,18 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * Issue 974: it also refuses a command that prints the whole environment
- * (a bare `env`, `printenv`, `set`, `export`, `export -p`, `declare -x`,
- * `typeset -x`, anywhere in a pipeline or list), saying what to run
- * instead. That one runs even with the other guardrails off
- * (--no-guardrails); --no-env-guard (agents.env_guard: false) turns it off.
+ * Issue 974: a command that prints the environment (`env`, `printenv`,
+ * `printenv NAME`, `set`, `export -p`, `declare -x`/`-p`, `typeset -x`/`-p`,
+ * `builtin set`, `command env`, `/usr/bin/env`, anywhere in a pipeline or
+ * list) runs with the values of secret-looking names masked: the printing
+ * stage becomes `{ <it>; } | <env-mask.mjs>` (the hook's updatedInput),
+ * ahead of any pipe or redirect. The masked set comes from env-hold.ts
+ * (--env-mask, --env-mask-values). It guards against printing a secret into
+ * a transcript by accident; it is not a boundary (an interpreter, `ps eww`,
+ * `$VAR` or eval read a value). On a strict install the hold is the real
+ * control: a held variable isn't in the session at all. It runs even with
+ * the other guardrails off (--no-guardrails); --no-env-guard
+ * (agents.env_guard: false) turns it off.
  *
  * Besides that, it blocks exactly two things, and nothing else:
  *
@@ -59,14 +66,6 @@ const SLEEP_HINT =
   "(the Monitor tool with an until-condition, or the command's own --wait). " +
   "Do not loop on sleep.";
 
-const ENV_HINT =
-  "It prints the whole environment, secrets included, into the " +
-  "conversation. Run `printenv NAME` for one variable instead (it still " +
-  "answers), or `printenv NAME1 NAME2` for a few. A secret-looking " +
-  "variable Den holds back is empty here: if you need one, ask your " +
-  "person to add its name to agents.env_allow_agents.<your id> (or " +
-  "agents.env_allow) in config/local/user.yml.";
-
 /** env's options that take a value as the next word (or `--opt=value`). */
 const ENV_VALUE_OPTS = new Set([
   "-u",
@@ -106,15 +105,19 @@ const operands = (args) =>
 /** Why this stage prints the whole environment, or null. */
 function dumpsEnv(words) {
   let w = words;
-  // sudo/doas run the rest: look at that.
-  while (w.length && (base(w[0]) === "sudo" || base(w[0]) === "doas")) {
-    w = w.slice(1);
-    while (w.length && w[0].startsWith("-")) w = w.slice(1);
+  // sudo/doas run the rest, and `builtin` a builtin: look at that.
+  for (;;) {
+    if (w.length && (base(w[0]) === "sudo" || base(w[0]) === "doas")) {
+      w = w.slice(1);
+      while (w.length && w[0].startsWith("-")) w = w.slice(1);
+    } else if (w[0] === "builtin") w = w.slice(1);
+    else break;
   }
   const cmd = base(w[0] ?? "");
   const args = w.slice(1);
   if (cmd === "env") return envPrintsAll(args);
-  if (cmd === "printenv") return operands(args).length === 0;
+  // printenv NAME too: a value it prints is masked when it is held.
+  if (cmd === "printenv") return true;
   if (cmd === "set") return args.length === 0;
   if (cmd === "export") return operands(args).length === 0;
   if (cmd === "declare" || cmd === "typeset") {
@@ -125,36 +128,113 @@ function dumpsEnv(words) {
   // sh -c '...': the command line it runs.
   if (["sh", "bash", "zsh", "dash", "ksh"].includes(cmd)) {
     const c = args.indexOf("-c");
-    if (c >= 0 && args[c + 1] !== undefined)
-      return envDumpCommand(args[c + 1]) !== null;
+    if (c >= 0 && args[c + 1] !== undefined) return printsEnv(args[c + 1]);
   }
   return false;
 }
 
-/** The reason to refuse this Bash command for printing the environment, or null. */
-export function envDumpCommand(command) {
+/** Whether this Bash command has a stage that prints the environment. */
+export function printsEnv(command) {
+  try {
+    return parseShell(String(command ?? "")).some((p) =>
+      p.some((st) => dumpsEnv(st.words)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Leading words that belong to the shell's grammar, not the command. */
+const GRAMMAR = new Set([
+  "do",
+  "then",
+  "else",
+  "elif",
+  "while",
+  "until",
+  "if",
+  "!",
+  "{",
+  "}",
+]);
+
+/** An output redirection operator (`>`, `2>>`, `&>`, `>&`): it and its target move. */
+const OUT_REDIRECT = /^(\d*|&)>>?&?$/;
+
+/**
+ * Issue 974: `command` with each stage that prints the environment
+ * rewritten into `{ <stage>; } | <masker>`, its output redirections after
+ * the masker, so the values are masked before any pipe or redirect sees
+ * them (`env > f` writes masked values to f). Null when no stage prints
+ * the environment, or the command can't be read.
+ */
+export function envMaskCommand(command, masker) {
+  const src = String(command ?? "");
   let pipelines;
   try {
-    pipelines = parseShell(String(command ?? ""));
+    pipelines = parseShell(src);
   } catch {
     return null;
   }
+  const edits = [];
   for (const stages of pipelines)
-    for (const st of stages)
-      if (dumpsEnv(st.words))
-        return `Den refused \`${String(command).trim()}\`. ${ENV_HINT}`;
-  return null;
+    for (const st of stages) {
+      if (!dumpsEnv(st.words) || !st.spans?.length) continue;
+      let k = 0;
+      while (k < st.raw.length && GRAMMAR.has(st.raw[k])) k++;
+      const run = [];
+      const out = [];
+      for (let j = k; j < st.raw.length; j++) {
+        const text = src.slice(st.spans[j][0], st.spans[j][1]);
+        if (OUT_REDIRECT.test(st.raw[j])) {
+          out.push(text);
+          if (st.spans[j + 1]) {
+            out.push(src.slice(st.spans[j + 1][0], st.spans[j + 1][1]));
+            j++;
+          }
+        } else run.push(text);
+      }
+      if (!run.length) continue;
+      edits.push({
+        from: st.spans[k][0],
+        to: st.spans[st.spans.length - 1][1],
+        text: `{ ${run.join(" ")}; } | ${masker}${out.length ? ` ${out.join(" ")}` : ""}`,
+      });
+    }
+  if (!edits.length) return null;
+  let r = src;
+  for (const e of edits.sort((x, y) => y.from - x.from))
+    r = r.slice(0, e.from) + e.text + r.slice(e.to);
+  return r;
 }
 
-/** Issue 974: the env guard's reason to refuse this tool call, or null. */
-export function envDumpDecision(input) {
+/** Den's masker as a shell command, with the masked set (envMaskArgs). */
+export function maskerCommand(argv = process.argv, node = process.execPath) {
+  const names = arg("--env-mask", argv);
+  const values = arg("--env-mask-values", argv);
+  const file = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "env-mask.mjs",
+  );
+  return [
+    word(node),
+    word(file),
+    ...(names === null ? [] : ["--names", word(names)]),
+    ...(values === null ? [] : ["--values", word(values)]),
+  ].join(" ");
+}
+
+/** Issue 974: the Bash tool input with its printing stages masked, or null. */
+export function envMaskRewrite(input, argv = process.argv) {
   if (!input || typeof input !== "object" || input.tool_name !== "Bash")
     return null;
   const ti =
     input.tool_input && typeof input.tool_input === "object"
       ? input.tool_input
-      : {};
-  return envDumpCommand(ti.command);
+      : null;
+  if (!ti || typeof ti.command !== "string") return null;
+  const c = envMaskCommand(ti.command, maskerCommand(argv));
+  return c === null ? null : { ...ti, command: c };
 }
 
 /** Is this path a log: *.log, .dev-metrics/*.jsonl, or a transcript? */
@@ -198,19 +278,29 @@ export function parseShell(src) {
   const pipelines = [];
   let stages = [];
   let words = [];
+  // Issue 974: where each word sits in `src` ([start, end)), for a rewrite.
+  let spans = [];
   let word = "";
   let inWord = false;
+  let wordStart = 0;
   const heredocs = [];
 
   const endWord = () => {
-    if (inWord) words.push(word);
+    if (inWord) {
+      words.push(word);
+      spans.push([wordStart, i]);
+    }
     word = "";
     inWord = false;
   };
+  const begin = () => {
+    if (!inWord) wordStart = i;
+  };
   const endStage = () => {
     endWord();
-    if (words.length) stages.push(stage(words));
+    if (words.length) stages.push({ ...stage(words), raw: words, spans });
     words = [];
+    spans = [];
   };
   const endPipeline = (background = false) => {
     endStage();
@@ -225,12 +315,14 @@ export function parseShell(src) {
   while (i < src.length) {
     const c = src[i];
     if (c === "\\" && i + 1 < src.length) {
+      if (src[i + 1] !== "\n") begin();
       if (src[i + 1] !== "\n") word += src[i + 1];
       inWord = inWord || src[i + 1] !== "\n";
       i += 2;
       continue;
     }
     if (c === "'") {
+      begin();
       const j = src.indexOf("'", i + 1);
       const end = j < 0 ? src.length : j;
       word += src.slice(i + 1, end);
@@ -239,6 +331,7 @@ export function parseShell(src) {
       continue;
     }
     if (c === '"') {
+      begin();
       let j = i + 1;
       while (j < src.length && src[j] !== '"') {
         if (src[j] === "\\" && j + 1 < src.length) {
@@ -251,6 +344,7 @@ export function parseShell(src) {
       continue;
     }
     if (c === "$" && src[i + 1] === "(") {
+      begin();
       let depth = 0;
       let j = i + 1;
       for (; j < src.length; j++) {
@@ -263,6 +357,7 @@ export function parseShell(src) {
       continue;
     }
     if (c === "`") {
+      begin();
       const j = src.indexOf("`", i + 1);
       const end = j < 0 ? src.length : j;
       word += src.slice(i, end + 1);
@@ -304,6 +399,7 @@ export function parseShell(src) {
       while (j < src.length && !/[\s;&|<>()]/.test(src[j])) d += src[j++];
       heredocs.push(d.replace(/['"\\]/g, ""));
       words.push("<<");
+      spans.push([i, j]);
       i = j;
       continue;
     }
@@ -320,6 +416,7 @@ export function parseShell(src) {
     if (c === "&" && src[i + 1] === ">") {
       endWord();
       words.push(src[i + 2] === ">" ? "&>>" : "&>");
+      spans.push([i, i + (src[i + 2] === ">" ? 3 : 2)]);
       i += src[i + 2] === ">" ? 3 : 2;
       continue;
     }
@@ -341,6 +438,7 @@ export function parseShell(src) {
     if (c === ">" || c === "<") {
       // A redirection operator: its own word, with any fd before it.
       const fd = inWord && /^\d+$/.test(word) ? word : "";
+      const opStart = fd ? wordStart : i;
       if (fd) {
         word = "";
         inWord = false;
@@ -349,9 +447,11 @@ export function parseShell(src) {
       let j = i + 1;
       if (src[j] === ">" || src[j] === "&") op += src[j++];
       words.push(op);
+      spans.push([opStart, j]);
       i = j;
       continue;
     }
+    begin();
     word += c;
     inWord = true;
     i++;
@@ -590,9 +690,6 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
-    // Issue 974: the env guard, unless agents.env_guard is false.
-    if (!process.argv.includes("--no-env-guard"))
-      reason ??= envDumpDecision(input);
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;
@@ -606,7 +703,15 @@ async function main() {
   // own permission rules still decide the rewritten command.
   let updated = null;
   try {
-    if (!process.argv.includes("--no-guardrails"))
+    // Issue 974: a command that prints the environment runs, masked,
+    // unless agents.env_guard is false (--no-env-guard).
+    if (!process.argv.includes("--no-env-guard"))
+      updated = envMaskRewrite(JSON.parse(text));
+  } catch {
+    updated = null;
+  }
+  try {
+    if (!updated && !process.argv.includes("--no-guardrails"))
       updated = gateRewrite(
         JSON.parse(text),
         arg("--gate"),

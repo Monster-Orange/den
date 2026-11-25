@@ -198,9 +198,9 @@ export interface LaunchInput {
    * Issue 974: whether this start holds secret-looking variables back
    * (`on`: false for an agent from before the hold), the patterns
    * (agents.env_hold), the names it keeps (install, project and its own
-   * agents.env_allow), Den's own exact names for this launch, and whether
-   * commands that print the whole environment are refused
-   * (agents.env_guard). Absent: neither is set up.
+   * agents.env_allow), Den's own exact names for this launch, whether
+   * commands that print the environment are masked (agents.env_guard), and
+   * the masked set (envMaskArgs). Absent: neither is set up.
    */
   envHold?: {
     on: boolean;
@@ -208,6 +208,8 @@ export interface LaunchInput {
     allow: string[];
     own: string[];
     guard: boolean;
+    /** The env guard's masked set, as the hook's arguments (envMaskArgs). */
+    mask?: string[];
   };
   /**
    * Session rotation (den#4): the compactions after which this agent's
