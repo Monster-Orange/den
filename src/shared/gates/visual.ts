@@ -133,7 +133,6 @@ export type BrowserRead = (
 const FACES = [
   "15px Rubik",
   "15px sans-serif",
-  "13px 'Space Mono'",
   "13px monospace",
 ];
 
@@ -211,7 +210,7 @@ export async function visualFit(o: {
       if (!ws)
         return {
           b,
-          why: `box ${b.name} has no Playwright server for this run`,
+          why: `box ${b.name} serves no Playwright of this run's version`,
         };
       try {
         return { b, got: await o.read(ws, o.timeoutMs) };
