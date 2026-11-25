@@ -35,7 +35,7 @@ const OPEN = (why: string) => e("open", why);
 export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   // ── Filtered on a strict install ────────────────────────────────────────
   "GET /api/workspaces": e("filtered", "its projects only (WORKSPACES_SHAPE)"),
-  "GET /api/sessions": e("filtered", "its projects' sessions; ?ws= guarded"),
+  "GET /api/sessions": e("filtered", "its projects' rows only; ?ws= guarded"),
   "GET /api/agents/stale": e("filtered", "its projects' agents only"),
 
   // ── Held by the handler ─────────────────────────────────────────────────
@@ -77,7 +77,7 @@ export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   "GET /api/sudo-password/vault-status": NONE("whether a vault answers"),
   "GET /api/web-url": NONE("this Den's address"),
   "GET /api/web-url/probe": NONE("whether the address answers"),
-  "GET /api/server-agent": NONE("the server agent's state"),
+  "GET /api/server-agent": NONE("Den's own agent: its state"),
   "GET /api/server-agent/update": NONE("Den's update state"),
   "GET /api/alerts/push-key": NONE("the push key's public half"),
   "GET /api/manifest/validate": NONE("checks the manifest it is sent"),
@@ -86,12 +86,12 @@ export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   "POST /api/report/drafts": NONE("a draft of the report it is sent"),
 
   // ── Open on a strict install (a read; a later change filters each) ──────
-  "GET /api/orgs": OPEN("orgs and their repos"),
+  "GET /api/orgs": OPEN("GitHub owners and their repos"),
   "GET /api/security/latest": OPEN("findings by repo"),
   "GET /api/security/plan": OPEN("findings by repo"),
   "GET /api/stacks": OPEN("every project's stacks"),
   "GET /api/activity": OPEN("every project's activity"),
-  "GET /api/server-log": OPEN("the server's log"),
+  "GET /api/server-log": OPEN("Den's own log"),
   "GET /api/perf-report/current": OPEN("requests by route, project names"),
   "GET /api/health/stream": OPEN("every repo's services"),
   "GET /api/health": OPEN("every repo's services"),
@@ -131,7 +131,7 @@ export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   "GET /api/applications": OPEN("every project's applications"),
   "GET /api/personas": OPEN("personas, project ones among them"),
   "GET /api/personas/:id": OPEN("a persona"),
-  "GET /api/sessions/helpers": OPEN("helpers counted over every session"),
+  "GET /api/sessions/helpers": OPEN("helpers counted over every agent"),
   "GET /api/onboard/status": OPEN("onboarding, by project"),
   "GET /api/onboard/repos": OPEN("repos to bring in"),
   "GET /api/onboard/manifest": OPEN("a repo's manifest"),

@@ -1262,7 +1262,7 @@ function workspaceRefusal(
   );
   if (outside === undefined) return null;
   if (readsOnly(method, cls) && mode() !== "strict") return null;
-  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(outside)}". A person adds a project to agents.<id>.grants in the org config to widen it.`;
+  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(outside)}". A person adds the project to agents.<id>.grants in user.yml to widen it.`;
 }
 
 /** A name echoed back: one printable line, bounded. */
