@@ -4067,6 +4067,19 @@
       "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
     "ag.hub.notAtPrompt": "Waiting: the agent isn't at its prompt",
+    // Issue 754: Den shows the work Hub knows about.
+    "hw.title": "Work in Hub",
+    "hw.needsYou": "Needs you",
+    "hw.building": "Building",
+    "hw.blocked": "Blocked",
+    "hw.doneOf": "{done} of {total} done",
+    "hw.workingOn": "Working on {item}",
+    "hw.lastOn": "Last on {item}",
+    "hub.quiet.line":
+      "Hub's work shows here once this Den is connected to Hub.",
+    "hub.quiet.connect": "Connect to Hub",
+    "hub.quiet.plan": "Your company's Hub plan doesn't include this yet.",
+    "hub.quiet.refused": "Hub refused: {error}",
     "ag.draftWaiting": "{n} messages waiting: sent after your draft",
     "ag.draftWaiting.one": "{n} message waiting: sent after your draft",
     "ag.draftWaitingTip":

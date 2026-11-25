@@ -45,6 +45,8 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  // Issue 754: the Work in Hub card and each agent's current Hub item.
+  "/hub-work.js",
   // D32: an agent's helpers, and the shared read-only transcript view.
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
