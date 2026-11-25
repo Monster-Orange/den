@@ -97,7 +97,6 @@ export function healthReason(error, ms) {
   return reasonWords(e, ms);
 }
 
-/** A reason in the catalog's words in any language, or null (unknown). */
 function reasonWords(e, ms) {
   let m;
   if ((m = /^(.*) \(twice in a row\)$/.exec(e)))
@@ -158,8 +157,7 @@ export function healthCellWords(r) {
       title: [r.label, why].filter(Boolean).join(" — "),
     };
   }
-  // Issue 1466: Den's words in the cell in English too; English keeps the
-  // reason as sent beside them in the title (the error people search for).
+  // English: Den's words, then the reason as sent (what people search for).
   const sent = String(r.error ?? "").trim();
   const en = inEnglish();
   const known = en

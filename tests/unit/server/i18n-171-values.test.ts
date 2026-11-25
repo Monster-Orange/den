@@ -355,11 +355,6 @@ describe("issue 171 values in en, after 188", () => {
   });
 });
 
-/**
- * Issue 1466: in English too, a health reason reads in words in the cell
- * (as es and ja do); the reason as sent stays in the title (hover), where
- * the error people search for still is.
- */
 describe("issue 1466: Environments, English health reasons in words", () => {
   it.each([
     "connect ECONNREFUSED 127.0.0.1:3000",
