@@ -34,6 +34,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { OPEN_MS } from "../../../packages/den-ui/src/busy.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -557,9 +558,12 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     /**
      * #143: open the details with their answer `delay` ms late; every place
      * and size they have while seen, and every time they are placed (a
-     * write of their top edge).
+     * write of their top edge). `inTime`: the page's own wait for them
+     * (OPEN_MS) is held until they are in, so "in time" never hangs on how
+     * busy the machine is (on a loaded runner 150 ms late plus the round
+     * trip went past the 300 ms wait, and they were shown early).
      */
-    async function openLate(delay: number) {
+    async function openLate(delay: number, inTime = false) {
       const p = await open("north");
       await shown(p);
       // A long last ask: the details change size when it comes.
@@ -581,60 +585,82 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           });
         },
       );
-      await p.evaluate((delay) => {
-        const w = window as unknown as {
-          __rects: string[];
-          __tops: number[];
-          __placed: number;
-        };
-        w.__rects = [];
-        w.__tops = [];
-        w.__placed = 0;
-        const set = CSSStyleDeclaration.prototype.setProperty;
-        CSSStyleDeclaration.prototype.setProperty = function (
-          this: CSSStyleDeclaration,
-          k: string,
-          ...rest: [string | null, string?]
-        ) {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (k === "top" && g && g.style === this) w.__placed++;
-          return set.call(this, k, ...rest);
-        };
-        // The moment they turn ready (before the next frame): their box,
-        // and whether their Report button is already in them.
-        const w2 = w as unknown as {
-          __atReady: { h: number; y: number; report: boolean } | null;
-        };
-        w2.__atReady = null;
-        new MutationObserver(() => {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
-          const b = g.getBoundingClientRect();
-          w2.__atReady = {
-            h: Math.round(b.height),
-            y: Math.round(b.y),
-            report: !!g.querySelector("[data-den-report]"),
+      await p.evaluate(
+        ([delay, inTime, openMs]) => {
+          const w = window as unknown as {
+            __rects: string[];
+            __tops: number[];
+            __placed: number;
           };
-        }).observe(document.body, {
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["data-state"],
-        });
-        const t0 = performance.now();
-        const look = () => {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (g && getComputedStyle(g).visibility !== "hidden") {
-            const b = g.getBoundingClientRect();
-            const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
-            if (w.__rects.at(-1) !== k) w.__rects.push(k);
-            if (w.__tops.at(-1) !== Math.round(b.y))
-              w.__tops.push(Math.round(b.y));
+          if (inTime) {
+            // The next OPEN_MS wait (the one the press starts) never ends
+            // by itself: only the details coming in show them.
+            const real = window.setTimeout;
+            window.setTimeout = ((
+              f: TimerHandler,
+              ms?: number,
+              ...a: unknown[]
+            ) => {
+              // Only the details' own wait: they are in the page, loading.
+              if (
+                ms !== openMs ||
+                !document.querySelector('.den-agd[data-state="loading"]')
+              )
+                return real(f, ms, ...a);
+              window.setTimeout = real;
+              return real(() => {}, 2 ** 31 - 1);
+            }) as typeof window.setTimeout;
           }
-          if (performance.now() - t0 < delay + 1500)
-            requestAnimationFrame(look);
-        };
-        requestAnimationFrame(look);
-      }, delay);
+          w.__rects = [];
+          w.__tops = [];
+          w.__placed = 0;
+          const set = CSSStyleDeclaration.prototype.setProperty;
+          CSSStyleDeclaration.prototype.setProperty = function (
+            this: CSSStyleDeclaration,
+            k: string,
+            ...rest: [string | null, string?]
+          ) {
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            if (k === "top" && g && g.style === this) w.__placed++;
+            return set.call(this, k, ...rest);
+          };
+          // The moment they turn ready (before the next frame): their box,
+          // and whether their Report button is already in them.
+          const w2 = w as unknown as {
+            __atReady: { h: number; y: number; report: boolean } | null;
+          };
+          w2.__atReady = null;
+          new MutationObserver(() => {
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
+            const b = g.getBoundingClientRect();
+            w2.__atReady = {
+              h: Math.round(b.height),
+              y: Math.round(b.y),
+              report: !!g.querySelector("[data-den-report]"),
+            };
+          }).observe(document.body, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["data-state"],
+          });
+          const t0 = performance.now();
+          const look = () => {
+            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            if (g && getComputedStyle(g).visibility !== "hidden") {
+              const b = g.getBoundingClientRect();
+              const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
+              if (w.__rects.at(-1) !== k) w.__rects.push(k);
+              if (w.__tops.at(-1) !== Math.round(b.y))
+                w.__tops.push(Math.round(b.y));
+            }
+            if (performance.now() - t0 < delay + 1500)
+              requestAnimationFrame(look);
+          };
+          requestAnimationFrame(look);
+        },
+        [delay, inTime, OPEN_MS] as const,
+      );
       await btn(p, "scout").click();
       await p.locator('.den-agd[data-state="ready"]').waitFor();
       await p.waitForTimeout(delay + 1600);
@@ -663,7 +689,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
 
     it("#143: they open where they stay: shown once their details are in, never growing or moving after", async () => {
       if (skip()) return;
-      const { p, rects, placed, atReady, last } = await openLate(150);
+      const { p, rects, placed, atReady, last } = await openLate(150, true);
       // Whole when shown: its Report button in, and the same box after.
       expect(atReady?.report).toBe(true);
       expect(last).toEqual({ h: atReady?.h, y: atReady?.y });
