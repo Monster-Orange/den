@@ -5262,7 +5262,7 @@ function approvalDeps(): ApprovalDeps {
     // Issue 1480: an agent asks to add or remove an app's event feed.
     eventFeedAdd: {
       check: (a, who) => checkEventFeedAdd(agentWebDeps(), a, who),
-      run: (a) => runEventFeedAdd(agentWebDeps(), a),
+      run: (a, asked) => runEventFeedAdd(agentWebDeps(), a, asked),
     },
     eventFeedRemove: {
       check: (a, who) => checkEventFeedRemove(agentWebDeps(), a, who),

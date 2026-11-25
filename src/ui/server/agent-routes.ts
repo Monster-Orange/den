@@ -3366,7 +3366,10 @@ async function eventFeedWrite(
       );
     let ask: Record<string, unknown> = { project: ws, name };
     if (!remove) {
-      const body = await jsonBody(req);
+      const body: unknown = await jsonBody(req);
+      // Reviewer E: a JSON null or a list is a usage error, not a 500.
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        throw new AgentError("send a JSON object", { usage: true });
       for (const k of Object.keys(body))
         if (!["name", "agent", "url", "bearer", "list_url"].includes(k))
           throw new AgentError(
@@ -3375,7 +3378,9 @@ async function eventFeedWrite(
           );
       ask = { ...body, project: ws };
     }
-    const c = remove ? checkEventFeedRemove(d, ask) : checkEventFeedAdd(d, ask);
+    const c = remove
+      ? checkEventFeedRemove(d, ask)
+      : await checkEventFeedAdd(d, ask);
     if (!c.ok)
       throw new AgentError(c.error, {
         status: c.error.startsWith(`project ${ws} has no event feed`)

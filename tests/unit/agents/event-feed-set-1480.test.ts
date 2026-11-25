@@ -42,6 +42,9 @@ async function withFeeds(): Promise<{
 }> {
   const saved: Record<string, Record<string, unknown>[]> = {};
   const r = await rig({
+    // Issue 1480: invented names resolve to one public address here.
+    feedLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    feedOwnAddresses: async () => ({ hosts: [], domains: [], ports: [] }),
     workspaceEventFeeds: (ws) => saved[ws],
     saveWorkspaceEventFeeds: (ws, list) => {
       saved[ws] = list;
@@ -63,26 +66,27 @@ describe("issue 1480: project_event_feed_add and _remove", () => {
         { project: "north", name: "chat", agent: "planner", url: URL_A, ...a },
         who,
       );
-    expect(ask({ name: "Chat Feed!" })).toMatchObject({
+    expect(await ask({ name: "Chat Feed!" })).toMatchObject({
       ok: false,
       error: expect.stringContaining("name:"),
     });
-    expect(ask({ agent: "nobody" })).toEqual({
+    expect(await ask({ agent: "nobody" })).toEqual({
       ok: false,
       error: 'agent: "nobody" is not one of project north\'s agents',
     });
-    expect(ask({ url: "ftp://chat.example.test" })).toMatchObject({
+    expect(await ask({ url: "ftp://chat.example.test" })).toMatchObject({
       ok: false,
       error: expect.stringContaining("url must be https"),
     });
-    expect(ask({}, { agent: "scout", project: "south" })).toMatchObject({
+    expect(await ask({}, { agent: "scout", project: "south" })).toMatchObject({
       ok: false,
       error: expect.stringContaining("south"),
     });
-    const c = ask({ bearer: "chat_feed_token" });
+    const c = await ask({ bearer: "chat_feed_token" });
     expect(c.ok).toBe(true);
     if (!c.ok) return;
-    expect(c.personOnly).toBeUndefined();
+    // Den sends that secret to the url: the person's own Allow (Lane 1).
+    expect(c.personOnly).toBe(true);
     expect(c.params).toEqual({
       project: "north",
       name: "chat",
@@ -93,9 +97,15 @@ describe("issue 1480: project_event_feed_add and _remove", () => {
     const done = await runEventFeedAdd(d, { ...c.args });
     expect(done).toMatchObject({ ok: true, project: "north", name: "chat" });
     expect(saved.north).toEqual([
-      { name: "chat", agent: "planner", url: URL_A, bearer: "chat_feed_token" },
+      {
+        name: "chat",
+        agent: "planner",
+        url: URL_A,
+        bearer: "chat_feed_token",
+        public_only: true,
+      },
     ]);
-    expect(ask({})).toEqual({
+    expect(await ask({})).toEqual({
       ok: false,
       error: 'project north already has an event feed "chat"',
     });
@@ -124,7 +134,7 @@ describe("issue 1480: project_event_feed_add and _remove", () => {
     const { r, saved } = await withFeeds();
     const d = resolveAgentsDeps(r.deps);
     for (const bearer of [`Bearer ${VALUE}`, `${VALUE}!`, { v: VALUE }]) {
-      const c = checkEventFeedAdd(d, {
+      const c = await checkEventFeedAdd(d, {
         project: "north",
         name: "chat",
         agent: "planner",
@@ -139,6 +149,47 @@ describe("issue 1480: project_event_feed_add and _remove", () => {
 });
 
 describe("issue 1480: the approval policy, as issue 1391's", () => {
+  it("a bearer-carrying add is held even on a personal install; one with no bearer applies at once", async () => {
+    const { r } = await withFeeds();
+    const d = resolveAgentsDeps(r.deps);
+    const ask = (a: Record<string, unknown>) =>
+      checkEventFeedAdd(d, {
+        project: "north",
+        name: "chat",
+        agent: "planner",
+        url: URL_A,
+        ...a,
+      });
+    const withRef = await ask({ bearer: "chat_feed_token" });
+    const plain = await ask({});
+    if (!withRef.ok || !plain.ok) throw new Error("both asks check");
+    const held = (c: { personOnly?: boolean }) =>
+      criticalWhy(
+        "project_event_feed_add",
+        c.personOnly === true,
+        [],
+        "personal",
+      );
+    expect(held(withRef)).toBe("critical");
+    expect(held(plain)).toBeNull();
+    expect(plain.personOnly).toBeUndefined();
+    // Run by the policy anyway, the bearer add writes nothing.
+    expect(
+      await runEventFeedAdd(
+        d,
+        { ...withRef.args },
+        { decidedBy: "auto:personal" },
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      await runEventFeedAdd(
+        d,
+        { ...plain.args },
+        { decidedBy: "auto:personal" },
+      ),
+    ).toMatchObject({ ok: true });
+  });
+
   it("personal applies at once; strict holds it for the Allow", () => {
     for (const a of ["project_event_feed_add", "project_event_feed_remove"]) {
       expect(criticalWhy(a, false, [], "personal")).toBeNull();
@@ -180,7 +231,7 @@ describe("issue 1480: the approval policy, as issue 1391's", () => {
   it("Undo takes an added feed back out and puts a removed one back; never one the person allowed", async () => {
     const { r, saved } = await withFeeds();
     const d = resolveAgentsDeps(r.deps);
-    const add = checkEventFeedAdd(d, {
+    const add = await checkEventFeedAdd(d, {
       project: "north",
       name: "chat",
       agent: "planner",
@@ -265,10 +316,16 @@ describe("issue 1480: the Settings row's Add and Remove", () => {
     );
     expect(asAgent.status).toBe(403);
     expect(saved.north).toBeUndefined();
+    const nul = await fetch(feeds, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+    expect(nul.status).toBe(400);
     const ok = await post({ name: "chat", agent: "planner", url: URL_A });
     expect(ok.status).toBe(200);
     expect(saved.north).toEqual([
-      { name: "chat", agent: "planner", url: URL_A },
+      { name: "chat", agent: "planner", url: URL_A, public_only: true },
     ]);
     const gone = await fetch(`${feeds}/chat`, { method: "DELETE" });
     expect(gone.status).toBe(200);

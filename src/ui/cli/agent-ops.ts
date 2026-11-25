@@ -111,7 +111,14 @@ import {
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
-import { readWebPort } from "../../shared/edge/config.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import { edgeDomains } from "../../shared/edge/render.js";
+import {
+  feedAddressLocal,
+  feedSelfProblem,
+  type FeedLookup,
+  type FeedOwnAddresses,
+} from "../../shared/agents/feed-address.js";
 import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
 import {
   listOtherInstalls,
@@ -598,6 +605,10 @@ export interface AgentsDeps extends SessionsDeps {
     ws: string,
     feeds: Record<string, unknown>[],
   ) => void;
+  /** Issue 1480: resolves a feed's host name (default: the system's). */
+  feedLookup?: FeedLookup;
+  /** Issue 1480: Den's own addresses and its Hub's, which a feed may not name. */
+  feedOwnAddresses?: () => Promise<FeedOwnAddresses>;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
   secretRefSet?: (name: string) => boolean;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
@@ -668,6 +679,8 @@ export interface AgentsResolved extends Resolved {
     ws: string,
     feeds: Record<string, unknown>[],
   ) => void;
+  feedLookup?: FeedLookup;
+  feedOwnAddresses?: () => Promise<FeedOwnAddresses>;
   secretRefSet: (name: string) => boolean;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
@@ -1160,6 +1173,8 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     saveWorkspaceEventFeeds:
       d.saveWorkspaceEventFeeds ??
       ((ws, feeds) => setWorkspaceEventFeeds(ws, feeds)),
+    ...(d.feedLookup ? { feedLookup: d.feedLookup } : {}),
+    ...(d.feedOwnAddresses ? { feedOwnAddresses: d.feedOwnAddresses } : {}),
     secretRefSet: d.secretRefSet ?? ((name) => namedSecretRef(name) !== null),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
@@ -5997,6 +6012,7 @@ function feedEntry(f: AppFeedConfig): Record<string, unknown> {
     url: f.url,
     ...(f.listUrl ? { list_url: f.listUrl } : {}),
     ...(f.bearer ? { bearer: f.bearer } : {}),
+    ...(f.publicOnly ? { public_only: true } : {}),
   };
 }
 
@@ -6006,6 +6022,58 @@ export function projectAgentIds(d: AgentsResolved, ws: string): string[] {
     .filter((r) => r.workspace === ws)
     .map((r) => r.id)
     .sort();
+}
+
+/**
+ * Issue 1480 (Reviewer C): Den's own addresses and its Hub's: web.url,
+ * the address Den's own tools dial, the edge's domains, and Hub's
+ * addresses. Each part best effort: one that can't be read is left out.
+ */
+async function ownFeedAddresses(d: AgentsResolved): Promise<FeedOwnAddresses> {
+  const hosts: string[] = [];
+  const ports: number[] = [];
+  const add = (u: string | null | undefined, port = false) => {
+    if (!u) return;
+    try {
+      const x = new URL(u);
+      hosts.push(x.hostname.replace(/^\[|\]$/g, ""));
+      if (port)
+        ports.push(Number(x.port || (x.protocol === "https:" ? 443 : 80)));
+    } catch {
+      /* not an address */
+    }
+  };
+  try {
+    add(d.webUrl());
+  } catch {
+    /* unset */
+  }
+  try {
+    // Den's own dial: its port on this machine.
+    const base = new URL(d.denBase());
+    ports.push(Number(base.port || 80));
+  } catch {
+    /* unset */
+  }
+  try {
+    const hub = await d.hub();
+    add(hub?.url);
+    add(hub?.mcpUrl);
+  } catch {
+    /* no Hub */
+  }
+  let domains: string[] = [];
+  try {
+    domains = edgeDomains(readEdgeConfig()).filter(Boolean);
+  } catch {
+    domains = [];
+  }
+  // The dial's host is this machine: only its port is refused there.
+  return {
+    hosts: hosts.filter((h) => !/^(localhost|127\.|::1$)/.test(h)),
+    domains,
+    ports,
+  };
 }
 
 export interface EventFeedAddArgs {
@@ -6021,11 +6089,11 @@ export interface EventFeedAddArgs {
  * install, the person's Allow on a strict one. A project's agent asks for
  * its own project; Den's agent for any.
  */
-export function checkEventFeedAdd(
+export async function checkEventFeedAdd(
   d: AgentsResolved,
   raw: Record<string, unknown>,
   who: { agent?: string; project?: string } = {},
-): HeldOpCheck<EventFeedAddArgs> {
+): Promise<HeldOpCheck<EventFeedAddArgs>> {
   const no = (error: string): HeldOpCheck<EventFeedAddArgs> => ({
     ok: false,
     error,
@@ -6053,6 +6121,21 @@ export function checkEventFeedAdd(
       return no(`agent: "${feed.agent}" is not one of project ${ws}'s agents`);
     if (feedEntries(d, ws).some((e) => feedNameOf(e) === feed.name))
       return no(`project ${ws} already has an event feed "${feed.name}"`);
+    // Reviewer C: never Den itself or its Hub.
+    const own = await (d.feedOwnAddresses ?? (() => ownFeedAddresses(d)))();
+    const self =
+      feedSelfProblem(feed.url, "url", own) ??
+      (feed.listUrl ? feedSelfProblem(feed.listUrl, "list_url", own) : null);
+    if (self) return no(self);
+    // Lane 1: this machine or a private network is the person's own Allow
+    // (app_feed_read would read local services); one checked public is
+    // written public_only, and resolved again at each connect.
+    const urls = [feed.url, ...(feed.listUrl ? [feed.listUrl] : [])];
+    const local = (
+      await Promise.all(urls.map((u) => feedAddressLocal(u, d.feedLookup)))
+    ).some(Boolean);
+    if (local) delete feed.publicOnly;
+    else feed.publicOnly = true;
     const lines: [string, DetailKey][] = [
       [
         `Den opens ${feed.url} and types ${feed.agent} a short line when its events are unread.`,
@@ -6078,6 +6161,9 @@ export function checkEventFeedAdd(
     ];
     return {
       ok: true,
+      // Lane 1: Den sends that stored secret to the feed's url, so an add
+      // with a bearer widens: the person's own Allow on every install.
+      ...(feed.bearer || local ? { personOnly: true } : {}),
       summary: `add event feed ${feed.name} (${feed.url}) for ${feed.agent} in project ${ws}`,
       params: {
         project: ws,
@@ -6098,6 +6184,7 @@ export function checkEventFeedAdd(
 export async function runEventFeedAdd(
   d: AgentsResolved,
   raw: Record<string, unknown>,
+  asked?: { decidedBy?: string },
 ): Promise<
   | {
       ok: true;
@@ -6108,8 +6195,16 @@ export async function runEventFeedAdd(
     }
   | { ok: false; error: string }
 > {
-  const c = checkEventFeedAdd(d, raw);
+  const c = await checkEventFeedAdd(d, raw);
   if (!c.ok) return c;
+  // As gate_settings_set: one that needs the person's own Allow never
+  // runs by the policy.
+  if (c.personOnly && asked?.decidedBy?.startsWith("auto:") === true)
+    return {
+      ok: false,
+      error:
+        "a feed with a bearer needs the person's own Allow: nothing was written; ask again",
+    };
   const ws = c.args.project;
   const added = feedEntry(c.args.feed);
   d.saveWorkspaceEventFeeds(ws, [...feedEntries(d, ws), added]);
