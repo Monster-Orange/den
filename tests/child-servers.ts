@@ -285,7 +285,8 @@ export async function startDenServer(
       // den#143: say how it ended, so a flake names its cause.
       how = signal ? ` (signal ${signal})` : ` (exit code ${code})`;
     });
-    const deadline = Date.now() + (o.timeoutMs ?? 20_000);
+    const waitMs = o.timeoutMs ?? 20_000;
+    const deadline = Date.now() + waitMs;
     let foreign = false;
     while (!exited && Date.now() < deadline) {
       const info = await serverInfo(port);
@@ -302,13 +303,16 @@ export async function startDenServer(
       }
       await new Promise((r) => setTimeout(r, 200));
     }
+    // Read before the stop: our own stop ends it too (exit 143), and a
+    // server that never answered must not read as one that exited.
+    const ended = exited;
     await stopServer(server);
     log += `\n--- try ${attempt} on port ${port}: ${
       foreign
         ? "another server answered"
-        : exited
+        : ended
           ? `it exited${how}`
-          : "timed out"
+          : `it never answered within ${waitMs / 1000} s`
     }\n${out}`;
     // A server that exits for its own reasons, or never answers, fails now;
     // only a port someone else holds is worth another try.

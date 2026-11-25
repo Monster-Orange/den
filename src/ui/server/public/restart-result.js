@@ -108,8 +108,9 @@ export async function restartNow(btn, o) {
 }
 
 /**
- * Wire Restart now and Restart all now under `root`. Each row then says
- * restarted, or not; `onDone(id, ws, ok)` hears each.
+ * Wire Restart now and Restart all now under `root`. Restart all now
+ * holds the kit's dots (o.holdDots) until the last answers. Each row then
+ * says restarted, or not; `onDone(id, ws, ok)` hears each.
  */
 export function wireRestartNow(root, o) {
   const one = async (b) => {
@@ -132,9 +133,12 @@ export function wireRestartNow(root, o) {
   );
   const all = root.querySelector("[data-rs-all]");
   all?.addEventListener("click", async () => {
-    all.disabled = true;
-    all.setAttribute("aria-busy", "true");
-    for (const b of [...root.querySelectorAll("[data-rs-now]")]) await one(b);
+    const release = o.holdDots?.(all) ?? (() => {});
+    try {
+      for (const b of [...root.querySelectorAll("[data-rs-now]")]) await one(b);
+    } finally {
+      release();
+    }
     all.remove();
   });
 }

@@ -39,6 +39,8 @@ export interface ShellPrefs {
   hidden: string[];
   /** NAV page ids in the engineer's order; pages not listed keep theirs. */
   order: string[];
+  /** Issue 1444: the rail sections (group ids) this person folded. */
+  folded: string[];
   /**
    * The runs dock is open (R16a, 0.3.0-dev.30, Ward QA 2026-11-05): it
    * starts collapsed to its bar; opening it is the engineer's choice and
@@ -81,6 +83,7 @@ export const SHELL_DEFAULTS: ShellPrefs = {
   collapsed: false,
   hidden: [],
   order: [],
+  folded: [],
   dock: false,
   dockHeight: 0,
   projectOrder: [],
@@ -173,7 +176,7 @@ function checkProjectColours(
 }
 
 function checkNavIds(
-  key: "hidden" | "order",
+  key: "hidden" | "order" | "folded",
   v: unknown,
 ): { ok: true; value: string[] } | { ok: false; error: string } {
   if (!Array.isArray(v))
@@ -183,7 +186,7 @@ function checkNavIds(
     if (typeof id !== "string" || !NAV_ID.test(id))
       return {
         ok: false,
-        error: `shell.${key}: "${String(id)}" is not a page id`,
+        error: `shell.${key}: "${String(id)}" is not a ${key === "folded" ? "rail section" : "page"} id`,
       };
     if (!out.includes(id)) out.push(id);
   }
@@ -205,6 +208,7 @@ export function shellPrefs(
     collapsed: false,
     hidden: [],
     order: [],
+    folded: [],
     dock: false,
     dockHeight: 0,
     projectOrder: [],
@@ -229,7 +233,7 @@ export function shellPrefs(
   const pins = checkPins(stored.pins, projectsOf, true);
   if (pins.ok) out.pins = pins.value;
   if (typeof stored.collapsed === "boolean") out.collapsed = stored.collapsed;
-  for (const key of ["hidden", "order"] as const) {
+  for (const key of ["hidden", "order", "folded"] as const) {
     const ids = checkNavIds(key, stored[key]);
     if (ids.ok) out[key] = ids.value;
   }
@@ -248,6 +252,7 @@ export function mergeShellPrefs(
     pins: current.pins.map((p) => ({ ...p })),
     hidden: [...current.hidden],
     order: [...current.order],
+    folded: [...(current.folded ?? [])],
     projectOrder: [...(current.projectOrder ?? [])],
     projectColours: { ...(current.projectColours ?? {}) },
   };
@@ -297,7 +302,7 @@ export function mergeShellPrefs(
       const c = checkProjectColours(patch.projectColours, out.projectColours);
       if (!c.ok) return c;
       out.projectColours = c.value;
-    } else if (key === "hidden" || key === "order") {
+    } else if (key === "hidden" || key === "order" || key === "folded") {
       const ids = checkNavIds(key, patch[key]);
       if (!ids.ok) return ids;
       out[key] = ids.value;
@@ -324,6 +329,7 @@ export function storedShell(p: ShellPrefs): StoredShell | undefined {
     );
   if (p.collapsed) out.collapsed = true;
   if (p.hidden.length) out.hidden = p.hidden;
+  if (p.folded?.length) out.folded = p.folded;
   if (p.order.length) out.order = p.order;
   if (p.dock) out.dock = true;
   if (p.dockHeight) out.dockHeight = p.dockHeight;

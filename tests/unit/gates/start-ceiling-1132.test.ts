@@ -150,7 +150,17 @@ function rig(o: { load: number; ceiling?: number; waitMin?: number }) {
   };
   const run = () =>
     cmdGate(
-      ["run", "--kind", "cpu", "--label", "unit", "--", "npx", "jest"],
+      [
+        "run",
+        "--kind",
+        "cpu",
+        "--label",
+        "unit",
+        "--",
+        "npx",
+        "jest",
+        "a.test.ts",
+      ],
       d,
     );
   return { store, box, err, ran, onSleep, run };

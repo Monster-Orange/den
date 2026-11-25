@@ -92,12 +92,18 @@ describe("the policy (issue 1403)", () => {
         ]);
     }
   });
-  it("only the two writes that narrow opt out of their name's area", () => {
+  it("only the writes that narrow opt out of their name's area", () => {
     const out = Object.entries(HELD_WRITE_RISK)
       .filter(([, e]) => (e as { notAreas?: unknown[] }).notAreas?.length)
       .map(([w]) => w)
       .sort();
-    expect(out).toEqual(["gate_box_remove", "project_mcp_remove"]);
+    // Issue 1480: removing a feed stops an app's events reaching an
+    // agent; it deletes no events.
+    expect(out).toEqual([
+      "gate_box_remove",
+      "project_event_feed_remove",
+      "project_mcp_remove",
+    ]);
   });
   it("a write no one placed is still judged by its name", () => {
     expect(criticalWhy("files_delete", false, [], "personal")).toBe(
