@@ -78,7 +78,7 @@ export const pinnedFetch: PinnedFetch = (url, init) =>
         );
         return;
       }
-      // Reviewer C: Node's parser takes any 3-digit status, and Response
+      // Node's parser takes any 3-digit status, and Response
       // refuses one outside 200 to 599: refuse it here, never throw.
       if (status < 200 || status > 599) {
         res.resume();

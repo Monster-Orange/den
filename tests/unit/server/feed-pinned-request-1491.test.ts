@@ -187,7 +187,7 @@ describe("issue 1491: pinnedFetch connects to the checked address", () => {
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
-  it("Reviewer C: a status outside 200 to 599 rejects, with no uncaught error", async () => {
+  it("a status outside 200 to 599 rejects, with no uncaught error", async () => {
     // Node's parser takes any 3-digit status; new Response() throws on one
     // outside 200 to 599, which would escape the promise.
     const sockets: net.Socket[] = [];
