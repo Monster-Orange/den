@@ -884,7 +884,7 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
-  // Issue 248: the cursor's age, the last list read, and a stall.
+  // The cursor's age, the last list read, and a stall.
   if (h.cursorAt != null)
     parts.push(`cursor moved ${agoText(now - h.cursorAt)}`);
   if (h.lastPoll)

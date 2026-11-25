@@ -231,12 +231,12 @@ export interface DeliveryLoopDeps {
    */
   onHealth?: (h: DeliveryHealth) => void;
   /**
-   * Issue 702: what a restart keeps (the last delivery's time); issue 248:
+   * What a restart keeps (the last delivery's time) and
    * the cursor's last move.
    */
   health0?: { lastDeliveryAt?: number | null; cursorAt?: number | null };
   /**
-   * Issue 248 hub.delivery_stale_hours: the stream open but the cursor
+   * hub.delivery_stale_hours: the stream open but the cursor
    * still this long, and Hub's list read (once a poll interval) to see
    * whether comments wait after it. 0 or none: never. Read each check.
    */
@@ -399,10 +399,10 @@ export class DeliveryLoop {
    * answer keeps "refused": Hub without a stream reads the list each time).
    */
   private readonly troubleSaid = new Set<DeliveryTrouble>();
-  /** Issue 248: the last list result logged (its key), and the last stale check. */
+  /** The last list result logged (its key), and the last stale check. */
   private pollSaid = "";
   private staleCheckedAt = Number.NEGATIVE_INFINITY;
-  /** Issue 248: the gap to the next stale check (0: the poll interval). */
+  /** The gap to the next stale check (0: the poll interval). */
   private staleGap = 0;
 
   constructor(private readonly d: DeliveryLoopDeps) {
@@ -487,7 +487,7 @@ export class DeliveryLoop {
     this.healthChanged();
   }
 
-  /** Issue 248: each open and close logged, one line each. */
+  /** Each open and close logged, one line each. */
   private streamIs(open: boolean): void {
     if (this.h.streamOpen === open) return;
     this.h.streamOpen = open;
@@ -504,7 +504,7 @@ export class DeliveryLoop {
     this.healthChanged();
   }
 
-  /** Issue 248: the cursor moved (a delivery came): any stall is over. */
+  /** The cursor moved (a delivery came): any stall is over. */
   private cursorTo(id: string): void {
     this.d.seen.setLast(id);
     this.h.cursorAt = this.now();
@@ -517,7 +517,7 @@ export class DeliveryLoop {
   }
 
   /**
-   * Issue 248: a list read's result, kept for doctor and logged when it
+   * A list read's result, kept for doctor and logged when it
    * changes: its count and last id, or its error (logged by troubled()).
    * Ids and counts only, never a comment's text.
    */
@@ -550,7 +550,7 @@ export class DeliveryLoop {
   }
 
   /**
-   * Issue 248: the stream is open but the cursor hasn't moved for
+   * The stream is open but the cursor hasn't moved for
    * hub.delivery_stale_hours: read Hub's list (at most once a poll
    * interval, doubling after an empty answer or an error up to
    * max(staleMs / 6, 10 min); back to the interval when the cursor moves

@@ -1,5 +1,5 @@
 /**
- * Issue 248: Hub deliveries could stop with no sign. The loop logs each
+ * Hub deliveries could stop with no sign. The loop logs each
  * stream open and close, and each list read's result (status, count, last
  * id), one line per change of state; it keeps the last list read and the
  * cursor's age for doctor; and while the stream stays open but the cursor

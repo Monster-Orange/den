@@ -534,11 +534,11 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       const h0 = readDeliveryHealth(healthFile());
       return {
         lastDeliveryAt: h0?.lastDeliveryAt ?? null,
-        // Issue 248: a restart keeps how long the cursor has been still.
+        // A restart keeps how long the cursor has been still.
         cursorAt: h0?.cursorAt ?? null,
       };
     })(),
-    // Issue 248: hub.delivery_stale_hours, read at each check.
+    // hub.delivery_stale_hours, read at each check.
     staleMs: () => {
       try {
         return (hub.readHubConfig()?.deliveryStaleHours ?? 6) * 3_600_000;

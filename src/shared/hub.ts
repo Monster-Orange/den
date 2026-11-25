@@ -142,7 +142,7 @@ export interface HubConfig {
    */
   deliveryAlertMinutes: number;
   /**
-   * Issue 248 hub.delivery_stale_hours (default 6, 0: off; hours, any
+   * hub.delivery_stale_hours (default 6, 0: off; hours, any
    * number 0 or more): the comment stream open but no delivery for this
    * long, with comments waiting in Hub's list, and doctor and the bell say
    * the cursor is stuck.

@@ -803,7 +803,7 @@ export type DeliveryTrouble =
   | "unreachable"
   | "closed"
   | "silent"
-  /** Issue 248: the stream is open, but its cursor hasn't moved while Hub lists comments waiting. */
+  /** The stream is open, but its cursor hasn't moved while Hub lists comments waiting. */
   | "stale";
 
 const TROUBLES: readonly DeliveryTrouble[] = [
@@ -849,10 +849,10 @@ export interface DeliveryHealth {
   lastDeliveryAt: number | null;
   trouble: DeliveryTrouble | null;
   troubleAt: number | null;
-  /** Issue 248: when the open stream opened (null: not open). */
+  /** When the open stream opened (null: not open). */
   streamSince?: number | null;
   /**
-   * Issue 248: the last list read: how many it gave and the cursor after
+   * The last list read: how many it gave and the cursor after
    * it, or its error (ids and counts only, never a comment's text).
    */
   lastPoll?: {
@@ -862,10 +862,10 @@ export interface DeliveryHealth {
     lastId?: string | null;
     error?: string;
   } | null;
-  /** Issue 248: when the cursor (the last delivery id) last moved. */
+  /** When the cursor (the last delivery id) last moved. */
   cursorAt?: number | null;
   /**
-   * Issue 248: the stream open, the cursor still for
+   * The stream open, the cursor still for
    * hub.delivery_stale_hours, and Hub's list has `waiting` after it.
    * Cleared when a delivery moves the cursor.
    */
@@ -875,7 +875,7 @@ export interface DeliveryHealth {
 }
 
 /**
- * Issue 702: the trouble to say, or null. Issue 248's "stale" at once
+ * The trouble to say, or null. "stale" at once
  * (the loop waited hub.delivery_stale_hours). Else said only after `minutes`
  * (hub.delivery_alert_minutes; 0: never) with no good read and no open
  * stream, counted from the last good read, else from the start.
@@ -885,7 +885,7 @@ export function deliveryAlert(
   now: number,
   minutes: number,
 ): DeliveryTrouble | null {
-  // Issue 248: its own setting (hub.delivery_stale_hours), open stream or not.
+  // Its own setting (hub.delivery_stale_hours), open stream or not.
   if (h.stale) return "stale";
   if (!(minutes > 0) || h.streamOpen) return null;
   const from = Math.max(h.lastOkAt ?? 0, h.since);
