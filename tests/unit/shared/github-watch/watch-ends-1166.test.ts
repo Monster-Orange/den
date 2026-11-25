@@ -86,6 +86,7 @@ beforeEach(() => {
     watchesMax: 50,
     staleMinutes: 60,
     maxOpenHours: 24,
+    rerunLookMinutes: 5,
   };
   gh.pr(A, 1, SHA1);
   gh.pr(A, 2, SHA2);

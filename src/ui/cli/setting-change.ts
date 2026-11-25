@@ -128,6 +128,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "github.watch_stale_minutes",
   // Issue 1194: the most hours one watch stays open (a timing knob).
   "github.watch_max_open_hours",
+  // Issue 1214: how often a finished run is looked at for a re-run.
+  "github.rerun_look_minutes",
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",

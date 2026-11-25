@@ -1165,6 +1165,9 @@
     "set.server.github_watch_max_open": "GitHub の監視: 最長の時間 (時間)",
     "set.server.github_watch_max_open.d":
       "この時間を超えて開いている監視は、チェックの状態にかかわらず終わり、その理由をエージェントに伝えます。結果を報告しないチェックを捕まえるためです。__DEN_CLI__ config github.watch_max_open_hours=24",
+    "set.server.github_rerun_look": "GitHub の監視: 再実行を確かめる間隔 (分)",
+    "set.server.github_rerun_look.d":
+      "実行の結果を伝えてから 1 時間、GitHub の監視はこの間隔で再実行がないかを確かめ、再実行があれば監視をもう一度開きます。確かめる回数が少ないほど、GitHub の 1 時間あたりの残りを使いません。__DEN_CLI__ config github.rerun_look_minutes=5",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",

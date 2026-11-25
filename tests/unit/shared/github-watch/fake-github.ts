@@ -16,6 +16,17 @@ export interface FakeRun {
   conclusion: string | null;
   head_sha: string;
   check_suite_id: number;
+  /** Issue 1214: which attempt (1 unless re-run). */
+  run_attempt?: number;
+}
+
+export interface FakeJob {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  /** The run attempt it belongs to (1 unless re-run). */
+  attempt?: number;
 }
 
 export interface FakeCheck {
@@ -31,6 +42,8 @@ export class FakeGithub {
   prs = new Map<string, { head: string; state: string }>();
   runs = new Map<string, FakeRun[]>();
   checks = new Map<string, FakeCheck[]>();
+  /** Issue 1214: a run's jobs, every attempt, by "repo#runId". */
+  jobs = new Map<string, FakeJob[]>();
   remaining = 4000;
   limit = 5000;
   /** Seconds since the epoch. */
@@ -53,6 +66,17 @@ export class FakeGithub {
     const k = `${repo}@${sha}`;
     const l = this.checks.get(k) ?? [];
     this.checks.set(k, [...l.filter((x) => x.id !== c.id), c]);
+  }
+
+  job(repo: string, run: number, j: FakeJob): void {
+    const k = `${repo}#${run}`;
+    const l = this.jobs.get(k) ?? [];
+    this.jobs.set(k, [
+      ...l.filter(
+        (x) => !(x.id === j.id && (x.attempt ?? 1) === (j.attempt ?? 1)),
+      ),
+      j,
+    ]);
   }
 
   headers(): Record<string, string> {
@@ -96,6 +120,32 @@ export class FakeGithub {
           })
         : missing;
     }
+    // Issue 1214: a run's jobs; filter=latest is the newest attempt's.
+    m = /^repos\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)\/jobs\?(.*)$/.exec(path);
+    if (m) {
+      const r = (this.runs.get(m[1]) ?? []).find((x) => x.id === Number(m![2]));
+      if (!r) return missing;
+      const q = new URLSearchParams(m[3]);
+      const all = this.jobs.get(`${m[1]}#${m[2]}`) ?? [];
+      const top = Math.max(1, ...all.map((j) => j.attempt ?? 1));
+      const l =
+        q.get("filter") === "all"
+          ? all
+          : all.filter((j) => (j.attempt ?? 1) === top);
+      const page = paged(l, q);
+      return ok({
+        total_count: l.length,
+        jobs: page.map((j) => ({
+          id: j.id,
+          run_id: r.id,
+          run_attempt: j.attempt ?? 1,
+          name: j.name,
+          status: j.status,
+          conclusion: j.conclusion,
+          html_url: `https://github.example/${m![1]}/actions/runs/${r.id}/job/${j.id}`,
+        })),
+      });
+    }
     m = /^repos\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(path);
     if (m) {
       const r = (this.runs.get(m[1]) ?? []).find((x) => x.id === Number(m![2]));
@@ -109,12 +159,14 @@ export class FakeGithub {
         workflow_runs: l.map((r) => this.runView(m![1], r)),
       });
     }
-    m = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs\?/.exec(path);
+    m = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs\?(.*)$/.exec(
+      path,
+    );
     if (m) {
       const l = this.checks.get(`${m[1]}@${m[2]}`) ?? [];
       return ok({
         total_count: l.length,
-        check_runs: l.map((c) => ({
+        check_runs: paged(l, new URLSearchParams(m[3])).map((c) => ({
           id: c.id,
           name: c.name,
           status: c.status,
@@ -130,7 +182,15 @@ export class FakeGithub {
   private runView(repo: string, r: FakeRun) {
     return {
       ...r,
+      run_attempt: r.run_attempt ?? 1,
       html_url: `https://github.example/${repo}/actions/runs/${r.id}`,
     };
   }
+}
+
+/** One page of a list, as GitHub pages it (per_page, page from 1). */
+function paged<T>(l: T[], q: URLSearchParams): T[] {
+  const per = Number(q.get("per_page") ?? 30);
+  const page = Number(q.get("page") ?? 1);
+  return l.slice((page - 1) * per, page * per);
 }

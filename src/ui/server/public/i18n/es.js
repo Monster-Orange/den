@@ -1197,6 +1197,10 @@
       "Vigilancia de GitHub: horas como máximo",
     "set.server.github_watch_max_open.d":
       "Cualquier vigilancia abierta durante estas horas termina, digan lo que digan sus comprobaciones, y se le dice a su agente por qué. Así se atrapa una comprobación que nunca informa. __DEN_CLI__ config github.watch_max_open_hours=24",
+    "set.server.github_rerun_look":
+      "Vigilancia de GitHub: minutos entre revisiones de reejecución",
+    "set.server.github_rerun_look.d":
+      "Durante una hora después de avisar el resultado de una ejecución, el vigilante de GitHub mira con esta frecuencia si se volvió a ejecutar, y una reejecución abre la vigilancia de nuevo. Menos revisiones gastan menos del presupuesto por hora de GitHub. __DEN_CLI__ config github.rerun_look_minutes=5",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",

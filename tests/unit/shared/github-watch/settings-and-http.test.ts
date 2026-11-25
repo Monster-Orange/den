@@ -20,6 +20,7 @@ describe("github.* Settings", () => {
       watchesMax: 50,
       staleMinutes: 60,
       maxOpenHours: 24,
+      rerunLookMinutes: 5,
     });
   });
 
@@ -41,6 +42,7 @@ describe("github.* Settings", () => {
       watchesMax: 10,
       staleMinutes: 30,
       maxOpenHours: 24,
+      rerunLookMinutes: 5,
     });
   });
 

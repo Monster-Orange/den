@@ -3210,6 +3210,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ github: { watch_max_open_hours: v } }),
   },
   {
+    // Issue 1214: how often a finished run is looked at for a re-run
+    // (user.yml github.rerun_look_minutes). A person's only.
+    id: "server.github_rerun_look",
+    category: "server",
+    label: "GitHub watch: minutes between re-run looks",
+    description:
+      "For an hour after a run's result is told, the GitHub watcher looks this often for a re-run of it, and a re-run opens the watch again. Fewer looks spend less of GitHub's hourly budget. __DEN_CLI__ config github.rerun_look_minutes=5",
+    keywords: ["github", "watch", "re-run", "github.rerun_look_minutes"],
+    scope: "user",
+    keys: ["github.rerun_look_minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1 },
+    read: (ctx) => ctx.data.github?.rerun_look_minutes ?? 5,
+    write: (v, ctx) => ctx.post({ github: { rerun_look_minutes: v } }),
+  },
+  {
     // den#143: how long `web up` waits for the server (user.yml
     // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
     id: "server.ready_probe",
