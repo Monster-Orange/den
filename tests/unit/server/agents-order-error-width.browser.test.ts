@@ -195,9 +195,10 @@ async function open(
   if (layout !== "none") {
     await p.waitForFunction(
       (n) =>
-        Array.from(document.querySelectorAll(".agl .agr[aria-pressed]")).some(
-          (b) => b.getAttribute("aria-pressed") === "true",
-        ) || document.body.textContent!.includes(n),
+        Array.from(
+          document.querySelectorAll("#agl button[data-kind][aria-pressed]"),
+        ).some((b) => b.getAttribute("aria-pressed") === "true") ||
+        document.body.textContent!.includes(n),
       "runner-3 ready",
     );
   }
