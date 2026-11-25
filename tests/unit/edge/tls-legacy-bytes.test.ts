@@ -14,11 +14,14 @@ import {
   renderShape,
   type Rendered,
 } from "./helpers/legacy-shapes.js";
+import { withoutDashboard } from "./helpers/owner-labels.js";
 
 const fixture = (name: string): Rendered =>
-  JSON.parse(
-    fs.readFileSync(path.join(FIXTURES, `${name}.json`), "utf-8"),
-  ) as Rendered;
+  withoutDashboard(
+    JSON.parse(
+      fs.readFileSync(path.join(FIXTURES, `${name}.json`), "utf-8"),
+    ) as Rendered,
+  );
 
 if (process.env.DEN_WRITE_EDGE_LEGACY === "1") {
   fs.mkdirSync(FIXTURES, { recursive: true });
