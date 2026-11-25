@@ -402,4 +402,27 @@ describe("#80: scope wins", () => {
     expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
+
+  it("issue 1467: ?front= brings its tab in front when it isn't the last one opened", async () => {
+    if (!browser) return;
+    if (!sid.bo) await run("bo", "south", "2026-11-13T09:05:00.000Z");
+    if (!sid.cy) await run("cy", "south", "2026-11-13T09:01:00.000Z");
+    // bo first: start-up opens bo, then cy (in front as it opens), so only
+    // ?front= puts bo back in front.
+    const p = await open(
+      `/agents?project=south&layout=tabs&open=${sid.bo},${sid.cy}&front=${sid.bo}`,
+    );
+    await p.waitForSelector(`.pane[data-id="${sid.bo}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(`.pane[data-id="${sid.cy}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(".pane:not([hidden]) .agto:not(:empty)");
+    expect(await frontId(p)).toBe(sid.bo);
+    expect(await toLine(p)).toBe("To bo · south");
+    expect(param(p, "front")).toBe(sid.bo);
+    expect(openParam(p)).toEqual([sid.bo, sid.cy]);
+    await p.context().close();
+  }, 60_000);
 });
