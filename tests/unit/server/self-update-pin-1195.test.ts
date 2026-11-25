@@ -269,8 +269,10 @@ describe("issue 1195: the pin commit is built on the remote's tip, never local H
     });
     // Someone else's change is kept, not undone by the pin.
     expect(git(remote, "show", "main:notes.md")).toBe("someone else");
-    // The checkout was behind: its branch stays; a pull brings both.
-    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    // The checkout was behind: since issue 1202 its branch catches up to
+    // the pushed pin, which holds both (it no longer stays at `before`).
+    expect(git(root, "merge-base", "--is-ancestor", before, "HEAD")).toBe("");
+    expect(git(root, "rev-parse", "HEAD")).toBe(pushed);
   });
 
   it("nothing unpushed: as before, the checkout's branch is the pushed pin commit", async () => {

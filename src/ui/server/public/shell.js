@@ -4030,6 +4030,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPushedBehind":
+      "__DEN_TITLE__ updated to {v}: its pin is pushed ({sha}), but the checkout is behind and has local changes, so pull to get the pin",
     "bell.m.pinPrAhead":
       "__DEN_TITLE__ updated to {v}: the checkout has commits not pushed, so its pin went to a pull request; opened #{n} ({branch})",
     "bell.m.pinPrFallback":

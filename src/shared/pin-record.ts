@@ -75,6 +75,11 @@ export function pinDoctorText(r: PinRecord | null): string | null {
       const also = r.why ? `; ${r.why}` : "";
       return `pin ${v}: ${need}opened ${n ? `#${n} ` : ""}(${r.url ?? r.branch ?? ""})${also}`;
     }
+    case "pushed":
+      // Issue 1202: pushed, but the checkout couldn't catch up to it.
+      return r.why
+        ? `pin ${v}: pushed (${(r.sha ?? "").slice(0, 12)}); ${r.why}`
+        : null;
     case "branch_pushed":
       return `pin ${v}: ${need}its branch ${r.branch ?? ""} is pushed, but no pull request yet (${r.why ?? ""})`;
     case "push_failed":

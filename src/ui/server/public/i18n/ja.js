@@ -3030,6 +3030,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPushedBehind":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプッシュしました ({sha}) が、ローカルのコピーは遅れていて未保存の変更があるため、pull して固定バージョンを取り込んでください",
     "bell.m.pinPrAhead":
       "__DEN_TITLE__ は {v} に更新されました: ローカルにプッシュしていないコミットがあるため、固定バージョンはプルリクエストにしました。#{n} を作成しました ({branch})",
     "bell.m.pinPrFallback":

@@ -71,7 +71,13 @@ export type PinMode = "push" | "pr";
 
 export type PinStep =
   /** Committed (now or before) and pushed. */
-  | { did: "pushed"; version: string; sha: string }
+  | {
+      did: "pushed";
+      version: string;
+      sha: string;
+      /** Issue 1202: the checkout is behind and couldn't catch up. */
+      why?: string;
+    }
   | {
       did: "push_failed";
       version: string;
@@ -443,8 +449,15 @@ export async function commitPin(
       `${sha}:refs/heads/${up.branch}`,
     ]);
     if (p.code === 0) {
-      writePinRecord(d.stateDir, { version, state: "pushed", sha, at: at() });
-      return { did: "pushed", version, sha };
+      const why = await catchUp(d.git, sha, up);
+      writePinRecord(d.stateDir, {
+        version,
+        state: "pushed",
+        sha,
+        at: at(),
+        ...(why ? { why } : {}),
+      });
+      return { did: "pushed", version, sha, ...(why ? { why } : {}) };
     }
     // Issue 1189: a branch rule said no: the pin goes to a pull request.
     if (ruleRejected(p.out)) {
@@ -533,6 +546,67 @@ async function takePin(git: GitRun, tip: string, sha: string): Promise<void> {
   const moved = await git(["update-ref", ref, sha, tip]);
   if (moved.code !== 0) return;
   await git(["reset", "-q", "--", ...PIN_FILES]);
+}
+
+/**
+ * Issue 1202: after the pin is pushed, a checkout whose branch is behind
+ * it (an ancestor, not the pin itself) fast-forwards to the pin commit, so
+ * its next pull isn't stopped by the pin files it still has changed. The
+ * pin commit holds those files as the working tree has them, so they are
+ * put back to HEAD's first and nothing is lost. When git won't
+ * fast-forward (another local change in the way) the files go back as
+ * they were, the branch stays, and the answer says why (doctor shows it).
+ * Only the branch the pin was pushed for: one checked out since, even from
+ * the same base, never moves (Reviewer E).
+ */
+async function catchUp(
+  git: GitRun,
+  sha: string,
+  pushed: { remote: string; branch: string },
+): Promise<string | undefined> {
+  const h = await git(["rev-parse", "HEAD"]);
+  if (h.code !== 0 || h.out.trim() === sha) return undefined;
+  const now = await upstream(git);
+  if (!now || now.remote !== pushed.remote || now.branch !== pushed.branch)
+    return undefined;
+  const behind = await git(["merge-base", "--is-ancestor", "HEAD", sha]);
+  if (behind.code !== 0) return undefined;
+  const later =
+    "the checkout is behind and has local changes, so pull to get the pin";
+  // Only when the pin files are exactly the pin's, in the working tree and
+  // in the index: a staged copy of the person's own is never dropped.
+  const same = await git(["diff", "--quiet", sha, "--", ...PIN_FILES]);
+  if (same.code !== 0) return later;
+  const staged = await git([
+    "diff",
+    "--cached",
+    "--quiet",
+    "HEAD",
+    "--",
+    ...PIN_FILES,
+  ]);
+  if (staged.code !== 0) {
+    const asPin = await git([
+      "diff",
+      "--cached",
+      "--quiet",
+      sha,
+      "--",
+      ...PIN_FILES,
+    ]);
+    if (asPin.code !== 0) return later;
+  }
+  const reset = await git(["checkout", "-q", "HEAD", "--", ...PIN_FILES]);
+  if (reset.code === 0) {
+    const ff = await git(["merge", "--ff-only", "--quiet", sha]);
+    if (ff.code === 0) return undefined;
+  }
+  // Back as they were: the pin's content in the working tree, the index at
+  // HEAD's. A pin file the person had staged is unstaged here (its content
+  // is unchanged, and it is in the pushed pin).
+  await git(["checkout", "-q", sha, "--", ...PIN_FILES]);
+  await git(["reset", "-q", "--", ...PIN_FILES]);
+  return later;
 }
 
 /**
@@ -766,6 +840,13 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
   switch (step.did) {
     case "pushed": {
       const sha = step.sha.slice(0, 12);
+      // Issue 1202: pushed, but the checkout is behind and couldn't catch up.
+      if (step.why)
+        return item(
+          `${t} updated to ${v}: its pin is pushed (${sha}), but the checkout is behind and has local changes, so pull to get the pin`,
+          "bell.m.pinPushedBehind",
+          { sha },
+        );
       return item(
         `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
         "bell.m.pinPushed",
