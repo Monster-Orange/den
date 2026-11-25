@@ -100,8 +100,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           for i in $(seq 1 "$COUNT"); do
             start=$(date +%s)
-            if npx jest --forceExit $FILES > "run-$i.log" 2>&1; then r=pass
-            else r=FAIL; fails=$((fails + 1)); tail -n 60 "run-$i.log"; fi
+            if npx jest --forceExit --verbose --maxWorkers=1 $FILES > "run-$i.log" 2>&1; then r=pass
+            else r=FAIL; fails=$((fails + 1)); grep -n -A30 "  ● " "run-$i.log" | head -n 120; fi
+            echo "== run $i per-test times"; grep -E "^(PASS|FAIL) |✓|✕" "run-$i.log"
             echo "| $i | $r | $(( $(date +%s) - start )) |" >> "$GITHUB_STEP_SUMMARY"
             echo "run $i: $r"
           done
