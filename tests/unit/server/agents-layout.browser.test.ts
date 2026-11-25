@@ -126,10 +126,10 @@ const ptyOf = (id: string) => ptys[id];
 const all = () => AGENTS.map(([id]) => sid[id]).join(",");
 
 /**
- * Issue 1469: every page a test opened, closed after it whatever happened.
- * A test that failed before its own close left its page attached to the
- * agents' sessions: the next test's panes then counted another viewer and
- * followed that view's size (D54) instead of fitting their boxes.
+ * Every page a test opened, closed after it whatever happened. A page
+ * still open stays attached to the agents' sessions, so the next test's
+ * panes count another viewer and follow that view's size (D54) instead
+ * of fitting their boxes.
  */
 const contexts: BrowserContext[] = [];
 afterEach(async () => {
