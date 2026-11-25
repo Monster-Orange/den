@@ -85,14 +85,27 @@ async function started(
   write(r, typeof transcript === "function" ? transcript() : transcript);
 }
 
+/** Where agent planner's transcript is. */
+function transcriptOf(r: Rig): string {
+  const token = record(r, "planner").resumeToken as string;
+  return path.join(
+    r.dir,
+    "claude-config",
+    "projects",
+    "-work",
+    `${token}.jsonl`,
+  );
+}
+
 /** Agent planner's transcript, as its runtime writes it. */
 function write(r: Rig, body: string): void {
-  const token = record(r, "planner").resumeToken as string;
-  const claude = path.join(r.dir, "claude-config");
-  const dir = path.join(claude, "projects", "-work");
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `${token}.jsonl`), body);
-  r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
+  const file = transcriptOf(r);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, body);
+  r.deps.env = {
+    ...r.deps.env,
+    CLAUDE_CONFIG_DIR: path.join(r.dir, "claude-config"),
+  };
 }
 
 /** The agent's live session's start, from its session host. */
@@ -218,7 +231,11 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
     await started(r, null);
     r.made[0].emit("> ");
     const recAt = Date.parse(record(r, "planner").startedAt as string);
+    // Issue 1592: both writes land in one tick of the file's clock (a
+    // fast Linux box stamps mtimes by its timer tick), at the same size.
+    const tick = new Date();
     write(r, cutAt(new Date(recAt - 60_000)));
+    fs.utimesSync(transcriptOf(r), tick, tick);
     const d = resolveAgentsDeps(r.deps);
     // A session list whose entries carry no start.
     const blank = <C extends { list: () => Promise<SessionInfo[]> }>(c: C) =>
@@ -236,6 +253,7 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
     };
     expect(await agentInputState(noStart, "planner")).toBe("idle");
     write(r, cutAt(new Date(recAt + 60_000)));
+    fs.utimesSync(transcriptOf(r), tick, tick);
     expect(await agentInputState(noStart, "planner")).toBe("busy");
   });
 });

@@ -53,6 +53,18 @@ describe("jobCommandOf: what a background shell runs", () => {
     expect(shown).not.toContain("abcdEFGH12345678xyz");
     expect(shown).toContain("[REDACTED]");
   });
+  it("a shell that sources a snapshot first: what it runs after that", () => {
+    expect(
+      jobCommandOf(
+        "/bin/sh -c . /home/x/.claude/shell-snapshots/snapshot-zsh-17-g1407.sh; sleep 270; :",
+      ),
+    ).toBe("sleep 270; :");
+    expect(
+      jobCommandOf(
+        "/bin/zsh -c -l source /home/x/.claude/shell-snapshots/snapshot-zsh-1.sh && npm run dev",
+      ),
+    ).toBe("npm run dev");
+  });
   it("anything else: the command line itself, on one line and short", () => {
     expect(jobCommandOf("node server.js\n--port 3")).toBe(
       "node server.js --port 3",

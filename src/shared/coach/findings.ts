@@ -2,7 +2,8 @@
  * Issue 52, Coach slice T-b (TUNE-3): the findings that need no judging,
  * read from a run's counts (breakdown.ts). Each names its agent, carries
  * its evidence (the numbers that tripped it) and a proposal for a person.
- * Nothing is applied in this phase: Apply comes with issue 110.
+ * Issue 110: a finding with an Apply carries it as a held write (`apply`):
+ * nothing changes until a person allows it.
  *
  *   subagent_opus    most subagent calls on Opus, with enough calls to tell
  *   polling          polls a day at or over the threshold (den#5)
@@ -16,9 +17,10 @@
  *   msg_repeat    it sends other agents the same text again and again
  *   msg_no_reply  most of its sends to other agents get no reply
  *
- * Thresholds are agents.coach.findings (settings.ts). Dismiss records the
- * reason, who and when (`coach/dismissed.json`, 0600); a dismissed
- * finding stays out of the open list on later runs. A finding's id is
+ * Thresholds are agents.coach.findings (settings.ts). Dismiss records
+ * who and when, and a reason when one is given (mock v4 asks for none;
+ * `coach/dismissed.json`, 0600); a dismissed finding stays out of the open
+ * list on later runs, until Undo takes the dismissal back. A finding's id is
  * `<kind>:<agent id>`, so a later run's finding of the same kind on the
  * same agent is the same finding.
  */
@@ -38,7 +40,11 @@ export type FindingKind =
   | "ask_r12"
   | "ask_wait"
   | "msg_repeat"
-  | "msg_no_reply";
+  | "msg_no_reply"
+  // Slice T-d, judged on the cheap model (judge.ts).
+  | "repeat_ask"
+  | "trivial_ask"
+  | "relay";
 
 /** One instance a person can check: an ask or a message. */
 export interface FindingSample {
@@ -60,11 +66,68 @@ export interface CoachFinding {
   title: string;
   /** The numbers that tripped it. */
   evidence: Record<string, number>;
-  /** What a person could do (never applied in this phase). */
+  /** What a person could do, in words. */
   proposal: string;
   window: CoachWindow;
   /** Up to three instances, for the T-c findings. */
   samples?: FindingSample[];
+  /** The agent's persona, when it has one. */
+  persona?: string;
+  /**
+   * Issue 110: the proposal as a held write. A person's Apply asks
+   * POST /api/approvals to hold it, and nothing changes until they allow
+   * it in the approval dialog. Kinds with no Apply yet leave it out.
+   */
+  apply?: CoachApply;
+}
+
+/** A held write: one of Den's held actions and its args. */
+export interface CoachApply {
+  action: "persona_update";
+  args: Record<string, string>;
+  /** The change, in one plain sentence (the row and the bell show it). */
+  change: string;
+  /** How to undo it, in one plain sentence. */
+  reversible: string;
+}
+
+/** A persona's or project's name, as Apply may put it in a held write. */
+const APPLY_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * Issue 110: the held write that applies a finding, built here in code
+ * from its kind and its row's persona and project. POST /api/coach/apply
+ * calls it again on the stored finding and never trusts a stored `apply`:
+ * the report file can be written by anything that runs as this user.
+ * undefined for a kind with no Apply, or a name that isn't a plain name.
+ */
+export function coachApplyFor(
+  f: { kind: string; persona?: unknown; workspace?: unknown },
+  /** Whether Den has that project; the held write names it only then. */
+  projectExists?: (ws: string) => boolean,
+): CoachApply | undefined {
+  const { persona, workspace } = f;
+  if (
+    f.kind !== "subagent_opus" ||
+    typeof persona !== "string" ||
+    typeof workspace !== "string" ||
+    !APPLY_NAME_RE.test(persona) ||
+    !APPLY_NAME_RE.test(workspace)
+  )
+    return undefined;
+  return {
+    action: "persona_update",
+    args:
+      !projectExists || projectExists(workspace)
+        ? { id: persona, project: workspace, subagentModel: "sonnet" }
+        : { id: persona, subagentModel: "sonnet" },
+    change: `Set ${persona}'s subagent model to Sonnet.`,
+    reversible: `Set it back in ${persona}'s persona.`,
+  };
+}
+
+function applyOf(kind: FindingKind, a: CoachAgentRow): CoachApply | undefined {
+  return coachApplyFor({ kind, persona: a.persona, workspace: a.workspace });
 }
 
 const MB = 1024 * 1024;
@@ -88,7 +151,8 @@ function findingsOf(
     evidence: Record<string, number>,
     proposal: string,
     samples?: FindingSample[],
-  ) =>
+  ) => {
+    const apply = applyOf(kind, a);
     out.push({
       id: `${kind}:${a.agent}`,
       kind,
@@ -99,7 +163,10 @@ function findingsOf(
       proposal,
       window,
       ...(samples ? { samples: samples.slice(0, MAX_SAMPLES) } : {}),
+      ...(a.persona ? { persona: a.persona } : {}),
+      ...(apply ? { apply } : {}),
     });
+  };
   asksFindings(a, t, who, add);
   if (!a.metrics) return out;
   const subCalls = Object.values(a.models?.subagent ?? {}).reduce(
@@ -277,11 +344,12 @@ export type DismissResult =
   | { ok: true }
   | {
       ok: false;
-      code: "bad_id" | "reason_required" | "reason_too_long";
+      /** apply_waiting (issue 110): its Apply waits for a person's Allow. */
+      code: "bad_id" | "reason_too_long" | "apply_waiting";
       error: string;
     };
 
-/** Dismiss finding `id`, with the person's reason (it replaces an earlier one). */
+/** Dismiss finding `id`, with the person's reason if any (it replaces an earlier one). */
 export function dismissFinding(
   stateDir: string,
   id: string,
@@ -292,12 +360,6 @@ export function dismissFinding(
   if (typeof id !== "string" || !ID_RE.test(id))
     return { ok: false, code: "bad_id", error: "That isn't a finding's id." };
   const why = typeof reason === "string" ? reason.trim() : "";
-  if (!why)
-    return {
-      ok: false,
-      code: "reason_required",
-      error: "Say why it's dismissed: the reason is kept with it.",
-    };
   if (why.length > MAX_REASON)
     return {
       ok: false,
@@ -306,6 +368,29 @@ export function dismissFinding(
     };
   const list = readDismissals(stateDir).filter((d) => d.id !== id);
   list.push({ id, reason: why, by, at });
+  writePrivate(dismissedFile(stateDir), JSON.stringify(list, null, 2) + "\n");
+  return { ok: true };
+}
+
+export type UndismissResult =
+  | { ok: true }
+  | { ok: false; code: "bad_id" | "not_dismissed"; error: string };
+
+/** Undo: take finding `id`'s dismissal back, so later runs show it again. */
+export function undismissFinding(
+  stateDir: string,
+  id: string,
+): UndismissResult {
+  if (typeof id !== "string" || !ID_RE.test(id))
+    return { ok: false, code: "bad_id", error: "That isn't a finding's id." };
+  const all = readDismissals(stateDir);
+  const list = all.filter((d) => d.id !== id);
+  if (list.length === all.length)
+    return {
+      ok: false,
+      code: "not_dismissed",
+      error: "That finding isn't dismissed.",
+    };
   writePrivate(dismissedFile(stateDir), JSON.stringify(list, null, 2) + "\n");
   return { ok: true };
 }

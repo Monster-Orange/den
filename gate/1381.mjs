@@ -243,8 +243,11 @@ const row = (clause, ok, detail, skip) =>
     ? { clause, ok: null, skip, detail, evidence: ["1381-boxes.json"] }
     : { clause, ok, detail, evidence: ["1381-boxes.json"] };
 
+// The harness passes a check with no matrix its result itself, one with
+// a matrix its cells: either is read (the dev.2 bed's cells.find throw).
 export function expect(cells) {
-  const r = cells.find((c) => c?.result)?.result ?? {};
+  const r =
+    (Array.isArray(cells) ? cells.find((c) => c?.result)?.result : cells) ?? {};
   if (r.skip)
     return clauses.map((c) => row(c, null, r.detail ?? r.skip, r.skip));
   const tried = (r.boxes ?? []).filter((b) => !b.unusable);
