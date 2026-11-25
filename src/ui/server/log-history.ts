@@ -70,12 +70,153 @@ export function parseManifestDockerFilter(cmd: string): string | null {
   return m ? m[1] : null;
 }
 
-/** The first running container `docker ps --filter <filter>` names, or null. */
-function firstDockerName(filter: string): Promise<string | null> {
+const COMPOSE_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
+
+function shellWords(cmd: string): string[] | null {
+  const words: string[] = [];
+  let cur: string | null = null;
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else cur = (cur ?? "") + c;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      cur ??= "";
+    } else if (/\s/.test(c)) {
+      if (cur !== null) words.push(cur);
+      cur = null;
+    } else if (";|&<>()`".includes(c)) {
+      if (cur !== null) words.push(cur);
+      cur = null;
+      words.push("\0");
+    } else {
+      cur = (cur ?? "") + c;
+    }
+  }
+  if (quote) return null;
+  if (cur !== null) words.push(cur);
+  return words;
+}
+
+const COMPOSE_GLOBAL_WITH_VALUE = new Set([
+  "-f",
+  "--file",
+  "-p",
+  "--project-name",
+  "--project-directory",
+  "--env-file",
+  "--profile",
+  "--ansi",
+  "--progress",
+  "--parallel",
+]);
+const COMPOSE_LOGS_WITH_VALUE = new Set([
+  "-n",
+  "--tail",
+  "--since",
+  "--until",
+  "--index",
+]);
+
+function optionValue(
+  words: string[],
+  i: number,
+  withValue: Set<string>,
+): { name: string; value: string | null; next: number } | null {
+  const w = words[i];
+  if (!w.startsWith("-") || w === "-" || w === "--") return null;
+  const eq = w.indexOf("=");
+  if (eq > 0)
+    return { name: w.slice(0, eq), value: w.slice(eq + 1), next: i + 1 };
+  if (withValue.has(w))
+    return { name: w, value: words[i + 1] ?? null, next: i + 2 };
+  return { name: w, value: null, next: i + 1 };
+}
+
+export function composeProjectName(dir: string): string {
+  return path
+    .basename(dir)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/^[_-]+/, "");
+}
+
+export function parseManifestComposeLogs(
+  cmd: string,
+  cwd: string,
+): { project: string; service: string } | null {
+  const words = shellWords(cmd);
+  if (!words) return null;
+  const env: Record<string, string> = {};
+  let i = 0;
+  while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) {
+    const eq = words[i].indexOf("=");
+    env[words[i].slice(0, eq)] = words[i].slice(eq + 1);
+    i++;
+  }
+  if (words[i] === "docker" && words[i + 1] === "compose") i += 2;
+  else if (words[i] === "docker-compose") i += 1;
+  else return null;
+  let project: string | null = null;
+  let projectDir: string | null = null;
+  let firstFile: string | null = null;
+  while (i < words.length && words[i] !== "logs") {
+    const o = optionValue(words, i, COMPOSE_GLOBAL_WITH_VALUE);
+    if (!o) return null;
+    if (COMPOSE_GLOBAL_WITH_VALUE.has(o.name) && o.value === null) return null;
+    if (o.name === "-p" || o.name === "--project-name") project = o.value;
+    else if (o.name === "--project-directory") projectDir = o.value;
+    else if ((o.name === "-f" || o.name === "--file") && firstFile === null)
+      firstFile = o.value;
+    i = o.next;
+  }
+  if (words[i] !== "logs") return null;
+  i++;
+  const services: string[] = [];
+  let operands = false;
+  while (i < words.length && words[i] !== "\0") {
+    if (!operands && words[i] === "--") {
+      operands = true;
+      i++;
+      continue;
+    }
+    const o = operands ? null : optionValue(words, i, COMPOSE_LOGS_WITH_VALUE);
+    if (o) {
+      i = o.next;
+      continue;
+    }
+    services.push(words[i]);
+    i++;
+  }
+  if (services.length !== 1) return null;
+  project ??=
+    env.COMPOSE_PROJECT_NAME ??
+    composeProjectName(
+      path.resolve(
+        cwd,
+        projectDir ?? (firstFile ? path.dirname(firstFile) : "."),
+      ),
+    );
+  const service = services[0];
+  if (!COMPOSE_NAME_RE.test(project) || !COMPOSE_NAME_RE.test(service))
+    return null;
+  return { project, service };
+}
+
+function firstDockerName(...filters: string[]): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(
       "docker",
-      ["ps", "--filter", filter, "--format", "{{.Names}}"],
+      [
+        "ps",
+        ...filters.flatMap((f) => ["--filter", f]),
+        "--format",
+        "{{.Names}}",
+      ],
       { encoding: "utf-8", timeout: 5_000 },
       (err, stdout) => {
         if (err) return resolve(null);
@@ -148,6 +289,19 @@ export async function resolveHistorySource(
     if (filter) {
       // Async: a slow docker must not hold up the rest of the server.
       const name = await firstDockerName(filter);
+      if (name) return { kind: "docker", container: name };
+    }
+    const compose = repoPath
+      ? parseManifestComposeLogs(
+          logSource.cmd,
+          path.resolve(repoPath, logSource.cwd ?? "."),
+        )
+      : null;
+    if (compose) {
+      const name = await firstDockerName(
+        `label=com.docker.compose.project=${compose.project}`,
+        `label=com.docker.compose.service=${compose.service}`,
+      );
       if (name) return { kind: "docker", container: name };
     }
   }
