@@ -292,10 +292,7 @@ export async function resolveHistorySource(
       if (name) return { kind: "docker", container: name };
     }
     const compose = repoPath
-      ? parseManifestComposeLogs(
-          logSource.cmd,
-          path.resolve(repoPath, logSource.cwd ?? "."),
-        )
+      ? parseManifestComposeLogs(logSource.cmd, repoPath)
       : null;
     if (compose) {
       const name = await firstDockerName(
