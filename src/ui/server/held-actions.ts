@@ -48,6 +48,14 @@
  *   agent_prompt      issue 772: type one message into an agent of the
  *                     same project (agent-prompt.ts); never a Blocked one,
  *                     never twice
+ *   agent_sandbox_set issue 1328: turn one agent's sandbox off or on
+ *                     (agents/sandbox-set.ts): only agents.<id>.sandbox in
+ *                     user.yml; a running one restarts after its turn on
+ *                     the same conversation. Off is the person's own Allow
+ *   setting_change    issue 1371: change one setting in user.yml
+ *   gate_settings_set issue 1395: change the gate's slot settings
+ *                     (cli/setting-change.ts): only that key, a backup and
+ *                     an audit line; a widening key is the person's own Allow
  *   repo_clone        SRV-P3: clone a repo into repos_root (repo-clone.ts),
  *                     for manifest_draft and repo_add (each its own Allow)
  *                     to take up; Den's own agent or a person asks, as the
@@ -100,24 +108,37 @@
  *   report            issue 565: file a report the way the page's Report
  *                     does (report-held.ts): to a public destination the
  *                     person's own Allow, to a private one the policy
+ *   test_person_setup issue 816: set up the test person of a test install
+ *                     announced on this computer (test-person-held.ts):
+ *                     one grant and that install's bearer, sent once over
+ *                     loopback at the Allow. The person's own Allow only
  *   web_url_set       issue 869: Den's own agent proposes this install's
  *                     address (web-url-held.ts); it must answer as this
  *                     Den at the ask and at the Allow, and saves as
  *                     Settings does. The person's own Allow
  */
-import { line, reviewLines } from "../../shared/review-lines.js";
-import { UPDATE_SPEC_RE } from "./den-update.js";
+import {
+  line,
+  reviewLines,
+  type ReviewLine,
+} from "../../shared/review-lines.js";
+import { stableNotOlder, UPDATE_SPEC_RE } from "./den-update.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import {
   cloneTarget,
   runClone,
   type GitRunner,
 } from "../../shared/repo-clone.js";
-import { isServerScope } from "../../shared/agents/server-agent.js";
+import {
+  isServerScope,
+  SERVER_AGENT_ID,
+} from "../../shared/agents/server-agent.js";
 import {
   readPolicySetting,
   type PolicySetting,
 } from "../../shared/approval-policy.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
+import { createHash } from "crypto";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
 import {
@@ -159,11 +180,17 @@ export interface HeldActionDeps {
   workspaceExists: (name: string) => boolean;
   /** Where `repo add` puts a repo with no -w: the focused one, else `default`. */
   defaultWorkspace: () => string;
-  /** The service `up` would start, or why it can't (the exec route's checks). */
+  /**
+   * The service `up` would start, or why it can't (the exec route's
+   * checks). `command`: its declared local "up", as the dialog shows it
+   * (issue 362), absent when it runs the runner's own.
+   */
   serviceTarget: (
     service: string,
     workspace?: string,
-  ) => { ok: true; address: string } | { ok: false; error: string };
+  ) =>
+    | { ok: true; address: string; command?: string }
+    | { ok: false; error: string };
   tryService: (address: string, workspace?: string) => Promise<TryResult>;
   /** SRV-1a: leave the marker, then restart this server (after answering). */
   restartDen?: (
@@ -175,7 +202,23 @@ export interface HeldActionDeps {
     version: string,
     reason: string,
     asked?: AskedBy,
-  ) => Promise<{ ok: boolean; restarting?: boolean; error?: string }>;
+    /** Issue 1403: a routine run on personal (den-update.ts stableNotOlder). */
+    o?: { stableNotOlder: true },
+  ) => Promise<{
+    ok: boolean;
+    restarting?: boolean;
+    error?: string;
+    needsPerson?: true;
+  }>;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  installPersonal?: () => boolean;
+  /** Issue 1403: the Den version running now (engineVersion). */
+  denVersion?: () => string | null;
+  /**
+   * Issue 1403: hold `action` for the person's Allow (pending in the bell),
+   * with `card` its check, asked by `agent`: a routine run that stopped.
+   */
+  holdForPerson?: (action: string, card: HeldCheck, agent?: string) => void;
   /** SRV-P1: agent_create's check and start (agent-ops.ts). */
   agentCreate?: {
     check: (args: Record<string, unknown>, who?: HeldAsker) => AgentCreateCheck;
@@ -204,6 +247,12 @@ export interface HeldActionDeps {
   agentMode?: HeldOp;
   /** Issue 772: agent_prompt's check and typing (agent-prompt.ts). */
   agentPrompt?: HeldOp;
+  /** Issue 1328: agent_sandbox_set's check and write (agents/sandbox-set.ts). */
+  agentSandbox?: HeldOp;
+  /** Issue 1371: setting_change's check and write (cli/setting-change.ts). */
+  settingChange?: HeldOp;
+  /** Issue 1395: gate_settings_set's check and write (gates/settings-set.ts). */
+  gateSettings?: HeldOp;
   /** Issue 334: embed_key_create and embed_key_revoke (embed-routes.ts). */
   appKeys?: { create: HeldOp; revoke: HeldOp };
   /** Issue 208: verify_run's check and run (verify-routes.ts). */
@@ -224,7 +273,14 @@ export interface HeldActionDeps {
     session: string;
     persona: string;
     runtime?: string;
+    sandboxOff?: boolean;
   }) => Promise<unknown>;
+  /**
+   * Issue 1328: why the agent agent_import makes of a persona would start
+   * outside the sandbox (a Review line), or null. Then only the person's
+   * own Allow brings it in.
+   */
+  agentImportSandbox?: (persona: string) => ReviewLine | null;
   /**
    * Issue 160: the approval policy as set (`approvals:`), the install's or
    * a project's, and its write. read throws on a project Den doesn't have.
@@ -247,6 +303,8 @@ export interface HeldActionDeps {
   }) => Promise<unknown>;
   /** Issue 565: file a report as the page does (report-held.ts reportHeld). */
   report?: HeldAction;
+  /** Issue 816: set up a test install's test person (test-person-held.ts). */
+  testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
   /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
@@ -286,6 +344,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "test_person_setup",
   "web_url_set",
 ]);
 
@@ -294,7 +353,7 @@ export interface HeldOp {
   check: (
     args: Record<string, unknown>,
     who?: HeldAsker,
-  ) => HeldOpCheck<object>;
+  ) => HeldOpCheck<object> | Promise<HeldOpCheck<object>>;
   run: (args: Record<string, unknown>, asked?: AskedBy) => Promise<unknown>;
 }
 
@@ -464,7 +523,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const serviceTry: HeldAction = {
-    check(a): HeldCheck {
+    check(a, _who, o): HeldCheck {
       const service = str(a.service);
       if (!service)
         return { ok: false, error: "give service: <repo> or <repo>/<service>" };
@@ -478,11 +537,34 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: `there is no project "${workspace}"` };
       const t = d.serviceTarget(service, workspace);
       if (!t.ok) return { ok: false, error: t.error };
+      // Issue 362: the Allow is for the command the dialog shows. Its
+      // fingerprint rides in the request; the check again before the run
+      // refuses a command that changed while it waited.
+      const up = createHash("sha256")
+        .update(`${t.address}\n${t.command ?? ""}`)
+        .digest("hex")
+        .slice(0, 32);
+      // A request with no fingerprint at the Allow (asked before Den kept
+      // it, or its args changed on the way) names no command: refused.
+      if (o?.again && a.up === undefined)
+        return {
+          ok: false,
+          error: `this request for ${t.address} doesn't say which "up" command it was asked for, so the Allow is not for one: ask again`,
+        };
+      if (a.up !== undefined && a.up !== up)
+        return {
+          ok: false,
+          error: `the "up" command of ${t.address} changed after this was asked, so the Allow is not for it: ask again`,
+        };
       const activates =
         workspace !== undefined && !d.workspaceActive(workspace);
       return {
         ok: true,
-        args: { service: t.address, ...(workspace ? { workspace } : {}) },
+        args: {
+          service: t.address,
+          ...(workspace ? { workspace } : {}),
+          up,
+        },
         summary: `start ${t.address}${workspace ? ` in project "${workspace}"` : ""}${activates ? ` (this activates ${workspace})` : ""}`,
         params: {
           service: t.address,
@@ -503,6 +585,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             `Runs the service's local "up", as the Services page's Start does.`,
             "ap.det.service_try.up",
           ),
+          ...(t.command
+            ? [
+                line(`Command: ${t.command}`, "ap.det.service_try.command", {
+                  command: t.command,
+                }),
+              ]
+            : []),
           line(
             `Den reports the exit code and the last lines of its output.`,
             "ap.det.service_try.reports",
@@ -553,7 +642,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const denUpdate: HeldAction = {
-    check(a): HeldCheck {
+    check(a, who): HeldCheck {
       const reason = str(a.reason)?.replace(/\s+/g, " ");
       if (!reason) return { ok: false, error: "give reason (one line: why)" };
       if (reason.length > RESTART_REASON_MAX)
@@ -566,8 +655,21 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         return { ok: false, error: "version: latest, or one like 0.4.44" };
       if (!d.updateDen)
         return { ok: false, error: "this Den can't update itself" };
+      // Issue 1403 (Den Builder): on personal, routine only for the server
+      // agent, to latest or a stable release not older than the running
+      // one ("latest" is checked again at the run). Anything else is the
+      // person's. Strict: critical by its placement, as before (SRV-1a).
+      const personOnly =
+        isPersonal(d.installPersonal) &&
+        !(
+          who?.agent === SERVER_AGENT_ID &&
+          isServerScope(who.project) &&
+          (version === "latest" ||
+            stableNotOlder(version, d.denVersion?.() ?? null))
+        );
       return {
         ok: true,
+        ...(personOnly ? { personOnly: true as const } : {}),
         args: { version, reason },
         summary: `update Den to ${version} (${reason})`,
         params: { version, reason },
@@ -591,7 +693,23 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       };
     },
     async run(a, asked) {
-      return d.updateDen!(String(a.version), String(a.reason), asked);
+      // Issue 1403: a routine run on personal checks the version again,
+      // as npm resolves it, against the one running now.
+      const routine =
+        !!asked?.decidedBy?.startsWith("auto:") &&
+        isPersonal(d.installPersonal);
+      const r = routine
+        ? await d.updateDen!(String(a.version), String(a.reason), asked, {
+            stableNotOlder: true,
+          })
+        : await d.updateDen!(String(a.version), String(a.reason), asked);
+      if (!r.needsPerson) return r;
+      const c = await denUpdate.check(a, {});
+      if (c.ok && d.holdForPerson) {
+        d.holdForPerson("den_update", { ...c, personOnly: true }, asked?.agent);
+        return { ok: true, held: true, note: r.error };
+      }
+      return r;
     },
   };
 
@@ -623,10 +741,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const op = (o: HeldOp | undefined, missing: string): HeldAction => ({
-    check(a, who): HeldCheck {
+    check(a, who): HeldCheck | Promise<HeldCheck> {
       if (!o) return { ok: false, error: missing };
+      const copy = (c: HeldOpCheck<object>): HeldCheck =>
+        c.ok ? { ...c, args: { ...c.args } } : c;
       const c = o.check(a, who);
-      return c.ok ? { ...c, args: { ...c.args } } : c;
+      // Issue 1403: host_restart's check looks at the agents' turns.
+      return c instanceof Promise ? c.then(copy) : copy(c);
     },
     run: (a, asked) => o!.run(a, asked),
   });
@@ -659,6 +780,18 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const agentMode = op(
     d.agentMode,
     "this Den can't change an agent's mode here",
+  );
+  const agentSandbox = op(
+    d.agentSandbox,
+    "this Den can't change an agent's sandbox here",
+  );
+  const settingChange = op(
+    d.settingChange,
+    "this Den can't change its settings here",
+  );
+  const gateSettings = op(
+    d.gateSettings,
+    "this Den can't change its gate settings here",
   );
   const verifyRun = op(d.verifyRun, "this Den can't run Verify here");
   const agentPrompt = op(d.agentPrompt, "this Den can't prompt agents here");
@@ -799,9 +932,17 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       const runtime = str(a.runtime);
       if (runtime !== undefined && !NAME_RE.test(runtime))
         return { ok: false, error: "runtime must be a runtime id" };
+      const off = d.agentImportSandbox?.(persona) ?? null;
       return {
         ok: true,
-        args: { project, session, persona, ...(runtime ? { runtime } : {}) },
+        ...(off ? { personOnly: true } : {}),
+        args: {
+          project,
+          session,
+          persona,
+          ...(runtime ? { runtime } : {}),
+          ...(off ? { sandboxOff: true } : {}),
+        },
         summary: `bring in conversation ${session} as a ${persona} agent of project "${project}"`,
         params: { session, persona, project },
         ...reviewLines([
@@ -824,6 +965,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
             "Refused if it is still open in another terminal, or an agent already continues it.",
             "ap.det.agent_import.refused",
           ),
+          ...(off ? [off] : []),
         ]),
       };
     },
@@ -833,6 +975,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         session: String(a.session),
         persona: String(a.persona),
         ...(str(a.runtime) ? { runtime: str(a.runtime) } : {}),
+        ...(a.sandboxOff === true ? { sandboxOff: true } : {}),
       });
     },
   };
@@ -1025,6 +1168,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     agent_folder: agentFolder,
     agent_mode: agentMode,
     agent_prompt: agentPrompt,
+    agent_sandbox_set: agentSandbox,
+    setting_change: settingChange,
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,
@@ -1042,8 +1187,19 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     embed_key_revoke: appKeyRevoke,
     gate_runner_token_create: gateRunnerToken,
     gate_box_set: gateBoxSet,
+    gate_settings_set: gateSettings,
     gate_box_remove: gateBoxRemove,
     host_restart: terminalHostRestart,
+    test_person_setup: d.testPersonSetup ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+      run: async () => ({
+        ok: false,
+        error: "this Den can't set up test installs here",
+      }),
+    },
     web_url_set: d.webUrlSet ?? {
       check: () => ({
         ok: false,

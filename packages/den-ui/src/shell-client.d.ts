@@ -96,6 +96,11 @@ export interface BellHandle {
  * data-id or id, and replaced whole only when it changed).
  */
 export declare function patchChildren(live: Element, next: Element): void;
+/** Issue 420: a click anywhere on a row clicks its link (not on its controls). */
+export declare function wireRowOpens(
+  root: Element,
+  rowSelector: string,
+): () => void;
 export declare function hydrateBell(
   button: HTMLElement,
   opts?: BellHydrateOptions,

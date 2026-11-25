@@ -123,7 +123,8 @@ afterAll(async () => {
 
 const skip = () => !browser || !s;
 
-async function open(path: string, width = 1280): Promise<Page> {
+/** `by`: the list view saved before the first load (den-agents-by). */
+async function open(path: string, width = 1280, by?: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
@@ -142,10 +143,20 @@ async function open(path: string, width = 1280): Promise<Page> {
       /* none */
     }
   }, latest);
+  if (by)
+    await ctx.addInitScript((v) => {
+      // Once: a reload keeps what the page saved.
+      if (sessionStorage.getItem("t-by-set")) return;
+      sessionStorage.setItem("t-by-set", "1");
+      localStorage.setItem("den-agents-by", v);
+    }, by);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await signInPage(p, s!.stateDir, s!.base, path);
-  await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
+  await p.waitForSelector(
+    by === "project" ? "#agl .wsg[data-ws]" : "#agl [data-band]",
+    { timeout: 20_000 },
+  );
   return p;
 }
 
@@ -303,6 +314,71 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
       "working",
       "idle",
     ]);
+    await p.context().close();
+  }, 60_000);
+
+  it("By need is the default; By project groups by project, each sorted by need; the choice is kept", async () => {
+    if (skip()) return;
+    const p = await open("/agents");
+    const sw = "#agl [data-by-switch]";
+    expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
+      "true",
+    );
+    await p.click(`${sw} [data-by="project"]`);
+    await p.waitForSelector("#agl .wsg[data-ws]", { timeout: 20_000 });
+    expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    const need = [ag.planner, ag.builder, ag.reviewer, ag.scribe].map(
+      (a) => a.sid,
+    );
+    const groups = await p.$$eval("#agl .wsg[data-ws]", (gs) =>
+      gs.map((g) =>
+        [...g.querySelectorAll("button[data-kind]")].map(
+          (r) => (r as HTMLElement).dataset.id ?? "",
+        ),
+      ),
+    );
+    const mine = groups
+      .map((ids) => ids.filter((x) => need.includes(x)))
+      .filter((ids) => ids.length > 0);
+    expect(mine.flat().sort()).toEqual([...need].sort());
+    for (const ids of mine)
+      expect(ids).toEqual(need.filter((x) => ids.includes(x)));
+    await p.reload();
+    await p.waitForSelector("#agl .wsg[data-ws]", { timeout: 20_000 });
+    expect(
+      await p.getAttribute(`${sw} [data-by="project"]`, "aria-pressed"),
+    ).toBe("true");
+    await p.click(`${sw} [data-by="need"]`);
+    await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
+    await p.context().close();
+  }, 60_000);
+
+  it("a saved By project opens grouped by project", async () => {
+    if (skip()) return;
+    const p = await open("/agents", 1280, "project");
+    expect(
+      await p.getAttribute(
+        '#agl [data-by-switch] [data-by="project"]',
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(await p.locator("#agl .wsg[data-ws]").count()).toBeGreaterThan(0);
+    expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    await p.context().close();
+  }, 60_000);
+
+  it("a saved By group with no Hub groups: no By group button, By need, the choice kept", async () => {
+    if (skip()) return;
+    const p = await open("/agents", 1280, "group");
+    const sw = "#agl [data-by-switch]";
+    expect(await p.locator(`${sw} [data-by="group"]`).count()).toBe(0);
+    expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
+      "true",
+    );
+    expect(await p.locator("#agl [data-band]").count()).toBeGreaterThan(0);
+    expect(await p.evaluate(() => localStorage.getItem("den-agents-by"))).toBe(
+      "group",
+    );
     await p.context().close();
   }, 60_000);
 

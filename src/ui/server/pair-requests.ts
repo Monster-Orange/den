@@ -105,6 +105,28 @@ export type PairState =
   /** #320: its page withdrew it (closed, or signed in another way). */
   | "withdrawn";
 
+/**
+ * Issue 1333: a request started or ended, for the activity trail. Its
+ * handle and where it came from; never its code or its poll id.
+ */
+export interface PairEvent {
+  event: "start" | "end";
+  ref: string;
+  device: string;
+  client?: string;
+  clientName?: string;
+  host?: string;
+  link?: boolean;
+  /** How it ended: approved, denied, withdrawn (its page went), unseen (its page stopped asking), expired, replaced (the cap). */
+  outcome?:
+    | "approved"
+    | "denied"
+    | "withdrawn"
+    | "unseen"
+    | "expired"
+    | "replaced";
+}
+
 /** What the approver sees of a request (and the page, of its own). */
 export interface PairView {
   code: string;
@@ -115,6 +137,10 @@ export interface PairView {
   device: string;
   /** The client's address, when Den knows it. */
   client?: string;
+  /** Issue 1333: the client's mesh name (a reverse lookup), when it has one. */
+  clientName?: string;
+  /** Issue 1333: the Den address the request opened (its Host). */
+  host?: string;
   createdAt: number;
   expiresAt: number;
   /**
@@ -170,6 +196,7 @@ export class PairRequests {
   private readonly unseenMs: number;
   private attempts: number[] = [];
   private madeBy = new Map<string, number[]>();
+  private readonly onEvent?: (e: PairEvent) => void;
 
   constructor(
     opts: {
@@ -181,8 +208,11 @@ export class PairRequests {
       /** New requests a minute from one client address. */
       perClient?: Live;
       unseenMs?: number;
+      /** Issue 1333: each request's start and end (never its code). */
+      onEvent?: (e: PairEvent) => void;
     } = {},
   ) {
+    this.onEvent = opts.onEvent;
     this.now = opts.now ?? Date.now;
     this.max = opts.max ?? MAX_PENDING_PAIRS;
     this.ttlMs = opts.ttlMs ?? PAIR_TTL_MS;
@@ -196,6 +226,7 @@ export class PairRequests {
   create(meta: {
     userAgent?: string;
     client?: string;
+    host?: string;
     link?: string;
     linkAt?: number;
   }): { id: string; ref: string; code: string; expiresAt: number } {
@@ -214,6 +245,7 @@ export class PairRequests {
   tryCreate(meta: {
     userAgent?: string;
     client?: string;
+    host?: string;
     link?: string;
     linkAt?: number;
   }): CreateResult {
@@ -233,6 +265,7 @@ export class PairRequests {
       if (i < 0 && !meta.link) return { ok: false, error: "full" };
       const [gone] = pending.splice(i < 0 ? 0 : i, 1);
       this.byId.delete(gone.id);
+      this.emit(gone, "replaced");
     }
     made.push(now);
     this.madeBy.set(who, made);
@@ -251,6 +284,7 @@ export class PairRequests {
       device: deviceName(ua),
       userAgent: ua,
       ...(meta.client ? { client: String(meta.client).slice(0, 64) } : {}),
+      ...(meta.host ? { host: String(meta.host).slice(0, 255) } : {}),
       ...(meta.link ? { link: String(meta.link).slice(0, 64) } : {}),
       ...(meta.link && meta.linkAt ? { linkAt: meta.linkAt } : {}),
       createdAt: now,
@@ -258,6 +292,7 @@ export class PairRequests {
       seenAt: now,
     };
     this.byId.set(r.id, r);
+    this.emit(r);
     return {
       ok: true,
       id: r.id,
@@ -286,12 +321,40 @@ export class PairRequests {
     this.sweep();
     const r = this.byId.get(id);
     if (!r || r.state !== "pending") return false;
-    this.end(r);
+    this.end(r, "withdrawn");
     return true;
   }
 
+  /**
+   * Issue 1333: the client's mesh name, once a reverse lookup finds it
+   * (after the request was made: the page never waits on it).
+   */
+  setClientName(ref: string, name: string): void {
+    const r = [...this.byId.values()].find((x) => x.ref === ref);
+    if (r && /^[A-Za-z0-9.-]{1,253}$/.test(name)) r.clientName = name;
+  }
+
+  /** Issue 1333: tell the trail a request started, or how it ended. */
+  private emit(r: PairRequest, outcome?: PairEvent["outcome"]): void {
+    if (!this.onEvent) return;
+    try {
+      this.onEvent({
+        event: outcome ? "end" : "start",
+        ref: r.ref,
+        device: r.device,
+        ...(r.client ? { client: r.client } : {}),
+        ...(r.clientName ? { clientName: r.clientName } : {}),
+        ...(r.host ? { host: r.host } : {}),
+        ...(r.link ? { link: true } : {}),
+        ...(outcome ? { outcome } : {}),
+      });
+    } catch {
+      /* the trail never stops a sign-in */
+    }
+  }
+
   /** A pending request ends as withdrawn: kept a minute, at most so many. */
-  private end(r: PairRequest): void {
+  private end(r: PairRequest, why: "withdrawn" | "unseen"): void {
     const kept = [...this.byId.values()]
       .filter((x) => x.state === "withdrawn")
       .sort((x, y) => (x.forgetAt ?? 0) - (y.forgetAt ?? 0));
@@ -299,6 +362,7 @@ export class PairRequests {
       this.byId.delete(kept.shift()!.id);
     r.state = "withdrawn";
     r.forgetAt = this.now() + PAIR_ENDED_KEEP_MS;
+    this.emit(r, why);
   }
 
   /**
@@ -372,6 +436,7 @@ export class PairRequests {
     }
     r.request.state = state;
     if (state === "denied") r.request.forgetAt = now + PAIR_ENDED_KEEP_MS;
+    this.emit(r.request, state);
     return { ok: true, request: view(r.request) };
   }
 
@@ -445,12 +510,13 @@ export class PairRequests {
         now < r.expiresAt &&
         now - r.seenAt >= this.unseenMs
       )
-        this.end(r);
+        this.end(r, "unseen");
     for (const [id, r] of this.byId) {
       if (
         (r.state === "pending" || r.state === "approved") &&
         now >= r.expiresAt
       ) {
+        if (r.state === "pending") this.emit(r, "expired");
         r.state = "expired";
         r.forgetAt = r.expiresAt + PAIR_ENDED_KEEP_MS;
       }
@@ -466,6 +532,8 @@ function view(r: PairRequest): PairView {
     state: r.state,
     device: r.device,
     ...(r.client ? { client: r.client } : {}),
+    ...(r.clientName ? { clientName: r.clientName } : {}),
+    ...(r.host ? { host: r.host } : {}),
     ...(r.link ? { link: r.link } : {}),
     ...(r.linkAt ? { linkAt: r.linkAt } : {}),
     createdAt: r.createdAt,

@@ -1,0 +1,45 @@
+{
+  "//": "Issue 843: the static checks that run first, in CI's fast job and in the pre-push hook (scripts/fast-checks.mjs runs them). Each reads the repo only (no server, browser, Docker or network) and takes seconds. Keep the whole set under 60 s in CI and 30 s on a developer machine.",
+  "commands": [
+    {
+      "name": "words gate",
+      "run": ["node", "scripts/words-gate.mjs"]
+    },
+    {
+      "name": "state writes (atomic-write)",
+      "run": ["node", "scripts/state-writes-gate.mjs"]
+    },
+    {
+      "name": "kit copies (den-ui parity)",
+      "run": [
+        "node",
+        "packages/den-ui/bin/den-ui-parity.mjs",
+        "--root",
+        ".",
+        "--src",
+        "src"
+      ]
+    },
+    {
+      "name": "fixed date vs real clock",
+      "run": ["node", "scripts/fixed-date-gate.mjs"]
+    }
+  ],
+  "jest": [
+    "tests/unit/version-sync.test.ts",
+    "tests/unit/scripts/words.test.ts",
+    "tests/unit/server/ui-color-tokens.test.ts",
+    "tests/unit/den-ui/tokens.test.ts",
+    "tests/unit/server/product-tokens.test.ts",
+    "tests/unit/server/i18n.test.ts",
+    "tests/unit/server/i18n-pages-171.test.ts",
+    "tests/unit/server/settings-inventory.test.ts",
+    "tests/unit/server/busy-writes-ratchet.test.ts",
+    "tests/unit/den-ui/dialog-frame-guard.test.ts",
+    "tests/unit/no-fixture-names.test.ts",
+    "tests/unit/test-infra/ci-runner-guard.test.ts",
+    "tests/unit/test-infra/node-matrix.test.ts",
+    "tests/unit/test-infra/fast-checks.test.ts",
+    "tests/unit/scripts/fixed-date-gate.test.ts"
+  ]
+}

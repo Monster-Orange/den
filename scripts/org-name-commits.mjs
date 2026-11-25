@@ -13,7 +13,7 @@
  * machine without the names file can still commit. Only new ranges are
  * checked: nothing already on main is rewritten.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import { orgHitsWide, orgPatterns } from "./org-names.js";
@@ -60,7 +60,19 @@ if (/^0+$/.test(base)) {
   process.exit(0);
 }
 
-const shas = execFileSync("git", ["rev-list", range], { encoding: "utf-8" })
+// Commits already on origin/main are public and can't be reworded: a merge
+// of main into a work branch brings main's own merge commits (a hosted
+// merge button names the org's branch) into the range. Only new ones count.
+const MAIN = "refs/remotes/origin/main";
+const hasMain =
+  spawnSync("git", ["rev-parse", "-q", "--verify", `${MAIN}^{commit}`], {
+    stdio: "ignore",
+  }).status === 0;
+const shas = execFileSync(
+  "git",
+  ["rev-list", range, ...(hasMain ? ["--not", MAIN] : [])],
+  { encoding: "utf-8" },
+)
   .split("\n")
   .filter(Boolean);
 let bad = 0;
