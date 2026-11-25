@@ -2559,6 +2559,19 @@
     "set.server.gate_host_only": "Browser runs kept here",
     "set.server.gate_host_only.d":
       "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    "set.server.gate_route_agents": "Agents' heavy runs go through the gate",
+    "set.server.gate_route_agents.d":
+      "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_route_commands": "Programs sent through the gate",
+    "set.server.gate_route_commands.d":
+      'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    "set.server.gate_outside": "Runs outside the gate today",
+    "set.server.gate_outside.d":
+      "Agents' test, typecheck and browser runs that didn't take a gate slot today: a command with more than one part, or routing off. The program and the agent are recorded, never the arguments.",
+    "set.ui.outsideNone": "None today.",
+    "set.ui.outsideRuns": "{n} runs",
+    "set.ui.outsideRuns.one": "{n} run",
+    "set.ui.outsideFailed": "Couldn't read the gate's log.",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -10599,8 +10612,11 @@
     ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
     // The page's one main landmark (#den-content) holds all its content
     // and lays it out as the body did (a column), so pages keep their look.
+    // Issue 283: positioned, so what a page places absolutely inside it
+    // (a visually hidden label, .den-sr) stays in it rather than
+    // stretching the document past the window.
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
-    "  min-height: 0; min-width: 0; }",
+    "  min-height: 0; min-width: 0; position: relative; }",
     "body.den-has-shell > #den-content:focus { outline: none; }",
     // The page header (.ph, R20, 0.3.0-dev.32), the prototype's sizes: it
     // sits in .main's 20px/24px inset (pages keep their own content

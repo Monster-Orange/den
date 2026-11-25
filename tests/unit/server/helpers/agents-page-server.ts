@@ -236,7 +236,14 @@ export async function startAgentsPageServer(
   }
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
-  write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);
+  // No Docker objects here, answered as a real docker does for one that
+  // doesn't exist: the edge check takes only that for "no edge" (a silent
+  // failure is no answer, and holds edge trust back).
+  write(
+    path.join(bin, "docker"),
+    '#!/bin/sh\necho "Error: No such object: $*" >&2\nexit 1\n',
+    0o755,
+  );
   // The server asks launchd which login it runs in (D20, launchctl
   // managername): a desktop login here, never this machine's launchctl
   // (/bin, the real-CLI sentinel, tests/sentinel.ts). Anything else fails.

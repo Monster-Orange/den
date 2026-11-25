@@ -46,6 +46,7 @@
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
  *            [--browser-requires-container 0|1]
  *            [--browser-box-default any|local] [--browser-host-only <l>]
+ *            [--route-agents 0|1] [--route-commands <programs>]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
@@ -208,6 +209,8 @@ export const GATE_HELP = {
     "    [--browser-requires-container 0|1]   a browser run declares a container browser",
     "    [--browser-box-default any|local]   where a browser run with no --box goes",
     '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
+    "    [--route-agents 0|1]   agents' heavy runs go through the gate (0: run as written, counted)",
+    '    [--route-commands "jest, vitest, tsc, playwright, npm test, npm run test*"]   the programs routed ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -1778,6 +1781,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-requires-container": true,
     "--browser-box-default": true,
     "--browser-host-only": true,
+    "--route-agents": true,
+    "--route-commands": true,
     "--yes": false,
     // Issue 1395: an agent's ask says why.
     "--reason": true,
@@ -1806,6 +1811,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--priority-max", "priority_max"],
     ["--priority-pass-limit-minutes", "priority_pass_limit_minutes"],
     ["--priority-agents", "priority_agents"],
+    // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
+    ["--route-agents", "route_agents"],
     ["--priority-runners", "priority_runners"],
     ["--claim-minutes", "claim_minutes"],
     ["--mcp-renew-minutes", "mcp_renew_minutes"],
@@ -1827,6 +1834,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     // Issue 1033: where a browser run with no --box goes.
     ["--browser-box-default", "browser_box_default"],
     ["--browser-host-only", "browser_host_only"],
+    // Issue 1264: the programs Den's agent hook routes.
+    ["--route-commands", "route_commands"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = v.trim() || null;

@@ -152,6 +152,11 @@ interface Watch {
   failed?: { name: string; url: string }[];
   /** When its head's check runs were last asked for (several heads). */
   checkedAt?: number;
+  /**
+   * Issue 1560: its head's runs weren't on the repo's list (a full page,
+   * the newest only): its own runs are listed by head instead.
+   */
+  offPage?: boolean;
   doneAt?: number;
   text?: string;
   delivered?: boolean;
@@ -186,7 +191,7 @@ interface Watch {
 
 interface Call {
   path: string;
-  kind: "resolve" | "list" | "checks" | "jobs";
+  kind: "resolve" | "list" | "checks" | "jobs" | "headRuns";
   watch?: Watch;
   head?: string;
 }
@@ -214,6 +219,8 @@ const QUEUE_MAX = CAP_CEILING;
 const MAX_PAGES = 10;
 /** The run list reaches back this far before the oldest watch. */
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
+/** The list's one page of workflow runs (GitHub's most). */
+const RUNS_PAGE = 100;
 
 const PASS = new Set(["success"]);
 /** Issue 1166: a check or run not yet on a runner. */
@@ -296,18 +303,51 @@ export class GithubWatcher {
         w.number === number &&
         w.phase !== "done",
     );
-    if (same)
+    // Issue 1560: an open watch on the same pull request is handed back
+    // only while its head is still the pull request's. After a push, the
+    // ask gets a new watch on the new head, and the old one ends.
+    let moved: GhResponse | null = null;
+    let movedTo = "";
+    if (same?.kind === "pr" && same.head && !this.paused(now)) {
+      const r = await this.d.get(this.resolvePath(same));
+      if (!this.noteRate(r, now) && r.status === 200) {
+        const sha =
+          isObj(r.body) && isObj(r.body.head) ? asStr(r.body.head.sha) : "";
+        if (/^[0-9a-f]{7,64}$/i.test(sha) && sha !== same.head) {
+          moved = r;
+          movedTo = sha;
+        }
+      }
+    }
+    if (same && !moved)
       return {
         ok: true,
         watch: this.view(same),
         intervalSeconds: this.interval,
       };
+    // Issue 1560: the replaced watch ends now, so it takes no slot. Its
+    // agent hears it in this answer, not as a message too; the note names
+    // the new watch once it exists (replaced, below).
+    // Should the ask be refused below, the note stands, and the refusal
+    // says it ended.
+    const movedNote = `The pull request's head moved to ${movedTo.slice(0, 7)}.`;
+    const ended = moved
+      ? ` Your watch ${same!.id} on head ${same!.head!.slice(0, 7)} ended: ${movedNote}`
+      : "";
+    if (moved) {
+      this.finish(same!, now, { note: movedNote, text: "" });
+      same!.delivered = true;
+    }
+    const replaced = (w: Watch) => {
+      if (moved)
+        same!.note = `Replaced by watch ${w.id} on head ${movedTo.slice(0, 7)}.`;
+    };
     const low = this.budgetLow(now, s);
     if (low)
       return {
         ok: false,
         code: "budget_low",
-        error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.`,
+        error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.${ended}`,
       };
     // Issue 1166: past the cap, queued; it starts when a slot frees.
     const open = this.open();
@@ -318,7 +358,7 @@ export class GithubWatcher {
         return {
           ok: false,
           code: "too_many",
-          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.`,
+          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.${ended}`,
         };
       const q: Watch = {
         id: `gw-${crypto.randomBytes(4).toString("hex")}`,
@@ -333,6 +373,7 @@ export class GithubWatcher {
         print: "",
         queued: true,
       };
+      replaced(q);
       this.watches.push(q);
       this.save();
       this.writeStatus(now);
@@ -352,9 +393,13 @@ export class GithubWatcher {
       startedAt: now,
       progressAt: now,
     };
-    // The first look, now: the head (and a run's state), so the answer
-    // says where it stands. Not while GitHub asked Den to wait.
-    if (!this.paused(now)) {
+    if (moved) {
+      // The look just made: the new head.
+      this.applyResolve(w, moved.body);
+      replaced(w);
+    } else if (!this.paused(now)) {
+      // The first look, now: the head (and a run's state), so the answer
+      // says where it stands. Not while GitHub asked Den to wait.
       const r = await this.d.get(this.resolvePath(w));
       const limited = this.noteRate(r, now);
       if (!limited) {
@@ -671,20 +716,30 @@ export class GithubWatcher {
     for (const w of ws)
       if (w.phase === "waiting" && now - this.since(w) >= NO_CHECKS_MS)
         w.phase = "ready";
-    const ready = ws
-      .filter((w) => w.phase === "ready")
+    // Its own call, in turn: a ready head's check runs, or (issue 1560)
+    // the runs of a head off the list's page. One a round, alternating
+    // with the list, so the repo still costs one call a round.
+    const own = ws
+      .filter((w) => w.phase === "ready" || w.offPage)
       .sort((a, b) => (a.checkedAt ?? 0) - (b.checkedAt ?? 0));
-    const allReady = ready.length === ws.length;
-    if (ready.length && (allReady || !this.lastChecks.has(key))) {
+    const allOwn = own.length === ws.length;
+    if (own.length && (allOwn || !this.lastChecks.has(key))) {
       this.lastChecks.add(key);
-      const head = ready[0].head!;
+      const first = own[0];
+      const head = first.head!;
       for (const w of ws) if (w.head === head) w.checkedAt = now;
-      return { path: this.checksPath(repo, head), kind: "checks", head };
+      if (first.phase === "ready")
+        return { path: this.checksPath(repo, head), kind: "checks", head };
+      return {
+        path: `repos/${repo}/actions/runs?head_sha=${head}&per_page=${RUNS_PAGE}`,
+        kind: "headRuns",
+        head,
+      };
     }
     this.lastChecks.delete(key);
     const since = Math.min(...ws.map((w) => w.createdAt)) - RUNS_LOOKBACK_MS;
     return {
-      path: `repos/${repo}/actions/runs?per_page=100&created=${encodeURIComponent(`>=${iso(since).slice(0, 19)}Z`)}`,
+      path: `repos/${repo}/actions/runs?per_page=${RUNS_PAGE}&created=${encodeURIComponent(`>=${iso(since).slice(0, 19)}Z`)}`,
       kind: "list",
     };
   }
@@ -711,6 +766,12 @@ export class GithubWatcher {
     }
     if (call.kind === "jobs") return this.applyJobs(call.watch!, r.body, now);
     if (call.kind === "list") return this.applyRuns(ws, r.body);
+    if (call.kind === "headRuns")
+      return this.applyRuns(
+        ws.filter((w) => w.head === call.head),
+        r.body,
+        true,
+      );
     return this.applyChecks(
       ws.filter((w) => w.head === call.head),
       r.body,
@@ -843,7 +904,7 @@ export class GithubWatcher {
     return false;
   }
 
-  private applyRuns(ws: Watch[], body: unknown): boolean {
+  private applyRuns(ws: Watch[], body: unknown, byHead = false): boolean {
     const runs = (
       isObj(body) && Array.isArray(body.workflow_runs) ? body.workflow_runs : []
     ).filter(isObj);
@@ -853,7 +914,26 @@ export class GithubWatcher {
         w.kind === "run"
           ? runs.filter((r) => r.id === w.number)
           : runs.filter((r) => r.head_sha === w.head);
-      if (!mine.length) continue;
+      if (!mine.length) {
+        // Issue 1560: a full page is the newest runs only, and a busy
+        // repo's older ones aren't on it. A head whose runs are off it has
+        // them listed by head, in turn, so it can't sit on its last note,
+        // and its checks are read only once every run on it is done.
+        if (
+          w.kind === "pr" && // a run watch reads its own run (issue 1214)
+          !byHead &&
+          runs.length >= RUNS_PAGE &&
+          !w.offPage
+        ) {
+          w.offPage = true;
+          // Not stale while it waits its turn (issue 1166's bound): its own
+          // runs, read then, say whether it is still underway.
+          w.underway = true;
+          w.note = `Its workflow runs are past the repo's newest ${RUNS_PAGE}; Den lists them by head next.`;
+          changed = true;
+        }
+        continue;
+      }
       if (w.kind === "run") w.suite = asNum(mine[0].check_suite_id) ?? w.suite;
       const print = JSON.stringify(
         mine
