@@ -61,11 +61,6 @@ function stamp(d: Date): string {
 }
 
 /**
- * Move the unreadable `file` to <state>/backup/ and note it. Null when the
- * file is gone, is outside `stateDir`, or can't be moved (then it stays
- * where it is: never worse than before).
- */
-/**
  * Why a file couldn't be read, with none of its text. Node's JSON.parse
  * messages quote the file (a short one whole), and a state file may hold
  * a token or a key: only a fixed reason is kept, with the position at
@@ -84,6 +79,11 @@ export function safeWhy(message: string): string {
   return code ? `can't be read (${code[1]})` : "can't be read";
 }
 
+/**
+ * Move the unreadable `file` to <state>/backup/ and note it. Null when the
+ * file is gone, is outside `stateDir`, or can't be moved (then it stays
+ * where it is: never worse than before).
+ */
 export function keepUnreadable(
   stateDir: string,
   file: string,
@@ -98,11 +98,21 @@ export function keepUnreadable(
   if (!fs.existsSync(abs)) return null;
   const dir = backupDir(root);
   const base = flatName(rel);
-  let saved = `${base}.${stamp(now)}.bad`;
+  const at = `${base}.${stamp(now)}`;
+  let saved = `${at}.bad`;
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    for (let i = 1; fs.existsSync(path.join(dir, saved)); i++)
-      saved = `${base}.${stamp(now)}-${i}.bad`;
+    // More in the same millisecond: above the highest number there, so
+    // the newest never takes a pruned copy's name and sorts as oldest.
+    let top = -1;
+    for (const n of fs.readdirSync(dir)) {
+      if (n === `${at}.bad`) top = Math.max(top, 0);
+      const m = n.startsWith(`${at}-`)
+        ? /^-(\d+)\.bad$/.exec(n.slice(at.length))
+        : null;
+      if (m) top = Math.max(top, Number(m[1]));
+    }
+    if (top >= 0) saved = `${at}-${top + 1}.bad`;
     fs.renameSync(abs, path.join(dir, saved));
   } catch {
     return null;
@@ -140,8 +150,18 @@ function prune(dir: string, base: string): void {
   } catch {
     return;
   }
-  // The name ends in the time it was kept (a rename keeps the old mtime).
-  const byTime = [...names].sort();
+  // The name ends in the time it was kept (a rename keeps the old mtime),
+  // then -1, -2… for more in the same millisecond: "…Z-1.bad" sorts before
+  // "…Z.bad" by name, so sort by the time, then that number.
+  const key = (n: string): [string, number] => {
+    const m = /^(.*Z)(?:-(\d+))?\.bad$/.exec(n.slice(base.length + 1));
+    return m ? [m[1]!, Number(m[2] ?? 0)] : [n, 0];
+  };
+  const byTime = [...names].sort((a, b) => {
+    const [ta, na] = key(a);
+    const [tb, nb] = key(b);
+    return ta < tb ? -1 : ta > tb ? 1 : na - nb;
+  });
   for (const n of byTime.slice(0, Math.max(0, byTime.length - KEEP_PER_FILE)))
     fs.rmSync(path.join(dir, n), { force: true });
 }
@@ -166,6 +186,10 @@ export function readKept(stateDir: string): KeptFile[] {
   }
 }
 
+/**
+ * Read-modify-write with no lock: two processes keeping at once can lose
+ * one note (the copy itself stays in backup/).
+ */
 function writeNotes(stateDir: string, notes: KeptFile[]): void {
   writeFileAtomic(
     path.join(backupDir(stateDir), KEPT_FILE),
@@ -203,7 +227,13 @@ export function readStateJson(stateDir: string, file: string): StateRead {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT")
       return { ok: false, missing: true };
-    return { ok: false, missing: false, kept: null };
+    // Can't be read (EACCES, EIO, EISDIR): kept too, or the caller's next
+    // atomic save would rename over it.
+    return {
+      ok: false,
+      missing: false,
+      kept: keepUnreadable(stateDir, file, (e as Error).message),
+    };
   }
   try {
     return { ok: true, value: JSON.parse(text) as unknown };

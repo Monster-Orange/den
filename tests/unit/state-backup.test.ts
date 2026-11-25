@@ -93,6 +93,43 @@ describe("a state file that can't be read", () => {
     expect(readKept(d).map((k) => k.file)).toEqual(["notifications.json"]);
   });
 
+  const asRoot = process.getuid?.() === 0;
+  (asRoot ? it.skip : it)(
+    "a file Den can't read (a root-owned 0600 left by a sudo run) is kept too, never written over",
+    () => {
+      const d = stateDir();
+      const f = path.join(d, "notifications.json");
+      fs.writeFileSync(f, '{"items":[]}');
+      fs.chmodSync(f, 0o000);
+      const store = new NotificationStore(d);
+      expect(store.list()).toEqual([]);
+      const [k] = readKept(d);
+      expect(k).toMatchObject({
+        file: "notifications.json",
+        why: "can't be read (EACCES)",
+      });
+      const copy = path.join(d, "backup", k!.saved);
+      fs.chmodSync(copy, 0o600);
+      expect(fs.readFileSync(copy, "utf8")).toBe('{"items":[]}');
+      // The store's file was moved, never renamed over.
+      expect(fs.existsSync(f)).toBe(false);
+    },
+  );
+
+  it("copies kept in the same millisecond: the newest stay", () => {
+    const d = stateDir();
+    const f = path.join(d, "notifications.json");
+    const at = new Date(Date.UTC(2026, 10, 22, 10, 0));
+    for (let i = 0; i < 5; i++) {
+      fs.writeFileSync(f, `broken ${i}`);
+      keepUnreadable(d, f, "bad", at);
+    }
+    const left = backup(d).map((n) =>
+      fs.readFileSync(path.join(d, "backup", n), "utf8"),
+    );
+    expect(left.sort()).toEqual(["broken 2", "broken 3", "broken 4"]);
+  });
+
   it("a broken agent record is kept and read as none", () => {
     const d = stateDir();
     fs.mkdirSync(path.join(d, "agents"), { recursive: true });
