@@ -894,8 +894,10 @@ The top bar's search sits in the same place in every product (issue 303).
 - **The search's words** are the kit's by default ("Search…", named
   "Search"; es, ja). A host may set the placeholder with
   `searchHtml({ placeholder })`: one word in the page's language, or words
-  per locale (`{ en, es, ja }`). The name (its aria-label) stays the
-  kit's, and the field takes no label.
+  per locale (`{ en, es, ja }`). The name (its aria-label) follows what it
+  shows (label in name): the kit's "Search", or the host's placeholder
+  without a trailing "…" ("Find work…" is named "Find work"). It takes no
+  label.
 - **Touch** (`pointer: coarse`): every control in the bar takes a 44×44px
   tap (an `::after` hit area, centred; the look is the same), and the
   key hints (⌘K, ⌘⇧F, any `.den-kbd`) hide.

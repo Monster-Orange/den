@@ -216,7 +216,8 @@ export interface SearchOptions {
   /**
    * The host's placeholder (default the kit's "Search…"): one word in the
    * page's language, or words per locale ({ en, es, ja }); the page's,
-   * then its base language's. The search's name stays the kit's.
+   * then its base language's. The search's name follows it, without a
+   * trailing "…".
    */
   placeholder?: string | Readonly<Record<string, string>>;
 }

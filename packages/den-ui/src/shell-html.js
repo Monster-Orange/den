@@ -731,14 +731,6 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
 }
 
 /**
- * The search field: the kit's placeholder ("Search…"), then ⌘K inside it,
- * as a button (the host's palette or page opens on it: hydrateSearch).
- *   searchHtml({ id?, shortcut?, lang })
- * Its placeholder and its name ("Search") are the kit's words, in the
- * page's language: one search in every product, so a host can't set them.
- * `shortcut: false`: no ⌘K.
- */
-/**
  * Issue 560: the host's placeholder for the page's language: one word
  * (already in that language), or words per locale (the page's, then its
  * base language's). Blank or missing: null, so the kit's word shows.
@@ -752,17 +744,32 @@ function hostPlaceholder(placeholder, lang) {
   return typeof w === "string" && w.trim() ? w : null;
 }
 
+/**
+ * The search field: a placeholder, then ⌘K inside it, as a button (the
+ * host's palette or page opens on it: hydrateSearch).
+ *   searchHtml({ id?, shortcut?, lang, placeholder? })
+ * The placeholder is the kit's ("Search…") in the page's language, or
+ * (issue 560) the host's: one word, or words per locale. The button's name
+ * follows what it shows (WCAG 2.5.3, label in name): the kit's "Search", or
+ * the host's placeholder with a trailing "…" or "..." trimmed ("Find
+ * work…" is named "Find work"). A host can't set the name otherwise.
+ * `shortcut: false`: no ⌘K.
+ */
 export function searchHtml({ id, shortcut, lang, placeholder } = {}) {
   const keys = shortcut !== false;
+  const host = hostPlaceholder(placeholder, lang);
+  const name = host
+    ? host.trim().replace(/\s*(…|\.\.\.)$/u, "") || host.trim()
+    : kitT(lang, "kit.search.label");
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
     '" aria-haspopup="dialog" data-nav-kit="search"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(kitT(lang, "kit.search.label")) +
+    esc(name) +
     '"><span class="den-search-ph">' +
-    esc(hostPlaceholder(placeholder, lang) ?? kitT(lang, "kit.search.ph")) +
+    esc(host ?? kitT(lang, "kit.search.ph")) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
     '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'
