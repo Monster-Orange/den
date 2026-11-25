@@ -138,20 +138,20 @@ const head = (p: Page, id: string): Promise<Head> =>
   p.evaluate((id) => {
     const g = document
       .querySelector(`[aria-labelledby="den-gh-${id}"]`)!
-      .querySelector(".den-gh") as HTMLElement;
-    const group = g.closest(".den-rail-group")!;
-    const bdg = g.querySelector(".den-bdg") as HTMLElement | null;
-    const chev = g.querySelector(".den-gh-chev") as Element | null;
+      .querySelector('[data-nav-role="group"]') as HTMLElement;
+    const group = g.closest('[data-nav-role="rail-group"]')!;
+    const bdg = g.querySelector("[data-den-fold-n]") as HTMLElement | null;
+    const chev = g.querySelector("svg") as Element | null;
     return {
       tag: g.tagName,
       expanded: g.getAttribute("aria-expanded"),
       controls: g.getAttribute("aria-controls"),
       name: g.getAttribute("aria-label"),
-      shown: [...group.querySelectorAll(".den-ni")]
+      shown: [...group.querySelectorAll("[data-nav]")]
         .filter((e) => e.getClientRects().length > 0)
         .map((e) => (e as HTMLElement).dataset.nav!),
       count: bdg && bdg.getClientRects().length > 0 ? bdg.textContent : null,
-      countBad: !!bdg && bdg.classList.contains("bad"),
+      countBad: !!bdg && bdg.matches("[data-den-fold-n].bad"),
       chevron: chev ? getComputedStyle(chev).transform : "",
       height: g.getBoundingClientRect().height,
     };
@@ -174,7 +174,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
       shown: ["logs", "jobs"],
       count: null,
     });
-    await p.click('[aria-labelledby="den-gh-tools"] .den-gh');
+    await p.click('[data-den-fold="tools"]');
     const after = await head(p, "tools");
     expect(after).toMatchObject({
       expanded: "false",
@@ -192,7 +192,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
 
   it("Enter and Space fold and open it from the keyboard", async () => {
     const p = await open(b());
-    await p.focus('[aria-labelledby="den-gh-more"] .den-gh');
+    await p.focus('[data-den-fold="more"]');
     await p.keyboard.press("Enter");
     expect((await head(p, "more")).expanded).toBe("false");
     expect((await head(p, "more")).count).toBeNull(); // nothing to count
@@ -202,7 +202,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
       shown: ["docs"],
     });
     const focused = await p.evaluate(() =>
-      document.activeElement?.classList.contains("den-gh"),
+      document.activeElement?.hasAttribute("data-den-fold"),
     );
     expect(focused).toBe(true);
     await p.close();
@@ -215,7 +215,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
         const a = document.activeElement as HTMLElement;
         return a.dataset.nav || a.getAttribute("data-den-fold");
       });
-    const stops = () => p.$$eval('.den-rail [tabindex="0"]', (e) => e.length);
+    const stops = () => p.$$eval('#den-rail [tabindex="0"]', (e) => e.length);
     expect(await stops()).toBe(1);
     await p.focus('[data-nav="home"]');
     await p.keyboard.press("ArrowDown");
@@ -233,7 +233,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
     expect(
       await p.evaluate(() => {
         const shown = [
-          ...document.querySelectorAll("#den-rail .den-ni"),
+          ...document.querySelectorAll("#den-rail [tabindex]"),
         ].filter((e) => e.getClientRects().length > 0);
         return document.activeElement === shown[shown.length - 1];
       }),
@@ -250,7 +250,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
       shown: ["home", "runs"],
     });
     expect(await stored(p)).toEqual(["tools"]);
-    await p.click('[aria-labelledby="den-gh-tools"] .den-gh');
+    await p.click('[data-den-fold="tools"]');
     await p.reload();
     await p.waitForFunction(() => (window as { ready?: boolean }).ready);
     expect((await head(p, "tools")).expanded).toBe("true");
@@ -276,7 +276,7 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
 
   it("is at least 44 px tall in the phone drawer", async () => {
     const p = await open(b(), { width: 390, height: 760 });
-    await p.click(".den-menu-btn");
+    await p.click("#den-menu-btn");
     expect((await head(p, "tools")).height).toBeGreaterThanOrEqual(44);
     await p.close();
   });
@@ -286,12 +286,12 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
       fs.mkdirSync(SHOTS, { recursive: true });
       for (const width of [1280, 375]) {
         const p = await open(b(), { width, height: 640 });
-        if (width < 720) await p.click(".den-menu-btn");
+        if (width < 720) await p.click("#den-menu-btn");
         await p.screenshot({
           path: path.join(SHOTS, `${name}-${width}-open.png`),
         });
-        await p.click('[aria-labelledby="den-gh-tools"] .den-gh');
-        await p.click('[aria-labelledby="den-gh-more"] .den-gh');
+        await p.click('[data-den-fold="tools"]');
+        await p.click('[data-den-fold="more"]');
         await p.mouse.move(0, 0);
         // The chevrons' turn ends before the picture.
         await p.waitForFunction(() =>
