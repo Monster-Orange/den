@@ -383,19 +383,35 @@ describe("issue 104: the pane's way back to Den", () => {
     await allowInPopUp(p, f!);
     await p.waitForFunction(isConnected, undefined, { timeout: 20_000 });
     await open.waitFor({ state: "visible", timeout: 10_000 });
+    // Its words: the catalog's emb.open in the pane's language, the Den's
+    // title filled in. Found by role and that name, not only by id.
+    const words = await f!.evaluate(() => {
+      const m = (
+        window as unknown as {
+          denMessages?: Record<string, Record<string, string>>;
+        }
+      ).denMessages;
+      const lang = document.documentElement.lang || "en";
+      return (m?.[lang]?.["emb.open"] ?? m?.en?.["emb.open"] ?? "").trim();
+    });
+    expect({
+      worded: words.length > 0,
+      filled: !/__\w+__/.test(words),
+    }).toEqual({ worded: true, filled: true });
+    const named = f!.getByRole("link", { name: words, exact: true });
+    await named.waitFor({ state: "visible", timeout: 5_000 });
+    expect(await named.getAttribute("id")).toBe("emb-open");
     const link = await open.evaluate((a: HTMLAnchorElement) => ({
       href: a.getAttribute("href"),
       target: a.target,
       rel: a.rel,
       key: a.dataset.t,
-      worded: !!a.textContent?.trim(),
     }));
     expect(link).toMatchObject({
       href: "/p/north/agents/scout",
       target: "_blank",
       rel: "noopener noreferrer",
       key: "emb.open",
-      worded: true,
     });
     // The server answers the deep link itself (issue 103) ...
     const answered = p.context().waitForEvent("response", {
