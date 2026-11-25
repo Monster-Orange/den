@@ -218,6 +218,19 @@ describe("the audit actor comes from the credential", () => {
 });
 
 describe("what an agent's token can't do (403 agent_forbidden)", () => {
+  // Issue 1215: the fixture person's project acts open nothing to agents.
+  it.each([
+    ["POST", "/api/workspaces/create", { name: "agent-1215" }],
+    ["POST", "/api/workspaces", { name: "default", action: "activate" }],
+    ["DELETE", "/api/workspaces", { name: "agent-1215" }],
+  ] as [string, string, Record<string, string>][])(
+    "%s %s (a project act)",
+    async (m, p, body) => {
+      const r = await call(m, p, agent(), body);
+      expect([r.status, r.json.code]).toEqual([403, "agent_forbidden"]);
+    },
+  );
+
   it("open another session's io (HTTP or a WebSocket upgrade); its own passes the checks", async () => {
     const other = await call("GET", "/api/sessions/someone-else/io", agent());
     expect([other.status, other.json.code]).toEqual([403, "agent_forbidden"]);

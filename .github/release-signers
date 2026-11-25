@@ -1,0 +1,3 @@
+# Issue 922: the SSH keys whose signed dev tags may be promoted to a release
+# (scripts/release-promote.sh; docs/releasing.md). One key per line: <name> namespaces="git" <key>.
+den-agents namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMUzFOPSX7gWiTi3mmBraJvHIedMM8ywTjFxxIN4Fdr3

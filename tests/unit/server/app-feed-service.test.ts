@@ -62,6 +62,7 @@ function setup(
     projectOf?: Record<string, string>;
     relay?: (dv: Delivery) => Promise<boolean>;
     holds?: (id: string) => boolean;
+    addressLocal?: (url: string) => Promise<boolean>;
   } = {},
 ) {
   const calls: {
@@ -117,6 +118,7 @@ function setup(
     bell: (n) => bells.push(n),
     stateDir: dir,
     fetch: fakeFetch,
+    ...(o.addressLocal ? { addressLocal: o.addressLocal } : {}),
     log: (l) => logs.push(l),
     retryMs: { first: 5, max: 10 },
   });
@@ -424,5 +426,47 @@ describe("app feed service: limits", () => {
     s.svc.stop();
     expect(view.feeds[0].state).toBe("no_agent");
     expect(s.calls).toEqual([]);
+  });
+});
+
+describe("app feed service: a public_only feed's address (issue 1480)", () => {
+  const feed = (extra: Record<string, unknown>) => ({
+    north: [
+      {
+        name: "chat",
+        agent: "north-helper",
+        url: "https://app.example.test/events",
+        ...extra,
+      },
+    ],
+  });
+
+  it("is resolved again at each connect: one that now names a private address is never opened", async () => {
+    const asked: string[] = [];
+    const s = setup({
+      feeds: feed({ public_only: true }),
+      addressLocal: async (u) => {
+        asked.push(u);
+        return true;
+      },
+    });
+    s.svc.sync();
+    await until(() => (s.svc.view("north").feeds[0]?.problem ?? "") !== "");
+    const view = s.svc.view("north");
+    s.svc.stop();
+    expect(s.calls).toEqual([]);
+    expect(asked[0]).toBe("https://app.example.test/events");
+    expect(view.feeds[0].problem).toContain("private");
+  });
+
+  it("a feed the person wrote or allowed (no public_only) connects as before", async () => {
+    const s = setup({
+      feeds: feed({}),
+      addressLocal: async () => true,
+    });
+    s.svc.sync();
+    await until(() => s.calls.length >= 1);
+    s.svc.stop();
+    expect(s.calls[0].url).toBe("https://app.example.test/events");
   });
 });

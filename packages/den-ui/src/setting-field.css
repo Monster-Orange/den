@@ -31,8 +31,8 @@
 }
 .den-setfield input:focus-visible,
 .den-setfield textarea:focus-visible {
-  outline: 2px solid var(--accent-fill);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus-ring, var(--accent-fill));
+  outline-offset: var(--focus-offset, 1px);
 }
 .den-setfield [readonly] {
   color: var(--muted);

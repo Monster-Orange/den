@@ -118,8 +118,8 @@
 
 .den-fold:focus-visible,
 .den-strip-show:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 
 /* A phone or a touch screen: the toggle is a 44px row; Show panel keeps

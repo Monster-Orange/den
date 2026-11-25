@@ -258,8 +258,11 @@ export function seedBlueprintWorkspaces(): { name: string; repos: string[] }[] {
   const file = readWorkspacesFile();
   for (const bp of bps) {
     const prev: WorkspaceConfig | undefined = file.workspaces[bp.name];
+    // Issue 1215: a seeded project is never the fixture person's.
+    const { fixture_made: _never, ...kept } = prev ?? {};
+    void _never;
     file.workspaces[bp.name] = {
-      ...(prev ?? {}),
+      ...kept,
       services: blueprintServices(bp),
       seeded_repos: [...bp.repos],
       ...blueprintStackNamespace(bp),

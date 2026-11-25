@@ -145,10 +145,11 @@ jobs:
           RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/org-name-commits.mjs "$RANGE_BASE..$RANGE_HEAD"
 
-  # The whole unit suite on both Nodes, split in six parts that run side by
+  # The whole unit suite on both Nodes, split in eight parts that run side by
   # side (jest --shard): every test runs once per Node. In four parts a shard
   # took 17–20 min against a 20-min limit and was cut off; six parts and a
-  # 30-min limit leave room.
+  # 30-min limit left room until 0.4.88-dev.3, when two of six were cut off
+  # while still passing; eight parts leave room again.
   tests:
     needs: [fast]
     if: github.event_name == 'workflow_dispatch'
@@ -165,7 +166,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ["22.13.0", "24.13.0"]
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -193,10 +194,10 @@ jobs:
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).
-      - run: npm test -- --shard=${{ matrix.shard }}/6
+      - run: npm test -- --shard=${{ matrix.shard }}/8
         env:
           DEN_TEST_DOCKER: skip
-      - run: npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests
+      - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
 
@@ -573,7 +574,7 @@ jobs:
       - run: bash scripts/dist-smoke.sh
 
   # Issue 998: Node 22, the lowest Node engines allows, nightly on main, in
-  # six parts. Pull requests run on Node 24 only.
+  # eight parts. Pull requests run on Node 24 only.
   nightly-node22:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
@@ -584,7 +585,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ["22.13.0"]
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -604,10 +605,10 @@ jobs:
       - name: Playwright's browsers and system packages
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
-      - run: npm test -- --shard=${{ matrix.shard }}/6
+      - run: npm test -- --shard=${{ matrix.shard }}/8
         env:
           DEN_TEST_DOCKER: skip
-      - run: npm test -- --shard=${{ matrix.shard }}/6 --passWithNoTests
+      - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
 

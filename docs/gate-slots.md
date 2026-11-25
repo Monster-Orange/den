@@ -39,6 +39,38 @@ over 3 × 18 cores (54), while another unit test run is going; it starts once
 the load drops or that run ends". 0 turns it off; `gate settings
 --load-hold-per-core N` sets it.
 
+Issue 1274: a new run on this machine (cpu or browser, release ones too)
+also waits while its free memory is under `memory_free_min_percent`
+(default 10), but only while another run here is going. Test boxes still
+take their runs. The reason reads "waiting: this machine has 6% of its
+memory free, under 10%, while another run here is going". macOS reads the
+kernel's free level (what `memory_pressure` prints); Linux reads
+MemAvailable. 0 turns it off; `gate settings --memory-free-min-percent N`
+sets it. `DEN_GATE_FREE_MEM` fixes the reading for tests and drills.
+
+New runs here also wait, on the same terms, while swap in use is over
+`swap_hold_gb` (default 8): macOS can show plenty of free memory while swap
+fills. `gate settings --swap-hold-gb N` sets it (0: off);
+`DEN_GATE_SWAP_GB` fixes the reading. `gate status`, its `--json` and the
+Gate pop-up show a run waiting on memory or swap, this machine's free memory
+and swap, and what running VMs reserve.
+
+An unknown memory reading holds, never grants. If free memory or swap should
+be readable here and the read fails, the last good reading stands for
+`memory_reading_keep_seconds` (default 30; `gate settings
+--memory-reading-keep-seconds N`). After that, new runs here wait while another
+run here is going, with the reason "memory reading unavailable". The server
+takes one reading when it starts, before it serves, and reads again in the
+background after that. Its requests never wait for `sysctl`. On a platform with
+no reading (neither macOS nor Linux), memory isn't measured, and memory holds
+don't apply. `gate status`, the Gate pop-up and `den doctor` say so.
+
+`den doctor` lists the VMs here (OrbStack machines, and Docker's VM when it
+isn't OrbStack's) with the memory and cpus each reserves, and warns when
+running VMs promise more than `vm_memory_share` × the machine's RAM
+(default 1: more than it has). A runtime it can't read is "not counted".
+`gate settings --vm-memory-share N` sets the share (0.1 to 4).
+
 `DEN_GATE_LOAD5` is a test override: when set, the gate reads that number as
 the 5-minute load instead of the machine's, for both holds (issues 1009 and
 1048). Den's test setup sets it to 0, so a busy machine never holds a test's
@@ -74,7 +106,9 @@ den gate settings --local-browser-slots 2
 `gate status`, `gate_slot_status` and the runner route's `place` give a
 waiting run's place in its own kind's line (1 is next).
 
-On the machine itself, wrap the run:
+On the machine itself, wrap the run. The browser server at port 3000 is
+the one `npm run pw:server` starts in Den's repo: Playwright's image
+pinned by its multi-arch digest, so it runs the machine's own build.
 
 ```sh
 DEN_PW_WS=ws://127.0.0.1:3000/ den gate run --kind browser --estimate 6m --label "e2e" -- npm run test:e2e
@@ -110,6 +144,10 @@ declares one of:
 - `self`: the run starts its own browser container, so there is no
   address yet when it asks (`--browser-endpoint=self`). Its own setup
   keeps the browser in that container.
+
+On a Mac, a run with no `--box` and no browser of its own isn't refused when
+a test box can serve it: it waits for a box only, since a box's browser is in a
+container.
 
 Over MCP (`gate_slot_request`) and HTTP (`POST /api/gate-slots/ask`) the
 field is `browser_endpoint`. A run for a named test box uses that box's
@@ -210,6 +248,52 @@ their own leases.
 Change it in Settings › Server, or with `den gate settings
 --waiter-return-minutes N` (0: a gone waiter loses its place at once).
 
+## What a run leaves behind is stopped
+
+`gate run` starts its command in its own process group, and in a new
+session with no terminal. When the run is over, whatever the command
+started that is still running is stopped: first asked to stop, then killed
+after `reap_grace_seconds` (default 10). That happens when:
+
+- the command ends (gate run waits for its leftovers before it exits);
+- the run's folder is deleted while it holds the slot;
+- the process that started gate run goes away. A run started with
+  `nohup … &` therefore ends when its shell exits;
+- gate run itself was killed. The next look at the queue, from anything on
+  this machine, stops what it left.
+
+Nothing outside the run's group is ever touched. A group is stopped only
+while it is still the one the run started: its leader's start time is
+checked first, and a group recorded before the machine restarted is never
+stopped. The slot log records `stopped-leftovers` with how many, the
+command's name and the run's label, never arguments. `gate status` and the
+Gate pop-up list the last hour's.
+
+The command has no terminal, so one that asks for a password on it (an ssh
+or git prompt, pinentry) fails at once with "Device not configured"
+(ENXIO). Give such a command its password another way.
+
+Change the grace in Settings › Server, or with `den gate settings
+--reap-grace-seconds N`.
+
+## No run starts while the machine is overloaded
+
+A run that has its slot doesn't start its command while this machine's
+5-minute load average is at or over `max_start_load` (the total, not per
+core). It waits, and `gate status`, the Gate pop-up and the run's own output
+say so: `waiting for the load (40) to drop under 27`. After
+`max_start_wait_minutes` (default 10) it starts anyway, and the slot log
+records `started-busy` with the load.
+
+The default is the machine's cores × 1.5 (27 on 18 cores), below where a
+machine stalls: an 18-core one reset twice at a 5-minute load of about 34.
+0 turns it off. It holds every run, release runs too. It's not
+`cpu_hold_load`, which holds only cpu asks, and only during a release
+browser run.
+
+Change them in Settings › Server, or with `den gate settings
+--max-start-load N --max-start-wait-minutes N` (wait 0: no limit).
+
 ## Let one waiting run go ahead of yours
 
 ```sh
@@ -285,6 +369,40 @@ den gate settings --class-order "release, lane, other" \
 
 A run its class's window holds waits at the back and blocks no one. Test
 box slots and MCP leases apply to whichever run this order starts.
+
+## An agent can ask to change the settings
+
+Settings › Gate (and `gate settings` for a person) write the gates
+folder's settings.json. An agent asks for a change instead, with the held
+write `gate_settings_set`, or with `gate settings` and a reason, which
+asks for it:
+
+```
+gate_settings_set { settings: { "gate.cpu_slots": 3 }, reason: "two browser runs wait" }
+gate settings --cpu-slots 3 --reason "two browser runs wait"
+```
+
+Den checks every key and value first, with Settings › Gate's names and
+ranges: an unknown key, a value out of range or no change is refused at
+once, and nothing is written. The card shows each key's value now and the
+one asked for.
+
+Gate keys are Limits and performance in the approval policy:
+
+- On a personal install (the default) each one is routine: Den writes it
+  at once and tells you in the bell.
+- On a strict install they follow your choice for Limits and performance
+  in Settings › Approvals: by default (Ask me) they wait for your Allow;
+  if you choose to let them change, Den writes them and tells you; with
+  "Never" an agent's ask is refused. One exception: `gate.browser_requires_container` going to 0
+  (browser runs on this machine's own browser, not in a container) waits
+  for your own Allow, whatever you chose. Turning it back on, and every
+  other gate key, is a plain limit. A key put back to its default is
+  judged by that default, which for this one depends on the platform.
+
+Den writes the change under the gate's lock (the one a slot decision
+holds), all of it or none, and the slot log names who asked. Every
+settings write, yours included, takes that lock now.
 
 ## A CI job in a runner VM
 
@@ -490,8 +608,9 @@ who asked and who allowed. Deny changes nothing.
 ### Which runs go to a box
 
 A browser run with no `--box` takes whichever browser slot frees first:
-this machine's, then the first test box with a free slot. It needs
-`--base-url` for that (a box's browser reaches the app by it):
+this machine's, then the first test box with a free slot. A box's browser
+reaches the app by the run's `--base-url`; with none, it may reach only
+the ports the run opens itself (`http://127.0.0.1:*`, never 80 or 443):
 
 ```sh
 den gate run --kind browser --base-url http://app.localhost:4100 -- npm run test:e2e
@@ -512,8 +631,10 @@ A run with no `--box` stays on this machine, and says why in one line
 - its project or label is host-only (`browser_host_only`, below);
 - it brings its own browser: `--browser-endpoint` (an address, or `self`
   for a container it starts), or `DEN_PW_WS`, `HUB_PW_WEBKIT_WS` or
-  `E2E_WEBKIT_WS` in its environment;
-- it has no `--base-url`, or one a box can't use;
+  `E2E_WEBKIT_WS` in its environment naming a container on another host.
+  One on this machine's loopback (`ws://127.0.0.1:…`) is what the run uses
+  if it stays here; given a box, `DEN_PW_WS` becomes the box's;
+- its `--base-url` is one a box can't use;
 - its Playwright version is unknown (no `--pw-version`, and none installed
   where it runs): a box's server would refuse it;
 - no box can serve it. By default a run skips a box that declares no
@@ -576,7 +697,9 @@ it waits for from the runs behind it, and never blocks a slot it can't use.
 A box is checked only when a slot on it is about to be given, never on a
 timer. The check is a read: over ssh, one sftp session that lists the
 hold file and reads the box's `/proc/meminfo` (the box runs nothing for
-it). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
+it). The file is copied into a new private folder on the gate host (mode
+0700), read, and the folder removed, so this works from a macOS gate host
+too, whose sftp can't write to a pipe (issue 1381). A macOS box has no `/proc/meminfo`: Den then runs one fixed command
 over ssh, `vm_stat` and `sysctl -n hw.pagesize`, and nothing else, and
 counts free, inactive and speculative pages as available. A macOS box
 added with ssh gets the hold file and the memory floor like a Linux box.
@@ -662,9 +785,10 @@ are in Settings › Server, or
 
 ## Runs inside a held slot
 
-`gate run` gives its command three variables: `DEN_GATE_SLOT` (the
+`gate run` gives its command these variables: `DEN_GATE_SLOT` (the
 slot's id), `DEN_GATE_SLOT_KIND` (`cpu` or `browser`) and
-`DEN_GATE_SLOT_BOX` (`local`, or the test box it runs on). A `gate run`
+`DEN_GATE_SLOT_BOX` (`local`, or the test box it runs on), plus
+`DEN_GATE_STORE` (see "Throwaway containers go with their run"). A `gate run`
 started from inside that command, of the same kind and on the same place,
 runs inside the held slot at once: no second entry, no wait behind its
 own slot. It must run under the slot's run (its process or a child of
@@ -679,3 +803,61 @@ runs.
 A project's own lock helper can read the same variables: when
 `DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
 held slot and should not lock again.
+
+## Throwaway containers go with their run
+
+A test that starts a container of its own (a database, a cache) labels it
+so the gate can remove it when the run ends. Add the labels from
+`ephemeralLabels(process.env)` (in `src/shared/gates/ephemeral.ts`) to
+`docker run`:
+
+| Label            | Value                                                      |
+| ---------------- | ---------------------------------------------------------- |
+| `den.ephemeral`  | `1`: a throwaway container, never a service                |
+| `den.gate.run`   | the run's slot id (`DEN_GATE_SLOT`), inside a gate run     |
+| `den.gate.store` | the slot store's tag (`DEN_GATE_STORE`), inside a gate run |
+
+`gate run` gives its command both values, so a helper in any language can
+add `--label den.ephemeral=1 --label den.gate.run=$DEN_GATE_SLOT --label
+den.gate.store=$DEN_GATE_STORE` (the last two only when `DEN_GATE_SLOT` is
+set).
+
+Who removes them:
+
+- `gate run`, as soon as its command ends and its slot is given back.
+- Den's server: any throwaway container whose run has no live slot (taken
+  back, lapsed, ended by a person, or killed before it could clean up). It
+  looks when a slot has ended, once at start (so a container Docker brings
+  back after a restart goes), and every 10 minutes otherwise. Each docker
+  call has a 5-second limit, and after a failure it waits longer each time.
+  A container goes only when two looks at least a minute apart both found
+  its run ended, and never when the slots can't be read for sure.
+
+Only a container with all three labels, from this machine's slot store, is
+ever removed. One started outside a gate run (no run label) is never
+removed: `den doctor` lists it. The slot log records each removal with the
+count and the image names, never a command line or environment.
+`gate status` (and `--json`, as `removed`) shows the last day's removals,
+and `den doctor` warns about any left over from an ended run.
+
+### Kept containers: stopped, never removed
+
+A test database that is slow to make (an extension to install) can be kept
+for the checkout instead: label it `den.ephemeral=stop` and
+`den.gate.checkout=$DEN_GATE_CHECKOUT`, with `den.gate.run` and
+`den.gate.store` as above (`ephemeralLabels(env, { keep: true })` builds
+them). `gate run` gives its command `DEN_GATE_CHECKOUT`, a tag for the
+checkout it runs in (the folder holding `.git`), and records it on its
+slot.
+
+A kept container belongs to its checkout, not to the run that made it: a
+container's labels can't change, so a later run reusing it would still
+carry the first run's id. It is **stopped**, never removed, when it is
+running, no live slot comes from its checkout, and it started before that
+checkout's last slot ended: when `gate run` ends, or when the server's
+sweeper finds it so on two looks a minute apart. One started after the
+checkout's last run ended is someone's own use outside the gate, and is
+left alone. One already stopped is left alone. One with no checkout label,
+or a `den.ephemeral` value other than `1` or `stop`, is never touched.
+`den doctor` counts stopped kept containers apart, and lists one running
+with no gate run from its checkout.
