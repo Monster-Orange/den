@@ -154,7 +154,7 @@ async function open(path: string, width = 1280, by?: string): Promise<Page> {
   p.on("pageerror", (e) => errors.push(e.message));
   await signInPage(p, s!.stateDir, s!.base, path);
   await p.waitForSelector(
-    by === "project" ? "#agl .wsg[data-ws]" : "#agl [data-band]",
+    by === "project" ? "#agl [role='group'][data-ws]" : "#agl [data-band]",
     { timeout: 20_000 },
   );
   return p;
@@ -325,12 +325,14 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
       "true",
     );
     await p.click(`${sw} [data-by="project"]`);
-    await p.waitForSelector("#agl .wsg[data-ws]", { timeout: 20_000 });
+    await p.waitForSelector("#agl [role='group'][data-ws]", {
+      timeout: 20_000,
+    });
     expect(await p.locator("#agl [data-band]").count()).toBe(0);
     const need = [ag.planner, ag.builder, ag.reviewer, ag.scribe].map(
       (a) => a.sid,
     );
-    const groups = await p.$$eval("#agl .wsg[data-ws]", (gs) =>
+    const groups = await p.$$eval("#agl [role='group'][data-ws]", (gs) =>
       gs.map((g) =>
         [...g.querySelectorAll("button[data-kind]")].map(
           (r) => (r as HTMLElement).dataset.id ?? "",
@@ -344,7 +346,9 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     for (const ids of mine)
       expect(ids).toEqual(need.filter((x) => ids.includes(x)));
     await p.reload();
-    await p.waitForSelector("#agl .wsg[data-ws]", { timeout: 20_000 });
+    await p.waitForSelector("#agl [role='group'][data-ws]", {
+      timeout: 20_000,
+    });
     expect(
       await p.getAttribute(`${sw} [data-by="project"]`, "aria-pressed"),
     ).toBe("true");
@@ -362,7 +366,9 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
         "aria-pressed",
       ),
     ).toBe("true");
-    expect(await p.locator("#agl .wsg[data-ws]").count()).toBeGreaterThan(0);
+    expect(
+      await p.locator("#agl [role='group'][data-ws]").count(),
+    ).toBeGreaterThan(0);
     expect(await p.locator("#agl [data-band]").count()).toBe(0);
     await p.context().close();
   }, 60_000);
