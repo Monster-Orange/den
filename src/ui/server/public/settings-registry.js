@@ -3171,13 +3171,28 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "GitHub watch: watches at once",
     description:
-      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+      "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
     keywords: ["github", "watch", "limit", "github.watches_max"],
     scope: "user",
     keys: ["github.watches_max"],
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.github?.watches_max ?? 50,
     write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
+  {
+    // Issue 1166: a watch with no progress this long ends (user.yml
+    // github.watch_stale_minutes). A person's only.
+    id: "server.github_watch_stale",
+    category: "server",
+    label: "GitHub watch: minutes with no progress",
+    description:
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    keywords: ["github", "watch", "stale", "github.watch_stale_minutes"],
+    scope: "user",
+    keys: ["github.watch_stale_minutes"],
+    control: { type: "number", min: 5, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_stale_minutes ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_stale_minutes: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml

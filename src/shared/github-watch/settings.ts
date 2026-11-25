@@ -8,7 +8,11 @@
  *   api_budget_floor             below this many GitHub calls left this
  *                                hour, Den asks GitHub nothing and refuses
  *                                new watches until the reset (500)
- *   watches_max                  watches at once, across the install (50)
+ *   watches_max                  watches at once, across the install (50):
+ *                                the cap's floor; the calls left before
+ *                                GitHub's reset can raise it (issue 1166)
+ *   watch_stale_minutes          a watch with no progress this long ends,
+ *                                saying why, and frees its slot (60)
  *
  * A value that is missing or out of range is its default.
  */
@@ -17,6 +21,7 @@ export interface GithubWatchSettings {
   maxIntervalSeconds: number;
   budgetFloor: number;
   watchesMax: number;
+  staleMinutes: number;
 }
 
 /** Each key's range and default (Settings and `config` check against these). */
@@ -25,6 +30,7 @@ export const GITHUB_WATCH_LIMITS = {
   watch_max_interval_seconds: { min: 10, max: 86_400, def: 300 },
   api_budget_floor: { min: 0, max: 100_000, def: 500 },
   watches_max: { min: 1, max: 1000, def: 50 },
+  watch_stale_minutes: { min: 5, max: 10_080, def: 60 },
 } as const;
 
 type Key = keyof typeof GITHUB_WATCH_LIMITS;
@@ -57,5 +63,6 @@ export function githubWatchSettings(user: unknown): GithubWatchSettings {
     ),
     budgetFloor: num(block, "api_budget_floor"),
     watchesMax: num(block, "watches_max"),
+    staleMinutes: num(block, "watch_stale_minutes"),
   };
 }

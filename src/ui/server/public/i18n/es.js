@@ -1188,7 +1188,11 @@
     "set.server.github_watches_max":
       "Vigilancia de GitHub: vigilancias a la vez",
     "set.server.github_watches_max.d":
-      "Cuántas solicitudes de cambios y ejecuciones vigila a la vez el vigilante de GitHub, para todos los agentes de aquí juntos. Una más se rechaza, diciendo por qué. __DEN_CLI__ config github.watches_max=50",
+      "Cuántas solicitudes de cambios y ejecuciones vigila a la vez, como mínimo, el vigilante de GitHub, para todos los agentes de aquí juntos. Cuando el presupuesto de la API de GitHub da para más, vigila más. Por encima de eso, una vigilancia nueva espera en una cola y empieza cuando termina otra. __DEN_CLI__ config github.watches_max=50",
+    "set.server.github_watch_stale":
+      "Vigilancia de GitHub: minutos sin avances",
+    "set.server.github_watch_stale.d":
+      "Una vigilancia sin avance durante estos minutos termina, y se le dice a su agente por qué. Una comprobación todavía en cola o en curso se considera avance, hasta 4 veces este tiempo sin ningún cambio. El límite nunca es menor que el doble del intervalo de vigilancia. Una vigilancia también termina cuando su solicitud de cambios se fusiona o se cierra, o cuando un envío más nuevo reemplaza su commit. __DEN_CLI__ config github.watch_stale_minutes=60",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
