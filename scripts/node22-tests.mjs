@@ -2,8 +2,8 @@
 /**
  * The tests a pull request runs again on Node 22 (the supported range's low
  * end, with npm 10), in the `pr-node22` job. A pull request runs on Node 24
- * (npm 11) only (issue 998), so a test that reads what npm or Node prints
- * could pass there and fail only in a release dry run, which runs Node 22:
+ * (npm 11) only (issue 998), so a test that reads what npm prints could
+ * pass there and fail only in a release dry run, which runs Node 22:
  * PR 1145 changed tests/unit/scripts/org-names-not-packed.test.ts, npm 10
  * printed husky's prepare line before `npm pack --json`'s JSON, and
  * v0.4.90-dev.1's dry run went red.
@@ -11,7 +11,9 @@
  * The version-sensitive tests are the ones over Den's own scripts
  * (tests/unit/scripts/) and any test that runs npm itself. Of those, the
  * ones the change affects (scripts/affected-tests.mjs's list; all of them
- * when that list is ALL). Browser tests never: the browser is the same on
+ * when that list is ALL). Not picked: a test outside tests/unit/scripts that
+ * uses a Node 24-only API, or that starts Den with npx (those run nightly on
+ * Node 22). Browser tests never: the browser is the same on
  * either Node, and they are most of a run's minutes.
  *
  *   node scripts/node22-tests.mjs <affected.txt> [--out <file>]

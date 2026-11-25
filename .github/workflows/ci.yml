@@ -540,7 +540,7 @@ jobs:
   # nothing for it (scripts/ci-ok.mjs), so the ruleset never names a shard.
   # A pull request's version-sensitive tests, again on Node 22 (npm 10), the
   # supported range's low end. The pr job runs Node 24 only (issue 998), and
-  # a test that reads what npm or Node prints could pass there and fail only
+  # a test that reads what npm prints could pass there and fail only
   # in a release dry run (PR 1145's packed-files test, v0.4.90-dev.1). Only
   # the affected tests over Den's scripts and those that run npm
   # (scripts/node22-tests.mjs), never browser tests: beside the pr job, a
@@ -568,6 +568,9 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
+          # Issue 996, as the pr job: a merge-queue run or a version commit
+          # (a release may be cut from it) takes every version-sensitive test.
+          if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then echo ALL > affected.txt; fi
           node scripts/node22-tests.mjs affected.txt --out node22.txt
           echo "Node 22 runs $(grep -c . node22.txt || true) test file(s):"
           cat node22.txt

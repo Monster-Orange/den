@@ -105,6 +105,19 @@ describe("ci.yml's pr-node22 job", () => {
     expect(runs).toMatch(/npm test/);
   });
 
+  it("a merge-queue run or a version commit takes every version-sensitive test, as the pr job (issue 996)", () => {
+    const pick = job.steps.find((s) =>
+      (s.run ?? "").includes("node22-tests.mjs"),
+    )?.run;
+    expect(pick).toMatch(
+      /ci-force-all\.mjs "\$GITHUB_EVENT_NAME" "\$BASE"\)" = yes \]; then echo ALL > affected\.txt/,
+    );
+    // Before the pick, so ALL reaches it.
+    expect(pick!.indexOf("ci-force-all.mjs")).toBeLessThan(
+      pick!.indexOf("node22-tests.mjs"),
+    );
+  });
+
   it("ci-ok requires it", () => {
     expect(([] as string[]).concat(ci.jobs["ci-ok"].needs ?? [])).toContain(
       "pr-node22",
