@@ -399,6 +399,10 @@ Gate keys are Limits and performance in the approval policy:
   for your own Allow, whatever you chose. Turning it back on, and every
   other gate key, is a plain limit. A key put back to its default is
   judged by that default, which for this one depends on the platform.
+- On both kinds of install, turning `gate.route_agents` off, or dropping
+  a program from `gate.route_commands`, waits for your own Allow,
+  whatever you chose: either one lets an agent's heavy runs skip the
+  gate. Turning routing on, or adding a program, is a plain limit.
 
 Den writes the change under the gate's lock (the one a slot decision
 holds), all of it or none, and the slot log names who asked. Every
