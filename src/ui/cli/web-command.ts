@@ -480,15 +480,6 @@ export async function isDenWebRunning(
   );
 }
 
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
 /**
  * Why a server that just started refused to (its `✗ <reason>` line: the
  * bind refusal, a wrong web.session value), read from this start's part of
