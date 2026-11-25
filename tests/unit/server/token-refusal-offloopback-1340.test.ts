@@ -1,10 +1,3 @@
-/**
- * Issue 1340 follow-up: an agent's token that came over a connection off
- * this machine's loopback (a bound LAN or mesh address, a proxy on another
- * address) is refused as "elsewhere" without Den ever looking for its
- * process. Its audit detail says so, with the address, instead of "outside
- * the agent's own processes (pid ?)", which reads as a placed process.
- */
 import { describe, expect, it } from "@jest/globals";
 import type * as http from "http";
 import * as tb from "../../../src/ui/server/token-binding.js";

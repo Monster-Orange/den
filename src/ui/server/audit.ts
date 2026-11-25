@@ -108,7 +108,6 @@ export interface AuditEntry {
    * resumed, failed and cut-mid-turn agents.
    */
   agents?: Record<string, unknown>;
-  /** Issue 1509: a refused agent token's connection (token-binding.ts). */
   connection?: RefusalConnection;
 }
 

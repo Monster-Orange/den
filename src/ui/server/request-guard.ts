@@ -487,11 +487,6 @@ export function forwardedClient(xff: string | undefined): string | undefined {
   return forwardedEntry(all[all.length - 1]);
 }
 
-/**
- * Issue 1509: what a forwarded-for header says, as IPs only (anything
- * else dropped), its right-most `max`: for the audit of a refusal, a
- * claim recorded, never believed.
- */
 export function forwardedEntries(xff: string | undefined, max = 5): string[] {
   const out: string[] = [];
   for (const e of xff?.split(",") ?? []) {
@@ -501,7 +496,6 @@ export function forwardedEntries(xff: string | undefined, max = 5): string[] {
   return out.slice(-max);
 }
 
-/** Issue 1509: a socket's address as an IP (IPv4-mapped unwrapped), or "unknown". */
 export function addressOf(a: string | undefined): string {
   const n = a ? normAddress(a) : "";
   return net.isIP(n) ? n : "unknown";

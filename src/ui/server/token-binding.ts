@@ -317,25 +317,15 @@ export function refusalDetail(o: {
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
 }
 
-/** Issue 1509: the connection a refused agent token came on. */
 export interface RefusalConnection {
-  /** The socket's remote address, as an IP, or "unknown". */
   remote: string;
-  /** The Host it dialed, when it is a host name or address. */
   host?: string;
-  /** What a forwarded-for header said, as IPs only: recorded, not believed. */
   forwardedFor?: string[];
-  /** Whether the edge proved the request (its proof header checked). */
   edgeProved: boolean;
 }
 
-const HOST = /^(?:[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:.]{2,45}\])(?::\d{1,5})?$/;
+const HOST_NAME_OR_ADDRESS = /^(?:[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:.]{2,45}\])(?::\d{1,5})?$/;
 
-/**
- * Issue 1509: what an audit row keeps of a refused agent token's
- * connection, so its caller can be found afterwards. Addresses as IPs and
- * a Host that is a name: nothing a caller can write free text into.
- */
 export function refusalConnection(
   req: http.IncomingMessage,
   edgeProved: boolean,
@@ -346,18 +336,12 @@ export function refusalConnection(
   const fwd = forwardedEntries(Array.isArray(xff) ? xff.join(",") : xff);
   return {
     remote: addressOf(req.socket?.remoteAddress),
-    ...(typeof host === "string" && HOST.test(host) ? { host } : {}),
+    ...(typeof host === "string" && HOST_NAME_OR_ADDRESS.test(host) ? { host } : {}),
     ...(fwd.length ? { forwardedFor: fwd } : {}),
     edgeProved,
   };
 }
 
-/**
- * Issue 1340: the audit detail of a refused agent token, from its request.
- * Off loopback (a bound LAN or mesh address, a proxy on another address),
- * Den never looks for the caller's process: the detail names the address
- * the connection came from, never "outside the agent's own processes".
- */
 export function requestRefusalDetail(
   req: http.IncomingMessage,
   o: {

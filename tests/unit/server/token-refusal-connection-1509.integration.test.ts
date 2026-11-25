@@ -1,10 +1,3 @@
-/**
- * Issue 1509: a refused agent token's audit row records the connection it
- * came on: the socket's remote address, the Host it dialed, the forwarded
- * client addresses a proxy said (as IPs only, never believed), and whether
- * the edge proved the request. Enough to find the caller afterwards when
- * no other log was on. Never the token.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn } from "child_process";
 import * as fs from "fs";
@@ -37,8 +30,7 @@ afterAll(async () => {
 
 const XFF = "not-an-ip, 198.51.100.7, 203.0.113.9:4431";
 
-/** A process outside the agent's session calls with its token. */
-async function fromOrphan(): Promise<string> {
+async function callFromProcessOutsideAgentSession(): Promise<string> {
   const out = path.join(s.tmp, `orphan-${Date.now()}.txt`);
   const call = `fetch(${JSON.stringify(s.base + "/api/agents/self/attention")},{method:"POST",headers:{authorization:"Bearer "+${JSON.stringify(token)},"x-forwarded-for":${JSON.stringify(XFF)},"content-type":"application/json"},body:JSON.stringify({event:"finished"})}).then(async r=>{const b=await r.json().catch(()=>({}));return r.status+" "+(b.code||"")})`;
   const write = writeAnswerJs(out, "x");
@@ -58,7 +50,7 @@ const audit = () =>
 
 describe("issue 1509: a refused agent token's row keeps its connection", () => {
   it("token_elsewhere: remote address, Host, forwarded IPs, edge proof", async () => {
-    expect(await fromOrphan()).toMatch(/^403 agent_token_elsewhere/);
+    expect(await callFromProcessOutsideAgentSession()).toMatch(/^403 agent_token_elsewhere/);
     const row = audit().find((e) => e.verb === "agent-token");
     expect(row).toMatchObject({
       outcome: "refused",
