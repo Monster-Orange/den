@@ -327,10 +327,12 @@ async function save(patch) {
   // R26c: the shell's one client path (its error names the server's
   // message and request id); a page without the shell, a plain fetch.
   const api = typeof window !== "undefined" ? window.denShell?.api : null;
+  // busy-ok: a mode, theme or language picked from a menu; the page shows it at once
   if (api) {
     await api("POST", "/api/settings", { appearance: patch });
     return;
   }
+  // busy-ok: the same pick, on a page without the shell
   const r = await fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
