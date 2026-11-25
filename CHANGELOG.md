@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.90] - unreleased
+
+### Fixed
+
+- No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
+
 ## [0.4.89] - 2026-11-24
 
 Installs that don't set `install_mode` are now personal installs: agents run without the sandbox, and Den no longer nags about hardening. A strict mode is there as an option (`install_mode: strict`). (issue 1391)
@@ -26,7 +32,6 @@ Installs that don't set `install_mode` are now personal installs: agents run wit
 
 ### Fixed
 
-- No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
 - `config agents.<limit>` reads every agent limit (`restart_wait_minutes`, `lock_wait_minutes` and the rest): its value in force as stdout's last line, and where it came from (user.yml, den.yml or Den's default) on stderr. Before, all but `agents.max_concurrent` stopped with the usage line. Every agent limit can now also be set with `config`, in Settings' agents limits, and by an agent's `setting_change` (Limits and performance), each checked as den.yml's agents block is. An agent's setting change card now shows an unset limit's Now as its value in force, "Now: 5 (Den's default)" or "(from den.yml)", never "not set", so you see what the change replaces. One lookup serves both. (issue 1417)
 - Manifest validation no longer quotes a value that isn't in a field's list of choices. It names the value's kind and length instead (`invalid value (a string of 4 characters) — must be one of: admin, user, beta`), as a wrong type already does, so validating a file by path never echoes what it holds. (issue 1412)
 - A Linux test box gets its browser slot again when the gate runs on macOS. Den read the box's /proc/meminfo with sftp into /dev/stdout, which macOS sftp can't write to, so every Linux box read "memory unknown" and was skipped. Den now copies the file into a new private folder, reads it and removes the folder. The box still runs nothing for the check. (issue 1381)

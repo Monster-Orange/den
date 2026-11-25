@@ -915,6 +915,12 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 1264: the gate's settings (route_agents and
+                    // route_commands among them) are a person's; its slot
+                    // log beside them stays the hook's to append to.
+                    ...(gate
+                      ? ownFilesDenyRules([gate.settings], input.env?.HOME)
+                      : []),
                     // Issue 728: this install's own folders by their
                     // given and their real paths (a symlink in either).
                     ...(input.stateDir
