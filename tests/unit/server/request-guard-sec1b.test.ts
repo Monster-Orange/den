@@ -4,13 +4,14 @@
  * session, its headers). The real server's wiring is
  * sec1b-signin.integration.test.ts.
  */
-import { describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it } from "@jest/globals";
 import type * as http from "http";
 import {
   bindRefusal,
   checkRequest,
   isEdgePeer,
   requestIsHttps,
+  setEdgeAddresses,
   type GuardContext,
   type GuardSession,
 } from "../../../src/ui/server/request-guard.js";
@@ -336,7 +337,10 @@ describe("HTTPS (the cookie's Secure)", () => {
   const xfp = { "x-forwarded-proto": "https" };
   // The edge's header counts only with its proof now (the session's Secure
   // name is read over https only): the third argument says it was proved.
+  afterEach(() => setEdgeAddresses(null));
   it("the edge Host from the edge's peer, with X-Forwarded-Proto https and the edge's proof: HTTPS", () => {
+    // The edge container's own addresses, as Den read them.
+    setEdgeAddresses(["172.18.0.5", "192.168.65.1"]);
     for (const peer of [
       "127.0.0.1",
       "172.18.0.5",
@@ -408,9 +412,10 @@ describe("refusing to start a non-loopback bind", () => {
 });
 
 describe("the edge hostname is believed only from an edge peer", () => {
+  const EDGE_ADDRS: ReadonlySet<string> = new Set(["172.18.0.3"]);
   const edgeCtx = (): GuardContext => ({
     ...ctx(),
-    peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
+    peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress, EDGE_ADDRS),
   });
   it("from a LAN client sending Host: <edge> straight to the port: 421, signed in or not", () => {
     for (const peer of ["192.168.1.20", "10.0.0.7", "192.0.2.9"])
@@ -430,13 +435,8 @@ describe("the edge hostname is believed only from an edge peer", () => {
           }),
         ]);
   });
-  it("from loopback or a Docker network (the edge's Traefik): the edge, as before", () => {
-    for (const peer of [
-      "127.0.0.1",
-      "::ffff:127.0.0.1",
-      "172.18.0.3",
-      "192.168.65.3",
-    ])
+  it("from loopback or the edge container's own address: the edge, as before", () => {
+    for (const peer of ["127.0.0.1", "::ffff:127.0.0.1", "172.18.0.3"])
       expect([
         peer,
         checkRequest(
@@ -444,6 +444,16 @@ describe("the edge hostname is believed only from an edge peer", () => {
           edgeCtx(),
         ),
       ]).toEqual([peer, expect.objectContaining({ ok: true, via: "edge" })]);
+  });
+  it("from another Docker-range address: not the edge, 421", () => {
+    for (const peer of ["172.18.0.4", "172.17.0.2", "192.168.65.3"])
+      expect([
+        peer,
+        checkRequest(
+          req("GET", "/api/settings", { host: EDGE, ...cookie }, peer),
+          edgeCtx(),
+        ),
+      ]).toEqual([peer, expect.objectContaining({ ok: false, status: 421 })]);
   });
   it("a loopback Host is unaffected by the peer check", () => {
     expect(

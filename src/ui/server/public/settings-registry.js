@@ -1519,6 +1519,39 @@ function drawAppKeys(host, ctx) {
  * An agent asks for one with a held write the person allows; the person
  * revokes one here, and it answers 401 at once.
  */
+/**
+ * Issue 1264: today's runs outside the gate, per agent (GET
+ * /api/gate-slots outsideToday), most first.
+ */
+function drawGateOutside(host, ctx) {
+  host.innerHTML = `<div id="set-outside-list" style="flex-basis:100%" aria-live="polite"></div>`;
+  const list = host.querySelector("#set-outside-list");
+  ctx.shell
+    .api("GET", "/api/gate-slots")
+    .then((b) => {
+      const rows = (b && b.outsideToday) || [];
+      if (!rows.length) {
+        list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.outsideNone", "None today."))}</output>`;
+        return;
+      }
+      list.innerHTML =
+        `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+        rows
+          .map(
+            (r) =>
+              `<li data-outside-agent="${escHtml(r.who)}" style="display:flex;gap:6px;padding:4px 0">` +
+              `<span>${escHtml(r.who)}</span>` +
+              `<span class="set-note">${escHtml(L("set.ui.outsideRuns", "{n} runs", { n: r.count }))}</span>` +
+              `</li>`,
+          )
+          .join("") +
+        `</ul>`;
+    })
+    .catch(() => {
+      list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.outsideFailed", "Couldn't read the gate's log."))}</output>`;
+    });
+}
+
 function drawRunnerTokens(host, ctx) {
   const shell = ctx.shell;
   host.innerHTML =
@@ -4055,6 +4088,50 @@ export const DEN_SETTINGS = [
       ctx.post({
         gate_slots: { browser_host_only: String(v ?? "").trim() || null },
       }),
+  },
+  {
+    // Issue 1264: Den's agent hook sends an agent's heavy runs through
+    // the gate; off, they run as written and are counted.
+    id: "server.gate_route_agents",
+    category: "server",
+    label: "Agents' heavy runs go through the gate",
+    description:
+      "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    keywords: ["gate", "slot", "agent", "jest", "vitest", "playwright", "load"],
+    scope: "user",
+    keys: ["gate_slots.route_agents"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.routeAgents !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { route_agents: v ? 1 : 0 } }),
+  },
+  {
+    // Issue 1264: the programs the hook routes.
+    id: "server.gate_route_commands",
+    category: "server",
+    label: "Programs sent through the gate",
+    description:
+      'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    keywords: ["gate", "slot", "agent", "program", "command", "jest", "load"],
+    scope: "user",
+    keys: ["gate_slots.route_commands"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.gate_slots?.routeCommands ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { route_commands: String(v ?? "").trim() || null },
+      }),
+  },
+  {
+    // Issue 1264: today's runs outside the gate, per agent.
+    id: "server.gate_outside",
+    category: "server",
+    label: "Runs outside the gate today",
+    description:
+      "Agents' test, typecheck and browser runs that didn't take a gate slot today: a command with more than one part, or routing off. The program and the agent are recorded, never the arguments.",
+    keywords: ["gate", "slot", "agent", "outside", "load", "count"],
+    scope: "user",
+    control: { type: "custom", render: drawGateOutside },
+    read: () => null,
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

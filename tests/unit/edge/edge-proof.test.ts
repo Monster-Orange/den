@@ -88,8 +88,11 @@ describe("the edge picks up the proof (H1)", () => {
     fs.writeFileSync(edgeYml(), "# old\n");
     expect(syncEdgeProof(cfg(), new Set([7000]))).toBe("written");
     const p = readEdgeProof(dir)!;
-    expect(fs.readFileSync(edgeYml(), "utf8")).toContain(p);
-    expect(fs.statSync(edgeYml()).mode & 0o777).toBe(0o600);
+    // Written under Den's own file name now; the older name is gone.
+    const den = path.join(dir, "dynamic", "000-den.yml");
+    expect(fs.readFileSync(den, "utf8")).toContain(p);
+    expect(fs.statSync(den).mode & 0o777).toBe(0o600);
+    expect(fs.existsSync(edgeYml())).toBe(false);
     expect(syncEdgeProof(cfg(), new Set([7000]))).toBe("current");
   });
 

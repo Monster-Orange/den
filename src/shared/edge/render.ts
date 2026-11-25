@@ -2,8 +2,12 @@
  * Pure renderers for the edge's Traefik configuration. No I/O, so routing is
  * unit-testable; runtime.ts writes the results.
  */
+import { createHash } from "crypto";
 import * as yaml from "yaml";
+import { API_FLAG, parseEdgeArgs } from "./edge-args.js";
 import type { EdgeConfig } from "./types.js";
+
+export { commandServesApi } from "./edge-args.js";
 
 const DOMAIN_RE =
   /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -123,8 +127,29 @@ export function webRouteNames(
     .map(([name]) => name);
 }
 
-/** H1: the middleware that adds the edge's proof (edge/proof.ts). */
-export const EDGE_PROOF_MIDDLEWARE = "den-edge-proof";
+/** What every proof middleware's name starts with (edgeProofMiddleware). */
+export const EDGE_PROOF_MIDDLEWARE_PREFIX = "den-edge-proof";
+
+/**
+ * H1: the name of the middleware that adds the edge's proof (edge/proof.ts),
+ * made from the proof itself: `den-edge-proof-<32 hex>`, a one-way hash, so
+ * it is new with each proof and only what can read the proof (Den, and the
+ * 0600 dynamic file) knows it. Traefik lets a router from any provider name a
+ * file-provider middleware (`<name>@file`) and has no switch to keep one
+ * out of reach; with edge.docker_labels on, a container's labels could
+ * otherwise add the proof to a router of its own and be sent it. A name
+ * nothing else knows matches nothing.
+ *
+ * The lasting fix is for the edge to prove itself on the edge-to-Den hop
+ * with a client certificate (mTLS): a labelled router could use the
+ * transport but never hold the key.
+ */
+export function edgeProofMiddleware(proof: string): string {
+  const h = createHash("sha256")
+    .update(`den-edge-proof-name\n${proof}`)
+    .digest("hex");
+  return `${EDGE_PROOF_MIDDLEWARE_PREFIX}-${h.slice(0, 32)}`;
+}
 
 /**
  * H1 (0.4.48): what renderEdgeDynamic adds for Den: the edge's proof, as
@@ -155,7 +180,7 @@ export function certNames(cfg: EdgeConfig): string[] {
 export const UPSTREAM_TRANSPORT = "den-upstream";
 
 /**
- * Dynamic config: TLS cert, HTTP→HTTPS redirect, dashboard, routes. With
+ * Dynamic config: TLS cert, HTTP→HTTPS redirect, routes. With
  * `tls: none` every router is on the http entrypoint, with no TLS and no
  * redirect.
  */
@@ -164,6 +189,7 @@ export function renderEdgeDynamic(
   den?: EdgeProofRender,
 ): string {
   const proved = new Set(den ? webRouteNames(cfg, den.ports) : []);
+  const proofMw = den ? edgeProofMiddleware(den.proof) : "";
   const httpsPort = cfg.ports?.https ?? 443;
   const redirectPort = httpsPort !== 443 ? { port: String(httpsPort) } : {};
   const https = edgeHttps(cfg);
@@ -182,17 +208,13 @@ export function renderEdgeDynamic(
           },
         }
       : {}),
-    dashboard: {
-      entryPoints: entryPoints(),
-      rule: hostRule("edge", cfg),
-      service: "api@internal",
-      ...routerTls(cfg),
-    },
+    // No dashboard router: the edge runs no Traefik API (edgeCommand), whose
+    // view of this file would show the proof's middleware to anyone who
+    // reaches the edge.
   };
   const services: Record<string, unknown> = {};
   for (const [name, url] of Object.entries(cfg.routes).sort()) {
-    if (name === "edge")
-      throw new Error(`route name "edge" is reserved for the dashboard`);
+    if (name === "edge") throw new Error(`route name "edge" is reserved`);
     if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(name))
       throw new Error(
         `route name "${name}" must be lowercase letters, digits, dots or dashes`,
@@ -201,7 +223,7 @@ export function renderEdgeDynamic(
     routers[key] = {
       entryPoints: entryPoints(),
       rule: hostRule(name, cfg),
-      ...(proved.has(name) ? { middlewares: [EDGE_PROOF_MIDDLEWARE] } : {}),
+      ...(proved.has(name) ? { middlewares: [proofMw] } : {}),
       service: key,
       ...routerTls(cfg),
     };
@@ -238,7 +260,7 @@ export function renderEdgeDynamic(
                 // H1: set (never passed through from the client) on Den's route.
                 ...(proved.size && den
                   ? {
-                      [EDGE_PROOF_MIDDLEWARE]: {
+                      [proofMw]: {
                         headers: {
                           customRequestHeaders: {
                             "X-Den-Edge-Proof": den.proof,
@@ -310,13 +332,13 @@ export const EDGE_FORWARDED_TRUSTED_IPS: readonly string[] = [
   "192.168.65.0/24",
 ];
 
-/** An `args` entry that sets what Den owns: the entrypoints' header or PROXY trust. */
-const OWNED_ARG =
-  /^--entrypoints\.[^.=]+\.(forwardedheaders\.(insecure|trustedips)|proxyprotocol\.)/i;
-
-/** The `edge.args` entries Den drops (SEC-2a): forwarded-header or PROXY trust. */
+/**
+ * The `edge.args` entries Den drops (SEC-2a): forwarded-header or PROXY
+ * trust, in any spelling, with their values. Throws, like edgeCommand, on
+ * an entry edge.args can't set (edge-args.ts).
+ */
 export function droppedEdgeArgs(cfg: Pick<EdgeConfig, "args">): string[] {
-  return cfg.args.filter((a) => OWNED_ARG.test(a));
+  return parseEdgeArgs(cfg.args).dropped;
 }
 
 /** The edge entrypoints' trust (SEC-2a): forwarded headers, and the PROXY protocol when set. */
@@ -354,11 +376,12 @@ export function edgeCommand(cfg: EdgeConfig): string[] {
           `--providers.docker.network=${labels.network}`,
         ]
       : []),
-    "--api.dashboard=true",
+    // No --api: Traefik's API and dashboard stay off; edge.args can't turn
+    // them on (edge-args.ts refuses it).
     "--ping=true",
     "--log.level=WARN",
     ...accessLogArgs(cfg),
-    ...cfg.args.filter((a) => !OWNED_ARG.test(a)),
+    ...parseEdgeArgs(cfg.args).keep,
   ];
 }
 
@@ -478,7 +501,9 @@ export function edgeCommandDrift(
           ? "PROXY protocol"
           : /^--serverstransport\./i.test(c)
             ? "upstream idle limit"
-            : "its command",
+            : API_FLAG.test(c)
+              ? "API off"
+              : "its command",
     );
   return [...what];
 }

@@ -151,10 +151,15 @@ import {
   isEdgeAddress,
   statedAddress,
 } from "../../shared/edge/address-check.js";
-import { readEdgeProof } from "../../shared/edge/proof.js";
+import {
+  edgeTrustHeld,
+  proofIsCurrent,
+  readEdgeProof,
+} from "../../shared/edge/proof.js";
 import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
 import {
   edgeProofRotation,
+  readEdgeDynamic,
   stacksWithGeneratedSecrets,
 } from "../../shared/edge/runtime.js";
 import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
@@ -2072,8 +2077,8 @@ function safeShownPath(rel: string): string {
 }
 
 /**
- * H1 (0.4.48): whether the edge set up here carries Den's proof (the
- * generated edge.yml has the current one). Never prints the proof: only
+ * H1 (0.4.48): whether the edge set up here carries Den's proof (its
+ * generated dynamic file has the current one), or why its trust is held. Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
  */
 export function edgeProofLines(
@@ -2089,17 +2094,20 @@ export function edgeProofLines(
 ): { lines: string[]; check?: OnboardCheck } {
   const dir = edgeDir();
   if (!dir) return { lines: [] };
-  let yml: string;
-  try {
-    yml = fs.readFileSync(path.join(dir, "dynamic", "edge.yml"), "utf8");
-  } catch {
-    return { lines: [] };
-  }
+  const yml = readEdgeDynamic(dir);
+  if (yml === null) return { lines: [] };
   const proof = readEdgeProof(dir);
-  const carried = !!proof && yml.includes(proof);
-  const detail = carried
-    ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
-    : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  // An older generation's proof proves nothing (the rotation failed closed).
+  const stale = !!proof && !proofIsCurrent(dir);
+  const held = edgeTrustHeld(dir);
+  const carried = !!proof && !stale && !held && yml.includes(proof);
+  const detail = held
+    ? `${title} holds back the edge's trust: ${held}. So everyone signs in through it, this machine too, until \`${cli} edge up\` recreates it as ${title} renders it`
+    : carried
+      ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
+      : stale
+        ? `the edge's proof is from an older version and ${title} couldn't make a new one (can it write ${dir}?), so everyone signs in through it, this machine too. Run \`${cli} edge up --rotate-proof\``
+        : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
   return {
     lines: [
       "",
