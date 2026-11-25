@@ -1255,7 +1255,12 @@ export function hydrateRailFolds(root, opts = {}) {
     head.setAttribute(
       "aria-label",
       shown
-        ? kitT(lang(), "kit.rail.unfoldN", { section: word, n: n.textContent })
+        ? c.n > 99
+          ? kitT(lang(), "kit.rail.unfoldMany", { section: word })
+          : kitT(lang(), "kit.rail.unfoldN", {
+              section: word,
+              n: n.textContent,
+            })
         : kitT(lang(), folded ? "kit.rail.unfold" : "kit.rail.fold", {
             section: word,
           }),
@@ -1291,11 +1296,14 @@ export function hydrateRailFolds(root, opts = {}) {
   }
   root.addEventListener("click", onClick);
   apply();
+  // Only now may a folded section hide (shell.css): its heading can open it.
+  root.setAttribute("data-folds", "");
   return {
     apply,
     folded: () => ids.slice(),
     destroy() {
       root.removeEventListener("click", onClick);
+      root.removeAttribute("data-folds");
     },
   };
 }
