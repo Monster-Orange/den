@@ -36,8 +36,8 @@ const NOT_LITERAL: Record<
     names: ["push-test", "push-forget"],
   },
   "settings-registry.js kind": {
-    calls: 2,
-    names: ["save", "follow-project", "remove-mcp"],
+    calls: 3,
+    names: ["save", "follow-project", "remove-mcp", "add-feed", "remove-feed"],
   },
   "shell.js name": {
     calls: 2,

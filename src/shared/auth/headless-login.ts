@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { BrowserLoginConfig, Environment } from "../types/index.js";
 import { getDistRoot } from "../paths.js";
+import { PLAYWRIGHT_AUTH_DIR } from "../credential-paths.js";
 import { getSecretsProvider } from "../secrets/index.js";
 import { sharedTestAccount } from "./test-accounts.js";
 
@@ -31,7 +32,7 @@ import { product } from "../product.js";
 // test-runner-spawned playwright children inherit the user's cwd.
 const PROJECT_ROOT = getDistRoot();
 
-const AUTH_DIR = path.resolve(PROJECT_ROOT, "playwright/.auth");
+const AUTH_DIR = path.resolve(PROJECT_ROOT, PLAYWRIGHT_AUTH_DIR);
 
 // Per-engineer admin config — stores email + secret reference (no password)
 // Created by: make auth-configure [env=<env>] (secrets.provider: 1password)
