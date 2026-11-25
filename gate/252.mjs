@@ -82,7 +82,13 @@ async function openMode(ctx, ws, mode) {
     p,
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
-  const row = p.locator(`[data-agent="${ID}"] > button[data-kind="agent"]`);
+  const [pre, post] = (await words(p, "ag.openName", { id: "\u0000" })).split(
+    "\u0000",
+  );
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const row = p.locator(`[data-agent="${ID}"]`).getByRole("button", {
+    name: new RegExp(`^${esc(pre)}${esc(ws)} / .+${esc(post)}`),
+  });
   await row.waitFor({ timeout: 20000 });
   const more = p.getByRole("button", {
     name: await words(p, "ag.more", { id: ID }),

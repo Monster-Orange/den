@@ -309,7 +309,7 @@ export async function run(ctx, s) {
     const pg = ctx.page;
     await ctx.goto(
       pg,
-      `/settings?project=${encodeURIComponent(r.ws)}&q=event_feeds`,
+      `/settings?project=${encodeURIComponent(r.ws)}&q=feed`,
     );
     const row = pg.locator(`[data-feed="${FEED}"]`);
     await row.waitFor({ timeout: 15000 }).catch(() => {});
