@@ -50,7 +50,10 @@ import {
   type PinProjects,
 } from "../../shared/shell-pins.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
-import { projectRepoDirs } from "../../shared/project-repo-dirs.js";
+import {
+  projectRepoDirs,
+  projectRepoDirsOf,
+} from "../../shared/project-repo-dirs.js";
 import {
   PLAYWRIGHT_AUTH_DIR,
   REPO_SECRETS_FILE,
@@ -1815,6 +1818,10 @@ export function repoSecretLines(
     home?: string;
     /** The rules to check against (default: the ones agents start with). */
     rules?: (repoDirs: string[], authDirs: string[]) => string[];
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const repoDirs = o.repoDirs ?? projectRepoDirs();
@@ -1854,18 +1861,40 @@ export function repoSecretLines(
   const loose = [...secrets, ...signIns].filter(
     (f) => !readRulesCover(rules, f),
   );
+  const signInsShown = (n: number) =>
+    n ? [`${n} cached sign-in${n === 1 ? "" : "s"}`] : [];
   const parts = [
     ...(secrets.length ? [secrets.map(shown).join(", ")] : []),
-    ...(signIns.length
-      ? [`${signIns.length} cached sign-in${signIns.length === 1 ? "" : "s"}`]
-      : []),
+    ...signInsShown(signIns.length),
   ];
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const exposed = (
+    o.unsandboxed ??
+    (() =>
+      listRecords(getStateDir())
+        .filter((r) => r.sandbox?.applied !== true)
+        .map((r) => ({
+          id: r.id,
+          projects: [r.workspace, ...(r.grants ?? [])],
+        })))
+  )()
+    .map((a) => {
+      const reach = new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      );
+      const mine = secrets.filter((f) => reach.has(path.dirname(f)));
+      const what = [...mine.map(shown), ...signInsShown(signIns.length)];
+      return what.length ? `${a.id}: ${what.join(", ")}` : "";
+    })
+    .filter(Boolean);
   const detail = !parts.length
     ? "no stack secrets file in a project repo and no cached sign-ins"
     : loose.length
       ? `not covered by agents' rules: ${loose.map(shown).join(", ")}`
-      : `agents' rules deny ${parts.join(" and ")}`;
-  const warn = loose.length > 0;
+      : exposed.length
+        ? `readable by agents whose sandbox is off (agents.sandbox): ${exposed.join("; ")}`
+        : `the OS sandbox keeps agents out of ${parts.join(" and ")}; agents' rules deny them too`;
+  const warn = loose.length > 0 || exposed.length > 0;
   return {
     lines: [`  repo secrets  ${warn ? "⚠" : "✓"}  ${detail}`],
     checks: [{ id: "repo_secret_files", status: warn ? "warn" : "ok", detail }],

@@ -45,16 +45,17 @@ const input = () =>
 describe("issue 1507: the OS sandbox keeps repos' secrets files and the cached sign-ins unreadable", () => {
   it("macOS: any .stack-secrets.yml* is read-denied by name, and the sign-ins folder is unreadable", () => {
     const prof = macProfile(agentSandboxPolicy(input()));
-    expect(prof).toContain(
-      '(deny file-read* (regex #"/\\.stack-secrets\\.yml[^/]*$"))',
-    );
+    const R =
+      '#"/\\.[sS][tT][aA][cC][kK]-[sS][eE][cC][rR][eE][tT][sS]\\.[yY][mM][lL][^/]*$"';
+    for (const op of ["file-read*", "file-write*", "file-link"])
+      expect(prof).toContain(`(deny ${op} (regex ${R}))`);
     expect(prof).toMatch(
       new RegExp(
         `\\(deny file-read\\*[^\\n]*${authDir.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}`,
       ),
     );
     const at = (s: string) => prof.indexOf(s);
-    expect(at('(regex #"/\\.stack-secrets')).toBeGreaterThan(
+    expect(at(`(deny file-read* (regex ${R}))`)).toBeGreaterThan(
       at("(allow file-read* "),
     );
   });
@@ -89,6 +90,25 @@ describe("issue 1507: the OS sandbox keeps repos' secrets files and the cached s
           encoding: "utf8",
         });
       expect(run("./.stack-secrets.yml").status).not.toBe(0);
+      expect(run("./.STACK-SECRETS.YML").status).not.toBe(0);
+      const sh = (cmd: string) =>
+        spawnSync("sandbox-exec", ["-p", prof, "/bin/sh", "-c", cmd], {
+          cwd: repo,
+          encoding: "utf8",
+        });
+      expect(
+        sh("python3 -c 'print(open(\".stack-secrets.yml\").read())'").stdout,
+      ).not.toContain("DB_PASSWORD: x");
+      expect(
+        sh("mv .stack-secrets.yml moved && cat moved").stdout,
+      ).not.toContain("DB_PASSWORD: x");
+      expect(fs.existsSync(secrets)).toBe(true);
+      expect(
+        sh("ln .stack-secrets.yml linked && cat linked").stdout,
+      ).not.toContain("DB_PASSWORD: x");
+      expect(
+        sh("cp .stack-secrets.yml copied && cat copied").stdout,
+      ).not.toContain("DB_PASSWORD: x");
       expect(run("./.stack-secrets.example.yml").stdout).toContain(
         "DB_PASSWORD:",
       );

@@ -118,8 +118,13 @@ export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
  */
 export const SESSION_WRITE_DIRS: readonly string[] = ["audit"];
 
-/** Any repo's stack secrets file and the copies a write leaves beside it, by name. */
-const REPO_SECRETS_REGEX = `#"/${REPO_SECRETS_FILE.replace(/\./g, "\\.")}[^/]*$"`;
+/**
+ * Any repo's stack secrets file and the copies a write leaves beside it, by
+ * name, in either case (a case-insensitive volume opens it by any case).
+ */
+const REPO_SECRETS_REGEX = `#"/${REPO_SECRETS_FILE.replace(/[A-Za-z.]/g, (c) =>
+  c === "." ? "\\." : `[${c.toLowerCase()}${c.toUpperCase()}]`,
+)}[^/]*$"`;
 
 /** Never readable inside a session, whatever SESSION_READS says. */
 export const HIDDEN_FILES = [
@@ -546,6 +551,9 @@ export function macProfile(p: SandboxPolicy): string {
     `(deny file-read* ${p.hidden.map(lit).join(" ")})`,
     `(deny file-read* (regex ${REPO_SECRETS_REGEX}))`,
     `(allow file-read-metadata (regex ${REPO_SECRETS_REGEX}))`,
+    // A rename, a hard link or an overwrite would read it by another name.
+    `(deny file-write* (regex ${REPO_SECRETS_REGEX}))`,
+    `(deny file-link (regex ${REPO_SECRETS_REGEX}))`,
     // Issue 1325: no hard link to a socket. A writable folder whose
     // sockets connect (the session's temp folder) would otherwise take a
     // link to one the sandbox refuses (an SSH or GPG agent's, the host's).
