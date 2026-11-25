@@ -737,6 +737,10 @@ export function initBell(doc = document) {
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
+  // Issue 1332: the control a paint couldn't give the keyboard back to (its
+  // row wasn't drawn: a refresh that came back without it). The next paint
+  // that draws it again focuses it, unless the person moved on meanwhile.
+  let lost = "";
   const bell = hydrateBell(btn, {
     lang: () => window.denShell?.lang?.() ?? "en",
     // den#143: its Report footer drawn with it, so a repaint (every
@@ -748,6 +752,7 @@ export function initBell(doc = document) {
     onOpen: () => void refresh(),
     onClose: () => {
       ui.ask = null;
+      lost = "";
     },
     // Esc in the ⊘'s question cancels it; the panel stays.
     onEscape: () => {
@@ -763,6 +768,13 @@ export function initBell(doc = document) {
   // Issue 1054: the button held with the kit's dots, and how to let it go.
   let heldBtn = null;
   let letGo = null;
+  const loose = () => {
+    const a = doc.activeElement;
+    return !a || a === doc.body || a === doc.documentElement;
+  };
+  doc.addEventListener("focusin", (e) => {
+    if (lost && !pop.contains(e.target)) lost = "";
+  });
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -792,7 +804,13 @@ export function initBell(doc = document) {
       heldBtn = b;
       letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
     }
-    if (keep) pop.querySelector(keep)?.focus?.();
+    const want = keep || (lost && loose() ? lost : "");
+    if (!want) return;
+    const el = pop.querySelector(want);
+    if (el) {
+      el.focus?.();
+      lost = "";
+    } else if (loose()) lost = want;
   };
   const refresh = async () => {
     const b = await load();

@@ -550,7 +550,13 @@ den gate box remove box2
   time" rule is 1).
 - `--hold-file <path>` (needs ssh; relative to the box user's home): while
   this file is on the box, the box takes no new runs. Its running slots
-  finish.
+  finish. A leading `~/` means that home too (sftp doesn't expand `~`, so
+  Den does); any other `~` form is refused. Den lists the hold file's
+  folder rather than reading the file (sftp says "not found" for a file in
+  a folder it can't read). The box is open only when that listing works and
+  doesn't name the file. A folder that's missing, can't be read or is a
+  file, or any sftp error Den doesn't know, counts as held and says why
+  (issue 1597). A hold file goes in a folder, not right under `/`.
 - `--time-scale X`: the box's browsers take X times as long as this
   machine's. Its runs' expected ends stretch by it, and the run gets
   `DEN_GATE_TIME_SCALE` to stretch its own timeouts.

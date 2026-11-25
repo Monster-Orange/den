@@ -1,0 +1,101 @@
+{
+  "exclude": [
+    "lint/fixtures/**",
+    "**/node_modules/**",
+    "**/*.min.js",
+    "**/package-lock.json"
+  ],
+  "rules": [
+    {
+      "id": "mo/expect-poll-in-jest",
+      "kind": "line",
+      "files": [
+        "**/*.test.{ts,tsx,js,mjs,cjs}"
+      ],
+      "unless_file": "@playwright/test",
+      "pattern": "\\bexpect\\s*\\.poll\\(|^\\s*\\.poll\\(",
+      "message": "jest has no expect.poll, so this throws or passes without checking. Poll in a loop with a deadline (the repo's poll helper), or move the test to Playwright."
+    },
+    {
+      "id": "mo/no-networkidle",
+      "kind": "line",
+      "files": [
+        "**/*.{ts,tsx,js,mjs,cjs,py}"
+      ],
+      "pattern": "networkidle",
+      "message": "networkidle waits for every request to stop, so it hangs or passes early on pages with live updates. Wait for what the test needs: await expect(locator).toBeVisible(), or page.waitForResponse(url)."
+    },
+    {
+      "id": "mo/fixed-date-real-clock",
+      "kind": "module",
+      "module": "rules/fixed-date-real-clock.mjs",
+      "files": [
+        "**/*.{test,spec}.{ts,tsx,js,mjs,cjs}",
+        "**/*.browser.{ts,js,mjs}"
+      ],
+      "message": "this case plants a fixed date and reads the real clock, so it passes for a day and then fails everywhere. Fake the clock (jest.useFakeTimers().setSystemTime(...)), pass `now` all the way down, or place the dates from the real clock."
+    },
+    {
+      "id": "mo/no-fixed-sleep",
+      "kind": "module",
+      "module": "rules/fixed-sleep.mjs",
+      "files": [
+        "**/*.spec.{ts,tsx,js,mjs,cjs}",
+        "**/*.browser.*",
+        "**/e2e/**/*.{ts,tsx,js,mjs,cjs}",
+        "gate/*.mjs"
+      ],
+      "message": "A fixed sleep waits a set time, so it's too short on a slow runner and wasted time on a fast one. Wait for a state instead: await expect(locator).toBeVisible(), toHaveText(\u2026), or page.waitForResponse(url)."
+    },
+    {
+      "id": "mo/no-positional-locator",
+      "kind": "module",
+      "module": "rules/positional-locator.mjs",
+      "files": [
+        "**/*.spec.{ts,tsx,js,mjs,cjs}",
+        "**/*.browser.*",
+        "**/e2e/**/*.{ts,tsx,js,mjs,cjs}",
+        "gate/*.mjs"
+      ],
+      "message": "A pick by position (.nth(), .first(), .last(), :nth-child, rows[2]) breaks when the order changes but the page still works. Pick by what it is: getByRole(role, { name }), getByLabel(\u2026), getByTestId(\u2026), or locator.filter({ hasText })."
+    },
+    {
+      "id": "mo/no-class-selector",
+      "kind": "module",
+      "module": "rules/class-selector.mjs",
+      "files": [
+        "**/*.spec.{ts,tsx,js,mjs,cjs}",
+        "**/*.browser.*",
+        "**/e2e/**/*.{ts,tsx,js,mjs,cjs}",
+        "gate/*.mjs"
+      ],
+      "message": "A styling class in a selector breaks when the CSS is renamed but the page still works. Use getByRole(role, { name }), getByLabel(\u2026), or a data-testid the page keeps for tests."
+    },
+    {
+      "id": "mo/wall-clock-bound",
+      "kind": "module",
+      "module": "rules/wall-clock-bound.mjs",
+      "files": [
+        "**/*.{test,spec}.{ts,tsx,js,mjs,cjs}",
+        "**/*.browser.*",
+        "gate/*.mjs"
+      ],
+      "message": "This bounds real elapsed time under 1 s, so it fails on a busy runner with nothing wrong. Use fake timers, or assert the order of events. If time must be measured, use a bound of 1 s or more, with the bad path seconds away."
+    },
+    {
+      "id": "mo/no-history-comment",
+      "kind": "module",
+      "module": "rules/history-comment.mjs",
+      "files": [
+        "**/*.{ts,tsx,js,jsx,mjs,cjs,py,sh}"
+      ],
+      "message": "This comment records history (an issue or PR number, who asked and when, or what the code was before). Put history in the commit message and the PR. Keep a comment only for a constraint the code can't show, and prefer a test for it."
+    },
+    {
+      "id": "mo/no-close-keywords",
+      "kind": "pr-text",
+      "pattern": "\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?[ \\t]+(?:(?:[\\w.-]+\\/[\\w.-]+)?#\\d+|https:\\/\\/github\\.com\\/[\\w.-]+\\/[\\w.-]+\\/issues\\/\\d+)",
+      "message": "a closing keyword closes the issue with no proof it works. Write Refs #N; the issue closes with a live-proof comment."
+    }
+  ]
+}

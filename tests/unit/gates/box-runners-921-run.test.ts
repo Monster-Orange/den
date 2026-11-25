@@ -334,7 +334,10 @@ describe("listBoxRunners", () => {
 });
 
 describe("the box check reads the job marks", () => {
-  const NO_HOLD = 'Can\'t ls: "/home/ci/heavy.hold" not found\n';
+  // Issue 1597: no hold is a working listing of the home that doesn't name
+  // it; the hold there is a listing that does.
+  const NO_HOLD = "";
+  const HOLD_THERE = "./heavy.hold\n";
   const NO_MARKS = 'Can\'t ls: "/home/ci/heavy.hold.jobs" not found\n';
   const MEM = "MemAvailable:    8000000 kB\n";
   const probe = (a: Answer) =>
@@ -366,7 +369,7 @@ describe("the box check reads the job marks", () => {
       "open",
     );
     // The marks folder missing must not read as the hold file missing.
-    const r = await probe({ mem: MEM, err: NO_MARKS });
+    const r = await probe({ out: HOLD_THERE, mem: MEM, err: NO_MARKS });
     expect(r.state).toBe("held");
     expect(r.reason).toMatch(/hold file/);
   });

@@ -2264,7 +2264,10 @@
     },
     {
       "when": ["scripts/affected-tests.mjs"],
-      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts"
+      ],
       "why": "tests that run scripts/affected-tests.mjs"
     },
     {
@@ -2287,12 +2290,18 @@
     },
     {
       "when": ["scripts/ci-force-all.mjs"],
-      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/ci-force-all.mjs"
     },
     {
       "when": ["scripts/ci-ok.mjs"],
-      "run": ["tests/unit/test-infra/ci-ok.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/ci-ok.test.ts"
+      ],
       "why": "tests that run scripts/ci-ok.mjs"
     },
     {
@@ -2362,9 +2371,15 @@
       "why": "tests that run scripts/no-close-keywords.mjs"
     },
     {
+      "when": ["scripts/node22-tests.mjs"],
+      "run": ["tests/unit/scripts/node22-tests.test.ts"],
+      "why": "tests that run scripts/node22-tests.mjs"
+    },
+    {
       "when": ["scripts/org-name-commits.mjs"],
       "run": [
         "tests/unit/scripts/org-name-commits-main.test.ts",
+        "tests/unit/scripts/org-name-commits-queue-1610.test.ts",
         "tests/unit/scripts/org-name-commits.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
@@ -3053,7 +3068,9 @@
         "src/shared/agents/app-feeds.ts",
         "src/ui/server/public/settings-registry.js"
       ],
-      "run": ["tests/unit/server/app-feeds-edit-1480.browser.test.ts"],
+      "run": [
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
