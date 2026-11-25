@@ -26,6 +26,8 @@ describe("issue 1270: parseWatchRepos", () => {
         "acme/South.GIT",
         "acme/south",
         "acme/.git",
+        "acme/south.git.git",
+        "acme/.git.git",
       ]),
     ).toEqual(["acme/south"]);
   });

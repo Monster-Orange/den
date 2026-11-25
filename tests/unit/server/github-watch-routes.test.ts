@@ -267,6 +267,7 @@ describe("issue 1270: a project's agents.watch_repos", () => {
     ["acme/south.git", "acme/south"],
     ["acme/south.git", "acme/south.git"],
     ["acme/South.GIT", "ACME/south.Git"],
+    ["acme/south.git.git.git", "acme/south.git.git"],
   ])(
     "another Den project's repo listed as %s, asked as %s: still refused, pointing to grants",
     async (listed, asked) => {

@@ -25,8 +25,8 @@ const REPO_RE = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 /** The setting's name, as refusals and docs say it. */
 export const WATCH_REPOS_SETTING = "agents.watch_repos";
 
-/** owner/name without a trailing .git (any case): GitHub's same repo. */
-export const stripGit = (r: string): string => r.replace(/\.git$/i, "");
+/** owner/name without its trailing .git, every one (any case): the same repo. */
+export const stripGit = (r: string): string => r.replace(/(?:\.git)+$/i, "");
 
 /** The owner/name entries of a raw `agents.watch_repos`, each once. */
 export function parseWatchRepos(raw: unknown): string[] {
