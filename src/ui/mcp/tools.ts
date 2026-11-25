@@ -2784,7 +2784,7 @@ const APPROVAL_TOOLS: DenTool[] = [
     name: "project_event_feed_add",
     title: "Add an app's event feed to a project",
     description:
-      "Add an app's event feed (`name`, `agent`, `url`) to a project: Den keeps the app's event stream (SSE) open and types `agent` (one of the project's agents) a short line when events are unread; it reads them with app_feed_read. `bearer`, when the stream needs one, is the name of a secrets.refs entry: never a token itself (a value is refused, and never echoed). An optional list address answers the events after a cursor. The approval policy decides: on a personal install it applies at once and the person can Undo it; on a strict one it waits for the person's Allow. A project's agent adds to its own project; Den's own agent to any." +
+      "Add an app's event feed (`name`, `agent`, `url`) to a project: Den keeps the app's event stream (SSE) open and types `agent` (one of the project's agents) a short line when events are unread; it reads them with app_feed_read. `bearer`, when the stream needs one, is the name of a secrets.refs entry: never a token itself (a value is refused, and never echoed). An optional list address answers the events after a cursor. A feed with a bearer, or whose address is this machine or a private network, always waits for the person's own Allow. A public feed with no bearer follows the approval policy: on a personal install it applies at once and the person can Undo it; on a strict one it waits for the person's Allow. Den's own address and its Hub's are refused. A project's agent adds to its own project; Den's own agent to any." +
       HELD,
     action: true,
     shape: {
