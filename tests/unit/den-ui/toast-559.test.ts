@@ -30,6 +30,8 @@ import {
   toastHtml,
 } from "../../../packages/den-ui/src/toast.js";
 import { en, es, ja } from "../../../packages/den-ui/src/strings.js";
+import * as fs from "fs";
+import * as path from "path";
 
 describe("issue 559: the toast's timing", () => {
   beforeEach(() => {
@@ -246,5 +248,18 @@ describe("issue 559: the toast's words", () => {
     expect(w(en)).toEqual(["Undo", "Undone.", "Close"]);
     expect(w(es)).toEqual(["Deshacer", "Deshecho.", "Cerrar"]);
     expect(w(ja)).toEqual(["元に戻す", "元に戻しました。", "閉じる"]);
+  });
+});
+
+describe("issue 559: the toast's width", () => {
+  it("is sized from its fixed box (%), never vw: 100vw counts a classic scrollbar", () => {
+    const css = fs
+      .readFileSync(
+        path.join(__dirname, "../../../packages/den-ui/src/toast.css"),
+        "utf-8",
+      )
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css.match(/[\d.]+vw\b/g) ?? []).toEqual([]);
+    expect(css).toContain("calc(100% - 32px)");
   });
 });

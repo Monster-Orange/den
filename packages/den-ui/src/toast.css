@@ -15,7 +15,9 @@
   transform: translateX(-50%);
   z-index: 1000;
   width: max-content;
-  max-width: min(560px, calc(100vw - 32px));
+  /* A fixed box's % is the viewport less any classic scrollbar (100vw
+     would count it). */
+  max-width: min(560px, calc(100% - 32px));
   pointer-events: none;
 }
 .den-toast-region:empty {
@@ -105,8 +107,11 @@
     align-items: flex-start;
     row-gap: 6px;
   }
+  .den-toast-region:has(.den-toast-acts) {
+    width: calc(100% - 32px);
+  }
   .den-toast:has(.den-toast-acts) {
-    width: calc(100vw - 32px);
+    width: 100%;
   }
   .den-toast-words {
     flex: 1 1 0;
