@@ -11580,11 +11580,6 @@ void (async () => {
     );
 })();
 
-const prunedSnapshots = pruneDeadSnapshots();
-if (prunedSnapshots > 0) {
-  serverLog(`Pruned ${prunedSnapshots} orphaned log-history snapshot(s)`);
-}
-
 // #63: the edge's raw access log holds unmasked one-time tokens until Den
 // masks it into edge-access.log. Swept first at startup (lines left while
 // the server was down), then every second. Also swept when the access log
@@ -11833,6 +11828,11 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    // Issue 237: orphaned log-history snapshots go once it listens; a
+    // slow docker never holds the start.
+    void pruneDeadSnapshots().then((n) => {
+      if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
+    });
     // Issue 936: Turn on the agent sandbox for agents from before it.
     startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public

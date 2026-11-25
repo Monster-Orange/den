@@ -312,25 +312,37 @@ describe("pruneDeadSnapshots", () => {
   >;
   const mockRm = fs.rmSync as jest.MockedFunction<typeof fs.rmSync>;
 
-  it("returns 0 when the history dir is missing or docker is unavailable", () => {
+  /** `docker ps -a` answers `out` (null: docker unavailable). */
+  const dockerAll = (out: string | null) =>
+    mockExecFile.mockImplementation((...args: unknown[]) => {
+      const cb = args.find((a) => typeof a === "function") as (
+        e: Error | null,
+        stdout: string,
+      ) => void;
+      setImmediate(() =>
+        out === null ? cb(new Error("no docker"), "") : cb(null, out),
+      );
+    });
+
+  it("returns 0 when the history dir is missing or docker is unavailable", async () => {
     mockReaddir.mockImplementation(() => {
       throw new Error("ENOENT");
     });
-    expect(pruneDeadSnapshots()).toBe(0);
+    expect(await pruneDeadSnapshots()).toBe(0);
 
     mockReaddir.mockReturnValue(["a.log"] as never);
-    mockSpawnSync.mockReturnValue({ status: 1 } as never);
-    expect(pruneDeadSnapshots()).toBe(0);
+    dockerAll(null);
+    expect(await pruneDeadSnapshots()).toBe(0);
   });
 
-  it("removes snapshots for dead containers, keeps live ones and non-log files", () => {
+  it("removes snapshots for dead containers, keeps live ones and non-log files", async () => {
     mockReaddir.mockReturnValue([
       "alive.log",
       "dead.log",
       "notes.txt",
     ] as never);
-    mockSpawnSync.mockReturnValue({ status: 0, stdout: "alive\n" } as never);
-    expect(pruneDeadSnapshots()).toBe(1);
+    dockerAll("alive\n");
+    expect(await pruneDeadSnapshots()).toBe(1);
     expect(mockRm).toHaveBeenCalledTimes(1);
     expect(mockRm).toHaveBeenCalledWith(expect.stringMatching(/dead\.log$/), {
       force: true,

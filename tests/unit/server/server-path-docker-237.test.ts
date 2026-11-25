@@ -2,11 +2,15 @@
  * Issue 237, part 1: the log routes' container lookup ran a synchronous
  * `docker ps`, so a slow docker held every request until it answered. The
  * server's lookup (findServiceContainerAsync) runs it without blocking.
+ * Its follow-up (Reviewer B): pruning dead log-history snapshots at start
+ * ran a sync `docker ps -a` (10 s limit) before the server listened.
  *
  * The slow docker is child_process's: its sync forms hold the thread for
  * SLOW_MS (as a slow `docker ps` does), its async forms answer after it.
  */
 import { describe, expect, it, jest } from "@jest/globals";
+import * as fs from "fs";
+import * as path from "path";
 
 const SLOW_MS = 3000;
 
@@ -66,7 +70,11 @@ jest.mock("../../../src/shared/process/spawn-streaming.js", () => ({
   getServiceLogPath: () => "/nonexistent/den-237/logs/api.log",
 }));
 
-import { resolveHistorySource } from "../../../src/ui/server/log-history.js";
+import {
+  pruneDeadSnapshots,
+  resolveHistorySource,
+} from "../../../src/ui/server/log-history.js";
+import { getStateDir } from "../../../src/shared/paths.js";
 
 describe("issue 237: the container lookup never blocks the server", () => {
   it("a timer due in 20 ms fires within 300 ms while a slow docker ps runs", async () => {
@@ -84,5 +92,27 @@ describe("issue 237: the container lookup never blocks the server", () => {
     const r = await lookup;
     expect(Date.now() - start).toBeGreaterThanOrEqual(SLOW_MS - 100);
     expect(r.kind).toBe("unsupported");
+  });
+});
+
+describe("issue 237 follow-up: pruning snapshots at start never blocks", () => {
+  it("a timer due in 20 ms fires within 300 ms while a slow docker ps -a runs; a dead container's snapshot goes", async () => {
+    const dir = path.join(getStateDir(), "history");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "gone-1.log"), "old lines\n");
+    const start = Date.now();
+    let firedAt = -1;
+    const timer = new Promise<void>((resolve) =>
+      setTimeout(() => {
+        firedAt = Date.now() - start;
+        resolve();
+      }, 20),
+    );
+    const pruning = Promise.resolve(pruneDeadSnapshots());
+    await timer;
+    expect(firedAt).toBeLessThan(300);
+    expect(await pruning).toBe(1);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(SLOW_MS - 100);
+    expect(fs.existsSync(path.join(dir, "gone-1.log"))).toBe(false);
   });
 });

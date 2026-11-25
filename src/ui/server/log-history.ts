@@ -18,7 +18,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execFile, spawn, spawnSync } from "child_process";
+import { execFile, spawn } from "child_process";
 
 import { findServiceContainerAsync } from "../../shared/environment-manager/service-container.js";
 import { hasRunningOpctlContainers } from "../../shared/environment-manager/service-runner.js";
@@ -240,10 +240,10 @@ function dumpDockerLogs(
 
 /**
  * Drop snapshots whose container no longer exists (their docker history is
- * gone with the container; the snapshot is orphaned disk). Call at web-server
- * startup, like pruneDeadDaemons().
+ * gone with the container; the snapshot is orphaned disk). Called once the
+ * web server listens. Issue 237: its `docker ps -a` never blocks the server.
  */
-export function pruneDeadSnapshots(): number {
+export async function pruneDeadSnapshots(): Promise<number> {
   let removed = 0;
   let entries: string[];
   try {
@@ -251,13 +251,17 @@ export function pruneDeadSnapshots(): number {
   } catch {
     return 0;
   }
-  const out = spawnSync("docker", ["ps", "-a", "--format", "{{.Names}}"], {
-    encoding: "utf-8",
-    timeout: 10_000,
-  });
-  if (out.status !== 0) return 0; // docker unavailable — keep everything
+  const names = await new Promise<string | null>((resolve) =>
+    execFile(
+      "docker",
+      ["ps", "-a", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 10_000 },
+      (err, stdout) => resolve(err ? null : (stdout ?? "")),
+    ),
+  );
+  if (names === null) return 0; // docker unavailable — keep everything
   const alive = new Set(
-    (out.stdout ?? "")
+    names
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean),
