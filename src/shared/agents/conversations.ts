@@ -256,28 +256,29 @@ interface TurnRead {
 }
 
 /**
- * Issue 1593: an mtime ticks coarsely (a few ms on Linux, 2 s on some
- * shares). A file written this close to when its verdict was read may
- * change again with the same size and mtime, so that verdict isn't trusted
- * (as git treats a racily clean file).
- */
-export const TURN_CACHE_RACY_MS = 2_000;
-
-/**
- * The last verdicts, by file, while its size and mtime stay the same, and
- * its mtime was TURN_CACHE_RACY_MS before the read (`readAt`, ms).
+ * The last verdicts, by file, while its size and mtime stay the same.
+ * `readAt`: when it was read (the wall clock, ms).
  */
 const turnCache = new Map<
   string,
   {
     size: number;
     mtimeMs: number;
+    readAt: number;
     bytes: number;
     max: number;
-    readAt: number;
     r: TurnRead;
   }
 >();
+
+/**
+ * Issue 1592: how coarse a file system's clock may be (ms). A file stamps
+ * its mtime by that clock (Linux by its timer tick; some file systems by
+ * the second or two), so a write just after a read can leave the same
+ * mtime. A verdict is kept only when its file's mtime is older than its
+ * read by more than this: any write after the read then moves the mtime.
+ */
+export const MTIME_TICK_MS = 2_000;
 const TURN_CACHE_MAX = 256;
 
 /** Forget the cached verdicts (tests). */
@@ -299,8 +300,8 @@ export function resetTurnCache(): void {
  * each try, until a turn's record shows; never the file's start (that is
  * the conversation's first turn). None in the last `maxBytes`: null, can't
  * tell. A verdict is kept while the file's size and mtime stay the same,
- * and only when it was read TURN_CACHE_RACY_MS after the file's mtime
- * (issue 1593: a rewrite inside one mtime tick looks unchanged).
+ * and (issue 1592) only once its mtime is older than its read by more
+ * than MTIME_TICK_MS: a same-size write in the same tick is read again.
  *
  * Issue 607: `since` is when the agent's live session started (ms). A turn
  * whose last record was written before it is no running turn: the session
@@ -323,13 +324,15 @@ export function transcriptBusy(
     return false;
   }
   const hit = turnCache.get(file);
+  // The wall clock, never `now` (a caller's): mtimes are stamped by it.
+  const readAt = Date.now();
   const r =
     hit &&
     hit.size === st.size &&
     hit.mtimeMs === st.mtimeMs &&
+    hit.mtimeMs < hit.readAt - MTIME_TICK_MS &&
     hit.bytes === bytes &&
-    hit.max === maxBytes &&
-    hit.mtimeMs <= hit.readAt - TURN_CACHE_RACY_MS
+    hit.max === maxBytes
       ? hit.r
       : turnVerdict(file, bytes, maxBytes);
   const { v, at } = r;
@@ -343,9 +346,9 @@ export function transcriptBusy(
     turnCache.set(file, {
       size: st.size,
       mtimeMs: st.mtimeMs,
+      readAt,
       bytes,
       max: maxBytes,
-      readAt: Date.now(),
       r,
     });
     if (turnCache.size > TURN_CACHE_MAX)
