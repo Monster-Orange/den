@@ -490,39 +490,59 @@ const READ_TOOLS: DenTool[] = [
   ),
   read(
     "ask_withdraw",
-    "Withdraw your question",
-    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    "Withdraw your question or your held write",
+    'Withdraw something of yours that waits on your person, once it is settled another way or turns out wrong. Give exactly one of `id` or `request`, and a one-line `reason`. `id`: a question you asked with ask_human (the id it gave you; notifications_list shows it too). It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. An answer that comes after it is still passed to you, and Den tells you it came late. `request`: the id of one of your own pending write requests (the id a held tool such as gate_box_set gave you; approval_check reads it). It leaves the bell and Needs you, and an Allow pressed after it runs nothing. If your person already decided it, it is not withdrawn and you are told so. Only your own: another agent\'s is refused and recorded. The same as `<cli> ask withdraw <id> --reason "…"` for a question.',
     {
-      id: z.string().describe("The question's id, from ask_human"),
+      id: z.string().optional().describe("A question's id, from ask_human"),
+      request: z
+        .string()
+        .optional()
+        .describe("A pending write request's id, from the held tool"),
       reason: z
         .string()
         .describe("How it was settled, one line, at most 200 characters"),
     },
     async (a, { api }) => {
       const id = (str(a.id) ?? "").trim();
+      const request = (str(a.request) ?? "").trim();
       const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
-      if (!id || !reason)
+      if (id && request)
         throw new Refusal(
-          "ask_withdraw: give the question's id and a one-line reason.",
+          "ask_withdraw: give `id` (a question) or `request` (a write request), not both.",
+        );
+      if ((!id && !request) || !reason)
+        throw new Refusal(
+          "ask_withdraw: give the question's id (or a write request's id as `request`) and a one-line reason.",
         );
       if (reason.length > 200)
         throw new Refusal(
           "ask_withdraw: a reason is one line, at most 200 characters.",
         );
+      if (request && !/^[A-Za-z0-9_-]{16}$/.test(request))
+        throw new Refusal(
+          "ask_withdraw: a write request's id is the 16 letters and digits its held tool gave you.",
+        );
       try {
-        await api.get("/api/notifications/withdraw", {}, "POST", {
-          id,
-          reason,
-        });
+        if (request)
+          await api.get(`/api/approvals/${request}/withdraw`, {}, "POST", {
+            reason,
+          });
+        else
+          await api.get("/api/notifications/withdraw", {}, "POST", {
+            id,
+            reason,
+          });
       } catch (e) {
         if (
           e instanceof DenHttpError &&
-          [400, 403, 404, 409].includes(e.status)
+          [400, 403, 404, 409, 410].includes(e.status)
         )
           throw new Refusal(`ask_withdraw: ${e.body}`);
         throw e;
       }
-      return `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
+      return request
+        ? `Withdrawn. Your request ${request} left your person's bell and Needs you; an Allow now runs nothing. The bell says: ${reason}.`
+        : `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
     },
   ),
   read(

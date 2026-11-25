@@ -3833,6 +3833,8 @@
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} withdrew its request: {what}. Withdrawn: {reason}",
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.vschedPass": "Scheduled run on {env}: {n} checks passed.",

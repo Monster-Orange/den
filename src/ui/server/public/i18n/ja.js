@@ -2862,6 +2862,8 @@
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} が依頼を取り下げました: {what}。理由: {reason}",
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.vschedPass": "{env} の予定実行: {n} 件のチェックが通りました。",

@@ -2936,6 +2936,8 @@
       "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} retiró su solicitud: {what}. Retirada: {reason}",
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
     "bell.m.vschedPass": "Corrida programada en {env}: pasaron {n} pruebas.",
