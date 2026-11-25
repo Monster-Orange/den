@@ -158,7 +158,9 @@ export const GATE_HELP = {
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
     "    a jest, vitest or playwright test run that names no test files and",
-    "    no filter is refused (it would run every test); --all-tests allows it",
+    "    no filter is refused (it would run every test); --all-tests allows it.",
+    "    npm/pnpm/yarn test is judged by its package.json script; a command",
+    "    inside sh -c is not read",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
@@ -821,6 +823,18 @@ function flags(args: string[], known: Record<string, boolean | "many">) {
   return { f, pos, rest: false };
 }
 
+function packageScript(cwd: string, name: string): string | undefined {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cwd, "package.json"), "utf-8"),
+    ) as { scripts?: Record<string, unknown> };
+    const s = pkg.scripts?.[name];
+    return typeof s === "string" ? s : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function run(args: string[], d: GateDeps): Promise<number> {
   const { f, pos, rest } = flags(args, {
     "--kind": true,
@@ -839,7 +853,9 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   const kind = (f["--kind"] ?? "cpu") as string;
   if (kind !== "browser" && kind !== "cpu")
     throw new GateUsage("--kind is browser or cpu");
-  const everything = f["--all-tests"] ? null : emptyTestList(pos);
+  const everything = f["--all-tests"]
+    ? null
+    : emptyTestList(pos, (name) => packageScript(d.cwd, name));
   if (everything)
     throw new GateUsage(
       `this ${everything} run names no test files and no filter, so it would run every test. ` +

@@ -32,6 +32,30 @@ describe("gate run: a test run that names no tests", () => {
     expect(emptyTestList(w("npx playwright test --grep @nav"))).toBeNull();
   });
 
+  it("judges npm, pnpm and yarn test by the script they run", () => {
+    const scripts: Record<string, string> = {
+      test: "jest",
+      "test:unit": "cross-env NODE_ENV=test jest --ci",
+      "test:named": "jest tests/unit",
+      "test:chain": "tsc && jest",
+    };
+    const s = (n: string) => scripts[n];
+    expect(emptyTestList(w("npm test"), s)).toBe("jest");
+    expect(emptyTestList(w("npm run test:unit"), s)).toBe("jest");
+    expect(emptyTestList(w("yarn test:unit"), s)).toBe("jest");
+    expect(emptyTestList(w("pnpm test"), s)).toBe("jest");
+    expect(emptyTestList(w("npm test -- tests/a.test.ts"), s)).toBeNull();
+    expect(emptyTestList(w("npm run test:named"), s)).toBeNull();
+    expect(emptyTestList(w("npm run test:chain"), s)).toBeNull();
+    expect(emptyTestList(w("npm run build"), s)).toBeNull();
+    expect(emptyTestList(w("npm test"), () => undefined)).toBeNull();
+  });
+
+  it("steps over npx's package flag", () => {
+    expect(emptyTestList(w("npx -p jest jest"))).toBe("jest");
+    expect(emptyTestList(w("npx --package jest jest a.test.ts"))).toBeNull();
+  });
+
   it("leaves other commands alone", () => {
     expect(emptyTestList(w("npm test"))).toBeNull();
     expect(emptyTestList(w("npx tsc -p ."))).toBeNull();

@@ -381,6 +381,20 @@ describe("gate run", () => {
     expect(t.ran).toEqual([["npx", "jest", "--maxWorkers=1"]]);
   });
 
+  it("reads npm test's script from the repo's package.json", async () => {
+    const repo = tmp();
+    fs.writeFileSync(
+      path.join(repo, "package.json"),
+      JSON.stringify({ scripts: { test: "jest --ci" } }),
+    );
+    const t = deps({ cwd: repo });
+    expect(await cmdGate(["run", "--", "npm", "test"], t.d)).toBe(2);
+    expect(
+      await cmdGate(["run", "--", "npm", "test", "--", "a.test.ts"], t.d),
+    ).toBe(0);
+    expect(t.ran).toEqual([["npm", "test", "--", "a.test.ts"]]);
+  });
+
   it("says what is wrong with the asking", async () => {
     const t = deps();
     expect(await cmdGate(["run", "npm"], t.d)).toBe(2);
