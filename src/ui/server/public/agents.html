@@ -97,6 +97,13 @@
         margin-top: 4px;
         overflow-wrap: anywhere;
       }
+      /* Under 600px the page's address (/agents?open=…) goes: a phone
+         person gains nothing from it, and it took the list's room. */
+      @media (max-width: 599.98px) {
+        .ph .sub .ag-urlw {
+          display: none;
+        }
+      }
       /* Issue 144: the machine's gate slot, and its queue. */
       .gate-chip {
         font: 11px var(--mono);
@@ -666,10 +673,14 @@
         overflow-x: auto;
         min-width: 0;
       }
+      /* A tab gives up width (its name shortens) before the strip scrolls:
+         the open tabs fit whole while each can keep 7rem; past that the
+         strip scrolls sideways. */
       .agtab-w {
         position: relative;
         display: inline-flex;
-        flex: none;
+        flex: 0 1 auto;
+        min-width: 7rem;
         max-width: 280px;
       }
       .agtab {
@@ -677,6 +688,8 @@
         align-items: center;
         gap: 6px;
         min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
         border: 1px solid transparent;
         border-bottom: 0;
         background: none;
@@ -704,7 +717,8 @@
       .agtab .tn {
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        min-width: 0;
         max-width: 100%;
       }
       .agtab .tm {
@@ -712,7 +726,8 @@
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 0 1 auto;
+        /* Gives way long before the name does (0.4.44). */
+        flex: 0 1000 auto;
         min-width: 0;
       }
       .agtab-x {
@@ -1085,13 +1100,13 @@
         font-size: 12.5px;
         color: var(--muted);
       }
-      /* Issue 750: By project | By group, at the top of the list. */
+      /* Issue 750: By project | By group, at the top of the list: centred,
+         at the layout switch's size (.seg). */
       .agl .agby {
-        margin: 8px 12px 2px;
-        font-size: 12.5px;
-      }
-      .agl .agby button {
-        padding: 4px 10px;
+        display: flex;
+        width: fit-content;
+        max-width: calc(100% - 24px);
+        margin: 8px auto 2px;
       }
       @media (pointer: coarse) {
         .agl .agby button {
@@ -1203,6 +1218,15 @@
       .ag-dlg .ready .mono {
         font-family: var(--mono);
       }
+      /* A move in the list that Den refused, under the list. Its agent's
+         name and Den's reason (a path, say) can have nowhere to break:
+         they wrap, never widen the page. */
+      #ag-order-err {
+        margin: 6px 0 0;
+        font: 12.5px/1.45 var(--sans);
+        color: var(--bad);
+        overflow-wrap: anywhere;
+      }
       .ag-dlg .err {
         margin: 0;
         font: 12.5px/1.45 var(--sans);
@@ -1273,9 +1297,15 @@
            wide screen. The list keeps its rows (at least about two) while
            there is room; the panes take the rest, never less than their
            own minimum; past that the page scrolls. */
+        /* The list's floor: its notes and view switch, then three whole
+           rows (--agl-floor, agents-page.js fitListFloor), never more than
+           60% of the screen, as the list itself (max-height below): the
+           pane keeps the rest, and past that the page scrolls. */
         .agx {
           grid-template-columns: minmax(0, 1fr);
-          grid-template-rows: minmax(6rem, max-content) minmax(min-content, 1fr);
+          grid-template-rows:
+            minmax(min(var(--agl-floor, 6rem), 60vh), max-content)
+            minmax(min-content, 1fr);
         }
         .ph .act {
           flex-wrap: wrap;
@@ -1313,7 +1343,7 @@
           contain: size;
         }
         .agl {
-          max-height: 50vh;
+          max-height: 60vh;
         }
       }
     </style>
@@ -1329,8 +1359,10 @@
         <div>
           <h1 id="ag-h">Agents</h1>
           <div class="sub" id="ag-sub">
-            <span id="ag-count"></span> ·
-            <span class="mono" id="ag-url">/agents</span>
+            <span id="ag-count"></span
+            ><span class="ag-urlw">
+              · <span class="mono" id="ag-url">/agents</span></span
+            >
             <button
               type="button"
               class="gate-chip"
@@ -1386,6 +1418,7 @@
         <div id="agr" class="agempty"></div>
       </div>
       <div class="ag-live" id="ag-order-live" aria-live="polite"></div>
+      <p class="err" id="ag-order-err" role="alert" hidden></p>
       <dialog class="ag-dlg pe-dlg" id="ag-dlg" aria-labelledby="ag-dlg-h">
         <form method="dialog" id="ag-form" novalidate>
           <h2 id="ag-dlg-h">Start an agent</h2>

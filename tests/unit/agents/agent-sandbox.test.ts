@@ -1003,6 +1003,7 @@ describe("agentSandboxInput (issue 936)", () => {
     expect(i.deniedDirs).toEqual([
       "/h/Library/Application Support/den/local-proof",
       "/p",
+      "/r/playwright/.auth",
     ]);
     expect(agentSandboxPolicy(i).unreadable).toEqual(
       expect.arrayContaining([

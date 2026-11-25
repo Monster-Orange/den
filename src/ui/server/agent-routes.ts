@@ -219,6 +219,11 @@ import {
   projectMcpView,
   checkProjectMcpRemove,
   runProjectMcpRemove,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  projectAgentIds,
   checkProjectMcpUpdate,
   runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
@@ -295,6 +300,8 @@ const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
 /** Issue 459: GET a project's app event feeds and their state. */
 const EVENT_FEEDS_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds$/;
+/** Issue 1480: one of them, removed by a person. */
+const EVENT_FEED_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds\/([^/]+)$/;
 /** Issue 352: one of them, changed or removed by a person. */
 const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
@@ -626,6 +633,9 @@ export async function handleAgentRoutes(
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
   const efp = EVENT_FEEDS_PATH.exec(pathname);
   if (efp) return eventFeedsRoute(req, res, efp[1], webDeps(deps.agents));
+  const ef1 = EVENT_FEED_PATH.exec(pathname);
+  if (ef1)
+    return eventFeedRoute(req, res, ef1[1], ef1[2], webDeps(deps.agents));
   const mcp1 = MCP_SERVER_PATH.exec(pathname);
   if (mcp1)
     return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
@@ -3276,8 +3286,8 @@ async function eventFeedsRoute(
   d: AgentsResolved,
 ): Promise<true> {
   const method = req.method ?? "GET";
-  if (method !== "GET" && method !== "HEAD")
-    return methodNotAllowed(res, "GET");
+  if (method !== "GET" && method !== "HEAD" && method !== "POST")
+    return methodNotAllowed(res, "GET, POST");
   const ws = safeDecode(rawWs);
   if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
     sendJson(
@@ -3287,8 +3297,114 @@ async function eventFeedsRoute(
     );
     return true;
   }
+  if (method === "POST") return eventFeedWrite(req, res, ws, null, d);
   const { appFeedsView } = await import("./app-feed-service.js");
-  sendJson(res, { ok: true, ...appFeedsView(ws) });
+  // Issue 1480: the project's agents, for the row's Add.
+  sendJson(res, {
+    ok: true,
+    ...appFeedsView(ws),
+    agents: projectAgentIds(d, ws),
+  });
+  return true;
+}
+
+/**
+ * Issue 1480: Settings › Project › App event feeds, a row's actions.
+ * DELETE /api/workspaces/:ws/event-feeds/:name removes one.
+ */
+async function eventFeedRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  rawName: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if ((req.method ?? "GET") !== "DELETE")
+    return methodNotAllowed(res, "DELETE");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  return eventFeedWrite(req, res, ws, safeDecode(rawName), d);
+}
+
+/**
+ * Issue 1480: a person adds a feed (POST { name, agent, url, bearer?,
+ * list_url? }, the bearer a secrets.refs name) or removes one (name).
+ * Checked as the held writes are (agent-ops.ts); a person's only: their
+ * click is the decision. An agent asks with project_event_feed_add or
+ * project_event_feed_remove, which the approval policy places.
+ */
+async function eventFeedWrite(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ws: string,
+  name: string | null,
+  d: AgentsResolved,
+): Promise<true> {
+  const remove = name !== null;
+  const actor = auditActorOf(req);
+  let what = remove
+    ? `remove event feed ${name} from project ${ws}`
+    : `add an event feed to project ${ws}`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        remove
+          ? "only a person can remove a project's event feed here (an agent asks with project_event_feed_remove)"
+          : "only a person can add a project's event feed here (an agent asks with project_event_feed_add)",
+        { status: 403 },
+      );
+    let ask: Record<string, unknown> = { project: ws, name };
+    if (!remove) {
+      const body: unknown = await jsonBody(req);
+      // Reviewer E: a JSON null or a list is a usage error, not a 500.
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        throw new AgentError("send a JSON object", { usage: true });
+      for (const k of Object.keys(body))
+        if (!["name", "agent", "url", "bearer", "list_url"].includes(k))
+          throw new AgentError(
+            `${k}: unknown field (takes name, agent, url, bearer and list_url)`,
+            { usage: true },
+          );
+      ask = { ...body, project: ws };
+    }
+    const c = remove
+      ? checkEventFeedRemove(d, ask)
+      : await checkEventFeedAdd(d, ask);
+    if (!c.ok)
+      throw new AgentError(c.error, {
+        status: c.error.startsWith(`project ${ws} has no event feed`)
+          ? 404
+          : 400,
+        usage: true,
+      });
+    what = c.summary;
+    const r = remove
+      ? await runEventFeedRemove(d, { ...c.args })
+      : await runEventFeedAdd(d, { ...c.args });
+    if (!r.ok) throw new AgentError(r.error, { usage: true });
+    audit(what);
+    sendJson(res, { ok: true, project: r.project, name: r.name });
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
   return true;
 }
 

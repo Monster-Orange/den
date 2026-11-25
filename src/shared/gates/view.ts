@@ -308,6 +308,8 @@ export function gateView(
     slots,
     boxes: gateBoxesView(store, slots),
     leftovers,
+    // Issue 1264: agents' heavy runs that ran outside the gate today.
+    outsideToday: store.outsideToday(),
     machine: machineView(store, freeMem, swapGb, !!o.vmsNow),
     removed: removedView(store, now),
   };

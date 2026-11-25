@@ -138,6 +138,9 @@ export interface LaunchInput {
    * as stateDir is (a cooperating agent only).
    */
   otherStateDirs?: string[];
+  /** Repos of the agent's project and its grants, and the cached sign-ins folder. */
+  repoDirs?: string[];
+  playwrightAuthDir?: string;
   /**
    * Issue 1391: a personal install's agent may read its own activity
    * trail (never edit it); unset, as on a strict install, it may not.

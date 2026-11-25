@@ -1,8 +1,9 @@
 /**
  * Issue 1339: the bell's panel while "Mark all read" or "Clear read" runs.
  *
- *   1. The button that was pressed stays, busy in itself (disabled,
- *      aria-busy, "Marking…" / "Clearing…"); the other one is disabled.
+ *   1. The button that was pressed stays with its own label, marked
+ *      data-bell-held for the kit's dots (issues 1054 and 698: the page
+ *      draws no busy state of its own); the other one is disabled.
  *   2. bellAfter shows the bell as it will be: every row read (Mark all
  *      read), or the read rows gone (Clear read), the counts to match.
  */
@@ -59,11 +60,12 @@ describe("the busy button (issue 1339)", () => {
       await import("../../../src/ui/server/public/bell.js");
     const a = bellPanel(bellAfter(bell(), "all"), { busy: "all" }).actions;
     expect(a).toContain(
-      '<button type="button" data-bell="all" disabled aria-busy="true">[bell.marking]</button>',
+      '<button type="button" data-bell="all" data-bell-held>[bell.markAll]</button>',
     );
-    expect(a).toMatch(
-      /data-bell="clear" disabled aria-busy="true">\[bell\.clearRead\]/,
+    expect(a).toContain(
+      '<button type="button" data-bell="clear" disabled>[bell.clearRead]</button>',
     );
+    expect(a).not.toMatch(/aria-busy|bell\.marking/);
   });
 
   it("Clear read, running: busy in itself", async () => {
@@ -71,8 +73,9 @@ describe("the busy button (issue 1339)", () => {
       await import("../../../src/ui/server/public/bell.js");
     const a = bellPanel(bellAfter(bell(), "clear"), { busy: "clear" }).actions;
     expect(a).toContain(
-      '<button type="button" data-bell="clear" disabled aria-busy="true">[bell.clearing]</button>',
+      '<button type="button" data-bell="clear" data-bell-held>[bell.clearRead]</button>',
     );
+    expect(a).not.toMatch(/aria-busy|bell\.clearing/);
   });
 
   it("not running: the buttons as before", async () => {
@@ -178,14 +181,13 @@ describe("a project's Mark read (issue 1339)", () => {
     });
     const html = JSON.stringify(p);
     expect(html).toContain(
-      'data-bell=\\"scope\\" data-scope=\\"workspace/south\\" disabled aria-busy=\\"true\\">[bell.marking]',
+      'data-bell=\\"scope\\" data-scope=\\"workspace/south\\" data-bell-held>[bell.read]',
     );
     expect(html).toContain(
-      'data-bell=\\"scope\\" data-scope=\\"workspace/north\\" disabled aria-busy=\\"true\\">[bell.read]',
+      'data-bell=\\"scope\\" data-scope=\\"workspace/north\\" disabled>[bell.read]',
     );
-    expect(p.actions).toMatch(
-      /data-bell="all" disabled aria-busy="true">\[bell\.markAll\]/,
-    );
+    expect(p.actions).toMatch(/data-bell="all" disabled>\[bell\.markAll\]/);
+    expect(html).not.toMatch(/aria-busy|bell\.marking/);
   });
 
   it("bellAfter: that project's rows read everywhere, the others as they were, the counts to match", async () => {
@@ -201,5 +203,40 @@ describe("a project's Mark read (issue 1339)", () => {
     expect(b.updates.count).toBe(3);
     // What a failed POST goes back to.
     expect(ids(before.updates.groups, false)).toEqual(["d", "g", "e"]);
+  });
+
+  it("bellAfter: only an item's own scope decides, as the server's rule (no fallback to its group's)", async () => {
+    const { bellAfter } = await import("../../../src/ui/server/public/bell.js");
+    const { scope: _drop, ...bare } = item("h", "waiting");
+    const b = bellAfter(
+      {
+        unread: 3,
+        groups: [
+          {
+            // A group named for another scope: its item's own scope is the
+            // one asked, so it is marked; the one without a scope is not.
+            scope: "workspace/north",
+            subjects: [
+              {
+                subject: "agent:a",
+                items: [inScope("workspace/south", item("a", "waiting"))],
+              },
+              { subject: "agent:b", items: [item("b", "waiting")] },
+            ],
+          },
+          {
+            // Named for the scope asked, but its item has no scope: the
+            // server leaves it unread, so the page does too.
+            scope: "workspace/south",
+            subjects: [{ subject: "agent:h", items: [bare] }],
+          },
+        ],
+      },
+      "scope",
+      "workspace/south",
+    );
+    expect(ids(b.groups, false)).toEqual(["b", "h"]);
+    expect(ids(b.groups, true)).toEqual(["a"]);
+    expect(b.unread).toBe(2);
   });
 });

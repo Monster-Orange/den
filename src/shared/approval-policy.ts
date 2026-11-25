@@ -170,6 +170,15 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     why: "sends a project's agents' calls, and maybe a bearer, to another address",
   },
+  project_event_feed_add: {
+    risk: "critical",
+    why: "has Den open an app's stream for one of a project's agents, a bearer read by its secrets.refs name; routine on a personal install, with Undo (issue 1480)",
+  },
+  project_event_feed_remove: {
+    risk: "critical",
+    notAreas: ["deletes"],
+    why: "stops an app's events reaching a project's agent; it deletes no events; routine on a personal install, with Undo (issue 1480)",
+  },
   persona_create: {
     risk: "critical",
     why: "a persona carries a mode and commands it may run: new tool access; on a personal install with nothing sandboxed, routine (issue 1403)",
@@ -256,6 +265,10 @@ export const HELD_WRITE_RISK: Readonly<
     personal: "keep",
     risk: "critical",
     why: "changes the address every link, sign-in and Hub uses for this Den: a person's own Allow",
+  },
+  gate_runner_entry_set: {
+    risk: "critical",
+    why: "lets a repo's CI jobs run on a test box: it widens what runs there",
   },
   host_restart: {
     risk: "critical",
