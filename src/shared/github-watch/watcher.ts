@@ -146,6 +146,8 @@ const SECONDARY_WAIT_MS = 60_000;
 const DONE_KEEP_MS = 60 * 60_000;
 /** The run list reaches back this far before the oldest watch. */
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
+/** The list's one page of workflow runs (GitHub's most). */
+const RUNS_PAGE = 100;
 
 const PASS = new Set(["success"]);
 const SKIP = new Set(["skipped", "neutral"]);
@@ -222,13 +224,27 @@ export class GithubWatcher {
         w.number === number &&
         w.phase !== "done",
     );
-    if (same)
+    // Issue 1560: an open watch on the same pull request is handed back
+    // only while its head is still the pull request's. After a push, the
+    // ask gets a new watch on the new head, and the old one ends.
+    let moved: GhResponse | null = null;
+    if (same?.kind === "pr" && same.head && !this.paused(now)) {
+      const r = await this.d.get(this.resolvePath(same));
+      if (!this.noteRate(r, now) && r.status === 200) {
+        const sha =
+          isObj(r.body) && isObj(r.body.head) ? asStr(r.body.head.sha) : "";
+        if (/^[0-9a-f]{7,64}$/i.test(sha) && sha !== same.head) moved = r;
+      }
+    }
+    if (same && !moved)
       return {
         ok: true,
         watch: this.view(same),
         intervalSeconds: this.interval,
       };
-    const active = this.watches.filter((w) => w.phase !== "done").length;
+    const active = this.watches.filter(
+      (w) => w.phase !== "done" && w !== same,
+    ).length;
     if (active >= s.watchesMax)
       return {
         ok: false,
@@ -254,9 +270,18 @@ export class GithubWatcher {
       note: "Den looks at it on its next round.",
       print: "",
     };
-    // The first look, now: the head (and a run's state), so the answer
-    // says where it stands. Not while GitHub asked Den to wait.
-    if (!this.paused(now)) {
+    if (moved) {
+      // The look just made: the new head.
+      this.applyResolve(w, moved.body);
+      this.finish(same!, now, {
+        note: `Replaced by watch ${w.id} on head ${w.head!.slice(0, 7)}.`,
+        text: "",
+      });
+      // Its agent hears it in this answer, not as a message too.
+      same!.delivered = true;
+    } else if (!this.paused(now)) {
+      // The first look, now: the head (and a run's state), so the answer
+      // says where it stands. Not while GitHub asked Den to wait.
       const r = await this.d.get(this.resolvePath(w));
       const limited = this.noteRate(r, now);
       if (!limited) {
@@ -448,7 +473,7 @@ export class GithubWatcher {
     this.lastChecks.delete(key);
     const since = Math.min(...ws.map((w) => w.createdAt)) - RUNS_LOOKBACK_MS;
     return {
-      path: `repos/${repo}/actions/runs?per_page=100&created=${encodeURIComponent(`>=${iso(since).slice(0, 19)}Z`)}`,
+      path: `repos/${repo}/actions/runs?per_page=${RUNS_PAGE}&created=${encodeURIComponent(`>=${iso(since).slice(0, 19)}Z`)}`,
       kind: "list",
     };
   }
@@ -506,7 +531,17 @@ export class GithubWatcher {
         w.kind === "run"
           ? runs.filter((r) => r.id === w.number)
           : runs.filter((r) => r.head_sha === w.head);
-      if (!mine.length) continue;
+      if (!mine.length) {
+        // Issue 1560: a full page is the newest runs only, and a busy
+        // repo's older ones aren't on it. A head whose runs are off it is
+        // settled by its own check runs, so it can't sit on its last note.
+        if (runs.length >= RUNS_PAGE && w.phase !== "ready") {
+          w.phase = "ready";
+          w.note = `Its workflow runs are past the newest ${RUNS_PAGE}; Den reads its checks next.`;
+          changed = true;
+        }
+        continue;
+      }
       if (w.kind === "run") w.suite = asNum(mine[0].check_suite_id) ?? w.suite;
       const print = JSON.stringify(
         mine
