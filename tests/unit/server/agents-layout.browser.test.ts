@@ -390,11 +390,15 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       await r.continue();
     });
     await p.goto(`${s!.base}/agents?open=${all()}`);
-    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    await p.waitForSelector("#agl:not([aria-busy]) [data-id]", {
+      timeout: 20_000,
+    });
     expect(await p.getAttribute("#agr", "aria-busy")).toBe("true");
     release();
     await p.waitForSelector("#agr:not([aria-busy])", { timeout: 20_000 });
-    expect(await p.$$eval("#agr .pane", (ps) => ps.length)).toBe(AGENTS.length);
+    expect(await p.$$eval("#agr section[data-id]", (ps) => ps.length)).toBe(
+      AGENTS.length,
+    );
     expect(await shown(p)).toEqual([sid.scout]);
     await ctx.close();
   });
