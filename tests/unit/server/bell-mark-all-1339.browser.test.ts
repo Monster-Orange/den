@@ -235,6 +235,8 @@ describe("Mark all read (issue 1339)", () => {
     await until(p, UNREAD, 3);
     expect(await btn.isDisabled()).toBe(false);
     expect(await btn.getAttribute("aria-busy")).toBeNull();
+    // Issue 1434: nor left aria-disabled after the error.
+    expect(await btn.getAttribute("aria-disabled")).toBeNull();
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.markAll"),
     );
