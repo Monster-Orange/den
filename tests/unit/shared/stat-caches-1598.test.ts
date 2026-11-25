@@ -11,7 +11,8 @@
  * 3. runtimeVersion: a CLI rewritten in place in one tick.
  * 4. isQuarantined: an answer read from a file changed within a tick.
  * 5. The notifications store's lock: taken over and re-made in one tick,
- *    same inode and time, is told apart by its text (pid and a nonce).
+ *    same inode and time, is told apart by its nonce (its own file; the
+ *    pid file stays the plain pid an older Den reads).
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -141,15 +142,43 @@ describe("issue 1598: 5. the notifications store's lock", () => {
     const took = n.takeBackStoreLock(lock, {
       afterSeen: () => {
         // Another taker took it back and made its own in the same place, in
-        // one tick: the same inode and mtime, its own pid and nonce.
-        const st = fs.statSync(lock);
-        fs.writeFileSync(path.join(lock, "pid"), `${process.pid} n-other`);
-        fs.utimesSync(lock, st.atime, st.mtime);
+        // one tick: the same inode and mtime (its files rewritten in place
+        // leave the folder's time alone), its own pid and nonce.
+        fs.writeFileSync(path.join(lock, "pid"), String(process.pid));
+        fs.writeFileSync(path.join(lock, "nonce"), "n-other");
       },
     });
     expect(took).toBe(false);
-    expect(fs.readFileSync(path.join(lock, "pid"), "utf-8")).toBe(
-      `${process.pid} n-other`,
+    expect(fs.readFileSync(path.join(lock, "nonce"), "utf-8")).toBe("n-other");
+  });
+
+  it("re-made in one tick with the same pid text: the nonce alone tells it apart", async () => {
+    const n = await import("../../../src/shared/notifications.js");
+    const lock = path.join(tmp(), "notifications.json.lock");
+    fs.mkdirSync(lock);
+    fs.writeFileSync(path.join(lock, "pid"), "2147483646"); // a holder that's gone
+    fs.writeFileSync(path.join(lock, "nonce"), "n-old");
+    const took = n.takeBackStoreLock(lock, {
+      afterSeen: () => {
+        fs.writeFileSync(path.join(lock, "nonce"), "n-other");
+      },
+    });
+    expect(took).toBe(false);
+    expect(fs.readFileSync(path.join(lock, "nonce"), "utf-8")).toBe("n-other");
+  });
+
+  it("a lock it takes: its pid file is the plain pid (an older Den reads it), the nonce its own file", async () => {
+    const n = await import("../../../src/shared/notifications.js");
+    const file = path.join(tmp(), "notifications.json");
+    expect(n.tryStoreLock(file)).toBe(true);
+    const lock = `${file}.lock`;
+    // How a Den before issue 1598 reads it: Number(text.trim()).
+    const oldRead = Number(
+      fs.readFileSync(path.join(lock, "pid"), "utf-8").trim(),
+    );
+    expect(oldRead).toBe(process.pid);
+    expect(fs.readFileSync(path.join(lock, "nonce"), "utf-8")).toMatch(
+      /^[0-9a-f-]{36}$/,
     );
   });
 

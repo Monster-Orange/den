@@ -412,9 +412,10 @@ function aliveProcess(pid: number): boolean {
  * Issue 1348: the store's cross-process lock, `<file>.lock`, tried once,
  * never waited for. A leftover lock (see lock_live_seconds) is taken back:
  * renamed aside first, and only if it is still the lock looked at (same
- * inode and time), so two takers that both found it stale never both win.
+ * inode, time and nonce), so two takers that both found it stale never both
+ * win. Exported for its tests.
  */
-function tryStoreLock(file: string): boolean {
+export function tryStoreLock(file: string): boolean {
   const lock = `${file}.lock`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   try {
@@ -429,25 +430,34 @@ function tryStoreLock(file: string): boolean {
     }
   }
   try {
-    // Issue 1598: and a nonce for this take, so a lock taken over and made
-    // again in one clock tick (the same inode and time) is told apart.
-    writeFileAtomic(
-      path.join(lock, "pid"),
-      `${process.pid} ${crypto.randomUUID()}`,
-    );
+    // The plain pid: an older Den reads this file as Number(text.trim()).
+    writeFileAtomic(path.join(lock, "pid"), String(process.pid));
   } catch {
     /* the lock holds without it; only its takeback needs it */
+  }
+  try {
+    // Issue 1598: a nonce for this take, in its own file, so a lock taken
+    // over and made again in one clock tick (the same inode and time) is
+    // told apart.
+    writeFileAtomic(path.join(lock, "nonce"), crypto.randomUUID());
+  } catch {
+    /* as above */
   }
   return true;
 }
 
-/** Issue 1598: a lock's pid file, or null when it has none (yet). */
-function lockText(lock: string): string | null {
+/** A file in a lock folder, or null when it has none (yet). */
+function lockFile(lock: string, name: "pid" | "nonce"): string | null {
   try {
-    return fs.readFileSync(path.join(lock, "pid"), "utf-8");
+    return fs.readFileSync(path.join(lock, name), "utf-8");
   } catch {
     return null; // taken just now, or its holder died before saying who
   }
+}
+
+/** Issue 1598: what tells one take of a lock from another: pid and nonce. */
+function lockText(lock: string): string {
+  return JSON.stringify([lockFile(lock, "pid"), lockFile(lock, "nonce")]);
 }
 
 /**
@@ -466,8 +476,7 @@ export function takeBackStoreLock(
     return true; // gone meanwhile: free
   }
   const seenText = lockText(lock);
-  // Its first word (a lock an older Den made has no nonce after it).
-  const pid = Number((seenText ?? "").trim().split(/\s+/)[0] || NaN);
+  const pid = Number((JSON.parse(seenText)[0] ?? "").trim() || NaN);
   const age = Date.now() - seen.mtimeMs;
   const known = Number.isInteger(pid) && pid > 0;
   const t = lockSettings();
