@@ -1220,6 +1220,28 @@ export function setWorkspaceMcpServers(
 }
 
 /**
+ * Issue 1480: write workspace `ws`'s `agents.event_feeds` (the list as
+ * written: entries Den can't read stay as they are). The caller checks
+ * each entry it adds. An empty list takes the key out.
+ */
+export function setWorkspaceEventFeeds(
+  ws: string,
+  feeds: Record<string, unknown>[],
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  if (feeds.length) agents.event_feeds = feeds;
+  else delete agents.event_feeds;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
+}
+
+/**
  * Set (an intent) or clear (null) workspace `ws`'s `agents.permission`.
  * The caller checks the intent first.
  */

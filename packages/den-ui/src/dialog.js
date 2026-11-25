@@ -12,6 +12,11 @@
  *     css: "/kit/dialog.css",      where dialog.css is, for a page that
  *                                  doesn't link it (default: beside
  *                                  another kit stylesheet on the page)
+ *     hold: (button) => release,   issue 1054: hold a pressed button while
+ *                                  its request runs (busy.js's held button:
+ *                                  dots, disabled, aria-busy); release()
+ *                                  gives it back. Default: disabled and
+ *                                  aria-busy only.
  *   })
  *
  *   askConfirm(opts) → Promise<boolean>      OK true; Cancel or Esc false
@@ -26,6 +31,12 @@
  *                     starts on Cancel, the safe answer
  *   opts.value        askText: the field's first text (selected)
  *   opts.label        askText: the field's own name (default: the title)
+ *   opts.onAnswer     askConfirm, issue 1054: (yes) => Promise | undefined,
+ *                     called on a press of OK (true) or Cancel (false). A
+ *                     promise keeps the dialog open with the pressed button
+ *                     held until it settles, then closes; a rejection says
+ *                     its message in the dialog and gives the button back.
+ *                     Esc never calls it.
  *
  * askConfirm and tell are role="alertdialog"; askText is role="dialog".
  * Each is named by its title (aria-labelledby) and described by its
@@ -130,9 +141,24 @@ export function focusBack(el) {
 }
 
 export const DIALOG_WORDS = {
-  en: { ok: "OK", cancel: "Cancel", close: "Close" },
-  es: { ok: "Aceptar", cancel: "Cancelar", close: "Cerrar" },
-  ja: { ok: "OK", cancel: "キャンセル", close: "閉じる" },
+  en: {
+    ok: "OK",
+    cancel: "Cancel",
+    close: "Close",
+    failed: "That didn't work. Try again.",
+  },
+  es: {
+    ok: "Aceptar",
+    cancel: "Cancelar",
+    close: "Cerrar",
+    failed: "No ha funcionado. Inténtalo de nuevo.",
+  },
+  ja: {
+    ok: "OK",
+    cancel: "キャンセル",
+    close: "閉じる",
+    failed: "うまくいきませんでした。もう一度お試しください。",
+  },
 };
 
 const hook = {
@@ -143,7 +169,33 @@ const hook = {
   words: {},
   report: null,
   css: null,
+  hold: null,
 };
+
+/**
+ * Issue 1054: what a held action's failure says in its dialog: the error's
+ * own message, else the kit's "That didn't work. Try again." (never an
+ * empty alert).
+ */
+export function failedLine(err) {
+  const own = typeof err === "string" ? err : err?.message;
+  return typeof own === "string" && own.trim() ? own : dialogWord("failed");
+}
+
+/** Issue 1054: hold a button while its request runs; returns release(). */
+function holdFor(b) {
+  if (!b) return () => {};
+  if (typeof hook.hold === "function") {
+    const r = hook.hold(b);
+    if (typeof r === "function") return r;
+  }
+  b.disabled = true;
+  b.setAttribute("aria-busy", "true");
+  return () => {
+    b.disabled = false;
+    b.removeAttribute("aria-busy");
+  };
+}
 
 /** The product's language, words and Report (see the top of this file). */
 export function configureDialog(h) {
@@ -436,6 +488,13 @@ function startOf(d, sel) {
  *     remove,      take it off the page once closed (default: true for
  *                  HTML, false for an element)
  *     show,        false: mount only; show() later
+ *     onAction,    issue 1054: (value, dialog, button) on a press of an
+ *                  action that closes it. A promise back keeps it open, the
+ *                  button held (configureDialog's hold) and the others
+ *                  off, until it settles: then it closes with that value;
+ *                  a rejection says its message in the dialog (.dk-err,
+ *                  role=alert) and gives the buttons back. Esc does
+ *                  nothing meanwhile.
  *   }) → { dialog, show(opener?), close(value?), closed }
  *
  * `closed` is a promise of the value, renewed on each show().
@@ -457,7 +516,47 @@ export function mountDialog(target, o = {}) {
   let settle = null;
   let gone = false;
   let shown = false;
+  let waiting = false;
   const handle = { dialog: d, show, close, closed: Promise.resolve("") };
+
+  // Issue 1054: an action whose request runs while the dialog stays open.
+  d.addEventListener("submit", (e) => {
+    if (waiting) {
+      e.preventDefault();
+      return;
+    }
+    if (typeof o.onAction !== "function") return;
+    const btn = e.submitter ?? null;
+    const value = btn?.value ?? "";
+    const p = o.onAction(value, d, btn);
+    if (!p || typeof p.then !== "function") return;
+    e.preventDefault();
+    waiting = true;
+    const others = [...d.querySelectorAll(".dk-ft button")].filter(
+      (x) => x !== btn && !x.disabled,
+    );
+    others.forEach((x) => (x.disabled = true));
+    const release = holdFor(btn);
+    d.querySelector(".dk-err")?.remove();
+    Promise.resolve(p).then(
+      async () => {
+        await release();
+        waiting = false;
+        close(value);
+      },
+      async (err) => {
+        await release();
+        waiting = false;
+        others.forEach((x) => (x.disabled = false));
+        const line = document.createElement("p");
+        line.className = "dk-err";
+        line.setAttribute("role", "alert");
+        line.textContent = failedLine(err);
+        d.querySelector(".dk-ft")?.before(line);
+        btn?.focus?.();
+      },
+    );
+  });
 
   function close(value = "cancel") {
     if (gone) return;
@@ -496,14 +595,14 @@ export function mountDialog(target, o = {}) {
 
   d.addEventListener("cancel", (e) => {
     e.preventDefault();
-    close("cancel");
+    if (!waiting) close("cancel");
   });
   d.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      close("cancel");
+      if (!waiting) close("cancel");
       return;
     }
     if (e.key === "Tab") {
@@ -593,6 +692,10 @@ function open(kind, opts = {}) {
     onClose: (v, d) => {
       text = d.querySelector('[data-dk="field"]')?.value ?? "";
     },
+    onAction:
+      kind === "confirm" && typeof opts.onAnswer === "function"
+        ? (v) => opts.onAnswer(v === "ok")
+        : undefined,
     show: false,
   });
   for (const fn of asking) fn(h.dialog);

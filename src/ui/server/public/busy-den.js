@@ -14,7 +14,7 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * add-service, remove-service, remove-mcp, gate-end. Waits for
+ * add-service, remove-service, remove-mcp, add-feed, remove-feed, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -127,6 +127,17 @@ export const DEN_ACTIONS = {
       success: "busy.addSvcS",
       failure: "busy.addSvcF",
     },
+  },
+  // Issue 1480: Settings › Project › App event feeds › Add and Remove.
+  "add-feed": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: { working: "feed.addW", success: "feed.addS", failure: "feed.addF" },
+  },
+  "remove-feed": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: { working: "feed.rmW", success: "feed.rmS", failure: "feed.rmF" },
   },
   // Issue 352: Settings › Project › Agents' extra MCP servers › Remove.
   "remove-mcp": {
@@ -504,4 +515,6 @@ export function busyAction(name, run, opts = {}) {
  * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
  * own words: holdDots(button), then holdDots(button, false).
  */
-export { holdDots } from "/kit/busy.js";
+// Issue 1054: holdRow too (a dragged row's dots). Every name the shell
+// calls on this module is exported here (busy-den-exports-1054.test.ts).
+export { holdDots, holdRow } from "/kit/busy.js";
