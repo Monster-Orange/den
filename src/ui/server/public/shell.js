@@ -3530,7 +3530,7 @@
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "set.workspace.event_feeds": "App event feeds: this project",
     "set.workspace.event_feeds.d":
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
     "set.embed.feed_max_streams": "App feeds read at once",
     "set.embed.feed_max_streams.d":
       "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
@@ -3562,6 +3562,38 @@
     "feed.unread": "Unread: {n}.",
     "bell.m.appFeed.dropped":
       "App feed {name} for {agent}: unread events went because the feed keeps at most its limit.",
+    "feed.add": "Add feed",
+    "feed.name": "Name",
+    "feed.agent": "Agent",
+    "feed.url": "Stream address",
+    "feed.bearer": "Bearer (a secrets.refs name)",
+    "feed.bearerNone": "none",
+    "feed.noAgents":
+      "This project has no agents yet. Start one, then add its feed.",
+    "feed.addW": "Adding the feed…",
+    "feed.addS": "Added.",
+    "feed.addF": "Couldn't add the feed.",
+    "feed.remove": "Remove",
+    "feed.removeL": "Remove feed {name}",
+    "feed.rmT": "Remove the feed?",
+    "feed.rmAsk":
+      "Remove feed {name} from project {project}? Den closes its stream, and {agent} gets no more lines from it.",
+    "feed.rmW": "Removing the feed…",
+    "feed.rmS": "Removed.",
+    "feed.rmF": "Couldn't remove the feed.",
+    "ap.do.project_event_feed_add":
+      "Add event feed {name} ({url}) for {agent} in project {project}",
+    "ap.do.project_event_feed_remove":
+      "Remove event feed {name} from project {project}",
+    "ap.feed.warn":
+      "Den opens {url} and types {agent} a short line when its events are unread.",
+    "ap.feed.feed": "Feed: {name}, for {agent}",
+    "ap.feed.bearer":
+      "Bearer: read from secrets.refs.{ref} at each connect; never shown or written to the agent's files.",
+    "ap.feed.noBearer":
+      "No bearer: the stream is opened with no Authorization header.",
+    "ap.feed.removeWarn":
+      "Den closes feed {name}; its agent gets no more lines from it.",
     "feed.problems": "Entries in agents.event_feeds that can't be read: {n}.",
     "feed.failed": "Couldn't read this project's app event feeds.",
     "feed.st.connecting": "Connecting",
@@ -3792,8 +3824,6 @@
     "bell.undo": "Undo",
     "bell.undoMsg": "No longer showing “{kind}”.",
     "bell.clearRead": "Clear read",
-    "bell.marking": "Marking…",
-    "bell.clearing": "Clearing…",
     "bell.read": "Mark read",
     "bell.server": "__DEN_TITLE__ agent",
     "bell.hub": "Hub · {project}",
@@ -5338,6 +5368,8 @@
     collapsed: false,
     hidden: [],
     order: [],
+    // Issue 1444: the rail sections this person folded (group ids).
+    folded: [],
     // The runs dock (R16a): open or collapsed to its bar, and its height
     // (0: the prototype's 170px). User prefs, like the pins.
     dock: false,
@@ -5380,6 +5412,7 @@
     state.collapsed = cached.collapsed === true;
     if (Array.isArray(cached.hidden)) state.hidden = cached.hidden;
     if (Array.isArray(cached.order)) state.order = cached.order;
+    if (Array.isArray(cached.folded)) state.folded = cached.folded;
     state.dock = cached.dock === true;
     if (typeof cached.dockHeight === "number")
       state.dockHeight = cached.dockHeight;
@@ -5395,6 +5428,7 @@
           collapsed: state.collapsed,
           hidden: state.hidden,
           order: state.order,
+          folded: state.folded,
           dock: state.dock,
           dockHeight: state.dockHeight,
           edge: state.edge,
@@ -5453,6 +5487,7 @@
   function saveShell(patch) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
+    // busy-ok: pins and the rail's fold save in the background; the page shows them at once
     return fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -6784,6 +6819,7 @@
       account: accountModel(),
       lang: lang,
       collapsed: state.collapsed,
+      folded: state.folded,
     };
   }
 
@@ -6965,6 +7001,16 @@
     },
     onUnpin: function (id) {
       unpin(id);
+    },
+    // Issue 1444: the folded sections are this person's shell setting.
+    folds: {
+      get: function () {
+        return state.folded;
+      },
+      set: function (ids) {
+        state.folded = ids;
+        saveShell({ folded: ids });
+      },
     },
     inert: function () {
       return [
@@ -9532,49 +9578,67 @@
         verb === "approve"
           ? { ref: w.ref, code: prTyped(input.value) }
           : { ref: w.ref };
-      api("POST", "/api/web/" + verb, body).then(
-        function () {
-          pr.shown = null;
-          if (d.open) d.close();
-          if (verb === "approve") toast(t("pair.allowed"));
-        },
-        function (e) {
-          // Issue 320: a request that ended (its page withdrew it, or it
-          // expired or was used): nothing happened, said plainly. Only
-          // Close stays.
-          var code = e && e.code;
-          var gone =
-            code === "ended" || code === "unknown"
-              ? t("pair.ended")
-              : code === "expired"
-                ? t("pair.expired")
-                : "";
-          // Issue 819: only a person's signed-in browser approves a device,
-          // with the code its screen shows.
-          var who =
-            code === "approve_not_agent" || code === "fixture_cannot_approve"
-              ? t("set.access.approveNotAgent")
-              : code === "approve_needs_browser" || code === "signin_to_approve"
-                ? t("set.access.approveNeedsBrowser")
-                : code === "wrong" || code === "malformed"
-                  ? t("pair.wrong")
-                  : code === "rate_limited"
-                    ? t("pair.busy")
-                    : "";
-          err.textContent = gone || who || (e && e.message) || String(e);
-          err.hidden = false;
-          if (gone) {
-            allow.hidden = true;
-            input.hidden = true;
-            d.querySelector("#den-pair-code-label").hidden = true;
-            d.querySelector("#den-pair-deny").hidden = true;
-            d.querySelector("#den-pair-later").textContent = t("pair.close");
-          } else if (verb === "approve") {
-            input.focus();
-            input.select();
-          }
-        },
+      // Issue 1054: the pressed button shows the kit's dots until the answer.
+      var release = window.denShell.holdDots(
+        d.querySelector(
+          verb === "approve" ? "#den-pair-allow" : "#den-pair-deny",
+        ),
       );
+      api("POST", "/api/web/" + verb, body)
+        .then(
+          function (x) {
+            release();
+            return x;
+          },
+          function (e) {
+            release();
+            throw e;
+          },
+        )
+        .then(
+          function () {
+            pr.shown = null;
+            if (d.open) d.close();
+            if (verb === "approve") toast(t("pair.allowed"));
+          },
+          function (e) {
+            // Issue 320: a request that ended (its page withdrew it, or it
+            // expired or was used): nothing happened, said plainly. Only
+            // Close stays.
+            var code = e && e.code;
+            var gone =
+              code === "ended" || code === "unknown"
+                ? t("pair.ended")
+                : code === "expired"
+                  ? t("pair.expired")
+                  : "";
+            // Issue 819: only a person's signed-in browser approves a device,
+            // with the code its screen shows.
+            var who =
+              code === "approve_not_agent" || code === "fixture_cannot_approve"
+                ? t("set.access.approveNotAgent")
+                : code === "approve_needs_browser" ||
+                    code === "signin_to_approve"
+                  ? t("set.access.approveNeedsBrowser")
+                  : code === "wrong" || code === "malformed"
+                    ? t("pair.wrong")
+                    : code === "rate_limited"
+                      ? t("pair.busy")
+                      : "";
+            err.textContent = gone || who || (e && e.message) || String(e);
+            err.hidden = false;
+            if (gone) {
+              allow.hidden = true;
+              input.hidden = true;
+              d.querySelector("#den-pair-code-label").hidden = true;
+              d.querySelector("#den-pair-deny").hidden = true;
+              d.querySelector("#den-pair-later").textContent = t("pair.close");
+            } else if (verb === "approve") {
+              input.focus();
+              input.select();
+            }
+          },
+        );
     };
     d.querySelector("#den-pair-deny").addEventListener("click", function () {
       decide("deny");
@@ -9719,6 +9783,7 @@
   // every page with that language's catalog from its first paint.
   function setLanguage(l) {
     if (l === lang) return Promise.resolve(false);
+    // busy-ok: picked from a menu that has closed; the page reloads in it
     return api("POST", "/api/settings", { language: l }).then(function () {
       location.reload();
       return true;
@@ -9976,7 +10041,10 @@
           m.holdDots(button, true);
           return m;
         })
-        .catch(function () {
+        .catch(function (err) {
+          // Never silent (issue 1054: a missing export hid a row's dots);
+          // the button is still let go on release.
+          console.error("holdDots", err);
           return null;
         });
       return function () {
@@ -9986,6 +10054,31 @@
             button.disabled = false;
             button.removeAttribute("aria-busy");
           }
+        });
+      };
+    },
+    /**
+     * Issue 1054: a row that waits for its save (a drag): the kit's dots
+     * at its end and aria-busy; it returns release().
+     */
+    holdRow: function (row) {
+      if (!row) return function () {};
+      row.setAttribute("aria-busy", "true");
+      var held = loadBusy()
+        .then(function (m) {
+          m.holdRow(row, true);
+          return m;
+        })
+        .catch(function (err) {
+          // Never silent (issue 1054: a missing export hid a row's dots);
+          // the row is still let go on release.
+          console.error("holdRow", err);
+          return null;
+        });
+      return function () {
+        return held.then(function (m) {
+          if (m) m.holdRow(row, false);
+          else row.removeAttribute("aria-busy");
         });
       };
     },
@@ -10169,6 +10262,7 @@
           collapsed: s.shell.collapsed === true,
           hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
           order: Array.isArray(s.shell.order) ? s.shell.order : [],
+          folded: Array.isArray(s.shell.folded) ? s.shell.folded : [],
           dock: s.shell.dock === true,
           dockHeight:
             typeof s.shell.dockHeight === "number" ? s.shell.dockHeight : 0,

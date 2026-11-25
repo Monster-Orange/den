@@ -2556,7 +2556,7 @@
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "set.workspace.event_feeds": "アプリのイベントフィード: このプロジェクト",
     "set.workspace.event_feeds.d":
-      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。agents.event_feeds に追加します。bearer は secrets.refs の名前です。",
+      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。ここで追加や削除ができます。エージェントは project_event_feed_add か project_event_feed_remove で求めます。bearer は secrets.refs の名前で、値ではありません。",
     "set.embed.feed_max_streams": "同時に読むアプリフィード",
     "set.embed.feed_max_streams.d":
       "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
@@ -2589,6 +2589,38 @@
     "feed.unread": "未読: {n}。",
     "bell.m.appFeed.dropped":
       "{agent} のアプリフィード {name}: 保存数の上限のため未読のイベントが消えました。",
+    "feed.add": "フィードを追加",
+    "feed.name": "名前",
+    "feed.agent": "エージェント",
+    "feed.url": "ストリームのアドレス",
+    "feed.bearer": "bearer(secrets.refs の名前)",
+    "feed.bearerNone": "なし",
+    "feed.noAgents":
+      "このプロジェクトにはまだエージェントがいません。エージェントを起動してから、そのフィードを追加してください。",
+    "feed.addW": "フィードを追加しています…",
+    "feed.addS": "追加しました。",
+    "feed.addF": "フィードを追加できませんでした。",
+    "feed.remove": "削除",
+    "feed.removeL": "フィード {name} を削除",
+    "feed.rmT": "フィードを削除しますか?",
+    "feed.rmAsk":
+      "プロジェクト {project} からフィード {name} を削除しますか? Den はそのストリームを閉じ、{agent} にはもう 1 行も届きません。",
+    "feed.rmW": "フィードを削除しています…",
+    "feed.rmS": "削除しました。",
+    "feed.rmF": "フィードを削除できませんでした。",
+    "ap.do.project_event_feed_add":
+      "プロジェクト {project} の {agent} 向けにイベントフィード {name}({url})を追加",
+    "ap.do.project_event_feed_remove":
+      "プロジェクト {project} からイベントフィード {name} を削除",
+    "ap.feed.warn":
+      "Den は {url} を開き、未読のイベントがあると {agent} に短い 1 行を入力します。",
+    "ap.feed.feed": "フィード: {name}({agent} 向け)",
+    "ap.feed.bearer":
+      "bearer: 接続のたびに secrets.refs.{ref} から読みます。表示されることも、エージェントのファイルに書かれることもありません。",
+    "ap.feed.noBearer":
+      "bearer なし: ストリームは Authorization ヘッダーなしで開かれます。",
+    "ap.feed.removeWarn":
+      "Den はフィード {name} を閉じます。そのエージェントにはもう 1 行も届きません。",
     "feed.problems": "読めない agents.event_feeds の項目: {n}。",
     "feed.failed":
       "このプロジェクトのアプリのイベントフィードを読めませんでした。",
@@ -2824,8 +2856,6 @@
     "bell.undo": "元に戻す",
     "bell.undoMsg": "「{kind}」を表示しなくなりました。",
     "bell.clearRead": "既読を消去",
-    "bell.marking": "既読にしています…",
-    "bell.clearing": "消去しています…",
     "bell.read": "既読にする",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
