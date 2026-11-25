@@ -1553,6 +1553,10 @@
       "Escrituras de issues de GitHub por hora",
     "set.agents.issue_writes_per_hour.d":
       "Cuántas escrituras de issues pueden hacer todos los agentes juntos en una hora. Pasado ese número, al agente se le dice cuánto esperar. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    "set.agents.issue_writes_visibility_minutes":
+      "Volver a comprobar la visibilidad de un repositorio tras",
+    "set.agents.issue_writes_visibility_minutes.d":
+      "El texto que un agente publica en un repositorio público, o en uno cuya visibilidad no se conoce, se revisa primero en busca de nombres de la lista. Estos son los minutos que se guarda la visibilidad de un repositorio antes de volver a preguntar a GitHub, así que un repositorio que se hace público se revisa poco después. De 1 a 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     "ap.do.agent_import":
       'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
     "ap.do.approval_policy":
