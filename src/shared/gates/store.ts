@@ -569,6 +569,11 @@ export interface GateStoreOpts {
   alive?: (pid: number) => boolean;
   /** How long to wait for the lock before giving up, ms. */
   lockWaitMs?: number;
+  /**
+   * Issue 1440, tests only: runs after a busy lock is judged left behind
+   * and before it is taken back (where another waiter may take it first).
+   */
+  onLockJudged?: (lock: string) => void;
   /** Issue 625: checks a test box (tests pass a fake). */
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
@@ -974,6 +979,7 @@ export class GateStore {
   private readonly now: () => number;
   private readonly alive: (pid: number) => boolean;
   private readonly lockWaitMs: number;
+  private readonly onLockJudged?: (lock: string) => void;
   /** Issue 867: the last ask took back a kept place (not a new entry). */
   lastAskReattached = false;
   private readonly probe: BoxProbe;
@@ -1008,6 +1014,7 @@ export class GateStore {
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
     this.lockWaitMs = o.lockWaitMs ?? 10_000;
+    this.onLockJudged = o.onLockJudged;
     this.probe = o.probe ?? realBoxProbe;
     this.readLoad = o.load ?? (() => realLoad());
     this.readCores = o.cores ?? realCores;
@@ -1515,20 +1522,7 @@ export class GateStore {
         break;
       } catch (e) {
         if ((e as { code?: string }).code !== "EEXIST") throw e;
-        let tookBack = false;
-        try {
-          if (
-            Date.now() - fs.statSync(lock).mtimeMs > 30_000 ||
-            this.holderGone(lock) ||
-            this.pidlessStale(lock)
-          ) {
-            fs.rmSync(lock, { recursive: true, force: true });
-            tookBack = true;
-          }
-        } catch {
-          /* someone else took it back */
-        }
-        if (tookBack) continue;
+        if (this.takeBackLock(lock)) continue;
         // Issue 1339: with lockWaitMs 0 (the server's), busy at once.
         if (Date.now() >= until) throw new GateLockBusy(lock);
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
@@ -1546,30 +1540,65 @@ export class GateStore {
   }
 
   /**
-   * Issue 1440: the lock has no pid file and is older than
-   * lock_no_pid_seconds. Read only while the lock is busy, so the free path
-   * costs nothing more.
+   * Takes back a lock left behind: older than 30 s, its holder gone (issue
+   * 275), or with no pid file past lock_no_pid_seconds (issue 1440). True:
+   * it is free now (go round and take it). The lock is judged from one stat,
+   * then moved aside under a unique name, and removed only if the moved
+   * folder is the one judged (its ino and mtime). Another waiter that took
+   * it back and holds a fresh lock meanwhile keeps it: that one is put back.
    */
-  private pidlessStale(lock: string): boolean {
-    if (fs.existsSync(path.join(lock, "pid"))) return false;
-    let limit: number = GATE_DEFAULTS.lockNoPidSeconds;
+  private takeBackLock(lock: string): boolean {
+    let seen: fs.Stats;
     try {
-      limit = this.settings().lockNoPidSeconds;
+      seen = fs.statSync(lock);
     } catch {
-      /* no settings file: the default */
+      return true; // released meanwhile
     }
-    return Date.now() - fs.statSync(lock).mtimeMs > limit * 1000;
-  }
-
-  /** The lock names a pid, and that process is no longer running. */
-  private holderGone(lock: string): boolean {
-    let pid = 0;
+    const age = Date.now() - seen.mtimeMs;
+    let pid = NaN;
+    let noPid = false;
     try {
       pid = Number(fs.readFileSync(path.join(lock, "pid"), "utf-8").trim());
-    } catch {
-      return false; // no pid yet: its holder may be writing it
+    } catch (e) {
+      noPid = (e as { code?: string }).code === "ENOENT";
     }
-    return Number.isInteger(pid) && pid > 0 && !this.alive(pid);
+    let noPidMs: number = GATE_DEFAULTS.lockNoPidSeconds * 1000;
+    if (noPid)
+      try {
+        noPidMs = this.settings().lockNoPidSeconds * 1000;
+      } catch {
+        /* no settings file: the default */
+      }
+    const left =
+      age > 30_000 ||
+      (Number.isInteger(pid) && pid > 0 && !this.alive(pid)) ||
+      (noPid && age > noPidMs);
+    if (!left) return false;
+    this.onLockJudged?.(lock);
+    const aside = `${lock}.old-${process.pid}-${randomBytes(8).toString("hex")}`;
+    try {
+      fs.renameSync(lock, aside);
+    } catch {
+      return false; // another waiter moved it first
+    }
+    let same = false;
+    try {
+      const moved = fs.statSync(aside);
+      same = moved.ino === seen.ino && moved.mtimeMs === seen.mtimeMs;
+    } catch {
+      return false;
+    }
+    if (!same) {
+      // A lock taken since: put it back for its holder.
+      try {
+        fs.renameSync(aside, lock);
+      } catch {
+        /* a newer lock is there too; its holder's own release clears it */
+      }
+      return false;
+    }
+    fs.rmSync(aside, { recursive: true, force: true });
+    return true;
   }
 
   private readAll(): GateEntry[] {

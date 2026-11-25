@@ -87,4 +87,49 @@ describe("a gate lock with no pid file", () => {
       s.settings({ lock_no_pid_seconds: 4 } as never).lockNoPidSeconds,
     ).toBe(4);
   });
+
+  it.each([
+    ["no pid, past the setting", null, 15],
+    ["a gone holder's pid", 2 ** 22 + 7, 1],
+    ["any lock past 30 s", process.pid, 40],
+  ])(
+    "two waiters judge the same %s: the one that took it second never removes the other's fresh lock",
+    (_what, pid, ageS) => {
+      const { dir, lock } = pidless(ageS);
+      if (pid !== null) {
+        fs.writeFileSync(path.join(lock, "pid"), String(pid));
+        const t = (Date.now() - ageS * 1000) / 1000;
+        fs.utimesSync(lock, t, t);
+      }
+      let inside = 0;
+      // Waiter B, between A's judgment and A's take-back: it takes the old
+      // lock back and holds a fresh one of its own (a live holder's pid).
+      const a = new GateStore({
+        platform: "linux",
+        dir,
+        lockWaitMs: 0,
+        onLockJudged: () => {
+          fs.rmSync(lock, { recursive: true, force: true });
+          fs.mkdirSync(lock);
+          fs.writeFileSync(path.join(lock, "pid"), String(process.pid));
+          inside++; // B is inside the lock now
+        },
+      });
+      let ran = false;
+      try {
+        a.list();
+        ran = true;
+      } catch (e) {
+        expect(e).toBeInstanceOf(GateLockBusy);
+      }
+      expect({
+        inside: inside + (ran ? 1 : 0),
+        bHolds: fs.readFileSync(path.join(lock, "pid"), "utf-8"),
+      }).toEqual({ inside: 1, bHolds: String(process.pid) });
+      // Nothing left beside it.
+      expect(fs.readdirSync(dir).filter((n) => n.startsWith("lock."))).toEqual(
+        [],
+      );
+    },
+  );
 });
