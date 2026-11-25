@@ -1,5 +1,5 @@
 /**
- * Issue 1480 (Reviewer C, Lane 1): where an app's event feed may point.
+ * Issue 1480: where an app's event feed may point.
  *
  * - feedSelfProblem: a feed that names Den itself (its web address, its
  *   port on this machine, the edge's names) or its Hub is refused: a
@@ -52,7 +52,7 @@ for (const [net, bits] of [
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
-  // Reviewer C: NAT64 (it can name any IPv4 address) and documentation.
+  // NAT64 (it can name any IPv4 address) and documentation.
   ["64:ff9b::", 96],
   ["2001:db8::", 32],
 ] as const)
@@ -64,7 +64,7 @@ LOOPBACK.addSubnet("127.0.0.0", 8, "ipv4");
 LOOPBACK.addSubnet("0.0.0.0", 32, "ipv4");
 LOOPBACK.addAddress("::1", "ipv6");
 LOOPBACK.addAddress("::", "ipv6");
-// Reviewer C: IPv4 loopback mapped into IPv6, in any spelling.
+// IPv4 loopback mapped into IPv6, in any spelling.
 LOOPBACK.addSubnet("::ffff:127.0.0.0", 104, "ipv6");
 
 /** Whether `ip` (an address, not a name) is this machine. */
@@ -117,6 +117,41 @@ export async function feedAddressLocal(
   } catch {
     return true;
   }
+}
+
+/**
+ * Issue 1491: the one address a public-only feed's request may go to, or
+ * null when it may go to none: its name is this machine's, it doesn't
+ * resolve, or any answer is not public. The request is then pinned to
+ * this address (feed-pinned-request.ts), so a second lookup that answers
+ * differently (DNS rebinding) is never made.
+ */
+export async function checkedAddress(
+  url: string,
+  lookup: FeedLookup = defaultLookup,
+): Promise<{ address: string; family: 4 | 6 } | null> {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const h = hostOf(u);
+  if (!h || isLocalName(h)) return null;
+  const v = isIP(h);
+  if (v) return isPublicAddress(h) ? { address: h, family: v as 4 | 6 } : null;
+  let all: { address: string; family: number }[];
+  try {
+    all = await lookup(h);
+  } catch {
+    return null;
+  }
+  if (!all.length || all.some((x) => !isPublicAddress(x.address))) return null;
+  const [first] = all;
+  return {
+    address: first!.address,
+    family: isIP(first!.address) === 6 ? 6 : 4,
+  };
 }
 
 /** Why `url` names Den or its Hub itself, or null. `key`: url, list_url. */

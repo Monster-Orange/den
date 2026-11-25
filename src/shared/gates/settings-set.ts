@@ -8,7 +8,9 @@
  * named gate.<key> for the approval policy, where gate keys are Limits
  * and performance (issue 1391), scheduling on the person's own machine:
  * on a personal install the change is written at once and the person is
- * told; on a strict one it follows the person's choice for Limits. On
+ * told; on a strict one it follows the person's choice for Limits. A
+ * change that widens what agents may do (issue 1264: routing off, or a
+ * program dropped from it) needs the person's own Allow on both. On
  * Allow it's checked again and written by the gate's one writer,
  * GateStore.writeSettings, under the gate-slot lock; a refused value
  * writes nothing.

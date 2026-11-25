@@ -145,9 +145,9 @@ function reasonWords(e, ms) {
  * title's reason. `r` is one check's result from /api/health/stream.
  */
 export function healthCellWords(r) {
-  // Issue 188: a check that couldn't reach its target ("fetch failed"):
-  // its own line in every language, English too (the raw words say
-  // neither what didn't answer nor what to try).
+  // A check that couldn't reach its target ("fetch failed") gets its own
+  // line in every language, English too: the raw words say neither what
+  // didn't answer nor what to try.
   const raw = String(r.error ?? "").replace(/ \(twice in a row\)$/, "");
   if (r.ok === false && !r.status && raw === "fetch failed") {
     const target = r.url ?? r.check ?? r.label ?? "";
