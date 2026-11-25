@@ -6247,10 +6247,12 @@ workspaces:
       watch_repos: [shared/pipeline]
 ```
 
-The list grants no new access. The watcher reads those repos with the same
-GitHub sign-in (`gh`) as every other watch, so it sees only what that
-sign-in can already read, and it only ever reads (`gh api -i <path>`): no
-writes, no comments. Watches on a listed repo share the same budget,
+Each listed repo adds read-only watching of that repo for the project's
+agents, with Den's own GitHub sign-in (`gh`), the same as every other
+watch: they see its checks and failures, as far as that sign-in can read
+it, and the watcher only ever reads (`gh api -i <path>`): no writes, no
+comments. The list is for repos outside Den: a repo of another Den project
+on it is refused, and the refusal says to grant that project instead. Watches on a listed repo share the same budget,
 interval and pause rules. Only the project's own agents get its list; a
 project granted to an agent doesn't lend it its list. A repo that is
 neither the project's nor listed is refused, and the refusal names

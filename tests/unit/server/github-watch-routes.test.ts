@@ -48,6 +48,7 @@ function setup(principal: unknown) {
   gh.pr("other/elsewhere", 5, SHA);
   gh.pr("shared/pipeline", 7, SHA);
   gh.pr("acme/westshared", 7, SHA);
+  gh.pr("acme/south", 3, SHA);
   const watcher = new GithubWatcher({
     get: gh.get,
     settings: () => ({
@@ -66,11 +67,15 @@ function setup(principal: unknown) {
         ? ["acme/north"]
         : project === "west"
           ? ["acme/west"]
-          : [],
+          : project === "south"
+            ? ["acme/south"]
+            : [],
+    allRepos: () => ["acme/north", "acme/west", "acme/south"],
     // Issue 1270: each project's agents.watch_repos, as read (checked).
     watchReposOf: (project: string) =>
+      // acme/south is another Den project's repo (not granted to north).
       project === "north"
-        ? ["shared/pipeline"]
+        ? ["shared/pipeline", "ACME/South"]
         : project === "west"
           ? ["acme/westshared"]
           : [],
@@ -179,7 +184,7 @@ describe("issue 1270: a project's agents.watch_repos", () => {
     });
   });
 
-  it("an unlisted repo is refused, naming the setting and that it grants no new access", async () => {
+  it("an unlisted repo is refused, naming the setting and that it adds read-only watching", async () => {
     const { call, gh } = setup(agent);
     const r = await call("POST", "/api/agents/self/github-watches", {
       repo: "other/elsewhere",
@@ -189,7 +194,9 @@ describe("issue 1270: a project's agents.watch_repos", () => {
     expect(r.body).toMatchObject({ ok: false, code: "scope" });
     const error = String((r.body as { error: string }).error);
     expect(error).toMatch(/agents\.watch_repos/);
-    expect(error).toMatch(/no new access/);
+    expect(error).toMatch(
+      /read-only watching of that repo, with Den's own GitHub sign-in/,
+    );
     expect(gh.calls).toEqual([]);
   });
 
@@ -212,5 +219,30 @@ describe("issue 1270: a project's agents.watch_repos", () => {
     expect(gh.calls.length).toBeGreaterThan(0);
     for (const path of gh.calls)
       expect(path.startsWith("repos/shared/pipeline/")).toBe(true);
+  });
+  it("another Den project's repo on the list is refused, pointing to grants: the list doesn't bypass them", async () => {
+    const { call, gh } = setup(agent);
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "acme/south",
+      pr: 3,
+    });
+    expect(r.status).toBe(403);
+    expect(r.body).toMatchObject({ ok: false, code: "scope" });
+    const error = String((r.body as { error: string }).error);
+    expect(error).toMatch(/acme\/south is a repo of another Den project/);
+    expect(error).toMatch(/agents\.watch_repos is for repos outside Den/);
+    expect(error).toMatch(/grant/);
+    // A scoped agent isn't shown other projects' names.
+    expect(error).not.toMatch(/south\)/);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("a granted project's repo on the list stays watchable (the grant reaches it)", async () => {
+    const { call } = setup({ ...agent, grants: ["west", "south"] });
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "acme/south",
+      pr: 3,
+    });
+    expect(r.status).toBe(200);
   });
 });

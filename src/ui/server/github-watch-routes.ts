@@ -19,6 +19,7 @@ import { isServerScope } from "../../shared/agents/server-agent.js";
 import type { GithubWatcher } from "../../shared/github-watch/watcher.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, type AgentPrincipal } from "./request-guard.js";
+import { WATCH_REPOS_SETTING } from "../../shared/github-watch/watch-repos.js";
 
 export const GITHUB_WATCH_PATHS = [
   "/api/agents/self/github-watches",
@@ -73,22 +74,36 @@ async function jsonBody(
   }
 }
 
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
 /**
  * The repos an agent may watch: its project's and its grants', and (issue
  * 1270) its own project's agents.watch_repos. A granted project's list is
- * that project's agents' only.
+ * that project's agents' only. A listed repo that belongs to another Den
+ * project not granted to this one is left out (`otherDen`): grants are the
+ * only way into another project, and the list is for repos outside Den.
  */
-function scopeRepos(p: AgentPrincipal, d: GithubWatchRouteDeps): string[] {
+function scopeRepos(
+  p: AgentPrincipal,
+  d: GithubWatchRouteDeps,
+): { allowed: string[]; otherDen: string[] } {
   // A server-scope agent works across the install's projects.
-  if (isServerScope(p.workspace) && d.allRepos) return d.allRepos();
+  if (isServerScope(p.workspace) && d.allRepos)
+    return { allowed: d.allRepos(), otherDen: [] };
   const out: string[] = [];
   const add = (r: string) => {
-    if (!out.some((o) => o.toLowerCase() === r.toLowerCase())) out.push(r);
+    if (!out.some((o) => same(o, r))) out.push(r);
   };
   for (const ws of [p.workspace, ...(p.grants ?? [])])
     for (const r of d.reposOf(ws)) add(r);
-  for (const r of d.watchReposOf?.(p.workspace) ?? []) add(r);
-  return out;
+  const den = d.allRepos?.() ?? [];
+  const otherDen: string[] = [];
+  for (const r of d.watchReposOf?.(p.workspace) ?? []) {
+    if (out.some((o) => same(o, r))) continue;
+    if (den.some((o) => same(o, r))) otherDen.push(r);
+    else add(r);
+  }
+  return { allowed: out, otherDen };
 }
 
 export async function handleGithubWatchRoutes(
@@ -131,13 +146,24 @@ export async function handleGithubWatchRoutes(
       );
       return true;
     }
+    const repo = typeof b.repo === "string" ? b.repo.trim() : "";
+    const scope = scopeRepos(p, d);
+    if (scope.otherDen.some((o) => same(o, repo))) {
+      refuse(
+        res,
+        403,
+        "scope",
+        `${repo} is a repo of another Den project, so ${WATCH_REPOS_SETTING} doesn't reach it: ${WATCH_REPOS_SETTING} is for repos outside Den. To watch it, a person grants your project that project.`,
+      );
+      return true;
+    }
     const r = await w.create({
       agent,
       project: p.workspace,
-      repo: typeof b.repo === "string" ? b.repo.trim() : "",
+      repo,
       pr: typeof b.pr === "number" ? b.pr : undefined,
       run: typeof b.run === "number" ? b.run : undefined,
-      allowedRepos: scopeRepos(p, d),
+      allowedRepos: scope.allowed,
     });
     if (r.ok) sendJson(res, r);
     else refuse(res, STATUS[r.code] ?? 400, r.code, r.error);

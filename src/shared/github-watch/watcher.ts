@@ -211,8 +211,8 @@ export class GithubWatcher {
       return {
         ok: false,
         code: "scope",
-        // Issue 1270: name the setting, and that it grants no new access.
-        error: `${a.repo} isn't a repo of your project or on its ${WATCH_REPOS_SETTING} list; you watch those only (${a.allowedRepos.join(", ") || "none"}). A person can add a repo to ${WATCH_REPOS_SETTING}, read-only: it grants no new access, and only lets the watcher read what Den's GitHub sign-in can already read.`,
+        // Issue 1270: name the setting, and what adding a repo to it does.
+        error: `${a.repo} isn't a repo of your project or on its ${WATCH_REPOS_SETTING} list; you watch those only (${a.allowedRepos.join(", ") || "none"}). A person can add a repo outside Den to ${WATCH_REPOS_SETTING}: it adds read-only watching of that repo, with Den's own GitHub sign-in.`,
       };
     const kind: Watch["kind"] = isNum(a.pr) ? "pr" : "run";
     const number = (kind === "pr" ? a.pr : a.run) as number;

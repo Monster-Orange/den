@@ -9,10 +9,12 @@
  *         watch_repos: [shared/pipeline]
  *
  * Read-only by construction: the watcher's GitHub client only ever runs
- * `gh api -i <path>` (gh-http.ts), with Den's existing GitHub sign-in. The
- * list grants no new access; it only lets the watcher read what that
- * sign-in can already read. Entries are checked here, where they are read:
- * only owner/name strings count, each once.
+ * `gh api -i <path>` (gh-http.ts). A listed repo adds read-only watching of
+ * that repo for the project's agents, with Den's own GitHub sign-in. It is
+ * for repos outside Den: one of another Den project's repos is left out
+ * (github-watch-routes.ts), since grants are the way into another project.
+ * Entries are checked here, where they are read: only owner/name strings
+ * count, each once.
  */
 import { readWorkspacesFile } from "../environment-manager/workspaces.js";
 import type { WorkspacesFile } from "../types/index.js";
