@@ -276,6 +276,17 @@ or git prompt, pinentry) fails at once with "Device not configured"
 Change the grace in Settings › Server, or with `den gate settings
 --reap-grace-seconds N`.
 
+## A stuck queue lock is taken back
+
+Every look at the queue takes one lock, a folder, and writes the holder's
+pid into it. A lock whose holder is gone is taken back at once. A holder
+killed between making the folder and writing its pid leaves a lock with no
+pid: that one is taken back once it is older than `lock_no_pid_seconds`
+(default 10; 1 to 30). Any lock older than 30 s is stale whatever it holds.
+The gap it covers measured at most 50 ms on a saturated Mac and 80 ms on
+two Linux CPUs at three times their load. Change it in Settings › Server,
+or with `den gate settings --lock-no-pid-seconds N`.
+
 ## No run starts while the machine is overloaded
 
 A run that has its slot doesn't start its command while this machine's

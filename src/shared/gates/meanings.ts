@@ -14,6 +14,7 @@ export type GateSettingKey =
   | "max_start_load"
   | "max_start_wait_minutes"
   | "reap_grace_seconds"
+  | "lock_no_pid_seconds"
   | "overrun_margin_minutes"
   | "remote_renew_seconds"
   | "remote_lapse_seconds"
@@ -56,6 +57,8 @@ export const GATE_MEANINGS: Record<
       "Minutes a run waits for the load before it starts anyway, recorded as busy (0: no limit)",
     reap_grace_seconds:
       "Seconds between stopping what an ended run left behind and killing it",
+    lock_no_pid_seconds:
+      "Seconds before a gate lock left with no holder's pid is taken back",
     overrun_margin_minutes:
       "Minutes past its estimate before a run is flagged (never stopped)",
     remote_renew_seconds: "Seconds between a CI runner's renewals of its slot",
@@ -112,6 +115,8 @@ export const GATE_MEANINGS: Record<
       "Minutos que una ejecución espera a que baje la carga antes de empezar igualmente, anotada como ocupada (0: sin límite)",
     reap_grace_seconds:
       "Segundos entre detener lo que dejó una ejecución terminada y forzar su cierre",
+    lock_no_pid_seconds:
+      "Segundos antes de recuperar un bloqueo de la cola que quedó sin el pid de quien lo tenía",
     overrun_margin_minutes:
       "Minutos pasada su estimación antes de marcar una ejecución (nunca se detiene)",
     remote_renew_seconds:
@@ -170,6 +175,8 @@ export const GATE_MEANINGS: Record<
       "負荷が下がるのを待つ分数。過ぎると混雑中として記録して開始します (0: 制限なし)",
     reap_grace_seconds:
       "終了した実行が残したプロセスを止めてから強制終了するまでの秒数",
+    lock_no_pid_seconds:
+      "保持者の pid がないまま残ったゲートのロックを取り戻すまでの秒数",
     overrun_margin_minutes:
       "見積もりを何分過ぎたら印を付けるか（止めはしない）",
     remote_renew_seconds: "CI ランナーが枠を更新する間隔（秒）",

@@ -31,6 +31,7 @@
  *            [--local-browser-slots N] [--cpu-hold-load N]
  *            [--max-start-load N] [--max-start-wait-minutes N]
  *            [--reap-grace-seconds N]   issue 1132
+ *            [--lock-no-pid-seconds N]  issue 1440
  *            [--overrun-margin-minutes N] [--overrun-bell-multiple X]
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
@@ -172,7 +173,7 @@ export const GATE_HELP = {
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
-    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--local-browser-slots N] [--cpu-hold-load N] [--max-start-load N] [--max-start-wait-minutes N] [--reap-grace-seconds N]",
+    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--local-browser-slots N] [--cpu-hold-load N] [--max-start-load N] [--max-start-wait-minutes N] [--reap-grace-seconds N] [--lock-no-pid-seconds N]",
     "    [--overrun-margin-minutes N] [--overrun-bell-multiple X]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
@@ -1578,6 +1579,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--max-start-load": true,
     "--max-start-wait-minutes": true,
     "--reap-grace-seconds": true,
+    "--lock-no-pid-seconds": true,
     "--memory-free-min-percent": true,
     "--swap-hold-gb": true,
     "--vm-memory-share": true,
@@ -1613,6 +1615,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--max-start-load", "max_start_load"],
     ["--max-start-wait-minutes", "max_start_wait_minutes"],
     ["--reap-grace-seconds", "reap_grace_seconds"],
+    ["--lock-no-pid-seconds", "lock_no_pid_seconds"],
     ["--memory-free-min-percent", "memory_free_min_percent"],
     ["--swap-hold-gb", "swap_hold_gb"],
     ["--memory-reading-keep-seconds", "memory_reading_keep_seconds"],

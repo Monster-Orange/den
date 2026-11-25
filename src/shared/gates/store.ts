@@ -12,6 +12,7 @@
  *                     load_hold_per_core (issue 1048),
  *                     max_start_load, max_start_wait_minutes,
  *                     reap_grace_seconds (issue 1132),
+ *                     lock_no_pid_seconds (issue 1440),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -148,6 +149,8 @@ export type GateSettingsPatch = {
   max_start_wait_minutes?: number | null;
   /** Issue 1132: seconds from TERM to KILL for a run's leftovers. */
   reap_grace_seconds?: number | null;
+  /** Issue 1440: a lock with no pid file this old is taken back (seconds). */
+  lock_no_pid_seconds?: number | null;
   /** Issue 1274: new runs here wait under this free memory, % (0: off). */
   memory_free_min_percent?: number | null;
   /** Issue 1274: new runs here wait over this much swap in use, GB (0: off). */
@@ -231,6 +234,8 @@ export const GATE_LIMITS: Record<
   max_start_load: { min: 0, max: 1024, int: false },
   max_start_wait_minutes: { min: 0, max: 24 * 60, int: true },
   reap_grace_seconds: { min: 0, max: 600, int: true },
+  // Issue 1440: at least 1 s (a holder is between mkdir and the pid), under 30.
+  lock_no_pid_seconds: { min: 1, max: 30, int: true },
   // Issue 1274: percent of memory free; 0 turns the hold off.
   memory_free_min_percent: { min: 0, max: 90, int: false },
   // Issue 1274: GB of swap in use; 0 turns the hold off.
@@ -1153,6 +1158,10 @@ export class GateStore {
           "reap_grace_seconds",
           GATE_DEFAULTS.reapGraceSeconds,
         ),
+        lockNoPidSeconds: num(
+          "lock_no_pid_seconds",
+          GATE_DEFAULTS.lockNoPidSeconds,
+        ),
         memoryFreeMinPercent: num(
           "memory_free_min_percent",
           GATE_DEFAULTS.memoryFreeMinPercent,
@@ -1487,7 +1496,9 @@ export class GateStore {
   /**
    * Holds the lock while `fn` runs. The lock names its holder's pid; a
    * lock whose holder is gone (killed while holding it) is taken back at
-   * once (issue 275), and any lock older than 30 s is stale.
+   * once (issue 275), and any lock older than 30 s is stale. One with no
+   * pid file (its holder killed between the two steps) is taken back once
+   * older than lock_no_pid_seconds (issue 1440).
    */
   private locked<T>(fn: () => T): T {
     const lock = path.join(this.dir, "lock");
@@ -1508,7 +1519,8 @@ export class GateStore {
         try {
           if (
             Date.now() - fs.statSync(lock).mtimeMs > 30_000 ||
-            this.holderGone(lock)
+            this.holderGone(lock) ||
+            this.pidlessStale(lock)
           ) {
             fs.rmSync(lock, { recursive: true, force: true });
             tookBack = true;
@@ -1531,6 +1543,22 @@ export class GateStore {
         /* already gone */
       }
     }
+  }
+
+  /**
+   * Issue 1440: the lock has no pid file and is older than
+   * lock_no_pid_seconds. Read only while the lock is busy, so the free path
+   * costs nothing more.
+   */
+  private pidlessStale(lock: string): boolean {
+    if (fs.existsSync(path.join(lock, "pid"))) return false;
+    let limit: number = GATE_DEFAULTS.lockNoPidSeconds;
+    try {
+      limit = this.settings().lockNoPidSeconds;
+    } catch {
+      /* no settings file: the default */
+    }
+    return Date.now() - fs.statSync(lock).mtimeMs > limit * 1000;
   }
 
   /** The lock names a pid, and that process is no longer running. */

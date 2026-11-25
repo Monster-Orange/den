@@ -256,6 +256,12 @@ export interface GateSettings {
    */
   reapGraceSeconds: number;
   /**
+   * Issue 1440: seconds after which a gate-slot lock with no pid file (its
+   * holder killed between mkdir and writing the pid) is taken back. Writing
+   * the pid takes well under a second, so this sits far below the 30 s rule.
+   */
+  lockNoPidSeconds: number;
+  /**
    * Issue 1274: while this machine's free memory is under this percent, new
    * runs here wait, but only while another run here is going (so the line
    * never stops for good). Test boxes still take theirs. 0 turns it off.
@@ -368,6 +374,8 @@ export const GATE_DEFAULTS: GateSettings = {
   maxStartLoad: maxStartLoadDefault(),
   maxStartWaitMinutes: 10,
   reapGraceSeconds: 10,
+  // Issue 1440: the mkdir-to-pid gap measured at most 80 ms under 3x load.
+  lockNoPidSeconds: 10,
   // Issue 1274: three watchdog resets on 11-22 came with the compressor full.
   memoryFreeMinPercent: 10,
   swapHoldGb: 8,
