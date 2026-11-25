@@ -152,7 +152,13 @@ describe("issue 1613: the queue's commits", () => {
       JSON.stringify([{ sha: old, reason: "a merge-button commit" }]),
     );
     try {
-      expect(check(`${from}..HEAD`).status).toBe(0);
+      const ok = check(`${from}..HEAD`);
+      expect(ok.status).toBe(0);
+      // A log reader sees how many passed by the allow-list, not only
+      // how many were checked.
+      expect(ok.stdout).toMatch(
+        /0 commit\(s\) signed and clean; 1 passed by the allow-list/,
+      );
       const sha = commit("A later unsigned change");
       const r = check(`${from}..HEAD`);
       expect(r.status).toBe(1);

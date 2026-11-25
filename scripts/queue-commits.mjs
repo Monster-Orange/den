@@ -94,8 +94,12 @@ try {
 
 let bad = 0;
 let checked = 0;
+let passedByList = 0;
 for (const sha of shas) {
-  if (allowed.has(sha)) continue;
+  if (allowed.has(sha)) {
+    passedByList++;
+    continue;
+  }
   checked++;
   const broke = [];
   const signed = spawnSync(
@@ -126,4 +130,6 @@ if (bad) {
   );
   process.exit(1);
 }
-console.log(`queue commits: ${checked} commit(s) signed and clean`);
+console.log(
+  `queue commits: ${checked} commit(s) signed and clean; ${passedByList} passed by the allow-list`,
+);
