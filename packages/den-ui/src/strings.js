@@ -195,6 +195,13 @@ export const en = {
   "kit.report.latB":
     "It is saved on this computer with your text, choices and screenshot. Find it under My reports, at the top of Report an issue or in the command palette.",
   "kit.report.failH": "Not sent",
+  "kit.report.words":
+    'The repository is public, and your text names something that stays out of public text ({where}). Nothing was sent. Write it with neutral words instead, such as "the person", "the project", "the company" or "an internal host", then send it again.',
+  "kit.report.wordsAt": '{field}, line {line}: "{phrase}"',
+  "kit.report.wordsList":
+    "This install's names list can't be read, so nothing was sent. Ask whoever runs Den to fix it.",
+  "kit.report.field.title": "title",
+  "kit.report.field.description": "description",
   "kit.report.retry": "Try again",
   "kit.report.keepH": "Keep what you wrote?",
   "kit.report.keep": "Keep it (Finish later)",
@@ -450,6 +457,13 @@ export const es = {
   "kit.report.latB":
     "Está guardado en este ordenador con tu texto, tus elecciones y la captura. Lo encontrarás en Mis informes, arriba en Informar de un problema o en la paleta de comandos.",
   "kit.report.failH": "No enviado",
+  "kit.report.words":
+    "El repositorio es público y tu texto nombra algo que no debe aparecer en texto público ({where}). No se envió nada. Escríbelo con palabras neutras, como «la persona», «el proyecto», «la empresa» o «un servidor interno», y vuelve a enviarlo.",
+  "kit.report.wordsAt": "{field}, línea {line}: «{phrase}»",
+  "kit.report.wordsList":
+    "No se puede leer la lista de nombres de esta instalación, así que no se envió nada. Pide a quien gestiona Den que la arregle.",
+  "kit.report.field.title": "título",
+  "kit.report.field.description": "descripción",
   "kit.report.retry": "Intentar de nuevo",
   "kit.report.keepH": "¿Conservar lo que escribiste?",
   "kit.report.keep": "Conservarlo (Terminar luego)",
@@ -697,6 +711,13 @@ export const ja = {
   "kit.report.latB":
     "テキスト、選択、スクリーンショットごと、このコンピューターに保存しました。「問題を報告」の上部かコマンドパレットの「自分の報告」にあります。",
   "kit.report.failH": "送れませんでした",
+  "kit.report.words":
+    "このリポジトリは公開されており、テキストに公開してはいけない名前が含まれています({where})。何も送っていません。「その人」「そのプロジェクト」「その会社」「社内のホスト」などの中立的な言葉で書き直してから、もう一度送ってください。",
+  "kit.report.wordsAt": "{field} {line} 行目:「{phrase}」",
+  "kit.report.wordsList":
+    "このインストールの名前リストを読めないため、何も送っていません。Den の管理者に修正を依頼してください。",
+  "kit.report.field.title": "タイトル",
+  "kit.report.field.description": "説明",
   "kit.report.retry": "もう一度試す",
   "kit.report.keepH": "書いた内容を残しますか。",
   "kit.report.keep": "残す(あとで仕上げる)",

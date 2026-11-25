@@ -3171,13 +3171,28 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "GitHub watch: watches at once",
     description:
-      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+      "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
     keywords: ["github", "watch", "limit", "github.watches_max"],
     scope: "user",
     keys: ["github.watches_max"],
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.github?.watches_max ?? 50,
     write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
+  {
+    // Issue 1166: a watch with no progress this long ends (user.yml
+    // github.watch_stale_minutes). A person's only.
+    id: "server.github_watch_stale",
+    category: "server",
+    label: "GitHub watch: minutes with no progress",
+    description:
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    keywords: ["github", "watch", "stale", "github.watch_stale_minutes"],
+    scope: "user",
+    keys: ["github.watch_stale_minutes"],
+    control: { type: "number", min: 5, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_stale_minutes ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_stale_minutes: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml
@@ -4579,7 +4594,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "App event feeds: this project",
     description:
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
     keywords: ["feed", "events", "stream", "app", "sse"],
     scope: "workspace",
     control: { type: "custom", render: renderAppFeeds },
@@ -4955,6 +4970,29 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 10000, step: 1 },
     read: (ctx) => ctx.data.agent_issue_writes?.per_hour ?? 60,
     write: (v, ctx) => ctx.post({ agent_issue_writes: { per_hour: v } }),
+  },
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  {
+    id: "agents.issue_writes_visibility_minutes",
+    category: "agents",
+    label: "Recheck a repo's visibility after",
+    description:
+      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    keywords: [
+      "issue",
+      "github",
+      "visibility",
+      "public",
+      "names",
+      "words",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.visibility_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.agent_issue_writes?.visibility_minutes ?? 10,
+    write: (v, ctx) =>
+      ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
   },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
@@ -6870,7 +6908,12 @@ export function projectMcpHtml(v, t) {
  * /api/workspaces/:ws/event-feeds serves them: each feed's name, agent,
  * address and state, with its last event's time. `fmt`: a time's words.
  */
-export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
+export function appFeedsHtml(
+  v,
+  t,
+  fmt = (ms) => new Date(ms).toISOString(),
+  edit = false,
+) {
   const feeds = Array.isArray(v?.feeds) ? v.feeds : [];
   const problems = Array.isArray(v?.problems) ? v.problems : [];
   const STATES = [
@@ -6893,7 +6936,12 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
       `<li data-feed="${escR(f.name)}" data-feed-state="${escR(state)}">` +
       `<span data-feed-text>${escR(t("feed.row", { name: f.name, agent: f.agent, url: f.url }))}</span> ` +
       `<strong data-feed-st>${escR(t(`feed.st.${state}`))}</strong>` +
-      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span></li>`
+      ` <span data-feed-last>${escR(last)}${escR(waiting)}</span>` +
+      // Issue 1480: Remove, when the row is the person's to change.
+      (edit
+        ? ` <button type="button" class="den-btn sm" data-feed-remove="${escR(f.name)}" data-feed-agent="${escR(f.agent)}" aria-label="${escR(t("feed.removeL", { name: f.name }))}">${escR(t("feed.remove"))}</button>`
+        : "") +
+      `</li>`
     );
   });
   const list = rows.length
@@ -6903,7 +6951,28 @@ export function appFeedsHtml(v, t, fmt = (ms) => new Date(ms).toISOString()) {
     ? `<p class="set-note" data-feed-problems>${escR(t("feed.problems", { n: problems.length }))}</p>` +
       `<ul class="set-note">${problems.map((p) => `<li>${escR(p)}</li>`).join("")}</ul>`
     : "";
-  return list + bad;
+  return list + bad + (edit ? appFeedAddHtml(v, t) : "");
+}
+
+/** Issue 1480: the row's Add form: name, the agent, the address, a bearer ref. */
+function appFeedAddHtml(v, t) {
+  const agents = Array.isArray(v?.agents)
+    ? v.agents.filter((a) => typeof a === "string")
+    : [];
+  if (!agents.length)
+    return `<p class="set-note" data-feed-noagents>${escR(t("feed.noAgents"))}</p>`;
+  const opts = agents
+    .map((a) => `<option value="${escR(a)}">${escR(a)}</option>`)
+    .join("");
+  return (
+    `<div data-feed-add style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">` +
+    `<label>${escR(t("feed.name"))} <input type="text" spellcheck="false" autocomplete="off" data-feed-name></label>` +
+    `<label>${escR(t("feed.agent"))} <select data-feed-agent-pick>${opts}</select></label>` +
+    `<label>${escR(t("feed.url"))} <input type="url" spellcheck="false" autocomplete="off" data-feed-url placeholder="https://"></label>` +
+    `<label>${escR(t("feed.bearer"))} <input type="text" spellcheck="false" autocomplete="off" data-feed-bearer placeholder="${escR(t("feed.bearerNone"))}"></label>` +
+    `<button type="button" class="den-btn sm primary" data-feed-addbtn>${escR(t("feed.add"))}</button>` +
+    `</div><div class="rt-err" role="alert" hidden></div>`
+  );
 }
 
 function renderAppFeeds(host, ctx) {
@@ -6913,11 +6982,76 @@ function renderAppFeeds(host, ctx) {
     return Promise.resolve();
   }
   const t = (k, v) => ctx.shell.t(k, v);
+  const base = `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`;
+  const fail = (e, fallback) => {
+    const err = host.querySelector(".rt-err");
+    if (!err) return;
+    err.hidden = false;
+    err.textContent = e?.message || fallback;
+  };
+  // Issue 1480: a person's own click is the decision; the server checks
+  // it as the held writes are, and the row is read again after.
+  const send = (kind, method, url, body, button, fallback) =>
+    ctx.shell
+      .busyAction(
+        kind,
+        (headers) => ctx.shell.api(method, url, body, { headers }),
+        { button, onFail: (e) => fail(e, fallback) },
+      )
+      .then((r) => {
+        if (r !== undefined && r !== null) return renderAppFeeds(host, ctx);
+      });
   return ctx.shell
-    .api("GET", `/api/workspaces/${encodeURIComponent(ws)}/event-feeds`)
+    .api("GET", base)
     .then((v) => {
-      host.innerHTML = appFeedsHtml(v, t, (ms) =>
-        formatTime(new Date(ms).toISOString()),
+      host.innerHTML = appFeedsHtml(
+        v,
+        t,
+        (ms) => formatTime(new Date(ms).toISOString()),
+        true,
+      );
+      const add = host.querySelector("[data-feed-addbtn]");
+      add?.addEventListener("click", () => {
+        const val = (sel) => host.querySelector(sel)?.value.trim() ?? "";
+        const bearer = val("[data-feed-bearer]");
+        return send(
+          "add-feed",
+          "POST",
+          base,
+          {
+            name: val("[data-feed-name]"),
+            agent: val("[data-feed-agent-pick]"),
+            url: val("[data-feed-url]"),
+            ...(bearer ? { bearer } : {}),
+          },
+          add,
+          t("feed.addF"),
+        );
+      });
+      host.querySelectorAll("[data-feed-remove]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const name = b.getAttribute("data-feed-remove");
+          const { askConfirm } = await import("/dialog-den.js");
+          const ok = await askConfirm({
+            title: t("feed.rmT"),
+            message: t("feed.rmAsk", {
+              name,
+              project: ws,
+              agent: b.getAttribute("data-feed-agent"),
+            }),
+            okLabel: t("feed.remove"),
+            danger: true,
+          });
+          if (!ok) return;
+          return send(
+            "remove-feed",
+            "DELETE",
+            `${base}/${encodeURIComponent(name)}`,
+            undefined,
+            b,
+            t("feed.rmF"),
+          );
+        }),
       );
     })
     .catch(() => {

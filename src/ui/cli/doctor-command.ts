@@ -51,6 +51,14 @@ import {
 } from "../../shared/shell-pins.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import {
+  projectRepoDirs,
+  projectRepoDirsOf,
+} from "../../shared/project-repo-dirs.js";
+import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import {
   checkAgentSigning,
   existingAgentSigningKey,
   resolveAgentSigning,
@@ -64,6 +72,7 @@ import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import {
   bothSpellings,
   readRulesCover,
+  repoSecretDenyRules,
   stateDirDenyRules,
 } from "../../shared/agents/den-claude.js";
 import {
@@ -1801,6 +1810,97 @@ export function sharedUserLines(
   };
 }
 
+/** Repos' stack secrets files and the cached sign-ins, by name only, and whether agents' rules deny them. */
+export function repoSecretLines(
+  o: {
+    repoDirs?: string[];
+    distRoot?: string;
+    home?: string;
+    /** The rules to check against (default: the ones agents start with). */
+    rules?: (repoDirs: string[], authDirs: string[]) => string[];
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const repoDirs = o.repoDirs ?? projectRepoDirs();
+  const authDir = path.join(o.distRoot ?? getDistRoot(), PLAYWRIGHT_AUTH_DIR);
+  const home = o.home ?? process.env.HOME;
+  const isFile = (f: string) => {
+    try {
+      return fs.lstatSync(f).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const secrets = [...new Set(repoDirs.map((d) => path.resolve(d)))]
+    .map((d) => path.join(d, REPO_SECRETS_FILE))
+    .filter(isFile);
+  const signIns = (() => {
+    try {
+      return fs
+        .readdirSync(authDir)
+        .map((n) => path.join(authDir, n))
+        .filter(isFile);
+    } catch {
+      return [];
+    }
+  })();
+  const rules = (
+    o.rules ??
+    ((r, a) =>
+      repoSecretDenyRules(
+        r.flatMap(bothSpellings),
+        a.flatMap(bothSpellings),
+        home,
+      ))
+  )(repoDirs, [authDir]);
+  const shown = (f: string) =>
+    safeShownPath(path.join(path.basename(path.dirname(f)), path.basename(f)));
+  const loose = [...secrets, ...signIns].filter(
+    (f) => !readRulesCover(rules, f),
+  );
+  const signInsShown = (n: number) =>
+    n ? [`${n} cached sign-in${n === 1 ? "" : "s"}`] : [];
+  const parts = [
+    ...(secrets.length ? [secrets.map(shown).join(", ")] : []),
+    ...signInsShown(signIns.length),
+  ];
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const exposed = (
+    o.unsandboxed ??
+    (() =>
+      listRecords(getStateDir())
+        .filter((r) => r.sandbox?.applied !== true)
+        .map((r) => ({
+          id: r.id,
+          projects: [r.workspace, ...(r.grants ?? [])],
+        })))
+  )()
+    .map((a) => {
+      const reach = new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      );
+      const mine = secrets.filter((f) => reach.has(path.dirname(f)));
+      const what = [...mine.map(shown), ...signInsShown(signIns.length)];
+      return what.length ? `${a.id}: ${what.join(", ")}` : "";
+    })
+    .filter(Boolean);
+  const detail = !parts.length
+    ? "no stack secrets file in a project repo and no cached sign-ins"
+    : loose.length
+      ? `not covered by agents' rules: ${loose.map(shown).join(", ")}`
+      : exposed.length
+        ? `readable by agents whose sandbox is off (agents.sandbox): ${exposed.join("; ")}`
+        : `the OS sandbox keeps agents out of ${parts.join(" and ")}; agents' rules deny them too`;
+  const warn = loose.length > 0 || exposed.length > 0;
+  return {
+    lines: [`  repo secrets  ${warn ? "⚠" : "✓"}  ${detail}`],
+    checks: [{ id: "repo_secret_files", status: warn ? "warn" : "ok", detail }],
+  };
+}
+
 /**
  * Issue 728: state folders of 0600 files that hold no credential, left out
  * of the walk: the process records (pids only), a session's own writable
@@ -2662,6 +2762,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...edgeRotationLines(readBrand().name).checks);
     // Issue 728: installs running as this login.
     r.checks.push(...sharedUserLines(readBrand().name).checks);
+    r.checks.push(...repoSecretLines().checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -2852,6 +2953,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of sharedUserLines(readBrand().name).lines) console.log(l);
+  for (const l of repoSecretLines().lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
@@ -2989,13 +3091,9 @@ async function tokenRefusalRow(): Promise<{
   lines: string[];
   check: OnboardCheck;
 }> {
-  const { tokenRefusalLines, readRefusalEntries } =
+  const { tokenRefusalLines, readRefusalTrail } =
     await import("./doctor-token-refusals.js");
-  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
-  return tokenRefusalLines(
-    readBrand().name,
-    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
-  );
+  return tokenRefusalLines(readBrand().name, readRefusalTrail(getStateDir()));
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */

@@ -74,6 +74,10 @@
  *   project_mcp_remove issue 352: take one away, or change its url or
  *   project_mcp_update bearer reference (agent-ops.ts checkProjectMcpRemove,
  *                     checkProjectMcpUpdate); always the person's own Allow
+ *   project_event_feed_add    issue 1480: add or remove one of a
+ *   project_event_feed_remove project's app event feeds (agent-ops.ts
+ *                     checkEventFeedAdd, checkEventFeedRemove); routine on
+ *                     a personal install with Undo, Allow on a strict one
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -240,6 +244,10 @@ export interface HeldActionDeps {
   projectMcpRemove?: HeldOp;
   /** Issue 352: project_mcp_update's check and save (agent-ops.ts). */
   projectMcpUpdate?: HeldOp;
+  /** Issue 1480: project_event_feed_add's check and save (agent-ops.ts). */
+  eventFeedAdd?: HeldOp;
+  /** Issue 1480: project_event_feed_remove's check and save (agent-ops.ts). */
+  eventFeedRemove?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
   /** Issue 1328: agent_sandbox_set's check and write (agents/sandbox-set.ts). */
@@ -784,6 +792,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.settingChange,
     "this Den can't change its settings here",
   );
+  const eventFeedAdd = op(
+    d.eventFeedAdd,
+    "this Den can't add a project's event feeds here",
+  );
+  const eventFeedRemove = op(
+    d.eventFeedRemove,
+    "this Den can't remove a project's event feeds here",
+  );
   const gateSettings = op(
     d.gateSettings,
     "this Den can't change its gate settings here",
@@ -1156,6 +1172,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_mcp_add: projectMcp,
     project_mcp_remove: projectMcpRemove,
     project_mcp_update: projectMcpUpdate,
+    project_event_feed_add: eventFeedAdd,
+    project_event_feed_remove: eventFeedRemove,
     hub_connect: hubConnect,
     hub_project_create: hubCreate,
     hub_link: hubLink,

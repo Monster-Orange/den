@@ -124,6 +124,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "github.watch_max_interval_seconds",
   "github.api_budget_floor",
   "github.watches_max",
+  // Issue 1166: how long a watch waits on no progress (a timing knob).
+  "github.watch_stale_minutes",
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
@@ -225,6 +227,8 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "web.bridge_listen",
   "agents.issue_writes",
   "agents.issue_writes_per_hour",
+  // Issue 1127: a longer wait keeps a repo made public treated as private.
+  "agents.issue_writes_visibility_minutes",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",

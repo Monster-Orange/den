@@ -423,6 +423,10 @@ import {
   viewAgent,
 } from "./request-guard.js";
 import {
+  fixtureGrantAccess,
+  testInstallsListAccess,
+} from "./test-installs-access.js";
+import {
   clientRequestId,
   createRequestLedger,
   ledgerGate,
@@ -606,7 +610,15 @@ import {
   type ReportRouteDeps,
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
-import { publicRepoVisibility } from "./report-visibility.js";
+import { publicRepoVisibility, repoVisibilities } from "./report-visibility.js";
+import { orgMask, orgPatterns } from "../../shared/org-names.js";
+import {
+  filedTextHits,
+  filedTextRefusal,
+  needsFiledCheck,
+  type FiledHit,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -1429,6 +1441,7 @@ import {
 import {
   IssueWriteLimit,
   issueWriteSettings,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
 import {
@@ -1561,6 +1574,11 @@ import {
   checkProjectMode,
   checkProjectMcpAdd,
   runProjectMcpAdd,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  undoEventFeed,
   checkProjectMcpRemove,
   runProjectMcpRemove,
   checkProjectMcpUpdate,
@@ -2626,6 +2644,72 @@ const issueWriteLimit = new IssueWriteLimit();
  * project's GitHub repos (the catalog's gh, else the project's org), the
  * settings from user.yml, pr_close's gh call path (runGh), and the audit.
  */
+/**
+ * Issue 1127: a repo's visibility (null: not known) no older than
+ * `maxAgeMs`, through the cache Report uses (feedback.visibility_timeout_
+ * seconds and _retry_seconds).
+ */
+async function repoVisibilityFor(
+  repo: string,
+  maxAgeMs: number,
+): Promise<"public" | "private" | "internal" | null> {
+  const fb = reportRouteDeps().settings();
+  const vis = await repoVisibilities(getStateDir(), [repo], {
+    gh: (a) => runGh(a),
+    anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    ttlMs: maxAgeMs,
+    timeoutMs: fb.visibilityTimeoutSeconds * 1000,
+    retryMs: fb.visibilityRetrySeconds * 1000,
+  });
+  return vis[repo] ?? null;
+}
+
+/**
+ * Issue 1127: Report's listed-names check, as issue_write's: the listed
+ * names, the destination's visibility (agents.issue_writes_visibility_
+ * minutes old at most), then the refusal or null. A list file named but
+ * missing refuses: the check fails closed.
+ */
+async function reportWordsCheck(
+  repo: string,
+  texts: FiledText[],
+): Promise<{ error: string; hits: FiledHit[] } | null> {
+  let patterns: RegExp[];
+  try {
+    patterns = orgPatterns();
+  } catch {
+    // Fixed words: the error can quote a line of the list.
+    return {
+      error: "the names list can't be read; nothing was sent",
+      hits: [],
+    };
+  }
+  if (!patterns.length) return null;
+  let minutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  try {
+    minutes = issueWriteSettings(
+      () => readUserConfig(),
+      () => readDenConfig(),
+    ).visibilityMinutes;
+  } catch {
+    /* a wrong agents.* value: the default */
+  }
+  const vis = await repoVisibilityFor(repo, minutes * 60_000);
+  if (!needsFiledCheck(vis)) return null;
+  const hits = filedTextHits(texts, patterns, repo);
+  return hits.length ? { error: filedTextRefusal(hits), hits } : null;
+}
+
+/** Issue 1127: Den's own report sections, with listed names masked. */
+function reportMaskListed(text: string): string {
+  try {
+    return orgMask(text, orgPatterns());
+  } catch {
+    // An unreadable list: the person's check refuses the send anyway.
+    return text;
+  }
+}
+
 function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
   return {
     agentOf: (id) => {
@@ -2669,6 +2753,11 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    // Issue 1127: the listed names, and the repo's visibility through the
+    // cache Report uses (feedback.visibility_timeout_seconds and
+    // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
+    namePatterns: () => orgPatterns(),
+    visibility: repoVisibilityFor,
     audit: (e) => {
       try {
         recordAction(
@@ -4393,25 +4482,22 @@ async function handleTestInstallsListRoute(
     return sendJson(res, { ok: false, error: "use GET" }, 405);
   }
   const g = checkRequest(req, GUARD, product().cli, product().title);
-  const p = g.ok ? g.principal : undefined;
-  const person =
-    !!p &&
-    (p.kind === "person" || p.kind === "person-browser") &&
-    !("testPerson" in p && p.testPerson) &&
-    !("fixture" in p && p.fixture) &&
-    !notAPersonOf(req);
   // Nobody signed in: 401, as other reads that need a sign-in answer. An
-  // agent, a fixture or a test person: 403.
-  if (!person)
+  // agent, a fixture or a test person: 403 (test-installs-access.ts).
+  const access = testInstallsListAccess(
+    g.ok ? g.principal : undefined,
+    notAPersonOf(req),
+  );
+  if (!access.ok)
     return sendJson(
       res,
       {
         ok: false,
-        code: p ? "person_only" : "signin_required",
+        code: access.code,
         error:
           "Only the signed-in person sees the test installs on this computer.",
       },
-      p ? 403 : 401,
+      access.status,
     );
   // Issue 816 review: probed and still waiting, so a forged announcement of
   // a real install never offers Set up.
@@ -4451,17 +4537,17 @@ async function handleFixtureGrantRoute(
     );
     return sendJson(res, { ok: false, code, error }, status);
   };
-  const person =
-    g.ok &&
-    g.principal?.kind === "person" &&
-    !g.principal.testPerson &&
-    !notAPersonOf(req);
-  if (person && g.beyond)
+  const access = fixtureGrantAccess(
+    g.ok ? g.principal : undefined,
+    notAPersonOf(req),
+    g.ok && !!g.beyond,
+  );
+  if (!access.ok && access.code === "not_this_machine")
     return refuse(
       "not_this_machine",
       `The ${FIXTURE_LABEL} is made from a grant only on this computer; never through the edge or the network.`,
     );
-  if (!person)
+  if (!access.ok)
     return refuse(
       "person_only",
       `Only your own ${product().title}, at your Allow, makes the ${FIXTURE_LABEL} from a grant: an agent or the ${FIXTURE_LABEL} itself can't.`,
@@ -4766,6 +4852,9 @@ function reportRouteDeps(): ReportRouteDeps {
       ),
     stateDir: () => getStateDir(),
     gh: runGh,
+    // Issue 1127: listed names, before a report is filed.
+    wordsCheck: reportWordsCheck,
+    maskListed: reportMaskListed,
     names: () => {
       const w = readWebUrl();
       let webHost: string | undefined;
@@ -5253,6 +5342,15 @@ function approvalDeps(): ApprovalDeps {
     projectMcpUpdate: {
       check: (a, who) => checkProjectMcpUpdate(agentWebDeps(), a, who),
       run: (a) => runProjectMcpUpdate(agentWebDeps(), a),
+    },
+    // Issue 1480: an agent asks to add or remove an app's event feed.
+    eventFeedAdd: {
+      check: (a, who) => checkEventFeedAdd(agentWebDeps(), a, who),
+      run: (a, asked) => runEventFeedAdd(agentWebDeps(), a, asked),
+    },
+    eventFeedRemove: {
+      check: (a, who) => checkEventFeedRemove(agentWebDeps(), a, who),
+      run: (a) => runEventFeedRemove(agentWebDeps(), a),
     },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
@@ -6289,6 +6387,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         watch_max_interval_seconds: g.maxIntervalSeconds,
         api_budget_floor: g.budgetFloor,
         watches_max: g.watchesMax,
+        watch_stale_minutes: g.staleMinutes,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -6304,7 +6403,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     agent_issue_writes: (() => {
       try {
         const c = issueWriteSettings(() => user, readDenConfig);
-        return { roles: c.roles, per_hour: c.perHour };
+        return {
+          roles: c.roles,
+          per_hour: c.perHour,
+          visibility_minutes: c.visibilityMinutes,
+        };
       } catch {
         return null;
       }
@@ -10222,7 +10325,10 @@ async function handleRequest(
     if (notAPersonOf(req) || fixturePersonOf(req))
       return sendJson(
         res,
-        { ok: false, error: "only a person can undo a setting change" },
+        {
+          ok: false,
+          error: "only a person can undo a change made without asking",
+        },
         403,
       );
     let id = "";
@@ -10238,6 +10344,18 @@ async function handleRequest(
       return send400(res, "approval: the held write's id");
     const a = approvalDeps().queue.get(id);
     if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    // Issue 1480: an event feed added or removed without asking.
+    if (a.action.startsWith("project_event_feed_")) {
+      const u = undoEventFeed(agentWebDeps(), a);
+      if (!u.ok) return sendJson(res, { ok: false, error: u.error }, 409);
+      auditConfig({ verb: "config-write", detail: `undo: ${u.note}` });
+      try {
+        notificationDeps().store.dropUndo(id);
+      } catch {
+        /* the bell is best effort: the change is undone */
+      }
+      return sendJson(res, { ok: true, note: u.note });
+    }
     const r = undoSettingChange(
       settingChangeDeps({
         userFile: userConfigPath(),
