@@ -2285,7 +2285,10 @@
     },
     {
       "when": ["scripts/ci-force-all.mjs"],
-      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/ci-force-all.mjs"
     },
     {
