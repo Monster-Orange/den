@@ -127,7 +127,7 @@ describe("the test operator's acts: a closed list", () => {
     // Issue 1407: gate/1407 restarts the bed's own agents for its tools.
     ["POST", "/api/workspaces/notes/agents/a1/restart", "agent-restart"],
     ["POST", "/api/agents/restart-stale", "agents-restart-stale"],
-    // Issue 1414: Allow and Undo of the bed's own agents' held writes.
+    // Allow and Undo of the bed's own agents' held writes.
     ["POST", "/api/approvals/AbCdEfGh_-123456/decide", "approval-allow"],
     ["POST", "/api/settings/undo", "setting-undo"],
   ])("%s %s is %s", (m, p, act) => {
@@ -167,7 +167,7 @@ describe("the test operator's acts: a closed list", () => {
     ["POST", "/api/workspaces/a/b/agents/a1/say"],
     ["GET", "/api/workspaces/notes/agents/a1/say"],
     ["POST", "/api/agents/runtimes/claude/path/x"],
-    // Issue 1414's lookalikes: only a held write's own id, POST only.
+    // Their lookalikes: only a held write's own id, POST only.
     ["GET", "/api/approvals/AbCdEfGh_-123456/decide"],
     ["POST", "/api/approvals/AbCdEfGh_-123456/decide/x"],
     ["POST", "/api/approvals/AbCdEfGh_-1234567/decide"],
@@ -199,7 +199,7 @@ describe("the per-request rule", () => {
     );
   });
 
-  // Issue 1414: Allow and Undo are loopback-only, unforwarded, on an
+  // Allow and Undo are loopback-only, unforwarded, on an
   // operator install (a copied creation record never makes one: see "the
   // creation record" above). Never through the edge, its own included.
   describe.each([

@@ -5623,7 +5623,7 @@ function approvalDeps(): ApprovalDeps {
     changed: syncHeldWrites,
     // Issue 1016: an agent's held write carries its full Allow link.
     webUrl: () => peopleWebUrl(),
-    // Issue 1414: what the test operator may Allow.
+    // What the test operator may Allow.
     testBedAsker: (actor) => testBedAsker(getStateDir(), actor),
   };
   return approvals;
@@ -10461,7 +10461,7 @@ async function handleRequest(
 
   // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
   // without asking. The person's only: never an agent, never the fixture.
-  // Issue 1414: and the test operator's, for a change one of the bed's own
+  // And the test operator's, for a change one of the bed's own
   // agents made (the request gate let it through as the act).
   if (pathname === "/api/settings/undo" && req.method === "POST") {
     const opUndo = operatorActOf(req) === "setting-undo";

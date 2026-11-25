@@ -315,20 +315,20 @@ export function testBedOnly<T extends { id: string; workspace: string }>(
 }
 
 /**
- * Issue 1414 (Builder 2, Reviewer C): the held writes the test operator
+ * The held writes the test operator
  * may Allow, and no others. A live check proves Allow and Undo with a
  * setting change (gate 1391's rows). Others reach past the test install
  * (GitHub, the machine-wide gate folder, the shared engine, the host), and
  * the agent that asks and the operator that Allows belong to one run: an
- * agent Allowing its own held writes, which issue 810 forbids. Adding one
+ * agent Allowing its own held writes, which the fixture person never may. Adding one
  * needs a live check that names it and a ruling.
  */
 export const OPERATOR_HELD_ACTIONS: readonly string[] = ["setting_change"];
 
 /**
- * Issue 1414: whether `actor` (a held write's asker) is one of the bed's
+ * Whether `actor` (a held write's asker) is one of the bed's
  * own agents: an agent whose record Den marked testBed when it started it
- * on the test-person path (issue 943). Anything else, a record that can't
+ * on the test-person path. Anything else, a record that can't
  * be read included: not the bed's.
  */
 export function testBedAsker(stateDir: string, actor: string): boolean {

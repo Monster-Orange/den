@@ -633,7 +633,7 @@ export async function handleApprovalRoutes(
      */
     webUrl?: () => string | null;
     /**
-     * Issue 1414: whether a held write's asker (`agent:<id>`) is one of a
+     * Whether a held write's asker (`agent:<id>`) is one of a
      * test bed's own agents (test-operator.ts testBedAsker). Only then may
      * the test operator Allow it. Not given: the operator Allows nothing.
      */
@@ -751,7 +751,7 @@ export async function handleApprovalRoutes(
   }
 
   /**
-   * Issue 1414: whether the test operator's Allow may run held write `a`:
+   * Whether the test operator's Allow may run held write `a`:
    * its check, run again now (as the run does), passes, says nothing
    * person-only, and is not critical on this install's mode. Anything that
    * throws: no.
@@ -773,7 +773,7 @@ export async function handleApprovalRoutes(
 
   const dec = DECIDE_PATH.exec(pathname);
   if (dec && method === "POST") {
-    // Issue 1414: the test operator's Allow (the request gate let this
+    // The test operator's Allow (the request gate let this
     // fixture request through as the act: an operator install, loopback,
     // unforwarded). Allow only, and only a held write one of the bed's own
     // agents asked for. Anything else: refused, as the fixture person is.

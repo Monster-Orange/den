@@ -442,8 +442,8 @@ describe("what the test operator still can't do here", () => {
 });
 
 /**
- * Issue 1414: the test operator may Allow and Undo a held write that one
- * of the bed's own agents asked for (testBed, issue 943), on this test
+ * The test operator may Allow and Undo a held write that one
+ * of the bed's own agents asked for (its record's testBed), on this test
  * install, on loopback. Another agent's: refused. The trail names the test
  * operator. One started agent: unmarked first, then marked as Den marks
  * the bed's (the record's testBed).

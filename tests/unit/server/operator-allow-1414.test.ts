@@ -1,5 +1,5 @@
 /**
- * Issue 1414: on a test install, the test operator may Allow a held write
+ * On a test install, the test operator may Allow a held write
  * that one of the bed's own agents asked for (AgentRecord.testBed, issue
  * 943), and nothing else: never another agent's, never a deny, never a
  * fixture request the gate didn't let through as the act. The trail names
