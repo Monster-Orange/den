@@ -10,6 +10,10 @@
  *   unknown  Den can't tell when its turn ends, with Restart now
  *   done, failed: after Restart now
  *
+ * Part 2: the status is live. followRestarts reads the server's
+ * (GET /api/agents/restart-status) while rows remain: restarted (then
+ * gone), a wait that ran out (timedOut, with Restart now), failed.
+ *
  * Restart now is the agent route's when: now (a person's only), busy in
  * its own button. Two or more waiting on the person get Restart all now.
  */
@@ -22,9 +26,15 @@ const esc = (s) =>
       ],
   );
 
-/** Whether entry `a` waits on the person (job, unknown). */
+/**
+ * Whether entry `a` waits on the person: a job, a turn Den can't read, a
+ * wait that ran out, or a restart that failed.
+ */
 export const waitsOnPerson = (a) =>
-  a?.state === "job" || a?.state === "unknown";
+  a?.state === "job" ||
+  a?.state === "unknown" ||
+  a?.state === "timedOut" ||
+  a?.state === "failed";
 
 /** Entry `a`'s line, in the page's language. */
 export function restartLine(a, t) {
@@ -41,7 +51,10 @@ export function restartLine(a, t) {
     case "turn":
       return t("rs.turn", { id });
     case "done":
+    case "restarted":
       return t("rs.done", { id });
+    case "timedOut":
+      return t("rs.timedOut", { id, min: Number(a.minutes) || 0 });
     case "failed":
       return t("rs.failed", { id });
     default:
@@ -158,4 +171,58 @@ export function wireRestartNow(root, o) {
     }
     removeTo(all, status());
   });
+}
+
+const same = (a, b) =>
+  String(a?.id) === String(b?.id) &&
+  String(a?.workspace) === String(b?.workspace);
+
+/**
+ * The rows a page shows (`shown`, this page's run) as
+ * the server has them now (`live`). An agent the server doesn't list has
+ * cleared; the server's other agents are another run's.
+ */
+export function mergeLive(shown, live) {
+  const now = Array.isArray(live) ? live : [];
+  return (Array.isArray(shown) ? shown : [])
+    .map((a) => now.find((b) => same(a, b)))
+    .filter(Boolean);
+}
+
+/**
+ * Read the live status every `everyMs` (2 s) and hand
+ * each list to `onRows`, until it is empty (then `onEnd`) or `stop()`. A
+ * read that fails is tried again next time.
+ */
+export function followRestarts(o) {
+  let stopped = false;
+  let timer = null;
+  const every = o.everyMs ?? 2000;
+  const tick = async () => {
+    if (stopped) return;
+    let rows = null;
+    try {
+      const r = await o.api("GET", "/api/agents/restart-status");
+      rows = Array.isArray(r?.agents) ? r.agents : [];
+    } catch {
+      rows = null;
+    }
+    if (stopped) return;
+    if (rows) {
+      o.onRows(rows);
+      if (!rows.length) {
+        stopped = true;
+        o.onEnd?.();
+        return;
+      }
+    }
+    timer = setTimeout(tick, every);
+  };
+  timer = setTimeout(tick, every);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
 }

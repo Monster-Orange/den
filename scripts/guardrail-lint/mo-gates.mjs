@@ -12,6 +12,11 @@
  * A repo's .guardrail-lint.json may set "since": the commit where the rules landed there. With --base, lines
  * already there at that commit never count, even when the base is older (a queue branch judged against main).
  * It is read from the base's tree, so a change can't move it. In a PR's merge commit, pass --base HEAD^1.
+ * A ratchet rule counts lines across the change: its module's count(src, path) lists them, summed over the files
+ * the change touched at the base (from the newer of the merge base and "since") and at HEAD. It fails when the sum
+ * rises. A new file counts from 0, so a block moved into one still passes. A deleted file's count comes off. A file with a
+ * side that can't be read (binary, over 2 MB) is left out. A rule marked opt_in runs only when
+ * the base's .guardrail-lint.json lists its id in "on". Ratchets judge only with --base.
  * Exit 0 clean, 1 on a hit, 2 on a usage, config or git error. Plain Node, no dependencies.
  */
 import { execFileSync } from "node:child_process";
@@ -50,6 +55,7 @@ export async function loadRules(file = join(HERE, "rules.json")) {
     if (r.kind === "pr-text") rule.re = new RegExp(r.pattern, "gi");
     if (r.unless_file) rule.unless = new RegExp(r.unless_file);
     if (r.kind === "module") rule.check = (await import(pathToFileURL(join(HERE, r.module)).href)).check;
+    if (r.kind === "ratchet") rule.count = (await import(pathToFileURL(join(HERE, r.module)).href)).count;
     out.push(rule);
   }
   return { rules: out, excluded: (p) => ex.some((e) => e.test(p)) };
@@ -89,6 +95,8 @@ export function baseConfig(root, base) {
   let cfg;
   try { cfg = JSON.parse(text); } catch (e) { throw new Error(`.guardrail-lint.json: ${e.message}`); }
   if (cfg.since !== undefined && !SHA.test(String(cfg.since))) throw new Error(".guardrail-lint.json: since must be one full 40-hex commit SHA");
+  if (cfg.on !== undefined && !(Array.isArray(cfg.on) && cfg.on.every((id) => typeof id === "string")))
+    throw new Error(".guardrail-lint.json: on must be a list of rule ids");
   return cfg;
 }
 
@@ -127,6 +135,58 @@ export function addedLines(root, base) {
     else for (const n of [...set]) if (!keep.has(n)) set.delete(n);
   }
   return files;
+}
+
+/**
+ * A ratchet rule over a change's touched files, [{ path, base, head }] with null for a side the file is missing
+ * from: one hit when the count across them rose. A file with no base side (a new file) counts from 0.
+ */
+export function ratchetCompare(rule, files) {
+  let was = 0;
+  let now = 0;
+  const rows = [];
+  for (const f of files) {
+    if (!rule.globs.some((g) => g.test(f.path))) continue;
+    const b = f.base === null ? 0 : rule.count(f.base, f.path).length;
+    const lines = f.head === null ? [] : rule.count(f.head, f.path);
+    was += b;
+    now += lines.length;
+    if (lines.length !== b) rows.push({ path: f.path, d: lines.length - b, lines });
+  }
+  if (now <= was) return [];
+  rows.sort((x, y) => y.d - x.d);
+  const top = rows[0];
+  const each = rows.map((r) => `${r.path} ${r.d > 0 ? "+" : ""}${r.d}`).join(", ");
+  return [{ rule, path: top.path, line: top.lines[0] ?? 0, text: `${was} -> ${now} across the files this change touched (${each})` }];
+}
+
+/** The touched files of a change, both sides, for the ratchet rules: [{ path, base, head }]. */
+export function changedPairs(root, base, excluded = () => false) {
+  const git = (...a) => execFileSync("git", ["-C", root, ...a], { encoding: "utf-8", maxBuffer: 256 << 20 });
+  const is = (a, b) => { try { git("merge-base", "--is-ancestor", a, b); return true; } catch { return false; } };
+  const mb = git("merge-base", base, "HEAD").trim();
+  const cfg = baseConfig(root, git("rev-parse", "--verify", `${base}^{commit}`).trim());
+  const from = cfg.since && !is(cfg.since, mb) && is(cfg.since, "HEAD") ? cfg.since : mb;
+  const show = (rev, p) => {
+    let src;
+    try { src = execFileSync("git", ["-C", root, "show", `${rev}:${p}`], { encoding: "utf-8", maxBuffer: 256 << 20, stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; }
+    return src.length > 2_000_000 || src.includes("\0") ? null : src;
+  };
+  const parts = git("diff", "--name-status", "-z", "-M", "--no-ext-diff", from, "HEAD", "--").split("\0");
+  const out = [];
+  for (let i = 0; i < parts.length - 1; ) {
+    const st = parts[i++];
+    const old = parts[i++];
+    const cur = /^[RC]/.test(st) ? parts[i++] : old;
+    if (excluded(cur) || excluded(old)) continue;
+    const baseSide = st[0] === "A" || st[0] === "C" ? null : show(from, old);
+    const headSide = st[0] === "D" ? null : show("HEAD", cur);
+    // A side that can't be read (binary, too big) skips the file: never counted as deleted, so it can't pay
+    // for comments added elsewhere.
+    if ((st[0] !== "A" && st[0] !== "C" && baseSide === null) || (st[0] !== "D" && headSide === null)) continue;
+    out.push({ path: cur, base: baseSide, head: headSide });
+  }
+  return { pairs: out, on: cfg.on ?? [] };
 }
 
 export const escData = (v) => String(v).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
@@ -192,6 +252,15 @@ async function main(argv) {
       } catch { continue; }
       if (src.includes("\0")) continue;
       hits.push(...lintFile(rules, p, src, added));
+    }
+    const ratchets = rules.filter((r) => r.kind === "ratchet");
+    if (base && ratchets.length) {
+      let ch;
+      try { ch = changedPairs(root, base, excluded); } catch (e) {
+        console.error(`guardrail lint: ${/guardrail-lint\.json/.test(e.message) ? e.message : `git failed (${String(e.message).split("\n")[0]})`}`);
+        return 2;
+      }
+      for (const r of ratchets) if (!r.opt_in || ch.on.includes(r.id)) hits.push(...ratchetCompare(r, ch.pairs));
     }
   } else {
     console.error("usage: mo-gates.mjs --base <ref> | --all | --pr-text  [--root dir] [--json]");
