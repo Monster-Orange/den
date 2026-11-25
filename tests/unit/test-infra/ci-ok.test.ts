@@ -14,10 +14,18 @@ import * as yaml from "yaml";
 const ROOT = process.cwd();
 const SCRIPT = path.join(ROOT, "scripts", "ci-ok.mjs");
 
+interface Step {
+  uses?: string;
+  run?: string;
+  env?: Record<string, string>;
+  with?: Record<string, string | number | boolean>;
+  "timeout-minutes"?: number;
+}
 interface Job {
   needs?: string | string[];
   if?: string;
-  steps?: { run?: string; env?: Record<string, string> }[];
+  steps?: Step[];
+  "timeout-minutes"?: number;
 }
 const ci = yaml.parse(
   fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf-8"),
@@ -115,10 +123,11 @@ describe("issue 843: ci-ok, the merge queue's one required check", () => {
       String(s.uses ?? "").startsWith("actions/checkout@"),
     );
     expect(co).toBeDefined();
+    if (!co) return;
     // The checkout has its own limit, under the job's, so a stuck one
     // fails as itself and the job's own step still has time to run.
     expect(co["timeout-minutes"]).toBeGreaterThan(0);
-    expect(co["timeout-minutes"]).toBeLessThan(j["timeout-minutes"]);
+    expect(co["timeout-minutes"]).toBeLessThan(j["timeout-minutes"] ?? 0);
     // One commit, one file: the checkout stays as small as it can be.
     expect(co.with?.["fetch-depth"]).toBe(1);
     expect(co.with?.["sparse-checkout"]).toBe("scripts/ci-ok.mjs");
