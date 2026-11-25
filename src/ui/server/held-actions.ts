@@ -49,8 +49,7 @@
  *                     (agents/sandbox-set.ts): only agents.<id>.sandbox in
  *                     user.yml; a running one restarts after its turn on
  *                     the same conversation. Off is the person's own Allow
- *   agent_restart_self: an agent asks to be restarted at its
- *                     next idle, same conversation (agents/restart-self.ts);
+ *   agent_restart_self an agent's ask to be restarted at its next idle;
  *                     two or more waiting share one bell card and Allow
  *   setting_change    issue 1371: change one setting in user.yml
  *   gate_settings_set issue 1395: change the gate's slot settings
@@ -263,7 +262,6 @@ export interface HeldActionDeps {
   agentSandbox?: HeldOp;
   /** Issue 1371: setting_change's check and write (cli/setting-change.ts). */
   settingChange?: HeldOp;
-  /** Agent_restart_self (agents/restart-self.ts). */
   agentRestartSelf?: HeldOp;
   /** Issue 1395: gate_settings_set's check and write (gates/settings-set.ts). */
   gateSettings?: HeldOp;

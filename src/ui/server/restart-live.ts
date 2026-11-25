@@ -178,7 +178,6 @@ export class RestartLive {
   }
 }
 
-/** This server's live restart status (one per server; its bell rows). */
 let SHARED: RestartLive | null = null;
 export async function restartLive(): Promise<RestartLive> {
   if (SHARED) return SHARED;
@@ -186,19 +185,11 @@ export async function restartLive(): Promise<RestartLive> {
   try {
     store = (await import("./notification-service.js")).notificationDeps()
       .store;
-  } catch {
-    /* no bell here: the page still has it */
-  }
+  } catch {}
   SHARED ??= new RestartLive({ store });
   return SHARED;
 }
 
-/**
- * restartMany, followed live: each agent's plan goes into the live status,
- * and each outcome after it (one that comes before the plan is in, held
- * until it is). `o.onDone` hears each too (the audit). The
- * bell's grouped Allow restarts this way, as restart-stale does.
- */
 export async function restartFollowed(
   d: AgentsResolved,
   agents: readonly { id: string; workspace: string }[],

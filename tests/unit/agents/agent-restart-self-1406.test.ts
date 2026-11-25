@@ -1,17 +1,3 @@
-/**
- * An agent's ask to be restarted is a structured
- * held write, agent_restart_self, not a free-text question, so the bell
- * can group several into one card.
- *
- * - An agent asks for itself only; a person (or Den itself) names the agent.
- * - The Review says it restarts at the agent's next idle moment, on the
- *   same conversation, never cutting a turn, and why (new tools, an update).
- * - A stopped or unknown agent is refused before anything waits.
- * - On Allow it asks for the restart after the agent's turn (not waited for).
- * - It is routine: the approval policy decides, never personOnly.
- *
- * Injected records; invented names only.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   AGENT_RESTART_SELF_ACTION,

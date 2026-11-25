@@ -5550,7 +5550,6 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
-    // An agent's ask to be restarted when idle.
     agentRestartSelf: agentRestartSelfHeldOp(),
     settingChange: settingChangeHeldOp(),
     gateSettings: gateSettingsHeldOp(),
@@ -5782,16 +5781,9 @@ function agentSandboxHeldOp() {
   };
 }
 
-/**
- * Agent_restart_self on this install: the agent's record, and
- * Restart at its next idle (the conversation kept).
- */
 function agentRestartSelfHeldOp() {
   const deps = (): RestartSelfDeps => ({
     record: (id) => agentRecord(agentWebDeps(), id),
-    // Each Allowed agent restarts the way restart-stale
-    // does, checked first and followed live (the Agents page, and the bell
-    // when a job, a wait that ran out or a failure stops it).
     restart: (id, project) =>
       restartFollowed(agentWebDeps(), [{ id, workspace: project }], {
         onDone: (o) => {

@@ -1,25 +1,9 @@
-/**
- * Agent_restart_self, an agent's ask to be restarted, as a
- * held write rather than a free-text question. Being structured, the bell
- * groups two or more of them into one "Restart N agents when idle" card
- * with one Allow (held-bell.ts).
- *
- * An agent asks for itself only (its token says who it is). A person, or
- * Den itself (after an update changes Den's own tools), names the agent.
- * On Allow the agent restarts at its next idle moment, on the same
- * conversation (agent-ops restartAgent, after-turn): never mid-turn.
- *
- * It is routine (approval-policy.ts): a restart keeps the conversation and
- * widens nothing. It asks by default, so a strict install sees the card; a
- * personal install runs it at once.
- */
 import { line, reviewLines, type DetailKey } from "../review-lines.js";
 import { plainText } from "./sandbox-set.js";
 
 export const AGENT_RESTART_SELF_ACTION = "agent_restart_self";
 export const RESTART_REASONS = ["tools", "update", "other"] as const;
 export type RestartReason = (typeof RESTART_REASONS)[number];
-/** The longest `why` an "other" ask may give (one line). */
 export const RESTART_WHY_MAX = 300;
 
 export interface RestartSelfArgs {
@@ -37,9 +21,7 @@ export interface RestartSelfAgent {
 }
 
 export interface RestartSelfDeps {
-  /** The agent's record; throws when there is none. */
   record: (id: string) => RestartSelfAgent;
-  /** Restarts the agent at its next idle, same conversation. */
   restart: (id: string, project: string) => Promise<unknown>;
 }
 
@@ -133,10 +115,6 @@ export function checkAgentRestartSelf(
   }
 }
 
-/**
- * On Allow: checks again, then asks for the restart after the agent's turn
- * (not waited for: the turn may be the one that asked).
- */
 export async function runAgentRestartSelf(
   d: RestartSelfDeps,
   raw: Record<string, unknown>,

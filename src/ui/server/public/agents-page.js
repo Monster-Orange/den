@@ -1261,7 +1261,6 @@ function paintList() {
   if (PAGE !== "terminal") {
     const bar = toolsBarHtml(inView);
     if (bar) notes.push(bar);
-    // Restart all idle agents, for two or more running.
     const running = runningIn(inView);
     const idle = restartIdleBarHtml(
       running.length,
@@ -2580,15 +2579,10 @@ function followAgentRestarts() {
   });
 }
 
-/** The rows that are running agents (not shells, not stopped). */
 function runningIn(rows) {
   return rows.filter((r) => r.agent && !inStopped(r));
 }
 
-/**
- * Restart all idle agents (or project `ws`'s), busy in its
- * button; then how many restart now and which wait. Followed live.
- */
 async function restartIdle(button, ws) {
   let plan = [];
   await window.denShell.busyAction(

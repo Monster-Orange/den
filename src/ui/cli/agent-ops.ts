@@ -2047,10 +2047,6 @@ export async function staleAgents(
   return out;
 }
 
-/**
- * The agents with a live session (in project `ws`, or every
- * project), for "Restart all idle agents".
- */
 export async function runningAgents(
   d: AgentsResolved,
   ws?: string,

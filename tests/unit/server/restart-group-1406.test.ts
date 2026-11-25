@@ -1,11 +1,3 @@
-/**
- * When two or more agents ask to be restarted
- * (agent_restart_self), the bell groups those asks into one card,
- * "Restart N agents when idle", listing them, with one Allow. Each row can
- * be taken out before Allow. One ask alone stays its own Allow row.
- *
- * Invented names only.
- */
 import {
   afterAll,
   afterEach,
@@ -75,7 +67,6 @@ const A = "aaaaaaaaaaaaaaaa";
 const B = "bbbbbbbbbbbbbbbb";
 const C = "cccccccccccccccc";
 const three = [ask(A, "ana", 1), ask(B, "bo", 2), ask(C, "cy", 3)];
-/** The panel's Needs you section ("" when the panel is empty). */
 const needsOf = (p: object): string =>
   "sections" in p
     ? String((p as { sections: { needs: string } }).sections.needs)
@@ -131,7 +122,6 @@ describe("issue 1406: the bell groups restart asks", () => {
       expect(needs).toContain(`data-bell="restart-out" data-ap="${id}"`);
     expect(needs.match(/data-bell="allow-group"/g)).toHaveLength(1);
     expect(needs).toContain(`data-ids="${A},${B},${C}"`);
-    // Not three separate Allow rows.
     expect(needs).not.toContain(`data-bell="allow" data-ap="${A}"`);
   });
 

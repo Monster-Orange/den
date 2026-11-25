@@ -1,11 +1,3 @@
-/**
- * The Agents page's "Restart all idle agents" (and a
- * project's "Restart this project's idle agents"), with the count, busy in
- * the button, and after it what happened: how many restart now, and the
- * agents that wait (for their turn, a job, or the person).
- *
- * Invented names only.
- */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";

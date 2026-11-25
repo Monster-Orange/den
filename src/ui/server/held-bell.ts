@@ -41,14 +41,9 @@ export function heldLink(
 const isHeld = (n: Notification) =>
   n.kind === "decision" && n.subject.startsWith(HELD_SUBJECT_PREFIX);
 
-/**
- * Two or more agents asking to be restarted (agent_restart_self)
- * share one bell item, "Restart N agents when idle", and one Allow card.
- */
 export const RESTART_GROUP_SUBJECT = `${HELD_SUBJECT_PREFIX}restart-group`;
 export const RESTART_SELF = "agent_restart_self";
 
-/** The restart asks that share one card (none under two). */
 export function restartGroupOf(pending: readonly Approval[]): Approval[] {
   const asks = pending
     .filter(
@@ -92,8 +87,6 @@ export function syncHeldBell(
   );
   let added = 0;
   if (grouped.length) {
-    // One item for them all; its words follow who waits (add updates an
-    // unread item of the same subject in place).
     const names = grouped.map(nameOf).join(", ");
     const text = `Restart ${grouped.length} agents when idle: ${names}`;
     const now = held.find((n) => n.subject === RESTART_GROUP_SUBJECT);

@@ -227,21 +227,12 @@ export function followRestarts(o) {
   };
 }
 
-/**
- * "Restart all idle agents (n)" above the list, when two or more agents
- * run across two or more projects (in one, that project's own button does
- * the same); else "".
- */
 export function restartIdleBarHtml(n, projects, t) {
   return n >= 2 && projects >= 2
     ? `<div class="agnote" data-note="restart-idle"><button type="button" class="den-btn sm" data-act="restart-idle">${esc(t("ag.ri.all", { n }))}</button></div>`
     : "";
 }
 
-/**
- * A project's "Restart idle (n)" in its header, for two or more running
- * there; its full words are its name and tip.
- */
 export function restartIdleWsHtml(ws, n, t) {
   const full = esc(t("ag.ri.ws", { n }));
   return n >= 2
@@ -249,10 +240,6 @@ export function restartIdleWsHtml(ws, n, t) {
     : "";
 }
 
-/**
- * What Restart all idle agents did: how many restart now, and
- * the agents that wait (their turn, a job, or the person).
- */
 export function restartIdleSaid(plan, t) {
   const list = Array.isArray(plan) ? plan : [];
   if (!list.length) return t("ag.ri.none");
