@@ -233,7 +233,7 @@ describe("the Agents tab", () => {
     const p = await page("/agents");
     // One list across projects; each row names its project.
     expect(
-      await p.$$eval("#agl [data-band] button[data-id][data-ws]", (bs) => [
+      await p.$$eval("#agl div[data-band] button[data-id][data-ws]", (bs) => [
         ...new Set(bs.map((b) => (b as HTMLElement).dataset.ws)),
       ]),
     ).toEqual(["north"]);

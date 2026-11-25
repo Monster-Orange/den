@@ -154,7 +154,7 @@ async function open(path: string, width = 1280, by?: string): Promise<Page> {
   p.on("pageerror", (e) => errors.push(e.message));
   await signInPage(p, s!.stateDir, s!.base, path);
   await p.waitForSelector(
-    by === "project" ? "#agl [role='group'][data-ws]" : "#agl [data-band]",
+    by === "project" ? "#agl [role='group'][data-ws]" : "#agl div[data-band]",
     { timeout: 20_000 },
   );
   return p;
@@ -165,7 +165,7 @@ async function open(path: string, width = 1280, by?: string): Promise<Page> {
  * test's agents (an install's own server agent may be listed too).
  */
 async function bands(p: Page): Promise<[string, string[]][]> {
-  const all = await p.$$eval("#agl [data-band]", (bs) =>
+  const all = await p.$$eval("#agl div[data-band]", (bs) =>
     bs.map(
       (b) =>
         [
@@ -189,7 +189,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     if (skip()) return;
     const p = await open("/agents");
     await p.waitForFunction(
-      () => document.querySelectorAll("#agl [data-band]").length >= 4,
+      () => document.querySelectorAll("#agl div[data-band]").length >= 4,
       null,
       { timeout: 20_000 },
     );
@@ -201,7 +201,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     ]);
     // Each band headed by its word (its own heading id), then its count.
     expect(
-      await p.$$eval('#agl [data-band] [id^="agb-"]', (hs) =>
+      await p.$$eval('#agl div[data-band] [id^="agb-"]', (hs) =>
         hs.map((h) => h.id),
       ),
     ).toEqual(["agb-needs", "agb-done", "agb-working", "agb-idle"]);
@@ -328,7 +328,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     await p.waitForSelector("#agl [role='group'][data-ws]", {
       timeout: 20_000,
     });
-    expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    expect(await p.locator("#agl div[data-band]").count()).toBe(0);
     const need = [ag.planner, ag.builder, ag.reviewer, ag.scribe].map(
       (a) => a.sid,
     );
@@ -353,7 +353,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
       await p.getAttribute(`${sw} [data-by="project"]`, "aria-pressed"),
     ).toBe("true");
     await p.click(`${sw} [data-by="need"]`);
-    await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
+    await p.waitForSelector("#agl div[data-band]", { timeout: 20_000 });
     await p.context().close();
   }, 60_000);
 
@@ -369,7 +369,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     expect(
       await p.locator("#agl [role='group'][data-ws]").count(),
     ).toBeGreaterThan(0);
-    expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    expect(await p.locator("#agl div[data-band]").count()).toBe(0);
     // Each project group is named by its heading (a screen reader says it).
     const names = await p.$$eval("#agl [role='group'][data-ws]", (gs) =>
       gs.map(
@@ -393,7 +393,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
       "true",
     );
-    expect(await p.locator("#agl [data-band]").count()).toBeGreaterThan(0);
+    expect(await p.locator("#agl div[data-band]").count()).toBeGreaterThan(0);
     expect(await p.evaluate(() => localStorage.getItem("den-agents-by"))).toBe(
       "group",
     );
@@ -403,20 +403,20 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
   it("one project: only its agents, no project tag", async () => {
     if (skip()) return;
     const p = await open("/agents?ws=north");
-    await p.waitForSelector("#agl:not([aria-busy]) [data-band]", {
+    await p.waitForSelector("#agl:not([aria-busy]) div[data-band]", {
       timeout: 20_000,
     });
     const ids = (await bands(p)).flatMap(([, rows]) => rows);
     expect(ids).not.toContain(ag.reviewer.sid);
     expect(ids).toContain(ag.planner.sid);
-    expect(await p.locator("#agl [data-band] [data-ptag]").count()).toBe(0);
+    expect(await p.locator("#agl div[data-band] [data-ptag]").count()).toBe(0);
     await p.context().close();
   }, 60_000);
 
   it("a phone, 390 px: the same bands, each row 64 px or more, no sideways scroll", async () => {
     if (skip()) return;
     const p = await open("/agents", 390);
-    const heights = await p.$$eval("#agl [data-band] button[data-kind]", (bs) =>
+    const heights = await p.$$eval("#agl div[data-band] button[data-kind]", (bs) =>
       bs.map((b) => b.getBoundingClientRect().height),
     );
     expect(heights.length).toBeGreaterThan(0);

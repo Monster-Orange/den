@@ -158,7 +158,7 @@ const row = (id: string) => `#agl button.agr[data-id="${id}"]`;
 /** North's running agents as the list shows them (the bands), by name. */
 async function order(p: Page): Promise<string[]> {
   const ids = await p.$$eval(
-    '#agl [data-band] button.agr[data-kind="agent"]',
+    '#agl div[data-band] button.agr[data-kind="agent"]',
     (bs) => bs.map((b) => (b as HTMLElement).dataset.id ?? ""),
   );
   const by = Object.fromEntries(Object.entries(sid).map(([k, v]) => [v, k]));
@@ -261,7 +261,7 @@ describe.each(ENGINES)(
       // No order saved: the Idle band's own order, A to Z.
       await until(p, ["ada", "bo", "cy"]);
       // Every row of the band has its grip, with an accessible name.
-      expect(await p.locator("#agl [data-band] [data-grip]").count()).toBe(3);
+      expect(await p.locator("#agl div[data-band] [data-grip]").count()).toBe(3);
       expect(
         await p.locator(`${row(sid.cy)} [data-grip]`).getAttribute("aria-label"),
       ).toBeTruthy();
@@ -281,7 +281,7 @@ describe.each(ENGINES)(
       ).toBe(sid.bo);
       // The bands are still the bands: one, Idle.
       expect(
-        await p.$$eval("#agl [data-band]", (bs) =>
+        await p.$$eval("#agl div[data-band]", (bs) =>
           bs.map((b) => (b as HTMLElement).dataset.band),
         ),
       ).toEqual(["idle"]);
