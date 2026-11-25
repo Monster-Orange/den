@@ -1,14 +1,12 @@
 /**
  * The agents page's tab strip (Tabs layout) shows every open agent's tab
  * whole when they can fit: the tabs give up width (their names shorten)
- * before the strip scrolls sideways. On 0.4.89 each tab kept its own width,
- * up to 280px, so at 390 wide the strip scrolled to the tab in front and
- * cut the first one at the left edge: a strip that scrolls sideways reads
- * as the page scrolling sideways.
+ * before the strip scrolls sideways, and never below 7rem.
  *
  * Three running agents, two with long names, open in Tabs, at 1280 and 390
  * wide, in Chromium and WebKit: every tab lies wholly inside the strip, and
- * the strip doesn't scroll.
+ * the strip doesn't scroll. Four (the most open at once) at 390: each keeps
+ * 7rem, so the strip scrolls.
  *
  * Invented names only. DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
@@ -33,7 +31,9 @@ const RUNNING = [
   "releasecoordinatorforthenorthandsouthprojects1",
   "releasecoordinatorforthenorthandsouthprojects2",
   "runner-3",
+  "runner-4",
 ];
+const MIN_TAB = 7 * 16;
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -81,7 +81,11 @@ afterAll(async () => {
   });
 });
 
-async function open(engine: BrowserEngine, width: number): Promise<Page> {
+async function open(
+  engine: BrowserEngine,
+  width: number,
+  n: number,
+): Promise<Page> {
   const ctx = await browsers[engine]!.newContext({
     viewport: { width, height: 800 },
   });
@@ -90,7 +94,7 @@ async function open(engine: BrowserEngine, width: number): Promise<Page> {
     p,
     s!.stateDir,
     s!.base,
-    `/agents?open=${sids.join(",")}&layout=tabs`,
+    `/agents?open=${sids.slice(0, n).join(",")}&layout=tabs`,
   );
   // What's new, over the page on a first visit: seen.
   await p
@@ -101,7 +105,7 @@ async function open(engine: BrowserEngine, width: number): Promise<Page> {
   await p.waitForFunction(
     (n) =>
       document.querySelectorAll('[role="tablist"] [role="tab"]').length >= n,
-    RUNNING.length,
+    n,
   );
   return p;
 }
@@ -114,7 +118,7 @@ describe("the agents page's tab strip", () => {
     for (const width of WIDTHS)
       it(`${engine}, ${width} wide, three agents in Tabs: every tab whole, the strip doesn't scroll`, async () => {
         if (skip()) return;
-        const p = await open(engine, width);
+        const p = await open(engine, width, 3);
         try {
           const m = await p.evaluate(() => {
             const strip = document.querySelector('[role="tablist"]')!;
@@ -139,4 +143,27 @@ describe("the agents page's tab strip", () => {
           await p.context().close();
         }
       }, 60_000);
+
+  for (const engine of ENGINES)
+    it(`${engine}, 390 wide, four agents in Tabs: each tab keeps its minimum, the strip scrolls`, async () => {
+      if (skip()) return;
+      const p = await open(engine, 390, 4);
+      try {
+        const m = await p.evaluate(() => {
+          const strip = document.querySelector('[role="tablist"]')!;
+          const tabs = Array.from(strip.querySelectorAll('[role="tab"]'));
+          return {
+            scrolls: strip.scrollWidth > strip.clientWidth + 1,
+            widths: tabs.map(
+              (t) => (t.parentElement ?? t).getBoundingClientRect().width,
+            ),
+          };
+        });
+        expect(m.widths).toHaveLength(4);
+        expect(m.widths.filter((w) => w < MIN_TAB - 0.5)).toEqual([]);
+        expect(m.scrolls).toBe(true);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
 });
