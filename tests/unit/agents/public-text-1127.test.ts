@@ -60,7 +60,11 @@ fs.writeFileSync(
 
 function hook(
   command: string,
-  opts: { cwd?: string; env?: Record<string, string>; args?: string[] } = {},
+  opts: {
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+    args?: string[];
+  } = {},
 ) {
   const r = spawnSync(process.execPath, [HOOK, ...(opts.args ?? [])], {
     input: JSON.stringify({
@@ -69,12 +73,15 @@ function hook(
       cwd: opts.cwd ?? dir,
     }),
     encoding: "utf-8",
-    env: {
-      PATH: `${bin}:${process.env.PATH ?? ""}`,
-      HOME: dir,
-      DEN_ORG_NAMES: LIST,
-      ...opts.env,
-    },
+    // A variable given as undefined is left out (unset).
+    env: Object.fromEntries(
+      Object.entries({
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        HOME: dir,
+        DEN_ORG_NAMES: LIST,
+        ...opts.env,
+      }).filter(([, v]) => v !== undefined),
+    ) as Record<string, string>,
   });
   return { code: r.status, stderr: r.stderr };
 }
@@ -151,6 +158,33 @@ describe("each form of a gh write with a listed name is held", () => {
       `gh api repos/acme/pub/pulls --input req.json`,
       "input body",
     ],
+    [
+      "pr merge --subject",
+      `gh pr merge 12 ${R} --squash --subject "zorblax fix"`,
+      "subject",
+    ],
+    [
+      "pr merge -t -b",
+      `gh pr merge 12 ${R} -s -t ok -b "from zorblax"`,
+      "body",
+    ],
+    [
+      "pr merge --body-file",
+      `gh pr merge 12 ${R} --body-file body.md`,
+      "body file body.md, line 2",
+    ],
+    ["pr close -c", `gh pr close 12 ${R} -d -c "zorblax said no"`, "comment"],
+    [
+      "pr reopen --comment",
+      `gh pr reopen 12 ${R} --comment zorblax`,
+      "comment",
+    ],
+    [
+      "issue close -c with -r",
+      `gh issue close 3 ${R} -r "not planned" -c zorblax`,
+      "comment",
+    ],
+    ["issue reopen -c", `gh issue reopen 3 ${R} -c zorblax`, "comment"],
     [
       "api graphql mutation",
       `gh api graphql -f query='mutation { addComment(input: {subjectId: "x", body: "zorblax"}) { clientMutationId } }'`,
@@ -274,6 +308,45 @@ describe("public repos only, asked once", () => {
     expect(
       hook(`gh pr comment https://github.com/acme/pub/pull/4 -b zorblax`).code,
     ).toBe(2);
+  });
+});
+
+describe("a list that can't be read (the check's own failure)", () => {
+  const missing = {
+    DEN_ORG_NAMES: undefined,
+    DEN_ORG_NAMES_FILE: path.join(dir, "no-such-list.txt"),
+  };
+  const bad = { DEN_ORG_NAMES: "zorblax\nqx(oops" };
+  it.each([
+    ["a missing names file", missing],
+    ["a bad pattern line", bad],
+  ])("%s: the other guardrails still refuse", (_n, env) => {
+    const s = hook(`gh pr view 12 ${R}; sleep 30`, { env });
+    expect(s.code).toBe(2);
+    expect(s.stderr).toMatch(/sleep/);
+    fs.writeFileSync(path.join(dir, "web.log"), "x\n");
+    const c = hook(`gh pr list ${R} && cat web.log`, { env });
+    expect(c.code).toBe(2);
+    expect(c.stderr).toMatch(/a log/);
+  });
+
+  it.each([
+    ["a missing names file", missing],
+    ["a bad pattern line", bad],
+  ])(
+    "%s: a gh write is held with a clear message, never the list",
+    (_n, env) => {
+      const r = hook(`gh pr create ${R} -t ok -b fine`, { env });
+      expect(r.code).toBe(2);
+      expect(r.stderr).toMatch(/couldn't check/);
+      expect(r.stderr).toMatch(/Nothing was sent/);
+      expect(r.stderr).not.toContain("qx(oops");
+      expect(r.stderr).not.toContain("no-such-list");
+    },
+  );
+
+  it("a read-only gh command still goes through", () => {
+    expect(hook(`gh pr view 12 ${R}`, { env: bad }).code).toBe(0);
   });
 });
 

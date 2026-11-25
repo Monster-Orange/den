@@ -23,24 +23,59 @@ export const VISIBILITY_MINUTES = 10;
 
 const NEUTRAL = `"the person", "the project", "the company" or "an internal host"`;
 
-const PR_WRITES = new Set(["create", "edit", "comment", "review"]);
-const ISSUE_WRITES = new Set(["create", "edit", "comment"]);
-const words = (s) => new Set(s.split(" "));
-/** Flags that take a value, per command: the same letter differs between them. */
-const TEXT_FLAGS = "-R --repo -t --title -b --body -F --body-file";
-const VALUE_FLAGS = {
-  write: words(
-    `${TEXT_FLAGS} -a --assignee -l --label -B --base -H --head -m --milestone ` +
-      "-p --project -r --reviewer -T --template --recover --add-label " +
-      "--remove-label --add-assignee --remove-assignee --add-reviewer " +
-      "--remove-reviewer --add-project --remove-project",
-  ),
-  review: words(TEXT_FLAGS),
-  api: words(
-    "-X --method -f --raw-field -F --field -H --header --input -q --jq " +
-      "-t --template -p --preview --hostname --cache",
-  ),
+const words = (s) => new Set(s.split(" ").filter(Boolean));
+
+const TITLE = { text: ["-t", "--title"] };
+const BODY = { text: ["-b", "--body"], file: ["-F", "--body-file"] };
+const COMMENT = { text: ["-c", "--comment"] };
+/**
+ * The writes checked, per `gh <group> <sub>`: the flags that carry text
+ * (`text`, or `file` for a file or `-` for stdin), and the command's other
+ * flags that take a value, so a value is never read as a flag or the
+ * reverse (the same letter differs between commands).
+ */
+const WRITES = {
+  "pr create": {
+    flags: [TITLE, BODY],
+    more: "-a --assignee -l --label -B --base -H --head -m --milestone -p --project -r --reviewer -T --template --recover",
+  },
+  "pr edit": {
+    flags: [TITLE, BODY],
+    more: "-B --base -m --milestone --add-label --remove-label --add-assignee --remove-assignee --add-reviewer --remove-reviewer --add-project --remove-project",
+  },
+  "pr comment": { flags: [BODY], more: "" },
+  "pr review": { flags: [BODY], more: "" },
+  "pr merge": {
+    flags: [{ text: ["-t", "--subject"] }, BODY],
+    more: "--match-head-commit -A --author-email",
+  },
+  "pr close": { flags: [COMMENT], more: "" },
+  "pr reopen": { flags: [COMMENT], more: "" },
+  "issue create": {
+    flags: [TITLE, BODY],
+    more: "-a --assignee -l --label -m --milestone -p --project -T --template --recover",
+  },
+  "issue edit": {
+    flags: [TITLE, BODY],
+    more: "-m --milestone --add-label --remove-label --add-assignee --remove-assignee --add-project --remove-project",
+  },
+  "issue comment": { flags: [BODY], more: "" },
+  "issue close": { flags: [COMMENT], more: "-r --reason --duplicate-of" },
+  "issue reopen": { flags: [COMMENT], more: "" },
 };
+const API_VALUES = words(
+  "-R --repo -X --method -f --raw-field -F --field -H --header --input -q --jq -t --template -p --preview --hostname --cache",
+);
+const valuesOf = (w) =>
+  words(
+    `-R --repo ${w.flags.flatMap((f) => [...f.text, ...(f.file ?? [])]).join(" ")} ${w.more}`,
+  );
+/** A field's name, from its long flag: "--body-file" says "body". */
+const fieldName = (flags) =>
+  flags
+    .find((f) => f.startsWith("--"))
+    .replace(/^--/, "")
+    .replace(/-file$/, "");
 
 const base = (w) => String(w).slice(String(w).lastIndexOf("/") + 1);
 
@@ -155,31 +190,30 @@ export function ghWrite(args, ctx) {
     rest = rest.slice(2);
   }
   const [group, sub, ...more] = rest;
-  const kind = group === "api" ? "api" : sub === "review" ? "review" : "write";
+  const write = WRITES[`${group} ${sub}`];
   // gh api's endpoint is its first positional, wherever its flags are.
   const { opts, pos } = options(
-    kind === "api" ? rest.slice(1) : more,
-    VALUE_FLAGS[kind],
+    group === "api" ? rest.slice(1) : more,
+    write ? valuesOf(write) : API_VALUES,
   );
   const val = (...names) =>
     opts.filter(([k]) => names.includes(k)).map(([, v]) => v);
   repoFlag = val("-R", "--repo")[0] ?? repoFlag;
   const texts = [];
-  if (
-    (group === "pr" && PR_WRITES.has(sub)) ||
-    (group === "issue" && ISSUE_WRITES.has(sub))
-  ) {
-    for (const t of val("-t", "--title"))
-      texts.push({ where: "title", text: wordText(t, ctx) });
-    for (const b of val("-b", "--body"))
-      texts.push({ where: "body", text: wordText(b, ctx) });
-    for (const f of val("-F", "--body-file")) {
-      const t = f == null ? null : fileText(f, ctx);
-      if (t != null)
-        texts.push({
-          where: f === "-" ? "body (stdin)" : `body file ${f}`,
-          text: t,
-        });
+  if (write) {
+    for (const f of write.flags) {
+      for (const t of val(...f.text))
+        if (t != null)
+          texts.push({ where: fieldName(f.text), text: wordText(t, ctx) });
+      for (const file of f.file ? val(...f.file) : []) {
+        const t = file == null ? null : fileText(file, ctx);
+        const name = fieldName(f.file);
+        if (t != null)
+          texts.push({
+            where: file === "-" ? `${name} (stdin)` : `${name} file ${file}`,
+            text: t,
+          });
+      }
     }
     const url = pos.map(repoFromUrl).find(Boolean);
     return { what: `gh ${group} ${sub}`, repo: repoFlag ?? url ?? null, texts };
@@ -311,6 +345,34 @@ export function repoVisibility(repo, opts = {}) {
     }
   return v;
 }
+
+/**
+ * Whether `command` looks like a gh write, read plainly (for when the check
+ * itself failed): a write command, or gh api with a write method, fields or
+ * --input.
+ */
+export function looksLikeGhWrite(command) {
+  const src = String(command ?? "");
+  const cmds = Object.keys(WRITES)
+    .map((k) => k.replace(" ", "\\s+"))
+    .join("|");
+  if (
+    new RegExp(`\\bgh\\s+(?:(?:-R|--repo)\\s+\\S+\\s+)?(?:${cmds})\\b`).test(
+      src,
+    )
+  )
+    return true;
+  return (
+    /\bgh\s+(?:(?:-R|--repo)\s+\S+\s+)?api\b/.test(src) &&
+    /(?:^|\s)(?:-X\s*|--method[=\s]+)(?:POST|PATCH|PUT)\b|(?:^|\s)(?:-[fF]|--field|--raw-field|--input)(?:[=\s]|$)/i.test(
+      src,
+    )
+  );
+}
+
+/** The hold when the check itself can't run (its list can't be read). */
+export const PUBLIC_TEXT_FAILED =
+  "Den couldn't check this gh write's text for names that stay out of public text, because its list of names can't be read. Nothing was sent. Tell the person that Den's names list needs fixing; read-only gh commands still work.";
 
 /** The refusal: the agent's own phrases, neutral words, never the list. */
 export function publicTextMessage(write, repo, hits, visibility) {

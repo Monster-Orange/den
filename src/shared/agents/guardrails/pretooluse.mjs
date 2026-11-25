@@ -36,7 +36,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROUTE_DEFAULT, routeCommand } from "./gate-route.mjs";
-import { publicTextDecision } from "./public-text.mjs";
+import {
+  PUBLIC_TEXT_FAILED,
+  looksLikeGhWrite,
+  publicTextDecision,
+} from "./public-text.mjs";
 import {
   apiOnlyDecision,
   apiOnlyMessage,
@@ -499,12 +503,19 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
-    // Issue 1127: text filed on a public repo, before it is sent.
-    if (!reason && input.tool_name === "Bash")
-      reason = publicTextDecision(input.tool_input?.command, parseShell, {
-        cwd: typeof input.cwd === "string" ? input.cwd : process.cwd(),
-        visibility: visibilityArgs(),
-      });
+    // Issue 1127: text filed on a public repo, before it is sent. Its own
+    // try: a failure here holds a gh write, and never stops the checks below.
+    if (!reason && input.tool_name === "Bash") {
+      const command = input.tool_input?.command;
+      try {
+        reason = publicTextDecision(command, parseShell, {
+          cwd: typeof input.cwd === "string" ? input.cwd : process.cwd(),
+          visibility: visibilityArgs(),
+        });
+      } catch {
+        reason = looksLikeGhWrite(command) ? PUBLIC_TEXT_FAILED : null;
+      }
+    }
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;
