@@ -35,6 +35,7 @@ import {
   LOGIN_CODE_TTL_MS,
   safeNext,
 } from "./web-session.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export { FIXTURE_SESSION_MINUTES, FIXTURE_SESSION_RANGE };
 
@@ -197,10 +198,7 @@ export function setupFixturePerson(
   const f = fixturePersonPath(stateDir);
   const key = randomBytes(32).toString("base64url");
   const seal = sealOf(key, o.webSecret).toString("base64url");
-  const tmp = `${f}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  fs.writeFileSync(tmp, `${key}.${seal}\n`, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, f);
+  writeFileAtomic(f, `${key}.${seal}\n`, { mode: 0o600 });
   return { ok: true };
 }
 
@@ -324,6 +322,33 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/report\/drafts$/],
   ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
+  // Issue 1407: a restart for out-of-date tools (gate/1407's page row).
+  // agent-routes.ts lets it reach only agents Den marked testBed, never
+  // the server agent's; an unknown id answers the same 403.
+  ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/restart$/],
+  // Issue 1215: a live check's own project (fixture-projects.ts narrows
+  // these to create, activate, deactivate and delete, on its own projects,
+  // on a test install).
+  ["POST", /^\/api\/workspaces\/create$/],
+  ["POST", /^\/api\/workspaces$/],
+  ["DELETE", /^\/api\/workspaces$/],
+  // Issue 1391 (the bed's 573): checks posted manifest text; writes
+  // nothing (route-classes.ts: "validates posted content (no write)").
+  ["POST", /^\/api\/manifest\/validate$/],
+];
+
+/**
+ * Issue 1391 (the bed's 542): GETs a fixture session may make though the
+ * route table doesn't class them readonly. /api/github/repos reads the
+ * person's repo list through gh (classed for gh's sign-in and quota); it
+ * writes nothing. /api/manifest/validate?path= (the bed's 573, Vision's
+ * ruling) validates a manifest by path; the route reads only inside a
+ * project's repos and quotes nothing it refuses. A fixture session exists
+ * only on a test install.
+ */
+export const FIXTURE_GETS: readonly RegExp[] = [
+  /^\/api\/github\/repos$/,
+  /^\/api\/manifest\/validate$/,
 ];
 
 /**
@@ -364,7 +389,8 @@ export function fixtureScopeRefusal(
           ? null
           : refused
         : null;
-    if (cls !== "readonly") return refused;
+    if (cls !== "readonly" && !FIXTURE_GETS.some((re) => re.test(pathname)))
+      return refused;
     if (FIXTURE_READ_DENY.some((re) => re.test(pathname))) return refused;
     return null;
   }

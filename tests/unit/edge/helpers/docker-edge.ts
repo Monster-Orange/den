@@ -1,5 +1,9 @@
 /** Shared by the edge tests that run a real Traefik in a throwaway container. */
 import { execFileSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { allowWrites } from "../../../write-guard.js";
 import * as net from "net";
 import type { AddressInfo } from "net";
 
@@ -21,4 +25,16 @@ export async function freePort(): Promise<number> {
   const p = (s.address() as AddressInfo).port;
   await new Promise<void>((r) => s.close(() => r()));
   return p;
+}
+
+/**
+ * A temp folder Docker's VM can see: under ~/.den-test-docker, since
+ * Docker Desktop and OrbStack share only the home folder with it. Issue
+ * 1356: named to the write guard for this test file only.
+ */
+export function dockerShareTmp(prefix: string): string {
+  const base = path.join(os.homedir(), ".den-test-docker");
+  allowWrites(base);
+  fs.mkdirSync(base, { recursive: true });
+  return fs.mkdtempSync(path.join(base, prefix));
 }

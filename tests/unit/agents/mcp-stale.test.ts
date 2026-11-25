@@ -15,7 +15,11 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
+import {
+  noteHubMcpInit,
+  noteHubMcpTools,
+} from "../../../src/shared/agents/hub-mcp-connect.js";
 import { verifyActorToken } from "../../../src/shared/actor-token.js";
 import { HUB_SERVER } from "../../../src/shared/hub.js";
 import { cmdAgents, staleLines } from "../../../src/ui/cli/agents-command.js";
@@ -538,6 +542,28 @@ describe("D44: the routes", () => {
     };
   }
 
+  it("issue 1223: only: hub restarts the Hub-stale only (Settings' Hub offer); an agent on an older Den's tools waits for the bell's", async () => {
+    const r = await rig();
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    const rec = readRecord(r.stateDir, "planner")!;
+    writeRecord(r.stateDir, { ...rec, denVersion: "0.0.1-old" });
+    const call = await api(r);
+    const hub = await call("POST", "/api/agents/restart-stale", {
+      only: "hub",
+    });
+    expect(hub.status).toBe(202);
+    expect(hub.json.pending).toEqual([]);
+    expect(
+      (await call("POST", "/api/agents/restart-stale", { only: "den" })).status,
+    ).toBe(400);
+    const all = await call("POST", "/api/agents/restart-stale", {});
+    expect((all.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
+      "planner",
+    ]);
+  });
+
   it("stale lists it; restart-stale restarts it at its next idle (202), the same conversation", async () => {
     const { r, token } = await startedBeforeHub();
     const call = await api(r);
@@ -550,6 +576,10 @@ describe("D44: the routes", () => {
     expect(go.status).toBe(202);
     expect((go.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
       "planner",
+    ]);
+    // Issue 1407: each agent's own answer, before anything waits.
+    expect(go.json.agents).toEqual([
+      { id: "planner", workspace: "north", state: "now" },
     ]);
     for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
@@ -660,5 +690,68 @@ describe("D44: MCP whoami", () => {
     const r = await callTool("whoami", {}, { api, cfg, cli: "acme" });
     expect(r.isError).toBe(true);
     expect(paths).toEqual([]);
+  });
+});
+
+describe("issue 749: an agent whose Hub tools failed to load shows it on its row", () => {
+  it("the agents list and the page's list (/api/sessions) both carry the server and its error; a stopped one doesn't", async () => {
+    const r = await rig({ hub: async () => ({ url: HUB, token: TOKEN }) });
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    await settle();
+    const d = resolveAgentsDeps(r.deps);
+    const plain = (await listAgents(d, "north")).find(
+      (x) => x.agent === "planner",
+    )!;
+    expect(plain.mcpFailed).toBeUndefined();
+    noteHubMcpInit(r.stateDir, "planner", { ok: true });
+    noteHubMcpTools(r.stateDir, "planner", {
+      ok: false,
+      error: "hub (500): Internal Server Error",
+    });
+    const want = [
+      {
+        server: HUB_SERVER,
+        error: "listing Hub's tools failed (hub (500): Internal Server Error)",
+        at: expect.any(String),
+      },
+    ];
+    const row = (await listAgents(d, "north")).find(
+      (x) => x.agent === "planner",
+    )!;
+    expect(row.mcpFailed).toEqual(want);
+    // A lead reads its members with `den agents list`, as JSON or plain.
+    r.out.length = 0;
+    expect(await agents(r, "list", "-w", "north", "--json")).toBe(0);
+    const listed = JSON.parse(r.out.join("\n")) as {
+      agent: string;
+      mcpFailed?: unknown;
+    }[];
+    expect(listed.find((x) => x.agent === "planner")!.mcpFailed).toEqual(want);
+    r.out.length = 0;
+    expect(await agents(r, "list", "-w", "north")).toBe(0);
+    expect(r.out.join("\n")).toContain(
+      "planner: hub's tools didn't load (listing Hub's tools failed (hub (500): Internal Server Error)); it can't use them until it restarts (same conversation)",
+    );
+    const c = await r.deps.connect!();
+    const sessions = await c.list();
+    c.close();
+    const sd = {
+      stateDir: () => r.stateDir,
+      dist: () => "acme",
+      activeWorkspaces: () => ["north"],
+    };
+    expect(
+      listedSessions(sessions, sd, undefined, HUB_MCP).find(
+        (x) => x.agent === "planner",
+      )!.mcpFailed,
+    ).toEqual(want);
+    const stopped = sessions.map((x) => ({ ...x, exited: true, exitCode: 0 }));
+    expect(
+      listedSessions(stopped, sd, undefined, HUB_MCP).find(
+        (x) => x.agent === "planner",
+      )!.mcpFailed,
+    ).toBeUndefined();
   });
 });
