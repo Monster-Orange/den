@@ -12,7 +12,11 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * It blocks exactly two things, and nothing else:
+ * Issue 1127: it also holds an agent's `gh` write to a public repo whose
+ * title or body holds a listed name (public-text.mjs), with or without
+ * --no-guardrails, as the api-only rules are.
+ *
+ * Its guardrails block exactly two things, and nothing else:
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -32,6 +36,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROUTE_DEFAULT, heavyProgram, routeCommand } from "./gate-route.mjs";
+import {
+  PUBLIC_TEXT_FAILED,
+  looksLikeGhWrite,
+  publicTextDecision,
+} from "./public-text.mjs";
 import {
   apiOnlyDecision,
   apiOnlyMessage,
@@ -514,6 +523,14 @@ function arg(name, argv = process.argv) {
   return i > 0 && argv[i + 1] !== undefined ? argv[i + 1] : null;
 }
 
+/** Issue 1127: how long a repo's visibility is kept (--visibility-minutes). */
+function visibilityArgs() {
+  const m = Number(arg("--visibility-minutes"));
+  return arg("--visibility-minutes") !== null && Number.isFinite(m) && m >= 0
+    ? { minutes: m }
+    : {};
+}
+
 async function main() {
   let text = "";
   for await (const chunk of process.stdin) text += chunk;
@@ -536,6 +553,19 @@ async function main() {
       if (r) {
         audit(arg("--audit"), r, input);
         reason = apiOnlyMessage(r);
+      }
+    }
+    // Issue 1127: text filed on a public repo, before it is sent. Its own
+    // try: a failure here holds a gh write, and never stops the checks below.
+    if (!reason && input.tool_name === "Bash") {
+      const command = input.tool_input?.command;
+      try {
+        reason = publicTextDecision(command, parseShell, {
+          cwd: typeof input.cwd === "string" ? input.cwd : process.cwd(),
+          visibility: visibilityArgs(),
+        });
+      } catch {
+        reason = looksLikeGhWrite(command) ? PUBLIC_TEXT_FAILED : null;
       }
     }
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
