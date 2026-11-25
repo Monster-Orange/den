@@ -445,10 +445,13 @@ export async function openReport(opts = {}) {
    */
   function shotBoxHtml(where = "write") {
     const [w, h] = st.shotRatio;
+    // Review: a shot not included (still being taken, or landed since and
+    // not yet checked) is a faded thumbnail, so it doesn't read as posted.
+    const late = where === "review" && !shotOn() ? " data-late" : "";
     if (st.shotWait)
-      return `<div class="fb-shot" data-shot-box data-wait${where === "write" && st.noShot ? " hidden" : ""} style="--shot-ar: ${w} / ${h}; --shot-k: ${(w / h).toFixed(4)}"><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
+      return `<div class="fb-shot" data-shot-box data-wait${late}${where === "write" && st.noShot ? " hidden" : ""} style="--shot-ar: ${w} / ${h}; --shot-k: ${(w / h).toFixed(4)}"><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
     if (where === "review")
-      return `<div class="fb-shot" data-shot-box><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
+      return `<div class="fb-shot" data-shot-box${late}><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
     return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
   }
   /**
@@ -502,9 +505,9 @@ ${
     else if (shotOn())
       h = `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div>${shotBoxHtml("review")}${shareHtml()}`;
     else if (st.shotWait)
-      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div>${shotBoxHtml("review")}<p class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateWait"))}</p>`;
+      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div><p class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateWait"))}</p>${shotBoxHtml("review")}`;
     else if (st.shot)
-      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div>${shotBoxHtml("review")}<div class="fb-tools"><span class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateIn"))}</span>${btn("shotinclude", t("kit.report.shotInclude"))}</div>`;
+      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div><div class="fb-tools"><span class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateIn"))}</span>${btn("shotinclude", t("kit.report.shotInclude"))}</div>${shotBoxHtml("review")}`;
     else if (st.shotFailed)
       h = `<p class="fb-fine" role="status" data-shot-failed>${esc(t("kit.report.shotFailed"))}</p>`;
     return `<div data-shot-area>${h}</div>`;

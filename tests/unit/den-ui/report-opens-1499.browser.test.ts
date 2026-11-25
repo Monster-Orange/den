@@ -271,6 +271,52 @@ for (const name of ["chromium", "webkit"]) {
       DELAY + 60_000,
     );
 
+    for (const [width, height] of [
+      [1280, 800],
+      [390, 844],
+    ] as const)
+      it(
+        `at ${width}x${height}, Review's note and Include it sit above a faded thumbnail, in the first view`,
+        async () => {
+          if (!b()) return;
+          const p = await open(b(), { width, height });
+          try {
+            await report(p);
+            await toReview(p);
+            await p.waitForSelector('[data-act="shotinclude"]', {
+              timeout: DELAY + 30_000,
+            });
+            const got = await p.evaluate(() => {
+              const r = (sel: string) =>
+                document.querySelector(sel)!.getBoundingClientRect();
+              const dlg = r("dialog[open]");
+              const box = r("[data-shot-box]");
+              const seen = (x: DOMRect) =>
+                x.top >= dlg.top &&
+                x.bottom <= Math.min(dlg.bottom, window.innerHeight);
+              const note = r("[data-shot-late]");
+              const inc = r('[data-act="shotinclude"]');
+              const el = document.querySelector("[data-shot-box]")!;
+              return {
+                above: note.bottom <= box.top && inc.bottom <= box.top,
+                seen: seen(note) && seen(inc),
+                thumb: box.width <= 240.5,
+                opacity: getComputedStyle(el).opacity,
+              };
+            });
+            expect(got).toEqual({
+              above: true,
+              seen: true,
+              thumb: true,
+              opacity: "0.5",
+            });
+          } finally {
+            await p.context().close();
+          }
+        },
+        DELAY + 60_000,
+      );
+
     it(
       "Include it opens the first step to mask it, back to Review, and then it goes",
       async () => {
@@ -333,20 +379,25 @@ for (const name of ["chromium", "webkit"]) {
               await p.context().close();
             }
           }
-          const p = await open(b());
-          try {
-            await report(p);
-            await toReview(p);
-            await shot(p, "1280-review-taking");
-            await p.waitForSelector('[data-act="shotinclude"]', {
-              timeout: DELAY + 30_000,
-            });
-            await shot(p, "1280-review-landed");
-          } finally {
-            await p.context().close();
+          for (const [width, height] of [
+            [1280, 800],
+            [390, 844],
+          ]) {
+            const p = await open(b(), { width, height });
+            try {
+              await report(p);
+              await toReview(p);
+              await shot(p, `${width}-review-taking`);
+              await p.waitForSelector('[data-act="shotinclude"]', {
+                timeout: DELAY + 30_000,
+              });
+              await shot(p, `${width}-review-landed`);
+            } finally {
+              await p.context().close();
+            }
           }
         },
-        3 * DELAY + 120_000,
+        4 * DELAY + 160_000,
       );
   });
 }
