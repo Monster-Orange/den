@@ -234,9 +234,10 @@ describe("agents.persona_packs", () => {
       environments: [],
       agents: agents as Record<string, never>,
     });
-    expect(
-      readAgentsConfig(cfg({ planner: { grants: ["south"] } })).agents,
-    ).toEqual({ planner: { grants: ["south"] } });
+    // Issue 1072: read from user.yml only; the org's is named, not read.
+    const org = readAgentsConfig(cfg({ planner: { grants: ["south"] } }));
+    expect(org.agents).toEqual({});
+    expect(org.notReadFromOrg).toEqual(["agents.planner.grants"]);
     expect(() =>
       readAgentsConfig(cfg({ planner: { grants: "south" } })),
     ).toThrow(/agents\.planner\.grants: must be a list of project names/);
