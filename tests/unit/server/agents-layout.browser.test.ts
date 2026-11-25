@@ -153,6 +153,8 @@ async function page(
     });
   await p.goto(`${s!.base}${url}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+  // Issue 143: and the panes the address opens, all of them.
+  await p.waitForSelector("#agr:not([aria-busy])", { timeout: 20_000 });
   return p;
 }
 
@@ -369,6 +371,33 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     },
     120_000,
   );
+
+  it("#143: the panes the address opens: #agr is busy until they are all open, and Focus then shows the last", async () => {
+    if (skip()) return;
+    await s!.settings({ agents_layout: null });
+    const ctx = await browser!.newContext({
+      viewport: { width: 1440, height: 900 },
+      reducedMotion: "reduce",
+    });
+    await signIn(ctx, s!.stateDir, s!.base);
+    const p = await ctx.newPage();
+    // A slow terminal module (a loaded machine): the panes after the first
+    // wait for it, so start-up takes a while.
+    let release = () => {};
+    const held = new Promise<void>((z) => (release = z));
+    await p.route("**/vendor/xterm.mjs*", async (r) => {
+      await held;
+      await r.continue();
+    });
+    await p.goto(`${s!.base}/agents?open=${all()}`);
+    await p.waitForSelector("#agl:not([aria-busy]) .agr", { timeout: 20_000 });
+    expect(await p.getAttribute("#agr", "aria-busy")).toBe("true");
+    release();
+    await p.waitForSelector("#agr:not([aria-busy])", { timeout: 20_000 });
+    expect(await p.$$eval("#agr .pane", (ps) => ps.length)).toBe(AGENTS.length);
+    expect(await shown(p)).toEqual([sid.scout]);
+    await ctx.close();
+  });
 
   it("switches Focus (the default), Tabs and Tile from the header, with ⌃⇧1 / ⌃⇧2 / ⌃⇧3 and from ⌘K; the URL says it, and it is saved for the person", async () => {
     if (skip()) return;
