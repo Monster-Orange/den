@@ -2384,6 +2384,7 @@
       "when": ["scripts/org-name-commits.mjs"],
       "run": [
         "tests/unit/scripts/org-name-commits-main.test.ts",
+        "tests/unit/scripts/org-name-commits-queue-1610.test.ts",
         "tests/unit/scripts/org-name-commits.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
