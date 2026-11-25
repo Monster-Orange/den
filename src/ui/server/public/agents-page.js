@@ -1266,6 +1266,7 @@ function paintList() {
       running.length,
       new Set(running.map((r) => r.workspace)).size,
       t,
+      { phone: phone() },
     );
     if (idle) notes.push(idle);
   }

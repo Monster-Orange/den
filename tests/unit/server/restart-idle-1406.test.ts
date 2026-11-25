@@ -22,6 +22,10 @@ describe("issue 1406: Restart all idle agents", () => {
     expect(restartIdleBarHtml(3, 1, t)).toBe("");
   });
 
+  it("not on a phone: each project's own button covers it, and the rows keep the screen", () => {
+    expect(restartIdleBarHtml(3, 2, t, { phone: true })).toBe("");
+  });
+
   it("a project's own button, with its name, for two or more there", () => {
     expect(restartIdleWsHtml("north", 1, t)).toBe("");
     const h = restartIdleWsHtml('n"orth', 2, t);

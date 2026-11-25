@@ -227,8 +227,8 @@ export function followRestarts(o) {
   };
 }
 
-export function restartIdleBarHtml(n, projects, t) {
-  return n >= 2 && projects >= 2
+export function restartIdleBarHtml(n, projects, t, o = {}) {
+  return n >= 2 && projects >= 2 && !o.phone
     ? `<div class="agnote" data-note="restart-idle"><button type="button" class="den-btn sm" data-act="restart-idle">${esc(t("ag.ri.all", { n }))}</button></div>`
     : "";
 }
