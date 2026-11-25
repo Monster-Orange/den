@@ -71,6 +71,11 @@ export interface AgentHubToken {
   at: string;
   /** Removed here, but Hub couldn't revoke it yet: never used again. */
   revokePending?: true;
+  /**
+   * The agent record it was minted for (records.ts recordId). Another
+   * record of the same agent id never uses it: Den revokes it.
+   */
+  recordId?: string;
 }
 
 /** hub.agent_tokens, hub.agent_token_retry_seconds, hub.agent_token_max_age_days. */
@@ -248,6 +253,11 @@ export interface HubAgentTokensDeps {
    * removed is revoked at once and never stored. Absent: always.
    */
   agentExists?: (id: string) => boolean;
+  /**
+   * Agent `id`'s record id now (undefined: a record from before record ids,
+   * or none). Absent, or it throws: not compared.
+   */
+  recordIdOf?: (id: string) => string | undefined;
 }
 
 /** Hub as the caller has it now: its address and the install's token. */
@@ -338,6 +348,44 @@ export class HubAgentTokens {
     );
   }
 
+  /**
+   * Whether `t` was minted for an earlier record of its agent id: its agent
+   * is gone (an unbind that didn't mark it), or made again since. Unknown
+   * (no check given, or it can't read): no.
+   */
+  private orphaned(t: AgentHubToken): boolean {
+    try {
+      if (this.deps.agentExists && !this.deps.agentExists(t.agentId))
+        return true;
+      return (
+        !!this.deps.recordIdOf &&
+        (t.recordId ?? undefined) !== this.deps.recordIdOf(t.agentId)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether a token waits to be revoked: marked, or orphaned. */
+  private waitsRevoke(t: AgentHubToken): boolean {
+    return !!t.revokePending || this.orphaned(t);
+  }
+
+  /** Whether any kept token waits to be revoked (the retry's check). */
+  hasWaiting(): boolean {
+    return listAgentHubTokens(this.deps.stateDir()).some((t) =>
+      this.waitsRevoke(t),
+    );
+  }
+
+  private recordIdNow(id: string): string | undefined {
+    try {
+      return this.deps.recordIdOf?.(id);
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Whether agent `id` calls Hub with its own token now. */
   bound(id: string): boolean {
     return agentHubBound(this.deps.stateDir(), id);
@@ -406,6 +454,18 @@ export class HubAgentTokens {
       dropAgentHubToken(stateDir, a.id);
       cur = null;
     }
+    if (cur && !cur.revokePending && this.orphaned(cur)) {
+      // Minted for an earlier agent of this id: never used, revoked first.
+      this.log(
+        `agent ${a.id}'s Hub token ${cur.tokenId} was minted for an earlier agent of that id: revoking it, never used`,
+      );
+      cur = { ...cur, revokePending: true };
+      try {
+        writeAgentHubToken(stateDir, cur);
+      } catch {
+        /* not used either way; the retry finds it orphaned */
+      }
+    }
     const usable = cur && !cur.revokePending ? cur : null;
     if (usable && !this.tooOld(usable, s)) return usable.token;
     if (this.waiting(hub, a.id)) return usable?.token ?? null;
@@ -416,7 +476,7 @@ export class HubAgentTokens {
         () => false,
       );
       this.log(
-        `${gone ? "revoked" : "couldn't revoke"} agent ${a.id}'s Hub token ${cur.tokenId} (reason: undo, removed while Hub didn't answer)`,
+        `${gone ? "revoked" : "couldn't revoke"} agent ${a.id}'s Hub token ${cur.tokenId} (reason: undo, or an earlier agent of that id)`,
       );
       if (!gone) {
         this.wait(a.id, s);
@@ -427,6 +487,7 @@ export class HubAgentTokens {
     // A first token, or rotation: mint the new one first. A mint that
     // fails keeps the old one in use, and is tried again after the wait.
     const name = hubAgentName(a.id, a.name);
+    const rid = this.recordIdNow(a.id);
     let g: { token: string; tokenId: string };
     try {
       g = await (this.deps.mint ?? hubMintAgentToken)(hub.url, hub.token, {
@@ -482,6 +543,7 @@ export class HubAgentTokens {
         tokenId: g.tokenId,
         token: g.token,
         at: new Date(this.now()).toISOString(),
+        ...(rid ? { recordId: rid } : {}),
       });
     } catch (e) {
       this.log(
@@ -603,17 +665,30 @@ export class HubAgentTokens {
     let revoked = 0;
     let failed = 0;
     for (const t of listAgentHubTokens(stateDir)) {
-      if (!t.revokePending || t.hubUrl !== hub.url) continue;
+      if (!this.waitsRevoke(t) || t.hubUrl !== hub.url) continue;
+      const orphan = !t.revokePending;
+      if (orphan) {
+        try {
+          writeAgentHubToken(stateDir, { ...t, revokePending: true });
+        } catch {
+          /* still never used: orphaned is checked at every call */
+        }
+      }
       const r = await this.revokeEvery(hub, t);
       if (r.failed) {
         failed += 1;
+        if (orphan)
+          this.problem(t.agentId, {
+            what: "revoke",
+            detail: `its token ${t.tokenId} outlived its agent record: never used, tried again until Hub takes it`,
+          });
         continue;
       }
       revoked += 1;
       dropAgentHubToken(stateDir, t.agentId);
       this.problem(t.agentId, null);
       this.log(
-        `revoked agent ${t.agentId}'s Hub token ${t.tokenId} (reason: a revoke left waiting, tried again)`,
+        `revoked agent ${t.agentId}'s Hub token ${t.tokenId} (reason: ${orphan ? "it outlived its agent record" : "a revoke left waiting, tried again"})`,
       );
     }
     return { revoked, failed };
@@ -712,6 +787,39 @@ export async function unbindAgentHubToken(
   }).unbind(h ? { url: h.url, token: h.token } : null, id);
 }
 
+/**
+ * An agent's remove couldn't unbind its Hub token (`e`; a disk error, say):
+ * a [hub] log line and a doctor row naming the agent and the token id,
+ * never the token. The token is never used (its record is gone), and the
+ * revoke retry takes it as orphaned. Never throws.
+ */
+export function noteHubUnbindFailed(
+  stateDir: string,
+  id: string,
+  e: unknown,
+  log: (line: string) => void = (l) => console.error(`[hub] ${l}`),
+): void {
+  try {
+    const t = readAgentHubToken(stateDir, id);
+    if (!t) return;
+    const why = String((e as Error)?.message ?? e).slice(0, 200);
+    log(
+      `issue 249: couldn't unbind removed agent ${id}'s Hub token ${t.tokenId} (${why}): never used, revoked when Hub answers`,
+    );
+    noteAgentTokenProblem(
+      stateDir,
+      id,
+      {
+        what: "revoke",
+        detail: `its agent was removed, but Den couldn't unbind its token ${t.tokenId} (${why}): never used, tried again until Hub takes it`,
+      },
+      new Date().toISOString(),
+    );
+  } catch {
+    /* best effort: the revoke retry still finds it orphaned */
+  }
+}
+
 /** The defaults: on, ask again after 10 minutes, rotate every 30 days. */
 export const AGENT_HUB_TOKEN_DEFAULTS: AgentHubTokenSettings = {
   enabled: true,
@@ -778,6 +886,7 @@ export function serverHubAgentTokens(
         return true; // unreadable is not removed: the token stays
       }
     },
+    recordIdOf: (id) => readRecord(getStateDir(), id)?.recordId,
   }));
 }
 
@@ -801,7 +910,7 @@ export function startAgentTokenRevokeRetry(
       (agentHubTokenSettings().revokeRetrySeconds ??
         AGENT_HUB_TOKEN_DEFAULTS.revokeRetrySeconds!) * 1000;
     if (busy || (last && Date.now() - last < every)) return;
-    if (!listAgentHubTokens(getStateDir()).some((t) => t.revokePending)) {
+    if (!store.hasWaiting()) {
       last = Date.now();
       return;
     }

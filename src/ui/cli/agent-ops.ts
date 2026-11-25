@@ -385,7 +385,10 @@ import { inWorkspace, sessionName } from "../../shared/sessions/names.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
-import { unbindAgentHubToken } from "../../shared/hub-agent-tokens.js";
+import {
+  noteHubUnbindFailed,
+  unbindAgentHubToken,
+} from "../../shared/hub-agent-tokens.js";
 import {
   jobCommandOf,
   jobsUnder,
@@ -8699,7 +8702,9 @@ async function removeRecords(
       const moved = removeRecord(d.stateDir(), rec.id);
       // Issue 249: its Hub token too, on Hub; after the record is gone, so
       // a mint that lands meanwhile sees no agent and revokes its token.
-      await d.hubAgentUnbind(rec.id).catch(() => undefined);
+      await d
+        .hubAgentUnbind(rec.id)
+        .catch((e) => noteHubUnbindFailed(d.stateDir(), rec.id, e));
       if (moved) out.push({ agent: rec.id, workspace: rec.workspace });
     }
     purgeRemoved(d.stateDir());
@@ -8767,7 +8772,9 @@ export async function pruneStopped(
     d.forgetSandbox(r.id); // issue 1328
     removeRecord(d.stateDir(), r.id);
     // Issue 249: after the record is gone (see removeRecords).
-    await d.hubAgentUnbind(r.id).catch(() => undefined);
+    await d
+      .hubAgentUnbind(r.id)
+      .catch((e) => noteHubUnbindFailed(d.stateDir(), r.id, e));
   }
   purgeRemoved(d.stateDir(), 0, now);
   return old.map((r) => r.id);
