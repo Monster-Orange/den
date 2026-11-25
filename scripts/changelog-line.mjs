@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 
 const PRODUCT = /^(?:src|packages|bin)\//;
-const SHARED = /^(?:next|release|rel)\//;
+const SHARED = /^(?:next\/queue$|release\/|rel\/)/;
 const UNRELEASED = /^## \[[^\]]+\] - unreleased\s*$/;
 
 function main() {
@@ -50,7 +50,7 @@ function main() {
     const hunk = /^@@ -\S+ \+(\d+)(?:,\d+)? @@/.exec(l);
     if (hunk) at = Number(hunk[1]) - 1;
     else if (l.startsWith("+") && !l.startsWith("+++")) {
-      if (l.slice(1).trim() && inUnreleased(at)) added = true;
+      if (/^\s*[-*] \S/.test(l.slice(1)) && inUnreleased(at)) added = true;
       at++;
     }
   }

@@ -118,6 +118,18 @@ describe("a changelog line for each change to the product (issue 1611)", () => {
     expect(r.code).toBe(1);
   });
 
+  it("only a heading added under the unreleased heading fails", () => {
+    const r = pr((d) => {
+      srcChange(d);
+      logLine(d, "- An earlier fix.", "\n### Added\n");
+    });
+    expect(r.code).toBe(1);
+  });
+
+  it("a feature branch under next/ is held like any other", () => {
+    expect(pr(srcChange, { headRef: "next/991" }).code).toBe(1);
+  });
+
   it("only a blank line added under the unreleased heading fails", () => {
     const r = pr((d) => {
       srcChange(d);
