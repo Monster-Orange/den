@@ -48,6 +48,7 @@
 import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { statSettled } from "../stat-settled.js";
 
 export type BinSource =
   | "workspace"
@@ -545,7 +546,7 @@ export const xattrQuarantineReader: QuarantineReader = (file) => {
 };
 
 let quarantineReader: QuarantineReader | undefined;
-const quarantineSeen = new Map<string, boolean>();
+const quarantineSeen = new Map<string, { q: boolean; readAt: number }>();
 
 /** Replace (or, with undefined, restore) the quarantine reader (tests). */
 export function setQuarantineReader(r: QuarantineReader | undefined): void {
@@ -556,27 +557,34 @@ export function setQuarantineReader(r: QuarantineReader | undefined): void {
 /**
  * Whether `file` (its real file) carries com.apple.quarantine, asked once
  * per file identity: a change to its attributes changes its ctime, so it
- * is asked again. Never runs the file; never throws.
+ * is asked again. Issue 1598: kept only once the file was written more
+ * than a clock tick before it was asked (statSettled on its mtime; a
+ * ctime can't be set back, and only macOS, on nanosecond APFS stamps,
+ * sets the attribute).
+ * Never runs the file; never throws.
  */
 export function isQuarantined(file: string): boolean {
   let real: string;
   let key: string;
+  let st: fs.Stats;
   try {
     real = fs.realpathSync(file);
-    const st = fs.statSync(real);
+    st = fs.statSync(real);
     key = `${real}\0${st.ino}\0${st.mtimeMs}\0${st.ctimeMs}`;
   } catch {
     return false;
   }
   const seen = quarantineSeen.get(key);
-  if (seen !== undefined) return seen;
+  if (seen !== undefined && statSettled({ mtimeMs: st.mtimeMs }, seen.readAt))
+    return seen.q;
+  const readAt = Date.now();
   let q = false;
   try {
     q = (quarantineReader ?? xattrQuarantineReader)(real) === true;
   } catch {
     q = false;
   }
-  quarantineSeen.set(key, q);
+  quarantineSeen.set(key, { q, readAt });
   return q;
 }
 
@@ -617,7 +625,10 @@ export function installVersion(file: string): string | undefined {
 // ── the version ─────────────────────────────────────────────────────────────
 
 const VERSION_TIMEOUT_MS = 3000;
-const versions = new Map<string, Promise<string | undefined>>();
+const versions = new Map<
+  string,
+  { p: Promise<string | undefined>; readAt: number }
+>();
 
 /** The first version-shaped token of a CLI's `--version` output. */
 export function parseVersion(out: string): string | undefined {
@@ -639,14 +650,19 @@ export function runtimeVersion(
 ): Promise<string | undefined> {
   if (isQuarantined(bin)) return Promise.resolve(undefined);
   let key: string;
+  let st: fs.Stats;
   try {
-    const st = fs.statSync(bin);
+    st = fs.statSync(bin);
     key = `${bin}\0${st.ino}\0${st.size}\0${st.mtimeMs}\0${args.join(" ")}`;
   } catch {
     return Promise.resolve(undefined);
   }
+  // Issue 1598: kept only once the CLI was written more than a clock tick
+  // before it was asked: one rewritten in place in that tick is asked again.
   const known = versions.get(key);
-  if (known) return known;
+  if (known && statSettled({ mtimeMs: st.mtimeMs }, known.readAt))
+    return known.p;
+  const readAt = Date.now();
   const p = new Promise<string | undefined>((resolve) => {
     let out = "";
     let done = false;
@@ -685,7 +701,7 @@ export function runtimeVersion(
       finish(code === 0 ? parseVersion(out) : undefined),
     );
   });
-  versions.set(key, p);
+  versions.set(key, { p, readAt });
   return p;
 }
 

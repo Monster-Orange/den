@@ -429,32 +429,51 @@ function tryStoreLock(file: string): boolean {
     }
   }
   try {
-    writeFileAtomic(path.join(lock, "pid"), String(process.pid));
+    // Issue 1598: and a nonce for this take, so a lock taken over and made
+    // again in one clock tick (the same inode and time) is told apart.
+    writeFileAtomic(
+      path.join(lock, "pid"),
+      `${process.pid} ${crypto.randomUUID()}`,
+    );
   } catch {
     /* the lock holds without it; only its takeback needs it */
   }
   return true;
 }
 
-/** Issue 1348: moves a leftover lock out of the way; false: it isn't one. */
-function takeBackStoreLock(lock: string): boolean {
+/** Issue 1598: a lock's pid file, or null when it has none (yet). */
+function lockText(lock: string): string | null {
+  try {
+    return fs.readFileSync(path.join(lock, "pid"), "utf-8");
+  } catch {
+    return null; // taken just now, or its holder died before saying who
+  }
+}
+
+/**
+ * Issue 1348: moves a leftover lock out of the way; false: it isn't one.
+ * Exported for its tests, whose `afterSeen` runs between the look and the
+ * move (another taker's turn).
+ */
+export function takeBackStoreLock(
+  lock: string,
+  test?: { afterSeen?: () => void },
+): boolean {
   let seen: fs.Stats;
   try {
     seen = fs.statSync(lock);
   } catch {
     return true; // gone meanwhile: free
   }
-  let pid = NaN;
-  try {
-    pid = Number(fs.readFileSync(path.join(lock, "pid"), "utf-8").trim());
-  } catch {
-    /* taken just now, or its holder died before saying who it is */
-  }
+  const seenText = lockText(lock);
+  // Its first word (a lock an older Den made has no nonce after it).
+  const pid = Number((seenText ?? "").trim().split(/\s+/)[0] || NaN);
   const age = Date.now() - seen.mtimeMs;
   const known = Number.isInteger(pid) && pid > 0;
   const t = lockSettings();
   const left = known ? !aliveProcess(pid) || age >= t.liveMs : age >= t.noPidMs;
   if (!left) return false;
+  test?.afterSeen?.();
   const aside = `${lock}.old-${process.pid}-${crypto.randomUUID()}`;
   try {
     fs.renameSync(lock, aside);
@@ -463,7 +482,13 @@ function takeBackStoreLock(lock: string): boolean {
   }
   try {
     const moved = fs.statSync(aside);
-    if (moved.ino !== seen.ino || moved.mtimeMs !== seen.mtimeMs) {
+    // Issue 1598: its text too: one taken over and made again in one tick
+    // can keep the inode and time, never the nonce.
+    if (
+      moved.ino !== seen.ino ||
+      moved.mtimeMs !== seen.mtimeMs ||
+      lockText(aside) !== seenText
+    ) {
       // Not the one looked at: a lock taken since. Put it back.
       try {
         fs.renameSync(aside, lock);
