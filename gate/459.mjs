@@ -2,9 +2,12 @@
 // Live check for #459: an app's event feed, delivered to one project agent. One bed stub agent,
 // gate-459-feed, and one feed this check serves itself (server-sent events on 127.0.0.1, no bearer).
 // Den has no way yet to add a feed but the install's config/local/workspaces.yml (issue 1480), so the
-// check patches that file (a temp file, then a rename), restarts the bed's Den, and in a finally puts
-// the file's text back and restarts it again, whatever the result. Every word on the page is found
-// through the page's own catalog (denShell.t); the feed's state is read from data attributes.
+// check patches that file (a temp file, then a rename) and restarts the bed's Den. Putting the bed back
+// (restoreBed) runs once, from run's finally or, when the run timed out and its finally never ran, from
+// teardown: the file's own text back (only this feed taken out, if someone else wrote to the file
+// meanwhile), the stream stopped, Den restarted, and the feed gone from its view. Every clause needs
+// that. Every word on the page is found through the page's own catalog (denShell.t); the feed's state
+// is read from data attributes.
 import { createRequire } from "module";
 import * as fs from "fs";
 import * as http from "http";
@@ -19,7 +22,9 @@ export const clauses = [
   "Settings › Project shows the feed's state and its last event time, in the page's words",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
-export const timeoutMs = 300000;
+// The slowest normal run, about 265 s: two restarts (15 + 60 s each), four waits of 20-30 s, the
+// Settings row 15 s, 8 s of sleeps.
+export const timeoutMs = 420000;
 const ID = "gate-459-feed";
 const FEED = "gate459";
 const FILE = "config/local/workspaces.yml";
@@ -87,7 +92,7 @@ const answering = async (ctx) => !!(await ctx.api("/api/server-info"));
 
 async function restartDen(ctx) {
   const down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
-  await ctx.until(async () => !(await answering(ctx)), 20000);
+  await ctx.until(async () => !(await answering(ctx)), 15000);
   const up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
   const ms = await ctx.until(() => answering(ctx), 60000);
   return { down, up, ms };
@@ -133,12 +138,20 @@ async function pointerSince(ctx, since, ms) {
   return { took, seen };
 }
 
-/** The bed's workspaces.yml with this feed added under `ws`: the old text, to put back. */
+// What run() changed on the bed, keyed by setup's state and kept off the result (the file's text
+// never reaches a log). Read by teardown when the run timed out.
+const held = new WeakMap();
+
+const yamlOf = (ctx) =>
+  createRequire(path.join(ctx.o.yamlFrom || ctx.o.bed, "x.js"))("yaml");
+const readText = (file) =>
+  fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+
+/** The bed's workspaces.yml with this feed added under `ws`: the old text and the text written. */
 function patch(ctx, ws, url) {
   const file = path.join(ctx.o.bed, FILE);
-  const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
-  const req = createRequire(path.join(ctx.o.yamlFrom || ctx.o.bed, "x.js"));
-  const YAML = req("yaml");
+  const before = readText(file);
+  const YAML = yamlOf(ctx);
   const doc = (before && YAML.parse(before)) || {};
   doc.workspaces ??= {};
   doc.workspaces[ws] ??= {};
@@ -148,8 +161,26 @@ function patch(ctx, ws, url) {
     ...feeds.filter((f) => f?.name !== FEED),
     { name: FEED, agent: ID, url },
   ];
-  writeWhole(file, YAML.stringify(doc));
-  return { file, before };
+  const wrote = YAML.stringify(doc);
+  writeWhole(file, wrote);
+  return { file, before, wrote };
+}
+
+/** `text` with only this check's feed taken out (comments kept), or null when it has none. */
+function withoutFeed(YAML, text, ws) {
+  const doc = YAML.parseDocument(text);
+  const at = ["workspaces", ws, "agents", "event_feeds"];
+  const list = doc.getIn(at);
+  if (!YAML.isSeq(list)) return null;
+  const i = list.items.findIndex(
+    (x) => YAML.isMap(x) && x.get("name") === FEED,
+  );
+  if (i < 0) return null;
+  list.items.splice(i, 1);
+  if (!list.items.length) doc.deleteIn(at);
+  const agents = doc.getIn(at.slice(0, 3));
+  if (YAML.isMap(agents) && !agents.items.length) doc.deleteIn(at.slice(0, 3));
+  return doc.toString();
 }
 
 function writeWhole(file, text) {
@@ -161,6 +192,46 @@ function writeWhole(file, text) {
 function putBack(p) {
   if (p.before === null) fs.rmSync(p.file, { force: true });
   else writeWhole(p.file, p.before);
+}
+
+/**
+ * The bed as it was, once (a second caller gets the first's answer): the file, unless someone else
+ * wrote to it meanwhile (then only this feed comes out); then, whatever that did, the stream
+ * stopped, Den restarted, and the feed gone from the project's view.
+ */
+function restoreBed(ctx, h) {
+  h.out ??= (async () => {
+    const out = { how: null, error: null };
+    try {
+      const now = readText(h.file);
+      if (now === h.wrote) {
+        putBack(h);
+        out.how = "put back";
+      } else if (now === h.before) out.how = "already as it was";
+      else {
+        const cut = now === null ? null : withoutFeed(yamlOf(ctx), now, h.ws);
+        if (cut !== null) writeWhole(h.file, cut);
+        out.how =
+          cut !== null
+            ? "changed during the check: only the gate459 feed taken out"
+            : "changed during the check, without the gate459 feed: left as it is";
+      }
+    } catch (e) {
+      out.error = String(e?.message ?? e).slice(0, 200);
+    }
+    await Promise.resolve()
+      .then(h.stop)
+      .catch(() => {});
+    try {
+      out.restart = await restartDen(ctx);
+      out.gone = (await feedOf(ctx, h.ws)) === null;
+    } catch (e) {
+      out.restart ??= { error: String(e?.message ?? e).slice(0, 200) };
+      out.gone = null;
+    }
+    return out;
+  })();
+  return h.out;
 }
 
 export async function setup(ctx) {
@@ -180,15 +251,16 @@ export async function run(ctx, s) {
   r.ids = [e1, e2];
   const feed = feedServer();
   const url = await feed.start();
-  let p = null;
+  const h = { ws: r.ws, wrote: null, stop: () => feed.stop() };
+  if (s && typeof s === "object") held.set(s, h);
   try {
-    p = patch(ctx, r.ws, url);
+    Object.assign(h, patch(ctx, r.ws, url));
     r.restart = await restartDen(ctx);
     // 1: listed for its agent, connected.
     r.connectMs = await ctx.until(async () => {
       const f = await feedOf(ctx, r.ws);
       return f?.state === "connected" && feed.open() > 0;
-    }, 30000);
+    }, 20000);
     r.listed = await feedOf(ctx, r.ws);
 
     // 2: one event, one pointer, typed at the prompt, never the app's text.
@@ -218,12 +290,12 @@ export async function run(ctx, s) {
     feed.cut();
     r.reconnectMs = await ctx.until(
       () => feed.asks.slice(asked).some((x) => !x.list),
-      30000,
+      20000,
     );
     r.fillMs = await ctx.until(async () => {
       const f = await feedOf(ctx, r.ws);
       return (f?.unread ?? 0) > (r.again.unreadAfter ?? 0);
-    }, 30000);
+    }, 20000);
     r.asks = feed.asks.slice(asked);
     r.afterGap = await feedOf(ctx, r.ws);
 
@@ -234,7 +306,7 @@ export async function run(ctx, s) {
       `/settings?project=${encodeURIComponent(r.ws)}&q=event_feeds`,
     );
     const row = pg.locator(`[data-feed="${FEED}"]`);
-    await row.waitFor({ timeout: 20000 }).catch(() => {});
+    await row.waitFor({ timeout: 15000 }).catch(() => {});
     r.row = await row
       .evaluate((e) => ({
         state: e.getAttribute("data-feed-state"),
@@ -247,15 +319,9 @@ export async function run(ctx, s) {
       : null;
     await ctx.shot("feed-row");
   } finally {
-    // Whatever happened above: the bed's file as it was, and its Den on it.
-    if (p) {
-      putBack(p);
-      r.restored =
-        (fs.existsSync(p.file) ? fs.readFileSync(p.file, "utf8") : null) ===
-        p.before;
-      r.restartBack = await restartDen(ctx);
-    }
-    await feed.stop();
+    // Whatever happened above: the bed as it was (teardown does this when the run timed out).
+    if (h.wrote !== null) r.restore = await restoreBed(ctx, h);
+    else await feed.stop();
   }
   return r;
 }
@@ -272,8 +338,18 @@ export function expect(cells) {
           ? "bed root not given (ctx.o.bed): the check can't add the feed"
           : `${ID} has no running session on the bed, though setup started it`,
     }));
-  const restored = r.restored === true;
-  const why = restored ? "" : "; the bed's workspaces.yml was NOT put back";
+  const b = r.restore;
+  const restored =
+    !!b?.how &&
+    !b.error &&
+    b.restart?.up === 0 &&
+    b.restart?.ms != null &&
+    b.gone === true;
+  const why = restored
+    ? b.how === "put back"
+      ? ""
+      : `; workspaces.yml ${b.how}`
+    : `; the bed was NOT put back: ${JSON.stringify(b ?? null).slice(0, 300)}`;
   const first = r.first?.seen ?? [];
   const again = r.again?.pointers;
   const [e1, e2] = r.ids ?? [];
@@ -336,6 +412,13 @@ export function expect(cells) {
   ];
 }
 
-export async function teardown(ctx) {
-  if (ctx.agent(ID).state()) ctx.agent(ID).remove();
+export async function teardown(ctx, s) {
+  // A run that timed out never reached its finally: put the bed back here.
+  const h = s && typeof s === "object" ? held.get(s) : null;
+  try {
+    if (h?.wrote != null) await restoreBed(ctx, h);
+    else if (h) await h.stop();
+  } finally {
+    if (ctx.agent(ID).state()) ctx.agent(ID).remove();
+  }
 }

@@ -13,6 +13,10 @@
 //   "noFill":     a reconnect never asks the list form;
 //   "rawWords":   Settings shows the state's key, not the catalog's words;
 //   "pageThrows": Settings throws (the check's run throws);
+//   "hangs":      Settings never answers (the runner's time limit ends the run);
+//   "changedMidRun": someone else adds a project to workspaces.yml mid-run;
+//   "noComeBack": Den doesn't come back up after the bed is put back;
+//   "readOnly":   the config folder turns read-only mid-run (putting it back throws);
 //   "noSession":  the agent has no session at run time, though started.
 // `bed`: "file" (a workspaces.yml with a comment in it), "none" (no file
 // yet) or "missing" (no bed root given). Invented names only.
@@ -181,8 +185,9 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
   }
 
   function webUp() {
-    st.up = true;
     st.ups++;
+    if (den === "noComeBack" && st.ups >= 2) return; // it never answers again
+    st.up = true;
     const text =
       file && fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
     const doc = YAML.parse(text) || {};
@@ -257,6 +262,13 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
     async goto(_p, where) {
       st.gotos.push(where);
       if (den === "pageThrows") throw new Error("Settings: page crashed");
+      if (den === "hangs") return new Promise(() => {});
+      if (den === "changedMidRun") {
+        const d = YAML.parseDocument(fs.readFileSync(file, "utf8"));
+        d.setIn(["workspaces", "east", "path"], "/beds/east");
+        fs.writeFileSync(file, `# a project someone added\n${d.toString()}`);
+      }
+      if (den === "readOnly") fs.chmodSync(path.dirname(file), 0o555);
       if (!where.includes(`project=${WS}`))
         throw new Error(`not this project's Settings: ${where}`);
     },
@@ -329,6 +341,8 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
     }),
     cleanup: () => {
       webDown();
+      if (file && fs.existsSync(path.dirname(file)))
+        fs.chmodSync(path.dirname(file), 0o755);
       if (root) fs.rmSync(root, { recursive: true, force: true });
     },
   };
