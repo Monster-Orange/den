@@ -8,10 +8,14 @@
  *                   it does at its next start).
  *   hub token     ⚠ a token an earlier Hub couldn't revoke (which Hub, when
  *                   and why). Den tries again at each start.
+ *   hub token     ⚠ a kept token whose record is gone: named by id (never
+ *                   its value), revoked at its Hub by a person, then
+ *                   cleared by hub_token_forget (their Allow). No retry.
  */
 import type {
   ArchivedHub,
   HubBinding,
+  OrphanToken,
   UnrevokedToken,
 } from "../../shared/hub-binding.js";
 import { hubOrigin } from "../../shared/hub-binding.js";
@@ -26,6 +30,8 @@ export function previousHubLines(o: {
   bound: HubBinding | null;
   previous: ArchivedHub[];
   unrevoked: UnrevokedToken[];
+  /** Kept tokens without a record Den can read (default: none). */
+  orphans?: OrphanToken[];
 }): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
@@ -62,6 +68,35 @@ export function previousHubLines(o: {
       status: "ok",
       detail: "no token from an earlier Hub waits on a revoke",
     });
+  const orphans = o.orphans ?? [];
+  if (orphans.length) {
+    // Where to look: the earlier Hubs this install's archive names.
+    const earlier = [
+      ...new Set(
+        o.previous.map((p) => p.from?.origin).filter((x): x is string => !!x),
+      ),
+    ];
+    const look = earlier.length
+      ? ` (earlier Hubs this install was on: ${earlier.join(", ")})`
+      : "";
+    const rows = orphans.map((t) =>
+      t.stuck
+        ? // The record may name the Hub, so Den never forgets it.
+          `a Hub token Den kept to revoke later has a record Den can't read or move (id ${t.id}, kept ${t.at}): hub/unrevoked/${t.id}.json in the state folder. It may name the Hub${look}: revoke this install's token on that Hub's tokens page, then remove that file, and Den's agent can forget the token (hub_token_forget, id ${t.id}; you Allow it)`
+        : `a Hub token Den kept to revoke later has lost its record (id ${t.id}, kept ${t.at}), so Den doesn't know which Hub it is for and leaves it alone.${t.kept ? ` A copy of the record Den couldn't read is in backup/${t.kept} in the state folder, and may name the Hub.` : ""} Revoke this install's token on that Hub's tokens page${look}, then have Den's agent forget it (hub_token_forget, id ${t.id}; you Allow it)`,
+    );
+    for (const r of rows) lines.push(`  hub token  ⚠  ${r}`);
+    checks.push({
+      id: "hub:orphan-token",
+      status: "warn",
+      detail: rows.join("; "),
+    });
+  } else
+    checks.push({
+      id: "hub:orphan-token",
+      status: "ok",
+      detail: "every kept Hub token has its record",
+    });
   return { lines, checks };
 }
 
@@ -76,5 +111,6 @@ export async function previousHubDoctor(
     bound: m.readHubBinding(stateDir),
     previous: m.listPreviousHubs(stateDir),
     unrevoked: m.readUnrevoked(stateDir),
+    orphans: m.readOrphanTokens(stateDir),
   });
 }

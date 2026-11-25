@@ -3207,6 +3207,34 @@ const APPROVAL_TOOLS: DenTool[] = [
       );
     },
   },
+  // A kept Hub token whose record is gone: Den can't revoke it (no Hub
+  // named), so a person revokes it at its Hub and then Allows this.
+  {
+    name: "hub_token_forget",
+    title: "Forget a kept Hub token",
+    description:
+      "Forget a Hub token Den kept to revoke later whose record is gone: doctor's hub token row names it by `id` (never its value). Ask only once the person says they revoked this install's token on that Hub's tokens page: Den deletes its copy and can't revoke it later. Den's own agent only; always the person's Allow." +
+      HELD,
+    action: true,
+    shape: {
+      id: z
+        .string()
+        .regex(/^[0-9a-f]{12}$/)
+        .describe("The kept token's id, as doctor names it"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const id = needArg("hub_token_forget", a, "id", "the id doctor names");
+      return askPerson(
+        "hub_token_forget",
+        "hub_token_forget",
+        { id } as Args,
+        a,
+        ctx,
+      );
+    },
+  },
   // Issue 565: an agent files a report the way the page's Report does.
   {
     name: "report",

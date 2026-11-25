@@ -22,6 +22,7 @@ describe("issue 726: doctor, state from an earlier Hub", () => {
     expect(r.checks.map((c) => [c.id, c.status])).toEqual([
       ["hub:previous", "ok"],
       ["hub:unrevoked", "ok"],
+      ["hub:orphan-token", "ok"],
     ]);
     expect(r.lines.join("\n")).toMatch(/no state from an earlier Hub/);
   });

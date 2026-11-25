@@ -1556,6 +1556,8 @@
       "Cambiar la política de aprobación de todos los proyectos a {to}",
     "ap.do.approval_policy.project":
       "Cambiar la política de aprobación del proyecto {where} a {to}",
+    "ap.do.hub_token_forget":
+      "Olvidar el token de Hub guardado {id}, ya revocado en su Hub",
     "ap.do.pr_close": "Cerrar la pull request {pr} de {repo}: {comment}",
     "set.agents.default_mode":
       "Modo de los agentes: valor por defecto de todo Den",
@@ -2393,6 +2395,10 @@
     "ap.det.approval_policy.thenNone": "Después: ninguna.",
     "ap.det.approval_policy.person":
       "Solo una persona cambia la política de aprobación sin un Permitir: un agente siempre pregunta.",
+    "ap.det.hub_token_forget.what":
+      "Id del token: {id}, guardado el {at}. Den no puede leer su registro, así que no sabe de qué Hub es.",
+    "ap.det.hub_token_forget.revoked":
+      "Permítelo solo cuando hayas revocado el token de esta instalación en la página de tokens de ese Hub: Den borra su copia y ya no podrá revocarlo.",
     "ap.det.pr_close.what": "Repositorio: {repo}. Pull request: {pr}.",
     "ap.det.pr_close.comment": "Den la cierra con este comentario: {comment}",
     "ap.det.pr_close.nothing": "No se fusiona nada y no se borra ninguna rama.",

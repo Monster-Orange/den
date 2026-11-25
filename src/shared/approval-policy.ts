@@ -276,6 +276,11 @@ export const HELD_WRITE_RISK: Readonly<
     kind: "ask",
     why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it; one that would start outside the sandbox is the person's (issue 1328)",
   },
+  hub_token_forget: {
+    risk: "critical",
+    areas: ["secrets"],
+    why: "deletes a kept Hub token: only once the person revoked it at its Hub",
+  },
   pr_close: {
     personal: "keep",
     risk: "routine",

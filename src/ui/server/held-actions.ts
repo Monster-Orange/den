@@ -88,6 +88,9 @@
  *   pr_close          issue 160: close a stale or superseded pull request
  *                     after a Hub note, with a comment saying why (gh
  *                     pr close). Auto unless the repo is watched or pinned
+ *   hub_token_forget  forget a kept Hub token whose record Den can't read,
+ *                     once a person revoked it at its Hub (always their
+ *                     Allow; Den's own agent only)
  *   gate_runner_token_create
  *                     issue 621: a gate-only token for a CI runner VM
  *                     (gate-routes.ts gateRunnerTokenOp): it only asks
@@ -135,6 +138,7 @@ import {
   type PolicySetting,
 } from "../../shared/approval-policy.js";
 import { workspaceSlug } from "../../shared/workspace-name.js";
+import type { OrphanToken } from "../../shared/hub-binding.js";
 import { createHash } from "crypto";
 import * as path from "path";
 import { checkOnboardPath, type PathRules } from "../cli/onboard-reads.js";
@@ -296,6 +300,14 @@ export interface HeldActionDeps {
     pr: number;
     comment: string;
   }) => Promise<unknown>;
+  /**
+   * The kept Hub tokens without their record (hub-binding.ts
+   * readOrphanTokens), and forgetting one (forgetOrphanToken).
+   */
+  hubOrphans?: {
+    list: () => OrphanToken[];
+    forget: (id: string) => boolean;
+  };
   /** Issue 565: file a report as the page does (report-held.ts reportHeld). */
   report?: HeldAction;
   /** Issue 816: set up a test install's test person (test-person-held.ts). */
@@ -1142,7 +1154,62 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const hubTokenForget: HeldAction = {
+    check(a, who, o): HeldCheck {
+      if (!d.hubOrphans)
+        return { ok: false, error: "this Den can't forget Hub tokens here" };
+      // Den's own agent only, never a person's CLI or another agent. The
+      // ask carries the caller; the check at the Allow has none, and the
+      // Allow is the person's, so only the ask is held to it.
+      if (
+        !o?.again &&
+        (who?.agent !== SERVER_AGENT_ID || !isServerScope(who.project))
+      )
+        return {
+          ok: false,
+          error:
+            "only Den's own agent forgets a kept Hub token: it is the install's, not a project's",
+        };
+      const id = typeof a.id === "string" ? a.id : "";
+      const t = d.hubOrphans.list().find((o) => o.id === id);
+      if (!t)
+        return {
+          ok: false,
+          error: `no kept Hub token without its record has id "${id}" (doctor lists them); one with its record is Den's to revoke`,
+        };
+      if (t.stuck)
+        return {
+          ok: false,
+          error: `the kept Hub token ${id} still has a record Den can't read, which may name its Hub: doctor says where it is; remove it once the token is revoked`,
+        };
+      return {
+        ok: true,
+        args: { id },
+        summary: `forget the kept Hub token ${id}, revoked at its Hub`,
+        params: { id },
+        ...reviewLines([
+          line(
+            `Token id: ${id}, kept ${t.at}. Den can't read its record, so it doesn't know which Hub it is for.`,
+            "ap.det.hub_token_forget.what",
+            { id, at: t.at },
+          ),
+          line(
+            "Allow only once you have revoked this install's token on that Hub's tokens page: Den deletes its copy and can't revoke it later.",
+            "ap.det.hub_token_forget.revoked",
+          ),
+        ]),
+      };
+    },
+    async run(a) {
+      const id = String(a.id);
+      if (!d.hubOrphans?.forget(id))
+        throw new Error(`the kept Hub token ${id} is gone or has its record`);
+      return { ok: true, forgot: id };
+    },
+  };
+
   return {
+    hub_token_forget: hubTokenForget,
     workspace_create: workspaceCreate,
     repo_add: repoAddHeld,
     service_try: serviceTry,

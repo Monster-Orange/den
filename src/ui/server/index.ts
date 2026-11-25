@@ -311,6 +311,7 @@ import {
   getProfile,
   getStateDir,
 } from "../../shared/paths.js";
+import * as hubBindingOrphans from "../../shared/hub-binding.js";
 import { enginePath } from "../../shared/engine.js";
 import {
   releaseService,
@@ -5123,6 +5124,12 @@ function approvalDeps(): ApprovalDeps {
           : `not updated: ${res.error}`,
       );
       return res;
+    },
+    // A kept Hub token without its record: forgotten once the person
+    // revoked it at its Hub (always their Allow).
+    hubOrphans: {
+      list: () => hubBindingOrphans.readOrphanTokens(getStateDir()),
+      forget: (id) => hubBindingOrphans.forgetOrphanToken(getStateDir(), id),
     },
     // Issue 565: an agent files a report as the page does (public: Allow).
     report: reportHeld(reportRouteDeps()),
