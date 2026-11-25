@@ -2998,6 +2998,11 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} no se reinició: seguía trabajando tras {min} min",
+    "bell.m.rsJob":
+      "{id} no se reinició: hay una tarea en segundo plano ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} no se reinició",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":
@@ -3020,6 +3025,8 @@
     "bell.m.vschedExpire.one":
       'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.heldAllowClaimed":
+      "Espera tu permiso: {what}. Lo pediste tú, como {name} (sin verificar).",
     "bell.m.shared": "{actor} compartió {title} contigo",
     "bell.m.sharedNote": "{actor} compartió {title} contigo: {note}",
     "bell.m.sharedAgent": "El agente {actor} compartió {title} contigo",
@@ -3046,6 +3053,7 @@
     "bell.ap.h": "Esperan tu permiso",
     "bell.ap.row": "{name} pide: {what}",
     "bell.ap.rowAsk": "Pedido: {what}",
+    "bell.ap.rowClaimed": "Lo pediste tú, como {name} (sin verificar): {what}",
     "bell.ap.waits": "Espera desde hace {ago} · vence {time}",
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
@@ -3065,6 +3073,8 @@
     "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
     "rs.allName": "los agentes",
     "rs.done": "{id}: reiniciado, en la misma conversación.",
+    "rs.timedOut":
+      "{id}: no se reinició, seguía trabajando tras {min} min. Reiniciar ahora termina su turno.",
     "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",
@@ -3191,6 +3201,8 @@
       "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
     "bell.m.hubCommentsSilent":
       "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
+    "bell.m.hubCommentsStale":
+      "Los comentarios de Hub no llegan: el flujo de comentarios está abierto, pero Hub tiene comentarios que no ha enviado",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
@@ -4855,6 +4867,9 @@
     "env.run.title": "La ejecución del despliegue en GitHub",
     "env.run": "ejecución",
     "env.timedOut": "se agotó el tiempo tras {s} s",
+    "env.fetchFailed": "Sin respuesta: ¿está en marcha?",
+    "env.fetchFailedWhy":
+      "{url} no respondió. Comprueba que está en marcha y que este ordenador llega a esa dirección.",
     "env.up": "activo",
     "env.down": "caído",
     "env.service": "Servicio",

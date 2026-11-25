@@ -64,6 +64,15 @@ import { redactSecrets } from "../../shared/redact.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** The header an anonymous asker reads its own request with. */
+/**
+ * An unverified agent claim is kept and shown only on a
+ * verified person's own ask, never on an anonymous ("loopback"), fixture,
+ * test-operator or agent asker.
+ */
+export function claimantIsPerson(actor: string | undefined): boolean {
+  return typeof actor === "string" && actor.startsWith("person:");
+}
+
 export const APPROVAL_TICKET_HEADER = "x-den-approval-ticket";
 
 /** A new ticket and its hash (only the hash is kept). */
@@ -249,6 +258,14 @@ export interface Approval {
   actor: string;
   /** The asking agent's session name, for the dialog ("server wants to …"). */
   agent?: string;
+  /**
+   * The agent a person's own scoped server claimed to be
+   * (`mcp --actor agent:<id>` with no agent token): never verified, so
+   * `actor` stays the person, who alone may withdraw or be held to it.
+   * Shown as "You asked, as <agent> (not verified)". Never set with
+   * `agent`.
+   */
+  claimedAs?: string;
   /** The action's name (an MCP write tool's). */
   action: string;
   /** A copy of the exact args, taken when it was asked for. */
@@ -717,6 +734,8 @@ export class ApprovalQueue {
   request(r: {
     actor: string;
     agent?: string;
+    /** An unverified agent claim (see Approval.claimedAs). */
+    claimedAs?: string;
     action: string;
     args: Record<string, unknown>;
     summary: string;
@@ -794,6 +813,9 @@ export class ApprovalQueue {
           }
         : {}),
       ...(r.agent ? { agent: r.agent.slice(0, 64) } : {}),
+      ...(r.claimedAs && !r.agent && claimantIsPerson(r.actor)
+        ? { claimedAs: r.claimedAs.slice(0, 80) }
+        : {}),
       ...(r.note?.trim()
         ? { note: r.note.replace(/\s+/g, " ").trim().slice(0, 300) }
         : {}),

@@ -7,6 +7,8 @@ node scripts/guardrail-lint/mo-gates.mjs --base origin/main   # the lines this b
 node scripts/guardrail-lint/mo-gates.mjs --all                # every tracked file
 ```
 
+Lines already on next/queue when the rules landed never count: `.guardrail-lint.json` (at the repo root) sets `since` to that commit, so the queue branch judged against main counts only lines added after it. It is read from the base's tree (for the queue's run, main's), so a change can't move it.
+
 A hit is excused by `mo-lint-ok: <reason>` on its line or the line above. An excuse with no reason doesn't count.
 
 CI runs the base's copy, so a change can't edit the rules that judge it.

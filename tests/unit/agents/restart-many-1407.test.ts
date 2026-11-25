@@ -21,12 +21,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { jobCommandOf } from "../../../src/shared/process/jobs.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
   resolveAgentsDeps,
   restartMany,
+  staleAgents,
   type RestartOutcome,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
@@ -237,5 +238,39 @@ describe("issue 1407: a bulk restart answers per agent", () => {
     expect(plan.map((p) => p.state)).toEqual(["unknown"]);
     await settle();
     expect(r.made).toHaveLength(1);
+  });
+
+  it("a wait that runs out (the turn never ends): 'timedOut', with the minutes waited; not restarted", async () => {
+    const { r, token } = await started();
+    transcript(r, token, false);
+    const done: RestartOutcome[] = [];
+    await restartMany(resolveAgentsDeps(r.deps), one, {
+      pollMs: 20,
+      maxMs: 120,
+      onDone: (o) => done.push(o),
+    });
+    await until(() => done.length > 0);
+    expect(done).toEqual([
+      { id: "planner", workspace: "north", outcome: "timedOut", minutes: 0 },
+    ]);
+    expect(r.made).toHaveLength(1);
+  });
+});
+
+describe("issue 1407: the stale list drops an agent the moment it is back", () => {
+  it("restarted on current tools: no longer stale", async () => {
+    const { r, token } = await started();
+    transcript(r, token, true);
+    const d = resolveAgentsDeps(r.deps);
+    const rec = readRecord(r.stateDir, "planner")!;
+    writeRecord(r.stateDir, { ...rec, denVersion: "0.0.1-old" });
+    expect((await staleAgents(d, { fresh: true })).map((a) => a.id)).toEqual([
+      "planner",
+    ]);
+    const done: RestartOutcome[] = [];
+    await restartMany(d, one, { pollMs: 20, onDone: (o) => done.push(o) });
+    await until(() => done.length > 0);
+    expect(done[0]?.outcome).toBe("restarted");
+    expect(await staleAgents(d, { fresh: true })).toEqual([]);
   });
 });

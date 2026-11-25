@@ -1,5 +1,5 @@
 /**
- * Issue 1127, clause 4: text an agent files on GitHub from its shell (`gh pr
+ * Text an agent files on GitHub from its shell (`gh pr
  * create|edit|comment|review`, `gh issue create|edit|comment`, and `gh api`
  * writes to issues, pulls, comments or GraphQL mutations) is checked for
  * listed names before the command runs. GitHub keeps every revision of an

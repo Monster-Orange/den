@@ -16,38 +16,6 @@
         "passed_job": 134314526529,
         "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 2) (job 134314526529), same sha, other Node"
       }
-    },
-    {
-      "file": "tests/unit/server/agents-layout.browser.test.ts",
-      "test": "the Agents tab's layouts (AG-4b) Focus: a click replaces the pane, Shift-click adds one alongside. Tabs: a strip of named tabs (name, then persona · workspace) with a waiting dot",
-      "issue": 1469,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44165236269,
-        "failed_job": 134329395622,
-        "job": "tests (22.13.0, 4)",
-        "sha": "653f59671a1f906fb8110fc682d9007c93d73354",
-        "passed_run": 44165236269,
-        "passed_job": 134329395719,
-        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 4) (job 134329395719), same sha, other Node"
-      },
-      "note": "Failed twice in the same job; passed 17 of 17 locally on both Nodes. Moved to issue 1469 (the screen keeps its old size after its pane changes): 2 of 28 PR runs to 2026-11-24 failed on it."
-    },
-    {
-      "file": "tests/unit/server/agents-layout.browser.test.ts",
-      "test": "the Agents tab's layouts (AG-4b) at 390px, focus shows as Tabs: one pane under the strip, it fits, no sideways scroll",
-      "issue": 1469,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44165236269,
-        "failed_job": 134329395622,
-        "job": "tests (22.13.0, 4)",
-        "sha": "653f59671a1f906fb8110fc682d9007c93d73354",
-        "passed_run": 44165236269,
-        "passed_job": 134329395719,
-        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 4) (job 134329395719), same sha, other Node"
-      },
-      "note": "Failed twice in the same job; passed 17 of 17 locally on both Nodes. Moved to issue 1469 (the screen keeps its old size after its pane changes): 2 of 28 PR runs to 2026-11-24 failed on it."
     }
   ]
 }

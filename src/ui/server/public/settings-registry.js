@@ -40,7 +40,12 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
-import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+import {
+  followRestarts,
+  mergeLive,
+  restartResultHtml,
+  wireRestartNow,
+} from "./restart-result.js";
 
 export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
@@ -6912,6 +6917,31 @@ function wireRestartResult(box, ctx) {
   });
 }
 
+/**
+ * The answer box follows its agents live (restarted,
+ * a wait that ran out, failed) and goes once they are all done.
+ */
+function followRestartResult(box, ctx, plan) {
+  let shown = Array.isArray(plan) ? plan : [];
+  if (!shown.length) return;
+  const f = followRestarts({
+    api: (...a) => ctx.shell.api(...a),
+    onRows: (rows) => {
+      if (!box.isConnected) return f.stop();
+      const next = mergeLive(shown, rows);
+      if (JSON.stringify(next) === JSON.stringify(shown)) return;
+      shown = next;
+      if (!shown.length) {
+        f.stop();
+        box.remove();
+        return;
+      }
+      box.innerHTML = restartResultHtml(shown, (k, v) => ctx.shell.t(k, v));
+      wireRestartResult(box, ctx);
+    },
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6933,6 +6963,7 @@ function offerRestart(host, ctx, fresh) {
               ctx.shell.t(k, v),
             );
             wireRestartResult(box, ctx);
+            followRestartResult(box, ctx, x?.agents);
           })
           .catch((e) => {
             box.insertAdjacentHTML(
