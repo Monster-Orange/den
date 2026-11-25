@@ -152,6 +152,7 @@ export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   "GET /api/gate-slots": OPEN("the machine's queue, labels by lane"),
   "GET /api/gate-slots/runners": OPEN("runners"),
   "GET /api/gate-slots/boxes": OPEN("test boxes"),
+  "GET /api/gate-slots/runner-entries": OPEN("runner entries, by repo"),
   "GET /api/notifications": OPEN("the person's notifications"),
   "GET /api/alerts": OPEN("the person's alerts"),
   "GET /api/alerts/devices": OPEN("the person's devices"),
