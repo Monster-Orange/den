@@ -279,9 +279,8 @@ export async function openReport(opts = {}) {
     shot: null,
     // Issue 1499: the form opens at once; the shot fills in when taken.
     // shotWait: still being taken. shotFailed: taking it failed.
-    // shotSeen: on screen (the first step or Review) before a send: only
-    // then can it go.
-    // where the person blacks out anything private: only then can it go.
+    // shotSeen: shown on the first step (where the person can black it
+    // out): only then can it go.
     shotWait: false,
     shotFailed: false,
     shotSeen: false,
