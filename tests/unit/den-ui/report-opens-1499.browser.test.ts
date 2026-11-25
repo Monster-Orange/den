@@ -119,6 +119,10 @@ async function report(p: Page) {
   await p.waitForSelector("dialog[open]", { timeout: 1_000 });
 }
 
+/** With DEN_1499_SHOTS set to a folder (under the temp dir), the frames
+ * design review asks for: the form while the shot is taken, and once in. */
+const SHOTS = process.env.DEN_1499_SHOTS;
+
 for (const name of ["chromium", "webkit"]) {
   describe(`issue 1499: Report opens at once (${name})`, () => {
     const b = () => browsers[name]!;
@@ -174,6 +178,33 @@ for (const name of ["chromium", "webkit"]) {
       },
       DELAY + 60_000,
     );
+
+    if (SHOTS)
+      it(
+        "saves the frames review asks for",
+        async () => {
+          fs.mkdirSync(SHOTS, { recursive: true });
+          for (const width of [1280, 390]) {
+            const p = await open(b());
+            try {
+              await p.setViewportSize({ width, height: 800 });
+              await report(p);
+              await p.screenshot({
+                path: path.join(SHOTS, `${name}-${width}-taking.png`),
+              });
+              await p.waitForSelector("canvas[data-shot]", {
+                timeout: DELAY + 30_000,
+              });
+              await p.screenshot({
+                path: path.join(SHOTS, `${name}-${width}-shot-in.png`),
+              });
+            } finally {
+              await p.context().close();
+            }
+          }
+        },
+        2 * DELAY + 90_000,
+      );
 
     it("sends before the shot is there, without it, and Review says so", async () => {
       if (!b()) return;
