@@ -139,6 +139,8 @@ import {
   firstCheckDelay,
   readCheckState as readCheckStateSync,
   scheduleUpdateChecks,
+  tickBegun,
+  writeCheckState as writeCheckStateSync,
 } from "../../shared/update-check-state.js";
 import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -12302,6 +12304,19 @@ function startUpdateCheck(): void {
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
+    try {
+      writeCheckStateSync(
+        getStateDir(),
+        tickBegun(
+          readCheckStateSync(getStateDir()),
+          everyMinutes,
+          every,
+          Date.now(),
+        ),
+      );
+    } catch {
+      /* best effort: doctor says "no check yet" */
+    }
     try {
       const u = await import("./den-update.js");
       const { updateCheck } = await import("./update-check.js");

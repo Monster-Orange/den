@@ -69,6 +69,7 @@ export {
   readCheckState,
   scheduleUpdateChecks,
   selfUpdateSummary,
+  tickBegun,
   tickText,
   updateCheckFile,
   writeCheckState,

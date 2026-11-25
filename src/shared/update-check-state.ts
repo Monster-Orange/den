@@ -83,6 +83,19 @@ export function firstCheckDelay(
   return Math.min(Math.max(due - now, 0), everyMs);
 }
 
+export function tickBegun(
+  prev: CheckState | null,
+  everyMinutes: number,
+  everyMs: number,
+  now: number,
+): CheckState {
+  return {
+    everyMinutes,
+    next: new Date(now + everyMs).toISOString(),
+    ...(prev?.last ? { last: prev.last } : {}),
+  };
+}
+
 export interface CheckTimers {
   once: (fn: () => void, ms: number) => void;
   every: (fn: () => void, ms: number) => void;

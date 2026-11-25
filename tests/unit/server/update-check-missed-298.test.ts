@@ -1,7 +1,13 @@
 import { describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
   firstCheckDelay,
+  readCheckState,
   scheduleUpdateChecks,
+  tickBegun,
+  writeCheckState,
   type CheckState,
 } from "../../../src/ui/server/update-check.js";
 
@@ -127,5 +133,32 @@ describe("the server's schedule", () => {
     });
     expect(s.next).toBeNull();
     expect(set).toEqual([]);
+  });
+});
+
+describe("a check begun and not finished", () => {
+  it("gives one interval at the next start, not an immediate check", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-298-"));
+    try {
+      writeCheckState(dir, {
+        everyMinutes: 30,
+        next: new Date(START).toISOString(),
+        last: { at: "2026-11-16T16:23:00-08:00", did: "current" },
+      });
+      const begun = START + 5;
+      writeCheckState(dir, tickBegun(readCheckState(dir), 30, EVERY, begun));
+      const after = readCheckState(dir);
+      expect(after?.last?.at).toBe("2026-11-16T16:23:00-08:00");
+      expect(firstCheckDelay(after, EVERY, begun + 2_000)).toBe(EVERY - 2_000);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("starts from nothing when there was no state", () => {
+    expect(tickBegun(null, 30, EVERY, START)).toEqual({
+      everyMinutes: 30,
+      next: new Date(START + EVERY).toISOString(),
+    });
   });
 });
