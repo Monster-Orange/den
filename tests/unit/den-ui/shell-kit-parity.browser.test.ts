@@ -23,7 +23,10 @@
  * 2. The pixels, when the baseline PNGs are on this machine
  *    (DEN_UI_DIFF_DIR, default ~/Library/Logs/den-probe/den-ui-diff/
  *    baseline): a 0-pixel difference, compared in the browser. The PNGs
- *    are not in the repo (each is ~100 KB); CI runs check 1 only.
+ *    are not in the repo (each is ~100 KB); CI runs check 1 only. This
+ *    run's own shots go to a temp folder (DEN_UI_AFTER_DIR, default
+ *    <tmp>/den-ui-diff-after), never beside the baseline: a test writes
+ *    only under the temp folders (issue 1356; issue 1478).
  *
  * Where it runs: the fixture keeps the browser's fingerprint from the
  * capture (its user agent, pixel ratio and the width of one line of text in
@@ -58,7 +61,9 @@ const OUT_DIR =
   process.env.DEN_UI_DIFF_DIR ??
   path.join(os.homedir(), "Library", "Logs", "den-probe", "den-ui-diff");
 const BASE_DIR = path.join(OUT_DIR, "baseline");
-const AFTER_DIR = path.join(OUT_DIR, "after");
+// Issue 1478: written, so under the temp folders (the write guard).
+const AFTER_DIR =
+  process.env.DEN_UI_AFTER_DIR ?? path.join(os.tmpdir(), "den-ui-diff-after");
 
 const AREAS = ["shell", "version", "update", "report", "working"] as const;
 type Area = (typeof AREAS)[number];
@@ -442,6 +447,16 @@ async function show(p: Page, area: Area): Promise<void> {
     await p.waitForSelector(".den-upd .upd-pill", {
       state: "visible",
       timeout: 20_000,
+    });
+    // Issue 1478: the pill empties its live status and fills it again a
+    // moment later, so a screen reader announces it; the look is the
+    // settled one, with the words in place.
+    const status = await p
+      .getByRole("region", { name: "Update" })
+      .getByRole("status")
+      .elementHandle();
+    await p.waitForFunction((el) => !!el && el.textContent !== "", status, {
+      timeout: 10_000,
     });
   } else if (area === "report") {
     await p.evaluate(() =>
