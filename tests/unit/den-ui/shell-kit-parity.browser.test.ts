@@ -40,6 +40,9 @@
  * DEN_UI_CAPTURE=1 writes the fixture and the PNGs instead of comparing
  * (run once, before the move). DEN_PW_WS: Den's own Playwright server.
  * DEN_SKIP_BROWSER_TESTS=1 skips.
+ *
+ * @visual-reference (issue 1527): compares against a stored reference, so
+ * the gate runs it only on a box serving its references' Chromium build.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";

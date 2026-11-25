@@ -29,6 +29,9 @@
  * DEN_UI_NAV_CAPTURE=1 writes the reference instead of comparing (take it
  * again only on purpose: it is the look the nav must keep).
  * DEN_SKIP_BROWSER_TESTS=1 skips when no browser can start.
+ *
+ * @visual-reference (issue 1527): compares against a stored reference, so
+ * the gate runs it only on a box serving its references' Chromium build.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";

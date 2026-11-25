@@ -692,6 +692,33 @@ all run on the box. The answer says `box` once it holds the slot.
 The queue stays first come, first served: a run that waits keeps the slots
 it waits for from the runs behind it, and never blocks a slot it can't use.
 
+### Visual-reference tests go where their references were taken
+
+Some tests compare a render against a stored reference: pixels, or measured
+rects and styles kept in a committed file. Their references were taken on
+the Chromium build the run's pinned Playwright installs (CI's). A box can
+serve another build of the same Playwright. An Apple-silicon box runs the
+image's arm64 build natively, and text lands differently there.
+
+Such a test says so with `@visual-reference` in its top comment. A browser
+run that includes one (by file, by a folder holding one, or with
+`--all-tests`) goes only to a box whose Chromium reports that build. The
+gate reads each candidate box's build once, through its Playwright server.
+
+- With `--box any`, or no `--box`, a box with another build is skipped:
+  `gate: skips box arm serves Chromium 149.0.7827.0; the visual references
+need 149.0.7827.55`. With none that matches, `--box any` is refused, and
+  a run with no `--box` stays on this machine, saying why.
+- A box named with `--box` that has another build refuses the run before it
+  starts, naming the box and both builds.
+- A box whose build can't be read is never taken as a match.
+- Runs with no tagged test go anywhere, as before.
+
+`gate status` shows each box's build as last read, next to its Playwright
+version (`playwright 1.61.1, chromium 149.0.7827.0`). A repo test fails a
+browser test that keeps a stored reference (a `DEN_UI_…CAPTURE…` switch, or
+the nav inventory's references) without the tag.
+
 ### Checking a box
 
 A box is checked only when a slot on it is about to be given, never on a
