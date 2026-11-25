@@ -603,7 +603,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
               ms?: number,
               ...a: unknown[]
             ) => {
-              if (!document.querySelector('.den-agd[data-state="loading"]'))
+              if (
+                !document.querySelector('[role="dialog"][data-state="loading"]')
+              )
                 return real(f, ms, ...a);
               window.setTimeout = real;
               (window as unknown as { __heldOpen: number }).__heldOpen =
