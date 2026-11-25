@@ -88,7 +88,13 @@ function feedServer() {
 const words = (p, key, vars) =>
   p.evaluate(([k, v]) => window.denShell.t(k, v), [key, vars ?? {}]);
 
-const answering = async (ctx) => !!(await ctx.api("/api/server-info"));
+const answering = async (ctx) => {
+  try {
+    return !!(await ctx.api("/api/server-info"));
+  } catch {
+    return false;
+  }
+};
 
 async function restartDen(ctx) {
   const down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
