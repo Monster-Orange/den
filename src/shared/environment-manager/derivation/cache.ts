@@ -42,7 +42,7 @@ interface CacheFile {
 
 /**
  * Stable fingerprint of a repo's input files (`mtime+size`, no content
- * read). Issue 1598: a file written within a clock tick of now (statSettled)
+ * read). A file written within a clock tick of now (statSettled)
  * may yet change with the same stamps, so the fingerprint then names this
  * moment and matches no cache: the edges are derived again until it settles.
  */

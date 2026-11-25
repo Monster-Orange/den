@@ -557,8 +557,8 @@ export function setQuarantineReader(r: QuarantineReader | undefined): void {
 /**
  * Whether `file` (its real file) carries com.apple.quarantine, asked once
  * per file identity: a change to its attributes changes its ctime, so it
- * is asked again. Issue 1598: kept only once the file was written more
- * than a clock tick before it was asked (statSettled on its mtime; a
+ * is asked again. Kept only once the file's mtime is more than a clock
+ * tick older than the ask (statSettled on its mtime; a
  * ctime can't be set back, and only macOS, on nanosecond APFS stamps,
  * sets the attribute).
  * Never runs the file; never throws.
@@ -657,7 +657,7 @@ export function runtimeVersion(
   } catch {
     return Promise.resolve(undefined);
   }
-  // Issue 1598: kept only once the CLI was written more than a clock tick
+  // Kept only once the CLI was written more than a clock tick
   // before it was asked: one rewritten in place in that tick is asked again.
   const known = versions.get(key);
   if (known && statSettled({ mtimeMs: st.mtimeMs }, known.readAt))

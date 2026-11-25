@@ -215,7 +215,7 @@ describe("issue 456: the copies' versions and the quarantine, read without runni
     );
     const bin = write(path.join(pkg, "bin", "cli.js"), "#!/bin/sh\nexit 0\n");
     // Written a minute ago: an answer from a file written just now is asked
-    // again (issue 1598, statSettled).
+    // again (statSettled).
     const old = new Date(Date.now() - 60_000);
     fs.utimesSync(bin, old, old);
     expect(installVersion(bin)).toBe("1.2.3");

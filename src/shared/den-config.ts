@@ -1440,9 +1440,9 @@ let checked: {
  * validation stops them all, not only those that happen to read `orgs:`.
  * A missing file, or one that does not parse, is left to readDenConfig.
  * Memoised on the file's mtime and size: the server checks per request.
- * Issue 1598: only once the file was written more than a clock tick before
- * it was read (statSettled), so two same-size edits in one tick can't keep
- * the first one's verdict.
+ * Kept only once the file's mtime is more than a clock tick older than the
+ * read (statSettled), so two same-size edits in one tick can't keep the
+ * first one's verdict.
  */
 export function assertDenConfigValid(): void {
   let key: string;

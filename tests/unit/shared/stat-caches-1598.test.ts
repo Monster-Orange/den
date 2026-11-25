@@ -1,6 +1,6 @@
 /**
- * Issue 1598: stat-keyed caches that don't decide agent state, read again
- * when their file changed within one clock tick (statSettled, issue 1592).
+ * Stat-keyed caches that don't decide agent state, read again
+ * when their file changed within one clock tick (statSettled).
  * A file system stamps mtimes by a coarse clock, so a same-size rewrite
  * just after a read can keep every stamp a cache keyed on. Each case
  * rewrites a file at the same size and puts its mtime back with utimes:
@@ -172,7 +172,7 @@ describe("issue 1598: 5. the notifications store's lock", () => {
     const file = path.join(tmp(), "notifications.json");
     expect(n.tryStoreLock(file)).toBe(true);
     const lock = `${file}.lock`;
-    // How a Den before issue 1598 reads it: Number(text.trim()).
+    // How an older Den reads it: Number(text.trim()).
     const oldRead = Number(
       fs.readFileSync(path.join(lock, "pid"), "utf-8").trim(),
     );

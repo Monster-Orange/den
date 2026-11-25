@@ -436,7 +436,7 @@ export function tryStoreLock(file: string): boolean {
     /* the lock holds without it; only its takeback needs it */
   }
   try {
-    // Issue 1598: a nonce for this take, in its own file, so a lock taken
+    // A nonce for this take, in its own file, so a lock taken
     // over and made again in one clock tick (the same inode and time) is
     // told apart.
     writeFileAtomic(path.join(lock, "nonce"), crypto.randomUUID());
@@ -455,13 +455,13 @@ function lockFile(lock: string, name: "pid" | "nonce"): string | null {
   }
 }
 
-/** Issue 1598: what tells one take of a lock from another: pid and nonce. */
+/** What tells one take of a lock from another: pid and nonce. */
 function lockText(lock: string): string {
   return JSON.stringify([lockFile(lock, "pid"), lockFile(lock, "nonce")]);
 }
 
 /**
- * Issue 1348: moves a leftover lock out of the way; false: it isn't one.
+ * Moves a leftover lock out of the way; false: it isn't one.
  * Exported for its tests, whose `afterSeen` runs between the look and the
  * move (another taker's turn).
  */
@@ -491,7 +491,7 @@ export function takeBackStoreLock(
   }
   try {
     const moved = fs.statSync(aside);
-    // Issue 1598: its text too: one taken over and made again in one tick
+    // Its text too: one taken over and made again in one tick
     // can keep the inode and time, never the nonce.
     if (
       moved.ino !== seen.ino ||
