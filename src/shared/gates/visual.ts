@@ -130,11 +130,7 @@ export type BrowserRead = (
 ) => Promise<BrowserBuild>;
 
 /** The text the fingerprint measures, in the faces the kit uses. */
-const FACES = [
-  "15px Rubik",
-  "15px sans-serif",
-  "13px monospace",
-];
+const FACES = ["15px Rubik", "15px sans-serif", "13px monospace"];
 
 /** One connect to the box's server: its Chromium build and fonts. */
 export const realBrowserRead: BrowserRead = async (ws, timeoutMs) => {
