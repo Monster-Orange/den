@@ -87,8 +87,8 @@
 .den-fb-clear-all:focus-visible,
 .den-fb-facet-clear:focus-visible,
 .den-fb-opt:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 /* The chips: a list in a row of their own, wrapping on a wide page. */
 .den-fb-chips {

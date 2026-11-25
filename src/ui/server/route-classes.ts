@@ -453,6 +453,15 @@ export const ROUTES: readonly RouteEntry[] = [
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
   ),
+  R(
+    "/api/web/test-installs",
+    "issue 816: the test installs on this computer waiting for their test person (the signed-in person only, checked in the route)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person/grant",
+    "issue 816: your own Den, at your Allow, makes this test install's test person (its person bearer on this machine plus a one-use grant)",
+  ),
   M(
     ["POST"],
     "/api/web/fixture-person/setup-secret",
@@ -507,6 +516,11 @@ export const ROUTES: readonly RouteEntry[] = [
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
+  M(
+    ["POST"],
+    "/api/audit/cli",
+    "issue 1369: a CLI's audit entry, recorded as its credential says",
+  ),
   M(["POST"], "/api/web/restart", "restarts this server"),
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
@@ -523,6 +537,16 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/import",
+    "issue 1182: a person keeps an outside runner's verdict as a Verify run",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/remove",
+    "issue 1182: a person removes an imported Verify run",
   ),
   R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
   M(
@@ -550,6 +574,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // Issue 1371 Part 2: the person's Undo of a setting an agent changed.
+  M(["POST"], "/api/settings/undo", "puts a setting back (user.yml)"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
   // Issue 666: Make <alias> this Den's address (the owner's only).
@@ -577,6 +603,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/agents/accounts/order",
     "changes the order agents use {vendor} accounts in",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/accounts/remove",
+    "issue 1182: removes a {vendor} account and its sign-in token; a person's only",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
@@ -609,6 +640,11 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST", "DELETE"], "/api/workspaces"),
   M(["POST"], "/api/workspaces/rename"),
   M(["POST"], "/api/workspaces/create"),
+  M(
+    ["POST"],
+    "/api/workspaces/seed",
+    "issue 1182: resets the blueprint's projects to the committed config; a person's only",
+  ),
   M(["POST"], "/api/workspaces/services/autostart"),
   M(["POST"], "/api/workspaces/services/mode"),
   M(["POST", "DELETE"], "/api/workspaces/services"),
@@ -652,6 +688,16 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/workspaces/:ws/event-feeds",
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
   ),
   M(
     ["POST", "DELETE"],
@@ -699,6 +745,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/workspaces/:ws/agents/:id/compacting-clear",
     "issue 278: a person looked at an agent stuck compacting: its loop is over for now and held deliveries go again; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/folder",
+    "issue 1182: a stopped agent's folder ({repo} or {folder}); a person's only (an agent asks with agent_folder)",
   ),
   M(
     ["POST"],
@@ -901,6 +952,19 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/hub/link-suggestions",
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
+  ),
+  R(
+    "/api/hub/groups",
+    "Issue 750: this install's groups as Hub serves them (read from Hub, kept in memory only), for the agents page's By group view",
+  ),
+  R(
+    "/api/hub/connect-review",
+    "issue 646: Connect's review: each project, its Hub project or the proposed one and why (names only)",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/connect-review",
+    "issue 646: Connect and link all: link the rows at once, ask Hub for the new projects as one plan; a person's only",
   ),
   R(
     "/api/hub/names-check",
@@ -1189,6 +1253,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/link",
     "/api/workspaces/:ws/agents/:id/move",
+    "/api/workspaces/:ws/agents/:id/folder",
     "/api/workspaces/:ws/agents/:id/say",
     "/api/workspaces/:ws/agents/:id/order",
   ],
@@ -1201,6 +1266,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
