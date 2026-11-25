@@ -35,6 +35,8 @@ export interface FakeCheck {
   status: string;
   conclusion: string | null;
   suite: number;
+  /** When it started (ISO); GitHub always sends it. */
+  started_at?: string;
 }
 
 export class FakeGithub {
@@ -186,6 +188,7 @@ export class FakeGithub {
           conclusion: c.conclusion,
           html_url: `https://github.example/${m![1]}/runs/${c.id}`,
           check_suite: { id: c.suite },
+          ...(c.started_at ? { started_at: c.started_at } : {}),
         })),
       });
     }
