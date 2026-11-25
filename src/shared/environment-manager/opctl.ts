@@ -208,7 +208,6 @@ export async function findConventionalContainerAsync(
     : null;
 }
 
-/** The conventional container among `running` (no docker call). */
 export function pickConventionalContainer(
   running: readonly string[],
   repoName: string,

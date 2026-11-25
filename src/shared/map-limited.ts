@@ -1,4 +1,3 @@
-/** `fn` over `items`, at most `limit` at a time; results in `items`' order. */
 export async function mapLimited<T, R>(
   items: readonly T[],
   limit: number,

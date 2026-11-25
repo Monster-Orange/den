@@ -2,7 +2,6 @@ import { readUserConfig, type UserConfig } from "./den-config.js";
 
 export const GIT_READS = { default: 16, min: 1, max: 64 } as const;
 
-/** git_reads.at_once; a value out of range, or none, is the default. */
 export function gitReadsAtOnce(
   read: () => UserConfig = readUserConfig,
 ): number {

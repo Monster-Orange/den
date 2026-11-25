@@ -1,8 +1,3 @@
-/**
- * A slow docker never blocks the server: its log routes' container lookup
- * and the log-history prune. The slow docker is child_process's: its sync
- * forms hold the thread for SLOW_MS, its async forms answer after it.
- */
 import { describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -14,10 +9,7 @@ jest.mock("child_process", () => {
     jest.requireActual<typeof import("child_process")>("child_process");
   const isDocker = (cmd: unknown) => String(cmd).trim().startsWith("docker");
   const hold = () => {
-    const end = Date.now() + SLOW_MS;
-    while (Date.now() < end) {
-      /* a synchronous docker ps */
-    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SLOW_MS);
   };
   return {
     ...actual,

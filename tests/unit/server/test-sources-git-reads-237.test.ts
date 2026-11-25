@@ -1,7 +1,3 @@
-/**
- * The Tests page reads its repos' branch and short commit at most
- * git_reads.at_once (16 by default, 1 to 64) git processes at a time.
- */
 import { describe, expect, it } from "@jest/globals";
 import { readRepoHeads } from "../../../src/ui/server/test-sources.js";
 import { GIT_READS, gitReadsAtOnce } from "../../../src/shared/git-reads.js";

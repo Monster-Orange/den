@@ -20,7 +20,6 @@ export const readGitField: GitRead = (gitArgs, cwd) =>
 const BRANCH = ["rev-parse", "--abbrev-ref", "HEAD"];
 const SHORT = ["rev-parse", "--short", "HEAD"];
 
-/** Each repo's branch and short commit, in `repos`' order. */
 export async function readRepoHeads<R extends { repoPath: string }>(
   repos: readonly R[],
   atOnce: number,

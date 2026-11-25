@@ -25,12 +25,11 @@ export function findStackServiceContainer(
   try {
     running = runningDockerNames();
   } catch {
-    return null; // docker unavailable
+    return null;
   }
   return candidates.find((c) => running.includes(c)) ?? null;
 }
 
-/** The stack's container names for `subsystem`; null: not a stack service. */
 function stackCandidates(
   repoName: string,
   repoPath: string | undefined,
