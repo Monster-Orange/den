@@ -180,6 +180,8 @@ interface Watch {
   allQueued?: boolean;
   /** Issue 1214: a run's attempt (1 unless re-run). */
   attempt?: number;
+  /** Issue 1214: how the run ended (GitHub's conclusion), once it has. */
+  conclusion?: string;
 }
 
 interface Call {
@@ -203,7 +205,12 @@ const PR_RECHECK_MS = 10 * 60_000;
 const CAP_CEILING = GITHUB_WATCH_LIMITS.watches_max.max;
 /** Issue 1166: the most watches waiting for a slot. */
 const QUEUE_MAX = CAP_CEILING;
-/** Issue 1214: the most pages of 100 read for one head's checks or a run's jobs. */
+/**
+ * Issue 1214: the most pages of 100 read for one head's checks or a run's
+ * jobs. A round can spend up to this many calls on one repo where the
+ * cap's arithmetic counts one: at 10 that stays well inside the budget
+ * floor, and only a head or run with over 100 checks pages at all.
+ */
 const MAX_PAGES = 10;
 /** The run list reaches back this far before the oldest watch. */
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
@@ -727,8 +734,14 @@ export class GithubWatcher {
     const st = asStr(body.status);
     const attempt = asNum(body.run_attempt) ?? 1;
     if (w.phase === "done") {
+      // A watch saved before attempts were kept: the attempt it was told
+      // is the run's now, never a re-run.
+      if (w.attempt === undefined) {
+        w.attempt = attempt;
+        return;
+      }
       // Issue 1214: a re-run (a newer attempt) reopens a finished watch.
-      if (attempt <= (w.attempt ?? 1)) return;
+      if (attempt <= w.attempt) return;
       w.delivered = false;
       w.text = undefined;
       w.doneAt = undefined;
@@ -739,6 +752,7 @@ export class GithubWatcher {
       w.progressAt = now;
     }
     w.attempt = attempt;
+    w.conclusion = asStr(body.conclusion) || undefined;
     w.phase = st === "completed" ? "ready" : "running";
     w.allQueued = QUEUED.has(st);
     w.note = `The run is ${st || "known"}${attempt > 1 ? ` (attempt ${attempt})` : ""}.`;
@@ -761,9 +775,11 @@ export class GithubWatcher {
     w.print = print;
     const at = (w.attempt ?? 1) > 1 ? `, attempt ${w.attempt}` : "";
     if (!jobs.length) {
+      // How it ended: a startup_failure or a cancelled run is no pass.
+      const how = w.conclusion ? ` (${w.conclusion})` : "";
       this.finish(w, now, {
-        note: "The run completed with no jobs.",
-        text: `Den: GitHub watch ${w.id} finished: ${this.what(w)}${at} completed with no jobs.`,
+        note: `The run completed${how} with no jobs.`,
+        text: `Den: GitHub watch ${w.id} finished: ${this.what(w)}${at} completed${how} with no jobs.`,
       });
       return true;
     }

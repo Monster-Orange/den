@@ -7,6 +7,9 @@
  * GitHub is a fake (fake-github.ts): no network. Invented names only.
  */
 import { beforeEach, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { GithubWatcher } from "../../../../src/shared/github-watch/watcher.js";
 import {
   githubWatchSettings,
@@ -197,6 +200,54 @@ describe("a run watch counts the run's own jobs", () => {
     expect(sent).toHaveLength(2);
     expect(sent[1].text).toMatch(/attempt 2/);
     expect(sent[1].text).toContain("1 passed, 0 failed");
+  });
+});
+
+describe("upgrades and odd endings (review notes)", () => {
+  it("a done watch saved before attempts were kept: a run already on attempt 2 is not taken for a re-run", async () => {
+    run(903, "completed", "success", 2);
+    gh.job(A, 903, {
+      id: 1,
+      name: "e2e",
+      status: "completed",
+      conclusion: "success",
+      attempt: 2,
+    });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-1214-"));
+    const file = path.join(dir, "watches.json");
+    const mk = () =>
+      new GithubWatcher({
+        get: (p) => gh.get(p),
+        settings: () => settings,
+        relay: async (dv) => {
+          sent.push(dv);
+          return true;
+        },
+        now,
+        file,
+      });
+    const w1 = mk();
+    await w1.create(ask({ run: 903 }));
+    await minutes(w1, 2);
+    expect(sent).toHaveLength(1);
+    // As an older Den saved it: no attempt on the watch.
+    const j = JSON.parse(fs.readFileSync(file, "utf-8"));
+    for (const x of j.watches) delete x.attempt;
+    fs.writeFileSync(file, JSON.stringify(j));
+    const w2 = mk();
+    await minutes(w2, 12);
+    expect(sent).toHaveLength(1);
+    expect(w2.list("planner")[0].state).toBe("done");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("a run that ended with no jobs says how it ended (startup_failure is no pass)", async () => {
+    run(904, "completed", "startup_failure");
+    const w = watcher();
+    await w.create(ask({ run: 904 }));
+    await minutes(w, 2);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain("completed (startup_failure) with no jobs");
   });
 });
 
