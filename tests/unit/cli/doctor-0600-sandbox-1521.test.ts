@@ -46,6 +46,7 @@ beforeEach(() => {
   put("state/app-feeds/f1/events/1-a-2.json");
   put("state/app-feeds/f1/events/2-b-2.json");
   put("shop-api/.stack-secrets.yml");
+  put("state/agent-signing/id_ed25519");
 });
 
 describe("issue 1521: the 0600 row and the OS sandbox", () => {
@@ -53,7 +54,7 @@ describe("issue 1521: the 0600 row and the OS sandbox", () => {
     const r = run([]);
     const s = check(r, "uncovered_files")!;
     expect(s.status).toBe("ok");
-    expect(s.detail).toMatch(/2 0600 files .*no Claude Read rule/);
+    expect(s.detail).toMatch(/3 0600 files .*no Claude Read rule/);
     expect(s.detail).toMatch(/the OS sandbox keeps every agent out/);
     expect(r.checks.some((c) => c.id.startsWith("agent_unsandboxed"))).toBe(
       false,
@@ -73,6 +74,9 @@ describe("issue 1521: the 0600 row and the OS sandbox", () => {
     expect(p.detail).toMatch(/agents' tokens/);
     expect(p.detail).toMatch(/1 project stack secrets file/);
     expect(p.detail).toMatch(/agents\.sandbox/);
+    expect(p.detail).toMatch(/the agents' signing key/);
+    expect(p.detail).toMatch(/and 2 more 0600 files/);
+    expect(p.detail).toMatch(/by its last start's record/);
     const s = check(r, "agent_unsandboxed:scribe")!;
     expect(s.detail).not.toMatch(/stack secrets/);
     const all = [...r.lines, ...r.checks.map((c) => c.detail)].join("\n");

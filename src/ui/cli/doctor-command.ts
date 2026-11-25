@@ -93,6 +93,7 @@ import {
   signinRequestCounts,
 } from "../../shared/signin-request-count.js";
 import {
+  SESSION_SIGNING_DIR,
   sandboxFor,
   sandboxHidesFile,
   sandboxSetting,
@@ -1793,6 +1794,9 @@ export function sharedUserLines(
           : "agents' deny rules cover every 0600 file in the state folder";
   const reposOf = o.reposOf ?? projectRepoDirsOf;
   const readable = stateCredentialsPresent(stateDir);
+  const more = walked.files.filter(
+    (f) => f.split(path.sep)[0] !== SESSION_SIGNING_DIR,
+  ).length;
   const agentRows = outside.map((a) => {
     const repoFiles = [
       ...new Set(
@@ -1812,8 +1816,9 @@ export function sharedUserLines(
             `${repoFiles} project stack secrets file${repoFiles === 1 ? "" : "s"}`,
           ]
         : []),
+      ...(more ? [`and ${more} more 0600 file${more === 1 ? "" : "s"}`] : []),
     ];
-    const detail = `${safeShownPath(a.id)} runs outside the OS sandbox, so its shell can read ${what.length ? what.join(", ") : "the state folder"}. A person turns its sandbox on with agents.sandbox in user.yml`;
+    const detail = `${safeShownPath(a.id)} runs outside the OS sandbox (by its last start's record), so its shell can read ${what.length ? what.join(", ") : "the state folder"}. A person turns its sandbox on with agents.sandbox in user.yml`;
     return { id: `agent_unsandboxed:${a.id}`, detail };
   });
   const looseDetail = partial ? `${listed} (${partial})` : listed;
@@ -1872,6 +1877,7 @@ function stateCredentialsPresent(stateDir: string): string[] {
     ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
     ...(has("push-vapid.json") ? ["the push key"] : []),
     ...(has("fixture-person.key") ? ["the test person's key"] : []),
+    ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),
   ];
 }
 
