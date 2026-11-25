@@ -721,7 +721,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch",
     "Watch a pull request's checks or a workflow run",
-    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: after a new push, watch again. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
+    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: when it merges or closes, or a new push replaces its head, the watch ends and Den tells you (after a new push, watch again). A run is counted by its own jobs (its latest attempt); a re-run within the hour after Den told you reopens its watch, and Den tells you the new attempt's result. A watch with no progress for a while ends, saying why. When Den watches as many as it can at once, a new watch is queued (state queued, \"queued, N ahead\") and starts when a slot frees. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
     {
       repo: z.string().describe("The GitHub repo, owner/name"),
       pr: z
@@ -759,7 +759,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch_list",
     "Your GitHub watches",
-    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
+    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done, queued), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
     {},
     async (_a, ctx) => {
       githubWatchAgent("github_watch_list", ctx);
@@ -836,7 +836,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -3102,6 +3102,55 @@ const APPROVAL_TOOLS: DenTool[] = [
         "web_url_set",
         "web_url_set",
         { url: str(a.url) },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "gate_runner_entry_set",
+    title: "Let a repo's CI jobs run on a test box",
+    description:
+      "Issue 642: a CI runner entry, set or changed: `repo`'s jobs whose runs-on labels are all in `labels` may run on the test box `box` (one a person set), at most `slots` at a time; `heavy` (default true) means each job takes one of the box's gate slots, so it never runs beside another heavy job there; `routing_variable` is the repo variable that sends its jobs to the box or back to hosted runners; `owner` says who answers for it. Settings only: nothing starts a runner yet. It widens what runs on a box: always the person's own Allow. `gate runner list` shows the entries." +
+      HELD,
+    action: true,
+    shape: {
+      repo: z.string().describe("owner/name"),
+      box: z.string().describe("A test box's name (gate box list)"),
+      labels: z
+        .array(z.string())
+        .describe("The runner labels its jobs ask for (runs-on)"),
+      routing_variable: z
+        .string()
+        .describe("The repo variable that routes its jobs (CI_RUNNER)"),
+      slots: z
+        .number()
+        .int()
+        .optional()
+        .describe("Its jobs on the box at once (default 1)"),
+      heavy: z
+        .boolean()
+        .optional()
+        .describe("Each job takes a box gate slot (default true)"),
+      owner: z.string().describe("Who answers for it, in words"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const repo = needArg("gate_runner_entry_set", a, "repo", "owner/name");
+      const box = needArg("gate_runner_entry_set", a, "box", "a test box");
+      return askPerson(
+        "gate_runner_entry_set",
+        "gate_runner_entry_set",
+        {
+          repo,
+          box,
+          labels: a.labels,
+          routing_variable: a.routing_variable,
+          owner: a.owner,
+          ...(a.slots !== undefined ? { slots: a.slots } : {}),
+          ...(a.heavy !== undefined ? { heavy: a.heavy } : {}),
+        },
         a,
         ctx,
       );

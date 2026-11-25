@@ -1187,6 +1187,9 @@
       }
       .tablewrap {
         overflow-x: auto;
+        /* Issue 283: positioned, so the table's hidden caption (absolute)
+           stays in this scrolling box rather than stretching the page. */
+        position: relative;
         /* 0.4.17: in a short window (under ~620 px tall) the column's other
            parts squeezed it to nothing; it keeps room for rows and scrolls. */
         min-height: 200px;

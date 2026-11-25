@@ -21,6 +21,23 @@ by another key can't be promoted. To let another key sign candidates, add
 its line to that file in a pull request to `main`. Pushing the tag starts the release's dry run
 (`release-dry-run.yml`).
 
+The dry run's serial jobs (plan, the checks and the tarball) can run on
+your own self-hosted runners, so a candidate doesn't wait behind
+pull-request CI. Set the repository variable `DEN_RELEASE_SELF_HOSTED`
+to `on` and `DEN_RELEASE_RUNNER_LABELS` to the runners' labels as a JSON
+array, such as `["self-hosted","linux"]`. The list must include
+`self-hosted`: that's how the fallback tells the runners' jobs apart. There's
+no default: with the switch on and no labels, the dry run stops at its first
+step and says so, and no job waits for a runner. They're
+used only on a dev tag's push. The test shards and every job of the release itself stay
+GitHub-hosted. If no runner takes a job within
+`DEN_RELEASE_BOX_WAIT_MINUTES` (default 10), the dry run starts again by
+itself on GitHub-hosted runners, and says so in its log. The job that
+watches for this is `box-watch`. If it fails (it couldn't read the run's
+jobs, or it ran past its 120 minutes), the dry run shows as failed even when
+the gates passed: read the gates' own jobs before you read a red dry run as
+a red candidate.
+
 ## 2. Record the bed's verdict
 
 Whoever runs the candidate on a test bed records its verdict as a commit

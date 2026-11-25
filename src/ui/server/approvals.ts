@@ -213,6 +213,45 @@ export interface DetailKeyRec {
   vars?: Readonly<Record<string, string>>;
 }
 
+/**
+ * Issue 110: the Coach finding a held write came from, for the bell's
+ * card (mock v3): its id and kind, the persona, and the finding's numbers
+ * (the page words them in its language). Den builds it from the stored
+ * finding; coachAskOf keeps only a checked copy.
+ */
+export interface CoachAsk {
+  finding: string;
+  kind: string;
+  persona: string;
+  vars: Readonly<Record<string, string | number>>;
+}
+
+/** A checked, frozen copy of a Coach block, or undefined. */
+export function coachAskOf(raw: unknown): CoachAsk | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const s = (v: unknown) => (typeof v === "string" ? v.slice(0, 128) : "");
+  if (!/^[a-z_]{1,32}$/.test(s(r.kind)) || !s(r.persona) || !s(r.finding))
+    return undefined;
+  const vars: Record<string, string | number> = {};
+  const rv = r.vars;
+  if (rv && typeof rv === "object" && !Array.isArray(rv))
+    for (const [k, v] of Object.entries(rv as Record<string, unknown>).slice(
+      0,
+      8,
+    )) {
+      if (!/^[a-z][a-zA-Z0-9_]{0,31}$/.test(k)) continue;
+      if (typeof v === "number" && Number.isFinite(v)) vars[k] = v;
+      else if (typeof v === "string") vars[k] = v.slice(0, 128);
+    }
+  return Object.freeze({
+    finding: s(r.finding),
+    kind: s(r.kind),
+    persona: s(r.persona),
+    vars: Object.freeze(vars),
+  });
+}
+
 export interface Approval {
   id: string;
   /** Who asked: `agent:<id>` (or the person's MCP server, `person:…`). */
@@ -245,6 +284,8 @@ export interface Approval {
   ownMode?: readonly { agent: string; mode: string }[];
   /** Issue 199: choices the person may turn on as they Allow (off by default). */
   choices?: readonly string[];
+  /** Issue 110: the Coach finding a person's Apply asked from (Den's words). */
+  coach?: CoachAsk;
   /** Issue 199: the ones the person turned on. */
   chosen?: Readonly<Record<string, true>>;
   requestedAt: number;
@@ -511,8 +552,11 @@ function revive(raw: unknown): Approval | null {
     return null;
   const rest = { ...r };
   delete rest.result;
+  delete rest.coach;
   const a = { ...rest, summary: str("summary") } as unknown as Approval;
   a.args = frozenCopy(r.args as Record<string, unknown>);
+  const coach = coachAskOf(r.coach);
+  if (coach) a.coach = coach;
   return a;
 }
 
@@ -701,6 +745,8 @@ export class ApprovalQueue {
     note?: string;
     ownMode?: { agent: string; mode: string }[];
     choices?: string[];
+    /** Issue 110: the Coach finding it came from (coachAskOf checks it). */
+    coach?: unknown;
     ticketHash?: string;
     /**
      * SRV-P6 (0.4.48): how long this one waits for the person (default
@@ -788,6 +834,7 @@ export class ApprovalQueue {
       ...(r.choices?.length
         ? { choices: Object.freeze(r.choices.slice(0, 8)) }
         : {}),
+      ...(coachAskOf(r.coach) ? { coach: coachAskOf(r.coach) } : {}),
       ...(r.ticketHash ? { ticketHash: r.ticketHash } : {}),
       requestedAt: t,
       expiresAt: t + (r.ttlMs ?? this.ttlMs()),
