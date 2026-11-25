@@ -49,6 +49,14 @@ describe("fixed-date gate", () => {
     expect(hits("green-fake-timers.txt")).toEqual([]);
   });
 
+  it("passes a case that says why it is safe", () => {
+    expect(hits("green-exempt.txt")).toEqual([]);
+  });
+
+  it("an exemption with no reason does not count", () => {
+    expect(hits("red-empty-exempt.txt")).toEqual([1]);
+  });
+
   it("judges each case alone", () => {
     expect(hits("green-other-case.txt")).toEqual([]);
   });

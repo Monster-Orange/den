@@ -16,13 +16,15 @@ const REAL = /\bnew Date\(\s*\)|\bDate\.now\(\s*\)/;
 const FAKE =
   /useFakeTimers|setSystemTime|mockdate|clock\.install|page\.clock\./;
 const CASE = /\b(?:it|test)(?:\.only|\.skip|\.each\([^)]*\))?\(\s*["'`]/g;
+const OK = /mo-lint-ok:[ \t]*\S/;
 const FILE =
   /\.(?:test|spec)\.[cm]?[jt]sx?$|\.browser\.[cm]?[jt]s$|^gate\/[^/]+\.mjs$/;
 
 export const MESSAGE =
   "plants a fixed date and reads the real clock, so it passes for a day and then fails everywhere. " +
   "Fake the clock (jest.useFakeTimers().setSystemTime(...)), pass `now` all the way down, " +
-  "or place the dates from the real clock.";
+  "or place the dates from the real clock. A case that is safe (the real clock only times it) says why in a " +
+  "`// mo-lint-ok: <why>` comment in its body.";
 
 function caseBody(src, from) {
   const open = src.indexOf("{", from);
@@ -40,7 +42,7 @@ export function fixedDateHits(src) {
   const hits = [];
   for (const m of src.matchAll(CASE)) {
     const body = caseBody(src, m.index);
-    if (ISO.test(body) && REAL.test(body)) {
+    if (ISO.test(body) && REAL.test(body) && !OK.test(body)) {
       hits.push(src.slice(0, m.index).split("\n").length);
     }
   }
