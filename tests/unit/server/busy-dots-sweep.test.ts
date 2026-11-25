@@ -25,15 +25,12 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
  * busyAction calls with no button, by "file action", each with why no
  * button stays on screen to hold. The pop-up still says what is happening.
  */
+// Issue 1054: the drag's save holds its row (holdRow) and Delete project
+// holds its last dialog's button; neither goes through busyAction now
+// (busy-button-sweep-1054.test.ts checks both). Restart alone stays.
 const NO_BUTTON: Record<string, string> = {
-  "agents-page.js agent-order":
-    "a drag or a key moves the row; the row's new place is the answer",
   "restart-den.js restart-den":
     "asked from a confirm dialog, the menu or the update pill; reconnect mode's pop-up opens at once",
-  "local-dev.html delete-project":
-    "a menu item, then up to three confirm dialogs; none is on screen when it sends",
-  "services.html delete-project":
-    "after the project's own dialogs close; nothing is left on screen to hold",
 };
 
 /** The page scripts Den serves. */
