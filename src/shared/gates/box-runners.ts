@@ -10,10 +10,12 @@
  * in argv, an env file, the script text, logs or errors. The script reads
  * it into the runner's own input variable and drops it.
  *
- * While a job runs, its job-started hook leaves a mark named for the
- * runner in the box's marks folder (mounted at /den-hold); the
- * job-completed hook removes that one mark, never another job's or the
- * person's hold file. The box counts as held while any mark is there.
+ * While a runner's container runs, the box's own shell keeps a mark named
+ * for the runner in the box's marks folder: made just before `docker run`,
+ * removed when it ends, never another runner's or the person's hold file.
+ * The box counts as held while any mark is there. Nothing of the box is
+ * mounted into the container, so a job can't forge or remove a mark
+ * (issue 921 review).
  *
  * The types are the ones agreed with the settings side (entry fields,
  * token minting, doctor): BoxRunnerSpec, BoxRunnerToken, RunnerStatus.
@@ -29,8 +31,6 @@ export { marksDirOf };
 
 /** The docker label that names a container as Den's box runner. */
 export const BOX_RUNNER_LABEL = "den.box-runner";
-/** Where the box's marks folder is mounted inside the container. */
-export const HOLD_MOUNT = "/den-hold";
 
 export interface BoxRunnerSpec {
   project: string;
@@ -72,7 +72,9 @@ export const BOX_RUNNER_LIMITS = {
   memoryMb: [512, 262_144],
 } as const;
 
-const REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
+// Never "." or ".." on either side (review): they'd fold the URL.
+const REPO_RE =
+  /^(?!\.{1,2}\/)[A-Za-z0-9_.-]{1,100}\/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
 const LABEL_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 const CPUSET_RE = /^\d{1,3}(-\d{1,3})?(,\d{1,3}(-\d{1,3})?)*$/;
 /** A runner id: a file name in the marks folder, and a container label. */
@@ -111,37 +113,18 @@ function checkId(id: string): void {
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
- * The job hooks for runner `id`: started leaves its mark in `holds`,
- * completed removes that mark only (and is harmless when run twice).
- */
-export function hookScripts(
-  id: string,
-  holds: string = HOLD_MOUNT,
-): { started: string; completed: string } {
-  checkId(id);
-  const mark = q(`${holds}/${id}`);
-  return { started: `: > ${mark}`, completed: `rm -f ${mark}` };
-}
-
-/**
  * The script the container runs: the token from stdin into the runner's
- * input, the hooks, one ephemeral registration, then the runner. The
- * token is never in this text.
+ * input, one ephemeral registration, then the runner. The token is never
+ * in this text.
  */
 export function runnerScript(id: string, s: BoxRunnerSpec): string {
   checkId(id);
-  const h = hookScripts(id);
   return [
     "set -eu",
     "IFS= read -r t",
     'ACTIONS_RUNNER_INPUT_TOKEN="$t"',
     "unset t",
     "export ACTIONS_RUNNER_INPUT_TOKEN",
-    `printf '%s\\n' ${q(h.started)} > /tmp/den-job-started.sh`,
-    `printf '%s\\n' ${q(h.completed)} > /tmp/den-job-completed.sh`,
-    "chmod +x /tmp/den-job-started.sh /tmp/den-job-completed.sh",
-    "export ACTIONS_RUNNER_HOOK_JOB_STARTED=/tmp/den-job-started.sh",
-    "export ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/tmp/den-job-completed.sh",
     [
       "./config.sh",
       "--url",
@@ -166,7 +149,7 @@ export function runnerScript(id: string, s: BoxRunnerSpec): string {
 export function runnerArgs(
   s: BoxRunnerSpec,
   id: string,
-  o: { image: string; marksDir: string },
+  o: { image: string },
 ): string[] {
   checkId(id);
   return [
@@ -185,8 +168,6 @@ export function runnerArgs(
     ...(s.cpuset ? ["--cpuset-cpus", s.cpuset] : []),
     "--memory",
     `${s.memoryMb}m`,
-    "-v",
-    `${o.marksDir}:${HOLD_MOUNT}`,
     o.image,
     "sh",
     "-c",
@@ -221,25 +202,24 @@ function sshArgs(box: GateBox, line: string): string[] {
   ];
 }
 
-/** Stands for the marks folder's full path, which only the box knows. */
-const MARKS_VAR = "$D";
-
 /**
- * The line the box runs: make the marks folder, take its full path (a
- * bind mount needs one), then `docker run`. Every word is quoted but the
- * mount, which takes the folder's path from the box's shell.
+ * The line the box runs: make the marks folder, leave this runner's mark,
+ * run its container, then remove the mark (a failed run too) and exit
+ * with docker's code. Every word is quoted.
  */
 export function remoteLine(
   s: BoxRunnerSpec,
   id: string,
   o: { image: string; marksDir: string },
 ): string {
-  const mount = `${MARKS_VAR}:${HOLD_MOUNT}`;
-  const words = runnerArgs(s, id, { image: o.image, marksDir: MARKS_VAR }).map(
-    (w) => (w === mount ? `"${mount}"` : q(w)),
-  );
+  checkId(id);
+  const words = runnerArgs(s, id, { image: o.image }).map(q);
   const dir = q(o.marksDir);
-  return `D=$(mkdir -p -- ${dir} && cd -- ${dir} && pwd) && exec ${words.join(" ")}`;
+  const mark = `"$D"/${q(id)}`;
+  return (
+    `D=$(mkdir -p -- ${dir} && cd -- ${dir} && pwd) && : > ${mark} && ` +
+    `{ ${words.join(" ")}; r=$?; rm -f -- ${mark}; exit $r; }`
+  );
 }
 
 const newRunnerId = () =>
@@ -290,8 +270,8 @@ function runSsh(
  * job's gate slot. The token goes to ssh's stdin, which reaches the
  * container's: it is never in argv, a file, the status or an error.
  * When the runner exits (after its one job), the status says done or
- * failed, and Den removes the runner's own mark in case the
- * job-completed hook never ran.
+ * failed, and Den removes the runner's own mark again, in case the
+ * box's line was cut off (ssh dropped) before it could.
  */
 export function startBoxRunner(
   box: GateBox,

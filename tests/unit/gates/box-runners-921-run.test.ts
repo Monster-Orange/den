@@ -158,7 +158,9 @@ describe("startBoxRunner: one runner per job, the token on stdin only", () => {
     const line = c.args[c.args.length - 1]!;
     expect(line).toMatch(/docker' 'run' '--rm' '-i'/);
     expect(line).toMatch(/'--cpus' '4' '--cpuset-cpus' '0-3'/);
-    expect(line).toContain('"$D:/den-hold"');
+    // Den makes the runner's mark around docker run; nothing is mounted.
+    expect(line).toMatch(/: > "\$D"\/'[A-Za-z0-9]+'/);
+    expect(line).not.toMatch(/'-v'/);
     expect(line).toContain("mkdir -p -- 'heavy.hold.jobs'");
     expect(line).not.toMatch(/docker update/);
     expect(c.args.join(" ")).not.toContain(TOKEN);

@@ -981,9 +981,10 @@ export function sftpProbe(
           oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
           `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-    // Issue 1381: each line read by what it is. The -ls of the hold file
-    // is the only "Can't ls"; a failed local copy ("open local …") is
-    // neither the hold file gone nor no /proc/meminfo.
+    // Issue 1381: each line read by what it is. A "Can't ls" is the hold
+    // file's or the marks folder's (issue 921), told apart by the name
+    // below; a failed local copy ("open local …") is neither the hold file
+    // gone nor no /proc/meminfo.
     const lines = r.err.split("\n");
     // Issue 921: only a line naming the hold file itself, never its marks
     // folder ("<hold>.jobs"), says the hold file is gone.
