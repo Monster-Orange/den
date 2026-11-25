@@ -94,6 +94,14 @@ export function bandsOf(rows, { seenNow } = {}) {
 }
 
 /**
+ * The rows in the bands' order, as one list: what By project and By group
+ * sort each of their groups by, so the order is the same in every view.
+ */
+export function byNeed(rows, { seenNow } = {}) {
+  return bandsOf(rows, { seenNow }).flatMap((b) => b.rows);
+}
+
+/**
  * Issue 96: the agent ids a running row moves among: the agents of its
  * project in its band, as the band shows them. Issue 773: none in Needs
  * you and Done (the longest wait first there, always).

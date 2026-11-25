@@ -96,8 +96,8 @@
   box-sizing: border-box;
 }
 .dk-in:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 1px);
 }
 
 /* A large dialog (kind "panel"): the header and footer stay, the body
@@ -199,6 +199,13 @@
   background: var(--danger-bg, var(--bad));
   border-color: var(--danger-border, var(--bad));
   color: var(--danger-text, var(--on-accent));
+  /* Issue 1137: its edge's width and style (sketch: a solid 2px edge). */
+  border-width: var(--danger-edge-width, 1px);
+  border-style: var(--danger-edge-style, var(--edge-style, solid));
+}
+.den-btn.dk-danger:disabled,
+.den-btn.dk-danger:disabled:hover {
+  color: var(--btn-disabled-text, var(--danger-text, var(--on-accent)));
 }
 @media (max-width: 480px) {
   .dk-btn {

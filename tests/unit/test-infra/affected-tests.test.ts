@@ -346,6 +346,22 @@ describe("tests that start Den as a process (issue 708)", () => {
     "tests/unit/shared/hub-delivery-loop.test.ts",
   ];
 
+  it("issue 728: a test declared in subjects runs on its subject, though it starts a scaffolded distribution's bin the pattern can't see", () => {
+    const s = select({
+      changed: ["src/ui/cli/doctor-command.ts"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toEqual(
+      expect.arrayContaining([
+        "tests/unit/server/no-secrets-store.integration.test.ts",
+        "tests/unit/cli/repo-add-no-run.integration.test.ts",
+      ]),
+    );
+  });
+
   it("a change to its subject runs it, with no import edge (704's change)", () => {
     const s = select({
       changed: PR_704,
@@ -357,12 +373,13 @@ describe("tests that start Den as a process (issue 708)", () => {
     expect(Object.keys(s.files)).toContain(
       "tests/unit/server/hub-delivery.integration.test.ts",
     );
-    // Its subject only: not every test that starts Den.
+    // Its subject only: not every test that starts Den (the map has about
+    // 200). Issue 773's states test is attention.ts's subject too: 15 now.
     const starters = Object.entries(s.files).filter(([, why]) =>
       why.some((w) => /starts Den/.test(w)),
     );
     expect(starters.length).toBeGreaterThan(0);
-    expect(starters.length).toBeLessThan(15);
+    expect(starters.length).toBeLessThan(20);
   });
 
   it("finds them: by a helper, bin/den, or tsx on an entry", () => {
@@ -719,13 +736,15 @@ describe("ci.yml (issue 398)", () => {
     expect(pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    // Issue 843: and the fast static checks.
+    expect(ci.jobs["pr-shards"].needs).toEqual(["fast", "pr"]);
     const text = runs(pr);
+    // Issue 843: the words gate and the kit copies run once, in `fast`,
+    // which the pr job waits for.
+    expect(ci.jobs.pr.needs).toEqual(["fast"]);
     for (const gate of [
       "npm run typecheck",
-      "scripts/words-gate.mjs",
       "npm run lint",
-      "gate:den-ui",
       "scripts/org-name-gate.mjs",
       "scripts/org-name-commits.mjs",
       "scripts/dist-smoke.sh",
@@ -760,13 +779,23 @@ describe("ci.yml (issue 398)", () => {
     }
   });
 
-  // Only checks and dist-smoke may name DEN_SELF_HOSTED
-  // (ci-runner-guard.test.ts); the pull-request jobs stay GitHub-hosted.
-  it("the pr jobs run GitHub-hosted", () => {
-    expect([ci.jobs.pr["runs-on"], ci.jobs["pr-shards"]["runs-on"]]).toEqual([
-      "ubuntu-latest",
-      "ubuntu-latest",
-    ]);
+  // Issue 1226: pr and pr-shards may use the self-hosted runners (every
+  // event is checked in ci-runner-guard.test.ts). A fork's pull request
+  // never does, and with the switch off they fall back to GitHub-hosted.
+  it("the pr jobs fall back to GitHub-hosted, and a fork's PR never leaves it", () => {
+    for (const job of ["pr", "pr-shards"]) {
+      const on = String(ci.jobs[job]["runs-on"]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining("|| 'ubuntu-latest'"),
+      ]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining(
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        ),
+      ]);
+    }
   });
 });
 

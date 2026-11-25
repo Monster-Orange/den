@@ -150,9 +150,10 @@ export function setupSecretRefusal(
 }
 
 /** How the fixture key was made, kept beside it for doctor. */
-export type FixtureMadeBy = "setup-secret" | "settings" | "creation";
+export type FixtureMadeBy = "setup-secret" | "settings" | "creation" | "grant";
 export const FIXTURE_MADE_BY_FILE = "fixture-person.made-by";
 const MADE_BY = new Set<FixtureMadeBy>([
+  "grant",
   "setup-secret",
   "settings",
   "creation",

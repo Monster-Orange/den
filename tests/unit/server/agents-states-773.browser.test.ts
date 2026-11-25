@@ -306,6 +306,42 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     await p.context().close();
   }, 60_000);
 
+  it("By need is the default; By project groups by project, each sorted by need; the choice is kept", async () => {
+    if (skip()) return;
+    const p = await open("/agents");
+    const sw = "#agl [data-by-switch]";
+    expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
+      "true",
+    );
+    await p.click(`${sw} [data-by="project"]`);
+    await p.waitForSelector("#agl .wsg[data-ws]", { timeout: 20_000 });
+    expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    const need = [ag.planner, ag.builder, ag.reviewer, ag.scribe].map(
+      (a) => a.sid,
+    );
+    const groups = await p.$$eval("#agl .wsg[data-ws]", (gs) =>
+      gs.map((g) =>
+        [...g.querySelectorAll("button[data-kind]")].map(
+          (r) => (r as HTMLElement).dataset.id ?? "",
+        ),
+      ),
+    );
+    const mine = groups
+      .map((ids) => ids.filter((x) => need.includes(x)))
+      .filter((ids) => ids.length > 0);
+    expect(mine.flat().sort()).toEqual([...need].sort());
+    for (const ids of mine)
+      expect(ids).toEqual(need.filter((x) => ids.includes(x)));
+    await p.reload();
+    await p.waitForSelector("#agl .wsg[data-ws]", { timeout: 20_000 });
+    expect(
+      await p.getAttribute(`${sw} [data-by="project"]`, "aria-pressed"),
+    ).toBe("true");
+    await p.click(`${sw} [data-by="need"]`);
+    await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
+    await p.context().close();
+  }, 60_000);
+
   it("one project: only its agents, no project tag", async () => {
     if (skip()) return;
     const p = await open("/agents?ws=north");

@@ -143,6 +143,14 @@ describe("gate slots over MCP", () => {
       // Issue 1009: cores × 4 / 3 on the machine the test runs on.
       cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
       loadHoldPerCore: 3,
+      // Issue 1132: cores × 1.5 on the machine the test runs on.
+      maxStartLoad: GATE_DEFAULTS.maxStartLoad,
+      maxStartWaitMinutes: 10,
+      reapGraceSeconds: 10,
+      memoryFreeMinPercent: 10,
+      memoryReadingKeepSeconds: 30,
+      swapHoldGb: 8,
+      vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       overrunBellMultiple: 2,
@@ -155,6 +163,7 @@ describe("gate slots over MCP", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      browserContainerStrict: false,
       browserBoxDefault: "any",
       browserHostOnly: "",
       remoteRenewSeconds: 30,

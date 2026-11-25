@@ -263,6 +263,46 @@ import { DEN_BANNER_LINES, DEN_DIVIDER } from "../../shared/banner.js";
 import { product } from "../../shared/product.js";
 import { AGENT_SETUP_LINE } from "../../shared/agent-setup.js";
 import { ExitRequested, printJson, quietStdout } from "./json-out.js";
+import { personServerFor } from "./person-server.js";
+import {
+  seedResetRefusal,
+  seedResetViaServer,
+  workspacePersonRefusal,
+  workspaceViaServer,
+  type WorkspaceVerb,
+} from "./workspace-person.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
+
+/**
+ * Issue 989: a person's project change, through the running server. True
+ * when it is done (by the server, or refused and said); false when no
+ * server listens and the caller changes the projects file itself.
+ */
+async function workspaceThroughServer(
+  verb: WorkspaceVerb,
+  name: string,
+  done: string,
+): Promise<boolean> {
+  const a = await workspaceViaServer(verb, name, personServerFor());
+  if (a.kind === "unanswered") return false;
+  if (a.kind === "refused") {
+    console.log(chalk.red(`\n  ${a.error}; nothing was changed.\n`));
+    process.exitCode = 1;
+  } else console.log(chalk.green(`\n  ✓ ${done}\n`));
+  return true;
+}
+
+/** Issue 989: an agent's session can't change projects; said, exit 1. */
+function refuseAgentWorkspace(verb: WorkspaceVerb): boolean {
+  const why = workspacePersonRefusal(verb);
+  if (!why) return false;
+  console.log(chalk.red(`\n  ${why}\n`));
+  process.exitCode = 1;
+  return true;
+}
 const DEN_HELP_DESCRIPTION = `  ${product().title} - local-first test, service, and project orchestration`;
 
 /**
@@ -481,8 +521,12 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   config: {
-    usage: "config [get|set ...]",
-    lines: [`View or edit ${product().cli} configuration.`],
+    usage: "config [get|set ...|propose <key>=<value> --reason <why>]",
+    lines: [
+      `View or edit ${product().cli} configuration.`,
+      "propose: ask the person to change one setting (the held write setting_change),",
+      "as an agent does; Den checks it first and the person allows it in Den.",
+    ],
   },
   apps: {
     usage: "apps [--json]   (alias: applications)",
@@ -818,6 +862,16 @@ class DenCLI {
     const stopTimer = startTimer();
     // The exit hook can't await a send; hand it to a detached sender.
     shipFromDetachedSender();
+    // Issue 1369: audit entries go to the running server over this CLI's
+    // own authenticated call; queued when none takes them.
+    {
+      const { setAuditSender } = await import("../../shared/config-audit.js");
+      const { personServerFor } = await import("./person-server.js");
+      setAuditSender(async (row) => {
+        const r = await personServerFor()("POST", "/api/audit/cli", row);
+        return !!r && r.status >= 200 && r.status < 300;
+      });
+    }
     let telCmd = telemetryCommandName(args.find((a) => !a.startsWith("-")));
     process.once("exit", (code) => {
       recordInvocation({
@@ -848,6 +902,8 @@ class DenCLI {
         await this.handleCommand(
           parsed.command ? [parsed.command, ...parsed.args] : [],
         );
+        // Issue 1369: its audit entries sent before it ends.
+        await (await import("../../shared/config-audit.js")).flushAuditSends();
       } catch (error) {
         recordFailure({
           command: telCmd,
@@ -857,6 +913,8 @@ class DenCLI {
         });
         console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
         printSandboxHint(error);
+        // Issue 1369: a refusal's audit entry sent before it ends.
+        await (await import("../../shared/config-audit.js")).flushAuditSends();
         process.exit(1);
       }
       return;
@@ -3046,6 +3104,13 @@ class DenCLI {
     reset = false,
     via: "init" | "workspace seed" = "workspace seed",
   ): Promise<boolean> {
+    // Issue 989: an agent's --reset is refused before anything.
+    const early = seedResetRefusal({ reset, willReset: false, via });
+    if (early) {
+      console.error(chalk.red(`\n  ❌ ${early}.\n`));
+      process.exitCode = 1;
+      return false;
+    }
     const bps = blueprintWorkspaces();
     if (bps.length === 0) {
       if (reason === "init") {
@@ -3070,6 +3135,13 @@ class DenCLI {
       return false;
     }
     const willReset = defaultWorkspaceHasServices();
+    // Issue 989: nor may an agent reset by the prompt, terminal or not.
+    const byPrompt = seedResetRefusal({ reset, willReset, via });
+    if (byPrompt) {
+      console.error(chalk.red(`\n  ❌ ${byPrompt}.\n`));
+      process.exitCode = 1;
+      return false;
+    }
     const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
     // A reset replaces every entry, dev-managed checkouts included. On a TTY
     // the user is asked (default No); without one there is nobody to ask, so
@@ -3128,6 +3200,25 @@ class DenCLI {
       }
     }
 
+    // Issue 1182: a reset goes through the running server (a person's,
+    // audited); with none listening the CLI resets as before.
+    if (willReset) {
+      const via = await seedResetViaServer(personServerFor());
+      if (via.kind === "refused") {
+        console.error(chalk.red(`\n  ❌ ${via.error}; nothing was changed.\n`));
+        process.exitCode = 1;
+        return false;
+      }
+      if (via.kind === "done") {
+        console.log(
+          chalk.green(
+            `  ✓ ${plural(via.seeded.length, "project")} reset to the blueprint (${via.seeded.map((w) => w.name).join(", ")}). ` +
+              `Run \`${product().cli} up <repo>\` to bring up its closure.\n`,
+          ),
+        );
+        return true;
+      }
+    }
     if (multi) {
       const seeded = seedBlueprintWorkspaces();
       const focus = readWorkspacesFile().focus;
@@ -4848,6 +4939,15 @@ class DenCLI {
           );
           return;
         }
+        if (refuseAgentWorkspace("activate")) return;
+        if (
+          await workspaceThroughServer(
+            "activate",
+            name,
+            `Activated project: ${chalk.bold(name)}`,
+          )
+        )
+          break;
         activateWorkspace(name);
         console.log(
           chalk.green(`\n  ✓ Activated project: ${chalk.bold(name)}\n`),
@@ -4862,6 +4962,16 @@ class DenCLI {
           );
           return;
         }
+        if (refuseAgentWorkspace("deactivate")) return;
+        // The server releases its shared services too.
+        if (
+          await workspaceThroughServer(
+            "deactivate",
+            name,
+            `Deactivated project: ${chalk.bold(name)}`,
+          )
+        )
+          break;
         deactivateWorkspace(name);
         // Release AFTER the workspace has left active[] so shared services see
         // the post-deactivation owner set (design decision 5).
@@ -4958,6 +5068,15 @@ class DenCLI {
           console.log(chalk.yellow(`\n  ${refusal}.\n`));
           return;
         }
+        if (refuseAgentWorkspace("create")) return;
+        if (
+          await workspaceThroughServer(
+            "create",
+            name,
+            `Created project: ${chalk.bold(name)}`,
+          )
+        )
+          break;
         const slug = createWorkspace(name, { services: {} });
         console.log(
           chalk.green(
@@ -4978,6 +5097,7 @@ class DenCLI {
           );
           return;
         }
+        if (refuseAgentWorkspace("delete")) return;
         // D71: its agents first, so a refusal never follows a Yes.
         const kept = workspaceAgentsRefusal(name);
         if (kept) {
@@ -5002,6 +5122,14 @@ class DenCLI {
             false,
           ));
         if (!confirmed) return;
+        if (
+          await workspaceThroughServer(
+            "delete",
+            name,
+            `Deleted project: ${name}`,
+          )
+        )
+          break;
         deleteWorkspaceDirectory(name);
         deleteWorkspaceConfig(name);
         console.log(chalk.green(`\n  ✓ Deleted project: ${name}\n`));
@@ -5213,13 +5341,18 @@ class DenCLI {
     // ignored (the distribution's web.allow_plain_http_remote: only
     // config/local/user.yml counts) is flagged, as `web up` says it.
     {
-      const { ignoredConfigWarning, readWebAuthConfig } =
-        await import("../../shared/web-session.js");
+      const {
+        fixturePersonOffInstallWarning,
+        ignoredConfigWarning,
+        readWebAuthConfig,
+      } = await import("../../shared/web-session.js");
       try {
-        const w = ignoredConfigWarning(
-          readWebAuthConfig(getDistRoot(), product().configFile),
-        );
-        if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
+        const cfg = readWebAuthConfig(getDistRoot(), product().configFile);
+        for (const w of [
+          ignoredConfigWarning(cfg),
+          fixturePersonOffInstallWarning(cfg),
+        ])
+          if (w) console.warn(chalk.yellow(`\n  ⚠  ${w}`));
       } catch (e) {
         console.error(chalk.red(`\n  ✗  web: ${(e as Error).message}`));
         process.exitCode = 1;

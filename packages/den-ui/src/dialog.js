@@ -573,6 +573,18 @@ export function mountDialog(target, o = {}) {
   return handle;
 }
 
+/**
+ * Issue 864: one pop-up at a time. A pop-up that may give way to the
+ * person's question (What's new) asks to hear of each question here;
+ * `fn(dialog)` runs just before the question shows, with its dialog.
+ * Returns a function that stops it.
+ */
+const asking = new Set();
+export function onAsk(fn) {
+  asking.add(fn);
+  return () => asking.delete(fn);
+}
+
 /** askConfirm, askText and tell, on the frame. */
 function open(kind, opts = {}) {
   const id = `dk-q-${++seq}`;
@@ -585,6 +597,7 @@ function open(kind, opts = {}) {
     },
     show: false,
   });
+  for (const fn of asking) fn(h.dialog);
   h.show(opts.opener);
   return h.closed.then((v) => answerOf(kind, v === "ok", text));
 }

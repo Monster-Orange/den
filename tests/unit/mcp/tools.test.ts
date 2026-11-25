@@ -170,7 +170,7 @@ describe("tool registration", () => {
 
   it("approvalsState says which state is in effect", () => {
     expect(approvalsState(cfg())).toMatch(
-      /^held writes on: workspace_create, repo_add, hub_connect, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_project_create, hub_link, project_mcp_add, project_mcp_remove, project_mcp_update, agent_folder, agent_mode, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, web_url_set, service_try, verify_run, agent_import, approval_policy, pr_close, report follow the approval policy: one that widens what an agent may do runs only after the person's Allow/,
+      /^held writes on: workspace_create, repo_add, hub_connect, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_project_create, hub_link, project_mcp_add, project_mcp_remove, project_mcp_update, agent_folder, agent_mode, agent_sandbox_set, setting_change, gate_settings_set, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, web_url_set, service_try, verify_run, agent_import, approval_policy, pr_close, report follow the approval policy: one that widens what an agent may do runs only after the person's Allow/,
     );
     expect(approvalsState(cfg({ approvals: false }))).toMatch(
       /^held writes off \(mcp\.approvals: false\)/,
@@ -179,7 +179,9 @@ describe("tool registration", () => {
 
   it("there is no deploy tool and nothing for the never-exposed routes", () => {
     const names = toolsFor(cfg()).map((t) => t.name);
-    for (const n of names)
+    // Issue 1395: gate_settings_set is a held write (POST /api/approvals),
+    // not the Settings page's route.
+    for (const n of names.filter((x) => x !== "gate_settings_set"))
       expect(n).not.toMatch(/deploy|sudo|terminal|editor|settings|aws|exec/);
   });
 });

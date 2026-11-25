@@ -131,6 +131,8 @@ const LISTING: Record<string, Entry> = {
   "github status": R,
 
   "hub link": page("settings-registry.js", "/hub-project"),
+  // Issue 750: the Agents page's own groups read (By group), printed.
+  "hub groups": R,
   // den#49: an agent's commands, with its own Den token; a person uses Hub.
   "hub put": script("an agent publishes an artifact's files to Hub"),
   "hub pull": script("an agent fetches an artifact's files from Hub"),
@@ -224,7 +226,8 @@ const LISTING: Record<string, Entry> = {
  * dispatches them, and the labels there that aren't subcommands.
  */
 const DISPATCH: Record<string, { file: string; not?: string[] }> = {
-  web: { file: "web-command.ts", not: ["show", "unlink"] },
+  // `web owner` link, show and unlink.
+  web: { file: "web-command.ts", not: ["link", "show", "unlink"] },
   edge: { file: "edge-command.ts" },
   service: {
     file: "service-command.ts",
