@@ -47,6 +47,36 @@ export function selfUpdateAutoAllow(
     : null;
 }
 
+/**
+ * Den Builder's call (issue 1391): an explicit server_agent.self_update:
+ * ask (in user.yml, or the org's not yet copied) is the person's own say:
+ * a restart asks on a personal install too. Unset, personal restarts
+ * routinely.
+ */
+export function explicitRestartAsk(c: {
+  selfUpdate: "ask" | "auto";
+  selfUpdateFrom: "user" | "org" | "default";
+}): boolean {
+  return c.selfUpdate === "ask" && c.selfUpdateFrom !== "default";
+}
+
+/**
+ * Issue 1403 (Den Builder): den_update follows server_agent.self_update as
+ * den_restart does. For either, an explicit ask (or a config that can't
+ * be read) asks on a personal install too; other writes never.
+ */
+export function selfUpdateAsks(
+  action: string,
+  read: () => Parameters<typeof explicitRestartAsk>[0],
+): boolean {
+  if (action !== "den_restart" && action !== "den_update") return false;
+  try {
+    return explicitRestartAsk(read());
+  } catch {
+    return true;
+  }
+}
+
 export interface RestartMarker {
   /** The approval it ran for. */
   id: string;

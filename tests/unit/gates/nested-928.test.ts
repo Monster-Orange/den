@@ -181,11 +181,22 @@ describe("issue 928: a nested run of the held kind", () => {
     });
     expect(
       await cmdGate(
-        ["run", "--kind", "browser", "--", "npx", "playwright", "test"],
+        [
+          "run",
+          "--kind",
+          "browser",
+          "--",
+          "npx",
+          "playwright",
+          "test",
+          "a.spec.ts",
+        ],
         d,
       ),
     ).toBe(0);
-    expect(ran.map((r) => r.cmd)).toEqual([["npx", "playwright", "test"]]);
+    expect(ran.map((r) => r.cmd)).toEqual([
+      ["npx", "playwright", "test", "a.spec.ts"],
+    ]);
     expect(slept).toBe(0);
     expect(asks(s)).toBe(before);
     expect(s.list().map((e) => e.id)).toEqual([outer.id]);

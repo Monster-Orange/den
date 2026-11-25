@@ -201,11 +201,15 @@ describe("the rail's Hub link", () => {
       const { p } = await open(answer);
       await link(p).waitFor({ timeout: 10_000 });
       expect(
+        // The foot's first entry (issue 1341: the foot is one
+        // .den-rail-foot, right after the spacer), then Settings.
         await link(p).evaluate((a) => [
-          a.previousElementSibling?.className,
+          a.parentElement?.previousElementSibling?.className,
+          a.parentElement?.className,
+          a.previousElementSibling,
           (a.nextElementSibling as HTMLElement | null)?.dataset.nav,
         ]),
-      ).toEqual(["den-rail-grow", "settings"]);
+      ).toEqual(["den-rail-grow", "den-rail-foot", null, "settings"]);
       await p.context().close();
     }
   }, 60_000);
