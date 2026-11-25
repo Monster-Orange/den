@@ -814,6 +814,9 @@
       "src/shared/agents/guardrails/gate-route.mjs",
       "src/shared/agents/guardrails/pretooluse.mjs",
       "src/ui/cli/gate-command.ts"
+    ],
+    "tests/unit/server/runs-bar-band-283.browser.test.ts": [
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [],
@@ -885,6 +888,7 @@
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
@@ -956,6 +960,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
@@ -1064,6 +1069,7 @@
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
@@ -1100,6 +1106,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts"
@@ -1188,6 +1195,7 @@
         "tests/unit/server/pin-tuple.browser.test.ts",
         "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -1254,6 +1262,7 @@
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -1299,6 +1308,7 @@
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/verify-page.browser.test.ts",
         "tests/unit/server/verify-schedules.browser.test.ts"
       ],
@@ -1363,6 +1373,7 @@
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
@@ -1476,6 +1487,7 @@
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
@@ -1570,6 +1582,7 @@
         "tests/unit/server/rail-lit.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
@@ -1670,6 +1683,7 @@
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
@@ -1727,6 +1741,7 @@
         "tests/unit/server/popup-font.browser.test.ts",
         "tests/unit/server/release-no-env.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts"
       ],
@@ -1805,6 +1820,7 @@
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -1979,6 +1995,7 @@
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
+        "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -4270,6 +4287,15 @@
       ],
       "run": [
         "tests/unit/server/run-outcome.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/shell.js"
+      ],
+      "run": [
+        "tests/unit/server/runs-bar-band-283.browser.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
