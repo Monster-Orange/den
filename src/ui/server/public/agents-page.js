@@ -242,6 +242,9 @@ const PHONE = "(max-width: 720px)";
 const MAX_NAME = 40;
 const REFRESH_MS = 5_000;
 
+/** The list's views (issues 773, 750); savedBy() reads it while st is made. */
+const BY = ["need", "project", "group"];
+
 const st = {
   root: null,
   /**
@@ -1527,8 +1530,6 @@ function terminalsHref() {
     ? `/terminals?project=${encodeURIComponent(view[0])}`
     : "/terminals";
 }
-
-const BY = ["need", "project", "group"];
 
 /**
  * Issue 750: the person's By need (the default, issue 773), By project or
