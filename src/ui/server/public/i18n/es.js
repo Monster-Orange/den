@@ -2991,6 +2991,7 @@
     "bell.go.h": "Turnos de prueba pasados de su estimación",
     "bell.go.row": "{who} tiene el turno de prueba {kind}: {label}",
     "bell.go.sub": "Desde {time} · estimación {est} min · {over} min de más",
+    "bell.go.subMeasured": "Desde {time} · suele tardar {est} min, medido · {over} min de más",
     "bell.go.end": "Terminar",
     "bell.go.ended":
       "Turno de prueba terminado. Empieza el siguiente en la fila.",

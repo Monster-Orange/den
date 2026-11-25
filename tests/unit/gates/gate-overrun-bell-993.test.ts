@@ -120,6 +120,7 @@ describe("Needs you: one line, with what End needs (issue 993)", () => {
         label: "e2e suite",
         since: new Date(T0).toISOString(),
         estimateMin: 10,
+        estimateFrom: "given",
         overMin: 11,
         agent: "coder",
       },
@@ -221,7 +222,7 @@ describe("the holder agent is told once (issue 993)", () => {
     expect(relayed).toHaveLength(1);
     expect(relayed[0]).toMatchObject({ agent: "coder", project: "north" });
     expect(relayed[0]!.text).toBe(
-      `Den: your browser gate slot ${e.id} ("e2e suite") is 11 min past its 10 min estimate. Release it with gate_slot_release, or let its command finish.`,
+      `Den: your browser gate slot ${e.id} ("e2e suite") is 11 min past the 10 min you gave. Release it with gate_slot_release, or let its command finish.`,
     );
     t.advance(10 * MIN);
     await n.tick();

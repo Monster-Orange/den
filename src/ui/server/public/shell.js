@@ -3894,6 +3894,7 @@
     "bell.go.h": "Test slots past their estimate",
     "bell.go.row": "{who} holds the {kind} test slot: {label}",
     "bell.go.sub": "Since {time} · estimate {est} min · {over} min over",
+    "bell.go.subMeasured": "Since {time} · usually {est} min, measured · {over} min over",
     "bell.go.end": "End",
     "bell.go.ended": "Ended the test slot. The next in line starts.",
     "bell.ap.h": "Waiting for your Allow",

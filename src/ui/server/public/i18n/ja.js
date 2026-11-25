@@ -2920,6 +2920,7 @@
     "bell.go.h": "見込みを過ぎたテスト枠",
     "bell.go.row": "{who} が {kind} のテスト枠を使用中: {label}",
     "bell.go.sub": "{time} から · 見込み {est} 分 · {over} 分超過",
+    "bell.go.subMeasured": "{time} から · 通常 {est} 分（実測） · {over} 分超過",
     "bell.go.end": "終了",
     "bell.go.ended": "テスト枠を終了しました。次の順番が始まります。",
     "bell.ap.h": "あなたの許可待ち",

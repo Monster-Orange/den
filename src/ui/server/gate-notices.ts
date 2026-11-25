@@ -22,7 +22,10 @@ import {
   type GateStore,
   type GateEventRow,
 } from "../../shared/gates/store.js";
-import { gateOverrunWaiting } from "./gate-overrun-bell.js";
+import {
+  gateOverrunWaiting,
+  type GateOverrunWaiting,
+} from "./gate-overrun-bell.js";
 
 export interface GateNoticeDeps {
   store: () => GateStore;
@@ -59,6 +62,22 @@ const ENDS = new Set<string>([
 ]);
 
 const mins = (n: number) => `${Math.max(1, Math.round(n))} min`;
+
+/**
+ * Issue 993: the line an agent gets for a slot held past the bell's
+ * multiple. Issue 1537: it says which number it is past, the one the run
+ * gave or the one the gate measured.
+ */
+export function gateOverrunText(w: GateOverrunWaiting): string {
+  const past =
+    w.estimateFrom === "given"
+      ? `the ${mins(w.estimateMin)} you gave`
+      : w.estimateFrom === "default"
+        ? `the ${mins(w.estimateMin)} default (no estimate given)`
+        : `its usual ${mins(w.estimateMin)}, measured` +
+          (w.givenMin !== undefined ? ` (you gave ${w.givenMin})` : "");
+  return `Den: your ${w.slot} gate slot ${w.id} ("${w.label}") is ${mins(w.overMin)} past ${past}. Release it with gate_slot_release, or let its command finish.`;
+}
 
 export class GateNotices {
   private from = 0;
@@ -161,7 +180,7 @@ export class GateNotices {
           agent: w.agent,
           project,
           origin: "Den gate slots",
-          text: `Den: your ${w.slot} gate slot ${w.id} ("${w.label}") is ${mins(w.overMin)} past its ${mins(w.estimateMin)} estimate. Release it with gate_slot_release, or let its command finish.`,
+          text: gateOverrunText(w),
           at: now,
         }),
       );
