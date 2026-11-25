@@ -1306,8 +1306,8 @@ const LIST_FLOOR_MIN_PX = 96;
  * On a narrow screen the list sits above the panes, and its height has a
  * floor (agents.html: --agl-floor). The floor holds the list's notes and
  * its view switch, then LIST_FLOOR_ROWS whole rows: the notes never take
- * the rows' room. But an open pane keeps its own minimum (issue 170: its
- * To line stays above the runs dock shut, with no page scroll): where both
+ * the rows' room. But an open pane keeps its own minimum (its To line stays
+ * above the runs dock shut, with no page scroll): where both
  * don't fit, the list gets what's left, never less than 6rem, and scrolls.
  * With the dock open the page scrolls to the To line anyway: the list keeps
  * its first whole row. Measured after
@@ -5994,7 +5994,7 @@ export async function mountAgentsPage(root) {
   if (!root) return;
   st.root = root;
   // The list's floor follows the room it has: the window, and the runs
-  // dock opening or shutting (issue 170).
+  // dock opening or shutting.
   {
     const agx = root.querySelector("#agx");
     if (agx && "ResizeObserver" in window)

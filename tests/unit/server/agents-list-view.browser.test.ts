@@ -11,7 +11,7 @@
  *      switch never take their room. It held about none (a 6rem floor,
  *      mostly notes).
  *   3. Where they don't fit (390x844, the runs dock open) the pane's To
- *      line stays above the dock (issue 170) and the list keeps at least
+ *      line stays above the dock and the list keeps at least
  *      one whole row, then scrolls.
  *
  * Long agent names, personas and model labels, and many Hub groups (this
@@ -308,7 +308,7 @@ describe("the agents page's list", () => {
       }, 60_000);
 
   // A phone (390x844) with the runs dock shut: the page header, the
-  // pane's minimum and the To line above the dock bar (issue 170) leave the
+  // pane's minimum and the To line above the dock bar leave the
   // list room for two whole rows, past its note and the view switch. On
   // 0.4.89 it held one at most: the note and the switch filled its 6rem.
   for (const engine of ENGINES)
