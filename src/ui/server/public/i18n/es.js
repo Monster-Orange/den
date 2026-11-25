@@ -2342,6 +2342,8 @@
       "Sus trabajos son ligeros: no toman ningún turno en {box}.",
     "ap.det.gate_runner_entry_set.route":
       "La variable del repositorio {variable} envía sus trabajos a la máquina, o de vuelta a los runners alojados. {owner} responde por ella.",
+    "ap.det.gate_runner_entry_set.private":
+      "Los runners de la máquina solo arrancan en un repositorio privado: si {repo} es público, no arranca ninguno salvo que una persona permita los repositorios públicos en este proyecto.",
     "ap.det.gate_runner_entry_set.remove":
       "Puedes quitarla cuando quieras en Ajustes, en Entradas de runners de CI.",
     "ap.do.host_restart":

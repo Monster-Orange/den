@@ -3267,6 +3267,8 @@
       "Its jobs are light: they take no gate slot on {box}.",
     "ap.det.gate_runner_entry_set.route":
       "The repo variable {variable} sends its jobs to the box, or back to hosted runners. {owner} answers for it.",
+    "ap.det.gate_runner_entry_set.private":
+      "Box runners start only for a private repo: if {repo} is public, none starts unless a person allows public repos for this project.",
     "ap.det.gate_runner_entry_set.remove":
       "You can remove it any time in Settings, under CI runner entries.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",

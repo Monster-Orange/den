@@ -2274,6 +2274,8 @@
       "このジョブは軽いため、{box} のゲートスロットを取りません。",
     "ap.det.gate_runner_entry_set.route":
       "リポジトリ変数 {variable} がジョブをこのマシンへ、またはホスト型ランナーへ戻します。責任者は {owner} です。",
+    "ap.det.gate_runner_entry_set.private":
+      "マシンのランナーは非公開リポジトリでのみ起動します。{repo} が公開リポジトリなら、人がこのプロジェクトで公開リポジトリを許可しない限り起動しません。",
     "ap.det.gate_runner_entry_set.remove":
       "設定の「CI ランナーのエントリ」でいつでも削除できます。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",

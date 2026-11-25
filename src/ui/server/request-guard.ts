@@ -1401,6 +1401,16 @@ export function notAPersonOf(req: http.IncomingMessage): boolean {
 }
 
 /**
+ * Whether this request is a test bed's CLI on the test-person path (issue
+ * 636): a person token marked testPerson. A person-only write that widens
+ * what runs refuses it (issue 642 review).
+ */
+export function testPersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person" && p.testPerson === true;
+}
+
+/**
  * Issue 402: whether this request is a test install's fixture person
  * itself: its browser session, with no agent's token or claim on it.
  */

@@ -78,6 +78,12 @@ async function serve() {
       } as never);
     if (a === "Bearer person")
       setPrincipal(req, { kind: "person", actor: "person:pat" } as never);
+    if (a === "Bearer test-person")
+      setPrincipal(req, {
+        kind: "person",
+        actor: "person:pat",
+        testPerson: true,
+      } as never);
     const p = new URL(req.url ?? "/", "http://localhost").pathname;
     void handleGateRoutes(req, res, p, {
       store: () => store,
@@ -164,6 +170,42 @@ describe("the runner entries routes (a person's, in Settings)", () => {
     );
     expect(nobox.status).toBe(400);
     expect(nobox.json.error).toMatch(/no test box box-z/);
+    // "." and "..": a later slice puts the repo in a URL (review).
+    for (const repo of ["acme/..", "acme/."]) {
+      const r = await t.call(
+        "POST",
+        "/api/gate-slots/runner-entries",
+        "person",
+        {
+          entry: { ...ENTRY, repo },
+        },
+      );
+      expect(r.status).toBe(400);
+      expect(r.json.error).toMatch(/owner\/name/);
+    }
+    expect(t.store.runnerEntries()).toEqual([]);
+  });
+
+  it("a test bed's test person can list them but never set or remove one (review)", async () => {
+    const t = await serve();
+    expect(
+      (await t.call("GET", "/api/gate-slots/runner-entries", "test-person"))
+        .status,
+    ).toBe(200);
+    t.store.setRunnerEntry(ENTRY);
+    for (const [p, body] of [
+      ["/api/gate-slots/runner-entries", { entry: { ...ENTRY, slots: 2 } }],
+      [
+        "/api/gate-slots/runner-entries/remove",
+        { repo: ENTRY.repo, box: ENTRY.box },
+      ],
+    ] as const) {
+      const r = await t.call("POST", p, "test-person", body);
+      expect(r.status).toBe(403);
+      expect(r.json.code).toBe("person_only");
+    }
+    expect(t.store.runnerEntries()).toEqual([ENTRY]);
+    expect(t.audited).toEqual([]);
   });
 
   it("an agent can't list or change them here; signed out is told to sign in", async () => {
@@ -284,11 +326,17 @@ describe("gate_runner_entry_set: an agent asks, the person Allows", () => {
     expect(a.body.state).toBe("pending");
     expect(a.body.summary).toMatch(/acme\/alpha.*box-a/);
     expect(a.body.details?.join(" ")).toMatch(/CI_RUNNER/);
+    // Review: the person isn't Allowing something that can't start.
+    expect(a.body.details?.join(" ")).toMatch(
+      /only for a private repo: if acme\/alpha is public, none starts unless a person allows public repos/,
+    );
     expect(store.runnerEntries()).toEqual([]);
   });
 
   it("a bad entry or a box not set is refused before anything waits", async () => {
     expect((await ask({ ...ENTRY, repo: "x" })).status).toBe(400);
+    expect((await ask({ ...ENTRY, repo: "acme/.." })).status).toBe(400);
+    expect((await ask({ ...ENTRY, repo: "acme/." })).status).toBe(400);
     expect((await ask({ ...ENTRY, box: "box-z" })).status).toBe(400);
   });
 
