@@ -31,8 +31,12 @@ describe("issue 1369: doctor's audit reports row", () => {
   });
 
   it("reports in the last day, taken in or still queued: counted, ok, never their words", () => {
+    // auditConfig stamps its entry with the real clock, so this case
+    // reads against the real clock too, and places the others from it.
+    const real = Date.now();
+    const ago = (h: number) => new Date(real - h * 3_600_000).toISOString();
     line({
-      ts: "2026-11-23T10:00:00.000Z",
+      ts: ago(2),
       actor: "user",
       queued: true,
       unverified: true,
@@ -40,7 +44,7 @@ describe("issue 1369: doctor's audit reports row", () => {
       detail: "SECRET_WORDS",
     });
     line({
-      ts: "2026-11-20T10:00:00.000Z",
+      ts: ago(72),
       actor: "user",
       queued: true,
       unverified: true,
@@ -48,14 +52,14 @@ describe("issue 1369: doctor's audit reports row", () => {
       detail: "old",
     });
     line({
-      ts: "2026-11-23T10:00:00.000Z",
+      ts: ago(2),
       actor: "user",
       principal: "person:p",
       verb: "agents",
       detail: "sent",
     });
     auditConfig({ verb: "agents", detail: "SECRET_WORDS" }, state);
-    const r = auditReportLines("Den", { stateDir: state, now: new Date() });
+    const r = auditReportLines("Den", { stateDir: state, now: new Date(real) });
     expect(r.check.status).toBe("ok");
     expect(r.check.detail).toMatch(
       /^2 audit entries in the last day came in as reports/,
