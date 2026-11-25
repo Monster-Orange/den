@@ -275,6 +275,65 @@ describe("issue 559: the toast in a browser", () => {
     await p.context().close();
   });
 
+  it("until: it closes then, held or not, and gives focus back; none: hover still holds it", async () => {
+    if (skip()) return;
+    const p = await open();
+    await p.focus("#other");
+    await p.evaluate(() => {
+      const w = window as unknown as W;
+      w.kit.showToast({
+        message: "Filed",
+        onUndo: () => w.undos++,
+        until: Date.now() + 12_000,
+      });
+    });
+    await p.hover("[data-den-toast] > [data-kind]");
+    await p.keyboard.press("Tab");
+    expect(
+      await p.evaluate(() =>
+        document.activeElement!.hasAttribute("data-toast-undo"),
+      ),
+    ).toBe(true);
+    await p.clock.runFor(11_999);
+    expect(await toasts(p)).toBe(1);
+    await p.clock.runFor(1);
+    expect(await toasts(p)).toBe(0);
+    expect(await p.evaluate(() => document.activeElement!.id)).toBe("other");
+    expect(await p.evaluate(() => (window as unknown as W).undos)).toBe(0);
+    // No until: the hold wins, as before.
+    await show(p, { message: "Removed", undo: true });
+    await p.hover("[data-den-toast] > [data-kind]");
+    await p.clock.runFor(60_000);
+    expect(await toasts(p)).toBe(1);
+    await p.context().close();
+  });
+
+  it("until in the past: never shown; a server's data-until is kept", async () => {
+    if (skip()) return;
+    const p = await open();
+    await p.evaluate(() =>
+      (window as unknown as W).kit.showToast({
+        message: "Late",
+        until: Date.now() - 1,
+      }),
+    );
+    await p.clock.runFor(100);
+    expect(await toasts(p)).toBe(0);
+    await p.context().close();
+    const until = new Date("2026-11-25T10:00:05Z").getTime();
+    const q = await open({
+      body:
+        '<div id="art-toast" role="status" aria-live="polite" data-ttl="60000">' +
+        `<div class="den-toast" data-kind="status" data-until="${until}"><span class="den-toast-words"><span class="den-toast-msg" data-toast-msg>Filed</span></span></div></div>`,
+    });
+    await q.evaluate(() => (window as unknown as W).kit.hydrateToast());
+    await q.clock.runFor(4_000);
+    expect(await toasts(q)).toBe(1);
+    await q.clock.runFor(1_100);
+    expect(await toasts(q)).toBe(0);
+    await q.context().close();
+  });
+
   it("an error stays until Close; Close gives focus back", async () => {
     if (skip()) return;
     const p = await open({ lang: "es" });

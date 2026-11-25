@@ -40,6 +40,10 @@
  * makes both at start; when a toast has to make its region, the toast
  * goes in ANNOUNCE_MS (50 ms) after it.
  *
+ * Deadline: `until` (epoch ms; data-until on a server's toast) closes it
+ * at that time, held or not, and gives focus back as Esc does: an Undo
+ * never shows past the server's window for it. Past already: not shown.
+ *
  * Addresses: a link is http(s), relative or mailto, and an Undo form's
  * action http(s) or relative; any other link is left out, and any other
  * action throws.
@@ -88,6 +92,13 @@ function pageLang(lang) {
   } catch {
     return "en";
   }
+}
+
+/** A deadline as epoch ms, or null (none, or not a number). */
+function untilOf(v) {
+  if (v == null || v === "") return null;
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? n : null;
 }
 
 /** The visible toast's markup (no region). `undo`: a form, or a button. */
@@ -152,7 +163,9 @@ function bodyHtml(o) {
   return (
     '<div class="den-toast" data-kind="' +
     (error ? "error" : "status") +
-    '">' +
+    '"' +
+    (untilOf(o.until) != null ? ' data-until="' + untilOf(o.until) + '"' : "") +
+    ">" +
     (error
       ? '<span class="den-toast-ic" data-toast-ic aria-hidden="true">⚠</span>'
       : "") +
@@ -325,10 +338,18 @@ function wire(doc, reg, el, o) {
     clear: (t) => win.clearTimeout(t),
   });
   const inside = () => el.contains(doc.activeElement);
+  // The host's deadline (until, epoch ms): it closes then, held or not, so
+  // an Undo never outlives the server's window for it.
+  const until = untilOf(o.until);
+  const deadline =
+    until == null
+      ? null
+      : win.setTimeout(() => close(), Math.max(0, until - Date.now()));
   function close() {
     if (closed) return;
     closed = true;
     clock.stop();
+    if (deadline != null) win.clearTimeout(deadline);
     const had = inside();
     el.remove();
     doc.removeEventListener("visibilitychange", onVis);
@@ -394,6 +415,9 @@ function wire(doc, reg, el, o) {
 
 /** Shows a toast (see the top of this file). Returns { close }. */
 export function showToast(o = {}, doc = document) {
+  // Past its deadline already: nothing to show (the current toast stays).
+  const until = untilOf(o.until);
+  if (until != null && until <= Date.now()) return { close() {} };
   if (current) current.close();
   const error = o.kind === "error";
   const { r: reg, fresh } = region(doc, error ? "alert" : "status");
@@ -423,7 +447,12 @@ export function hydrateToast(doc = document, o = {}) {
   const ttl = Number(reg.getAttribute("data-ttl")) || undefined;
   const kind = el.getAttribute("data-kind") === "error" ? "error" : "status";
   el.remove();
-  const opts = { ...o, kind, ms: o.ms ?? ttl };
+  const opts = {
+    ...o,
+    kind,
+    ms: o.ms ?? ttl,
+    until: o.until ?? el.getAttribute("data-until"),
+  };
   current = wire(doc, reg, el, opts);
   addLater(doc, reg, el, current);
   return { close: current.close };

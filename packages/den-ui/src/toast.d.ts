@@ -34,6 +34,9 @@ export interface ShowToastOptions {
   link?: ToastLink;
   /** How long it shows (default: 3 s, or 10 s with Undo). */
   ms?: number;
+  /** A deadline (epoch ms): it closes then, held or not (an Undo never
+   * outlives the server's window). Past already: not shown. */
+  until?: number;
   lang?: string;
 }
 
@@ -58,6 +61,9 @@ export interface ToastHtmlOptions {
   actions?: { label: string }[];
   link?: ToastLink;
   ms?: number;
+  /** A deadline (epoch ms): it closes then, held or not (an Undo never
+   * outlives the server's window). Past already: not shown. */
+  until?: number;
   lang?: string;
 }
 

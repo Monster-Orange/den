@@ -839,6 +839,10 @@ es, ja), the roles, the timing and the look.
 - **Times:** 3 s plain, 10 s with Undo, and an error stays until it is
   closed (Close, Esc, or the next toast). Hover, focus inside and a hidden
   page hold the timer, and a full 3 s starts when they end.
+- **A deadline:** `until` (epoch ms), or `data-until` on a server's toast,
+  closes it at that time even while it is held, and gives focus back. Pass
+  it when Undo has a server window, so Undo never shows after the window
+  ends. A toast whose deadline has passed is not shown.
 - **Focus** never moves into the toast. Esc, with focus inside, closes it
   and gives focus back.
 - **Addresses:** a link is http(s), relative or mailto, and any other link

@@ -238,6 +238,18 @@ describe("issue 559: the toast's addresses", () => {
   });
 });
 
+describe("issue 559: the toast's deadline (until)", () => {
+  it("toastHtml carries until as data-until on the toast; none, no attribute", () => {
+    expect(
+      toastHtml({ message: "x", undo: true, until: 1764064805000 }),
+    ).toContain('data-until="1764064805000"');
+    expect(toastHtml({ message: "x" })).not.toContain("data-until");
+    expect(toastHtml({ message: "x", until: Number.NaN })).not.toContain(
+      "data-until",
+    );
+  });
+});
+
 describe("issue 559: the toast's words", () => {
   it("are Hub's today, in en, es and ja", () => {
     const w = (t: Record<string, string>) => [
