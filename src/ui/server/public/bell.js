@@ -18,7 +18,7 @@
  * (finished, answers, releases and checks) folds into one Updates row;
  * opening the agent clears its updates.
  *
- * Issue 773: the agents Done, not seen (GET /api/notifications `done`, this
+ * The agents Done, not seen (GET /api/notifications `done`, this
  * person's) have their own section under Needs you; a row opens the agent,
  * and opening it is seen. The badge counts Needs you plus Done, not seen.
  */
@@ -247,7 +247,7 @@ function subjectHtml(scope, s, ui) {
 }
 
 /**
- * Issue 773: one Done row: "<name> finished", its project, when. `seen`
+ * One Done row: "<name> finished", its project, when. `seen`
  * (mock v3's Earlier): "<project> · seen" under it, and its own kind.
  */
 function doneRowHtml(d, seen = false) {
@@ -315,7 +315,7 @@ function allowRowHtml(w, open) {
   );
 }
 
-/** Issue 773: the badge's count: Needs you plus Done, not seen. */
+/** The badge's count: Needs you plus Done, not seen. */
 export function bellCountOf(b) {
   return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
 }
@@ -524,7 +524,7 @@ export function bellPanel(b, ui = {}) {
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
-      // Issue 773: Done, not seen, under Needs you (when there is any).
+      // Done, not seen, under Needs you (when there is any).
       ...(done.length
         ? { done: done.map((d) => doneRowHtml(d)).join("") }
         : {}),
@@ -859,7 +859,7 @@ export function initBell(doc = document) {
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    // Issue 773: a Done row opens the agent; opening it is seen.
+    // A Done row opens the agent; opening it is seen.
     if (what === "open" || what === "page" || what === "open-done") {
       const rowEl = el.closest("[data-id]");
       const id = rowEl?.dataset.id;

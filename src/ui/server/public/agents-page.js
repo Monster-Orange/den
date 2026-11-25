@@ -3,7 +3,7 @@
  * the workspaces in view (the scope bar, or the page's ?ws=), and up to
  * four terminal panes beside the list.
  *
- * Issue 773: one list across projects, in four bands sorted by who needs
+ * One list across projects, in four bands sorted by who needs
  * the person (agent-bands.js, the kit's attention.js): Needs you, Done not
  * seen, Working, Idle. Each row has its mark and chip; on All projects its
  * project tag; the server agent is ranked like any other, tagged "Server".
@@ -242,17 +242,17 @@ const PHONE = "(max-width: 720px)";
 const MAX_NAME = 40;
 const REFRESH_MS = 5_000;
 
-/** The list's views (issues 773, 750); savedBy() reads it while st is made. */
+/** The list's views; savedBy() reads it while st is made. */
 const BY = ["need", "project", "group"];
 
 const st = {
   root: null,
   /**
-   * Issue 773: agents this page opened, id → the finish it saw (attnSince):
+   * Agents this page opened, id → the finish it saw (attnSince):
    * Done shows Idle at once, until the server's list agrees.
    */
   seenNow: new Map(),
-  /** Issue 773: the list could not load (no list yet): Retry. */
+  /** The list could not load (no list yet): Retry. */
   loadFailed: false,
   /**
    * Issue 1407: each agent's answer to a restart for its tools (ws\0id →
@@ -266,7 +266,7 @@ const st = {
   dragClick: false,
   /** Issue 226: on a phone, whether the Stopped group's agents show them. */
   reorderStopped: false,
-  // Issue 96 (issue 773): the band a phone's Reorder is on, or null.
+  // The band a phone's Reorder is on, or null.
   reorderBand: null,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
@@ -1037,7 +1037,7 @@ function waitingText(r) {
 }
 
 /**
- * Issue 773: the agents this person has seen now: the ones the page opened
+ * The agents this person has seen now: the ones the page opened
  * (st.seenNow) and the ones in a pane on screen. Each with the finish it
  * saw, so a later finish is Done again.
  */
@@ -1051,7 +1051,7 @@ function seenMap() {
   return out;
 }
 
-/** Issue 773: the person opened agent row `id`: its Done is seen. */
+/** The person opened agent row `id`: its Done is seen. */
 function markOpened(id) {
   const r = rowOf(id);
   if (!r || r.kind !== "agent") return;
@@ -1060,7 +1060,7 @@ function markOpened(id) {
 }
 
 /**
- * NT-2: this page shows these agents now (no alert for them). Issue 773:
+ * NT-2: this page shows these agents now (no alert for them),
  * and the person has seen their finished work.
  */
 function sayLooking(agents) {
@@ -1069,13 +1069,13 @@ function sayLooking(agents) {
     void api("POST", "/api/notifications/looking", { agents }).catch(() => {});
 }
 
-/** Issue 773: the list shows more than one project (each row is tagged). */
+/** The list shows more than one project (each row is tagged). */
 function allProjects() {
   return viewWorkspaces().length > 1;
 }
 
 /**
- * Issue 773: what a row's state is about, on its second line: `detail`,
+ * What a row's state is about, on its second line: `detail`,
  * and `time` (Needs you: how long, which a phone's card drops).
  */
 function attnParts(r, attn) {
@@ -1112,7 +1112,7 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  // Issue 773: the state's chip, and on line 2 the project tag, the
+  // The state's chip, and on line 2 the project tag, the
   // runtime and what the state is about.
   const seen = seenMap();
   const attn = rowState(r, seen);
@@ -1290,7 +1290,7 @@ function paintList() {
       `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
     );
   if (!st.data) {
-    // Issue 773: three placeholder rows while the first list loads; the
+    // Three placeholder rows while the first list loads; the
     // list that could not load says so, with Retry.
     setList(
       el,
@@ -1301,7 +1301,7 @@ function paintList() {
     );
     return;
   }
-  // ON-6: the server agent, tagged Server. Issue 773: in All projects
+  // ON-6: the server agent, tagged Server. In All projects
   // only; one project's view shows only its own agents.
   // D71: agents whose workspace was deleted, under its old name.
   const orphans = st.data.sessions.filter(
@@ -1371,15 +1371,15 @@ function paintList() {
     );
   // Issue 482: the Agents page says once where the shells went.
   if (PAGE !== "terminal") notes.push(movedNote());
-  // Issue 773: one list in four bands, sorted by who needs the person
+  // One list in four bands, sorted by who needs the person
   // (D37: the agents that aren't running in one "Stopped (n)" group at the
   // bottom, as before).
   const inView = shown.flatMap((ws) =>
     st.data.sessions.filter((s) => s.workspace === ws && belongsOn(PAGE, s)),
   );
   const stopped = inView.filter(inStopped);
-  // Issue 750: without Hub's groups, one line says why; with them, By
-  // group too. Issue 1407: two or more agents need a restart for their
+  // Without Hub's groups, one line says why; with them, By
+  // group too. Two or more agents need a restart for their
   // tools: one Restart for them all, and Restart all now for those that wait.
   if (PAGE !== "terminal") {
     const bar = toolsBarHtml(inView);
@@ -1387,7 +1387,7 @@ function paintList() {
   }
   const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
   if (gLine) notes.push(gLine);
-  // By need (issue 773's bands, the default), By project, By group: the
+  // By need (the bands, the default), By project, By group: the
   // last two sort each group's agents by need too.
   const running = inView.filter((s) => !inStopped(s));
   const need = (xs) => byNeed(xs, { seenNow: seenMap() });
@@ -1435,7 +1435,7 @@ function paintList() {
                 reorderBandHtml(b) +
                 b.rows
                   .map((r) =>
-                    // Issue 96: a phone's Reorder gives the band's rows Up and Down.
+                    // A phone's Reorder gives the band's rows Up and Down.
                     orderRowHtml(
                       rowHtml(r),
                       r,
@@ -1535,7 +1535,7 @@ function terminalsHref() {
 }
 
 /**
- * Issue 750: the person's By need (the default, issue 773), By project or
+ * The person's By need (the default), By project or
  * By group, kept in this browser.
  */
 function savedBy() {
@@ -1627,7 +1627,7 @@ function stoppedGroupHtml(rows) {
 
 /**
  * #80: whether session `s` belongs in this view: the view's projects, the
- * server agent (it spans projects; issue 773: in All projects only) and an agent whose project was deleted
+ * server agent (it spans projects; in All projects only) and an agent whose project was deleted
  * (D71). 0.4.44 added the open tabs' projects too, which mixed another
  * project's agents into a project's list; a tab from another project is
  * now left out instead (hideOtherProjects), so the list always has the
@@ -1637,7 +1637,7 @@ function inView(s) {
   if (!s) return false;
   // Issue 482: a shell is on the Terminals page, an agent on Agents.
   if (!belongsOn(PAGE, s)) return false;
-  // Issue 773: the server agent in All projects only.
+  // The server agent in All projects only.
   if (s.server || s.workspace === SERVER_WS) return !pickedWorkspace();
   if (s.orphan) return true;
   return viewWorkspaces().includes(s.workspace);
@@ -1762,7 +1762,7 @@ async function paneFollowsProject() {
 
 function paintSub() {
   const rows = visibleRows();
-  // Issue 773: the agents, then each state above zero, then the scope
+  // The agents, then each state above zero, then the scope
   // (stopped agents are outside the four states).
   const count = st.root.querySelector("#ag-count");
   if (count)
@@ -1909,10 +1909,10 @@ async function refreshOnce() {
   } catch {
     /* the last list stays; the next ask may answer */
   }
-  // Issue 773: no list yet, and this ask failed: "could not load", Retry.
+  // No list yet, and this ask failed: "could not load", Retry.
   st.loadFailed = !st.data && !st.signedOut;
   followAgents();
-  // D32: the rail's Agents badge: helpers running now. Issue 773: the
+  // D32: the rail's Agents badge: helpers running now. The
   // agents that need you, over it.
   window.denShell?.setState?.({
     helpersRunning: (st.data?.sessions ?? []).reduce(
@@ -1923,7 +1923,7 @@ async function refreshOnce() {
       (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
     ),
   });
-  // Issue 773: once the server's list agrees an opened agent isn't Done
+  // Once the server's list agrees an opened agent isn't Done
   // (or a new finish came), the page's own mark for it goes.
   for (const [id, at] of st.seenNow) {
     const r = rowOf(id);
@@ -2344,7 +2344,7 @@ async function pick(id, add) {
     st.claimOnOpen = live;
   } else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
-    // Issue 773: opening the agent is the whole action: its Done is seen.
+    // Opening the agent is the whole action: its Done is seen.
     markOpened(id);
     paintLayout();
     paintList();
@@ -3369,7 +3369,7 @@ function pathAnchor(p, e) {
 }
 
 async function openPane(id, { front = true } = {}) {
-  // Issue 773: opening the agent (its terminal) is seen: Done turns Idle.
+  // Opening the agent (its terminal) is seen: Done turns Idle.
   markOpened(id);
   if (st.panes.has(id)) {
     st.panes.get(id).term?.focus();
@@ -3674,7 +3674,7 @@ const agentPath = (r, verb) =>
 // follows. The bands still set the order between bands.
 
 /**
- * The agent ids of r's group, as the list shows them. Issue 773: a running
+ * The agent ids of r's group, as the list shows them. A running
  * agent moves among its project's agents in its band (the bands set the
  * order between bands); a stopped one in the Stopped group, as before.
  */
@@ -3689,16 +3689,16 @@ const groupOf = (r) =>
 
 /** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
 const gripHtml = (r) =>
-  // Issue 773: none in Needs you and Done (their order is the wait's).
+  // None in Needs you and Done (their order is the wait's).
   orderable(r, SERVER_WS) && (inStopped(r) || groupOf(r).length > 0)
     ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
     : "";
 
-/** Issue 96: a running row that can move: two or more in its group. */
+/** A running row that can move: two or more in its group. */
 const runningMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
 
 /**
- * Issue 96 (issue 773: per band): a phone's Reorder (or Done) in a band
+ * Per band: a phone's Reorder (or Done) in a band
  * the person orders (Working, Idle), when a project has two agents in it.
  */
 function reorderBandHtml(b) {
@@ -3821,7 +3821,7 @@ function showMoved(r, to) {
   const rest = all.filter((s) => s !== r);
   const at = rest.indexOf(other) + (to.after ? 1 : 0);
   st.data.sessions = [...rest.slice(0, at), r, ...rest.slice(at)];
-  // Issue 773: the bands follow each agent's place; the server stores the
+  // The bands follow each agent's place; the server stores the
   // project's whole order on a move, so every agent of it has one now.
   let n = 0;
   for (const s of st.data.sessions)
@@ -3873,7 +3873,7 @@ function wireOrder(agl) {
       over.kind !== "agent" ||
       over.workspace !== r.workspace ||
       inStopped(over) !== inStopped(r) ||
-      // Issue 773: a running row drops inside its own band only.
+      // A running row drops inside its own band only.
       !groupOf(r).includes(over.agent)
     )
       return null;
@@ -6230,7 +6230,7 @@ export async function mountAgentsPage(root) {
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
       if (which === "switch-back") return void switchBack();
-      // Issue 773: the list that could not load, asked again.
+      // The list that could not load, asked again.
       if (which === "retry-list") return void refresh();
       // #80: the helpers badge opens or closes them under its agent.
       if (which === "helpers-toggle") {
@@ -6244,7 +6244,7 @@ export async function mountAgentsPage(root) {
       if (which === "reorder") {
         if (act.hasAttribute("data-stopped"))
           st.reorderStopped = !st.reorderStopped;
-        // Issue 773: a band the person orders (Working, Idle).
+        // A band the person orders (Working, Idle).
         else if (act.dataset.band)
           st.reorderBand =
             st.reorderBand === act.dataset.band ? null : act.dataset.band;

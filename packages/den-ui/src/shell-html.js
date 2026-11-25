@@ -821,9 +821,9 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
- * Issue 101: `sections` { needs, done?, earlier? } in place of rows: the
+ * `sections` { needs, done?, earlier? } in place of rows: the
  * kit heads them "Needs you" (first, always; its own line when `needs` is
- * empty), "Done, not seen" (issue 773, when given) and "Earlier" (when
+ * empty), "Done, not seen" (when given) and "Earlier" (when
  * given), in its words; the host gives only each section's rows.
  */
 export function bellPanelHtml({
@@ -884,7 +884,7 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Issue 101: Needs you, then Done (issue 773), then Earlier. */
+/** Needs you, then Done, then Earlier. */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -896,7 +896,7 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
-    // Issue 773: the agents that finished since the person last looked.
+    // The agents that finished since the person last looked.
     (s.done
       ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
       : "") +

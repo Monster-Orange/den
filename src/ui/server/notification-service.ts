@@ -326,7 +326,7 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
-    // Issue 773: a turn's end is a new version of the agent's finished
+    // A turn's end is a new version of the agent's finished
     // work: Done for each person until they open it.
     turnEnded: (id, at) =>
       seenMarks(getStateDir()).noteVersion(
@@ -370,7 +370,7 @@ export function notificationDeps(): {
       }
     },
     seen: seenMarks(getStateDir()),
-    // Issue 773: the bell's Done, not seen (not one waiting again).
+    // The bell's Done, not seen (not one waiting again).
     doneAgents: (person) =>
       doneAgents(
         listRecords(getStateDir()),
@@ -408,7 +408,7 @@ function doneProjectName(): (ws: string) => string {
 }
 
 /**
- * Issue 773: what each agent's state for a person is made of: the seen
+ * What each agent's state for a person is made of: the seen
  * marks, the agents in a turn, and since when each waits.
  */
 export function agentStateDeps(): AgentStateDeps {

@@ -186,7 +186,7 @@ export function moveInOrder(
 }
 
 /**
- * Issue 773: agent `id`'s place (0 first) in project `ws`'s saved order,
+ * Agent `id`'s place (0 first) in project `ws`'s saved order,
  * or undefined when the person set none for it. The Agents page keeps that
  * order inside each band (the kit's inPersonOrder).
  */

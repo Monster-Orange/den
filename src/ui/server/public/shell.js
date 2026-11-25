@@ -3769,7 +3769,7 @@
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
-    // Issue 773: four agent states, one list sorted by who needs you.
+    // Four agent states, one list sorted by who needs you.
     "ag.band.needs": "Needs you",
     "ag.band.done": "Done, not seen",
     "ag.band.working": "Working",
@@ -5384,7 +5384,7 @@
     down: 0,
     openLogs: 0,
     helpersRunning: 0,
-    // Issue 773: the agents that need the person (the rail's Agents count).
+    // The agents that need the person (the rail's Agents count).
     agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
@@ -6211,7 +6211,7 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
-      // Issue 773: the agents that need you (not Done); else (D32) the
+      // The agents that need you (not Done); else (D32) the
       // helpers the agents started that run now.
       badge: function (s) {
         // Mock v3: an amber pill.
@@ -9855,7 +9855,7 @@
           function (b) {
             var n = b && typeof b.running === "number" ? b.running : 0;
             if (n !== state.helpersRunning) setState({ helpersRunning: n });
-            // Issue 773: the agents that need you, for the rail's count.
+            // The agents that need you, for the rail's count.
             var w = b && typeof b.needs === "number" ? b.needs : 0;
             if (w !== state.agentsNeedYou) setState({ agentsNeedYou: w });
           },

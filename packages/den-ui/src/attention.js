@@ -1,7 +1,7 @@
 /**
- * Issue 773: who needs the person, one rule for Den and Hub. Four states,
+ * Who needs the person, one rule for Den and Hub. Four states,
  * each a row of one table (data, so a person's own mapping can override it,
- * issue 780; the bell, alerts and sounds read the same table, issue 774):
+ * and the bell, alerts and sounds read the same table):
  *
  *   needs    Needs you: stopped on a permission, a question or an Allow
  *   done     Done, not seen: finished after the person last looked
@@ -16,7 +16,7 @@
  *   attentionState({needs, working, done})
  *   compareAttention(a, b, table?), sortByAttention(items, table?)
  *     items: { state, since?, name?, id?, group?, place? } (since: an ISO
- *     time; group and place: the person's own order, issue 96)
+ *     time; group and place: the person's own order)
  *   inPersonOrder(sorted, table?) the person's order inside Working and Idle
  *   attentionCounts(items, table?)  { needs, done, working, idle, rail, bell }
  */
@@ -135,11 +135,11 @@ const placed = (i) =>
   typeof i.place === "number" && Number.isFinite(i.place) && i.group != null;
 
 /**
- * Issue 96: the person's order holds inside a band. In each band of
+ * The person's order holds inside a band. In each band of
  * `sorted` (by state), the slots held by one group's placed items (those
  * with a `place` in their `group`, a project) are filled by those items in
  * the person's order. Other groups' items, and unplaced ones, keep their
- * slots, and the bands keep their order. Issue 773: only in a "name"
+ * slots, and the bands keep their order. Only in a "name"
  * band (Working, Idle); an "oldest" band (Needs you, Done) keeps the
  * longest wait first.
  */

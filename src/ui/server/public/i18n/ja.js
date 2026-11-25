@@ -2802,7 +2802,7 @@
     "ag.waiting.input": "入力待ち",
     "ag.waiting.asked": "質問があります",
     "ag.waiting.trust": "待機中: このフォルダを信頼しますか?",
-    // Issue 773: four agent states, one list sorted by who needs you.
+    // Four agent states, one list sorted by who needs you.
     "ag.band.needs": "対応が必要",
     "ag.band.done": "完了・未確認",
     "ag.band.working": "作業中",
@@ -2820,7 +2820,7 @@
     "ag.whyLong.asked": "質問しています",
     "ag.whyLong.approval": "承認を待っています",
     "ag.whyLong.trust": "フォルダの信頼を求めています",
-    "ag.tag.server": "サーバー", // words-ok: the approved mock's "Server" tag (issue 773)
+    "ag.tag.server": "サーバー", // words-ok: the approved mock's "Server" tag
     "ag.sub.needs": "対応が必要 {n}",
     "ag.sub.needsOne": "対応が必要 {n}",
     "ag.sub.done": "完了・未確認 {n}",

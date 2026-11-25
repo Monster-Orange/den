@@ -1,5 +1,5 @@
 /**
- * Issue 773: the "seen" mark. A mark is subject + version + person: this
+ * The "seen" mark. A mark is subject + version + person: this
  * person has seen this version of this subject. It is generic: an agent's
  * subject is "agent:<id>" and its version its last finished turn (Done, not
  * seen, on the Agents page and in the bell); a Hub doc's would be
@@ -158,7 +158,7 @@ export class SeenMarks {
 
 const stores = new Map<string, SeenMarks>();
 
-/** Issue 773: an agent's seen-mark subject (its finished work). */
+/** An agent's seen-mark subject (its finished work). */
 export const agentSeenSubject = (id: string): string => `agent:${id}`;
 
 /** The one store for `stateDir` (default: Den's state folder). */
@@ -171,7 +171,7 @@ export function seenMarks(stateDir: string = getStateDir()): SeenMarks {
   return s;
 }
 
-/** The seen mark's short names (issue 773), on the shared store. */
+/** The seen mark's short names, on the shared store. */
 export const seen = {
   mark: (k: SeenKey, stateDir?: string): boolean =>
     seenMarks(stateDir).markSeen(k),

@@ -141,7 +141,7 @@ const colours = (p: Page) =>
       for (const [id, ws] of rows)
         out[ws] = {
           row: pc(`#agl .agr[data-id="${id}"]`),
-          // Issue 773: the bands replaced project groups; the row's
+          // The bands replaced project groups; the row's
           // project tag says its project.
           group: pc(`#agl [data-id="${id}"] [data-ptag="project"]`),
         };

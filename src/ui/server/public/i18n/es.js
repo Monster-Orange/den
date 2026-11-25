@@ -2873,7 +2873,7 @@
     "ag.waiting.input": "te espera",
     "ag.waiting.asked": "te preguntó",
     "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
-    // Issue 773: four agent states, one list sorted by who needs you.
+    // Four agent states, one list sorted by who needs you.
     "ag.band.needs": "Te necesitan",
     "ag.band.done": "Terminado, sin ver",
     "ag.band.working": "Trabajando",

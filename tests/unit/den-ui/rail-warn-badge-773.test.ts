@@ -1,5 +1,5 @@
 /**
- * Issue 773 (mock v3): the rail's Agents count is an amber pill, the
+ * In the approved mock (v3), the rail's Agents count is an amber pill, the
  * kit's warn tone; a plain badge stays grey and a bad one red.
  */
 import { describe, expect, it } from "@jest/globals";

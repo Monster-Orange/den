@@ -127,7 +127,7 @@ describe("NT: the bell on the real server", () => {
       (await call("POST", "/api/settings", { bell_kinds: { finished: true } }))
         .status,
     ).toBe(200);
-    // ATTN-5 (den#142): a finished turn is not counted. Issue 773 (mock v3,
+    // ATTN-5: a finished turn is not counted. The approved mock (v3,
     // section 4) replaces "listed in the updates": while nobody has seen
     // it, it shows once, in Done; the updates hold only what was seen.
     const bell = await call("GET", "/api/notifications");
@@ -243,14 +243,14 @@ describe("NT: the bell on the real server", () => {
       { event: "finished" },
       "agent",
     );
-    // Issue 773: unseen, it shows once, in Done (not in the updates too).
+    // Unseen, it shows once, in Done (not in the updates too).
     const before = (await call("GET", "/api/notifications")).json;
     expect(before.done).toEqual([
       expect.objectContaining({ agent: "planner" }),
     ]);
     expect(before.updates).toMatchObject({ count: 0, unread: 0 });
     // #142: opening the agent clears its updates: they leave the list and
-    // the count drops (not only marked read). Issue 773: and Done.
+    // the count drops (not only marked read). And Done.
     expect(
       (
         await call("POST", "/api/notifications/looking", {

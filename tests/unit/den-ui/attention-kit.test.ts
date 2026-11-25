@@ -1,5 +1,5 @@
 /**
- * Issue 773: the kit's one sort rule for who needs the person
+ * The kit's one sort rule for who needs the person
  * (packages/den-ui/src/attention.js), shared by Den's Agents page and bell
  * and Hub's Now view. The rules table of the approved mock, one test per
  * row that the kit owns: Order, Counts, and the state of an agent.
