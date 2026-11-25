@@ -10484,7 +10484,9 @@
     ".den-pop.den-svp.den-sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;",
     "  background: var(--border-strong); margin: 8px auto 0; }",
     ".den-pop.den-svp.den-sheet .den-svp-acts .den-btn { flex: 1 1 auto; padding: 9px 12px; }",
-    // Toasts are the kit's (issue 559: den-ui toast.css).
+    // Toasts are the kit's (issue 559: den-ui toast.css), 70 px up, clear
+    // of the bar along the bottom (the Runs bar), where Den's own sat.
+    ":root { --den-toast-bottom: 70px; }",
     // The banners' small buttons (.den-tbtn), once shared with Den's toasts.
     ".den-tbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text);",
     "  border-radius: var(--radius-button); padding: 2px 9px; font: 500 12.5px/1.45 var(--sans);",

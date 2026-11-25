@@ -360,6 +360,15 @@ describe("the rail", () => {
       ).denShell.pin("shop"),
     );
     expect(await p.textContent(".den-toast")).toBe("Pinned shop");
+    // Issue 559: the kit's toast sits clear of Den's bottom bar (70 px up,
+    // as Den's own toast did), not the kit's 20 px.
+    const gap = await p.evaluate(() => {
+      const t = document.querySelector(".den-toast")!;
+      // Where it comes to rest: past its slide in.
+      for (const a of t.getAnimations()) a.finish();
+      return window.innerHeight - t.getBoundingClientRect().bottom;
+    });
+    expect(gap).toBeGreaterThanOrEqual(69.5);
     await p.waitForSelector('[data-pin="shop"]');
     // 0.4.18: no hover ×; Delete on the row (or its panel's Unpin).
     await p.focus('[data-pin="shop"]');

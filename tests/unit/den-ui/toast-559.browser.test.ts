@@ -312,6 +312,26 @@ describe("issue 559: the toast in a browser", () => {
     await p.context().close();
   });
 
+  it("20 px up by default; a host with a bottom bar sets --den-toast-bottom", async () => {
+    if (skip()) return;
+    const p = await open();
+    const gap = () =>
+      p.evaluate(
+        () =>
+          window.innerHeight -
+          document
+            .querySelector("[data-den-toast] > [data-kind]")!
+            .getBoundingClientRect().bottom,
+      );
+    await show(p, { message: "Saved" });
+    expect(Math.round(await gap())).toBe(20);
+    await p.evaluate(() =>
+      document.documentElement.style.setProperty("--den-toast-bottom", "70px"),
+    );
+    expect(Math.round(await gap())).toBe(70);
+    await p.context().close();
+  });
+
   it("the look: inverted, at most 560 px, the ring in the page's background colour", async () => {
     if (skip()) return;
     for (const mode of ["light", "dark"] as const) {

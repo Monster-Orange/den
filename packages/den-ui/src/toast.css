@@ -2,13 +2,16 @@
    never injected: clean under style-src 'self'.
    An inverted surface (the page's text colour behind, its background
    colour on top), centred at the bottom 20 px up (plus a phone's safe
-   area), at most 560 px wide. The focus ring is the page's background
+   area), at most 560 px wide. A host with a bar along the bottom sets
+   --den-toast-bottom (Den: 70px) so the toast sits clear of it. The focus ring is the page's background
    colour: the accent ring loses contrast on this surface in dark mode.
    It slides up only when the reader allows motion. */
 .den-toast-region {
   position: fixed;
   left: 50%;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(
+    var(--den-toast-bottom, 20px) + env(safe-area-inset-bottom, 0px)
+  );
   transform: translateX(-50%);
   z-index: 1000;
   width: max-content;
