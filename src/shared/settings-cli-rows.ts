@@ -72,6 +72,7 @@
  *                                     den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
+ *   git_reads: { at_once? }   user.yml git_reads.*
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max?, watch_stale_minutes?,
  *     watch_max_open_hours?, rerun_look_minutes? }
@@ -108,6 +109,7 @@ import {
   agentsLimitValueError,
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
+import { GIT_READS } from "./git-reads.js";
 import {
   ISSUE_WRITES_PER_HOUR,
   ISSUE_WRITES_VISIBILITY_MINUTES,
@@ -212,6 +214,7 @@ export const PERSON_ONLY_SETTINGS = [
   "held_writes",
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll",
+  "git_reads",
 ] as const;
 
 /**
@@ -520,6 +523,10 @@ const HEALTH_POLL_LIMITS: Record<string, Limit> = {
     int: true,
   },
   hidden_seconds: { key: "hidden_seconds", ...HEALTH_POLL.hidden, int: true },
+};
+
+const GIT_READS_LIMITS: Record<string, Limit> = {
+  at_once: { key: "at_once", ...GIT_READS, int: true },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -977,6 +984,14 @@ export function patchCliRows(
       "health_poll",
       HEALTH_POLL_LIMITS,
       body.health_poll,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "git_reads",
+      "git_reads",
+      GIT_READS_LIMITS,
+      body.git_reads,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);

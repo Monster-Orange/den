@@ -209,6 +209,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
+  git_reads: { at_once: true },
   // Issue 750: groups from Hub (user.yml hub.groups, groups_cache_seconds).
   hub_groups: { mode: true, cache_seconds: true },
 };
@@ -451,6 +452,7 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        "git_reads.at_once",
         // Issue 750: groups from Hub.
         "hub_groups.mode",
         "hub_groups.cache_seconds",

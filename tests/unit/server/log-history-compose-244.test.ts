@@ -4,7 +4,9 @@ jest.mock("fs");
 jest.mock("child_process");
 jest.mock("../../../src/shared/environment-manager/opctl.js", () => ({
   findConventionalContainer: jest.fn(),
+  pickConventionalContainer: jest.fn(),
   runningDockerNames: jest.fn(),
+  runningDockerNamesAsync: jest.fn(),
 }));
 jest.mock("../../../src/shared/environment-manager/service-runner.js", () => ({
   resolveService: jest.fn(),
@@ -26,7 +28,10 @@ jest.mock("../../../src/shared/environment-manager/workspaces.js", () => ({
 
 import * as fs from "fs";
 import { execFile } from "child_process";
-import { findConventionalContainer } from "../../../src/shared/environment-manager/opctl.js";
+import {
+  pickConventionalContainer,
+  runningDockerNamesAsync,
+} from "../../../src/shared/environment-manager/opctl.js";
 import { resolveService } from "../../../src/shared/environment-manager/service-runner.js";
 import { getServiceLogPath } from "../../../src/shared/process/spawn-streaming.js";
 import { readManifest } from "../../../src/shared/manifest/read-manifest.js";
@@ -35,8 +40,8 @@ import {
   searchSystemHistory,
 } from "../../../src/ui/server/log-history.js";
 
-const mockFind = findConventionalContainer as jest.MockedFunction<
-  typeof findConventionalContainer
+const mockFind = pickConventionalContainer as jest.MockedFunction<
+  typeof pickConventionalContainer
 >;
 const mockResolve = resolveService as jest.MockedFunction<
   typeof resolveService
@@ -92,6 +97,11 @@ beforeEach(() => {
   } as never);
   mockLogPath.mockReturnValue("/home/.den/logs/shop/api.log");
   mockFind.mockReturnValue(null);
+  (
+    runningDockerNamesAsync as jest.MockedFunction<
+      typeof runningDockerNamesAsync
+    >
+  ).mockResolvedValue([]);
   mockExists.mockImplementation((p) => String(p).includes("/history/"));
 });
 

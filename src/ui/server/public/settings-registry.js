@@ -5191,6 +5191,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
+    id: "server.git_reads",
+    category: "server",
+    label: "Git reads at once",
+    description:
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
+    keywords: ["git", "repos", "processes", "parallel", "concurrency", "tests"],
+    scope: "user",
+    keys: ["git_reads.at_once"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.git_reads?.at_once ?? 16,
+    write: (v, ctx) => ctx.post({ git_reads: { at_once: v } }),
+  },
+  {
     // issue_write: which persona roles write GitHub issues in their
     // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",
