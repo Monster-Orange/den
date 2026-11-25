@@ -5392,6 +5392,8 @@
     collapsed: false,
     hidden: [],
     order: [],
+    // Issue 1444: the rail sections this person folded (group ids).
+    folded: [],
     // The runs dock (R16a): open or collapsed to its bar, and its height
     // (0: the prototype's 170px). User prefs, like the pins.
     dock: false,
@@ -5434,6 +5436,7 @@
     state.collapsed = cached.collapsed === true;
     if (Array.isArray(cached.hidden)) state.hidden = cached.hidden;
     if (Array.isArray(cached.order)) state.order = cached.order;
+    if (Array.isArray(cached.folded)) state.folded = cached.folded;
     state.dock = cached.dock === true;
     if (typeof cached.dockHeight === "number")
       state.dockHeight = cached.dockHeight;
@@ -5449,6 +5452,7 @@
           collapsed: state.collapsed,
           hidden: state.hidden,
           order: state.order,
+          folded: state.folded,
           dock: state.dock,
           dockHeight: state.dockHeight,
           edge: state.edge,
@@ -6843,6 +6847,7 @@
       account: accountModel(),
       lang: lang,
       collapsed: state.collapsed,
+      folded: state.folded,
     };
   }
 
@@ -7024,6 +7029,16 @@
     },
     onUnpin: function (id) {
       unpin(id);
+    },
+    // Issue 1444: the folded sections are this person's shell setting.
+    folds: {
+      get: function () {
+        return state.folded;
+      },
+      set: function (ids) {
+        state.folded = ids;
+        saveShell({ folded: ids });
+      },
     },
     inert: function () {
       return [
@@ -10278,6 +10293,7 @@
           collapsed: s.shell.collapsed === true,
           hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
           order: Array.isArray(s.shell.order) ? s.shell.order : [],
+          folded: Array.isArray(s.shell.folded) ? s.shell.folded : [],
           dock: s.shell.dock === true,
           dockHeight:
             typeof s.shell.dockHeight === "number" ? s.shell.dockHeight : 0,
