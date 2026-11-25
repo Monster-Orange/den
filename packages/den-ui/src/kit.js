@@ -103,7 +103,9 @@ import {
   hydratePageMenu,
   hydrateScope,
   hydrateSearch,
+  hydrateRailFolds,
   hydrateShell,
+  railFoldStore,
   setWaiting,
   syncPinToggles,
 } from "./shell-client.js";
@@ -381,6 +383,8 @@ const DenUI = {
   hydrateAccount,
   attachMenuFilter,
   syncPinToggles,
+  hydrateRailFolds,
+  railFoldStore,
   icon,
   esc,
   t,

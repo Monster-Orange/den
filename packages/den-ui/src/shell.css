@@ -477,6 +477,71 @@ body.den-has-shell > #den-content {
 .den-rail > .den-rail-group:first-child > .den-gh {
   padding-top: 2px;
 }
+/* Issue 1444: a section's entries; its heading folds them. The heading is
+   the toggle only once the kit's script made it one (a button), so with
+   no script every entry shows. */
+.den-gb {
+  display: contents;
+}
+button.den-gh {
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  width: 100%;
+  text-align: start;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+button.den-gh > span:first-child {
+  margin-inline-end: auto;
+}
+button.den-gh:hover {
+  color: var(--muted);
+}
+button.den-gh:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+button.den-gh > .den-bdg {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.den-gh-chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.den-rail-group[data-folded] .den-gh-chev {
+  transform: rotate(-90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-gh-chev {
+    transition: none;
+  }
+}
+@media (scripting: enabled) {
+  .den-rail-group[data-folded] > :not(.den-gh) {
+    display: none;
+  }
+}
+/* The heading is a tap's height from the first paint (it becomes the
+   toggle when the script runs), so hydrating moves nothing. */
+@media (scripting: enabled) and (max-width: 720px),
+  (scripting: enabled) and (pointer: coarse) {
+  .den-rail-group > .den-gh {
+    min-height: var(--tap);
+    align-items: center;
+  }
+}
 /* A group's "from" tag never makes its heading taller, on any font: its
    box (a 12px line and its border, 14px) is centred on the heading's line
    and its vertical margins cancel that box, so its row is the heading's
@@ -694,6 +759,13 @@ body.den-rail-collapsed .den-rail .den-ni-kind {
   }
   body.den-rail-collapsed .den-rail .den-ni-kind {
     display: inline;
+  }
+}
+/* Issue 1444: the rail as icons has no headings to open, so a folded
+   section's entries show there (the drawer below 720px folds them). */
+@media (scripting: enabled) and (min-width: 721px) {
+  body.den-rail-collapsed .den-rail-group[data-folded] > .den-gb {
+    display: contents;
   }
 }
 body.den-rail-collapsed .den-rail .den-lbl,

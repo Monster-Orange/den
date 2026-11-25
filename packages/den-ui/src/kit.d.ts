@@ -73,7 +73,11 @@ import type {
   SettingFieldOptions,
   settingFieldHtml,
 } from "./setting-field.js";
-import type { syncPinToggles } from "./shell-client.js";
+import type {
+  hydrateRailFolds,
+  railFoldStore,
+  syncPinToggles,
+} from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
 import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
@@ -264,6 +268,8 @@ export interface DenUIKit {
   hydrateAccount: typeof hydrateAccount;
   attachMenuFilter: typeof attachMenuFilter;
   syncPinToggles: typeof syncPinToggles;
+  hydrateRailFolds: typeof hydrateRailFolds;
+  railFoldStore: typeof railFoldStore;
   icon: typeof icon;
   esc: typeof esc;
   t: typeof t;
