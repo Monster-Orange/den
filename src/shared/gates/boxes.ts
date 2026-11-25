@@ -777,6 +777,23 @@ export function memAvailableMb(text: string): number | undefined {
 }
 
 /**
+ * Issue 1381: free memory (MB) from a /proc/meminfo text: MemAvailable,
+ * else MemFree + Buffers + Cached (old kernels, some WSL kernels have no
+ * MemAvailable). Undefined when a part is missing: never a guess.
+ */
+export function linuxFreeMb(text: string): number | undefined {
+  const avail = memAvailableMb(text);
+  if (avail !== undefined) return avail;
+  const kb = (label: string) => {
+    const m = new RegExp(`^${label}:\\s+(\\d+)\\s*kB`, "m").exec(text);
+    return m ? Number(m[1]) : undefined;
+  };
+  const parts = [kb("MemFree"), kb("Buffers"), kb("Cached")];
+  if (parts.some((n) => n === undefined)) return undefined;
+  return (parts as number[]).reduce((a, b) => a + b, 0) / 1024;
+}
+
+/**
  * Issue 857: free memory on macOS (MB) from `vm_stat` and, after it,
  * `sysctl -n hw.pagesize`: free + inactive + speculative pages times the
  * page size (sysctl's, else the one in vm_stat's header). Undefined when
@@ -950,12 +967,19 @@ export function sftpProbe(
           oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
           `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-    const missing = r.err
-      .split("\n")
-      .filter((l) => /not found|no such file/i.test(l));
-    const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
-    const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
-    let freeMemMb = memAvailableMb(memText);
+    // Issue 1381: each line read by what it is. The -ls of the hold file
+    // is the only "Can't ls"; a failed local copy ("open local …") is
+    // neither the hold file gone nor no /proc/meminfo.
+    const lines = r.err.split("\n");
+    const holdGone = lines.some((l) => /^Can't ls: .*not found/.test(l));
+    const noMeminfo = lines.some(
+      (l) =>
+        !/^open local /.test(l) &&
+        l.includes("/proc/meminfo") &&
+        /not found|no such file/i.test(l),
+    );
+    const localFail = lines.find((l) => /^open local /.test(l));
+    let freeMemMb = linuxFreeMb(memText);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
     if (box.hold_file && !holdGone)
       return {
@@ -965,7 +989,13 @@ export function sftpProbe(
       };
     if ((box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB) <= 0)
       return { state: "open", ...mem() };
-    let why = "/proc/meminfo has no MemAvailable";
+    let why = localFail
+      ? oneLine(
+          `the copy of /proc/meminfo couldn't be written here: ${localFail.replace(/^open local "[^"]*":\s*/, "")}`,
+        )
+      : memText.trim() === ""
+        ? "/proc/meminfo came back empty"
+        : "/proc/meminfo has neither MemAvailable nor MemFree, Buffers and Cached";
     if (freeMemMb === undefined && noMeminfo) {
       // Issue 857: no /proc (macOS): one fixed command, nothing else.
       const left = deadline - Date.now();
