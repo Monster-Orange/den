@@ -2034,6 +2034,7 @@
         "tests/unit/den-ui/kit-button-menu-row.browser.test.ts",
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
+        "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/server/add-service-dialog.browser.test.ts",
