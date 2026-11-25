@@ -19,6 +19,7 @@
  * is there to answer, so it is audited apart from a live agent's refusal.
  */
 import type * as http from "http";
+import * as net from "net";
 import type { Socket } from "net";
 import {
   hostAllowed,
@@ -313,6 +314,31 @@ export function refusalDetail(o: {
       : "outside the agent's own processes";
   const why = o.from === "unknown" && o.why ? `${MISS_WORDS[o.why]}; ` : "";
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
+}
+
+/**
+ * Issue 1340: the audit detail of a refused agent token, from its request.
+ * Off loopback (a bound LAN or mesh address, a proxy on another address),
+ * Den never looks for the caller's process: the detail names the address
+ * the connection came from, never "outside the agent's own processes".
+ */
+export function requestRefusalDetail(
+  req: http.IncomingMessage,
+  o: {
+    actor: string;
+    from: Exclude<TokenCaller, "ok">;
+    root: number | null;
+    why?: PeerMiss | null;
+  },
+): string {
+  const method = req.method ?? "GET";
+  const path = new URL(req.url ?? "/", "http://x").pathname;
+  const addr = req.socket?.remoteAddress;
+  if (!isLoopbackAddress(addr)) {
+    const at = typeof addr === "string" && net.isIP(addr) ? addr : "unknown";
+    return `${o.actor}'s token from a connection off this machine's loopback (address ${at}, agent pid ${o.root ?? "?"}): ${method} ${path}`;
+  }
+  return refusalDetail({ ...o, caller: callerPid(req), method, path });
 }
 
 /**
