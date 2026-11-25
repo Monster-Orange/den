@@ -680,6 +680,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
   ),
   M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
+  ),
+  M(
     ["POST", "DELETE"],
     "/api/workspaces/:ws/mcp-servers/:name",
     "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
@@ -1246,6 +1256,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [

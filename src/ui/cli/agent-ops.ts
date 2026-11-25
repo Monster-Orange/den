@@ -186,7 +186,13 @@ import {
   workspaceMcpServersRaw,
   workspaceEntryRaw,
   setWorkspaceMcpServers,
+  setWorkspaceEventFeeds,
+  workspaceEventFeedsRaw,
 } from "../../shared/environment-manager/workspaces.js";
+import {
+  checkAppFeed,
+  type AppFeedConfig,
+} from "../../shared/agents/app-feeds.js";
 import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
@@ -585,6 +591,13 @@ export interface AgentsDeps extends SessionsDeps {
   workspaceHubLoop?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
+  /** Issue 1480: project `ws`'s `agents.event_feeds` as written. */
+  workspaceEventFeeds?: (ws: string) => unknown;
+  /** Issue 1480: save project `ws`'s `agents.event_feeds` (as written). */
+  saveWorkspaceEventFeeds?: (
+    ws: string,
+    feeds: Record<string, unknown>[],
+  ) => void;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
   secretRefSet?: (name: string) => boolean;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
@@ -650,6 +663,11 @@ export interface AgentsResolved extends Resolved {
   workspaceHubLoop: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
+  workspaceEventFeeds: (ws: string) => unknown;
+  saveWorkspaceEventFeeds: (
+    ws: string,
+    feeds: Record<string, unknown>[],
+  ) => void;
   secretRefSet: (name: string) => boolean;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
@@ -1137,6 +1155,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     saveWorkspaceMcpServers:
       d.saveWorkspaceMcpServers ??
       ((ws, servers) => setWorkspaceMcpServers(ws, servers)),
+    workspaceEventFeeds:
+      d.workspaceEventFeeds ?? ((ws) => workspaceEventFeedsRaw(ws)),
+    saveWorkspaceEventFeeds:
+      d.saveWorkspaceEventFeeds ??
+      ((ws, feeds) => setWorkspaceEventFeeds(ws, feeds)),
     secretRefSet: d.secretRefSet ?? ((name) => namedSecretRef(name) !== null),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
@@ -5950,6 +5973,302 @@ export async function runProjectMcpAdd(
   const ws = c.args.project;
   d.saveWorkspaceMcpServers(ws, [...projectMcpServers(d, ws), c.args.server]);
   return { ok: true, ...projectMcpView(d, ws) };
+}
+
+/** Issue 1480: project `ws`'s `agents.event_feeds` as written (a list). */
+function feedEntries(d: AgentsResolved, ws: string): Record<string, unknown>[] {
+  const raw = d.workspaceEventFeeds(ws);
+  return Array.isArray(raw)
+    ? raw.filter(
+        (e): e is Record<string, unknown> =>
+          !!e && typeof e === "object" && !Array.isArray(e),
+      )
+    : [];
+}
+
+const feedNameOf = (e: Record<string, unknown>) =>
+  typeof e.name === "string" ? e.name.trim() : "";
+
+/** Issue 1480: a checked feed as workspaces.yml spells it. */
+function feedEntry(f: AppFeedConfig): Record<string, unknown> {
+  return {
+    name: f.name,
+    agent: f.agent,
+    url: f.url,
+    ...(f.listUrl ? { list_url: f.listUrl } : {}),
+    ...(f.bearer ? { bearer: f.bearer } : {}),
+  };
+}
+
+/** Issue 1480: the ids of project `ws`'s agents. */
+export function projectAgentIds(d: AgentsResolved, ws: string): string[] {
+  return listRecords(d.stateDir())
+    .filter((r) => r.workspace === ws)
+    .map((r) => r.id)
+    .sort();
+}
+
+export interface EventFeedAddArgs {
+  project: string;
+  feed: AppFeedConfig;
+}
+
+/**
+ * Issue 1480: checks a project_event_feed_add ask: one more app event
+ * feed for one of the project's agents (agents.event_feeds), its bearer
+ * the name of a secrets.refs entry, never a value (a refusal never echoes
+ * it). The approval policy places it (issue 1391): routine on a personal
+ * install, the person's Allow on a strict one. A project's agent asks for
+ * its own project; Den's agent for any.
+ */
+export function checkEventFeedAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<EventFeedAddArgs> {
+  const no = (error: string): HeldOpCheck<EventFeedAddArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const t = projectMcpTarget(
+      d,
+      raw,
+      who,
+      "project_event_feed_add",
+      "add to",
+    );
+    if (!t.ok) return t;
+    const ws = t.ws;
+    // The queue's check on Allow gets the args the first check gave.
+    const fv = raw.feed;
+    const src =
+      fv && typeof fv === "object" && !Array.isArray(fv)
+        ? (fv as Record<string, unknown>)
+        : raw;
+    const c = checkAppFeed({
+      name: src.name,
+      agent: src.agent,
+      url: src.url,
+      bearer: src.bearer,
+      list_url: src.list_url ?? src.listUrl,
+    });
+    if (!c.ok) return no(c.error);
+    const feed = c.feed;
+    if (!projectAgentIds(d, ws).includes(feed.agent))
+      return no(`agent: "${feed.agent}" is not one of project ${ws}'s agents`);
+    if (feedEntries(d, ws).some((e) => feedNameOf(e) === feed.name))
+      return no(`project ${ws} already has an event feed "${feed.name}"`);
+    const lines: [string, DetailKey][] = [
+      [
+        `Den opens ${feed.url} and types ${feed.agent} a short line when its events are unread.`,
+        {
+          key: "ap.feed.warn",
+          vars: { url: feed.url, agent: feed.agent },
+        },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [
+        `Feed: ${feed.name}, for ${feed.agent}`,
+        { key: "ap.feed.feed", vars: { name: feed.name, agent: feed.agent } },
+      ],
+      feed.bearer
+        ? [
+            `Bearer: read from secrets.refs.${feed.bearer} at each connect; never shown or written to the agent's files.`,
+            { key: "ap.feed.bearer", vars: { ref: feed.bearer } },
+          ]
+        : [
+            "No bearer: the stream is opened with no Authorization header.",
+            { key: "ap.feed.noBearer" },
+          ],
+    ];
+    return {
+      ok: true,
+      summary: `add event feed ${feed.name} (${feed.url}) for ${feed.agent} in project ${ws}`,
+      params: { project: ws, name: feed.name, agent: feed.agent, url: feed.url },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, feed },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 1480: on Allow (or at once), adds it, checked again. */
+export async function runEventFeedAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      project: string;
+      name: string;
+      /** What was written: Undo takes out only this. */
+      added: Record<string, unknown>;
+    }
+  | { ok: false; error: string }
+> {
+  const c = checkEventFeedAdd(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  const added = feedEntry(c.args.feed);
+  d.saveWorkspaceEventFeeds(ws, [...feedEntries(d, ws), added]);
+  return { ok: true, project: ws, name: c.args.feed.name, added };
+}
+
+export interface EventFeedRemoveArgs {
+  project: string;
+  name: string;
+}
+
+/**
+ * Issue 1480: checks a project_event_feed_remove ask: take one of a
+ * project's app event feeds out (its agent gets no more lines from it).
+ * Placed as the add is.
+ */
+export function checkEventFeedRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<EventFeedRemoveArgs> {
+  try {
+    const t = projectMcpTarget(
+      d,
+      raw,
+      who,
+      "project_event_feed_remove",
+      "remove from",
+    );
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) return { ok: false, error: "name: give the feed's name" };
+    const e = feedEntries(d, ws).find((x) => feedNameOf(x) === name);
+    if (!e)
+      return { ok: false, error: `project ${ws} has no event feed "${name}"` };
+    const lines: [string, DetailKey][] = [
+      [
+        `Den closes feed ${name}; its agent gets no more lines from it.`,
+        { key: "ap.feed.removeWarn", vars: { name } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+    ];
+    return {
+      ok: true,
+      summary: `remove event feed ${name} from project ${ws}`,
+      params: { project: ws, name },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, name },
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Issue 1480: on Allow (or at once), removes it, checked again. */
+export async function runEventFeedRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      project: string;
+      name: string;
+      /** What was taken out, when Den could read it: Undo puts it back. */
+      removed: Record<string, unknown> | null;
+    }
+  | { ok: false; error: string }
+> {
+  const c = checkEventFeedRemove(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  const all = feedEntries(d, ws);
+  const gone = all.find((e) => feedNameOf(e) === c.args.name);
+  d.saveWorkspaceEventFeeds(
+    ws,
+    all.filter((e) => feedNameOf(e) !== c.args.name),
+  );
+  // Only a feed Den can read comes back by Undo: an entry it couldn't
+  // read may hold anything, so none of it is kept in the result.
+  const ok = gone ? checkAppFeed(gone) : null;
+  return {
+    ok: true,
+    project: ws,
+    name: c.args.name,
+    removed: ok?.ok ? feedEntry(ok.feed) : null,
+  };
+}
+
+/**
+ * Issue 1480: the bell's Undo of a feed added or removed without asking
+ * (a personal install, issue 1391). Only what ran by the policy; only
+ * while the feed is as it left it: an added one still the same, a
+ * removed one's name still free.
+ */
+export function undoEventFeed(
+  d: AgentsResolved,
+  approval: {
+    action: string;
+    result?: unknown;
+    decidedBy?: string;
+  },
+): { ok: true; note: string } | { ok: false; error: string } {
+  if (
+    approval.action !== "project_event_feed_add" &&
+    approval.action !== "project_event_feed_remove"
+  )
+    return { ok: false, error: "only an event feed change can be undone here" };
+  if (!approval.decidedBy?.startsWith("auto:"))
+    return {
+      ok: false,
+      error:
+        "only a change that ran without asking can be undone here: change it in Settings",
+    };
+  const r = approval.result as
+    | {
+        ok?: unknown;
+        project?: unknown;
+        name?: unknown;
+        added?: unknown;
+        removed?: unknown;
+      }
+    | undefined;
+  const ws = typeof r?.project === "string" ? r.project : "";
+  const name = typeof r?.name === "string" ? r.name : "";
+  if (r?.ok !== true || !ws || !name || !d.workspaceExists(ws))
+    return {
+      ok: false,
+      error: "that change didn't run, so there is nothing to undo",
+    };
+  const all = feedEntries(d, ws);
+  if (approval.action === "project_event_feed_add") {
+    const now = all.find((e) => feedNameOf(e) === name);
+    if (!now || JSON.stringify(now) !== JSON.stringify(r.added))
+      return {
+        ok: false,
+        error: `feed ${name} changed since: nothing was undone; change it in Settings`,
+      };
+    d.saveWorkspaceEventFeeds(
+      ws,
+      all.filter((e) => e !== now),
+    );
+    return { ok: true, note: `feed ${name} was taken out of project ${ws}` };
+  }
+  const back = checkAppFeed(r.removed);
+  if (!back.ok)
+    return {
+      ok: false,
+      error: `feed ${name} can't be put back here: add it in Settings`,
+    };
+  if (all.some((e) => feedNameOf(e) === name))
+    return {
+      ok: false,
+      error: `project ${ws} has a feed "${name}" again: nothing was undone`,
+    };
+  d.saveWorkspaceEventFeeds(ws, [...all, feedEntry(back.feed)]);
+  return { ok: true, note: `feed ${name} is back in project ${ws}` };
 }
 
 export interface ProjectMcpRemoveArgs {
