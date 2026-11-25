@@ -49,6 +49,19 @@ function kindOf(v: unknown): string {
   return v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
 }
 
+/** A value as a message describes it: its kind and length, never itself. */
+function described(v: unknown): string {
+  const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  if (typeof v === "string") return `a string of ${n(v.length, "character")}`;
+  if (Array.isArray(v)) return `an array of ${n(v.length, "item")}`;
+  const k = kindOf(v);
+  return k === "null" || k === "undefined"
+    ? k
+    : k === "object"
+      ? "an object"
+      : `a ${k}`;
+}
+
 /**
  * Friendly message for common Zod issue codes. Zod v4 issues carry no
  * `received` (den#145): what was there is read from the input itself.
@@ -62,7 +75,9 @@ function zodIssueMessage(issue: z.core.$ZodIssue, input: unknown): string {
       return `expected ${issue.expected}, received ${kindOf(got)}`;
     }
     case "invalid_value":
-      return `invalid value "${String(valueAt(input, issue.path))}" — must be one of: ${issue.values.map(String).join(", ")}`;
+      // Issue 1412: named by its kind and length, never quoted (a file
+      // validated by path may hold anything at that key).
+      return `invalid value (${described(valueAt(input, issue.path))}) — must be one of: ${issue.values.map(String).join(", ")}`;
     case "invalid_union":
       return "value does not match any valid shape";
     default:

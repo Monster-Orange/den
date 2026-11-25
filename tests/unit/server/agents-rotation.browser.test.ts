@@ -31,6 +31,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -245,7 +246,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
       .slice(before)
       .filter((m) => m.opts.env?.DEN_AGENT === "agent:relay");
     expect(made).toHaveLength(1);
-    const args = made[0].args;
+    const args = runtimeArgs(made[0]);
     expect(args[0]).toBe("--session-id");
     expect(args[1]).not.toBe(TOKEN.relay);
     expect(args).not.toContain("--resume");

@@ -1,19 +1,19 @@
 /**
  * Issue 730: an install either signs its own commits, or says plainly that
- * it doesn't, and offers to fix it.
- *   1. doctor has a row for agent commit signing even when no key is set,
- *      with the fix;
- *   2. a held write makes the agents' signing key (no passphrase, under the
- *      state dir), sets agents.git.signing_key and shows the public key;
- *      only the person's own Allow runs it;
- *   3. when the pin's branch requires signed commits and no key is set, Den
- *      opens a pull request instead of pushing, and says why.
+ * it doesn't.
+ *   1. doctor has a row for agent commit signing even when no key is in
+ *      force, said as information;
+ *   2. the key in force is agents.git.signing_key, else the install's own
+ *      key (issue 1316) once it is made; doctor and the pin commit both use
+ *      it, so with only the install's own key both say signed;
+ *   3. when the pin's branch requires signed commits and no key is in
+ *      force, Den opens a pull request instead of pushing, and says why.
  *
  * Real git and ssh-keygen in temp dirs only (HOME and the global config
  * point into them); a fake gh. Invented names.
  */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
-import { execFileSync, spawnSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -21,14 +21,14 @@ import {
   commitPin,
   ghRepoOf,
   ghSignaturesRequired,
+  pinBellMessage,
   pinGit,
 } from "../../../src/ui/server/pin-commit.js";
 import {
-  AGENT_SIGNING_KEY_ACTION,
-  agentSigningKeyOp,
-} from "../../../src/shared/agents/agent-signing-key.js";
-import { CRITICAL_HELD_ACTIONS } from "../../../src/ui/server/held-actions.js";
-import { policyFor } from "../../../src/shared/approval-policy.js";
+  agentKeyInForce,
+  checkAgentSigning,
+  ensureAgentSigningKey,
+} from "../../../src/shared/agents/git-signing.js";
 import { signingLines } from "../../../src/ui/cli/doctor-command.js";
 
 let tmp: string;
@@ -93,104 +93,79 @@ process.stdout.write("https://example.invalid/acme/dist/pull/9\\n");`,
   };
 }
 
-describe("1. doctor: a row for agent commit signing, set or not", () => {
-  it("no agents.git block: not signed, with the fix", () => {
+describe("1. doctor: a row for agent commit signing, in force or not", () => {
+  it("no key in force: not signed, with the fix, as information in the text and the JSON", () => {
     const r = signingLines("Den", () => undefined);
     const text = r.lines.join("\n");
     expect(text).toMatch(/agents' commit signing/);
-    expect(text).toMatch(/not signed: no agents\.git\.signing_key/);
-    expect(text).toMatch(/agent_signing_key_create/);
-    // A fresh install's doctor shows no warning (no-secrets-store's rule):
-    // said as information, with the fix; the setup list still offers it.
-    expect(text).toMatch(/signing {2}ℹ {2}not signed/);
-    expect(text).not.toMatch(/⚠/);
-    expect(r.checks[0]).toMatchObject({ status: "warn" });
+    expect(text).toMatch(/signing {2}ℹ {2}not signed: no agents' signing key/);
+    expect(text).toMatch(/agents\.git\.signing_key/);
+    expect(text).not.toMatch(/agent_signing_key_create|⚠/);
+    // The JSON says what the text says: information is not a warning.
+    expect(r.checks[0]).toMatchObject({ id: "agents:signing", status: "ok" });
     expect(r.problem).toBe(false);
   });
 
-  it("an agents.git block with no key: the same row", () => {
-    const r = signingLines("Den", () => ({}) as never);
+  it("signing turned off: not signed, and it says it was turned off", () => {
+    const r = signingLines("Den", () => ({ off: true }));
     expect(r.lines.join("\n")).toMatch(
-      /not signed: no agents\.git\.signing_key/,
+      /ℹ {2}not signed: agents\.git\.signing is off/,
     );
+    expect(r.checks[0]).toMatchObject({ status: "ok" });
   });
 
-  it("a key set: signed with the agents' key", () => {
+  it("only the install's own key (issue 1316): signed with it, never 'not signed'", () => {
+    ensureAgentSigningKey(stateDir);
     const r = signingLines(
       "Den",
-      () => ({ signingKey: "/k/id_ed25519" }) as never,
-      () => ({ ok: true, detail: "signed with the agents' key" }) as never,
+      () => agentKeyInForce(undefined, stateDir),
+      (g) => checkAgentSigning(g, { tmp, env }),
     );
-    expect(r.lines.join("\n")).toMatch(/✓\s+signed with the agents' key/);
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/signing {2}✓ {2}commits sign with .*agent-signing/);
+    expect(text).not.toMatch(/not signed/);
+    expect(r.checks[0]).toMatchObject({ status: "ok" });
   });
 });
 
-describe("2. the held write that makes the agents' signing key", () => {
-  it("is critical: no approval policy runs it without the person", () => {
-    expect(CRITICAL_HELD_ACTIONS.has(AGENT_SIGNING_KEY_ACTION)).toBe(true);
-    const loose = {
-      policy: "auto",
-      writes: { [AGENT_SIGNING_KEY_ACTION]: "auto" },
-    } as const;
-    expect(policyFor(AGENT_SIGNING_KEY_ACTION, {}).kind).toBe("ask");
+describe("2. the key in force", () => {
+  it("agents.git.signing_key when it is set, even beside the install's own", () => {
+    ensureAgentSigningKey(stateDir);
     expect(
-      policyFor(AGENT_SIGNING_KEY_ACTION, { install: loose, project: loose })
-        .kind,
-    ).toBe("ask");
+      agentKeyInForce({ signingKey: "/k/id_ed25519" }, stateDir),
+    ).toMatchObject({ signingKey: "/k/id_ed25519", source: "setting" });
   });
 
-  it("makes a no-passphrase ed25519 key under the state dir, sets agents.git.signing_key, and shows only the public key", async () => {
-    let set: string | undefined;
-    const op = agentSigningKeyOp({
-      stateDir,
-      current: () => set,
-      setKey: (p) => {
-        set = p;
-      },
-      env,
+  it("else the install's own key once it is made; never makes one", () => {
+    expect(agentKeyInForce(undefined, stateDir)).toBeUndefined();
+    expect(fs.existsSync(path.join(stateDir, "agent-signing"))).toBe(false);
+    const made = ensureAgentSigningKey(stateDir);
+    expect(agentKeyInForce({}, stateDir)).toMatchObject({
+      signingKey: made.signingKey,
+      source: "default",
     });
-    const c = op.check({});
-    expect(c.ok && c.personOnly).toBe(true);
-    const r = (await op.run({})) as {
-      path: string;
-      publicKey: string;
-      addLine: string;
-    };
-    expect(r.path.startsWith(stateDir)).toBe(true);
-    expect(set).toBe(r.path);
-    expect(fs.statSync(r.path).mode & 0o777).toBe(0o600);
-    expect(fs.statSync(path.dirname(r.path)).mode & 0o777).toBe(0o700);
-    expect(r.publicKey).toMatch(/^ssh-ed25519 /);
-    expect(JSON.stringify(r)).not.toMatch(/PRIVATE KEY/);
-    expect(r.addLine).toMatch(/gh ssh-key add .*--type signing/);
-    // No passphrase: ssh-keygen reads it with an empty one.
-    const y = spawnSync("ssh-keygen", ["-y", "-P", "", "-f", r.path], { env });
-    expect(y.status).toBe(0);
-    // Signs a pin commit.
+  });
+
+  it("none when signing is turned off", () => {
+    ensureAgentSigningKey(stateDir);
+    expect(agentKeyInForce({ off: true }, stateDir)).toBeUndefined();
+  });
+
+  it("only the install's own key: the pin is signed with it and pushed, not sent to a pull request", async () => {
+    ensureAgentSigningKey(stateDir);
+    const key = agentKeyInForce(undefined, stateDir);
     const step = await commitPin("1.1.0", {
       root,
       stateDir,
-      git: pinGit(root, { env, signingKey: r.path }),
+      git: pinGit(root, { env, signingKey: key?.signingKey }),
+      signed: !!key,
+      signaturesRequired: async () => true,
     });
     expect(step).toMatchObject({ did: "pushed" });
+    expect(step).not.toHaveProperty("unsignedRequired");
     expect(git(root, "cat-file", "commit", "HEAD")).toMatch(
       /BEGIN SSH SIGNATURE/,
     );
-  });
-
-  it("refused when a key is already set and there, before anything is made", () => {
-    const key = path.join(tmp, "have");
-    fs.writeFileSync(key, "x");
-    const op = agentSigningKeyOp({
-      stateDir,
-      current: () => key,
-      setKey: () => undefined,
-      env,
-    });
-    const c = op.check({});
-    expect(c.ok).toBe(false);
-    expect(!c.ok && c.error).toMatch(/already set/);
-    expect(fs.existsSync(path.join(stateDir, "agent-signing"))).toBe(false);
   });
 });
 
@@ -236,6 +211,21 @@ describe("3. a branch that requires signed commits, and no key", () => {
       });
       expect(step).toMatchObject({ did: "pushed" });
     }
+  });
+
+  it("the bell says why it is a pull request", () => {
+    const m = pinBellMessage(
+      {
+        did: "pr",
+        version: "1.1.0",
+        branch: "den/pin-1.1.0",
+        url: "https://example.invalid/acme/dist/pull/9",
+        unsignedRequired: true,
+      } as never,
+      "Den",
+    );
+    expect(m).toMatchObject({ key: "bell.m.pinPrUnsigned" });
+    expect(m?.text).toMatch(/requires signed commits/);
   });
 
   it("reads GitHub's branch rules through gh: a required_signatures rule, or classic protection", async () => {

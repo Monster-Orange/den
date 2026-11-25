@@ -35,6 +35,7 @@ import {
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 afterEach(cleanupRigs);
 
@@ -83,14 +84,10 @@ async function live(r: Rig, id = "be-dev"): Promise<boolean> {
 }
 
 function audit(r: Rig): Record<string, unknown>[] {
-  const f = path.join(r.stateDir, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Record<string, unknown>)
-    .filter((x) => /ended without Den asking/.test(String(x.detail)));
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(r.stateDir).filter((x) =>
+    /ended without Den asking/.test(String(x.detail)),
+  );
 }
 
 function bell(r: Rig): Array<Record<string, unknown>> {
