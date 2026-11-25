@@ -28,7 +28,9 @@ const SOURCE_WORDS = {
 export async function setup(ctx) {
   const a = ctx.agent(ID);
   a.start("tester");
-  return { runMs: await a.running(20000) };
+  const runMs = await a.running(20000);
+  // Rows written before this run can't count (an old run's would pass).
+  return { runMs, auditFrom: auditDetails(ctx).length };
 }
 
 /** The stub's project and live session, from the sessions list. */
@@ -127,18 +129,24 @@ async function openMode(ctx, ws, mode) {
  */
 async function choose(ctx, pick, then) {
   const p = ctx.page;
-  await p.evaluate(() => {
-    window.__busy252 = false;
-    const o = new MutationObserver(() => {
-      if (document.querySelector('[aria-busy="true"]')) window.__busy252 = true;
-    });
-    o.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["aria-busy"],
-    });
-    window.__busy252o = o;
-  });
+  // The control the pick is pressed through: the agent's ⋯ (the menu's
+  // anchor, which busyAction holds). Only its own aria-busy counts.
+  const more = await words(p, "ag.more", { id: ID });
+  await p.evaluate(
+    ([label]) => {
+      window.__busy252 = false;
+      const b = [...document.querySelectorAll("button[aria-label]")].find(
+        (e) => e.getAttribute("aria-label") === label,
+      );
+      if (!b) return;
+      const o = new MutationObserver(() => {
+        if (b.getAttribute("aria-busy") === "true") window.__busy252 = true;
+      });
+      o.observe(b, { attributes: true, attributeFilter: ["aria-busy"] });
+      window.__busy252o = o;
+    },
+    [more],
+  );
   const name =
     pick === "follow"
       ? await words(p, "ag.mode.follow")
@@ -190,6 +198,7 @@ async function rowTag(ctx, ws) {
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
   const sel = `[data-agent="${ID}"] [data-mode]`;
+  const ownWords = await words(ctx.page, "ag.mode.src.own");
   await ctx.page.waitForSelector(sel, { timeout: 20000 }).catch(() => {});
   return ctx.page
     .evaluate((s) => {
@@ -202,6 +211,7 @@ async function rowTag(ctx, ws) {
           }
         : null;
     }, sel)
+    .then((t) => (t ? { ...t, ownWords } : t))
     .catch(() => null);
 }
 
@@ -238,7 +248,8 @@ export async function run(ctx, s) {
   );
   r.tagBack = await rowTag(ctx, w.ws);
   await ctx.shot("mode-followed-row");
-  r.audit = auditDetails(ctx);
+  // Only the rows this run wrote (setup counted the ones before it).
+  r.audit = auditDetails(ctx).slice(s.auditFrom ?? 0);
   return r;
 }
 
@@ -255,16 +266,24 @@ export function expect(cells) {
       ? 'agents --help: "restarts at its next idle"'
       : `agents --help: ${String(r.help || "").slice(0, 200)}`,
   };
+  // Setup started the agent, so no session now is a failure. Only a
+  // runtime without modes (its project lists no mode for it) is skipped.
+  if (r.missing === "session")
+    return [
+      ...[0, 1, 3].map((i) => ({
+        clause: clauses[i],
+        ok: false,
+        detail: `${ID} has no running session on the bed, though setup started it`,
+      })),
+      cli,
+    ].sort((a, b) => clauses.indexOf(a.clause) - clauses.indexOf(b.clause));
   if (r.missing)
     return [
       ...[0, 1, 3].map((i) => ({
         clause: clauses[i],
         ok: null,
         skip: "needs-mode-runtime",
-        detail:
-          r.missing === "session"
-            ? `${ID} has no running session on the bed`
-            : `the bed stub's runtime has no permission modes, so its project lists no mode for it (project ${r.ws})`,
+        detail: `the bed stub's runtime has no permission modes, so its project lists no mode for it (project ${r.ws})`,
       })),
       cli,
     ].sort((a, b) => clauses.indexOf(a.clause) - clauses.indexOf(b.clause));
@@ -293,7 +312,8 @@ export function expect(cells) {
         !!r.set?.said &&
         r.set?.busy === true &&
         menuOk(r.menu2, r.want) &&
-        !!r.follow?.said,
+        !!r.follow?.said &&
+        r.follow?.busy === true,
       detail: `menu ${JSON.stringify(r.menu)}; busy in the button ${r.set?.busy}; said "${r.set?.said}" (wanted "${r.set?.want}"); after: ${JSON.stringify(r.menu2)}; Follow project busy ${r.follow?.busy}, said "${r.follow?.said}"`,
       evidence: shots.slice(0, 2),
     },
@@ -306,9 +326,13 @@ export function expect(cells) {
     {
       clause: clauses[3],
       ok:
+        // It starts from its project or the install, so a pick is a change.
+        ["project", "install"].includes(r.start?.source) &&
         r.toOwn?.ms !== null &&
         r.tagOwn?.mode === r.want &&
         r.tagOwn?.source === "own" &&
+        !!r.tagOwn?.ownWords &&
+        String(r.tagOwn?.text ?? "").includes(r.tagOwn.ownWords) &&
         r.back?.ms !== null &&
         r.tagBack?.mode === r.start?.mode &&
         r.tagBack?.source === r.start?.source,

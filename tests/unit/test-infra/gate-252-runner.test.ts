@@ -71,6 +71,37 @@ describe("gate/252.mjs as the bed runs it", () => {
     expect(r.rows?.[3].ok).toBe(true);
   });
 
+  it.each([
+    ["busyElsewhere", "busy on another element, not the ⋯ pressed"],
+    ["noFollowBusy", "no busy for Follow project"],
+  ])("%s (%s): the menu clause fails", (den) => {
+    const r = runGate(den);
+    expect(r.rows?.[0].ok).toBe(false);
+    expect(r.rows?.[3].ok).toBe(true);
+  });
+
+  it("an old run's restart rows, none new: the audit clause fails", () => {
+    const r = runGate("oldAudit");
+    expect(r.rows?.[1].ok).toBe(false);
+    expect(r.rows?.[3].ok).toBe(true);
+  });
+
+  it("the row says own by its data only, not its words: the live clause fails", () => {
+    const r = runGate("noOwnWords");
+    expect(r.rows?.[3].ok).toBe(false);
+    expect(r.rows?.[0].ok).toBe(true);
+  });
+
+  it("no session at run time, though setup started it: fails, never skipped", () => {
+    const r = runGate("noSession");
+    expect(oks(r)).toEqual([false, false, true, false]);
+    expect((r.rows ?? []).some((x) => x.skip)).toBe(false);
+  });
+
+  it("it starts with a mode of its own: the live clause fails", () => {
+    expect(runGate("startsOwn").rows?.[3].ok).toBe(false);
+  });
+
   it('the CLI still says "from its next start": the CLI clause fails', () => {
     expect(runGate("oldCli").rows?.[2].ok).toBe(false);
   });

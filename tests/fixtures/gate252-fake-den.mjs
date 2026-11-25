@@ -7,7 +7,13 @@
 //   "noAudit":    it restarts, but no audit row is written;
 //   "noRuntime":  the project's mode view doesn't list the agent;
 //   "oldCli":     the CLI help still says "from its next start";
-//   "noBusy":     the button never shows busy while the mode applies.
+//   "noBusy":     the button never shows busy while the mode applies;
+//   "busyElsewhere": busy shows, but on another element, not the ⋯ pressed;
+//   "noFollowBusy": busy shows for a mode, not for Follow project;
+//   "oldAudit":   an old run's restart rows are in the audit, none new;
+//   "noOwnWords": the row's tag says data-mode-source="own" but not the words;
+//   "noSession":  the agent has no session at run time, though started;
+//   "startsOwn":  the agent already has a mode of its own at the start.
 // Invented names only.
 const ID = "gate-252-mode";
 const WS = "north";
@@ -19,6 +25,7 @@ const CATALOG = {
   "ag.mode.follow": "Follow project",
   "ag.mode.setS":
     "{id}: {m}, its own setting. Den restarts it at its next idle to take it.",
+  "ag.mode.src.own": "its own setting",
   "ag.mode.followS":
     "{id} follows the project now: {m}. Den restarts it at its next idle to take it.",
   "pm.ask": "Ask for everything",
@@ -40,9 +47,16 @@ export function fakeBed({ den = "good" } = {}) {
   const st = {
     agent: null,
     session: 1,
-    own: null, // its own mode, or null: it follows (the install's "auto")
+    // its own mode, or null: it follows (the install's "auto")
+    own: den === "startsOwn" ? "auto" : null,
     running: "auto",
-    audit: [],
+    audit:
+      den === "oldAudit"
+        ? [
+            `restarted ${ID} in ${WS} at idle to take mode edits, from its own setting, by Den itself`,
+            `restarted ${ID} in ${WS} at idle to take mode auto, from the Den-wide default, by Den itself`,
+          ]
+        : [],
     pendingIdle: 0,
   };
   const want = () => st.own ?? "auto";
@@ -51,7 +65,8 @@ export function fakeBed({ den = "good" } = {}) {
   let menuOpen = "closed";
   let said = null;
   let tagShown = null;
-  let busySeen = false;
+  let busyOn = null; // the element that showed busy: "more", "other" or none
+  let watching = null; // the label of the button the check watches
 
   function setMode(m) {
     st.own = m;
@@ -60,7 +75,12 @@ export function fakeBed({ den = "good" } = {}) {
       ? t("ag.mode.setS", { id: ID, m: t(`pm.name.${m}`) })
       : t("ag.mode.followS", { id: ID, m: t("pm.name.auto") });
     st.pendingIdle = 2;
-    if (den !== "noBusy") busySeen = true;
+    busyOn =
+      den === "noBusy" || (den === "noFollowBusy" && m === null)
+        ? null
+        : den === "busyElsewhere"
+          ? "other"
+          : "more";
   }
 
   function idle() {
@@ -68,7 +88,7 @@ export function fakeBed({ den = "good" } = {}) {
     if (--st.pendingIdle > 0) return;
     st.running = want();
     st.session++;
-    if (den !== "noAudit")
+    if (den !== "noAudit" && den !== "oldAudit")
       st.audit.push(
         `restarted ${ID} in ${WS} at idle to take mode ${want()}, from ${SOURCE[source()]}, by Den itself`,
       );
@@ -144,10 +164,12 @@ export function fakeBed({ den = "good" } = {}) {
       };
     },
     async evaluate(fn, arg) {
-      if (Array.isArray(arg)) return t(arg[0], arg[1]); // denShell.t
+      if (Array.isArray(arg) && arg.length === 2) return t(arg[0], arg[1]); // denShell.t
       if (typeof arg === "string") return tagShown; // the row's tag
-      if (String(fn).includes("disconnect")) return busySeen; // busy read
-      busySeen = false; // the busy watch armed
+      if (String(fn).includes("disconnect"))
+        return busyOn === "more" && watching === t("ag.more", { id: ID }); // busy read
+      watching = Array.isArray(arg) ? arg[0] : null; // the busy watch armed
+      busyOn = null;
       return undefined;
     },
   };
@@ -162,7 +184,7 @@ export function fakeBed({ den = "good" } = {}) {
       tagShown = {
         mode: m,
         source: source(),
-        text: `mode: ${m[0].toUpperCase()}${m.slice(1)}, from ${st.own ? "its own setting" : "the Den-wide default"}`,
+        text: `mode: ${m[0].toUpperCase()}${m.slice(1)}, from ${st.own && den !== "noOwnWords" ? t("ag.mode.src.own") : "the Den-wide default"}`,
       };
     },
     async shot() {},
@@ -185,16 +207,17 @@ export function fakeBed({ den = "good" } = {}) {
     async api(p) {
       if (p === "/api/sessions")
         return {
-          sessions: st.agent
-            ? [
-                {
-                  id: `s${st.session}`,
-                  kind: "agent",
-                  agent: ID,
-                  workspace: WS,
-                },
-              ]
-            : [],
+          sessions:
+            st.agent && den !== "noSession"
+              ? [
+                  {
+                    id: `s${st.session}`,
+                    kind: "agent",
+                    agent: ID,
+                    workspace: WS,
+                  },
+                ]
+              : [],
         };
       if (p === `/api/workspaces/${WS}/agent-modes`)
         return {
