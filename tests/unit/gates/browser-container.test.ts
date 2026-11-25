@@ -66,6 +66,9 @@ describe("the rule", () => {
         kind: "browser",
         endpoint: "ws://127.0.0.1:3000/a1b2c3",
         ...mac(),
+        // A loopback address passes when a container publishes its port.
+        published: [{ address: "127.0.0.1", port: 3000 }],
+        mode: "strict",
       }),
     ).toEqual({ ok: true, declared: "ws://127.0.0.1:3000" });
     expect(
@@ -73,6 +76,8 @@ describe("the rule", () => {
         kind: "browser",
         endpoint: "wss://pw.example.test",
         ...mac(),
+        // A name is resolved: elsewhere, so no proof is needed.
+        resolved: ["203.0.113.5"],
       }),
     ).toEqual({ ok: true, declared: "wss://pw.example.test" });
   });
@@ -206,7 +211,7 @@ describe("the rule", () => {
 });
 
 describe("the setting", () => {
-  it("defaults on for a macOS host and off elsewhere; 0 or 1 turns it", () => {
+  it("defaults on for a macOS host and off elsewhere; 0, 1 or 2 turns it", () => {
     const m = new GateStore({ dir: tmp(), platform: "darwin" });
     const l = new GateStore({ dir: tmp(), platform: "linux" });
     expect(m.settings().browserRequiresContainer).toBe(true);
@@ -215,7 +220,7 @@ describe("the setting", () => {
     expect(c.ok).toBe(true);
     if (c.ok) m.writeSettings(c.patch);
     expect(m.settings().browserRequiresContainer).toBe(false);
-    expect(checkGatePatch({ browser_requires_container: 2 }).ok).toBe(false);
+    expect(checkGatePatch({ browser_requires_container: 3 }).ok).toBe(false);
   });
 });
 
@@ -224,7 +229,17 @@ function deps(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = {}) {
   const err: string[] = [];
   const ran: { argv: string[]; env?: Record<string, string> }[] = [];
   const d: GateDeps = {
-    store: new GateStore({ dir: tmp(), alive: () => true, platform }),
+    store: new GateStore({
+      dir: tmp(),
+      alive: () => true,
+      platform,
+      // A container publishes the loopback port these runs name.
+      containerBindings: () =>
+        Promise.resolve([{ address: "127.0.0.1", port: 3000 }]),
+      hostAddresses: () => [],
+      installMode: () => "strict",
+      resolveHost: () => Promise.reject(new Error("ENOTFOUND")),
+    }),
     env,
     out: (l) => out.push(l),
     err: (l) => err.push(l),
@@ -367,7 +382,13 @@ function mcpCtx(platform: NodeJS.Platform): ToolContext {
     } as unknown as ToolContext["cfg"],
     cli: "acme",
     scope: { workspace: "north", actor: "agent:coder" },
-    gates: new GateStore({ dir: tmp(), alive: () => true, platform }),
+    gates: new GateStore({
+      dir: tmp(),
+      alive: () => true,
+      platform,
+      // The remote names these asks use resolve elsewhere.
+      resolveHost: () => Promise.resolve(["203.0.113.5"]),
+    }),
   };
 }
 

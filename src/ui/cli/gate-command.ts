@@ -116,7 +116,7 @@ import {
 } from "../../shared/gates/boxes.js";
 import {
   SELF,
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
   endpointFromEnv,
   personLanguage,
@@ -146,6 +146,7 @@ import {
 } from "../../shared/gates/view.js";
 import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
+import { emptyTestList } from "./gate-test-list.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
@@ -171,6 +172,10 @@ export const GATE_HELP = {
     "    git's files ship over ssh (secret files left out), npm ci from the",
     "    lockfile there, and none of this machine's environment but CI and",
     "    --env NAME (repeat it). One that names a secret is refused there",
+    "    a jest, vitest or playwright test run that names no test files and",
+    "    no filter is refused (it would run every test); --all-tests allows it.",
+    "    npm/pnpm/yarn test is judged by its package.json script; a command",
+    "    inside sh -c is not read",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N] [--cpu-slots N]",
@@ -894,6 +899,18 @@ function boxCpuChild(d: GateDeps, box: GateBox, r: BoxCpuRun): GateRun {
   return { pid: undefined, kill: st.kill, done: st.done };
 }
 
+function packageScript(cwd: string, name: string): string | undefined {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cwd, "package.json"), "utf-8"),
+    ) as { scripts?: Record<string, unknown> };
+    const s = pkg.scripts?.[name];
+    return typeof s === "string" ? s : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function run(args: string[], d: GateDeps): Promise<number> {
   const { f, pos, rest } = flags(args, {
     "--kind": true,
@@ -906,12 +923,21 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--pw-version": true,
     "--browser-endpoint": true,
     "--env": "many",
+    "--all-tests": false,
   });
   if (!rest || pos.length === 0)
     throw new GateUsage("gate run needs -- <command> [args]");
   const kind = (f["--kind"] ?? "cpu") as string;
   if (kind !== "browser" && kind !== "cpu")
     throw new GateUsage("--kind is browser or cpu");
+  const everything = f["--all-tests"]
+    ? null
+    : emptyTestList(pos, (name) => packageScript(d.cwd, name));
+  if (everything)
+    throw new GateUsage(
+      `this ${everything} run names no test files and no filter, so it would run every test. ` +
+        "Name the files (build the list first and check it isn't empty), or pass --all-tests when a full run is meant",
+    );
   // Issue 625: a browser run that can use a test box's browser says so.
   let where = typeof f["--box"] === "string" ? f["--box"] : undefined;
   // Issue 1033: this machine's own name (not a box's) is local.
@@ -1079,12 +1105,10 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
-  const verdict = browserSlotCheck({
+  const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
     ...(where ? { where } : {}),
-    platform: d.store.platform,
-    requiresContainer: d.store.settings().browserRequiresContainer,
     // Issue 1198: "any" with none of its own waits only for a box that
     // could ever take it; else it is refused at once.
     ...(where === "any"
@@ -1878,7 +1902,7 @@ function showSettings(d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserContainerStrict ? "yes, strict" : s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

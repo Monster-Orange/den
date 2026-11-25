@@ -250,6 +250,11 @@ describe("what a fixture session may reach: an allow-list", () => {
     // Issue 1391 (the bed's 573): checks posted manifest text, writes
     // nothing.
     ["POST", "/api/manifest/validate", "mutating"],
+    // Issue 1391 (the bed's 573, Vision's ruling): by path too; the route
+    // still reads only inside a project's repos.
+    ["GET", "/api/manifest/validate", "mutating"],
+    // Issue 1407: a restart (the route allows only the bed's own agents).
+    ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],
   ] as const)("%s %s passes", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toBeNull();
   });
@@ -276,10 +281,11 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["POST", "/api/workspaces/notes/hub-create", "mutating"],
     // Hardening: agent writes that are refused to a fixture session anyway.
     ["POST", "/api/workspaces/notes/agents/a1/say", "mutating"],
-    ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],
-    // Issue 1391: only the list and the posted check, nothing near them.
+    ["GET", "/api/workspaces/notes/agents/a1/restart/x", "mutating"],
+    ["POST", "/api/workspaces/notes/agents/a1/restart/x", "mutating"],
+    // Issue 1391: only the list and the checks, nothing near them.
     ["GET", "/api/github/branches", "mutating"],
-    ["GET", "/api/manifest/validate", "mutating"],
+    ["GET", "/api/manifest/validate/x", "mutating"],
     ["POST", "/api/github/repos", "mutating"],
   ] as const)("%s %s is refused", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toMatch(/fixture person/);

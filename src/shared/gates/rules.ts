@@ -324,6 +324,8 @@ export interface GateSettings {
    * (browser-container.ts). Default: on for a macOS host, off elsewhere.
    */
   browserRequiresContainer: boolean;
+  /** Its strict level (2): a run may not declare "self" either. */
+  browserContainerStrict: boolean;
   /**
    * Issue 1033: where a browser `gate run` with no --box goes: "any",
    * the first free browser slot here or on a test box (the default), or
@@ -387,6 +389,7 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpGraceMinutes: 15,
   waiterReturnMinutes: 10,
   browserRequiresContainer: process.platform === "darwin",
+  browserContainerStrict: false,
   browserBoxDefault: "any",
   browserHostOnly: "",
 };

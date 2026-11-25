@@ -63,7 +63,7 @@ import {
   type GateBox,
 } from "../../shared/gates/boxes.js";
 import {
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { product } from "../../shared/product.js";
@@ -423,12 +423,10 @@ async function handleRunnerRoute(
     const rawEndpoint = body.browser_endpoint ?? body.browserEndpoint;
     const endpoint =
       rawEndpoint === undefined ? undefined : String(rawEndpoint).trim();
-    const verdict = browserSlotCheck({
+    const verdict = await browserSlotCheckOn(store, {
       kind,
       ...(endpoint !== undefined ? { endpoint } : {}),
       ...(typeof where === "string" ? { where } : {}),
-      platform: store.platform,
-      requiresContainer: store.settings().browserRequiresContainer,
       // Issue 1198: a runner's "any" waits only for a box that could
       // ever take it (its Playwright version isn't known here).
       ...(where === "any"

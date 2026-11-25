@@ -120,7 +120,10 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
-import { rememberOperatorShell } from "../../shared/test-operator.js";
+import {
+  rememberOperatorShell,
+  testBedOnly,
+} from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
@@ -216,6 +219,11 @@ import {
   projectMcpView,
   checkProjectMcpRemove,
   runProjectMcpRemove,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  projectAgentIds,
   checkProjectMcpUpdate,
   runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
@@ -238,6 +246,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
   operatorActOf,
   personOrOperator,
   principalOf,
@@ -290,6 +299,8 @@ const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
 /** Issue 459: GET a project's app event feeds and their state. */
 const EVENT_FEEDS_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds$/;
+/** Issue 1480: one of them, removed by a person. */
+const EVENT_FEED_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds\/([^/]+)$/;
 /** Issue 352: one of them, changed or removed by a person. */
 const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
@@ -621,6 +632,9 @@ export async function handleAgentRoutes(
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
   const efp = EVENT_FEEDS_PATH.exec(pathname);
   if (efp) return eventFeedsRoute(req, res, efp[1], webDeps(deps.agents));
+  const ef1 = EVENT_FEED_PATH.exec(pathname);
+  if (ef1)
+    return eventFeedRoute(req, res, ef1[1], ef1[2], webDeps(deps.agents));
   const mcp1 = MCP_SERVER_PATH.exec(pathname);
   if (mcp1)
     return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
@@ -1028,24 +1042,43 @@ export async function handleAgentRoutes(
     );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Issue 1407: its restart too, and a
+    // test install's fixture person's restart. Any other agent: refused,
+    // as a person-only act is. Checked before the 404 below, so an id
+    // that doesn't exist answers the same 403: they can't learn which
+    // agents are there. Never the server agent's.
+    const opAct = operatorActOf(req);
+    const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    if (
+      opAct === "agent-say" ||
+      opAct === "agent-relaunch" ||
+      opAct === "agent-restart" ||
+      fixtureRestart
+    ) {
+      let marked = false;
+      try {
+        marked =
+          id !== undefined &&
+          !isServerScope(ws) &&
+          agentRecord(d, id, ws).testBed === true;
+      } catch {
+        marked = false;
+      }
+      if (!marked)
+        throw new AgentError(
+          opAct === "agent-say"
+            ? "only a person can send an agent a message"
+            : opAct === "agent-relaunch"
+              ? "only a person can relaunch an agent"
+              : "only a person can restart an agent",
+          { status: 403 },
+        );
+    }
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    // Issue 956: the test operator's message and relaunch reach only the
-    // bed's own agents, those Den marked when it started them on the
-    // test-person path (issue 943). Any other agent: refused, as a
-    // person-only act is.
-    const opAct = operatorActOf(req);
-    if (
-      (opAct === "agent-say" || opAct === "agent-relaunch") &&
-      (id === undefined || agentRecord(d, id, ws).testBed !== true)
-    )
-      throw new AgentError(
-        opAct === "agent-say"
-          ? "only a person can send an agent a message"
-          : "only a person can relaunch an agent",
-        { status: 403 },
-      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -1073,8 +1106,13 @@ export async function handleAgentRoutes(
         "only a person can change an agent's mode (an agent asks with agent_mode)",
         { status: 403 },
       );
-    // D44: a restart is the person's (it stops a session).
-    if (verb === "restart" && (agent || actor))
+    // D44: a restart is the person's (it stops a session). Issue 1407: and
+    // the test operator's, for the bed's own agents only (checked above).
+    if (
+      verb === "restart" &&
+      !fixtureRestart &&
+      !personOrOperator(req, "agent-restart")
+    )
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
@@ -3126,11 +3164,13 @@ async function staleRoute(
       principalOf(req),
     );
   try {
-    if (agentPrincipalOf(req) || actor)
+    // Issue 1407: the test operator too, for the bed's own agents only.
+    const operator = operatorActOf(req) === "agents-restart-stale";
+    if (!personOrOperator(req, "agents-restart-stale"))
       throw new AgentError("only a person can restart agents", {
         status: 403,
       });
-    guard(actor);
+    if (!operator) guard(actor);
     const body = await jsonBody(req);
     for (const k of Object.keys(body))
       if (k !== "only")
@@ -3145,12 +3185,22 @@ async function staleRoute(
         `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
         { usage: true },
       );
-    const list = (await staleAgents(d, { fresh: true })).filter(
+    const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
         body.only !== "hub" ||
         a.stale.adds.length > 0 ||
         a.stale.drops.length > 0,
     );
+    // Before anything is restarted, checked or audited by name.
+    const list = operator
+      ? testBedOnly(all, (a) => {
+          try {
+            return agentRecord(d, a.id, a.workspace).testBed === true;
+          } catch {
+            return false;
+          }
+        })
+      : all;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     // Issue 1407: each agent is checked first and answered for: restarting
@@ -3230,8 +3280,8 @@ async function eventFeedsRoute(
   d: AgentsResolved,
 ): Promise<true> {
   const method = req.method ?? "GET";
-  if (method !== "GET" && method !== "HEAD")
-    return methodNotAllowed(res, "GET");
+  if (method !== "GET" && method !== "HEAD" && method !== "POST")
+    return methodNotAllowed(res, "GET, POST");
   const ws = safeDecode(rawWs);
   if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
     sendJson(
@@ -3241,8 +3291,114 @@ async function eventFeedsRoute(
     );
     return true;
   }
+  if (method === "POST") return eventFeedWrite(req, res, ws, null, d);
   const { appFeedsView } = await import("./app-feed-service.js");
-  sendJson(res, { ok: true, ...appFeedsView(ws) });
+  // Issue 1480: the project's agents, for the row's Add.
+  sendJson(res, {
+    ok: true,
+    ...appFeedsView(ws),
+    agents: projectAgentIds(d, ws),
+  });
+  return true;
+}
+
+/**
+ * Issue 1480: Settings › Project › App event feeds, a row's actions.
+ * DELETE /api/workspaces/:ws/event-feeds/:name removes one.
+ */
+async function eventFeedRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  rawName: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if ((req.method ?? "GET") !== "DELETE")
+    return methodNotAllowed(res, "DELETE");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  return eventFeedWrite(req, res, ws, safeDecode(rawName), d);
+}
+
+/**
+ * Issue 1480: a person adds a feed (POST { name, agent, url, bearer?,
+ * list_url? }, the bearer a secrets.refs name) or removes one (name).
+ * Checked as the held writes are (agent-ops.ts); a person's only: their
+ * click is the decision. An agent asks with project_event_feed_add or
+ * project_event_feed_remove, which the approval policy places.
+ */
+async function eventFeedWrite(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ws: string,
+  name: string | null,
+  d: AgentsResolved,
+): Promise<true> {
+  const remove = name !== null;
+  const actor = auditActorOf(req);
+  let what = remove
+    ? `remove event feed ${name} from project ${ws}`
+    : `add an event feed to project ${ws}`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        remove
+          ? "only a person can remove a project's event feed here (an agent asks with project_event_feed_remove)"
+          : "only a person can add a project's event feed here (an agent asks with project_event_feed_add)",
+        { status: 403 },
+      );
+    let ask: Record<string, unknown> = { project: ws, name };
+    if (!remove) {
+      const body: unknown = await jsonBody(req);
+      // Reviewer E: a JSON null or a list is a usage error, not a 500.
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        throw new AgentError("send a JSON object", { usage: true });
+      for (const k of Object.keys(body))
+        if (!["name", "agent", "url", "bearer", "list_url"].includes(k))
+          throw new AgentError(
+            `${k}: unknown field (takes name, agent, url, bearer and list_url)`,
+            { usage: true },
+          );
+      ask = { ...body, project: ws };
+    }
+    const c = remove
+      ? checkEventFeedRemove(d, ask)
+      : await checkEventFeedAdd(d, ask);
+    if (!c.ok)
+      throw new AgentError(c.error, {
+        status: c.error.startsWith(`project ${ws} has no event feed`)
+          ? 404
+          : 400,
+        usage: true,
+      });
+    what = c.summary;
+    const r = remove
+      ? await runEventFeedRemove(d, { ...c.args })
+      : await runEventFeedAdd(d, { ...c.args });
+    if (!r.ok) throw new AgentError(r.error, { usage: true });
+    audit(what);
+    sendJson(res, { ok: true, project: r.project, name: r.name });
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
   return true;
 }
 

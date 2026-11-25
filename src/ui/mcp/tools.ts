@@ -20,7 +20,7 @@ import {
 import { gateView } from "../../shared/gates/view.js";
 import { gateWorkers } from "../../shared/gates/rules.js";
 import {
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { gateBoxTools } from "./gate-box-tools.js";
@@ -675,11 +675,9 @@ const READ_TOOLS: DenTool[] = [
       const kind = a.kind === "browser" ? "browser" : "cpu";
       // On macOS a browser slot declares a container browser (a Setting).
       const endpoint = str(a.browser_endpoint)?.trim();
-      const verdict = browserSlotCheck({
+      const verdict = await browserSlotCheckOn(store, {
         kind,
         ...(endpoint !== undefined ? { endpoint } : {}),
-        platform: store.platform,
-        requiresContainer: store.settings().browserRequiresContainer,
       });
       if (!verdict.ok)
         throw new Refusal(
@@ -838,7 +836,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2777,6 +2775,92 @@ const APPROVAL_TOOLS: DenTool[] = [
           url: str(a.url),
           bearer: a.bearer === null ? null : str(a.bearer),
         },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_event_feed_add",
+    title: "Add an app's event feed to a project",
+    description:
+      "Add an app's event feed (`name`, `agent`, `url`) to a project: Den keeps the app's event stream (SSE) open and types `agent` (one of the project's agents) a short line when events are unread; it reads them with app_feed_read. `bearer`, when the stream needs one, is the name of a secrets.refs entry: never a token itself (a value is refused, and never echoed). An optional list address answers the events after a cursor. A feed with a bearer, or whose address is this machine or a private network, always waits for the person's own Allow. A public feed with no bearer follows the approval policy: on a personal install it applies at once and the person can Undo it; on a strict one it waits for the person's Allow. Den's own address and its Hub's are refused. A project's agent adds to its own project; Den's own agent to any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z
+        .string()
+        .describe("Its name: lower-case letters, digits, - and _"),
+      agent: z.string().describe("The id of the project's agent it goes to"),
+      url: z
+        .string()
+        .describe("The stream's address: https, or http to this machine"),
+      bearer: z
+        .string()
+        .optional()
+        .describe("The name of a secrets.refs entry, never a value"),
+      list_url: z
+        .string()
+        .optional()
+        .describe("Optional: the address that lists events after a cursor"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = projectMcpProject("project_event_feed_add", a, ctx);
+      const name = needArg("project_event_feed_add", a, "name", "its name");
+      const agent = needArg(
+        "project_event_feed_add",
+        a,
+        "agent",
+        "the agent it goes to",
+      );
+      const url = needArg("project_event_feed_add", a, "url", "its address");
+      return askPerson(
+        "project_event_feed_add",
+        "project_event_feed_add",
+        {
+          project,
+          name,
+          agent,
+          url,
+          bearer: str(a.bearer),
+          list_url: str(a.list_url),
+        },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_event_feed_remove",
+    title: "Remove an app's event feed from a project",
+    description:
+      "Remove one of a project's app event feeds (`name`): Den closes its stream and types its agent no more lines about it. The approval policy decides: on a personal install it applies at once and the person can Undo it; on a strict one it waits for the person's Allow. A project's agent removes from its own project; Den's own agent from any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z
+        .string()
+        .describe("Its name, as the project's feed list shows it"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = projectMcpProject("project_event_feed_remove", a, ctx);
+      const name = needArg("project_event_feed_remove", a, "name", "its name");
+      return askPerson(
+        "project_event_feed_remove",
+        "project_event_feed_remove",
+        { project, name },
         a,
         ctx,
       );

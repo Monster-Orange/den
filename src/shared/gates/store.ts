@@ -41,13 +41,22 @@ import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
+  pidRunning,
   processGroupStateSync,
   recordProcessGroup,
   type GroupState,
   type RecordedProcessGroup,
 } from "../process/process-group.js";
 import { peekVms, readVms, type VmReading } from "./vms.js";
-import { browserRequiresContainerDefault } from "./browser-container.js";
+import type { InstallMode } from "../den-config.js";
+import {
+  browserRequiresContainerDefault,
+  dockerPublished,
+  installModeNow,
+  ownAddresses,
+  resolveName,
+  type Binding,
+} from "./browser-container.js";
 import {
   BOX_DEFAULTS,
   BOX_NAME_RE,
@@ -259,7 +268,7 @@ export const GATE_LIMITS: Record<
   box_recheck_seconds: { min: 1, max: 24 * 3600, int: true },
   // A browser ask declares a container browser; 1 yes, 0 no. Unset: yes
   // on a macOS host, no elsewhere (browser-container.ts).
-  browser_requires_container: { min: 0, max: 1, int: true },
+  browser_requires_container: { min: 0, max: 2, int: true },
 };
 
 /**
@@ -541,14 +550,7 @@ const byOf = (e: GateEntry): string =>
 const reasonOf = (r: string | undefined) =>
   r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as { code?: string }).code === "EPERM";
-  }
-};
+const isAlive = (pid: number): boolean => pidRunning(pid);
 
 export interface GateStoreOpts {
   dir?: string;
@@ -560,6 +562,14 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
+  /** What running containers publish here (default: docker ps). */
+  containerBindings?: () => Promise<readonly Binding[]>;
+  /** A name's addresses (default: dns.lookup, all of them). */
+  resolveHost?: (name: string) => Promise<readonly string[]>;
+  /** The install's mode (default: user.yml and den.yml; unreadable strict). */
+  installMode?: () => InstallMode;
+  /** The host's own addresses (default: its interfaces). */
+  hostAddresses?: () => readonly string[];
   /**
    * Issue 1009: the machine's 5-minute load average (default
    * os.loadavg()[1]); tests pass a stub.
@@ -966,11 +976,23 @@ export class GateStore {
     | ((share: number) => Promise<VmReading>)
     | undefined;
   readonly platform: NodeJS.Platform;
+  /** What running containers publish here (browser-container.ts). */
+  readonly containerBindings: () => Promise<readonly Binding[]>;
+  /** A name's addresses (browser-container.ts). */
+  readonly resolveHost: (name: string) => Promise<readonly string[]>;
+  /** The install's mode (browser-container.ts). */
+  readonly installMode: () => InstallMode;
+  /** The host's own addresses (browser-container.ts). */
+  readonly hostAddresses: () => readonly string[];
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
+    this.containerBindings = o.containerBindings ?? (() => dockerPublished());
+    this.resolveHost = o.resolveHost ?? ((n) => resolveName(n));
+    this.installMode = o.installMode ?? installModeNow;
+    this.hostAddresses = o.hostAddresses ?? ownAddresses;
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
@@ -1187,11 +1209,13 @@ export class GateStore {
           "box_recheck_seconds",
           BOX_DEFAULTS.boxRecheckSeconds,
         ),
+        // 1: on; 2: on and strict (a run may not declare "self").
         browserRequiresContainer:
           num(
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
-          ) === 1,
+          ) >= 1,
+        browserContainerStrict: num("browser_requires_container", 0) === 2,
         // Issue 1033: a browser run with no --box: here or a test box.
         browserBoxDefault:
           text("browser_box_default").trim() === "local" ? "local" : "any",

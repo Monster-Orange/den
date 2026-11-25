@@ -22,6 +22,7 @@ import * as path from "path";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName } from "./transcript-follow.js";
 import { endingQuestion } from "./guardrails/attention-hook.js";
+import { TURN_READ_MAX_BYTES } from "./limit-defaults.js";
 
 /** One of a runtime's conversations, as Bring in lists it. */
 export interface RuntimeConversation {
@@ -239,7 +240,7 @@ export const TURN_QUIET_MS = 5_000;
  * D39: how far back from its end a transcript is read for its last turn
  * (agents.turn_read_max_mb). Past it: can't tell (null).
  */
-export const TURN_READ_MAX_BYTES = 8 * 1024 * 1024;
+export { TURN_READ_MAX_BYTES };
 
 /** A turn's verdict from the file: "quiet" is busy until it has been quiet. */
 type TurnVerdict = boolean | "quiet" | null;
