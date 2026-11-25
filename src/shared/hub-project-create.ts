@@ -243,9 +243,11 @@ export async function settleHubCreate(
   }
   if (o.state === "pending") return { state: "pending" };
   if (o.state === "applied") {
+    // Issue 646: one plan may make several projects (Connect's review):
+    // its own slug, and another's only when the plan made just one.
     const made =
       o.projects.find((p) => p.id && p.slug === ask.slug) ??
-      o.projects.find((p) => p.id);
+      (o.projects.length === 1 ? o.projects.find((p) => p.id) : undefined);
     if (!made?.id) return { state: "pending" };
     const hub = { id: made.id, slug: made.slug, name: made.name };
     d.link(ws, hub, "Hub (an owner allowed the new project)");

@@ -574,26 +574,26 @@ export async function handleNotificationRoutes(
     return true;
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
-  const shownAll =
+  // Issue 1339: one view build, one write for the whole set.
+  const prefs = (deps.prefs ?? bellPrefs)(null);
+  const n =
     pathname === "/api/notifications/read" && "all" in which
       ? (() => {
-          const v = bellView(
-            deps.store.list(),
-            (deps.prefs ?? bellPrefs)(null),
+          const v = bellView(deps.store.list(), prefs);
+          return deps.store.markReadMany(
+            [...v.recent, ...v.updates, ...v.older]
+              .filter((x) => !x.read)
+              .map((x) => x.id),
           );
-          return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
         })()
-      : null;
-  const n = shownAll
-    ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
-    : pathname === "/api/notifications/read"
-      ? deps.store.markRead(which)
-      : deps.store.clearRead(which);
+      : pathname === "/api/notifications/read"
+        ? deps.store.markRead(which)
+        : deps.store.clearRead(which);
   sendJson(res, {
     ok: true,
     changed: n,
     // The badge's number: what is shown.
-    unread: bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null)).unread,
+    unread: bellView(deps.store.list(), prefs).unread,
   });
   return true;
 }

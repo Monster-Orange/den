@@ -15,7 +15,7 @@
  */
 import { SERVER_SCOPE } from "./agents/server-agent.js";
 import { isCatchAllProject } from "./catch-all-project.js";
-import { parseHubProjectLink } from "./hub-project-link.js";
+import { hubProjectOf } from "./hub-project-link.js";
 import type { WorkspacesFile } from "./types/index.js";
 import { workspaceDisplayName } from "./workspace-name.js";
 
@@ -106,7 +106,8 @@ export function projectList(
         workspace: ws,
         name: workspaceDisplayName(ws, cfg).slice(0, 200),
         repos,
-        hub_project: parseHubProjectLink(cfg?.hub_project)?.id ?? null,
+        // Issue 646: never an id from another Hub or company.
+        hub_project: hubProjectOf(ws, () => file)?.id ?? null,
         agents: agentsOf(ws),
         ...(isCatchAllProject(ws) ? { catch_all: true as const } : {}),
       };

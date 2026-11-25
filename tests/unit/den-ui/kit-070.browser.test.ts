@@ -1034,9 +1034,10 @@ for (const engine of ["chromium", "webkit"]) {
       await expect(
         p.evaluate(() => {
           const rail = document.querySelector(".den-rail")!;
-          const grow = rail.querySelector(".den-rail-grow")!;
+          // The foot: the one .den-rail-foot after the spacer (issue 1341).
+          const box = rail.querySelector(".den-rail-grow")!.nextElementSibling!;
           const foot: string[] = [];
-          for (let e = grow.nextElementSibling; e; e = e.nextElementSibling)
+          for (let e = box.firstElementChild; e; e = e.nextElementSibling)
             foot.push(
               (e.getAttribute("data-nav") || e.getAttribute("data-act") || "") +
                 ":" +
