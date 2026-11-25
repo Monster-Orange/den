@@ -136,18 +136,25 @@ export function startGateChip(o) {
             limit: String(s.loadHold.limit),
           });
     // Issue 1274: a run here held by low memory.
-    const mem = s.memoryHold
-      ? t("gate.memoryHold", {
-          free: String(s.memoryHold.free),
-          limit: String(s.memoryHold.limit),
-        })
-      : "";
-    const sw = s.swapHold
-      ? t("gate.swapHold", {
-          used: String(s.swapHold.usedGb),
-          limit: String(s.swapHold.limitGb),
-        })
-      : "";
+    // Issue 1349: an unknown reading holds, and says so (no number).
+    const mem = s.memoryHold?.unavailable
+      ? t("gate.memoryUnavailableHold")
+      : s.memoryHold
+        ? t("gate.memoryHold", {
+            free: String(s.memoryHold.free),
+            limit: String(s.memoryHold.limit),
+          })
+        : "";
+    const sw = s.swapHold?.unavailable
+      ? s.memoryHold?.unavailable
+        ? ""
+        : t("gate.memoryUnavailableHold")
+      : s.swapHold
+        ? t("gate.swapHold", {
+            used: String(s.swapHold.usedGb),
+            limit: String(s.swapHold.limitGb),
+          })
+        : "";
     return (
       '<li class="gate-li" data-gate-id="' +
       esc(s.id) +
@@ -201,6 +208,9 @@ export function startGateChip(o) {
     if (!m) return "";
     const gb = (b) => String(Math.round(b / 1024 ** 3));
     const rows = [];
+    // Issue 1349: the guard is off on this platform, or its reading is unknown.
+    if (m.notMeasured) rows.push(esc(t("gate.memoryNotMeasured")));
+    else if (m.unavailable) rows.push(esc(t("gate.memoryUnavailable")));
     if (typeof m.freeMemory === "number")
       rows.push(esc(t("gate.freeMemory", { free: String(m.freeMemory) })));
     if (typeof m.swapUsedGb === "number")

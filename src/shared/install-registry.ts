@@ -122,6 +122,17 @@ export function listOtherInstalls(
   return out;
 }
 
+/**
+ * Whether this install's own entry is in the registry and passes the
+ * reader's checks (doctor: other installs' agents are denied its files
+ * only once it is).
+ */
+export function isRegistered(dir: string, stateDir: string): boolean {
+  const own = real(stateDir);
+  const id = createHash("sha256").update(own).digest("hex").slice(0, 16);
+  return readEntry(path.join(dir, `${id}.json`))?.stateDir === own;
+}
+
 function readEntry(file: string): RegisteredInstall | null {
   let fd: number | null = null;
   try {

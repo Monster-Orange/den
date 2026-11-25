@@ -39,7 +39,7 @@ import {
   webSessionsPath,
 } from "../../../src/shared/web-session.js";
 import { ensureWebSecret } from "../../../src/shared/web-secret.js";
-import { AUDIT_FILE } from "../../../src/shared/audit-file.js";
+import { AUDIT_FILE, appendAuditRow } from "../../../src/shared/audit-file.js";
 import {
   DEN_PROCS_DIR,
   registerDenProcess,
@@ -216,7 +216,7 @@ describe("refused on the port, but is a Den server running? (its own record)", (
     expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
       1,
     );
-    expect(a.o.err).toMatch(/a Den server is running here \(pid 1\)/);
+    expect(a.o.err).toMatch(/Den web is running here \(pid 1\)/);
     expect(a.o.err).toMatch(/nothing was changed/i);
     expect(keys()).toEqual([one]);
   });
@@ -318,5 +318,19 @@ describe("a server write holding the lock (web.sessions_lock_wait_ms)", () => {
     ).toBe(1);
     expect(a.o.err).toMatch(/sign-ins file is in use/);
     expect(keys()).toEqual([one]);
+  });
+});
+
+describe("a row written outside the server (issue 1391's redaction)", () => {
+  it("is redacted as the server's rows are", () => {
+    const token = "abcDEF123456.xyz-_~+/=";
+    appendAuditRow(tmp, {
+      verb: "session.end",
+      detail: `why: Authorization: Bearer ${token}`,
+      principal: `Bearer ${token}`,
+    });
+    const text = fs.readFileSync(path.join(tmp, AUDIT_FILE), "utf8");
+    expect(text).not.toContain(token);
+    expect(text).toContain("[REDACTED]");
   });
 });

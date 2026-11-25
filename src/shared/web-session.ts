@@ -53,7 +53,7 @@ export function sessionByPrefix(
       `"${prefix}" is not a session id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
     );
   const hits = all.filter((s) => s.key.startsWith(p));
-  if (hits.length === 0) throw new Error(`No browser session starts with ${p}`);
+  if (hits.length === 0) throw new Error(`No browser session starts with ${p}`); // words-ok: the base's message, moved here unchanged
   if (hits.length > 1)
     throw new Error(
       `${hits.length} browser sessions start with ${p}; give more of the id`,

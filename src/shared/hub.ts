@@ -194,7 +194,34 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
+  /**
+   * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
+   * the agents page's copy of Hub's groups is kept in memory before Den
+   * reads them again. Den stores no groups.
+   */
+  groupsCacheSeconds: number;
+  /**
+   * Issue 750 hub.groups (default auto): whether Den reads Hub's groups
+   * for the agents page. Auto: when the connected Hub's whoami lists
+   * groups.read. Off: nothing new on the page, Hub never asked for
+   * groups. true and false read as on and off.
+   */
+  groups: HubGroupsMode;
 }
+
+/** Issue 750: hub.groups. */
+export type HubGroupsMode = "auto" | "on" | "off";
+
+/** Issue 750: hub.groups as given (true/false: on/off), or null if junk. */
+export function hubGroupsMode(v: unknown): HubGroupsMode | null {
+  if (v === undefined || v === null) return "auto";
+  if (v === true) return "on";
+  if (v === false) return "off";
+  return v === "auto" || v === "on" || v === "off" ? v : null;
+}
+
+/** Issue 750: the cache's seconds Settings and config may set. */
+export const HUB_GROUPS_CACHE_SECONDS = { min: 5, max: 3600 } as const;
 
 type RawHub =
   | {
@@ -223,6 +250,8 @@ type RawHub =
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      groups_cache_seconds?: unknown;
+      groups?: unknown;
     }
   | undefined;
 
@@ -384,6 +413,9 @@ export function readHubConfig(
   const inboxReads = typeof rps === "number" ? rps : 2;
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
+  const groupsCache = secs(h.groups_cache_seconds, "groups_cache_seconds", 30);
+  const groupsMode = hubGroupsMode(h.groups);
+  if (!groupsMode) throw new Error("hub.groups must be auto, on or off");
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
@@ -425,6 +457,8 @@ export function readHubConfig(
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    groupsCacheSeconds: groupsCache,
+    groups: groupsMode,
   };
 }
 
@@ -441,6 +475,62 @@ export function patchHubAllowTools(
   const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
   if (v === null) delete hub.allow_tools;
   else hub.allow_tools = v;
+  if (Object.keys(hub).length) user.hub = hub;
+  else delete user.hub;
+  return { ok: true };
+}
+
+/**
+ * Issue 750: hub.groups and hub.groups_cache_seconds from Settings › Hub
+ * or `config`, into user.yml's hub block, in place: { mode?: auto | on |
+ * off (or true/false), cache_seconds?: 5 to 3600, whole }; null clears
+ * one. On and off are written as true and false, and auto (the default)
+ * as no key: every older Den reads hub.groups as true or false only, and
+ * refuses the whole hub block on anything else. Nothing is written when
+ * any part is refused.
+ */
+export function patchHubGroups(
+  user: Record<string, unknown>,
+  v: unknown,
+): { ok: true } | { ok: false; error: string } {
+  if (!v || typeof v !== "object" || Array.isArray(v))
+    return {
+      ok: false,
+      error: "hub_groups is an object: mode, cache_seconds",
+    };
+  const o = v as Record<string, unknown>;
+  for (const k of Object.keys(o))
+    if (k !== "mode" && k !== "cache_seconds")
+      return {
+        ok: false,
+        error: `hub_groups.${k} is not a setting (mode, cache_seconds)`,
+      };
+  let mode: HubGroupsMode | null | undefined;
+  if (o.mode === null) mode = null;
+  else if (o.mode !== undefined) {
+    mode =
+      typeof o.mode === "string" || typeof o.mode === "boolean"
+        ? hubGroupsMode(o.mode)
+        : null;
+    if (!mode)
+      return { ok: false, error: "hub.groups must be auto, on or off" };
+  }
+  const c = o.cache_seconds;
+  const { min, max } = HUB_GROUPS_CACHE_SECONDS;
+  if (
+    c !== undefined &&
+    c !== null &&
+    !(typeof c === "number" && Number.isInteger(c) && c >= min && c <= max)
+  )
+    return {
+      ok: false,
+      error: `hub.groups_cache_seconds must be a whole number of seconds, ${min} to ${max}`,
+    };
+  const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
+  if (mode === null || mode === "auto") delete hub.groups;
+  else if (mode !== undefined) hub.groups = mode === "on";
+  if (c === null) delete hub.groups_cache_seconds;
+  else if (c !== undefined) hub.groups_cache_seconds = c;
   if (Object.keys(hub).length) user.hub = hub;
   else delete user.hub;
   return { ok: true };
@@ -854,7 +944,7 @@ const personName = (v: unknown): string | undefined => {
 };
 
 /** One JSON call to Hub, bounded; its answer, or a HubCallError. */
-async function hubCall(
+export async function hubCall(
   url: string,
   init: RequestInit,
   opts: { timeoutMs?: number; fetch?: FetchFn },
@@ -897,6 +987,9 @@ async function hubCall(
       "forbidden",
       `${said ?? "Hub refused this install"}: ask an admin of the company on Hub`,
       str(body.error),
+      // Issue 750: Hub's answer too (its `code`, e.g. groups_not_in_plan).
+      403,
+      body,
     );
   if (res.status >= 400 && res.status < 500)
     throw new HubCallError(

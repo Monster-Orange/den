@@ -100,6 +100,14 @@ export const SESSION_READ_FILES: readonly string[] = [
   path.join("hub", "inbox-watch.json"),
   path.join("hub", "tools-seen.json"),
 ];
+/**
+ * Issue 1316: the agents' own SSH signing key, its .pub and allowed_signers
+ * (git-signing.ts AGENT_SIGNING_DIR). Its private key is a secret every
+ * agent of this install signs with, so readable; never writable (the state
+ * dir is read-only), so no agent swaps it or plants another. Nothing else
+ * of the person's is in it.
+ */
+export const SESSION_SIGNING_DIR = "agent-signing";
 /** Folders whose names a session lists (not their files). */
 export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
 /**
@@ -133,6 +141,102 @@ export interface AgentSandboxInput {
   socketsAllowed?: string[];
   /** The env the session starts from (its SSH agent, its runtime dir). */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Issue 1316: single files the session reads wherever they are, the
+   * state dir too (agents.git.signing_key and its .pub). Exact paths,
+   * never their folder; one the sandbox hides stays hidden
+   * (sandboxHidesFile says why).
+   */
+  readableFiles?: string[];
+  /**
+   * Issue 1391: a personal install's own activity trail is read back
+   * (audit.jsonl itself, never a copy beside it); unset is not.
+   */
+  trailReadable?: boolean;
+  /**
+   * Issue 1316: folders a readableFiles entry may never be in (the edge's
+   * key folders, other installs' state folders): issue 728 denies them.
+   * A `*` segment matches any one name.
+   */
+  keyRefusedDirs?: string[];
+  /**
+   * Issue 1325: this session's own temp folder (makeSessionTmp): writable,
+   * its unix sockets connectable, and TMPDIR/TMP/TEMP for the session.
+   * Nothing outside the session listens there.
+   */
+  sessionTmp?: string;
+}
+
+/** Issue 1325: a session temp folder's name (makeSessionTmp's). */
+export const SESSION_TMP_RE = /^den-[A-Za-z0-9]{6}$/;
+/** macOS's longest unix-socket path (sun_path), in bytes, with its NUL. */
+export const SOCKET_PATH_MAX = 104;
+/** Room a session's own socket name needs in its temp folder. */
+const SOCKET_NAME_ROOM = 24;
+
+/**
+ * Issue 1331: where Den makes session temp folders. macOS: /tmp (the
+ * profile denies each session every other session's folder there).
+ * Elsewhere (bwrap): <state>/tmp, inside the state dir that the wrap hides
+ * behind an empty tmpfs, so only the session's own folder, bound back, is
+ * there for it.
+ */
+export function defaultSessionTmpBase(
+  stateDir: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === "darwin" ? "/tmp" : path.join(stateDir, "tmp");
+}
+
+/**
+ * Issue 1325: a new private temp folder for one session, <base>/den-XXXXXX:
+ * made by this process (0700, its own uid), short enough that a socket
+ * in it fits macOS's 104 bytes. Throws when it can't be made so.
+ */
+export function makeSessionTmp(base: string = "/tmp"): string {
+  const root = realPath(base);
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const dir = fs.mkdtempSync(path.join(root, "den-"));
+  try {
+    fs.chmodSync(dir, 0o700);
+    const st = fs.lstatSync(dir);
+    const uid = process.getuid?.();
+    if (!st.isDirectory() || (uid !== undefined && st.uid !== uid))
+      throw new Error(`${dir} isn't a folder you own`);
+    if (!SESSION_TMP_RE.test(path.basename(dir)))
+      throw new Error(`${dir} is not named den-XXXXXX`);
+    if (Buffer.byteLength(dir) + 1 + SOCKET_NAME_ROOM >= SOCKET_PATH_MAX)
+      throw new Error(
+        `${dir} is too long for a unix socket in it (macOS allows ${SOCKET_PATH_MAX} bytes)`,
+      );
+    return dir;
+  } catch (e) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
+}
+
+/**
+ * Issue 1325: remove a session temp folder (its session ended). Only a
+ * real folder named den-XXXXXX right inside `base`, owned by this
+ * process's uid: never a link, never anything else. Never throws.
+ */
+export function removeSessionTmp(
+  dir: string | undefined,
+  /** The folder makeSessionTmp made it in: nothing elsewhere goes. */
+  base: string = "/tmp",
+): void {
+  if (!dir) return;
+  try {
+    if (!SESSION_TMP_RE.test(path.basename(dir))) return;
+    if (realPath(path.dirname(dir)) !== realPath(base)) return;
+    const st = fs.lstatSync(dir);
+    const uid = process.getuid?.();
+    if (!st.isDirectory() || (uid !== undefined && st.uid !== uid)) return;
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* gone already, or not ours */
+  }
 }
 
 /**
@@ -179,6 +283,8 @@ export interface SandboxPolicy {
   socketDirsHidden: string[];
   /** The home folder: renames are refused below it (macOS). */
   home: string;
+  /** Issue 1325: the session's own temp folder, when it has one. */
+  sessionTmp?: string;
 }
 
 /**
@@ -196,6 +302,58 @@ export function realPath(p: string): string {
   }
 }
 
+/** `f` is `d` or inside it; a `*` segment of `d` matches any one name. */
+function isUnder(f: string, d: string): boolean {
+  if (!d.includes("*")) {
+    const r = realPath(d);
+    return f === r || f.startsWith(r + path.sep);
+  }
+  // The part before the first `*` on its real path (a linked data folder).
+  const abs = path.resolve(d);
+  const cut = abs.lastIndexOf("/", abs.indexOf("*"));
+  const esc = (realPath(abs.slice(0, cut) || "/") + abs.slice(cut))
+    .split("*")
+    .map((x) => x.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
+    .join("[^/]+");
+  // The sandbox is macOS's and Linux's only: "/" separates.
+  return new RegExp(`^${esc}(?:/|$)`).test(f);
+}
+
+/**
+ * Issue 1316: why the sandbox won't let a session read `file` that a
+ * setting names (a signing key), or null when it will. Only a plain file
+ * (not a link, not a folder). In the state dir, only one under
+ * <state>/agent-signing/: an allow rule, so no secret Den keeps there (or
+ * adds later) can be named. Outside it, never a file in a denied folder,
+ * the edge's key folders or another install's state folder.
+ */
+export function sandboxHidesFile(
+  file: string,
+  i: Pick<AgentSandboxInput, "stateDir" | "deniedDirs" | "keyRefusedDirs">,
+): string | null {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(file);
+  } catch {
+    return `${file} doesn't exist`;
+  }
+  if (st.isSymbolicLink()) return `${file} is a link: name the file itself`;
+  if (!st.isFile()) return `${file} is not a file`;
+  const f = realPath(file);
+  const state = realPath(i.stateDir);
+  if (isUnder(f, state))
+    return isUnder(f, path.join(state, SESSION_SIGNING_DIR))
+      ? null
+      : `${file} is in Den's state folder, hidden from agents: put the key in ${path.join(state, SESSION_SIGNING_DIR)}/ or outside the state folder`;
+  if (
+    [...(i.deniedDirs ?? []), ...(i.keyRefusedDirs ?? [])].some((d) =>
+      isUnder(f, d),
+    )
+  )
+    return `${file} is in a folder hidden from agents (Den's local proof, an edge's keys or another install's state)`;
+  return null;
+}
+
 export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
   if (!SAFE_ID.test(i.agentId) || i.agentId === "." || i.agentId === "..")
     throw new Error(`sandbox: agent id "${i.agentId}" is not a plain name`);
@@ -203,6 +361,7 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
   const own = path.join(state, "agent-files", i.agentId);
   const tokensDir = path.join(state, "actor-token");
   const gate = realPath(i.gateDir);
+  const tmp = i.sessionTmp ? realPath(i.sessionTmp) : undefined;
   return {
     // The denied folders can't be written either: a file planted there
     // would be trusted as the machine's own.
@@ -215,6 +374,7 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
       own,
       gate,
       ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
+      ...(tmp ? [tmp] : []),
     ],
     locked: [
       ...LAUNCH_FILES.map((f) => path.join(own, f)),
@@ -227,8 +387,16 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
       path.join(tokensDir, i.agentId),
       ...SESSION_READ_DIRS.map((f) => path.join(state, f)),
       ...SESSION_WRITE_DIRS.map((f) => path.join(state, f)),
+      path.join(state, SESSION_SIGNING_DIR),
     ],
-    readableFiles: SESSION_READ_FILES.map((f) => path.join(state, f)),
+    readableFiles: [
+      ...SESSION_READ_FILES.map((f) => path.join(state, f)),
+      // Issue 1391: redacted, and only the server writes it (issue 1369).
+      ...(i.trailReadable === true ? [path.join(state, "audit.jsonl")] : []),
+      ...(i.readableFiles ?? [])
+        .filter((f) => sandboxHidesFile(f, i) === null)
+        .map(realPath),
+    ],
     listable: SESSION_LIST_DIRS.map((f) => path.join(state, f)),
     hidden: HIDDEN_FILES.map((f) => path.join(state, f)),
     ownTokenDir: path.join(tokensDir, i.agentId),
@@ -236,9 +404,13 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
     socketsAllowed: [
       ...defaultSocketsAllowed(i.env ?? process.env),
       ...(i.socketsAllowed ?? []).map(realPath),
+      // Issue 1325: the session's own sockets (a test's server, a dev
+      // server): only it uses this folder.
+      ...(tmp ? [tmp] : []),
     ],
     socketDirsHidden: linuxSocketDirs(i.env ?? process.env),
     home: realPath(os.homedir()),
+    ...(tmp ? { sessionTmp: tmp } : {}),
   };
 }
 
@@ -284,6 +456,30 @@ function linuxSocketDirs(env: NodeJS.ProcessEnv): string[] {
 }
 
 /** A regex that matches `dir` and everything under it, for SBPL. */
+/**
+ * Issue 1325: the folders session temp folders are made in: /tmp's real
+ * path, and this session's own folder's parent.
+ */
+function sessionTmpBases(p: SandboxPolicy): string[] {
+  return [
+    ...new Set([
+      realPath("/tmp"),
+      ...(p.sessionTmp ? [path.dirname(p.sessionTmp)] : []),
+    ]),
+  ];
+}
+
+/** Issue 1325: SBPL's regex for any session temp folder in `base`. */
+function sessionTmpRegex(base: string): string {
+  if (/["\0\n\r]/.test(base))
+    throw new Error(`sandbox: a temp folder can't hold a quote: ${base}`);
+  const esc = base.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  // Six classes, not {6}: with {6} this compiled but let a write through
+  // on macOS (issue 1325's run), and no system profile uses a counted
+  // repeat.
+  return `#"^${esc}/den-${"[A-Za-z0-9]".repeat(6)}(/|$)"`;
+}
+
 function underRegex(dir: string): string {
   if (/["\0\n\r]/.test(dir))
     throw new Error(`sandbox: a socket folder can't hold a quote: ${dir}`);
@@ -324,6 +520,11 @@ export function macProfile(p: SandboxPolicy): string {
     "(allow default)",
     `(deny file-write* ${p.readOnly.map(sub).join(" ")})`,
     ...(above.length ? [`(deny file-write* ${above.map(lit).join(" ")})`] : []),
+    // Issue 1325: no session writes another session's temp folder (a
+    // listener planted there); its own is allowed back just below.
+    `(deny file-write* ${sessionTmpBases(p)
+      .map((d) => `(regex ${sessionTmpRegex(d)})`)
+      .join(" ")})`,
     `(allow file-write* ${p.writable.map(sub).join(" ")})`,
     `(deny file-write* ${p.locked.map(lit).join(" ")})`,
     // The writable folders themselves, and those above them, can't be
@@ -334,6 +535,10 @@ export function macProfile(p: SandboxPolicy): string {
     `(allow file-read-metadata ${p.unreadable.map(sub).join(" ")})`,
     `(allow file-read* ${[...p.readable.map(sub), ...p.readableFiles.map(lit), ...p.listable.map(lit)].join(" ")})`,
     `(deny file-read* ${p.hidden.map(lit).join(" ")})`,
+    // Issue 1325: no hard link to a socket. A writable folder whose
+    // sockets connect (the session's temp folder) would otherwise take a
+    // link to one the sandbox refuses (an SSH or GPG agent's, the host's).
+    "(deny file-link (vnode-type SOCKET))",
     // A program started through LaunchServices (open, an app's script)
     // runs outside the sandbox.
     "(deny lsopen)",
@@ -346,18 +551,23 @@ export function macProfile(p: SandboxPolicy): string {
   ].join("\n");
 }
 
-/**
- * bwrap binds only what exists: a locked gate file not made yet is made
- * now, as "{}" (what the store reads as unset), so the bind covers it.
- * macOS needs none of this (its rule names the path).
- */
-export function ensureLockedGateFiles(p: SandboxPolicy): void {
+/** The policy's writable folders, made now where they aren't yet. */
+function makeWritableDirs(p: SandboxPolicy): void {
   for (const w of p.writable)
     try {
       fs.mkdirSync(w, { recursive: true, mode: 0o700 });
     } catch {
       /* made by Den as it starts the agent, or not makeable here */
     }
+}
+
+/**
+ * bwrap binds only what exists: a locked gate file not made yet is made
+ * now, as "{}" (what the store reads as unset), so the bind covers it.
+ * macOS needs none of this (its rule names the path).
+ */
+export function ensureLockedGateFiles(p: SandboxPolicy): void {
+  makeWritableDirs(p);
   for (const f of GATE_LOCKED_FILES) {
     const file = path.join(p.gateDir, f);
     try {
@@ -539,6 +749,14 @@ export function bwrapStarts(
   return why;
 }
 
+/** Issue 1325: TMPDIR, TMP and TEMP: the session's own temp folder. */
+function sessionTmpEnv(p: SandboxPolicy): Record<string, string> {
+  if (!p.sessionTmp) return {};
+  // A trailing "/", as macOS's own TMPDIR has.
+  const t = p.sessionTmp + path.sep;
+  return { TMPDIR: t, TMP: p.sessionTmp, TEMP: p.sessionTmp };
+}
+
 /** `argv` wrapped in the agent's sandbox, or unwrapped with the reason. */
 export function sandboxFor(
   argv: string[],
@@ -566,11 +784,15 @@ export function sandboxFor(
         env: {},
         reason: "sandbox-exec is missing",
       };
+    // Issue 1369: the session's writable state folders exist before it
+    // starts (its audit queue among them): the state dir around them is
+    // read-only inside, so the session can't make them.
+    makeWritableDirs(policy);
     return {
       applied: true,
       tool: "sandbox-exec",
       argv: [exe, "-p", macProfile(policy), ...argv],
-      env: { [AGENT_SANDBOX_ENV]: "1" },
+      env: { [AGENT_SANDBOX_ENV]: "1", ...sessionTmpEnv(policy) },
     };
   }
   if (platform === "linux") {
@@ -595,7 +817,7 @@ export function sandboxFor(
       applied: true,
       tool: "bwrap",
       argv: [exe, ...bwrapArgs(policy), ...argv],
-      env: { [AGENT_SANDBOX_ENV]: "1" },
+      env: { [AGENT_SANDBOX_ENV]: "1", ...sessionTmpEnv(policy) },
     };
   }
   return {

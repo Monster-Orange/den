@@ -2613,11 +2613,11 @@ function serverNotRunning(stateDir: string, port: number): void {
   const pids = denProcessPids(stateDir, pidAlive, "server");
   if (pids === null)
     throw new Error(
-      `Den's process records can't be read, so whether its server runs is unknown; nothing was changed`,
+      `Den's process records can't be read, so whether Den web runs is unknown; nothing was changed`,
     );
   if (pids.length)
     throw new Error(
-      `a Den server is running here (pid ${pids[0]}) but nothing answered on port ${port} at ${webProbeTarget(process.env.DEN_BIND_HOST, port).host}; it may listen on another address (DEN_BIND_HOST). Nothing was changed: run this where DEN_BIND_HOST is set as the server's`,
+      `Den web is running here (pid ${pids[0]}) but nothing answered on port ${port} at ${webProbeTarget(process.env.DEN_BIND_HOST, port).host}; it may listen on another address (DEN_BIND_HOST). Nothing was changed: run this where DEN_BIND_HOST is set as Den web's`,
     );
 }
 

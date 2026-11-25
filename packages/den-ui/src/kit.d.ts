@@ -26,6 +26,7 @@ import type {
   hydrateAccount,
   attachMenuFilter,
   hydrateBell,
+  wireRowOpens,
   hydrateScope,
   hydrateSearch,
   PageMenuHydrateOptions,
@@ -59,6 +60,7 @@ import type {
   esc,
 } from "./shell-html.js";
 import type { buttonHtml } from "./button.js";
+import type { groupHeaderHtml } from "./group-header.js";
 import type {
   SettingRow,
   SettingRowHydrateOptions,
@@ -258,6 +260,7 @@ export interface DenUIKit {
   hydrateScope: typeof hydrateScope;
   hydrateSearch: typeof hydrateSearch;
   hydrateBell: typeof hydrateBell;
+  wireRowOpens: typeof wireRowOpens;
   hydrateAccount: typeof hydrateAccount;
   attachMenuFilter: typeof attachMenuFilter;
   syncPinToggles: typeof syncPinToggles;
@@ -274,6 +277,7 @@ export interface DenUIKit {
   filterBar: typeof filterBar;
   bulkBar: typeof bulkBar;
   buttonHtml: typeof buttonHtml;
+  groupHeaderHtml: typeof groupHeaderHtml;
   menuRowHtml: typeof menuRowHtml;
   pageMenuButtonHtml: typeof pageMenuButtonHtml;
   pageMenuHtml: typeof pageMenuHtml;

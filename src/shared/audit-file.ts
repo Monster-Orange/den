@@ -5,13 +5,15 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { redactSecrets } from "./redact.js";
 
 export const AUDIT_FILE = "audit.jsonl";
 
 /**
  * Issue 1300: one activity-trail row written by a process other than the
  * server (`web logout` with no server running), appended to the file the
- * server reads at start. The same shape as the server's row; 0600.
+ * server reads at start. The same shape as the server's row, redacted as
+ * its rows are (issue 1391); 0600.
  */
 export function appendAuditRow(
   stateDir: string,
@@ -23,10 +25,21 @@ export function appendAuditRow(
   const entry = {
     ts: now().toISOString(),
     actor: "user" as const,
-    ...(row.principal ? { principal: row.principal } : {}),
-    verb: row.verb,
-    detail: row.detail,
+    ...(row.principal ? { principal: redactSecrets(row.principal) } : {}),
+    verb: redactSecrets(row.verb),
+    detail: redactSecrets(row.detail),
   };
   fs.appendFileSync(file, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
   fs.chmodSync(file, 0o600);
 }
+
+/**
+ * Issue 1391: where the trail written before redaction is kept, once it
+ * is set aside at the first start that redacts. Denied to agents in every
+ * mode (a credential folder in their deny rules; outside the sandbox's
+ * read list), as its rows may hold a value never redacted.
+ */
+export const AUDIT_SET_ASIDE_DIR = "audit-before-redaction";
+
+/** Issue 1391: the set-aside's marker, written once it is done. */
+export const AUDIT_SET_ASIDE_MARK = "set-aside.json";
