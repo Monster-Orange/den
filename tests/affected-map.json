@@ -834,6 +834,10 @@
     "tests/unit/server/agents-list-view.browser.test.ts": [
       "src/ui/server/public/agents.html",
       "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agents-order-error-width.browser.test.ts": [
+      "src/ui/server/public/agents.html",
+      "src/ui/server/public/agents-page.js"
     ]
   },
   "subjectless": [],
@@ -869,6 +873,7 @@
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1354,6 +1359,7 @@
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1456,6 +1462,7 @@
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1563,6 +1570,7 @@
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1653,6 +1661,7 @@
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1951,6 +1960,7 @@
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -2976,6 +2986,14 @@
     {
       "when": ["src/shared/den-config.ts", "src/shared/settings-cli-rows.ts"],
       "run": ["tests/unit/server/agents-max-1373.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/agents.html"
+      ],
+      "run": ["tests/unit/server/agents-order-error-width.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
