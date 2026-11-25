@@ -1404,6 +1404,19 @@ export function notAPersonOf(req: http.IncomingMessage): boolean {
 }
 
 /**
+ * Whether this request proved a person: the CLI's
+ * bearer, or a signed-in browser that is neither an agent's view nor the
+ * fixture person, with no agent's token or claim on it. A loopback caller
+ * that proved nothing is not one.
+ */
+export function provenPersonOf(req: http.IncomingMessage): boolean {
+  if (notAPersonOf(req)) return false;
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person") return true;
+  return p?.kind === "person-browser" && !p.view && !p.fixture;
+}
+
+/**
  * Whether this request is a test bed's CLI on the test-person path (issue
  * 636): a person token marked testPerson. A person-only write that widens
  * what runs refuses it (issue 642 review).
