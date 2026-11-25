@@ -153,7 +153,16 @@ export function checkKitQueue({
   try {
     theirs = raw === null ? null : JSON.parse(raw).version;
   } catch {
-    theirs = null;
+    // Unreadable: in CI it fails, as a missing next/queue does.
+    if (ci)
+      throw new KitError(
+        `::error::${KIT_PKG} on ${queue} doesn't parse, so the kit can't be checked against next/queue's ` +
+          `before it is published.`,
+      );
+    note(
+      `${KIT_PKG} on ${queue} doesn't parse: the kit isn't checked against next/queue's`,
+    );
+    return;
   }
   if (theirs !== version) {
     note(

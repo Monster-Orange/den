@@ -294,6 +294,21 @@ describe("release-dry-run.mjs plan: the kit against next/queue (issue 1508)", ()
     expect(plan("q-diff").status).toBe(0);
   });
 
+  it("in CI, next/queue's kit package.json that doesn't parse fails rather than pass", () => {
+    candidate("1.2.3-dev.1", "0.5.0");
+    npmHas(`${KIT}@0.4.0 -`);
+    const back = git("rev-parse", "HEAD");
+    git("checkout", "-q", "-b", "q-broken");
+    write("packages/den-ui/package.json", "{ not json\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "queue q-broken");
+    git("checkout", "-q", back);
+    const r = plan("q-broken", { GITHUB_ACTIONS: "true" });
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toContain("doesn't parse");
+    expect(outputs(r.stdout).kit).toBeUndefined();
+  });
+
   it("in CI, a next/queue missing from the clone fails rather than guess", () => {
     candidate("1.2.3-dev.1", "0.5.0");
     npmHas(`${KIT}@0.4.0 -`);
