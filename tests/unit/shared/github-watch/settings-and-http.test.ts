@@ -18,6 +18,9 @@ describe("github.* Settings", () => {
       maxIntervalSeconds: 300,
       budgetFloor: 500,
       watchesMax: 50,
+      staleMinutes: 60,
+      maxOpenHours: 24,
+      rerunLookMinutes: 5,
     });
   });
 
@@ -29,6 +32,7 @@ describe("github.* Settings", () => {
           watch_max_interval_seconds: 600,
           api_budget_floor: 200,
           watches_max: 10,
+          watch_stale_minutes: 30,
         },
       }),
     ).toEqual({
@@ -36,6 +40,9 @@ describe("github.* Settings", () => {
       maxIntervalSeconds: 600,
       budgetFloor: 200,
       watchesMax: 10,
+      staleMinutes: 30,
+      maxOpenHours: 24,
+      rerunLookMinutes: 5,
     });
   });
 

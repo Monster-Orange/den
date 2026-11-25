@@ -39,6 +39,10 @@ const NOT_LITERAL: Record<
     calls: 3,
     names: ["save", "follow-project", "remove-mcp", "add-feed", "remove-feed"],
   },
+  "coach-tab.js name": {
+    calls: 1,
+    names: ["coach-dismiss", "coach-apply", "coach-undismiss", "coach-counts"],
+  },
   "shell.js name": {
     calls: 2,
     pass: "denShell.busyAction and holdDots hand the page's name to the kit",

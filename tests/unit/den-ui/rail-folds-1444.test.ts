@@ -97,6 +97,12 @@ describe("the header's name, in the kit's words", () => {
     es: ["Ocultar Tools", "Mostrar Tools", "Mostrar Tools, 5 dentro"],
     ja: ["Toolsを隠す", "Toolsを表示", "Toolsを表示（5件）"],
   };
+  // Past 99 (Hub Design, on PR 1460): 99+ as the badge shows it.
+  const MANY: Record<string, string> = {
+    en: "Show Tools, 99+ inside",
+    es: "Mostrar Tools, más de 99 dentro",
+    ja: "Toolsを表示（99件以上）",
+  };
   it.each(Object.keys(FINAL))("%s", (lang) => {
     expect(kitT(lang, "kit.rail.fold", { section: "Tools" })).toBe(
       FINAL[lang]![0],
@@ -106,6 +112,9 @@ describe("the header's name, in the kit's words", () => {
     );
     expect(kitT(lang, "kit.rail.unfoldN", { section: "Tools", n: "5" })).toBe(
       FINAL[lang]![2],
+    );
+    expect(kitT(lang, "kit.rail.unfoldMany", { section: "Tools" })).toBe(
+      MANY[lang],
     );
   });
 });
@@ -191,9 +200,12 @@ describe("Den keeps it in the person's shell settings", () => {
 
 describe("shell.css", () => {
   const css = fs.readFileSync(path.join(SRC, "shell.css"), "utf-8");
-  it("hides a folded section's entries only with script", () => {
+  it("hides a folded section's entries only once the kit marked the rail", () => {
     expect(css).toMatch(
-      /@media \(scripting: enabled\)\s*\{[^}]*\.den-rail-group\[data-folded\][^{]*\{\s*display: none;/,
+      /\[data-folds\] \.den-rail-group\[data-folded\] > :not\(\.den-gh\)\s*\{\s*display: none;/,
+    );
+    expect(css).not.toMatch(
+      /@media \(scripting: enabled\)\s*\{\s*\.den-rail-group\[data-folded\]/,
     );
   });
   it("turns the chevron with no motion when motion is reduced", () => {
