@@ -750,9 +750,9 @@ async function runNow(button) {
 const UNDO_MS = 8000;
 
 /**
- * A write through the kit's busy action (BUSY-1): its button shows dots at
- * once, and the working pop-up opens only for a slow one (after 3 s). A
- * quick refusal comes back here (quietFail, inlineError); no success toast.
+ * A write through the kit's busy action (BUSY-1): its button shows dots
+ * until the answer, with no pop-up. A refusal comes back here (quietFail,
+ * inlineError); no success toast.
  * true when it worked.
  */
 async function write(name, url, body, button) {
@@ -891,6 +891,11 @@ export async function mountCoachTab(root) {
   // Issue 110: an Allow from the bell (on this page) shows at once.
   globalThis.window?.addEventListener?.("den:approval-done", () => {
     if (anyWaiting(data)) void load();
+  });
+  // A hidden page stops looking again; shown, it looks at once, so a
+  // decision made in another tab meanwhile shows.
+  globalThis.document?.addEventListener?.("visibilitychange", () => {
+    if (!document.hidden && anyWaiting(data)) void load();
   });
   el.addEventListener("click", onClick);
   el.addEventListener("keydown", onKey);

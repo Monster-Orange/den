@@ -227,4 +227,82 @@ describe("Coach Apply", () => {
       expect(errors).toEqual([]);
       await p.context().close();
     }, 90_000);
+
+  it("Deny in the bell: the row says Denied, with Apply again and Dismiss, without a reload", async () => {
+    if (!browser) return;
+    const persona = "opus-user-deny";
+    const { p, release } = await open(1440, persona);
+    const scope = '[data-note="coach-findings-table"]';
+    await p.locator(`${scope} [data-act="coach-apply"]`).click();
+    release();
+    await p
+      .locator(`${scope} [data-apply-state="waiting"]`)
+      .waitFor({ timeout: 15_000 });
+    await later(p);
+    // The bell from the header: the Coach tab stays shown.
+    await p.locator("#den-bell").click();
+    const card = p.locator("[data-bell-coach]");
+    await card.waitFor({ timeout: 15_000 });
+    await card.locator('[data-bell="deny"]').click();
+    await p.keyboard.press("Escape");
+    await p
+      .locator(`${scope} [data-apply-state="denied"]`)
+      .waitFor({ timeout: 15_000 });
+    await expect(
+      p.locator(`${scope} [data-act="coach-apply"]`).textContent(),
+    ).resolves.toBe("Apply again");
+    expect(await p.locator(`${scope} [data-act="coach-dismiss"]`).count()).toBe(
+      1,
+    );
+    const file = path.join(s!.stateDir, "personas", `${persona}.md`);
+    expect(fs.readFileSync(file, "utf-8")).not.toMatch(/subagent_model/);
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+
+  it("Deny in another tab while this one is hidden: shown again, the row says Denied", async () => {
+    if (!browser) return;
+    const persona = "opus-user-other-tab";
+    const { p, release } = await open(1440, persona);
+    const scope = '[data-note="coach-findings-table"]';
+    await p.locator(`${scope} [data-act="coach-apply"]`).click();
+    release();
+    await p
+      .locator(`${scope} [data-apply-state="waiting"]`)
+      .waitFor({ timeout: 15_000 });
+    await later(p);
+    const shown = (hidden: boolean) =>
+      p.evaluate((h) => {
+        Object.defineProperty(document, "hidden", {
+          configurable: true,
+          get: () => h,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      }, hidden);
+    await shown(true);
+    // A check that ends while the tab is hidden schedules no next one.
+    await p.waitForResponse((r) => r.url().includes("/api/coach"), {
+      timeout: 10_000,
+    });
+    const other = await p.context().newPage();
+    await other.goto(`${s!.base}/server-agent?tab=coach`);
+    await later(other);
+    await other.locator("#den-bell").click();
+    const card = other.locator("[data-bell-coach]");
+    await card.waitFor({ timeout: 15_000 });
+    await card.locator('[data-bell="deny"]').click();
+    await other
+      .locator(`${scope} [data-apply-state="denied"]`)
+      .waitFor({ timeout: 15_000 });
+    await other.close();
+    await shown(false);
+    await p
+      .locator(`${scope} [data-apply-state="denied"]`)
+      .waitFor({ timeout: 2_500 });
+    await expect(
+      p.locator(`${scope} [data-act="coach-apply"]`).textContent(),
+    ).resolves.toBe("Apply again");
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
 });
