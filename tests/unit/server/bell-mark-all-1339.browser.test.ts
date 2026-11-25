@@ -247,6 +247,40 @@ describe("Mark all read (issue 1339)", () => {
   }, 60_000);
 });
 
+// Issue 1524: the panel is patched in place (issue 1024), and a patch takes
+// the drawn attributes, so a repaint while the POST waits took the kit's
+// hold (aria-busy, disabled, its dots) off the pressed button. CI saw it as
+// "POST asked, button not busy".
+describe("a repaint while the POST waits (issue 1524)", () => {
+  it.each(["all", "clear"] as const)(
+    "%s: the pressed button stays held, dots and all, until the answer",
+    async (what) => {
+      if (skip()) return;
+      seed(what === "clear");
+      const { p, release, asked } = await open(
+        what === "all" ? "read" : "clear",
+        what === "all" ? 3 : 5,
+      );
+      expect(await press(p, what, asked)).toBe("busy");
+      // Any repaint of the open panel: a project's colour shown is one.
+      await p.evaluate(() =>
+        window.dispatchEvent(new Event("den:project-colours-shown")),
+      );
+      const btn = p.locator(`#den-bell-pop [data-bell="${what}"]`);
+      expect({
+        busy: await btn.getAttribute("aria-busy"),
+        disabled: await btn.isDisabled(),
+        dots: await btn.locator('[aria-hidden="true"]').count(),
+        held: await held(p),
+      }).toEqual({ busy: "true", disabled: true, dots: 1, held: 1 });
+      await release(true);
+      await noneHeld(p);
+      await p.context().close();
+    },
+    60_000,
+  );
+});
+
 describe("Clear read (issue 1339)", () => {
   it("busy in the button and the read rows gone before the POST answers", async () => {
     if (skip()) return;

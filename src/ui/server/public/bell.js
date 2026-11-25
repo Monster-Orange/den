@@ -751,7 +751,13 @@ export function initBell(doc = document) {
     // patches in place), holds the new one when it isn't, and lets go of
     // the old: none is left held once the answer is in.
     const b = ui.busy ? pop.querySelector("[data-bell-held]") : null;
-    if (b !== heldBtn) {
+    // Issue 1524: the patch takes the drawn attributes and children, so a
+    // repaint takes the hold off the same button too (aria-busy, disabled,
+    // the dots): it is let go and held again. Letting go first keeps the
+    // kit's order: its release runs before the new hold.
+    const dropped =
+      b && b === heldBtn && b.getAttribute("aria-busy") !== "true";
+    if (b !== heldBtn || dropped) {
       letGo?.();
       heldBtn = b;
       letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
