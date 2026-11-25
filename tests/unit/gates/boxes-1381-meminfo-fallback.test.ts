@@ -194,18 +194,30 @@ describe("the box check says why memory is unknown", () => {
     }
   });
 
-  it("a hold file named in an ~ path is still found gone by its ls line", async () => {
-    const f = scripted({
-      sftp: {
-        file: LINUX_MEMINFO,
-        err: 'Can\'t ls: "/home/ci/~/den-capacity/hold" not found\n',
-      },
-    });
-    const r = await sftpProbe(f.start as never)(
+  // Issue 1597: sftp doesn't expand "~", so the check must never ask for
+  // a "~" path: it asks for the home-relative one, and a hold file there is
+  // held. (Before, it asked for "~/…", sftp said "not found" for
+  // "<home>/~/…", and a paused box read as open.)
+  it("a hold file named in an ~ path is asked for home-relative, and held when it is there", async () => {
+    const f = scripted({ sftp: { file: LINUX_MEMINFO, err: "" } });
+    let batch = "";
+    const start = (cmd: string) => {
+      const k = f.start(cmd);
+      const stdin = k.stdin as { end: (s?: string) => void };
+      const end = stdin.end;
+      stdin.end = (s?: string) => {
+        if (cmd === "sftp") batch = s ?? "";
+        end(s);
+      };
+      return k;
+    };
+    const r = await sftpProbe(start as never)(
       { ...BOX, hold_file: "~/den-capacity/hold" },
       2000,
     );
-    expect(r.state).toBe("open");
+    expect(batch).toMatch(/^-ls "den-capacity\/hold"$/m);
+    expect(batch).not.toContain("~");
+    expect(r.state).toBe("held");
   });
 
   it("an empty copy: unknown, came back empty", async () => {
