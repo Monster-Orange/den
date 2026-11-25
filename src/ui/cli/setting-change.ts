@@ -124,6 +124,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "github.watch_max_interval_seconds",
   "github.api_budget_floor",
   "github.watches_max",
+  // Issue 1166: how long a watch waits on no progress (a timing knob).
+  "github.watch_stale_minutes",
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
