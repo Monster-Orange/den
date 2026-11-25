@@ -135,7 +135,13 @@ import {
   writeBridgeState,
   type BridgeOutcome,
 } from "../../shared/edge/bridge-listen.js";
-import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
+import {
+  firstCheckDelay,
+  readCheckState as readCheckStateSync,
+  scheduleUpdateChecks,
+  tickBegun,
+  writeCheckState as writeCheckStateSync,
+} from "../../shared/update-check-state.js";
 import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
@@ -600,7 +606,15 @@ import {
   type ReportRouteDeps,
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
-import { publicRepoVisibility } from "./report-visibility.js";
+import { publicRepoVisibility, repoVisibilities } from "./report-visibility.js";
+import { orgMask, orgPatterns } from "../../shared/org-names.js";
+import {
+  filedTextHits,
+  filedTextRefusal,
+  needsFiledCheck,
+  type FiledHit,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -1423,6 +1437,7 @@ import {
 import {
   IssueWriteLimit,
   issueWriteSettings,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
 import {
@@ -1555,6 +1570,11 @@ import {
   checkProjectMode,
   checkProjectMcpAdd,
   runProjectMcpAdd,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  undoEventFeed,
   checkProjectMcpRemove,
   runProjectMcpRemove,
   checkProjectMcpUpdate,
@@ -2620,6 +2640,72 @@ const issueWriteLimit = new IssueWriteLimit();
  * project's GitHub repos (the catalog's gh, else the project's org), the
  * settings from user.yml, pr_close's gh call path (runGh), and the audit.
  */
+/**
+ * Issue 1127: a repo's visibility (null: not known) no older than
+ * `maxAgeMs`, through the cache Report uses (feedback.visibility_timeout_
+ * seconds and _retry_seconds).
+ */
+async function repoVisibilityFor(
+  repo: string,
+  maxAgeMs: number,
+): Promise<"public" | "private" | "internal" | null> {
+  const fb = reportRouteDeps().settings();
+  const vis = await repoVisibilities(getStateDir(), [repo], {
+    gh: (a) => runGh(a),
+    anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    ttlMs: maxAgeMs,
+    timeoutMs: fb.visibilityTimeoutSeconds * 1000,
+    retryMs: fb.visibilityRetrySeconds * 1000,
+  });
+  return vis[repo] ?? null;
+}
+
+/**
+ * Issue 1127: Report's listed-names check, as issue_write's: the listed
+ * names, the destination's visibility (agents.issue_writes_visibility_
+ * minutes old at most), then the refusal or null. A list file named but
+ * missing refuses: the check fails closed.
+ */
+async function reportWordsCheck(
+  repo: string,
+  texts: FiledText[],
+): Promise<{ error: string; hits: FiledHit[] } | null> {
+  let patterns: RegExp[];
+  try {
+    patterns = orgPatterns();
+  } catch {
+    // Fixed words: the error can quote a line of the list.
+    return {
+      error: "the names list can't be read; nothing was sent",
+      hits: [],
+    };
+  }
+  if (!patterns.length) return null;
+  let minutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  try {
+    minutes = issueWriteSettings(
+      () => readUserConfig(),
+      () => readDenConfig(),
+    ).visibilityMinutes;
+  } catch {
+    /* a wrong agents.* value: the default */
+  }
+  const vis = await repoVisibilityFor(repo, minutes * 60_000);
+  if (!needsFiledCheck(vis)) return null;
+  const hits = filedTextHits(texts, patterns, repo);
+  return hits.length ? { error: filedTextRefusal(hits), hits } : null;
+}
+
+/** Issue 1127: Den's own report sections, with listed names masked. */
+function reportMaskListed(text: string): string {
+  try {
+    return orgMask(text, orgPatterns());
+  } catch {
+    // An unreadable list: the person's check refuses the send anyway.
+    return text;
+  }
+}
+
 function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
   return {
     agentOf: (id) => {
@@ -2663,6 +2749,11 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    // Issue 1127: the listed names, and the repo's visibility through the
+    // cache Report uses (feedback.visibility_timeout_seconds and
+    // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
+    namePatterns: () => orgPatterns(),
+    visibility: repoVisibilityFor,
     audit: (e) => {
       try {
         recordAction(
@@ -4760,6 +4851,9 @@ function reportRouteDeps(): ReportRouteDeps {
       ),
     stateDir: () => getStateDir(),
     gh: runGh,
+    // Issue 1127: listed names, before a report is filed.
+    wordsCheck: reportWordsCheck,
+    maskListed: reportMaskListed,
     names: () => {
       const w = readWebUrl();
       let webHost: string | undefined;
@@ -5247,6 +5341,15 @@ function approvalDeps(): ApprovalDeps {
     projectMcpUpdate: {
       check: (a, who) => checkProjectMcpUpdate(agentWebDeps(), a, who),
       run: (a) => runProjectMcpUpdate(agentWebDeps(), a),
+    },
+    // Issue 1480: an agent asks to add or remove an app's event feed.
+    eventFeedAdd: {
+      check: (a, who) => checkEventFeedAdd(agentWebDeps(), a, who),
+      run: (a, asked) => runEventFeedAdd(agentWebDeps(), a, asked),
+    },
+    eventFeedRemove: {
+      check: (a, who) => checkEventFeedRemove(agentWebDeps(), a, who),
+      run: (a) => runEventFeedRemove(agentWebDeps(), a),
     },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
@@ -6299,7 +6402,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     agent_issue_writes: (() => {
       try {
         const c = issueWriteSettings(() => user, readDenConfig);
-        return { roles: c.roles, per_hour: c.perHour };
+        return {
+          roles: c.roles,
+          per_hour: c.perHour,
+          visibility_minutes: c.visibilityMinutes,
+        };
       } catch {
         return null;
       }
@@ -10160,7 +10267,7 @@ async function handleRequest(
   //                             language? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
-  //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
+  //   shell: { pins, collapsed, hidden, order, folded, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
@@ -10217,7 +10324,10 @@ async function handleRequest(
     if (notAPersonOf(req) || fixturePersonOf(req))
       return sendJson(
         res,
-        { ok: false, error: "only a person can undo a setting change" },
+        {
+          ok: false,
+          error: "only a person can undo a change made without asking",
+        },
         403,
       );
     let id = "";
@@ -10233,6 +10343,18 @@ async function handleRequest(
       return send400(res, "approval: the held write's id");
     const a = approvalDeps().queue.get(id);
     if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    // Issue 1480: an event feed added or removed without asking.
+    if (a.action.startsWith("project_event_feed_")) {
+      const u = undoEventFeed(agentWebDeps(), a);
+      if (!u.ok) return sendJson(res, { ok: false, error: u.error }, 409);
+      auditConfig({ verb: "config-write", detail: `undo: ${u.note}` });
+      try {
+        notificationDeps().store.dropUndo(id);
+      } catch {
+        /* the bell is best effort: the change is undone */
+      }
+      return sendJson(res, { ok: true, note: u.note });
+    }
     const r = undoSettingChange(
       settingChangeDeps({
         userFile: userConfigPath(),
@@ -12220,11 +12342,13 @@ function startUpdateCheck(): void {
     return;
   }
   const everyMinutes = Math.round(every / 60_000);
+  const startedAt = Date.now();
+  const before = readCheckStateSync(getStateDir());
+  const firstMs = firstCheckDelay(before, every, startedAt);
   // SRV-P6: doctor and Settings say the last pass and the next.
   const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
     void import("./update-check.js")
       .then((m) => {
-        // At a start, the pass before the restart stays the last one.
         const was = last ?? m.readCheckState(getStateDir())?.last;
         m.writeCheckState(getStateDir(), {
           everyMinutes,
@@ -12235,7 +12359,16 @@ function startUpdateCheck(): void {
       .catch(() => {
         /* best effort: doctor says "no check yet" */
       });
-  noteState();
+  try {
+    writeCheckStateSync(getStateDir(), {
+      everyMinutes,
+      next:
+        firstMs === null ? null : new Date(startedAt + firstMs).toISOString(),
+      ...(before?.last ? { last: before.last } : {}),
+    });
+  } catch {
+    /* best effort: doctor says "no check yet" */
+  }
   // #142: an update ask for a version this Den already runs (or passed)
   // is done with.
   try {
@@ -12291,6 +12424,19 @@ function startUpdateCheck(): void {
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
+    try {
+      writeCheckStateSync(
+        getStateDir(),
+        tickBegun(
+          readCheckStateSync(getStateDir()),
+          everyMinutes,
+          every,
+          Date.now(),
+        ),
+      );
+    } catch {
+      /* best effort: doctor says "no check yet" */
+    }
     try {
       const u = await import("./den-update.js");
       const { updateCheck } = await import("./update-check.js");
@@ -12556,7 +12702,16 @@ function startUpdateCheck(): void {
     }
   };
   let check: import("./update-check.js").UpdateCheck | undefined;
-  setInterval(() => void tick(), every).unref();
+  scheduleUpdateChecks({
+    every,
+    prev: before,
+    now: startedAt,
+    tick: () => void tick(),
+    timers: {
+      once: (fn, ms) => void setTimeout(fn, ms).unref(),
+      every: (fn, ms) => void setInterval(fn, ms).unref(),
+    },
+  });
   // #176: just after an update to this version, one pass as soon as the
   // watch says it is verified ("good"), so the pin is committed and pushed
   // then, not a whole interval later. Bounded by the watch's own wait.

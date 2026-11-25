@@ -236,7 +236,9 @@ async function openForm(sec) {
 }
 
 async function act(ws, verb, id, button) {
-  button.disabled = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     const out = await api(
       "POST",
@@ -266,7 +268,11 @@ async function act(ws, verb, id, button) {
       );
     else window.denShell?.errorToast?.(err);
   }
-  await refresh(ws);
+  try {
+    await refresh(ws);
+  } finally {
+    void release();
+  }
 }
 
 async function start(ws, form) {
