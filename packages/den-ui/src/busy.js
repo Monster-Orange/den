@@ -339,8 +339,8 @@ const held = new Map();
  * submit) stops here, at the window in the capture phase, before the
  * page's own click listeners. A capture listener on window that a page
  * added before busy.js loaded still runs first, and pointerdown,
- * mousedown and keydown still reach the page (Den's handlers listen on
- * click). Den's shell (shell.js) and dialog.js's fallback hold the same
+ * mousedown and keydown still reach the page (its handlers listen on
+ * click). A host's own early hold and dialog.js's fallback use the same
  * way and stop the same clicks before the kit has loaded.
  */
 const isHeld = (n) =>
@@ -388,7 +388,7 @@ function holdButton(b, on, dots) {
     if (h.name == null) b.removeAttribute("aria-label");
     return;
   }
-  // Held already by Den's shell or the dialog before the kit loaded
+  // Held already by the host or the dialog before the kit loaded
   // (aria-busy too): that aria-disabled is the hold's, the kit's to clear.
   // The page's own aria-disabled (no aria-busy) stays.
   if (!holding.has(b)) {

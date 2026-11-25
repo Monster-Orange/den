@@ -116,7 +116,9 @@ export function wireRestartNow(root, o) {
   // Issue 1434: a button that goes once it's done hands the keyboard's
   // focus to the status line it leaves behind.
   const removeTo = (b, line) => {
-    const had = b.contains(document.activeElement);
+    // No document (a unit test's fake page): no focus to move.
+    const active = globalThis.document?.activeElement;
+    const had = !!active && !!b.contains?.(active);
     b.remove();
     if (!had || !line) return;
     if (!line.hasAttribute("tabindex")) line.setAttribute("tabindex", "-1");

@@ -16,7 +16,7 @@
  * Playwright server instead of a local browser. Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import type { Browser, Locator, Page, Route } from "playwright";
+import type { Browser, Page, Route } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
@@ -175,16 +175,20 @@ async function open(
  * Issue 1524: the button is held (aria-busy and aria-disabled; issue 1434:
  * never disabled, so it keeps focus) once the click's handler has run,
  * which may be after click() returns: wait for it, never read it once.
+ * By selector on every poll: the bell draws the held button anew.
  */
-async function heldNow(p: Page, btn: Locator): Promise<void> {
-  const h = await btn.elementHandle();
+async function heldNow(p: Page, sel: string): Promise<void> {
   await p.waitForFunction(
-    (b) =>
-      !!b &&
-      b.getAttribute("aria-busy") === "true" &&
-      b.getAttribute("aria-disabled") === "true" &&
-      !(b as HTMLButtonElement).disabled,
-    h,
+    (s) => {
+      const b = document.querySelector(s);
+      return (
+        !!b &&
+        b.getAttribute("aria-busy") === "true" &&
+        b.getAttribute("aria-disabled") === "true" &&
+        !(b as HTMLButtonElement).disabled
+      );
+    },
+    sel,
     { timeout: 10_000 },
   );
 }
@@ -197,7 +201,7 @@ describe("Mark all read (issue 1339)", () => {
     expect(await count(p, UNREAD)).toBe(3);
     const btn = p.locator('#den-bell-pop [data-bell="all"]');
     await btn.click();
-    await heldNow(p, btn);
+    await heldNow(p, '#den-bell-pop [data-bell="all"]');
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
@@ -246,7 +250,7 @@ describe("Clear read (issue 1339)", () => {
     const { p, release } = await open("clear", 5);
     const btn = p.locator('#den-bell-pop [data-bell="clear"]');
     await btn.click();
-    await heldNow(p, btn);
+    await heldNow(p, '#den-bell-pop [data-bell="clear"]');
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
