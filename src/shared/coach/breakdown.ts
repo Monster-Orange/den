@@ -25,6 +25,7 @@ import type { TranscriptStats } from "../usage/transcript.js";
 import type { CoachFinding } from "./findings.js";
 import { askMetrics, type AskMetrics, type AskStats } from "./asks.js";
 import type { ConversationWhy } from "../agents/conversation-history.js";
+import { mapLimited } from "../map-limited.js";
 
 const DAY_MS = 86_400_000;
 
@@ -157,25 +158,8 @@ export interface CoachOptions {
 /** Transcripts read at once: many agents, each with many, would run out of file handles. */
 const MINE_AT_ONCE = 8;
 
-/** `fn` over `items`, at most `limit` at a time; results in `items`' order. */
-export async function mapLimited<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return out;
-}
+/** Moved to shared/map-limited.ts (issue 237); kept here for its importers. */
+export { mapLimited };
 
 /** The breakdown for `records` over the window ending now. */
 export async function coachBreakdown(

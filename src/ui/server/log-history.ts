@@ -20,7 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFile, spawn, spawnSync } from "child_process";
 
-import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
+import { findServiceContainerAsync } from "../../shared/environment-manager/service-container.js";
 import { hasRunningOpctlContainers } from "../../shared/environment-manager/service-runner.js";
 import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import { checkServiceHealth } from "../../shared/environment-manager/health.js";
@@ -135,7 +135,11 @@ export async function resolveHistorySource(
 
   // 1. The service's container: its compose stack's, else opctl's
   //    conventional one (opctl_<base>_<hash>).
-  const conventional = findServiceContainer(repoName, repoPath, svcName);
+  const conventional = await findServiceContainerAsync(
+    repoName,
+    repoPath,
+    svcName,
+  );
   if (conventional) return { kind: "docker", container: conventional };
 
   // 2. Container named by the manifest log command's docker ps filter.

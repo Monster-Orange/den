@@ -194,6 +194,28 @@ export function findConventionalContainer(
   } catch {
     return null;
   }
+  return pickConventionalContainer(running, repoName, repoPath, subsystem);
+}
+
+/** Issue 237: findConventionalContainer, without blocking (the web server). */
+export async function findConventionalContainerAsync(
+  repoName: string,
+  repoPath?: string,
+  subsystem?: string,
+): Promise<string | null> {
+  const running = await runningDockerNamesAsync();
+  return running
+    ? pickConventionalContainer(running, repoName, repoPath, subsystem)
+    : null;
+}
+
+/** The conventional container among `running` (no docker call). */
+export function pickConventionalContainer(
+  running: readonly string[],
+  repoName: string,
+  repoPath?: string,
+  subsystem?: string,
+): string | null {
   const declared = repoPath ? devOpContainerNames(repoPath) : [];
   // Only candidates with NAME AFFINITY to the request — a blind scan of the
   // declared list would hand a sidecar (e.g. shop-postgres) to an api

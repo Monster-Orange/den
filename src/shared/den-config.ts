@@ -400,6 +400,11 @@ export interface UserConfig {
    */
   health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
   /**
+   * Issue 237: git_reads.at_once (default 16, 1 to 64): how many git
+   * processes the server runs at once for a page's repo reads. git-reads.ts.
+   */
+  git_reads?: { at_once?: unknown };
+  /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
    */

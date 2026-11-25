@@ -11,7 +11,9 @@ jest.mock("fs");
 jest.mock("child_process");
 jest.mock("../../../src/shared/environment-manager/opctl.js", () => ({
   findConventionalContainer: jest.fn(),
+  pickConventionalContainer: jest.fn(),
   runningDockerNames: jest.fn(),
+  runningDockerNamesAsync: jest.fn(),
 }));
 jest.mock("../../../src/shared/environment-manager/service-runner.js", () => ({
   resolveService: jest.fn(),
@@ -35,8 +37,8 @@ import * as fs from "fs";
 import { EventEmitter } from "events";
 import { execFile, spawn, spawnSync } from "child_process";
 import {
-  findConventionalContainer,
-  runningDockerNames,
+  pickConventionalContainer,
+  runningDockerNamesAsync,
 } from "../../../src/shared/environment-manager/opctl.js";
 import {
   resolveService,
@@ -53,11 +55,13 @@ import {
   pruneDeadSnapshots,
 } from "../../../src/ui/server/log-history.js";
 
-const mockFind = findConventionalContainer as jest.MockedFunction<
-  typeof findConventionalContainer
+// Issue 237: the server's lookup reads docker without blocking
+// (runningDockerNamesAsync), then picks among the names.
+const mockFind = pickConventionalContainer as jest.MockedFunction<
+  typeof pickConventionalContainer
 >;
-const mockDockerNames = runningDockerNames as jest.MockedFunction<
-  typeof runningDockerNames
+const mockDockerNames = runningDockerNamesAsync as jest.MockedFunction<
+  typeof runningDockerNamesAsync
 >;
 const mockResolve = resolveService as jest.MockedFunction<
   typeof resolveService
@@ -95,6 +99,7 @@ beforeEach(() => {
     mode: "dev-managed",
   } as never);
   mockLogPath.mockReturnValue("/home/.den/logs/shop/db.log");
+  mockDockerNames.mockResolvedValue([]);
 });
 
 // ── isSafeServiceName ─────────────────────────────────────────────────────────
@@ -167,7 +172,7 @@ describe("resolveHistorySource", () => {
       services: { webapp: {}, backend: {} },
       compose: { routes: { app: "frontend:80" } },
     } as never);
-    mockDockerNames.mockReturnValue([
+    mockDockerNames.mockResolvedValue([
       "webapp-main-frontend-1",
       "webapp-main-backend-1",
     ]);
