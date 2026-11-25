@@ -65,12 +65,15 @@ import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
 
 // The state file and doctor's line live in src/shared (the CLI reads them).
 export {
+  firstCheckDelay,
   readCheckState,
+  scheduleUpdateChecks,
   selfUpdateSummary,
   tickText,
   updateCheckFile,
   writeCheckState,
   type CheckState,
+  type CheckTimers,
   type UpdateTick,
 } from "../../shared/update-check-state.js";
 

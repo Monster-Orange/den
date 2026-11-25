@@ -135,7 +135,11 @@ import {
   writeBridgeState,
   type BridgeOutcome,
 } from "../../shared/edge/bridge-listen.js";
-import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
+import {
+  firstCheckDelay,
+  readCheckState as readCheckStateSync,
+  scheduleUpdateChecks,
+} from "../../shared/update-check-state.js";
 import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
@@ -12219,6 +12223,9 @@ function startUpdateCheck(): void {
     return;
   }
   const everyMinutes = Math.round(every / 60_000);
+  const startedAt = Date.now();
+  const before = readCheckStateSync(getStateDir());
+  const firstMs = firstCheckDelay(before, every, startedAt);
   // SRV-P6: doctor and Settings say the last pass and the next.
   const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
     void import("./update-check.js")
@@ -12227,7 +12234,12 @@ function startUpdateCheck(): void {
         const was = last ?? m.readCheckState(getStateDir())?.last;
         m.writeCheckState(getStateDir(), {
           everyMinutes,
-          next: every ? new Date(Date.now() + every).toISOString() : null,
+          next:
+            firstMs === null
+              ? null
+              : new Date(
+                  last ? Date.now() + every : startedAt + firstMs,
+                ).toISOString(),
           ...(was ? { last: was } : {}),
         });
       })
@@ -12555,7 +12567,16 @@ function startUpdateCheck(): void {
     }
   };
   let check: import("./update-check.js").UpdateCheck | undefined;
-  setInterval(() => void tick(), every).unref();
+  scheduleUpdateChecks({
+    every,
+    prev: before,
+    now: startedAt,
+    tick: () => void tick(),
+    timers: {
+      once: (fn, ms) => void setTimeout(fn, ms).unref(),
+      every: (fn, ms) => void setInterval(fn, ms).unref(),
+    },
+  });
   // #176: just after an update to this version, one pass as soon as the
   // watch says it is verified ("good"), so the pin is committed and pushed
   // then, not a whole interval later. Bounded by the watch's own wait.
