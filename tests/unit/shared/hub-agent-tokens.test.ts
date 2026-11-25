@@ -1038,6 +1038,64 @@ describe("issue 249: no live token left behind (security review)", () => {
   });
 });
 
+describe("issue 249: a token outlives its agent record only to be revoked (security review)", () => {
+  const store = (stateDir: string, rec: { exists: boolean; rid: string }) =>
+    new HubAgentTokens({
+      stateDir: () => stateDir,
+      settings: settings(),
+      agentExists: () => rec.exists,
+      recordIdOf: () => (rec.exists ? rec.rid : undefined),
+    });
+
+  it("a removed agent's token its unbind never marked (the write failed): the retry revokes it, as at each start", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    const rec = { exists: true, rid: "rec-one" };
+    const b = store(stateDir, rec);
+    const h = { url: hub.url, token: INSTALL };
+    await b.tokenFor(h, { id: "ada", name: "Ada", workspace: "north" });
+    rec.exists = false;
+    expect(readAgentHubToken(stateDir, "ada")?.revokePending).toBeUndefined();
+    expect(b.hasWaiting()).toBe(true);
+    expect(await b.retryPending(h)).toEqual({ revoked: 1, failed: 0 });
+    expect(hub.live.size).toBe(0);
+    expect(readAgentHubToken(stateDir, "ada")).toBeNull();
+    expect(b.hasWaiting()).toBe(false);
+  });
+
+  it("an agent made again with a removed one's id never gets its token: that one is revoked, a new one minted", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    const rec = { exists: true, rid: "rec-one" };
+    const b = store(stateDir, rec);
+    const h = { url: hub.url, token: INSTALL };
+    const a = { id: "ada", name: "Ada", workspace: "north" };
+    const first = await b.tokenFor(h, a);
+    const firstId = readAgentHubToken(stateDir, "ada")!.tokenId;
+    expect(readAgentHubToken(stateDir, "ada")!.recordId).toBe("rec-one");
+    rec.rid = "rec-two";
+    const second = await b.tokenFor(h, a);
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+    expect(hub.live.has(firstId)).toBe(false);
+    expect(readAgentHubToken(stateDir, "ada")!.recordId).toBe("rec-two");
+  });
+
+  it("the retry revokes a token minted for an earlier record of that id, before the new agent calls Hub", async () => {
+    const hub = await fakeHub();
+    const stateDir = tmp();
+    const rec = { exists: true, rid: "rec-one" };
+    const b = store(stateDir, rec);
+    const h = { url: hub.url, token: INSTALL };
+    await b.tokenFor(h, { id: "ada", name: "Ada", workspace: "north" });
+    rec.rid = "rec-two";
+    expect(b.hasWaiting()).toBe(true);
+    expect(await b.retryPending(h)).toEqual({ revoked: 1, failed: 0 });
+    expect(hub.live.size).toBe(0);
+    expect(readAgentHubToken(stateDir, "ada")).toBeNull();
+  });
+});
+
 describe("issue 249: the settings, with permissive defaults", () => {
   it("hub.agent_tokens on, retry every 600 s, rotation every 30 days (0: never)", () => {
     const c = readHubConfig(
