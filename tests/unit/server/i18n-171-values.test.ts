@@ -312,7 +312,7 @@ describe("issue 188: Environments, a check that got no answer", () => {
     ["en", "No answer: is it running?", `${url} didn't answer.`],
     ["es", "Sin respuesta: ¿está en marcha?", `${url} no respondió.`],
     ["ja", "応答なし: 起動していますか?", `${url} が応答しませんでした。`],
-  ] as const)(
+  ] as Array<[Parameters<typeof installShell>[0], string, string]>)(
     "%s: its own line, never 'fetch failed'",
     async (lang, cell, head) => {
       installShell(lang);
