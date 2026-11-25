@@ -6585,6 +6585,7 @@ function wireRestartResult(box, ctx) {
   wireRestartNow(box, {
     api: (...a) => ctx.shell.api(...a),
     busyAction: ctx.shell.busyAction?.bind(ctx.shell),
+    holdDots: (b) => window.denShell?.holdDots?.(b),
     t: (k, v) => ctx.shell.t(k, v),
   });
 }
