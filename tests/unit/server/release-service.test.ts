@@ -833,6 +833,81 @@ describe("deploy — gh can't read a run (issue 129)", () => {
     expect(texts().join("\n")).toContain("HTTP 401: Bad credentials");
   });
 
+  it("a token split by color codes is redacted too", async () => {
+    mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 1 }));
+    const half = "A1b2C3d4".repeat(3);
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    unreadable(
+      "111",
+      `\x1b[31mHTTP 401\x1b[0m: token ghp_${half}\x1b[1m${half}\x1b[0m`,
+    );
+    await runDeploy([entry("files-api", 0)]);
+    const all = JSON.stringify(events);
+    expect(all).not.toContain(half);
+    expect(all).not.toContain("\\u001b");
+    expect(texts().join("\n")).toContain("HTTP 401: token [REDACTED]");
+  });
+
+  it("a rate limit doesn't count: past the limit it keeps polling, warns once, and the deploy goes on", async () => {
+    mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 2 }));
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    let n = 0;
+    routes.push({
+      match: "run view 111 --repo TestOrg/files-api",
+      out: () => {
+        if (++n <= 6)
+          throw new Error(
+            n % 2
+              ? "HTTP 403: API rate limit exceeded for user ID 1."
+              : "HTTP 429: You have exceeded a secondary rate limit.",
+          );
+        return "completed\tsuccess\thttps://u/111";
+      },
+    });
+    deployRoutes("shop", "222");
+    const ok = await runDeploy([entry("files-api", 0), entry("shop", 1)]);
+    expect(ok).toBe(true);
+    expect(views("111")).toBe(7);
+    expect(ghCalls().some((c) => c.includes("run view 222"))).toBe(true);
+    const warns = events.filter(
+      (e) =>
+        e.type === "log" &&
+        (e as { level?: string }).level === "warn" &&
+        /rate-limited/.test((e as { text: string }).text),
+    );
+    expect(warns).toHaveLength(1);
+    expect(doneEv()?.summary).toBe("All 2 deployment(s) succeeded.");
+  });
+
+  it("a rate limit that names its reset time waits until then", async () => {
+    mockReadReleaseConfig.mockReturnValue(
+      cfg({ unreadablePolls: 2, pollSeconds: 15 }),
+    );
+    const start = Date.now();
+    const reset = Math.floor(start / 1000) + 600;
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    let n = 0;
+    const at: number[] = [];
+    routes.push({
+      match: "run view 111 --repo TestOrg/files-api",
+      out: () => {
+        at.push(Date.now());
+        if (++n === 1)
+          throw new Error(
+            `HTTP 403: API rate limit exceeded (x-ratelimit-reset: ${reset})`,
+          );
+        return "completed\tsuccess\thttps://u/111";
+      },
+    });
+    const ok = await runDeploy([entry("files-api", 0)]);
+    expect(ok).toBe(true);
+    expect(at[1] - at[0]).toBeGreaterThanOrEqual(590_000);
+    expect(texts().join("\n")).toMatch(/rate-limited.*until/);
+  });
+
   it("an unreadable run in an early wave cancels the later waves", async () => {
     mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 2 }));
     on("workflow run cd.yml --repo TestOrg/files-api", "");

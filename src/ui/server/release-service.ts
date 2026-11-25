@@ -206,17 +206,40 @@ async function gh(
   return stdout.trim();
 }
 
-/** gh's own last line of why a call failed, short (issue 129). */
-function ghReason(e: unknown): string {
+// Terminal escapes (ESC = 0x1b): a control character, on purpose.
+// eslint-disable-next-line no-control-regex
+const ESCAPES_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]/g;
+
+/** gh's error text, plain (issue 129). */
+function ghText(e: unknown): string {
   const err = e as { stderr?: unknown; message?: unknown };
   const text =
     (typeof err?.stderr === "string" && err.stderr.trim()) ||
     (typeof err?.message === "string" ? err.message : "") ||
     "gh failed";
+  return text.replace(ESCAPES_RE, "");
+}
+
+/**
+ * gh's own last line of why a call failed: plain, redacted, then cut to
+ * 200 characters, so the cut never splits a secret past the redactor.
+ */
+function ghReason(text: string): string {
   const last = redactSecrets(
     text.trim().split("\n").filter(Boolean).pop() ?? "gh failed",
   );
   return last.length > 200 ? `${last.slice(0, 200)}…` : last;
+}
+
+/**
+ * Issue 129: GitHub's rate limit (403 or 429), which every agent on one
+ * account shares and which can last an hour. `resetAt` (ms) when gh's text
+ * names the reset (x-ratelimit-reset).
+ */
+function ghRateLimit(text: string): { resetAt?: number } | null {
+  if (!/rate limit|HTTP 429/i.test(text)) return null;
+  const m = /x-ratelimit-reset:?\s*(\d{9,11})/i.exec(text);
+  return m ? { resetAt: Number(m[1]) * 1000 } : {};
 }
 
 /** Like gh() but returns "" instead of throwing — for best-effort reads. */
@@ -907,6 +930,7 @@ export class ReleaseService {
     conclusion: string | null;
     url: string;
     unreadable?: string;
+    rateLimited?: { resetAt?: number };
   }> {
     const ghSlug = this.slug(repo, cfg);
     let row: string;
@@ -923,11 +947,14 @@ export class ReleaseService {
         '[.status, (.conclusion // ""), .url] | @tsv',
       ]);
     } catch (e) {
+      const text = ghText(e);
+      const rl = ghRateLimit(text);
       return {
         status: "unknown",
         conclusion: null,
         url: "",
-        unreadable: ghReason(e),
+        unreadable: ghReason(text),
+        ...(rl ? { rateLimited: rl } : {}),
       };
     }
     const [status = "unknown", conclusion = "", url = ""] = row.split("\t");
@@ -952,10 +979,13 @@ export class ReleaseService {
     const limit = cfg.unreadablePolls ?? DEFAULT_UNREADABLE_POLLS;
     const misses = new Map<string, number>();
     const gaveUp = new Set<string>();
+    let limitedWarned = false;
     // eslint-disable-next-line no-constant-condition
     while (true) {
       if (aborted()) return failed;
       let allTerminal = true;
+      let waitUntil = 0;
+      let limitedNow = false;
       failed.length = 0;
 
       for (const [repo, runId] of runIds) {
@@ -975,11 +1005,26 @@ export class ReleaseService {
           failed.push(repo);
           continue;
         }
-        const { status, conclusion, url, unreadable } = await this.runStatus(
-          repo,
-          runId,
-          cfg,
-        );
+        const { status, conclusion, url, unreadable, rateLimited } =
+          await this.runStatus(repo, runId, cfg);
+        if (rateLimited) {
+          limitedNow = true;
+          allTerminal = false;
+          if (rateLimited.resetAt)
+            waitUntil = Math.max(waitUntil, rateLimited.resetAt);
+          if (!limitedWarned) {
+            limitedWarned = true;
+            const until = rateLimited.resetAt
+              ? ` until ${new Date(rateLimited.resetAt).toISOString()}`
+              : "";
+            emit({
+              type: "log",
+              level: "warn",
+              text: `gh is rate-limited (${unreadable}): polling goes on${until}, and these polls don't count toward release.unreadablePolls.`,
+            });
+          }
+          continue;
+        }
         if (unreadable !== undefined) {
           const n = (misses.get(repo) ?? 0) + 1;
           misses.set(repo, n);
@@ -1018,7 +1063,11 @@ export class ReleaseService {
       }
 
       if (allTerminal) return failed;
-      await abortableDelay(cfg.pollSeconds * 1000, aborted);
+      if (!limitedNow) limitedWarned = false;
+      await abortableDelay(
+        Math.max(cfg.pollSeconds * 1000, waitUntil - Date.now()),
+        aborted,
+      );
     }
   }
 
