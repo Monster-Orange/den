@@ -35,6 +35,9 @@ const PAGES = [
   "/logs",
   "/settings",
 ] as const;
+/** Where the wheel turns: the main area (the rail is 233 px wide at 1280,
+ *  a drawer below 720). */
+const WHEEL_AT = { x: (w: number) => (w > 720 ? 760 : w / 2), y: 400 };
 const browsers: Partial<Record<(typeof BROWSERS)[number], Browser>> = {};
 let tmp = "";
 let port = 0;
@@ -89,7 +92,12 @@ async function bandUnderDock(
   b: Browser,
   url: string,
   width: number,
-): Promise<{ settled: number; wheeled: number }> {
+): Promise<{
+  settled: number;
+  wheeled: number;
+  /** #den-content's scrollTop and the window's scrollY, before and after. */
+  scroll: { before: [number, number]; after: [number, number] };
+}> {
   const ctx = await b.newContext({ viewport: { width, height: 800 } });
   try {
     await signIn(
@@ -106,17 +114,34 @@ async function bandUnderDock(
         const r = document.getElementById("den-dock")!.getBoundingClientRect();
         return Math.round((window.innerHeight - r.bottom) * 10) / 10;
       });
+    const scrolls = () =>
+      p.evaluate((): [number, number] => [
+        Math.round(document.getElementById("den-content")!.scrollTop),
+        Math.round(window.scrollY),
+      ]);
     const settled = await band();
-    await p.mouse.move(width / 2, 400);
+    const before = await scrolls();
+    // Over the page's main area, below the top bar and right of the rail.
+    await p.mouse.move(WHEEL_AT.x(width), WHEEL_AT.y);
     for (let i = 0; i < 6; i++) await p.mouse.wheel(0, 2000);
-    // Two frames: the wheel's scroll has been applied and laid out.
-    await p.evaluate(
-      () =>
-        new Promise<void>((r) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => r())),
-        ),
+    // Settled: two equal readings of both scroll positions in a row
+    // (WebKit's smooth scroll can still be moving after a frame or two).
+    await p.waitForFunction(
+      () => {
+        const w = window as unknown as { __scroll283?: string };
+        const now = `${document.getElementById("den-content")!.scrollTop}|${window.scrollY}`;
+        const same = w.__scroll283 === now;
+        w.__scroll283 = now;
+        return same;
+      },
+      undefined,
+      { polling: 150 },
     );
-    return { settled, wheeled: await band() };
+    return {
+      settled,
+      wheeled: await band(),
+      scroll: { before, after: await scrolls() },
+    };
   } finally {
     await ctx.close();
   }
@@ -134,6 +159,12 @@ describe("issue 283: the Runs bar sits at the window's bottom edge", () => {
           const worst =
             Math.abs(m.settled) >= Math.abs(m.wheeled) ? m.settled : m.wheeled;
           seen[url] = Math.abs(worst) <= 0.5 ? 0 : worst;
+          // The wheel case isn't vacuous: on a long page the wheel scrolls
+          // the main area, and never the window.
+          if (url === "/settings") {
+            expect(m.scroll.after[0]).toBeGreaterThan(m.scroll.before[0]);
+            expect(m.scroll.after[1]).toBe(0);
+          }
         }
         expect(seen).toEqual(Object.fromEntries(PAGES.map((u) => [u, 0])));
       }, 180_000);
