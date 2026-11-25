@@ -1263,6 +1263,7 @@ const sudo = {
 export async function unlockWith(password, { saveToVault = false } = {}) {
   if (!password) return { ok: false, error: t("lock.wrong") };
   try {
+    // busy-ok: its caller, the lock form's submit, holds Unlock with the kit's dots
     const r = await fetch("/api/sudo-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1316,6 +1317,7 @@ export function askSudo(need = {}) {
       const loaded = await getJson(
         "/api/sudo-password/load-from-vault",
         { ok: false },
+        // busy-ok: an automatic try before the lock form opens; no button yet
         { method: "POST" },
       );
       if (loaded.ok) return settleSudo(true);

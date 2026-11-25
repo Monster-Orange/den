@@ -44,9 +44,6 @@
     "tests/unit/server/settings-gate-lock-1395.integration.test.ts": [
       "src/shared/gates/settings-set.ts"
     ],
-    "tests/unit/server/runs-bar-band-283.browser.test.ts": [
-      "src/ui/server/public/shell.js"
-    ],
     "tests/unit/server/web-log-1344.integration.test.ts": [
       "src/shared/web-log-file.ts"
     ],
@@ -811,6 +808,9 @@
       "src/shared/agents/guardrails/gate-route.mjs",
       "src/shared/agents/guardrails/pretooluse.mjs",
       "src/ui/cli/gate-command.ts"
+    ],
+    "tests/unit/server/runs-bar-band-283.browser.test.ts": [
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [],
@@ -2080,6 +2080,7 @@
         "tests/unit/den-ui/kit-route.test.ts",
         "tests/unit/server/accent-pairs.test.ts",
         "tests/unit/server/appearance-ui.test.ts",
+        "tests/unit/server/busy-button-sweep-1054.test.ts",
         "tests/unit/server/busy-dots-sweep.test.ts",
         "tests/unit/server/busy-names-registered.test.ts",
         "tests/unit/server/busy-writes-ratchet.test.ts",
