@@ -10,6 +10,12 @@
  *   denials          permission denials a day at or over the threshold
  *   transcript_size  the window's transcripts at or over the size limit (D76)
  *
+ * Slice T-c (TUNE-5, counted; asks.ts), each with up to three samples:
+ *   ask_r12       too few of its asks to a person pass the plain-writing rule
+ *   ask_wait      its asks wait long for a person's answer
+ *   msg_repeat    it sends other agents the same text again and again
+ *   msg_no_reply  most of its sends to other agents get no reply
+ *
  * Thresholds are agents.coach.findings (settings.ts). Dismiss records the
  * reason, who and when (`coach/dismissed.json`, 0600); a dismissed
  * finding stays out of the open list on later runs. A finding's id is
@@ -21,13 +27,28 @@ import * as path from "path";
 import { writePrivate } from "../agents/records.js";
 import type { CoachAgentRow, CoachReport, CoachWindow } from "./breakdown.js";
 import type { FindingThresholds } from "./settings.js";
+import { replied, sendKey } from "./asks.js";
 
 export type FindingKind =
   | "subagent_opus"
   | "polling"
   | "no_rotation"
   | "denials"
-  | "transcript_size";
+  | "transcript_size"
+  | "ask_r12"
+  | "ask_wait"
+  | "msg_repeat"
+  | "msg_no_reply";
+
+/** One instance a person can check: an ask or a message. */
+export interface FindingSample {
+  /** ISO 8601. */
+  at: string;
+  /** Its words, cut short, secrets out. */
+  text: string;
+  /** What was wrong with it (none: []). */
+  problems: string[];
+}
 
 export interface CoachFinding {
   /** `<kind>:<agent id>`. */
@@ -42,16 +63,23 @@ export interface CoachFinding {
   /** What a person could do (never applied in this phase). */
   proposal: string;
   window: CoachWindow;
+  /** Up to three instances, for the T-c findings. */
+  samples?: FindingSample[];
 }
 
 const MB = 1024 * 1024;
+const MAX_SAMPLES = 3;
+const sample = (at: number, text: string, problems: string[] = []) => ({
+  at: new Date(at).toISOString(),
+  text,
+  problems,
+});
 
 function findingsOf(
   a: CoachAgentRow,
   t: FindingThresholds,
   window: CoachWindow,
 ): CoachFinding[] {
-  if (!a.metrics) return [];
   const who = `${a.agent} (${a.workspace})`;
   const out: CoachFinding[] = [];
   const add = (
@@ -59,6 +87,7 @@ function findingsOf(
     title: string,
     evidence: Record<string, number>,
     proposal: string,
+    samples?: FindingSample[],
   ) =>
     out.push({
       id: `${kind}:${a.agent}`,
@@ -69,7 +98,10 @@ function findingsOf(
       evidence,
       proposal,
       window,
+      ...(samples ? { samples: samples.slice(0, MAX_SAMPLES) } : {}),
     });
+  asksFindings(a, t, who, add);
+  if (!a.metrics) return out;
   const subCalls = Object.values(a.models?.subagent ?? {}).reduce(
     (n, c) => n + c,
     0,
@@ -118,6 +150,83 @@ function findingsOf(
       "Rotate it, or have it save screenshots to files instead of keeping them in its conversation.",
     );
   return out;
+}
+
+type Add = (
+  kind: FindingKind,
+  title: string,
+  evidence: Record<string, number>,
+  proposal: string,
+  samples?: FindingSample[],
+) => void;
+
+/** Slice T-c: its asks to a person and its messages to other agents. */
+function asksFindings(
+  a: CoachAgentRow,
+  t: FindingThresholds,
+  who: string,
+  add: Add,
+): void {
+  if (!a.asks) return;
+  const m = a.asks.metrics;
+  // A saved report keeps no stats (run.ts strips them): no samples then.
+  const stats = a.asks.stats ?? { asks: [], sends: [], received: [] };
+  if (m.asks >= t.min_asks && m.ask_r12_pass_pct < t.ask_r12_pass_pct)
+    add(
+      "ask_r12",
+      `${who}: ${m.ask_r12_pass_pct}% of its ${m.asks} asks to a person are plain (the plain-writing rule).`,
+      { asks: m.asks, ask_r12_pass_pct: m.ask_r12_pass_pct },
+      "Tighten its persona's ask rules: short sentences, every ID explained, each decision a numbered yes/no question.",
+      stats.asks
+        .filter((x) => x.problems.length)
+        .map((x) => sample(x.at, x.text, x.problems)),
+    );
+  const answered = m.asks - m.asks_unanswered;
+  if (answered >= t.min_asks && m.ask_wait_min >= t.ask_wait_min)
+    add(
+      "ask_wait",
+      `${who}'s asks wait ${m.ask_wait_min} minutes for an answer, at the median.`,
+      { asks: m.asks, ask_wait_min: m.ask_wait_min },
+      "Check whether another agent owns these answers, so the person isn't asked; or batch the asks.",
+      stats.asks
+        .filter((x) => x.answeredAt !== undefined)
+        .sort((x, y) => y.answeredAt! - y.at - (x.answeredAt! - x.at))
+        .map((x) => sample(x.at, x.text)),
+    );
+  if (t.sends_repeated > 0 && m.sends_repeated >= t.sends_repeated) {
+    // The same text to the same agent, as askMetrics counts it.
+    const count = new Map<string, number>();
+    for (const s of stats.sends)
+      count.set(sendKey(s), (count.get(sendKey(s)) ?? 0) + 1);
+    const top = [...stats.sends]
+      .filter(
+        (s, i, all) => all.findIndex((x) => sendKey(x) === sendKey(s)) === i,
+      )
+      .filter((s) => (count.get(sendKey(s)) ?? 0) > 1)
+      .sort(
+        (x, y) => (count.get(sendKey(y)) ?? 0) - (count.get(sendKey(x)) ?? 0),
+      );
+    add(
+      "msg_repeat",
+      `${who} sent other agents the same text again ${m.sends_repeated} times.`,
+      { sends: m.sends, sends_repeated: m.sends_repeated },
+      "Find out why it resends: a missed reply, or a loop. Say it once, and wait to be told.",
+      top.map((s) => sample(s.at, `to ${s.to}: ${s.text}`)),
+    );
+  }
+  const noReplyPct = m.sends
+    ? Math.round((m.sends_no_reply / m.sends) * 100)
+    : 0;
+  if (m.sends >= t.min_sends && noReplyPct >= t.sends_no_reply_pct)
+    add(
+      "msg_no_reply",
+      `${who}: ${noReplyPct}% of its ${m.sends} messages to other agents got no reply.`,
+      { sends: m.sends, sends_no_reply: m.sends_no_reply },
+      "Check it sends to the agent that owns the answer, and that the other agent reads its messages.",
+      stats.sends
+        .filter((s) => !replied(s, stats.received))
+        .map((s) => sample(s.at, `to ${s.to}: ${s.text}`)),
+    );
 }
 
 /** Every counted finding in `report`, agent by agent. */

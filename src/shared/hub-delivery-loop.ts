@@ -32,6 +32,8 @@ import {
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
+  toolsHeldAck,
+  ACK_HELD_FEATURE,
   TROUBLE_TEXT,
   troubleOf,
   type AckState,
@@ -69,6 +71,12 @@ export interface DeliveryAgents {
    * screen, a held Allow, a pause), or null: mid-turn.
    */
   why?(agent: string): Promise<HeldCode | null>;
+  /**
+   * Issue 750: whether the agent's Hub tools loaded at its last start:
+   * false when its Hub MCP connect failed since (it can't answer in Hub);
+   * null when Den doesn't know. Hub's deliveries wait for it while false.
+   */
+  hubTools?(agent: string): boolean | null;
 }
 
 /** Issue 664: why an agent's held text waits, when Den knows. */
@@ -85,6 +93,10 @@ export const HELD_CODES = [
   "stopped",
   "owner",
   "unread",
+  // Issue 1311: its person's unsent draft is on its input line.
+  "draft",
+  // Issue 750: its Hub tools failed to load; Hub hears hub_tools_unavailable.
+  "hub_tools",
 ] as const;
 export type HeldCode = (typeof HELD_CODES)[number];
 
@@ -100,6 +112,9 @@ export const HELD_WORDS: Record<HeldCode, string> = {
   stopped: "the agent isn't running; typed when it next runs",
   owner: "still asking Hub who its person is; typed once Hub answers",
   unread: "couldn't read the agent's state in time; trying again",
+  draft:
+    "its person is typing a message to it; typed once they send or clear it",
+  hub_tools: "its Hub tools didn't load; typed once it restarts",
 };
 
 /**
@@ -119,6 +134,12 @@ const LATE = Symbol("late");
 export interface DeliveryLoopDeps {
   hub: DeliveryHub;
   agents: DeliveryAgents;
+  /**
+   * Issue 750: whether Hub lists `deliveries.ack_held` (whoami features):
+   * a delivery held for an agent without Hub tools is acked `held`, else
+   * `queued`, with reason hub_tools_unavailable.
+   */
+  ackHeld?: () => boolean;
   /**
    * Who the agent's person is in Hub, or null while Den doesn't know yet
    * (Hub didn't answer). Null holds deliveries: a person's edit request
@@ -623,7 +644,7 @@ export class DeliveryLoop {
         await this.ack(
           dv.id,
           st,
-          st === "queued" && why ? { reason: why } : {},
+          (st === "queued" || st === "held") && why ? { reason: why } : {},
         );
       return;
     }
@@ -943,14 +964,26 @@ export class DeliveryLoop {
         return;
       } else return;
     }
-    const q = this.queue.get(agent);
-    if (!q?.length) {
+    const waiting = this.queue.get(agent);
+    if (!waiting?.length) {
       this.queue.delete(agent);
       return;
     }
     if (s === "stopped") {
-      await this.ackHeld(q, "stopped");
+      await this.ackHeld(waiting, "stopped");
       return;
+    }
+    // Issue 750: its Hub tools didn't load: Hub's deliveries wait (it
+    // couldn't answer them in Hub) and Hub hears why; Den's own items go on.
+    let q = waiting;
+    let toolsHeld: Delivery[] = [];
+    if (this.d.agents.hubTools?.(agent) === false) {
+      toolsHeld = waiting.filter((dv) => !dv.id.startsWith(LOCAL_PREFIX));
+      if (toolsHeld.length) {
+        await this.ackHeld(toolsHeld, "hub_tools");
+        q = waiting.filter((dv) => dv.id.startsWith(LOCAL_PREFIX));
+        if (!q.length) return;
+      }
     }
     if (s !== "idle") {
       let why: HeldCode | null = null;
@@ -1007,8 +1040,10 @@ export class DeliveryLoop {
             `${batch.length} ${relayed ? "messages" : "Hub comments"}:`,
             ...texts,
           ].join("\n\n---\n\n");
-    // Claim them before the paste: the queue keeps only what comes after.
-    if (rest.length) this.queue.set(agent, rest);
+    // Claim them before the paste: the queue keeps only what comes after
+    // (issue 750: and what waits for its Hub tools).
+    const keep = [...toolsHeld, ...rest];
+    if (keep.length) this.queue.set(agent, keep);
     else this.queue.delete(agent);
     this.typing.add(agent);
     let typed = false;
@@ -1072,9 +1107,26 @@ export class DeliveryLoop {
    * Issue 701: tell Hub why these wait (`queued`, with the reason in
    * plain words), once per reason. Den's own items have no ack.
    */
+  /**
+   * Issue 1311: how many items wait for agent `agent` on its person's
+   * unsent draft (0 when something else holds them, or nothing does).
+   */
+  waitingOnDraft(agent: string): number {
+    if (this.heldCode.get(agent) !== "draft") return 0;
+    const q = this.queue.get(agent) ?? [];
+    // Issue 750: Hub's items wait on its tools, not on the draft.
+    return this.d.agents.hubTools?.(agent) === false
+      ? q.filter((dv) => dv.id.startsWith(LOCAL_PREFIX)).length
+      : q.length;
+  }
+
   private async ackHeld(q: Delivery[], code: HeldCode): Promise<void> {
     if (q[0]) this.heldCode.set(q[0].agent, code);
-    const reason = HELD_WORDS[code];
+    // Issue 750: no Hub tools: `held` to a Hub that takes it, else `queued`.
+    const { state, reason } =
+      code === "hub_tools"
+        ? toolsHeldAck(this.d.ackHeld?.() ? [ACK_HELD_FEATURE] : [])
+        : { state: "queued" as const, reason: HELD_WORDS[code] };
     for (const dv of q)
       if (this.heldLogged.get(dv.id) !== code) {
         this.heldLogged.set(dv.id, code);
@@ -1084,7 +1136,7 @@ export class DeliveryLoop {
       if (dv.id.startsWith(LOCAL_PREFIX)) continue;
       if (this.heldReason.get(dv.id) === reason) continue;
       this.heldReason.set(dv.id, reason);
-      await this.ack(dv.id, "queued", { reason });
+      await this.ack(dv.id, state, { reason });
     }
   }
 

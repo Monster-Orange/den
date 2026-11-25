@@ -23,6 +23,7 @@ import {
   SERVER_AGENT_ID,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /**
  * SRV-1a/1b: the setting that runs an agent's den_restart or den_update
@@ -44,6 +45,36 @@ export function selfUpdateAutoAllow(
     auto()
     ? "server_agent.self_update: auto"
     : null;
+}
+
+/**
+ * Den Builder's call (issue 1391): an explicit server_agent.self_update:
+ * ask (in user.yml, or the org's not yet copied) is the person's own say:
+ * a restart asks on a personal install too. Unset, personal restarts
+ * routinely.
+ */
+export function explicitRestartAsk(c: {
+  selfUpdate: "ask" | "auto";
+  selfUpdateFrom: "user" | "org" | "default";
+}): boolean {
+  return c.selfUpdate === "ask" && c.selfUpdateFrom !== "default";
+}
+
+/**
+ * Issue 1403 (Den Builder): den_update follows server_agent.self_update as
+ * den_restart does. For either, an explicit ask (or a config that can't
+ * be read) asks on a personal install too; other writes never.
+ */
+export function selfUpdateAsks(
+  action: string,
+  read: () => Parameters<typeof explicitRestartAsk>[0],
+): boolean {
+  if (action !== "den_restart" && action !== "den_update") return false;
+  try {
+    return explicitRestartAsk(read());
+  } catch {
+    return true;
+  }
 }
 
 export interface RestartMarker {
@@ -77,9 +108,7 @@ export function restartMarkerPath(stateDir: string): string {
 export function writeRestartMarker(stateDir: string, m: RestartMarker): void {
   const p = restartMarkerPath(stateDir);
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-  const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(m) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(p, JSON.stringify(m) + "\n", { mode: 0o600 });
 }
 
 /**

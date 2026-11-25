@@ -19,6 +19,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export const SERVER_KEY_PREFIX = "den_sk_";
 const KEY_RE = /^den_sk_([0-9a-f]{16})_[A-Za-z0-9_-]{43}$/;
@@ -127,11 +128,9 @@ export class ServerKeys {
 
   private write(keys: Stored[]): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify({ keys }, null, 2)}\n`, {
+    writeFileAtomic(this.file, `${JSON.stringify({ keys }, null, 2)}\n`, {
       mode: 0o600,
     });
-    fs.renameSync(tmp, this.file);
   }
 
   /** A new key for `g`. The key is returned here only, never again. */

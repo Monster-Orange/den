@@ -37,6 +37,7 @@ import {
   type StoredEvent,
 } from "../../shared/app-feed-reader.js";
 import type { Delivery } from "../../shared/hub-delivery.js";
+import { feedAddressLocal } from "../../shared/agents/feed-address.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 
 export interface AppFeedLimits {
@@ -70,6 +71,11 @@ export interface AppFeedServiceDeps {
   bell(n: Parameters<NotificationStore["add"]>[0]): void;
   stateDir: string;
   fetch?: typeof fetch;
+  /**
+   * Issue 1480: whether a url names this machine or a private network now
+   * (default: resolved by the system), for a public_only feed's connect.
+   */
+  addressLocal?: (url: string) => Promise<boolean>;
   log?: (line: string) => void;
   retryMs?: { first: number; max: number };
   now?: () => number;
@@ -163,8 +169,8 @@ export class FileFeedStore implements FeedStore {
     const seq = Math.max(this.lastSeq(), this.meta.read) + 1;
     const h = kh(key);
     const f = `${seq}-${h}-${ev.bytes === null ? "x" : ev.bytes}.json`;
-    fs.writeFileSync(path.join(this.dir, f), JSON.stringify({ seq, ...ev }), {
-      flag: "wx",
+    writeFileAtomic(path.join(this.dir, f), JSON.stringify({ seq, ...ev }), {
+      exclusive: true,
       mode: 0o600,
     });
     this.seqs.push(seq);
@@ -360,6 +366,22 @@ export class AppFeeds {
     headers: Record<string, string>,
     signal?: AbortSignal,
   ): Promise<{ res: Response; bearer: string | null }> {
+    // Issue 1480: a feed checked public when it was added is resolved
+    // again before each connect: one whose name now gives a private
+    // address is never opened (nor sent its bearer).
+    if (feed.publicOnly) {
+      let local = true;
+      try {
+        local = await (this.d.addressLocal ?? feedAddressLocal)(url);
+      } catch {
+        local = true;
+      }
+      if (local)
+        throw failure(
+          undefined,
+          "its address now names this machine or a private network, so Den won't open it: a person adds it again to allow that",
+        );
+    }
     const bearer = await this.auth(feed);
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
     let res: Response;

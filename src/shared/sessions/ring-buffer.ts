@@ -10,6 +10,7 @@
  * that off.
  */
 import * as fs from "fs";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const DEFAULT_SCROLLBACK_BYTES = 2 * 1024 * 1024;
 
@@ -142,7 +143,7 @@ export class ScrollbackLog {
     try {
       if (this.written + data.length > 2 * this.ring.capacity) {
         const all = this.ring.snapshot();
-        fs.writeFileSync(this.file, all, { mode: 0o600 });
+        writeFileAtomic(this.file, all, { mode: 0o600 });
         this.written = all.length;
       } else {
         fs.appendFileSync(this.file, data, { mode: 0o600 });
