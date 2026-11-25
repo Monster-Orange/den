@@ -14,7 +14,7 @@
  * It is read from the base's tree, so a change can't move it. In a PR's merge commit, pass --base HEAD^1.
  * A ratchet rule counts lines across the change: its module's count(src, path) lists them, summed over the files
  * the change touched at the base (from the newer of the merge base and "since") and at HEAD. It fails when the sum
- * rises. A new file is not counted: it starts at its own count. A deleted file's count comes off. A file with a
+ * rises. A new file counts from 0, so a block moved into one still passes. A deleted file's count comes off. A file with a
  * side that can't be read (binary, over 2 MB) is left out. A rule marked opt_in runs only when
  * the base's .guardrail-lint.json lists its id in "on". Ratchets judge only with --base.
  * Exit 0 clean, 1 on a hit, 2 on a usage, config or git error. Plain Node, no dependencies.
@@ -139,15 +139,15 @@ export function addedLines(root, base) {
 
 /**
  * A ratchet rule over a change's touched files, [{ path, base, head }] with null for a side the file is missing
- * from: one hit when the count across them rose. A file with no base side (a new file) starts at its own count.
+ * from: one hit when the count across them rose. A file with no base side (a new file) counts from 0.
  */
 export function ratchetCompare(rule, files) {
   let was = 0;
   let now = 0;
   const rows = [];
   for (const f of files) {
-    if (f.base === null || !rule.globs.some((g) => g.test(f.path))) continue;
-    const b = rule.count(f.base, f.path).length;
+    if (!rule.globs.some((g) => g.test(f.path))) continue;
+    const b = f.base === null ? 0 : rule.count(f.base, f.path).length;
     const lines = f.head === null ? [] : rule.count(f.head, f.path);
     was += b;
     now += lines.length;
@@ -157,7 +157,7 @@ export function ratchetCompare(rule, files) {
   rows.sort((x, y) => y.d - x.d);
   const top = rows[0];
   const each = rows.map((r) => `${r.path} ${r.d > 0 ? "+" : ""}${r.d}`).join(", ");
-  return [{ rule, path: top.path, line: top.lines[0] ?? 0, text: `${was} -> ${now} across the files this change changed, new files aside (${each})` }];
+  return [{ rule, path: top.path, line: top.lines[0] ?? 0, text: `${was} -> ${now} across the files this change touched (${each})` }];
 }
 
 /** The touched files of a change, both sides, for the ratchet rules: [{ path, base, head }]. */
