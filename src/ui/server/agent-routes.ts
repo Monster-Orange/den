@@ -120,7 +120,10 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
-import { rememberOperatorShell } from "../../shared/test-operator.js";
+import {
+  rememberOperatorShell,
+  testBedOnly,
+} from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import {
@@ -144,7 +147,8 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
-  askAboutJob,
+  restartMany,
+  restartStateOf,
   staleAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -186,6 +190,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentFolder,
   setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
@@ -236,6 +241,7 @@ import {
   agentPrincipalOf,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
   operatorActOf,
   personOrOperator,
   principalOf,
@@ -281,7 +287,7 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|file|say|order))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|folder|file|say|order))?$/;
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
@@ -675,6 +681,31 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 750: this install's groups from Hub, for the By group view.
+  if (pathname === "/api/hub/groups") {
+    const m = await import("./hub-groups-routes.js");
+    return m.hubGroupsRoute(req, res, await m.defaultHubGroupsDeps());
+  }
+  // Issue 646: Connect's one review: a row per project, Connect and link all.
+  if (pathname === "/api/hub/connect-review") {
+    const [rv, audit, guard] = await Promise.all([
+      import("./hub-connect-review.js"),
+      import("./audit.js"),
+      import("./request-guard.js"),
+    ]);
+    return rv.hubReviewRoute(
+      req,
+      res,
+      await rv.defaultHubReviewDeps((line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+      ),
+      `Settings › Hub, Connect's review (${guard.principalOf(req) ?? "person"})`,
+    );
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");
@@ -844,6 +875,7 @@ export async function handleAgentRoutes(
     | "compacting-clear"
     | "link"
     | "move"
+    | "folder"
     | "restart"
     | "file"
     | "say"
@@ -1000,24 +1032,43 @@ export async function handleAgentRoutes(
     );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Issue 1407: its restart too, and a
+    // test install's fixture person's restart. Any other agent: refused,
+    // as a person-only act is. Checked before the 404 below, so an id
+    // that doesn't exist answers the same 403: they can't learn which
+    // agents are there. Never the server agent's.
+    const opAct = operatorActOf(req);
+    const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    if (
+      opAct === "agent-say" ||
+      opAct === "agent-relaunch" ||
+      opAct === "agent-restart" ||
+      fixtureRestart
+    ) {
+      let marked = false;
+      try {
+        marked =
+          id !== undefined &&
+          !isServerScope(ws) &&
+          agentRecord(d, id, ws).testBed === true;
+      } catch {
+        marked = false;
+      }
+      if (!marked)
+        throw new AgentError(
+          opAct === "agent-say"
+            ? "only a person can send an agent a message"
+            : opAct === "agent-relaunch"
+              ? "only a person can relaunch an agent"
+              : "only a person can restart an agent",
+          { status: 403 },
+        );
+    }
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    // Issue 956: the test operator's message and relaunch reach only the
-    // bed's own agents, those Den marked when it started them on the
-    // test-person path (issue 943). Any other agent: refused, as a
-    // person-only act is.
-    const opAct = operatorActOf(req);
-    if (
-      (opAct === "agent-say" || opAct === "agent-relaunch") &&
-      (id === undefined || agentRecord(d, id, ws).testBed !== true)
-    )
-      throw new AgentError(
-        opAct === "agent-say"
-          ? "only a person can send an agent a message"
-          : "only a person can relaunch an agent",
-        { status: 403 },
-      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -1045,8 +1096,13 @@ export async function handleAgentRoutes(
         "only a person can change an agent's mode (an agent asks with agent_mode)",
         { status: 403 },
       );
-    // D44: a restart is the person's (it stops a session).
-    if (verb === "restart" && (agent || actor))
+    // D44: a restart is the person's (it stops a session). Issue 1407: and
+    // the test operator's, for the bed's own agents only (checked above).
+    if (
+      verb === "restart" &&
+      !fixtureRestart &&
+      !personOrOperator(req, "agent-restart")
+    )
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
@@ -1055,6 +1111,13 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can move an agent", {
         status: 403,
       });
+    // Issue 1182: an agent asks for a folder with the held write
+    // agent_folder; this route is the person's.
+    if (verb === "folder" && (agent || actor))
+      throw new AgentError(
+        "only a person can change an agent's folder (an agent asks with agent_folder)",
+        { status: 403 },
+      );
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
     if (verb === "say" && !personOrOperator(req, "agent-say"))
@@ -1443,16 +1506,25 @@ export async function handleAgentRoutes(
         });
       what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
       if (when === "after-turn") {
-        // 0.4.48: a job it left running is asked about first (job_running).
-        await askAboutJob(d, id!, ws);
+        // Issue 1407: where it stands first, never a silent wait. A job it
+        // left running (job_running, with what it runs and how long) or a
+        // turn Den can't read (turn_unknown) is the person's: Restart now.
+        const plan = await restartStateOf(d, id!, ws);
+        if (plan.state === "job")
+          throw new AgentError(
+            `agent ${id}: a background job it started is still running (${plan.job?.command ?? "?"}, ${plan.job?.minutes ?? 0} min). Restart now ends the job.`,
+            { status: 409, code: "job_running", job: plan.job },
+          );
+        if (plan.state === "unknown")
+          throw new AgentError(
+            `agent ${id}: Den can't tell when its turn ends, so it can't wait for it. Restart it now instead.`,
+            { status: 409, code: "turn_unknown" },
+          );
         // It may wait for a long turn: answer now, audit when it's done.
-        void restartAgent(
-          d,
-          id!,
-          ws,
-          "after-turn",
-          deps.personaWait ?? {},
-        ).then(
+        void restartAgent(d, id!, ws, "after-turn", {
+          ...(deps.personaWait ?? {}),
+          jobStops: true,
+        }).then(
           (s) =>
             audit(
               restarted(what, s) + onSignIn(s.rec),
@@ -1461,7 +1533,11 @@ export async function handleAgentRoutes(
           (e: unknown) =>
             audit(what, e instanceof Error ? e.message : String(e)),
         );
-        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        sendJson(
+          res,
+          { ok: true, agent: id, pending: true, state: plan.state },
+          202,
+        );
         return true;
       }
       const s = await restartAgent(d, id!, ws, "now");
@@ -1479,6 +1555,33 @@ export async function handleAgentRoutes(
             ? { note: FRESH_NOTE }
             : {},
       );
+    } else if (verb === "folder") {
+      // Issue 1182: {repo} or {folder}: a stopped agent's folder.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "repo" && k !== "folder")
+          throw new AgentError(
+            `${k}: unknown field (folder takes repo or folder)`,
+            { usage: true },
+          );
+      const repo = typeof body.repo === "string" ? body.repo : undefined;
+      const folder = typeof body.folder === "string" ? body.folder : undefined;
+      if ((repo === undefined) === (folder === undefined))
+        throw new AgentError("folder takes repo or folder, one of them", {
+          usage: true,
+        });
+      const rec = setAgentFolder(d, id!, ws, {
+        ...(repo !== undefined ? { repo } : {}),
+        ...(folder !== undefined ? { folder } : {}),
+      });
+      what = `set ${rec.id}'s folder to ${rec.cwd} in ${ws}`;
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        cwd: rec.cwd,
+        ...(rec.repo ? { repo: rec.repo, project: rec.project } : {}),
+      });
     } else if (verb === "move") {
       // D72: {to, when}: to another workspace, same conversation.
       const body = await jsonBody(req);
@@ -1529,7 +1632,13 @@ export async function handleAgentRoutes(
       sendJson(res, { ok: true, removed });
     } else {
       // D28: a due agent under auto relaunches from its handoff instead.
-      const r = await resumeOrRelaunch(d, id!, ws);
+      // Issue 1129: one waiting in the restart queue leaves it and starts
+      // now, ahead of the rest (a person opened it); never twice.
+      const run = () => resumeOrRelaunch(d, id!, ws);
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const r = (await (restartQueue().openNow(id!, run) ?? run())) as Awaited<
+        ReturnType<typeof resumeOrRelaunch>
+      >;
       if (r.kind === "relaunched") {
         what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
         audit(what, r.s.early ? "exited at once" : undefined);
@@ -2174,6 +2283,8 @@ export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
   by: "start" | "held" = "start",
+  /** Issue 1403: a routine host_restart: never wait and cut a turn. */
+  o: { idleOnly?: boolean } = {},
 ): Promise<
   import("../../shared/sessions/host-refresh.js").RefreshResult | null
 > {
@@ -2194,7 +2305,13 @@ export async function refreshTerminalHost(
   if (hostRefreshing) return null; // Issue 731: one at a time
   hostRefreshing = true;
   try {
-    return await refreshAndReport(d, log, { waitS, note, checkS, by });
+    return await refreshAndReport(d, log, {
+      waitS,
+      note,
+      checkS,
+      by,
+      idleOnly: o.idleOnly === true,
+    });
   } finally {
     hostRefreshing = false;
   }
@@ -2220,7 +2337,13 @@ export function hostRefreshFailedLine(why: string): string {
 async function refreshAndReport(
   d: AgentsResolved,
   log: (line: string) => void,
-  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+  o: {
+    waitS: number;
+    note: boolean;
+    checkS: number;
+    by: "start" | "held";
+    idleOnly?: boolean;
+  },
 ): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
   const { refreshSessionHost, HOST_RESTART_NOTE } =
     await import("../../shared/sessions/host-refresh.js");
@@ -2283,6 +2406,7 @@ async function refreshAndReport(
     ended: (ids) => endedAfterHostRestart(d, ids),
     checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
+    ...(o.idleOnly ? { idleOnly: true } : {}),
   });
   const endedAt = new Date().toISOString();
   if (r.did === "failed") {
@@ -2605,9 +2729,15 @@ export function startAgentUpkeep(
         log(`  ⚠ ${(e as Error).message}`);
       }
       const hubUp = await hubAnswers();
+      // Issue 1129: a batch at a time (agents.resume), never all at once.
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const { notificationDeps: bell } =
+        await import("./notification-service.js");
+      const queue = restartQueue({ log, store: () => bell().store });
       const f = await markInterrupted(d, {
         restoreAll,
         ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+        queue,
       });
       if (f.withoutHub.length) {
         log(
@@ -2832,6 +2962,11 @@ async function rotationRoute(
           { usage: true },
         );
     const out = setRotationSetting(d, body);
+    // Issue 1391: agents may read the trail, and this row holds no free
+    // text. setRotationSetting throws before it on anything unchecked: a
+    // scope from OVERRIDE_SCOPES or install, a name-shaped target, a key
+    // from ROTATE_KEYS, and a value checkRotateValue takes (1–100,
+    // "never", auto, ask, off, true, false) or null.
     recordAction(
       null,
       {
@@ -3019,11 +3154,13 @@ async function staleRoute(
       principalOf(req),
     );
   try {
-    if (agentPrincipalOf(req) || actor)
+    // Issue 1407: the test operator too, for the bed's own agents only.
+    const operator = operatorActOf(req) === "agents-restart-stale";
+    if (!personOrOperator(req, "agents-restart-stale"))
       throw new AgentError("only a person can restart agents", {
         status: 403,
       });
-    guard(actor);
+    if (!operator) guard(actor);
     const body = await jsonBody(req);
     for (const k of Object.keys(body))
       if (k !== "only")
@@ -3038,28 +3175,55 @@ async function staleRoute(
         `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
         { usage: true },
       );
-    const list = (await staleAgents(d, { fresh: true })).filter(
+    const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
         body.only !== "hub" ||
         a.stale.adds.length > 0 ||
         a.stale.drops.length > 0,
     );
+    // Before anything is restarted, checked or audited by name.
+    const list = operator
+      ? testBedOnly(all, (a) => {
+          try {
+            return agentRecord(d, a.id, a.workspace).testBed === true;
+          } catch {
+            return false;
+          }
+        })
+      : all;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
-        d,
-        a.id,
-        a.workspace,
-        "after-turn",
-        deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
-      );
-    }
-    sendJson(res, { ok: true, pending: list }, 202);
+    // Issue 1407: each agent is checked first and answered for: restarting
+    // now, after its turn, a background job (what, how long) or can't
+    // tell. Only the first two restart; the person decides the others
+    // (Restart now). How each restart ended reaches the trail.
+    const one = (id: string, ws: string) =>
+      `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
+    const plan = await restartMany(
+      d,
+      list.map((a) => ({ id: a.id, workspace: a.workspace })),
+      {
+        ...(deps.personaWait ?? {}),
+        onDone: (o) =>
+          o.outcome === "restarted"
+            ? audit(one(o.id, o.workspace))
+            : audit(
+                one(o.id, o.workspace),
+                o.outcome === "job"
+                  ? `a background job is still running (${o.job?.command ?? "?"}, ${o.job?.minutes ?? 0} min)`
+                  : (o.error ?? "not restarted"),
+              ),
+      },
+    );
+    for (const p of plan)
+      if (p.state === "job" || p.state === "unknown")
+        audit(
+          one(p.id, p.workspace),
+          p.state === "job"
+            ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
+            : "waits for the person: Den can't tell when its turn ends",
+        );
+    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);

@@ -127,8 +127,12 @@ describe("issue 609: a lost mark leaves a trace", () => {
   });
 
   it("never throws, even where it can't write", () => {
+    // A file where its folder would go: no write can succeed (issue 1356:
+    // inside the test's temp folder, never a real path).
+    const blocker = path.join(root, "a-file");
+    fs.writeFileSync(blocker, "");
     expect(() =>
-      recordLost("/nonexistent-609/x/y.jsonl", {
+      recordLost(path.join(blocker, "x", "y.jsonl"), {
         agent: "a",
         event: "waiting",
         reason: "no answer",

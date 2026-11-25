@@ -44,6 +44,7 @@ import {
 } from "../../../src/ui/cli/agents-command.js";
 import { agentSandboxInput } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 import {
   readAgentsConfig,
   type DenConfig,
@@ -125,6 +126,16 @@ function layout(name: string) {
 }
 
 describe("agentSandboxPolicy (issue 936)", () => {
+  it("issue 1391: a personal install's trail is read back inside the state dir, and never written", () => {
+    const l = layout("trail");
+    const p = agentSandboxPolicy({ ...l, trailReadable: true });
+    const trail = path.join(l.stateDir, "audit.jsonl");
+    expect(p.readableFiles).toContain(trail);
+    expect(
+      p.writable.some((w) => trail === w || trail.startsWith(w + path.sep)),
+    ).toBe(false);
+  });
+
   it("makes the state dir, config/local and the denied folders read-only", () => {
     const l = layout("policy");
     const p = agentSandboxPolicy(l);
@@ -350,9 +361,16 @@ describe("macProfile and bwrapArgs (issue 936)", () => {
 });
 
 describe("sandboxSetting (issue 936)", () => {
+  // Issue 1391: on a strict install. A personal one's default is below.
   it("is on unless the person turned it off, for all or for one agent", () => {
     const cfg = (agents: Record<string, unknown>) =>
-      readAgentsConfig({ agents: {} } as DenConfig, { agents } as UserConfig);
+      readAgentsConfig(
+        { agents: {} } as DenConfig,
+        {
+          install_mode: "strict",
+          agents,
+        } as UserConfig,
+      );
     expect(sandboxSetting(cfg({}), "a1")).toBe(true);
     expect(sandboxSetting(cfg({ sandbox: "off" }), "a1")).toBe(false);
     expect(sandboxSetting(cfg({ sandbox: false }), "a1")).toBe(false);
@@ -361,6 +379,15 @@ describe("sandboxSetting (issue 936)", () => {
     expect(
       sandboxSetting(cfg({ sandbox: "off", a1: { sandbox: "on" } }), "a1"),
     ).toBe(true);
+  });
+
+  it("is off on a personal install unless the person turned it on (issue 1391)", () => {
+    const cfg = (agents: Record<string, unknown>) =>
+      readAgentsConfig({ agents: {} } as DenConfig, { agents } as UserConfig);
+    expect(sandboxSetting(cfg({}), "a1")).toBe(false);
+    expect(sandboxSetting(cfg({ sandbox: "on" }), "a1")).toBe(true);
+    expect(sandboxSetting(cfg({ a1: { sandbox: "on" } }), "a1")).toBe(true);
+    expect(sandboxSetting(cfg({ a1: { sandbox: "on" } }), "a2")).toBe(false);
   });
 
   it("refuses a value that is not on or off", () => {
@@ -442,6 +469,20 @@ describe("sandboxFor (issue 936)", () => {
     expect(w.env).toEqual({ [AGENT_SANDBOX_ENV]: "1" });
   });
 
+  it("issue 1369: on macOS too, the session's writable state folders exist before it starts (the audit queue's)", () => {
+    const l = layout("wrap-mac-dirs");
+    fs.rmSync(path.join(l.stateDir, "audit"), { recursive: true, force: true });
+    const w = sandboxFor(["claude"], l, {
+      platform: "darwin",
+      on: true,
+      which: () => "/usr/bin/sandbox-exec",
+    });
+    expect(w.applied).toBe(true);
+    expect(fs.statSync(path.join(l.stateDir, "audit")).isDirectory()).toBe(
+      true,
+    );
+  });
+
   it("wraps with bwrap on Linux when bwrap is there", () => {
     const l = layout("wrap-linux");
     const w = sandboxFor(["claude"], l, {
@@ -513,6 +554,34 @@ const step = (name: string, cmd: string) =>
   `( ${cmd} ) >/dev/null 2>&1; echo ${name}=$?`;
 
 describe("an agent in bypass mode, in its sandbox (issue 936)", () => {
+  itReal(
+    "issue 1369: a den command's audit entry is kept: queued in the sandbox, readable outside it",
+    () => {
+      const l = layout("real-audit");
+      const script = path.join(l.base, "work", "audit-one.ts");
+      const repo = path.resolve(__dirname, "..", "..", "..");
+      fs.writeFileSync(
+        script,
+        `import { auditConfig } from ${JSON.stringify(path.join(repo, "src", "shared", "config-audit.ts"))};\n` +
+          `auditConfig({ verb: "agents", detail: "restart a1 in north: ok" }, process.argv[2]);\n`,
+      );
+      const tsx = path.join(repo, "node_modules", ".bin", "tsx");
+      const out = inSandbox(
+        l,
+        [
+          step("trail", `echo x >> ${l.stateDir}/audit.jsonl`),
+          step("den", `TSX_DISABLE_CACHE=1 ${tsx} ${script} ${l.stateDir}`),
+        ].join("; "),
+      );
+      // The file itself stays read-only: the entry goes to the queue.
+      expect(out).toMatch(/^trail=[1-9]/m);
+      expect(out).toMatch(/^den=0/m);
+      expect(readAuditRows(l.stateDir).map((r) => r.detail)).toEqual([
+        "restart a1 in north: ok",
+      ]);
+    },
+  );
+
   itReal(
     "can't change its own mode, the gate settings or the settings file",
     () => {

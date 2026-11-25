@@ -176,6 +176,20 @@ Held (each waits for the person's Allow):
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `agent_sandbox_set`: turn one agent's sandbox off or back on, with a
+  reason. Off runs only on the person's own Allow, and the Review says so
+  when an agent asks for itself; back on follows the policy. Den restarts
+  a running agent after its turn, on the same conversation.
+- `setting_change`: change one of Den's settings (`key`, `value`, a
+  `reason`) so the person never edits config/local/user.yml by hand. Den
+  checks the key and value first; a setting that widens what agents can
+  do runs only on the person's own Allow. One Den reads when it starts
+  says so: then ask for `den_restart_server`.
+- `gate_settings_set`: change this machine's gate slot settings
+  (`settings`, Settings › Gate's keys and values, and a `reason`), which
+  `setting_change` can't reach. Den checks every value first; on a
+  personal install it's written at once and the person is told; on a
+  strict one it follows their choice for Limits and performance.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.

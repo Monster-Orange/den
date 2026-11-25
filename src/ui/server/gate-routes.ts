@@ -57,21 +57,28 @@ import {
   RUNNER_NAME_RE,
   type RunnerTokens,
 } from "../../shared/gates/runner-tokens.js";
-import { checkBox, type GateBox } from "../../shared/gates/boxes.js";
 import {
-  browserSlotCheck,
+  boxCouldServe,
+  checkBox,
+  type GateBox,
+} from "../../shared/gates/boxes.js";
+import {
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { product } from "../../shared/product.js";
 import {
   GateFullError,
+  GateLockBusy,
   GatePriorityRefused,
+  gateLocked,
   type GateStore,
 } from "../../shared/gates/store.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
 import type { AskedBy } from "./approvals.js";
 import type { HeldOp } from "./held-actions.js";
+import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
@@ -106,7 +113,15 @@ export interface GateRouteDeps {
   runners?: () => RunnerTokens;
   /** Issue 621: how often a waiting ask looks again, ms (default 1000). */
   pollMs?: number;
+  /** Issue 1349: how long a route waits for the gate-slot lock (tests). */
+  lockWait?: { waitMs?: number; stepMs?: number };
 }
+
+/** Issue 1349: gateLocked with this route's wait. */
+const lockOf =
+  (d: Pick<GateRouteDeps, "lockWait">) =>
+  <T>(fn: () => T): Promise<T> =>
+    gateLocked(fn, d.lockWait);
 
 /** The largest body a gate route reads, bytes. */
 const BODY_MAX = 4096;
@@ -146,7 +161,17 @@ export function revokeRunner(
   id: unknown,
 ) {
   const v = d.runners?.().revoke(id) ?? null;
-  if (v) d.store().takeBackToken(v.id);
+  if (v) {
+    const store = d.store();
+    try {
+      store.takeBackToken(v.id);
+    } catch (e) {
+      if (!(e instanceof GateLockBusy)) throw e;
+      // Issue 1339: the lock is busy; take them back by timer. An ask in
+      // flight still answers 401 at its next look (the token is gone).
+      void gateLocked(() => store.takeBackToken(v.id)).catch(() => {});
+    }
+  }
   return v;
 }
 
@@ -209,21 +234,25 @@ async function askAndWait(
     reason?: string;
     where?: string;
     browserEndpoint?: string;
+    boxesOnly?: boolean;
   },
 ): Promise<void> {
   let e: GateEntry | null;
   try {
-    e = store.askRemote({
-      kind: a.kind,
-      who: `${d.title} · runner ${runner.name}`,
-      label: a.label,
-      estimateMin: a.est,
-      runner: runner.name,
-      tokenId: runner.id,
-      ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
-      ...(a.where ? { where: a.where } : {}),
-      ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
-    });
+    e = await lockOf(d)(() =>
+      store.askRemote({
+        kind: a.kind,
+        who: `${d.title} · runner ${runner.name}`,
+        label: a.label,
+        estimateMin: a.est,
+        runner: runner.name,
+        tokenId: runner.id,
+        ...(a.reason !== undefined ? { priority: { reason: a.reason } } : {}),
+        ...(a.where ? { where: a.where } : {}),
+        ...(a.browserEndpoint ? { browserEndpoint: a.browserEndpoint } : {}),
+        ...(a.boxesOnly ? { boxesOnly: true } : {}),
+      }),
+    );
   } catch (err) {
     if (err instanceof GatePriorityRefused)
       return sendJson(
@@ -260,24 +289,25 @@ async function askAndWait(
     looks++;
     e =
       looks % LOOKS_PER_RENEW === 0
-        ? store.renew(e.id, runner.id)
-        : (store.peek(e.id) ?? store.renew(e.id, runner.id));
+        ? await lockOf(d)(() => store.renew(e!.id, runner.id))
+        : (store.peek(e.id) ??
+          (await lockOf(d)(() => store.renew(e!.id, runner.id))));
   }
   if (!tokenLive(d, runner.id)) {
-    store.takeBackToken(runner.id);
+    await lockOf(d)(() => store.takeBackToken(runner.id));
     if (!closed) sendJson(res, REVOKED, 401);
     return;
   }
   // A caller that hung up never hears the slot's id: give it back.
   if (closed) {
-    if (e) store.releaseRemote(e.id, runner.id);
+    if (e) await lockOf(d)(() => store.releaseRemote(e!.id, runner.id));
     return;
   }
   if (!e) return sendJson(res, NO_SLOT, 410);
   // A cheap look may be stale: renew under the lock before answering.
-  const now = store.renew(e.id, runner.id);
+  const now = await lockOf(d)(() => store.renew(e!.id, runner.id));
   if (!now) return sendJson(res, NO_SLOT, 410);
-  return sendJson(res, standing(store, now));
+  return sendJson(res, await lockOf(d)(() => standing(store, now)));
 }
 
 async function handleRunnerRoute(
@@ -393,12 +423,15 @@ async function handleRunnerRoute(
     const rawEndpoint = body.browser_endpoint ?? body.browserEndpoint;
     const endpoint =
       rawEndpoint === undefined ? undefined : String(rawEndpoint).trim();
-    const verdict = browserSlotCheck({
+    const verdict = await browserSlotCheckOn(store, {
       kind,
       ...(endpoint !== undefined ? { endpoint } : {}),
       ...(typeof where === "string" ? { where } : {}),
-      platform: store.platform,
-      requiresContainer: store.settings().browserRequiresContainer,
+      // Issue 1198: a runner's "any" waits only for a box that could
+      // ever take it (its Playwright version isn't known here).
+      ...(where === "any"
+        ? { boxCouldServe: boxCouldServe(store.boxes(), undefined) }
+        : {}),
     });
     if (!verdict.ok)
       return sendJson(
@@ -441,6 +474,7 @@ async function handleRunnerRoute(
         ...(reason !== undefined ? { reason } : {}),
         ...(typeof where === "string" ? { where } : {}),
         ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
+        ...(verdict.boxesOnly ? { boxesOnly: true } : {}),
       });
     } finally {
       const n = (ASKING.get(runner.id) ?? 1) - 1;
@@ -452,11 +486,13 @@ async function handleRunnerRoute(
   if (!/^[a-z0-9-]{1,64}$/.test(id))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   if (pathname === "/api/gate-slots/renew") {
-    const e = store.renew(id, runner.id);
+    const e = await lockOf(d)(() => store.renew(id, runner.id));
     if (!e) return sendJson(res, NO_SLOT, 404);
-    return sendJson(res, standing(store, e));
+    // Issue 1349: standing() reads the queue under the lock too.
+    return sendJson(res, await lockOf(d)(() => standing(store, e)));
   }
-  if (!store.releaseRemote(id, runner.id)) return sendJson(res, NO_SLOT, 404);
+  if (!(await lockOf(d)(() => store.releaseRemote(id, runner.id))))
+    return sendJson(res, NO_SLOT, 404);
   return sendJson(res, { ok: true, released: true });
 }
 
@@ -559,7 +595,7 @@ async function handleBoxes(
   if (pathname === "/api/gate-slots/boxes") {
     const c = checkBox(body.box);
     if (!c.ok) return sendJson(res, { ok: false, error: c.error }, 400);
-    setTestBox(store, c.box, audit);
+    await lockOf(d)(() => setTestBox(store, c.box, audit));
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
   const name = typeof body.name === "string" ? body.name : "";
@@ -570,12 +606,13 @@ async function handleBoxes(
         { ok: false, error: "enabled is true or false" },
         400,
       );
-    if (!store.setBoxEnabled(name, body.enabled))
+    const on = body.enabled;
+    if (!(await lockOf(d)(() => store.setBoxEnabled(name, on))))
       return sendJson(res, { ok: false, error: "no such test box" }, 404);
     audit(`test box ${name} turned ${body.enabled ? "on" : "off"}`);
     return sendJson(res, { ok: true, boxes: store.boxes() });
   }
-  if (!removeTestBox(store, name, audit))
+  if (!(await lockOf(d)(() => removeTestBox(store, name, audit))))
     return sendJson(res, { ok: false, error: "no such test box" }, 404);
   return sendJson(res, { ok: true, boxes: store.boxes() });
 }
@@ -659,6 +696,32 @@ export async function handleGateRoutes(
   pathname: string,
   d: GateRouteDeps,
 ): Promise<void> {
+  try {
+    await gateRoute(req, res, pathname, d);
+  } catch (e) {
+    // Issue 1349: the gate-slot lock stayed held past the route's wait:
+    // busy, not broken, so a runner or the CLI tries again.
+    if (!(e instanceof GateLockBusy) || res.headersSent) throw e;
+    res.setHeader("Retry-After", "1");
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "gate_lock_busy",
+        error:
+          "The gate slots are busy (another run holds their lock). Try again.",
+      },
+      503,
+    );
+  }
+}
+
+async function gateRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: GateRouteDeps,
+): Promise<void> {
   // The runner token's routes (request-guard.ts RUNNER_ROUTES).
   if (
     pathname === "/api/gate-slots/ask" ||
@@ -680,7 +743,7 @@ export async function handleGateRoutes(
   if (pathname === "/api/gate-slots") {
     if (req.method !== "GET")
       return sendJson(res, { ok: false, error: "GET only" }, 405);
-    return sendJson(res, gateView(d.store()));
+    return sendJson(res, await lockOf(d)(() => gateView(d.store())));
   }
   if (pathname !== "/api/gate-slots/end")
     return sendJson(res, { ok: false, error: "no such route" }, 404);
@@ -701,7 +764,7 @@ export async function handleGateRoutes(
   if (!/^[a-z0-9-]{1,64}$/.test(id))
     return sendJson(res, { ok: false, error: "give the slot's id" }, 400);
   const by = `${d.title} · ${principalOf(req) ?? "a person in the browser"}`;
-  const row = d.store().endEarly(id, by);
+  const row = await lockOf(d)(() => d.store().endEarly(id, by));
   if (!row) return sendJson(res, { ok: false, error: "no such slot" }, 404);
   // This install's own record says who did it, and points to the slot
   // log's entry (the machine's record of the slot).
@@ -713,7 +776,10 @@ export async function handleGateRoutes(
     },
     principalOf(req),
   );
-  return sendJson(res, { ok: true, slots: gateView(d.store()).slots });
+  return sendJson(res, {
+    ok: true,
+    slots: (await lockOf(d)(() => gateView(d.store()))).slots,
+  });
 }
 
 /**
@@ -792,6 +858,8 @@ const endpointsText = (m: Record<string, string>) =>
 export function gateBoxOps(d: {
   store: () => GateStore;
   audit?: typeof recordAction;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  personal?: () => boolean;
 }): { set: HeldOp; remove: HeldOp } {
   const audit = (detail: string) =>
     (d.audit ?? recordAction)(null, { verb: "gate-box", detail });
@@ -840,14 +908,16 @@ export function gateBoxOps(d: {
         ],
       };
     },
-    run(a, asked) {
+    async run(a, asked) {
       try {
         const c = checkBox(a.box);
-        if (!c.ok) return Promise.resolve({ ok: false, error: c.error });
-        const b = setTestBox(d.store(), c.box, audit, by(asked));
-        return Promise.resolve({ ok: true, box: b });
+        if (!c.ok) return { ok: false, error: c.error };
+        const b = await gateLocked(() =>
+          setTestBox(d.store(), c.box, audit, by(asked)),
+        );
+        return { ok: true, box: b };
       } catch (e) {
-        return Promise.resolve({ ok: false, error: (e as Error).message });
+        return { ok: false, error: (e as Error).message };
       }
     },
   };
@@ -864,7 +934,9 @@ export function gateBoxOps(d: {
         return { ok: false, error: `no test box ${name}` };
       return {
         ok: true,
-        personOnly: true,
+        // Issue 1403: a box can be added back, so on a personal install
+        // an agent's ask is routine; strict keeps it the person's.
+        ...(isPersonal(d.personal) ? {} : { personOnly: true as const }),
         args: { name },
         summary: `remove the test box "${name}"`,
         params: { name },
@@ -877,13 +949,13 @@ export function gateBoxOps(d: {
         ]),
       };
     },
-    run(a, asked) {
+    async run(a, asked) {
       const name = String(a.name);
-      return Promise.resolve(
-        removeTestBox(d.store(), name, audit, by(asked))
-          ? { ok: true, name }
-          : { ok: false, error: `no test box ${name}` },
-      );
+      return (await gateLocked(() =>
+        removeTestBox(d.store(), name, audit, by(asked)),
+      ))
+        ? { ok: true, name }
+        : { ok: false, error: `no test box ${name}` };
     },
   };
   return { set, remove };
