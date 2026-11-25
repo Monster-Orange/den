@@ -1,13 +1,14 @@
 // mo/comment-count: which lines of a file hold a comment that counts. The runner sums them over the files a change
 // touched, at its base and at its head, and fails when the sum rises.
 // A line counts when its comment has a word in it. These never count: a shebang, a license header (a first comment
-// block naming a copyright or a license), and directives to tools (eslint, @ts-, prettier, coverage, mo-lint-ok…).
+// block naming a copyright or a license), and directives to tools (eslint, @ts-, prettier, coverage…).
+// A mo-lint-ok line counts like any other: an excuse for another rule costs one comment line.
 // JS/TS comments come from the shared scanner, so strings and regexes never count; in Python and shell files, a
 // line's own "#" comment.
 import { codeOnly } from "./brittle-scan.mjs";
 
 const DIRECTIVE =
-  /^\s*(?:eslint(?:-|\s|$)|@ts-|prettier-ignore|istanbul\s|c8\s|v8\s|@jest-environment|<reference\s|global\s|jshint|mo-lint-ok:|@license|@preserve|shellcheck\s|noqa\b|type:\s|pylint:|pyright:|mypy:|-\*-)/i;
+  /^\s*(?:eslint(?:-|\s|$)|@ts-|prettier-ignore|istanbul\s|c8\s|v8\s|@jest-environment|<reference\s|global\s|jshint|@license|@preserve|shellcheck\s|noqa\b|type:\s|pylint:|pyright:|mypy:|-\*-)/i;
 const LICENSE = /\b(?:copyright|licen[cs]ed?|spdx-license-identifier)\b/i;
 
 /** The comment's own words: its markers and leading stars taken off. */
