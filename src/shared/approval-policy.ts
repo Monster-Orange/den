@@ -278,6 +278,7 @@ export const HELD_WRITE_RISK: Readonly<
   },
   hub_token_forget: {
     risk: "critical",
+    areas: ["secrets"],
     why: "deletes a kept Hub token: only once the person revoked it at its Hub",
   },
   pr_close: {
