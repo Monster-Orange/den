@@ -2010,6 +2010,7 @@
         "tests/unit/den-ui/kit-route.test.ts",
         "tests/unit/server/accent-pairs.test.ts",
         "tests/unit/server/appearance-ui.test.ts",
+        "tests/unit/server/busy-button-sweep-1054.test.ts",
         "tests/unit/server/busy-dots-sweep.test.ts",
         "tests/unit/server/busy-names-registered.test.ts",
         "tests/unit/server/busy-writes-ratchet.test.ts",

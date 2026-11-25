@@ -152,3 +152,6 @@ export declare function focusBack(el: Element | null | undefined): boolean;
  * pop-up closes (in place of what opened it). Issue 793.
  */
 export declare function focusWhenFree(el: HTMLElement | null | undefined): void;
+
+/** Issue 1054: a held action's failure line: its message, else the kit's words. */
+export declare function failedLine(err: unknown): string;
