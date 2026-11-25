@@ -123,7 +123,21 @@ inert, menuOpen })` binds the rail's keys (↑ ↓ Home End, Delete unpins),
   the collapse toggle and the ☰ drawer (a modal below 720px: the page
   inert, Escape or the scrim closes it), and returns `{ rove, paint(html,
 force), setCollapsed, unpin, openDrawer, closeDrawer, drawerOpen,
-syncPinToggles }`.
+syncPinToggles, folds }`.
+- Rail sections fold (0.15.0, issue 1444). `railHtml({ …, folded })`
+  draws each listed section (group id) `data-folded`, never the one
+  holding the current page; its entries sit in `div.den-gb#den-gb-<id>`
+  and its heading stays the plain `div.den-gh`, so with no script every
+  entry shows. `hydrateRailFolds(root, { store, lang, onChange })` (run
+  by `hydrateShell`; `folds: false` turns it off, `folds: store` gives
+  the store) makes each heading the toggle: the whole row a button with
+  `aria-expanded` and `aria-controls`, named "Hide {section}" / "Show
+  {section}" (en, es, ja), with the folded entries' summed count
+  (`.den-bdg`, `.bad` when one is) and a chevron turned -90° when folded.
+  A click, Enter or Space folds it. The store is `{ get(), set(ids) }`;
+  the default, `railFoldStore()`, keeps the ids in localStorage
+  (`den.rail.folded`) and reads any failure as all open. Clicks are taken
+  on the rail, so a repaint keeps them; call `apply()` after one.
 - `src/shell.css`, `src/whatsnew.css`, `src/report.css`: the look. Link
   them after `tokens.css`.
 - `src/version.js` (the chip's label and its unread dot), `src/whatsnew.js`
