@@ -177,6 +177,23 @@ describe("the box check says why memory is unknown", () => {
     expect(r.state).toBe("held");
   });
 
+  it("fails closed: with its hold file there, any output but sftp's Can't ls line leaves the box held", async () => {
+    for (const err of [
+      openLocal("{dest}"),
+      "stat remote: No such file or directory\n",
+      'remote readdir("/home/ci"): No such file or directory\n',
+      'Can\'t ls: "/home/ci/heavy.hold": Permission denied\n',
+      "Connection to box1.test closed by remote host.\n",
+      "",
+    ]) {
+      for (const file of [LINUX_MEMINFO, undefined]) {
+        const f = scripted({ sftp: { file, err } });
+        const r = await sftpProbe(f.start as never)(BOX, 2000);
+        expect({ err, state: r.state }).toEqual({ err, state: "held" });
+      }
+    }
+  });
+
   it("a hold file named in an ~ path is still found gone by its ls line", async () => {
     const f = scripted({
       sftp: {
