@@ -25,8 +25,8 @@ import * as yaml from "yaml";
 const ROOT = process.cwd();
 const WORKFLOWS = path.join(ROOT, ".github", "workflows");
 
-// Issue 1226: the runner's labels come from DEN_SELF_HOSTED_LABELS (a JSON
-// array, such as ["self-hosted","devbox"]). Issue 1581: there's no default.
+// The runner's labels come from DEN_SELF_HOSTED_LABELS (a JSON
+// array, such as ["self-hosted","devbox"]). There's no default.
 // The box only with the switch on and the labels set; the switch on without
 // them fails each box job's first step, and nothing waits for a runner.
 const LABELS = "fromJSON(vars.DEN_SELF_HOSTED_LABELS)";
@@ -39,7 +39,7 @@ const GUARD =
   LABELS +
   " || 'ubuntu-latest' }}";
 
-/** Issue 1581: the first step of each box job, and of repeat.yml's job. */
+/** The first step of each box job, and of repeat.yml's job. */
 const DAY_NO_LABELS =
   "vars.DEN_SELF_HOSTED == 'on' && vars.DEN_SELF_HOSTED_LABELS == ''";
 const NIGHT_NO_LABELS =
@@ -672,7 +672,7 @@ describe("CI's self-hosted runner guard", () => {
         github: BY_HAND,
       }),
     ).toEqual(SELF_HOSTED);
-    // Issue 1581: the switch alone sends nothing to a box.
+    // The switch alone sends nothing to a box.
     expect(
       evaluate(NIGHT_GUARD, {
         vars: { DEN_SELF_HOSTED_NIGHT: "on" },
@@ -700,7 +700,7 @@ describe("CI's self-hosted runner guard", () => {
     ).toBe("ubuntu-latest");
   });
 
-  // Issue 1581: no workflow defaults to a box's labels. With a switch on and
+  // No workflow defaults to a box's labels. With a switch on and
   // its labels unset, each job that could reach the box stops at its first
   // step with the reason, on a GitHub-hosted runner: nothing waits.
   it("ci.yml and repeat.yml: a switch on without its labels stops each box job at once, and nothing waits for a runner", () => {
