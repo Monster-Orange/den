@@ -135,6 +135,7 @@ import {
 } from "../../shared/gates/view.js";
 import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
+import { emptyTestList } from "./gate-test-list.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
@@ -156,6 +157,8 @@ export const GATE_HELP = {
     "    --browser-endpoint ws://…: the container browser a browser run uses",
     "    (or DEN_PW_WS, HUB_PW_WEBKIT_WS, E2E_WEBKIT_WS); =self: the run starts",
     "    its own. On macOS a browser run needs one (a Setting)",
+    "    a jest, vitest or playwright test run that names no test files and",
+    "    no filter is refused (it would run every test); --all-tests allows it",
     "{cli} gate status [--json]      who holds a slot, who waits",
     "{cli} gate box <list|add|remove|enable|disable> <name> [--ssh login@host] [--ssh-port N]",
     "    [--ssh-identity <key file>] [--playwright ws://…] [--slots N]",
@@ -829,12 +832,19 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     "--base-url": true,
     "--pw-version": true,
     "--browser-endpoint": true,
+    "--all-tests": false,
   });
   if (!rest || pos.length === 0)
     throw new GateUsage("gate run needs -- <command> [args]");
   const kind = (f["--kind"] ?? "cpu") as string;
   if (kind !== "browser" && kind !== "cpu")
     throw new GateUsage("--kind is browser or cpu");
+  const everything = f["--all-tests"] ? null : emptyTestList(pos);
+  if (everything)
+    throw new GateUsage(
+      `this ${everything} run names no test files and no filter, so it would run every test. ` +
+        "Name the files (build the list first and check it isn't empty), or pass --all-tests when a full run is meant",
+    );
   // Issue 625: a browser run that can use a test box's browser says so.
   let where = typeof f["--box"] === "string" ? f["--box"] : undefined;
   // Issue 1033: this machine's own name (not a box's) is local.
