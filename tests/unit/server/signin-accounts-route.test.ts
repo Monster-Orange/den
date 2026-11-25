@@ -67,7 +67,14 @@ async function world() {
   const store = new MemStore();
   const refs: Record<string, Partial<SecretRef>> = {};
   const lines: string[] = [];
+  const removed: string[][] = [];
   const d: AccountsRouteDeps = {
+    // Issue 1182: what the route asked to remove (the store is the shared
+    // code's, covered in signin-accounts tests).
+    remove: async (rt, account) => {
+      removed.push([rt, account]);
+      return { label: `Account ${account}`, store: "1Password" };
+    },
     isAgent: (req) => req.headers["x-test-agent"] === "1",
     add: (rt, name) => void addAccount(stateDir, rt, name),
     order: (rt, ids) => void setAccountOrder(stateDir, rt, ids),
@@ -123,8 +130,45 @@ async function world() {
     });
     return { status: r.status, text: await r.text() };
   };
-  return { post, store, lines, stateDir };
+  return { post, store, lines, stateDir, removed };
 }
+
+describe("issue 1182: POST /api/agents/accounts/remove", () => {
+  it("a person removes an account: the answer says which, and where its token was", async () => {
+    const w = await world();
+    const r = await w.post("/api/agents/accounts/remove", {
+      runtime: "den-claude",
+      account: "2",
+    });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.text)).toMatchObject({
+      ok: true,
+      removed: "Account 2",
+      store: "1Password",
+    });
+    expect(w.removed).toEqual([["den-claude", "2"]]);
+  });
+
+  it("an agent is refused, and nothing is removed", async () => {
+    const w = await world();
+    const r = await w.post(
+      "/api/agents/accounts/remove",
+      { runtime: "den-claude", account: "2" },
+      true,
+    );
+    expect(r.status).toBe(403);
+    expect(w.removed).toEqual([]);
+  });
+
+  it("needs the account, as a string", async () => {
+    const w = await world();
+    const r = await w.post("/api/agents/accounts/remove", {
+      runtime: "den-claude",
+    });
+    expect(r.status).toBe(400);
+    expect(w.removed).toEqual([]);
+  });
+});
 
 describe("issue 339: the accounts routes", () => {
   it("add, set a token, order: the answer is the list, never the token", async () => {
