@@ -3088,6 +3088,8 @@
       "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
     "bell.m.hubCommentsSilent":
       "Hub のコメントが届いていません: コメントのストリームが途絶えました",
+    "bell.m.hubCommentsStale":
+      "Hub のコメントが届いていません: コメントのストリームは開いていますが、Hub に未送信のコメントがあります",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",

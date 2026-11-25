@@ -4109,6 +4109,8 @@
       "Hub comments aren't arriving: Hub keeps closing the comment stream",
     "bell.m.hubCommentsSilent":
       "Hub comments aren't arriving: the comment stream went silent",
+    "bell.m.hubCommentsStale":
+      "Hub comments aren't arriving: the comment stream is open, but Hub lists comments it hasn't sent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
