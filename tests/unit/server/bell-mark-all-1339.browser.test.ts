@@ -8,6 +8,8 @@
  *      show read (or are gone) before the POST answers.
  *   2. When it answers, the button comes back as it should.
  *   3. When it fails, the rows go back as they were, with an error toast.
+ *   4. Either way, the kit holds no button after (heldCount 0): the bell
+ *      lets each one it held go, even one it drew again meanwhile.
  *
  * Rows are picked by data-kind and data-read, buttons by data-bell.
  * DEN_HELPERS_BROWSER=webkit runs it in WebKit; DEN_PW_WS connects to a
@@ -94,6 +96,31 @@ const until = (p: Page, sel: string, n: number) =>
     ([q, k]) => document.querySelectorAll(q as string).length === k,
     [sel, n] as const,
   );
+/**
+ * How many buttons the kit holds with dots now (its heldCount), from the
+ * very module the page loaded: Den stamps the URLs it serves (?v=, see
+ * asset-stamp.ts), and a module is its full URL. A string, so the page
+ * runs import() itself (TypeScript would rewrite it).
+ */
+const HELD =
+  "import(performance.getEntriesByType('resource').map((e) => e.name)" +
+  ".find((u) => /\\/kit\\/busy\\.js(\\?|$)/.test(u)))" +
+  ".then((m) => m.heldCount())";
+const held = (p: Page) => p.evaluate<number>(HELD);
+/**
+ * Every press lets its button go: once its answer is in, the kit holds
+ * none, not even one the bell drew again meanwhile. A release is async, so
+ * the page asks again every 50 ms for up to 5 s and says the last count.
+ */
+async function noneHeld(p: Page): Promise<void> {
+  const last = await p.evaluate<number>(
+    `(async () => { const end = Date.now() + 5000; let n = await ${HELD};` +
+      ` while (n !== 0 && Date.now() < end) {` +
+      ` await new Promise((r) => setTimeout(r, 50)); n = await ${HELD}; }` +
+      ` return n; })()`,
+  );
+  expect(last).toBe(0);
+}
 /** The page's own words for an i18n key. */
 const words = (p: Page, key: string) =>
   p.evaluate(
@@ -156,6 +183,8 @@ describe("Mark all read (issue 1339)", () => {
     expect(await btn.isDisabled()).toBe(true);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
+    // The probe sees the kit's hold: one button, this one.
+    expect(await held(p)).toBe(1);
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.markAll"),
     );
@@ -164,6 +193,7 @@ describe("Mark all read (issue 1339)", () => {
     expect(await count(p, ROWS)).toBe(3);
     await release(true);
     await btn.waitFor({ state: "detached" });
+    await noneHeld(p);
     expect(await count(p, UNREAD)).toBe(0);
     expect(
       new NotificationStore(s!.stateDir).list().filter((n) => !n.read).length,
@@ -187,6 +217,7 @@ describe("Mark all read (issue 1339)", () => {
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.markAll"),
     );
+    await noneHeld(p);
     await p.context().close();
   }, 60_000);
 });
@@ -202,12 +233,15 @@ describe("Clear read (issue 1339)", () => {
     expect(await btn.isDisabled()).toBe(true);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
+    // The probe sees the kit's hold: one button, this one.
+    expect(await held(p)).toBe(1);
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.clearRead"),
     );
     expect(await count(p, ROWS)).toBe(3);
     await release(true);
     await btn.waitFor({ state: "detached" });
+    await noneHeld(p);
     expect(new NotificationStore(s!.stateDir).list().length).toBe(3);
     await p.context().close();
   }, 60_000);
@@ -221,6 +255,7 @@ describe("Clear read (issue 1339)", () => {
     await release(false);
     await p.getByRole("alert").filter({ hasText: ERR }).waitFor();
     await until(p, ROWS, 5);
+    await noneHeld(p);
     await p.context().close();
   }, 60_000);
 });
