@@ -3127,7 +3127,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/crash-loop.ts"],
+      "when": ["src/shared/crash-loop.ts", "src/ui/cli/web-command.ts"],
       "run": ["tests/unit/server/crash-loop.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
