@@ -226,8 +226,8 @@ export interface GuardContext {
    */
   peerIsLoopback?: (req: http.IncomingMessage) => boolean;
   /**
-   * Whether the request's peer is the edge (isEdgePeer: loopback or the
-   * edge container's own address). The edge hostname is believed only from
+   * Whether the request's peer is one the edge's proxy runs on (isEdgePeer:
+   * loopback or a Docker network). The edge hostname is believed only from
    * one: a LAN client that sends `Host: <edge hostname>` straight to this
    * server's port gets 421. Unset: taken as yes (a unit test).
    */
@@ -399,10 +399,12 @@ export function isLoopbackAddress(addr: string | undefined): boolean {
 }
 
 /**
- * An address in the ranges Docker hands containers and their gateways:
- * 172.16.0.0/12, and Docker Desktop's VM network 192.168.65.0/24.
+ * A peer the edge's X-Forwarded-Proto is believed from: loopback, or a
+ * Docker network (172.16.0.0/12, Docker Desktop's 192.168.65.0/24), where
+ * the edge's Traefik runs.
  */
-export function isDockerRangeAddress(addr: string | undefined): boolean {
+export function isEdgePeer(addr: string | undefined): boolean {
+  if (isLoopbackAddress(addr)) return true;
   const a = String(addr ?? "")
     .toLowerCase()
     .replace(/^::ffff:/, "");
@@ -411,35 +413,6 @@ export function isDockerRangeAddress(addr: string | undefined): boolean {
   return (
     (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168 && z === 65)
   );
-}
-
-/**
- * The edge container's own addresses, as the server last read them
- * (setEdgeAddresses: `docker inspect` of the container labelled with this
- * edge's state dir), or null: none known.
- */
-let EDGE_ADDRESSES: ReadonlySet<string> | null = null;
-
-/** Set the edge container's addresses (null or []: none known). */
-export function setEdgeAddresses(addrs: readonly string[] | null): void {
-  EDGE_ADDRESSES = addrs?.length ? new Set(addrs.map(normAddress)) : null;
-}
-
-/**
- * A peer the edge's hostname, proof and X-Forwarded-* headers are believed
- * from: loopback (macOS Docker Desktop and OrbStack deliver the edge's
- * host.docker.internal there), or one of the edge container's own
- * addresses (Linux, where its connection keeps its address on its
- * network). Never any other address in the Docker ranges: another
- * container is not the edge. No edge container known: loopback only.
- */
-export function isEdgePeer(
-  addr: string | undefined,
-  edge: ReadonlySet<string> | null = EDGE_ADDRESSES,
-): boolean {
-  if (isLoopbackAddress(addr)) return true;
-  if (!addr || !edge) return false;
-  return edge.has(normAddress(addr));
 }
 
 /** An address without its zone, IPv4-mapped prefix or brackets, lowercase. */
@@ -523,7 +496,7 @@ export type EdgeClient = "local" | "unattested" | "foreign";
  *  - loopback, or one of this machine's own interface addresses (its LAN
  *    or VPN address, a Tailscale 100.x one included): `local`;
  *  - missing, unreadable, or a container/VM network's address (the Docker
- *    ranges (isDockerRangeAddress), a subnet of one of this machine's bridges,
+ *    ranges isEdgePeer takes, a subnet of one of this machine's bridges,
  *    one of the edge's own Docker networks, or OrbStack's 0.250.250.254):
  *    `unattested`. Docker Desktop and OrbStack on macOS hand the edge
  *    their gateway's address, and a TCP passthrough in front hides the
@@ -538,7 +511,7 @@ export function edgeClient(
   const c = forwardedClient(xff);
   if (!c) return "unattested";
   if (isLoopbackAddress(c)) return "local";
-  if (isDockerRangeAddress(c) || local.bridges.some((b) => inSubnet(c, b)))
+  if (isEdgePeer(c) || local.bridges.some((b) => inSubnet(c, b)))
     return "unattested";
   // 0.0.0.0/8 ("this network") is never a client on another machine:
   // OrbStack presents the host to its containers as 0.250.250.254.
