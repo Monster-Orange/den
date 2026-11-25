@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.90] - unreleased
+
+### Fixed
+
+- No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
+
 ## [0.4.89] - 2026-11-24
 
 Installs that don't set `install_mode` are now personal installs: agents run without the sandbox, and Den no longer nags about hardening. A strict mode is there as an option (`install_mode: strict`). (issue 1391)

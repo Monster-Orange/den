@@ -93,6 +93,7 @@ import {
   signinRequestCounts,
 } from "../../shared/signin-request-count.js";
 import {
+  SESSION_SIGNING_DIR,
   sandboxFor,
   sandboxHidesFile,
   sandboxSetting,
@@ -150,10 +151,15 @@ import {
   isEdgeAddress,
   statedAddress,
 } from "../../shared/edge/address-check.js";
-import { readEdgeProof } from "../../shared/edge/proof.js";
+import {
+  edgeTrustHeld,
+  proofIsCurrent,
+  readEdgeProof,
+} from "../../shared/edge/proof.js";
 import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
 import {
   edgeProofRotation,
+  readEdgeDynamic,
   stacksWithGeneratedSecrets,
 } from "../../shared/edge/runtime.js";
 import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
@@ -1723,6 +1729,10 @@ export function sharedUserLines(
      * from install_mode; a config that can't be read counts as strict.
      */
     trailReadable?: boolean;
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
@@ -1772,17 +1782,50 @@ export function sharedUserLines(
     : walked.deep
       ? `checked ${maxDepth} folders deep only`
       : "";
-  const looseWarn = loose.length > 0 || !!partial;
+  const outside = (o.unsandboxed ?? (() => unsandboxedAgents(stateDir)))();
+  const looseWarn = (loose.length > 0 || !!partial) && outside.length > 0;
   const SHOWN = 10;
-  const listed = loose.length
-    ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
-        .slice(0, SHOWN)
-        .join(
-          ", ",
-        )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
-    : partial
-      ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
-      : "agents' deny rules cover every 0600 file in the state folder";
+  const listed =
+    loose.length && !outside.length
+      ? `${loose.length} 0600 file${loose.length === 1 ? "" : "s"} in the state folder ha${loose.length === 1 ? "s" : "ve"} no Claude Read rule; the OS sandbox keeps every agent out of the state folder`
+      : loose.length
+        ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
+            .slice(0, SHOWN)
+            .join(
+              ", ",
+            )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
+        : partial
+          ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
+          : "agents' deny rules cover every 0600 file in the state folder";
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const readable = stateCredentialsPresent(stateDir);
+  const more = walked.files.filter(
+    (f) => f.split(path.sep)[0] !== SESSION_SIGNING_DIR,
+  ).length;
+  const agentRows = outside.map((a) => {
+    const repoFiles = [
+      ...new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      ),
+    ].filter((d) => {
+      try {
+        return fs.lstatSync(path.join(d, REPO_SECRETS_FILE)).isFile();
+      } catch {
+        return false;
+      }
+    }).length;
+    const what = [
+      ...readable,
+      ...(repoFiles
+        ? [
+            `${repoFiles} project stack secrets file${repoFiles === 1 ? "" : "s"}`,
+          ]
+        : []),
+      ...(more ? [`and ${more} more 0600 file${more === 1 ? "" : "s"}`] : []),
+    ];
+    const detail = `${safeShownPath(a.id)} runs outside the OS sandbox (by its last start's record), so its shell can read ${what.length ? what.join(", ") : "the state folder"}. A person turns its sandbox on with agents.sandbox in user.yml`;
+    return { id: `agent_unsandboxed:${a.id}`, detail };
+  });
   const looseDetail = partial ? `${listed} (${partial})` : listed;
   const mark = (ok: boolean) => (ok ? "✓" : "⚠");
   return {
@@ -1793,6 +1836,7 @@ export function sharedUserLines(
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
       { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
@@ -1806,8 +1850,40 @@ export function sharedUserLines(
         status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
       },
+      ...agentRows.map((r) => ({
+        id: r.id,
+        status: "warn" as const,
+        detail: r.detail,
+      })),
     ],
   };
+}
+
+/** Agents whose last start was outside the OS sandbox, from their records. */
+function unsandboxedAgents(
+  stateDir: string,
+): { id: string; projects: string[] }[] {
+  try {
+    return listRecords(stateDir)
+      .filter((r) => r.sandbox?.applied !== true)
+      .map((r) => ({ id: r.id, projects: [r.workspace, ...(r.grants ?? [])] }));
+  } catch {
+    return [];
+  }
+}
+
+/** The state folder's credentials that exist, by what they are. */
+function stateCredentialsPresent(stateDir: string): string[] {
+  const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
+  return [
+    ...(has("web.secret") ? ["web.secret"] : []),
+    ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
+    ...(has("actor-token") ? ["the agents' tokens"] : []),
+    ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
+    ...(has("push-vapid.json") ? ["the push key"] : []),
+    ...(has("fixture-person.key") ? ["the test person's key"] : []),
+    ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),
+  ];
 }
 
 /** Repos' stack secrets files and the cached sign-ins, by name only, and whether agents' rules deny them. */
@@ -2001,8 +2077,8 @@ function safeShownPath(rel: string): string {
 }
 
 /**
- * H1 (0.4.48): whether the edge set up here carries Den's proof (the
- * generated edge.yml has the current one). Never prints the proof: only
+ * H1 (0.4.48): whether the edge set up here carries Den's proof (its
+ * generated dynamic file has the current one), or why its trust is held. Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
  */
 export function edgeProofLines(
@@ -2018,17 +2094,20 @@ export function edgeProofLines(
 ): { lines: string[]; check?: OnboardCheck } {
   const dir = edgeDir();
   if (!dir) return { lines: [] };
-  let yml: string;
-  try {
-    yml = fs.readFileSync(path.join(dir, "dynamic", "edge.yml"), "utf8");
-  } catch {
-    return { lines: [] };
-  }
+  const yml = readEdgeDynamic(dir);
+  if (yml === null) return { lines: [] };
   const proof = readEdgeProof(dir);
-  const carried = !!proof && yml.includes(proof);
-  const detail = carried
-    ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
-    : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  // An older generation's proof proves nothing (the rotation failed closed).
+  const stale = !!proof && !proofIsCurrent(dir);
+  const held = edgeTrustHeld(dir);
+  const carried = !!proof && !stale && !held && yml.includes(proof);
+  const detail = held
+    ? `${title} holds back the edge's trust: ${held}. So everyone signs in through it, this machine too, until \`${cli} edge up\` recreates it as ${title} renders it`
+    : carried
+      ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
+      : stale
+        ? `the edge's proof is from an older version and ${title} couldn't make a new one (can it write ${dir}?), so everyone signs in through it, this machine too. Run \`${cli} edge up --rotate-proof\``
+        : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
   return {
     lines: [
       "",
@@ -2526,7 +2605,31 @@ export function deprecatedKeys(
     ...userYmlOrgKeys(readUser),
     ...collapseDoneKey(),
     ...teamSelfUpdateKey(),
+    ...teamJudgeKey(),
   ];
+}
+
+/**
+ * Issue 52: agents.coach.judge.enabled is the person's, read only from
+ * config/local/user.yml. Judging sends samples, the person's prompts among
+ * them, to the model provider, so an agent working beside the
+ * distribution's config can't switch it on there. Set there, doctor says
+ * it does nothing and where it belongs.
+ */
+export function teamJudgeKey(
+  read: () => { agents?: unknown } = readDenConfig,
+): string[] {
+  try {
+    const coach = (read().agents as { coach?: unknown } | undefined)?.coach;
+    const judge = (coach as { judge?: unknown } | null | undefined)?.judge;
+    if (!judge || typeof judge !== "object" || !("enabled" in judge)) return [];
+    const file = product().configFile;
+    return [
+      `${file}: agents.coach.judge.enabled does nothing there: it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on sending samples to the model provider`,
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /**

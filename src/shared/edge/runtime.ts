@@ -5,6 +5,7 @@
 import { prepareAccessRaw } from "./access-sweep.js";
 import * as fs from "fs";
 import * as path from "path";
+import * as yaml from "yaml";
 import { writeFileAtomic } from "../atomic-write.js";
 import { must, sh } from "./exec.js";
 import { readWebPort } from "./config.js";
@@ -21,9 +22,16 @@ import {
 } from "./address-check.js";
 import { addressWord } from "./address-words.js";
 import { portOwner, type PortOwner } from "./port-owner.js";
-import { ensureEdgeProof, readEdgeProof, rotateEdgeProof } from "./proof.js";
 import {
+  ensureEdgeProof,
+  readEdgeProof,
+  releaseEdgeTrust,
+  rotateEdgeProof,
+} from "./proof.js";
+import {
+  commandServesApi,
   droppedEdgeArgs,
+  EDGE_PROOF_MIDDLEWARE_PREFIX,
   EDGE_ROOT_LABEL,
   edgeCommand,
   accessLogNoTraceNotice,
@@ -63,7 +71,7 @@ function write(file: string, content: string): void {
 }
 
 /**
- * H1: the generated edge.yml carries the edge's proof: 0600, and replaced
+ * H1: Den's generated dynamic file carries the edge's proof: 0600, and replaced
  * whole (a rename), so Traefik's watch never reads half of it.
  */
 function writeSecret(file: string, content: string): void {
@@ -71,27 +79,69 @@ function writeSecret(file: string, content: string): void {
 }
 
 /**
- * H1 (0.4.48): at Den's start, an edge set up here whose edge.yml lacks the
- * current proof (set up before 0.4.48, or rotated) gets it: the file only,
- * which Traefik reloads by itself; nothing restarts. No edge.yml here: no
- * edge to sync (and no proof is made).
+ * Den's generated dynamic-config file (routes, the proof, TLS). Named to
+ * sort before every included file: Traefik's file provider reads the
+ * dynamic folder in name order and keeps the first definition of a name,
+ * so Den's own routers, services and transport are the ones in force.
+ * syncIncluded refuses an include that would sort before it.
+ */
+export const EDGE_DYNAMIC_FILE = "000-den.yml";
+
+/** Its name before: read when the new one isn't there yet, removed once it is. */
+export const LEGACY_DYNAMIC_FILE = "edge.yml";
+
+/** Den's generated dynamic file in `stateDir`. */
+export const edgeDynamicFile = (stateDir: string): string =>
+  path.join(stateDir, "dynamic", EDGE_DYNAMIC_FILE);
+
+/** Den's generated dynamic file's text (or its older name's), or null: no edge set up here. */
+export function readEdgeDynamic(stateDir: string): string | null {
+  for (const f of [EDGE_DYNAMIC_FILE, LEGACY_DYNAMIC_FILE])
+    try {
+      return fs.readFileSync(path.join(stateDir, "dynamic", f), "utf8");
+    } catch {
+      /* the next name */
+    }
+  return null;
+}
+
+/** Write Den's generated dynamic file (0600, whole), then drop the older name. */
+function writeEdgeDynamic(stateDir: string, text: string): void {
+  writeSecret(edgeDynamicFile(stateDir), text);
+  fs.rmSync(path.join(stateDir, "dynamic", LEGACY_DYNAMIC_FILE), {
+    force: true,
+  });
+}
+
+/**
+ * H1 (0.4.48): at Den's start, an edge set up here gets Den's dynamic file
+ * as this version renders it with the current proof: the file only, which
+ * Traefik reloads by itself; nothing restarts. "current" only when the
+ * file is exactly that render (under its own name), so a file an earlier
+ * build wrote (another middleware name, the older file name) is written
+ * again. No generated file here: no edge to sync (and no proof is made).
+ *
+ * A proof made before the current proof generation (proofIsCurrent) is
+ * replaced first, once, on the first start of the version that raised it:
+ * "rotated", and the file is rendered again with the new one.
  */
 export function syncEdgeProof(
   cfg: EdgeConfig,
   ports: ReadonlySet<number>,
-): "written" | "current" | "no-edge" {
-  const file = path.join(cfg.stateDir, "dynamic", GENERATED);
-  let now: string;
-  try {
-    now = fs.readFileSync(file, "utf8");
-  } catch {
-    return "no-edge";
-  }
+): "written" | "rotated" | "current" | "no-edge" {
+  if (readEdgeDynamic(cfg.stateDir) === null) return "no-edge";
   const have = readEdgeProof(cfg.stateDir);
-  if (have && now.includes(have)) return "current";
   const proof = ensureEdgeProof(cfg.stateDir);
-  writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
-  return "written";
+  const want = renderEdgeDynamic(cfg, { proof, ports });
+  let now: string | null = null;
+  try {
+    now = fs.readFileSync(edgeDynamicFile(cfg.stateDir), "utf8");
+  } catch {
+    /* not under its own name yet */
+  }
+  if (have === proof && now === want) return "current";
+  writeEdgeDynamic(cfg.stateDir, want);
+  return have && proof !== have ? "rotated" : "written";
 }
 
 /**
@@ -116,17 +166,17 @@ export function edgeProofRotation(cfg: Pick<EdgeConfig, "stateDir">): {
 }
 
 /**
- * Issue 728: rotate the edge's proof once. A new proof, and edge.yml (when
- * the edge is set up here) rewritten with it, which Traefik reloads by
+ * Issue 728: rotate the edge's proof once. A new proof, and Den's dynamic
+ * file (when the edge is set up here) rewritten with it, which Traefik reloads by
  * itself: nothing restarts and sessions are kept (until Traefik reloads,
  * a few seconds, edge requests aren't proved, so a page loaded then asks to
  * sign in). No proof yet (an edge never started here): nothing is
  * written, not even the marker; a proof made later is made after agents
  * lost read access, and one that turns up unmarked is rotated once.
- * The proof (0600, renamed in whole) comes first, edge.yml next, the marker
+ * The proof (0600, renamed in whole) comes first, the dynamic file next, the marker
  * last: a crash between them fails closed (edge requests stop proving, so
  * people sign in), the next start's syncEdgeProof puts the current proof in
- * edge.yml, and with no marker the rotation runs again. The web server's
+ * the dynamic file, and with no marker the rotation runs again. The web server's
  * check re-reads the proof file when it changes: no restart.
  */
 export function rotateEdgeProofOnce(
@@ -137,15 +187,26 @@ export function rotateEdgeProofOnce(
   if (edgeProofRotation(cfg).rotatedAt) return "done";
   if (readEdgeProof(cfg.stateDir) === null) return "no-edge";
   const proof = rotateEdgeProof(cfg.stateDir);
-  const file = path.join(cfg.stateDir, "dynamic", GENERATED);
-  if (fs.existsSync(file))
-    writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
+  if (readEdgeDynamic(cfg.stateDir) !== null)
+    writeEdgeDynamic(cfg.stateDir, renderEdgeDynamic(cfg, { proof, ports }));
+  markEdgeProofRotated(cfg, now);
+  return "rotated";
+}
+
+/**
+ * Issue 728: an edge recreated with a new proof (an API edge stopped at
+ * Den's start, edge/start.ts) is the once-only rotation too: mark it, so
+ * the next start doesn't rotate again.
+ */
+export function markEdgeProofRotated(
+  cfg: Pick<EdgeConfig, "stateDir">,
+  now: Date = new Date(),
+): void {
   writeFileAtomic(
     path.join(cfg.stateDir, ROTATED),
     JSON.stringify({ at: now.toISOString(), rotated: true }) + "\n",
     { mode: 0o600 },
   );
-  return "rotated";
 }
 
 /**
@@ -242,15 +303,17 @@ export function untrustCa(cfg: EdgeConfig): number {
 
 // ── Included dynamic config ─────────────────────────────────────────────────
 
-const GENERATED = "edge.yml";
-
 /** The dynamic-config files in `dir` to copy in (top level, YAML only). */
 export function includeFiles(dir: string | null): string[] {
   if (!dir) return [];
   return fs
     .readdirSync(dir, { withFileTypes: true })
     .filter(
-      (e) => e.isFile() && /\.ya?ml$/.test(e.name) && e.name !== GENERATED,
+      (e) =>
+        e.isFile() &&
+        /\.ya?ml$/.test(e.name) &&
+        e.name !== EDGE_DYNAMIC_FILE &&
+        e.name !== LEGACY_DYNAMIC_FILE,
     )
     .map((e) => e.name)
     .sort();
@@ -268,7 +331,7 @@ export const isStackRoutes = (f: string): boolean =>
 
 /** Files other writers own in the dynamic directory: never copied over or pruned. */
 export const isOwnedElsewhere = (f: string): boolean =>
-  f === GENERATED || isStackRoutes(f);
+  f === EDGE_DYNAMIC_FILE || f === LEGACY_DYNAMIC_FILE || isStackRoutes(f);
 
 function readLedger(stateDir: string): string[] {
   try {
@@ -281,6 +344,67 @@ function readLedger(stateDir: string): string[] {
   }
 }
 
+/** The `http` sections whose names Traefik merges across files (first wins). */
+const NAMED_SECTIONS = [
+  "routers",
+  "services",
+  "middlewares",
+  "serversTransports",
+] as const;
+
+/** Every name Den's own dynamic file defines for `cfg`, by section. */
+function denDynamicNames(cfg: EdgeConfig): Set<string> {
+  const doc = yaml.parse(renderEdgeDynamic(cfg)) as {
+    http?: Record<string, Record<string, unknown> | undefined>;
+  };
+  const out = new Set<string>();
+  for (const sec of NAMED_SECTIONS)
+    for (const n of Object.keys(doc.http?.[sec] ?? {})) out.add(`${sec}.${n}`);
+  return out;
+}
+
+/**
+ * Refuse an included file (`f` in `dir`) that could stand in for what Den
+ * renders: one that sorts before Den's own file (read first, it would win
+ * every name it shares), one that defines a router, service, middleware or
+ * servers transport of a name Den renders or of Den's own `den-` prefix,
+ * or one that names the proof middleware at all. Files Den can't parse (a
+ * Go template, which Traefik renders) are left to the order: Den's file is
+ * read first, so its definitions win.
+ */
+function assertIncludeAllowed(
+  dir: string,
+  f: string,
+  reserved: ReadonlySet<string>,
+): void {
+  if (f < EDGE_DYNAMIC_FILE)
+    throw new Error(
+      `edge.include: ${f} sorts before ${EDGE_DYNAMIC_FILE}, Den's own dynamic file, so Traefik would read it first and its names would win over Den's. Rename it (e.g. so it starts with a letter).`,
+    );
+  const text = fs.readFileSync(path.join(dir, f), "utf8");
+  if (text.toLowerCase().includes(EDGE_PROOF_MIDDLEWARE_PREFIX))
+    throw new Error(
+      `edge.include: ${f} names ${EDGE_PROOF_MIDDLEWARE_PREFIX}, the middleware that adds the edge's proof; only Den's own route carries it. Remove it from the file.`,
+    );
+  let doc: unknown;
+  try {
+    doc = yaml.parse(text);
+  } catch {
+    return;
+  }
+  const http = (doc as { http?: unknown } | null)?.http;
+  if (!http || typeof http !== "object") return;
+  for (const sec of NAMED_SECTIONS) {
+    const names = (http as Record<string, unknown>)[sec];
+    if (!names || typeof names !== "object") continue;
+    for (const n of Object.keys(names))
+      if (reserved.has(`${sec}.${n}`) || /^den-/i.test(n))
+        throw new Error(
+          `edge.include: ${f} defines http.${sec}.${n}, a name Den's own config uses; Den's definition must be the only one. Rename it.`,
+        );
+  }
+}
+
 /**
  * Copy the included files beside the generated one, then drop copies whose
  * source is gone. Only files a previous sync copied in (its ledger) are ever
@@ -290,8 +414,12 @@ function readLedger(stateDir: string): string[] {
  */
 export function syncIncluded(cfg: EdgeConfig): string[] {
   const dyn = path.join(cfg.stateDir, "dynamic");
-  fs.mkdirSync(dyn, { recursive: true });
   const files = includeFiles(cfg.include).filter((f) => !isOwnedElsewhere(f));
+  // Nothing included may stand in for what Den renders, checked before
+  // anything is copied.
+  const reserved = denDynamicNames(cfg);
+  for (const f of files) assertIncludeAllowed(cfg.include!, f, reserved);
+  fs.mkdirSync(dyn, { recursive: true });
   for (const f of files)
     fs.copyFileSync(path.join(cfg.include!, f), path.join(dyn, f));
   for (const f of readLedger(cfg.stateDir))
@@ -565,12 +693,20 @@ export async function edgeUp(
   const included = syncIncluded(cfg);
   // #63: Den makes the raw access file (0600) so Traefik never does.
   if (cfg.accessLog?.enabled) prepareAccessRaw(cfg.stateDir);
+  // An edge running with Traefik's API on would show the proof about to be
+  // written: stop it first, and make a new proof, so one it may have shown
+  // never works again.
+  const running = inspectEdge(n.container);
+  const servedApi =
+    !!running?.running && commandServesApi(running.spec.command);
+  if (servedApi) must("docker", ["stop", n.container]);
   // H1: the proof Den's own route carries (made once, or a new one).
-  const proof = opts.rotateProof
-    ? rotateEdgeProof(cfg.stateDir)
-    : ensureEdgeProof(cfg.stateDir);
-  writeSecret(
-    path.join(cfg.stateDir, "dynamic", GENERATED),
+  const proof =
+    opts.rotateProof || servedApi
+      ? rotateEdgeProof(cfg.stateDir)
+      : ensureEdgeProof(cfg.stateDir);
+  writeEdgeDynamic(
+    cfg.stateDir,
     renderEdgeDynamic(cfg, { proof, ports: new Set([readWebPort()]) }),
   );
   const compose = path.join(cfg.stateDir, "compose.yml");
@@ -604,6 +740,8 @@ export async function edgeUp(
     { began, ended: Date.now() },
   );
   log(edgeUpLine(outcome));
+  // Up as rendered (no API): any hold on the edge's trust ends.
+  releaseEdgeTrust(cfg.stateDir);
   return { certs, included, outcome };
 }
 

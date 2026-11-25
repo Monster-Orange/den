@@ -33,6 +33,9 @@ const HERE: LocalNet = {
   bridges: [{ address: "192.168.216.0", netmask: "255.255.255.0" }],
 };
 
+/** Where the edge container is on its network (Linux), as Den read it. */
+const EDGE_ADDRS: ReadonlySet<string> = new Set(["172.18.0.3"]);
+
 const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
   port: PORT,
   loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
@@ -49,7 +52,8 @@ const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
       : null,
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
-  peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
+  // The edge container's own address on Linux's bridge (setEdgeAddresses).
+  peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress, EDGE_ADDRS),
   // H1: the real edge adds its proof to every request it forwards.
   edgeProved: () => true,
   localNet: () => HERE,

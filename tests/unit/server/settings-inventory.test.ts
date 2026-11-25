@@ -110,6 +110,9 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // projects and labels kept on this machine.
     browser_box_default: true,
     browser_host_only: true,
+    // Issue 1264: Den's agent hook routes agents' heavy runs.
+    route_agents: true,
+    route_commands: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -195,6 +198,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     watch_max_interval_seconds: true,
     api_budget_floor: true,
     watches_max: true,
+    // Issue 1166: a watch with no progress this long ends.
+    watch_stale_minutes: true,
+    // Issue 1194: any watch open this long ends.
+    watch_max_open_hours: true,
+    // Issue 1214: how often a finished run is looked at for a re-run.
+    rerun_look_minutes: true,
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
@@ -287,6 +296,7 @@ describe("the settings inventory (R21)", () => {
         "terminal",
         // MODE-5: what only `config` could change.
         "cli_tabs",
+        "coach_counts",
         "local_dev",
         "log_window_lines",
         "panes_reconnect.max_failures",
@@ -307,6 +317,9 @@ describe("the settings inventory (R21)", () => {
         "github.watch_max_interval_seconds",
         "github.api_budget_floor",
         "github.watches_max",
+        "github.watch_stale_minutes",
+        "github.watch_max_open_hours",
+        "github.rerun_look_minutes",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
@@ -344,6 +357,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
         "gate_slots.reap_grace_seconds",
+        "gate_slots.route_agents",
+        "gate_slots.route_commands",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
