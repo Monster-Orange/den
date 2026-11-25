@@ -110,6 +110,9 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // projects and labels kept on this machine.
     browser_box_default: true,
     browser_host_only: true,
+    // Issue 1264: Den's agent hook routes agents' heavy runs.
+    route_agents: true,
+    route_commands: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -354,6 +357,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
         "gate_slots.reap_grace_seconds",
+        "gate_slots.route_agents",
+        "gate_slots.route_commands",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",

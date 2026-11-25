@@ -140,14 +140,36 @@ describe("a default-pack persona's launch", () => {
     expect(l.settings).toEqual({
       // Issue 362: the files it was launched with are denied to its edits.
       permissions: {
-        deny: ownFilesDenyRules([
-          path.join(files, "settings.json"),
-          path.join(files, "mcp.json"),
-        ]),
+        deny: [
+          ...ownFilesDenyRules([
+            path.join(files, "settings.json"),
+            path.join(files, "mcp.json"),
+          ]),
+          // Issue 1264: the gate's settings (route_agents and route_commands
+          // among them) are a person's: denied to the agent's edits.
+          ...ownFilesDenyRules([gateRouteArgs()!.settings]),
+        ],
       },
       hooks: agentHooks("planner"),
       disableClaudeAiConnectors: true,
     });
+  });
+
+  it("issue 1264: the gate's settings file is denied to Edit and to any shell command naming it; its slot log is not", () => {
+    const deny = (l: ReturnType<typeof launch>) =>
+      ((l.settings!.permissions as { deny: string[] }).deny ?? []) as string[];
+    const gate = gateRouteArgs()!;
+    const rules = deny(launch(planner));
+    expect(rules).toContain(`Edit(/${gate.settings})`);
+    expect(
+      rules.some(
+        (r) =>
+          r.startsWith("Bash(*") &&
+          r.includes("settings.json") &&
+          r.includes(path.basename(path.dirname(gate.settings))),
+      ),
+    ).toBe(true);
+    expect(rules.join("\n")).not.toContain("events.jsonl");
   });
 
   it("issue 1334: a Doctor ⚠ alone is no reason to ask the person, for build agents and the server agent", () => {
