@@ -25,6 +25,7 @@ import {
   type Persona,
 } from "../../../src/shared/agents/personas.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
+import { gateRouteArgs } from "../../../src/shared/agents/den-claude.js";
 import {
   getRuntime,
   type LaunchInput,
@@ -64,10 +65,20 @@ const agentHooks = (id: string) =>
   mergeHooks(
     guardrailHooks(
       GUARDRAILS_DIR,
-      hookCommands(GUARDRAILS_DIR, process.execPath, {
-        files: path.join(root, "files", id),
-        after: 3,
-      }),
+      hookCommands(
+        GUARDRAILS_DIR,
+        process.execPath,
+        {
+          files: path.join(root, "files", id),
+          after: 3,
+        },
+        [],
+        true,
+        undefined,
+        undefined,
+        // Issue 1264: this install's CLI and the gate's settings.
+        gateRouteArgs(),
+      ),
     ),
     // Issue 936: the sandbox's refusal note rides with Den's hooks.
     sandboxRefusalHooks(),
@@ -137,6 +148,18 @@ describe("a default-pack persona's launch", () => {
       hooks: agentHooks("planner"),
       disableClaudeAiConnectors: true,
     });
+  });
+
+  it("issue 1334: a Doctor ⚠ alone is no reason to ask the person, for build agents and the server agent", () => {
+    for (const t of [
+      sharedInstructions(),
+      sharedInstructions(undefined, { handback: false }),
+    ]) {
+      expect(t).toContain(
+        "A Doctor ⚠ isn't by itself a reason to ask the person.",
+      );
+      expect(t).toContain("an empty project needs no Hub link");
+    }
   });
 
   it("appends the shared persona instructions to the role prompt", () => {

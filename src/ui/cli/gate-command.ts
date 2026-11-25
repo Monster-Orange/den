@@ -29,6 +29,8 @@
  *                            waiting entry go just ahead of it (yours only)
  *   settings [--cpu-slots N] [--cpu-slots-beside-browser N]
  *            [--local-browser-slots N] [--cpu-hold-load N]
+ *            [--max-start-load N] [--max-start-wait-minutes N]
+ *            [--reap-grace-seconds N]   issue 1132
  *            [--overrun-margin-minutes N] [--overrun-bell-multiple X]
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
@@ -57,11 +59,13 @@ import { classOf, windowHeld } from "../../shared/gates/classes.js";
 import {
   gateWorkers,
   type LoadHold,
+  MEMORY_NOT_MEASURED_WORDS,
   type MemoryHold,
   type SwapHold,
   expectedStart,
   GATE_DEFAULTS,
   loadHold,
+  startHold,
   memoryHold,
   swapHold,
   queueEnd,
@@ -93,6 +97,7 @@ import {
 } from "../../shared/gates/ephemeral.js";
 import * as fs from "fs";
 import {
+  boxCouldServe,
   boxEnv,
   checkBox,
   defaultPlace,
@@ -100,7 +105,7 @@ import {
 } from "../../shared/gates/boxes.js";
 import {
   SELF,
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
   endpointFromEnv,
   personLanguage,
@@ -112,9 +117,15 @@ import {
   PRIORITY_OFF_RUN,
   PRIORITY_OFF_STATUS,
   PRIORITY_OFF_WARNING,
+  LEFTOVER_WORDS,
+  START_HOLD_WORDS,
 } from "../../shared/gates/meanings.js";
 import { descendsFrom } from "../../shared/peer-process.js";
-import { allowOf, checkBaseUrl } from "../../shared/gates/pw-guard.js";
+import {
+  allowOf,
+  checkBaseUrl,
+  isLoopbackHost,
+} from "../../shared/gates/pw-guard.js";
 import {
   boxOffWords,
   gateBoxesView,
@@ -161,7 +172,7 @@ export const GATE_HELP = {
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
-    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--local-browser-slots N] [--cpu-hold-load N]",
+    "{cli} gate settings [--cpu-slots N] [--cpu-slots-beside-browser N] [--local-browser-slots N] [--cpu-hold-load N] [--max-start-load N] [--max-start-wait-minutes N] [--reap-grace-seconds N]",
     "    [--overrun-margin-minutes N] [--overrun-bell-multiple X]",
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
@@ -192,6 +203,11 @@ export interface GateRun {
    * all of it), so its slot is given back then, not at its exit.
    */
   dumping?: () => boolean;
+  /**
+   * Issue 1132: the process group the command leads (it was started in
+   * its own), stopped when the slot ends. Absent: none was made.
+   */
+  group?: number;
 }
 
 export interface GateDeps {
@@ -217,6 +233,11 @@ export interface GateDeps {
   lang?: UiLanguage;
   /** Issue 928: whether process `pid` runs under `root` (default: ps). */
   descends?: (pid: number, root: number) => boolean;
+  /**
+   * Issue 1132: whether the run's folder was deleted, or the process that
+   * started gate run is gone. Absent: not watched.
+   */
+  watch?: { folderGone: () => boolean; parentGone: () => boolean };
   /** Issue 989: the running server (default: this install's). */
   server?: PersonServer;
   /**
@@ -253,6 +274,28 @@ async function viaServer(
 
 /** Issue 928: how often a nested run checks its slot still holds. */
 const NESTED_LOOK_MS = 5_000;
+
+/** Issue 1132: how often a run looks whether its folder or parent is gone. */
+const WATCH_LOOK_MS = 1_000;
+
+/** Issue 1132: how often a held run looks at the load again. */
+const HOLD_LOOK_MS = 2_000;
+
+/**
+ * Issue 1198: a default pick's base URL when the run gives none: any port
+ * on 127.0.0.1 but 80 and 443, and in the box guard (issue 991) only the
+ * ports the run itself opens.
+ */
+const DEFAULT_BASE = "http://127.0.0.1:*";
+
+/** Whether a Playwright endpoint is on this machine's loopback. */
+function loopbackEndpoint(raw: string): boolean {
+  try {
+    return isLoopbackHost(new URL(raw).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Issue 1023: how often a run looks whether its command is dumping core. */
 const DUMP_LOOK_MS = 100;
@@ -340,15 +383,27 @@ const realExec = (
   args: string[],
   env?: Record<string, string>,
 ): GateRun => {
+  // Issue 1132: in its own process group (it leads it), so what it
+  // starts can be stopped with it, and nothing else is. Signals reach it
+  // through gate run, which passes them on to the whole group.
   const k = spawn(cmd, args, {
     stdio: "inherit",
+    detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
   });
   const running = () => k.exitCode === null && k.signalCode === null;
+  const group = process.platform === "win32" ? undefined : k.pid;
   return {
     pid: k.pid,
+    ...(group !== undefined ? { group } : {}),
     kill: (s) => {
-      if (running()) k.kill(s);
+      if (!running()) return;
+      if (group === undefined) return void k.kill(s);
+      try {
+        process.kill(-group, s);
+      } catch {
+        k.kill(s);
+      }
     },
     ...(process.platform === "linux"
       ? {
@@ -396,6 +451,19 @@ export function realGateDeps(): GateDeps {
     exit: (code) => process.exit(code),
     pid: process.pid,
     cwd: process.cwd(),
+    watch: realWatch(process.cwd(), process.ppid),
+  };
+}
+
+/**
+ * Issue 1132: the run's folder deleted (it was where gate run started),
+ * or the process that started gate run gone (gate run was handed to
+ * another parent).
+ */
+function realWatch(cwd: string, ppid: number): GateDeps["watch"] {
+  return {
+    folderGone: () => !fs.existsSync(cwd),
+    parentGone: () => ppid > 1 && process.ppid !== ppid,
   };
 }
 
@@ -553,12 +621,19 @@ export function holdWords(h: LoadHold): string {
 
 /** Issue 1274: why a run here waits on swap, in words. */
 export function swapHoldWords(h: SwapHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
   return `waiting: this machine has ${h.usedGb} GB of swap in use, over ${h.limitGb} GB, while another run here is going; it starts once swap drops or that run ends (test boxes still take runs)`;
 }
 
 /** Issue 1274: why a run here waits on memory, in words. */
 export function memoryHoldWords(h: MemoryHold): string {
+  if (h.unavailable) return memoryUnavailableHoldWords();
   return `waiting: this machine has ${Math.round(h.free)}% of its memory free, under ${h.limit}%, while another run here is going; it starts once memory frees or that run ends (test boxes still take runs)`;
+}
+
+/** Issue 1349: an unknown memory reading holds; why, in words. */
+export function memoryUnavailableHoldWords(): string {
+  return "waiting: memory reading unavailable (this machine's free memory or swap couldn't be read), while another run here is going; it starts once a reading comes back or that run ends (test boxes still take runs)";
 }
 
 const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
@@ -567,6 +642,12 @@ const gbWords = (b: number) => `${Math.round(b / 1024 ** 3)} GB`;
 export function machineLines(m: GateMachineView | undefined): string[] {
   if (!m) return [];
   const out: string[] = [];
+  // Issue 1349: the guard is off here, or its reading is unknown: say so.
+  if (m.notMeasured) out.push(`This machine: ${MEMORY_NOT_MEASURED_WORDS}.`);
+  else if (m.unavailable)
+    out.push(
+      "This machine: memory reading unavailable; new runs here wait while another run here is going.",
+    );
   if (m.freeMemory !== undefined)
     out.push(
       `This machine: ${m.freeMemory}% of memory free` +
@@ -604,9 +685,9 @@ export function slotLine(
       /** Issue 1048: the machine's cores. */
       cores?: number;
       /** Issue 1274: this machine's free memory, percent. */
-      freeMemory?: number;
+      freeMemory?: number | null;
       /** Issue 1274: swap in use here, GB. */
-      swapUsedGb?: number;
+      swapUsedGb?: number | null;
     },
 ): string {
   const yields = yieldedTo(e, all);
@@ -634,6 +715,10 @@ export function slotLine(
     (hold ? `  ${holdWords(hold)}` : "") +
     (mem ? `  ${memoryHoldWords(mem)}` : "") +
     (swap ? `  ${swapHoldWords(swap)}` : "") +
+    // Issue 1132: granted, its command waiting for the load to drop.
+    (e.grantedAt && e.startHold
+      ? `  ${START_HOLD_WORDS[margin.lang ?? "en"](e.startHold.load, e.startHold.limit)}`
+      : "") +
     (yields.length ? `  let ${yields.join(", ")} go ahead` : "") +
     (e.browserEndpoint ? `  browser ${e.browserEndpoint}` : "") +
     (e.hostWhy ? `  stays here: ${e.hostWhy}` : "") +
@@ -849,6 +934,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+  // Issue 1198: a loopback container named in the run's environment is
+  // what this machine's browser runs use here; a box replaces it. One on
+  // another host, or one given with --browser-endpoint, the run keeps.
+  const envLoopback =
+    flagEndpoint === undefined &&
+    fromEnv !== undefined &&
+    loopbackEndpoint(fromEnv.endpoint);
   const pwFlag =
     typeof f["--pw-version"] === "string" ? f["--pw-version"] : undefined;
   // Issue 1033: no --box: the first free browser slot, here or on a test
@@ -865,11 +957,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           label,
           project: path.basename(d.cwd),
           boxes: d.store.boxes(),
-          baseUrl: urls.length > 0,
+          // Issue 1198: none given: the ports the run opens (DEFAULT_BASE).
+          baseUrl: true,
           pwVersion: pwFlag ?? playwrightVersion(d.cwd),
           // A run that brings its own browser (the flag, or its
           // environment) keeps it: a box would only change DEN_PW_WS.
-          ...(endpoint !== undefined
+          ...(endpoint !== undefined && !envLoopback
             ? {
                 ownBrowser:
                   endpoint === SELF
@@ -881,15 +974,25 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     where = pick.where;
     hostWhy = pick.why;
     onlyBoxes = pick.only;
+    if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
-  const verdict = browserSlotCheck({
+  const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
     ...(where ? { where } : {}),
-    platform: d.store.platform,
-    requiresContainer: d.store.settings().browserRequiresContainer,
+    // Issue 1198: "any" with none of its own waits only for a box that
+    // could ever take it; else it is refused at once.
+    ...(where === "any"
+      ? {
+          boxCouldServe: boxCouldServe(
+            d.store.boxes(),
+            pwFlag ?? playwrightVersion(d.cwd),
+            onlyBoxes,
+          ),
+        }
+      : {}),
   });
   if (!verdict.ok)
     throw new GateUsage(
@@ -972,6 +1075,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       ...(verdict.declared ? { browserEndpoint: verdict.declared } : {}),
       ...(hostWhy ? { hostWhy } : {}),
       ...(onlyBoxes ? { onlyBoxes } : {}),
+      ...(verdict.ok && verdict.boxesOnly ? { boxesOnly: true } : {}),
     });
   } catch (err) {
     if (err instanceof GatePriorityRefused) throw new GateUsage(err.message);
@@ -996,6 +1100,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
   const onBox = !!e.box;
   let child: GateRun | undefined;
   let released = false;
+  let dumped = false;
   let cancelled: number | undefined;
   const release = () => {
     if (!released) s.release(id);
@@ -1051,6 +1156,12 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       if (!e) throw new Error(`the slot ${id} was ended while waiting`);
     }
     const box = e.box ? s.boxes().find((b) => b.name === e!.box) : undefined;
+    // Issue 1132: no start at or over the load ceiling; past the wait
+    // limit it starts anyway, recorded as busy.
+    const held = await waitForLoad(d, id, label);
+    if (cancelled !== undefined) return cancelled;
+    if (held === "gone")
+      throw new Error(`the slot ${id} was ended while waiting`);
     d.err(`gate: ${id} holds ${kind}${machineWords(e)}; running ${label}`);
     // Issue 928: the command knows the slot it runs in.
     const slotEnv: Record<string, string> = {
@@ -1081,14 +1192,56 @@ async function run(args: string[], d: GateDeps): Promise<number> {
             ...slotEnv,
           })
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
-    if (child.pid !== undefined) s.setRunPid(id, child.pid);
+    if (child.pid !== undefined)
+      s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
+    // Issue 1132: the group as the store recorded it (with its leader's
+    // record and the boot), for a reap after a dump gave the slot back.
+    const recorded = s.get(id);
+    const mine = {
+      id,
+      kind: e.kind,
+      who: e.who,
+      label: e.label,
+      ...(recorded?.group !== undefined
+        ? {
+            group: recorded.group,
+            groupRec: recorded.groupRec,
+            boot: recorded.boot,
+          }
+        : {}),
+      cmd: path.basename(pos[0]!).slice(0, 60),
+    };
+    // Issue 1132: the run's folder deleted, or its parent gone: the slot
+    // ends with that reason, and its group is stopped (the command too).
+    const watch = d.watch;
+    const noWatch = watch
+      ? d.every(WATCH_LOOK_MS, () => {
+          if (released) return;
+          const why = watch.folderGone()
+            ? "folder-gone"
+            : watch.parentGone()
+              ? "parent-gone"
+              : undefined;
+          if (!why) return;
+          d.err(
+            `gate: ${label}: ${why === "folder-gone" ? "its folder was deleted" : "the process that started it is gone"}; stopping it and what it started`,
+          );
+          s.release(id, { reason: why });
+          released = true;
+        })
+      : () => {};
     // Issue 1023: a command that took SIGQUIT (from gate run or anyone)
     // and is dumping core can run no more: its slot is given back then,
     // not after the dump, which a crash handler may take seconds to read.
     const dumping = child.dumping;
     const noDump = dumping
       ? d.every(DUMP_LOOK_MS, () => {
-          if (!released && dumping()) release();
+          // Its dump is left to finish: what it started is stopped after.
+          if (!released && dumping()) {
+            s.release(id, { reap: false });
+            released = true;
+            dumped = true;
+          }
         })
       : () => {};
     // Past its estimate plus the margin, it says so once; never stopped.
@@ -1101,12 +1254,24 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: ${label} is past its estimate (${queueMinOf(now)} min${now.padded ? `, measured; ${now.estimateMin} min was given` : ""}); it is not stopped, and the slot stays its own until it ends`,
       );
     });
+    let code: number;
     try {
-      return await child.done;
+      code = await child.done;
     } finally {
       noDump();
+      noWatch();
       stop();
     }
+    // Issue 1132: the slot ends, and what the command left in its group
+    // is stopped: TERM now, KILL after the grace. gate run stays until it
+    // is done (or a little past the grace), so its end means the tree's.
+    release();
+    if (dumped) s.reap(mine, "ended");
+    if (mine.group !== undefined) {
+      const until = d.now() + (s.settings().reapGraceSeconds + 2) * 1000;
+      while (s.stopLeftovers(id) && d.now() < until) await d.sleep(200);
+    }
+    return code;
   } finally {
     off();
     release();
@@ -1115,6 +1280,50 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (d.docker && !onBox) await cleanRun(s, id, d.docker, checkout);
   }
 }
+
+/**
+ * Issue 1132: before a granted run's command starts, it waits while the
+ * machine's load is at or over gates.max_start_load, saying why (and in
+ * its record, for gate status and the Gate page). Past
+ * gates.max_start_wait_minutes it starts anyway, recorded as busy.
+ * "gone": the slot was ended while it waited.
+ */
+async function waitForLoad(
+  d: GateDeps,
+  id: string,
+  label: string,
+): Promise<"start" | "busy" | "gone"> {
+  const s = d.store;
+  const t0 = d.now();
+  let said = -Infinity;
+  for (;;) {
+    const set = s.settings();
+    const hold = startHold(set, s.load());
+    if (!hold) {
+      s.setStartHold(id);
+      return "start";
+    }
+    const waitMs = set.maxStartWaitMinutes * 60_000;
+    if (set.maxStartWaitMinutes > 0 && d.now() - t0 >= waitMs) {
+      s.startedBusy(id, hold);
+      d.err(
+        `gate: ${label}: the load (${round1(hold.load)}) is still at or over ${hold.limit} after ${set.maxStartWaitMinutes} min; starting anyway (recorded as busy)`,
+      );
+      return "busy";
+    }
+    s.setStartHold(id, hold);
+    if (d.now() - said >= 60_000) {
+      d.err(
+        `gate: ${id} holds its slot; ${START_HOLD_WORDS[d.lang ?? personLanguage()](round1(hold.load), hold.limit)} (gates.max_start_load)`,
+      );
+      said = d.now();
+    }
+    await d.sleep(HOLD_LOOK_MS);
+    if (!s.get(id)) return "gone";
+  }
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 function status(args: string[], d: GateDeps): number {
   const { f } = flags(args, { "--json": false });
@@ -1145,6 +1354,12 @@ function status(args: string[], d: GateDeps): number {
     d.out(
       `Gate: removed ${r.count} container${r.count === 1 ? "" : "s"} for ${r.label} (${r.id}) at ${localDateTime(r.at)}${r.images.length ? `: ${r.images.join(", ")}` : ""}`,
     );
+  // Issue 1132: what was stopped of ended runs in the last hour.
+  for (const r of d.store.stoppedLeftovers(d.now() - 60 * 60_000))
+    if (r.signal !== "KILL")
+      d.out(
+        `${hm(Date.parse(r.at))}  ${LEFTOVER_WORDS[set.lang](r.count ?? 0, r.label, r.cmd ?? "")}${r.reason && r.reason !== "ended" ? `  (${r.reason})` : ""}`,
+      );
   // Issue 963: said plainly, so a release run waiting in line has a why.
   if (set.priorityMax === 0)
     d.out(PRIORITY_OFF_STATUS[d.lang ?? personLanguage()]);
@@ -1360,6 +1575,9 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--local-browser-slots": true,
     "--cpu-hold-load": true,
     "--load-hold-per-core": true,
+    "--max-start-load": true,
+    "--max-start-wait-minutes": true,
+    "--reap-grace-seconds": true,
     "--memory-free-min-percent": true,
     "--swap-hold-gb": true,
     "--vm-memory-share": true,
@@ -1381,6 +1599,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-box-default": true,
     "--browser-host-only": true,
     "--yes": false,
+    // Issue 1395: an agent's ask says why.
+    "--reason": true,
   });
   const raw: Record<string, number | string | null> = {};
   for (const [flag, key] of [
@@ -1390,8 +1610,12 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--local-browser-slots", "local_browser_slots"],
     ["--cpu-hold-load", "cpu_hold_load"],
     ["--load-hold-per-core", "load_hold_per_core"],
+    ["--max-start-load", "max_start_load"],
+    ["--max-start-wait-minutes", "max_start_wait_minutes"],
+    ["--reap-grace-seconds", "reap_grace_seconds"],
     ["--memory-free-min-percent", "memory_free_min_percent"],
     ["--swap-hold-gb", "swap_hold_gb"],
+    ["--memory-reading-keep-seconds", "memory_reading_keep_seconds"],
     ["--vm-memory-share", "vm_memory_share"],
     ["--overrun-margin-minutes", "overrun_margin_minutes"],
     ["--overrun-bell-multiple", "overrun_bell_multiple"],
@@ -1428,12 +1652,14 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     if (typeof v === "string") raw[key] = v.trim() || null;
   }
   if (Object.keys(raw).length) {
-    if (isAgentEnv(d.env))
-      throw new GateUsage(
-        "gate settings: only a person can change them (this is an agent)",
-      );
     const c = checkGatePatch(raw);
     if (!c.ok) throw new GateUsage(c.error);
+    // Issue 1395: an agent asks for gate_settings_set; never writes here.
+    if (isAgentEnv(d.env)) {
+      const done = await askGateSettings(d, c.patch, f["--reason"]);
+      if (done !== 0) return done;
+      return showSettings(d);
+    }
     // Issue 963: turning release priority off warns first; --yes goes on.
     const lang = d.lang ?? personLanguage();
     if (
@@ -1457,6 +1683,68 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
         whoAsks(d.env, d.cwd),
       );
   }
+  return showSettings(d);
+}
+
+/**
+ * Issue 1395: an agent's `gate settings` change, asked of Den as the held
+ * write gate_settings_set (the approval policy decides: written at once,
+ * or held for the person's Allow). 0 when written or held; 1 when refused
+ * or no server answered. The CLI writes nothing itself for an agent.
+ */
+async function askGateSettings(
+  d: GateDeps,
+  patch: GateSettingsPatch,
+  reasonFlag: string | boolean | string[] | undefined,
+): Promise<number> {
+  const reason = typeof reasonFlag === "string" ? reasonFlag.trim() : "";
+  if (!reason)
+    throw new GateUsage(
+      'gate settings: an agent asks the person for a change: add --reason "<why>"',
+    );
+  let r: Awaited<ReturnType<PersonServer>>;
+  try {
+    r = await (d.server ?? personServerFor())("POST", "/api/approvals", {
+      action: "gate_settings_set",
+      args: { settings: patch, reason },
+    });
+  } catch (e) {
+    d.err(`gate settings: ${(e as Error).message}; nothing was changed`);
+    return 1;
+  }
+  if (r === null) {
+    d.err(
+      "gate settings: Den's web app isn't answering, so nothing was asked or changed",
+    );
+    return 1;
+  }
+  const j = r.json ?? {};
+  const result = (j.result ?? {}) as Record<string, unknown>;
+  if ((r.status !== 200 && r.status !== 202) || j.ok === false) {
+    d.err(`gate settings: ${String(j.error ?? `Den answered ${r.status}`)}`);
+    return 1;
+  }
+  if (j.state === "done" && result.ok === false) {
+    d.err(`gate settings: ${String(result.error ?? "it failed")}`);
+    return 1;
+  }
+  if (j.state === "done") {
+    const changed = Array.isArray(result.changed) ? result.changed : [];
+    d.out(
+      changed.length
+        ? `✓ gate settings changed: ${changed.join(", ")}`
+        : `✓ gate settings: ${String(result.note ?? "already in effect")}`,
+    );
+    return 0;
+  }
+  d.out(
+    `gate settings: waiting for the person's Allow in Den (request ${String(j.id ?? "")}); check it with the MCP tool approval_check`,
+  );
+  return 0;
+}
+
+/** The settings, each with its meaning and value, and the summary line. */
+function showSettings(d: GateDeps): number {
   const s = d.store.settings();
   // Issue 963: each setting, its value and what it means.
   const meanings = GATE_MEANINGS[d.lang ?? personLanguage()];
@@ -1468,7 +1756,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserContainerStrict ? "yes, strict" : s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

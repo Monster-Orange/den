@@ -171,6 +171,13 @@ describe("hub link --suggested (#68)", () => {
     expect(t.out.join("\n")).not.toContain("default →");
   });
 
+  it("issue 1334: never offers an empty project (no repos, services or agents)", async () => {
+    const r = sug({ empty: (ws) => ws === "lone" });
+    expect(await cmdHubLink(["--suggested", "--json"], r.deps)).toBe(0);
+    const j = JSON.parse(r.out[0]) as { projects: { project: string }[] };
+    expect(j.projects.map((p) => p.project)).toEqual(["back-office", "site"]);
+  });
+
   it("Hub not connected: says so, exit 1; with -p or a Hub project: usage", async () => {
     const r = sug({ choices: async () => null });
     expect(await cmdHubLink(["--suggested"], r.deps)).toBe(1);

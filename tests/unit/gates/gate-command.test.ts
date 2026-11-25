@@ -230,8 +230,9 @@ describe("gate run", () => {
           ...process.env,
           DEN_GATE_DIR: dir,
           TSX_DISABLE_CACHE: "1",
-          // A browser run declares a container browser (macOS hosts).
-          DEN_PW_WS: "ws://127.0.0.1:9",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
         },
         stdio: ["ignore", "ignore", "pipe"],
       },
@@ -277,8 +278,9 @@ describe("gate run", () => {
           ...process.env,
           DEN_GATE_DIR: dir,
           TSX_DISABLE_CACHE: "1",
-          // A browser run declares a container browser (macOS hosts).
-          DEN_PW_WS: "ws://127.0.0.1:9",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
         },
         stdio: ["ignore", "ignore", "pipe"],
       },
@@ -395,7 +397,7 @@ describe("gate end and settings: a person's only", () => {
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
     expect(t.out.at(-1)).toBe(
-      `cpu slots 4, 2 beside a browser run, none beside a release one · browser runs at once here 1 · cpu runs wait at load ${GATE_DEFAULTS.cpuHoldLoad} while a release browser run holds · new cpu runs wait over a load of 3 × the cores while one is going · flagged 15 min past its estimate, in the bell past 2× it · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past another marked run, agents and people may ask · test boxes checked within 8 s, a held or unreachable one checked again after 30 s · browser runs need a container: no · a browser run with no --box: here or a test box`,
+      `cpu slots 4, 2 beside a browser run, none beside a release one · browser runs at once here 1 · cpu runs wait at load ${GATE_DEFAULTS.cpuHoldLoad} while a release browser run holds · new cpu runs wait over a load of 3 × the cores while one is going · no run starts at a load of ${GATE_DEFAULTS.maxStartLoad} or more (starts anyway after 10 min) · leftovers killed 10 s after a run ends · flagged 15 min past its estimate, in the bell past 2× it · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past another marked run, agents and people may ask · test boxes checked within 8 s, a held or unreachable one checked again after 30 s · browser runs need a container: no · a browser run with no --box: here or a test box`,
     );
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });

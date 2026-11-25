@@ -22,15 +22,15 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { execFileSync } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
-import * as http from "http";
 import * as os from "os";
+import * as http from "http";
 import * as path from "path";
 import type { ChildProcess } from "child_process";
 import { DEFAULT_TRAEFIK_IMAGE } from "../../../src/shared/edge/config.js";
 import { edgeCommand } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
-import { dockerOk, freePort } from "./helpers/docker-edge.js";
+import { dockerOk, dockerShareTmp, freePort } from "./helpers/docker-edge.js";
 
 const ENGINE = path.join(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -39,6 +39,8 @@ const tag = `${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
 
 let ok = false;
 let tmp = "";
+/** The fake install and its home: not shared with Docker, so os.tmpdir(). */
+let local = "";
 let denPort = 0;
 let server: ChildProcess | null = null;
 const containers: string[] = [];
@@ -102,12 +104,13 @@ function cfg(): EdgeConfig {
 beforeAll(async () => {
   ok = dockerOk();
   if (!ok) return;
-  // Under the home dir: Docker Desktop and OrbStack share it with the VM.
-  tmp = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.homedir(), ".den-test-edge-proof-")),
+  // Only the edge's dynamic folder is mounted: it alone needs Docker's share.
+  tmp = fs.realpathSync(dockerShareTmp("edge-proof-"));
+  local = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "den-edge-proof-")),
   );
   denPort = await freePort();
-  const root = path.join(tmp, "dist");
+  const root = path.join(local, "dist");
   fs.mkdirSync(path.join(root, "config"), { recursive: true });
   fs.writeFileSync(path.join(root, "den.yml"), "product:\n  name: den\n");
   fs.writeFileSync(
@@ -134,7 +137,7 @@ beforeAll(async () => {
   // An edge set up before 0.4.48: an edge.yml, no proof yet.
   fs.mkdirSync(path.dirname(edgeYml()), { recursive: true });
   fs.writeFileSync(edgeYml(), "# set up before 0.4.48\n");
-  const home = path.join(tmp, "home");
+  const home = path.join(local, "home");
   const started = await startDenServer(
     TSX,
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
@@ -175,6 +178,7 @@ afterAll(async () => {
     }
   if (server) await stopServer(server);
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  if (local) fs.rmSync(local, { recursive: true, force: true });
 });
 
 /** A throwaway edge on `image`, reading Den's dynamic folder. */

@@ -72,11 +72,16 @@ import {
   hookCommands,
   mergeHooks,
   sandboxRefusalHooks,
+  type GateRouteArgs,
 } from "./guardrails.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { distributionBin, shellQuote } from "../cli-command.js";
+import { getDistRoot, getEngineRoot } from "../paths.js";
+import { gateDir } from "../gates/store.js";
+import { AUDIT_FILE, AUDIT_SET_ASIDE_DIR } from "../audit-file.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -420,13 +425,30 @@ function detect(
  *   `${HOME}/…`, and, when the path has a space, with each space
  *   backslash-escaped.
  */
-export function stateDirDenyRules(stateDir: string, home?: string): string[] {
+export function stateDirDenyRules(
+  stateDir: string,
+  home?: string,
+  /**
+   * Issue 1391: the install's own trail on a personal install: readable
+   * (Edit stays denied). Unset is denied, as for another install's.
+   */
+  o: { trailReadable?: boolean } = {},
+): string[] {
   const abs = path.resolve(stateDir);
   const secret = path.join(abs, "web.secret");
   const sessions = path.join(abs, "sessions");
   const spellings = (p: string) => shellSpellings(p, home);
   // Issue 810: the fixture person's key, as the web secret.
   const fixtureKey = path.join(abs, "fixture-person.key");
+  // Issue 1299 review: the sessions lock; a live pid written there would
+  // hold every sign-in for its wait, then refuse it.
+  const sessionsLock = path.join(abs, "web-sessions.lock");
+  // Issue 728: the activity trail. Since issue 1369 only the server
+  // writes it (the CLI sends its entries), so an agent never edits it.
+  // Issue 1391: on a personal install it may read it, to debug who
+  // changed what; on a strict one, and another install's, it may not.
+  const trailRead = o.trailReadable === true;
+  const trail = path.join(abs, AUDIT_FILE);
   // Issue 728: the state dir's other credential files and folders.
   const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
   const dirs = STATE_CREDENTIAL_DIRS.map((d) => path.join(abs, d));
@@ -434,6 +456,8 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
     ...spellings(fixtureKey).map((p) => `${p}*`),
+    ...spellings(sessionsLock).map((p) => `${p}*`),
+    ...(trailRead ? [] : spellings(trail).map((p) => `${p}*`)),
     ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
     ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
@@ -442,7 +466,15 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     `Read(/${sessions}/**)`,
     `Read(/${fixtureKey})`,
     `Edit(/${fixtureKey})`,
+    `Read(/${sessionsLock})`,
+    // Edit(path) covers writes too (issue 660: no Write(path) rules).
+    `Edit(/${sessionsLock})`,
+    ...(trailRead ? [] : [`Read(/${trail})`]),
+    `Edit(/${trail})`,
     ...files.map((f) => `Read(/${f})`),
+    // Issue 1299: copies beside each (a damaged file moved aside, a
+    // write's temporary file) hold the same records.
+    ...files.map((f) => `Read(/${f}*)`),
     ...dirs.map((d) => `Read(/${d}/**)`),
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),
@@ -480,10 +512,58 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
  * the old ones kept for a retried revoke. agent-files/ (an agent's MCP
  * config and settings, no secret) stays readable.
  */
-export const STATE_CREDENTIAL_DIRS: readonly string[] = ["actor-token", "hub"];
+export const STATE_CREDENTIAL_DIRS: readonly string[] = [
+  "actor-token",
+  "hub",
+  // Issue 1391: the trail written before redaction, set aside.
+  AUDIT_SET_ASIDE_DIR,
+];
 
 /**
- * Issue 728: rules denying an agent's Read and Bash tools the files in
+ * Issue 728: whether `rules`' Read rules cover an absolute file: as Claude
+ * Code reads them, `Read(/<abs>)` one file, `Read(/<abs>/**)` everything
+ * under it, a `*` in the path one segment's run of characters. For
+ * doctor's list of 0600 files no rule covers.
+ */
+export function readRulesCover(
+  rules: readonly string[],
+  file: string,
+): boolean {
+  return rules
+    .filter((r) => r.startsWith("Read(/") && r.endsWith(")"))
+    .map((r) => r.slice("Read(/".length, -1))
+    .some((g) => {
+      const under = g.endsWith("/**");
+      const re = new RegExp(
+        "^" +
+          (under ? g.slice(0, -3) : g)
+            .split("*")
+            .map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join("[^/]*") +
+          (under ? "/.+" : "") +
+          "$",
+      );
+      return re.test(file);
+    });
+}
+
+/**
+ * Issue 728: a path as given (resolved) and by its real path, when a
+ * symlink makes them differ, so a deny rule binds both spellings.
+ */
+export function bothSpellings(p: string): string[] {
+  const given = path.resolve(p);
+  let real = given;
+  try {
+    real = fs.realpathSync(given);
+  } catch {
+    /* not there yet: its given spelling only */
+  }
+  return real === given ? [given] : [given, real];
+}
+
+/**
+ * Issue 728: rules denying an agent's Read, Edit and Bash tools the files in
  * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
  * naming the path in each shell spelling, and the readers by name. For the
  * edge's key folders (edgeKeyDirs), wherever the edge config puts them.
@@ -498,6 +578,7 @@ export function credentialDirRules(
   );
   return [
     ...abs.map((d) => `Read(/${d}/**)`),
+    ...abs.map((d) => `Edit(/${d}/**)`),
     ...targets.map((t) => `Bash(*${t})`),
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
   ];
@@ -692,6 +773,8 @@ function common(input: LaunchInput): {
   const inbox = inboxBase
     ? { base: inboxBase, ...(call ? { call } : {}) }
     : undefined;
+  // Issue 1264: the hook routes heavy runs through the gate (guardrails on).
+  const gate = input.persona.guardrails?.hooks ? gateRouteArgs() : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -710,6 +793,7 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          gate,
         ),
         !!input.apiOnly,
       )
@@ -753,6 +837,7 @@ function common(input: LaunchInput): {
       : [];
   const allow = [
     ...allowRules(input.allow ?? []),
+    ...gateAllowRules(gate?.cli, input.allow ?? []),
     ...(den?.allow ?? []),
     ...hubAllow,
   ];
@@ -802,15 +887,22 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 728: this install's own folders by their
+                    // given and their real paths (a symlink in either).
                     ...(input.stateDir
-                      ? stateDirDenyRules(input.stateDir, input.env?.HOME)
+                      ? bothSpellings(input.stateDir).flatMap((d) =>
+                          stateDirDenyRules(d, input.env?.HOME, {
+                            trailReadable: input.trailReadable === true,
+                          }),
+                        )
                       : []),
                     // Issue 728: the edge's key folders.
                     ...credentialDirRules(
-                      input.edgeKeyDirs ?? [],
+                      (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
                       input.env?.HOME,
                     ),
-                    // Issue 816: announced test installs'.
+                    // Issue 816: announced test installs'; issue 728:
+                    // the other installs in the install registry.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>
                       stateDirDenyRules(d, input.env?.HOME),
                     ),
@@ -818,6 +910,13 @@ function common(input: LaunchInput): {
                       ? announceDirDenyRules(
                           input.testAnnounceDir,
                           input.env?.HOME,
+                        )
+                      : []),
+                    // Issue 728: the install registry, as 816's folder,
+                    // by its given and its real path.
+                    ...(input.installRegistryDir
+                      ? bothSpellings(input.installRegistryDir).flatMap((d) =>
+                          announceDirDenyRules(d, input.env?.HOME),
                         )
                       : []),
                     ...(input.personConfigDir
@@ -1176,3 +1275,38 @@ export const denClaude: Runtime = {
   // catalog entry's sign-in data.
   signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };
+
+/**
+ * Issue 1264: allow rules for the gated form of each command the agent is
+ * already allowed (`<cli> gate run --kind cpu|browser -- <command>`), so a
+ * run the hook routes still runs without asking. Only those commands, never
+ * the gate on its own. The words match the hook's (gate-route.mjs
+ * gatePrefix, pretooluse.mjs gateRewrite); a test checks both agree.
+ */
+export function gateAllowRules(
+  cli: string | undefined,
+  commands: readonly string[],
+): string[] {
+  if (!cli) return [];
+  return ["cpu", "browser"].flatMap((kind) =>
+    allowRules(
+      commands.map((c) => `${shellQuote(cli)} gate run --kind ${kind} -- ${c}`),
+    ),
+  );
+}
+
+/**
+ * Issue 1264: this install's CLI and the gate's settings file, for the
+ * PreToolUse hook to route an agent's heavy runs through the gate; none
+ * when the install's CLI can't be found (no routing then).
+ */
+export function gateRouteArgs(): GateRouteArgs | undefined {
+  try {
+    const cli = distributionBin(product().cli, getDistRoot(), getEngineRoot());
+    return cli
+      ? { cli, settings: path.join(gateDir(), "settings.json") }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

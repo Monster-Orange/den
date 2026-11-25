@@ -139,11 +139,21 @@ export interface LaunchInput {
    */
   otherStateDirs?: string[];
   /**
+   * Issue 1391: a personal install's agent may read its own activity
+   * trail (never edit it); unset, as on a strict install, it may not.
+   */
+  trailReadable?: boolean;
+  /**
    * Issue 816 review: the folder where test installs announce themselves
    * (~/.<cli>/test-installs). Denied too, so an agent can't find the
    * state folder of a test install announced after it started.
    */
   testAnnounceDir?: string;
+  /**
+   * Issue 728: the install registry (install-registry.ts), whose entries
+   * name the other installs' state folders. Denied like testAnnounceDir.
+   */
+  installRegistryDir?: string;
   /**
    * Issue 810: the distribution config file (it holds the test-install
    * mark), denied to the agent's edits with personConfigDir.
