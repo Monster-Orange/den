@@ -60,17 +60,22 @@ if (/^0+$/.test(base)) {
   process.exit(0);
 }
 
-// Commits already on origin/main are public and can't be reworded: a merge
-// of main into a work branch brings main's own merge commits (a hosted
-// merge button names the org's branch) into the range. Only new ones count.
-const MAIN = "refs/remotes/origin/main";
-const hasMain =
-  spawnSync("git", ["rev-parse", "-q", "--verify", `${MAIN}^{commit}`], {
-    stdio: "ignore",
-  }).status === 0;
+// Commits already on origin/main or origin/next/queue (the merge queue's
+// branch) are public and can't be reworded: a merge of either into a work
+// branch brings its own merge commits (a hosted merge button names the
+// org's branch) into the range. Only new ones count (issue 1610). Any other
+// branch's commits are still checked, pushed or not, so a bad commit pushed
+// once to a feature branch never passes for good.
+const PUBLIC = ["refs/remotes/origin/main", "refs/remotes/origin/next/queue"];
+const known = PUBLIC.filter(
+  (ref) =>
+    spawnSync("git", ["rev-parse", "-q", "--verify", `${ref}^{commit}`], {
+      stdio: "ignore",
+    }).status === 0,
+);
 const shas = execFileSync(
   "git",
-  ["rev-list", range, ...(hasMain ? ["--not", MAIN] : [])],
+  ["rev-list", range, ...(known.length ? ["--not", ...known] : [])],
   { encoding: "utf-8" },
 )
   .split("\n")
