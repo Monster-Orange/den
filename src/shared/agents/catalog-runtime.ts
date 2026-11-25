@@ -106,11 +106,6 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
         ],
       };
     },
-    // Issue 785: an entry with a resume template resumes the conversation
-    // its agent reported: the template's words, the binary Den launches
-    // for it, the id in its slot. Nothing else the agent wrote is used.
-    // Null (nothing to resume) when the report fails: resumeRefusal says
-    // why before this is reached.
     ...(e.resume
       ? {
           reportedResume: true as const,

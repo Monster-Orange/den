@@ -1,13 +1,3 @@
-/**
- * Issue 785: an agent reports how to resume its conversation, with its own
- * token: POST /api/agents/self/resume-command { conversation, cwd, seq }.
- *
- * Only the conversation's id: Den builds the command from the runtime's
- * own template (resume-command.ts), so a report can't change what the
- * agent starts as. Den keeps the newest by sequence on the agent's
- * record. One that breaks a rule is refused and logged by its reason
- * only, never its words.
- */
 import type * as http from "http";
 import {
   listRecords,
@@ -30,12 +20,10 @@ export const RESUME_REPORT_PATH = "/api/agents/self/resume-command";
 export interface ResumeReportDeps {
   stateDir: () => string;
   log: (line: string) => void;
-  /** Tests: the agent the request is from. */
   principal?: (req: http.IncomingMessage) => AgentPrincipal | null;
   now?: () => Date;
 }
 
-/** The body: a JSON object, at most 4 KiB (a report fits in well under). */
 async function jsonBody(
   req: http.IncomingMessage,
 ): Promise<Record<string, unknown> | null> {
@@ -70,7 +58,6 @@ export async function handleResumeReportRoutes(
   if (pathname !== RESUME_REPORT_PATH) return false;
   if ((req.method ?? "GET").toUpperCase() !== "POST")
     return refuse(res, 405, "method", "POST only.");
-  // Its own token: never an agent's read-only view (issue 796).
   const agent = (d.principal ?? agentTokenPrincipalOf)(req);
   if (!agent)
     return refuse(
@@ -100,8 +87,6 @@ export async function handleResumeReportRoutes(
     (k) => k !== "conversation" && k !== "cwd" && k !== "seq",
   );
   if (extra.length) {
-    // The log never carries the agent's own text; the reply names the
-    // field cleaned and short.
     d.log(`agent ${id}: resume report refused: unknown field`);
     const clean = extra[0]!.replace(/[^A-Za-z0-9_]/g, "");
     const name =
@@ -123,9 +108,6 @@ export async function handleResumeReportRoutes(
     d.log(`agent ${id}: resume report refused: ${problem}`);
     return refuse(res, 400, "refused_report", problem);
   }
-  // From here to the write, nothing awaits: the record is read again now
-  // (the body's pace is the agent's, and a person may have changed the
-  // record meanwhile), and only its report changes.
   const rec = found();
   if (!rec)
     return refuse(res, 404, "no_agent", `no agent ${id} in ${agent.workspace}`);

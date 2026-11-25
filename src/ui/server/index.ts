@@ -6762,7 +6762,6 @@ async function handleRequest(
     });
     return;
   }
-  // Issue 785: an agent reports how to resume its conversation (its token).
   if (guard.ok && pathname === "/api/agents/self/resume-command") {
     const { handleResumeReportRoutes } =
       await import("./resume-report-routes.js");

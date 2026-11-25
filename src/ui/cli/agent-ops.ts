@@ -1536,15 +1536,11 @@ export function isStoppedState(st: string): boolean {
  */
 export function resumeRefusal(
   rec: AgentRecord,
-  /** Issue 785: every agent's record: a conversation must be its own. */
   others: readonly AgentRecord[] = [],
 ): string | null {
   const rt = getRuntime(rec.runtime);
   if (!rt?.resume) return `${rec.runtime} can't resume a conversation`;
-  // Issue 785: the command its agent reported, checked as it would run.
   if (rt.reportedResume) {
-    // Its runtime's template with the session it reported ("{bin}": the
-    // binary is found when it launches).
     const got = resumeCommandFor(
       rec.resumeReport,
       rec.cwd,
@@ -6841,7 +6837,6 @@ export async function resumeAgent(
         sessionLabel: peerName,
         worktree: rec.cwd,
         ...(rec.resumeToken ? { resumeToken: rec.resumeToken } : {}),
-        // Issue 785: the session its agent reported (Codex, Gemini).
         ...(rt.reportedResume && rec.resumeReport
           ? { resumeReport: rec.resumeReport }
           : {}),
@@ -8781,10 +8776,6 @@ export interface RestartFound {
   failed: { agent: string; why: string }[];
   /** 0.4.46: resumed though Hub didn't answer in time (no Hub tools). */
   withoutHub: string[];
-  /**
-   * Issue 785: ones whose runtime resumes from a reported command (Codex,
-   * Gemini, Grok) that had none Den could run: started fresh, with why.
-   */
   startedFresh: { agent: string; why: string }[];
   /**
    * Issue 163: agents whose session is still running: they kept running
@@ -8863,9 +8854,6 @@ export async function markInterrupted(
   }
   if (opts.autoResume === false || !marked.length) return found;
   const find = personaLookup(d);
-  // Issue 785: one whose runtime resumes from its reported command, with
-  // none Den can run, starts fresh instead (its newest handoff first), and
-  // the result says why.
   const why = new Map<string, string>();
   const all = listRecords(d.stateDir());
   const due = marked.filter((rec) => {
@@ -9119,8 +9107,6 @@ export async function resumeInterrupted(
   failed: { agent: string; why: string }[];
 }> {
   const sessions = await hostSessions(d);
-  // Issue 785: a conversation is checked against every agent's record,
-  // running ones and other workspaces too, not just the interrupted here.
   const all = listRecords(d.stateDir());
   const recs = all.filter(
     (r) =>

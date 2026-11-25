@@ -807,12 +807,6 @@ function stoppedTip(r) {
   return [who, meta, stopReason(r), cant].filter(Boolean).join("\n");
 }
 
-/**
- * Why a stopped agent can't resume, in the person's language where Den
- * knows the words: its runtime can't resume at all, or (issue 785) it
- * reported no conversation to resume. Any other reason (reported for another
- * folder, not on PATH, a rule it broke) is the server's own.
- */
 function noResumeText(r) {
   const why = r.noResume;
   if (why === `${r.runtime} can't resume a conversation`)

@@ -1,10 +1,3 @@
-/**
- * Issue 785: a runtime other than Claude (Codex here) resumes the
- * conversation its agent reported, with the command Den builds from the
- * runtime's own template; a missing or refused one says why, Resume is
- * refused, and after a restart it starts fresh. Nothing in a report but
- * the conversation id reaches the command.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -21,14 +14,12 @@ afterEach(cleanupRigs);
 
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
 
-/** A `codex` on the rig's PATH (its first folder). */
 function codexOnPath(r: Rig): string {
   const bin = path.join(r.dir, "bin", "codex");
   fs.writeFileSync(bin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   return bin;
 }
 
-/** A Codex agent in north: stopped, or (`interrupted`) gone with its host. */
 function coder(
   r: Rig,
   report?: Record<string, unknown>,
@@ -151,7 +142,6 @@ describe("issue 785: after a restart or crash", () => {
     expect(found.failed).toEqual([]);
     const runs = r.made.map((p) => [p.file, p.args]);
     expect(runs).toContainEqual([bin, ["resume", "019a-77"]]);
-    // The fresh one: Codex's own launch, not a resume.
     expect(
       runs.filter(([f, a]) => f === bin && (a as string[])[0] !== "resume"),
     ).toHaveLength(1);
@@ -175,7 +165,6 @@ describe("issue 785: the bell says who started fresh", () => {
       }),
     ]);
     noteStartedFresh(store, ["tester"]);
-    // The page picks the .one form itself when n is 1.
     expect(added[1]).toMatchObject({
       text: "1 agent started fresh: no conversation Den could resume",
       msg: { key: "bell.m.fresh", vars: { n: 1 } },

@@ -112,11 +112,6 @@ export interface CatalogEntry {
   version: { args: string[]; identity: CatalogIdentity };
   dirs: string[];
   launch: { argv: string[] };
-  /**
-   * Issue 785: how it resumes a conversation: "{bin}" (the binary Den
-   * launches for it) first and the conversation's id in one "{conversation}"
-   * word. The agent reports only that id. Unset: it can't resume.
-   */
   resume?: { argv: string[] };
   /** What Shift+Enter sends (AG-4b); unset: "esc-cr". */
   softNewline?: SoftNewline;
@@ -240,8 +235,6 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["$CODEX_INSTALL_DIR", "~/.local/bin", "{system}"],
     launch: { argv: ["{bin}"] },
-    // Issue 785: `codex resume <SESSION_ID>` (codex-rs/cli: the resume
-    // subcommand) continues that conversation.
     resume: { argv: ["{bin}", "resume", "{conversation}"] },
     // The composer's insert_newline is Ctrl+J (codex-rs/tui keymap): a
     // plain terminal's Shift+Enter and Alt+Enter submit (openai/codex#20580).
@@ -269,8 +262,6 @@ export const BUILTIN_CATALOG: readonly CatalogEntry[] = [
     },
     dirs: ["{system}"],
     launch: { argv: ["{bin}"] },
-    // Issue 785: `gemini --resume <session id>` (docs/cli/session-management.md)
-    // continues that session.
     resume: { argv: ["{bin}", "--resume", "{conversation}"] },
     // https://geminicli.com/docs/reference/keyboard-shortcuts: Alt+Enter
     // (ESC CR), Ctrl+J and Shift+Enter insert a newline.
@@ -565,7 +556,6 @@ export function validateCatalogEntry(
     throw new Error(
       `${where}.launch.argv[0]: must be "{bin}" (the path Den found)`,
     );
-  // Issue 785: its resume template, held to resumeTemplateProblem's rules.
   let resume: CatalogEntry["resume"];
   if (raw.resume !== undefined) {
     const r = raw.resume;
@@ -583,8 +573,6 @@ export function validateCatalogEntry(
     );
     const problem = resumeTemplateProblem(words);
     if (problem) throw new Error(`${where}.resume.argv: ${problem}`);
-    // A resume is never wider than a launch: every launch word after
-    // {bin} (a sandbox flag, say) is in the template too.
     const left = [...words.slice(1)];
     for (const w of argv.slice(1)) {
       const at = left.indexOf(w);

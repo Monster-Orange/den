@@ -2174,11 +2174,6 @@ async function hubAnswers(): Promise<(() => Promise<boolean>) | null> {
 }
 
 /** 0.4.46: the bell's "N agents started without Hub" (one item, updated). */
-/**
- * Issue 785: the bell's one note that agents started fresh after a
- * restart: their runtime resumes the conversation its agent reports, and none
- * Den could resume was on file (the log says why for each).
- */
 export function noteStartedFresh(
   store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
   ids: readonly string[],
@@ -2772,7 +2767,6 @@ export function startAgentUpkeep(
           /* the bell is best effort */
         }
       }
-      // Issue 785: started fresh, no conversation Den could resume: why.
       if (f.startedFresh.length) {
         for (const x of f.startedFresh)
           log(`  ⚠ agent ${x.agent} started fresh: ${x.why}`);
@@ -2784,7 +2778,6 @@ export function startAgentUpkeep(
             f.startedFresh.map((x) => x.agent),
           );
         } catch {
-          /* the bell is best effort */
         }
       }
       // Issue 163: away longer than a restart: who ran on, who came back.

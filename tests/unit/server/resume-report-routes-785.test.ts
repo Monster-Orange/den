@@ -1,9 +1,3 @@
-/**
- * Issue 785: an agent reports the conversation to resume with its own
- * token (POST /api/agents/self/resume-command { conversation, cwd, seq }):
- * only an id, held to a strict pattern, the newest kept, a refused one
- * logged by its reason and never kept. Its startup command can't change.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
@@ -102,7 +96,6 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
         seq: 2,
         at: "2026-11-22T10:00:00.000Z",
       });
-      // An older or equal one is ignored; the newest stays.
       for (const seq of [1, 2]) {
         const old = await t.post({ conversation: "old", cwd: t.cwd, seq });
         expect(old).toEqual({
@@ -121,7 +114,6 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
   it("a whole command, or extra words, in place of an id: refused, never kept", async () => {
     const t = await setup(agentOf("coder"));
     try {
-      // A command of its own (the old shape): an unknown field.
       const cmd = await t.post({
         argv: ["bash", "-c", "id"],
         conversation: "s-1",
@@ -130,7 +122,6 @@ describe("issue 785: POST /api/agents/self/resume-command", () => {
       });
       expect(cmd.status).toBe(400);
       expect(cmd.body).toMatchObject({ code: "unknown_field" });
-      // Words in the id: a flag, a second argument, a shell.
       for (const conversation of [
         "--dangerously-bypass-approvals-and-sandbox",
         "s-1 --yolo",
@@ -235,7 +226,6 @@ describe("issue 785: the report's write is safe (security review)", () => {
           },
         );
         req.on("error", reject);
-        // Half the body now; the person narrows the record; then the rest.
         req.write(body.slice(0, 10));
         setTimeout(() => {
           const rec = readRecord(t.stateDir, "coder")!;

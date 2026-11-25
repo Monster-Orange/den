@@ -1,10 +1,3 @@
-/**
- * Issue 785: an agent reports only its conversation's id (with the folder
- * and a rising sequence); Den builds the resume command itself from its
- * runtime's own template and the binary it already launches for it. So
- * nothing an agent writes reaches its startup command but that one id,
- * held to a strict pattern: no flag, no space, no quote, no slash.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   acceptResumeReport,

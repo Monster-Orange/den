@@ -181,10 +181,6 @@ export interface LaunchInput {
    * run that was never prompted starts afresh with the id it had.
    */
   resumeToken?: string;
-  /**
-   * Issue 785: the resume command the agent's runtime reported, for a
-   * runtime whose resume comes from that report (reportedResume).
-   */
   resumeReport?: ResumeReport;
   /** The CLI detect found (a setting, the login PATH, …); else searched again. */
   bin?: string;
@@ -321,10 +317,6 @@ export interface Runtime {
   launch(input: LaunchInput): LaunchOutput;
   /** A new run that continues the last one; null when there is nothing to resume. */
   resume?(input: ResumeInput): Omit<LaunchOutput, "resumeToken"> | null;
-  /**
-   * Issue 785: its resume is the command its agent reported
-   * (input.resumeReport), not a conversation id of Den's.
-   */
   reportedResume?: boolean;
   /**
    * Whether the runtime has a conversation for `token` on this machine

@@ -80,10 +80,6 @@ export interface AgentRecord {
   denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
-  /**
-   * Issue 785: the newest resume command its runtime reported (Codex,
-   * Gemini, Grok), checked again before Den runs it.
-   */
   resumeReport?: ResumeReport;
   /**
    * AG-17.1: brought in from a conversation started outside Den (when);
