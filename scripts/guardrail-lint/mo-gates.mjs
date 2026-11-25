@@ -9,7 +9,10 @@
  * A line rule matches added lines. A module rule judges a file and reports line ranges; in --base mode a range
  * counts when the change added a line inside it. A hit is excused by `mo-lint-ok: <reason>` on its line or the
  * line above (a module hit: anywhere in its range). An excuse with no reason does not count.
- * Exit 0 clean, 1 on a hit, 2 on a usage or git error. Plain Node, no dependencies.
+ * A repo's .guardrail-lint.json may set "since": the commit where the rules landed there. With --base, lines
+ * already there at that commit never count, even when the base is older (a queue branch judged against main).
+ * It is read from the base's tree, so a change can't move it. In a PR's merge commit, pass --base HEAD^1.
+ * Exit 0 clean, 1 on a hit, 2 on a usage, config or git error. Plain Node, no dependencies.
  */
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -72,10 +75,26 @@ export function tracked(root) {
   }
 }
 
-export function addedLines(root, base) {
-  const git = (...a) => execFileSync("git", ["-C", root, ...a], { encoding: "utf-8", maxBuffer: 256 << 20 });
-  const mb = git("merge-base", base, "HEAD").trim();
-  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--diff-filter=AMR", mb, "HEAD");
+const SHA = /^[0-9a-f]{40}$/;
+
+/** The repo's lint settings, .guardrail-lint.json as the base commit has it: { "since": "<40-hex commit>" }.
+ *  Read from the base's tree, never the working tree, so a change can't set the line that judges it. */
+export function baseConfig(root, base) {
+  let text;
+  try {
+    text = execFileSync("git", ["-C", root, "show", `${base}:.guardrail-lint.json`], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return {};
+  }
+  let cfg;
+  try { cfg = JSON.parse(text); } catch (e) { throw new Error(`.guardrail-lint.json: ${e.message}`); }
+  if (cfg.since !== undefined && !SHA.test(String(cfg.since))) throw new Error(".guardrail-lint.json: since must be one full 40-hex commit SHA");
+  return cfg;
+}
+
+/** The lines of HEAD's files that `from` doesn't have: file -> Set of line numbers in HEAD. */
+function linesAddedSince(git, from) {
+  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--diff-filter=AMR", from, "HEAD");
   const files = new Map();
   let cur = null;
   for (const l of diff.split("\n")) {
@@ -88,6 +107,24 @@ export function addedLines(root, base) {
       const n = m[2] === undefined ? 1 : Number(m[2]);
       for (let i = 0; i < n; i++) files.get(cur).add(start + i);
     }
+  }
+  return files;
+}
+
+export function addedLines(root, base) {
+  const git = (...a) => execFileSync("git", ["-C", root, ...a], { encoding: "utf-8", maxBuffer: 256 << 20 });
+  const is = (a, b) => { try { git("merge-base", "--is-ancestor", a, b); return true; } catch { return false; } };
+  const mb = git("merge-base", base, "HEAD").trim();
+  const { since } = baseConfig(root, git("rev-parse", "--verify", `${base}^{commit}`).trim());
+  const files = linesAddedSince(git, mb);
+  // Lines already there when the rules landed never count: when `since` is in this branch's history, a line
+  // counts only if it is new against both the merge base and `since`. A branch without it is judged as usual.
+  if (!since || is(since, mb) || !is(since, "HEAD")) return files;
+  const sinceThen = linesAddedSince(git, since);
+  for (const [p, set] of files) {
+    const keep = sinceThen.get(p);
+    if (!keep) files.delete(p);
+    else for (const n of [...set]) if (!keep.has(n)) set.delete(n);
   }
   return files;
 }
@@ -140,6 +177,7 @@ async function main(argv) {
     try {
       files = base ? addedLines(root, base) : new Map(tracked(root).map((p) => [p, null]));
     } catch (e) {
+      if (/guardrail-lint\.json/.test(e.message)) { console.error(`guardrail lint: ${e.message}`); return 2; }
       console.error(`guardrail lint: git failed (${String(e.message).split("\n")[0]}). It needs the history back to the merge base.`);
       return 2;
     }
