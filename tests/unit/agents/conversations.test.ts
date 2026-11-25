@@ -576,6 +576,26 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
     ).toBe(false);
   });
 
+  it("issue 1592: a rewrite in the same mtime tick is read again", () => {
+    resetTurnCache();
+    const h = home();
+    const since = Date.now() - 60_000;
+    // Written just now, cut before the session started: idle.
+    const file = transcript(h.env, h.work, "c611", cut(since - 30_000), 0);
+    const st = fs.statSync(file);
+    expect(transcriptBusy(file, Date.now(), undefined, undefined, since)).toBe(
+      false,
+    );
+    // The same tail written in the session, at the same size, in the same
+    // tick of a coarse file clock (Linux stamps mtimes by its timer tick).
+    fs.writeFileSync(file, cut(since + 30_000));
+    expect(fs.statSync(file).size).toBe(st.size);
+    fs.utimesSync(file, st.atime, st.mtime);
+    expect(transcriptBusy(file, Date.now(), undefined, undefined, since)).toBe(
+      true,
+    );
+  });
+
   it("a turn record with no time reads as today", () => {
     resetTurnCache();
     const h = home();
