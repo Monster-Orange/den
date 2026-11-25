@@ -153,15 +153,19 @@ function bodyHtml(o) {
     '<div class="den-toast" data-kind="' +
     (error ? "error" : "status") +
     '">' +
-    (error ? '<span class="den-toast-ic" aria-hidden="true">⚠</span>' : "") +
-    '<span class="den-toast-words"><span class="den-toast-msg" data-toast-msg>' +
+    (error
+      ? '<span class="den-toast-ic" data-toast-ic aria-hidden="true">⚠</span>'
+      : "") +
+    '<span class="den-toast-words" data-toast-words><span class="den-toast-msg" data-toast-msg>' +
     esc(o.message) +
     "</span>" +
     (o.detail
       ? '<span class="den-toast-detail">' + esc(o.detail) + "</span>"
       : "") +
     "</span>" +
-    (acts ? '<span class="den-toast-acts">' + acts + "</span>" : "") +
+    (acts
+      ? '<span class="den-toast-acts" data-toast-acts>' + acts + "</span>"
+      : "") +
     close +
     "</div>"
   );

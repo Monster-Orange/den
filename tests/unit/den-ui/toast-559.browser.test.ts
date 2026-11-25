@@ -349,10 +349,10 @@ describe("issue 559: the toast in a browser", () => {
           const t = document.querySelector("[data-den-toast] > [data-kind]")!;
           for (const a of t.getAnimations()) a.finish();
           const r = (e: Element | null) => e && e.getBoundingClientRect();
-          const words = r(t.querySelector(".den-toast-words"))!;
+          const words = r(t.querySelector("[data-toast-words]"))!;
           const msg = t.querySelector("[data-toast-msg]")!;
           const line = parseFloat(getComputedStyle(msg).lineHeight);
-          const acts = r(t.querySelector(".den-toast-acts"))!;
+          const acts = r(t.querySelector("[data-toast-acts]"))!;
           const taps = [...t.querySelectorAll("button, a")].map((e) => ({
             h: r(e)!.height,
             top: r(e)!.top,
@@ -364,7 +364,7 @@ describe("issue 559: the toast in a browser", () => {
             actsOneRow: new Set(
               [
                 ...t.querySelectorAll(
-                  ".den-toast-acts > *, .den-toast-acts form > *",
+                  "[data-toast-acts] button, [data-toast-acts] a",
                 ),
               ]
                 .filter((e) => e.matches("button, a"))
@@ -426,7 +426,7 @@ describe("issue 559: the toast in a browser", () => {
         };
         const a = lum(rgb(getComputedStyle(t).backgroundColor));
         const b = lum(
-          rgb(getComputedStyle(t.querySelector(".den-toast-ic")!).color),
+          rgb(getComputedStyle(t.querySelector("[data-toast-ic]")!).color),
         );
         return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
       });
