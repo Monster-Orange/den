@@ -601,6 +601,9 @@ export function repoSecretDenyRules(
     shellSpellings(f, home).map((p) => `${p}*`),
   );
   return [
+    `Read(**/${REPO_SECRETS_FILE}*)`,
+    `Edit(**/${REPO_SECRETS_FILE}*)`,
+    `Bash(*${REPO_SECRETS_FILE}*)`,
     ...files.map((f) => `Read(/${f}*)`),
     ...files.map((f) => `Edit(/${f}*)`),
     ...targets.map((t) => `Bash(*${t})`),

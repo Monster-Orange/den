@@ -37,7 +37,16 @@ describe("issue 1507: the rules for a repo's secrets file and the cached sign-in
     "cat $HOME/src/shop-api/.stack-secrets.yml",
     `head ${DIST}/playwright/.auth/admin-dev.json`,
     "cp ~/src/acme-dist/playwright/.auth/admin-dev.json /tmp/x",
+    "cat .stack-secrets.yml",
+    "cat ./.stack-secrets.yml",
+    "python3 -c 'print(open(\".stack-secrets.yml\").read())'",
   ])("denies %s", (cmd) => expect(denied(rules, cmd)).toBe(true));
+
+  it("names the file in any folder for Read and Edit, and leaves the example alone", () => {
+    expect(rules).toContain("Read(**/.stack-secrets.yml*)");
+    expect(rules).toContain("Edit(**/.stack-secrets.yml*)");
+    expect(denied(rules, "cat .stack-secrets.example.yml")).toBe(false);
+  });
 
   it.each([
     `${REPO}/.stack-secrets.example.yml`,
@@ -48,7 +57,8 @@ describe("issue 1507: the rules for a repo's secrets file and the cached sign-in
   it("names no repo when there is none, and still the sign-ins folder", () => {
     const only = repoSecretDenyRules([], [`${DIST}/playwright/.auth`], HOME);
     expect(readDenied(only, `${DIST}/playwright/.auth/a.json`)).toBe(true);
-    expect(only.some((r) => r.includes(".stack-secrets"))).toBe(false);
+    expect(only.some((r) => r.includes(`${HOME}/src/shop-api`))).toBe(false);
+    expect(only).toContain("Read(**/.stack-secrets.yml*)");
   });
 });
 

@@ -113,7 +113,11 @@ import {
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
-import { PLAYWRIGHT_AUTH_DIR } from "../../shared/credential-paths.js";
+import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import { projectRepoDirs } from "../../shared/project-repo-dirs.js";
 import {
   listOtherInstalls,
   registerInstall,
@@ -995,6 +999,8 @@ export function agentSandboxInput(o: {
   sessionTmp?: string;
   /** Issue 1391: a personal install's trail is read back. */
   trailReadable?: boolean;
+  /** Repos' stack secrets files (hidden by path where no name rule exists). */
+  repoSecretFiles?: string[];
 }): AgentSandboxInput {
   return {
     ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
@@ -1011,12 +1017,18 @@ export function agentSandboxInput(o: {
           keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
         }
       : {}),
-    deniedDirs: localProofDirs(
-      o.env,
-      o.platform ?? process.platform,
-      o.home ?? os.homedir(),
-      envKey("LOCAL_PROOF_DIR"),
-    ),
+    ...(o.repoSecretFiles?.length
+      ? { repoSecretFiles: o.repoSecretFiles }
+      : {}),
+    deniedDirs: [
+      ...localProofDirs(
+        o.env,
+        o.platform ?? process.platform,
+        o.home ?? os.homedir(),
+        envKey("LOCAL_PROOF_DIR"),
+      ),
+      path.join(o.distRoot, PLAYWRIGHT_AUTH_DIR),
+    ],
   };
 }
 
@@ -1064,6 +1076,9 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
               (d.agentsConfig ?? (() => readAgentsConfig()))(),
               base.stateDir(),
             ),
+            repoSecretFiles: projectRepoDirs()
+              .map((r) => path.join(r, REPO_SECRETS_FILE))
+              .filter((f) => fs.existsSync(f)),
           }),
           {
             on: sandboxSetting(

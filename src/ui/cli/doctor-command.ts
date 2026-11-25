@@ -49,11 +49,8 @@ import {
   pinProjectsOf,
   type PinProjects,
 } from "../../shared/shell-pins.js";
-import {
-  listWorkspaceServices,
-  readWorkspacesFile,
-} from "../../shared/environment-manager/workspaces.js";
-import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import { projectRepoDirs } from "../../shared/project-repo-dirs.js";
 import {
   PLAYWRIGHT_AUTH_DIR,
   REPO_SECRETS_FILE,
@@ -1873,25 +1870,6 @@ export function repoSecretLines(
     lines: [`  repo secrets  ${warn ? "⚠" : "✓"}  ${detail}`],
     checks: [{ id: "repo_secret_files", status: warn ? "warn" : "ok", detail }],
   };
-}
-
-/** Every project's repo folders, from its services. */
-function projectRepoDirs(): string[] {
-  try {
-    const cat = readCatalog();
-    const wss = readWorkspacesFile().workspaces ?? {};
-    return [
-      ...new Set(
-        Object.entries(wss).flatMap(([name, cfg]) =>
-          listWorkspaceServices(cfg, cat, name)
-            .map((r) => r.repoPath)
-            .filter((p) => !!p && path.isAbsolute(p)),
-        ),
-      ),
-    ];
-  } catch {
-    return [];
-  }
 }
 
 /**
