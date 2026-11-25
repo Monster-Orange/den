@@ -10,7 +10,7 @@
  *                                     the person's kinds that are on;
  *                                     items older than foldDays in
  *                                     `older`; unread counts what is shown.
- *                                     Issue 773: `done`, the agents that
+ *                                     `done`, the agents that
  *                                     finished since this person looked.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
  *                                     (all: what is shown only)
@@ -19,7 +19,7 @@
  *                                     unmutes.
  *   POST /api/notifications/looking  NT-2: a page shows these agents now,
  *                                     visible and focused: {agents: [...]}.
- *                                     Issue 773: the person has seen their
+ *                                     The person has seen their
  *                                     finished work (the seen mark).
  *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
  *                                     for an open tab to show (alert-feed.ts),
@@ -128,9 +128,9 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
-  /** Issue 773: the seen marks (opening an agent marks its work seen). */
+  /** The seen marks (opening an agent marks its work seen). */
   seen?: SeenMarks;
-  /** Issue 773: the agents Done, not seen, for `person` (the bell). */
+  /** The agents Done, not seen, for `person` (the bell). */
   doneAgents?: (person: string) => DoneAgent[];
   /** Mock v3's Earlier: the agents whose finished work `person` has seen. */
   seenDone?: (person: string) => DoneAgent[];
@@ -453,7 +453,7 @@ export async function handleNotificationRoutes(
     const prefs = (deps.prefs ?? bellPrefs)(null);
     const all = bellView(deps.store.list(), prefs);
     let done: DoneAgent[] = [];
-    // Issue 773: Done follows the "finished" switch when the person turned
+    // Done follows the "finished" switch when the person turned
     // it off; its default (off for the updates) leaves Done on (mock v3).
     if (!prefs.finishedChosenOff)
       try {
@@ -468,7 +468,7 @@ export async function handleNotificationRoutes(
       } catch {
         /* best effort: no seen rows this time */
       }
-    // Issue 773: an agent in Done (or its seen row in Earlier) shows once:
+    // An agent in Done (or its seen row in Earlier) shows once:
     // its "finished" item is left out of the updates and Older.
     const inDone = new Set(
       [...done, ...seenDone].map((d) => agentSubject(d.agent)),
@@ -479,7 +479,7 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       unread: v.unread,
-      // Issue 773: Done, not seen, for this person (its own section).
+      // Done, not seen, for this person (its own section).
       done,
       // Mock v3: the ones seen, first in Earlier.
       seenDone,
@@ -578,7 +578,7 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
-    // Issue 773: opening the agent (or its terminal) is seen, for this
+    // Opening the agent (or its terminal) is seen, for this
     // person: Done turns into Idle.
     if (deps.seen) {
       const person = personKey(req);

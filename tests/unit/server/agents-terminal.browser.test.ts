@@ -822,7 +822,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         // Elsewhere: the list's heading, not a row (a click that picks nothing).
         if (how === "click")
           await p.locator("#agl").click({ position: { x: 4, y: 2 } });
-        // Issue 773: the bands can make the row the list's last, so Tab
+        // The bands can make the row the list's last, so Tab
         // would go into the pane; back out of the list instead.
         else await p.keyboard.press("Shift+Tab");
         await releaseIo(p);

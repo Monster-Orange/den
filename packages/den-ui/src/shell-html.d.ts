@@ -54,7 +54,7 @@ export interface NavItem {
    * A count. `what` (0.7.3): what it counts; the kit words it with the
    * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
    */
-  /** warn (issue 773): the amber pill, e.g. the agents that need you. */
+  /** warn: the amber pill, e.g. the agents that need you. */
   badge?: {
     n: number | string;
     bad?: boolean;

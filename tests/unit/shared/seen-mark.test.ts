@@ -1,5 +1,5 @@
 /**
- * Issue 773: the generic "seen" mark (src/shared/seen-mark.ts). A mark is
+ * The generic "seen" mark (src/shared/seen-mark.ts). A mark is
  * subject + version + person: this person has seen this version of this
  * subject. An agent's subject is "agent:<id>" and its version its last
  * finished turn; a Hub doc's would be "doc:<id>" and its version number.

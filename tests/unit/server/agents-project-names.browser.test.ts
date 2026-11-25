@@ -108,7 +108,7 @@ describe("the Agents page names a project as Hub does", () => {
         sel,
         { timeout: 10_000 },
       );
-    // Issue 773: the list has no project heading now (one list in four
+    // The list has no project heading now (one list in four
     // bands); a row's tag (All projects) and the sub-line (one project,
     // below) name it.
     await said(`${pane} .bar2 .where .wsn`);

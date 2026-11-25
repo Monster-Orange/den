@@ -1,5 +1,5 @@
 /**
- * Issue 773, clause 5: the Agents list matches the approved mock ("Agents:
+ * Clause 5: the Agents list matches the approved mock ("Agents:
  * four states, one list sorted by who needs you", v3) in a browser, on the
  * real path: agents started through the API, their turns said through the
  * attention route with their own tokens.

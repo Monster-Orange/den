@@ -95,13 +95,13 @@ async function open(ws: string): Promise<Page> {
 
 const note = (p: Page) => p.locator('#agl .agnote[data-note="inactive"]');
 const listed = (p: Page) =>
-  p.locator("#agl .agst, #agl .agr").evaluateAll((els) =>
+  p.locator("#agl div[data-state][data-ws], #agl button[data-id][data-kind]").evaluateAll((els) =>
     els
-      .filter((e) => e.matches(".agst") || !e.closest(".agst"))
+      .filter((e) => e.matches("div[data-state][data-ws]") || !e.closest("div[data-state][data-ws]"))
       .map(
         (e) =>
-          // Issue 773: a running row names its project itself (data-ws).
-          `${((e.closest(".agst") ?? e.closest("[data-ws]")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
+          // A running row names its project itself (data-ws).
+          `${((e.closest("div[data-state][data-ws]") ?? e.closest("[data-ws]")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
       ),
   );
 

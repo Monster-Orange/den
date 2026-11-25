@@ -1,5 +1,5 @@
 /**
- * Issue 773: each running agent's state for one person, one of four (the
+ * Each running agent's state for one person, one of four (the
  * kit's attention table, packages/den-ui/src/attention.js):
  *   needs    stopped on a permission, a question, an Allow (or its folder
  *            trust): its row's `waiting`, but not an idle notice ("input")
@@ -39,7 +39,7 @@ export const agentSubject = agentSeenSubject;
  * ("person:<user>"; a signed-in browser is its OS user's, so a phone and
  * a desktop are one person). A loopback page with no session, or no
  * credential, is that same person. The test install's fixture person
- * (issue 810) and an agent keep their own key: never the person's marks.
+ * and an agent keep their own key: never the person's marks.
  */
 export function personKey(req: http.IncomingMessage): string {
   const p = principalOf(req);
@@ -162,7 +162,7 @@ function finished(
 }
 
 /**
- * The bell's Done, not seen (issue 773): the agents whose last turn ended
+ * The bell's Done, not seen: the agents whose last turn ended
  * after `person` last opened them, oldest first. An agent stopped after it
  * finished is left out (it is in Stopped), and so is one working or
  * waiting again (Working, Needs you).

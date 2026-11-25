@@ -209,7 +209,7 @@ export interface SessionRouteDeps {
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
   /**
-   * Issue 773: what each running agent's state for the person asking is
+   * What each running agent's state for the person asking is
    * made of (absent: no states; the page ranks every agent Idle).
    */
   agentStates?: () => AgentStateDeps;
@@ -393,7 +393,7 @@ export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
   /**
-   * Issue 773 + issue 96: an agent's place (0 first) in its project's saved
+   * An agent's place (0 first) in its project's saved
    * order, when the person set one; the page keeps it inside each band.
    */
   place?: number;
@@ -431,7 +431,7 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
-  /** Issue 773: the runtime's name for people ("Claude Code"). */
+  /** The runtime's name for people ("Claude Code"). */
   runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
@@ -524,12 +524,12 @@ export interface ListedSession {
     paused?: true;
   };
   /**
-   * Issue 773: its state for the person asking (running agents only):
+   * Its state for the person asking (running agents only):
    * needs, done (finished, not seen), working or idle; and since when.
    */
   attn?: "needs" | "done" | "working" | "idle";
   attnSince?: string;
-  /** Issue 773: what it waits to do (Needs you: a permission's tool). */
+  /** What it waits to do (Needs you: a permission's tool). */
   attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
@@ -720,7 +720,7 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
-      // Issue 773: its name for people, for the row's second line.
+      // Its name for people, for the row's second line.
       ...(getRuntime(rec.runtime)?.label
         ? { runtimeLabel: getRuntime(rec.runtime)?.label }
         : {}),
@@ -859,7 +859,7 @@ export function listedSessions(
     });
   }
   const order = [...active];
-  // Issue 773: each agent's place in its project's saved order (read once
+  // Each agent's place in its project's saved order (read once
   // per project), for the page's bands.
   const saved = new Map<string, readonly string[]>();
   const orderOf = (ws: string) => {
@@ -954,7 +954,7 @@ export async function handleSessionList(
     wanted?.known ? wanted.workspace : undefined,
     sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
   );
-  // Issue 773: each running agent's state for this person.
+  // Each running agent's state for this person.
   let states: AgentStateDeps | undefined;
   try {
     states = deps.agentStates?.();
@@ -1701,7 +1701,7 @@ async function helpersRunning(
     /* no host: nothing runs, so no helper runs */
   }
   let running = 0;
-  // Issue 773: the rail's Agents item counts the agents that need you.
+  // The rail's Agents item counts the agents that need you.
   let needs = 0;
   for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;

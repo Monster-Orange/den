@@ -16,9 +16,9 @@ export interface AttentionItem {
   since?: string;
   name?: string;
   id?: string;
-  /** Issue 96: the person's own order: the group (project) it is ordered in. */
+  /** The person's own order: the group (project) it is ordered in. */
   group?: string;
-  /** Issue 96: its place in that group's order (0 first), when the person set one. */
+  /** Its place in that group's order (0 first), when the person set one. */
   place?: number;
 }
 export interface AttentionCounts {

@@ -1,5 +1,5 @@
 /**
- * Issue 773: the Agents list's bands (public/agent-bands.js), as the
+ * The Agents list's bands (public/agent-bands.js), as the
  * approved mock draws them: one list across projects in four bands, Needs
  * you, Done not seen, Working, Idle, each with its own mark and chip; the
  * project tag on All projects only; the server agent ranked like any other

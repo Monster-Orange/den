@@ -1,5 +1,5 @@
 /**
- * Issue 773: the Agents list in four bands, sorted by who needs the
+ * The Agents list in four bands, sorted by who needs the
  * person (the approved mock): Needs you, Done not seen, Working, Idle.
  * One list across projects; the kit's one rule orders it
  * (/kit/attention.js: the longest wait first in Needs you and Done, A to Z
@@ -102,8 +102,8 @@ export function byNeed(rows, { seenNow } = {}) {
 }
 
 /**
- * Issue 96: the agent ids a running row moves among: the agents of its
- * project in its band, as the band shows them. Issue 773: none in Needs
+ * The agent ids a running row moves among: the agents of its
+ * project in its band, as the band shows them. None in Needs
  * you and Done (the longest wait first there, always).
  */
 export function bandGroup(rows, r, { seenNow } = {}) {
@@ -116,7 +116,7 @@ export function bandGroup(rows, r, { seenNow } = {}) {
     .map((s) => s.agent);
 }
 
-/** Issue 773: a band the person orders (Working, Idle), by the table. */
+/** A band the person orders (Working, Idle), by the table. */
 export const personOrdered = (state) =>
   ATTENTION_TABLE[state]?.order === "name";
 
@@ -168,7 +168,7 @@ export function tagHtml(r, { all = false, name, pc } = {}) {
     return `<span class="ptag" data-ptag="server">${esc(t("ag.tag.server"))}</span>`;
   if (!all) return "";
   const n = typeof name === "function" ? name(r.workspace) : r.workspace;
-  // Issue 168: the tag wears its project's colour, as the row does.
+  // The tag wears its project's colour, as the row does.
   const c = typeof pc === "function" ? pc(r.workspace) : "";
   const at = c ? ` data-pc="${esc(c)}"` : "";
   return `<span class="ptag" data-ptag="project"${at}>${esc(n)}</span>`;

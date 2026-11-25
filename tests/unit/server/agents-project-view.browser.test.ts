@@ -158,14 +158,14 @@ async function open(next: string): Promise<Page> {
 }
 
 /**
- * The projects the list shows (issue 773: its bands' rows, each naming
- * its project, and its stopped rows), and the tabs' ids. Issue 482: a
+ * The projects the list shows (its bands' rows, each naming
+ * its project, and its stopped rows), and the tabs' ids. A
  * project whose only running session was a shell has no running row on
  * Agents now; its stopped agents still show, in Stopped.
  */
 const listed = (p: Page) =>
   p.$$eval(
-    "#agl .agband button.agr[data-ws], #agl [data-stopped] .agst[data-ws]",
+    "#agl [data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
     (xs) => [...new Set(xs.map((x) => (x as HTMLElement).dataset.ws))],
   );
 const tabs = (p: Page) =>
@@ -288,7 +288,7 @@ describe("#80: a project's view holds only its own", () => {
     await p.waitForFunction(() => {
       const xs = Array.from(
         document.querySelectorAll(
-          "#agl .agband button.agr[data-ws], #agl [data-stopped] .agst[data-ws]",
+          "#agl [data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
         ),
       );
       return (

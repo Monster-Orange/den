@@ -1,5 +1,5 @@
 /**
- * Issue 773: four agent states for each person, from the attention hooks
+ * Four agent states for each person, from the attention hooks
  * and the seen mark. One test per rule of the approved mock that the
  * server owns, and per acceptance clause 1, 2, 3, 6 and 7:
  *   Done, not seen   a turn finished after this person last opened it

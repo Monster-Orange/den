@@ -95,7 +95,7 @@ export function deliveryHeld(
 export interface AttentionDeps {
   store: NotificationStore;
   /**
-   * Issue 773: `agent`'s turn ended at `at` (ms): its finished work, a new
+   * `agent`'s turn ended at `at` (ms): its finished work, a new
    * version for the seen mark (Done, not seen). Not a turn that ended on a
    * question (that needs its person).
    */
@@ -258,7 +258,7 @@ export class Attention {
   private readonly settledAsks = new Map<string, SettledAsk>();
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
-  /** Issue 773: agent → since when it is in a turn (Working). */
+  /** Agent → since when it is in a turn (Working). */
   private readonly working = new Map<string, number>();
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
@@ -282,12 +282,12 @@ export class Attention {
     return this.d.nameOf(agent);
   }
 
-  /** Issue 773: the agents in a turn now, and since when (ms). */
+  /** The agents in a turn now, and since when (ms). */
   workingNow(): Map<string, number> {
     return new Map(this.working);
   }
 
-  /** Issue 773: its turn ended now (a new version of its finished work). */
+  /** Its turn ended now (a new version of its finished work). */
   private turnEnd(agent: string): void {
     this.working.delete(agent);
     try {
@@ -373,7 +373,7 @@ export class Attention {
           ? { seq, at: arrived, what: ev.what, input: ev.input }
           : undefined;
       if (run) this.lastRun.set(agent, run);
-      // Issue 773: a tool ran or a prompt came: a turn is under way. A new
+      // A tool ran or a prompt came: a turn is under way. A new
       // session is no turn.
       if (ev.from !== "session" && !this.working.has(agent))
         this.working.set(agent, arrived);
@@ -433,7 +433,7 @@ export class Attention {
           hooked: true,
           turn: true,
         });
-      // Issue 773: its finished work, unseen until its person opens it.
+      // Its finished work, unseen until its person opens it.
       this.turnEnd(agent);
       // Issue 142: kept even while a page shows the agent. That page's
       // next "looking" takes it out (opening an agent clears its updates);
@@ -463,7 +463,7 @@ export class Attention {
       (!ev.input || /AskUserQuestion/.test(`${ev.what ?? ""} ${ev.text ?? ""}`))
     )
       return;
-    // Issue 773: waiting is no turn under way. A hookless agent's idle
+    // Waiting is no turn under way. A hookless agent's idle
     // notice is its turn's end (its only one).
     this.working.delete(agent);
     const hookless =

@@ -1094,7 +1094,7 @@ export interface BellPrefs {
   off: BellSwitch[];
   foldDays: number;
   /**
-   * Issue 773: true only when the person turned "finished" off themselves.
+   * True only when the person turned "finished" off themselves.
    * Its default (off, for the updates) doesn't hide the bell's Done.
    */
   finishedChosenOff?: true;

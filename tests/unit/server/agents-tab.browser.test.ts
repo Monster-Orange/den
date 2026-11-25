@@ -231,9 +231,9 @@ describe("the Agents tab", () => {
   it("issue 482: Agents lists agents only (the revoked token marked), Terminals the shells; each count says its own; ?ws= narrows it", async () => {
     if (skip()) return;
     const p = await page("/agents");
-    // Issue 773: one list across projects; each row names its project.
+    // One list across projects; each row names its project.
     expect(
-      await p.$$eval("#agl .agband button.agr[data-ws]", (bs) => [
+      await p.$$eval("#agl [data-band] button[data-id][data-ws]", (bs) => [
         ...new Set(bs.map((b) => (b as HTMLElement).dataset.ws)),
       ]),
     ).toEqual(["north"]);
@@ -659,7 +659,7 @@ describe("the Agents tab", () => {
     await p.waitForSelector(head);
     expect(await p.getAttribute(head, "href")).toBe("/local-dev?project=north");
     expect(await p.textContent(head)).toBe("north");
-    // Issue 773: the list has no project heading now (one list in bands).
+    // The list has no project heading now (one list in bands).
     // ⌘K: an agent's name finds its workspace.
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");
