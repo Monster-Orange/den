@@ -200,22 +200,21 @@ async function open(
         ) || document.body.textContent!.includes(n),
       "runner-3 ready",
     );
-    // The page's one error line (a move in the list that Den refused),
-    // at its longest: the agent's long name and a reason with nowhere to
-    // break, as a path in it can be.
-    await p.evaluate(
-      ({ id, why }) => {
-        const e = document.getElementById("ag-order-err")!;
-        e.textContent = `Couldn't move ${id}. ${why}`;
-        e.hidden = false;
-      },
-      {
-        id: RUNNING[0],
-        why: `/home/someone/.local/state/den/agents/${RUNNING[0]}/order.json`,
-      },
-    );
-    await p.waitForTimeout(500);
   }
+  // The page's one error line (a move in the list that Den refused),
+  // at its longest: the agent's long name and a reason with nowhere to
+  // break, as a path in it can be.
+  await p.evaluate(
+    ({ id, why }) => {
+      const e = document.getElementById("ag-order-err")!;
+      e.textContent = `Couldn't move ${id}. ${why}`;
+      e.hidden = false;
+    },
+    {
+      id: RUNNING[0],
+      why: `/home/someone/.local/state/den/agents/${RUNNING[0]}/order.json`,
+    },
+  );
   return p;
 }
 
