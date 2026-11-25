@@ -768,6 +768,9 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
+  // Issue 1054: the button held with the kit's dots, and how to let it go.
+  let heldBtn = null;
+  let letGo = null;
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -781,10 +784,16 @@ export function initBell(doc = document) {
             : "")
         : "";
     bell.paint();
-    // Issue 1054: the pressed button holds the kit's dots, drawn again
-    // with each paint while its POST runs.
-    if (ui.busy)
-      window.denShell?.holdDots?.(pop.querySelector("[data-bell-held]"));
+    // Issue 1054: the pressed button holds the kit's dots while its POST
+    // runs. A paint keeps it when the button is the same one (issue 1024
+    // patches in place), holds the new one when it isn't, and lets go of
+    // the old: none is left held once the answer is in.
+    const b = ui.busy ? pop.querySelector("[data-bell-held]") : null;
+    if (b !== heldBtn) {
+      letGo?.();
+      heldBtn = b;
+      letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
+    }
     if (keep) pop.querySelector(keep)?.focus?.();
   };
   const refresh = async () => {
