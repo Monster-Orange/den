@@ -49,7 +49,15 @@ import {
   pinProjectsOf,
   type PinProjects,
 } from "../../shared/shell-pins.js";
-import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import {
+  listWorkspaceServices,
+  readWorkspacesFile,
+} from "../../shared/environment-manager/workspaces.js";
+import { readCatalog } from "../../shared/environment-manager/catalog.js";
+import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
 import {
   checkAgentSigning,
   existingAgentSigningKey,
@@ -64,6 +72,7 @@ import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import {
   bothSpellings,
   readRulesCover,
+  repoSecretDenyRules,
   stateDirDenyRules,
 } from "../../shared/agents/den-claude.js";
 import {
@@ -1801,6 +1810,90 @@ export function sharedUserLines(
   };
 }
 
+/** Repos' stack secrets files and the cached sign-ins, by name only, and whether agents' rules deny them. */
+export function repoSecretLines(
+  o: {
+    repoDirs?: string[];
+    distRoot?: string;
+    home?: string;
+    /** The rules to check against (default: the ones agents start with). */
+    rules?: (repoDirs: string[], authDirs: string[]) => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const repoDirs = o.repoDirs ?? projectRepoDirs();
+  const authDir = path.join(o.distRoot ?? getDistRoot(), PLAYWRIGHT_AUTH_DIR);
+  const home = o.home ?? process.env.HOME;
+  const isFile = (f: string) => {
+    try {
+      return fs.lstatSync(f).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const secrets = [...new Set(repoDirs.map((d) => path.resolve(d)))]
+    .map((d) => path.join(d, REPO_SECRETS_FILE))
+    .filter(isFile);
+  const signIns = (() => {
+    try {
+      return fs
+        .readdirSync(authDir)
+        .map((n) => path.join(authDir, n))
+        .filter(isFile);
+    } catch {
+      return [];
+    }
+  })();
+  const rules = (
+    o.rules ??
+    ((r, a) =>
+      repoSecretDenyRules(
+        r.flatMap(bothSpellings),
+        a.flatMap(bothSpellings),
+        home,
+      ))
+  )(repoDirs, [authDir]);
+  const shown = (f: string) =>
+    safeShownPath(path.join(path.basename(path.dirname(f)), path.basename(f)));
+  const loose = [...secrets, ...signIns].filter(
+    (f) => !readRulesCover(rules, f),
+  );
+  const parts = [
+    ...(secrets.length ? [secrets.map(shown).join(", ")] : []),
+    ...(signIns.length
+      ? [`${signIns.length} cached sign-in${signIns.length === 1 ? "" : "s"}`]
+      : []),
+  ];
+  const detail = !parts.length
+    ? "no stack secrets file in a project repo and no cached sign-ins"
+    : loose.length
+      ? `not covered by agents' rules: ${loose.map(shown).join(", ")}`
+      : `agents' rules deny ${parts.join(" and ")}`;
+  const warn = loose.length > 0;
+  return {
+    lines: [`  repo secrets  ${warn ? "⚠" : "✓"}  ${detail}`],
+    checks: [{ id: "repo_secret_files", status: warn ? "warn" : "ok", detail }],
+  };
+}
+
+/** Every project's repo folders, from its services. */
+function projectRepoDirs(): string[] {
+  try {
+    const cat = readCatalog();
+    const wss = readWorkspacesFile().workspaces ?? {};
+    return [
+      ...new Set(
+        Object.entries(wss).flatMap(([name, cfg]) =>
+          listWorkspaceServices(cfg, cat, name)
+            .map((r) => r.repoPath)
+            .filter((p) => !!p && path.isAbsolute(p)),
+        ),
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Issue 728: state folders of 0600 files that hold no credential, left out
  * of the walk: the process records (pids only), a session's own writable
@@ -2662,6 +2755,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...edgeRotationLines(readBrand().name).checks);
     // Issue 728: installs running as this login.
     r.checks.push(...sharedUserLines(readBrand().name).checks);
+    r.checks.push(...repoSecretLines().checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -2852,6 +2946,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of sharedUserLines(readBrand().name).lines) console.log(l);
+  for (const l of repoSecretLines().lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);

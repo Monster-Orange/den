@@ -113,6 +113,7 @@ import {
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
+import { PLAYWRIGHT_AUTH_DIR } from "../../shared/credential-paths.js";
 import {
   listOtherInstalls,
   registerInstall,
@@ -3910,6 +3911,21 @@ function launchInput(
         ...others.map((o) => o.stateDir),
       ]),
     ],
+    repoDirs: [
+      ...new Set(
+        [ws, ...grants].flatMap((w) => {
+          try {
+            return d
+              .workspaceServices(w)
+              .map((s) => s.path)
+              .filter((p) => !!p && path.isAbsolute(p));
+          } catch {
+            return [];
+          }
+        }),
+      ),
+    ],
+    playwrightAuthDir: path.join(d.distRoot(), PLAYWRIGHT_AUTH_DIR),
     // ...and where they announce, for those announced after this launch.
     testAnnounceDir: announceDir(),
     installRegistryDir: reg,

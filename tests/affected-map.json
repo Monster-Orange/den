@@ -2140,6 +2140,7 @@
         "tests/unit/agents/other-installs-728.test.ts",
         "tests/unit/agents/personas.test.ts",
         "tests/unit/agents/project-mcp-edit.test.ts",
+        "tests/unit/agents/repo-secret-denies-1507.test.ts",
         "tests/unit/agents/runtimes.test.ts",
         "tests/unit/agents/sandbox-refusal-1326.test.ts",
         "tests/unit/cli/dry-run-readonly.integration.test.ts",
