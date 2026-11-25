@@ -157,6 +157,8 @@ const exampleJson = (version: string) =>
     null,
     2,
   ) + "\n";
+const KIT_PKG = (version: string) =>
+  JSON.stringify({ name: "@scope-x/kit", version }, null, 2) + "\n";
 const LOG = "# Changelog\n\n## [1.2.3] - unreleased\n\n- A change.\n";
 const LOG_DATED = LOG.replace("unreleased", "2026-01-02");
 
@@ -246,7 +248,13 @@ beforeAll(() => {
   git("init", "-q", "-b", "main");
   sha.base = commit(
     `${V}-dev.0`,
-    { "src/a.ts": "a\n", "CHANGELOG.md": LOG },
+    {
+      "src/a.ts": "a\n",
+      "CHANGELOG.md": LOG,
+      // The UI kit, at a version npm doesn't have (the release publishes it).
+      "packages/den-ui/package.json": KIT_PKG("0.5.0"),
+      "packages/den-ui/src/kit.js": "export const kit = 1;\n",
+    },
     "base",
   );
   // The candidate: a tag signed with the allowed key.
@@ -569,5 +577,52 @@ describe("release-promote.sh (issue 922)", () => {
   it("refuses a prerelease version, and a commit that isn't one", () => {
     expect(promote(sha.dev).code).toBe(1);
     expect(promote("not-a-commit").code).toBe(2);
+  });
+
+  // Issue 1508: a release publishes the kit at its version; next/queue
+  // holding other kit files at that same version means npm's copy would
+  // lack them, and every pull request after fails the kit's rule.
+  describe("the UI kit against next/queue (issue 1508)", () => {
+    /** A next/queue branch from the base, with these kit files. */
+    const queue = (name: string, files: Record<string, string>) => {
+      git("checkout", "-q", "--detach", sha.base);
+      commit(`${V}-dev.9`, files, `queue ${name}`);
+      git("branch", "-f", name, "HEAD");
+    };
+
+    it("refuses when next/queue has the kit at the same version with other files: bump next/queue's den-ui first", () => {
+      queue("queue-x-diff", {
+        "packages/den-ui/src/kit.js": "export const kit = 2;\n",
+      });
+      const r = promote(sha.release, { KIT_QUEUE_REF: "queue-x-diff" });
+      expect(r.code).toBe(1);
+      expect(r.text).toMatch(/::error::/);
+      expect(r.text).toContain("bump next/queue's den-ui before promoting");
+      expect(r.text).toContain("packages/den-ui/src/kit.js");
+      expect(r.out.release).toBeUndefined();
+    });
+
+    it("promotes when next/queue's kit files are the same, or its version is bumped", () => {
+      queue("queue-x-same", { "src/queue-only.ts": "q\n" });
+      expect(promote(sha.release, { KIT_QUEUE_REF: "queue-x-same" }).code).toBe(
+        0,
+      );
+      queue("queue-x-bumped", {
+        "packages/den-ui/package.json": KIT_PKG("0.6.0"),
+        "packages/den-ui/src/kit.js": "export const kit = 2;\n",
+      });
+      expect(
+        promote(sha.release, { KIT_QUEUE_REF: "queue-x-bumped" }).code,
+      ).toBe(0);
+    });
+
+    it("in CI, a next/queue that isn't in the clone refuses rather than guess", () => {
+      const r = promote(sha.release, {
+        KIT_QUEUE_REF: "no-such-queue",
+        GITHUB_ACTIONS: "true",
+      });
+      expect(r.code).toBe(1);
+      expect(r.text).toContain("no-such-queue");
+    });
   });
 });

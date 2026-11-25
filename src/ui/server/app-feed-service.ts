@@ -37,6 +37,11 @@ import {
   type StoredEvent,
 } from "../../shared/app-feed-reader.js";
 import type { Delivery } from "../../shared/hub-delivery.js";
+import {
+  checkedAddress,
+  type FeedLookup,
+} from "../../shared/agents/feed-address.js";
+import { pinnedFetch, type PinnedFetch } from "./feed-pinned-request.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { readStateJson } from "../../shared/state-backup.js";
@@ -72,6 +77,14 @@ export interface AppFeedServiceDeps {
   bell(n: Parameters<NotificationStore["add"]>[0]): void;
   stateDir: string;
   fetch?: typeof fetch;
+  /**
+   * Issues 1480, 1491: resolves a public_only feed's name at each connect
+   * (default: the system's resolver). Every answer must be public, and the
+   * request is pinned to the first.
+   */
+  lookup?: FeedLookup;
+  /** Issue 1491: a public_only feed's request, pinned to its checked address. */
+  pinned?: PinnedFetch;
   log?: (line: string) => void;
   retryMs?: { first: number; max: number };
   now?: () => number;
@@ -366,12 +379,37 @@ export class AppFeeds {
     headers: Record<string, string>,
     signal?: AbortSignal,
   ): Promise<{ res: Response; bearer: string | null }> {
+    // Issue 1480: a feed checked public when it was added is resolved
+    // again before each connect: one whose name now gives a private
+    // address is never opened (nor sent its bearer). Issue 1491: the
+    // request then goes to exactly that checked address, so no second
+    // lookup (a DNS rebind) can send it somewhere else.
+    let pin: Awaited<ReturnType<typeof checkedAddress>> = null;
+    if (feed.publicOnly) {
+      try {
+        pin = await checkedAddress(url, this.d.lookup);
+      } catch {
+        pin = null;
+      }
+      if (!pin)
+        throw failure(
+          undefined,
+          "its address now names this machine or a private network, so Den won't open it: a person adds it again to allow that",
+        );
+    }
     const bearer = await this.auth(feed);
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
     let res: Response;
     try {
       // Never followed: a redirect would carry the bearer somewhere else.
-      res = await this.f(url, { headers, redirect: "error", signal });
+      res = pin
+        ? await (this.d.pinned ?? pinnedFetch)(url, {
+            headers,
+            address: pin.address,
+            family: pin.family,
+            ...(signal ? { signal } : {}),
+          })
+        : await this.f(url, { headers, redirect: "error", signal });
     } catch (e) {
       const c = (e as { cause?: { code?: unknown } })?.cause?.code;
       const timedOut = (e as { name?: string })?.name === "TimeoutError";
