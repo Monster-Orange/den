@@ -16,6 +16,7 @@ import {
   identifyServer,
   type OwnServer,
   type ServerIdentity,
+  webReadyWaits,
 } from "../cli/server-identity.js";
 import { LIFECYCLE_CMDS, Refusal } from "./guards.js";
 
@@ -48,10 +49,25 @@ export class ForeignWebServer extends Error {
 
 /** Something answers on the port but would not say whose server it is. */
 export class UnidentifiedWebServer extends Error {
-  constructor(readonly port: number) {
+  constructor(
+    readonly port: number,
+    readonly id: Extract<ServerIdentity, { kind: "unresponsive" }> = {
+      kind: "unresponsive",
+    },
+    readonly waitMs?: number,
+  ) {
+    const after = id.waitedMs !== undefined ? ` after ${id.waitedMs} ms` : "";
+    const what =
+      id.why === "timeout"
+        ? `no answer to /api/server-info within ${(waitMs ?? id.waitedMs ?? 0) / 1000} s (web.tools_probe_seconds)`
+        : id.why === "error"
+          ? `/api/server-info failed with ${id.code ?? "an unknown error"}${after}`
+          : id.why === "empty"
+            ? `an empty answer to /api/server-info${after}, as from a server still starting`
+            : "no answer to /api/server-info";
     super(
-      `the server on port ${port} did not answer /api/server-info in time, ` +
-        `so it is not known to be this distribution's; nothing was read from it. Try again.`,
+      `the server on port ${port}: ${what}. It is not known to be this distribution's, ` +
+        `so nothing was read from it. The next call checks again.`,
     );
     this.name = "UnidentifiedWebServer";
   }
@@ -59,8 +75,6 @@ export class UnidentifiedWebServer extends Error {
 
 /** How long a positive identity check is trusted. */
 export const IDENTITY_TTL_MS = 30_000;
-/** The identity probe's budget: longer than the CLI's, a busy server is ours too. */
-export const IDENTITY_TIMEOUT_MS = 5_000;
 
 export interface IdentityCheck {
   /** This distribution: its root and product. */
@@ -69,6 +83,7 @@ export interface IdentityCheck {
   identify?: (port: number, own: OwnServer) => Promise<ServerIdentity>;
   /** Default IDENTITY_TTL_MS. */
   ttlMs?: number;
+  timeoutMs?: () => number;
   /** Default Date.now. */
   now?: () => number;
 }
@@ -340,10 +355,12 @@ export function createDenApi(opts: {
     )
       return;
     checking ??= (async () => {
+      const waitMs = (
+        check.timeoutMs ?? (() => webReadyWaits().toolsProbeMs)
+      )();
       const id = await (
         check.identify ??
-        ((p: number, o: OwnServer) =>
-          identifyServer(p, o, IDENTITY_TIMEOUT_MS, hostname))
+        ((p: number, o: OwnServer) => identifyServer(p, o, waitMs, hostname))
       )(port, check.own);
       if (id.kind === "ours") {
         vouchedAt = now();
@@ -352,7 +369,7 @@ export function createDenApi(opts: {
       vouchedAt = null;
       if (id.kind === "foreign") throw new ForeignWebServer(port, id.who);
       if (id.kind === "none") throw new DenWebDown(baseUrl, cli);
-      throw new UnidentifiedWebServer(port);
+      throw new UnidentifiedWebServer(port, id, waitMs);
     })().finally(() => {
       checking = null;
     });

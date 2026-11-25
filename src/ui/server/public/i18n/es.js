@@ -1204,6 +1204,10 @@
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe":
+      "Comprobación del servidor por las herramientas de Den, en segundos",
+    "set.server.tools_probe.d":
+      "Cuánto esperan las herramientas de Den de un agente a que __DEN_TITLE__ diga que es el servidor de esta instalación antes de rechazar una llamada. Un servidor ocupado responde tarde; una respuesta tardía también vale. La siguiente llamada vuelve a comprobarlo. __DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "Espera al arrancar, en segundos",
     "set.server.start_wait.d":
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",

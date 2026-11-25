@@ -3452,6 +3452,26 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
+    id: "server.tools_probe",
+    category: "server",
+    label: "Den tools' server check, in seconds",
+    description:
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install's server before a call is refused. A busy server answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
+    keywords: [
+      "agent",
+      "tools",
+      "mcp",
+      "timeout",
+      "server-info",
+      "web.tools_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.tools_probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.toolsProbeSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_ready: { tools_probe_seconds: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",
