@@ -91,6 +91,25 @@ import { checkIntent } from "../../shared/agents/permissions.js";
 import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
+import { lookup as dnsLookup } from "dns/promises";
+import {
+  listWaitingInstalls,
+  testPersonSetupAction,
+  type TestPersonSetupDeps,
+} from "./test-person-held.js";
+import { auditConfig } from "../../shared/config-audit.js";
+import { userConfigPath } from "../../shared/den-config.js";
+import { readWebSecret } from "../../shared/web-secret.js";
+import {
+  TEST_ANNOUNCE_ENV_KEY,
+  installIdOf,
+  listAnnounced,
+  SETUP_GRANT_MAX_SECONDS,
+  announceDir,
+  announceTestInstall,
+  takeSetupGrant,
+  unannounceTestInstall,
+} from "../../shared/test-install-grant.js";
 import {
   TEST_RESOLVE_ENV_KEY,
   parseTestResolve,
@@ -102,7 +121,12 @@ import {
 import * as path from "path";
 import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
-import { syncEdgeProof } from "../../shared/edge/runtime.js";
+import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
+import { registerInstall, registryDir } from "../../shared/install-registry.js";
+import {
+  rotateEdgeProofAtStart,
+  syncEdgeProof,
+} from "../../shared/edge/runtime.js";
 import {
   bridgeGateway,
   bridgeLine,
@@ -111,7 +135,13 @@ import {
   writeBridgeState,
   type BridgeOutcome,
 } from "../../shared/edge/bridge-listen.js";
-import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
+import {
+  firstCheckDelay,
+  readCheckState as readCheckStateSync,
+  scheduleUpdateChecks,
+  tickBegun,
+  writeCheckState as writeCheckStateSync,
+} from "../../shared/update-check-state.js";
 import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
@@ -206,6 +236,10 @@ import {
   shouldDetachServiceCommand,
 } from "../../shared/environment-manager/service-runner.js";
 import { reapDeadDaemons } from "./daemon-reaper.js";
+import { runningDockerNamesAsync } from "../../shared/environment-manager/opctl.js";
+import { restoreNote } from "./restore-note.js";
+import { servicesRestoreOnBoot } from "../../shared/environment-manager/restore-on-boot.js";
+import { queueConfig, restartQueue } from "./restart-queue-service.js";
 import {
   heldManifestsDir,
   readManifest,
@@ -225,17 +259,24 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserAgentSandbox,
+  setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
   UPDATE_WAIT_SECONDS_DEFAULT,
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  readInstallMode,
+  resolveInstallMode,
+  type DenConfig,
+  type InstallMode,
   mergeUserConfig,
   type UserConfig,
   writeUserConfig,
   panesReconnect,
   agentsListWaits,
   agentsKeepRunningAfterLogout,
+  testGrantSeconds,
   uiRestartWaitSeconds,
   readWebServiceConfig,
   webUrlCheckSeconds,
@@ -246,10 +287,16 @@ import {
   readWebKeepAliveSeconds,
   WEB_KEEP_ALIVE_SECONDS_DEFAULT,
   shellPathTimeoutMs,
+  agentsResume,
   agentsShellPathTimeoutSeconds,
+  agentsDraftHoldMaxMinutes,
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
 import {
   CONFIG_ERROR_STATUS,
   configErrorBody,
@@ -304,10 +351,15 @@ import {
 } from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import {
+  GateLockBusy,
   GateStore,
+  gateLocked,
   checkGatePatch,
+  serverFreeMemory,
+  serverSwapUsedGb,
   type GateSettingsPatch,
 } from "../../shared/gates/store.js";
+import { realDocker } from "../../shared/gates/ephemeral.js";
 import {
   gateBoxOps,
   gateRunnerTokenOp,
@@ -319,14 +371,26 @@ import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
   recordAction,
+  recordQueuedAuditRow,
+  recordSentAuditRow,
   recordAgentRefusal,
   recordCrossWorkspace,
   repoAtPath,
   setAuditSink,
+  setAsideOldTrail,
   setAuditFile,
   AUDIT_FILE,
 } from "./audit.js";
 import { setConfigAuditSink } from "../../shared/config-audit.js";
+import { cliAuditRequest } from "./audit-cli-route.js";
+import {
+  droppedDetail,
+  QUEUE_DROPPED_VERB,
+  rememberSentAuditCopy,
+  sentAuditBudget,
+  startAuditQueueIntake,
+  wasSentAuditCopy,
+} from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
   defaultOnboardRouteDeps,
@@ -393,6 +457,8 @@ import {
   withApproveKey,
   type SessionVia,
   type WebAuthConfig,
+  SessionStoreUnreadable,
+  SESSIONS_LOCK_WAIT_MS,
 } from "../../shared/web-session.js";
 import {
   checkFixtureCode,
@@ -417,6 +483,7 @@ import {
   writeFixtureMadeBy,
 } from "../../shared/fixture-setup-secret.js";
 import {
+  AGENT_VIEW_LINK_NOTE,
   AGENT_VIEW_LINK_PARAM,
   AGENT_VIEW_LINK_TTL_MS,
   AgentViewCodes,
@@ -471,8 +538,11 @@ import {
   notSetLine,
   readWebUrl,
   setWebUrl,
+  type WebUrlChange,
 } from "../../shared/web-url.js";
 import { peopleWebUrl } from "../../shared/agent-links.js";
+import { tellHubDenUrl } from "../../shared/hub-den-url.js";
+import { webUrlSetAction } from "./web-url-held.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
@@ -487,7 +557,11 @@ import {
 } from "./keep-running-routes.js";
 import { handleEdgeUpRoute } from "./edge-up-routes.js";
 import { handleAddressRoutes } from "./address-routes.js";
-import { identityKey } from "../../shared/den-identity.js";
+import {
+  identityAnswer,
+  identityKey,
+  probeIdentity,
+} from "../../shared/den-identity.js";
 import {
   addressCheckSettings,
   checkAddress,
@@ -510,9 +584,12 @@ import {
 } from "../../shared/agents/signin-token.js";
 import {
   accountsView,
+  accountLabel,
   addAccount,
+  removeAccount,
   saveAccountToken,
   setAccountOrder,
+  signInRuntime,
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
 import { accountNameOf } from "../../shared/agents/catalog.js";
@@ -529,7 +606,15 @@ import {
   type ReportRouteDeps,
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
-import { publicRepoVisibility } from "./report-visibility.js";
+import { publicRepoVisibility, repoVisibilities } from "./report-visibility.js";
+import { orgMask, orgPatterns } from "../../shared/org-names.js";
+import {
+  filedTextHits,
+  filedTextRefusal,
+  needsFiledCheck,
+  type FiledHit,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -572,9 +657,16 @@ import { PairRequests, pairUnseenMs } from "./pair-requests.js";
 import { LoginWaits } from "./login-waits.js";
 import {
   CREATE_REFUSED,
+  denAddressOf,
   handlePairRoutes,
   isPairRoute,
 } from "./pair-routes.js";
+import {
+  meshNameOf,
+  pairEventDetail,
+  SIGNIN_REQUEST_VERB,
+} from "./signin-request-log.js";
+import { mayWriteSessions } from "./session-writes.js";
 import {
   cliCommand,
   cliPrefix,
@@ -603,6 +695,8 @@ import {
   forgetHubToken,
   hubTokenProblem,
   patchHubAllowTools,
+  patchHubGroups,
+  hubGroupsMode,
   patchHubUrl,
   readHubConfig,
   type HubConfig,
@@ -632,6 +726,7 @@ import {
   pinnedItems,
   shellPrefs,
   storedShell,
+  pinProjectsOf,
   type PinProjects,
 } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -916,9 +1011,47 @@ function pushLog(kind: string, text: string, actor?: string): void {
  * Log to stdout unless --silent was passed, AND fan out to the log ring so the
  * /logs page and any connected SSE subscribers see the same stream.
  */
+/**
+ * Issue 707: while it runs silent (as a service), warn and error lines also
+ * go to <state>/logs/server.log (server_log.max_mb, rotated once), so they
+ * outlive a restart. The cap is read again at most once a minute.
+ */
+let serverLogCap = { at: 0, bytes: serverLogMaxBytes(null) };
+const toServerLogFile = serverLogWriter({
+  stateDir: () => getStateDir(),
+  maxBytes: () => {
+    if (Date.now() - serverLogCap.at > 60_000) {
+      let user: unknown = null;
+      try {
+        user = readUserConfig();
+      } catch {
+        /* a bad user.yml: the default */
+      }
+      serverLogCap = { at: Date.now(), bytes: serverLogMaxBytes(user) };
+    }
+    return serverLogCap.bytes;
+  },
+});
+
+/**
+ * Issue 1344: lifecycle, warn and error lines always reach web.log: on
+ * stdout when it is a file (web up, a service), also under --silent;
+ * else appended to <state>/logs/<cli>/web.log. Never twice.
+ */
+const STDOUT_IS_FILE = fdIsFile(1);
+const toWebLog = webLogWriter({
+  stdoutIsFile: () => STDOUT_IS_FILE && !outputLost(),
+  writeStdout: (s) => void process.stdout.write(s),
+  path: () => webLogPath(getStateDir(), product().cli),
+});
+
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
-  if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
+  const onStdout = !SILENT && !outputLost();
+  // Issue 1368: redacted, as every other log path is.
+  if (onStdout) process.stdout.write(stdoutLine(msg));
+  toWebLog(kind, stripAnsi(msg), onStdout);
+  if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
 
 // Its output's reader gone (the terminal, runner or script that started it
@@ -1063,14 +1196,43 @@ setAuditSink((line, actor) =>
   serverLog(line, "lifecycle", actor ? actorLabel(actor) : undefined),
 );
 // den#6: the audit ring outlives a restart (<state dir>/audit.jsonl, 0600).
+// Issue 1391: agents may read the trail now, so the one written before
+// every row was redacted moves aside first, before it is read or added
+// to (the queue's intake starts below).
+let trailSetAside = 0;
+try {
+  trailSetAside = setAsideOldTrail(getStateDir()).moved;
+} catch (e) {
+  console.error(
+    `the older activity trail could not be set aside: ${String(e)}`,
+  );
+}
 try {
   setAuditFile(path.join(getStateDir(), AUDIT_FILE));
 } catch (e) {
   console.error(`[server] the audit file could not be read: ${String(e)}`);
 }
+if (trailSetAside)
+  recordAction(null, {
+    verb: "audit",
+    detail:
+      "the activity trail written before every row was redacted is set aside, where agents can't read it",
+  });
 // 0.4.44: workspaces.yml writes and Hub link changes made in this process
 // go through the server's own audit (activity, the log, audit.jsonl).
 setConfigAuditSink((row) => void recordAction(null, row));
+/** Issue 1369: one principal's sent audit entries an hour. */
+const CLI_AUDIT_BUDGET = sentAuditBudget();
+// Issue 1369: the CLI's audit entries, queued outside this process, come
+// in now and while it runs: audit.jsonl has one writer.
+startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row), {
+  seen: wasSentAuditCopy,
+  onDropped: (c) =>
+    void recordAction(null, {
+      verb: QUEUE_DROPPED_VERB,
+      detail: droppedDetail(c),
+    }),
+});
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -1114,18 +1276,7 @@ function pinProjects(): PinProjects {
   } catch {
     /* no projects readable: old pins become none */
   }
-  return (item) => {
-    const repo = item.split("/")[0];
-    return Object.entries(all)
-      .filter(([, ws]) => {
-        const repos = new Set(
-          Object.keys(ws?.services ?? {}).map((k) => k.split("/")[0]),
-        );
-        for (const r of Object.keys(ws?.repos ?? {})) repos.add(r);
-        return repos.has(repo);
-      })
-      .map(([name]) => name);
-  };
+  return pinProjectsOf(all);
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
@@ -1193,6 +1344,7 @@ import {
   realSudoPath,
   clearSudoPassword,
   clearSudoShims,
+  sweepStaleSudoDirs,
   closeLockForThisRequest,
   inRequestLockScope,
   getSudoEnv,
@@ -1201,6 +1353,8 @@ import {
   hasPasswordlessSudo,
   watchSudo,
 } from "./sudo-store.js";
+// Issue 121: sudo shim folders an earlier run left behind (a crash): gone.
+sweepStaleSudoDirs();
 import {
   guardStdio,
   isLostOutputError,
@@ -1264,15 +1418,17 @@ import {
   handleWorkspaceRoutes,
   workspaceCreateRefusal,
 } from "./workspace-routes.js";
+import { setFixtureTestInstall } from "./fixture-projects.js";
 import {
   createApprovalQueue,
   handleApprovalRoutes,
   isApprovalPath,
   notePolicyRun,
   type HeldActions,
+  type HeldCheck,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
-import { gateOverrunWaiting } from "./gate-overrun-bell.js";
+import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
   handleIssueWriteRoute,
@@ -1281,9 +1437,37 @@ import {
 import {
   IssueWriteLimit,
   issueWriteSettings,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
-import { readRecord as readAgentRecord } from "../../shared/agents/records.js";
+import {
+  listRecords as listAgentRecords,
+  readRecord as readAgentRecord,
+} from "../../shared/agents/records.js";
+import {
+  askSandboxOn,
+  legacyAgentIds,
+  sandboxOnHeldOp,
+} from "../../shared/agents/sandbox-rollout.js";
+import {
+  checkAgentSandboxSet,
+  runAgentSandboxSet,
+  writeSandboxNote,
+  type SandboxSetDeps,
+} from "../../shared/agents/sandbox-set.js";
+import {
+  checkSettingChange,
+  runSettingChange,
+  settingChangeDeps,
+  settingKind,
+  personSetCaps,
+  undoSettingChange,
+} from "../cli/setting-change.js";
+import {
+  checkGateSettingsSet,
+  runGateSettingsSet,
+  type GateSettingsSetDeps,
+} from "../../shared/gates/settings-set.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1324,6 +1508,10 @@ import {
 } from "./verify-schedule-routes.js";
 import { lookupTimeouts } from "../cli/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
+import {
+  serverLogMaxBytes,
+  serverLogWriter,
+} from "../../shared/server-log-file.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
 
 /** Sign-in: Den's own processes, this server always among them. */
@@ -1349,6 +1537,7 @@ import {
   recordPageRestart,
   restartMarkerPath,
   selfUpdateAutoAllow,
+  selfUpdateAsks,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
@@ -1374,31 +1563,42 @@ import {
   agentInputState,
   checkAgentCreate,
   checkAgentFolder,
+  agentRecord,
   checkAgentMode,
   checkPersonaCreate,
   checkPersonaUpdate,
   checkProjectMode,
   checkProjectMcpAdd,
   runProjectMcpAdd,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  undoEventFeed,
   checkProjectMcpRemove,
   runProjectMcpRemove,
   checkProjectMcpUpdate,
   runProjectMcpUpdate,
   createAgent,
   runAgentFolder,
+  restartAgent,
   runAgentMode,
   runPersonaCreate,
   runPersonaUpdate,
   runProjectMode,
+  importSandboxOff,
   runAgentImport,
   personaLookup,
   hubUpstream,
   policyResolver,
   restartResolver,
   modeResolver,
+  busyAgentHolds,
+  runningAgentIds,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
+import { loggedPath } from "./logged-path.js";
 import {
   lastRunsByRepo,
   recordRunEnd,
@@ -1461,6 +1661,12 @@ import {
 } from "../../shared/open-url.js";
 
 import { product } from "../../shared/product.js";
+import {
+  fdIsFile,
+  stdoutLine,
+  webLogPath,
+  webLogWriter,
+} from "../../shared/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
@@ -1896,6 +2102,21 @@ function edgeFronted(): boolean {
 const webSecret = new WebSecretStore();
 const webSessions = new WebSessionStore({
   secret: () => webSecret.current(),
+  // Issue 1299: a failed read of the sessions file, in the server log.
+  // Issue 1299 review: a write never blocks the server waiting for the
+  // lock; a request that may write sessions waits first, on timers
+  // (sessionsLockWait in handleRequest), and others are served meanwhile.
+  lockWaitMs: () => 0,
+  onProblem: (msg, kind) => {
+    serverLog(`  ⚠ ${msg}`, "warn");
+    // A damaged file moved aside signs every browser out: the activity
+    // trail says so, so a person knows why.
+    if (kind === "moved-aside")
+      recordAction(null, {
+        verb: "sessions-reset",
+        detail: `${msg}; every browser signs in again`,
+      });
+  },
 });
 /** Issue 819: whether a person has ever signed in here (first-run.ts). */
 const FIRST_RUN = new FirstRun({
@@ -1917,6 +2138,31 @@ function sessionCookie(
 
 /** web.url, re-read at most every 5 s (the request checks ask often). */
 let WEB_URL_NOW = { at: 0, url: null as string | null };
+
+/**
+ * Issue 869: tell the connected Hub this install's address after it
+ * changes (hub-den-url.ts). Never waited on; the save never fails for it.
+ */
+function tellHubAddress(url: string): void {
+  void tellHubDenUrl(url, {
+    hub: async () => (await import("./hub-sync-service.js")).hubAndToken(),
+    put: async (h, t, u) =>
+      (await import("../../shared/hub.js")).hubPutDenUrl(h, t, u),
+    stateDir: getStateDir(),
+  }).catch(() => undefined);
+}
+
+/**
+ * This install's address, saved the one way every path saves it
+ * (Settings, `web url`, an alias made the address, web_url_set):
+ * confirmed, audited, read again at once, and told to Hub.
+ */
+function saveWebUrl(url: string, how?: WebUrlChange): string {
+  const saved = setWebUrl(url, undefined, undefined, how);
+  WEB_URL_NOW = { at: 0, url: null }; // re-read at once
+  tellHubAddress(saved);
+  return saved;
+}
 function webUrlNow(): string | null {
   if (Date.now() - WEB_URL_NOW.at > 5_000)
     WEB_URL_NOW = { at: Date.now(), url: readWebUrl()?.url ?? null };
@@ -2052,6 +2298,48 @@ function adoptOffer(req: http.IncomingMessage): {
         },
       }
     : {};
+}
+
+/**
+ * Issue 869: whether an address's host is this machine or one Den already
+ * serves: the current address's host, an edge name (its domains and
+ * aliases, and names under them), or a name that resolves to one of this
+ * machine's own addresses (its interfaces, the mesh's among them, or
+ * loopback). A host that is none of these gets web_url_set's warning.
+ */
+async function addressHostKnown(host: string): Promise<boolean> {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  try {
+    const now = readWebUrl();
+    if (now && new URL(now.url).hostname.toLowerCase() === h) return true;
+  } catch {
+    /* no current address */
+  }
+  try {
+    const domains = hasEdgeBlock() ? edgeDomains(readEdgeConfig()) : [];
+    if (domains.some((d) => h === d || h.endsWith(`.${d}`))) return true;
+  } catch {
+    /* no edge */
+  }
+  const mine = new Set(
+    Object.values(os.networkInterfaces())
+      .flat()
+      .flatMap((i) => (i ? [i.address.toLowerCase()] : [])),
+  );
+  try {
+    const found = await dnsLookup(h, { all: true });
+    return (
+      found.length > 0 &&
+      found.every(
+        (a) =>
+          mine.has(a.address.toLowerCase()) ||
+          a.address === "::1" ||
+          a.address.startsWith("127."),
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Whether the request is the owner's (web-url-routes adoptAllowed). */
@@ -2228,14 +2516,23 @@ const GUARD: GuardContext = {
     const s = webSessions.lookup(sessionCookie(req, httpsOf(req, via)));
     // Issue 810: a fixture session ends as soon as what allowed it goes.
     if (s?.via === "fixture" && !fixtureSessionStands(s)) {
-      webSessions.end(s.key);
+      // Best effort: with the lock busy it ends at a later request.
+      try {
+        webSessions.end(s.key);
+      } catch {
+        /* still refused below */
+      }
       return null;
     }
     // Issue 796: an agent's view ends at its time, when the install turns
     // views off, or when the agent's token goes; it counts on loopback only.
     if (s?.via === "agent-view") {
       if (!agentViewStands(s)) {
-        webSessions.end(s.key);
+        try {
+          webSessions.end(s.key);
+        } catch {
+          /* still refused below; it ends at a later request */
+        }
         closeSessionSockets([s.key]);
         return null;
       }
@@ -2289,6 +2586,8 @@ const DEVICE_FLOWS = new DeviceFlows({
   // A test's fake GitHub may answer interval 0; the real one never does.
   minIntervalMs: GITHUB.fake ? 50 : 1000,
   onExpiringToken: noteExpiringToken,
+  // Issue 362: one address's new sign-ins a minute, as its pairing requests.
+  perClient: () => webAuthNow().pairRequestsPerMinute,
 });
 
 /**
@@ -2310,6 +2609,12 @@ function noteExpiringToken(): void {
 // ── SEC-2a: approve this computer with a code (pair-requests.ts) ──────────
 /** Issue 819: the new-device limits are Settings, read when used. */
 const PAIRS = new PairRequests({
+  // Issue 1333: each request's start and end, in the activity trail.
+  onEvent: (e) =>
+    void recordAction(null, {
+      verb: SIGNIN_REQUEST_VERB,
+      detail: pairEventDetail(e),
+    }),
   unseenMs: pairUnseenMs(),
   perClient: () => webAuthNow().pairRequestsPerMinute,
   maxAttempts: () => webAuthNow().approveAttempts,
@@ -2335,6 +2640,72 @@ const issueWriteLimit = new IssueWriteLimit();
  * project's GitHub repos (the catalog's gh, else the project's org), the
  * settings from user.yml, pr_close's gh call path (runGh), and the audit.
  */
+/**
+ * Issue 1127: a repo's visibility (null: not known) no older than
+ * `maxAgeMs`, through the cache Report uses (feedback.visibility_timeout_
+ * seconds and _retry_seconds).
+ */
+async function repoVisibilityFor(
+  repo: string,
+  maxAgeMs: number,
+): Promise<"public" | "private" | "internal" | null> {
+  const fb = reportRouteDeps().settings();
+  const vis = await repoVisibilities(getStateDir(), [repo], {
+    gh: (a) => runGh(a),
+    anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    ttlMs: maxAgeMs,
+    timeoutMs: fb.visibilityTimeoutSeconds * 1000,
+    retryMs: fb.visibilityRetrySeconds * 1000,
+  });
+  return vis[repo] ?? null;
+}
+
+/**
+ * Issue 1127: Report's listed-names check, as issue_write's: the listed
+ * names, the destination's visibility (agents.issue_writes_visibility_
+ * minutes old at most), then the refusal or null. A list file named but
+ * missing refuses: the check fails closed.
+ */
+async function reportWordsCheck(
+  repo: string,
+  texts: FiledText[],
+): Promise<{ error: string; hits: FiledHit[] } | null> {
+  let patterns: RegExp[];
+  try {
+    patterns = orgPatterns();
+  } catch {
+    // Fixed words: the error can quote a line of the list.
+    return {
+      error: "the names list can't be read; nothing was sent",
+      hits: [],
+    };
+  }
+  if (!patterns.length) return null;
+  let minutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  try {
+    minutes = issueWriteSettings(
+      () => readUserConfig(),
+      () => readDenConfig(),
+    ).visibilityMinutes;
+  } catch {
+    /* a wrong agents.* value: the default */
+  }
+  const vis = await repoVisibilityFor(repo, minutes * 60_000);
+  if (!needsFiledCheck(vis)) return null;
+  const hits = filedTextHits(texts, patterns, repo);
+  return hits.length ? { error: filedTextRefusal(hits), hits } : null;
+}
+
+/** Issue 1127: Den's own report sections, with listed names masked. */
+function reportMaskListed(text: string): string {
+  try {
+    return orgMask(text, orgPatterns());
+  } catch {
+    // An unreadable list: the person's check refuses the send anyway.
+    return text;
+  }
+}
+
 function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
   return {
     agentOf: (id) => {
@@ -2378,6 +2749,11 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    // Issue 1127: the listed names, and the repo's visibility through the
+    // cache Report uses (feedback.visibility_timeout_seconds and
+    // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
+    namePatterns: () => orgPatterns(),
+    visibility: repoVisibilityFor,
     audit: (e) => {
       try {
         recordAction(
@@ -2421,18 +2797,6 @@ function machineNameSetting(user: {
   } catch {
     return null;
   }
-}
-
-/**
- * A path as the request log writes it: a sign-in poll's id is its
- * credential (SEC-2a: the code request's, a GitHub flow's), so it shows
- * as `:id`.
- */
-function loggedPath(pathname: string): string {
-  return pathname.replace(
-    /^(\/api\/(?:signin\/code|github\/signin|web\/owner\/link))\/[^/]+$/,
-    "$1/:id",
-  );
 }
 
 /**
@@ -2481,6 +2845,15 @@ function closeSessionSockets(keys: Iterable<string>): void {
   for (const k of keys) {
     for (const sock of SESSION_SOCKETS.get(k) ?? []) sock.destroy();
     SESSION_SOCKETS.delete(k);
+  }
+}
+
+/** Issue 1299: web.sessions_lock_wait_ms (its default when unreadable). */
+function sessionsLockWait(): number {
+  try {
+    return webAuthNow().sessionsLockWaitMs;
+  } catch {
+    return SESSIONS_LOCK_WAIT_MS;
   }
 }
 
@@ -3050,8 +3423,13 @@ function sendPairing(
   const r = PAIRS.tryCreate({
     userAgent: req.headers["user-agent"],
     client,
+    host: denAddressOf(req),
     ...(link ? { link: link.nonce, linkAt: link.startedAt } : {}),
   });
+  if (r.ok && client)
+    void meshNameOf(client).then((n) => {
+      if (n) PAIRS.setClientName(r.ref, n);
+    });
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   if (!r.ok)
@@ -3419,6 +3797,17 @@ const FIXTURE_SETUP_SECRET = (() => {
   return new SetupSecret(v, getStateDir());
 })();
 
+/**
+ * Issue 816: the launcher's opt-in for announcing this test install on
+ * this computer (<PREFIX>_TEST_ANNOUNCE=1), read once from the start
+ * environment and taken out of it, like the flag above.
+ */
+const TEST_ANNOUNCE_FLAG = (() => {
+  const on = readEnv(getProfile(), TEST_ANNOUNCE_ENV_KEY) === "1";
+  delete process.env[envName(getProfile(), TEST_ANNOUNCE_ENV_KEY)];
+  return on;
+})();
+
 function realOrResolved(p: string): string {
   try {
     return fs.realpathSync(p);
@@ -3462,6 +3851,8 @@ function testInstallNow(except?: string): boolean {
       ),
   }).ok;
 }
+// Issue 1215: the fixture person's project acts check the mark too.
+setFixtureTestInstall(() => testInstallNow());
 
 // Issue 1073: install the name map's hook, and tell the log and doctor.
 if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
@@ -3485,6 +3876,50 @@ if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
+}
+
+// Issue 728: list this install for the others on this OS user (any
+// distribution's), so their agents are denied its credential files and keys.
+try {
+  const { dropped } = registerInstall(registryDir(), {
+    stateDir: getStateDir(),
+    edgeKeyDirs: edgeKeyDirs(getDistRoot()),
+  });
+  if (dropped.length)
+    serverLog(
+      `  ⚠ install registry: left out edge folders it can't name exactly: ${dropped.join(", ")}`,
+      "warn",
+    );
+} catch (e) {
+  serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
+}
+
+/**
+ * Issue 816: keep this test install's announcement true. It is there only
+ * while the launcher opted in, this is a test install, and its test person
+ * isn't set up yet; it goes when any of those ends, and at exit.
+ */
+let ANNOUNCED = false;
+function syncTestAnnouncement(): void {
+  const want = TEST_ANNOUNCE_FLAG && testInstallNow() && !fixtureKeyNow();
+  try {
+    if (want)
+      announceTestInstall(announceDir(), {
+        stateDir: getStateDir(),
+        port: PORT,
+        pid: process.pid,
+      });
+    else if (ANNOUNCED) unannounceTestInstall(announceDir(), getStateDir());
+    ANNOUNCED = want;
+  } catch (e) {
+    serverLog(`  ⚠ test install announcement: ${(e as Error).message}`, "warn");
+  }
+}
+if (TEST_ANNOUNCE_FLAG) {
+  setInterval(syncTestAnnouncement, 30_000).unref();
+  process.on("exit", () => {
+    if (ANNOUNCED) unannounceTestInstall(announceDir(), getStateDir());
+  });
 }
 
 /**
@@ -3746,6 +4181,9 @@ async function handleAgentViewRequest(
     expiresAt: new Date(expiresAt).toISOString(),
     linkSeconds: AGENT_VIEW_LINK_TTL_MS / 1000,
     minutes: w.agentViewMinutes,
+    // Issue 1243: localhost on purpose (it opens on loopback only, as the
+    // agent). The agent keeps it; a person gets the page on web.url.
+    note: AGENT_VIEW_LINK_NOTE,
   });
 }
 
@@ -3905,6 +4343,7 @@ async function handleFixturePersonRoute(
   });
   if (r.ok && browser) webSessions.markTestOperator(session!.key);
   if (r.ok) writeFixtureMadeBy(getStateDir(), "settings");
+  syncTestAnnouncement();
   recordAction(
     auditActorOf(req),
     {
@@ -4006,6 +4445,7 @@ async function handleFixtureSetupSecretRoute(
   });
   if (!r.ok) return refuse(r.code, r.error);
   writeFixtureMadeBy(getStateDir(), "setup-secret");
+  syncTestAnnouncement();
   // Who made it: the person whose bearer sent the value (as Settings'
   // Set up test person records its presser); the fixture person is what.
   recordAction(
@@ -4018,6 +4458,157 @@ async function handleFixtureSetupSecretRoute(
   );
   serverLog(`  ${logTimestamp()}  ${SETUP_SECRET_AUDIT}`, "lifecycle");
   return sendJson(res, { ok: true, testInstall: true, ready: true });
+}
+
+/**
+ * Issue 816: `GET /api/web/test-installs`: the test installs announced on
+ * this computer that pass every check and whose port answers as that
+ * install, for Settings' Set up test person. The signed-in person only: an
+ * agent, a fixture session or a request with no sign-in gets 403 (a
+ * loopback GET passes the request checks with no token, so it is checked
+ * here). Each by id, ~/ state folder and port; never a secret or its path.
+ */
+async function handleTestInstallsListRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  const m = (req.method ?? "GET").toUpperCase();
+  if (m !== "GET" && m !== "HEAD") {
+    res.setHeader("Allow", "GET, HEAD");
+    return sendJson(res, { ok: false, error: "use GET" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const p = g.ok ? g.principal : undefined;
+  const person =
+    !!p &&
+    (p.kind === "person" || p.kind === "person-browser") &&
+    !("testPerson" in p && p.testPerson) &&
+    !("fixture" in p && p.fixture) &&
+    !notAPersonOf(req);
+  // Nobody signed in: 401, as other reads that need a sign-in answer. An
+  // agent, a fixture or a test person: 403.
+  if (!person)
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: p ? "person_only" : "signin_required",
+        error:
+          "Only the signed-in person sees the test installs on this computer.",
+      },
+      p ? 403 : 401,
+    );
+  // Issue 816 review: probed and still waiting, so a forged announcement of
+  // a real install never offers Set up.
+  const installs = await listWaitingInstalls(testPersonSetupDeps());
+  return sendJson(res, { ok: true, installs });
+}
+
+/**
+ * Issue 816: `POST /api/web/fixture-person/grant {grant, challenge}`: your
+ * own Den, at your Allow of test_person_setup, makes this test install's
+ * test person. It needs both: this install's person bearer on this machine
+ * (never beyond the edge) and a fresh grant for this install, spent first.
+ * It answers the challenge as this Den, so the sender knows its bearer
+ * reached this install and not something else on the port. An agent's
+ * token or a fixture session is refused before the body is read.
+ */
+const GRANT_BODY_MAX = 1024;
+async function handleFixtureGrantRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    res.setHeader("Allow", "POST");
+    return sendJson(res, { ok: false, error: "use POST" }, 405);
+  }
+  const g = checkRequest(req, GUARD, product().cli, product().title);
+  const refuse = (code: string, error: string, status = 403) => {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "fixture-person",
+        detail: `${FIXTURE_LABEL} from a grant: refused`,
+        outcome: "refused",
+        reason: code,
+      },
+      principalOf(req),
+    );
+    return sendJson(res, { ok: false, code, error }, status);
+  };
+  const person =
+    g.ok &&
+    g.principal?.kind === "person" &&
+    !g.principal.testPerson &&
+    !notAPersonOf(req);
+  if (person && g.beyond)
+    return refuse(
+      "not_this_machine",
+      `The ${FIXTURE_LABEL} is made from a grant only on this computer; never through the edge or the network.`,
+    );
+  if (!person)
+    return refuse(
+      "person_only",
+      `Only your own ${product().title}, at your Allow, makes the ${FIXTURE_LABEL} from a grant: an agent or the ${FIXTURE_LABEL} itself can't.`,
+    );
+  if (!testInstallNow())
+    return refuse(
+      "not_test_install",
+      notTestInstallRefusal(product().configFile),
+    );
+  let grant: unknown = undefined;
+  let challenge: unknown = undefined;
+  let tooBig = false;
+  try {
+    const raw = await readBodyCapped(req, GRANT_BODY_MAX);
+    tooBig = raw === null;
+    const b = JSON.parse(raw ?? "{}") as {
+      grant?: unknown;
+      challenge?: unknown;
+    } | null;
+    grant = b?.grant;
+    challenge = b?.challenge;
+  } catch {
+    grant = undefined;
+  }
+  if (tooBig)
+    return refuse(
+      "body_too_big",
+      `The request is over ${GRANT_BODY_MAX} bytes. Nothing was spent.`,
+      413,
+    );
+  const secret = webSecret.current();
+  if (!secret) return refuse("no_secret", "This install has no web secret.");
+  const t = takeSetupGrant(typeof grant === "string" ? grant : "", {
+    secret,
+    stateDir: getStateDir(),
+    maxSeconds: SETUP_GRANT_MAX_SECONDS,
+  });
+  grant = undefined;
+  if (!t.ok) return refuse(t.code, `The grant was refused: ${t.code}.`);
+  const r = setupFixturePerson(getStateDir(), {
+    testInstall: true,
+    agent: false,
+    webSecret: secret,
+    configFile: product().configFile,
+  });
+  if (!r.ok) return refuse(r.code, r.error);
+  writeFixtureMadeBy(getStateDir(), "grant");
+  syncTestAnnouncement();
+  const detail = `${FIXTURE_LABEL} made from a grant by install ${t.from} (${FIXTURE_PRINCIPAL})`;
+  recordAction(
+    auditActorOf(req),
+    { verb: "fixture-person", detail },
+    principalOf(req),
+  );
+  serverLog(`  ${logTimestamp()}  ${detail}`, "lifecycle");
+  const answer = identityAnswer(identityKey(secret), challenge);
+  return sendJson(res, {
+    ok: true,
+    testInstall: true,
+    ready: true,
+    ...(answer ? { answer } : {}),
+  });
 }
 
 /**
@@ -4260,6 +4851,9 @@ function reportRouteDeps(): ReportRouteDeps {
       ),
     stateDir: () => getStateDir(),
     gh: runGh,
+    // Issue 1127: listed names, before a report is filed.
+    wordsCheck: reportWordsCheck,
+    maskListed: reportMaskListed,
     names: () => {
       const w = readWebUrl();
       let webHost: string | undefined;
@@ -4312,12 +4906,100 @@ type ApprovalDeps = {
     workspace: string | undefined,
   ) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
+  installMode: () => InstallMode;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
   webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
+/**
+ * Issue 816: test_person_setup's deps, outside approvalDeps. Everything it
+ * sends goes to 127.0.0.1:<port> of a checked announcement, never a name.
+ */
+function testPersonSetupDeps(): TestPersonSetupDeps {
+  const base = (port: number) => `http://127.0.0.1:${port}`;
+  const timeoutMs = () => addressCheckSettings().timeoutMs;
+  return {
+    ownId: installIdOf(getStateDir()),
+    home: os.homedir(),
+    list: () => listAnnounced(announceDir(), { ownStateDir: getStateDir() }),
+    alive: (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (e) {
+        return (e as NodeJS.ErrnoException).code === "EPERM";
+      }
+    },
+    probe: async (a) => {
+      const secret = readWebSecret(a.stateDir);
+      if (!secret) return false;
+      const r = await probeIdentity(base(a.port), {
+        key: identityKey(secret),
+        timeoutMs: timeoutMs(),
+        retries: 0,
+      });
+      return r.ok;
+    },
+    waiting: async (a) => {
+      try {
+        const res = await fetch(`${base(a.port)}/api/web/fixture-person`, {
+          redirect: "manual",
+          signal: AbortSignal.timeout(timeoutMs()),
+        });
+        const j = (await res.json()) as {
+          testInstall?: unknown;
+          ready?: unknown;
+        };
+        return (
+          res.status === 200 && j.testInstall === true && j.ready === false
+        );
+      } catch {
+        return false;
+      }
+    },
+    readSecret: (dir) => readWebSecret(dir),
+    ttlSeconds: () => testGrantSeconds(),
+    post: async (port, bearer, body) => {
+      const res = await fetch(`${base(port)}/api/web/fixture-person/grant`, {
+        method: "POST",
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs()),
+        headers: {
+          authorization: `Bearer ${bearer}`,
+          "content-type": "application/json",
+        },
+        body,
+      });
+      let json: Record<string, unknown> = {};
+      try {
+        json = (await res.json()) as Record<string, unknown>;
+      } catch {
+        json = {};
+      }
+      return { status: res.status, json };
+    },
+    audit: (row) =>
+      auditConfig({ ...row, verb: "test-person-setup" }, getStateDir()),
+  };
+}
+
+/**
+ * Issue 869: web_url_set's deps. Outside approvalDeps on purpose: this held
+ * write reads the stored web.url (its "Now:" line, and the address it
+ * replaces), while approvalDeps' links use the people address (issue 1016).
+ */
+function webUrlSetDeps(): Parameters<typeof webUrlSetAction>[0] {
+  return {
+    knownHost: addressHostKnown,
+    read: () => readWebUrl(),
+    set: (url, how) => saveWebUrl(url, how),
+    ping: (url, ms) => pingHttp(url, ms),
+    checkMs: () => webUrlCheckSeconds() * 1000,
+  };
+}
+
 /** The held writes and their queue, made on first use. */
 function approvalDeps(): ApprovalDeps {
   if (approvals) return approvals;
@@ -4364,7 +5046,14 @@ function approvalDeps(): ApprovalDeps {
           ok: false,
           error: `"up" for ${resolved.address} needs an interactive terminal: the person runs \`${product().cli} up ${resolved.address}\``,
         };
-      return { ok: true, address: resolved.address };
+      // Issue 362: the command the dialog shows, and its Allow is for.
+      const command =
+        def === undefined ? undefined : typeof def === "string" ? def : def.cmd;
+      return {
+        ok: true,
+        address: resolved.address,
+        ...(command ? { command } : {}),
+      };
     },
     // `up` as /api/service/exec runs it, collected instead of streamed.
     tryService: async (address, ws) => {
@@ -4431,7 +5120,10 @@ function approvalDeps(): ApprovalDeps {
       return { ok: true, restarting: true, pid: process.pid };
     },
     // SRV-1b: update from npm, the watch to roll back, then the restart.
-    updateDen: async (version, reason, asked) => {
+    installPersonal: isPersonalInstall,
+    denVersion: () => engineVersion() ?? null,
+    holdForPerson: (action, card, agent) => holdForPerson(action, card, agent),
+    updateDen: async (version, reason, asked, o) => {
       const u = await import("./den-update.js");
       const auto = !!asked?.decidedBy?.startsWith("auto:");
       const by = asked?.agent ? `agent:${asked.agent}` : "the person";
@@ -4493,6 +5185,7 @@ function approvalDeps(): ApprovalDeps {
           writeRestartMarker(stateDir, marker);
           return { path: restartMarkerPath(stateDir), marker };
         },
+        ...(o?.stableNotOlder ? { stableNotOlder: true } : {}),
         // Issue 562 review: Den's own auto update reads the wait again.
         ...(auto && autoRestartHold ? { beforeRestart: autoRestartHold } : {}),
         restart: () => {
@@ -4520,8 +5213,18 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 565: an agent files a report as the page does (public: Allow).
     report: reportHeld(reportRouteDeps()),
+    // Issue 816: set up a test install's test person on this computer.
+    testPersonSetup: testPersonSetupAction(testPersonSetupDeps()),
     // Issue 160: an agent asks to bring a conversation in (asks by default).
     agentImport: (a) => runAgentImport(agentWebDeps(), a),
+    // Issue 1328: an agent brought in outside the sandbox needs the person.
+    agentImportSandbox: (persona) => {
+      try {
+        return importSandboxOff(agentWebDeps(), persona);
+      } catch {
+        return null;
+      }
+    },
     // Issue 160: an agent closes a stale or superseded pull request after
     // a Hub note (auto unless the repo is watched or pinned).
     prClose: async ({ repo, pr, comment }) => {
@@ -4612,7 +5315,11 @@ function approvalDeps(): ApprovalDeps {
     // Issue 647: an agent asks to link a project to an existing Hub project.
     hubLink: {
       check: async (a, who) =>
-        checkHubLinkHeld(await defaultHubLinkHeldDeps(), a, who),
+        checkHubLinkHeld(
+          { ...(await defaultHubLinkHeldDeps()), personal: isPersonalInstall },
+          a,
+          who,
+        ),
       run: async (a, asked) =>
         runHubLinkHeld(await defaultHubLinkHeldDeps(), a, asked),
     },
@@ -4635,6 +5342,15 @@ function approvalDeps(): ApprovalDeps {
       check: (a, who) => checkProjectMcpUpdate(agentWebDeps(), a, who),
       run: (a) => runProjectMcpUpdate(agentWebDeps(), a),
     },
+    // Issue 1480: an agent asks to add or remove an app's event feed.
+    eventFeedAdd: {
+      check: (a, who) => checkEventFeedAdd(agentWebDeps(), a, who),
+      run: (a, asked) => runEventFeedAdd(agentWebDeps(), a, asked),
+    },
+    eventFeedRemove: {
+      check: (a, who) => checkEventFeedRemove(agentWebDeps(), a, who),
+      run: (a) => runEventFeedRemove(agentWebDeps(), a),
+    },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
       run: (a) => runAgentFolder(agentWebDeps(), a),
@@ -4653,13 +5369,24 @@ function approvalDeps(): ApprovalDeps {
     }),
     // Issue 625: an agent asks to add or remove a test box; the person allows.
     ...(() => {
-      const box = gateBoxOps({ store: () => gates() });
+      const box = gateBoxOps({
+        store: () => gates(),
+        personal: isPersonalInstall,
+      });
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
+    // Issue 869: Den's own agent proposes the address; the person Allows.
+    webUrlSet: webUrlSetAction(webUrlSetDeps()),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
       refreshing: terminalHostRefreshing,
+      personal: isPersonalInstall,
+      // Issue 1403: any agent mid-turn (or a background job it started).
+      turnsRunning: async () => {
+        const d = agentWebDeps();
+        return (await busyAgentHolds(d, await runningAgentIds(d))).length > 0;
+      },
       waitSeconds: () => {
         try {
           return readSessionsConfig().hostRestartWaitSeconds;
@@ -4667,13 +5394,16 @@ function approvalDeps(): ApprovalDeps {
           return 900;
         }
       },
-      start: () =>
+      start: (o) =>
         refreshTerminalHost(
           agentWebDeps(),
           (line) => serverLog(line, "lifecycle"),
           "held",
+          o ?? {},
         ),
       log: (line) => serverLog(line, "lifecycle"),
+      hold: (card, agent) =>
+        holdForPerson("host_restart", card as HeldCheck, agent),
     }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
@@ -4683,8 +5413,14 @@ function approvalDeps(): ApprovalDeps {
             import("./agent-routes.js").then((m) => m.applyModesNow()),
         }),
     },
+    // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
+    agentSandbox: agentSandboxHeldOp(),
+    settingChange: settingChangeHeldOp(),
+    gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    // Issue 936: the rollout's Turn on, for agents from before the sandbox.
+    sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
     verifyRun: {
       check: (a, who) => checkVerifyRun(verifyDeps(), a, who),
@@ -4730,10 +5466,19 @@ function approvalDeps(): ApprovalDeps {
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches
     // (approvals.watch) and pinned to the rail (their favorites).
+    // Issue 1391: personal (the default) or strict, read per ask.
+    installMode: () => installModeOf(readUserConfig()),
     policy: (action, project, widens, ask) => {
       const user = readUserConfig();
+      // Den Builder's call (issue 1391): an explicit self_update: ask is
+      // the person's say on a restart, on a personal install too.
+      // Issue 1403: den_update follows server_agent.self_update, too.
+      if (selfUpdateAsks(action, readServerAgentConfig))
+        return { kind: "ask", from: "server_agent.self_update: ask" };
       return policyFor(action, {
         widens,
+        mode: installModeOf(user),
+        ...(ask?.category ? { setting: { category: ask.category } } : {}),
         areas: ask?.areas,
         install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,
@@ -4868,6 +5613,132 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * expired: its item goes). Issue 742: the queue is made at the start, so
  * what waited before a restart is read back and shows in the bell.
  */
+/**
+ * Issue 1328: agent_sandbox_set on this install: the agent's record, the
+ * resolved agents config, the one user.yml key, the note in the state
+ * folder, and Restart after its turn (the conversation kept).
+ */
+function agentSandboxHeldOp() {
+  const deps = (): SandboxSetDeps => ({
+    record: (id, project) => agentRecord(agentWebDeps(), id, project),
+    agentsConfig: () => readAgentsConfig(),
+    write: (id, on) => setUserAgentSandbox(id, on),
+    note: (id, n) => writeSandboxNote(getStateDir(), id, n),
+    restart: (id, project) =>
+      restartAgent(agentWebDeps(), id, project, "after-turn").catch((e) => {
+        serverLog(
+          `  ⚠ agent_sandbox_set: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
+          "warn",
+        );
+      }),
+    now: () => new Date().toISOString(),
+  });
+  return {
+    check: (
+      a: Record<string, unknown>,
+      who?: { agent?: string; project?: string },
+    ) => checkAgentSandboxSet(deps(), a, who),
+    run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
+      runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
+/**
+ * Issue 1371: setting_change on this install: the person's user.yml, a
+ * backup in the state folder, and the server's audit. The card and args
+ * only go to the queue: never the file's text.
+ */
+function settingChangeHeldOp() {
+  const deps = () =>
+    settingChangeDeps({
+      userFile: userConfigPath(),
+      stateDir: getStateDir(),
+      audit: (detail, reason) =>
+        auditConfig({
+          verb: "config-write",
+          detail,
+          ...(reason ? { reason } : {}),
+        }),
+    });
+  return {
+    check: (a: Record<string, unknown>, who?: { agent?: string }) => {
+      const c = checkSettingChange(deps(), a, who);
+      if (!c.ok) return c;
+      const { text: _t, before: _b, kind: _k, ...card } = c;
+      return card;
+    },
+    // Issue 1391: who decided (auto:… is the policy) moves a cap's baseline.
+    run: async (
+      a: Record<string, unknown>,
+      asked?: { agent?: string; decidedBy?: string },
+    ) =>
+      runSettingChange(deps(), a, {
+        ...(asked?.agent ? { agent: asked.agent } : {}),
+        ...(asked?.decidedBy ? { decidedBy: asked.decidedBy } : {}),
+      }),
+  };
+}
+
+/**
+ * Issue 1395: gate_settings_set on this install: the gate's settings in
+ * effect, the install's mode and the person's Limits choice (read per
+ * ask), and the gate's one writer under its lock.
+ */
+function gateSettingsHeldOp() {
+  const deps = (): GateSettingsSetDeps => {
+    const user = readUserConfig();
+    // den.yml and user.yml; never throws (a bad value is strict).
+    const mode = installModeOf(user);
+    return {
+      settings: (patch) => gates().settings(patch),
+      write: async (patch, by) => {
+        await gateLocked(() => gates().writeSettings(patch, by));
+      },
+      installMode: () => mode,
+      kind: (key, value, before) => settingKind(key, mode, value, before),
+      choices: () => readPolicySetting(user.approvals)?.settings,
+    };
+  };
+  return {
+    check: (a: Record<string, unknown>) => checkGateSettingsSet(deps(), a),
+    run: async (
+      a: Record<string, unknown>,
+      asked?: { agent?: string; decidedBy?: string },
+    ) => runGateSettingsSet(deps(), a, asked),
+  };
+}
+
+/** Issue 936: den_sandbox_on, counting the agents from before it now. */
+function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
+  return sandboxOnHeldOp({
+    count: () =>
+      legacyAgentIds(listAgentRecords(getStateDir()), readAgentsConfig())
+        .length,
+    turnOn: () => setUserSandboxOn(),
+    personal: isPersonalInstall,
+  });
+}
+
+/**
+ * Issue 936, the rollout: Den asks once, as a held write in the bell, to
+ * turn the sandbox on for agents from before it; then each hour, should
+ * the person have let it lapse. Best effort.
+ */
+function startSandboxOnAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      void askSandboxOn(ap.queue, sandboxOnServerOp()).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      /* no queue here: doctor still says it */
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
+}
+
 function startHeldWritesBell(): void {
   let shown = true;
   try {
@@ -4884,17 +5755,81 @@ function startHeldWritesBell(): void {
   }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
-export function approvalsSettings(raw: unknown): {
+export function approvalsSettings(
+  raw: unknown,
+  mode: InstallMode = "strict",
+): {
   approvals_policy: string | null;
   approvals_watch: string[];
   approvals_critical: string[];
+  approvals_settings: ReturnType<typeof approvalsView>["settings"];
 } {
-  const v = approvalsView(raw);
+  const v = approvalsView(raw, mode);
   return {
     approvals_policy: v.policy,
     approvals_watch: v.watch,
     approvals_critical: v.critical,
+    approvals_settings: v.settings,
   };
+}
+
+/** Issue 1391: the install's mode for Settings; a bad value says strict. */
+/**
+ * Issue 1391: den.yml's install_mode, for the mode; strict when the
+ * distribution's config can't be read (fails closed).
+ */
+function denModeConfig(): Pick<DenConfig, "install_mode"> {
+  try {
+    return { install_mode: readDenConfig().install_mode };
+  } catch {
+    return { install_mode: "strict" };
+  }
+}
+/** Issue 1391: Den's config for the caps' values in force ({} unreadable). */
+function denForCaps(): DenConfig {
+  try {
+    return readDenConfig();
+  } catch {
+    return {} as DenConfig;
+  }
+}
+/**
+ * Issue 1403: a routine run that stopped (a turn started, or the version
+ * npm gives is older or a prerelease) waits for the person instead: the
+ * same ask, pending in the bell, for the agent that asked.
+ */
+function holdForPerson(action: string, card: HeldCheck, agent?: string): void {
+  if (!card.ok) return;
+  try {
+    approvalDeps().queue.request({
+      actor: agent ? `agent:${agent}` : "den",
+      ...(agent ? { agent } : {}),
+      action,
+      args: card.args,
+      summary: card.summary,
+      params: card.params,
+      details: card.details,
+      ...(card.detailKeys?.length ? { detailKeys: card.detailKeys } : {}),
+    });
+    syncHeldWrites();
+  } catch (e) {
+    serverLog(
+      `  ⚠ ${action}: not held for the person: ${(e as Error).message}`,
+      "lifecycle",
+    );
+  }
+}
+/** Issue 1403: the install is personal; a throw means strict. */
+function isPersonalInstall(): boolean {
+  try {
+    return installModeOf(readUserConfig()) === "personal";
+  } catch {
+    return false;
+  }
+}
+/** Issue 1391: the install's mode (den.yml and user.yml); never throws. */
+function installModeOf(user: UserConfig): InstallMode {
+  return readInstallMode(user, denModeConfig());
 }
 /**
  * Issue 160: write the approval policy, the install's (user.yml) or one
@@ -5038,7 +5973,7 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
     },
     run: async (a) => {
       const step = await runPinCommit(String(a.version), false);
-      pinBellNotice(step);
+      void pinBellNotice(step);
       const ok =
         step.did === "pushed" ||
         step.did === "pr" ||
@@ -5052,80 +5987,24 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
 }
 
 /** #176: the bell for the pin step: one item, the newest replacing it. */
-function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
+async function pinBellNotice(
+  step: import("./pin-commit.js").PinStep,
+): Promise<void> {
   try {
+    const { pinBellMessage } = await import("./pin-commit.js");
+    const m = pinBellMessage(step, product().title);
+    if (!m) return;
     const store = notificationDeps().store;
     const subject = "record:den-pin";
-    const t = product().title;
-    const v = step.version;
-    const add = (
-      text: string,
-      key: string,
-      vars: Record<string, string>,
-      link = "/server-agent",
-    ) => {
-      store.withdraw(subject, "service");
-      store.add({
-        kind: "service",
-        subject,
-        scope: "workspace/den-server",
-        text,
-        msg: { key, vars: { v, ...vars } },
-        link,
-      });
-    };
-    switch (step.did) {
-      case "pushed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
-          "bell.m.pinPushed",
-          { sha },
-        );
-        return;
-      }
-      case "push_failed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
-          "bell.m.pinPushFailed",
-          { sha, why: step.why },
-        );
-        return;
-      }
-      case "commit_failed":
-        add(
-          `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
-          "bell.m.pinCommitFailed",
-          { why: step.why },
-        );
-        return;
-      case "pr":
-        add(
-          `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
-          "bell.m.pinPrOpened",
-          { branch: step.branch },
-          step.url,
-        );
-        return;
-      case "branch_pushed":
-        add(
-          `${t} ${v}: the pin branch ${step.branch} is pushed; open a pull request for it (${step.why})`,
-          "bell.m.pinBranchPushed",
-          { branch: step.branch, why: step.why },
-          step.link ?? "/server-agent",
-        );
-        return;
-      case "held":
-        add(
-          `${t} ${v}: committing its pin waits for your Allow`,
-          "bell.m.pinHeld",
-          {},
-        );
-        return;
-      default:
-        return;
-    }
+    store.withdraw(subject, "service");
+    store.add({
+      kind: "service",
+      subject,
+      scope: "workspace/den-server",
+      text: m.text,
+      msg: { key: m.key, vars: m.vars },
+      link: m.link,
+    });
   } catch {
     /* the bell is best effort */
   }
@@ -5236,7 +6115,22 @@ const SAFE_MODULE_RE = /^[A-Za-z0-9_@][A-Za-z0-9._@/-]{0,127}$/;
 
 /** Issue 144: the machine's gate slots, opened on first use. */
 let gateStore: GateStore | undefined;
-const gates = () => (gateStore ??= new GateStore());
+// Issue 1339: the server's store never waits on the gate-slot lock on its
+// one thread (lockWaitMs 0); its callers wait by timer, with gateLocked.
+// Issue 1349: and its swap and free-memory readings never start a process
+// synchronously (read in the background, the last value meanwhile).
+const gates = (): GateStore => {
+  if (gateStore) return gateStore;
+  // Issue 1349: a failed reading's last good value stands for the setting.
+  const keepMs = () =>
+    (gateStore?.settings().memoryReadingKeepSeconds ?? 30) * 1000;
+  gateStore = new GateStore({
+    lockWaitMs: 0,
+    swap: serverSwapUsedGb({ keepMs }),
+    free: serverFreeMemory({ keepMs }),
+  });
+  return gateStore;
+};
 
 /**
  * Issue 163 (b): the Settings row's view of the agents' sign-in token:
@@ -5406,6 +6300,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       const c = webAuthNow();
       return { on: c.agentView, minutes: c.agentViewMinutes };
     })(),
+    // Issue 1299: how long a sessions write waits for another's lock.
+    web_sessions: (() => {
+      const c = webAuthNow();
+      return { lockWaitMs: c.sessionsLockWaitMs };
+    })(),
     // Issue 819: new-device requests and wrong codes.
     web_pairing: (() => {
       const c = webAuthNow();
@@ -5458,6 +6357,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    // Issue 1373: the agents' cap in force (user.yml over den.yml).
+    agents_limits: (() => {
+      try {
+        return {
+          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 742: how long a held write waits for the person's Allow.
     held_writes: { wait_minutes: heldWriteWaitMinutes(() => user) },
     // Issue 609: how agents' hooks wait for Den, and retry (agent_hooks.*).
@@ -5495,7 +6404,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     agent_issue_writes: (() => {
       try {
         const c = issueWriteSettings(() => user, readDenConfig);
-        return { roles: c.roles, per_hour: c.perHour };
+        return {
+          roles: c.roles,
+          per_hour: c.perHour,
+          visibility_minutes: c.visibilityMinutes,
+        };
       } catch {
         return null;
       }
@@ -5504,6 +6417,38 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       try {
         return {
           path_timeout_seconds: agentsShellPathTimeoutSeconds(() => user),
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 1311: how long messages wait on a draft before the bell says so.
+    agents_draft: (() => {
+      try {
+        return {
+          hold_max_minutes: agentsDraftHoldMaxMinutes(() => user),
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 1225: services.restore_on_boot (0.4.46), on unless set false.
+    restore_services_on_boot: (() => {
+      try {
+        return servicesRestoreOnBoot(() => user);
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 1129: the restart queue (agents.resume.*).
+    agents_resume: (() => {
+      try {
+        const r = agentsResume(() => user);
+        return {
+          batch: r.batch,
+          gap_seconds: r.gapSeconds,
+          load_ceiling: r.loadCeiling,
+          max_wait_seconds: r.maxWaitSeconds,
         };
       } catch {
         return null;
@@ -5530,6 +6475,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
+    // Issue 707: the server's warning lines on disk, capped (server_log.*).
+    server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
     reports: (() => {
       const l = shotLimits(user);
@@ -5568,6 +6515,12 @@ async function handleRequest(
   // eslint-disable-next-line no-restricted-syntax -- a base to parse the path against, never dialled
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  // Issue 1299 review: a request that may write the sessions file (a
+  // sign-in, a sign-out, a revoke; session-writes.ts) waits here, on timers, while another
+  // process holds its lock; every other request is served meanwhile. Its
+  // write then never waits (a lock taken in between: 503 "try again").
+  if (mayWriteSessions(req.method, pathname))
+    await webSessions.whenFree(sessionsLockWait());
   // R26: one id per request, on every response and on its failure's log line.
   const requestId = requestIdOf(req);
   if (!res.headersSent) res.setHeader("X-Request-Id", requestId);
@@ -5913,10 +6866,9 @@ async function handleRequest(
       // Issue 746: what waits for the person's Allow leads Needs you.
       held: () => (approvals ? approvals.queue.pending() : []),
       // Issue 993: a gate slot held past the multiple of its estimate.
-      gateOverruns: () => {
-        const s = gates();
-        return gateOverrunWaiting(s.list(), s.settings(), Date.now());
-      },
+      // Issue 1339: read without the gate-slot lock, so a gate run that
+      // holds it never stalls the bell (or the server with it).
+      gateOverruns: () => bellGateOverruns(gates()),
     });
     return;
   }
@@ -5986,6 +6938,14 @@ async function handleRequest(
     (await handleGithubRoutes(req, res, pathname, {
       flows: DEVICE_FLOWS,
       clientId: () => GITHUB_CLIENT_ID,
+      client: (r) => {
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        return g.ok ? g.client : undefined;
+      },
+      https: (r) => {
+        const g = checkRequest(r, GUARD, product().cli, product().title);
+        return httpsOf(r, g.ok ? g.via : null);
+      },
       tokensExpire: () => GITHUB_TOKENS_EXPIRE,
       cli: product().cli,
       sendJson,
@@ -6016,6 +6976,12 @@ async function handleRequest(
   // Issue 1018: the same, from the launcher's one-time setup value.
   if (pathname === "/api/web/fixture-person/setup-secret")
     return handleFixtureSetupSecretRoute(req, res);
+  // Issue 816: test installs on this computer waiting for their test person.
+  if (pathname === "/api/web/test-installs")
+    return handleTestInstallsListRoute(req, res);
+  // Issue 816: the same, from a grant your own Den sent at your Allow.
+  if (pathname === "/api/web/fixture-person/grant")
+    return handleFixtureGrantRoute(req, res);
   // Issue 636: a test bed's CLI starts a --test-person command.
   if (pathname === "/api/web/test-person")
     return handleTestPersonRoute(req, res);
@@ -6032,6 +6998,7 @@ async function handleRequest(
         const g = checkRequest(r, GUARD, product().cli, product().title);
         return g.ok ? g.client : undefined;
       },
+      clientName: (c) => meshNameOf(c),
       approver: deviceApproverRefusal,
       linkEnded: (link, how, r) => {
         if (how === "denied") return LOGIN_WAITS.denied(link);
@@ -6258,11 +7225,7 @@ async function handleRequest(
     handleWebUrlRoutes(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
       read: () => readWebUrl(),
-      set: (url, how) => {
-        const saved = setWebUrl(url, undefined, undefined, how);
-        WEB_URL_NOW = { at: 0, url: null }; // re-read at once
-        return saved;
-      },
+      set: (url, how) => saveWebUrl(url, how),
       who: (r) => principalOf(r),
       ping: (url, ms) => pingHttp(url, ms),
       checkMs: () => webUrlCheckSeconds() * 1000,
@@ -6374,6 +7337,20 @@ async function handleRequest(
       add: (runtime, name) => void addAccount(getStateDir(), runtime, name),
       order: (runtime, ids) =>
         void setAccountOrder(getStateDir(), runtime, ids),
+      // Issue 1182: `agents accounts remove`, through the server.
+      remove: async (runtime, account) => {
+        const r = await removeAccount({
+          runtimeId: runtime,
+          accountId: account,
+          stateDir: getStateDir(),
+          inDen: true,
+        });
+        await agentSigninView(true);
+        return {
+          label: accountLabel(r.removed, signInRuntime(runtime).account),
+          ...(r.cleared.cleared ? { store: r.cleared.store } : {}),
+        };
+      },
       saveToken: async (runtime, account, token) => {
         const r = await saveAccountToken(token, {
           runtimeId: runtime,
@@ -6622,6 +7599,22 @@ async function handleRequest(
   // The MCP server's guards refuse some calls before they reach an action
   // route; it reports them here so the activity trail shows failed attempts.
   // Agents only (the audit header), and the entry is all it can write.
+  // Issue 1369: a CLI's audit entry, sent over its own authenticated call
+  // (the person token, or an agent's actor token). Recorded as that
+  // credential says, at this server's time: the body gives the verb,
+  // detail, outcome and reason only, never a who or a when.
+  if (pathname === "/api/audit/cli" && req.method === "POST") {
+    // Issue 1369: at most 8 KB read; the credential says who sent it.
+    const r = await cliAuditRequest(req, {
+      principal: principalOf(req),
+      actor: auditActorOf(req),
+      budget: CLI_AUDIT_BUDGET,
+      record: recordSentAuditRow,
+      remember: rememberSentAuditCopy,
+    });
+    return sendJson(res, r.body, r.status);
+  }
+
   if (pathname === "/api/activity" && req.method === "POST") {
     // An agent's token, or (unverified) an MCP server's audit headers.
     const actor = auditActorOf(req);
@@ -8493,6 +9486,13 @@ async function handleRequest(
     }
     if (g?.session) {
       const rec = webSessions.list().find((x) => x.key === g.session!.key);
+      // Issue 1210: the fixture person, on a bound test install with
+      // web.fixture_person set, shows its invented name over its login on
+      // the rail. Display only: the audit and the log keep FIXTURE_LABEL.
+      const named =
+        rec?.via === "fixture" && testInstallNow()
+          ? webAuthNow().fixturePerson
+          : undefined;
       const github = rec?.via === "github" && !!rec.login;
       const name = github ? githubSessionName(rec) : undefined;
       return sendJson(res, {
@@ -8501,8 +9501,14 @@ async function handleRequest(
         signedIn: true,
         // 0.4.71: a browser on this machine, signed in with a link or a
         // code, is the local browser it always was (the owner's chip).
-        identity:
-          !github && !g.beyond
+        identity: named
+          ? {
+              kind: "github",
+              via: "fixture",
+              login: named.login,
+              name: named.name,
+            }
+          : !github && !g.beyond
             ? localIdentity()
             : {
                 kind: github ? "github" : "device",
@@ -8513,7 +9519,12 @@ async function handleRequest(
                 // GitHub identity, never the owner's. It may be someone
                 // else's device.
               },
-        ...(webSessions.takeWelcome(g.session.key)
+        // The welcome is spent only by the shell's own identity request
+        // (?welcome=1): any other caller of this route (Settings' signed-in
+        // row, a page's own check) only reads, so it can't win the race and
+        // lose the person's toast (0.4.87 dry run).
+        ...(url.searchParams.get("welcome") === "1" &&
+        webSessions.takeWelcome(g.session.key)
           ? {
               justSignedIn: true,
               product: product().title,
@@ -9258,7 +10269,7 @@ async function handleRequest(
   //                             language? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
-  //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
+  //   shell: { pins, collapsed, hidden, order, folded, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
@@ -9277,6 +10288,9 @@ async function handleRequest(
   //     Hub's tools without asking); null clears it (on)
   //   hub_delivery_loop: true | false, hub.delivery_loop (issue 158: the
   //     Hub delivery loop in agents' instructions); null clears it (on)
+  //   hub_groups: { mode?: auto | on | off, cache_seconds?: 5..3600 },
+  //     hub.groups and hub.groups_cache_seconds (issue 750: groups from
+  //     Hub on the agents page); null clears one (auto, 30)
   //   hub_url: Hub's address, hub.url (#267, Settings › Hub); null or ""
   //     clears it. The page restarts Den after.
   // It writes config/local/user.yml only. `distribution` is read-only: what
@@ -9304,6 +10318,65 @@ async function handleRequest(
       writeUserConfig(user);
       return sendJson(res, scopePayload(scopeView(parsed.value)));
     }
+  }
+
+  // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
+  // without asking. The person's only: never an agent, never the fixture.
+  if (pathname === "/api/settings/undo" && req.method === "POST") {
+    if (notAPersonOf(req) || fixturePersonOf(req))
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error: "only a person can undo a change made without asking",
+        },
+        403,
+      );
+    let id = "";
+    try {
+      // Reviewer C: a small body, capped (null: too big).
+      const raw = await readBodyCapped(req, GRANT_BODY_MAX);
+      const b = JSON.parse(raw ?? "null") as { approval?: unknown } | null;
+      id = typeof b?.approval === "string" ? b.approval.trim() : "";
+    } catch {
+      id = "";
+    }
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id))
+      return send400(res, "approval: the held write's id");
+    const a = approvalDeps().queue.get(id);
+    if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    // Issue 1480: an event feed added or removed without asking.
+    if (a.action.startsWith("project_event_feed_")) {
+      const u = undoEventFeed(agentWebDeps(), a);
+      if (!u.ok) return sendJson(res, { ok: false, error: u.error }, 409);
+      auditConfig({ verb: "config-write", detail: `undo: ${u.note}` });
+      try {
+        notificationDeps().store.dropUndo(id);
+      } catch {
+        /* the bell is best effort: the change is undone */
+      }
+      return sendJson(res, { ok: true, note: u.note });
+    }
+    const r = undoSettingChange(
+      settingChangeDeps({
+        userFile: userConfigPath(),
+        stateDir: getStateDir(),
+        audit: (detail, reason) =>
+          auditConfig({
+            verb: "config-write",
+            detail: `undo: ${detail}`,
+            ...(reason ? { reason } : {}),
+          }),
+      }),
+      a,
+    );
+    if (!r.ok) return sendJson(res, { ok: false, error: r.error }, 409);
+    try {
+      notificationDeps().store.dropUndo(id);
+    } catch {
+      /* the bell is best effort: the change is undone */
+    }
+    return sendJson(res, { ok: true, key: r.key, note: r.note });
   }
 
   if (pathname === "/api/settings") {
@@ -9347,6 +10420,17 @@ async function handleRequest(
         agents_default_mode: user.agents?.default_mode ?? null,
         // Issue 1022: how often the page polls health, visible and hidden.
         health_poll: healthPollSeconds(() => user),
+        // Issue 750: groups from Hub (user.yml hub.groups, auto by default).
+        hub_groups: (() => {
+          const h = (user as Record<string, unknown>).hub as
+            | { groups?: unknown; groups_cache_seconds?: unknown }
+            | undefined;
+          const c = h?.groups_cache_seconds;
+          return {
+            mode: hubGroupsMode(h?.groups) ?? "auto",
+            cache_seconds: typeof c === "number" ? c : 30,
+          };
+        })(),
         // Issue 158: the Hub delivery loop in agents' instructions.
         hub_delivery_loop:
           (
@@ -9358,7 +10442,9 @@ async function handleRequest(
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
         // Issue 160: the install's approval policy (user.yml approvals).
-        ...approvalsSettings(user.approvals),
+        ...approvalsSettings(user.approvals, installModeOf(user)),
+        install_mode: installModeOf(user),
+        install_mode_from: resolveInstallMode(user, denModeConfig()).from,
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
@@ -9430,6 +10516,7 @@ async function handleRequest(
           editor_open?: unknown;
           hub_allow_tools?: unknown;
           hub_delivery_loop?: unknown;
+          hub_groups?: unknown;
           hub_url?: unknown;
           agents_default_mode?: unknown;
           server_agent_self_update?: unknown;
@@ -9443,17 +10530,23 @@ async function handleRequest(
           web_ready?: unknown;
           web_pairing?: unknown;
           web_agent_view?: unknown;
+          web_sessions?: unknown;
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_draft?: unknown;
+          agents_resume?: unknown;
+          restore_services_on_boot?: unknown;
           agent_issue_writes?: unknown;
           agent_context?: unknown;
           reports?: unknown;
+          server_log?: unknown;
           feedback?: unknown;
           address_check?: unknown;
           process_lookup?: unknown;
           agent_hooks?: unknown;
           sessions?: unknown;
+          agents_limits?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           github?: unknown;
@@ -9461,6 +10554,8 @@ async function handleRequest(
           approvals_policy?: unknown;
           approvals_watch?: unknown;
           approvals_critical?: unknown;
+          approvals_settings?: unknown;
+          install_mode?: unknown;
         };
         // Issue 810: the test-install mark is a person's, by hand, in the
         // distribution config: never written here, by anyone.
@@ -9510,16 +10605,22 @@ async function handleRequest(
             web_ready: body.web_ready,
             web_pairing: body.web_pairing,
             web_agent_view: body.web_agent_view,
+            web_sessions: body.web_sessions,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_draft: body.agents_draft,
+            agents_resume: body.agents_resume,
+            restore_services_on_boot: body.restore_services_on_boot,
             agent_issue_writes: body.agent_issue_writes,
             agent_context: body.agent_context,
             reports: body.reports,
+            server_log: body.server_log,
             feedback: body.feedback,
             address_check: body.address_check,
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
             sessions: body.sessions,
+            agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
             github: body.github,
@@ -9573,16 +10674,40 @@ async function handleRequest(
         if (
           body.approvals_policy !== undefined ||
           body.approvals_watch !== undefined ||
-          body.approvals_critical !== undefined
+          body.approvals_critical !== undefined ||
+          body.approvals_settings !== undefined
         ) {
           const a = patchApprovals(user.approvals, {
             policy: body.approvals_policy,
             watch: body.approvals_watch,
             critical: body.approvals_critical,
+            settings: body.approvals_settings,
           });
           if (!a.ok) return send400(res, a.error);
           if (a.value) user.approvals = a.value;
           else delete user.approvals;
+        }
+        // Issue 1391: the install's mode, personal or strict; null puts the
+        // default (personal) back. A person's only (PERSON_ONLY_SETTINGS).
+        if (body.install_mode !== undefined) {
+          const v = body.install_mode;
+          if (v !== null && v !== "" && v !== "personal" && v !== "strict")
+            return send400(res, "install_mode is personal, strict or null");
+          if (
+            v !== "strict" &&
+            readInstallMode({}, denModeConfig()) === "strict"
+          )
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error:
+                  "The distribution's den.yml sets install_mode: strict, and a person can't loosen it.",
+              },
+              409,
+            );
+          if (v === null || v === "") delete user.install_mode;
+          else user.install_mode = v;
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Hub); null clears it (the default, on).
@@ -9590,6 +10715,15 @@ async function handleRequest(
           const h = patchHubAllowTools(
             user as Record<string, unknown>,
             body.hub_allow_tools,
+          );
+          if (!h.ok) return send400(res, h.error);
+        }
+        // Issue 750: hub.groups and hub.groups_cache_seconds (Settings ›
+        // Hub › Groups from Hub); null clears one.
+        if (body.hub_groups !== undefined) {
+          const h = patchHubGroups(
+            user as Record<string, unknown>,
+            body.hub_groups,
           );
           if (!h.ok) return send400(res, h.error);
         }
@@ -9777,6 +10911,36 @@ async function handleRequest(
             delete user.editor_overrides;
           }
         }
+        // Issue 963: who changed it, in the slot log (named as an ask is).
+        // Issue 1395: first, under the gate-slot lock (waited for a
+        // moment), so a busy lock saves nothing at all: neither file.
+        if (gatePatch) {
+          const a = auditActorOf(req);
+          const patch = gatePatch;
+          try {
+            await gateLocked(() =>
+              gates().writeSettings(
+                patch,
+                a
+                  ? actorLabel(a)
+                  : `${product().title} · Settings page · a person`,
+              ),
+            );
+          } catch (e) {
+            if (!(e instanceof GateLockBusy)) throw e;
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error:
+                  "the gate's lock stayed busy (a slot decision was being made), so nothing was saved: save again",
+              },
+              503,
+            );
+          }
+        }
+        // Issue 1391: a cap the person moved here takes it as its baseline.
+        personSetCaps(readUserConfig(), user, denForCaps());
         writeUserConfig(user);
         if (hubSaved) {
           const saved = hubSaved;
@@ -9794,14 +10958,6 @@ async function handleRequest(
               ),
             );
         }
-        // Issue 963: who changed it, in the slot log (named as an ask is).
-        if (gatePatch) {
-          const a = auditActorOf(req);
-          gates().writeSettings(
-            gatePatch,
-            a ? actorLabel(a) : `${product().title} · Settings page · a person`,
-          );
-        }
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
@@ -9817,7 +10973,9 @@ async function handleRequest(
                 | undefined
             )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
-          ...approvalsSettings(user.approvals),
+          ...approvalsSettings(user.approvals, installModeOf(user)),
+          install_mode: installModeOf(user),
+          install_mode_from: resolveInstallMode(user, denModeConfig()).from,
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
@@ -10105,6 +11263,34 @@ const server = http.createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     const route = routeTemplate(pathname);
     const method = req.method ?? "GET";
+    // Issue 1299: the sign-ins file couldn't be read just now, so a sign-in
+    // was refused rather than saving over every session: 503, try again.
+    if (err instanceof SessionStoreUnreadable) {
+      serverLog(
+        `  ⚠ ${method} ${route} (req ${requestId}): ${err.message}`,
+        "warn",
+      );
+      try {
+        if (res.headersSent) {
+          res.end();
+          return;
+        }
+        res.setHeader("Retry-After", "2");
+        if (pathname === "/api" || pathname.startsWith("/api/")) {
+          sendJson(
+            res,
+            { ok: false, error: err.message, code: "sessions_unreadable" },
+            503,
+          );
+          return;
+        }
+        res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(`${err.message} (request id ${requestId})`);
+      } catch {
+        /* socket already gone */
+      }
+      return;
+    }
     // A config that fails validation is the user's to fix, not a crash: the
     // /api frame answers 422 config_invalid (jsonApiErrors adds requestId), a
     // page gets the error page saying so, anything else the message as text.
@@ -10388,22 +11574,55 @@ void (async () => {
     serverLog(`  ⚠ ${(e as Error).message}`, "warn");
     return;
   }
-  // At boot Docker may start after Den: wait for it when anything needs it.
-  const needsDocker = daemonsAtStart.some((d) => d.containers?.length);
+  // At boot the container runtime may start after Den. Issue 1225: wait
+  // for it whenever this machine has one (a service recorded only as a
+  // process group may start containers itself), and until it answers (its
+  // empty listing at boot is not "ready").
+  const listing = m.containerListingOnceReady({
+    dockerNames: runningDockerNamesAsync,
+    bases: runningContainerBasesAsync,
+  });
+  const needsDocker = m.shouldWaitForContainers(daemonsAtStart, {
+    runtime: await m.containerRuntimeOnPath(),
+  });
   const running = needsDocker
-    ? await m.waitForContainers(wait, runningContainerBasesAsync)
+    ? await m.waitForContainers(wait, listing)
     : await runningContainerBasesAsync().catch(() => null);
+  if (needsDocker && running === null)
+    serverLog(
+      `  ⚠ services after the restart: the container runtime didn't answer within ${wait} s; restoring anyway`,
+      "warn",
+    );
   const plan = await m.servicesToRestore(daemonsAtStart, {
     pruned: prunedAtStart,
     running,
   });
-  await m.restoreServicesOnBoot(plan, {
+  const result = await m.restoreServicesOnBoot(plan, {
     enabled: true,
     isActive: (ws) => isWorkspaceActive(ws),
     forget: unregisterDaemon,
-    exec: upInProcess,
-    log: (line) => serverLog(line, "lifecycle"),
+    // Issue 1225: through the restart queue (issue 1129), a few at a time
+    // and under its load ceiling, beside the agents.
+    exec: m.throughQueue(
+      restartQueue({
+        log: (line) => serverLog(line, "lifecycle"),
+        store: () => notificationDeps().store,
+      }),
+      upInProcess,
+    ),
+    // The queue's gap: how long a service has to settle before its check.
+    settleMs: queueConfig().gapMs,
+    // Issue 1225: a service that dies once started is tried again.
+    stillDown: async (_ws, addrs) =>
+      m.stillDownOf(addrs, {
+        records: listDaemons(),
+        running: await listing().catch(() => null),
+      }),
+    log: (line, level) => serverLog(line, level ?? "lifecycle"),
   });
+  // Issue 1225: the bell, and doctor's record of the last restore.
+  restoreNote(notificationDeps().store, result);
+  m.writeLastRestore(getStateDir(), result);
 })().catch((e: unknown) =>
   serverLog(`  ⚠ services after the restart: ${String(e)}`, "warn"),
 );
@@ -10649,6 +11868,7 @@ void initLoginPath({ timeoutMs: shellPathTimeoutMs() });
 // and puts it in place of a loopback one). A route edge.routes names is
 // taken over the one made from the brand, and corrects an unconfirmed
 // brand-route address once: only the named one may reach other machines.
+const ADDRESS_BEFORE = readWebUrl();
 const ADDRESS = migrateWebUrl(() => {
   try {
     const ports = new Set([readWebPort(), PORT]);
@@ -10661,6 +11881,8 @@ const ADDRESS = migrateWebUrl(() => {
     return undefined; // no edge config: nothing to take
   }
 });
+// Issue 869: the migration wrote or corrected it: tell Hub.
+if (ADDRESS && ADDRESS.url !== ADDRESS_BEFORE?.url) tellHubAddress(ADDRESS.url);
 // Review M4 (0.4.48): server_agent.self_update is the person's (user.yml).
 // Once, at the first start without it there, the team file's ask or auto
 // is copied (an audit row; doctor says so), so the person's choice carries
@@ -10727,15 +11949,26 @@ try {
 void CRASH_GATE.then(() =>
   startLogoutWatch((line) => serverLog(line, "lifecycle")),
 );
+// Issue 1349: the gate store (and its one primed memory reading) is made
+// before the server serves, so its first settle is never on an unknown.
+try {
+  gates();
+} catch (e) {
+  serverLog(`gate store: ${(e as Error).message}`, "lifecycle");
+}
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());
+    // Issue 816: a waiting test install announces itself (opt-in).
+    syncTestAnnouncement();
     // SRV-1a: back from a restart the server agent asked for: tell it.
     void serverBack();
     // SRV-P6: Den keeps itself current (server_agent.update_check_minutes).
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    // Issue 936: Turn on the agent sandbox for agents from before it.
+    startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
     // profile name, once (the account entry's first line).
     // web.owner_name_timeout_seconds: how long it waits.
@@ -10750,6 +11983,19 @@ void CRASH_GATE.then(() =>
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
     );
+    // Issue 728: once agents can't read the edge's state folder, its proof
+    // is rotated once (edge.yml rewritten; Traefik reloads it by itself).
+    rotateEdgeProofAtStart({
+      readConfig: readEdgeConfig,
+      ports: new Set([PORT, readWebPortSafe()]),
+      onRotated: () => {
+        const line =
+          "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
+        serverLog(`  Edge: ${line}`, "lifecycle");
+        recordAction(null, { verb: "edge-proof-rotated", detail: line });
+      },
+      warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+    });
     // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
     try {
       const r = syncEdgeProof(
@@ -10886,6 +12132,9 @@ void CRASH_GATE.then(() =>
       .then((m) =>
         m.startGateNotices({
           store: gates,
+          // Issue 1263: throwaway test containers whose run ended (one
+          // look at start: containers Docker brought back after a restart).
+          docker: realDocker(),
           install: path.resolve(getStateDir()),
           projectOf: (agent) =>
             readAgentRecord(getStateDir(), agent)?.workspace ?? null,
@@ -11095,11 +12344,13 @@ function startUpdateCheck(): void {
     return;
   }
   const everyMinutes = Math.round(every / 60_000);
+  const startedAt = Date.now();
+  const before = readCheckStateSync(getStateDir());
+  const firstMs = firstCheckDelay(before, every, startedAt);
   // SRV-P6: doctor and Settings say the last pass and the next.
   const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
     void import("./update-check.js")
       .then((m) => {
-        // At a start, the pass before the restart stays the last one.
         const was = last ?? m.readCheckState(getStateDir())?.last;
         m.writeCheckState(getStateDir(), {
           everyMinutes,
@@ -11110,7 +12361,16 @@ function startUpdateCheck(): void {
       .catch(() => {
         /* best effort: doctor says "no check yet" */
       });
-  noteState();
+  try {
+    writeCheckStateSync(getStateDir(), {
+      everyMinutes,
+      next:
+        firstMs === null ? null : new Date(startedAt + firstMs).toISOString(),
+      ...(before?.last ? { last: before.last } : {}),
+    });
+  } catch {
+    /* best effort: doctor says "no check yet" */
+  }
   // #142: an update ask for a version this Den already runs (or passed)
   // is done with.
   try {
@@ -11166,6 +12426,19 @@ function startUpdateCheck(): void {
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
+    try {
+      writeCheckStateSync(
+        getStateDir(),
+        tickBegun(
+          readCheckStateSync(getStateDir()),
+          everyMinutes,
+          every,
+          Date.now(),
+        ),
+      );
+    } catch {
+      /* best effort: doctor says "no check yet" */
+    }
     try {
       const u = await import("./den-update.js");
       const { updateCheck } = await import("./update-check.js");
@@ -11317,7 +12590,7 @@ function startUpdateCheck(): void {
         // #176: Den commits and pushes the lead install's pin itself; the
         // approval policy (issue 160) may hold it for the person.
         pinCommit: (version) => runPinCommit(version, true),
-        pinNotice: pinBellNotice,
+        pinNotice: (s) => void pinBellNotice(s),
         update: async (version, reason, opts) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;
@@ -11431,7 +12704,16 @@ function startUpdateCheck(): void {
     }
   };
   let check: import("./update-check.js").UpdateCheck | undefined;
-  setInterval(() => void tick(), every).unref();
+  scheduleUpdateChecks({
+    every,
+    prev: before,
+    now: startedAt,
+    tick: () => void tick(),
+    timers: {
+      once: (fn, ms) => void setTimeout(fn, ms).unref(),
+      every: (fn, ms) => void setInterval(fn, ms).unref(),
+    },
+  });
   // #176: just after an update to this version, one pass as soon as the
   // watch says it is verified ("good"), so the pin is committed and pushed
   // then, not a whole interval later. Bounded by the watch's own wait.

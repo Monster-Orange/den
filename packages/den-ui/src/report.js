@@ -73,6 +73,32 @@ export function configureReport(o = {}) {
 const VIS = ["public", "private", "internal"];
 
 /**
+ * Issue 1127: a refusal for a listed name (code "words") in the person's
+ * language: each hit's field, line and the person's own phrase that
+ * matched, with neutral words to use; never the list. No hits: the install's list can't be read. Any
+ * other answer: null (not this one's).
+ */
+export function reportRefusalText(data, lng) {
+  if (!data || data.code !== "words") return null;
+  const tr = (key, vars) => kitT(lng, key, vars);
+  const hits = Array.isArray(data.hits) ? data.hits : [];
+  if (!hits.length) return tr("kit.report.wordsList");
+  const where = hits
+    .map((h) =>
+      tr("kit.report.wordsAt", {
+        field:
+          h.field === "title" || h.field === "description"
+            ? tr(`kit.report.field.${h.field}`)
+            : String(h.field),
+        line: Number(h.line) || 0,
+        phrase: String(h.phrase ?? ""),
+      }),
+    )
+    .join("; ");
+  return tr("kit.report.words", { where });
+}
+
+/**
  * Who can see a report sent to `repo`, one of the host's info().repos[]
  * (issue 415). Public, private and internal only when the host says so;
  * anything else is "unknown": the form then neither says public nor claims
@@ -699,7 +725,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
       st.flow = null;
       return go("signin");
     }
-    go("failed", r.data.error || `${r.status}`);
+    go(
+      "failed",
+      reportRefusalText(r.data, lang()) || r.data.error || `${r.status}`,
+    );
   }
 
   async function send() {
@@ -744,7 +773,11 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     if (!r) return render();
     st.link = r.data.newIssueUrl || st.link;
     if (r.status !== 200 || !r.data.flow) {
-      if (r.status === 429 || (r.status === 409 && r.data.duplicate))
+      if (
+        r.status === 429 ||
+        (r.status === 409 && r.data.duplicate) ||
+        r.data.code === "words"
+      )
         return onAnswer(r);
       st.flow = null;
       return go("signin", r.data.error || "");

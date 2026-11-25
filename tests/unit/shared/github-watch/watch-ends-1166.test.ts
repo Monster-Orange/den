@@ -197,13 +197,63 @@ describe("a watch with no progress", () => {
     // 90 minutes behind a full runner pool: still watched.
     await minutes(w, 90);
     expect(w.list("planner")[0].state).not.toBe("done");
-    // A runner takes it, then nothing moves: running time counts.
+    // A runner takes it, then nothing moves: a running check is progress
+    // too, up to the backstop (4 x github.watch_stale_minutes unchanged).
     running(SHA1);
-    await minutes(w, 19);
+    await minutes(w, 79);
     expect(w.list("planner")[0].state).not.toBe("done");
     await minutes(w, 3);
-    expect(w.list("planner")[0].state).toBe("done");
-    expect(w.list("planner")[0].note).toMatch(/no progress/i);
+    const v = w.list("planner")[0];
+    expect(v.state).toBe("done");
+    expect(v.note).toMatch(/nothing changed for 80 minutes/i);
+    expect(v.note).toMatch(/4 x github\.watch_stale_minutes/);
+  });
+
+  it("a single in_progress check unchanged for 61 minutes keeps the watch", async () => {
+    const w = watcher();
+    running(SHA1);
+    await w.create(ask(1));
+    await minutes(w, 61);
+    expect(w.list("planner")[0].state).toBe("running");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("some checks done and one still queued or running: still progress", async () => {
+    settings = { ...settings, staleMinutes: 20 };
+    const w = watcher();
+    passed(SHA1, 11);
+    running(SHA1, 12);
+    await w.create(ask(1));
+    await minutes(w, 45);
+    expect(w.list("planner")[0].state).toBe("running");
+  });
+
+  it("the stale bound is at least twice the interval in force, and the note says which bound fired", async () => {
+    // Den looks every 10 minutes; github.watch_stale_minutes is 5.
+    settings = {
+      ...settings,
+      intervalSeconds: 600,
+      maxIntervalSeconds: 600,
+      staleMinutes: 5,
+    };
+    const w = watcher();
+    running(SHA1);
+    await w.create(ask(1));
+    gh.get = (() => {
+      const real = gh.get;
+      return async (p: string) =>
+        p.includes("check-runs")
+          ? { status: 502, headers: gh.headers(), body: { message: "Bad" } }
+          : real(p);
+    })();
+    // One look with no answer: not stale only because Den didn't look.
+    await minutes(w, 19);
+    expect(w.list("planner")[0].state).not.toBe("done");
+    await minutes(w, 2);
+    const v = w.list("planner")[0];
+    expect(v.state).toBe("done");
+    expect(v.note).toMatch(/no progress for 20 minutes/i);
+    expect(v.note).toMatch(/twice Den's 600-second interval/);
   });
 
   it("several heads: time while every workflow run is still queued doesn't count", async () => {
