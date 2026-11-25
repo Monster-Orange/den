@@ -219,8 +219,19 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
           .locator("[role=status]")
           .allTextContents()
           .catch(() => []);
+        // Which step stalled: no socket yet (xterm, settings or the token),
+        // or a socket that never opened, or one that closed.
+        const socks = await p
+          .evaluate(() =>
+            (
+              ((window as unknown as { __socks?: WebSocket[] }).__socks ??
+                []) as WebSocket[]
+            ).map((x) => `${new URL(x.url).pathname}:${x.readyState}`),
+          )
+          .catch(() => ["?"]);
+        const xterm = await d.locator("textarea").count().catch(() => -1);
         throw new Error(
-          `${e.message}\npeek data-conn=${conn} status=${JSON.stringify(status)} pageerrors=${JSON.stringify(errors)}`,
+          `${e.message}\npeek data-conn=${conn} status=${JSON.stringify(status)} pageerrors=${JSON.stringify(errors)} sockets=${JSON.stringify(socks)} xterm=${xterm}`,
         );
       });
     const mark = `peek-${Math.random().toString(36).slice(2, 8)}`;
