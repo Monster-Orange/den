@@ -134,6 +134,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
+  "agents.max_subagents",
+  "agents.subagents_respect_load_hold",
   // Issue 1417: every agent limit has an agent ask path.
   "agents.token_peer_wait_ms",
   "agents.turn_read_max_mb",
@@ -399,6 +401,7 @@ const WIDENS_AT: readonly [
   // Issue 1391: to strict is routine; anything else (personal, or back to
   // the default) opens the install up: the person's Allow.
   ["install_mode", (v) => v !== "strict", ["personal", "strict"]],
+  ["agents.subagents_respect_load_hold", (v) => v === false, ["strict"]],
   // Issue 1264 (Reviewer A): the gate's routing is what keeps an agent's
   // heavy runs in its queue. Off lets them skip it: the person's Allow, on
   // both modes. With no old value known, off (0) does.
@@ -1165,6 +1168,7 @@ function readDoc(file: string): yaml.Document {
  */
 export const CAP_KEYS = [
   "agents.max_concurrent",
+  "agents.max_subagents",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   // Issue 1417 (Builder 2): every agent limit setting_change takes. Past
@@ -1217,6 +1221,8 @@ function capInForce(
   try {
     if (key === "agents.max_concurrent")
       return readAgentsConfig(den, user).maxConcurrent;
+    if (key === "agents.max_subagents")
+      return readAgentsConfig(den, user).maxSubagents;
     if (key === "sessions.max_concurrent")
       return readSessionsConfig(den, user).maxConcurrent;
     if (key === "agents.resume.load_ceiling")

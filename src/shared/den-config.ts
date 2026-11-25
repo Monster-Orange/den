@@ -2176,11 +2176,15 @@ export function agentsDraftHoldMaxMinutes(
   );
 }
 
+export const SUBAGENTS_PER_AGENT_SLOT = 2;
+
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
+  "max_subagents",
+  "subagents_respect_load_hold",
   // #70: an agent's token only from its own processes.
   "token_binding",
   // Issue 242: how long an agent's call waits for Den to find its process.
@@ -2324,6 +2328,8 @@ export function readInstallMode(
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  maxSubagents?: number;
+  subagentsRespectLoadHold?: boolean;
   skillPacks?: { den: unknown; user: unknown };
   /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
@@ -2585,6 +2591,8 @@ export function readAgentsConfig(
     judge: { ...out.coach.judge, enabled: judgeOn === true },
   };
   out.skillPacks = { den: c.skill_packs, user: u.skill_packs };
+  out.maxSubagents ??= SUBAGENTS_PER_AGENT_SLOT * out.maxConcurrent;
+  out.subagentsRespectLoadHold ??= true;
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => {
@@ -2637,6 +2645,8 @@ function userJudgeEnabled(u: UserConfig): boolean {
  */
 export const AGENTS_USER_LIMIT_KEYS = [
   "max_concurrent",
+  "max_subagents",
+  "subagents_respect_load_hold",
   "token_peer_wait_ms",
   "turn_read_max_mb",
   "restart_wait_minutes",
@@ -2689,9 +2699,11 @@ export function agentsLimitValueError(
  * from the constants the code that applies it uses.
  */
 const AGENT_LIMIT_DEFAULTS: Readonly<
-  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
+  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number | boolean>
 > = {
   max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  max_subagents: SUBAGENTS_PER_AGENT_SLOT * DEFAULT_AGENTS_MAX_CONCURRENT,
+  subagents_respect_load_hold: true,
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
   turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
   restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
@@ -2723,6 +2735,11 @@ export function agentLimitInForce(
   if (mine !== undefined) return { value: mine, from: "user.yml" };
   const theirs = pick((den as { agents?: unknown }).agents);
   if (theirs !== undefined) return { value: theirs, from: "den.yml" };
+  if (key === "max_subagents") {
+    const slots = agentLimitInForce("max_concurrent", user, den)?.value;
+    if (typeof slots === "number")
+      return { value: SUBAGENTS_PER_AGENT_SLOT * slots, from: "default" };
+  }
   return {
     value: AGENT_LIMIT_DEFAULTS[key as keyof typeof AGENT_LIMIT_DEFAULTS],
     from: "default",
@@ -3038,6 +3055,22 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(max)})`,
       );
     out.maxConcurrent = max;
+  }
+  const subMax = raw.max_subagents;
+  if (subMax !== undefined && subMax !== null) {
+    if (typeof subMax !== "number" || !Number.isInteger(subMax) || subMax < 1)
+      throw new Error(
+        `agents.max_subagents: must be a whole number of at least 1 (got ${JSON.stringify(subMax)})`,
+      );
+    out.maxSubagents = subMax;
+  }
+  const hold = raw.subagents_respect_load_hold;
+  if (hold !== undefined && hold !== null) {
+    if (typeof hold !== "boolean")
+      throw new Error(
+        `agents.subagents_respect_load_hold: true or false (got ${JSON.stringify(hold)})`,
+      );
+    out.subagentsRespectLoadHold = hold;
   }
   const packs = raw.persona_packs;
   if (packs !== undefined && packs !== null) {
