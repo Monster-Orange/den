@@ -1297,11 +1297,38 @@ later plugins.
   sends it on every request to Den's web route. Den believes what the edge
   says about a client only with it: without it, a request on the edge
   hostname signs in, this machine's included. An edge set up before 0.4.48
-  gets it at Den's next start (only `dynamic/edge.yml` is rewritten;
+  gets it at Den's next start (only Den's dynamic file is rewritten;
   Traefik reloads it, nothing restarts). `edge up --rotate-proof` makes a
   new one, and the old one stops working at once. Doctor's "Edge proof"
   line (`doctor --json`: check `edge_proof`) says whether the edge carries
-  it; the secret itself is never printed or logged.
+  it; the secret itself is never printed or logged. A proof from an older
+  version proves nothing, even when Den can't replace it (a read-only
+  state dir): doctor says so. The middleware that adds it has a name made
+  from the proof, so only Den's own route can use it: a Docker-label
+  router can't, and `edge.include` files and `edge.mounts` into the
+  dynamic folder that would are refused.
+- **Den's dynamic file is read first.** Traefik reads the dynamic folder
+  in name order and keeps the first definition of a name, so Den writes
+  its routes to `dynamic/000-den.yml` (an older `dynamic/edge.yml` is
+  moved there at the next start or edge up). Edge up refuses an
+  `edge.include` file that would sort before it, or that defines a
+  router, service, middleware or servers transport named like one Den
+  renders (`route-<name>`, `to-https`, `den-upstream`, anything starting
+  `den-`), naming the file and the key.
+- **An edge with Traefik's API on is recreated at Den's start.** If the
+  running edge's command turns the API on (one started before Den
+  refused it in `edge.args`), Den stops it before it writes any proof,
+  then recreates it without the API and with a new proof. If the stop or
+  the recreate fails, Den believes nothing through the edge (everyone
+  signs in) until `edge up` succeeds, and doctor's "Edge proof" line says
+  why.
+- **Den knows its edge by its container.** It believes the edge
+  hostname only from loopback or the edge container's own addresses: the
+  running container named `<org>-edge` that also has this state dir's
+  `den.edge.root` label and the `den.edge.org` label. It reads them again
+  every `edge.address_recheck_seconds` (default 60, 1 to 300), on a
+  request from any other address, and after edge up; with nothing read
+  for twice that, loopback only.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
@@ -2618,8 +2645,21 @@ user, and the CLI does that for you:
   loopback and the Docker ranges (`127.0.0.1/32`, `::1/128`,
   `172.16.0.0/12`, `192.168.65.0/24`), never `forwardedHeaders.insecure`,
   so a client can't hand the edge an `X-Forwarded-For` of its own. An
-  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` is
-  dropped, and `edge up` says so.
+  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` (one
+  dash or two) is dropped, and `edge up` says so.
+- **`edge.args` is an allow-list.** It may set the access log (not its
+  `filePath` or `fields.headers`), `log.level` (INFO or above),
+  `log.format`, `log.noColor`, `core.defaultRuleSyntax`, `global.*`
+  telemetry, the web and websecure entrypoints' transport timeouts,
+  `serversTransport` timeouts and `providers.providersThrottleDuration`.
+  Anything else (the API, a static config file, providers, entrypoints,
+  tracing, metrics, a bare value) is refused, with a line naming the
+  key, in any spelling: one dash or two, `=` or a space. Den sets the rest
+  of the edge's static config itself. The entrypoints' `readTimeout` and
+  `idleTimeout` must be above 0, and `providersThrottleDuration` at most
+  5s. A refused entry fails the config read, so the edge page, doctor,
+  stacks and the server's edge checks all stop on it until it is removed;
+  the line says which entry.
 - **A TCP passthrough in front of the edge** (a gateway that publishes
   `:443` and passes TLS through) hides the client: the edge sees the
   gateway's address. Have the gateway send the PROXY protocol, and list it
@@ -5439,6 +5479,8 @@ category, description, runtime, model and its version, mode, allowed
 commands and the instructions. Every other key in the file (`subagent_model`,
 `persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
 (issue 978).
+`persona_update` also takes `subagentModel`, written as `subagent_model`
+(issue 110: the Coach's Apply proposes it).
 
 **A persona's version** (issue 137) is the sha256 of its file, so any edit
 makes a new one; `persona_version` gives it a readable name. An agent
@@ -6251,12 +6293,41 @@ How the watcher paces itself:
   reset time.
 - `Retry-After` is honoured, and a 403 or 429 secondary limit waits a minute
   at least.
-- `github.watches_max` (50) watches at once, for every agent together.
+- `github.watches_max` (50) watches at once, for every agent together, at
+  least. The calls left over the floor until GitHub's reset raise it (one
+  look per watch per interval, the most a watch costs), up to 1000. Past
+  it, a new watch is queued ("queued, N ahead") and starts when one ends.
+- A queued watch takes its pull request's head when it starts, not when it
+  was asked: a push in between is the head it watches.
+- A pull request's watch asks about the pull request again every 10
+  minutes at most often. When it merges or closes, or a newer push replaces
+  its head ("replaced by <sha>"), the watch ends and its agent is told once.
+  Den asks about one pull request a round per repo, never two rounds
+  running, so with N watched pull requests in one repo each is asked about
+  once every 2N rounds at most often: at a 300-second interval a merged pull
+  request's watch can hold its slot for hours.
+- A watch with no progress for `github.watch_stale_minutes` (60) ends, and
+  its agent is told why. Its slot is freed. A check (or workflow run) still
+  queued or in progress counts as progress, up to a backstop: nothing
+  changed for 4 times the bound. Time while every check waits for a
+  runner counts toward neither. The bound is never shorter than twice the
+  interval in force, so a watch doesn't go stale only because Den didn't
+  look. The note says which bound fired.
+- A run's watch reads the run and its own jobs (the latest attempt, every
+  page), never the check runs on its head commit. A re-run within the hour
+  after it was told reopens the watch, and Den tells the new attempt's
+  result. Den looks for one at most every `github.rerun_look_minutes` (5).
+  A reopened watch takes no new slot from the cap. A pull request's watch
+  reads its head's check runs past the first page of 100.
+- Any watch open longer than `github.watch_max_open_hours` (24) ends,
+  whatever its checks say, and its agent is told why. This catches a check
+  that never reports.
 
-These four are Settings › Server rows, a person's only
+These seven are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
 `<cli> github status` show one line: the calls left, the reset time, the
-active watches and the current interval.
+open and queued watches, the oldest open watch's age, the cap now and the
+current interval.
 
 ## Gate slots: heavy test runs taken in turn
 

@@ -13,6 +13,7 @@
  *     default).
  */
 import { describe, expect, it } from "@jest/globals";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -49,7 +50,15 @@ describe("nav inventory: the pinned browser and theme", () => {
     expect(NAV_BROWSER_IMAGE).toMatch(/:v[\d.]+-\w+@sha256:[0-9a-f]{64}$/);
     expect(ci).toContain(`NAV_IMAGE: ${NAV_BROWSER_IMAGE}`);
     expect(ci).toContain("DEN_PW_WS: ws://localhost:3921/");
-    expect(ci).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
+    // Issue 1527: the job (now the visual job) runs every tagged test,
+    // listed by scripts/visual-tests.mjs; the nav test is one of them.
+    expect(ci).toContain("node scripts/visual-tests.mjs)");
+    expect(ci).toContain('DEN_VISUAL_JOB: "1"');
+    const listed = execFileSync("node", ["scripts/visual-tests.mjs"], {
+      cwd: ROOT,
+      encoding: "utf-8",
+    }).split("\n");
+    expect(listed).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
     // The run-server's Playwright is the one the image is named for.
     const v = NAV_BROWSER_IMAGE.match(/:v([\d.]+)-/)![1];
     expect(ci).toContain(`playwright@${v} run-server`);

@@ -1,7 +1,7 @@
 /**
  * Issue 728: once agents can't read the edge's state folder, Den rotates
  * the edge's proof once (a marker in that folder, so installs sharing one
- * edge rotate it once), rewriting dynamic/edge.yml so Traefik reloads it by
+ * edge rotate it once), rewriting Den's dynamic file so Traefik reloads it by
  * itself; sessions are kept. Stacks' generated secrets are never
  * regenerated (that would lock a stack out of its data): doctor lists them
  * for each owning project's agent.
@@ -15,7 +15,9 @@ import {
   readEdgeProof,
 } from "../../../src/shared/edge/proof.js";
 import {
+  edgeDynamicFile,
   edgeProofRotation,
+  markEdgeProofRotated,
   rotateEdgeProofAtStart,
   rotateEdgeProofOnce,
   stacksWithGeneratedSecrets,
@@ -46,11 +48,13 @@ const cfg = () =>
     networks: [],
     args: [],
   }) as never;
+// An install from before Den's dynamic file got its sorting-first name.
 const edgeYml = () => path.join(dir, "dynamic", "edge.yml");
+const denYml = () => edgeDynamicFile(dir);
 const now = new Date("2026-11-23T08:00:00Z");
 
 describe("issue 728: the edge's proof is rotated once", () => {
-  it("an edge with a proof: a new one, edge.yml rewritten with it (0600), marked; never again", () => {
+  it("an edge with a proof: a new one, Den's dynamic file rewritten with it (0600) under its own name, marked; never again", () => {
     const old = ensureEdgeProof(dir);
     fs.mkdirSync(path.dirname(edgeYml()), { recursive: true });
     fs.writeFileSync(edgeYml(), `# carries ${old}\n`, { mode: 0o600 });
@@ -59,10 +63,12 @@ describe("issue 728: the edge's proof is rotated once", () => {
     expect(rotateEdgeProofOnce(cfg(), new Set([7000]), now)).toBe("rotated");
     const next = readEdgeProof(dir)!;
     expect(next).not.toBe(old);
-    const yml = fs.readFileSync(edgeYml(), "utf8");
+    const yml = fs.readFileSync(denYml(), "utf8");
     expect(yml).toContain(next);
     expect(yml).not.toContain(old);
-    expect(fs.statSync(edgeYml()).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(denYml()).mode & 0o777).toBe(0o600);
+    // The older name, which still carried the old proof, is gone.
+    expect(fs.existsSync(edgeYml())).toBe(false);
     expect(edgeProofRotation(cfg())).toEqual({ rotatedAt: now.toISOString() });
 
     expect(rotateEdgeProofOnce(cfg(), new Set([7000]), now)).toBe("done");
@@ -74,6 +80,16 @@ describe("issue 728: the edge's proof is rotated once", () => {
     expect(rotateEdgeProofOnce(cfg(), new Set([7000]), now)).toBe("rotated");
     expect(readEdgeProof(dir)).not.toBe(old);
     expect(fs.existsSync(edgeYml())).toBe(false);
+    expect(fs.existsSync(denYml())).toBe(false);
+  });
+
+  it("an edge recreated with a new proof (an API edge at start) counts as the rotation: never rotated again", () => {
+    ensureEdgeProof(dir);
+    markEdgeProofRotated(cfg(), now);
+    expect(edgeProofRotation(cfg())).toEqual({ rotatedAt: now.toISOString() });
+    const kept = readEdgeProof(dir);
+    expect(rotateEdgeProofOnce(cfg(), new Set([7000]), now)).toBe("done");
+    expect(readEdgeProof(dir)).toBe(kept);
   });
 
   it("no proof ever made: nothing to rotate, and nothing written (no proof, no marker)", () => {

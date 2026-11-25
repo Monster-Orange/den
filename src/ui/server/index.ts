@@ -18,9 +18,25 @@ import {
   type CoachRouteDeps,
 } from "./coach-routes.js";
 import { runCoach } from "../../shared/coach/run.js";
+import {
+  applyLinkOf,
+  applyStateOf,
+  applyViewOf,
+  type ApplyView,
+  linkApply,
+  readApplyLinks,
+  type ApplyState,
+} from "../../shared/coach/applies.js";
+import {
+  COACH_APPLY_ROUTES,
+  handleCoachApplyRoute,
+  type CoachApplyDeps,
+} from "./coach-apply-routes.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
+  undismissFinding,
+  coachApplyFor,
   openFindings,
   readDismissals,
 } from "../../shared/coach/findings.js";
@@ -120,10 +136,11 @@ import {
 } from "../../shared/test-resolve.js";
 import * as path from "path";
 import semver from "semver";
-import { edgeProofChecker } from "../../shared/edge/proof.js";
+import { edgeProofChecker, holdEdgeTrust } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
+  markEdgeProofRotated,
   rotateEdgeProofAtStart,
   syncEdgeProof,
 } from "../../shared/edge/runtime.js";
@@ -362,6 +379,7 @@ import {
 import { realDocker } from "../../shared/gates/ephemeral.js";
 import {
   gateBoxOps,
+  gateRunnerEntryOp,
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
@@ -407,7 +425,6 @@ import {
   markOperatorAct,
   bindRefusal,
   checkRequest,
-  isEdgePeer,
   isDockerBridgeAddress,
   isLoopbackAddress,
   isLoopbackBind,
@@ -687,6 +704,8 @@ import {
   agentsLayout,
   helpersShown,
   patchAgentsLayout,
+  coachCounts,
+  patchCoachCounts,
   patchHelpersShown,
 } from "./agents-layout-pref.js";
 import {
@@ -1425,6 +1444,7 @@ import {
 import { setFixtureTestInstall } from "./fixture-projects.js";
 import {
   createApprovalQueue,
+  askHeld,
   handleApprovalRoutes,
   isApprovalPath,
   notePolicyRun,
@@ -1653,8 +1673,13 @@ import {
   EDGE_SIGNIN_NOTE,
   edgeExposedMessage,
   edgeExposure,
+  edgeContainerAddresses,
   edgeNetworkSubnets,
+  runningEdgeServesApi,
+  stopEdgeContainer,
 } from "../../shared/edge/exposure.js";
+import { edgeStartRetrying, unsureHold } from "../../shared/edge/start.js";
+import { edgePeerCache } from "./edge-peer-cache.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import {
   linksFor,
@@ -2378,7 +2403,30 @@ function adoptOwner(
 function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
   return requestIsHttps(req, via, EDGE_PROVED(req));
 }
-const EDGE_PROVED = edgeProofChecker(() => {
+/**
+ * Edge trust is held back while the server's start checks the running
+ * edge (edge/start.ts), and when a hold can't be written down (a
+ * read-only store): no proof proves. The written hold (edgeTrustHeld) the
+ * checker reads itself.
+ */
+const EDGE_TRUST: { starting: boolean; held: string | null } = {
+  starting: true,
+  held: null,
+};
+/** The hold an unsure edge check keeps, as its own (edge/start.ts). */
+const EDGE_UNSURE = unsureHold(EDGE_TRUST);
+/** The edge check asked again while unsure (edgeStartRetrying); ends at shutdown. */
+const EDGE_RECHECK: {
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+} = { stopped: false, timer: null };
+/** H1: the request carries the edge's proof, and edge trust isn't held. */
+function EDGE_PROVED(req: http.IncomingMessage): boolean {
+  // Always read (it takes the header off the request).
+  const ok = EDGE_PROOF_CHECK(req);
+  return ok && !EDGE_TRUST.starting && !EDGE_TRUST.held;
+}
+const EDGE_PROOF_CHECK = edgeProofChecker(() => {
   if (Date.now() - EDGE_DIR.at > 10_000) {
     let dir: string | null = null;
     try {
@@ -2404,8 +2452,38 @@ function currentLocalNet(): ReturnType<typeof localNet> {
   }
   return LOCAL_NET.net;
 }
+/**
+ * The edge container's own addresses (isEdgePeer), read in the background
+ * (edge-peer-cache.ts): at start and every edge.address_recheck_seconds,
+ * on a miss from any peer beyond loopback, and after `edge up`. No edge,
+ * or Docker not answering: none (loopback only).
+ */
+const EDGE_PEERS = edgePeerCache({
+  read: async () => {
+    const cfg = readEdgeConfig();
+    let root = cfg.stateDir;
+    try {
+      root = fs.realpathSync(root);
+    } catch {
+      /* not made yet: as configured */
+    }
+    return edgeContainerAddresses({ root, org: cfg.org });
+  },
+  ttlMs: () => {
+    try {
+      return (readEdgeConfig().addressRecheckSeconds ?? 60) * 1000;
+    } catch {
+      return 60_000;
+    }
+  },
+});
+/** Whether the request's peer is the edge (EDGE_PEERS). */
+function peerIsEdge(req: http.IncomingMessage): boolean {
+  return EDGE_PEERS.isEdge(req.socket?.remoteAddress);
+}
 /** Read the edge's Docker networks' subnets in the background (no edge: none). */
 function readEdgeNetworks(): void {
+  EDGE_PEERS.start();
   let names: string[];
   try {
     const cfg = readEdgeConfig();
@@ -2547,8 +2625,9 @@ const GUARD: GuardContext = {
   // Once Den's own named https address works, the session lives there.
   loopbackSessions: () => !NAMED.works(),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
-  // The edge hostname only from the edge's own peers (loopback, Docker).
-  peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
+  // The edge hostname only from the edge itself (loopback, or the edge
+  // container's own address).
+  peerIsEdge,
   // This machine's addresses and bridges, for edgeClient (SEC-2a).
   localNet: currentLocalNet,
   // A deliberate exposure (DEN_BIND_HOST beyond loopback, other than the
@@ -4286,17 +4365,119 @@ function coachRouteDeps(): CoachRouteDeps {
     notAPerson: notAPersonOf,
     settings: coachSettingsNow,
     latest: () => readCoachReport(getStateDir()),
-    run: () =>
-      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    run: (progress) =>
+      runCoach({
+        stateDir: getStateDir(),
+        settings: coachSettingsNow(),
+        ...(progress ? { progress } : {}),
+      }),
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),
     findings: (report) => ({
-      open: openFindings(getStateDir(), report?.findings ?? []),
+      open: withApplyState(openFindings(getStateDir(), report?.findings ?? [])),
       dismissed: readDismissals(getStateDir()),
     }),
+    // Issue 110: a finding whose Apply waits for Allow can't be dismissed.
     dismiss: (id, reason) =>
-      dismissFinding(getStateDir(), id, reason, "person"),
+      coachApplyState(id) === "waiting"
+        ? {
+            ok: false,
+            code: "apply_waiting",
+            error:
+              "This finding's change is waiting for a person's Allow: Deny it in the bell first.",
+          }
+        : dismissFinding(getStateDir(), id, reason, "person"),
+    undismiss: (id) => undismissFinding(getStateDir(), id),
     readBody,
+  };
+}
+
+/** Issue 110: whether Den has project `ws` (Apply names it only then). */
+function coachProjectExists(ws: string): boolean {
+  try {
+    return Object.hasOwn(readWorkspacesFile().workspaces ?? {}, ws);
+  } catch {
+    return false;
+  }
+}
+
+/** Issue 110: a held write's state, as its Coach finding's row shows it. */
+function coachHeldState(approval: string): ApplyState {
+  try {
+    return applyStateOf(approvalDeps().queue.get(approval));
+  } catch {
+    return "failed";
+  }
+}
+
+/** Issue 110: a held write as its finding's row says it (mock v3). */
+function coachHeldView(approval: string): ApplyView {
+  try {
+    // The owner's display name only: never a login, an id or an email
+    // (Den Design, issue 110); with none the row says "Allowed <time>".
+    return applyViewOf(
+      approvalDeps().queue.get(approval),
+      ownerIdentity()?.name,
+    );
+  } catch {
+    return { state: "failed" };
+  }
+}
+
+/** Issue 110: finding `id`'s Apply state, or null when it was never applied. */
+function coachApplyState(id: string): ApplyState | null {
+  const link = applyLinkOf(getStateDir(), id);
+  return link ? coachHeldState(link.approval) : null;
+}
+
+/**
+ * Issue 110: each finding with its Apply rebuilt in code (a stored one is
+ * never shown) and its Apply's state (`applied`), when it has one.
+ */
+function withApplyState<
+  T extends { id: string; kind: string; apply?: unknown },
+>(open: T[]) {
+  const links = readApplyLinks(getStateDir());
+  return open.map((raw) => {
+    const { apply: _stored, ...rest } = raw;
+    const apply = coachApplyFor(raw, coachProjectExists);
+    const f = { ...rest, ...(apply ? { apply } : {}) };
+    return Object.hasOwn(links, f.id)
+      ? {
+          ...f,
+          applied: {
+            ...coachHeldView(links[f.id].approval),
+            approval: links[f.id].approval,
+            at: links[f.id].at,
+          },
+        }
+      : f;
+  });
+}
+
+/** Issue 110: what Coach Apply's route needs from this server. */
+function coachApplyDeps(): CoachApplyDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    readBody,
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    openFindings: () =>
+      openFindings(
+        getStateDir(),
+        readCoachReport(getStateDir())?.findings ?? [],
+      ),
+    linkOf: (id) => applyLinkOf(getStateDir(), id),
+    stateOf: coachHeldState,
+    ask: (req, body, o) => askHeld(req, approvalDeps(), body, o),
+    link: (id, approval, at) => linkApply(getStateDir(), id, approval, at),
+    projectExists: coachProjectExists,
+    // The line the finding passed, for the bell's Why (mock v3).
+    lineOf: (kind) =>
+      kind === "subagent_opus"
+        ? coachSettingsNow().findings.subagent_opus_pct
+        : undefined,
   };
 }
 
@@ -5378,6 +5559,9 @@ function approvalDeps(): ApprovalDeps {
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
     webUrlSet: webUrlSetAction(webUrlSetDeps()),
+    // Issue 642: a runner entry (a repo's CI jobs on a test box), on the
+    // person's Allow. Settings only: nothing starts a runner yet.
+    gateRunnerEntry: gateRunnerEntryOp({ store: () => gates() }),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
@@ -6387,6 +6571,9 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         watch_max_interval_seconds: g.maxIntervalSeconds,
         api_budget_floor: g.budgetFloor,
         watches_max: g.watchesMax,
+        watch_stale_minutes: g.staleMinutes,
+        watch_max_open_hours: g.maxOpenHours,
+        rerun_look_minutes: g.rerunLookMinutes,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -7320,9 +7507,16 @@ async function handleRequest(
   if (
     handleEdgeUpRoute(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
-      run: async () =>
-        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
-          .outcome,
+      run: async () => {
+        const up = await runEdgeUp({
+          log: (l) => serverLog(`  ${l}`, "lifecycle"),
+        });
+        // Up as rendered: a hold this process kept ends too.
+        EDGE_TRUST.held = null;
+        // A recreated edge can have a new address: read it again now.
+        void EDGE_PEERS.refresh(true);
+        return up.outcome;
+      },
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -10066,6 +10260,12 @@ async function handleRequest(
     (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
   )
     return;
+  // POST /api/coach/apply (issue 110): coach-apply-routes.ts.
+  if (
+    (COACH_APPLY_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachApplyRoute(req, res, pathname, coachApplyDeps()))
+  )
+    return;
 
   if (pathname === "/api/changelog" && req.method === "GET") {
     const changelogPath = enginePath("CHANGELOG.md");
@@ -10270,6 +10470,8 @@ async function handleRequest(
   //   shell: { pins, collapsed, hidden, order, folded, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
+  //   coach_counts: total | per_day, the Coach tab's "Show counts as"
+  //     (issue 52, user.yml agents.coach_counts); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
   //     badge shows (#80, user.yml agents.helpers_shown); null clears it
   //   bell_kinds: {switch: true | false | null}, the bell's kinds (bell
@@ -10400,6 +10602,7 @@ async function handleRequest(
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell, pinProjects()),
         agents_layout: agentsLayout(user),
+        coach_counts: coachCounts(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
@@ -10507,6 +10710,7 @@ async function handleRequest(
           time_zone?: unknown;
           machine_name?: unknown;
           agents_layout?: unknown;
+          coach_counts?: unknown;
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
@@ -10756,6 +10960,11 @@ async function handleRequest(
           const l = patchAgentsLayout(user, body.agents_layout);
           if (!l.ok) return send400(res, l.error);
         }
+        // Issue 52: the Coach tab's Total / Per day, a view preference only.
+        if (body.coach_counts !== undefined) {
+          const c = patchCoachCounts(user, body.coach_counts);
+          if (!c.ok) return send400(res, c.error);
+        }
         // #80: how many running helpers an open badge shows.
         if (body.agents_helpers_shown !== undefined) {
           const h = patchHelpersShown(user, body.agents_helpers_shown);
@@ -10984,6 +11193,7 @@ async function handleRequest(
           time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
+          coach_counts: coachCounts(user),
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
@@ -11943,6 +12153,113 @@ try {
     "lifecycle",
   );
 }
+/**
+ * H1: an edge set up here before 0.4.48 (or rotated, or of an older proof
+ * generation) gets the proof. A rotation that can't be written (a
+ * read-only store) leaves the older proof, which the checker refuses
+ * (proofIsCurrent), and doctor says so.
+ */
+function syncEdgeProofAtStart(): void {
+  const ports = new Set([PORT, readWebPortSafe()]);
+  // Issue 728: once agents can't read the edge's state folder, its proof
+  // is rotated once (Den's dynamic file rewritten; Traefik reloads it by
+  // itself). Here, never before an edge with Traefik's API on is stopped.
+  rotateEdgeProofAtStart({
+    readConfig: readEdgeConfig,
+    ports,
+    onRotated: () => {
+      const line =
+        "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
+      serverLog(`  Edge: ${line}`, "lifecycle");
+      recordAction(null, { verb: "edge-proof-rotated", detail: line });
+    },
+    warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+  });
+  const r = syncEdgeProof(readEdgeConfig(), ports);
+  if (r === "written")
+    serverLog(
+      "  Edge: Den's route now carries the edge's proof (its dynamic file)",
+      "lifecycle",
+    );
+  else if (r === "rotated")
+    serverLog(
+      "  Edge: a new edge proof for this version; the edge's dynamic file carries it, the old one no longer works",
+      "lifecycle",
+    );
+}
+
+/**
+ * The edge at the server's start (edge/start.ts): an edge still running
+ * with Traefik's API on is stopped before any proof is written, then
+ * recreated without it with a new proof; otherwise the proof is synced.
+ * Edge trust is held back until this ends, and stays held (written down,
+ * for doctor) when the stop or recreate fails.
+ */
+async function edgeAtStart(): Promise<void> {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    // No edge config: nothing proves anyway.
+    EDGE_TRUST.starting = false;
+    return;
+  }
+  const dir = cfg.stateDir;
+  const out = await edgeStartRetrying(
+    {
+      servesApi: () => runningEdgeServesApi(cfg),
+      stop: () => stopEdgeContainer(cfg),
+      recreate: async () => {
+        await runEdgeUp({
+          rotateProof: true,
+          log: (l) => serverLog(`  ${l}`, "lifecycle"),
+        });
+        // Issue 728: that new proof is the once-only rotation.
+        markEdgeProofRotated(cfg);
+        void EDGE_PEERS.refresh(true);
+      },
+      sync: syncEdgeProofAtStart,
+      hold: (reason) => {
+        try {
+          holdEdgeTrust(dir, reason);
+        } catch {
+          EDGE_TRUST.held = reason; // can't write it: held in this process
+        }
+        serverLog(
+          `  ⚠ Edge: ${reason}; nothing through the edge is believed until edge up succeeds (doctor)`,
+          "warn",
+        );
+      },
+      unsure: (reason) => {
+        // Asked again until it answers: said once per reason, not each time.
+        if (EDGE_UNSURE.unsure(reason))
+          serverLog(
+            `  ⚠ Edge: ${reason}; nothing through the edge is believed until it answers (asked again every edge.address_recheck_seconds)`,
+            "warn",
+          );
+      },
+      // Only the unsure hold ends here, never one set by anything else.
+      release: () => EDGE_UNSURE.release(),
+      log: (l) => serverLog(`  Edge: ${l}`, "lifecycle"),
+    },
+    {
+      // While unsure, asked again: trust comes back once Docker answers.
+      everyMs: (cfg.addressRecheckSeconds ?? 60) * 1000,
+      later: (fn, ms) => {
+        EDGE_RECHECK.timer = setTimeout(fn, ms);
+        EDGE_RECHECK.timer.unref();
+      },
+      stopped: () => EDGE_RECHECK.stopped,
+    },
+  );
+  EDGE_TRUST.starting = false;
+  if (out === "recreated")
+    serverLog(
+      "  Edge: recreated without Traefik's API, with a new proof",
+      "lifecycle",
+    );
+}
+
 // Issue 163: back from a logout the server ran through: who ran meanwhile.
 void CRASH_GATE.then(() =>
   startLogoutWatch((line) => serverLog(line, "lifecycle")),
@@ -11954,7 +12271,7 @@ try {
 } catch (e) {
   serverLog(`gate store: ${(e as Error).message}`, "lifecycle");
 }
-void CRASH_GATE.then(() =>
+void CRASH_GATE.then(() => {
   server.listen(PORT, BIND_HOST, () => {
     void printBanner(ADDRESS ?? readWebUrl());
     // Issue 816: a waiting test install announces itself (opt-in).
@@ -11974,6 +12291,12 @@ void CRASH_GATE.then(() =>
       api: GITHUB.api,
       fake: GITHUB.fake,
       timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+      // Issue 1555: a start that keeps no name says why.
+      onSkip: (why) =>
+        serverLog(
+          `  Owner's GitHub display name not kept: ${why}`,
+          "lifecycle",
+        ),
     }).then((n) => {
       if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
     });
@@ -11981,33 +12304,12 @@ void CRASH_GATE.then(() =>
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
     );
-    // Issue 728: once agents can't read the edge's state folder, its proof
-    // is rotated once (edge.yml rewritten; Traefik reloads it by itself).
-    rotateEdgeProofAtStart({
-      readConfig: readEdgeConfig,
-      ports: new Set([PORT, readWebPortSafe()]),
-      onRotated: () => {
-        const line =
-          "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
-        serverLog(`  Edge: ${line}`, "lifecycle");
-        recordAction(null, { verb: "edge-proof-rotated", detail: line });
-      },
-      warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+    // The edge: an API edge is stopped and recreated before any proof is
+    // written; otherwise the proof syncs. Edge trust waits for it.
+    void edgeAtStart().catch((e: unknown) => {
+      EDGE_TRUST.starting = false;
+      EDGE_TRUST.held = (e as Error).message;
     });
-    // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
-    try {
-      const r = syncEdgeProof(
-        readEdgeConfig(),
-        new Set([PORT, readWebPortSafe()]),
-      );
-      if (r === "written")
-        serverLog(
-          "  Edge: Den's route now carries the edge's proof (dynamic/edge.yml)",
-          "lifecycle",
-        );
-    } catch (e) {
-      serverLog(`  ⚠ edge proof not synced: ${(e as Error).message}`, "warn");
-    }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
     // Issue 163 (a): an install from before it was on by default is
@@ -12204,8 +12506,8 @@ void CRASH_GATE.then(() =>
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
-  }),
-);
+  });
+});
 
 /**
  * SRV-1a: the restart marker the last server left. An audit row says the
@@ -12884,6 +13186,9 @@ async function stopDaemons(): Promise<void> {
 
 async function handleShutdown(signal: string): Promise<void> {
   clearSudoShims();
+  // The edge check asks no more.
+  EDGE_RECHECK.stopped = true;
+  if (EDGE_RECHECK.timer) clearTimeout(EDGE_RECHECK.timer);
   // The registry lives in the state dir, which is resolved from the
   // distribution root on every call: if that can no longer be found (den.yml
   // moved or removed while the server ran), still exit. Never product() here:
