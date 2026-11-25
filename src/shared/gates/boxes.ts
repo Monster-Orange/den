@@ -814,6 +814,18 @@ export function macFreeMb(text: string): number | undefined {
   return (n * size) / (1024 * 1024);
 }
 
+/**
+ * Issue 921: the folder on the box where each running CI job's runner
+ * leaves a mark (its runner id), next to the hold file. The box is held
+ * while any mark is there.
+ */
+export function marksDirOf(box: GateBox): string {
+  return `${box.hold_file ?? "den-hold"}.jobs`;
+}
+
+/** A runner's mark as sftp's `ls -1` lists it: "<folder>/<id>" or "<id>". */
+const MARK_LINE = /^(?:.*\.jobs\/)?([A-Za-z0-9][A-Za-z0-9_-]{0,63})$/;
+
 /** Issue 857: the one command a macOS box runs for its memory. */
 export const MAC_MEM_COMMAND =
   "/usr/bin/vm_stat && /usr/sbin/sysctl -n hw.pagesize";
@@ -935,6 +947,8 @@ export function sftpProbe(
         "sftp",
         ["-q", "-b", "-", ...conn("-P")],
         (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+          // Issue 921: the job marks folder, one name a line, on stdout.
+          `-ls -1 "${marksDirOf(box)}"\n` +
           `-get /proc/meminfo "${meminfo}"\n`,
         capMs,
       );
@@ -967,11 +981,21 @@ export function sftpProbe(
           oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
           `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-    // Issue 1381: each line read by what it is. The -ls of the hold file
-    // is the only "Can't ls"; a failed local copy ("open local …") is
-    // neither the hold file gone nor no /proc/meminfo.
+    // Issue 1381: each line read by what it is. A "Can't ls" is the hold
+    // file's or the marks folder's (issue 921), told apart by the name
+    // below; a failed local copy ("open local …") is neither the hold file
+    // gone nor no /proc/meminfo.
     const lines = r.err.split("\n");
-    const holdGone = lines.some((l) => /^Can't ls: .*not found/.test(l));
+    // Issue 921: only a line naming the hold file itself, never its marks
+    // folder ("<hold>.jobs"), says the hold file is gone.
+    const holdGone =
+      !!box.hold_file &&
+      lines.some(
+        (l) =>
+          /^Can't ls: .*not found/.test(l) &&
+          (l.includes(`/${box.hold_file}"`) ||
+            l.includes(`"${box.hold_file}"`)),
+      );
     const noMeminfo = lines.some(
       (l) =>
         !/^open local /.test(l) &&
@@ -979,12 +1003,22 @@ export function sftpProbe(
         /not found|no such file/i.test(l),
     );
     const localFail = lines.find((l) => /^open local /.test(l));
+    const marks = r.out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => MARK_LINE.test(l));
     let freeMemMb = linuxFreeMb(memText);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
     if (box.hold_file && !holdGone)
       return {
         state: "held",
         reason: `its hold file (${box.hold_file}) is there`,
+        ...mem(),
+      };
+    if (marks.length)
+      return {
+        state: "held",
+        reason: `a CI job is running on it (${marks.length} in ${marksDirOf(box)})`,
         ...mem(),
       };
     if ((box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB) <= 0)
