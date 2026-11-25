@@ -57,6 +57,9 @@ describe("issue 1480: which addresses are public", () => {
       "fe80::1",
       "fd00::5",
       "::ffff:127.0.0.1",
+      // Reviewer C: NAT64 and documentation ranges aren't public.
+      "64:ff9b::7f00:1",
+      "2001:db8::1",
     ])
       expect([ip, isPublicAddress(ip)]).toEqual([ip, false]);
     for (const ip of ["93.184.216.34", "2606:4700::1111"])
@@ -112,6 +115,9 @@ describe("issue 1480: project_event_feed_add's address rules", () => {
       "https://DEN.example.test:443/x",
       "http://127.0.0.1:7777/api/events",
       "http://localhost:7777/api/events",
+      // Reviewer C: the IPv6-mapped loopback, on Den's port.
+      "https://[::ffff:7f00:1]:7777/api/events",
+      "https://[::ffff:127.0.0.1]:7777/api/events",
       "https://edge.example.test/x",
       "https://north.edge.example.test/x",
       "https://hub.example.test/api/events",

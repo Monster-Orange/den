@@ -52,8 +52,26 @@ for (const [net, bits] of [
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
+  // Reviewer C: NAT64 (it can name any IPv4 address) and documentation.
+  ["64:ff9b::", 96],
+  ["2001:db8::", 32],
 ] as const)
   NOT_PUBLIC.addSubnet(net, bits, "ipv6");
+
+/** This machine's own addresses: Den's port there is Den itself. */
+const LOOPBACK = new BlockList();
+LOOPBACK.addSubnet("127.0.0.0", 8, "ipv4");
+LOOPBACK.addSubnet("0.0.0.0", 32, "ipv4");
+LOOPBACK.addAddress("::1", "ipv6");
+LOOPBACK.addAddress("::", "ipv6");
+// Reviewer C: IPv4 loopback mapped into IPv6, in any spelling.
+LOOPBACK.addSubnet("::ffff:127.0.0.0", 104, "ipv6");
+
+/** Whether `ip` (an address, not a name) is this machine. */
+function isLoopback(ip: string): boolean {
+  const v = isIP(ip);
+  return v !== 0 && LOOPBACK.check(ip, v === 6 ? "ipv6" : "ipv4");
+}
 
 /** Whether `ip` is an address on the public internet. */
 export function isPublicAddress(ip: string): boolean {
@@ -115,11 +133,7 @@ export function feedSelfProblem(
   }
   const h = hostOf(u);
   const port = Number(u.port || (u.protocol === "https:" ? 443 : 80));
-  const here =
-    isLocalName(h) ||
-    h === "::1" ||
-    h === "0.0.0.0" ||
-    /^(::ffff:)?127\./.test(h);
+  const here = isLocalName(h) || isLoopback(h);
   const hosts = own.hosts.map((x) => x.toLowerCase());
   const domains = own.domains.map((x) => x.toLowerCase());
   if (
