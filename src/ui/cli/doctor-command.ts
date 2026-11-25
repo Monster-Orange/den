@@ -40,9 +40,16 @@ import {
   type UserConfig,
   readMcpConfig,
   sectionConfigError,
+  agentsUserDrift,
   type DenConfig,
 } from "../../shared/den-config.js";
 import type { ConfigError } from "../../shared/config-error.js";
+import {
+  pinNotes,
+  pinProjectsOf,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import {
   checkAgentSigning,
   existingAgentSigningKey,
@@ -54,7 +61,24 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import {
+  bothSpellings,
+  readRulesCover,
+  stateDirDenyRules,
+} from "../../shared/agents/den-claude.js";
+import {
+  isRegistered,
+  listOtherInstalls,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { AUDIT_FILE } from "../../shared/audit-file.js";
+import {
+  AUDIT_INTAKE_DIR,
+  AUDIT_PERSON_QUEUE_DIR,
+  QUEUE_DROPPED_VERB,
+  readAuditRows,
+} from "../../shared/audit-queue.js";
+import { DEN_PROCS_DIR, pidAlive } from "../../shared/den-procs.js";
 import {
   SIGNIN_REQUEST_VERB,
   signinRequestCounts,
@@ -64,7 +88,7 @@ import {
   sandboxHidesFile,
   sandboxSetting,
 } from "../../shared/agents/sandbox.js";
-import { agentSandboxInput } from "./agent-ops.js";
+import { agentSandboxInput, agentsMayReadTrail } from "./agent-ops.js";
 import { localDateTime } from "../../shared/local-time.js";
 import {
   readRestartsWaiting,
@@ -164,6 +188,11 @@ import {
   type OnboardDeps,
 } from "./doctor-onboard.js";
 import { printJson } from "./json-out.js";
+import {
+  pinDoctorText,
+  readPinRecord,
+  type PinRecord,
+} from "../../shared/pin-record.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
 import {
   formatWhere,
@@ -1662,6 +1691,216 @@ export function edgeRotationLines(
 }
 
 /**
+ * Issue 728 (part C): installs running as this login. Whether others do (by
+ * count: another install's path stays out, as its registry entry does),
+ * whether this install is in the install registry (their agents are denied
+ * its files only once it is), and the 0600 files in its state folder that
+ * agents' deny rules don't cover. Paths only, relative to the state
+ * folder; never a file's contents. Links are never followed.
+ */
+export function sharedUserLines(
+  title: string,
+  o: {
+    stateDir?: string;
+    registry?: string;
+    home?: string;
+    /** The walk's caps (default 20,000 entries, 8 folders deep). */
+    maxEntries?: number;
+    maxDepth?: number;
+    /** Whether this install's server runs now (its den-procs record). */
+    serverRunning?: () => boolean;
+    /**
+     * Issue 1391: agents may read the trail (a personal install). Default:
+     * from install_mode; a config that can't be read counts as strict.
+     */
+    trailReadable?: boolean;
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const stateDir = o.stateDir ?? getStateDir();
+  const reg = o.registry ?? registryDir();
+  const home = o.home ?? process.env.HOME;
+  const others = listOtherInstalls(reg, {
+    ownStateDir: stateDir,
+    ...(home ? { home } : {}),
+  }).length;
+  const shared = others
+    ? `${others} other install${others === 1 ? " runs" : "s run"} as this login on this computer. Their agents are kept out of ${title}'s credentials by deny rules, which bind an agent that follows them; a separate login for each install keeps them apart for certain`
+    : "no other install runs as this login on this computer";
+  const registered = isRegistered(reg, stateDir);
+  // A fresh install (its server not started yet) is registered at its
+  // start: only a running server that isn't registered is a warning.
+  const running = (o.serverRunning ?? (() => serverRecorded(stateDir)))();
+  const regOk = registered || !running;
+  const regDetail = registered
+    ? "this install is in the install registry, so other installs' agents on this login are denied its files"
+    : running
+      ? `this install isn't in the install registry, though ${title} is running, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
+      : `this install isn't in the install registry yet: ${title} adds it at its next start`;
+  const trailReadable =
+    o.trailReadable ??
+    (() => {
+      try {
+        return agentsMayReadTrail(readAgentsConfig(), stateDir);
+      } catch {
+        return false;
+      }
+    })();
+  const rules = bothSpellings(stateDir).flatMap((d) =>
+    stateDirDenyRules(d, home, { trailReadable }),
+  );
+  const maxEntries = o.maxEntries ?? 20000;
+  const maxDepth = o.maxDepth ?? 8;
+  const walked = uncoveredSecretFiles(
+    stateDir,
+    rules,
+    maxEntries,
+    maxDepth,
+    trailReadable,
+  );
+  const loose = walked.files.map(safeShownPath);
+  const partial = walked.capped
+    ? `checked the first ${maxEntries} entries only`
+    : walked.deep
+      ? `checked ${maxDepth} folders deep only`
+      : "";
+  const looseWarn = loose.length > 0 || !!partial;
+  const SHOWN = 10;
+  const listed = loose.length
+    ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
+        .slice(0, SHOWN)
+        .join(
+          ", ",
+        )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
+    : partial
+      ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
+      : "agents' deny rules cover every 0600 file in the state folder";
+  const looseDetail = partial ? `${listed} (${partial})` : listed;
+  const mark = (ok: boolean) => (ok ? "✓" : "⚠");
+  return {
+    lines: [
+      "",
+      `${title} doctor: Installs on this login`,
+      "",
+      `  same login  ${mark(!others)}  ${shared}`,
+      `  registry  ${mark(regOk)}  ${regDetail}`,
+      `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+    ],
+    checks: [
+      { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
+      {
+        id: "install_registry",
+        status: regOk ? "ok" : "warn",
+        detail: regDetail,
+      },
+      {
+        id: "uncovered_files",
+        status: looseWarn ? "warn" : "ok",
+        detail: looseDetail,
+      },
+    ],
+  };
+}
+
+/**
+ * Issue 728: state folders of 0600 files that hold no credential, left out
+ * of the walk: the process records (pids only), a session's own writable
+ * folder (its guardrail log, its audit queue: issue 1369), the person's
+ * CLI's audit queue and the server's intake of both.
+ */
+/**
+ * Issue 1391: state files of 0600 that hold no credential, left out of
+ * the walk: the activity trail, which agents may read (only the server
+ * writes it), and the copies beside it a compaction leaves.
+ */
+const NOT_CREDENTIAL_FILE = (name: string) =>
+  name === AUDIT_FILE || name.startsWith(`${AUDIT_FILE}.`);
+
+const NOT_CREDENTIAL_DIRS: readonly string[] = [
+  DEN_PROCS_DIR,
+  "audit",
+  AUDIT_PERSON_QUEUE_DIR,
+  AUDIT_INTAKE_DIR,
+];
+
+/** Whether a server of this install records itself as running. */
+function serverRecorded(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, DEN_PROCS_DIR))
+      .map((n) => /^server-(\d+)\.json$/.exec(n))
+      .some((m) => !!m && pidAlive(Number(m[1])));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The 0600 regular files under `stateDir` no Read rule covers, relative to
+ * it and sorted. Never follows a link; a bounded walk, which says whether
+ * it stopped at its entry cap (`capped`) or skipped deeper folders (`deep`).
+ */
+function uncoveredSecretFiles(
+  stateDir: string,
+  rules: string[],
+  maxEntries: number,
+  maxDepth: number,
+  /** Issue 1391: the trail is readable by design, so it isn't listed. */
+  trailReadable: boolean,
+): { files: string[]; capped: boolean; deep: boolean } {
+  const out: string[] = [];
+  let seen = 0;
+  let capped = false;
+  let deep = false;
+  const walk = (dir: string, depth: number): void => {
+    let names: fs.Dirent[] = [];
+    try {
+      names = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of names) {
+      if (++seen > maxEntries) {
+        capped = true;
+        return;
+      }
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (depth === 0 && NOT_CREDENTIAL_DIRS.includes(e.name)) continue;
+        if (depth >= maxDepth) deep = true;
+        else walk(p, depth + 1);
+      } else if (e.isFile()) {
+        if (trailReadable && depth === 0 && NOT_CREDENTIAL_FILE(e.name))
+          continue;
+        try {
+          if ((fs.lstatSync(p).mode & 0o777) !== 0o600) continue;
+        } catch {
+          continue;
+        }
+        if (!readRulesCover(rules, p)) out.push(path.relative(stateDir, p));
+      }
+      if (capped) return;
+    }
+  };
+  walk(path.resolve(stateDir), 0);
+  return { files: out.sort(), capped, deep };
+}
+
+/**
+ * A state-folder path as doctor may print it (its output gets pasted into
+ * reports): a run of over 32 hex characters becomes <id>, and a segment
+ * not of [A-Za-z0-9._-]{1,64} becomes <name>, so no token in a name shows.
+ */
+function safeShownPath(rel: string): string {
+  return rel
+    .split(path.sep)
+    .map((seg) => {
+      const s = seg.replace(/[0-9A-Fa-f]{33,}/g, "<id>");
+      return /^(?:[A-Za-z0-9._-]|<id>){1,64}$/.test(s) ? s : "<name>";
+    })
+    .join("/");
+}
+
+/**
  * H1 (0.4.48): whether the edge set up here carries Den's proof (the
  * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
@@ -1740,6 +1979,8 @@ export function selfUpdateLines(
     >;
     state: () => CheckState | null;
     orgFile: string;
+    /** Issue 1189: the pin step's record (pin.json); default the state dir's. */
+    pin?: () => PinRecord | null;
   } = {
     config: () => readServerAgentConfig(),
     state: () => readCheckState(getStateDir()),
@@ -1755,12 +1996,21 @@ export function selfUpdateLines(
       detail: `self_update: unknown, the config can't be read: ${(e as Error).message}`,
     };
   }
+  // Issue 1189: what the self-update's pin step did last, when it says
+  // something (a pull request it fell back to, a push that waits).
+  let pin: string | null = null;
+  try {
+    pin = pinDoctorText((d.pin ?? (() => readPinRecord(getStateDir())))());
+  } catch {
+    pin = null;
+  }
   return {
     lines: [
       "",
       `${title} doctor: New versions`,
       "",
       `  self_update  ${r.status === "ok" ? "✓" : "⚠"}  ${r.detail}`,
+      ...(pin ? [`  pin          ·  ${pin}`] : []),
     ],
     check: { id: "self_update", status: r.status, detail: r.detail },
   };
@@ -1785,6 +2035,51 @@ export function attentionLostLines(
     lang,
     title,
   });
+}
+
+/**
+ * Issue 1217: the rail's pins in user.yml that need a word. An old id-only
+ * pin no project holds is kept, shown under All; an entry that isn't a pin
+ * is skipped (it stays in user.yml, not shown), never the whole list.
+ * Shown only when there is one of either.
+ */
+export function oldPinsLines(
+  title: string,
+  read: () => { shell?: unknown } = readUserConfig,
+  projectsOf?: PinProjects,
+): { lines: string[]; check: OnboardCheck | null } {
+  let shell: unknown;
+  try {
+    shell = read().shell;
+  } catch {
+    return { lines: [], check: null };
+  }
+  let of = projectsOf;
+  if (!of)
+    try {
+      of = pinProjectsOf(readWorkspacesFile().workspaces ?? {});
+    } catch {
+      of = undefined;
+    }
+  const { kept, skipped } = pinNotes(shell, of);
+  if (!kept.length && !skipped.length) return { lines: [], check: null };
+  const lines = ["", `${title} doctor: Pins`, ""];
+  for (const k of kept)
+    lines.push(`  kept, no project  ·  ${k} (shown under All)`);
+  for (const k of skipped)
+    lines.push(
+      `  skipped          ⚠  ${k} (not a pin; left in user.yml, not shown)`,
+    );
+  const detail = [
+    kept.length ? `${kept.length} kept with no project` : "",
+    skipped.length ? `${skipped.length} skipped, not a pin` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    lines,
+    check: { id: "pins", status: skipped.length ? "warn" : "ok", detail },
+  };
 }
 
 /**
@@ -1871,6 +2166,44 @@ export function signinRequestLines(
       `  sign-in requests  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
     ],
     check: { id: "signin_requests", status, detail },
+  };
+}
+
+/**
+ * Issue 1369: the audit entries in the last day that came in as reports
+ * (a process queued them, unverified, no one's word: written while the
+ * server was down, by a process that exited before its send, or by
+ * something writing the queue itself), and how often the intake dropped
+ * queued entries. Counts only, never an entry's words.
+ */
+export function auditReportLines(
+  title: string,
+  o: { stateDir?: string; now?: Date } = {},
+): { lines: string[]; check: OnboardCheck } {
+  const since = (o.now ?? new Date()).getTime() - 24 * 3_600_000;
+  let reports = 0;
+  let drops = 0;
+  for (const e of readAuditRows(o.stateDir ?? getStateDir())) {
+    const at = Date.parse(String(e.ts ?? ""));
+    if (!(at >= since)) continue;
+    if (e.queued === true && e.unverified === true) reports++;
+    else if (e.verb === QUEUE_DROPPED_VERB) drops++;
+  }
+  const said = reports
+    ? `${reports} audit entr${reports === 1 ? "y" : "ies"} in the last day came in as reports: queued by a process, unverified, no one's word (the activity trail marks each)`
+    : "no audit entry in the last day came in as a report";
+  const detail = drops
+    ? `${said}. The intake dropped queued entries ${drops} time${drops === 1 ? "" : "s"} (verb ${QUEUE_DROPPED_VERB} says why)`
+    : said;
+  const status = drops ? "warn" : "ok";
+  return {
+    lines: [
+      "",
+      `${title} doctor: Audit reports`,
+      "",
+      `  audit reports  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "audit_reports", status, detail },
   };
 }
 
@@ -2050,11 +2383,19 @@ export function configLines(
     s: "agents" | "sessions" | "web",
   ) => ConfigError | null = sectionConfigError,
   deprecated: () => string[] = () => deprecatedKeys(),
+  /** Issue 1373: agent limits both files set, to different values. */
+  drift: () => { key: string; mine: unknown; theirs: unknown }[] = () =>
+    agentsUserDrift(),
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
   // Keys still accepted that no longer do anything: a note, not a problem.
   for (const l of deprecated()) lines.push(`  agents  ℹ  ${l}`);
+  // Issue 1373: user.yml's limit wins; a note, so the person knows which.
+  for (const d of drift())
+    lines.push(
+      `  agents  ℹ  agents.${d.key}: user.yml's ${JSON.stringify(d.mine)} wins over the distribution's ${JSON.stringify(d.theirs)}`,
+    );
   for (const section of ["agents", "sessions", "web"] as const) {
     const e = errorOf(section);
     const issues = e
@@ -2319,6 +2660,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 728: the edge's once-only rotation, and stacks' secrets.
     r.checks.push(...edgeRotationLines(readBrand().name).checks);
+    // Issue 728: installs running as this login.
+    r.checks.push(...sharedUserLines(readBrand().name).checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -2327,12 +2670,21 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
     // Issue 1333: sign-in requests in the last day.
     r.checks.push(signinRequestLines(readBrand().name).check!);
+    // Issue 1369: audit entries that came in as reports.
+    r.checks.push(auditReportLines(readBrand().name).check);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
+    const pinsCheck = oldPinsLines(readBrand().name).check;
+    if (pinsCheck) r.checks.push(pinsCheck);
     // Issue 636: whether this install is a test bed.
     r.checks.push(
       (await import("./test-person.js")).testBedLines(readBrand().name).check,
     );
+    // Issue 1407: an install holding the test-install claim, never hidden.
+    const claim = (await import("./test-person.js")).testInstallClaimLines(
+      readBrand().name,
+    ).check;
+    if (claim) r.checks.push(claim);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -2495,15 +2847,22 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       console.log(l);
   }
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
+  for (const l of oldPinsLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
+  for (const l of sharedUserLines(readBrand().name).lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
+  for (const l of auditReportLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
   // Issue 636: whether this install is a test bed.
   for (const l of (await import("./test-person.js")).testBedLines(
+    readBrand().name,
+  ).lines)
+    console.log(l);
+  for (const l of (await import("./test-person.js")).testInstallClaimLines(
     readBrand().name,
   ).lines)
     console.log(l);

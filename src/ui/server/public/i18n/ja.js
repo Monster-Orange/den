@@ -1347,6 +1347,9 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_concurrent": "同時に動かせるエージェント数",
+    "set.agents.max_concurrent.d":
+      "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
@@ -1439,6 +1442,43 @@
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "このインストールの種類",
+    "set.server.install_mode.d":
+      "個人用: 一人の自分のマシン。エージェントはサンドボックスの外で動くので、Docker、ソケット、あなたのツールが使えます。お金、削除、セキュリティ、他の人への操作を除き、設定を確認なしで変更します。厳格: 会社のインストールや共有マシン向け。サンドボックスが有効で、エージェントの書き込みは承認ポリシーに従います。あなたが自分で設定した値はそのまま残ります。__DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "個人用",
+    "set.server.install_mode.o.strict": "厳格",
+    "set.agents.settings_limits":
+      "設定を変えるエージェント: 上限とパフォーマンス",
+    "set.agents.settings_limits.d":
+      "上限、タイムアウト、間隔: 同時に動くエージェントの数、Den の待ち時間。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_limits.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_limits.o.ask": "確認する",
+    "set.agents.settings_limits.o.never": "許可しない",
+    "set.agents.settings_look": "設定を変えるエージェント: 見た目とレイアウト",
+    "set.agents.settings_look.d":
+      "Den の見た目と知らせ方: タブ、レール、アラート、通知を止める時間。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_look.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_look.o.ask": "確認する",
+    "set.agents.settings_look.o.never": "許可しない",
+    "set.agents.settings_integrations": "設定を変えるエージェント: 連携",
+    "set.agents.settings_integrations.d":
+      "エディター、ターミナル、ランタイム、Hub、GitHub。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_integrations.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_integrations.o.ask": "確認する",
+    "set.agents.settings_integrations.o.never": "許可しない",
+    "set.agents.settings_network":
+      "設定を変えるエージェント: ネットワークとアクセス",
+    "set.agents.settings_network.d":
+      "Den のアドレス、エッジ、サインインの制限、埋め込み。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_network.o.auto": "確認なしで変更 (知らせる)",
+    "set.agents.settings_network.o.ask": "確認する",
+    "set.agents.settings_network.o.never": "許可しない",
+    "set.agents.settings_agent_powers":
+      "設定を変えるエージェント: エージェントの権限",
+    "set.agents.settings_agent_powers.d":
+      "サンドボックス、権限付与、承認、シークレット、インストールの種類。常に確認するか、拒否されます。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+    "set.agents.settings_agent_powers.o.ask": "確認する",
+    "set.agents.settings_agent_powers.o.never": "許可しない",
     "set.server.restore_services": "再起動後にサービスを再開する",
     "set.server.restore_services.d":
       "オンにすると、マシンまたは __DEN_TITLE__ の再起動後、動いていたサービスが数件ずつ自動で再開します。あなたが停止したサービスは停止したままです。再開したものはベルでお知らせします。__DEN_CLI__ config services.restore_on_boot=true",
@@ -2367,6 +2407,30 @@
       "停止中です: 次の起動で変更が入ります。",
     "ap.do.agent_sandbox_set": "{agent}: サンドボックスに戻す",
     "ap.do.agent_sandbox_set.loosens": "{agent} をサンドボックスの外に出す",
+    "ap.det.setting_change.widens":
+      "エージェントにできることが広がります。あなた自身の「許可」でのみ実行されます。",
+    "ap.det.setting_change.key": "設定: {key}",
+    "ap.det.setting_change.now": "現在: {value}",
+    "ap.det.setting_change.nowDefault": "現在: {value}（Den の既定値）",
+    "ap.det.setting_change.nowDen": "現在: {value}（den.yml の値）",
+    "ap.det.setting_change.new": "新しい値: {value}",
+    "ap.det.setting_change.why": "理由: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "理由: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den はこれらをゲートのフォルダの settings.json に、ゲートのロックを取って書き込みます。そこにある他のものは変えません。",
+    "ap.det.setting_change.by": "依頼元: {agent}",
+    "ap.det.setting_change.writes":
+      "Den は config/local/user.yml の {key} だけを書き換え、先にファイルのコピーを残し、変更を監査に記録します。",
+    "ap.det.setting_change.restart":
+      "Den は起動時にこれを読みます。Den の再起動後に反映されます（den_restart_server）。",
+    "ap.det.setting_change.atOnce": "すぐに反映されます。",
+    "ap.do.setting_change": "{key} を変更: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "エージェントにできることが広がります: {key}: {now} → {value}",
+    "ap.do.gate_settings_set": "テスト枠の設定を変更: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "エージェントにできることが広がります: テスト枠の設定 {keys}",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
@@ -2835,6 +2899,21 @@
     "bell.ap.allow": "許可",
     "bell.ap.deny": "拒否",
     "bell.ap.done": "許可しました: {what}",
+    "rs.now": "{id}: 同じ会話のまま今すぐ再起動しています。",
+    "rs.turn": "{id}: ターンが終わったら同じ会話のまま再起動します。",
+    "rs.job": "{id}: 待機中: バックグラウンドのジョブ ({cmd}、{min} 分)。",
+    "rs.unknown":
+      "{id}: ターンがいつ終わるか Den にはわからないため、まだ再起動していません。",
+    "rs.nowJob": "今すぐ再起動 (ジョブは終了します)",
+    "rs.nowBtn": "今すぐ再起動",
+    "rs.all": "{n} 件すべてを今すぐ再起動",
+    "rs.none": "再起動が必要なエージェントはありません。",
+    "rs.bar": "{n} 件のエージェントがツールを読み込むために再起動が必要です。",
+    "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
+    "rs.allName": "エージェント",
+    "rs.done": "{id}: 同じ会話のまま再起動しました。",
+    "rs.failed":
+      "{id}: 再起動できませんでした。エージェントのページから再起動してください。",
     "bell.ap.denied": "拒否しました: {what}",
     "bell.ap.failed": "うまくいきませんでした: {error}",
     "bell.m.ranAway":
@@ -2908,6 +2987,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ は {v} に更新されました: このブランチにはプルリクエストが必要なため、固定バージョンの #{n} を作成しました ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: 固定バージョンのブランチ {branch} はプッシュされました。プルリクエストを作成してください ({why})",
     "bell.m.pinHeld":
@@ -3234,6 +3315,9 @@
       "枠を確保済み。負荷 ({load}) が {limit} 未満に下がるまで開始を待っています",
     "gate.leftoversH": "実行の終了後に止めたもの",
     "gate.leftovers": "{label} ({cmd}) の残りのプロセス {n} 個",
+    "busy.setUndoW": "設定を元に戻しています…",
+    "busy.setUndoS": "設定を元に戻しました。",
+    "busy.setUndoF": "設定を元に戻せませんでした。",
     "busy.gateEndW": "{name} の順番を終えています…",
     "busy.gateEndS": "{name} の順番を終えました。",
     "busy.gateEndF": "{name} の順番を終えられませんでした。",

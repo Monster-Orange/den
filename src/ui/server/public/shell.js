@@ -2571,6 +2571,9 @@
     "set.agents.draft_hold_max": "Draft hold before the bell",
     "set.agents.draft_hold_max.d":
       "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    "set.agents.max_concurrent": "Agents at once",
+    "set.agents.max_concurrent.d":
+      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -2665,6 +2668,45 @@
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "This install is",
+    "set.server.install_mode.d":
+      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "Personal",
+    "set.server.install_mode.o.strict": "Strict",
+    "set.agents.settings_limits":
+      "Agents changing settings: Limits and performance",
+    "set.agents.settings_limits.d":
+      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_limits.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_limits.o.ask": "Ask me",
+    "set.agents.settings_limits.o.never": "Never",
+    "set.agents.settings_look": "Agents changing settings: Look and layout",
+    "set.agents.settings_look.d":
+      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_look.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_look.o.ask": "Ask me",
+    "set.agents.settings_look.o.never": "Never",
+    "set.agents.settings_integrations":
+      "Agents changing settings: Integrations",
+    "set.agents.settings_integrations.d":
+      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_integrations.o.auto":
+      "Change without asking (tell me)",
+    "set.agents.settings_integrations.o.ask": "Ask me",
+    "set.agents.settings_integrations.o.never": "Never",
+    "set.agents.settings_network":
+      "Agents changing settings: Network and access",
+    "set.agents.settings_network.d":
+      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_network.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_network.o.ask": "Ask me",
+    "set.agents.settings_network.o.never": "Never",
+    "set.agents.settings_agent_powers":
+      "Agents changing settings: Agent powers",
+    "set.agents.settings_agent_powers.d":
+      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_agent_powers.o.ask": "Ask me",
+    "set.agents.settings_agent_powers.o.never": "Never",
     "set.server.restore_services": "Bring back services after a restart",
     "set.server.restore_services.d":
       "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
@@ -3337,6 +3379,30 @@
       "It is stopped: its next start has the change.",
     "ap.do.agent_sandbox_set": "{agent}: back in the sandbox",
     "ap.do.agent_sandbox_set.loosens": "This takes {agent} out of the sandbox",
+    "ap.det.setting_change.widens":
+      "This widens what agents can do: only your own Allow runs it.",
+    "ap.det.setting_change.key": "Setting: {key}",
+    "ap.det.setting_change.now": "Now: {value}",
+    "ap.det.setting_change.nowDefault": "Now: {value} (Den's default)",
+    "ap.det.setting_change.nowDen": "Now: {value} (from den.yml)",
+    "ap.det.setting_change.new": "New: {value}",
+    "ap.det.setting_change.why": "Why: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Why: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den writes these in the gates folder's settings.json, under the gate's lock, and nothing else there.",
+    "ap.det.setting_change.by": "Asked by {agent}",
+    "ap.det.setting_change.writes":
+      "Den writes only {key} in config/local/user.yml, keeps a copy of the file first, and notes the change in the audit.",
+    "ap.det.setting_change.restart":
+      "Den reads it when it starts: it applies after a restart of Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "It applies at once.",
+    "ap.do.setting_change": "Change {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "This widens what agents can do: {key}: {now} → {value}",
+    "ap.do.gate_settings_set": "Change gate settings: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "This widens what agents can do: gate settings {keys}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
@@ -3807,6 +3873,20 @@
     "bell.ap.allow": "Allow",
     "bell.ap.deny": "Deny",
     "bell.ap.done": "Allowed: {what}",
+    "rs.now": "{id}: restarting now, in the same conversation.",
+    "rs.turn": "{id}: restarts when its turn ends, in the same conversation.",
+    "rs.job": "{id}: waiting: a background job ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den can't tell when its turn ends, so it isn't restarted yet.",
+    "rs.nowJob": "Restart now (ends the job)",
+    "rs.nowBtn": "Restart now",
+    "rs.all": "Restart all {n} now",
+    "rs.none": "No agents need a restart.",
+    "rs.bar": "{n} agents need a restart to load their tools.",
+    "rs.barBtn": "Restart all {n} at their next idle",
+    "rs.allName": "the agents",
+    "rs.done": "{id}: restarted, in the same conversation.",
+    "rs.failed": "{id}: not restarted. Restart it from the Agents page.",
     "bell.ap.denied": "Denied: {what}",
     "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
@@ -3906,6 +3986,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ updated to {v}: the branch needs a pull request; opened #{n} for its pin ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: the pin branch {branch} is pushed; open a pull request for it ({why})",
     "bell.m.pinHeld":
@@ -4239,6 +4321,9 @@
     "gate.leftoversH": "Stopped after their run ended",
     "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
     "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
+    "busy.setUndoW": "Putting the setting back…",
+    "busy.setUndoS": "The setting is back as it was.",
+    "busy.setUndoF": "Couldn't put the setting back.",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",

@@ -1391,6 +1391,9 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_concurrent": "Agentes a la vez",
+    "set.agents.max_concurrent.d":
+      "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",
     "set.server.sessions_max": "Terminales a la vez",
     "set.server.sessions_max.d":
       "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",
@@ -1486,6 +1489,44 @@
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "Esta instalación es",
+    "set.server.install_mode.d":
+      "Personal: la máquina propia de una persona. Los agentes trabajan fuera del sandbox, así que Docker, los sockets y tus herramientas funcionan, y cambian ajustes sin preguntar, salvo dinero, borrados, seguridad y actuar sobre otras personas. Estricta: para la instalación de una empresa o una máquina compartida. El sandbox está activo y lo que escriben los agentes sigue tu política de aprobación. Un ajuste que hiciste tú se queda como lo pusiste. __DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "Personal",
+    "set.server.install_mode.o.strict": "Estricta",
+    "set.agents.settings_limits":
+      "Agentes que cambian ajustes: Límites y rendimiento",
+    "set.agents.settings_limits.d":
+      "Topes, tiempos de espera e intervalos: cuántos agentes a la vez, cuánto espera Den. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_limits.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_limits.o.ask": "Preguntarme",
+    "set.agents.settings_limits.o.never": "Nunca",
+    "set.agents.settings_look": "Agentes que cambian ajustes: Aspecto y diseño",
+    "set.agents.settings_look.d":
+      "Cómo se ve Den y cómo te avisa: pestañas, la barra lateral, alertas y horas de silencio. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_look.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_look.o.ask": "Preguntarme",
+    "set.agents.settings_look.o.never": "Nunca",
+    "set.agents.settings_integrations":
+      "Agentes que cambian ajustes: Integraciones",
+    "set.agents.settings_integrations.d":
+      "Editores, terminales, runtimes, Hub y GitHub. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_integrations.o.auto":
+      "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_integrations.o.ask": "Preguntarme",
+    "set.agents.settings_integrations.o.never": "Nunca",
+    "set.agents.settings_network": "Agentes que cambian ajustes: Red y acceso",
+    "set.agents.settings_network.d":
+      "La dirección de Den, el edge, los límites de inicio de sesión y la inserción. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_network.o.auto": "Cambiar sin preguntar (avisarme)",
+    "set.agents.settings_network.o.ask": "Preguntarme",
+    "set.agents.settings_network.o.never": "Nunca",
+    "set.agents.settings_agent_powers":
+      "Agentes que cambian ajustes: Poderes de los agentes",
+    "set.agents.settings_agent_powers.d":
+      "El sandbox, los permisos, las aprobaciones, los secretos y el tipo de instalación. Siempre te preguntan, o se rechazan. Un cambio hecho sin preguntar queda en la auditoría, y tus novedades lo dicen.",
+    "set.agents.settings_agent_powers.o.ask": "Preguntarme",
+    "set.agents.settings_agent_powers.o.never": "Nunca",
     "set.server.restore_services":
       "Volver a iniciar los servicios después de un reinicio",
     "set.server.restore_services.d":
@@ -2432,6 +2473,31 @@
       "Está detenido: su próximo inicio tiene el cambio.",
     "ap.do.agent_sandbox_set": "{agent}: de vuelta en el sandbox",
     "ap.do.agent_sandbox_set.loosens": "Esto saca a {agent} del sandbox",
+    "ap.det.setting_change.widens":
+      "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
+    "ap.det.setting_change.key": "Ajuste: {key}",
+    "ap.det.setting_change.now": "Ahora: {value}",
+    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
+    "ap.det.setting_change.new": "Nuevo: {value}",
+    "ap.det.setting_change.why": "Por qué: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Por qué: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den los escribe en settings.json de la carpeta de la cola, con su bloqueo, y nada más allí.",
+    "ap.det.setting_change.by": "Lo pide {agent}",
+    "ap.det.setting_change.writes":
+      "Den escribe solo {key} en config/local/user.yml, guarda antes una copia del archivo y anota el cambio en la auditoría.",
+    "ap.det.setting_change.restart":
+      "Den lo lee al arrancar: se aplica tras reiniciar Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "Se aplica al momento.",
+    "ap.do.setting_change": "Cambiar {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "Esto amplía lo que pueden hacer los agentes: {key}: {now} → {value}",
+    "ap.do.gate_settings_set":
+      "Cambiar los ajustes de la cola de pruebas: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "Esto amplía lo que pueden hacer los agentes: ajustes de la cola de pruebas {keys}",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
@@ -2913,6 +2979,22 @@
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
     "bell.ap.done": "Permitido: {what}",
+    "rs.now": "{id}: reiniciando ahora, en la misma conversación.",
+    "rs.turn":
+      "{id}: se reinicia cuando termine su turno, en la misma conversación.",
+    "rs.job":
+      "{id}: en espera: un trabajo en segundo plano ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den no sabe cuándo termina su turno, así que aún no se reinicia.",
+    "rs.nowJob": "Reiniciar ahora (termina el trabajo)",
+    "rs.nowBtn": "Reiniciar ahora",
+    "rs.all": "Reiniciar los {n} ahora",
+    "rs.none": "Ningún agente necesita reiniciarse.",
+    "rs.bar": "{n} agentes necesitan reiniciarse para cargar sus herramientas.",
+    "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
+    "rs.allName": "los agentes",
+    "rs.done": "{id}: reiniciado, en la misma conversación.",
+    "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",
     "bell.m.ranAway":
@@ -3014,6 +3096,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ se actualizó a {v}: la rama necesita una solicitud de cambios; se abrió la #{n} para su versión fijada ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: la rama {branch} con la versión fijada está enviada; abre una solicitud de cambios para ella ({why})",
     "bell.m.pinHeld":
@@ -3355,6 +3439,9 @@
     "gate.leftoversH": "Detenidos al terminar su ejecución",
     "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
     "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
+    "busy.setUndoW": "Devolviendo el ajuste…",
+    "busy.setUndoS": "El ajuste vuelve a estar como antes.",
+    "busy.setUndoF": "No se pudo devolver el ajuste.",
     "busy.gateEndW": "Terminando el turno de {name}…",
     "busy.gateEndS": "El turno de {name} terminó.",
     "busy.gateEndF": "No se pudo terminar el turno de {name}.",

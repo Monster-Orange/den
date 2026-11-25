@@ -227,6 +227,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     env: {
       PATH: `${bin}:/usr/bin:/bin`,
       HOME: "/home/someone",
+      // Issue 1356: the gate folder an agent's sandbox names is the rig's,
+      // never one under that made-up home.
+      DEN_GATE_DIR: path.join(dir, "gate-slots"),
       SOME_TOKEN: "secret-value-123",
     },
     out: (l) => r.out.push(l),

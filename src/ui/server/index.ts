@@ -98,6 +98,7 @@ import {
   type TestPersonSetupDeps,
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
+import { userConfigPath } from "../../shared/den-config.js";
 import { readWebSecret } from "../../shared/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
@@ -123,7 +124,7 @@ import { edgeProofChecker } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
-  rotateEdgeProofOnce,
+  rotateEdgeProofAtStart,
   syncEdgeProof,
 } from "../../shared/edge/runtime.js";
 import {
@@ -259,6 +260,10 @@ import {
   isProductionEnv,
   isLocalEnabled,
   readUserConfig,
+  readInstallMode,
+  resolveInstallMode,
+  type DenConfig,
+  type InstallMode,
   mergeUserConfig,
   type UserConfig,
   writeUserConfig,
@@ -282,6 +287,10 @@ import {
   heldWriteWaitMinutes,
   readSessionsConfig,
 } from "../../shared/den-config.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
 import {
   CONFIG_ERROR_STATUS,
   configErrorBody,
@@ -336,7 +345,9 @@ import {
 } from "../../shared/secrets/index.js";
 import { DEN_BANNER_LINES, DEN_SUBTITLE } from "../../shared/banner.js";
 import {
+  GateLockBusy,
   GateStore,
+  gateLocked,
   checkGatePatch,
   serverFreeMemory,
   serverSwapUsedGb,
@@ -354,14 +365,26 @@ import { actorLabel } from "../../shared/agent-actor.js";
 import {
   actorSuffix,
   recordAction,
+  recordQueuedAuditRow,
+  recordSentAuditRow,
   recordAgentRefusal,
   recordCrossWorkspace,
   repoAtPath,
   setAuditSink,
+  setAsideOldTrail,
   setAuditFile,
   AUDIT_FILE,
 } from "./audit.js";
 import { setConfigAuditSink } from "../../shared/config-audit.js";
+import { cliAuditRequest } from "./audit-cli-route.js";
+import {
+  droppedDetail,
+  QUEUE_DROPPED_VERB,
+  rememberSentAuditCopy,
+  sentAuditBudget,
+  startAuditQueueIntake,
+  wasSentAuditCopy,
+} from "../../shared/audit-queue.js";
 import { handleReadonlyRoutes } from "./readonly-routes.js";
 import {
   defaultOnboardRouteDeps,
@@ -454,6 +477,7 @@ import {
   writeFixtureMadeBy,
 } from "../../shared/fixture-setup-secret.js";
 import {
+  AGENT_VIEW_LINK_NOTE,
   AGENT_VIEW_LINK_PARAM,
   AGENT_VIEW_LINK_TTL_MS,
   AgentViewCodes,
@@ -688,6 +712,7 @@ import {
   pinnedItems,
   shellPrefs,
   storedShell,
+  pinProjectsOf,
   type PinProjects,
 } from "./shell-prefs.js";
 import { distributionSettings, userWebPort } from "./settings-distribution.js";
@@ -994,9 +1019,24 @@ const toServerLogFile = serverLogWriter({
   },
 });
 
+/**
+ * Issue 1344: lifecycle, warn and error lines always reach web.log: on
+ * stdout when it is a file (web up, a service), also under --silent;
+ * else appended to <state>/logs/<cli>/web.log. Never twice.
+ */
+const STDOUT_IS_FILE = fdIsFile(1);
+const toWebLog = webLogWriter({
+  stdoutIsFile: () => STDOUT_IS_FILE && !outputLost(),
+  writeStdout: (s) => void process.stdout.write(s),
+  path: () => webLogPath(getStateDir(), product().cli),
+});
+
 function serverLog(msg: string, kind: string = "info", actor?: string): void {
   pushLog(kind, msg, actor);
-  if (!SILENT && !outputLost()) process.stdout.write(msg + "\n");
+  const onStdout = !SILENT && !outputLost();
+  // Issue 1368: redacted, as every other log path is.
+  if (onStdout) process.stdout.write(stdoutLine(msg));
+  toWebLog(kind, stripAnsi(msg), onStdout);
   if (SILENT) toServerLogFile(kind, stripAnsi(msg));
 }
 
@@ -1142,14 +1182,43 @@ setAuditSink((line, actor) =>
   serverLog(line, "lifecycle", actor ? actorLabel(actor) : undefined),
 );
 // den#6: the audit ring outlives a restart (<state dir>/audit.jsonl, 0600).
+// Issue 1391: agents may read the trail now, so the one written before
+// every row was redacted moves aside first, before it is read or added
+// to (the queue's intake starts below).
+let trailSetAside = 0;
+try {
+  trailSetAside = setAsideOldTrail(getStateDir()).moved;
+} catch (e) {
+  console.error(
+    `the older activity trail could not be set aside: ${String(e)}`,
+  );
+}
 try {
   setAuditFile(path.join(getStateDir(), AUDIT_FILE));
 } catch (e) {
   console.error(`[server] the audit file could not be read: ${String(e)}`);
 }
+if (trailSetAside)
+  recordAction(null, {
+    verb: "audit",
+    detail:
+      "the activity trail written before every row was redacted is set aside, where agents can't read it",
+  });
 // 0.4.44: workspaces.yml writes and Hub link changes made in this process
 // go through the server's own audit (activity, the log, audit.jsonl).
 setConfigAuditSink((row) => void recordAction(null, row));
+/** Issue 1369: one principal's sent audit entries an hour. */
+const CLI_AUDIT_BUDGET = sentAuditBudget();
+// Issue 1369: the CLI's audit entries, queued outside this process, come
+// in now and while it runs: audit.jsonl has one writer.
+startAuditQueueIntake(getStateDir(), (row) => void recordQueuedAuditRow(row), {
+  seen: wasSentAuditCopy,
+  onDropped: (c) =>
+    void recordAction(null, {
+      verb: QUEUE_DROPPED_VERB,
+      detail: droppedDetail(c),
+    }),
+});
 
 /** ANSI helpers (no chalk dependency in the server) */
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -1193,18 +1262,7 @@ function pinProjects(): PinProjects {
   } catch {
     /* no projects readable: old pins become none */
   }
-  return (item) => {
-    const repo = item.split("/")[0];
-    return Object.entries(all)
-      .filter(([, ws]) => {
-        const repos = new Set(
-          Object.keys(ws?.services ?? {}).map((k) => k.split("/")[0]),
-        );
-        for (const r of Object.keys(ws?.repos ?? {})) repos.add(r);
-        return repos.has(repo);
-      })
-      .map(([name]) => name);
-  };
+  return pinProjectsOf(all);
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
@@ -1353,6 +1411,7 @@ import {
   isApprovalPath,
   notePolicyRun,
   type HeldActions,
+  type HeldCheck,
 } from "./approval-routes.js";
 import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
@@ -1381,6 +1440,19 @@ import {
   writeSandboxNote,
   type SandboxSetDeps,
 } from "../../shared/agents/sandbox-set.js";
+import {
+  checkSettingChange,
+  runSettingChange,
+  settingChangeDeps,
+  settingKind,
+  personSetCaps,
+  undoSettingChange,
+} from "../cli/setting-change.js";
+import {
+  checkGateSettingsSet,
+  runGateSettingsSet,
+  type GateSettingsSetDeps,
+} from "../../shared/gates/settings-set.js";
 import {
   approvalsView,
   patchApprovals,
@@ -1450,6 +1522,7 @@ import {
   recordPageRestart,
   restartMarkerPath,
   selfUpdateAutoAllow,
+  selfUpdateAsks,
   takeRestartMarker,
   tellBack,
   writeRestartMarker,
@@ -1500,6 +1573,8 @@ import {
   policyResolver,
   restartResolver,
   modeResolver,
+  busyAgentHolds,
+  runningAgentIds,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -1566,6 +1641,12 @@ import {
 } from "../../shared/open-url.js";
 
 import { product } from "../../shared/product.js";
+import {
+  fdIsFile,
+  stdoutLine,
+  webLogPath,
+  webLogWriter,
+} from "../../shared/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
@@ -4009,6 +4090,9 @@ async function handleAgentViewRequest(
     expiresAt: new Date(expiresAt).toISOString(),
     linkSeconds: AGENT_VIEW_LINK_TTL_MS / 1000,
     minutes: w.agentViewMinutes,
+    // Issue 1243: localhost on purpose (it opens on loopback only, as the
+    // agent). The agent keeps it; a person gets the page on web.url.
+    note: AGENT_VIEW_LINK_NOTE,
   });
 }
 
@@ -4728,6 +4812,7 @@ type ApprovalDeps = {
     workspace: string | undefined,
   ) => string | null;
   policy: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["policy"]>;
+  installMode: () => InstallMode;
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
@@ -4941,7 +5026,10 @@ function approvalDeps(): ApprovalDeps {
       return { ok: true, restarting: true, pid: process.pid };
     },
     // SRV-1b: update from npm, the watch to roll back, then the restart.
-    updateDen: async (version, reason, asked) => {
+    installPersonal: isPersonalInstall,
+    denVersion: () => engineVersion() ?? null,
+    holdForPerson: (action, card, agent) => holdForPerson(action, card, agent),
+    updateDen: async (version, reason, asked, o) => {
       const u = await import("./den-update.js");
       const auto = !!asked?.decidedBy?.startsWith("auto:");
       const by = asked?.agent ? `agent:${asked.agent}` : "the person";
@@ -5003,6 +5091,7 @@ function approvalDeps(): ApprovalDeps {
           writeRestartMarker(stateDir, marker);
           return { path: restartMarkerPath(stateDir), marker };
         },
+        ...(o?.stableNotOlder ? { stableNotOlder: true } : {}),
         // Issue 562 review: Den's own auto update reads the wait again.
         ...(auto && autoRestartHold ? { beforeRestart: autoRestartHold } : {}),
         restart: () => {
@@ -5132,7 +5221,11 @@ function approvalDeps(): ApprovalDeps {
     // Issue 647: an agent asks to link a project to an existing Hub project.
     hubLink: {
       check: async (a, who) =>
-        checkHubLinkHeld(await defaultHubLinkHeldDeps(), a, who),
+        checkHubLinkHeld(
+          { ...(await defaultHubLinkHeldDeps()), personal: isPersonalInstall },
+          a,
+          who,
+        ),
       run: async (a, asked) =>
         runHubLinkHeld(await defaultHubLinkHeldDeps(), a, asked),
     },
@@ -5173,7 +5266,10 @@ function approvalDeps(): ApprovalDeps {
     }),
     // Issue 625: an agent asks to add or remove a test box; the person allows.
     ...(() => {
-      const box = gateBoxOps({ store: () => gates() });
+      const box = gateBoxOps({
+        store: () => gates(),
+        personal: isPersonalInstall,
+      });
       return { gateBoxSet: box.set, gateBoxRemove: box.remove };
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
@@ -5182,6 +5278,12 @@ function approvalDeps(): ApprovalDeps {
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
       refreshing: terminalHostRefreshing,
+      personal: isPersonalInstall,
+      // Issue 1403: any agent mid-turn (or a background job it started).
+      turnsRunning: async () => {
+        const d = agentWebDeps();
+        return (await busyAgentHolds(d, await runningAgentIds(d))).length > 0;
+      },
       waitSeconds: () => {
         try {
           return readSessionsConfig().hostRestartWaitSeconds;
@@ -5189,13 +5291,16 @@ function approvalDeps(): ApprovalDeps {
           return 900;
         }
       },
-      start: () =>
+      start: (o) =>
         refreshTerminalHost(
           agentWebDeps(),
           (line) => serverLog(line, "lifecycle"),
           "held",
+          o ?? {},
         ),
       log: (line) => serverLog(line, "lifecycle"),
+      hold: (card, agent) =>
+        holdForPerson("host_restart", card as HeldCheck, agent),
     }),
     agentMode: {
       check: (a, who) => checkAgentMode(agentWebDeps(), a, who),
@@ -5207,6 +5312,8 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
+    settingChange: settingChangeHeldOp(),
+    gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -5256,10 +5363,19 @@ function approvalDeps(): ApprovalDeps {
     // project's (workspaces.yml), read per ask. A bad value throws: held.
     // Issue 160: what the write is on, against what the person watches
     // (approvals.watch) and pinned to the rail (their favorites).
+    // Issue 1391: personal (the default) or strict, read per ask.
+    installMode: () => installModeOf(readUserConfig()),
     policy: (action, project, widens, ask) => {
       const user = readUserConfig();
+      // Den Builder's call (issue 1391): an explicit self_update: ask is
+      // the person's say on a restart, on a personal install too.
+      // Issue 1403: den_update follows server_agent.self_update, too.
+      if (selfUpdateAsks(action, readServerAgentConfig))
+        return { kind: "ask", from: "server_agent.self_update: ask" };
       return policyFor(action, {
         widens,
+        mode: installModeOf(user),
+        ...(ask?.category ? { setting: { category: ask.category } } : {}),
         areas: ask?.areas,
         install: readPolicySetting(user.approvals),
         project: project ? projectPolicy(project) : undefined,
@@ -5424,6 +5540,71 @@ function agentSandboxHeldOp() {
   };
 }
 
+/**
+ * Issue 1371: setting_change on this install: the person's user.yml, a
+ * backup in the state folder, and the server's audit. The card and args
+ * only go to the queue: never the file's text.
+ */
+function settingChangeHeldOp() {
+  const deps = () =>
+    settingChangeDeps({
+      userFile: userConfigPath(),
+      stateDir: getStateDir(),
+      audit: (detail, reason) =>
+        auditConfig({
+          verb: "config-write",
+          detail,
+          ...(reason ? { reason } : {}),
+        }),
+    });
+  return {
+    check: (a: Record<string, unknown>, who?: { agent?: string }) => {
+      const c = checkSettingChange(deps(), a, who);
+      if (!c.ok) return c;
+      const { text: _t, before: _b, kind: _k, ...card } = c;
+      return card;
+    },
+    // Issue 1391: who decided (auto:… is the policy) moves a cap's baseline.
+    run: async (
+      a: Record<string, unknown>,
+      asked?: { agent?: string; decidedBy?: string },
+    ) =>
+      runSettingChange(deps(), a, {
+        ...(asked?.agent ? { agent: asked.agent } : {}),
+        ...(asked?.decidedBy ? { decidedBy: asked.decidedBy } : {}),
+      }),
+  };
+}
+
+/**
+ * Issue 1395: gate_settings_set on this install: the gate's settings in
+ * effect, the install's mode and the person's Limits choice (read per
+ * ask), and the gate's one writer under its lock.
+ */
+function gateSettingsHeldOp() {
+  const deps = (): GateSettingsSetDeps => {
+    const user = readUserConfig();
+    // den.yml and user.yml; never throws (a bad value is strict).
+    const mode = installModeOf(user);
+    return {
+      settings: (patch) => gates().settings(patch),
+      write: async (patch, by) => {
+        await gateLocked(() => gates().writeSettings(patch, by));
+      },
+      installMode: () => mode,
+      kind: (key, value, before) => settingKind(key, mode, value, before),
+      choices: () => readPolicySetting(user.approvals)?.settings,
+    };
+  };
+  return {
+    check: (a: Record<string, unknown>) => checkGateSettingsSet(deps(), a),
+    run: async (
+      a: Record<string, unknown>,
+      asked?: { agent?: string; decidedBy?: string },
+    ) => runGateSettingsSet(deps(), a, asked),
+  };
+}
+
 /** Issue 936: den_sandbox_on, counting the agents from before it now. */
 function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
   return sandboxOnHeldOp({
@@ -5431,6 +5612,7 @@ function sandboxOnServerOp(): ReturnType<typeof sandboxOnHeldOp> {
       legacyAgentIds(listAgentRecords(getStateDir()), readAgentsConfig())
         .length,
     turnOn: () => setUserSandboxOn(),
+    personal: isPersonalInstall,
   });
 }
 
@@ -5470,17 +5652,81 @@ function startHeldWritesBell(): void {
   }, 5000).unref();
 }
 /** Issue 160: Settings' approval policy rows, as /api/settings answers them. */
-export function approvalsSettings(raw: unknown): {
+export function approvalsSettings(
+  raw: unknown,
+  mode: InstallMode = "strict",
+): {
   approvals_policy: string | null;
   approvals_watch: string[];
   approvals_critical: string[];
+  approvals_settings: ReturnType<typeof approvalsView>["settings"];
 } {
-  const v = approvalsView(raw);
+  const v = approvalsView(raw, mode);
   return {
     approvals_policy: v.policy,
     approvals_watch: v.watch,
     approvals_critical: v.critical,
+    approvals_settings: v.settings,
   };
+}
+
+/** Issue 1391: the install's mode for Settings; a bad value says strict. */
+/**
+ * Issue 1391: den.yml's install_mode, for the mode; strict when the
+ * distribution's config can't be read (fails closed).
+ */
+function denModeConfig(): Pick<DenConfig, "install_mode"> {
+  try {
+    return { install_mode: readDenConfig().install_mode };
+  } catch {
+    return { install_mode: "strict" };
+  }
+}
+/** Issue 1391: Den's config for the caps' values in force ({} unreadable). */
+function denForCaps(): DenConfig {
+  try {
+    return readDenConfig();
+  } catch {
+    return {} as DenConfig;
+  }
+}
+/**
+ * Issue 1403: a routine run that stopped (a turn started, or the version
+ * npm gives is older or a prerelease) waits for the person instead: the
+ * same ask, pending in the bell, for the agent that asked.
+ */
+function holdForPerson(action: string, card: HeldCheck, agent?: string): void {
+  if (!card.ok) return;
+  try {
+    approvalDeps().queue.request({
+      actor: agent ? `agent:${agent}` : "den",
+      ...(agent ? { agent } : {}),
+      action,
+      args: card.args,
+      summary: card.summary,
+      params: card.params,
+      details: card.details,
+      ...(card.detailKeys?.length ? { detailKeys: card.detailKeys } : {}),
+    });
+    syncHeldWrites();
+  } catch (e) {
+    serverLog(
+      `  ⚠ ${action}: not held for the person: ${(e as Error).message}`,
+      "lifecycle",
+    );
+  }
+}
+/** Issue 1403: the install is personal; a throw means strict. */
+function isPersonalInstall(): boolean {
+  try {
+    return installModeOf(readUserConfig()) === "personal";
+  } catch {
+    return false;
+  }
+}
+/** Issue 1391: the install's mode (den.yml and user.yml); never throws. */
+function installModeOf(user: UserConfig): InstallMode {
+  return readInstallMode(user, denModeConfig());
 }
 /**
  * Issue 160: write the approval policy, the install's (user.yml) or one
@@ -5624,7 +5870,7 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
     },
     run: async (a) => {
       const step = await runPinCommit(String(a.version), false);
-      pinBellNotice(step);
+      void pinBellNotice(step);
       const ok =
         step.did === "pushed" ||
         step.did === "pr" ||
@@ -5638,80 +5884,24 @@ function pinCommitHeldOp(): import("./held-actions.js").HeldOp {
 }
 
 /** #176: the bell for the pin step: one item, the newest replacing it. */
-function pinBellNotice(step: import("./pin-commit.js").PinStep): void {
+async function pinBellNotice(
+  step: import("./pin-commit.js").PinStep,
+): Promise<void> {
   try {
+    const { pinBellMessage } = await import("./pin-commit.js");
+    const m = pinBellMessage(step, product().title);
+    if (!m) return;
     const store = notificationDeps().store;
     const subject = "record:den-pin";
-    const t = product().title;
-    const v = step.version;
-    const add = (
-      text: string,
-      key: string,
-      vars: Record<string, string>,
-      link = "/server-agent",
-    ) => {
-      store.withdraw(subject, "service");
-      store.add({
-        kind: "service",
-        subject,
-        scope: "workspace/den-server",
-        text,
-        msg: { key, vars: { v, ...vars } },
-        link,
-      });
-    };
-    switch (step.did) {
-      case "pushed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} updated to ${v}: its pin is committed (${sha}) and pushed`,
-          "bell.m.pinPushed",
-          { sha },
-        );
-        return;
-      }
-      case "push_failed": {
-        const sha = step.sha.slice(0, 12);
-        add(
-          `${t} ${v}: its pin is committed (${sha}) but the push failed: ${step.why}. ${t} tries again at the next update check`,
-          "bell.m.pinPushFailed",
-          { sha, why: step.why },
-        );
-        return;
-      }
-      case "commit_failed":
-        add(
-          `${t} ${v}: ${t} couldn't commit its pin: ${step.why}. It tries again at the next update check`,
-          "bell.m.pinCommitFailed",
-          { why: step.why },
-        );
-        return;
-      case "pr":
-        add(
-          `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
-          "bell.m.pinPrOpened",
-          { branch: step.branch },
-          step.url,
-        );
-        return;
-      case "branch_pushed":
-        add(
-          `${t} ${v}: the pin branch ${step.branch} is pushed; open a pull request for it (${step.why})`,
-          "bell.m.pinBranchPushed",
-          { branch: step.branch, why: step.why },
-          step.link ?? "/server-agent",
-        );
-        return;
-      case "held":
-        add(
-          `${t} ${v}: committing its pin waits for your Allow`,
-          "bell.m.pinHeld",
-          {},
-        );
-        return;
-      default:
-        return;
-    }
+    store.withdraw(subject, "service");
+    store.add({
+      kind: "service",
+      subject,
+      scope: "workspace/den-server",
+      text: m.text,
+      msg: { key: m.key, vars: m.vars },
+      link: m.link,
+    });
   } catch {
     /* the bell is best effort */
   }
@@ -6059,6 +6249,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           pty_close_seconds: c.ptyCloseSeconds,
           pty_warn_above: c.ptyWarnAbove,
           pty_machine_warn_percent: c.ptyMachineWarnPercent,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+    // Issue 1373: the agents' cap in force (user.yml over den.yml).
+    agents_limits: (() => {
+      try {
+        return {
+          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
         };
       } catch {
         return null;
@@ -7289,6 +7489,22 @@ async function handleRequest(
   // The MCP server's guards refuse some calls before they reach an action
   // route; it reports them here so the activity trail shows failed attempts.
   // Agents only (the audit header), and the entry is all it can write.
+  // Issue 1369: a CLI's audit entry, sent over its own authenticated call
+  // (the person token, or an agent's actor token). Recorded as that
+  // credential says, at this server's time: the body gives the verb,
+  // detail, outcome and reason only, never a who or a when.
+  if (pathname === "/api/audit/cli" && req.method === "POST") {
+    // Issue 1369: at most 8 KB read; the credential says who sent it.
+    const r = await cliAuditRequest(req, {
+      principal: principalOf(req),
+      actor: auditActorOf(req),
+      budget: CLI_AUDIT_BUDGET,
+      record: recordSentAuditRow,
+      remember: rememberSentAuditCopy,
+    });
+    return sendJson(res, r.body, r.status);
+  }
+
   if (pathname === "/api/activity" && req.method === "POST") {
     // An agent's token, or (unverified) an MCP server's audit headers.
     const actor = auditActorOf(req);
@@ -9994,6 +10210,50 @@ async function handleRequest(
     }
   }
 
+  // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
+  // without asking. The person's only: never an agent, never the fixture.
+  if (pathname === "/api/settings/undo" && req.method === "POST") {
+    if (notAPersonOf(req) || fixturePersonOf(req))
+      return sendJson(
+        res,
+        { ok: false, error: "only a person can undo a setting change" },
+        403,
+      );
+    let id = "";
+    try {
+      // Reviewer C: a small body, capped (null: too big).
+      const raw = await readBodyCapped(req, GRANT_BODY_MAX);
+      const b = JSON.parse(raw ?? "null") as { approval?: unknown } | null;
+      id = typeof b?.approval === "string" ? b.approval.trim() : "";
+    } catch {
+      id = "";
+    }
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id))
+      return send400(res, "approval: the held write's id");
+    const a = approvalDeps().queue.get(id);
+    if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    const r = undoSettingChange(
+      settingChangeDeps({
+        userFile: userConfigPath(),
+        stateDir: getStateDir(),
+        audit: (detail, reason) =>
+          auditConfig({
+            verb: "config-write",
+            detail: `undo: ${detail}`,
+            ...(reason ? { reason } : {}),
+          }),
+      }),
+      a,
+    );
+    if (!r.ok) return sendJson(res, { ok: false, error: r.error }, 409);
+    try {
+      notificationDeps().store.dropUndo(id);
+    } catch {
+      /* the bell is best effort: the change is undone */
+    }
+    return sendJson(res, { ok: true, key: r.key, note: r.note });
+  }
+
   if (pathname === "/api/settings") {
     if (req.method === "GET") {
       const user = readUserConfig();
@@ -10057,7 +10317,9 @@ async function handleRequest(
         agents_mode_overrides: workspacesOverridingAgentMode(),
         server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
         // Issue 160: the install's approval policy (user.yml approvals).
-        ...approvalsSettings(user.approvals),
+        ...approvalsSettings(user.approvals, installModeOf(user)),
+        install_mode: installModeOf(user),
+        install_mode_from: resolveInstallMode(user, denModeConfig()).from,
         // SRV-P6: where it came from, and the update checks' last and next.
         ...updateCheckSettings(),
         // FB (den#81): Report an issue shows (feedback.enabled: false hides it).
@@ -10159,6 +10421,7 @@ async function handleRequest(
           process_lookup?: unknown;
           agent_hooks?: unknown;
           sessions?: unknown;
+          agents_limits?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           github?: unknown;
@@ -10166,6 +10429,8 @@ async function handleRequest(
           approvals_policy?: unknown;
           approvals_watch?: unknown;
           approvals_critical?: unknown;
+          approvals_settings?: unknown;
+          install_mode?: unknown;
         };
         // Issue 810: the test-install mark is a person's, by hand, in the
         // distribution config: never written here, by anyone.
@@ -10230,6 +10495,7 @@ async function handleRequest(
             process_lookup: body.process_lookup,
             agent_hooks: body.agent_hooks,
             sessions: body.sessions,
+            agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
             github: body.github,
@@ -10283,16 +10549,40 @@ async function handleRequest(
         if (
           body.approvals_policy !== undefined ||
           body.approvals_watch !== undefined ||
-          body.approvals_critical !== undefined
+          body.approvals_critical !== undefined ||
+          body.approvals_settings !== undefined
         ) {
           const a = patchApprovals(user.approvals, {
             policy: body.approvals_policy,
             watch: body.approvals_watch,
             critical: body.approvals_critical,
+            settings: body.approvals_settings,
           });
           if (!a.ok) return send400(res, a.error);
           if (a.value) user.approvals = a.value;
           else delete user.approvals;
+        }
+        // Issue 1391: the install's mode, personal or strict; null puts the
+        // default (personal) back. A person's only (PERSON_ONLY_SETTINGS).
+        if (body.install_mode !== undefined) {
+          const v = body.install_mode;
+          if (v !== null && v !== "" && v !== "personal" && v !== "strict")
+            return send400(res, "install_mode is personal, strict or null");
+          if (
+            v !== "strict" &&
+            readInstallMode({}, denModeConfig()) === "strict"
+          )
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error:
+                  "The distribution's den.yml sets install_mode: strict, and a person can't loosen it.",
+              },
+              409,
+            );
+          if (v === null || v === "") delete user.install_mode;
+          else user.install_mode = v;
         }
         // HUB-1.5: hub.allow_tools, Hub's tools without asking (Settings ›
         // Hub); null clears it (the default, on).
@@ -10496,6 +10786,36 @@ async function handleRequest(
             delete user.editor_overrides;
           }
         }
+        // Issue 963: who changed it, in the slot log (named as an ask is).
+        // Issue 1395: first, under the gate-slot lock (waited for a
+        // moment), so a busy lock saves nothing at all: neither file.
+        if (gatePatch) {
+          const a = auditActorOf(req);
+          const patch = gatePatch;
+          try {
+            await gateLocked(() =>
+              gates().writeSettings(
+                patch,
+                a
+                  ? actorLabel(a)
+                  : `${product().title} · Settings page · a person`,
+              ),
+            );
+          } catch (e) {
+            if (!(e instanceof GateLockBusy)) throw e;
+            return sendJson(
+              res,
+              {
+                ok: false,
+                error:
+                  "the gate's lock stayed busy (a slot decision was being made), so nothing was saved: save again",
+              },
+              503,
+            );
+          }
+        }
+        // Issue 1391: a cap the person moved here takes it as its baseline.
+        personSetCaps(readUserConfig(), user, denForCaps());
         writeUserConfig(user);
         if (hubSaved) {
           const saved = hubSaved;
@@ -10513,14 +10833,6 @@ async function handleRequest(
               ),
             );
         }
-        // Issue 963: who changed it, in the slot log (named as an ask is).
-        if (gatePatch) {
-          const a = auditActorOf(req);
-          gates().writeSettings(
-            gatePatch,
-            a ? actorLabel(a) : `${product().title} · Settings page · a person`,
-          );
-        }
         if (modesChanged)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
@@ -10536,7 +10848,9 @@ async function handleRequest(
                 | undefined
             )?.delivery_loop !== false,
           server_agent_self_update: selfUpdateAuto() ? "auto" : "ask",
-          ...approvalsSettings(user.approvals),
+          ...approvalsSettings(user.approvals, installModeOf(user)),
+          install_mode: installModeOf(user),
+          install_mode_from: resolveInstallMode(user, denModeConfig()).from,
           editor: user.editor ?? null,
           terminal: user.terminal ?? null,
           editor_overrides: user.editor_overrides ?? {},
@@ -11546,21 +11860,17 @@ void CRASH_GATE.then(() =>
     );
     // Issue 728: once agents can't read the edge's state folder, its proof
     // is rotated once (edge.yml rewritten; Traefik reloads it by itself).
-    try {
-      if (
-        rotateEdgeProofOnce(
-          readEdgeConfig(),
-          new Set([PORT, readWebPortSafe()]),
-        ) === "rotated"
-      ) {
+    rotateEdgeProofAtStart({
+      readConfig: readEdgeConfig,
+      ports: new Set([PORT, readWebPortSafe()]),
+      onRotated: () => {
         const line =
           "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
         serverLog(`  Edge: ${line}`, "lifecycle");
         recordAction(null, { verb: "edge-proof-rotated", detail: line });
-      }
-    } catch {
-      /* no edge configured here */
-    }
+      },
+      warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+    });
     // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
     try {
       const r = syncEdgeProof(
@@ -12131,7 +12441,7 @@ function startUpdateCheck(): void {
         // #176: Den commits and pushes the lead install's pin itself; the
         // approval policy (issue 160) may hold it for the person.
         pinCommit: (version) => runPinCommit(version, true),
-        pinNotice: pinBellNotice,
+        pinNotice: (s) => void pinBellNotice(s),
         update: async (version, reason, opts) => {
           const ap = approvalDeps();
           const a = ap.actions.den_update;

@@ -64,6 +64,10 @@
  *               pty_warn_above?, pty_machine_warn_percent? }
  *                                     user.yml sessions.* (issue 532),
  *                                     checked as den-config checks them
+ *   agents_limits: { max_concurrent? } (AGENTS_SETTINGS_KEYS)
+ *                                     user.yml agents.* (issue 1373), each
+ *                                     winning over den.yml's, checked as
+ *                                     den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
@@ -97,6 +101,8 @@ import {
   DRAFT_HOLD_MAX_MINUTES,
   SHELL_PATH_TIMEOUT,
   sessionsValueError,
+  AGENTS_SETTINGS_KEYS,
+  agentsLimitValueError,
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
@@ -130,6 +136,9 @@ export const PERSON_ONLY_SETTINGS = [
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 1373: the agents' limits (agents at once and the waits). An
+  // agent proposes one through setting_change, held for the person.
+  "agents_limits",
   // Issue 403: how long a filed report's screenshot is kept here.
   "reports",
   // Issue 707: how large the server's log file on disk may grow.
@@ -181,12 +190,18 @@ export const PERSON_ONLY_SETTINGS = [
   "agent_hooks",
   // Issue 532: the terminal limits.
   "sessions",
+  // Issue 1373: the agents' limits (user.yml agents.*).
+  "agents_limits",
   // The shared GitHub watcher's pace and API budget: every agent's polls.
   "github",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
   "approvals_critical",
+  // Issue 1371 Part 2: agents changing settings, per category.
+  "approvals_settings",
+  // Issue 1391: personal or strict.
+  "install_mode",
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes",
   // Issue 1022: how often the page polls health, visible and hidden.
@@ -559,6 +574,36 @@ function patchBlock(
 }
 
 /**
+ * Issue 1373: user.yml agents.<limit> (AGENTS_SETTINGS_KEYS), checked
+ * with den-config's own ranges and words. The rest of the person's agents
+ * block (sandbox, git, layout, …) stays as it is.
+ */
+function patchAgentsLimits(
+  user: Record<string, unknown>,
+  value: unknown,
+  apply: (() => void)[],
+): string | null {
+  if (value === undefined) return null;
+  const keys: readonly string[] = AGENTS_SETTINGS_KEYS;
+  if (!isObj(value)) return `the agents' limits are ${keys.join(", ")}`;
+  for (const [k, v] of Object.entries(value)) {
+    if (v === null && keys.includes(k)) continue;
+    const e = agentsLimitValueError(k, v);
+    if (e) return e;
+  }
+  apply.push(() => {
+    const b = isObj(user.agents) ? { ...user.agents } : {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === null) delete b[k];
+      else b[k] = v;
+    }
+    if (Object.keys(b).length) user.agents = b;
+    else delete user.agents;
+  });
+  return null;
+}
+
+/**
  * Issue 532: user.yml sessions.*, the terminal limits, checked with
  * den-config's own ranges and words (sessionsValueError).
  */
@@ -902,6 +947,7 @@ export function patchCliRows(
       apply,
     ) ??
     patchSessions(user, body.sessions, apply) ??
+    patchAgentsLimits(user, body.agents_limits, apply) ??
     patchBlock(
       user,
       "held_writes",

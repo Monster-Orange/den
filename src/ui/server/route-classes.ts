@@ -506,6 +506,11 @@ export const ROUTES: readonly RouteEntry[] = [
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
+  M(
+    ["POST"],
+    "/api/audit/cli",
+    "issue 1369: a CLI's audit entry, recorded as its credential says",
+  ),
   M(["POST"], "/api/web/restart", "restarts this server"),
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
@@ -559,6 +564,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // Issue 1371 Part 2: the person's Undo of a setting an agent changed.
+  M(["POST"], "/api/settings/undo", "puts a setting back (user.yml)"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
   // Issue 666: Make <alias> this Den's address (the owner's only).

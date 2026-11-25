@@ -285,10 +285,28 @@ export async function runAgentSandboxSet(
  * agent_import then need the person's own Allow, as turning a sandbox off
  * does.
  */
+/**
+ * Den Builder's call (issue 1391): a personal install with the sandbox off
+ * by default and no agent in it. There a new agent, or a persona's tools
+ * (issue 1403), is no new power: routine, the person told. With any agent
+ * sandboxed, or the default on, it asks.
+ */
+export function personalNoSandbox(
+  cfg: ReturnType<SandboxSetDeps["agentsConfig"]>,
+): boolean {
+  const c = cfg as typeof cfg & { mode?: string };
+  return (
+    c.mode === "personal" &&
+    c.sandbox === false &&
+    !Object.values(c.agents ?? {}).some((a) => a?.sandbox === true)
+  );
+}
+
 export function newAgentSandboxOff(
   cfg: ReturnType<SandboxSetDeps["agentsConfig"]>,
   ids: readonly string[],
 ): ReviewLine | null {
+  if (personalNoSandbox(cfg)) return null;
   for (const id of ids) {
     if (sandboxSetting(cfg, id) || sandboxRequired(cfg, id)) continue;
     return cfg.agents?.[id]?.sandbox === false

@@ -163,6 +163,7 @@ describe("gate slots over MCP", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      browserContainerStrict: false,
       browserBoxDefault: "any",
       browserHostOnly: "",
       remoteRenewSeconds: 30,

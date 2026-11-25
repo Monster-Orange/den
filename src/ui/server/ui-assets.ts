@@ -51,6 +51,8 @@ export const UI_MODULES: readonly string[] = [
   "/agent-order.js",
   // Issue 750: the agents page's By group view.
   "/agent-groups.js",
+  // Issue 1407: one agent's answer to a restart for its tools.
+  "/restart-result.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",

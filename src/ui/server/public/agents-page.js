@@ -88,6 +88,12 @@
  * as a tag.
  */
 import {
+  restartAllHtml,
+  restartNow,
+  restartRowHtml,
+  waitsOnPerson,
+} from "/restart-result.js";
+import {
   quarantinedHtml,
   quarantineNext,
   readiness,
@@ -215,6 +221,12 @@ const REFRESH_MS = 5_000;
 
 const st = {
   root: null,
+  /**
+   * Issue 1407: each agent's answer to a restart for its tools (ws\0id →
+   * now, turn, job with what and how long, unknown), shown under its row
+   * until its tools are current.
+   */
+  restarts: new Map(),
   /** Issue 96: the row being dragged (the list isn't redrawn meanwhile). */
   drag: null,
   /** Issue 96: a drag just ended, so the click it makes is swallowed. */
@@ -1056,7 +1068,8 @@ function rowHtml(r) {
       ? rotCalloutHtml(r) +
         modeApplyHtml(r) +
         // Issues 750 and 1223: Restart for its tools, on the row too.
-        toolsRestartHtml(r, t) +
+        // Issue 1407: once asked, its own answer (and Restart now).
+        restartAnswerHtml(r) +
         compactingHtml(r)
       : "";
   // D32: the helpers it started in its own session, under it. #80: only
@@ -1239,6 +1252,12 @@ function paintList() {
     .filter((g) => g.rows.length > 0);
   // Issue 750: without Hub's groups, one line says why (By project as
   // before); with them, By project or By group.
+  // Issue 1407: two or more agents need a restart for their tools: one
+  // Restart for them all, and Restart all now for those that wait.
+  if (PAGE !== "terminal") {
+    const bar = toolsBarHtml(inView);
+    if (bar) notes.push(bar);
+  }
   const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
   if (gLine) notes.push(gLine);
   const byGroup =
@@ -2349,15 +2368,55 @@ async function applyMode(r, button) {
   await refresh();
 }
 
+const restartKey = (ws, id) => `${ws}\0${id}`;
+
 /**
- * D44: Restart at its next idle; the list shows it come back. 0.4.48: a
- * job it left running (a test run) is asked about first; Restart anyway
- * restarts it now, which ends the job.
+ * Issue 1407: agent `r`'s answer under its row, once a restart for its
+ * tools was asked (now, turn, job with what and how long, unknown, with
+ * Restart now for the last two); else its Restart. Gone once its tools
+ * are current.
+ */
+function restartAnswerHtml(r) {
+  const k = restartKey(r.workspace, r.agent);
+  const a = st.restarts.get(k);
+  const why = toolsStale(r);
+  if (a && (!why || why === "restarting") && a.state !== "failed") {
+    st.restarts.delete(k);
+    return toolsRestartHtml(r, t);
+  }
+  return a ? restartRowHtml(a, t) : toolsRestartHtml(r, t);
+}
+
+/**
+ * Issue 1407: above the list, when two or more agents in view need a
+ * restart for their tools: how many, Restart all at their next idle, and
+ * Restart all now for those that wait on the person.
+ */
+function toolsBarHtml(rows) {
+  const stale = rows.filter((r) => {
+    const why = toolsStale(r);
+    return why && why !== "restarting";
+  });
+  if (stale.length < 2) return "";
+  const asked = stale
+    .map((r) => st.restarts.get(restartKey(r.workspace, r.agent)))
+    .filter(Boolean);
+  return (
+    `<div class="agnote" data-note="tools-stale" role="status">${esc(t("rs.bar", { n: stale.length }))} ` +
+    `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>` +
+    restartAllHtml(asked, t) +
+    `</div>`
+  );
+}
+
+/**
+ * D44: Restart at its next idle. Issue 1407: the answer is its own, under
+ * its row: restarting now, after its turn, a background job (what, how
+ * long) or can't tell, those two with Restart now (which ends the job).
  */
 async function restartForTools(r, button) {
-  const name = { name: r.agent };
-  let job = null;
-  // BUSY-1: the working pop-up, then what happened.
+  const base = { id: r.agent, workspace: r.workspace };
+  let answer = null;
   await window.denShell.busyAction(
     "restart-agent",
     (headers) =>
@@ -2366,66 +2425,65 @@ async function restartForTools(r, button) {
         agentPath(r, "restart"),
         { when: "after-turn" },
         { headers },
-      ).catch((e) => {
-        if (e?.code !== "job_running") throw e;
-        job = e.data?.job ?? { minutes: 0 };
-        return { job };
-      }),
+      ).then(
+        (x) => (answer = { ...base, state: x?.state ?? "turn" }),
+        (e) => {
+          if (e?.code === "job_running")
+            answer = {
+              ...base,
+              state: "job",
+              job: {
+                command: String(e.data?.job?.command ?? ""),
+                minutes: Number(e.data?.job?.minutes) || 0,
+              },
+            };
+          else if (e?.code === "turn_unknown")
+            answer = { ...base, state: "unknown" };
+          else throw e;
+          return answer;
+        },
+      ),
     {
       button,
-      vars: name,
+      vars: { name: r.agent },
       success: (out) =>
-        out?.job
+        waitsOnPerson(out)
           ? t("ag.job.held", { id: r.agent })
           : t("ag.mcp.restarting", { id: r.agent }),
     },
   );
-  if (job && (await confirmJob(r, job.minutes)))
-    await window.denShell.busyAction(
-      "restart-agent",
-      (headers) =>
-        api("POST", agentPath(r, "restart"), { when: "now" }, { headers }),
-      {
-        button,
-        vars: name,
-        success: () => t("ag.mcp.restarting", { id: r.agent }),
-      },
-    );
+  if (answer) st.restarts.set(restartKey(r.workspace, r.agent), answer);
   await refresh();
 }
 
-/** 0.4.48: "a job is still running (N min); restart anyway?" */
-function confirmJob(r, minutes) {
-  const dlg = $d("#ag-job");
-  if (!dlg) return Promise.resolve(false);
-  $d("#ag-job-h").textContent = t("ag.job.h");
-  $d("#ag-job-q").textContent = t("ag.job.q", {
-    id: displayName(r),
-    min: minutes,
-  });
-  $d("#ag-job-cancel").textContent = t("ag.rn.cancel");
-  $d("#ag-job-go").textContent = t("ag.job.go");
-  return new Promise((resolve) => {
-    const done = (yes) => {
-      dlg.removeEventListener("cancel", onCancel);
-      dlg.close?.();
-      dlg.removeAttribute("open");
-      resolve(yes);
+/** Issue 1407: Restart all the stale agents at their next idle (restart-stale). */
+async function restartAllForTools(button) {
+  const out = await window.denShell.busyAction(
+    "restart-agent",
+    (headers) => api("POST", "/api/agents/restart-stale", {}, { headers }),
+    { button, vars: { name: t("rs.allName") } },
+  );
+  for (const a of Array.isArray(out?.agents) ? out.agents : [])
+    st.restarts.set(restartKey(a.workspace, a.id), a);
+  await refresh();
+}
+
+/** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
+async function restartNowFor(buttons) {
+  const o = {
+    api,
+    busyAction: window.denShell.busyAction?.bind(window.denShell),
+  };
+  for (const b of buttons) {
+    const ok = await restartNow(b, o);
+    const k = restartKey(b.dataset.rsWs, b.dataset.rsNow);
+    const a = st.restarts.get(k) ?? {
+      id: b.dataset.rsNow,
+      workspace: b.dataset.rsWs,
     };
-    const onCancel = (e) => {
-      e.preventDefault();
-      done(false);
-    };
-    dlg.addEventListener("cancel", onCancel);
-    $d("#ag-job-cancel").onclick = () => done(false);
-    $d("#ag-job-form").onsubmit = (e) => {
-      e.preventDefault();
-      done(true);
-    };
-    if (typeof dlg.showModal === "function") dlg.showModal();
-    else dlg.setAttribute("open", "");
-    $d("#ag-job-cancel").focus();
-  });
+    st.restarts.set(k, { ...a, state: ok ? "done" : "failed" });
+  }
+  await refresh();
 }
 
 /** Which of the bar's controls `el` is: its data-act, or its place. */
@@ -5877,9 +5935,17 @@ export async function mountAgentsPage(root) {
     // Issue 750: By project or By group.
     const by = e.target.closest("[data-by-switch] button[data-by]");
     if (by) return void setBy(by.dataset.by);
+    // Issue 1407: Restart now (one agent's), and Restart all now.
+    const now = e.target.closest("button[data-rs-now]");
+    if (now) return void restartNowFor([now]);
+    if (e.target.closest("button[data-rs-all]"))
+      return void restartNowFor([
+        ...st.root.querySelectorAll("#agl button[data-rs-now]"),
+      ]);
     const act = e.target.closest("button[data-act]");
     if (act) {
       const which = act.dataset.act;
+      if (which === "tools-restart-all") return void restartAllForTools(act);
       // Issue 750: Hub didn't answer for its groups: ask again now.
       if (which === "groups-retry") return void loadGroups(true);
       if (which === "resume-all") return void resumeAll(act);

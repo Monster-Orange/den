@@ -16,6 +16,7 @@ import {
   configLocalSnapshot,
   tripwireCalls,
 } from "./tripwire";
+import { armWriteGuard, writeGuardRoots } from "./write-guard";
 
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
@@ -74,6 +75,25 @@ process.env.DEN_QUARANTINE_CHECK ??= "off";
 // sign-in tabs from test runs). `web up` and every opener honour it; the
 // opener refuses under JEST_WORKER_ID besides (browser-open.ts).
 process.env.DEN_NO_OPEN = "1";
+
+// Issue 1356: no test writes a real install's config/local or state folder
+// (write-guard.ts): such a write throws at the call, and the file fails at
+// its end should the writer swallow it. Installed once per worker, on the
+// fs every module of the test shares.
+const guardRoots = writeGuardRoots();
+armWriteGuard(afterAll, guardRoots);
+// Issue 1356: Den's roots come from the checkout under test, never from
+// where node_modules resolves (a link into another checkout made a test
+// write that checkout's config/local).
+try {
+  const nm = fs.realpathSync(path.join(guardRoots.checkout, "node_modules"));
+  if (!nm.startsWith(guardRoots.checkout + path.sep)) {
+    process.env.DEN_ROOT ??= guardRoots.checkout;
+    process.env.DEN_ENGINE_ROOT ??= guardRoots.checkout;
+  }
+} catch {
+  /* no node_modules here: nothing resolves elsewhere */
+}
 
 // 0.4.48 tripwires (tripwire.ts): no test reaches a person's browser or
 // Terminal (open, osascript, xdg-open, x-www-browser are failing shims

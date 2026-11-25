@@ -62,7 +62,7 @@ describe("issue 402: the stored pin is (project or none, item)", () => {
     ]);
   });
 
-  it("clause 6: an old id-only pin takes its item's one project, else none (on read)", () => {
+  it("clause 6: an old id-only pin takes the project its repo is in; in two, each (issue 1217); in none, none (on read)", () => {
     expect(
       shellPrefs(
         { pins: ["shop", "billing/api", "common/web", "gone"] },
@@ -71,7 +71,8 @@ describe("issue 402: the stored pin is (project or none, item)", () => {
     ).toEqual([
       { item: "shop", project: "alpha" },
       { item: "billing/api", project: "beta" },
-      { item: "common/web", project: null },
+      { item: "common/web", project: "alpha" },
+      { item: "common/web", project: "beta" },
       { item: "gone", project: null },
     ]);
     // No project map at all: every old pin is none.
@@ -88,7 +89,8 @@ describe("issue 402: the stored pin is (project or none, item)", () => {
     );
     expect(r.ok && r.value.pins).toEqual([
       { item: "shop", project: "alpha" },
-      { item: "common", project: null },
+      { item: "common", project: "alpha" },
+      { item: "common", project: "beta" },
     ]);
   });
 

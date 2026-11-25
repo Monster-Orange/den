@@ -38,6 +38,10 @@ import {
 } from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
 import { gitSigningBlock, type AgentGitBlock } from "./agents/git-signing.js";
+import {
+  LOCK_WAIT_MINUTES_DEFAULT,
+  TURN_READ_MAX_BYTES,
+} from "./agents/limit-defaults.js";
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
@@ -197,6 +201,11 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  /**
+   * Issue 1391: the distribution's default install mode (its den.yml):
+   * strict here can't be loosened by a person (see resolveInstallMode).
+   */
+  install_mode?: unknown;
   /** Secrets backend strategy — see src/shared/secrets. */
   secrets?: SecretsConfig;
   /** Environments enabled for this deployment. */
@@ -365,6 +374,17 @@ export interface UserConfig {
    */
   approvals?: unknown;
   /**
+   * Issue 1391 (Den Builder): the concurrency caps' baselines, the last
+   * value the person set or allowed, kept while agents' routine raises
+   * move the value (setting-change.ts CAP_KEYS). The person's only.
+   */
+  setting_baselines?: unknown;
+  /**
+   * Issue 1391: `install_mode: personal | strict`, the person's. Unset is
+   * personal: one person's own machine (see readInstallMode).
+   */
+  install_mode?: unknown;
+  /**
    * Issue 1072: settings that widen what agents may do, read from here
    * only (an agent's sandbox can't write this file): mcp.actions.
    */
@@ -423,6 +443,18 @@ export interface UserConfig {
     keep_minutes?: number;
     max_entries?: number;
     max_answer_kb?: number;
+  };
+  /**
+   * Issue 1348: the bell's store lock (notifications.json.lock).
+   * lock_exit_wait_seconds (default 2): at exit only, how long changes
+   * still waiting for the lock wait for it. lock_no_pid_seconds (default
+   * 10): when a lock with no holder pid is taken back.
+   * lock_live_seconds (default 60): when a live holder's lock is.
+   */
+  notifications?: {
+    lock_exit_wait_seconds?: number;
+    lock_no_pid_seconds?: number;
+    lock_live_seconds?: number;
   };
   /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
@@ -1233,6 +1265,26 @@ export function clearUserAgentSandbox(id: string): boolean {
   return true;
 }
 
+/**
+ * Issue 1371: the settings that widen what an agent may do and are read
+ * only from config/local/user.yml (issues 936, 1072, SEC-2a): never from
+ * the distribution's config, which an agent's change could reach. `*` is
+ * one key (an agent's id). setting_change marks each "widens what agents
+ * can do": only the person's own Allow runs it. A test keeps the list and
+ * the readers in step (a key here set in the distribution's config is
+ * ignored or refused).
+ */
+export const USER_ONLY_WIDENING: readonly string[] = [
+  "mcp.actions",
+  "agents.*.grants",
+  "agents.sandbox",
+  "agents.*.sandbox",
+  "agents.sandbox_sockets",
+  "web.edge_unattested",
+  "web.allow_plain_http_remote",
+  "secrets.onepassword.token",
+];
+
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
   try {
@@ -1463,6 +1515,8 @@ export function readDenConfig(): DenConfig {
       // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
+      // Issue 1391: the distribution's den.yml, else this file.
+      install_mode: denYmlKey("install_mode") ?? parsed?.install_mode,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -2191,9 +2245,63 @@ function sandboxValue(
   );
 }
 
+/**
+ * Issue 1391: how open an install is. personal (the default): one person's
+ * own machine; the agent sandbox is off unless set, and held writes ask
+ * only for money, deletes, real security and acting on others. strict
+ * (opt-in): team and enterprise installs, the sandbox on and every held
+ * write as the approval policy says.
+ */
+export type InstallMode = "personal" | "strict";
+export const INSTALL_MODES: readonly InstallMode[] = ["personal", "strict"];
+
+/** Which file set the install's mode, for Doctor. */
+export type InstallModeFrom = "den.yml" | "user.yml" | "default";
+
+/**
+ * One file's install_mode. Fails closed: unset is undefined (no say), and
+ * "personal" is personal; null, a typo or any other value is strict.
+ */
+function installModeValue(v: unknown): InstallMode | undefined {
+  if (v === undefined) return undefined;
+  return v === "personal" ? "personal" : "strict";
+}
+
+/**
+ * Issue 1391: the install's mode and which file set it. The distribution's
+ * den.yml sets the default (unset: personal); the person's user.yml may
+ * choose; strict in either wins, so a person can't loosen a distribution's
+ * strict. Never throws: a bad value in either file is strict.
+ */
+export function resolveInstallMode(
+  u: UserConfig,
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
+): { mode: InstallMode; from: InstallModeFrom } {
+  const den = installModeValue(d.install_mode);
+  const mine = installModeValue(u.install_mode);
+  if (den === "strict") return { mode: "strict", from: "den.yml" };
+  if (mine) return { mode: mine, from: "user.yml" };
+  if (den) return { mode: den, from: "den.yml" };
+  return { mode: "personal", from: "default" };
+}
+
+/** The install's mode (resolveInstallMode); never throws. */
+export function readInstallMode(
+  u: UserConfig,
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
+): InstallMode {
+  return resolveInstallMode(u, d).mode;
+}
+
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  /** Issue 1391: the install's mode (resolveInstallMode). */
+  mode?: InstallMode;
+  /** Issue 1391: which file set it. */
+  modeFrom?: InstallModeFrom;
   /**
    * Issue 936: agents' sessions start in the OS sandbox, Den's state
    * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
@@ -2428,27 +2536,220 @@ export function readAgentsConfig(
 ): ResolvedAgentsConfig {
   const c = config ?? readDenConfig();
   const u = user ?? (config ? {} : readUserConfigQuiet());
-  const out = asConfigError(() => parseAgentsConfig(c));
+  // Issue 1373: the agents' limits set in user.yml win over den.yml's,
+  // key by key (as issue 532 for sessions.*); each checked first, so a
+  // bad one names user.yml.
+  const mine = userAgentsLimits(u);
+  const theirs = c.agents as unknown;
+  const merged =
+    Object.keys(mine).length && (theirs === undefined || isMapping(theirs))
+      ? { ...c, agents: { ...(theirs ?? {}), ...mine } as DenConfig["agents"] }
+      : c;
+  const out = asConfigError(() => parseAgentsConfig(merged));
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
-    () => applyUserSandbox(out, u.agents),
+    () => {
+      // Issue 1391: on a personal install the sandbox is off unless
+      // user.yml sets it; strict keeps it on. A value set always wins.
+      const m = resolveInstallMode(u, c);
+      out.mode = m.mode;
+      out.modeFrom = m.from;
+      if (out.mode === "personal") out.sandbox = false;
+      applyUserSandbox(out, u.agents);
+    },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
   // A signing key is per machine: user.yml's agents.git wins.
-  const mine = u.agents?.git;
+  const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.
   const agentCalledGit =
-    isMapping(mine) &&
-    Object.keys(mine).length > 0 &&
-    Object.keys(mine).every((k) => k === "grants" || k === "sandbox");
-  if (mine !== undefined && mine !== null && !agentCalledGit) {
+    isMapping(myGit) &&
+    Object.keys(myGit).length > 0 &&
+    Object.keys(myGit).every((k) => k === "grants" || k === "sandbox");
+  if (myGit !== undefined && myGit !== null && !agentCalledGit) {
     const g = asConfigError(
-      () => gitSigningBlock(mine),
+      () => gitSigningBlock(myGit),
       path.relative(ROOT, USER_CONFIG_PATH),
     );
     if (g) out.git = g;
   }
   return out;
+}
+
+/**
+ * Issue 1373: the agents' limits a person may set in user.yml (Settings,
+ * `config`), each winning over the distribution's den.yml. Only limits
+ * and waits: keys that widen what an agent may do (token_binding, files,
+ * issue_writes, api_only_engines, persona packs, helpers, subagents,
+ * connectors, sandbox) are never taken from user.yml's agents block here.
+ * draft_hold_max_minutes and issue_writes_per_hour are user.yml's already
+ * (their own readers).
+ */
+export const AGENTS_USER_LIMIT_KEYS = [
+  "max_concurrent",
+  "token_peer_wait_ms",
+  "turn_read_max_mb",
+  "restart_wait_minutes",
+  "rotation_wait_minutes",
+  "unasked_exit_window_minutes",
+  "lock_wait_minutes",
+  "exited_shell_minutes",
+] as const;
+
+/**
+ * Issue 1373: the agent limits Settings' agents_limits, `config` and an
+ * agent's setting_change set. Issue 1417 (Den Builder: every setting has
+ * an agent ask path): all of AGENTS_USER_LIMIT_KEYS, each checked by
+ * parseAgentsConfig.
+ */
+export const AGENTS_SETTINGS_KEYS = AGENTS_USER_LIMIT_KEYS;
+
+/** user.yml's agent limits that are set, each checked with den-config's words. */
+function userAgentsLimits(u: UserConfig): Record<string, unknown> {
+  const a = u.agents as unknown;
+  if (!isMapping(a)) return {};
+  const mine: Record<string, unknown> = {};
+  for (const k of AGENTS_USER_LIMIT_KEYS)
+    if (a[k] !== undefined && a[k] !== null) mine[k] = a[k];
+  if (Object.keys(mine).length)
+    asConfigError(
+      () => parseAgentsConfig({ agents: mine } as unknown as DenConfig),
+      path.relative(ROOT, USER_CONFIG_PATH),
+    );
+  return mine;
+}
+
+/** What is wrong with one agents.<limit> value, in den-config's words; null: fine. */
+export function agentsLimitValueError(
+  key: string,
+  value: unknown,
+): string | null {
+  if (!(AGENTS_SETTINGS_KEYS as readonly string[]).includes(key))
+    return `agents.${key}: not a limit Settings sets (it takes ${AGENTS_SETTINGS_KEYS.join(", ")})`;
+  try {
+    parseAgentsConfig({ agents: { [key]: value } } as unknown as DenConfig);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
+/**
+ * Issue 1417: each agent limit's default, in its own units (as written),
+ * from the constants the code that applies it uses.
+ */
+const AGENT_LIMIT_DEFAULTS: Readonly<
+  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
+> = {
+  max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
+  turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
+  restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
+  rotation_wait_minutes: ROTATION_WAIT_MINUTES_DEFAULT,
+  unasked_exit_window_minutes: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
+  lock_wait_minutes: LOCK_WAIT_MINUTES_DEFAULT,
+  exited_shell_minutes: DEFAULT_EXITED_SHELL_MINUTES,
+};
+
+/** Where a limit's value in force comes from. */
+export type LimitSource = "user.yml" | "den.yml" | "default";
+
+/**
+ * Issue 1417: one agent limit (`restart_wait_minutes`) in force, in its
+ * own units, and where it comes from: user.yml's, else den.yml's, else
+ * Den's default. undefined: not an agent limit.
+ */
+export function agentLimitInForce(
+  key: string,
+  user: UserConfig,
+  den: DenConfig,
+): { value: unknown; from: LimitSource } | undefined {
+  if (!Object.hasOwn(AGENT_LIMIT_DEFAULTS, key)) return undefined;
+  const pick = (b: unknown) => {
+    const v = isMapping(b) ? (b as Record<string, unknown>)[key] : undefined;
+    return v === null ? undefined : v;
+  };
+  const mine = pick(user.agents);
+  if (mine !== undefined) return { value: mine, from: "user.yml" };
+  const theirs = pick((den as { agents?: unknown }).agents);
+  if (theirs !== undefined) return { value: theirs, from: "den.yml" };
+  return {
+    value: AGENT_LIMIT_DEFAULTS[key as keyof typeof AGENT_LIMIT_DEFAULTS],
+    from: "default",
+  };
+}
+
+/**
+ * Issue 1417: a limit as `config` and the setting_change card name it
+ * (`agents.<limit>` or `sessions.<key>`), in force, with its source; one
+ * lookup so the two can't drift. undefined: not such a limit, or the
+ * sessions block can't be read (its own error elsewhere).
+ */
+export function limitInForce(
+  dotted: string,
+  user: UserConfig,
+  den: DenConfig,
+): { value: unknown; from: LimitSource } | undefined {
+  const [block, key, ...rest] = dotted.split(".");
+  if (!key || rest.length) return undefined;
+  if (block === "agents") return agentLimitInForce(key, user, den);
+  if (block !== "sessions" || !SESSIONS_KEYS.includes(key)) return undefined;
+  const has = (b: unknown) => isMapping(b) && Object.hasOwn(b, key);
+  try {
+    const camel = key.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+    const value = readSessionsConfig(den, user)[
+      camel as keyof ResolvedSessionsConfig
+    ];
+    return {
+      value,
+      from: has(user.sessions)
+        ? "user.yml"
+        : has((den as { sessions?: unknown }).sessions)
+          ? "den.yml"
+          : "default",
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Issue 1373: one agent limit as it is in force, in its own units (as
+ * written): user.yml's, else den.yml's, else (issue 1417) Den's default.
+ * undefined: not an agent limit.
+ */
+export function agentsLimitInForce(key: string): unknown {
+  return agentLimitInForce(key, readUserConfigQuiet(), readDenConfig())?.value;
+}
+
+/**
+ * Issue 1373, for Doctor: each agent limit both files set, to different
+ * values (user.yml's wins). A file that can't be read: none.
+ */
+export function agentsUserDrift(
+  config?: DenConfig,
+  user?: UserConfig,
+): { key: string; mine: unknown; theirs: unknown }[] {
+  try {
+    const c = config ?? readDenConfig();
+    const u = user ?? (config ? {} : readUserConfigQuiet());
+    const theirs = isMapping(c.agents)
+      ? (c.agents as Record<string, unknown>)
+      : {};
+    const mine = isMapping(u.agents)
+      ? (u.agents as Record<string, unknown>)
+      : {};
+    return AGENTS_USER_LIMIT_KEYS.filter(
+      (k) =>
+        mine[k] !== undefined &&
+        mine[k] !== null &&
+        theirs[k] !== undefined &&
+        theirs[k] !== null &&
+        JSON.stringify(mine[k]) !== JSON.stringify(theirs[k]),
+    ).map((key) => ({ key, mine: mine[key], theirs: theirs[key] }));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -2521,12 +2822,21 @@ export function applyUserSandbox(
 }
 
 /** user.yml, or {} when it can't be read (a bad one is its own row). */
-function readUserConfigQuiet(): UserConfig {
+/**
+ * Issue 1391 (Builder 2's review): a user.yml that exists but can't be read
+ * or parsed is strict, never personal: the sandbox keeps den.yml's value
+ * (on by default; required stays required). A missing file is {}.
+ */
+export function userConfigOrStrict(read: () => UserConfig): UserConfig {
   try {
-    return readUserConfig();
+    return read();
   } catch {
-    return {};
+    return { install_mode: "strict" };
   }
+}
+
+function readUserConfigQuiet(): UserConfig {
+  return userConfigOrStrict(readUserConfig);
 }
 
 function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
