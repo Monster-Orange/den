@@ -29,6 +29,7 @@ import {
   type ConversationEntry,
 } from "./conversation-history.js";
 import type { PermissionIntent } from "./permissions.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface AgentRecord {
   id: string;
@@ -71,6 +72,11 @@ export interface AgentRecord {
   stoppedAt?: string;
   /** Set when a resume started its current session. */
   resumedAt?: string;
+  /**
+   * Issue 1223: the Den version its current session started on: its Den
+   * tools (MCP) keep that code until it restarts.
+   */
+  denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
   /**
@@ -115,10 +121,23 @@ export interface AgentRecord {
    * environment until a person turns it on (env-hold-rollout.ts).
    */
   envHold?: { applied: boolean; legacy?: true };
+  /**
+   * Issue 936: whether its session started in the OS sandbox (Den's state
+   * read-only to it): the tool, or why not.
+   */
+  sandbox?:
+    | { applied: true; tool?: string }
+    /** legacy: from before the sandbox, outside it until it is turned on. */
+    | { applied: false; legacy?: true; reason?: string };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */
   exitCode?: number;
+  /**
+   * Issue 1325: its sandboxed session's own temp folder (TMPDIR), removed
+   * when that session ends.
+   */
+  sessionTmp?: string;
   /**
    * Set when its session was gone after Den or the machine restarted
    * (AG-14.3: "Interrupted"); cleared by a resume or a start.
@@ -314,10 +333,7 @@ function ensureDir(dir: string): void {
 /** Write `content` to `file`, owner-only from the start, atomically. */
 export function writePrivate(file: string, content: string): void {
   ensureDir(path.dirname(file));
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, content, { mode: 0o600 });
 }
 
 function recordFile(stateDir: string, id: string): string {

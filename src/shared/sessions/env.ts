@@ -38,7 +38,7 @@ import {
 export const DEFAULT_TERM = "xterm-256color";
 
 /** Set in an agent's env: `agent:<id>`, so Den's CLI run inside knows. */
-export const AGENT_ACTOR_ENV = "DEN_AGENT";
+export { AGENT_ACTOR_ENV } from "./env-names.js";
 
 /** What a terminal program needs to run as the user: no more. */
 export const SESSION_BASE_ENV = [

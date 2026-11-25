@@ -29,9 +29,8 @@ describe("doctor: where the sign-in lives", () => {
     expect(r.lines.join("\n")).toContain(r.check.detail);
   });
 
-  it("no address, an http one, or an https one that doesn't work yet: a warning naming the risk and the fix", () => {
+  it("an http address, or an https one that doesn't work yet: a warning naming the risk and the fix", () => {
     for (const [w, works] of [
-      [null, false],
       [{ url: "http://den.example.com", confirmed: true }, false],
       [{ url: "https://den.example.com", confirmed: true }, false],
     ] as const) {
@@ -42,6 +41,16 @@ describe("doctor: where the sign-in lives", () => {
       expect(r.check.detail).toMatch(/acme web url https:\/\//);
       expect(r.lines.join("\n")).toContain(r.check.detail);
     }
+  });
+});
+
+describe("issue 1334: no address at all", () => {
+  it("is ℹ and ok, pointing at the Address row (which asks once), never a second ⚠", () => {
+    const r = sessionHostLines(null, false, "Acme", "acme");
+    expect(r.check).toMatchObject({ id: "signin_host", status: "ok" });
+    expect(r.check.settings).toBeUndefined();
+    expect(r.check.detail).toContain("the Address row");
+    expect(r.lines.join("\n")).toContain("  sign-in  ℹ  ");
   });
 });
 

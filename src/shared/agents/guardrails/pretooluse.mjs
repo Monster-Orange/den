@@ -37,6 +37,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ROUTE_DEFAULT, routeCommand } from "./gate-route.mjs";
 import {
   apiOnlyDecision,
   apiOnlyMessage,
@@ -512,6 +513,53 @@ export function decide(input, env = process.env) {
   return null;
 }
 
+/** `s` as one POSIX shell word: as it is when safe, else single-quoted. */
+const word = (s) =>
+  s !== "" && /^[A-Za-z0-9_@%+=:,./-]+$/.test(s)
+    ? s
+    : `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+/**
+ * Issue 1264: routing as the gate's settings.json says: `route_agents`
+ * (false turns it off) and `route_commands` (the programs). No file, or one
+ * Den can't read: on, with the default list.
+ */
+export function routeSettings(file) {
+  try {
+    const j = JSON.parse(fs.readFileSync(file, "utf-8"));
+    return {
+      on: j.route_agents !== false,
+      programs: Array.isArray(j.route_commands)
+        ? j.route_commands.filter((x) => typeof x === "string")
+        : ROUTE_DEFAULT,
+    };
+  } catch {
+    return { on: true, programs: ROUTE_DEFAULT };
+  }
+}
+
+/**
+ * Issue 1264: the Bash call's input with its command sent through the
+ * gate (`<cli> gate run`), or null to leave it. `cli`: this install's own
+ * CLI, by its absolute path; none, no routing.
+ */
+export function gateRewrite(input, cli, settingsFile) {
+  if (!cli || input?.tool_name !== "Bash") return null;
+  const ti =
+    input.tool_input && typeof input.tool_input === "object"
+      ? input.tool_input
+      : null;
+  if (!ti || typeof ti.command !== "string") return null;
+  const s = routeSettings(settingsFile);
+  if (!s.on) return null;
+  const r = routeCommand(ti.command, {
+    gate: `${word(cli)} gate run`,
+    programs: s.programs,
+    parse: parseShell,
+  });
+  return r ? { ...ti, command: r.command } : null;
+}
+
 /** `--name value` from the hook's own arguments, or null. */
 function arg(name, argv = process.argv) {
   const i = argv.indexOf(name);
@@ -553,6 +601,29 @@ async function main() {
     process.stderr.write(`${reason}\n`);
     process.exit(2);
   }
+  // Issue 1264: a heavy run goes through the gate. The whole input comes
+  // back with the new command and no permission decision, so the agent's
+  // own permission rules still decide the rewritten command.
+  let updated = null;
+  try {
+    if (!process.argv.includes("--no-guardrails"))
+      updated = gateRewrite(
+        JSON.parse(text),
+        arg("--gate"),
+        arg("--gate-settings"),
+      );
+  } catch {
+    updated = null;
+  }
+  if (updated)
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          updatedInput: updated,
+        },
+      }),
+    );
   process.exit(0);
 }
 

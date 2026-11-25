@@ -231,6 +231,10 @@ export async function handleNotificationRoutes(
       return true;
     }
     const id = agent.actor.slice("agent:".length);
+    // Issue 828: a question on the agent's screen (its hook says so). It
+    // counts toward the ask limit like any question: the flag is the
+    // agent's own word.
+    const dialog = ev === "waiting" && why === "asked" && b?.dialog === true;
     if (ev === "waiting" && why === "asked" && deps.asks) {
       let perHour: number;
       try {
@@ -264,6 +268,7 @@ export async function handleNotificationRoutes(
             input: inputKeyOf(b?.input),
             idle: b?.idle === true,
             hooked: b?.hooked === true,
+            ...(dialog ? { dialog: true } : {}),
           }
         : ev === "resumed"
           ? {
@@ -569,26 +574,26 @@ export async function handleNotificationRoutes(
     return true;
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
-  const shownAll =
+  // Issue 1339: one view build, one write for the whole set.
+  const prefs = (deps.prefs ?? bellPrefs)(null);
+  const n =
     pathname === "/api/notifications/read" && "all" in which
       ? (() => {
-          const v = bellView(
-            deps.store.list(),
-            (deps.prefs ?? bellPrefs)(null),
+          const v = bellView(deps.store.list(), prefs);
+          return deps.store.markReadMany(
+            [...v.recent, ...v.updates, ...v.older]
+              .filter((x) => !x.read)
+              .map((x) => x.id),
           );
-          return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
         })()
-      : null;
-  const n = shownAll
-    ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
-    : pathname === "/api/notifications/read"
-      ? deps.store.markRead(which)
-      : deps.store.clearRead(which);
+      : pathname === "/api/notifications/read"
+        ? deps.store.markRead(which)
+        : deps.store.clearRead(which);
   sendJson(res, {
     ok: true,
     changed: n,
     // The badge's number: what is shown.
-    unread: bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null)).unread,
+    unread: bellView(deps.store.list(), prefs).unread,
   });
   return true;
 }

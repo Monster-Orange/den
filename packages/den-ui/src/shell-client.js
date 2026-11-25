@@ -58,8 +58,12 @@
  *       onEscape(e) (true: the host took that Esc), id, lang. A click
  *       toggles it; Esc closes it and focus goes back to the bell (in
  *       Safari too); a click outside closes it. Opening focuses its first
- *       link or button.
+ *       link or button. Issue 420: a row opens on a click anywhere on it
+ *       (wireRowOpens), as its link does.
  *       → { el, open(), close(focus), isOpen(), paint(), setCount(n) }
+ *   wireRowOpens(root, rowSelector)   issue 420: a click anywhere on a
+ *       row (its time, its dot, the space around) clicks the row's link,
+ *       except on the row's own controls. → a function that unwires it
  *   hydrateAccount(root, { onAction(event), menu(), onPick, onSubmit,
  *       lang })   the account entry: as an action (no href), a click or
  *       Enter calls onAction; with `menu: true` on the entry, its menu
@@ -93,6 +97,7 @@ import {
   menuFilterParts,
   menuHasFilter,
   pageMenuHtml,
+  reportButtonHtml,
   waitingHtml,
 } from "./shell-html.js";
 import { focusBack } from "./dialog.js";
@@ -173,6 +178,28 @@ export function hydrateShell(root, opts = {}) {
     for (const a of links) a.tabIndex = a === stop ? 0 : -1;
   }
 
+  // Issue 1341: the sticky foot's height, as the rail's scroll padding,
+  // so a focused entry scrolls to above the foot. Kept as the foot
+  // changes size (the account's lines, the drawer's Report).
+  const footRo =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => padFoot())
+      : null;
+  function padFoot() {
+    const f = nav && nav.querySelector(".den-rail-foot");
+    if (!nav) return;
+    if (f) nav.style.setProperty("--den-rail-foot-h", f.offsetHeight + "px");
+    else nav.style.removeProperty("--den-rail-foot-h");
+  }
+  function watchFoot() {
+    if (!nav) return;
+    if (footRo) footRo.disconnect();
+    const f = nav.querySelector(".den-rail-foot");
+    if (f && footRo) footRo.observe(f);
+    padFoot();
+  }
+  watchFoot();
+
   let lastHtml = null;
   function paint(html, force) {
     if (!nav || (!force && html === lastHtml)) return false;
@@ -184,6 +211,7 @@ export function hydrateShell(root, opts = {}) {
         : null;
     lastHtml = html;
     nav.innerHTML = html;
+    watchFoot();
     rove();
     if (keep) {
       const again = nav.querySelector('[data-nav="' + keep + '"]');
@@ -247,6 +275,17 @@ export function hydrateShell(root, opts = {}) {
     railBox.setAttribute("role", "dialog");
     railBox.setAttribute("aria-modal", "true");
     railBox.setAttribute("aria-label", kitT(lang(), "kit.pages"));
+    // Issue 81: the drawer's scrim covers the top bar (and its Report), so
+    // the drawer has Report of its own while it is open; never on the
+    // wide rail (issue 94: Report is in the top bar there). It ends the
+    // rail's foot, so it stays in view with it (issue 1341).
+    if (nav && !nav.querySelector(".den-rb-drawer"))
+      (nav.querySelector(".den-rail-foot") || nav).insertAdjacentHTML(
+        "beforeend",
+        '<div class="den-rb-foot den-rb-drawer" data-den-drawer-report>' +
+          reportButtonHtml({ inFoot: true, lang: lang() }) +
+          "</div>",
+      );
     if (!scrim) {
       scrim = document.createElement("div");
       scrim.className = "den-scrim";
@@ -268,6 +307,7 @@ export function hydrateShell(root, opts = {}) {
     railBox.removeAttribute("role");
     railBox.removeAttribute("aria-modal");
     railBox.removeAttribute("aria-label");
+    nav?.querySelector(".den-rb-drawer")?.remove();
     if (scrim) scrim.remove();
     setInert(false);
     if (refocus && menu) menu.focus();
@@ -664,6 +704,37 @@ export function patchChildren(live, next) {
   for (const c of [...live.childNodes]) if (!used.has(c)) c.remove();
 }
 
+/**
+ * Issue 420: what stays itself inside a row that opens: its link, its
+ * buttons, its fields.
+ */
+const ROW_CONTROLS =
+  'a[href], button, input, select, textarea, label, summary, [role="button"], [contenteditable="true"]';
+
+/**
+ * Issue 420: a click anywhere on a row (`rowSelector`, under `root`)
+ * clicks the row's first link, as a click on the link would. A click on
+ * the row's own controls is theirs alone. A row with no link does nothing.
+ * @param {Element} root
+ * @param {string} rowSelector
+ * @returns {() => void} unwires it
+ */
+export function wireRowOpens(root, rowSelector) {
+  /** @param {Event} e */
+  const onClick = (e) => {
+    const t = /** @type {Element | null} */ (e.target);
+    if (!t || !t.closest) return;
+    const row = t.closest(rowSelector);
+    if (!row || !root.contains(row)) return;
+    const inner = t.closest(ROW_CONTROLS);
+    if (inner && row.contains(inner)) return;
+    const a = /** @type {HTMLElement | null} */ (row.querySelector("a[href]"));
+    if (a) a.click();
+  };
+  root.addEventListener("click", onClick);
+  return () => root.removeEventListener("click", onClick);
+}
+
 /** The bell and its panel (see the top). */
 export function hydrateBell(btn, opts = {}) {
   const lang = () =>
@@ -727,6 +798,8 @@ export function hydrateBell(btn, opts = {}) {
       c > 0 ? kitT(lang(), "kit.bell.n", { n: c }) : word,
     );
   }
+  // Issue 420: a row opens on a click anywhere on it, as Den's bell does.
+  wireRowOpens(pop, ".den-bell-row");
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !isOpen()) return;

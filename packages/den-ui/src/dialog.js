@@ -217,12 +217,14 @@ function attrsOf(o) {
  * plain one (no kind) never validates the form: it is a way out.
  */
 function actionHtml(a) {
+  // Issue 673: the kit's one button (button.css); dk-btn, dk-primary and
+  // dk-danger stay as the dialog's hooks.
   const cls =
-    "dk-btn" +
+    "den-btn dk-btn" +
     (a.kind === "primary"
-      ? " dk-primary"
+      ? " primary dk-primary"
       : a.kind === "danger"
-        ? " dk-danger"
+        ? " danger dk-danger"
         : "") +
     (a.className ? ` ${a.className}` : "");
   if (a.href != null)
@@ -281,7 +283,7 @@ function panelInner(spec, ids) {
       ? `<span class="dk-sub" id="${esc(ids.sub)}">${esc(spec.subtitle)}</span>`
       : "") +
     `<span class="dk-acts">${actionsHtml(spec.headActions)}` +
-    `<form class="dk-x-f" method="dialog"><button type="submit" class="dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
+    `<form class="dk-x-f" method="dialog"><button type="submit" class="den-btn dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
     `</span></div>` +
     `<div class="dk-body" id="${esc(ids.body)}"${attrsOf(spec.bodyAttrs)}>${spec.body ?? ""}</div>` +
     (spec.foot ?? "") +
@@ -569,6 +571,18 @@ export function mountDialog(target, o = {}) {
   return handle;
 }
 
+/**
+ * Issue 864: one pop-up at a time. A pop-up that may give way to the
+ * person's question (What's new) asks to hear of each question here;
+ * `fn(dialog)` runs just before the question shows, with its dialog.
+ * Returns a function that stops it.
+ */
+const asking = new Set();
+export function onAsk(fn) {
+  asking.add(fn);
+  return () => asking.delete(fn);
+}
+
 /** askConfirm, askText and tell, on the frame. */
 function open(kind, opts = {}) {
   const id = `dk-q-${++seq}`;
@@ -581,6 +595,7 @@ function open(kind, opts = {}) {
     },
     show: false,
   });
+  for (const fn of asking) fn(h.dialog);
   h.show(opts.opener);
   return h.closed.then((v) => answerOf(kind, v === "ok", text));
 }

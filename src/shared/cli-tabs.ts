@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { tabExists, type TerminalApp } from "./terminal/tabs.js";
 import { getStateDir } from "./paths.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export interface CliTabRecord {
   address: string;
@@ -60,9 +61,7 @@ function writeTabsFile(filePath: string, map: Map<string, CliTabRecord>): void {
     };
   }
 
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(json, null, 2) + "\n", "utf-8");
-  fs.renameSync(tmp, filePath);
+  writeFileAtomic(filePath, JSON.stringify(json, null, 2) + "\n");
 }
 
 function loadTabs(force = false): void {

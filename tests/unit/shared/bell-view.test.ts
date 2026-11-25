@@ -99,6 +99,8 @@ describe("ATTN-5 (den#142): the badge counts what needs you; the rest are Update
       "finished",
       "answer",
       "service",
+      // Issue 581: Hub's "shared with you".
+      "shared",
     ]);
   });
 
