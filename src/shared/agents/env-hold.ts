@@ -96,6 +96,13 @@ export function envMaskArgs(s: EnvHoldSettings): string[] {
 export const ENV_HOLD_FILE = "env-hold.sh";
 
 const PATTERN_RE = /^[A-Za-z0-9_*]+$/;
+/** The names git reads its config from the environment by. */
+const GIT_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+)$/;
+
+/** `v` as one single-quoted POSIX shell word. */
+function shellQuote(v: string): string {
+  return `'${v.replace(/'/g, `'\\''`)}'`;
+}
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface EnvHoldSettings {
@@ -275,6 +282,13 @@ export function envHoldScript(
   hold: readonly string[],
   allow: readonly string[] = [],
   own: readonly string[] = [],
+  /**
+   * The git config env Den set for this start (agentGitEnv), or {} when it
+   * set none. Every GIT_CONFIG_* a profile left is unset, and exactly these
+   * are exported again (a key path, "ssh", "true": no secret). With an
+   * empty list and none set, a profile's are left alone (the open default).
+   */
+  git: Readonly<Record<string, string>> = {},
 ): string {
   const head = [
     "# Written by Den at each start of this agent. Before each shell command,",
@@ -284,8 +298,15 @@ export function envHoldScript(
     "# agent) or the project's agents.env_allow in config/local/workspaces.yml.",
   ];
   const patterns = hold.filter((p) => PATTERN_RE.test(p) && /[^*]/.test(p));
+  const gitPairs = Object.entries(git).filter(
+    ([k, v]) => GIT_ENV_RE.test(k) && typeof v === "string",
+  );
+  const resetGit = patterns.length > 0 || gitPairs.length > 0;
   const keep = [...own, ...allow].filter(
-    (n) => NAME_RE.test(n) && !PERSON_CREDENTIAL_NAMES.includes(n),
+    (n) =>
+      NAME_RE.test(n) &&
+      !PERSON_CREDENTIAL_NAMES.includes(n) &&
+      !(resetGit && n.startsWith("GIT_CONFIG_")),
   );
   const take = patterns.length
     ? [
@@ -295,6 +316,9 @@ export function envHoldScript(
     : [];
   const caseArms = [
     `    ${PERSON_CREDENTIAL_NAMES.join("|")}) unset "$__den_n" 2>/dev/null; continue ;;`,
+    ...(resetGit
+      ? ['    GIT_CONFIG_*) unset "$__den_n" 2>/dev/null; continue ;;']
+      : []),
   ];
   const lines = [
     ...head,
@@ -326,6 +350,7 @@ export function envHoldScript(
         ]
       : []),
     "done",
+    ...gitPairs.map(([k, v]) => `export ${k}=${shellQuote(v)}`),
     "unset __den_n __den_v",
     "unset -f __den_names 2>/dev/null",
     "",

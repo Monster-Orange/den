@@ -1070,7 +1070,9 @@ function envHold(input: LaunchInput): {
   const h = input.envHold;
   return {
     env: { CLAUDE_ENV_FILE: file },
-    files: { [file]: envHoldScript(h.hold, h.allow, h.own) },
+    // Den's git values come at the session's start (agent-ops
+    // rewriteEnvHold); until then, none.
+    files: { [file]: envHoldScript(h.hold, h.allow, h.own, {}) },
   };
 }
 

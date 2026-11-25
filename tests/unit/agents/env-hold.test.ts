@@ -39,7 +39,7 @@ import { readAgentsConfig } from "../../../src/shared/den-config.js";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { envHoldLines } from "../../../src/ui/cli/doctor-env-hold.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
-import { denGitEnvNames } from "../../../src/ui/cli/agent-ops.js";
+import { agentGitEnv } from "../../../src/shared/agents/git-signing.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 const CANARY = "canary-7f3e1d-not-a-real-secret";
@@ -279,6 +279,8 @@ describe("the shell, after a profile sets the canary again", () => {
       DEFAULT_ENV_HOLD,
       ["KEEP_TOKEN", "DEN_PERSON_TOKEN"],
       [ACTOR_TOKEN_FILE_ENV, "GIT_CONFIG_KEY_0"],
+      // Den's own git value comes back as Den set it, not from the own list.
+      { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.signingkey" },
     ),
   );
   const profile = [
@@ -605,19 +607,139 @@ describe("doctor: names only", () => {
   });
 });
 
-describe("Den's own git signing names stay (issue 1316's default key too)", () => {
-  it("env-hold.sh keeps every git name Den may set unless signing is off", () => {
-    const names = denGitEnvNames(undefined);
-    expect(names).toEqual(
-      expect.arrayContaining([
-        "GIT_CONFIG_COUNT",
-        "GIT_CONFIG_KEY_0",
-        "GIT_CONFIG_VALUE_0",
-      ]),
+describe("git's config names: Den's own values for this start, never a profile's", () => {
+  const KEY = "/keys/agents/id_ed25519";
+  const den = agentGitEnv({ signingKey: KEY });
+  const pair = [
+    "export GIT_CONFIG_COUNT=1",
+    "export GIT_CONFIG_KEY_0=http.extraHeader",
+    `export GIT_CONFIG_VALUE_0="Authorization: Bearer ${CANARY}"`,
+  ].join("\n");
+  const names = [
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_KEY_0",
+    "GIT_CONFIG_VALUE_0",
+    "GIT_CONFIG_VALUE_1",
+  ];
+  // Den's launch once listed git's names as its own: they never exempt a
+  // profile's value.
+  const own = ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"];
+  const script = (
+    name: string,
+    hold: readonly string[],
+    git: Record<string, string>,
+  ) => {
+    const f = path.join(dir, name);
+    fs.writeFileSync(f, envHoldScript(hold, [], own, git));
+    return f;
+  };
+
+  it.each(["/bin/sh", "/bin/bash", "/bin/zsh"])(
+    "%s: signing failed (Den set none): a profile's GIT_CONFIG_KEY_0/VALUE_0 pair is gone",
+    (shell) => {
+      const out = inShell(
+        shell,
+        pair,
+        script("git-none.sh", DEFAULT_ENV_HOLD, {}),
+        show(names),
+      );
+      if (out === null) return;
+      expect(out).not.toContain(CANARY);
+      expect(out).toContain("GIT_CONFIG_COUNT=[]");
+      expect(out).toContain("GIT_CONFIG_KEY_0=[]");
+    },
+  );
+
+  it.each(["/bin/sh", "/bin/bash", "/bin/zsh"])(
+    "%s: signing on: a profile overwriting GIT_CONFIG_VALUE_1 ends with Den's value, on strict and personal",
+    (shell) => {
+      for (const hold of [DEFAULT_ENV_HOLD, []]) {
+        const out = inShell(
+          shell,
+          `${pair}\nexport GIT_CONFIG_VALUE_1=/evil/key`,
+          script(`git-on-${hold.length}.sh`, hold, den),
+          show(names),
+        );
+        if (out === null) return;
+        expect(out).toContain(`GIT_CONFIG_VALUE_1=[${KEY}]`);
+        expect(out).toContain(`GIT_CONFIG_COUNT=[${den.GIT_CONFIG_COUNT}]`);
+        expect(out).toContain("GIT_CONFIG_KEY_0=[gpg.format]");
+        expect(out).not.toContain(CANARY);
+        expect(out).not.toContain("/evil/key");
+      }
+    },
+  );
+
+  it("personal with Den setting none: a profile's git config is left alone (the open default)", () => {
+    const out = inShell(
+      "/bin/sh",
+      pair,
+      script("git-open.sh", [], {}),
+      show(names),
     );
-    expect(denGitEnvNames({ signingKey: "/k" })).toEqual(names);
-    expect(denGitEnvNames({ off: true })).toEqual([]);
-    const script = envHoldScript([...DEFAULT_ENV_HOLD], [], names);
-    for (const n of names) expect(script).toContain(n);
+    expect(out).toContain("GIT_CONFIG_KEY_0=[http.extraHeader]");
+  });
+
+  it("signing on: a commit still signs, after a profile overwrote Den's key", () => {
+    const has = (b: string) =>
+      spawnSync("sh", ["-c", `command -v ${b}`]).status === 0;
+    if (!has("git") || !has("ssh-keygen")) return;
+    const g = fs.mkdtempSync(path.join(dir, "sign-"));
+    const key = path.join(g, "id_ed25519");
+    spawnSync("ssh-keygen", [
+      "-q",
+      "-t",
+      "ed25519",
+      "-N",
+      "",
+      "-C",
+      "den-agents@den.invalid",
+      "-f",
+      key,
+    ]);
+    const signers = path.join(g, "allowed_signers");
+    fs.writeFileSync(
+      signers,
+      `den-agents@den.invalid ${fs.readFileSync(`${key}.pub`, "utf-8")}`,
+    );
+    const repo = path.join(g, "repo");
+    spawnSync("git", ["init", "-q", repo]);
+    const f = path.join(dir, "git-sign.sh");
+    fs.writeFileSync(
+      f,
+      envHoldScript(
+        DEFAULT_ENV_HOLD,
+        [],
+        [],
+        agentGitEnv({ signingKey: key, allowedSigners: signers }),
+      ),
+    );
+    const out = inShell(
+      "/bin/sh",
+      "export GIT_CONFIG_COUNT=1\nexport GIT_CONFIG_KEY_0=commit.gpgsign\nexport GIT_CONFIG_VALUE_0=false",
+      f,
+      `cd ${repo} && git -c user.name=t -c user.email=den-agents@den.invalid commit -q --allow-empty -m x && git log -1 --format=%G?`,
+    );
+    expect(String(out).trim()).toBe("G");
+  });
+
+  it("an agent's start writes Den's values for the key it resolved, and none when there is none", async () => {
+    for (const signing of [
+      { signingKey: KEY, source: "setting" as const },
+      undefined,
+    ]) {
+      const r = await rig();
+      r.deps.agentSigning = () => signing;
+      expect(
+        await agents(r, "start", "-w", "north", "--persona", "planner"),
+      ).toBe(0);
+      const text = fs.readFileSync(
+        r.made[0].opts.env.CLAUDE_ENV_FILE!,
+        "utf-8",
+      );
+      if (signing) expect(text).toContain(`export GIT_CONFIG_VALUE_1='${KEY}'`);
+      else expect(text).not.toMatch(/^export GIT_CONFIG/m);
+      expect(text).toMatch(/GIT_CONFIG_\*\) unset/);
+    }
   });
 });

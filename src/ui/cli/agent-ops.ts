@@ -277,7 +277,9 @@ import {
   allowedFor as envAllowedFor,
   checkProjectEnvAllow,
   defaultEnvHold,
+  envHoldScript,
   envMaskArgs,
+  ENV_HOLD_FILE,
   type EnvHoldSettings,
 } from "../../shared/agents/env-hold.js";
 import {
@@ -302,7 +304,6 @@ import {
   resolveAgentSigning,
   signingKeyAddLine,
   signingReadFiles,
-  type AgentGitBlock,
   type AgentSigning,
 } from "../../shared/agents/git-signing.js";
 import {
@@ -3659,6 +3660,9 @@ async function startSession(
     } catch (e) {
       signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
     }
+    // Issue 974: env-hold.sh again, now that the key is known: every
+    // GIT_CONFIG_* a profile left goes, and exactly Den's come back.
+    rewriteEnvHold(d, launch.rec.id, hold, agentGitEnv(signing));
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     // An agent from before the sandbox starts outside it until the person
     // turns it on (the rollout, sandbox-rollout.ts).
@@ -3964,7 +3968,7 @@ function launchInput(
     // Issue 974: secret-looking variables held out of each shell command,
     // and the guard on commands that print the whole environment.
     envHold: {
-      ...agentEnvHold(d, cfg.envHold, id, ws, denGitEnvNames(cfg.git)),
+      ...agentEnvHold(d, cfg.envHold, id, ws),
       guard: cfg.envHold?.guard ?? true,
       mask: envMaskArgs(cfg.envHold ?? defaultEnvHold()),
     },
@@ -4008,8 +4012,6 @@ export function agentEnvHold(
   s: EnvHoldSettings | undefined,
   id: string,
   ws: string,
-  /** The git names Den may set for this launch (denGitEnvNames). */
-  gitNames: readonly string[] = [],
 ): { on: boolean; hold: string[]; allow: string[]; own: string[] } {
   const settings = s ?? defaultEnvHold();
   const on = holdOnAtStart(readRecord(d.stateDir(), id), settings);
@@ -4031,19 +4033,27 @@ export function agentEnvHold(
       AGENT_ACTOR_ENV,
       ACTOR_TOKEN_FILE_ENV,
       ...Object.keys(installLocationEnv(d.env)),
-      ...gitNames,
     ],
   };
 }
 
 /**
- * Issue 974: the git names Den may set for an agent (agentGitEnv), for its
- * env-hold.sh, written before the key is resolved: all of them unless
- * agents.git.signing is off.
+ * Issue 974: the agent's env-hold.sh written again at its start, with the
+ * git config env Den set for the key it resolved (none: {}). Only when the
+ * launch wrote one (an agent from before the hold has none).
  */
-export function denGitEnvNames(git: AgentGitBlock | undefined): string[] {
-  if (git?.off) return [];
-  return Object.keys(agentGitEnv({ signingKey: "-", allowedSigners: "-" }));
+function rewriteEnvHold(
+  d: Pick<AgentsResolved, "stateDir">,
+  id: string,
+  hold: { hold: string[]; allow: string[]; own: string[] },
+  git: Record<string, string>,
+): void {
+  const filesDir = agentFilesDir(d.stateDir(), id);
+  const file = path.join(filesDir, ENV_HOLD_FILE);
+  if (!fs.existsSync(file)) return;
+  writeRuntimeFiles(filesDir, {
+    [file]: envHoldScript(hold.hold, hold.allow, hold.own, git),
+  });
 }
 
 /** workspaces.yml <project>.agents.env_allow, as written. */
