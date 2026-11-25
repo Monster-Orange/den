@@ -102,7 +102,11 @@ export class FakeGithub {
     }
     m = /^repos\/([^/]+\/[^/]+)\/actions\/runs\?/.exec(path);
     if (m) {
-      const l = this.runs.get(m[1]) ?? [];
+      const q0 = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+      const sha = q0.get("head_sha");
+      const l = (this.runs.get(m[1]) ?? []).filter(
+        (r) => !sha || r.head_sha === sha,
+      );
       // Issue 1560: as GitHub lists them, newest first, one page of
       // per_page (default 30): a busy repo's older runs aren't on it.
       const q = new URLSearchParams(path.slice(path.indexOf("?") + 1));

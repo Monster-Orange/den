@@ -124,6 +124,11 @@ interface Watch {
   failed?: { name: string; url: string }[];
   /** When its head's check runs were last asked for (several heads). */
   checkedAt?: number;
+  /**
+   * Issue 1560: its head's runs weren't on the repo's list (a full page,
+   * the newest only): its own runs are listed by head instead.
+   */
+  offPage?: boolean;
   doneAt?: number;
   text?: string;
   delivered?: boolean;
@@ -131,7 +136,7 @@ interface Watch {
 
 interface Call {
   path: string;
-  kind: "resolve" | "list" | "checks";
+  kind: "resolve" | "list" | "checks" | "headRuns";
   watch?: Watch;
   head?: string;
 }
@@ -460,15 +465,25 @@ export class GithubWatcher {
     for (const w of ws)
       if (w.phase === "waiting" && now - w.createdAt >= NO_CHECKS_MS)
         w.phase = "ready";
-    const ready = ws
-      .filter((w) => w.phase === "ready")
+    // Its own call, in turn: a ready head's check runs, or (issue 1560)
+    // the runs of a head off the list's page. One a round, alternating
+    // with the list, so the repo still costs one call a round.
+    const own = ws
+      .filter((w) => w.phase === "ready" || w.offPage)
       .sort((a, b) => (a.checkedAt ?? 0) - (b.checkedAt ?? 0));
-    const allReady = ready.length === ws.length;
-    if (ready.length && (allReady || !this.lastChecks.has(key))) {
+    const allOwn = own.length === ws.length;
+    if (own.length && (allOwn || !this.lastChecks.has(key))) {
       this.lastChecks.add(key);
-      const head = ready[0].head!;
+      const first = own[0];
+      const head = first.head!;
       for (const w of ws) if (w.head === head) w.checkedAt = now;
-      return { path: this.checksPath(repo, head), kind: "checks", head };
+      if (first.phase === "ready")
+        return { path: this.checksPath(repo, head), kind: "checks", head };
+      return {
+        path: `repos/${repo}/actions/runs?head_sha=${head}&per_page=${RUNS_PAGE}`,
+        kind: "headRuns",
+        head,
+      };
     }
     this.lastChecks.delete(key);
     const since = Math.min(...ws.map((w) => w.createdAt)) - RUNS_LOOKBACK_MS;
@@ -496,6 +511,12 @@ export class GithubWatcher {
       return w.head !== before;
     }
     if (call.kind === "list") return this.applyRuns(ws, r.body);
+    if (call.kind === "headRuns")
+      return this.applyRuns(
+        ws.filter((w) => w.head === call.head),
+        r.body,
+        true,
+      );
     return this.applyChecks(
       ws.filter((w) => w.head === call.head),
       r.body,
@@ -521,7 +542,7 @@ export class GithubWatcher {
     w.note = `The run is ${st || "known"}.`;
   }
 
-  private applyRuns(ws: Watch[], body: unknown): boolean {
+  private applyRuns(ws: Watch[], body: unknown, byHead = false): boolean {
     const runs = (
       isObj(body) && Array.isArray(body.workflow_runs) ? body.workflow_runs : []
     ).filter(isObj);
@@ -533,11 +554,12 @@ export class GithubWatcher {
           : runs.filter((r) => r.head_sha === w.head);
       if (!mine.length) {
         // Issue 1560: a full page is the newest runs only, and a busy
-        // repo's older ones aren't on it. A head whose runs are off it is
-        // settled by its own check runs, so it can't sit on its last note.
-        if (runs.length >= RUNS_PAGE && w.phase !== "ready") {
-          w.phase = "ready";
-          w.note = `Its workflow runs are past the newest ${RUNS_PAGE}; Den reads its checks next.`;
+        // repo's older ones aren't on it. A head whose runs are off it has
+        // them listed by head, in turn, so it can't sit on its last note,
+        // and its checks are read only once every run on it is done.
+        if (!byHead && runs.length >= RUNS_PAGE && !w.offPage) {
+          w.offPage = true;
+          w.note = `Its workflow runs are past the repo's newest ${RUNS_PAGE}; Den lists them by head next.`;
           changed = true;
         }
         continue;
