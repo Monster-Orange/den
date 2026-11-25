@@ -1056,14 +1056,13 @@ export class WebSessionStore {
     return webSessionsPath(this.stateDir());
   }
 
-  /** The file's key for the cache; null when there is none (or any error). */
-  private statKey(): string | null {
-    try {
-      const s = fs.statSync(this.file());
-      return `${s.ino}:${s.size}:${s.mtimeMs}`;
-    } catch {
-      return null;
-    }
+  /**
+   * Issue 1582: the cache's key, a hash of the file's text. Its inode,
+   * size and mtime don't prove it unchanged: rewritten within one time
+   * tick, it can keep all three, and an ended session would stay.
+   */
+  private static textKey(text: string): string {
+    return createHash("sha256").update(text).digest("hex");
   }
 
   /** Issue 1299: a read that failed: no sessions now, and writes wait. */
@@ -1080,17 +1079,14 @@ export class WebSessionStore {
   private load(): StoreFile {
     // Issue 1299: only a missing file is a fresh store; any other stat
     // error is a read that failed.
-    let key: string;
     try {
-      const st = fs.statSync(this.file());
-      key = `${st.ino}:${st.size}:${st.mtimeMs}`;
+      fs.statSync(this.file());
     } catch (e) {
       const code = String((e as NodeJS.ErrnoException).code ?? "stat failed");
       if (code !== "ENOENT") return this.failedRead(code);
       this.unreadable = null;
       return empty();
     }
-    if (this.cache?.key === key) return this.cache.data;
     // Issue 1299: a read that fails is never cached, and every write is
     // refused until a read works: a write now would save over every
     // session the file holds.
@@ -1103,6 +1099,10 @@ export class WebSessionStore {
       );
     }
     this.unreadable = null;
+    // Issue 1582: the same text is the same data (read, it's parsed only
+    // when it changed).
+    const key = WebSessionStore.textKey(text);
+    if (this.cache?.key === key) return this.cache.data;
     let raw: Partial<StoreFile> | null = null;
     try {
       const parsed: unknown = JSON.parse(text);
@@ -1163,9 +1163,9 @@ export class WebSessionStore {
     const dir = this.stateDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = this.file();
-    writeFileAtomic(file, `${JSON.stringify(data)}\n`, { mode: 0o600 });
-    const key = this.statKey();
-    this.cache = key ? { key, data } : null;
+    const text = `${JSON.stringify(data)}\n`;
+    writeFileAtomic(file, text, { mode: 0o600 });
+    this.cache = { key: WebSessionStore.textKey(text), data };
   }
 
   /**

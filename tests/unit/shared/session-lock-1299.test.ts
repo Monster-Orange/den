@@ -62,6 +62,32 @@ describe("issue 1299: the sessions lock", () => {
     expect(server.lookup(b.id)).not.toBeNull();
   });
 
+  it("issue 1582: a session ended in a file rewritten with the same inode, size and mtime is ended here too", () => {
+    const server = store();
+    const a = server.create({ host: "a" });
+    const file = webSessionsPath(tmp);
+    fs.utimesSync(file, T, T);
+    // The server reads the file at its pinned mtime, and keeps it.
+    expect(server.list().map((s) => s.key)).toEqual([a.session.key]);
+    const before = fs.statSync(file);
+    // Another process ends the session: the record's key is replaced by
+    // one of the same length (the file keeps its size), written in place
+    // (its inode kept), its mtime pinned again.
+    const text = fs.readFileSync(file, "utf-8");
+    const gone = text.replace(a.session.key, "0".repeat(a.session.key.length));
+    expect(gone).not.toBe(text);
+    fs.writeFileSync(file, gone);
+    fs.utimesSync(file, T, T);
+    const after = fs.statSync(file);
+    expect([after.ino, after.size, after.mtimeMs]).toEqual([
+      before.ino,
+      before.size,
+      before.mtimeMs,
+    ]);
+    expect(server.lookup(a.id)).toBeNull();
+    expect(server.list().map((s) => s.key)).not.toContain(a.session.key);
+  });
+
   it("a write leaves no lock behind", () => {
     store().create({});
     expect(fs.existsSync(lockFile())).toBe(false);
