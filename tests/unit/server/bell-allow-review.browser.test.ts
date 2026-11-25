@@ -312,10 +312,11 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
       const late = new Promise<void>((r) => (free = r));
       let n = 0;
       window.fetch = (async (u: RequestInfo | URL, o?: RequestInit) => {
+        const mine = String(u).endsWith("/api/notifications") && !o?.method;
+        const first = mine && ++n === 1;
         const r = await real(u, o);
-        if (!String(u).endsWith("/api/notifications") || o?.method) return r;
+        if (!mine) return r;
         const b = await r.json();
-        const first = ++n === 1;
         if (first) await late;
         const json = first ? b : { ...b, waiting: [] };
         return { ok: true, json: async () => json } as Response;
