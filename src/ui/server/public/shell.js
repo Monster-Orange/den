@@ -3978,6 +3978,8 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldAllowClaimed":
+      "Waiting for your Allow: {what}. You asked, as {name} (not verified).",
     "bell.m.shared": "{actor} shared {title} with you",
     "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
     "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
@@ -4001,6 +4003,7 @@
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.rowClaimed": "You asked, as {name} (not verified): {what}",
     "bell.ap.waits": "Waiting {ago} · expires {time}",
     "bell.ap.allow": "Allow",
     "bell.ap.deny": "Deny",
@@ -4142,6 +4145,8 @@
       "Hub comments aren't arriving: Hub keeps closing the comment stream",
     "bell.m.hubCommentsSilent":
       "Hub comments aren't arriving: the comment stream went silent",
+    "bell.m.hubCommentsStale":
+      "Hub comments aren't arriving: the comment stream is open, but Hub lists comments it hasn't sent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
@@ -4903,6 +4908,9 @@
     "env.run.title": "The deploy run on GitHub",
     "env.run": "run",
     "env.timedOut": "timed out after {s} s",
+    "env.fetchFailed": "No answer: is it running?",
+    "env.fetchFailedWhy":
+      "{url} didn't answer. Check that it is running and that this computer can reach it.",
     "env.up": "up",
     "env.down": "down",
     "env.service": "Service",

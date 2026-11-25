@@ -3056,6 +3056,8 @@
     "bell.m.vschedExpire.one":
       'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.heldAllowClaimed":
+      "Espera tu permiso: {what}. Lo pediste tú, como {name} (sin verificar).",
     "bell.m.shared": "{actor} compartió {title} contigo",
     "bell.m.sharedNote": "{actor} compartió {title} contigo: {note}",
     "bell.m.sharedAgent": "El agente {actor} compartió {title} contigo",
@@ -3082,6 +3084,7 @@
     "bell.ap.h": "Esperan tu permiso",
     "bell.ap.row": "{name} pide: {what}",
     "bell.ap.rowAsk": "Pedido: {what}",
+    "bell.ap.rowClaimed": "Lo pediste tú, como {name} (sin verificar): {what}",
     "bell.ap.waits": "Espera desde hace {ago} · vence {time}",
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
@@ -3227,6 +3230,8 @@
       "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
     "bell.m.hubCommentsSilent":
       "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
+    "bell.m.hubCommentsStale":
+      "Los comentarios de Hub no llegan: el flujo de comentarios está abierto, pero Hub tiene comentarios que no ha enviado",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
@@ -4891,6 +4896,9 @@
     "env.run.title": "La ejecución del despliegue en GitHub",
     "env.run": "ejecución",
     "env.timedOut": "se agotó el tiempo tras {s} s",
+    "env.fetchFailed": "Sin respuesta: ¿está en marcha?",
+    "env.fetchFailedWhy":
+      "{url} no respondió. Comprueba que está en marcha y que este ordenador llega a esa dirección.",
     "env.up": "activo",
     "env.down": "caído",
     "env.service": "Servicio",

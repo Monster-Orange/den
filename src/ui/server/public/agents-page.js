@@ -1463,6 +1463,72 @@ function paintList() {
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
+  fitListFloor();
+}
+
+/** How many whole rows the list keeps in view over an open pane (narrow). */
+const LIST_FLOOR_ROWS = 3;
+/** The floor's least, as before (6rem): the list scrolls under it. */
+const LIST_FLOOR_MIN_PX = 96;
+
+/**
+ * On a narrow screen the list sits above the panes, and its height has a
+ * floor (agents.html: --agl-floor). The floor holds the list's notes and
+ * its view switch, then LIST_FLOOR_ROWS whole rows: the notes never take
+ * the rows' room. But an open pane keeps its own minimum (its To line stays
+ * above the runs dock shut, with no page scroll): where both
+ * don't fit, the list gets what's left, never less than 6rem, and scrolls.
+ * With the dock open the page scrolls to the To line anyway: the list keeps
+ * its first whole row. Measured after
+ * each paint and on resize; the CSS caps it.
+ */
+function fitListFloor() {
+  const agx = st.root?.querySelector("#agx");
+  const el = st.root?.querySelector("#agl");
+  if (!agx || !el) return;
+  // The floor is used at 860px and below only: wider, read no layout.
+  if (!matchMedia("(max-width: 860px)").matches) {
+    agx.style.removeProperty("--agl-floor");
+    return;
+  }
+  // Only rows that are drawn: not those in a shut Stopped (n), which some
+  // engines still give a box (content-visibility), nor any hidden one.
+  const rows = Array.from(el.querySelectorAll(".agr")).filter(
+    (r) => !r.closest("details:not([open])") && r.getClientRects().length > 0,
+  );
+  if (!rows.length) {
+    agx.style.removeProperty("--agl-floor");
+    return;
+  }
+  const top = el.getBoundingClientRect().top - el.scrollTop;
+  const border = el.offsetHeight - el.clientHeight;
+  const upTo = (r) =>
+    Math.ceil(r.getBoundingClientRect().bottom - top + border);
+  let px = upTo(rows[Math.min(LIST_FLOOR_ROWS, rows.length) - 1]);
+  const right = agx.querySelector("#agr");
+  const pane = right?.querySelector(".pane:not([hidden])");
+  if (pane && document.querySelector(".den-dock.open")) {
+    // The runs dock open takes up to half the screen: the page scrolls to
+    // the pane's To line above it anyway, and the list keeps its first row.
+    px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
+  } else if (pane) {
+    const gap = parseFloat(getComputedStyle(agx).rowGap) || 0;
+    // The right side's least: the pane's minimum, plus what sits beside it
+    // there (the tab strip in Tabs).
+    const beside =
+      right.getBoundingClientRect().height -
+      pane.getBoundingClientRect().height;
+    const room =
+      agx.clientHeight -
+      gap -
+      Math.max(0, beside) -
+      (parseFloat(getComputedStyle(pane).minHeight) || 0);
+    px = Math.max(LIST_FLOOR_MIN_PX, Math.min(px, Math.floor(room)));
+  }
+  agx.style.setProperty(
+    "--agl-floor",
+    `${Math.max(LIST_FLOOR_MIN_PX, Math.ceil(px))}px`,
+  );
 }
 
 /**
@@ -6117,6 +6183,14 @@ function openStoppedMenu(r, opener) {
 export async function mountAgentsPage(root) {
   if (!root) return;
   st.root = root;
+  // The list's floor follows the room it has: the window, and the runs
+  // dock opening or shutting.
+  {
+    const agx = root.querySelector("#agx");
+    if (agx && "ResizeObserver" in window)
+      new ResizeObserver(() => fitListFloor()).observe(agx);
+    else window.addEventListener("resize", fitListFloor);
+  }
   // The double-click fix: a redraw keeps a busy agent's buttons held.
   if (typeof MutationObserver === "function")
     new MutationObserver(() => {

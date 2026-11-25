@@ -278,9 +278,12 @@ export function allowsOf(b) {
 function allowRowHtml(w, open) {
   if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
+  // The person asked, under an unverified agent claim.
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
-    : tr("bell.ap.rowAsk", { what });
+    : w.claimedAs
+      ? tr("bell.ap.rowClaimed", { name: w.claimedAs, what })
+      : tr("bell.ap.rowAsk", { what });
   const waits =
     typeof w.since === "string" && typeof w.expiresAt === "string"
       ? tr("bell.ap.waits", {

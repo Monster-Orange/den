@@ -894,6 +894,16 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  // The cursor's age, the last list read, and a stall.
+  if (h.cursorAt != null)
+    parts.push(`cursor moved ${agoText(now - h.cursorAt)}`);
+  if (h.lastPoll)
+    parts.push(
+      `last list read ${agoText(now - h.lastPoll.at)}: ${
+        h.lastPoll.ok ? `${h.lastPoll.count ?? 0} waiting` : h.lastPoll.error
+      }`,
+    );
+  if (h.stale) parts.push(`${h.stale.waiting} waiting in Hub`);
   if (journal) {
     const words: [keyof typeof journal.counts, string][] = [
       ["typed", "typed"],

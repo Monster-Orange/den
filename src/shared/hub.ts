@@ -142,6 +142,13 @@ export interface HubConfig {
    */
   deliveryAlertMinutes: number;
   /**
+   * hub.delivery_stale_hours (default 6, 0: off; hours, any
+   * number 0 or more): the comment stream open but no delivery for this
+   * long, with comments waiting in Hub's list, and doctor and the bell say
+   * the cursor is stuck.
+   */
+  deliveryStaleHours: number;
+  /**
    * Issue 703 hub.delivery_stream_silence_seconds (default 75, three of
    * Hub's 25 s keep-alives; 0: off; else at least 5): no bytes on the
    * comment stream this long, and Den reopens it.
@@ -241,6 +248,7 @@ type RawHub =
       delivery_held_bell_minutes?: unknown;
       delivery_answer_minutes?: unknown;
       delivery_alert_minutes?: unknown;
+      delivery_stale_hours?: unknown;
       delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
@@ -380,6 +388,15 @@ export function readHubConfig(
     throw new Error(
       "hub.delivery_alert_minutes must be a number, 0 or more (0: off)",
     );
+  const sh = h.delivery_stale_hours;
+  if (
+    sh !== undefined &&
+    sh !== null &&
+    !(typeof sh === "number" && Number.isFinite(sh) && sh >= 0)
+  )
+    throw new Error(
+      "hub.delivery_stale_hours must be a number of hours, 0 or more (0: off)",
+    );
   const sil = h.delivery_stream_silence_seconds;
   if (
     sil !== undefined &&
@@ -448,6 +465,7 @@ export function readHubConfig(
     deliveryHeldBellMinutes: heldBell,
     deliveryAnswerMinutes: answer,
     deliveryAlertMinutes: typeof am === "number" ? am : 15,
+    deliveryStaleHours: typeof sh === "number" ? sh : 6,
     deliveryStreamSilenceSeconds: typeof sil === "number" ? sil : 75,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,

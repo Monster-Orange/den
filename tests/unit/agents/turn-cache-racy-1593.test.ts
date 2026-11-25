@@ -1,5 +1,5 @@
 /**
- * Issue 1593: a due agent wasn't relaunched after its turn ended. Whether
+ * A due agent must be relaunched after its turn ends. Whether
  * a turn is going is kept per transcript while its size and mtime stay the
  * same. A file's mtime ticks coarsely (a few ms on Linux, 2 s on some
  * shares), so a rewrite inside one tick, of the same size, looked unchanged
