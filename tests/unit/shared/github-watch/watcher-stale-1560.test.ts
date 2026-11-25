@@ -228,6 +228,51 @@ describe("issue 1560: a head off the page isn't done while a run on it is still 
   });
 });
 
+describe("issue 1560: the head moved, and the new ask is refused", () => {
+  const movedNote = `The pull request's head moved to ${SHA2.slice(0, 7)}.`;
+
+  it("the queue is full (too_many): the old watch ends saying so, and the refusal says it too", async () => {
+    settings = { ...settings, watchesMax: 2 };
+    gh.remaining = 600; // over the floor, paying for one watch an hour: the cap is watches_max
+    gh.reset = Math.floor(t / 1000) + 3600;
+    const w = watcher();
+    expect((await w.create(ask(2))).ok).toBe(true);
+    const first = await w.create(ask(1));
+    if (!first.ok) throw new Error("not created");
+    settings = { ...settings, watchesMax: 1 };
+    for (let n = 100; ; n++) {
+      const q = await w.create(ask(n));
+      if (!q.ok) break; // the queue is full
+    }
+    gh.pr(A, 1, SHA2); // a push
+    const again = await w.create(ask(1));
+    if (again.ok) throw new Error("not refused");
+    expect(again.code).toBe("too_many");
+    expect(again.error).toContain(
+      `${first.watch.id} on head ${SHA1.slice(0, 7)} ended: ${movedNote}`,
+    );
+    const old = w.list("planner").find((x) => x.id === first.watch.id);
+    expect(old).toMatchObject({ state: "done", note: movedNote });
+  });
+
+  it("GitHub's budget is low (budget_low): the same", async () => {
+    const w = watcher();
+    const first = await w.create(ask(1));
+    if (!first.ok) throw new Error("not created");
+    gh.pr(A, 1, SHA2); // a push
+    gh.remaining = 420; // the look at the head comes back under the floor
+    gh.reset = Math.floor(t / 1000) + 900;
+    const again = await w.create(ask(1));
+    if (again.ok) throw new Error("not refused");
+    expect(again.code).toBe("budget_low");
+    expect(again.error).toContain(
+      `${first.watch.id} on head ${SHA1.slice(0, 7)} ended: ${movedNote}`,
+    );
+    const old = w.list("planner").find((x) => x.id === first.watch.id);
+    expect(old).toMatchObject({ state: "done", note: movedNote });
+  });
+});
+
 describe("issue 1560: a head off the page waiting its turn", () => {
   it("isn't ended as stale before its own runs are read", async () => {
     settings = { ...settings, staleMinutes: 5 };

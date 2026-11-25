@@ -309,8 +309,14 @@ export class GithubWatcher {
     // Issue 1560: the replaced watch ends now, so it takes no slot. Its
     // agent hears it in this answer, not as a message too; the note names
     // the new watch once it exists (replaced, below).
+    // Should the ask be refused below, the note stands, and the refusal
+    // says it ended.
+    const movedNote = `The pull request's head moved to ${movedTo.slice(0, 7)}.`;
+    const ended = moved
+      ? ` Your watch ${same!.id} on head ${same!.head!.slice(0, 7)} ended: ${movedNote}`
+      : "";
     if (moved) {
-      this.finish(same!, now, { note: "", text: "" });
+      this.finish(same!, now, { note: movedNote, text: "" });
       same!.delivered = true;
     }
     const replaced = (w: Watch) => {
@@ -322,7 +328,7 @@ export class GithubWatcher {
       return {
         ok: false,
         code: "budget_low",
-        error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.`,
+        error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.${ended}`,
       };
     // Issue 1166: past the cap, queued; it starts when a slot frees.
     const open = this.open();
@@ -333,7 +339,7 @@ export class GithubWatcher {
         return {
           ok: false,
           code: "too_many",
-          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.`,
+          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.${ended}`,
         };
       const q: Watch = {
         id: `gw-${crypto.randomBytes(4).toString("hex")}`,
