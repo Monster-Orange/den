@@ -118,6 +118,7 @@ import {
   TURN_READ_MAX_BYTES,
 } from "./conversations.js";
 import { claudeOpenPid, claudeOpenPids } from "./open-check.js";
+import { REPO_SECRETS_FILE } from "../credential-paths.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -585,6 +586,33 @@ export function credentialDirRules(
 }
 
 /**
+ * Deny an agent's Read, Edit and Bash tools each repo's stack secrets file
+ * (and the copies a write leaves beside it) and the cached sign-ins folders.
+ */
+export function repoSecretDenyRules(
+  repoDirs: readonly string[],
+  authDirs: readonly string[],
+  home?: string,
+): string[] {
+  const files = [...new Set(repoDirs.map((d) => path.resolve(d)))].map((d) =>
+    path.join(d, REPO_SECRETS_FILE),
+  );
+  const targets = files.flatMap((f) =>
+    shellSpellings(f, home).map((p) => `${p}*`),
+  );
+  return [
+    `Read(**/${REPO_SECRETS_FILE}*)`,
+    `Edit(**/${REPO_SECRETS_FILE}*)`,
+    `Bash(*${REPO_SECRETS_FILE}*)`,
+    ...files.map((f) => `Read(/${f}*)`),
+    ...files.map((f) => `Edit(/${f}*)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+    ...(authDirs.length ? credentialDirRules(authDirs, home) : []),
+  ];
+}
+
+/**
  * Issue 816 review: the folder where test installs announce themselves.
  * Reading it would show an agent the state folder (and so the web.secret)
  * of a test install announced after the agent started, which its launch
@@ -901,6 +929,15 @@ function common(input: LaunchInput): {
                       (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
                       input.env?.HOME,
                     ),
+                    ...(input.repoDirs?.length || input.playwrightAuthDir
+                      ? repoSecretDenyRules(
+                          (input.repoDirs ?? []).flatMap(bothSpellings),
+                          input.playwrightAuthDir
+                            ? bothSpellings(input.playwrightAuthDir)
+                            : [],
+                          input.env?.HOME,
+                        )
+                      : []),
                     // Issue 816: announced test installs'; issue 728:
                     // the other installs in the install registry.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>
