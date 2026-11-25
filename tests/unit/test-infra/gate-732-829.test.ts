@@ -113,4 +113,45 @@ describe("gate/732.mjs (issue 829)", () => {
     expect(rows[1].ok).toBe(false);
     expect(rows[1].skip).toBeUndefined();
   });
+  // Reviewer B on PR 1540: pgrep looks machine-wide, so the check must
+  // look for this run's own job, and an unset STUB_HOME must not widen it.
+  const looked = (out: string, name = "g732t1") =>
+    call(`await (async () => {
+      const sent = [];
+      const a = { sh: async (cmd) => { sent.push(cmd); return { out: ${JSON.stringify(out)} }; } };
+      const got = await g.jobPresent(a, ${JSON.stringify(name)});
+      return { got, sent };
+    })()`) as { got: boolean | null; sent: string[] };
+
+  it("the job is looked for by this run's own name, under the stub's STUB_HOME only", () => {
+    const { got, sent } = looked("yes", "g732abc");
+    expect(got).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('[ -n "$STUB_HOME" ]');
+    expect(sent[0]).toContain(
+      "$STUB_HOME/shell-snapshots/snapshot-zsh-[0-9]+-g732abc\\.sh",
+    );
+  });
+
+  it("an empty STUB_HOME answers unknown: null, and every clause skips as needs-background-job", () => {
+    expect(looked("unknown").got).toBeNull();
+    const rows = judge({
+      ...good,
+      seen: false,
+      probe: { status: 202, code: null },
+      jobPresent: null,
+    });
+    expect(rows.map((r) => r.skip)).toEqual([
+      "needs-background-job",
+      "needs-background-job",
+      "needs-background-job",
+    ]);
+  });
+
+  it("each run names its job anew, so two runs on one machine don't see each other's", () => {
+    const [a, b] = call("[g.jobName(1000), g.jobName(2000)]") as string[];
+    expect(a).toMatch(/^g732[a-z0-9]+$/);
+    expect(b).toMatch(/^g732[a-z0-9]+$/);
+    expect(a).not.toBe(b);
+  });
 });

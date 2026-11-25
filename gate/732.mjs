@@ -129,15 +129,23 @@ async function append(ctx, a, id, rec) {
 }
 
 /**
- * Issue 829: whether the stub's background shell is running inside its own
- * session (under its $STUB_HOME), whatever Den saw: true, false, or null
- * when the session didn't answer. The bracket keeps the shell running
- * pgrep from matching itself.
+ * This run's background job's name, new each run (as gate/1407.mjs names
+ * its own), so two runs on one machine never see each other's job.
  */
-async function jobPresent(a) {
+export const jobName = (now = Date.now()) => `g732${now.toString(36)}`;
+
+/**
+ * Issue 829: whether this run's background shell (`name`, the stub's /bg)
+ * is running inside its own session (under its $STUB_HOME), whatever Den
+ * saw: true, false, or null when the session didn't answer or STUB_HOME
+ * isn't set there. pgrep looks machine-wide, so an empty STUB_HOME must
+ * never widen the pattern to every agent's background shell. The pattern's
+ * `[0-9]+` keeps the shell running pgrep from matching itself.
+ */
+export async function jobPresent(a, name) {
   try {
     const r = await a.sh(
-      `pgrep -f "$STUB_HOME/shell-snapshots/snapshot-zs[h]" >/dev/null && echo yes || echo no`,
+      `if [ -n "$STUB_HOME" ]; then pgrep -f "$STUB_HOME/shell-snapshots/snapshot-zsh-[0-9]+-${name}\\.sh" >/dev/null && echo yes || echo no; else echo unknown; fi`,
       10000,
     );
     const out = String(r?.out ?? "").trim();
@@ -198,7 +206,8 @@ export async function run(ctx, s) {
   // message from the page, forks a detached shell of its own that sources
   // a file under shell-snapshots/ and sleeps, as Claude Code's background
   // shells look to Den. Its turn ends at once.
-  const bg = await say(ctx, s.id, `/bg ${JOB_S} g732`);
+  r.job = jobName();
+  const bg = await say(ctx, s.id, `/bg ${JOB_S} ${r.job}`);
   r.bg = { status: bg.status, code: bg.code };
   await ctx.sleep(2000);
   await endTurn(ctx, a, s.id, "Started the watcher in the background.");
@@ -206,7 +215,7 @@ export async function run(ctx, s) {
 
   // Issue 829: whether the job really runs under the stub, looked at
   // before any Restart probe (a restart Den lets through ends it).
-  r.jobPresent = await jobPresent(a);
+  r.jobPresent = await jobPresent(a, r.job);
 
   // Clause 3, and whether Den sees the job at all.
   r.session = sessionOf(ctx, s.id);
