@@ -1193,12 +1193,16 @@ function mcpActions(): readonly string[] {
 const LITERAL_PATHS = new Set(
   ROUTES.filter((r) => !/[:*]/.test(r.path)).map((r) => r.path),
 );
-/** The routes that name a project in the path, and that segment's index. */
-const WS_ROUTES = ROUTES.filter((r) => r.path.split("/").includes(":ws")).map(
-  (r) => ({ path: r.path, at: r.path.split("/").indexOf(":ws") }),
-);
+/** The routes that name a project in the path (`:ws`, `:project`), and where. */
+const PROJECT_SEGMENTS = [":ws", ":project"];
+const WS_ROUTES = ROUTES.flatMap((r) => {
+  const at = r.path
+    .split("/")
+    .findIndex((seg) => PROJECT_SEGMENTS.includes(seg));
+  return at < 0 ? [] : [{ path: r.path, at }];
+});
 
-/** The project a route names in its path (`:ws`), decoded; else null. */
+/** The project a route names in its path, decoded; else null. */
 export function routeWorkspace(pathname: string): string | null {
   if (LITERAL_PATHS.has(pathname)) return null;
   const hit = WS_ROUTES.find((r) => pathMatches(r.path, pathname));

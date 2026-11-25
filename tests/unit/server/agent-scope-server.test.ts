@@ -51,6 +51,7 @@ const READS = [
   "/api/sessions?ws=south",
   "/api/sessions?workspace=south",
   "/api/services?workspace=south",
+  "/api/embed/p/south/agents/b1/state",
 ];
 
 /** Another project's agents: person-only already, on every install. */
