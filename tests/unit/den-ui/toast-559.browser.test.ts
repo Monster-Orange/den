@@ -312,6 +312,129 @@ describe("issue 559: the toast in a browser", () => {
     await p.context().close();
   });
 
+  it("390 px: × on the first line, the actions one row 4–8 px under the words, 44 px taps, full width less 16 px", async () => {
+    if (skip()) return;
+    const cases = [
+      {
+        lang: "en",
+        o: {
+          kind: "error",
+          message: "Couldn't save the settings",
+          detail: "Request a1b2c3d4",
+          actions: [{ label: "Retry" }, { label: "Copy details" }],
+        },
+      },
+      {
+        lang: "en",
+        o: {
+          message: "Removed keeper",
+          undo: true,
+          link: { href: "/s", label: "Settings" },
+        },
+      },
+      {
+        lang: "ja",
+        o: {
+          message: "keeper を削除しました",
+          undo: true,
+          link: { href: "/s", label: "設定" },
+        },
+      },
+    ];
+    for (const mode of ["light", "dark"] as const)
+      for (const c of cases) {
+        const p = await open({ width: 390, mode, lang: c.lang });
+        await show(p, c.o);
+        const b = await p.evaluate(() => {
+          const t = document.querySelector("[data-den-toast] > [data-kind]")!;
+          for (const a of t.getAnimations()) a.finish();
+          const r = (e: Element | null) => e && e.getBoundingClientRect();
+          const words = r(t.querySelector(".den-toast-words"))!;
+          const msg = t.querySelector("[data-toast-msg]")!;
+          const line = parseFloat(getComputedStyle(msg).lineHeight);
+          const acts = r(t.querySelector(".den-toast-acts"))!;
+          const taps = [...t.querySelectorAll("button, a")].map((e) => ({
+            h: r(e)!.height,
+            top: r(e)!.top,
+          }));
+          const close = r(t.querySelector("[data-toast-close]"));
+          return {
+            width: r(t)!.width,
+            gap: acts.top - words.bottom,
+            actsOneRow: new Set(
+              [
+                ...t.querySelectorAll(
+                  ".den-toast-acts > *, .den-toast-acts form > *",
+                ),
+              ]
+                .filter((e) => e.matches("button, a"))
+                .map((e) => Math.round(r(e)!.top)),
+            ).size,
+            minTap: Math.min(...taps.map((x) => x.h)),
+            close: close && {
+              mid: close.top + close.height / 2,
+              line1: r(msg)!.top + line / 2,
+              besideWords: close.left >= words.right - 0.5,
+            },
+          };
+        });
+        const tag = `${mode} ${c.lang} ${c.o.message}`;
+        expect([tag, b.width]).toEqual([tag, 390 - 32]);
+        expect([tag, b.gap >= 4 && b.gap <= 8]).toEqual([tag, true]);
+        expect([tag, b.actsOneRow]).toEqual([tag, 1]);
+        expect([tag, b.minTap >= 44]).toEqual([tag, true]);
+        if (b.close) {
+          expect([tag, Math.abs(b.close.mid - b.close.line1) <= 3]).toEqual([
+            tag,
+            true,
+          ]);
+          expect([tag, b.close.besideWords]).toEqual([tag, true]);
+        }
+        await p.context().close();
+      }
+  });
+
+  it("390 px: a one-line plain toast stays sized to its words", async () => {
+    if (skip()) return;
+    const p = await open({ width: 390 });
+    await show(p, { message: "Saved" });
+    const w = await p.evaluate(
+      () =>
+        document
+          .querySelector("[data-den-toast] > [data-kind]")!
+          .getBoundingClientRect().width,
+    );
+    expect(w).toBeLessThan(200);
+    await p.context().close();
+  });
+
+  it("the error glyph: at least 3:1 against the toast, light and dark", async () => {
+    if (skip()) return;
+    for (const mode of ["light", "dark"] as const) {
+      const p = await open({ mode });
+      await show(p, { kind: "error", message: "Down" });
+      const ratio = await p.evaluate(() => {
+        const t = document.querySelector("[data-den-toast] > [data-kind]")!;
+        const rgb = (v: string) =>
+          (v.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        const lum = (c: number[]) => {
+          const [r, g, b] = c.map((x) => {
+            const v = x / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        const a = lum(rgb(getComputedStyle(t).backgroundColor));
+        const b = lum(
+          rgb(getComputedStyle(t.querySelector(".den-toast-ic")!).color),
+        );
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      });
+      expect([mode, ratio >= 3]).toEqual([mode, true]);
+      await p.context().close();
+    }
+  });
+
   it("20 px up by default; a host with a bottom bar sets --den-toast-bottom", async () => {
     if (skip()) return;
     const p = await open();

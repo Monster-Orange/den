@@ -99,6 +99,8 @@
   --ok: #27613b;
   --warn: #774c0e;
   --bad: #983124;
+  /* --bad on an inverted surface (the toast): the dark theme's, 6.2:1. */
+  --bad-inverse: #ef7f6a;
   --info: hsl(213 22% 36%);
   /* #0e7280 failed the pill rule over --sunken (4.20:1). #0d6b79 failed
      the disc rule (an agent's initial on its 16% tint) over --sunken
@@ -134,6 +136,7 @@
   --ok: #6fc28f;
   --warn: #e0a84e;
   --bad: #ef7f6a;
+  --bad-inverse: #983124;
   --info: hsl(213 30% 74%);
   --remote: #74b8c8;
   --violet: #a993ff;
@@ -164,6 +167,7 @@
     --ok: #6fc28f;
     --warn: #e0a84e;
     --bad: #ef7f6a;
+    --bad-inverse: #983124;
     --info: hsl(213 30% 74%);
     --remote: #74b8c8;
     --violet: #a993ff;

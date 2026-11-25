@@ -35,11 +35,15 @@
   font-family: var(--sans);
   font-size: 13px;
   line-height: 18px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow);
+  /* On this inverted surface the ring is the page's background colour,
+     whatever a theme sets it to elsewhere. */
+  --focus-ring: var(--bg);
 }
 .den-toast-ic {
   flex: none;
-  color: var(--bad);
+  /* The inverted surface's error colour (at least 3:1 on it). */
+  color: var(--bad-inverse, currentColor);
 }
 .den-toast-words {
   display: flex;
@@ -88,16 +92,30 @@
   line-height: 1;
 }
 .den-toast :focus-visible {
-  outline: 2px solid var(--bg);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--bg));
+  outline-offset: var(--focus-offset, 2px);
 }
-/* A phone: the actions under the words, left-aligned, each a full tap. */
+/* A phone: the first row is the icon, the words and Close (top right,
+   on the words' first line); the actions are one row under them, 6 px
+   down, left-aligned, each a full tap. A toast with actions is the full
+   width less 16 px each side; a one-line plain one stays its own size. */
 @media (max-width: 480px) {
   .den-toast {
     flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 6px;
+  }
+  .den-toast:has(.den-toast-acts) {
+    width: calc(100vw - 32px);
   }
   .den-toast-words {
-    flex: 1 1 calc(100% - 40px);
+    flex: 1 1 0;
+  }
+  .den-toast-close {
+    order: 2;
+    justify-content: center;
+    /* Its 44 px box centred on the words' first line (18 px). */
+    margin: -13px -10px -13px 0;
   }
   .den-toast-acts {
     order: 3;
