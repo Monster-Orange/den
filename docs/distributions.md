@@ -5439,6 +5439,8 @@ category, description, runtime, model and its version, mode, allowed
 commands and the instructions. Every other key in the file (`subagent_model`,
 `persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
 (issue 978).
+`persona_update` also takes `subagentModel`, written as `subagent_model`
+(issue 110: the Coach's Apply proposes it).
 
 **A persona's version** (issue 137) is the sha256 of its file, so any edit
 makes a new one; `persona_version` gives it a readable name. An agent

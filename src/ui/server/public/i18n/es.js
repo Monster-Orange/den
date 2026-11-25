@@ -1342,6 +1342,9 @@
       "Cuánto espera Den la respuesta de una máquina de pruebas cuando está a punto de darle un turno. Sin respuesta, la máquina se omite. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck":
       "Una máquina omitida se comprueba de nuevo tras, en segundos",
+    "set.server.gate_runner_entries": "Entradas de runners de CI",
+    "set.server.gate_runner_entries.d":
+      "Qué trabajos de CI de qué repositorios pueden ejecutarse en qué máquina de pruebas: las etiquetas del runner que piden, la variable del repositorio que los enruta, cuántos a la vez, si cada uno toma el turno pesado de la máquina y quién responde por ella. Por ahora son solo ajustes: Den aún no arranca runners. Un agente pide añadir una y tú lo permites. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.gate_box_default": "Las pruebas de navegador van a",
@@ -2339,6 +2342,22 @@
       "Se guarda como confirmada, igual que la guarda Ajustes; vale sin reiniciar, y Den se lo dice al Hub conectado.",
     "set.ui.hub.denUrlRefused":
       "Hub no aceptó la dirección de este Den ({url}): {why}",
+    "ap.do.gate_runner_entry_set":
+      "Dejar que los trabajos de CI de {repo} se ejecuten en la máquina de pruebas {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Deja que los trabajos de CI de {repo} con las etiquetas {labels} se ejecuten en la máquina de pruebas {box}, como mucho {n} a la vez.",
+    "ap.det.gate_runner_entry_set.change":
+      "Cambia la entrada que deja que los trabajos de CI de {repo} con las etiquetas {labels} se ejecuten en la máquina de pruebas {box}, como mucho {n} a la vez.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Cada trabajo toma uno de los turnos de {box}, así que nunca se ejecuta junto a otro trabajo pesado allí.",
+    "ap.det.gate_runner_entry_set.light":
+      "Sus trabajos son ligeros: no toman ningún turno en {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "La variable del repositorio {variable} envía sus trabajos a la máquina, o de vuelta a los runners alojados. {owner} responde por ella.",
+    "ap.det.gate_runner_entry_set.private":
+      "Los runners de la máquina solo arrancan en un repositorio privado: si {repo} es público, no arranca ninguno salvo que una persona permita los repositorios públicos en este proyecto.",
+    "ap.det.gate_runner_entry_set.remove":
+      "Puedes quitarla cuando quieras en Ajustes, en Entradas de runners de CI.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":
@@ -3350,6 +3369,200 @@
     "sa.runsOn": "Se ejecuta en",
     "sa.openAgents": "Abrir en Agentes",
     "sa.saved": "Guardado. El agente lo usa desde su próximo inicio.",
+    // Issue 52: the Coach tab (mock v2).
+    "co.tabs": "Vistas del agente",
+    "co.tab.terminal": "Terminal",
+    "co.tab.coach": "Coach",
+    "co.run": "Ejecutar ahora",
+    "co.runAgain": "Ejecutar de nuevo",
+    "co.running": "Ejecutando…",
+    "co.running.sub": "Leyendo transcripciones: {done} de {total} agentes.",
+    "co.running.start": "Iniciando la ejecución.",
+    "co.running.h": "Leyendo los agentes de este __DEN_TITLE__",
+    "co.running.p":
+      "La pestaña se completa cuando termina la ejecución. Puedes salir de esta página.",
+    "co.failed": "La última ejecución falló: {when}",
+    "co.failed.before":
+      "No se guardó nada. Se muestra la ejecución anterior: {when}.",
+    "co.failed.none": "No se guardó nada.",
+    "co.failed.table":
+      "La tabla de abajo es el informe del {when}, sin cambios.",
+    "co.none.h": "Aún no se ha ejecutado",
+    "co.none.sub":
+      "Ejecútalo a mano. Lee los agentes de este __DEN_TITLE__ y no cambia nada.",
+    "co.empty.h": "Aún no hay informe",
+    "co.empty.p":
+      "Pulsa Ejecutar ahora. Una ejecución tarda uno o dos minutos.",
+    "co.last": "Última ejecución: {when}",
+    "co.cost": "Costó {tokens} tokens en {model}. Leyó {n} agentes.",
+    "co.cost.one": "Costó {tokens} tokens en {model}. Leyó {n} agente.",
+    "co.costNone": "No usó ningún modelo. Leyó {n} agentes.",
+    "co.costNone.one": "No usó ningún modelo. Leyó {n} agente.",
+    "co.off.h": "El Coach está apagado",
+    "co.off.sub": "Activa el Coach para ejecutarlo.",
+    "co.off.p":
+      "El Coach lee cómo usan los tokens los agentes de este __DEN_TITLE__ y escribe un informe. Solo lee los agentes de este __DEN_TITLE__, no envía nada fuera de esta máquina y no cambia nada.",
+    "co.off.how":
+      "Para activarlo: Ajustes → Agentes → Coach → activar. O pon agents.coach.enabled: true.",
+    "co.openSettings": "Abrir Ajustes",
+    "co.tile.window": "Periodo",
+    "co.days": "{n} días",
+    "co.days.one": "{n} día",
+    "co.perDayShort": "{v} / día",
+    "co.range": "Periodo: {from} – {to}, {days} días",
+    "co.showAs": "Mostrar recuentos como",
+    "co.total": "Total",
+    "co.perDay": "Por día",
+    "co.col.agent": "Agente",
+    "co.col.calls": "Llamadas",
+    "co.col.output_M": "Tokens de salida",
+    "co.col.cache_read_B": "Lecturas de caché",
+    "co.col.avg_context_k_main": "Contexto medio / llamada",
+    "co.col.compactions": "Compactaciones",
+    "co.col.rotations": "Rotaciones",
+    "co.col.conversations": "Conversaciones",
+    "co.col.polls": "Sondeos",
+    "co.col.denials": "Denegaciones",
+    "co.col.tool_error_pct": "Errores de herramientas",
+    "co.col.correction_pct": "Correcciones",
+    "co.card.calls": "Llamadas",
+    "co.card.output": "Salida",
+    "co.noNumbers": "sin cifras en este periodo",
+    "co.foot": "Solo los agentes que este __DEN_TITLE__ inició o trajo.",
+    "co.detail.sub": "{range} · {n} conversaciones",
+    "co.detail.sub.one": "{range} · {n} conversación",
+    "co.close": "Cerrar",
+    "co.conv.h": "Conversaciones (las más recientes primero)",
+    "co.noConv": "Ninguna conversación en este periodo.",
+    "co.kind.start": "inicio",
+    "co.kind.fresh": "nueva",
+    "co.kind.rotation": "rotación",
+    "co.kind.bring-in": "traída",
+    "co.why.start": "su primer inicio",
+    "co.why.fresh": "una conversación nueva: Empezar de nuevo o un reinicio",
+    "co.why.rotation": "reiniciado desde su traspaso",
+    "co.why.bring-in": "traída desde fuera de __DEN_TITLE__",
+    "co.approx": "(hora aproximada)",
+    "co.mix.h": "Reparto de modelos, por llamadas",
+    "co.mix.main": "Llamadas principales",
+    "co.mix.sub": "Llamadas de subagentes",
+    "co.mix.none": "Sin llamadas",
+    "co.mix.opus": "Opus",
+    "co.mix.sonnet": "Sonnet",
+    "co.mix.haiku": "Haiku",
+    "co.mix.other": "Otros",
+    "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} en Opus; el Coach lo señala abajo",
+    "co.perDayH": "Por día",
+    "co.perDayLine":
+      "Llamadas {calls}/día · salida {output}/día · {compactions} compactaciones/día · {rotations} rotaciones/día",
+    "co.run.w": "Ejecutando el Coach…",
+    "co.run.done": "Listo: el informe del Coach está listo.",
+    "co.run.fail": "La ejecución del Coach falló.",
+    "co.dis.w": "Descartando…",
+    "co.dis.done": "Descartado.",
+    "co.dis.fail": "No se pudo descartar.",
+    "co.ap.busy.w": "Pidiendo permiso…",
+    "co.ap.busy.done": "Enviado a la campana para permitirlo.",
+    "co.ap.busy.fail": "No se pudo pedir permiso.",
+    "co.undo.w": "Deshaciendo…",
+    "co.undo.done": "De vuelta en la lista.",
+    "co.undo.fail": "No se pudo deshacer el descarte.",
+    "co.counts.w": "Guardando…",
+    "co.counts.done": "Guardado.",
+    "co.counts.fail": "No se pudo guardar cómo se muestran los recuentos.",
+    "co.off.status": "Apagado",
+    "co.f.h": "Hallazgos",
+    "co.f.count":
+      "{n} de esta ejecución. El Coach solo lee e informa: no cambia nada.",
+    "co.f.count.one":
+      "{n} de esta ejecución. El Coach solo lee e informa: no cambia nada.",
+    "co.f.col.finding": "Hallazgo",
+    "co.f.col.agent": "Agente",
+    "co.f.col.why": "Por qué lo dice el Coach",
+    "co.ap.apply": "Aplicar",
+    "co.ap.proposed": "Cambio propuesto: {change}",
+    "co.ap.change.subagent_opus":
+      "Poner el modelo de subagentes de {persona} en Sonnet.",
+    "co.ap.rev.subagent_opus":
+      "Sí: vuelve a cambiarlo en la persona de {persona}.",
+    "co.ap.now.subagent_opus":
+      "El modelo de subagentes de {persona} ahora es Sonnet.",
+    "co.ap.none": "Coach no tiene un cambio que proponer para este.",
+    "co.ap.waiting": "Esperando Permitir",
+    "co.ap.waiting.line":
+      "Aún no ha cambiado nada. Una persona debe permitirlo en la campana.",
+    "co.ap.openBell": "Abrir la campana",
+    "co.ap.applied": "Aplicado",
+    "co.ap.applied.by":
+      "Permitido por {by}, {when}. {now} Coach lo revisará en la próxima ejecución.",
+    "co.ap.applied.at":
+      "Permitido {when}. {now} Coach lo revisará en la próxima ejecución.",
+    "co.ap.denied": "Denegado",
+    "co.ap.denied.by":
+      "Denegado por {by}, {when}. No se cambió nada. El hallazgo sigue.",
+    "co.ap.denied.at": "Denegado {when}. No se cambió nada. El hallazgo sigue.",
+    "co.ap.failed": "Falló",
+    "co.ap.failed.line": "No se pudo aplicar: {reason}. No se cambió nada.",
+    "co.ap.failed.none": "No se pudo aplicar. No se cambió nada.",
+    "co.ap.again": "Aplicar de nuevo",
+    "co.ap.retry": "Reintentar",
+    "co.ap.fail": "No se pudo pedir aplicar “{title}”. Inténtalo de nuevo.",
+    "co.ap.live.waiting": "“{title}”: esperando Permitir.",
+    "co.ap.live.applied": "“{title}”: aplicado.",
+    "co.ap.live.denied": "“{title}”: denegado. No se cambió nada.",
+    "co.ap.live.failed": "“{title}”: falló. No se cambió nada.",
+    "bell.coach.asks": "El agente de __DEN_TITLE__ pide cambiar {persona}",
+    "bell.coach.from": "Del hallazgo de Coach “{title}”.",
+    "bell.coach.change": "Cambio",
+    "bell.coach.why": "Por qué",
+    "bell.coach.rev": "Reversible",
+    "co.f.dismiss": "Descartar",
+    "co.f.undo": "Deshacer",
+    "co.f.toast": "Descartado “{title}”.",
+    "co.f.fail": "No se pudo descartar “{title}”. Inténtalo de nuevo.",
+    "co.f.none": "Nada destacó esta semana. Ningún agente pasa de un límite.",
+    "co.f.dismissedN": "{n} descartados",
+    "co.f.dismissedN.one": "{n} descartado",
+    "co.f.show": "Mostrar",
+    "co.f.hide": "Ocultar",
+    "co.f.dismissedAt": "Descartado el {when}",
+    "co.f.subagent_opus.t": "{agent} usa Opus en sus subagentes",
+    "co.f.subagent_opus.why":
+      "El {n}% de {calls} llamadas de subagentes usó Opus, por encima del límite del {line}%. Poner Sonnet como modelo de subagentes en su persona hace que explorar y comprobar usen el modelo más barato.",
+    "co.f.polling.t": "{agent} sondea mucho",
+    "co.f.polling.why":
+      "{n} sondeos al día, por encima del límite de {line}. Esperar una tarea larga sondeando cuesta una llamada cada vez; ejecutarla en segundo plano y esperar el aviso no cuesta nada.",
+    "co.f.no_rotation.t": "{agent} no ha rotado",
+    "co.f.no_rotation.why":
+      "{n} compactaciones en esta conversación, por encima de su límite de {line}. Cada una pierde contexto que el agente vuelve a leer. Reiniciarlo desde su traspaso lo arranca más pequeño.",
+    "co.f.denials.t": "A {agent} le deniegan a menudo",
+    "co.f.denials.why":
+      "{n} denegaciones al día, por encima del límite de {line}. Mira qué pide una y otra vez: una regla de permiso que puedas aprobar, o un cambio en cómo trabaja.",
+    "co.f.transcript_size.t": "{agent} tiene transcripciones grandes",
+    "co.f.transcript_size.why":
+      "{n} MB de transcripciones en este periodo, por encima del límite de {line} MB. Rotarlo, o guardar las capturas en archivos, las mantiene más pequeñas.",
+    "co.f.ask_r12.t": "{agent} te hace preguntas poco claras",
+    "co.f.ask_r12.why":
+      "El {pct}% de sus {n} preguntas fueron claras, por debajo del límite del {line}%. Frases cortas, cada ID explicado y cada decisión como pregunta numerada de sí o no las hacen claras.",
+    "co.f.ask_wait.t": "Las preguntas de {agent} esperan mucho",
+    "co.f.ask_wait.why":
+      "Sus preguntas esperaron {n} minutos una respuesta, de mediana, por encima del límite de {line}. Puede que otro agente tenga estas respuestas, o se podrían agrupar.",
+    "co.f.msg_repeat.t": "{agent} envía el mismo mensaje otra vez",
+    "co.f.msg_repeat.why":
+      "Envió el mismo texto a otros agentes {n} veces más, en o por encima del límite de {line}. Una respuesta perdida o un bucle: basta con decirlo una vez y esperar el aviso.",
+    "co.f.msg_no_reply.t": "Los mensajes de {agent} no reciben respuesta",
+    "co.f.msg_no_reply.why":
+      "El {pct}% de sus {n} mensajes a otros agentes no tuvo respuesta, por encima del límite del {line}%. Comprueba que escribe al agente que tiene la respuesta y que ese agente lee sus mensajes.",
+    "co.f.repeat_ask.t": "{agent} hizo que volvieras a pedirlo",
+    "co.f.repeat_ask.why":
+      "{n} de tus mensajes volvieron a pedir algo ya pedido, según el modelo barato. Puede que algo que pediste no se hiciera.",
+    "co.f.trivial_ask.t": "{agent} pregunta lo que podría decidir",
+    "co.f.trivial_ask.why":
+      "{n} de sus preguntas eran cosas que podía decidir por sí mismo, según el modelo barato.",
+    "co.f.relay.t": "{agent} reenvía tus peticiones como suyas",
+    "co.f.relay.why":
+      "{n} de sus mensajes pasaron una petición tuya a otro agente como si fuera suya, según el modelo barato.",
     "ag.cap":
       "Hasta 4 paneles: se cerró el de {id} para hacer sitio (sigue en marcha)",
     "ag.layout": "Disposición",
@@ -3931,6 +4144,23 @@
     "set.ui.boxIsOff": "apagada",
     "set.ui.boxTurnOn": "Encender",
     "set.ui.boxTurnOff": "Apagar",
+    "set.ui.reRepo": "Repositorio (dueño/nombre)",
+    "set.ui.reBox": "Máquina de pruebas",
+    "set.ui.reLabels": "Etiquetas del runner (separadas por comas)",
+    "set.ui.reVar": "Variable de enrutamiento",
+    "set.ui.reSlots": "A la vez",
+    "set.ui.reHeavy": "Toma el turno pesado de la máquina",
+    "set.ui.reOwner": "Quién responde por ella",
+    "set.ui.reSave": "Guardar entrada",
+    "set.ui.reNone":
+      "No hay entradas de runners. Los trabajos de CI usan runners alojados.",
+    "set.ui.reNoBox":
+      "Primero añade una máquina de pruebas, en Máquinas de pruebas.",
+    "set.ui.reHeavyIs": "pesado",
+    "set.ui.reLightIs": "ligero",
+    "set.ui.reSlotsN": "{n} a la vez",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "responde {who}",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",
@@ -4228,6 +4458,11 @@
     "set.agents.layout.o.focus": "Enfoque",
     "set.agents.layout.o.tabs": "Pestañas",
     "set.agents.layout.o.tile": "Mosaico",
+    "set.agents.coach_counts": "Pestaña Coach: mostrar recuentos como",
+    "set.agents.coach_counts.d":
+      "Total muestra los recuentos del periodo; Por día los divide entre sus días. Los porcentajes y las medias no cambian. El interruptor de la pestaña Coach también lo cambia.",
+    "set.agents.coach_counts.o.total": "Total",
+    "set.agents.coach_counts.o.per_day": "Por día",
     "set.agents.helpers_shown":
       "Mostrar hasta este número de ayudantes bajo un agente",
     "set.agents.helpers_shown.d":

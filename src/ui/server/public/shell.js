@@ -978,6 +978,21 @@
     "set.ui.boxIsOff": "turned off",
     "set.ui.boxTurnOn": "Turn on",
     "set.ui.boxTurnOff": "Turn off",
+    "set.ui.reRepo": "Repo (owner/name)",
+    "set.ui.reBox": "Test box",
+    "set.ui.reLabels": "Runner labels (comma-separated)",
+    "set.ui.reVar": "Routing variable",
+    "set.ui.reSlots": "At a time",
+    "set.ui.reHeavy": "Takes the box's heavy slot",
+    "set.ui.reOwner": "Who answers for it",
+    "set.ui.reSave": "Save entry",
+    "set.ui.reNone": "No runner entries. CI jobs use hosted runners.",
+    "set.ui.reNoBox": "Set a test box first, under Test boxes.",
+    "set.ui.reHeavyIs": "heavy",
+    "set.ui.reLightIs": "light",
+    "set.ui.reSlotsN": "{n} at a time",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "owner {who}",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -1269,6 +1284,10 @@
     "set.agents.layout.o.focus": "Focus",
     "set.agents.layout.o.tabs": "Tabs",
     "set.agents.layout.o.tile": "Tile",
+    "set.agents.coach_counts.d":
+      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+    "set.agents.coach_counts.o.total": "Total",
+    "set.agents.coach_counts.o.per_day": "Per day",
     "set.agents.helpers_shown": "Show up to this many helpers under an agent",
     "set.agents.helpers_shown.d":
       "More open in Show all. The badge always counts every running helper.",
@@ -2527,6 +2546,9 @@
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck":
       "A skipped test box is checked again after, in seconds",
+    "set.server.gate_runner_entries": "CI runner entries",
+    "set.server.gate_runner_entries.d":
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.gate_box_default": "Browser runs go to",
@@ -2758,6 +2780,7 @@
     "set.agents.default_mode.o.auto": "Auto mode",
     "set.agents.default_mode.o.all": "Auto-approve all",
     "set.agents.layout": "Agents tab layout",
+    "set.agents.coach_counts": "Coach tab: show counts as",
     "set.agents.keep_running": "Keep agents running after logout",
     "set.cli.local_dev": "Local environment",
     "set.cli.cli_tabs": "Terminal tabs",
@@ -3247,6 +3270,22 @@
       "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
     "set.ui.hub.denUrlRefused":
       "Hub didn't take this Den's address ({url}): {why}",
+    "ap.do.gate_runner_entry_set":
+      "Let {repo}'s CI jobs run on the test box {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.change":
+      "Changes the entry that lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Each job takes one of {box}'s gate slots, so it never runs beside another heavy job there.",
+    "ap.det.gate_runner_entry_set.light":
+      "Its jobs are light: they take no gate slot on {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "The repo variable {variable} sends its jobs to the box, or back to hosted runners. {owner} answers for it.",
+    "ap.det.gate_runner_entry_set.private":
+      "Box runners start only for a private repo: if {repo} is public, none starts unless a person allows public repos for this project.",
+    "ap.det.gate_runner_entry_set.remove":
+      "You can remove it any time in Settings, under CI runner entries.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -4237,6 +4276,194 @@
     "sa.runsOn": "Runs on",
     "sa.openAgents": "Open in Agents",
     "sa.saved": "Saved. The agent uses it from its next start.",
+    // Issue 52: the Coach tab (mock v2).
+    "co.tabs": "Agent views",
+    "co.tab.terminal": "Terminal",
+    "co.tab.coach": "Coach",
+    "co.run": "Run now",
+    "co.runAgain": "Run again",
+    "co.running": "Running…",
+    "co.running.sub": "Reading transcripts: {done} of {total} agents.",
+    "co.running.start": "Starting the run.",
+    "co.running.h": "Reading this __DEN_TITLE__'s agents",
+    "co.running.p":
+      "The tab fills in when the run ends. You can leave this page.",
+    "co.failed": "Last run failed: {when}",
+    "co.failed.before": "Nothing was saved. Showing the run before: {when}.",
+    "co.failed.none": "Nothing was saved.",
+    "co.failed.table": "The table below is the {when} report, unchanged.",
+    "co.none.h": "Not run yet",
+    "co.none.sub":
+      "Run it by hand. It reads this __DEN_TITLE__'s agents and changes nothing.",
+    "co.empty.h": "No report yet",
+    "co.empty.p": "Press Run now. A run takes a minute or two.",
+    "co.last": "Last run: {when}",
+    "co.cost": "It cost {tokens} tokens on {model}. It read {n} agents.",
+    "co.cost.one": "It cost {tokens} tokens on {model}. It read {n} agent.",
+    "co.costNone": "It used no model. It read {n} agents.",
+    "co.costNone.one": "It used no model. It read {n} agent.",
+    "co.off.h": "Coach is off",
+    "co.off.sub": "Turn Coach on to run it.",
+    "co.off.p":
+      "Coach reads how this __DEN_TITLE__'s agents use tokens and writes a report. It reads only this __DEN_TITLE__'s own agents, sends nothing off this machine and changes nothing.",
+    "co.off.how":
+      "To turn it on: Settings → Agents → Coach → turn on. Or set agents.coach.enabled: true.",
+    "co.openSettings": "Open Settings",
+    "co.tile.window": "Window",
+    "co.days": "{n} days",
+    "co.days.one": "{n} day",
+    "co.perDayShort": "{v} / day",
+    "co.range": "Window: {from} – {to}, {days} days",
+    "co.showAs": "Show counts as",
+    "co.total": "Total",
+    "co.perDay": "Per day",
+    "co.col.agent": "Agent",
+    "co.col.calls": "Calls",
+    "co.col.output_M": "Output tokens",
+    "co.col.cache_read_B": "Cache reads",
+    "co.col.avg_context_k_main": "Avg context / call",
+    "co.col.compactions": "Compactions",
+    "co.col.rotations": "Rotations",
+    "co.col.conversations": "Conversations",
+    "co.col.polls": "Polls",
+    "co.col.denials": "Denials",
+    "co.col.tool_error_pct": "Tool errors",
+    "co.col.correction_pct": "Corrections",
+    "co.card.calls": "Calls",
+    "co.card.output": "Output",
+    "co.noNumbers": "no numbers in this window",
+    "co.foot": "Only agents this __DEN_TITLE__ started or brought in.",
+    "co.detail.sub": "{range} · {n} conversations",
+    "co.detail.sub.one": "{range} · {n} conversation",
+    "co.close": "Close",
+    "co.conv.h": "Conversations (newest first)",
+    "co.noConv": "No conversation in this window.",
+    "co.kind.start": "start",
+    "co.kind.fresh": "fresh",
+    "co.kind.rotation": "rotation",
+    "co.kind.bring-in": "bring-in",
+    "co.why.start": "its first launch",
+    "co.why.fresh": "a new conversation: Start fresh or a relaunch",
+    "co.why.rotation": "relaunched from its handoff",
+    "co.why.bring-in": "brought in from outside __DEN_TITLE__",
+    "co.approx": "(time approximate)",
+    "co.mix.h": "Model mix, by calls",
+    "co.mix.main": "Main calls",
+    "co.mix.sub": "Subagent calls",
+    "co.mix.none": "No calls",
+    "co.mix.opus": "Opus",
+    "co.mix.sonnet": "Sonnet",
+    "co.mix.haiku": "Haiku",
+    "co.mix.other": "Other",
+    "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} on Opus; the Coach flags this below",
+    "co.perDayH": "Per day",
+    "co.perDayLine":
+      "Calls {calls}/day · output {output}/day · {compactions} compactions/day · {rotations} rotations/day",
+    "co.run.w": "Running the Coach…",
+    "co.run.done": "Done: the Coach's report is ready.",
+    "co.run.fail": "The Coach run failed.",
+    "co.dis.w": "Dismissing…",
+    "co.dis.done": "Dismissed.",
+    "co.dis.fail": "Couldn't dismiss it.",
+    "co.ap.busy.w": "Asking for Allow…",
+    "co.ap.busy.done": "Sent to the bell for Allow.",
+    "co.ap.busy.fail": "Couldn't ask for Allow.",
+    "co.undo.w": "Taking it back…",
+    "co.undo.done": "Back in the list.",
+    "co.undo.fail": "Couldn't take the dismissal back.",
+    "co.counts.w": "Saving…",
+    "co.counts.done": "Saved.",
+    "co.counts.fail": "Couldn't save how counts show.",
+    "co.off.status": "Off",
+    "co.f.h": "Findings",
+    "co.f.count":
+      "{n} from this run. Coach only reads and reports: it changes nothing.",
+    "co.f.count.one":
+      "{n} from this run. Coach only reads and reports: it changes nothing.",
+    "co.f.col.finding": "Finding",
+    "co.f.col.agent": "Agent",
+    "co.f.col.why": "Why Coach says so",
+    "co.ap.apply": "Apply",
+    "co.ap.proposed": "Proposed change: {change}",
+    "co.ap.change.subagent_opus": "Set {persona}’s subagent model to Sonnet.",
+    "co.ap.rev.subagent_opus": "Yes: set it back in {persona}’s persona.",
+    "co.ap.now.subagent_opus": "{persona}’s subagent model is now Sonnet.",
+    "co.ap.none": "Coach has no change to propose for this one.",
+    "co.ap.waiting": "Waiting for Allow",
+    "co.ap.waiting.line":
+      "Nothing has changed yet. A person must allow this in the bell.",
+    "co.ap.openBell": "Open the bell",
+    "co.ap.applied": "Applied",
+    "co.ap.applied.by":
+      "Allowed by {by}, {when}. {now} Coach will check it in the next run.",
+    "co.ap.applied.at":
+      "Allowed {when}. {now} Coach will check it in the next run.",
+    "co.ap.denied": "Denied",
+    "co.ap.denied.by":
+      "Denied by {by}, {when}. Nothing was changed. The finding stays.",
+    "co.ap.denied.at": "Denied {when}. Nothing was changed. The finding stays.",
+    "co.ap.failed": "Failed",
+    "co.ap.failed.line": "Could not apply: {reason}. Nothing was changed.",
+    "co.ap.failed.none": "Could not apply. Nothing was changed.",
+    "co.ap.again": "Apply again",
+    "co.ap.retry": "Try again",
+    "co.ap.fail": "Could not ask to apply “{title}”. Try again.",
+    "co.ap.live.waiting": "“{title}”: waiting for Allow.",
+    "co.ap.live.applied": "“{title}”: applied.",
+    "co.ap.live.denied": "“{title}”: denied. Nothing was changed.",
+    "co.ap.live.failed": "“{title}”: failed. Nothing was changed.",
+    "bell.coach.asks": "The __DEN_TITLE__ agent asks to change {persona}",
+    "bell.coach.from": "From the Coach finding “{title}”.",
+    "bell.coach.change": "Change",
+    "bell.coach.why": "Why",
+    "bell.coach.rev": "Reversible",
+    "co.f.dismiss": "Dismiss",
+    "co.f.undo": "Undo",
+    "co.f.toast": "Dismissed “{title}”.",
+    "co.f.fail": "Could not dismiss “{title}”. Try again.",
+    "co.f.none": "Nothing stood out this week. No agent is past a line.",
+    "co.f.dismissedN": "{n} dismissed",
+    "co.f.dismissedN.one": "{n} dismissed",
+    "co.f.show": "Show",
+    "co.f.hide": "Hide",
+    "co.f.dismissedAt": "Dismissed {when}",
+    "co.f.subagent_opus.t": "{agent} runs its subagents on Opus",
+    "co.f.subagent_opus.why":
+      "{n}% of {calls} subagent calls ran on Opus, past the line of {line}%. Setting its persona's subagent model to Sonnet runs exploring and checking on the cheaper model.",
+    "co.f.polling.t": "{agent} polls a lot",
+    "co.f.polling.why":
+      "{n} polls a day, past the line of {line}. Waiting on a long run by polling costs a call each time; running it in the background and waiting to be told costs none.",
+    "co.f.no_rotation.t": "{agent} hasn't rotated",
+    "co.f.no_rotation.why":
+      "{n} compactions in this conversation, past its limit of {line}. Each one drops context the agent then reads again. Relaunching it from its handoff starts it smaller.",
+    "co.f.denials.t": "{agent} is refused often",
+    "co.f.denials.why":
+      "{n} refusals a day, past the line of {line}. Check what it keeps asking for: an allow rule for you to approve, or a change to how it works.",
+    "co.f.transcript_size.t": "{agent} has large transcripts",
+    "co.f.transcript_size.why":
+      "{n} MB of transcripts in this window, past the line of {line} MB. Rotating it, or saving screenshots to files, keeps them smaller.",
+    "co.f.ask_r12.t": "{agent} asks you unclear questions",
+    "co.f.ask_r12.why":
+      "{pct}% of its {n} asks to you were plain, under the line of {line}%. Short sentences, every ID explained and each decision a numbered yes/no question make them plain.",
+    "co.f.ask_wait.t": "{agent}'s asks wait long",
+    "co.f.ask_wait.why":
+      "Its asks waited {n} minutes for an answer, at the median, past the line of {line}. Another agent may own these answers, or the asks could be batched.",
+    "co.f.msg_repeat.t": "{agent} sends the same message again",
+    "co.f.msg_repeat.why":
+      "It sent other agents the same text again {n} times, at or past the line of {line}. A missed reply or a loop: saying it once and waiting to be told is enough.",
+    "co.f.msg_no_reply.t": "{agent}'s messages get no reply",
+    "co.f.msg_no_reply.why":
+      "{pct}% of its {n} messages to other agents got no reply, past the line of {line}%. Check it sends to the agent that owns the answer, and that the other agent reads its messages.",
+    "co.f.repeat_ask.t": "{agent} left you asking again",
+    "co.f.repeat_ask.why":
+      "{n} of your prompts asked again for something asked before, as the cheap model judged them. Something you asked for may not have been done.",
+    "co.f.trivial_ask.t": "{agent} asks what it could decide",
+    "co.f.trivial_ask.why":
+      "{n} of its asks to you were ones it could have decided itself, as the cheap model judged them.",
+    "co.f.relay.t": "{agent} passes your requests on as its own",
+    "co.f.relay.why":
+      "{n} of its messages passed a request of yours to another agent as its own, as the cheap model judged them.",
     "ag.cap": "Up to 4 panes: {id}'s closed to make room (it keeps running)",
     // AG-4b: the Agents tab's layouts and named tabs.
     "ag.layout": "Layout",
@@ -5773,12 +6000,16 @@
     var el = document.createElement("div");
     el.className = "den-toast den-toast-act";
     el.setAttribute("role", "status");
+    // Hooks for tests (issue 839: never a styling class).
+    el.setAttribute("data-toast", "action");
     var text = document.createElement("span");
     text.className = "den-tmsg";
+    text.setAttribute("data-toast-msg", "");
     text.textContent = msg;
     var b = document.createElement("button");
     b.type = "button";
     b.className = "den-tbtn";
+    b.setAttribute("data-toast-btn", "");
     b.textContent = label;
     var done = false;
     b.addEventListener("click", function () {
@@ -5804,11 +6035,35 @@
     el.appendChild(acts);
     document.body.appendChild(el);
     clearOfMarked(el);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      done = true;
-      if (el.remove) el.remove();
-    }, ms || 10000);
+    // Issue 52: it stays while the pointer or focus is on it, then runs
+    // out what was left, so an Undo is never pulled from under a hand.
+    var left = ms || 10000;
+    var since = Date.now();
+    var held = 0;
+    var go = function () {
+      clearTimeout(toastTimer);
+      since = Date.now();
+      toastTimer = setTimeout(function () {
+        done = true;
+        if (el.remove) el.remove();
+      }, left);
+    };
+    var hold = function () {
+      if (held++ === 0) {
+        clearTimeout(toastTimer);
+        left = Math.max(1000, left - (Date.now() - since));
+      }
+    };
+    var letGo = function () {
+      if (held > 0 && --held === 0 && !done) go();
+    };
+    if (el.addEventListener) {
+      el.addEventListener("mouseenter", hold);
+      el.addEventListener("mouseleave", letGo);
+      el.addEventListener("focusin", hold);
+      el.addEventListener("focusout", letGo);
+    }
+    go();
     return el;
   }
 
@@ -10432,6 +10687,16 @@
     // on a phone too (the kit centers a phone's rows).
     ".den-bell-row.den-bell-allow { align-items: flex-start; }",
     ".den-bell-detl { overflow-wrap: anywhere; }",
+    // Issue 110 (mock v3): a Coach Apply's card: Change, Why, Reversible,
+    // then Allow and Deny; on a phone they are full width, 44 px, stacked.
+    ".den-bell-cdl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; font-size: 12.5px; }",
+    ".den-bell-cr { display: contents; }",
+    ".den-bell-cdl dt { color: var(--muted); }",
+    ".den-bell-cdl dd { margin: 0; overflow-wrap: anywhere; }",
+    ".den-bell-cb { display: flex; gap: 6px; flex-shrink: 0; }",
+    "@media (max-width: 600px) { .den-bell-row.den-bell-coach { flex-wrap: wrap; }",
+    "  .den-bell-coach .den-bell-cb { flex-direction: column; width: 100%; }",
+    "  .den-bell-coach .den-bell-cb .den-btn { width: 100%; min-height: 44px; } }",
     // A phone's finger needs 44 px to hit Review.
     "@media (max-width: 600px) { .den-bell-rv { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px 0 0; } }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",

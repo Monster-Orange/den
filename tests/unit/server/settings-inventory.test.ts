@@ -293,6 +293,7 @@ describe("the settings inventory (R21)", () => {
         "terminal",
         // MODE-5: what only `config` could change.
         "cli_tabs",
+        "coach_counts",
         "local_dev",
         "log_window_lines",
         "panes_reconnect.max_failures",
