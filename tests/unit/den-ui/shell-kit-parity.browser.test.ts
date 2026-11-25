@@ -203,6 +203,27 @@ const ALLOWED_STYLES: Record<string, Array<[string, string]>> = {
   "header.den-top margin-left": [["-233px", "0px"]],
 };
 
+/**
+ * Boxes the kit may move, each with its reason: "area-width selector" →
+ * [dx, dy, dw, dh] added to the baseline's rect.
+ */
+const ALLOWED_MOVES: Record<string, [number, number, number, number]> = {
+  // Issue 1444, Hub Design's spec for the fold toggle: on a phone a
+  // section's heading is a tap high (min-height var(--tap), 44px; it was
+  // 22px), so the entries below it sit 22px lower.
+  "shell-390 .den-rail .den-ni": [0, 22, 0, 0],
+};
+
+/** `want` with the allowed moves applied. */
+function allowMoves(key: string, want: Measure[]): Measure[] {
+  return want.map((m) => {
+    const d = ALLOWED_MOVES[`${key} ${m.sel}`];
+    if (!d || !m.rect) return m;
+    const rect = m.rect.map((v, i) => +(v + d[i]!).toFixed(2));
+    return { ...m, rect: rect as Measure["rect"] };
+  });
+}
+
 /** `want` with the allowed style changes applied. */
 function allowStyles(want: Measure[]): Measure[] {
   return want.map((m) => {
@@ -660,7 +681,7 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           expect(treeDiff(want.tree, shot.tree)).toEqual([]);
           const same =
             (fixture as unknown as Record<string, string>)[ENV_KEY] === env;
-          const wantM = allowStyles(want.measures);
+          const wantM = allowMoves(key, allowStyles(want.measures));
           if (same) expect(shot.measures).toEqual(wantM);
           else {
             // Another browser: all but the rects exactly, the rects within
