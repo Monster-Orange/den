@@ -19,6 +19,7 @@
  */
 
 import { createHash } from "crypto";
+import { isRepoName } from "../../shared/repo-name.js";
 
 /** Hub's answer to "would a screenshot for this repo be shared?". */
 export const PREFLIGHT_PATH =
@@ -71,7 +72,6 @@ export interface ReportShotHubDeps {
   maxBytes?: () => number;
 }
 
-const TARGET = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA256 = /^[a-f0-9]{64}$/i;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const HUB_403_WHY = new Set(["off", "not-maintained", "not-a-person"]);
@@ -113,7 +113,7 @@ export function reportShotHub(d: ReportShotHubDeps) {
 
   return {
     async preflight(targetRepo: string): Promise<Preflight> {
-      if (!TARGET.test(targetRepo)) return { ok: false, reason: "bad-target" };
+      if (!isRepoName(targetRepo)) return { ok: false, reason: "bad-target" };
       const at = await hubOf();
       if (!at) return { ok: false, reason: "not-connected" };
       const r = await call(
@@ -147,7 +147,7 @@ export function reportShotHub(d: ReportShotHubDeps) {
         return { ok: false, why: "too-big" };
       if (!png.subarray(0, 8).equals(PNG_MAGIC))
         return { ok: false, why: "not-png" };
-      if (!TARGET.test(o.targetRepo)) return { ok: false, why: "refused" };
+      if (!isRepoName(o.targetRepo)) return { ok: false, why: "refused" };
       const at = await hubOf();
       if (!at) return { ok: false, why: "not-connected" };
       const r = await call(`${at.url}${UPLOAD_PATH}`, {

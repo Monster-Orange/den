@@ -20,12 +20,14 @@
  * again (the world may have changed while it waited). Every ask and every
  * decision is in the activity trail.
  */
+import { actorFromHeaders } from "../../shared/agent-actor.js";
 import type * as http from "http";
 import { agentTokenLive } from "../../shared/actor-token.js";
 import {
   APPROVAL_TICKET_HEADER,
   ApprovalQueue,
   approverAllowed,
+  claimantIsPerson,
   newApprovalTicket,
   type Approval,
   type AskedBy,
@@ -194,6 +196,21 @@ function askerOf(req: http.IncomingMessage): string {
 }
 
 /**
+ * The agent a request with no agent token claims to be (the
+ * audit headers a person's own `mcp --actor agent:<id>` sends), kept only
+ * when well-formed (actorFromHeaders drops a malformed id). Never verified.
+ */
+function claimedAgentOf(req: http.IncomingMessage): { claimedAs?: string } {
+  // Only on a verified person's own ask (a person's token or the OS user's
+  // browser). Anonymous asks ("loopback": any local program with no
+  // credential), the fixture person, the test operator and an agent's view
+  // send the headers too, but their claim would read as "You asked".
+  if (!claimantIsPerson(principalOf(req))) return {};
+  const c = actorFromHeaders(req.headers);
+  return c?.kind === "agent" && c.agent ? { claimedAs: c.agent } : {};
+}
+
+/**
  * Issue 621: a run result's part for its asker only (a new runner token),
  * `forAsker`. Every view leaves it out; the asker's own read of the
  * request has it once, merged into the result (forgetForAsker after).
@@ -225,6 +242,7 @@ export function approvalView(
     id: a.id,
     action: a.action,
     ...(a.agent ? { agent: a.agent } : {}),
+    ...(a.claimedAs ? { claimedAs: a.claimedAs } : {}),
     summary: a.summary,
     ...(a.params ? { params: a.params } : {}),
     ...(a.details ? { details: a.details } : {}),
@@ -421,6 +439,8 @@ export async function askHeld(
       ...(ticket ? { ticketHash: ticket.hash } : {}),
       actor: askerOf(req),
       ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
+      // A person's own scoped server's --actor, unverified.
+      ...(agent ? {} : claimedAgentOf(req)),
       action,
       args: stored,
       summary: checked.summary,
@@ -627,6 +647,20 @@ export async function handleApprovalRoutes(
       sendJson(res, {
         ok: true,
         mine: deps.queue.ofActor(agent.actor).map((x) => approvalView(x)),
+      });
+      return true;
+    }
+    // `?mine=1`, a person's own requests by its bearer or
+    // session (`<cli> approvals list --mine`), never another's. Nobody
+    // signed in falls through to the refusal below.
+    const mineOf = principalOf(req);
+    if (
+      new URL(req.url ?? "/", "http://x").searchParams.get("mine") === "1" &&
+      mineOf
+    ) {
+      sendJson(res, {
+        ok: true,
+        mine: deps.queue.ofActor(mineOf).map((x) => approvalView(x)),
       });
       return true;
     }

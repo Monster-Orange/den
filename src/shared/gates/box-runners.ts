@@ -26,6 +26,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import { marksDirOf, type GateBox } from "./boxes.js";
+import { isRepoName } from "../repo-name.js";
 
 export { marksDirOf };
 
@@ -72,9 +73,6 @@ export const BOX_RUNNER_LIMITS = {
   memoryMb: [512, 262_144],
 } as const;
 
-// Never "." or ".." on either side (review): they'd fold the URL.
-const REPO_RE =
-  /^(?!\.{1,2}\/)[A-Za-z0-9_.-]{1,100}\/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
 const LABEL_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 const CPUSET_RE = /^\d{1,3}(-\d{1,3})?(,\d{1,3}(-\d{1,3})?)*$/;
 /** A runner id: a file name in the marks folder, and a container label. */
@@ -84,7 +82,7 @@ export function checkSpec(
   s: BoxRunnerSpec,
 ): { ok: true } | { ok: false; error: string } {
   const no = (error: string) => ({ ok: false as const, error });
-  if (!REPO_RE.test(s.repo ?? "")) return no("repo must be owner/name");
+  if (!isRepoName(s.repo)) return no("repo must be owner/name");
   if (!s.project) return no("project is required");
   if (!s.box) return no("box is required");
   if (!Array.isArray(s.labels) || !s.labels.length)

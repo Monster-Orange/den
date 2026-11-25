@@ -1218,6 +1218,15 @@
       .ag-dlg .ready .mono {
         font-family: var(--mono);
       }
+      /* A move in the list that Den refused, under the list. Its agent's
+         name and Den's reason (a path, say) can have nowhere to break:
+         they wrap, never widen the page. */
+      #ag-order-err {
+        margin: 6px 0 0;
+        font: 12.5px/1.45 var(--sans);
+        color: var(--bad);
+        overflow-wrap: anywhere;
+      }
       .ag-dlg .err {
         margin: 0;
         font: 12.5px/1.45 var(--sans);
