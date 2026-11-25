@@ -9,9 +9,13 @@
  *   2. A short JWT signed with that key finds the repo's installation and
  *      mints an installation token scoped to that one repo, with runner
  *      admin (administration: write) only.
- *   3. The installation token mints the runner registration token, which
+ *   3. The repo must be private (issue 921 review): a self-hosted runner
+ *      on a public repo runs whatever a fork's pull request says. A public
+ *      repo is refused unless a person's own setting allows it.
+ *   4. The installation token mints the runner registration token, which
  *      goes to the caller (the box runner reads it on stdin) and nowhere
  *      else: never written, logged or put in an error.
+ *   5. The installation token is revoked once used, whatever happened.
  *
  * Any part missing, unreadable or refused fails closed, naming the part
  * (doctor shows it), never a value. GitHub's own error text is left out.
@@ -42,10 +46,12 @@ export interface BoxRunnerToken {
 
 export type BoxRunnerTokenPart =
   | "repo"
+  | "api"
   | "app-id"
   | "private-key"
   | "installation"
   | "installation-token"
+  | "public-repo"
   | "registration-token";
 
 export type BoxRunnerTokenResult =
@@ -57,14 +63,42 @@ export interface BoxRunnerTokenDeps {
   provider: Partial<Pick<SecretsProvider, "tryGet" | "tryGetWithReason">>;
   fetch?: typeof globalThis.fetch;
   now?: () => number;
-  /** GitHub's API root (GitHub Enterprise Server sets its own). */
+  /**
+   * GitHub's API root (GitHub Enterprise Server sets its own): an https
+   * origin, with a path at most. Only from the person's own config, never
+   * a project or agent-writable setting: the App's JWT and the
+   * installation token go to it.
+   */
   api?: string;
+  /**
+   * Let a public repo have box runners. Only from a setting a person
+   * turns on for the project, never one an agent can write: a fork's
+   * pull request would choose what runs on the box.
+   */
+  allowPublicRepo?: boolean;
 }
 
 const NAME = /^[^\0\n\r]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.-]{1,64}$/;
-const REPO = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
+// The name may hold dots but is never "." or "..", which GitHub refuses
+// too: the URL parser would fold them into another endpoint (review).
+const REPO =
+  /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/((?!\.{1,2}$)[A-Za-z0-9._-]{1,100})$/;
 const APP_ID = /^[0-9]{1,12}$/;
+
+/** The API root without a trailing "/", or null when it won't do. */
+export function apiRoot(raw: string | undefined): string | null {
+  if (raw === undefined) return "https://api.github.com";
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:" || u.username || u.password) return null;
+  if (u.search || u.hash) return null;
+  return `${u.origin}${u.pathname}`.replace(/\/+$/, "");
+}
 
 /** The two refs the setting names, or null when the setting is malformed. */
 export function boxRunnerAppRefs(raw: unknown): BoxRunnerAppRefs | null {
@@ -132,6 +166,9 @@ export async function mintBoxRunnerToken(
   const m = REPO.exec(repo);
   if (!m) return fail("repo", `"${repo.slice(0, 80)}" is not owner/name`);
   const [, owner, name] = m;
+  const api = apiRoot(deps.api);
+  if (!api)
+    return fail("api", "GitHub's API root must be an https address, no login");
   const where = (r: SecretRef) => `${r.vault} / ${r.item} / ${r.field}`;
 
   const id = await read(deps, refs.appId);
@@ -156,7 +193,6 @@ export async function mintBoxRunnerToken(
   }
 
   const fetch = deps.fetch ?? globalThis.fetch;
-  const api = (deps.api ?? "https://api.github.com").replace(/\/+$/, "");
   const jwt = appJwt(appId, key, (deps.now ?? Date.now)());
   const call = async (
     part: BoxRunnerTokenPart,
@@ -219,17 +255,58 @@ export async function mintBoxRunnerToken(
   const installToken = access.json.token;
   if (typeof installToken !== "string" || !installToken)
     return fail("installation-token", "GitHub gave no installation token");
+  try {
+    return await withInstallToken(installToken);
+  } finally {
+    // It lives an hour otherwise. Best effort: a failed revoke changes
+    // nothing for the caller, and its error isn't kept.
+    try {
+      await fetch(`${api}/installation/token`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${installToken}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      // Nothing to do: it expires by itself.
+    }
+  }
 
-  const reg = await call(
-    "registration-token",
-    "POST",
-    `/repos/${owner}/${name}/actions/runners/registration-token`,
-    installToken,
-  );
-  if (!("json" in reg)) return reg;
-  const value = reg.json.token;
-  const expiresAt = reg.json.expires_at;
-  if (typeof value !== "string" || !value || typeof expiresAt !== "string")
-    return fail("registration-token", "GitHub gave no registration token");
-  return { ok: true, token: { value, expiresAt } };
+  async function withInstallToken(
+    installToken: string,
+  ): Promise<BoxRunnerTokenResult> {
+    const meta = await call(
+      "public-repo",
+      "GET",
+      `/repos/${owner}/${name}`,
+      installToken,
+    );
+    if (!("json" in meta)) return meta;
+    if (meta.json.private !== true && deps.allowPublicRepo !== true)
+      return fail(
+        "public-repo",
+        `${repo} is public (or GitHub didn't say it's private): a fork's pull request could run its own code on the box. Box runners need a private repo, unless a person allows public repos for this project`,
+      );
+    return registration(installToken);
+  }
+
+  async function registration(
+    installToken: string,
+  ): Promise<BoxRunnerTokenResult> {
+    const reg = await call(
+      "registration-token",
+      "POST",
+      `/repos/${owner}/${name}/actions/runners/registration-token`,
+      installToken,
+    );
+    if (!("json" in reg)) return reg;
+    const value = reg.json.token;
+    const expiresAt = reg.json.expires_at;
+    if (typeof value !== "string" || !value || typeof expiresAt !== "string")
+      return fail("registration-token", "GitHub gave no registration token");
+    return { ok: true, token: { value, expiresAt } };
+  }
 }
