@@ -16,7 +16,6 @@ import { execFileSync } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import {
@@ -30,7 +29,7 @@ import {
   type ProxyKind,
 } from "../../../src/shared/edge/proxy-route.js";
 import { DEFAULT_TRAEFIK_IMAGE } from "../../../src/shared/edge/config.js";
-import { dockerOk, freePort } from "./helpers/docker-edge.js";
+import { dockerOk, dockerShareTmp, freePort } from "./helpers/docker-edge.js";
 
 /** Each proxy's official image, at an exact version. */
 const IMAGES: Record<ProxyKind, string> = {
@@ -98,10 +97,7 @@ async function until(
 beforeAll(async () => {
   ok = dockerOk();
   if (!ok) return;
-  // Under the home dir: Docker Desktop and OrbStack share it with the VM.
-  tmp = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.homedir(), ".den-test-455-")),
-  );
+  tmp = fs.realpathSync(dockerShareTmp("455-"));
   // The Den stub. Linux containers reach the host on its bridge, so there
   // it listens on every address; elsewhere loopback (the VM forwards).
   den = http.createServer((req, res) => {

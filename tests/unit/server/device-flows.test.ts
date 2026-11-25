@@ -26,6 +26,7 @@ const TOKEN = "ghu_fake_token_never_kept";
 function rig(
   opts: {
     decide?: (p: FlowPurpose, id: GithubIdentity) => "ok" | "refused";
+    perClient?: number;
   } = {},
 ) {
   let now = 1_000_000;
@@ -53,6 +54,7 @@ function rig(
     client,
     clientId: () => "Iv23liAcme",
     decide: opts.decide ?? ((_p, id) => (id.id === 4242 ? "ok" : "refused")),
+    ...(opts.perClient !== undefined ? { perClient: opts.perClient } : {}),
     now: () => now,
     schedule: (fn, ms) => {
       const t = { fn, ms, live: true };
@@ -214,5 +216,44 @@ describe("DeviceFlows", () => {
     expect(r.flows.get(f.id, "signin")).toBeNull();
     expect(r.flows.claim(f.id, "signin")).toBeNull();
     expect(r.flows.get(f.id, "link")?.state).toBe("ok");
+  });
+});
+
+describe("hardening (issue 362): one address's GitHub sign-ins", () => {
+  it("an address holds one pending flow: its next replaces it, so it can't fill every slot", async () => {
+    const r = rig();
+    const a = await r.flows.start("signin", { client: "100.64.0.9" });
+    if ("error" in a) throw new Error(a.error);
+    const b = await r.flows.start("signin", { client: "100.64.0.9" });
+    if ("error" in b) throw new Error(b.error);
+    expect(r.flows.pending()).toBe(1);
+    expect(r.flows.get(a.id)).toBeNull();
+    expect(r.flows.get(b.id)).toMatchObject({ state: "pending" });
+    // Other addresses still find room.
+    for (const c of ["100.64.0.10", "100.64.0.11"]) {
+      const f = await r.flows.start("signin", { client: c });
+      expect("error" in f).toBe(false);
+    }
+    expect(r.flows.pending()).toBe(3);
+  });
+
+  it("an address starts at most its number a minute (web.pair_requests_per_minute); then busy until the minute is up", async () => {
+    const r = rig({ perClient: 2 });
+    const one = { client: "100.64.0.9" };
+    expect("error" in (await r.flows.start("signin", one))).toBe(false);
+    expect("error" in (await r.flows.start("signin", one))).toBe(false);
+    expect(await r.flows.start("signin", one)).toEqual({ error: "busy" });
+    expect(
+      "error" in (await r.flows.start("signin", { client: "100.64.0.10" })),
+    ).toBe(false);
+    r.advance(60_001);
+    expect("error" in (await r.flows.start("signin", one))).toBe(false);
+  });
+
+  it("no address known (the CLI's own start): no per-address limit", async () => {
+    const r = rig({ perClient: 1 });
+    expect("error" in (await r.flows.start("link"))).toBe(false);
+    expect("error" in (await r.flows.start("link"))).toBe(false);
+    expect(r.flows.pending()).toBe(2);
   });
 });

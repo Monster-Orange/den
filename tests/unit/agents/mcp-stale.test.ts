@@ -15,7 +15,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
   noteHubMcpInit,
   noteHubMcpTools,
@@ -511,6 +511,24 @@ describe("D44: the routes", () => {
           grants: t.grants,
           session: t.session,
         });
+      // Who the caller proved itself to be, for the
+      // person-only read (the request guard sets this in the server).
+      else if (req.headers["x-test-as"] === "person")
+        setPrincipal(req, { kind: "person", actor: "person:test" });
+      else if (req.headers["x-test-as"] === "browser")
+        setPrincipal(req, { kind: "person-browser", session: "k1" });
+      else if (req.headers["x-test-as"] === "view")
+        setPrincipal(req, {
+          kind: "person-browser",
+          session: "k2",
+          view: { agent: "planner", workspace: "north" },
+        });
+      else if (req.headers["x-test-as"] === "fixture")
+        setPrincipal(req, {
+          kind: "person-browser",
+          session: "k3",
+          fixture: true,
+        });
       void handleAgentRoutes(req, res, p, {
         agents: r.deps,
         personaWait: { pollMs: 20 },
@@ -542,6 +560,28 @@ describe("D44: the routes", () => {
     };
   }
 
+  it("issue 1223: only: hub restarts the Hub-stale only (Settings' Hub offer); an agent on an older Den's tools waits for the bell's", async () => {
+    const r = await rig();
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    const rec = readRecord(r.stateDir, "planner")!;
+    writeRecord(r.stateDir, { ...rec, denVersion: "0.0.1-old" });
+    const call = await api(r);
+    const hub = await call("POST", "/api/agents/restart-stale", {
+      only: "hub",
+    });
+    expect(hub.status).toBe(202);
+    expect(hub.json.pending).toEqual([]);
+    expect(
+      (await call("POST", "/api/agents/restart-stale", { only: "den" })).status,
+    ).toBe(400);
+    const all = await call("POST", "/api/agents/restart-stale", {});
+    expect((all.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
+      "planner",
+    ]);
+  });
+
   it("stale lists it; restart-stale restarts it at its next idle (202), the same conversation", async () => {
     const { r, token } = await startedBeforeHub();
     const call = await api(r);
@@ -555,8 +595,78 @@ describe("D44: the routes", () => {
     expect((go.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
       "planner",
     ]);
+    // Issue 1407: each agent's own answer, before anything waits.
+    expect(go.json.agents).toEqual([
+      { id: "planner", workspace: "north", state: "now" },
+    ]);
     for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
+  });
+
+  it("issue 1407 part 2: restart-status follows each agent live; the stale list drops it once back", async () => {
+    const { r } = await startedBeforeHub();
+    const call = await api(r);
+    await call("POST", "/api/agents/restart-stale", {});
+    const person = { "x-test-as": "person" };
+    const st = await call(
+      "GET",
+      "/api/agents/restart-status",
+      undefined,
+      person,
+    );
+    expect(st.status).toBe(200);
+    expect(
+      (st.json.agents as { id: string; state: string }[]).find(
+        (a) => a.id === "planner",
+      )?.state,
+    ).toMatch(/^(now|restarted)$/);
+    for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
+    let state = "";
+    for (let i = 0; i < 100 && state !== "restarted"; i++) {
+      await settle(20);
+      state =
+        (
+          (await call("GET", "/api/agents/restart-status", undefined, person))
+            .json.agents as {
+            id: string;
+            state: string;
+          }[]
+        ).find((a) => a.id === "planner")?.state ?? "";
+    }
+    expect(state).toBe("restarted");
+    expect(
+      (await call("GET", "/api/agents/stale?fresh=1")).json.agents,
+    ).toEqual([]);
+    expect(
+      (await call("POST", "/api/agents/restart-status", {}, person)).status,
+    ).toBe(405);
+  });
+
+  it("issue 1407 part 2: restart-status is a person's read: an agent's token, an agent's view, the fixture and no sign-in get 403", async () => {
+    const { r } = await startedBeforeHub();
+    const call = await api(r);
+    await call("POST", "/api/agents/restart-stale", {});
+    const env = r.made[0].opts.env as Record<string, string>;
+    const agent = { authorization: `Bearer ${actorTokenOf(env) ?? ""}` };
+    const callers: [string, Record<string, string>][] = [
+      ["agent token", agent],
+      ["agent view", { "x-test-as": "view" }],
+      ["fixture", { "x-test-as": "fixture" }],
+      ["no sign-in", {}],
+    ];
+    for (const [who, h] of callers) {
+      const x = await call("GET", "/api/agents/restart-status", undefined, h);
+      expect({ who, status: x.status }).toEqual({ who, status: 403 });
+      expect(JSON.stringify(x.json)).not.toContain("planner");
+    }
+    for (const as of ["person", "browser"])
+      expect(
+        (
+          await call("GET", "/api/agents/restart-status", undefined, {
+            "x-test-as": as,
+          })
+        ).status,
+      ).toBe(200);
   });
 
   it("tools: what the agent's MCP whoami reads", async () => {

@@ -19,6 +19,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   DIALOG_WORDS,
+  failedLine,
   answerOf,
   askSpec,
   configureDialog,
@@ -186,5 +187,30 @@ describe("den#133: Den serves it and its pages use it", () => {
     expect(used.size).toBeGreaterThan(10);
     const missing = [...used].filter((k) => !shell.includes(`"${k}":`));
     expect(missing).toEqual([]);
+  });
+});
+
+// Issue 1054 (review): a held action that fails says why in the dialog;
+// with no message of its own, the kit's words, never an empty alert.
+describe("issue 1054: a held action's failure line", () => {
+  it("is the error's own message", () => {
+    expect(failedLine(new Error("The project is in use."))).toBe(
+      "The project is in use.",
+    );
+    expect(failedLine("Refused.")).toBe("Refused.");
+  });
+  it("is the kit's words when the error says nothing, in each language", () => {
+    for (const e of [undefined, null, {}, new Error(""), "  "])
+      expect(failedLine(e)).toBe("That didn't work. Try again.");
+    try {
+      configureDialog({ lang: () => "es" });
+      expect(failedLine(new Error(""))).toBe(DIALOG_WORDS.es.failed);
+      configureDialog({ lang: () => "ja" });
+      expect(failedLine(null)).toBe(DIALOG_WORDS.ja.failed);
+    } finally {
+      configureDialog({ lang: () => "en" });
+    }
+    expect(DIALOG_WORDS.es.failed).not.toBe(DIALOG_WORDS.en.failed);
+    expect(DIALOG_WORDS.ja.failed).not.toBe(DIALOG_WORDS.en.failed);
   });
 });

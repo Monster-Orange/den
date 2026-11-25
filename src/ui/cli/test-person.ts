@@ -3,9 +3,16 @@
  * `<cli> --test-person <command>` on a test bed acts as the person; on any
  * other install it is refused with a clear error and nothing runs.
  */
+import * as fs from "fs";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { getDistRoot } from "../../shared/paths.js";
+import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import {
+  CREATION_PENDING,
+  CREATION_RECORD_FILE,
+  creationRecordPath,
+  verifiedCreationRecord,
+} from "../../shared/test-operator.js";
 import { product } from "../../shared/product.js";
 import {
   dropAgentMarkers,
@@ -14,7 +21,7 @@ import {
   useTestPerson,
 } from "../../shared/test-person.js";
 import { denWebBase } from "../../shared/web-dial.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
+import { cliAuthHeaders, readWebSecret } from "../../shared/web-secret.js";
 import { readWebAuthConfig } from "../../shared/web-session.js";
 
 export interface TestPersonDeps {
@@ -153,5 +160,59 @@ export function testBedLines(
       `  test bed  ${bed ? "●" : "○"}  ${detail}`,
     ],
     check: { id: "test_bed", status: "ok", detail },
+  };
+}
+
+/**
+ * Issue 1407 (Vision's ruling): `doctor`'s row for an install that holds
+ * the creation claim (test-install.created): it is a test install whose
+ * test operator may make live checks' few person-only requests on
+ * loopback. Always shown when the claim is there, so it is never hidden;
+ * none without it. Never prints the record or the secret.
+ */
+export function testInstallClaimLines(
+  title: string,
+  stateDir: string = getStateDir(),
+): {
+  lines: string[];
+  check: {
+    id: "test_install";
+    status: "ok" | "warn";
+    state: "sealed" | "pending" | "unverified";
+    detail: string;
+  } | null;
+} {
+  const f = creationRecordPath(stateDir);
+  if (!fs.existsSync(f)) return { lines: [], check: null };
+  let pending = false;
+  try {
+    pending = fs.readFileSync(f, "utf-8").trim() === CREATION_PENDING;
+  } catch {
+    pending = false;
+  }
+  const state = pending
+    ? ("pending" as const)
+    : verifiedCreationRecord(stateDir, readWebSecret(stateDir))
+      ? ("sealed" as const)
+      : ("unverified" as const);
+  const detail =
+    state === "sealed"
+      ? `This install was created as a test install (${CREATION_RECORD_FILE}, sealed): its test operator may make the few person-only requests live checks need, on loopback only.`
+      : state === "pending"
+        ? `This install holds a test-install claim not sealed yet (${CREATION_RECORD_FILE}): its first start seals it, or drops it when that start isn't a test install's.`
+        : `This install holds a test-install record (${CREATION_RECORD_FILE}) that doesn't verify here (copied from another install, or its secret changed): it gives no test operator. Remove the file if this isn't a test install.`;
+  return {
+    lines: [
+      "",
+      `${title} doctor: Test install`,
+      "",
+      `  test install  ${state === "unverified" ? "⚠" : "●"}  ${detail}`,
+    ],
+    check: {
+      id: "test_install",
+      status: state === "unverified" ? "warn" : "ok",
+      state,
+      detail,
+    },
   };
 }

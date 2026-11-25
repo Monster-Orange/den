@@ -24,6 +24,7 @@ import * as path from "path";
 import { randomBytes } from "crypto";
 import { parse as parseYaml } from "yaml";
 import { writeFileAtomic } from "./atomic-write.js";
+import { isRepoName } from "./repo-name.js";
 
 export interface FeedbackSettings {
   enabled: boolean;
@@ -68,10 +69,10 @@ export function repoOfUrl(u: unknown): string | null {
     /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:\/.*)?$/.exec(
       u.trim(),
     );
-  return m ? `${m[1]}/${m[2]}` : null;
+  // "o/.." from a URL is no repo.
+  const repo = m ? `${m[1]}/${m[2]}` : null;
+  return isRepoName(repo) ? repo : null;
 }
-
-const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 /**
  * The feedback settings. `pkg` is the engine's package.json, `dist` the
@@ -94,7 +95,7 @@ export function feedbackSettings(
   if (engine) repos.push(engine);
   if (
     typeof d.repo === "string" &&
-    REPO_RE.test(d.repo) &&
+    isRepoName(d.repo) &&
     !repos.includes(d.repo)
   )
     repos.push(d.repo);

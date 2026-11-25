@@ -13,7 +13,7 @@
  * machine without the names file can still commit. Only new ranges are
  * checked: nothing already on main is rewritten.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import { orgHitsWide, orgPatterns } from "./org-names.js";
@@ -60,7 +60,24 @@ if (/^0+$/.test(base)) {
   process.exit(0);
 }
 
-const shas = execFileSync("git", ["rev-list", range], { encoding: "utf-8" })
+// Commits already on origin/main or origin/next/queue (the merge queue's
+// branch) are public and can't be reworded: a merge of either into a work
+// branch brings its own merge commits (a hosted merge button names the
+// org's branch) into the range. Only new ones count. Any other
+// branch's commits are still checked, pushed or not, so a bad commit pushed
+// once to a feature branch never passes for good.
+const PUBLIC = ["refs/remotes/origin/main", "refs/remotes/origin/next/queue"];
+const known = PUBLIC.filter(
+  (ref) =>
+    spawnSync("git", ["rev-parse", "-q", "--verify", `${ref}^{commit}`], {
+      stdio: "ignore",
+    }).status === 0,
+);
+const shas = execFileSync(
+  "git",
+  ["rev-list", range, ...(known.length ? ["--not", ...known] : [])],
+  { encoding: "utf-8" },
+)
   .split("\n")
   .filter(Boolean);
 let bad = 0;

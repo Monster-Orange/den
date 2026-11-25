@@ -637,7 +637,9 @@ function act(k, btn) {
   else if (k === "ag") go(`/agents?open=${encodeURIComponent(btn.dataset.id)}`);
   else if (k === "agstart") {
     // D65 v2: a stopped agent starts again here, same conversation.
-    btn.disabled = true;
+    const release = window.denShell?.holdDots
+      ? window.denShell.holdDots(btn)
+      : () => {};
     window.denShell
       .api(
         "POST",
@@ -647,10 +649,10 @@ function act(k, btn) {
       .then(
         () => void refresh(),
         (e) => {
-          btn.disabled = false;
           window.denShell?.toast?.((e && e.message) || String(e));
         },
-      );
+      )
+      .finally(() => void release());
   } else if (k === "startag") {
     const q = new URLSearchParams({ start: "1" });
     const ws = s.workspaces[0];

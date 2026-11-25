@@ -19,6 +19,7 @@
  * but the ones `deps` gives.
  */
 import type { JournalEntry } from "./hub-delivery-journal.js";
+import { redactSecrets } from "./redact.js";
 import {
   ackBody,
   deliveryRaw,
@@ -32,6 +33,8 @@ import {
   LOCAL_PREFIX,
   parseDelivery,
   SseReader,
+  toolsHeldAck,
+  ACK_HELD_FEATURE,
   TROUBLE_TEXT,
   troubleOf,
   type AckState,
@@ -69,6 +72,12 @@ export interface DeliveryAgents {
    * screen, a held Allow, a pause), or null: mid-turn.
    */
   why?(agent: string): Promise<HeldCode | null>;
+  /**
+   * Issue 750: whether the agent's Hub tools loaded at its last start:
+   * false when its Hub MCP connect failed since (it can't answer in Hub);
+   * null when Den doesn't know. Hub's deliveries wait for it while false.
+   */
+  hubTools?(agent: string): boolean | null;
 }
 
 /** Issue 664: why an agent's held text waits, when Den knows. */
@@ -85,6 +94,10 @@ export const HELD_CODES = [
   "stopped",
   "owner",
   "unread",
+  // Issue 1311: its person's unsent draft is on its input line.
+  "draft",
+  // Issue 750: its Hub tools failed to load; Hub hears hub_tools_unavailable.
+  "hub_tools",
 ] as const;
 export type HeldCode = (typeof HELD_CODES)[number];
 
@@ -100,6 +113,9 @@ export const HELD_WORDS: Record<HeldCode, string> = {
   stopped: "the agent isn't running; typed when it next runs",
   owner: "still asking Hub who its person is; typed once Hub answers",
   unread: "couldn't read the agent's state in time; trying again",
+  draft:
+    "its person is typing a message to it; typed once they send or clear it",
+  hub_tools: "its Hub tools didn't load; typed once it restarts",
 };
 
 /**
@@ -119,6 +135,12 @@ const LATE = Symbol("late");
 export interface DeliveryLoopDeps {
   hub: DeliveryHub;
   agents: DeliveryAgents;
+  /**
+   * Issue 750: whether Hub lists `deliveries.ack_held` (whoami features):
+   * a delivery held for an agent without Hub tools is acked `held`, else
+   * `queued`, with reason hub_tools_unavailable.
+   */
+  ackHeld?: () => boolean;
   /**
    * Who the agent's person is in Hub, or null while Den doesn't know yet
    * (Hub didn't answer). Null holds deliveries: a person's edit request
@@ -208,8 +230,17 @@ export interface DeliveryLoopDeps {
    * delivery), or its last good read moved a minute on. Never per byte.
    */
   onHealth?: (h: DeliveryHealth) => void;
-  /** Issue 702: what a restart keeps (the last delivery's time). */
-  health0?: { lastDeliveryAt?: number | null };
+  /**
+   * What a restart keeps (the last delivery's time) and
+   * the cursor's last move.
+   */
+  health0?: { lastDeliveryAt?: number | null; cursorAt?: number | null };
+  /**
+   * hub.delivery_stale_hours: the stream open but the cursor
+   * still this long, and Hub's list read (once a poll interval) to see
+   * whether comments wait after it. 0 or none: never. Read each check.
+   */
+  staleMs?: () => number;
   /**
    * Issue 703: no bytes on an open stream for this long (Hub sends a
    * keep-alive every 25 s): closed, the list read once, reopened. 0: never.
@@ -368,6 +399,11 @@ export class DeliveryLoop {
    * answer keeps "refused": Hub without a stream reads the list each time).
    */
   private readonly troubleSaid = new Set<DeliveryTrouble>();
+  /** The last list result logged (its key), and the last stale check. */
+  private pollSaid = "";
+  private staleCheckedAt = Number.NEGATIVE_INFINITY;
+  /** The gap to the next stale check (0: the poll interval). */
+  private staleGap = 0;
 
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
@@ -382,6 +418,10 @@ export class DeliveryLoop {
       lastDeliveryAt: d.health0?.lastDeliveryAt ?? null,
       trouble: null,
       troubleAt: null,
+      streamSince: null,
+      lastPoll: null,
+      cursorAt: d.health0?.cursorAt ?? this.now(),
+      stale: null,
     };
     this.restore();
   }
@@ -397,6 +437,9 @@ export class DeliveryLoop {
       this.h.streamOpen,
       this.h.trouble,
       this.h.lastDeliveryAt,
+      this.h.cursorAt,
+      this.h.stale?.waiting ?? null,
+      this.h.lastPoll ? [this.h.lastPoll.ok, this.h.lastPoll.count] : null,
     ]);
     const ok = this.h.lastOkAt ?? 0;
     if (key === this.healthSaid && ok - this.healthOkSaid < HEALTH_EVERY_MS)
@@ -444,9 +487,114 @@ export class DeliveryLoop {
     this.healthChanged();
   }
 
+  /** Each open and close logged, one line each. */
   private streamIs(open: boolean): void {
     if (this.h.streamOpen === open) return;
     this.h.streamOpen = open;
+    if (open) {
+      this.h.streamSince = this.now();
+      this.d.log?.("hub deliveries: the comment stream opened");
+    } else {
+      const lived = this.now() - (this.h.streamSince ?? this.now());
+      this.h.streamSince = null;
+      this.d.log?.(
+        `hub deliveries: the comment stream closed after ${Math.round(lived / 1000)}s`,
+      );
+    }
+    this.healthChanged();
+  }
+
+  /** The cursor moved (a delivery came): any stall is over. */
+  private cursorTo(id: string): void {
+    this.d.seen.setLast(id);
+    this.h.cursorAt = this.now();
+    this.staleGap = 0;
+    if (this.h.stale) {
+      this.h.stale = null;
+      this.d.log?.("hub deliveries: the comment cursor moved again");
+    }
+    this.healthChanged();
+  }
+
+  /**
+   * A list read's result, kept for doctor and logged when it
+   * changes: its count and last id, or its error (logged by troubled()).
+   * Ids and counts only, never a comment's text.
+   */
+  private notePoll(r: { list: unknown[] } | { error: string }): void {
+    const at = this.now();
+    if ("error" in r) {
+      this.h.lastPoll = {
+        at,
+        ok: false,
+        error: redactSecrets(r.error).slice(0, 200),
+      };
+      this.pollSaid = "error";
+      this.healthChanged();
+      return;
+    }
+    const n = r.list.length;
+    const lastId =
+      (n ? parseDelivery(r.list[n - 1])?.id : null) ?? this.d.seen.last ?? null;
+    this.h.lastPoll = { at, ok: true, count: n, lastId };
+    const key = n ? `${n}:${lastId}` : "none";
+    if (key !== this.pollSaid) {
+      this.pollSaid = key;
+      this.d.log?.(
+        n
+          ? `hub deliveries: the comment list answered: ${n}, last ${lastId}`
+          : "hub deliveries: the comment list answered: none waiting",
+      );
+    }
+    this.healthChanged();
+  }
+
+  /**
+   * The stream is open but the cursor hasn't moved for
+   * hub.delivery_stale_hours: read Hub's list (at most once a poll
+   * interval, doubling after an empty answer or an error up to
+   * max(staleMs / 6, 10 min); back to the interval when the cursor moves
+   * or comments wait). Not until the stream has been open a poll interval:
+   * after a restart its first chunks carry the backlog. Comments waiting
+   * after the cursor: stale, said once. Nothing waiting: a quiet Hub,
+   * never stale. A delivery that moves the cursor clears it (cursorTo),
+   * or an empty list.
+   */
+  private async checkStale(): Promise<void> {
+    const ms = this.d.staleMs?.() ?? 0;
+    const poll = this.d.pollMs ?? 30_000;
+    const now = this.now();
+    if (!(ms > 0) || now - (this.h.cursorAt ?? now) < ms) return;
+    if (this.h.streamSince == null || now - this.h.streamSince < poll) return;
+    if (now - this.staleCheckedAt < (this.staleGap || poll)) return;
+    this.staleCheckedAt = now;
+    const backOff = () =>
+      (this.staleGap = Math.min(
+        (this.staleGap || poll) * 2,
+        Math.max(ms / 6, 10 * 60_000),
+      ));
+    let list: unknown[];
+    try {
+      list = await this.d.hub.list(this.d.seen.last);
+    } catch (e) {
+      this.notePoll({ error: String((e as Error)?.message ?? e) });
+      backOff();
+      return;
+    }
+    this.notePoll({ list });
+    if (list.length) this.staleGap = 0;
+    else backOff();
+    if (!list.length) {
+      if (this.h.stale) ((this.h.stale = null), this.healthChanged());
+      return;
+    }
+    if (!this.h.stale) {
+      this.h.stale = { since: now, waiting: list.length };
+      const hours = Math.round((now - (this.h.cursorAt ?? now)) / 3_600_000);
+      this.d.log?.(
+        `hub deliveries: the comment cursor hasn't moved for ${hours}h with the stream open; ${list.length} waiting in Hub's list`,
+      );
+    } else this.h.stale.waiting = list.length;
     this.healthChanged();
   }
 
@@ -623,7 +771,7 @@ export class DeliveryLoop {
         await this.ack(
           dv.id,
           st,
-          st === "queued" && why ? { reason: why } : {},
+          (st === "queued" || st === "held") && why ? { reason: why } : {},
         );
       return;
     }
@@ -943,14 +1091,26 @@ export class DeliveryLoop {
         return;
       } else return;
     }
-    const q = this.queue.get(agent);
-    if (!q?.length) {
+    const waiting = this.queue.get(agent);
+    if (!waiting?.length) {
       this.queue.delete(agent);
       return;
     }
     if (s === "stopped") {
-      await this.ackHeld(q, "stopped");
+      await this.ackHeld(waiting, "stopped");
       return;
+    }
+    // Issue 750: its Hub tools didn't load: Hub's deliveries wait (it
+    // couldn't answer them in Hub) and Hub hears why; Den's own items go on.
+    let q = waiting;
+    let toolsHeld: Delivery[] = [];
+    if (this.d.agents.hubTools?.(agent) === false) {
+      toolsHeld = waiting.filter((dv) => !dv.id.startsWith(LOCAL_PREFIX));
+      if (toolsHeld.length) {
+        await this.ackHeld(toolsHeld, "hub_tools");
+        q = waiting.filter((dv) => dv.id.startsWith(LOCAL_PREFIX));
+        if (!q.length) return;
+      }
     }
     if (s !== "idle") {
       let why: HeldCode | null = null;
@@ -1007,8 +1167,10 @@ export class DeliveryLoop {
             `${batch.length} ${relayed ? "messages" : "Hub comments"}:`,
             ...texts,
           ].join("\n\n---\n\n");
-    // Claim them before the paste: the queue keeps only what comes after.
-    if (rest.length) this.queue.set(agent, rest);
+    // Claim them before the paste: the queue keeps only what comes after
+    // (issue 750: and what waits for its Hub tools).
+    const keep = [...toolsHeld, ...rest];
+    if (keep.length) this.queue.set(agent, keep);
     else this.queue.delete(agent);
     this.typing.add(agent);
     let typed = false;
@@ -1072,9 +1234,26 @@ export class DeliveryLoop {
    * Issue 701: tell Hub why these wait (`queued`, with the reason in
    * plain words), once per reason. Den's own items have no ack.
    */
+  /**
+   * Issue 1311: how many items wait for agent `agent` on its person's
+   * unsent draft (0 when something else holds them, or nothing does).
+   */
+  waitingOnDraft(agent: string): number {
+    if (this.heldCode.get(agent) !== "draft") return 0;
+    const q = this.queue.get(agent) ?? [];
+    // Issue 750: Hub's items wait on its tools, not on the draft.
+    return this.d.agents.hubTools?.(agent) === false
+      ? q.filter((dv) => dv.id.startsWith(LOCAL_PREFIX)).length
+      : q.length;
+  }
+
   private async ackHeld(q: Delivery[], code: HeldCode): Promise<void> {
     if (q[0]) this.heldCode.set(q[0].agent, code);
-    const reason = HELD_WORDS[code];
+    // Issue 750: no Hub tools: `held` to a Hub that takes it, else `queued`.
+    const { state, reason } =
+      code === "hub_tools"
+        ? toolsHeldAck(this.d.ackHeld?.() ? [ACK_HELD_FEATURE] : [])
+        : { state: "queued" as const, reason: HELD_WORDS[code] };
     for (const dv of q)
       if (this.heldLogged.get(dv.id) !== code) {
         this.heldLogged.set(dv.id, code);
@@ -1084,7 +1263,7 @@ export class DeliveryLoop {
       if (dv.id.startsWith(LOCAL_PREFIX)) continue;
       if (this.heldReason.get(dv.id) === reason) continue;
       this.heldReason.set(dv.id, reason);
-      await this.ack(dv.id, "queued", { reason });
+      await this.ack(dv.id, state, { reason });
     }
   }
 
@@ -1141,6 +1320,7 @@ export class DeliveryLoop {
           arm();
           this.streamIs(true);
           this.readOk(chunks++ === 0 ? "open" : "bytes");
+          await this.checkStale();
           for (const ev of reader.feed(chunk)) {
             if (ev.event !== "delivery") continue;
             let v: unknown;
@@ -1151,7 +1331,7 @@ export class DeliveryLoop {
             }
             await this.take(v);
             const id = ev.id ?? parseDelivery(v)?.id;
-            if (id) this.d.seen.setLast(id);
+            if (id) this.cursorTo(id);
           }
           if (signal.aborted || silent) break;
         }
@@ -1206,6 +1386,7 @@ export class DeliveryLoop {
       list = await this.d.hub.list(this.d.seen.last);
     } catch (e) {
       // Issue 702: never swallowed: kept for doctor and the bell.
+      this.notePoll({ error: String((e as Error)?.message ?? e) });
       this.troubled(
         troubleOf(e),
         `the comment list: ${String((e as Error)?.message ?? e)}`,
@@ -1216,7 +1397,8 @@ export class DeliveryLoop {
     for (const v of list) {
       await this.take(v);
       const id = parseDelivery(v)?.id;
-      if (id) this.d.seen.setLast(id);
+      if (id) this.cursorTo(id);
     }
+    this.notePoll({ list });
   }
 }

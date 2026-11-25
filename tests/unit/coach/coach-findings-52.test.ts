@@ -220,11 +220,8 @@ describe("Dismiss", () => {
     ).toBe(0o600);
   });
 
-  it("needs a reason, and a finding id of the right shape", () => {
+  it("needs a finding id of the right shape; a reason is kept to 500 characters (mock v4 asks none)", () => {
     const st = state();
-    expect(dismissFinding(st, "polling:builder", "  ", "person")).toMatchObject(
-      { ok: false, code: "reason_required" },
-    );
     expect(dismissFinding(st, "../x", "why", "person")).toMatchObject({
       ok: false,
       code: "bad_id",
