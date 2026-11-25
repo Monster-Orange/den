@@ -35,6 +35,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/report-from-failure-177.browser.test.ts": [
+      "packages/den-ui/src/busy-report.js",
+      "src/ui/server/public/busy-den.js"
+    ],
     "tests/unit/cli/repo-add-no-run.integration.test.ts": [
       "src/ui/cli/doctor-command.ts"
     ],
@@ -1235,6 +1239,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-from-failure-177.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -1643,6 +1648,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-from-failure-177.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
@@ -1943,6 +1949,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-from-failure-177.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
@@ -3515,6 +3522,14 @@
         "src/ui/server/public/report-den.js"
       ],
       "run": ["tests/unit/server/report-everywhere.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/busy-report.js",
+        "src/ui/server/public/busy-den.js"
+      ],
+      "run": ["tests/unit/server/report-from-failure-177.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

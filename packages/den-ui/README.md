@@ -398,6 +398,12 @@ browser test, on the image (Den's real server on the demo distribution,
   and `extra` are as before, and a success still closes at once with a
   toast.
 
+- `src/busy-report.js` (export `./busy-report`): what Report from a
+  failure pop-up starts with (issue 177). `configureBusy({ report })` gets
+  `{ title, details, requestId, route }`: the title names the action and
+  the answer ("Couldn't save: error 500"), the details carry the status,
+  route, request id and time. Never a body, a query or the server's words.
+
 - Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
   is `src/kit.d.ts`. A test compiles a consumer against them with
   `--strict`.

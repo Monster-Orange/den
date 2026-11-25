@@ -145,6 +145,7 @@ async function open(
     if (
       u.pathname === "/busy.js" ||
       u.pathname === "/busy-words.js" ||
+      u.pathname === "/busy-report.js" ||
       u.pathname === "/dialog.js"
     )
       return r.fulfill({
