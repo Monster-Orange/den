@@ -2374,6 +2374,7 @@
       "when": ["scripts/org-name-commits.mjs"],
       "run": [
         "tests/unit/scripts/org-name-commits-main.test.ts",
+        "tests/unit/scripts/org-name-commits-queue-1610.test.ts",
         "tests/unit/scripts/org-name-commits.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
@@ -3062,7 +3063,9 @@
         "src/shared/agents/app-feeds.ts",
         "src/ui/server/public/settings-registry.js"
       ],
-      "run": ["tests/unit/server/app-feeds-edit-1480.browser.test.ts"],
+      "run": [
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {

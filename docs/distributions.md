@@ -5549,7 +5549,7 @@ prompt gets them). They say:
 own settings file, `--settings <stateDir>/agent-files/<id>/settings.json`.
 Den never writes your `~/.claude`; your own hooks still run.
 
-- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no imports)
+- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no packages)
   blocks, with a reason Claude sees (exit 2):
   - reading all of a log or a large file into the conversation: a `Read`
     with no `limit`, or `cat`, `less`, or `tail` from a line (`tail +1`,
@@ -5564,8 +5564,30 @@ Den never writes your `~/.claude`; your own hooks still run.
     wait primitive. Recent Claude Code versions have their own sleep guard,
     which answers first (and also stops `sleep … &`). The sleep is blocked
     either way; Den's hook covers runtimes and versions without that guard.
-  - Nothing else. Quoted text, heredoc bodies and other tools always pass,
-    and a hook that can't read its input lets the call through.
+  - a `gh` write to a public repo whose title or body holds a listed name
+    (issue 1127): `gh pr create|edit|comment|review|merge|close|reopen`,
+    `gh issue create|edit|comment|close|reopen`, and `gh api` writes to
+    issues, pulls, comments or GraphQL mutations. The text comes from
+    `--title`, `--subject`, `--body`, `--comment`, `--body-file` (a file,
+    or `-` from a heredoc or a pipe), `-f`/`-F` `title=`/`body=` (and
+    `body=@file`) and `--input`. The list is the
+    org-name gate's (`DEN_ORG_NAMES`, `DEN_ORG_NAMES_FILE` or
+    `~/.config/den-dev/org-names.txt`); with none, nothing is checked.
+    GitHub is asked a repo's visibility only on a hit, and the answer is
+    kept 10 minutes (`--visibility-minutes`) in
+    `~/.cache/den/repo-visibility.json`. Private and internal repos pass;
+    a repo whose visibility can't be found is checked. The reason quotes
+    the agent's own phrase and offers neutral words ("the person", "the
+    project", "the company", "an internal host"), never the list. This
+    check runs with `--no-guardrails` too. A list that can't be read (a
+    missing `DEN_ORG_NAMES_FILE`, a line that isn't a valid regex) holds
+    `gh` writes with a message saying so, and the hook's other blocks
+    still run. Each list line is matched as written, so give a common
+    word its own `\b` (`\bacme\b`) to keep it from matching inside
+    other words.
+  - Nothing else. Quoted text, heredoc bodies and other tools always pass
+    (other than the `gh` writes above), and a hook that can't read its
+    input lets the call through.
 - `Stop` (`stop-hook.ts`) checks a turn's last message, which is what the
   person reads. With a `Hand-back` heading it gets the whole hand-back
   check; any other message gets the plain-writing part only (every ID
