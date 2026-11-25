@@ -436,7 +436,17 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/coach/dismiss",
-    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+    "issue 52: Dismiss a Coach finding, a person's (a reason kept when given)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/undismiss",
+    "issue 52: Undo a Coach finding's dismissal, a person's",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
   ),
   M(
     ["POST"],

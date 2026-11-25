@@ -59,6 +59,7 @@ let tmp = "";
 let stateDir = "";
 let port = 0;
 let server: ChildProcess;
+let serverOut: () => string = () => "";
 
 beforeAll(async () => {
   try {
@@ -77,6 +78,13 @@ beforeAll(async () => {
   gh = await startFakeGithub({ interval: 0 });
   // The owner's public profile on (the fake) GitHub has a name.
   gh.profiles[OWNER.login] = { ...OWNER, name: NAME };
+  // Issue 1555: the profile route answers before Den starts and asks it.
+  const pre = await fetch(`${gh.url}/users/${OWNER.login}`);
+  expect([pre.status, ((await pre.json()) as { name?: string }).name]).toEqual([
+    200,
+    NAME,
+  ]);
+  gh.requests.length = 0;
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-acct-")));
   const root = path.join(tmp, "dist");
   stateDir = path.join(tmp, "home", ".den");
@@ -123,6 +131,7 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  serverOut = started.out;
 }, 120_000);
 
 afterAll(async () => {
@@ -382,8 +391,20 @@ describe("issue 406: the account entry is the kit's, name over @login", () => {
     if (skip()) return;
     // Den reads the public profile once, after it starts listening, without
     // a token, and keeps the name.
-    for (let i = 0; i < 100 && !readWebOwner(stateDir)?.name; i++)
+    // Issue 1555: wait for Den to say how it went (kept, or not kept and
+    // why), not a fixed time: a miss then names its step.
+    const said = /Owner's GitHub display name (kept|not kept: .*)/;
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline && !said.test(serverOut()))
       await new Promise((ok) => setTimeout(ok, 100));
+    const asks = gh.requests.map((r) => r.path);
+    expect({
+      den: serverOut().match(said)?.[0] ?? "nothing yet",
+      asks,
+    }).toEqual({
+      den: "Owner's GitHub display name kept",
+      asks: expect.arrayContaining([`/users/${OWNER.login}`]),
+    });
     expect(readWebOwner(stateDir)?.name).toBe(NAME);
     const asked = gh.requests.filter((r) => r.path === `/users/${OWNER.login}`);
     expect(asked).toHaveLength(1);

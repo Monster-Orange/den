@@ -3318,13 +3318,58 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "GitHub watch: watches at once",
     description:
-      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+      "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
     keywords: ["github", "watch", "limit", "github.watches_max"],
     scope: "user",
     keys: ["github.watches_max"],
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.github?.watches_max ?? 50,
     write: (v, ctx) => ctx.post({ github: { watches_max: v } }),
+  },
+  {
+    // Issue 1166: a watch with no progress this long ends (user.yml
+    // github.watch_stale_minutes). A person's only.
+    id: "server.github_watch_stale",
+    category: "server",
+    label: "GitHub watch: minutes with no progress",
+    description:
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    keywords: ["github", "watch", "stale", "github.watch_stale_minutes"],
+    scope: "user",
+    keys: ["github.watch_stale_minutes"],
+    control: { type: "number", min: 5, max: 10080, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_stale_minutes ?? 60,
+    write: (v, ctx) => ctx.post({ github: { watch_stale_minutes: v } }),
+  },
+  {
+    // Issue 1194: any watch open this long ends (user.yml
+    // github.watch_max_open_hours). A person's only.
+    id: "server.github_watch_max_open",
+    category: "server",
+    label: "GitHub watch: most hours open",
+    description:
+      "Any watch open this many hours ends, whatever its checks say, and its agent is told why. This catches a check that never reports. __DEN_CLI__ config github.watch_max_open_hours=24",
+    keywords: ["github", "watch", "ceiling", "github.watch_max_open_hours"],
+    scope: "user",
+    keys: ["github.watch_max_open_hours"],
+    control: { type: "number", min: 1, max: 720, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_max_open_hours ?? 24,
+    write: (v, ctx) => ctx.post({ github: { watch_max_open_hours: v } }),
+  },
+  {
+    // Issue 1214: how often a finished run is looked at for a re-run
+    // (user.yml github.rerun_look_minutes). A person's only.
+    id: "server.github_rerun_look",
+    category: "server",
+    label: "GitHub watch: minutes between re-run looks",
+    description:
+      "For an hour after a run's result is told, the GitHub watcher looks this often for a re-run of it, and a re-run opens the watch again. Fewer looks spend less of GitHub's hourly budget. __DEN_CLI__ config github.rerun_look_minutes=5",
+    keywords: ["github", "watch", "re-run", "github.rerun_look_minutes"],
+    scope: "user",
+    keys: ["github.rerun_look_minutes"],
+    control: { type: "number", min: 1, max: 60, step: 1 },
+    read: (ctx) => ctx.data.github?.rerun_look_minutes ?? 5,
+    write: (v, ctx) => ctx.post({ github: { rerun_look_minutes: v } }),
   },
   {
     // den#143: how long `web up` waits for the server (user.yml
@@ -5416,6 +5461,22 @@ export const DEN_SETTINGS = [
     keys: ["agents_layout"],
     read: (ctx) => ctx.data.agents_layout ?? "focus",
     write: (v, ctx) => ctx.post({ agents_layout: v }),
+  },
+  {
+    id: "agents.coach_counts",
+    category: "agents",
+    label: "Coach tab: show counts as",
+    description:
+      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+    keywords: ["coach", "counts", "total", "per day", "usage", "tokens"],
+    scope: "user",
+    control: seg([
+      { value: "total", label: "Total" },
+      { value: "per_day", label: "Per day" },
+    ]),
+    keys: ["coach_counts"],
+    read: (ctx) => ctx.data.coach_counts ?? "total",
+    write: (v, ctx) => ctx.post({ coach_counts: v }),
   },
   ...bellRows(),
   {

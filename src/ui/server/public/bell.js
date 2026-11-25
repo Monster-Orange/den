@@ -251,6 +251,7 @@ export function allowsOf(b) {
  * (shell.js's denApDetailLines). `open`: Review is open.
  */
 function allowRowHtml(w, open) {
+  if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
@@ -279,6 +280,35 @@ function allowRowHtml(w, open) {
     `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
     `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
     `</div>`
+  );
+}
+
+/**
+ * Issue 110 (mock v3, in Hub, Den project): a Coach Apply's held write is
+ * one card: who asks, the finding it came from, Change, Why, whether it is
+ * reversible, then the bell's own Allow and Deny. Every word is a key, its
+ * numbers the finding's (Den's, from the stored finding: never an agent's).
+ */
+function coachRowHtml(w) {
+  const c = w.coach;
+  const kind = String(c.kind ?? "");
+  const vars = { ...(c.vars ?? {}), persona: c.persona ?? "" };
+  const row = (label, text) =>
+    `<div class="den-bell-cr"><dt>${esc(tr(label))}</dt><dd>${esc(text)}</dd></div>`;
+  return (
+    `<div class="den-bell-row den-bell-allow den-bell-coach" data-kind="allow" data-bell-coach data-ap-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t"><b>${esc(tr("bell.coach.asks", { persona: vars.persona }))}</b>` +
+    `<span class="den-bell-sub">${esc(tr("bell.coach.from", { title: tr(`co.f.${kind}.t`, vars) }))}</span>` +
+    `<dl class="den-bell-cdl">` +
+    row("bell.coach.change", tr(`co.ap.change.${kind}`, vars)) +
+    row("bell.coach.why", tr(`co.f.${kind}.why`, vars)) +
+    row("bell.coach.rev", tr(`co.ap.rev.${kind}`, vars)) +
+    `</dl></span>` +
+    `<span class="den-bell-cb">` +
+    `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
+    `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
+    `</span></div>`
   );
 }
 
@@ -549,8 +579,9 @@ async function post(path, body) {
  */
 function scopeRead(b, scope) {
   let marked = 0;
-  const f = (n, g) => {
-    if (g.scope !== scope || n.read) return n;
+  const f = (n) => {
+    // The server's rule (notifications.ts, matches): the item's own scope.
+    if (n.scope !== scope || n.read) return n;
     marked++;
     return { ...n, read: true };
   };

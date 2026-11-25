@@ -210,6 +210,9 @@ describe("an entry, checked", () => {
 
   it.each([
     [{ repo: "alpha" }, /owner\/name/],
+    // "." and "..": a later slice puts the repo in a URL (review).
+    [{ repo: "acme/.." }, /owner\/name/],
+    [{ repo: "acme/." }, /owner\/name/],
     [{ box: "-x" }, /box/],
     [{ labels: [] }, /runner labels/],
     [{ labels: ["a b"] }, /label/],

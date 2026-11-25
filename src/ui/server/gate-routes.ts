@@ -97,6 +97,7 @@ import {
   auditActorOf,
   principalOf,
   runnerPrincipalOf,
+  testPersonOf,
 } from "./request-guard.js";
 
 export const GATE_PATHS = [
@@ -674,6 +675,18 @@ async function handleRunnerEntries(
     return sendJson(res, view());
   if (req.method !== "POST")
     return sendJson(res, { ok: false, error: "POST only" }, 405);
+  // A test bed's CLI (the test person) reads them, never changes them: an
+  // entry widens what runs on a box (issue 642 review).
+  if (testPersonOf(req))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "the test person can't change the runner entries",
+      },
+      403,
+    );
   const body = await bodyOf(req);
   if (!body) return sendJson(res, TOO_BIG, 400);
   const audit = (detail: string) =>
@@ -776,6 +789,11 @@ export function gateRunnerEntryOp(d: {
             `The repo variable ${variable} sends its jobs to the box, or back to hosted runners. ${owner} answers for it.`,
             "ap.det.gate_runner_entry_set.route",
             { variable, owner },
+          ),
+          line(
+            `Box runners start only for a private repo: if ${repo} is public, none starts unless a person allows public repos for this project.`,
+            "ap.det.gate_runner_entry_set.private",
+            { repo },
           ),
           line(
             "You can remove it any time in Settings, under CI runner entries.",

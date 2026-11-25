@@ -817,6 +817,14 @@
     ],
     "tests/unit/server/runs-bar-band-283.browser.test.ts": [
       "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/coach-tab.browser.test.ts": [
+      "src/ui/server/coach-routes.ts",
+      "src/ui/server/public/coach-tab.js",
+      "src/ui/server/public/server-agent.html"
+    ],
+    "tests/unit/server/toast-hold.browser.test.ts": [
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [],
@@ -1029,6 +1037,7 @@
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
+        "tests/unit/den-ui/report-opens-1499.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
@@ -1136,6 +1145,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/coach-tab.js",
         "src/ui/server/public/server-agent-page.js",
         "src/ui/server/public/server-agent.html"
       ],
@@ -1145,6 +1155,8 @@
         "tests/unit/server/a11y.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
+        "tests/unit/server/coach-apply.browser.test.ts",
+        "tests/unit/server/coach-tab.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1291,6 +1303,7 @@
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
+        "tests/unit/server/toast-hold.browser.test.ts",
         "tests/unit/server/workspaces-page.browser.test.ts"
       ],
       "why": "settings.html"
@@ -1410,6 +1423,7 @@
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
+        "tests/unit/den-ui/report-opens-1499.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
@@ -1561,6 +1575,8 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/bring-in.browser.test.ts",
+        "tests/unit/server/coach-apply.browser.test.ts",
+        "tests/unit/server/coach-tab.browser.test.ts",
         "tests/unit/server/dialogs-centred.browser.test.ts",
         "tests/unit/server/dialogs-fit-ipad.browser.test.ts",
         "tests/unit/server/draft-hold-1311.browser.test.ts",
@@ -1717,6 +1733,7 @@
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
+        "tests/unit/server/toast-hold.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
@@ -1769,6 +1786,7 @@
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
+        "tests/unit/den-ui/report-opens-1499.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
@@ -1896,6 +1914,7 @@
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
         "tests/unit/den-ui/rail-load-motion.browser.test.ts",
+        "tests/unit/den-ui/report-opens-1499.browser.test.ts",
         "tests/unit/den-ui/report-shot-scroll.browser.test.ts",
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
@@ -1947,6 +1966,8 @@
         "tests/unit/server/bring-in.browser.test.ts",
         "tests/unit/server/busy-popup.browser.test.ts",
         "tests/unit/server/busy-request-ledger.browser.test.ts",
+        "tests/unit/server/coach-apply.browser.test.ts",
+        "tests/unit/server/coach-tab.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
         "tests/unit/server/confirm-busy.browser.test.ts",
         "tests/unit/server/d17-claim.browser.test.ts",
@@ -2034,6 +2055,7 @@
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
+        "tests/unit/server/toast-hold.browser.test.ts",
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/untrusted-reports.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -2559,6 +2581,14 @@
         "tests/unit/test-infra/typecheck-tests.test.ts"
       ],
       "why": "tests that run scripts/typecheck-tests.mjs"
+    },
+    {
+      "when": ["scripts/visual-tests.mjs"],
+      "run": [
+        "tests/unit/den-ui/nav-inventory.test.ts",
+        "tests/unit/test-infra/visual-tag-1527.test.ts"
+      ],
+      "why": "tests that run scripts/visual-tests.mjs"
     },
     {
       "when": [
@@ -3373,7 +3403,9 @@
         "src/shared/agents/app-feeds.ts",
         "src/ui/server/public/settings-registry.js"
       ],
-      "run": ["tests/unit/server/app-feeds-edit-1480.browser.test.ts"],
+      "run": [
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -3525,10 +3557,32 @@
     },
     {
       "when": [
+        "src/ui/server/coach-apply-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/coach-apply.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/pillars/security/findings.ts",
+        "src/shared/coach/findings.ts",
         "src/ui/server/coach-routes.ts"
       ],
       "run": [
         "tests/unit/server/coach-routes.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/coach-routes.ts",
+        "src/ui/server/public/coach-tab.js",
+        "src/ui/server/public/server-agent.html"
+      ],
+      "run": [
+        "tests/unit/server/coach-tab.browser.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
@@ -3554,7 +3608,8 @@
     },
     {
       "when": [
-        "src/shared/crash-loop.ts"
+        "src/shared/crash-loop.ts",
+        "src/ui/cli/web-command.ts"
       ],
       "run": [
         "tests/unit/server/crash-loop.integration.test.ts"
@@ -4952,6 +5007,15 @@
       ],
       "run": [
         "tests/unit/server/time-zone.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/shell.js"
+      ],
+      "run": [
+        "tests/unit/server/toast-hold.browser.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },

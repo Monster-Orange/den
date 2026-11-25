@@ -45,8 +45,9 @@ export const RUNNER_ENTRY_LIMITS = {
   labels: { min: 1, max: 20 },
 } as const;
 
+// The name may hold dots but is never "." or "..": a URL would fold them.
 export const REPO_RE =
-  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** A forge variable's name: letters, digits, underscore; not a digit first. */
 const VAR_RE = /^[A-Za-z_][A-Za-z0-9_]{0,99}$/;
