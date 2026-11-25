@@ -17,6 +17,8 @@
  * rises. A new file counts from 0, so a block moved into one still passes. A deleted file's count comes off. A file with a
  * side that can't be read (binary, over 2 MB) is left out. A rule marked opt_in runs only when
  * the base's .guardrail-lint.json lists its id in "on". Ratchets judge only with --base.
+ * Its "exclude", a list of globs, is skipped by every rule (vendored code): from the base's tree with --base, so a
+ * change can't exclude its own files, and from HEAD's with --all.
  * Exit 0 clean, 1 on a hit, 2 on a usage, config or git error. Plain Node, no dependencies.
  */
 import { execFileSync } from "node:child_process";
@@ -97,6 +99,8 @@ export function baseConfig(root, base) {
   if (cfg.since !== undefined && !SHA.test(String(cfg.since))) throw new Error(".guardrail-lint.json: since must be one full 40-hex commit SHA");
   if (cfg.on !== undefined && !(Array.isArray(cfg.on) && cfg.on.every((id) => typeof id === "string")))
     throw new Error(".guardrail-lint.json: on must be a list of rule ids");
+  if (cfg.exclude !== undefined && !(Array.isArray(cfg.exclude) && cfg.exclude.every((g) => typeof g === "string" && g.length > 0)))
+    throw new Error(".guardrail-lint.json: exclude must be a list of globs");
   return cfg;
 }
 
@@ -228,13 +232,18 @@ async function main(argv) {
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
   const root = arg("--root") ?? process.cwd();
   const base = arg("--base");
-  const { rules, excluded } = await loadRules(arg("--rules"));
+  const { rules, excluded: shared } = await loadRules(arg("--rules"));
+  let excluded = shared;
   let hits;
   if (argv.includes("--pr-text")) {
     hits = lintPrText(rules, [["pull request title", process.env.PR_TITLE], ["pull request body", process.env.PR_BODY]]);
   } else if (base || argv.includes("--all")) {
     let files;
     try {
+      // The repo's own exclude (vendored code), from the base's tree with --base, or HEAD's with --all.
+      const at = base ? execFileSync("git", ["-C", root, "rev-parse", "--verify", `${base}^{commit}`], { encoding: "utf-8" }).trim() : "HEAD";
+      const own = (baseConfig(root, at).exclude ?? []).map(globToRegExp);
+      if (own.length) excluded = (p) => shared(p) || own.some((e) => e.test(p));
       files = base ? addedLines(root, base) : new Map(tracked(root).map((p) => [p, null]));
     } catch (e) {
       if (/guardrail-lint\.json/.test(e.message)) { console.error(`guardrail lint: ${e.message}`); return 2; }
