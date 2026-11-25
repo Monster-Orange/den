@@ -248,31 +248,40 @@ const ALL_ON = new Proxy({} as Record<string, unknown>, {
 });
 
 // The events that can carry code that isn't ours, on any ref.
-const FOREIGN = [
-  prEvent("fork/den"),
-  { ...prEvent("fork/den"), event_name: "pull_request_target" },
-  { ...prEvent("fork/den"), event_name: "pull_request_review" },
+// A github context: event_name and ref are always there.
+type GithubCtx = Record<string, unknown> & { event_name: string; ref: string };
+
+const FOREIGN: GithubCtx[] = (
+  [
+    prEvent("fork/den"),
+    { ...prEvent("fork/den"), event_name: "pull_request_target" },
+    { ...prEvent("fork/den"), event_name: "pull_request_review" },
+    {
+      event_name: "merge_group",
+      repository: REPO,
+      ref: "refs/heads/gh-readonly-queue/main/pr-1",
+      event: {},
+    },
+    {
+      event_name: "issue_comment",
+      repository: REPO,
+      ref: "refs/heads/main",
+      event: {},
+    },
+    {
+      event_name: "workflow_run",
+      repository: REPO,
+      ref: "refs/heads/main",
+      event: {},
+    },
+  ] as Record<string, unknown>[]
+).flatMap((g) => [
   {
-    event_name: "merge_group",
-    repository: REPO,
-    ref: "refs/heads/gh-readonly-queue/main/pr-1",
-    event: {},
+    ...g,
+    event_name: String(g.event_name),
+    ref: typeof g.ref === "string" ? g.ref : "refs/pull/1/merge",
   },
-  {
-    event_name: "issue_comment",
-    repository: REPO,
-    ref: "refs/heads/main",
-    event: {},
-  },
-  {
-    event_name: "workflow_run",
-    repository: REPO,
-    ref: "refs/heads/main",
-    event: {},
-  },
-].flatMap((g) => [
-  { ...g, ref: (g as { ref?: string }).ref ?? "refs/pull/1/merge" },
-  { ...g, ref: "refs/tags/v9.9.9-dev.1" },
+  { ...g, event_name: String(g.event_name), ref: "refs/tags/v9.9.9-dev.1" },
 ]);
 
 function workflowFiles(): string[] {
