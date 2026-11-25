@@ -491,17 +491,22 @@ button.den-gh {
   width: 100%;
   text-align: start;
   align-items: center;
-  gap: 6px;
   cursor: pointer;
-  border-radius: 4px;
 }
+/* Margins, not gap, and corners only while focused: the heading at rest
+   keeps the signed-off nav's styles (nav-inventory). */
 button.den-gh > span:first-child {
   margin-inline-end: auto;
+}
+button.den-gh > .den-bdg,
+button.den-gh > .den-gh-chev {
+  margin-inline-start: 6px;
 }
 button.den-gh:hover {
   color: var(--muted);
 }
 button.den-gh:focus-visible {
+  border-radius: 4px;
   outline: 2px solid var(--focus-ring, var(--accent));
   outline-offset: var(--focus-offset, 2px);
 }

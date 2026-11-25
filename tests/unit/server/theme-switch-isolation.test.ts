@@ -467,6 +467,8 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       dockHeight: 0,
       // Manage projects' order (0.4.45): none set, unwritten.
       projectOrder: [],
+      // Folded rail sections (issue 1444): none, unwritten.
+      folded: [],
       // Project colours (issue 168): the one chosen; null is Automatic.
       projectColours: { shop: "teal" },
     });
