@@ -127,26 +127,58 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(html).toContain(ja["kit.report.word"]);
   });
 
-  it("the search's placeholder and name are the kit's words, in en, es and ja; a host can't change them", () => {
-    const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
-    const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+  const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
+  const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+
+  it("the search's placeholder and name are the kit's words by default, in en, es and ja", () => {
     for (const [lang, word, name] of [
       ["en", "Search…", "Search"],
       ["es", "Buscar…", "Buscar"],
       ["ja", "検索…", "検索"],
     ] as const) {
-      // A host's own words are ignored: one search in every product.
-      const h = searchHtml({
-        lang,
-        placeholder: "Find anything…",
-        label: "Search pages",
-      } as Parameters<typeof searchHtml>[0]);
+      const h = searchHtml({ lang });
       expect(ph(h)).toBe(word);
       expect(label(h)).toBe(name);
     }
     // They are the kit's words: the nav inventory compares them.
     expect(searchHtml({})).not.toContain("data-nav-name");
     expect(searchHtml({})).not.toContain("data-nav-role");
+  });
+
+  // Issue 560: the host may set the placeholder (per locale); the name
+  // (aria-label) stays the kit's, so every product's search is "Search".
+  it("issue 560: a host's placeholder shows, per locale; the name stays the kit's", () => {
+    // One word, already in the page's language.
+    const one = searchHtml({ lang: "es", placeholder: "Buscar agentes…" });
+    expect(ph(one)).toBe("Buscar agentes…");
+    expect(label(one)).toBe("Buscar");
+    // Words per locale: the page's, then its base language's.
+    const per = { en: "Find work…", es: "Buscar trabajo…", ja: "仕事を探す…" };
+    expect(ph(searchHtml({ lang: "ja", placeholder: per }))).toBe(
+      "仕事を探す…",
+    );
+    expect(ph(searchHtml({ lang: "es-MX", placeholder: per }))).toBe(
+      "Buscar trabajo…",
+    );
+    // A locale it doesn't name, or a blank word: the kit's default.
+    expect(ph(searchHtml({ lang: "ja", placeholder: { en: "Find…" } }))).toBe(
+      "検索…",
+    );
+    expect(ph(searchHtml({ lang: "en", placeholder: "  " }))).toBe("Search…");
+    // Host text is escaped.
+    expect(searchHtml({ placeholder: '<b>"x"</b>' })).toContain(
+      "&lt;b&gt;&quot;x&quot;&lt;/b&gt;",
+    );
+    // The name is never the host's.
+    expect(
+      label(
+        searchHtml({
+          lang: "en",
+          placeholder: "Find work…",
+          label: "Mine",
+        } as Parameters<typeof searchHtml>[0]),
+      ),
+    ).toBe("Search");
   });
 
   // 0.7.1: the account is data ({ name?, login, role? }); the kit owns
