@@ -2917,8 +2917,6 @@
     "bell.undo": "Deshacer",
     "bell.undoMsg": "Ya no se muestra «{kind}».",
     "bell.clearRead": "Borrar las leídas",
-    "bell.marking": "Marcando…",
-    "bell.clearing": "Borrando…",
     "bell.read": "Marcar como leída",
     "bell.server": "Agente de __DEN_TITLE__",
     "bell.hub": "Hub · {project}",
