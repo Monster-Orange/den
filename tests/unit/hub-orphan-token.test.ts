@@ -19,6 +19,7 @@ import {
 } from "../../src/shared/hub-binding.js";
 import { HELD_WRITE_RISK } from "../../src/shared/approval-policy.js";
 import { SERVER_SCOPE } from "../../src/shared/agents/server-agent.js";
+import { createApprovalQueue } from "../../src/ui/server/approval-routes.js";
 import { previousHubLines } from "../../src/ui/cli/doctor-hub-previous.js";
 import {
   heldActions,
@@ -63,7 +64,7 @@ describe("a Hub token kept without its record", () => {
     ]);
   });
 
-  it("doctor points to the record's copy in backup, which may name the Hub (Reviewer C)", () => {
+  it("doctor points to the record's copy in backup, which may name the Hub", () => {
     const s = stateDir();
     const id = orphaned(s);
     const [t] = readOrphanTokens(s);
@@ -79,7 +80,7 @@ describe("a Hub token kept without its record", () => {
     expect(row.detail).toContain(id);
   });
 
-  it("a record Den can't read or move stays, and forgetting refuses while it does (Reviewer C)", () => {
+  it("a record Den can't read or move stays, and forgetting refuses while it does", () => {
     const s = stateDir();
     const rec = recordUnrevoked(s, {
       url: "https://hub.example.test",
@@ -228,7 +229,7 @@ describe("hub_token_forget: a held write the person Allows", () => {
   });
 });
 
-describe("hub_token_forget: only Den's own agent asks (Reviewer C)", () => {
+describe("hub_token_forget: only Den's own agent asks", () => {
   it("refuses a person's CLI, another agent, and Den's agent outside its own scope", async () => {
     const s = stateDir();
     const id = orphaned(s);
@@ -248,6 +249,34 @@ describe("hub_token_forget: only Den's own agent asks (Reviewer C)", () => {
     expect(
       await a.check({ id }, { agent: "server", project: SERVER_SCOPE }),
     ).toMatchObject({ ok: true });
+  });
+
+  it("Den's agent asks, the person Allows through the queue, and the token is gone", async () => {
+    const s = stateDir();
+    const id = orphaned(s);
+    const actions = heldActions({
+      hubOrphans: {
+        list: () => readOrphanTokens(s),
+        forget: (i: string) => forgetOrphanToken(s, i),
+      },
+    } as unknown as HeldActionDeps);
+    const c = await actions.hub_token_forget.check(
+      { id },
+      { agent: "server", project: SERVER_SCOPE },
+    );
+    expect(c).toMatchObject({ ok: true });
+    const queue = createApprovalQueue(actions, () => s);
+    const asked = queue.request({
+      actor: "den-server",
+      action: "hub_token_forget",
+      args: (c as { args: Record<string, unknown> }).args,
+      summary: "forget it",
+    });
+    const r = await queue.decide(asked.id, "allow", "person-session");
+    expect(r).toMatchObject({ ok: true });
+    expect(fs.existsSync(path.join(unrevokedDir(s), `${id}.token`))).toBe(
+      false,
+    );
   });
 
   it("refuses a token whose record is still there but can't be read", async () => {

@@ -1155,12 +1155,16 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   };
 
   const hubTokenForget: HeldAction = {
-    check(a, who): HeldCheck {
+    check(a, who, o): HeldCheck {
       if (!d.hubOrphans)
         return { ok: false, error: "this Den can't forget Hub tokens here" };
-      // Reviewer C: Den's own agent only, never a person's CLI or another
-      // agent (the Allow is still the person's).
-      if (who?.agent !== SERVER_AGENT_ID || !isServerScope(who.project))
+      // Den's own agent only, never a person's CLI or another agent. The
+      // ask carries the caller; the check at the Allow has none, and the
+      // Allow is the person's, so only the ask is held to it.
+      if (
+        !o?.again &&
+        (who?.agent !== SERVER_AGENT_ID || !isServerScope(who.project))
+      )
         return {
           ok: false,
           error:

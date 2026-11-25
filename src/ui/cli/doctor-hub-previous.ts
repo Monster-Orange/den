@@ -81,7 +81,7 @@ export function previousHubLines(o: {
       : "";
     const rows = orphans.map((t) =>
       t.stuck
-        ? // Reviewer C: the record may name the Hub, so Den never forgets it.
+        ? // The record may name the Hub, so Den never forgets it.
           `a Hub token Den kept to revoke later has a record Den can't read or move (id ${t.id}, kept ${t.at}): hub/unrevoked/${t.id}.json in the state folder. It may name the Hub${look}: revoke this install's token on that Hub's tokens page, then remove that file, and Den's agent can forget the token (hub_token_forget, id ${t.id}; you Allow it)`
         : `a Hub token Den kept to revoke later has lost its record (id ${t.id}, kept ${t.at}), so Den doesn't know which Hub it is for and leaves it alone.${t.kept ? ` A copy of the record Den couldn't read is in backup/${t.kept} in the state folder, and may name the Hub.` : ""} Revoke this install's token on that Hub's tokens page${look}, then have Den's agent forget it (hub_token_forget, id ${t.id}; you Allow it)`,
     );

@@ -409,7 +409,7 @@ export interface OrphanToken {
   kept?: string;
   /**
    * The record is still there but Den can't read or move it: it may name
-   * the Hub, so the token is never forgotten while it is (Reviewer C).
+   * the Hub, so the token is never forgotten while it is.
    */
   stuck?: true;
 }
@@ -458,7 +458,7 @@ export function readOrphanTokens(stateDir: string): OrphanToken[] {
 export function forgetOrphanToken(stateDir: string, id: string): boolean {
   if (!ID_RE.test(id)) return false;
   const t = readOrphanTokens(stateDir).find((o) => o.id === id);
-  // A record still there may name the Hub: never lose it (Reviewer C).
+  // A record still there may name the Hub: never lose it.
   if (!t || t.stuck) return false;
   fs.rmSync(path.join(unrevokedDir(stateDir), `${id}.token`), { force: true });
   return true;
