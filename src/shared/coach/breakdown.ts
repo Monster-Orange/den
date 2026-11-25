@@ -75,6 +75,11 @@ export interface CoachAgentRow {
     total: number;
     /** The window's, by why each began. */
     byWhy: Partial<Record<ConversationWhy, number>>;
+    /**
+     * The window's, newest first, at most 50, for the Coach tab's row
+     * detail: when each began and ended, and why. No conversation ids.
+     */
+    list?: CoachConversation[];
   };
   /** Transcripts read (its conversations' own and their subagents'). */
   transcripts: number;
@@ -106,6 +111,17 @@ export interface CoachReport {
   totalsPerDay: PerDay;
   /** What the run itself cost: a counted run calls no model. */
   cost: { model: string | null; tokens: number };
+  /**
+   * Slice T-d: what judging did, when it had items: its model, the tokens
+   * it spent, the items picked and skipped, and why any were skipped.
+   */
+  judge?: {
+    model: string;
+    tokens: number;
+    items: number;
+    skipped: number;
+    why?: string[];
+  };
   /** Slice T-b: the counted findings, all of them (findings.ts). */
   findings?: CoachFinding[];
 }
@@ -153,7 +169,19 @@ export interface CoachOptions {
   after?: number;
   /** R12's longest sentence, in words (agents.coach.findings.sentence_words). */
   sentenceWords?: number;
+  /** Told how many agents are read: 0 of n first, then after each. */
+  progress?: (done: number, total: number) => void;
 }
+
+/** One conversation in the window, for the row detail (no id). */
+export interface CoachConversation {
+  from: string;
+  to?: string;
+  why: ConversationWhy;
+  backfilled?: true;
+}
+
+const MAX_LISTED = 50;
 
 /** Transcripts read at once: many agents, each with many, would run out of file handles. */
 const MINE_AT_ONCE = 8;
@@ -173,7 +201,9 @@ export async function coachBreakdown(
   const agents: CoachAgentRow[] = [];
   const all: TranscriptStats[] = [];
   let rotations = 0;
-  for (const rec of records) {
+  o.progress?.(0, records.length);
+  for (const [i, rec] of records.entries()) {
+    if (i > 0) o.progress?.(i, records.length);
     const list = readConversations(o.stateDir, rec);
     // Current at some point in the window: not ended before it began.
     const inWindow = list.filter((c) => !c.to || Date.parse(c.to) >= since);
@@ -184,7 +214,20 @@ export async function coachBreakdown(
       workspace: rec.workspace,
       persona: rec.persona,
       runtime: rec.runtime,
-      conversations: { inWindow: inWindow.length, total: list.length, byWhy },
+      conversations: {
+        inWindow: inWindow.length,
+        total: list.length,
+        byWhy,
+        list: inWindow
+          .slice(-MAX_LISTED)
+          .reverse()
+          .map((c) => ({
+            from: c.from,
+            ...(c.to ? { to: c.to } : {}),
+            why: c.why,
+            ...(c.backfilled ? { backfilled: true as const } : {}),
+          })),
+      },
       transcripts: 0,
     };
     agents.push(row);
@@ -244,6 +287,7 @@ export async function coachBreakdown(
     }
     all.push(...stats);
   }
+  if (records.length) o.progress?.(records.length, records.length);
   const totals = { ...weeklyMetrics(all, undefined, o.after), rotations };
   return {
     version: 1,

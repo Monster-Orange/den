@@ -45,6 +45,7 @@ import {
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
+import { statSettled } from "./stat-settled.js";
 const ROOT = getDistRoot();
 const DEN_CONFIG_PATH = path.join(ROOT, product().configFile);
 const USER_CONFIG_PATH = path.join(ROOT, "config", "local", "user.yml");
@@ -661,6 +662,13 @@ export interface UserConfig {
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
      */
     git?: unknown;
+    /**
+     * Issue 52: agents.coach.judge.enabled is the person's, here only.
+     * Judging sends samples, the person's prompts among them, to the model
+     * provider, so an agent writing the distribution's config can't switch
+     * it on (as issue 1072 does for settings that widen an agent's reach).
+     */
+    coach?: { judge?: { enabled?: unknown } | null } | null;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
     /**
@@ -1423,7 +1431,11 @@ export function sectionConfigError(
   }
 }
 
-let checked: { key: string; error: ConfigError | null } | null = null;
+let checked: {
+  key: string;
+  readAt: number;
+  error: ConfigError | null;
+} | null = null;
 
 /**
  * Throw the config's validation error (a ConfigError naming its keys), if it
@@ -1433,16 +1445,24 @@ let checked: { key: string; error: ConfigError | null } | null = null;
  * validation stops them all, not only those that happen to read `orgs:`.
  * A missing file, or one that does not parse, is left to readDenConfig.
  * Memoised on the file's mtime and size: the server checks per request.
+ * Kept only once the file's mtime is more than a clock tick older than the
+ * read (statSettled), so two same-size edits in one tick can't keep the
+ * first one's verdict.
  */
 export function assertDenConfigValid(): void {
   let key: string;
+  let st: fs.Stats;
   try {
-    const st = fs.statSync(DEN_CONFIG_PATH);
+    st = fs.statSync(DEN_CONFIG_PATH);
     key = `${st.mtimeMs}:${st.size}`;
   } catch {
     return;
   }
-  if (checked?.key !== key) {
+  if (
+    checked?.key !== key ||
+    !statSettled({ mtimeMs: st.mtimeMs }, checked.readAt)
+  ) {
+    const readAt = Date.now();
     let error: ConfigError | null = null;
     try {
       const parsed = yaml.parse(fs.readFileSync(DEN_CONFIG_PATH, "utf-8")) as {
@@ -1453,7 +1473,7 @@ export function assertDenConfigValid(): void {
       if (!isConfigError(e)) return;
       error = e;
     }
-    checked = { key, error };
+    checked = { key, readAt, error };
   }
   if (checked.error) throw new ConfigError(checked.error.issues);
 }
@@ -2554,6 +2574,17 @@ export function readAgentsConfig(
       ? { ...c, agents: { ...(theirs ?? {}), ...mine } as DenConfig["agents"] }
       : c;
   const out = asConfigError(() => parseAgentsConfig(merged));
+  // Issue 52: judging sends samples off the machine, so only user.yml
+  // switches it on; the distribution's value is never read (doctor names it).
+  const judgeOn = asConfigError(
+    () => userJudgeEnabled(u),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
+  out.coach = out.coach ?? checkCoachConfig(undefined);
+  out.coach = {
+    ...out.coach,
+    judge: { ...out.coach.judge, enabled: judgeOn === true },
+  };
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => {
@@ -2582,6 +2613,17 @@ export function readAgentsConfig(
     if (g) out.git = g;
   }
   return out;
+}
+
+/** user.yml's agents.coach.judge.enabled: true, false or unset (false). */
+function userJudgeEnabled(u: UserConfig): boolean {
+  const v = u.agents?.coach?.judge?.enabled;
+  if (v === undefined || v === null) return false;
+  if (typeof v !== "boolean")
+    throw new Error(
+      `agents.coach.judge.enabled must be true or false (got ${JSON.stringify(v)})`,
+    );
+  return v;
 }
 
 /**

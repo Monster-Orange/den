@@ -23,6 +23,8 @@
  */
 
 /** The actions issue_write does. */
+import { isRepoName } from "./repo-name.js";
+
 export const ISSUE_WRITE_ACTIONS = [
   "create",
   "comment",
@@ -89,8 +91,6 @@ export const ISSUE_BODY_MAX = 65_536;
 const NAME_MAX = 100;
 /** Labels on one call. */
 const LABELS_MAX = 20;
-
-const REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 
 export interface IssueWriteSettings {
   roles: string[];
@@ -259,7 +259,8 @@ export function checkIssueWrite(a: unknown): IssueCheck {
       error: `action: one of ${ISSUE_WRITE_ACTIONS.join(", ")}`,
     };
   const repo = typeof a.repo === "string" ? a.repo.trim() : "";
-  if (!REPO_RE.test(repo))
+  // Never "." or ".." (a URL would fold it into another path).
+  if (!isRepoName(repo))
     return { ok: false, error: "repo: a GitHub repo, owner/name", action };
   if (action === "create") {
     const title = typeof a.title === "string" ? a.title.trim() : "";
