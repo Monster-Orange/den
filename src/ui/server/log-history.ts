@@ -393,9 +393,13 @@ function dumpDockerLogs(
  * Drop snapshots whose container no longer exists (their docker history is
  * gone with the container; the snapshot is orphaned disk). Called once the
  * web server listens. Issue 237: its `docker ps -a` never blocks the server.
+ * A snapshot written since the prune began is kept: its container restarted
+ * while docker answered, and a capture writes to it now. So is one it can't
+ * stat.
  */
 export async function pruneDeadSnapshots(): Promise<number> {
   let removed = 0;
+  const began = Date.now();
   let entries: string[];
   try {
     entries = fs.readdirSync(HISTORY_DIR);
@@ -420,8 +424,14 @@ export async function pruneDeadSnapshots(): Promise<number> {
   for (const entry of entries) {
     if (!entry.endsWith(".log")) continue;
     if (!alive.has(entry.slice(0, -4))) {
+      const file = path.join(HISTORY_DIR, entry);
       try {
-        fs.rmSync(path.join(HISTORY_DIR, entry), { force: true });
+        if (!(fs.statSync(file).mtimeMs < began)) continue;
+      } catch {
+        continue;
+      }
+      try {
+        fs.rmSync(file, { force: true });
         removed++;
       } catch {
         /* best effort */

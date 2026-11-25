@@ -34,6 +34,7 @@ jest.mock("../../../src/shared/environment-manager/workspaces.js", () => ({
 }));
 
 import * as fs from "fs";
+import * as path from "path";
 import { EventEmitter } from "events";
 import { execFile, spawn, spawnSync } from "child_process";
 import {
@@ -311,6 +312,12 @@ describe("pruneDeadSnapshots", () => {
     typeof fs.readdirSync
   >;
   const mockRm = fs.rmSync as jest.MockedFunction<typeof fs.rmSync>;
+  const mockStat = fs.statSync as jest.MockedFunction<typeof fs.statSync>;
+  /** Each snapshot's last write, ms since the epoch (default: long ago). */
+  const writtenAt = (at: Record<string, number> = {}) =>
+    mockStat.mockImplementation(((p: string) => ({
+      mtimeMs: at[path.basename(String(p))] ?? 0,
+    })) as never);
 
   /** `docker ps -a` answers `out` (null: docker unavailable). */
   const dockerAll = (out: string | null) =>
@@ -342,11 +349,35 @@ describe("pruneDeadSnapshots", () => {
       "notes.txt",
     ] as never);
     dockerAll("alive\n");
+    writtenAt();
     expect(await pruneDeadSnapshots()).toBe(1);
     expect(mockRm).toHaveBeenCalledTimes(1);
     expect(mockRm).toHaveBeenCalledWith(expect.stringMatching(/dead\.log$/), {
       force: true,
     });
+  });
+
+  it("keeps a snapshot written since the prune began: a container that restarted while docker answered", async () => {
+    // Issue 237: the prune runs after listen, so a capture can reopen a
+    // listed container's file before docker's answer comes back.
+    mockReaddir.mockReturnValue(["dead.log", "restarted.log"] as never);
+    dockerAll("");
+    writtenAt({ "restarted.log": Date.now() + 60_000 });
+    expect(await pruneDeadSnapshots()).toBe(1);
+    expect(mockRm).toHaveBeenCalledTimes(1);
+    expect(mockRm).toHaveBeenCalledWith(expect.stringMatching(/dead\.log$/), {
+      force: true,
+    });
+  });
+
+  it("keeps a snapshot it can't stat", async () => {
+    mockReaddir.mockReturnValue(["gone.log"] as never);
+    dockerAll("");
+    mockStat.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+    expect(await pruneDeadSnapshots()).toBe(0);
+    expect(mockRm).not.toHaveBeenCalled();
   });
 });
 

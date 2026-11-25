@@ -11952,9 +11952,13 @@ void CRASH_GATE.then(() =>
     startHeldWritesBell();
     // Issue 237: orphaned log-history snapshots go once it listens; a
     // slow docker never holds the start.
-    void pruneDeadSnapshots().then((n) => {
-      if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
-    });
+    void pruneDeadSnapshots()
+      .then((n) => {
+        if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
+      })
+      .catch((e: unknown) =>
+        serverLog(`Log-history snapshot prune failed: ${String(e)}`),
+      );
     // Issue 936: Turn on the agent sandbox for agents from before it.
     startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public

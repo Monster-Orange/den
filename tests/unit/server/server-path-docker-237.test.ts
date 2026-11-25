@@ -100,6 +100,10 @@ describe("issue 237 follow-up: pruning snapshots at start never blocks", () => {
     const dir = path.join(getStateDir(), "history");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "gone-1.log"), "old lines\n");
+    // A dead container's snapshot was last written before the prune began
+    // (one written since is a restarted container's, and stays).
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(path.join(dir, "gone-1.log"), hourAgo, hourAgo);
     const start = Date.now();
     let firedAt = -1;
     const timer = new Promise<void>((resolve) =>
