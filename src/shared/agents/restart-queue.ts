@@ -38,6 +38,11 @@ export type RestartWhy =
 
 export interface RestartJob {
   id: string;
+  /**
+   * Issue 1223: what makes it one job, when its id alone doesn't (an agent
+   * id is per project). None: the id.
+   */
+  key?: string;
   why: RestartWhy;
   /** It was working (mid-turn) when the install stopped: it goes first. */
   working?: boolean;
@@ -96,7 +101,8 @@ export class RestartQueue {
 
   /** Queue `job`; settles with its run's result once it has started. */
   add(job: RestartJob): Promise<unknown> {
-    const there = this.pending.find((e) => e.id === job.id);
+    const k = job.key ?? job.id;
+    const there = this.pending.find((e) => (e.key ?? e.id) === k);
     if (there) {
       if (job.working) there.working = true;
       return there.promise;

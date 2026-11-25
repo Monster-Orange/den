@@ -158,6 +158,30 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
     });
   });
 
+  it("one id in two projects through a real restart queue: each runs its own restart", async () => {
+    const q = new RestartQueue({
+      config: () => ({ batch: 4, gapMs: 0, loadCeiling: 0 }),
+      load: () => 0,
+      sleep: async () => undefined,
+    });
+    const ran: string[] = [];
+    const t = new ToolsRestarts({
+      queue: q,
+      restart: async (a) => {
+        ran.push(a.workspace);
+      },
+    });
+    const two = [
+      { id: "builder", workspace: "north" },
+      { id: "builder", workspace: "south" },
+    ];
+    t.start(two);
+    await q.idle();
+    await flush();
+    expect(ran.sort()).toEqual(["north", "south"]);
+    expect(t.row(two)).toBeNull();
+  });
+
   it("a queued agent restarts through its own caller's restart, not a later caller's", async () => {
     resetToolsOld();
     const held: RestartJob[] = [];

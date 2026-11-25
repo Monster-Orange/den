@@ -101,7 +101,7 @@ export class ToolsRestarts {
       this.batch.set(k, a);
       out.push(a);
       void this.d.queue
-        .add({ id: a.id, why: "tools", run: () => restart(a) })
+        .add({ id: a.id, key: k, why: "tools", run: () => restart(a) })
         .then(
           () => this.done.add(k),
           (e: unknown) =>
