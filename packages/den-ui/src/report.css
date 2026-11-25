@@ -205,6 +205,11 @@
   height: 16px;
   flex: none;
 }
+/* Issue 1499: the first step's screenshot part, swapped in place when
+   the capture ends. It adds no box. */
+[data-shot-area] {
+  display: contents;
+}
 .fb-shot {
   border: 1px var(--edge-style, solid) var(--border);
   border-radius: 6px;
@@ -222,6 +227,39 @@
 }
 .fb-shot img {
   cursor: default;
+}
+/* Issue 1499: the shot's box while it's being taken, the size of the
+   shot to come, so nothing moves when it lands (Hub Design). */
+.fb-shot[data-wait] {
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: var(--radius, 6px);
+  line-height: normal;
+}
+/* Review: a shot not included yet (being taken, or not checked) is a
+   faded thumbnail, its note and Include it above it (Hub Design). */
+.fb-shot[data-late] {
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
+  /* Faded through its colours, not opacity: its words keep full contrast
+     (Hub Design). */
+  background: color-mix(in srgb, var(--sunken, var(--bg)) 50%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--border-strong, var(--border)) 50%,
+    transparent
+  );
+}
+.fb-shot[data-late] img {
+  opacity: 0.5;
+}
+.fb-shot-wait {
+  aspect-ratio: var(--shot-ar);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .fb-kbd input[type="number"] {
   width: 5em;
@@ -368,6 +406,10 @@
     width: auto;
     max-width: 100%;
     display: inline-block;
+  }
+  .fb-shot-wait {
+    width: min(100%, calc(45vh * var(--shot-k)));
+    margin-inline: auto;
   }
 }
 @media (min-width: 601px) {

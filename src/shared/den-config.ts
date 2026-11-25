@@ -656,6 +656,13 @@ export interface UserConfig {
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
      */
     git?: unknown;
+    /**
+     * Issue 52: agents.coach.judge.enabled is the person's, here only.
+     * Judging sends samples, the person's prompts among them, to the model
+     * provider, so an agent writing the distribution's config can't switch
+     * it on (as issue 1072 does for settings that widen an agent's reach).
+     */
+    coach?: { judge?: { enabled?: unknown } | null } | null;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
     /**
@@ -710,6 +717,8 @@ export interface UserConfig {
      */
     issue_writes?: unknown;
     issue_writes_per_hour?: unknown;
+    /** Issue 1127: how old a repo's visibility may be for the words check. */
+    issue_writes_visibility_minutes?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -2197,6 +2206,7 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  "issue_writes_visibility_minutes",
   // Issue 1129: the restart queue (agents.resume.*), never an agent id.
   "resume",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
@@ -2546,6 +2556,17 @@ export function readAgentsConfig(
       ? { ...c, agents: { ...(theirs ?? {}), ...mine } as DenConfig["agents"] }
       : c;
   const out = asConfigError(() => parseAgentsConfig(merged));
+  // Issue 52: judging sends samples off the machine, so only user.yml
+  // switches it on; the distribution's value is never read (doctor names it).
+  const judgeOn = asConfigError(
+    () => userJudgeEnabled(u),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
+  out.coach = out.coach ?? checkCoachConfig(undefined);
+  out.coach = {
+    ...out.coach,
+    judge: { ...out.coach.judge, enabled: judgeOn === true },
+  };
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => {
@@ -2574,6 +2595,17 @@ export function readAgentsConfig(
     if (g) out.git = g;
   }
   return out;
+}
+
+/** user.yml's agents.coach.judge.enabled: true, false or unset (false). */
+function userJudgeEnabled(u: UserConfig): boolean {
+  const v = u.agents?.coach?.judge?.enabled;
+  if (v === undefined || v === null) return false;
+  if (typeof v !== "boolean")
+    throw new Error(
+      `agents.coach.judge.enabled must be true or false (got ${JSON.stringify(v)})`,
+    );
+  return v;
 }
 
 /**

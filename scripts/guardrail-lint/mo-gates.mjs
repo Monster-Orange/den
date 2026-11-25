@@ -1,0 +1,172 @@
+#!/usr/bin/env node
+/**
+ * Guardrail lint: the text rules in rules.json, for any repo and language.
+ *
+ *   node lint/mo-gates.mjs --base <ref> [--root dir] [--json]   only the lines a change adds
+ *   node lint/mo-gates.mjs --all [--root dir] [--json]          every file
+ *   node lint/mo-gates.mjs --pr-text                             PR_TITLE and PR_BODY only
+ *
+ * A line rule matches added lines. A module rule judges a file and reports line ranges; in --base mode a range
+ * counts when the change added a line inside it. A hit is excused by `mo-lint-ok: <reason>` on its line or the
+ * line above (a module hit: anywhere in its range). An excuse with no reason does not count.
+ * Exit 0 clean, 1 on a hit, 2 on a usage or git error. Plain Node, no dependencies.
+ */
+import { execFileSync } from "node:child_process";
+import { lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const OK = /mo-lint-ok:[ \t]*\S/;
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "coverage", ".venv", "__pycache__"]);
+
+export function globToRegExp(glob) {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*") {
+      re += glob[i + 2] === "/" ? "(?:.*/)?" : ".*";
+      i += glob[i + 2] === "/" ? 2 : 1;
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "{") {
+      const end = glob.indexOf("}", i);
+      re += `(?:${glob.slice(i + 1, end).split(",").map((s) => s.replace(/[.+^$()|[\]\\]/g, "\\$&")).join("|")})`;
+      i = end;
+    } else re += c.replace(/[.+?^$()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
+
+export async function loadRules(file = join(HERE, "rules.json")) {
+  const { rules, exclude = [] } = JSON.parse(readFileSync(file, "utf-8"));
+  const ex = exclude.map(globToRegExp);
+  const out = [];
+  for (const r of rules) {
+    const rule = { ...r, globs: (r.files ?? []).map(globToRegExp) };
+    if (r.kind === "line") rule.re = new RegExp(r.pattern, r.flags ?? "");
+    if (r.kind === "pr-text") rule.re = new RegExp(r.pattern, "gi");
+    if (r.unless_file) rule.unless = new RegExp(r.unless_file);
+    if (r.kind === "module") rule.check = (await import(pathToFileURL(join(HERE, r.module)).href)).check;
+    out.push(rule);
+  }
+  return { rules: out, excluded: (p) => ex.some((e) => e.test(p)) };
+}
+
+function* walk(root, dir = root) {
+  for (const name of readdirSync(dir)) {
+    if (SKIP_DIRS.has(name)) continue;
+    const p = join(dir, name);
+    const s = statSync(p, { throwIfNoEntry: false });
+    if (!s) continue;
+    if (s.isDirectory()) yield* walk(root, p);
+    else if (s.isFile() && s.size < 2_000_000) yield relative(root, p).replaceAll("\\", "/");
+  }
+}
+
+export function tracked(root) {
+  try {
+    const out = execFileSync("git", ["-C", root, "ls-files", "-z"], { encoding: "utf-8", maxBuffer: 256 << 20 });
+    return out.split("\0").filter(Boolean);
+  } catch {
+    return [...walk(root)];
+  }
+}
+
+export function addedLines(root, base) {
+  const git = (...a) => execFileSync("git", ["-C", root, ...a], { encoding: "utf-8", maxBuffer: 256 << 20 });
+  const mb = git("merge-base", base, "HEAD").trim();
+  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--diff-filter=AMR", mb, "HEAD");
+  const files = new Map();
+  let cur = null;
+  for (const l of diff.split("\n")) {
+    if (l.startsWith("+++ ")) {
+      cur = l === "+++ /dev/null" ? null : l.slice(6);
+      if (cur && !files.has(cur)) files.set(cur, new Set());
+    } else if (cur && l.startsWith("@@")) {
+      const m = /\+(\d+)(?:,(\d+))?/.exec(l);
+      const start = Number(m[1]);
+      const n = m[2] === undefined ? 1 : Number(m[2]);
+      for (let i = 0; i < n; i++) files.get(cur).add(start + i);
+    }
+  }
+  return files;
+}
+
+export const escData = (v) => String(v).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+export const escProp = (v) => escData(v).replace(/:/g, "%3A").replace(/,/g, "%2C");
+
+export function lintFile(rules, path, src, added) {
+  const lines = src.split("\n");
+  const excused = (from, to) => {
+    for (let i = Math.max(1, from - 1); i <= to; i++) if (OK.test(lines[i - 1] ?? "")) return true;
+    return false;
+  };
+  const hits = [];
+  for (const r of rules) {
+    if (r.kind === "pr-text" || !r.globs.some((g) => g.test(path))) continue;
+    if (r.unless && r.unless.test(src)) continue;
+    if (r.kind === "line") {
+      lines.forEach((text, i) => {
+        const n = i + 1;
+        if ((!added || added.has(n)) && r.re.test(text) && !excused(n, n)) hits.push({ rule: r, path, line: n });
+      });
+    } else if (r.kind === "module") {
+      for (const { line, end } of r.check(src, path)) {
+        if (added && ![...added].some((n) => n >= line && n <= end)) continue;
+        if (!excused(line, end)) hits.push({ rule: r, path, line });
+      }
+    }
+  }
+  return hits;
+}
+
+export function lintPrText(rules, texts) {
+  const hits = [];
+  for (const r of rules.filter((x) => x.kind === "pr-text"))
+    for (const [where, text] of texts) for (const m of String(text ?? "").matchAll(r.re)) hits.push({ rule: r, path: where, line: 0, text: m[0] });
+  return hits;
+}
+
+async function main(argv) {
+  const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
+  const root = arg("--root") ?? process.cwd();
+  const base = arg("--base");
+  const { rules, excluded } = await loadRules(arg("--rules"));
+  let hits;
+  if (argv.includes("--pr-text")) {
+    hits = lintPrText(rules, [["pull request title", process.env.PR_TITLE], ["pull request body", process.env.PR_BODY]]);
+  } else if (base || argv.includes("--all")) {
+    let files;
+    try {
+      files = base ? addedLines(root, base) : new Map(tracked(root).map((p) => [p, null]));
+    } catch (e) {
+      console.error(`guardrail lint: git failed (${String(e.message).split("\n")[0]}). It needs the history back to the merge base.`);
+      return 2;
+    }
+    hits = [];
+    for (const [p, added] of files) {
+      if (excluded(p)) continue;
+      let src;
+      try {
+        const st = lstatSync(join(root, p));
+        if (!st.isFile() || st.size > 2_000_000) continue;
+        src = readFileSync(join(root, p), "utf-8");
+      } catch { continue; }
+      if (src.includes("\0")) continue;
+      hits.push(...lintFile(rules, p, src, added));
+    }
+  } else {
+    console.error("usage: mo-gates.mjs --base <ref> | --all | --pr-text  [--root dir] [--json]");
+    return 2;
+  }
+  if (argv.includes("--json")) console.log(JSON.stringify(hits.map((h) => ({ rule: h.rule.id, path: h.path, line: h.line, text: h.text }))));
+  else for (const h of hits) {
+    const at = h.line ? `${h.path}:${h.line}` : h.path;
+    const msg = `${at}: ${h.text ? `"${h.text}": ` : ""}${h.rule.message} (${h.rule.id})`;
+    console.log(process.env.GITHUB_ACTIONS ? `::error${h.line ? ` file=${escProp(h.path)},line=${h.line}` : ""}::${escData(msg)}` : msg);
+  }
+  if (!argv.includes("--json")) console.log(`guardrail lint: ${hits.length ? `${hits.length} hit(s)` : "ok"}${base ? ` (lines added since ${base})` : ""}`);
+  return hits.length ? 1 : 0;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = await main(process.argv.slice(2));

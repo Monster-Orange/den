@@ -78,6 +78,7 @@ import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { statSettled } from "../stat-settled.js";
 import { distributionBin, shellQuote } from "../cli-command.js";
 import { getDistRoot, getEngineRoot } from "../paths.js";
 import { gateDir } from "../gates/store.js";
@@ -118,6 +119,7 @@ import {
   TURN_READ_MAX_BYTES,
 } from "./conversations.js";
 import { claudeOpenPid, claudeOpenPids } from "./open-check.js";
+import { REPO_SECRETS_FILE } from "../credential-paths.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -273,7 +275,9 @@ function permissionMode(input: LaunchInput): string {
  * den#48: the modes `--permission-mode` takes, as `<bin> --help` lists
  * them ("(choices: "acceptEdits", "auto", …)"); null when they can't be
  * read (no such line, a failed or slow run). Kept per binary (its real
- * path, size and time), so an update is asked again.
+ * path, inode, size, mtime and ctime), so an update is asked again: an
+ * install can stamp every file with one fixed mtime, and (issue 1592) a
+ * binary changed within a clock tick of the ask is asked again.
  */
 export function permissionModesOf(
   bin: string,
@@ -282,15 +286,17 @@ export function permissionModesOf(
   // Issue 456: a quarantined file is never run (macOS would warn).
   if (isQuarantined(bin)) return null;
   let key: string;
+  let st: fs.Stats;
   try {
     const real = fs.realpathSync(bin);
-    const st = fs.statSync(real);
-    key = `${real}\0${st.size}\0${st.mtimeMs}`;
+    st = fs.statSync(real);
+    key = `${real}\0${st.ino}\0${st.size}\0${st.mtimeMs}\0${st.ctimeMs}`;
   } catch {
     return null;
   }
   const hit = helpModes.get(key);
-  if (hit !== undefined) return hit;
+  if (hit && statSettled(st, hit.readAt)) return hit.modes;
+  const readAt = Date.now();
   let modes: string[] | null = null;
   try {
     const r = spawnSync(bin, ["--help"], {
@@ -304,12 +310,12 @@ export function permissionModesOf(
   } catch {
     modes = null;
   }
-  helpModes.set(key, modes);
+  helpModes.set(key, { modes, readAt });
   return modes;
 }
 
 const HELP_TIMEOUT_MS = 10_000;
-const helpModes = new Map<string, string[] | null>();
+const helpModes = new Map<string, { modes: string[] | null; readAt: number }>();
 
 /** Forget the modes asked (tests). */
 export function clearPermissionModesCache(): void {
@@ -581,6 +587,33 @@ export function credentialDirRules(
     ...abs.map((d) => `Edit(/${d}/**)`),
     ...targets.map((t) => `Bash(*${t})`),
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+  ];
+}
+
+/**
+ * Deny an agent's Read, Edit and Bash tools each repo's stack secrets file
+ * (and the copies a write leaves beside it) and the cached sign-ins folders.
+ */
+export function repoSecretDenyRules(
+  repoDirs: readonly string[],
+  authDirs: readonly string[],
+  home?: string,
+): string[] {
+  const files = [...new Set(repoDirs.map((d) => path.resolve(d)))].map((d) =>
+    path.join(d, REPO_SECRETS_FILE),
+  );
+  const targets = files.flatMap((f) =>
+    shellSpellings(f, home).map((p) => `${p}*`),
+  );
+  return [
+    `Read(**/${REPO_SECRETS_FILE}*)`,
+    `Edit(**/${REPO_SECRETS_FILE}*)`,
+    `Bash(*${REPO_SECRETS_FILE}*)`,
+    ...files.map((f) => `Read(/${f}*)`),
+    ...files.map((f) => `Edit(/${f}*)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+    ...(authDirs.length ? credentialDirRules(authDirs, home) : []),
   ];
 }
 
@@ -887,6 +920,12 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    // Issue 1264: the gate's settings (route_agents and
+                    // route_commands among them) are a person's; its slot
+                    // log beside them stays the hook's to append to.
+                    ...(gate
+                      ? ownFilesDenyRules([gate.settings], input.env?.HOME)
+                      : []),
                     // Issue 728: this install's own folders by their
                     // given and their real paths (a symlink in either).
                     ...(input.stateDir
@@ -901,6 +940,15 @@ function common(input: LaunchInput): {
                       (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
                       input.env?.HOME,
                     ),
+                    ...(input.repoDirs?.length || input.playwrightAuthDir
+                      ? repoSecretDenyRules(
+                          (input.repoDirs ?? []).flatMap(bothSpellings),
+                          input.playwrightAuthDir
+                            ? bothSpellings(input.playwrightAuthDir)
+                            : [],
+                          input.env?.HOME,
+                        )
+                      : []),
                     // Issue 816: announced test installs'; issue 728:
                     // the other installs in the install registry.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>

@@ -74,6 +74,10 @@
  *   project_mcp_remove issue 352: take one away, or change its url or
  *   project_mcp_update bearer reference (agent-ops.ts checkProjectMcpRemove,
  *                     checkProjectMcpUpdate); always the person's own Allow
+ *   project_event_feed_add    issue 1480: add or remove one of a
+ *   project_event_feed_remove project's app event feeds (agent-ops.ts
+ *                     checkEventFeedAdd, checkEventFeedRemove); routine on
+ *                     a personal install with Undo, Allow on a strict one
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -113,6 +117,11 @@
  *                     address (web-url-held.ts); it must answer as this
  *                     Den at the ask and at the Allow, and saves as
  *                     Settings does. The person's own Allow
+ *   gate_runner_entry_set
+ *                     issue 642: let a repo's CI jobs run on a test box
+ *                     (gate-routes.ts gateRunnerEntryOp): a runner entry,
+ *                     set or changed. It widens what runs on a box: always
+ *                     the person's own Allow
  */
 import {
   line,
@@ -240,6 +249,10 @@ export interface HeldActionDeps {
   projectMcpRemove?: HeldOp;
   /** Issue 352: project_mcp_update's check and save (agent-ops.ts). */
   projectMcpUpdate?: HeldOp;
+  /** Issue 1480: project_event_feed_add's check and save (agent-ops.ts). */
+  eventFeedAdd?: HeldOp;
+  /** Issue 1480: project_event_feed_remove's check and save (agent-ops.ts). */
+  eventFeedRemove?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
   /** Issue 1328: agent_sandbox_set's check and write (agents/sandbox-set.ts). */
@@ -262,6 +275,8 @@ export interface HeldActionDeps {
   terminalHostRestart?: HeldOp;
   /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
   webUrlSet?: HeldAction;
+  /** Issue 642: gate_runner_entry_set (gate-routes.ts gateRunnerEntryOp). */
+  gateRunnerEntry?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -341,6 +356,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "host_restart",
   "test_person_setup",
   "web_url_set",
+  "gate_runner_entry_set",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -784,6 +800,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     d.settingChange,
     "this Den can't change its settings here",
   );
+  const eventFeedAdd = op(
+    d.eventFeedAdd,
+    "this Den can't add a project's event feeds here",
+  );
+  const eventFeedRemove = op(
+    d.eventFeedRemove,
+    "this Den can't remove a project's event feeds here",
+  );
   const gateSettings = op(
     d.gateSettings,
     "this Den can't change its gate settings here",
@@ -810,6 +834,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const gateBoxRemove = op(
     d.gateBoxRemove,
     "this Den can't remove test boxes here",
+  );
+  const gateRunnerEntry = op(
+    d.gateRunnerEntry,
+    "this Den can't set CI runner entries here",
   );
   const terminalHostRestart = op(
     d.terminalHostRestart,
@@ -1156,6 +1184,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_mcp_add: projectMcp,
     project_mcp_remove: projectMcpRemove,
     project_mcp_update: projectMcpUpdate,
+    project_event_feed_add: eventFeedAdd,
+    project_event_feed_remove: eventFeedRemove,
     hub_connect: hubConnect,
     hub_project_create: hubCreate,
     hub_link: hubLink,
@@ -1204,5 +1234,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           error: "this Den can't set its address here",
         }),
     },
+    gate_runner_entry_set: gateRunnerEntry,
   };
 }
