@@ -53,6 +53,7 @@ import { embedDelivery, type Delivery } from "../hub-delivery.js";
 import { GITHUB_WATCH_LIMITS, type GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { isRepoName } from "../repo-name.js";
 
 export interface GithubWatchDeps {
   /** GitHub's REST API (gh api -i); tests pass a fake. */
@@ -214,8 +215,6 @@ interface Call {
   head?: string;
 }
 
-/** owner/name; never a `.` or `..` segment (github-service.ts SLUG_RE). */
-const REPO_RE = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 /** A head with no check at all this long after the ask is done: none ran. */
 const NO_CHECKS_MS = 30 * 60_000;
 /** A secondary limit with no Retry-After: GitHub says wait a minute. */
@@ -298,8 +297,7 @@ export class GithubWatcher {
     });
     const isNum = (v: unknown) =>
       typeof v === "number" && Number.isSafeInteger(v) && v > 0;
-    if (typeof a.repo !== "string" || !REPO_RE.test(a.repo))
-      return bad("repo: a GitHub repo, owner/name");
+    if (!isRepoName(a.repo)) return bad("repo: a GitHub repo, owner/name");
     if (isNum(a.pr) === isNum(a.run))
       return bad(
         "give pr (a pull request's number) or run (a workflow run's id), one of them",
@@ -1318,7 +1316,7 @@ export class GithubWatcher {
             typeof w.id === "string" &&
             typeof w.agent === "string" &&
             typeof w.repo === "string" &&
-            REPO_RE.test(w.repo) &&
+            isRepoName(w.repo) &&
             (w.kind === "pr" || w.kind === "run") &&
             typeof w.number === "number",
         );

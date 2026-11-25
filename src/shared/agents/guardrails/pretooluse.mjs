@@ -12,7 +12,7 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * Issue 1127: it also holds an agent's `gh` write to a public repo whose
+ * It also holds an agent's `gh` write to a public repo whose
  * title or body holds a listed name (public-text.mjs), with or without
  * --no-guardrails, as the api-only rules are.
  *
@@ -523,7 +523,7 @@ function arg(name, argv = process.argv) {
   return i > 0 && argv[i + 1] !== undefined ? argv[i + 1] : null;
 }
 
-/** Issue 1127: how long a repo's visibility is kept (--visibility-minutes). */
+/** How long a repo's visibility is kept (--visibility-minutes). */
 function visibilityArgs() {
   const m = Number(arg("--visibility-minutes"));
   return arg("--visibility-minutes") !== null && Number.isFinite(m) && m >= 0
@@ -555,7 +555,7 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
-    // Issue 1127: text filed on a public repo, before it is sent. Its own
+    // Text filed on a public repo, before it is sent. Its own
     // try: a failure here holds a gh write, and never stops the checks below.
     if (!reason && input.tool_name === "Bash") {
       const command = input.tool_input?.command;

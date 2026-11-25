@@ -21,6 +21,7 @@
  */
 import type { BoxCap } from "./boxes.js";
 import { BOX_NAME_RE } from "./boxes.js";
+import { isRepoName } from "../repo-name.js";
 
 /** One repo's runner entry on one box (settings.json, snake_case). */
 export interface RunnerEntry {
@@ -45,9 +46,6 @@ export const RUNNER_ENTRY_LIMITS = {
   labels: { min: 1, max: 20 },
 } as const;
 
-// The name may hold dots but is never "." or "..": a URL would fold them.
-export const REPO_RE =
-  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** A forge variable's name: letters, digits, underscore; not a digit first. */
 const VAR_RE = /^[A-Za-z_][A-Za-z0-9_]{0,99}$/;
@@ -67,7 +65,7 @@ export function checkRunnerEntry(
   const o = v as Record<string, unknown>;
   const s = (k: string) => (typeof o[k] === "string" ? o[k].trim() : "");
   const repo = s("repo");
-  if (!REPO_RE.test(repo)) return { ok: false, error: "repo is owner/name" };
+  if (!isRepoName(repo)) return { ok: false, error: "repo is owner/name" };
   const box = s("box");
   if (!BOX_NAME_RE.test(box))
     return { ok: false, error: `${repo}: box is a test box's name` };
