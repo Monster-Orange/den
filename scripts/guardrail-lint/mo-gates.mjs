@@ -12,11 +12,11 @@
  * A repo's .guardrail-lint.json may set "since": the commit where the rules landed there. With --base, lines
  * already there at that commit never count, even when the base is older (a queue branch judged against main).
  * It is read from the base's tree, so a change can't move it. In a PR's merge commit, pass --base HEAD^1.
- * A ratchet rule counts lines across the change: its module's count(src, path) lists them, summed over the files
- * the change touched at the base (from the newer of the merge base and "since") and at HEAD. It fails when the sum
- * rises. A new file counts from 0, so a block moved into one still passes. A deleted file's count comes off. A file with a
- * side that can't be read (binary, over 2 MB) is left out. A rule marked opt_in runs only when
- * the base's .guardrail-lint.json lists its id in "on". Ratchets judge only with --base.
+ * A ratchet rule's count(src, path) lists lines, summed over the files the change touched at the base (the newer
+ * of the merge base and "since") and at HEAD; it fails when the sum rises. A new file counts from 0, a deleted file's
+ * count comes off, an unreadable side (binary, over 2 MB) is left out. opt_in rules run only when the base's settings
+ * list them in "on"; ratchets judge only with --base. The settings' "exclude" globs (vendored code) skip every rule,
+ * read like "since" (HEAD's with --all), so a change can't exclude its own files.
  * Exit 0 clean, 1 on a hit, 2 on a usage, config or git error. Plain Node, no dependencies.
  */
 import { execFileSync } from "node:child_process";
@@ -97,6 +97,9 @@ export function baseConfig(root, base) {
   if (cfg.since !== undefined && !SHA.test(String(cfg.since))) throw new Error(".guardrail-lint.json: since must be one full 40-hex commit SHA");
   if (cfg.on !== undefined && !(Array.isArray(cfg.on) && cfg.on.every((id) => typeof id === "string")))
     throw new Error(".guardrail-lint.json: on must be a list of rule ids");
+  const top = (g) => typeof g === "string" && /^(?!\.\.?\/)[\w.-]+\/./.test(g);
+  if (cfg.exclude !== undefined && !(Array.isArray(cfg.exclude) && cfg.exclude.every(top)))
+    throw new Error(".guardrail-lint.json: exclude must be a list of globs, each starting with a folder named in full (vendor/pack/**)");
   return cfg;
 }
 
@@ -228,13 +231,17 @@ async function main(argv) {
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
   const root = arg("--root") ?? process.cwd();
   const base = arg("--base");
-  const { rules, excluded } = await loadRules(arg("--rules"));
+  const { rules, excluded: shared } = await loadRules(arg("--rules"));
+  let excluded = shared;
   let hits;
   if (argv.includes("--pr-text")) {
     hits = lintPrText(rules, [["pull request title", process.env.PR_TITLE], ["pull request body", process.env.PR_BODY]]);
   } else if (base || argv.includes("--all")) {
     let files;
     try {
+      const at = base ? execFileSync("git", ["-C", root, "rev-parse", "--verify", `${base}^{commit}`], { encoding: "utf-8" }).trim() : "HEAD";
+      const own = (baseConfig(root, at).exclude ?? []).map(globToRegExp);
+      if (own.length) excluded = (p) => shared(p) || own.some((e) => e.test(p));
       files = base ? addedLines(root, base) : new Map(tracked(root).map((p) => [p, null]));
     } catch (e) {
       if (/guardrail-lint\.json/.test(e.message)) { console.error(`guardrail lint: ${e.message}`); return 2; }

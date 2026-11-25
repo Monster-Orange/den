@@ -600,33 +600,50 @@ function repoTop(dir: string): string {
 }
 
 /**
- * Clause 11, issue 1017: the run's exact Playwright client version, from
- * an installed package.json only. First installed for the run's folder:
- * its node_modules, or one above it up to the repo's top folder (a
- * workspace run with Playwright hoisted to the root). Else installed for
- * the nearest package.json below it that depends on Playwright (a repo
- * whose Playwright lives in web/). Nearest is fewest folders down;
- * node_modules and dot folders are never looked in. A range in a
- * package.json is never read as a version: with nothing installed, the
- * version is unknown (undefined).
+ * The run's exact Playwright version, from an installed package only
+ * (a range is never a version). First for the run's folder: node_modules
+ * there or above, up to the repo's top folder. Else for the nearest
+ * package.json below that depends on Playwright, fewest folders down,
+ * skipping node_modules and dot folders. The look below is bounded: none
+ * from the root folder, home or above home (a launchd job starts in /, and
+ * a mount there can block a listing for good), at most PW_DOWN_DEPTH
+ * levels and PW_DOWN_DIRS listings. Nothing found: unknown (undefined).
  */
-export function playwrightVersion(cwd: string): string | undefined {
+function mayLookBelow(cwd: string, home: string): boolean {
+  const here = path.resolve(cwd);
+  if (path.dirname(here) === here) return false;
+  const h = path.resolve(home);
+  return here !== h && !h.startsWith(here + path.sep);
+}
+
+export const PW_DOWN_DEPTH = 4;
+export const PW_DOWN_DIRS = 500;
+export function playwrightVersion(
+  cwd: string,
+  o: { home?: string; list?: (dir: string) => fs.Dirent[] } = {},
+): string | undefined {
+  const list =
+    o.list ?? ((dir: string) => fs.readdirSync(dir, { withFileTypes: true }));
   const top = repoTop(cwd);
   const here = installedPlaywright(cwd, top);
   if (here) return here;
+  if (!mayLookBelow(cwd, o.home ?? os.homedir())) return undefined;
   let level = [cwd];
-  while (level.length) {
+  let listed = 0;
+  for (let depth = 0; level.length && depth <= PW_DOWN_DEPTH; depth++) {
     for (const dir of level) {
       const range = declaredPlaywright(dir);
       if (typeof range !== "string") continue;
       const v = installedPlaywright(dir, cwd);
       if (v) return v;
     }
+    if (depth === PW_DOWN_DEPTH) break;
     const next: string[] = [];
     for (const dir of level) {
+      if (listed++ >= PW_DOWN_DIRS) return undefined;
       let names: fs.Dirent[] = [];
       try {
-        names = fs.readdirSync(dir, { withFileTypes: true });
+        names = list(dir);
       } catch {
         continue;
       }

@@ -506,7 +506,7 @@ export interface UserConfig {
   appearance?: { theme?: string; mode?: string };
   /**
    * The web UI's language (R19): en (the default, never stored), ja or es.
-   * See src/ui/server/ui-language.ts.
+   * See src/shared/ui-language.ts.
    */
   language?: string;
   /**
