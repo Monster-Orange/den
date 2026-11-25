@@ -530,8 +530,21 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
-    health0: {
-      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    health0: (() => {
+      const h0 = readDeliveryHealth(healthFile());
+      return {
+        lastDeliveryAt: h0?.lastDeliveryAt ?? null,
+        // Issue 248: a restart keeps how long the cursor has been still.
+        cursorAt: h0?.cursorAt ?? null,
+      };
+    })(),
+    // Issue 248: hub.delivery_stale_hours, read at each check.
+    staleMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStaleHours ?? 6) * 3_600_000;
+      } catch {
+        return 6 * 3_600_000;
+      }
     },
     // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
     silenceMs: () => {

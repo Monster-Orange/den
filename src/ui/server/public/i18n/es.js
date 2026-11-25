@@ -3116,6 +3116,8 @@
       "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
     "bell.m.hubCommentsSilent":
       "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
+    "bell.m.hubCommentsStale":
+      "Los comentarios de Hub no llegan: el flujo de comentarios está abierto, pero Hub tiene comentarios que no ha enviado",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
