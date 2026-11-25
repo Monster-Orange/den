@@ -149,6 +149,8 @@ function quarantineProblems(doc, today = new Date(), env = process.env) {
 }
 
 const TEST_CALLS = new Set(["it", "test", "describe"]);
+/** Stands in a sample name for a part only known when the test runs. */
+const HOLE = "\u0000";
 
 /**
  * The names of a file's tests, read from its source: each as a regex over
@@ -165,16 +167,24 @@ function testNames(file) {
     true,
   );
   const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // [pattern, sample]: the sample stands "x" in for each ${...} part.
+  // [pattern, sample]: the sample has HOLE for each ${...} or %s part.
   const title = (n) => {
     if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n))
       return [esc(n.text), n.text];
+    // Only ${...} parts, no text of its own (it(`${name}`)): it could be
+    // any name, so it tells nothing; its file is unknown, never refused.
+    if (
+      ts.isTemplateExpression(n) &&
+      !n.head.text &&
+      n.templateSpans.every((sp) => !sp.literal.text)
+    )
+      return null;
     if (ts.isTemplateExpression(n))
       return [
         esc(n.head.text) +
           n.templateSpans.map((sp) => `.+${esc(sp.literal.text)}`).join(""),
         n.head.text +
-          n.templateSpans.map((sp) => `x${sp.literal.text}`).join(""),
+          n.templateSpans.map((sp) => `${HOLE}${sp.literal.text}`).join(""),
       ];
     return null;
   };
@@ -196,7 +206,7 @@ function testNames(file) {
   const printf = (t) =>
     t && [
       t[0].replace(/%[sdifjop#]/g, ".+"),
-      t[1].replace(/%[sdifjop#]/g, "x"),
+      t[1].replace(/%[sdifjop#]/g, HOLE),
     ];
   const visit = (n, groups) => {
     const each = eachOf(n);
@@ -227,11 +237,31 @@ function testNames(file) {
   return unknown ? null : out;
 }
 
+/**
+ * A name's instances to try a regex entry on: each hole filled with the
+ * regex's own words, since a regex aimed at a template's test names one of
+ * its values (/in ja at/ at it(`in ${lang} at 390`)). At most 64.
+ */
+function instances(sample, re) {
+  const holes = sample.split(HOLE).length - 1;
+  if (!holes) return [sample];
+  const words = [...new Set(re.source.match(/[A-Za-z0-9_.-]+/g) ?? [])];
+  let out = [""];
+  const pieces = sample.split(HOLE);
+  for (let i = 0; i < pieces.length; i++) {
+    out = out.map((o) => o + pieces[i]);
+    if (i < holes)
+      out = out.flatMap((o) => ["x", ...words].map((w) => o + w)).slice(0, 64);
+  }
+  return out;
+}
+
 /** Does an entry name at least one of the file's tests (unknown: yes)? */
 function namesATest(entry, names) {
   if (names === null) return true;
   const re = asRegex(entry.test);
-  if (re) return names.some((n) => re.test(n.sample));
+  if (re)
+    return names.some((n) => instances(n.sample, re).some((x) => re.test(x)));
   return names.some((n) => n.re.test(entry.test));
 }
 
@@ -256,4 +286,5 @@ module.exports = {
   quarantineProblems,
   quarantinedFiles,
   relPath,
+  testNames,
 };
