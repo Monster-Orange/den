@@ -6,6 +6,8 @@
  *    unknown project the same way; lists show north only;
  *  - personal: reads of south are served; a write naming south is refused;
  *  - a grant to south, and the server agent's reserved scope, reach it.
+ * The rule is scope-rule.ts, held in request-guard.ts; the lists are
+ * session-routes.ts, workspace-routes.ts and agent-routes.ts.
  * No token is printed: failures show statuses and project names.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
