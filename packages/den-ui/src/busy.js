@@ -29,6 +29,8 @@
  *
  *   registerActions({ name: {
  *     who: "Hub",                   whose answer it waits for (a name)
+ *     steps: true,                  it names its steps (issue 1054): the
+ *                                   Working pop-up after dotsMs
  *     autoClose: true,              (kept for older callers: every success
  *                                   now closes at once, with the toast)
  *     inline: true,                 its place shows a quick failure itself
@@ -39,6 +41,7 @@
  *   busyAction(name, run, opts) → Promise<data | null>
  *     run(headers)        the request; it must send `headers` (the id).
  *     opts.button         held (aria-disabled, aria-busy); it keeps focus.
+ *     opts.steps          this call names its steps (as steps: true).
  *     opts.vars           words' {placeholders}.
  *     opts.success(data)  the success line, worked out from the answer.
  *     opts.onDone(data), opts.onFail(err)
@@ -67,10 +70,16 @@
  * Issue 699, the held button: every button the kit holds (opts.button,
  * pending()'s button, a plain POST form's submitter) shows three pulsing
  * dots in place of its label at once, at the same size, aria-disabled
- * with aria-busy="true" (issue 1434: so it keeps the keyboard's focus). The label stays (in .bz-lbl, hidden) and stays the
- * accessible name. The working pop-up then opens only after dotsMs
- * (configureBusy({ dotsMs }), default DOTS_MS, 3 s), the dots behind it;
- * an answer before that gives the label back. The button never shows an
+ * with aria-busy="true" (issue 1434: so it keeps the keyboard's focus).
+ * The label stays (in .bz-lbl, hidden) and stays the
+ * accessible name. Issue 1054: for one request that is all, with no
+ * Working pop-up: the dots stay until the answer. The Working pop-up is
+ * for an action that names its steps (registerActions' steps: true,
+ * busyAction's opts.steps, or a run that calls progress) and for
+ * reconnect mode; it opens after dotsMs (configureBusy({ dotsMs }),
+ * default DOTS_MS, 3 s), the dots behind it. No answer by NO_ANSWER_MS
+ * opens the no-answer pop-up (Check again). An answer gives the label
+ * back. The button never shows an
  * error itself: a quick failure gives the label back and the error goes
  * where it goes today (the caller, or the failure pop-up); after the
  * pop-up, the pop-up shows it, Try again holds the button again and
@@ -93,6 +102,10 @@
  *   holdDots(button, on = true)
  *     The dots alone, with no pop-up (issue 698): for a wait that says its
  *     own words (a stream, a form with its own error line).
+ *
+ *   holdRow(row, on = true)
+ *     A row that waits (issue 1054): the dots at its end, aria-busy, its
+ *     words still shown.
  *
  * A button that never waits opts out with a reason, data-instant="<why>":
  * held without dots, its pop-up at OPEN_MS. An empty reason doesn't count
@@ -408,6 +421,33 @@ export function holdDots(button, on = true) {
   holdButton(button, on !== false, true);
 }
 
+/**
+ * Issue 1054: a row that waits for its save (a drag, a move from a menu):
+ * holdRow(row) adds the kit's dots at its end and aria-busy="true", with
+ * its words still shown and nothing disabled; holdRow(row, false) takes
+ * them off. Drawn again meanwhile, the new row has neither.
+ */
+export function holdRow(row, on = true) {
+  if (!row) return;
+  const mine = () =>
+    [...(row.children ?? [])].find(
+      (c) => c.classList?.contains("bz-dots") && c.classList.contains("bz-row"),
+    );
+  if (on === false) {
+    row.removeAttribute("aria-busy");
+    mine()?.remove();
+    return;
+  }
+  ensureCss();
+  row.setAttribute("aria-busy", "true");
+  if (mine()) return;
+  const d = document.createElement("span");
+  d.className = "bz-dots bz-row";
+  d.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i++) d.append(document.createElement("i"));
+  row.append(d);
+}
+
 export function busyAction(name, run, opts = {}) {
   const a = actions.get(name);
   if (!a) throw new Error(`busyAction: no action named "${name}"`);
@@ -443,6 +483,13 @@ export function busyAction(name, run, opts = {}) {
       ? Number(hook.dotsMs)
       : DOTS_MS;
   const hold = (on) => holdButton(button, on, dots);
+  // Issue 1054: one request shows its wait on the held button alone; the
+  // Working pop-up is for an action that names its steps (steps: true, or
+  // a run that calls progress) and for reconnect mode. No answer by
+  // NO_ANSWER_MS still opens the no-answer pop-up (Check again), and a
+  // failure still opens the failure pop-up.
+  const quiet = dots && !reconnect && a.steps !== true && opts.steps !== true;
+  let attemptAt = 0;
 
   function ensureDialog() {
     if (d) return d;
@@ -479,7 +526,7 @@ export function busyAction(name, run, opts = {}) {
   const title = (ic, text) =>
     `<h2 id="bz-h" tabindex="-1">${icon(ic)}${esc(text)}</h2>`;
   const btn = (key, primary) =>
-    `<button type="button" class="bz-btn${primary ? " bz-primary" : ""}" data-bz="${key}">${esc(word(key))}</button>`;
+    `<button type="button" class="den-btn bz-btn${primary ? " primary bz-primary" : ""}" data-bz="${key}">${esc(word(key))}</button>`;
 
   /**
    * Report · Close · [Open the log] · the primary, last. `next`: the
@@ -493,7 +540,7 @@ export function busyAction(name, run, opts = {}) {
     (withLog && hook.logUrl ? btn("log") : "") +
     (next
       ? next.href
-        ? `<a class="bz-btn bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
+        ? `<a class="den-btn bz-btn primary bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
         : ""
       : btn(primary, true)) +
     `</div>`;
@@ -542,6 +589,14 @@ export function busyAction(name, run, opts = {}) {
   function progress(text) {
     if (settled || text == null || text === "") return;
     lines.push(String(text));
+    // Issue 1054: named steps earn the pop-up, once dotsMs has passed.
+    if (quiet && state === "working" && !d?.open) {
+      if (Date.now() - attemptAt >= openMs) {
+        paintWorking(0);
+        tick(attemptAt);
+      }
+      return;
+    }
     if (state !== "working" || !d?.open) return;
     const ol = d.querySelector(".bz-prog");
     if (ol) {
@@ -737,6 +792,7 @@ export function busyAction(name, run, opts = {}) {
     lastErr = null;
     lines = [];
     const startedAt = Date.now();
+    attemptAt = startedAt;
     state = "working";
     hold(true);
     if (d?.open) {
@@ -744,21 +800,36 @@ export function busyAction(name, run, opts = {}) {
       tick(startedAt);
     }
     const opener = setTimeout(() => {
-      if (state === "working" && !settled && !d?.open) {
+      if (
+        state === "working" &&
+        !settled &&
+        !d?.open &&
+        (!quiet || lines.length)
+      ) {
         paintWorking(0);
         tick(startedAt);
       }
     }, openMs);
+    const silent = quiet
+      ? setTimeout(() => {
+          if (state === "working" && !settled && !d?.open) {
+            clearInterval(ticker);
+            paintNoAnswer();
+          }
+        }, NO_ANSWER_MS)
+      : 0;
     Promise.resolve()
       .then(() => run({ [hook.idHeader]: id }, progress))
       .then(
         (data) => {
           clearTimeout(opener);
+          clearTimeout(silent);
           clearInterval(ticker);
           return answered(true, data);
         },
         (err) => {
           clearTimeout(opener);
+          clearTimeout(silent);
           clearInterval(ticker);
           lastErr = err;
           return answered(false, null, err);

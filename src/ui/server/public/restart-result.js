@@ -108,8 +108,9 @@ export async function restartNow(btn, o) {
 }
 
 /**
- * Wire Restart now and Restart all now under `root`. Each row then says
- * restarted, or not; `onDone(id, ws, ok)` hears each.
+ * Wire Restart now and Restart all now under `root`. Restart all now
+ * holds the kit's dots (o.holdDots) until the last answers. Each row then
+ * says restarted, or not; `onDone(id, ws, ok)` hears each.
  */
 export function wireRestartNow(root, o) {
   // Issue 1434: a button that goes once it's done hands the keyboard's
@@ -146,10 +147,13 @@ export function wireRestartNow(root, o) {
   const all = root.querySelector("[data-rs-all]");
   all?.addEventListener("click", async () => {
     if (all.getAttribute("aria-busy") === "true") return;
-    // Issue 1434: held as the kit holds a button, so it keeps focus.
-    all.setAttribute("aria-disabled", "true");
-    all.setAttribute("aria-busy", "true");
-    for (const b of [...root.querySelectorAll("[data-rs-now]")]) await one(b);
+    // The kit's hold keeps focus on it (issue 1434).
+    const release = o.holdDots?.(all) ?? (() => {});
+    try {
+      for (const b of [...root.querySelectorAll("[data-rs-now]")]) await one(b);
+    } finally {
+      release();
+    }
     removeTo(all, status());
   });
 }

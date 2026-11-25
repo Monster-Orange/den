@@ -30,6 +30,7 @@ const q = require("../../quarantine.cjs") as {
   maxAgeDays(doc: Doc, env?: NodeJS.ProcessEnv): number;
   quarantineMode(env?: NodeJS.ProcessEnv): string;
   quarantineProblems(doc: Doc, today?: Date, env?: NodeJS.ProcessEnv): string[];
+  testNames(file: string): unknown[] | null;
 };
 
 type Entry = {
@@ -206,6 +207,74 @@ describe("the list stays short-lived (the weekly rule)", () => {
         DEN_QUARANTINE_MAX_AGE_DAYS: "5",
       }),
     ).toEqual([expect.stringMatching(/over 5/)]);
+  });
+  it("an entry that names no test in its file fails (a renamed or split test leaves it matching nothing)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-q-names-"));
+    try {
+      const f = path.join(dir, "a.test.ts");
+      fs.writeFileSync(
+        f,
+        [
+          'describe("group", () => {',
+          '  it("kept", () => {});',
+          '  for (const lang of ["es", "ja"])',
+          "    it(`in ${lang} at 390`, () => {});",
+          '  it.each([["es", 1440]])("each in %s at %i px", () => {});',
+          "});",
+          "",
+        ].join("\n"),
+      );
+      const at = (test: string) =>
+        q.quarantineProblems(
+          { entries: [entry({ file: f, test })] },
+          today,
+          {},
+        );
+      expect(at("group kept")).toEqual([]);
+      expect(at("kept")).toEqual([]);
+      expect(at("group in ja at 390")).toEqual([]);
+      expect(at("/group k/")).toEqual([]);
+      expect(at("group each in ja at 390 px")).toEqual([]);
+      expect(at("group in es and ja (1440 and 390)")).toEqual([
+        expect.stringMatching(/names no test in its file/),
+      ]);
+      expect(at("/nothing here/")).toEqual([
+        expect.stringMatching(/names no test in its file/),
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("a title that is only ${...} parts leaves its file unknown; a regex entry aimed at a template title counts as naming it", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-q-names2-"));
+    try {
+      const write = (name: string, lines: string[]) => {
+        const f = path.join(dir, name);
+        fs.writeFileSync(f, [...lines, ""].join("\n"));
+        return f;
+      };
+      const only = write("only.test.ts", [
+        'const name = "x";',
+        "it(`${name}`, () => {});",
+      ]);
+      const tmpl = write("tmpl.test.ts", [
+        'for (const lang of ["es", "ja"])',
+        "  it(`in ${lang} at 390`, () => {});",
+      ]);
+      const at = (file: string, test: string) =>
+        q.quarantineProblems({ entries: [entry({ file, test })] }, today, {});
+      // Unknown: never refused, whatever the entry says.
+      expect(at(only, "anything at all")).toEqual([]);
+      expect(q.testNames(only)).toBeNull();
+      // A regex aimed at a template's instances: in ja at 390 is one.
+      expect(at(tmpl, "/in ja at/")).toEqual([]);
+      expect(at(tmpl, "/^in (es|ja) at 390$/")).toEqual([]);
+      expect(at(tmpl, "/out of/")).toEqual([
+        expect.stringMatching(/names no test in its file/),
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
   it("an entry with no issue, or no evidence, fails", () => {
     expect(
