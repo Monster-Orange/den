@@ -2324,6 +2324,15 @@
     },
     {
       "when": [
+        "scripts/fixed-date-gate.mjs"
+      ],
+      "run": [
+        "tests/unit/scripts/fixed-date-gate.test.ts"
+      ],
+      "why": "tests that run scripts/fixed-date-gate.mjs"
+    },
+    {
+      "when": [
         "scripts/flake-evidence.mjs"
       ],
       "run": [
