@@ -123,7 +123,21 @@ inert, menuOpen })` binds the rail's keys (↑ ↓ Home End, Delete unpins),
   the collapse toggle and the ☰ drawer (a modal below 720px: the page
   inert, Escape or the scrim closes it), and returns `{ rove, paint(html,
 force), setCollapsed, unpin, openDrawer, closeDrawer, drawerOpen,
-syncPinToggles }`.
+syncPinToggles, folds }`.
+- Rail sections fold (0.15.0, issue 1444). `railHtml({ …, folded })`
+  draws each listed section (group id) `data-folded`, never the one
+  holding the current page; its entries sit in `div.den-gb#den-gb-<id>`
+  and its heading stays the plain `div.den-gh`, so with no script every
+  entry shows. `hydrateRailFolds(root, { store, lang, onChange })` (run
+  by `hydrateShell`; `folds: false` turns it off, `folds: store` gives
+  the store) makes each heading the toggle: the whole row a button with
+  `aria-expanded` and `aria-controls`, named "Hide {section}" / "Show
+  {section}" (en, es, ja), with the folded entries' summed count
+  (`.den-bdg`, `.bad` when one is) and a chevron turned -90° when folded.
+  A click, Enter or Space folds it. The store is `{ get(), set(ids) }`;
+  the default, `railFoldStore()`, keeps the ids in localStorage
+  (`den.rail.folded`) and reads any failure as all open. Clicks are taken
+  on the rail, so a repaint keeps them; call `apply()` after one.
 - `src/shell.css`, `src/whatsnew.css`, `src/report.css`: the look. Link
   them after `tokens.css`.
 - `src/version.js` (the chip's label and its unread dot), `src/whatsnew.js`
@@ -448,6 +462,8 @@ opens (Check again). A failure opens the failure pop-up.
   `busyAction` (a stream's output, a form with its own error line) holds
   its button with the dots alone: `holdDots(button)`, then
   `holdDots(button, false)` to give the label back. No pop-up opens.
+  `heldCount()` says how many buttons are held now (a number only): a
+  page that lets each go on its answer leaves 0.
 - `opts.dots: false` on busyAction holds a button the old way (no dots,
   the pop-up at `OPEN_MS`).
 - The look is in `src/busy.css`, under "issue 699: the held button"

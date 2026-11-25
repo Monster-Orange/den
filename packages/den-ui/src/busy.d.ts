@@ -126,6 +126,8 @@ export declare function holdDots(
   button: HTMLElement | null | undefined,
   on?: boolean,
 ): void;
+/** How many buttons the kit holds with dots now (a number, never them). */
+export declare function heldCount(): number;
 /** Issue 1054: a row that waits: the dots at its end, aria-busy. */
 export declare function holdRow(
   row: HTMLElement | null | undefined,
