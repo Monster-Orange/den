@@ -54,6 +54,7 @@ import {
   type PinRecord,
   type PinVia,
 } from "../../shared/pin-record.js";
+import { parseRepoName } from "../../shared/repo-name.js";
 
 // Moved to src/shared/pin-record.ts (doctor reads it too); kept here.
 export { pinRecordFile, readPinRecord, type PinRecord, type PinVia };
@@ -174,7 +175,10 @@ export function githubRepo(
     .match(
       /^(?:(?:https?|ssh):\/\/(?:[^@/]+@)?github\.com\/|[^@/:]+@github\.com:)([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
     );
-  return m ? { owner: m[1], repo: m[2] } : null;
+  // The remote comes from a repo's .git/config, which an agent there can
+  // edit; a "." or ".." would fold the API path the person's token goes to.
+  const r = m ? parseRepoName(`${m[1]}/${m[2]}`) : null;
+  return r ? { owner: r.owner, repo: r.name } : null;
 }
 
 /** Issue 1189: the branch rule types that a direct push can't satisfy. */

@@ -164,6 +164,7 @@ import type {
   HeldOpCheck,
   PersonaHeldCheck,
 } from "../cli/agent-ops.js";
+import { isRepoName } from "../../shared/repo-name.js";
 
 export interface TryResult {
   ok: boolean;
@@ -386,7 +387,6 @@ function shown(p: string, home: string): string {
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** A GitHub repo, owner/name. */
-const GH_REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 /** A runtime's conversation id (Claude Code: a uuid). */
 const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
@@ -1117,7 +1117,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           };
       }
       const repo = str(a.repo);
-      if (!repo || !GH_REPO_RE.test(repo))
+      if (!isRepoName(repo))
         return { ok: false, error: "repo: a GitHub repo, owner/name" };
       const pr =
         typeof a.pr === "number"
