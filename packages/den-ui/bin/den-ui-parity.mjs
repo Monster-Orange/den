@@ -229,7 +229,7 @@ export const COMPONENTS = {
     ],
     files: [],
   },
-  // Issue 559: the toast. A product's own toast (its class drawn, a rule
+  // The toast. A product's own toast (its class drawn, a rule
   // for it, or a builder named as the kit's) is a copy.
   toast: {
     label: "toast (message, Undo, Close; its live region and timing)",

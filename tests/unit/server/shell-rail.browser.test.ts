@@ -360,8 +360,8 @@ describe("the rail", () => {
       ).denShell.pin("shop"),
     );
     expect(await p.textContent(".den-toast")).toBe("Pinned shop");
-    // Issue 559: the kit's toast sits clear of Den's bottom bar (70 px up,
-    // as Den's own toast did), not the kit's 20 px.
+    // The kit's toast sits clear of Den's bottom bar (70 px up), not the
+    // kit's 20 px.
     const gap = await p.evaluate(() => {
       const t = document.querySelector("[data-den-toast] > [data-kind]")!;
       // Where it comes to rest: past its slide in.

@@ -245,7 +245,7 @@ export async function run(ctx, s) {
   r.unpinAll = await press(ctx, x, noX);
   r.starXAllAfter = await starOf(ctx, x);
   await ctx.shot(`unpin-all-${tag}`);
-  const undo = ctx.page.locator(".den-toast .den-toast-undo");
+  const undo = ctx.page.locator("[data-den-toast] [data-toast-undo]");
   r.undoShown = (await undo.count()) > 0;
   if (r.undoShown) await undo.first().click();
   r.undoMs = await ctx.until(

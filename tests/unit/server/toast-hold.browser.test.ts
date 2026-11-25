@@ -1,8 +1,8 @@
 /**
  * The kit's action toast (shell.js toastAction, e.g. Undo): it stays while
  * the pointer or focus is on it, so an Undo is never pulled from under a
- * hand (issue 52). When they leave, a full plain time (3 s) starts: the
- * den-ui toast's rule (issue 559; the Agents page's Undo uses it too).
+ * hand. When they leave, a full plain time (3 s) starts: the den-ui
+ * toast's rule (the Agents page's Undo uses it too).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";

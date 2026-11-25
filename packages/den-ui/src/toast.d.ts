@@ -1,4 +1,4 @@
-/** den-ui: the toast (issue 559). See toast.js. */
+/** den-ui: the toast. See toast.js. */
 export declare const PLAIN_MS: number;
 export declare const UNDO_MS: number;
 /** The wait before a toast goes into a region just made or emptied. */

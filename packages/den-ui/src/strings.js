@@ -56,7 +56,7 @@ export const en = {
   "kit.pin.unpinX": "Unpin {s}",
   "kit.badge.open": "{n} open",
   "kit.badge.waiting": "{n} waiting",
-  // Issue 559: the toast's own words (Hub's today, so its move changes none).
+  // The toast's own words (the same as Hub's own toast says).
   "kit.toast.undo": "Undo",
   "kit.toast.undone": "Undone.",
   "kit.toast.close": "Close",

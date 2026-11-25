@@ -178,9 +178,9 @@ describe("a page navigation with an invalid config", () => {
       await settled();
       // Whatever else the page asks that reads the config fails quietly:
       // no error toast.
-      expect(await page.locator('.den-toast[data-kind="error"]').count()).toBe(
-        0,
-      );
+      expect(
+        await page.locator('[data-den-toast] [data-kind="error"]').count(),
+      ).toBe(0);
       expect(await page.locator("#den-error-page").count()).toBe(0);
       for (const route of [
         "/api/settings",

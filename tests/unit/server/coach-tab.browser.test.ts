@@ -184,7 +184,7 @@ describe("the Coach tab", () => {
     await expect(btn.getAttribute("aria-busy")).resolves.toBe("true");
     expect(await btn.isDisabled()).toBe(true);
     release();
-    // The kit's toast (den-ui, issue 559).
+    // The kit's toast (den-ui).
     const toast = p.locator("[data-toast-words]");
     await p.clock.runFor(100);
     await toast.waitFor();
@@ -192,7 +192,7 @@ describe("the Coach tab", () => {
     await expect(
       toast.locator("[data-toast-msg]").textContent(),
     ).resolves.toContain("tester");
-    // 8 s (Den Design, issue 52), held while the pointer is on it.
+    // The Coach's own 8 s, held while the pointer is on it.
     await toast.hover();
     await p.clock.runFor(12_000);
     expect(await toast.isVisible()).toBe(true);
@@ -203,9 +203,9 @@ describe("the Coach tab", () => {
     expect(posts[1]).toBe('undismiss {"id":"polling:tester"}');
     // Undo runs once: the kit says Undone. and takes the button away.
     expect(await p.locator("[data-toast-undo]").count()).toBe(0);
-    await expect(
-      p.locator("[data-toast-msg]").textContent(),
-    ).resolves.toBe("Undone.");
+    await expect(p.locator("[data-toast-msg]").textContent()).resolves.toBe(
+      "Undone.",
+    );
     // Dismissed again and left alone, the toast goes after its 8 s.
     await p
       .locator('[data-note="coach-findings-table"] [data-act="coach-dismiss"]')

@@ -199,7 +199,7 @@ describe("the identity chip", () => {
           for (const n of m.addedNodes) {
             const el = n instanceof Element ? n : null;
             // By role, not class: a node added into a status region (the
-            // kit's toast, issue 559: the region is there first, empty),
+            // kit's toast: the region is there first, empty),
             // or one that brings its own.
             const t = el?.closest('[role="status"]')
               ? el

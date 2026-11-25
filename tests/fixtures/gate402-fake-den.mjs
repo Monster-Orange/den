@@ -76,7 +76,7 @@ export function fakeBed({ policy = "good", persons = [] } = {}) {
       const here = () =>
         pinSel
           ? inView().includes(pinSel[1])
-          : sel === ".den-toast .den-toast-undo" && !!page.toast;
+          : sel === "[data-den-toast] [data-toast-undo]" && !!page.toast;
       const loc = {
         async count() {
           return here() ? 1 : 0;

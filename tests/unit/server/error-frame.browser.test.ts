@@ -135,13 +135,13 @@ describe("a failed action", () => {
         }
       ).denShell.api("POST", "/api/scope", { scope: 42 });
     });
-    const toast = page.locator('.den-toast[data-kind="error"]');
+    const toast = page.locator('[data-den-toast] [data-kind="error"]');
     await toast.waitFor();
-    // Issue 559: the kit's toast; the alert role is on its live region.
+    // The kit's toast: the alert role is on its live region.
     expect(
       await page.locator('[data-den-toast="alert"]').getAttribute("role"),
     ).toBe("alert");
-    expect(await toast.locator(".den-toast-detail").textContent()).toMatch(
+    expect(await toast.locator("[data-toast-detail]").textContent()).toMatch(
       /^Request [0-9a-f]{8}$/,
     );
     expect(await toast.getByRole("button", { name: "Retry" }).count()).toBe(1);

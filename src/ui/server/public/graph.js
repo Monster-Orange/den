@@ -911,7 +911,7 @@ function fit(floor = FIT_MIN) {
 }
 
 // ── events ───────────────────────────────────────────────────────────────
-// Issue 559: the kit's toast, through the shell (den-ui toast.js).
+// The kit's toast, through the shell (den-ui toast.js).
 function toast(msg) {
   window.denShell?.toast?.(msg);
 }

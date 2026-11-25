@@ -1,5 +1,5 @@
 /**
- * Issue 559: the den-ui toast, the checks that need no browser.
+ * The den-ui toast, the checks that need no browser.
  *
  *   - timing (toastClock, fake timers): 3 s plain, 10 s with Undo, a host's
  *     ms; hover, focus and a hidden page hold it, and when the last ends it
@@ -150,7 +150,9 @@ describe("issue 559: the toast's markup", () => {
     expect(roleOf(h)).toBe("alert");
     expect(h).toContain('data-kind="error"');
     expect(h).toMatch(/data-toast-close aria-label="閉じる"/);
-    expect(h).toContain('<span class="den-toast-detail">Request r-1</span>');
+    expect(h).toContain(
+      '<span class="den-toast-detail" data-toast-detail>Request r-1</span>',
+    );
   });
 
   it("Undo as a POST form that works with no script; fields escaped", () => {
@@ -199,7 +201,9 @@ describe("issue 559: the toast's markup", () => {
     expect(h).toContain(
       '<button type="button" class="den-toast-act" data-toast-act="0">Retry</button>',
     );
-    expect(h).toContain('<a class="den-toast-link" href="/pins">Pins</a>');
+    expect(h).toContain(
+      '<a class="den-toast-link" data-toast-link href="/pins">Pins</a>',
+    );
   });
 });
 

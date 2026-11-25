@@ -1,5 +1,5 @@
 /**
- * The toast (issue 559): one short message at the bottom of the page, with
+ * The toast: one short message at the bottom of the page, with
  * an optional Undo, a link and the host's own actions. Data only: the host
  * passes its message (words it owns, in the page's language) and the kit
  * owns the rest: "Undo", "Undone." and "Close", the roles, the timing and
@@ -58,7 +58,7 @@ import { esc, kitT } from "./strings.js";
 export const PLAIN_MS = 3000;
 export const UNDO_MS = 10_000;
 /** How long a toast waits before it goes into a region that was just made
- * or emptied, so a screen reader sees the change (issue 559). */
+ * or emptied, so a screen reader sees the change. */
 export const ANNOUNCE_MS = 50;
 
 /** An address a toast may use: http(s) or relative, and mailto for a
@@ -150,7 +150,7 @@ function bodyHtml(o) {
   const href = o.link && safeHref(o.link.href, true);
   if (href)
     acts +=
-      '<a class="den-toast-link" href="' +
+      '<a class="den-toast-link" data-toast-link href="' +
       esc(href) +
       '">' +
       esc(o.link.label) +
@@ -173,7 +173,9 @@ function bodyHtml(o) {
     esc(o.message) +
     "</span>" +
     (o.detail
-      ? '<span class="den-toast-detail">' + esc(o.detail) + "</span>"
+      ? '<span class="den-toast-detail" data-toast-detail>' +
+        esc(o.detail) +
+        "</span>"
       : "") +
     "</span>" +
     (acts

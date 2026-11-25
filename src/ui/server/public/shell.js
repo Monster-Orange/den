@@ -5985,7 +5985,7 @@
     }
   }
   /**
-   * Issue 559: Den's toasts are the kit's (den-ui toast.js): its words
+   * Den's toasts are the kit's (den-ui toast.js): its words
    * (Undo, Undone., Close), its live region, its timing (3 s plain, 10 s
    * with Undo, held on hover, focus and a hidden page) and its look. A
    * toast still clears a line marked data-toast-clear (clearOfMarked, on
@@ -6020,8 +6020,8 @@
     return k ? k.el : null;
   }
   /**
-   * A toast with the host's own buttons, not Undo (issue 479's Settings,
-   * say): { message, actions: [{ label, onClick }], ms?, link? }.
+   * A toast with the host's own buttons, not Undo (the quarantine toast's
+   * Settings, say): { message, actions: [{ label, onClick }], ms?, link? }.
    */
   function toastWith(o) {
     var k = kitToast(o || {});
@@ -7585,7 +7585,7 @@
     document.addEventListener("DOMContentLoaded", ensurePageHeader);
   else ensurePageHeader();
 
-  // Issue 559: the toast's two live regions, empty, from the start, so the
+  // The toast's two live regions, empty, from the start, so the
   // page's first toast goes into a region a screen reader already watches.
   function ensureToasts() {
     if (DUI && DUI.ensureToastRegions) DUI.ensureToastRegions(document);
@@ -8555,8 +8555,7 @@
   }
   /**
    * An error toast: the message, its request id, Retry, Copy details and
-   * the kit's Close (issue 559: the kit's error toast, role="alert", no
-   * timer).
+   * the kit's Close (the kit's error toast: role="alert", no timer).
    */
   function errorToast(err) {
     var actions = [];
@@ -10785,8 +10784,8 @@
     ".den-pop.den-svp.den-sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;",
     "  background: var(--border-strong); margin: 8px auto 0; }",
     ".den-pop.den-svp.den-sheet .den-svp-acts .den-btn { flex: 1 1 auto; padding: 9px 12px; }",
-    // Toasts are the kit's (issue 559: den-ui toast.css), 70 px up, clear
-    // of the bar along the bottom (the Runs bar), where Den's own sat.
+    // Toasts are the kit's (den-ui toast.css), 70 px up, clear of the
+    // bar along the bottom (the Runs bar).
     ":root { --den-toast-bottom: 70px; }",
     // The banners' small buttons (.den-tbtn), once shared with Den's toasts.
     ".den-tbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text);",

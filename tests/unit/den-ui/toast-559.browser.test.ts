@@ -1,5 +1,5 @@
 /**
- * Issue 559: the den-ui toast in a browser (toast.js, toast.css). The
+ * The den-ui toast in a browser (toast.js, toast.css). The
  * page's clock is faked and paused.
  *
  *   - one live region on the page, empty before the words arrive, reused;
