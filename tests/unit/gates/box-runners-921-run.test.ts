@@ -42,7 +42,14 @@ const BOX: GateBox = {
   hold_file: "heavy.hold",
 };
 
-type Answer = { out?: string; err?: string; code?: number; hold?: boolean };
+/** `mem`: what sftp's `-get /proc/meminfo "<local>"` writes there (issue 1381). */
+type Answer = {
+  out?: string;
+  err?: string;
+  code?: number;
+  hold?: boolean;
+  mem?: string;
+};
 type Call = { cmd: string; args: string[]; stdin: string; close: () => void };
 
 /** A process starter: each call answers in turn (the last one repeats). */
@@ -66,6 +73,8 @@ function scripted(answers: Answer[]) {
     k.stdin = {
       end: (s?: string) => {
         call.stdin = s ?? "";
+        const get = /^-get \/proc\/meminfo "([^"]+)"$/m.exec(call.stdin);
+        if (get && a.mem !== undefined) fs.writeFileSync(get[1]!, a.mem);
         // hold: the runner keeps going until the test closes it.
         if (!a.hold) setImmediate(close);
       },
@@ -335,27 +344,27 @@ describe("the box check reads the job marks", () => {
   });
 
   it("lists the marks folder in the same sftp session", async () => {
-    const f = scripted([{ out: MEM, err: NO_HOLD + NO_MARKS }]);
+    const f = scripted([{ mem: MEM, err: NO_HOLD + NO_MARKS }]);
     await sftpProbe(f.start as never)(BOX, 2000);
     expect(f.calls).toHaveLength(1);
     expect(f.calls[0]!.stdin).toContain('-ls -1 "heavy.hold.jobs"');
   });
 
   it("held while a job's mark is there", async () => {
-    for (const out of ["heavy.hold.jobs/r7\n" + MEM, "r7\n" + MEM]) {
-      const r = await probe({ out, err: NO_HOLD });
+    for (const out of ["heavy.hold.jobs/r7\n", "r7\n"]) {
+      const r = await probe({ out, mem: MEM, err: NO_HOLD });
       expect(r.state).toBe("held");
       expect(r.reason).toMatch(/a CI job is running/);
     }
   });
 
   it("open with no marks, or no marks folder; the hold file still holds", async () => {
-    expect((await probe({ out: MEM, err: NO_HOLD })).state).toBe("open");
-    expect((await probe({ out: MEM, err: NO_HOLD + NO_MARKS })).state).toBe(
+    expect((await probe({ mem: MEM, err: NO_HOLD })).state).toBe("open");
+    expect((await probe({ mem: MEM, err: NO_HOLD + NO_MARKS })).state).toBe(
       "open",
     );
     // The marks folder missing must not read as the hold file missing.
-    const r = await probe({ out: MEM, err: NO_MARKS });
+    const r = await probe({ mem: MEM, err: NO_MARKS });
     expect(r.state).toBe("held");
     expect(r.reason).toMatch(/hold file/);
   });
