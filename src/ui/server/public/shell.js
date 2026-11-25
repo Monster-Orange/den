@@ -3789,8 +3789,6 @@
     "bell.undo": "Undo",
     "bell.undoMsg": "No longer showing “{kind}”.",
     "bell.clearRead": "Clear read",
-    "bell.marking": "Marking…",
-    "bell.clearing": "Clearing…",
     "bell.read": "Mark read",
     "bell.server": "__DEN_TITLE__ agent",
     "bell.hub": "Hub · {project}",
@@ -5450,6 +5448,7 @@
   function saveShell(patch) {
     remember();
     if (typeof fetch !== "function") return Promise.resolve();
+    // busy-ok: pins and the rail's fold save in the background; the page shows them at once
     return fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -9529,49 +9528,67 @@
         verb === "approve"
           ? { ref: w.ref, code: prTyped(input.value) }
           : { ref: w.ref };
-      api("POST", "/api/web/" + verb, body).then(
-        function () {
-          pr.shown = null;
-          if (d.open) d.close();
-          if (verb === "approve") toast(t("pair.allowed"));
-        },
-        function (e) {
-          // Issue 320: a request that ended (its page withdrew it, or it
-          // expired or was used): nothing happened, said plainly. Only
-          // Close stays.
-          var code = e && e.code;
-          var gone =
-            code === "ended" || code === "unknown"
-              ? t("pair.ended")
-              : code === "expired"
-                ? t("pair.expired")
-                : "";
-          // Issue 819: only a person's signed-in browser approves a device,
-          // with the code its screen shows.
-          var who =
-            code === "approve_not_agent" || code === "fixture_cannot_approve"
-              ? t("set.access.approveNotAgent")
-              : code === "approve_needs_browser" || code === "signin_to_approve"
-                ? t("set.access.approveNeedsBrowser")
-                : code === "wrong" || code === "malformed"
-                  ? t("pair.wrong")
-                  : code === "rate_limited"
-                    ? t("pair.busy")
-                    : "";
-          err.textContent = gone || who || (e && e.message) || String(e);
-          err.hidden = false;
-          if (gone) {
-            allow.hidden = true;
-            input.hidden = true;
-            d.querySelector("#den-pair-code-label").hidden = true;
-            d.querySelector("#den-pair-deny").hidden = true;
-            d.querySelector("#den-pair-later").textContent = t("pair.close");
-          } else if (verb === "approve") {
-            input.focus();
-            input.select();
-          }
-        },
+      // Issue 1054: the pressed button shows the kit's dots until the answer.
+      var release = window.denShell.holdDots(
+        d.querySelector(
+          verb === "approve" ? "#den-pair-allow" : "#den-pair-deny",
+        ),
       );
+      api("POST", "/api/web/" + verb, body)
+        .then(
+          function (x) {
+            release();
+            return x;
+          },
+          function (e) {
+            release();
+            throw e;
+          },
+        )
+        .then(
+          function () {
+            pr.shown = null;
+            if (d.open) d.close();
+            if (verb === "approve") toast(t("pair.allowed"));
+          },
+          function (e) {
+            // Issue 320: a request that ended (its page withdrew it, or it
+            // expired or was used): nothing happened, said plainly. Only
+            // Close stays.
+            var code = e && e.code;
+            var gone =
+              code === "ended" || code === "unknown"
+                ? t("pair.ended")
+                : code === "expired"
+                  ? t("pair.expired")
+                  : "";
+            // Issue 819: only a person's signed-in browser approves a device,
+            // with the code its screen shows.
+            var who =
+              code === "approve_not_agent" || code === "fixture_cannot_approve"
+                ? t("set.access.approveNotAgent")
+                : code === "approve_needs_browser" ||
+                    code === "signin_to_approve"
+                  ? t("set.access.approveNeedsBrowser")
+                  : code === "wrong" || code === "malformed"
+                    ? t("pair.wrong")
+                    : code === "rate_limited"
+                      ? t("pair.busy")
+                      : "";
+            err.textContent = gone || who || (e && e.message) || String(e);
+            err.hidden = false;
+            if (gone) {
+              allow.hidden = true;
+              input.hidden = true;
+              d.querySelector("#den-pair-code-label").hidden = true;
+              d.querySelector("#den-pair-deny").hidden = true;
+              d.querySelector("#den-pair-later").textContent = t("pair.close");
+            } else if (verb === "approve") {
+              input.focus();
+              input.select();
+            }
+          },
+        );
     };
     d.querySelector("#den-pair-deny").addEventListener("click", function () {
       decide("deny");
@@ -9716,6 +9733,7 @@
   // every page with that language's catalog from its first paint.
   function setLanguage(l) {
     if (l === lang) return Promise.resolve(false);
+    // busy-ok: picked from a menu that has closed; the page reloads in it
     return api("POST", "/api/settings", { language: l }).then(function () {
       location.reload();
       return true;
@@ -9973,7 +9991,10 @@
           m.holdDots(button, true);
           return m;
         })
-        .catch(function () {
+        .catch(function (err) {
+          // Never silent (issue 1054: a missing export hid a row's dots);
+          // the button is still let go on release.
+          console.error("holdDots", err);
           return null;
         });
       return function () {
@@ -9983,6 +10004,31 @@
             button.disabled = false;
             button.removeAttribute("aria-busy");
           }
+        });
+      };
+    },
+    /**
+     * Issue 1054: a row that waits for its save (a drag): the kit's dots
+     * at its end and aria-busy; it returns release().
+     */
+    holdRow: function (row) {
+      if (!row) return function () {};
+      row.setAttribute("aria-busy", "true");
+      var held = loadBusy()
+        .then(function (m) {
+          m.holdRow(row, true);
+          return m;
+        })
+        .catch(function (err) {
+          // Never silent (issue 1054: a missing export hid a row's dots);
+          // the row is still let go on release.
+          console.error("holdRow", err);
+          return null;
+        });
+      return function () {
+        return held.then(function (m) {
+          if (m) m.holdRow(row, false);
+          else row.removeAttribute("aria-busy");
         });
       };
     },
