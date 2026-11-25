@@ -173,6 +173,9 @@ export const KIT_FILES: readonly string[] = [
   // switch, with their looks.
   "panel-fold.js",
   "panel-fold.css",
+  // A non-modal popover anchored to what opened it, and its look.
+  "popover.js",
+  "popover.css",
   "switch.js",
   "switch.css",
   // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
