@@ -3,8 +3,8 @@
  * page. The POST is held in the test, so what the person sees while it
  * runs is checked:
  *
- *   1. After the click the button shows busy in itself (disabled,
- *      aria-busy, the bell.marking / bell.clearing words), and the rows
+ *   1. After the click the button holds the kit's dots (disabled,
+ *      aria-busy, its own label kept; issues 1054 and 698), and the rows
  *      show read (or are gone) before the POST answers.
  *   2. When it answers, the button comes back as it should.
  *   3. When it fails, the rows go back as they were, with an error toast.
@@ -154,8 +154,9 @@ describe("Mark all read (issue 1339)", () => {
     await btn.click();
     expect(await btn.getAttribute("aria-busy")).toBe("true");
     expect(await btn.isDisabled()).toBe(true);
+    await btn.locator(".bz-dots").waitFor();
     expect((await btn.textContent())?.trim()).toBe(
-      await words(p, "bell.marking"),
+      await words(p, "bell.markAll"),
     );
     // The rows show read while the POST is still held.
     expect(await count(p, UNREAD)).toBe(0);
@@ -198,8 +199,9 @@ describe("Clear read (issue 1339)", () => {
     await btn.click();
     expect(await btn.getAttribute("aria-busy")).toBe("true");
     expect(await btn.isDisabled()).toBe(true);
+    await btn.locator(".bz-dots").waitFor();
     expect((await btn.textContent())?.trim()).toBe(
-      await words(p, "bell.clearing"),
+      await words(p, "bell.clearRead"),
     );
     expect(await count(p, ROWS)).toBe(3);
     await release(true);

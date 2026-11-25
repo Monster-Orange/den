@@ -1497,6 +1497,7 @@ function hideOtherProjects() {
 /** #80: All active, with the hidden tabs back. */
 async function showAllActive() {
   try {
+    // busy-ok: the stored view follows the page; the reload is its answer
     await window.denShell?.api?.("POST", "/api/scope", { scope: "all" });
   } catch {
     /* the link below still shows every project for this page */
@@ -1532,6 +1533,7 @@ async function showProject(ws) {
   history.replaceState(history.state, "", u.pathname + u.search);
   st.scope = ws;
   try {
+    // busy-ok: the stored view follows the page, which shows it already
     await window.denShell?.api?.("POST", "/api/scope", { scope: ws });
   } catch {
     /* the address still says it, for this page */

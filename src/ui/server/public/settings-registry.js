@@ -2717,7 +2717,7 @@ function renderKeepRunning(host, ctx) {
     say("");
     try {
       const r = await applyKeepRunning(on, {
-        // The working pop-up while the server answers.
+        // The kit's dots on Apply while the server answers (issue 1054).
         post: (body) =>
           ctx.shell.busyAction(
             "keep-running",

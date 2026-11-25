@@ -30,7 +30,7 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const NO_SHELL = new Set(["embed-page.js"]);
 
 const WRITE =
-  /api\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
+  /api\??\.?\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
 const BUSY_HEADERS = /\{\s*headers\s*,?\s*\}/;
 /** How far above a write its handler's holdDots(button) may be. */
 const HOLD_SPAN = 40;
@@ -80,6 +80,10 @@ describe("issue 1054: every write shows its wait on its button", () => {
         'const release = window.denShell?.holdDots?.(btn) ?? (async () => {});\napi("POST", "/x", {});',
       ),
     ).toEqual([]);
+    // A write through an optional call is a write too.
+    expect(
+      unheldWrites('await window.denShell?.api?.("POST", "/api/x", {});'),
+    ).toEqual(['1: await window.denShell?.api?.("POST", "/api/x", {});']);
     // A reason must say something.
     expect(unheldWrites('// busy-ok: x\napi("POST", "/x", {});')).toHaveLength(
       1,
