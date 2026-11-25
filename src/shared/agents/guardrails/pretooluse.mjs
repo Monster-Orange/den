@@ -12,7 +12,11 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * It blocks exactly two things, and nothing else:
+ * Issue 1127: it also holds an agent's `gh` write to a public repo whose
+ * title or body holds a listed name (public-text.mjs), with or without
+ * --no-guardrails, as the api-only rules are.
+ *
+ * Its guardrails block exactly two things, and nothing else:
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -31,7 +35,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ROUTE_DEFAULT, routeCommand } from "./gate-route.mjs";
+import { ROUTE_DEFAULT, heavyProgram, routeCommand } from "./gate-route.mjs";
+import {
+  PUBLIC_TEXT_FAILED,
+  looksLikeGhWrite,
+  publicTextDecision,
+} from "./public-text.mjs";
 import {
   apiOnlyDecision,
   apiOnlyMessage,
@@ -417,17 +426,26 @@ const word = (s) =>
 
 /**
  * Issue 1264: routing as the gate's settings.json says: `route_agents`
- * (false turns it off) and `route_commands` (the programs). No file, or one
- * Den can't read: on, with the default list.
+ * (0 or false turns it off) and `route_commands` (the programs: a line of
+ * text, comma-separated, as the gate stores it, or a list). No file, or
+ * one Den can't read: on, with the default list.
  */
 export function routeSettings(file) {
   try {
     const j = JSON.parse(fs.readFileSync(file, "utf-8"));
+    const list =
+      typeof j.route_commands === "string"
+        ? j.route_commands.split(",")
+        : Array.isArray(j.route_commands)
+          ? j.route_commands
+          : null;
+    const programs = list
+      ?.filter((x) => typeof x === "string")
+      .map((x) => x.trim())
+      .filter(Boolean);
     return {
-      on: j.route_agents !== false,
-      programs: Array.isArray(j.route_commands)
-        ? j.route_commands.filter((x) => typeof x === "string")
-        : ROUTE_DEFAULT,
+      on: j.route_agents !== false && j.route_agents !== 0,
+      programs: programs && programs.length ? programs : ROUTE_DEFAULT,
     };
   } catch {
     return { on: true, programs: ROUTE_DEFAULT };
@@ -435,11 +453,12 @@ export function routeSettings(file) {
 }
 
 /**
- * Issue 1264: the Bash call's input with its command sent through the
- * gate (`<cli> gate run`), or null to leave it. `cli`: this install's own
- * CLI, by its absolute path; none, no routing.
+ * Issue 1264: what the hook does with a Bash call: `{ input }`, its input
+ * with the command sent through the gate (`<cli> gate run`); `{ outside }`,
+ * a listed program it leaves alone ({ program, kind }, to record); or null.
+ * `cli`: this install's own CLI, by its absolute path; none, nothing.
  */
-export function gateRewrite(input, cli, settingsFile) {
+export function gateDecision(input, cli, settingsFile) {
   if (!cli || input?.tool_name !== "Bash") return null;
   const ti =
     input.tool_input && typeof input.tool_input === "object"
@@ -447,19 +466,69 @@ export function gateRewrite(input, cli, settingsFile) {
       : null;
   if (!ti || typeof ti.command !== "string") return null;
   const s = routeSettings(settingsFile);
-  if (!s.on) return null;
-  const r = routeCommand(ti.command, {
-    gate: `${word(cli)} gate run`,
+  const r = s.on
+    ? routeCommand(ti.command, {
+        gate: `${word(cli)} gate run`,
+        programs: s.programs,
+        parse: parseShell,
+      })
+    : null;
+  if (r) return { input: { ...ti, command: r.command } };
+  const h = heavyProgram(ti.command, {
     programs: s.programs,
     parse: parseShell,
   });
-  return r ? { ...ti, command: r.command } : null;
+  return h ? { outside: h } : null;
+}
+
+/** Issue 1264: the input with its command gated, or null (slice 1's form). */
+export function gateRewrite(input, cli, settingsFile) {
+  return gateDecision(input, cli, settingsFile)?.input ?? null;
+}
+
+/**
+ * Issue 1264: "ran outside the gate", in the gate's slot log beside its
+ * settings: the program (the list entry) and the agent, never arguments.
+ * A log Den can't write is skipped: the command runs either way.
+ */
+export function recordOutside(settingsFile, outside, env = process.env) {
+  if (!settingsFile) return;
+  try {
+    const dir = path.dirname(settingsFile);
+    fs.mkdirSync(dir, { recursive: true });
+    const who =
+      String(env.DEN_AGENT ?? "")
+        .trim()
+        .slice(0, 120) || "an agent";
+    const row = {
+      at: new Date().toISOString(),
+      event: "outside",
+      id: "outside",
+      kind: outside.kind,
+      who,
+      label: String(outside.program).slice(0, 60),
+    };
+    fs.appendFileSync(
+      path.join(dir, "events.jsonl"),
+      JSON.stringify(row) + "\n",
+    );
+  } catch {
+    /* the log is a count, never a gate */
+  }
 }
 
 /** `--name value` from the hook's own arguments, or null. */
 function arg(name, argv = process.argv) {
   const i = argv.indexOf(name);
   return i > 0 && argv[i + 1] !== undefined ? argv[i + 1] : null;
+}
+
+/** Issue 1127: how long a repo's visibility is kept (--visibility-minutes). */
+function visibilityArgs() {
+  const m = Number(arg("--visibility-minutes"));
+  return arg("--visibility-minutes") !== null && Number.isFinite(m) && m >= 0
+    ? { minutes: m }
+    : {};
 }
 
 async function main() {
@@ -486,6 +555,19 @@ async function main() {
         reason = apiOnlyMessage(r);
       }
     }
+    // Issue 1127: text filed on a public repo, before it is sent. Its own
+    // try: a failure here holds a gh write, and never stops the checks below.
+    if (!reason && input.tool_name === "Bash") {
+      const command = input.tool_input?.command;
+      try {
+        reason = publicTextDecision(command, parseShell, {
+          cwd: typeof input.cwd === "string" ? input.cwd : process.cwd(),
+          visibility: visibilityArgs(),
+        });
+      } catch {
+        reason = looksLikeGhWrite(command) ? PUBLIC_TEXT_FAILED : null;
+      }
+    }
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;
@@ -497,26 +579,28 @@ async function main() {
   // Issue 1264: a heavy run goes through the gate. The whole input comes
   // back with the new command and no permission decision, so the agent's
   // own permission rules still decide the rewritten command.
-  let updated = null;
+  let decision = null;
   try {
     if (!process.argv.includes("--no-guardrails"))
-      updated = gateRewrite(
+      decision = gateDecision(
         JSON.parse(text),
         arg("--gate"),
         arg("--gate-settings"),
       );
   } catch {
-    updated = null;
+    decision = null;
   }
-  if (updated)
+  if (decision?.input)
     process.stdout.write(
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
-          updatedInput: updated,
+          updatedInput: decision.input,
         },
       }),
     );
+  else if (decision?.outside)
+    recordOutside(arg("--gate-settings"), decision.outside);
   process.exit(0);
 }
 

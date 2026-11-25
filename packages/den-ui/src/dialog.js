@@ -189,13 +189,36 @@ function holdFor(b) {
     const r = hook.hold(b);
     if (typeof r === "function") return r;
   }
-  b.disabled = true;
+  // Issue 1434: held, not disabled, so it keeps focus; its clicks stop
+  // at the window (below).
+  const own = b.getAttribute("aria-disabled") !== "true";
   b.setAttribute("aria-busy", "true");
+  b.setAttribute("aria-disabled", "true");
   return () => {
-    b.disabled = false;
     b.removeAttribute("aria-busy");
+    if (own) b.removeAttribute("aria-disabled");
   };
 }
+
+/**
+ * Issue 1434: a click on a held button (aria-busy with aria-disabled, as
+ * busy.js holds) stops at the window, before the page's own listeners.
+ */
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (
+        n.getAttribute?.("aria-busy") === "true" &&
+        n.getAttribute("aria-disabled") === "true"
+      ) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
 
 /** The product's language, words and Report (see the top of this file). */
 export function configureDialog(h) {
