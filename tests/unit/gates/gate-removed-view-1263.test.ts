@@ -5,8 +5,8 @@
  *
  *  1. removedWords: how many, the run's label, and the image names.
  *  2. en, es and ja have the heading and the line, with every value.
- *  3. The chip reads `removed` from /api/gate-slots (the gate view) and
- *     lists it under its own heading, escaped, only when there are any.
+ *  3. A removal from an earlier day shows its date too. That the queue
+ *     lists them, as text, only when any: gate-chip.browser.test.ts.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -57,17 +57,6 @@ describe("issue 1263: the Gate queue shows removed containers", () => {
       for (const v of ["{n}", "{label}"])
         expect([f, v, bare.includes(v)]).toEqual([f, v, true]);
     }
-  });
-
-  it("(3) the chip lists them under their own heading, escaped, only when any", () => {
-    const chip = read("gate-chip.js");
-    expect(chip).toMatch(/removed = body\.removed \?\? \[\];/);
-    expect(chip).toMatch(
-      /removed\.length\s*\?[\s\S]{0,200}gate\.removedH[\s\S]{0,200}data-gate-removed/,
-    );
-    expect(chip).toMatch(
-      /esc\(removedAt\(r\.at\) \+ " · " \+ removedWords\(r, t\)\)/,
-    );
   });
 
   it("(4) a row from today shows its time; one from an earlier day, its date too", () => {
