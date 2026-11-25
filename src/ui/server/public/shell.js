@@ -2665,6 +2665,9 @@
     "set.server.health_poll_hidden": "Health checks in a hidden tab",
     "set.server.health_poll_hidden.d":
       "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Git reads at once",
+    "set.server.git_reads.d":
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
