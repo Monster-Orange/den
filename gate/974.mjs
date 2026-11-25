@@ -245,7 +245,7 @@ export async function teardown(ctx, s) {
 }
 
 export function expect(cells) {
-  const r = cells[0].result;
+  const r = cells.find((c) => c?.result)?.result ?? {};
   const fileOk = !!r.envFile && path.basename(r.envFile) === "env-hold.sh";
   const g = r.guard ?? {};
   const refused = ["env", "printenv", "set"].every(
@@ -267,12 +267,12 @@ export function expect(cells) {
       : {
           clause: clauses[0],
           ok:
-            r.heldNames.length === 0 &&
+            (r.heldNames ?? []).length === 0 &&
             fileOk &&
             r.withoutFile === CANARY &&
             r.withFile === "",
           detail:
-            `held-looking names in the session: ${r.heldNames.length ? r.heldNames.join(", ") : "none"}; ` +
+            `held-looking names in the session: ${(r.heldNames ?? []).length ? (r.heldNames ?? []).join(", ") : "none"}; ` +
             `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`}; ` +
             `profile canary without the file: ${r.withoutFile === CANARY ? "seen" : "not seen"}, with it: ${r.withFile === "" ? "gone" : "still there"}`,
         },
