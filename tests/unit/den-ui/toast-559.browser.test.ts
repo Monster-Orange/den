@@ -259,7 +259,7 @@ describe("issue 559: the toast in a browser", () => {
     await p.context().close();
   });
 
-  it("8 s with Undo; hover holds it; leaving starts a full 3 s", async () => {
+  it("10 s with Undo; hover holds it; leaving starts a full 3 s", async () => {
     if (skip()) return;
     const p = await open();
     await show(p, { message: "Removed", undo: true });

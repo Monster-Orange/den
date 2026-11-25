@@ -1,7 +1,7 @@
 /**
  * Issue 559: the den-ui toast, the checks that need no browser.
  *
- *   - timing (toastClock, fake timers): 3 s plain, 8 s with Undo, a host's
+ *   - timing (toastClock, fake timers): 3 s plain, 10 s with Undo, a host's
  *     ms; hover, focus and a hidden page hold it, and when the last ends it
  *     starts again from a full 3 s; after Undo, 3 s; an error never ends
  *     by its timer;
@@ -47,8 +47,8 @@ describe("issue 559: the toast's timing", () => {
     return { c, ended: () => ended };
   };
 
-  it("the kit's times: 3 s plain, 8 s with Undo", () => {
-    expect([PLAIN_MS, UNDO_MS]).toEqual([3000, 8000]);
+  it("the kit's times: 3 s plain, 10 s with Undo (today's Undo time, kept)", () => {
+    expect([PLAIN_MS, UNDO_MS]).toEqual([3000, 10_000]);
     const p = clock();
     p.c.start();
     jest.advanceTimersByTime(2999);
@@ -57,7 +57,7 @@ describe("issue 559: the toast's timing", () => {
     expect(p.ended()).toBe(1);
     const u = clock({ undo: true });
     u.c.start();
-    jest.advanceTimersByTime(7999);
+    jest.advanceTimersByTime(9999);
     expect(u.ended()).toBe(0);
     jest.advanceTimersByTime(1);
     expect(u.ended()).toBe(1);
@@ -261,5 +261,16 @@ describe("issue 559: the toast's width", () => {
       .replace(/\/\*[\s\S]*?\*\//g, "");
     expect(css.match(/[\d.]+vw\b/g) ?? []).toEqual([]);
     expect(css).toContain("calc(100% - 32px)");
+  });
+});
+
+describe("issue 559: Den's Undo time is today's", () => {
+  it("the Agents page's Remove keeps its 10 s Undo", () => {
+    // A browser module (no jest transform): read its source.
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "src/ui/server/public/agents-page.js"),
+      "utf-8",
+    );
+    expect(src).toMatch(/^export const UNDO_MS = 10_000;$/m);
   });
 });

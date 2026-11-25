@@ -32,7 +32,7 @@ export interface ShowToastOptions {
   onUndo?: () => void;
   actions?: ToastAction[];
   link?: ToastLink;
-  /** How long it shows (default: 3 s, or 8 s with Undo). */
+  /** How long it shows (default: 3 s, or 10 s with Undo). */
   ms?: number;
   lang?: string;
 }

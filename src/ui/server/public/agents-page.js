@@ -206,8 +206,8 @@ const TITLE = "__DEN_TITLE__";
 /** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
 const SERVER_WS = "den-server";
 /** How long Remove's Undo stays offered (AG-14.1b). */
-// The kit's Undo time (issue 559: one time for Den and Hub, 8 s).
-export const UNDO_MS = 8_000;
+// The kit's Undo time (issue 559: one time for Den and Hub, today's 10 s).
+export const UNDO_MS = 10_000;
 
 /** The most panes at once (the prototype's 2x2). */
 export const MAX_PANES = 4;

@@ -25,7 +25,7 @@
  *     client wires). hydrateToast(doc) times it and announces it.
  *
  * Timing (toastClock, no DOM): PLAIN_MS (3 s) for a plain toast, UNDO_MS
- * (8 s) with Undo. Hover, focus inside and a hidden page hold it; when the
+ * (10 s, today's Undo time) with Undo. Hover, focus inside and a hidden page hold it; when the
  * last of them ends it starts again from a full PLAIN_MS. An error has no
  * timer: its Close button, Esc or the next toast closes it.
  *
@@ -52,7 +52,7 @@
 import { esc, kitT } from "./strings.js";
 
 export const PLAIN_MS = 3000;
-export const UNDO_MS = 8000;
+export const UNDO_MS = 10_000;
 /** How long a toast waits before it goes into a region that was just made
  * or emptied, so a screen reader sees the change (issue 559). */
 export const ANNOUNCE_MS = 50;

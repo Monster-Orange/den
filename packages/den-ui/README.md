@@ -836,7 +836,7 @@ es, ja), the roles, the timing and the look.
 - `toastHtml({ message, kind?, undo?, link? })` is the same toast as a
   string for a server's page. Undo can be a POST form that works with no
   script. `hydrateToast(doc)` times that toast and announces it.
-- **Times:** 3 s plain, 8 s with Undo, and an error stays until it is
+- **Times:** 3 s plain, 10 s with Undo, and an error stays until it is
   closed (Close, Esc, or the next toast). Hover, focus inside and a hidden
   page hold the timer, and a full 3 s starts when they end.
 - **Focus** never moves into the toast. Esc, with focus inside, closes it
