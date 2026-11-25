@@ -2461,9 +2461,9 @@
     "ap.det.hub_connect.connect":
       "Después te conectas en Ajustes › Hub: Conectar te inicia sesión en Hub allí.",
     "ap.det.hub_connect.keep":
-      "__DEN_TITLE__ sigue en {was} con su clave hasta que inicies sesión en {url}.",
+      "Den sigue en {was} con su clave hasta que inicies sesión en {url}.",
     "ap.det.hub_connect.signin":
-      "Tras tu permiso se abre el inicio de sesión de {url}. Cuando ese Hub responde, __DEN_TITLE__ cambia a él y {was} revoca su clave; si falla, __DEN_TITLE__ sigue en {was} y dice por qué.",
+      "Tras tu permiso se abre el inicio de sesión de {url}. Cuando ese Hub responde, Den cambia a él y {was} revoca su clave; si falla, Den sigue en {was} y dice por qué.",
     "ap.det.den_pin_commit.pr":
       "Den hace commit de package.json y package-lock.json en la rama den/pin-{version} y abre una pull request.",
     "ap.det.den_pin_commit.push":

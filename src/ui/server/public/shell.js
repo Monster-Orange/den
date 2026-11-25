@@ -3385,9 +3385,9 @@
     "ap.det.hub_connect.connect":
       "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
     "ap.det.hub_connect.keep":
-      "__DEN_TITLE__ stays on {was} with its key until you sign in to {url}.",
+      "Den stays on {was} with its key until you sign in to {url}.",
     "ap.det.hub_connect.signin":
-      "After your Allow, {url}'s sign-in opens. Once that Hub answers, __DEN_TITLE__ switches to it and {was} revokes its key; if it fails, __DEN_TITLE__ stays on {was} and says why.",
+      "After your Allow, {url}'s sign-in opens. Once that Hub answers, Den switches to it and {was} revokes its key; if it fails, Den stays on {was} and says why.",
     "ap.det.den_pin_commit.pr":
       "Den commits package.json and package-lock.json on the branch den/pin-{version} and opens a pull request.",
     "ap.det.den_pin_commit.push":

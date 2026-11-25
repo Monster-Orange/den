@@ -2388,9 +2388,9 @@
     "ap.det.hub_connect.connect":
       "その後、設定 › Hub で接続します。そこで「接続」を押すと Hub にサインインします。",
     "ap.det.hub_connect.keep":
-      "{url} にサインインするまで、__DEN_TITLE__ は {was} とそのキーを使い続けます。",
+      "{url} にサインインするまで、Den は {was} とそのキーを使い続けます。",
     "ap.det.hub_connect.signin":
-      "許可すると {url} のサインインが開きます。その Hub が応答したら __DEN_TITLE__ はそちらに切り替わり、{was} はキーを無効にします。失敗した場合、__DEN_TITLE__ は {was} のままで、理由を伝えます。",
+      "許可すると {url} のサインインが開きます。その Hub が応答したら Den はそちらに切り替わり、{was} はキーを無効にします。失敗した場合、Den は {was} のままで、理由を伝えます。",
     "ap.det.den_pin_commit.pr":
       "Den は package.json と package-lock.json をブランチ den/pin-{version} にコミットし、プルリクエストを開きます。",
     "ap.det.den_pin_commit.push":
