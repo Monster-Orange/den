@@ -1421,6 +1421,9 @@
               ...(base.ref ? { ref: base.ref } : {}),
             });
           });
+          const release = window.denShell?.holdDots
+            ? window.denShell.holdDots($("wave-save"))
+            : () => {};
           try {
             // R26c: the server's message on a failure, not "save failed".
             const updated = await window.denShell.api(
@@ -1435,6 +1438,8 @@
             $("wave-err").textContent = t("rel.wave.saveFailed", {
               error: e.message,
             });
+          } finally {
+            release();
           }
         }
 
@@ -1459,6 +1464,7 @@
           try {
             // R26c: a refusal (a 409 names the repos already in flight) is the
             // server's message in the run's output; a lost server is said too.
+            // busy-ok: the deploy dialog has closed; the run's own tab shows it
             session = await window.denShell.api("POST", "/api/release/deploy", {
               env: state.env,
               mode: params.mode,
@@ -1638,6 +1644,7 @@
         // switch to it instead of hiding the log entirely.
         async function closeDeployLog(id = state.deploySession) {
           if (id && id !== state.deploySession) {
+            // busy-ok: the tab's close removes the log at once; no button waits
             fetch(`/api/release/deploy?session=${encodeURIComponent(id)}`, {
               method: "DELETE",
             }).catch(() => {});
@@ -1652,6 +1659,7 @@
             fetch(
               `/api/release/deploy?session=${encodeURIComponent(closing)}`,
               {
+                // busy-ok: the tab's close removes the log at once; no button waits
                 method: "DELETE",
               },
             ).catch(() => {});

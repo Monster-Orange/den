@@ -54,6 +54,15 @@ export function legacyAgentIds(
     .map((r) => r.id);
 }
 
+/** Issue 1403: whether `personal` says so; a throw or none is strict. */
+export function isPersonal(personal?: () => boolean): boolean {
+  try {
+    return personal?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 /** "1 agent" / "2 agents". */
 export function agentsCount(n: number): string {
   return `${n} agent${n === 1 ? "" : "s"}`;
@@ -67,7 +76,8 @@ export type SandboxOnCheck =
       params: { count: string };
       details: string[];
       detailKeys: DetailKey[];
-      personOnly: true;
+      /** Not on a personal install, where it is routine (issue 1403). */
+      personOnly?: true;
     }
   | { ok: false; error: string };
 
@@ -78,12 +88,15 @@ export interface SandboxOnOp {
 
 /**
  * den_sandbox_on: sets agents.sandbox: on in user.yml. It only narrows
- * what agents may do; still the person's call, since it changes how each
- * of those agents starts.
+ * what agents may do; still the person's call on a strict install, since
+ * it changes how each of those agents starts. On a personal one an
+ * agent's ask is routine, the person told (issue 1403).
  */
 export function sandboxOnHeldOp(d: {
   count: () => number;
   turnOn: () => void;
+  /** Issue 1403: the install is personal. Unknown: strict. */
+  personal?: () => boolean;
 }): SandboxOnOp {
   return {
     check: () => {
@@ -112,8 +125,8 @@ export function sandboxOnHeldOp(d: {
             "ap.det.den_sandbox_on.off",
           ),
         ]),
-        // The person's own Allow: never an auto-allow setting.
-        personOnly: true,
+        // The person's own Allow on strict: never an auto-allow setting.
+        ...(isPersonal(d.personal) ? {} : { personOnly: true as const }),
       };
     },
     run: async () => {

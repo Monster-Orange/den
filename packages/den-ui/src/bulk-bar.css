@@ -65,8 +65,8 @@
 }
 .den-bulk-clear:focus-visible,
 .den-bulk-act:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 /* The live region beside the bar: heard, never seen. */
 .den-bulk-live {

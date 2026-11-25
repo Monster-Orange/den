@@ -309,20 +309,29 @@ async function refresh() {
   }
 }
 
-async function start() {
+/** Start: the pressed Start (none on the page's own start) holds the dots. */
+async function start(button) {
   if (st.starting) return;
   st.starting = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await window.denShell.api("POST", "/api/server-agent/start", {});
   } catch (err) {
     st.starting = false;
+    void release();
     const body = st.root.querySelector("#sa-body");
     const why = err?.message ?? String(err);
     body.innerHTML = `<p class="note bad" data-note="failed" role="alert">${esc(t("sa.failed", { why, cli: CLI }))}</p>`;
     return;
   }
   st.starting = false;
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /**
@@ -372,7 +381,7 @@ async function startFresh(button) {
   await refresh();
 }
 
-async function answerTrust(answer) {
+async function answerTrust(answer, button) {
   // Gate 0.4.44: check right before sending; a prompt gone since the last
   // check sends nothing (the server's 409 stays the guard behind this).
   const now = await readStatus();
@@ -381,17 +390,25 @@ async function answerTrust(answer) {
     schedule(paint());
     return;
   }
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await window.denShell.api("POST", "/api/server-agent/trust", { answer });
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
   st.trustLater = answer === "no";
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 async function saveModel(id) {
   try {
+    // busy-ok: the model list saves on change; the toast is the answer
     await window.denShell.api("POST", "/api/server-agent/model", {
       model: id,
     });
@@ -404,6 +421,7 @@ async function saveModel(id) {
 
 async function saveRuntime(id) {
   try {
+    // busy-ok: the runtime list saves on change; the toast is the answer
     await window.denShell.api("POST", "/api/server-agent/runtime", {
       runtime: id,
     });
@@ -582,15 +600,10 @@ export async function mountServerAgentPage(root) {
   if (window.denShell?.apiOff?.()) return;
   root.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-act]");
-    if (b?.dataset.act === "start") {
-      b.disabled = true;
-      void start();
-    }
+    if (b?.dataset.act === "start") void start(b);
     if (b?.dataset.act === "fresh") void startFresh(b);
-    if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no") {
-      b.disabled = true;
-      void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no");
-    }
+    if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no")
+      void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no", b);
   });
   // Gate 0.4.44: back in view, check at once; hidden, checks pause.
   document.addEventListener("visibilitychange", () => {
