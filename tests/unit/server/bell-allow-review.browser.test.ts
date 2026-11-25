@@ -242,16 +242,17 @@ describe("the bell's Allow row: Review", () => {
  * elsewhere keeps where they went.
  */
 describe("the bell keeps the keyboard across a refresh that drops the row (issue 1332)", () => {
-  /** The page's next /api/notifications answer leaves out the Allow row. */
-  async function dropOnce(p: Page): Promise<void> {
-    let once = true;
+  /** Every answer asked for while `dropping` leaves out the Allow row; the poll's too. */
+  async function answers(p: Page): Promise<{ dropping: boolean }> {
+    const c = { dropping: false };
     await p.route("**/api/notifications", async (r) => {
-      if (!once || r.request().method() !== "GET") return r.continue();
-      once = false;
+      if (r.request().method() !== "GET") return r.continue();
+      const drop = c.dropping;
       const res = await r.fetch();
       const b = (await res.json()) as { waiting?: unknown[] };
-      await r.fulfill({ response: res, json: { ...b, waiting: [] } });
+      await r.fulfill({ response: res, json: drop ? { ...b, waiting: [] } : b });
     });
+    return c;
   }
   /** A refresh now (the bell refreshes on the window's focus). */
   const refresh = (p: Page) =>
@@ -261,15 +262,23 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
       const a = document.activeElement as HTMLElement | null;
       return a?.dataset?.bell ?? a?.tagName ?? "";
     });
+  async function dropTheRow(p: Page) {
+    const c = await answers(p);
+    c.dropping = true;
+    await refresh(p);
+    await row(p).waitFor({ state: "detached" });
+    return () => {
+      c.dropping = false;
+      return refresh(p);
+    };
+  }
 
   it("Review keeps the keyboard when its row comes back", async () => {
     if (skip()) return;
     const p = await bellAt(1440);
     await row(p).locator('[data-bell="review"]').focus();
-    await dropOnce(p);
-    await refresh(p);
-    await row(p).waitFor({ state: "detached" });
-    await refresh(p);
+    const bringBack = await dropTheRow(p);
+    await bringBack();
     await row(p).waitFor();
     await p.waitForFunction(
       () => (document.activeElement as HTMLElement)?.dataset?.bell === "review",
@@ -284,15 +293,52 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
     if (skip()) return;
     const p = await bellAt(1440);
     await row(p).locator('[data-bell="review"]').focus();
-    await dropOnce(p);
-    await refresh(p);
-    await row(p).waitFor({ state: "detached" });
+    const bringBack = await dropTheRow(p);
     // The person tabs on to the bell's own button.
     await p.focus("#den-bell");
-    await refresh(p);
+    await bringBack();
     await row(p).waitFor();
     expect(await focused(p)).toBe("BUTTON");
     expect(await p.evaluate(() => document.activeElement?.id)).toBe("den-bell");
+    await p.context().close();
+  }, 60_000);
+
+  it("an answer that lands after a newer one is never drawn", async () => {
+    if (skip()) return;
+    const p = await bellAt(1440);
+    const back = await p.evaluate(async (id) => {
+      const real = window.fetch.bind(window);
+      let free = () => {};
+      const late = new Promise<void>((r) => (free = r));
+      let n = 0;
+      window.fetch = (async (u: RequestInfo | URL, o?: RequestInit) => {
+        const r = await real(u, o);
+        if (!String(u).endsWith("/api/notifications") || o?.method) return r;
+        const b = await r.json();
+        const first = ++n === 1;
+        if (first) await late;
+        const json = first ? b : { ...b, waiting: [] };
+        return { ok: true, json: async () => json } as Response;
+      }) as typeof fetch;
+      const sel = `[data-ap-row="${id}"]`;
+      const gone = new Promise<void>((res) => {
+        const mo = new MutationObserver(() => {
+          if (!document.querySelector(sel)) mo.disconnect(), res();
+        });
+        mo.observe(document.body, { subtree: true, childList: true });
+      });
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("focus"));
+      await gone;
+      free();
+      await new Promise<void>((r) => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = () => r();
+        ch.port2.postMessage(0);
+      });
+      return !!document.querySelector(sel);
+    }, held);
+    expect(back).toBe(false);
     await p.context().close();
   }, 60_000);
 });
