@@ -1,5 +1,5 @@
 /**
- * Issue 1293: `<cli> approvals withdraw <id>` and `<cli> approvals list
+ * `<cli> approvals withdraw <id>` and `<cli> approvals list
  * --mine`, as whoever runs them (the route decides: only the asker may
  * withdraw). Scriptable: withdraw exits 0 when the request is withdrawn or
  * had already ended, 1 with the reason when it isn't the caller's, isn't

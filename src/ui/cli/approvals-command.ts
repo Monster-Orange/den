@@ -1,12 +1,12 @@
 /**
- * Issue 1293: `<cli> approvals withdraw <id>` and `<cli> approvals list
+ * `<cli> approvals withdraw <id>` and `<cli> approvals list
  * --mine`, a held write the caller asked for and that still waits. They use
  * the approval routes on this install's web server, as whoever runs them:
  * inside an agent's session, that agent (its token); otherwise the person.
- * The route lets only the asker withdraw (issue 142), so a person can't
+ * The route lets only the asker withdraw, so a person can't
  * withdraw an agent's request here: they Deny it.
  *
- * Scriptable (issue 746's live check cleans up with it): withdraw exits 0
+ * Scriptable (a gate's live check cleans up with it): withdraw exits 0
  * when the request is withdrawn or had already ended (decided, expired, lost
  * at a restart), 1 with the reason when it isn't the caller's, isn't known,
  * or Den didn't answer, 2 on a usage error.

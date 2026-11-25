@@ -65,7 +65,7 @@ import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** The header an anonymous asker reads its own request with. */
 /**
- * Issue 1293: an unverified agent claim is kept and shown only on a
+ * An unverified agent claim is kept and shown only on a
  * verified person's own ask, never on an anonymous ("loopback"), fixture,
  * test-operator or agent asker.
  */
@@ -259,7 +259,7 @@ export interface Approval {
   /** The asking agent's session name, for the dialog ("server wants to …"). */
   agent?: string;
   /**
-   * Issue 1293: the agent a person's own scoped server claimed to be
+   * The agent a person's own scoped server claimed to be
    * (`mcp --actor agent:<id>` with no agent token): never verified, so
    * `actor` stays the person, who alone may withdraw or be held to it.
    * Shown as "You asked, as <agent> (not verified)". Never set with
@@ -734,7 +734,7 @@ export class ApprovalQueue {
   request(r: {
     actor: string;
     agent?: string;
-    /** Issue 1293: an unverified agent claim (see Approval.claimedAs). */
+    /** An unverified agent claim (see Approval.claimedAs). */
     claimedAs?: string;
     action: string;
     args: Record<string, unknown>;

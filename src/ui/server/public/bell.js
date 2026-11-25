@@ -253,7 +253,7 @@ export function allowsOf(b) {
 function allowRowHtml(w, open) {
   if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
-  // Issue 1293: the person asked, under an unverified agent claim.
+  // The person asked, under an unverified agent claim.
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
     : w.claimedAs

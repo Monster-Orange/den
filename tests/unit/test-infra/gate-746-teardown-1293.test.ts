@@ -1,5 +1,5 @@
 /**
- * Issue 1293: issue 746's live check withdraws its own two held writes in
+ * The live check in gate/746.mjs withdraws its own two held writes in
  * teardown, each with `approvals withdraw <id>` and that stub's own token
  * file, before the stub is removed (removal revokes its token). It never
  * touches a request another run or another agent made, or one that already

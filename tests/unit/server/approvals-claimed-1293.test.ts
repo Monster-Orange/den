@@ -1,5 +1,5 @@
 /**
- * Issue 1293: a person's own requests, and the claim an unverified
+ * A person's own requests, and the claim an unverified
  * `mcp --actor agent:<id>` (no agent token) sends.
  *  - GET /api/approvals?mine=1: the caller's own requests, for
  *    `<cli> approvals list --mine`. A person's bearer sees only its own;

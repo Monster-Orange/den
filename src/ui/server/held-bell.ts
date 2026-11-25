@@ -77,7 +77,7 @@ export function syncHeldBell(
       kind: "decision",
       subject,
       scope: `workspace/${project || "den-server"}`,
-      // Issue 1293: a person's own ask under an unverified agent claim
+      // A person's own ask under an unverified agent claim
       // says so, never as though that agent asked.
       text: a.agent
         ? `${a.agent} waits for your Allow: ${what}`
@@ -110,7 +110,7 @@ export interface HeldWaiting {
   action: string;
   what: string;
   agent?: string;
-  /** Issue 1293: the person asked, under this unverified agent claim. */
+  /** The person asked, under this unverified agent claim. */
   claimedAs?: string;
   since: string;
   expiresAt: string;

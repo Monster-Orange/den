@@ -196,7 +196,7 @@ function askerOf(req: http.IncomingMessage): string {
 }
 
 /**
- * Issue 1293: the agent a request with no agent token claims to be (the
+ * The agent a request with no agent token claims to be (the
  * audit headers a person's own `mcp --actor agent:<id>` sends), kept only
  * when well-formed (actorFromHeaders drops a malformed id). Never verified.
  */
@@ -439,7 +439,7 @@ export async function askHeld(
       ...(ticket ? { ticketHash: ticket.hash } : {}),
       actor: askerOf(req),
       ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
-      // Issue 1293: a person's own scoped server's --actor, unverified.
+      // A person's own scoped server's --actor, unverified.
       ...(agent ? {} : claimedAgentOf(req)),
       action,
       args: stored,
@@ -650,7 +650,7 @@ export async function handleApprovalRoutes(
       });
       return true;
     }
-    // Issue 1293: `?mine=1`, a person's own requests by its bearer or
+    // `?mine=1`, a person's own requests by its bearer or
     // session (`<cli> approvals list --mine`), never another's. Nobody
     // signed in falls through to the refusal below.
     const mineOf = principalOf(req);

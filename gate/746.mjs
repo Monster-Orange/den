@@ -12,7 +12,7 @@
 // agent_mode`, with the agent's own token file) to clear their own mode.
 // Setup first gives each its own strictest mode (ask), so the clear is a real
 // held write. Harmless on a stub; teardown withdraws the two requests with
-// each stub's own token (`approvals withdraw`, issue 1293), then removes it. The fixture's click is
+// each stub's own token (`approvals withdraw`), then removes it. The fixture's click is
 // refused by design (issue 810): the check proves it reaches Den, comes back
 // as that refusal, and leaves the request pending.
 import * as os from "os";
@@ -289,7 +289,7 @@ export function expect(cells) {
 }
 
 /**
- * Issue 1293: this run's own held writes, withdrawn by their asker with
+ * This run's own held writes, withdrawn by their asker with
  * `approvals withdraw <id>` and the stub's own token file, so none waits out
  * held_writes.wait_minutes. Each stub asked with its own token, so it alone
  * may withdraw them, and it does so before it is removed (removal revokes
