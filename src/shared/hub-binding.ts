@@ -27,7 +27,7 @@ import { EMBED_PREFIX } from "./hub-delivery.js";
 import type { WorkspacesFile } from "./types/index.js";
 import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
 import { writeFileAtomic } from "./atomic-write.js";
-import { readStateJson } from "./state-backup.js";
+import { readKept, readStateJson } from "./state-backup.js";
 
 /** The hub/* files that belong to one Hub (archived on a change). */
 export const HUB_STATE_FILES = [
@@ -76,6 +76,8 @@ const previousDir = (stateDir: string) =>
   path.join(hubDir(stateDir), "previous");
 const unrevokedDir = (stateDir: string) =>
   path.join(hubDir(stateDir), "unrevoked");
+/** unrevokedDir, as a backup note names it (relative to the state folder). */
+const UNREVOKED_REL = "hub/unrevoked";
 
 /** scheme://host[:port] of a Hub address, lower case; "" when not one. */
 export function hubOrigin(url: string): string {
@@ -403,6 +405,13 @@ export interface OrphanToken {
   id: string;
   /** ISO 8601: when the token file was written. */
   at: string;
+  /** The unreadable record's copy in <state>/backup/, which may name its Hub. */
+  kept?: string;
+  /**
+   * The record is still there but Den can't read or move it: it may name
+   * the Hub, so the token is never forgotten while it is (Reviewer C).
+   */
+  stuck?: true;
 }
 
 /**
@@ -419,13 +428,22 @@ export function readOrphanTokens(stateDir: string): OrphanToken[] {
     return [];
   }
   const known = new Set(readUnrevoked(stateDir).map((u) => u.id));
+  const kept = readKept(stateDir);
   const out: OrphanToken[] = [];
   for (const n of names) {
     const id = n.endsWith(".token") ? n.slice(0, -".token".length) : "";
     if (!ID_RE.test(id) || known.has(id)) continue;
     try {
       const st = fs.lstatSync(path.join(dir, n));
-      if (st.isFile()) out.push({ id, at: st.mtime.toISOString() });
+      if (!st.isFile()) continue;
+      const t: OrphanToken = { id, at: st.mtime.toISOString() };
+      if (fs.existsSync(path.join(dir, `${id}.json`))) t.stuck = true;
+      else {
+        const rel = `${UNREVOKED_REL}/${id}.json`;
+        const k = kept.filter((x) => x.file === rel).pop();
+        if (k) t.kept = k.saved;
+      }
+      out.push(t);
     } catch {
       /* gone meanwhile */
     }
@@ -439,11 +457,9 @@ export function readOrphanTokens(stateDir: string): OrphanToken[] {
  */
 export function forgetOrphanToken(stateDir: string, id: string): boolean {
   if (!ID_RE.test(id)) return false;
-  if (!readOrphanTokens(stateDir).some((o) => o.id === id)) return false;
-  const dir = unrevokedDir(stateDir);
-  fs.rmSync(path.join(dir, `${id}.token`), { force: true });
-  // A record that isn't one (no Hub named) goes too; a broken one is in
-  // backup already.
-  fs.rmSync(path.join(dir, `${id}.json`), { force: true });
+  const t = readOrphanTokens(stateDir).find((o) => o.id === id);
+  // A record still there may name the Hub: never lose it (Reviewer C).
+  if (!t || t.stuck) return false;
+  fs.rmSync(path.join(unrevokedDir(stateDir), `${id}.token`), { force: true });
   return true;
 }

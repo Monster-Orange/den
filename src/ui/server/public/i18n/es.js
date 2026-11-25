@@ -2396,7 +2396,7 @@
     "ap.det.approval_policy.person":
       "Solo una persona cambia la política de aprobación sin un Permitir: un agente siempre pregunta.",
     "ap.det.hub_token_forget.what":
-      "Id del token: {id}, guardado el {at}. Su registro ya no está, así que Den no sabe de qué Hub es.",
+      "Id del token: {id}, guardado el {at}. Den no puede leer su registro, así que no sabe de qué Hub es.",
     "ap.det.hub_token_forget.revoked":
       "Permítelo solo cuando hayas revocado el token de esta instalación en la página de tokens de ese Hub: Den borra su copia y ya no podrá revocarlo.",
     "ap.det.pr_close.what": "Repositorio: {repo}. Pull request: {pr}.",

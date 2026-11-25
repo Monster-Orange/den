@@ -18,6 +18,7 @@ import {
   recordUnrevoked,
 } from "../../src/shared/hub-binding.js";
 import { HELD_WRITE_RISK } from "../../src/shared/approval-policy.js";
+import { SERVER_SCOPE } from "../../src/shared/agents/server-agent.js";
 import { previousHubLines } from "../../src/ui/cli/doctor-hub-previous.js";
 import {
   heldActions,
@@ -54,8 +55,55 @@ describe("a Hub token kept without its record", () => {
     const id = orphaned(s);
     expect(readUnrevoked(s)).toEqual([]);
     expect(readOrphanTokens(s)).toEqual([
-      { id, at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) },
+      {
+        id,
+        at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+        kept: expect.stringMatching(/\.bad$/),
+      },
     ]);
+  });
+
+  it("doctor points to the record's copy in backup, which may name the Hub (Reviewer C)", () => {
+    const s = stateDir();
+    const id = orphaned(s);
+    const [t] = readOrphanTokens(s);
+    expect(fs.existsSync(path.join(s, "backup", t!.kept!))).toBe(true);
+    const row = previousHubLines({
+      current: null,
+      bound: null,
+      previous: [],
+      unrevoked: [],
+      orphans: [t!],
+    }).checks.find((c) => c.id === "hub:orphan-token")!;
+    expect(row.detail).toContain(`backup/${t!.kept}`);
+    expect(row.detail).toContain(id);
+  });
+
+  it("a record Den can't read or move stays, and forgetting refuses while it does (Reviewer C)", () => {
+    const s = stateDir();
+    const rec = recordUnrevoked(s, {
+      url: "https://hub.example.test",
+      why: "unreachable",
+      token: TOKEN,
+    });
+    const json = path.join(unrevokedDir(s), `${rec.id}.json`);
+    fs.rmSync(json);
+    fs.mkdirSync(json);
+    const [t] = readOrphanTokens(s);
+    expect(t).toMatchObject({ id: rec.id, stuck: true });
+    expect(forgetOrphanToken(s, rec.id)).toBe(false);
+    expect(fs.existsSync(json)).toBe(true);
+    expect(fs.existsSync(path.join(unrevokedDir(s), `${rec.id}.token`))).toBe(
+      true,
+    );
+    const row = previousHubLines({
+      current: null,
+      bound: null,
+      previous: [],
+      unrevoked: [],
+      orphans: [t!],
+    }).checks.find((c) => c.id === "hub:orphan-token")!;
+    expect(row.detail).toContain(`hub/unrevoked/${rec.id}.json`);
   });
 
   it("a token with its record is not an orphan; neither is a stray file", () => {
@@ -145,13 +193,14 @@ describe("hub_token_forget: a held write the person Allows", () => {
     const s = stateDir();
     const id = orphaned(s);
     const a = heldActions(deps(s)).hub_token_forget;
-    const c = await a.check({ id }, { agent: "server" });
+    const c = await a.check({ id }, { agent: "server", project: SERVER_SCOPE });
     expect(c).toMatchObject({ ok: true, args: { id } });
     const said = JSON.stringify(c);
     expect(said).not.toContain(TOKEN);
     expect(said).toMatch(/revoked/);
     await a.run((c as { args: Record<string, unknown> }).args, {
       agent: "server",
+      project: SERVER_SCOPE,
     } as never);
     expect(readOrphanTokens(s)).toEqual([]);
   });
@@ -165,15 +214,61 @@ describe("hub_token_forget: a held write the person Allows", () => {
     });
     const a = heldActions(deps(s)).hub_token_forget;
     for (const id of [kept.id, "0123456789ab", "x"])
-      expect(await a.check({ id }, { agent: "server" })).toMatchObject({
+      expect(
+        await a.check({ id }, { agent: "server", project: SERVER_SCOPE }),
+      ).toMatchObject({
         ok: false,
       });
     expect(
       await heldActions({} as HeldActionDeps).hub_token_forget.check(
         { id: kept.id },
-        { agent: "server" },
+        { agent: "server", project: SERVER_SCOPE },
       ),
     ).toMatchObject({ ok: false });
+  });
+});
+
+describe("hub_token_forget: only Den's own agent asks (Reviewer C)", () => {
+  it("refuses a person's CLI, another agent, and Den's agent outside its own scope", async () => {
+    const s = stateDir();
+    const id = orphaned(s);
+    const a = heldActions({
+      hubOrphans: {
+        list: () => readOrphanTokens(s),
+        forget: (i: string) => forgetOrphanToken(s, i),
+      },
+    } as unknown as HeldActionDeps).hub_token_forget;
+    for (const who of [
+      undefined,
+      { agent: "scout", project: SERVER_SCOPE },
+      { agent: "server", project: "den" },
+      { agent: "server" },
+    ])
+      expect(await a.check({ id }, who as never)).toMatchObject({ ok: false });
+    expect(
+      await a.check({ id }, { agent: "server", project: SERVER_SCOPE }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("refuses a token whose record is still there but can't be read", async () => {
+    const s = stateDir();
+    const rec = recordUnrevoked(s, {
+      url: "https://hub.example.test",
+      why: "unreachable",
+      token: TOKEN,
+    });
+    const json = path.join(unrevokedDir(s), `${rec.id}.json`);
+    fs.rmSync(json);
+    fs.mkdirSync(json);
+    const a = heldActions({
+      hubOrphans: {
+        list: () => readOrphanTokens(s),
+        forget: (i: string) => forgetOrphanToken(s, i),
+      },
+    } as unknown as HeldActionDeps).hub_token_forget;
+    expect(
+      await a.check({ id: rec.id }, { agent: "server", project: SERVER_SCOPE }),
+    ).toMatchObject({ ok: false, error: expect.stringMatching(/can't read/) });
   });
 });
 

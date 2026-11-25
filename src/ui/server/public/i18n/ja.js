@@ -2328,7 +2328,7 @@
     "ap.det.approval_policy.person":
       "承認ポリシーを「許可」なしで変えられるのは人だけです。エージェントは必ず確認を求めます。",
     "ap.det.hub_token_forget.what":
-      "トークン ID: {id}、保存日時 {at}。記録がないため、どの Hub のものか Den にはわかりません。",
+      "トークン ID: {id}、保存日時 {at}。記録を読めないため、どの Hub のものか Den にはわかりません。",
     "ap.det.hub_token_forget.revoked":
       "その Hub のトークンページでこのインストールのトークンを取り消してから許可してください。Den はコピーを削除し、後から取り消せなくなります。",
     "ap.det.pr_close.what": "リポジトリ: {repo}。プルリクエスト: {pr}。",

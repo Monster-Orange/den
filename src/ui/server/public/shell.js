@@ -3303,7 +3303,7 @@
     "ap.det.approval_policy.person":
       "Only a person changes the approval policy without an Allow: an agent always asks.",
     "ap.det.hub_token_forget.what":
-      "Token id: {id}, kept {at}. Its record is gone, so Den doesn't know which Hub it is for.",
+      "Token id: {id}, kept {at}. Den can't read its record, so it doesn't know which Hub it is for.",
     "ap.det.hub_token_forget.revoked":
       "Allow only once you have revoked this install's token on that Hub's tokens page: Den deletes its copy and can't revoke it later.",
     "ap.det.pr_close.what": "Repo: {repo}. Pull request: {pr}.",
