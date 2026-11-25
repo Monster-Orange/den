@@ -11975,6 +11975,12 @@ void CRASH_GATE.then(() =>
       api: GITHUB.api,
       fake: GITHUB.fake,
       timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+      // Issue 1555: a start that keeps no name says why.
+      onSkip: (why) =>
+        serverLog(
+          `  Owner's GitHub display name not kept: ${why}`,
+          "lifecycle",
+        ),
     }).then((n) => {
       if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
     });

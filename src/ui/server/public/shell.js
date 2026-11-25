@@ -4023,6 +4023,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrAhead":
+      "__DEN_TITLE__ updated to {v}: the checkout has commits not pushed, so its pin went to a pull request; opened #{n} ({branch})",
     "bell.m.pinPrFallback":
       "__DEN_TITLE__ updated to {v}: the branch needs a pull request; opened #{n} for its pin ({branch})",
     "bell.m.pinBranchPushed":
