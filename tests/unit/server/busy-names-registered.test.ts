@@ -36,8 +36,12 @@ const NOT_LITERAL: Record<
     names: ["push-test", "push-forget"],
   },
   "settings-registry.js kind": {
-    calls: 2,
-    names: ["save", "follow-project", "remove-mcp"],
+    calls: 3,
+    names: ["save", "follow-project", "remove-mcp", "add-feed", "remove-feed"],
+  },
+  "coach-tab.js name": {
+    calls: 1,
+    names: ["coach-dismiss", "coach-apply", "coach-undismiss", "coach-counts"],
   },
   "shell.js name": {
     calls: 2,

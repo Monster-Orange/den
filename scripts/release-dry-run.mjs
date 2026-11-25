@@ -11,6 +11,9 @@
  *       the kit changed since the commit npm's copy was built from, it fails
  *       and says to bump the kit's version in the candidate (the rule is
  *       scripts/kit-version.mjs's, which CI and the release run too).
+ *       When the release publishes the kit and next/queue has the same kit
+ *       version with other kit files, it fails and says to bump next/queue's
+ *       den-ui first (issue 1508).
  *     Exit 0: planned. 1: the kit's rule, or npm answered with an error
  *     other than a 404. 2: bad arguments.
  *
@@ -23,7 +26,13 @@
  *     arguments.
  */
 import * as fs from "node:fs";
-import { checkKit, KIT_DIR, KIT_PKG, KitError } from "./kit-version.mjs";
+import {
+  checkKit,
+  checkKitQueue,
+  KIT_DIR,
+  KIT_PKG,
+  KitError,
+} from "./kit-version.mjs";
 
 const SEMVER = /^\d+\.\d+\.\d+$/;
 
@@ -40,7 +49,10 @@ const note = (s) => process.stderr.write(s + "\n");
 /** The kit's version (scripts/kit-version.mjs): its rule failing stops the plan. */
 function kitVersion() {
   try {
-    return checkKit().version;
+    const kit = checkKit();
+    // Issue 1508: a published kit carries next/queue's files at its version.
+    if (kit.publish) checkKitQueue({ version: kit.version });
+    return kit.version;
   } catch (e) {
     if (e instanceof KitError) throw new Stop(1, e.message);
     throw e;
