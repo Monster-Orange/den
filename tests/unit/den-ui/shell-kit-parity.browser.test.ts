@@ -64,6 +64,7 @@ const BASE_DIR = path.join(OUT_DIR, "baseline");
 // Issue 1478: written, so under the temp folders (the write guard).
 const AFTER_DIR =
   process.env.DEN_UI_AFTER_DIR ?? path.join(os.tmpdir(), "den-ui-diff-after");
+let afterSaid = false;
 
 const AREAS = ["shell", "version", "update", "report", "working"] as const;
 type Area = (typeof AREAS)[number];
@@ -674,6 +675,13 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           if (same && fs.existsSync(base)) {
             fs.mkdirSync(AFTER_DIR, { recursive: true });
             fs.writeFileSync(path.join(AFTER_DIR, name), png);
+            // Issue 1478: say where this run's shots are, once.
+            if (!afterSaid) {
+              afterSaid = true;
+              process.stdout.write(
+                `shell-kit-parity: this run's shots are in ${AFTER_DIR}\n`,
+              );
+            }
             // Report's screenshot preview is a picture of the page, not the
             // kit's look: left out.
             const skipRects = await p.evaluate(() =>
