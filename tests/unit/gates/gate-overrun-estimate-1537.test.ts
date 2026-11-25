@@ -102,7 +102,7 @@ describe("issue 1537: what a run's overrun counts from", () => {
       givenMin: 12,
     });
     expect(gateOverrunText(w!)).toBe(
-      `Den: your browser gate slot ${e.id} ("full check") is 3 min past its usual 2 min, measured (you gave 12). Release it with gate_slot_release, or let its command finish.`,
+      `Den: your browser gate slot ${e.id} ("full check") is 3 min past its usual 2 min, measured (you gave 12 min). Release it with gate_slot_release, or let its command finish.`,
     );
   });
 

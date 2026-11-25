@@ -75,7 +75,7 @@ export function gateOverrunText(w: GateOverrunWaiting): string {
       : w.estimateFrom === "default"
         ? `the ${mins(w.estimateMin)} default (no estimate given)`
         : `its usual ${mins(w.estimateMin)}, measured` +
-          (w.givenMin !== undefined ? ` (you gave ${w.givenMin})` : "");
+          (w.givenMin !== undefined ? ` (you gave ${mins(w.givenMin)})` : "");
   return `Den: your ${w.slot} gate slot ${w.id} ("${w.label}") is ${mins(w.overMin)} past ${past}. Release it with gate_slot_release, or let its command finish.`;
 }
 
