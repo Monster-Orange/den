@@ -29,9 +29,8 @@ export async function freePort(): Promise<number> {
 
 /**
  * A temp folder Docker's VM can see: under ~/.den-test-docker, since
- * Docker Desktop and OrbStack share only the home folder with it. Issue
- * 1356: named to the write guard for this test file only. Issue 1567:
- * named for this jest run; the suite removes it in its afterAll, and
+ * Docker Desktop and OrbStack share only the home folder with it. Named
+ * to the write guard for this test file only, and named for this jest run; the suite removes it in its afterAll, and
  * global teardown fails the run if it's still there.
  */
 export function dockerShareTmp(prefix: string): string {

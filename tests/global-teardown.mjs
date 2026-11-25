@@ -3,7 +3,7 @@
  * child server still recorded for it was never stopped (a test killed by a
  * timeout, a failure before its afterAll, --forceExit): stop its group.
  * Then remove global setup's stand-ins (its own temp dir only). Then the
- * home folder (issue 1567, home-strays.cjs): a folder this run left there
+ * home folder (home-strays.cjs): a folder this run left there
  * fails the run, and is removed; ended runs' folders are listed.
  */
 import * as fs from "fs";

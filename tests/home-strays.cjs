@@ -1,5 +1,5 @@
 /**
- * Issue 1567: test folders in the home folder. The Docker edge suites need
+ * Test folders in the home folder. The Docker edge suites need
  * one there (Docker Desktop and OrbStack share only the home folder with
  * their VM): each makes it under ~/.den-test-docker with shareTmp, named
  * for its jest run (`r<run>-<prefix>`), and removes it in its afterAll.

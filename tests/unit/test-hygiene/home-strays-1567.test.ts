@@ -1,5 +1,5 @@
 /**
- * Issue 1567: the Docker edge suites make their folders in the home folder
+ * The Docker edge suites make their folders in the home folder
  * (Docker's VM sees only it), under ~/.den-test-docker. A run that never
  * reached a suite's afterAll left them for good, and nothing said so.
  *
