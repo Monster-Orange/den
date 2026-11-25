@@ -138,7 +138,7 @@ describe("issue 177: Report from a failure pop-up", () => {
         expect(failure.length).toBeGreaterThan(0);
         await bz.locator('[data-bz="report"]').click();
 
-        const fb = p.locator("dialog:has([data-f=title])");
+        const fb = p.locator("dialog[open]").last();
         const title = fb.locator('[data-f="title"]');
         await title.waitFor({ timeout: 10_000 });
         const what = failure.replace(/[.。]+$/u, "");
