@@ -248,6 +248,7 @@ type RawHub =
       delivery_held_bell_minutes?: unknown;
       delivery_answer_minutes?: unknown;
       delivery_alert_minutes?: unknown;
+      delivery_stale_hours?: unknown;
       delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;

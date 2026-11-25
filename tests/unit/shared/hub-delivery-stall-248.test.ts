@@ -188,7 +188,7 @@ describe("issue 248: the cursor stalls while the stream stays open", () => {
     };
     const added: string[] = [];
     const bell = hubCommentsBell({
-      add: (n) => void added.push(n.subject),
+      add: (n) => (added.push(n.subject), null),
       withdraw: () => true,
     });
     const reasons: (string | null)[] = [];
@@ -247,7 +247,7 @@ describe("issue 248: the cursor stalls while the stream stays open", () => {
     expect(deliveryAlert(s.loop.health(), s.now(), 15)).toBe("stale");
     const withdrawn: string[] = [];
     const bell = hubCommentsBell({
-      add: () => undefined,
+      add: () => null,
       withdraw: (subj) => (withdrawn.push(subj), true),
     });
     bell("stale");
