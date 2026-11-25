@@ -19,6 +19,7 @@
  * but the ones `deps` gives.
  */
 import type { JournalEntry } from "./hub-delivery-journal.js";
+import { redactSecrets } from "./redact.js";
 import {
   ackBody,
   deliveryRaw,
@@ -401,6 +402,8 @@ export class DeliveryLoop {
   /** Issue 248: the last list result logged (its key), and the last stale check. */
   private pollSaid = "";
   private staleCheckedAt = Number.NEGATIVE_INFINITY;
+  /** Issue 248: the gap to the next stale check (0: the poll interval). */
+  private staleGap = 0;
 
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
@@ -505,6 +508,7 @@ export class DeliveryLoop {
   private cursorTo(id: string): void {
     this.d.seen.setLast(id);
     this.h.cursorAt = this.now();
+    this.staleGap = 0;
     if (this.h.stale) {
       this.h.stale = null;
       this.d.log?.("hub deliveries: the comment cursor moved again");
@@ -520,7 +524,11 @@ export class DeliveryLoop {
   private notePoll(r: { list: unknown[] } | { error: string }): void {
     const at = this.now();
     if ("error" in r) {
-      this.h.lastPoll = { at, ok: false, error: r.error.slice(0, 200) };
+      this.h.lastPoll = {
+        at,
+        ok: false,
+        error: redactSecrets(r.error).slice(0, 200),
+      };
       this.pollSaid = "error";
       this.healthChanged();
       return;
@@ -544,24 +552,38 @@ export class DeliveryLoop {
   /**
    * Issue 248: the stream is open but the cursor hasn't moved for
    * hub.delivery_stale_hours: read Hub's list (at most once a poll
-   * interval). Comments waiting after the cursor: stale, said once.
-   * Nothing waiting: a quiet Hub, never stale. Only a delivery that moves
-   * the cursor clears it (cursorTo), or an empty list.
+   * interval, doubling after an empty answer or an error up to
+   * max(staleMs / 6, 10 min); back to the interval when the cursor moves
+   * or comments wait). Not until the stream has been open a poll interval:
+   * after a restart its first chunks carry the backlog. Comments waiting
+   * after the cursor: stale, said once. Nothing waiting: a quiet Hub,
+   * never stale. A delivery that moves the cursor clears it (cursorTo),
+   * or an empty list.
    */
   private async checkStale(): Promise<void> {
     const ms = this.d.staleMs?.() ?? 0;
+    const poll = this.d.pollMs ?? 30_000;
     const now = this.now();
     if (!(ms > 0) || now - (this.h.cursorAt ?? now) < ms) return;
-    if (now - this.staleCheckedAt < (this.d.pollMs ?? 30_000)) return;
+    if (this.h.streamSince == null || now - this.h.streamSince < poll) return;
+    if (now - this.staleCheckedAt < (this.staleGap || poll)) return;
     this.staleCheckedAt = now;
+    const backOff = () =>
+      (this.staleGap = Math.min(
+        (this.staleGap || poll) * 2,
+        Math.max(ms / 6, 10 * 60_000),
+      ));
     let list: unknown[];
     try {
       list = await this.d.hub.list(this.d.seen.last);
     } catch (e) {
       this.notePoll({ error: String((e as Error)?.message ?? e) });
+      backOff();
       return;
     }
     this.notePoll({ list });
+    if (list.length) this.staleGap = 0;
+    else backOff();
     if (!list.length) {
       if (this.h.stale) ((this.h.stale = null), this.healthChanged());
       return;

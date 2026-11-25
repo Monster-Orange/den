@@ -56,7 +56,9 @@ const sse = (id: string) =>
 const fail = (kind: string, msg = kind) =>
   Object.assign(new Error(msg), { kind });
 
-function setup(o: { staleMs?: number } = {}) {
+function setup(
+  o: { staleMs?: number; health0?: { cursorAt?: number | null } } = {},
+) {
   let clock = 10_000_000;
   const logs: string[] = [];
   const hub: DeliveryHub = {
@@ -77,6 +79,7 @@ function setup(o: { staleMs?: number } = {}) {
     pollMs: 30_000,
     log: (l) => logs.push(l),
     ...(o.staleMs !== undefined ? { staleMs: () => o.staleMs! } : {}),
+    ...(o.health0 ? { health0: o.health0 } : {}),
   });
   return {
     loop,
@@ -325,5 +328,79 @@ describe("issue 248: hub.delivery_stale_hours", () => {
   it("a negative or a word: refused with the key's name", () => {
     expect(() => cfg(-1)).toThrow(/hub\.delivery_stale_hours/);
     expect(() => cfg("soon")).toThrow(/hub\.delivery_stale_hours/);
+  });
+});
+
+describe("issue 248: the stale check backs off, and waits after a start", () => {
+  it("a quiet Hub for 2 h past the threshold: a handful of list reads, not one each 30 s", async () => {
+    const s = setup({ staleMs: 6 * HOUR });
+    let lists = 0;
+    s.hub.list = async () => (lists++, []);
+    s.hub.stream = () =>
+      (async function* () {
+        const end = s.now() + 8 * HOUR;
+        while (s.now() < end) {
+          s.tick(25_000);
+          yield ": keep-alive\n\n";
+        }
+        s.ctl.abort();
+      })();
+    await s.loop.run(s.ctl.signal);
+    expect(lists).toBeGreaterThan(0);
+    expect(lists).toBeLessThanOrEqual(12);
+  });
+
+  it("errors back off too", async () => {
+    const s = setup({ staleMs: 6 * HOUR });
+    let lists = 0;
+    s.hub.list = async () => {
+      lists++;
+      throw fail("unreachable", "Hub answered 503");
+    };
+    s.hub.stream = () =>
+      (async function* () {
+        const end = s.now() + 8 * HOUR;
+        while (s.now() < end) {
+          s.tick(25_000);
+          yield ": keep-alive\n\n";
+        }
+        s.ctl.abort();
+      })();
+    await s.loop.run(s.ctl.signal);
+    expect(lists).toBeLessThanOrEqual(12);
+  });
+
+  it("after a restart with an old cursor, the backlog in the first chunk: never stale", async () => {
+    const s = setup({
+      staleMs: 6 * HOUR,
+      health0: { cursorAt: 10_000_000 - 10 * HOUR },
+    });
+    let lists = 0;
+    s.hub.list = async () => (lists++, [dv("d-1")]);
+    s.hub.stream = () =>
+      (async function* () {
+        yield sse("d-1");
+        s.tick(25_000);
+        yield ": keep-alive\n\n";
+        s.ctl.abort();
+      })();
+    await s.loop.run(s.ctl.signal);
+    expect(s.logs.filter((l) => /hasn't moved/.test(l))).toEqual([]);
+    expect(s.loop.health().stale ?? null).toBeNull();
+    expect(lists).toBe(0);
+  });
+
+  it("a list read's error is redacted before it is kept", async () => {
+    const s = setup();
+    s.hub.list = async () => {
+      throw fail(
+        "unreachable",
+        "Hub answered 500 for Authorization: Bearer hubtok_abcdefghijklmnopqrstuvwxyz0123456789",
+      );
+    };
+    await polls(s, 1);
+    expect(s.loop.health().lastPoll?.error).not.toContain(
+      "hubtok_abcdefghijklmnopqrstuvwxyz0123456789",
+    );
   });
 });
