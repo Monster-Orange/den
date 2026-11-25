@@ -346,6 +346,22 @@ describe("tests that start Den as a process (issue 708)", () => {
     "tests/unit/shared/hub-delivery-loop.test.ts",
   ];
 
+  it("issue 728: a test declared in subjects runs on its subject, though it starts a scaffolded distribution's bin the pattern can't see", () => {
+    const s = select({
+      changed: ["src/ui/cli/doctor-command.ts"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toEqual(
+      expect.arrayContaining([
+        "tests/unit/server/no-secrets-store.integration.test.ts",
+        "tests/unit/cli/repo-add-no-run.integration.test.ts",
+      ]),
+    );
+  });
+
   it("a change to its subject runs it, with no import edge (704's change)", () => {
     const s = select({
       changed: PR_704,

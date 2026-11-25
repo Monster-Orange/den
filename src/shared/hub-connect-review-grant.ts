@@ -31,6 +31,8 @@ export interface ReviewProject {
   key: string;
   name: string;
   repos: string[];
+  /** Issue 1334: no repos, services or agents; Hub's page never gets it. */
+  empty?: boolean;
 }
 
 /** Why a review falls back to issue 646's flow; the page words each one. */
@@ -51,7 +53,7 @@ export type ReviewParam =
 
 /** What Connect sends, or why it sends nothing (then issue 646's flow). */
 export function reviewParam(projects: ReviewProject[]): ReviewParam {
-  const list = projects.filter((p) => !isCatchAllProject(p.key));
+  const list = projects.filter((p) => !isCatchAllProject(p.key) && !p.empty);
   if (!list.length)
     return { ok: false, why: "no projects to link", code: "empty" };
   if (list.length > REVIEW_MAX_PROJECTS)
