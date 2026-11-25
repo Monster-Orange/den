@@ -381,12 +381,12 @@ function groupsHtml(groups, ui, needs = false) {
     .map(
       (g) =>
         `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
-        // Issue 1339: while a Mark read runs, its button stays, busy in
-        // itself, and the others wait.
+        // Issue 1339: while a Mark read runs, its button stays, held with
+        // the kit's dots (data-bell-held, issue 1054), and the others wait.
         (!needs &&
         (ui?.busy === `scope:${g.scope}` ||
           g.subjects.some((s) => s.items.some((n) => !n.read)))
-          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy ? ' disabled aria-busy="true"' : ""}>${esc(tr(ui?.busy === `scope:${g.scope}` ? "bell.marking" : "bell.read"))}</button>`
+          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy === `scope:${g.scope}` ? " data-bell-held" : ui?.busy ? " disabled" : ""}>${esc(tr("bell.read"))}</button>`
           : "") +
         `</div>` +
         g.subjects.map((s) => subjectHtml(g.scope, s, ui)).join("") +
@@ -428,20 +428,19 @@ export function bellPanel(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
-  // Issue 1339: while its POST runs, the button stays, busy in itself
-  // (disabled, "Marking…"), and the other one waits too.
-  const busyAttr = u.busy ? ' disabled aria-busy="true"' : "";
+  // Issue 1339: while its POST runs, the button stays, held with the
+  // kit's dots (data-bell-held: paint holds it, issue 1054), and the other
+  // one waits too.
+  const attr = (what) =>
+    u.busy === what ? " data-bell-held" : u.busy ? " disabled" : "";
   const actions =
-    (u.busy === "all"
-      ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.marking"))}</button>`
-      : b?.unread || updates.unread
-        ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.markAll"))}</button>`
-        : "") +
-    (u.busy === "clear"
-      ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearing"))}</button>`
-      : all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
-        ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearRead"))}</button>`
-        : "");
+    (u.busy === "all" || b?.unread || updates.unread
+      ? `<button type="button" data-bell="all"${attr("all")}>${esc(tr("bell.markAll"))}</button>`
+      : "") +
+    (u.busy === "clear" ||
+    all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
+      ? `<button type="button" data-bell="clear"${attr("clear")}>${esc(tr("bell.clearRead"))}</button>`
+      : "");
   const panel = {
     title: tr("bell.title"),
     titleId: "den-bell-h",
@@ -534,6 +533,8 @@ async function undoSetting(el) {
 
 async function post(path, body) {
   try {
+    // busy-ok: Mark read and Clear hold their button in paint()
+    // (data-bell-held); Stop's ask closes on Yes; Undo is a toast's.
     await window.denShell?.api?.("POST", path, body);
     return true;
   } catch (err) {
@@ -728,6 +729,9 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
+  // Issue 1054: the button held with the kit's dots, and how to let it go.
+  let heldBtn = null;
+  let letGo = null;
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -741,6 +745,16 @@ export function initBell(doc = document) {
             : "")
         : "";
     bell.paint();
+    // Issue 1054: the pressed button holds the kit's dots while its POST
+    // runs. A paint keeps it when the button is the same one (issue 1024
+    // patches in place), holds the new one when it isn't, and lets go of
+    // the old: none is left held once the answer is in.
+    const b = ui.busy ? pop.querySelector("[data-bell-held]") : null;
+    if (b !== heldBtn) {
+      letGo?.();
+      heldBtn = b;
+      letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
+    }
     if (keep) pop.querySelector(keep)?.focus?.();
   };
   const refresh = async () => {
@@ -769,6 +783,7 @@ export function initBell(doc = document) {
     if (what === "open") {
       const id = el.closest("[data-id]")?.dataset.id;
       // Marked read first; the link then opens the agent.
+      // busy-ok: marked read in the background as the link opens
       if (id)
         void fetch("/api/notifications/read", {
           method: "POST",

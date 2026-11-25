@@ -82,7 +82,7 @@ async function open(
   );
   await p.route("**/api/edge/up", async (r) => {
     posts.push(Date.now());
-    // Slow enough that the working pop-up opens (the kit's OPEN_MS).
+    // Slow enough that the old working pop-up would have opened.
     await new Promise((ok) => setTimeout(ok, 1500));
     await r.fulfill({ json: { ok: true, outcome: edge.answers.shift() } });
   });
@@ -92,12 +92,14 @@ async function open(
 const dialog = (p: Page) => p.locator("dialog.bz-dlg[open]");
 
 async function press(p: Page): Promise<string> {
-  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  // Issue 1054: the wait shows on the button (its dots, aria-busy), never
+  // a pop-up (busy-popup proves the long wait on the page's clock).
   await shortDots(p);
   await p.locator("#set-edge-up").click();
-  await dialog(p).waitFor({ timeout: 5000 });
-  expect(await dialog(p).locator("h2").textContent()).toContain(
-    "Starting the edge",
+  await p.locator('#set-edge-up[aria-busy="true"]').waitFor({ timeout: 5000 });
+  expect(await dialog(p).count()).toBe(0);
+  expect(await p.locator("#set-edge-up").getAttribute("aria-busy")).toBe(
+    "true",
   );
   const out = p.locator("#set-edge-up-out:not([hidden])");
   await out.waitFor({ timeout: 15_000 });
