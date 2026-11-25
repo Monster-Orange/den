@@ -815,12 +815,12 @@ export function initBell(doc = document) {
       // Marked read first (issue 773: a Done row, seen); the link then
       // opens the agent. Sent so it outlives the page the link leaves.
       const id = el.closest("[data-id]")?.dataset.id;
-      // busy-ok: marked in the background as the link opens
       const agent = el.closest("[data-agent]")?.dataset.agent;
       const [path, body] =
         what === "open-done"
           ? ["/api/notifications/looking", agent ? { agents: [agent] } : null]
           : ["/api/notifications/read", id ? { id } : null];
+      // busy-ok: marked in the background as the link opens
       if (body)
         void fetch(path, {
           method: "POST",
