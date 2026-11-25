@@ -1415,8 +1415,10 @@ function paintList() {
       groups.length || stopped.length
         ? groups
             .map(
-              (g) =>
-                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${esc(g.ws)}"><div class="wsh"><span id="agp-${esc(g.ws)}">${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
+              // The heading's id is the group's place: a project's name
+              // could hold a space, which an IDREF can't.
+              (g, i) =>
+                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${i}"><div class="wsh"><span id="agp-${i}">${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
                 g.rows.map((r) => rowHtml(r)).join("") +
                 `</div>`,
             )

@@ -370,6 +370,18 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
       await p.locator("#agl [role='group'][data-ws]").count(),
     ).toBeGreaterThan(0);
     expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    // Each project group is named by its heading (a screen reader says it).
+    const names = await p.$$eval("#agl [role='group'][data-ws]", (gs) =>
+      gs.map(
+        (g) =>
+          document
+            .getElementById(g.getAttribute("aria-labelledby") ?? "")
+            ?.textContent?.trim() ?? "",
+      ),
+    );
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.every((n) => n.length > 0)).toBe(true);
+    expect(new Set(names).size).toBe(names.length);
     await p.context().close();
   }, 60_000);
 
