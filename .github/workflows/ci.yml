@@ -538,8 +538,50 @@ jobs:
   # Issue 843: the merge queue's one required check. It passes only when
   # every job a pull request runs passed, or was skipped because pr planned
   # nothing for it (scripts/ci-ok.mjs), so the ruleset never names a shard.
+  # A pull request's version-sensitive tests, again on Node 22 (npm 10), the
+  # supported range's low end. The pr job runs Node 24 only (issue 998), and
+  # a test that reads what npm prints could pass there and fail only
+  # in a release dry run (PR 1145's packed-files test, v0.4.90-dev.1). Only
+  # the affected tests over Den's scripts and those that run npm
+  # (scripts/node22-tests.mjs), never browser tests: beside the pr job, a
+  # few minutes, not a second run.
+  pr-node22:
+    needs: [fast]
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEN_TEST_WORKERS: "2"
+      DEN_TEST_QUARANTINE: exclude
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The affected list diffs against the base commit.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.13.0"
+          cache: npm
+      - run: npm ci
+      - name: Pick the version-sensitive tests this change affects
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          node scripts/affected-tests.mjs "$BASE" HEAD --out affected.txt
+          # Issue 996, as the pr job: a merge-queue run or a version commit
+          # (a release may be cut from it) takes every version-sensitive test.
+          if [ "$(node scripts/ci-force-all.mjs "$GITHUB_EVENT_NAME" "$BASE")" = yes ]; then echo ALL > affected.txt; fi
+          node scripts/node22-tests.mjs affected.txt --out node22.txt
+          echo "Node 22 runs $(grep -c . node22.txt || true) test file(s):"
+          cat node22.txt
+      - name: Those tests, on Node 22
+        run: |
+          mapfile -t files < node22.txt
+          if [ "${#files[@]}" -eq 0 ]; then echo "none for Node 22"; exit 0; fi
+          npm test -- --passWithNoTests "${files[@]}"
+
   ci-ok:
-    needs: [fast, pr, den-ui-nav, pr-shards]
+    needs: [fast, pr, den-ui-nav, pr-shards, pr-node22]
     if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
