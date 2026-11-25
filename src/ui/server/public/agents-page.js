@@ -6355,27 +6355,36 @@ export async function mountAgentsPage(root) {
       return;
     }
   }
-  if (!st.signedOut && st.data?.io?.allowed !== false)
-    for (const id of wanted) {
-      // Issue 482: the other page's kind is on that page.
-      if (st.data && rowOf(id) && !belongsOn(PAGE, rowOf(id))) continue;
-      // #80: another project's session stays out of this view's tabs.
-      if (st.data && rowOf(id) && !inView(rowOf(id))) {
-        if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
-        continue;
+  // Issue 143: busy while start-up opens the address's panes, one after
+  // another (the first waits for the terminal module), so what is shown
+  // is read once they are all in: never the first of them, for a moment.
+  const panesBox = st.root.querySelector("#agr");
+  if (wanted.length) panesBox?.setAttribute("aria-busy", "true");
+  try {
+    if (!st.signedOut && st.data?.io?.allowed !== false)
+      for (const id of wanted) {
+        // Issue 482: the other page's kind is on that page.
+        if (st.data && rowOf(id) && !belongsOn(PAGE, rowOf(id))) continue;
+        // #80: another project's session stays out of this view's tabs.
+        if (st.data && rowOf(id) && !inView(rowOf(id))) {
+          if (!st.hiddenOpen.includes(id)) st.hiddenOpen.push(id);
+          continue;
+        }
+        // Issue 1315: once the person picks one, the rest open behind it.
+        if (!st.data || rowOf(id)) await openPane(id, { front: !st.picked });
       }
-      // Issue 1315: once the person picks one, the rest open behind it.
-      if (!st.data || rowOf(id)) await openPane(id, { front: !st.picked });
+    // #80: ?front= (the tab that was in front) comes in front again.
+    if (
+      frontAsked &&
+      !st.picked &&
+      st.open.includes(frontAsked) &&
+      st.cur !== frontAsked
+    ) {
+      st.cur = frontAsked;
+      paintLayout();
     }
-  // #80: ?front= (the tab that was in front) comes in front again.
-  if (
-    frontAsked &&
-    !st.picked &&
-    st.open.includes(frontAsked) &&
-    st.cur !== frontAsked
-  ) {
-    st.cur = frontAsked;
-    paintLayout();
+  } finally {
+    panesBox?.removeAttribute("aria-busy");
   }
   // Issue 1315: start-up's panes are open; later picks are plain picks.
   st.picked = false;
