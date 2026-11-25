@@ -511,7 +511,7 @@ describe("D44: the routes", () => {
           grants: t.grants,
           session: t.session,
         });
-      // Issue 1407 part 2: who the caller proved itself to be, for the
+      // Who the caller proved itself to be, for the
       // person-only read (the request guard sets this in the server).
       else if (req.headers["x-test-as"] === "person")
         setPrincipal(req, { kind: "person", actor: "person:test" });

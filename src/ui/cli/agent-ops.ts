@@ -7699,7 +7699,7 @@ export async function restartStateOf(
 }
 
 /**
- * Issue 1407: how a restart at the agent's next idle that did not happen
+ * How a restart at the agent's next idle that did not happen
  * ended: a job found when its turn ended (job), a wait of `waitedMs` that
  * ran out (timedOut), or anything else (failed, with why).
  */

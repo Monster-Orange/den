@@ -28,7 +28,7 @@ const esc = (s) =>
 
 /**
  * Whether entry `a` waits on the person: a job, a turn Den can't read, a
- * wait that ran out, or a restart that failed (issue 1407 part 2).
+ * wait that ran out, or a restart that failed.
  */
 export const waitsOnPerson = (a) =>
   a?.state === "job" ||
@@ -178,8 +178,8 @@ const same = (a, b) =>
   String(a?.workspace) === String(b?.workspace);
 
 /**
- * Issue 1407 part 2: the rows a page shows (`shown`, this page's run) as
- * the server has them now (`live`). An agent the server no longer lists has
+ * The rows a page shows (`shown`, this page's run) as
+ * the server has them now (`live`). An agent the server doesn't list has
  * cleared; the server's other agents are another run's.
  */
 export function mergeLive(shown, live) {
@@ -190,7 +190,7 @@ export function mergeLive(shown, live) {
 }
 
 /**
- * Issue 1407 part 2: read the live status every `everyMs` (2 s) and hand
+ * Read the live status every `everyMs` (2 s) and hand
  * each list to `onRows`, until it is empty (then `onEnd`) or `stop()`. A
  * read that fails is tried again next time.
  */

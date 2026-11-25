@@ -3164,7 +3164,7 @@ async function toolsRoute(
   return true;
 }
 
-/** Issue 1407, part 2: this server's live restart status (one per server). */
+/** This server's live restart status (one per server). */
 let LIVE: RestartLive | null = null;
 async function restartLive(): Promise<RestartLive> {
   if (LIVE) return LIVE;
@@ -3180,7 +3180,7 @@ async function restartLive(): Promise<RestartLive> {
 }
 
 /**
- * Issue 1407, part 2: GET /api/agents/restart-status: each agent of a bulk
+ * GET /api/agents/restart-status: each agent of a bulk
  * restart, live (its state, and why it waits); a signed-in person's read
  * only (provenPersonOf). Restarted ones clear after a
  * moment; none, an empty list. The page polls it while it shows a run.

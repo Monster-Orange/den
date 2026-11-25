@@ -6918,7 +6918,7 @@ function wireRestartResult(box, ctx) {
 }
 
 /**
- * Issue 1407 part 2: the answer box follows its agents live (restarted,
+ * The answer box follows its agents live (restarted,
  * a wait that ran out, failed) and goes once they are all done.
  */
 function followRestartResult(box, ctx, plan) {

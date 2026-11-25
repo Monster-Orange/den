@@ -2531,9 +2531,9 @@ async function restartForTools(r, button) {
 let restartFollow = null;
 
 /**
- * Issue 1407 part 2: the asked restarts, followed live: each row takes the
+ * The asked restarts, followed live: each row takes the
  * server's state (restarted, a wait that ran out, failed); one the server
- * no longer lists has cleared. The list refreshes on each change, so the
+ * doesn't list has cleared. The list refreshes on each change, so the
  * stale bar drops an agent the moment it is back.
  */
 function followAgentRestarts() {

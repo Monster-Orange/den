@@ -1,5 +1,5 @@
 /**
- * Issue 1407, part 2: the live status of a bulk restart ("Restart N agents
+ * The live status of a bulk restart ("Restart N agents
  * at their next idle"), per agent. Each starts in its plan's state (now,
  * turn, job, unknown) and moves as its restart ends: restarted (shown a
  * moment, then gone, so the status clears), or waiting on the person with

@@ -1404,7 +1404,7 @@ export function notAPersonOf(req: http.IncomingMessage): boolean {
 }
 
 /**
- * Issue 1407 part 2: whether this request proved a person: the CLI's
+ * Whether this request proved a person: the CLI's
  * bearer, or a signed-in browser that is neither an agent's view nor the
  * fixture person, with no agent's token or claim on it. A loopback caller
  * that proved nothing is not one.
