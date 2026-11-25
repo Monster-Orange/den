@@ -34,7 +34,6 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
-import { OPEN_MS } from "../../../packages/den-ui/src/busy.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -586,28 +585,29 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
         },
       );
       await p.evaluate(
-        ([delay, inTime, openMs]) => {
+        ([delay, inTime]) => {
           const w = window as unknown as {
             __rects: string[];
             __tops: number[];
             __placed: number;
           };
           if (inTime) {
-            // The next OPEN_MS wait (the one the press starts) never ends
-            // by itself: only the details coming in show them.
+            // The details' own wait (OPEN_MS, the first timer started once
+            // they are in the page, loading) never ends by itself: only the
+            // details coming in show them. __heldOpen says it was held: a
+            // change that starts that wait before they are in the page
+            // fails here, never lets the race back in.
             const real = window.setTimeout;
             window.setTimeout = ((
               f: TimerHandler,
               ms?: number,
               ...a: unknown[]
             ) => {
-              // Only the details' own wait: they are in the page, loading.
-              if (
-                ms !== openMs ||
-                !document.querySelector('.den-agd[data-state="loading"]')
-              )
+              if (!document.querySelector('.den-agd[data-state="loading"]'))
                 return real(f, ms, ...a);
               window.setTimeout = real;
+              (window as unknown as { __heldOpen: number }).__heldOpen =
+                ms ?? 0;
               return real(() => {}, 2 ** 31 - 1);
             }) as typeof window.setTimeout;
           }
@@ -659,7 +659,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           };
           requestAnimationFrame(look);
         },
-        [delay, inTime, OPEN_MS] as const,
+        [delay, inTime] as const,
       );
       await btn(p, "scout").click();
       await p.locator('.den-agd[data-state="ready"]').waitFor();
@@ -682,14 +682,25 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
             }
           ).__atReady,
           last: { h: Math.round(b.height), y: Math.round(b.y) },
+          heldOpen:
+            (w as unknown as { __heldOpen?: number }).__heldOpen ?? null,
         };
       });
-      return { p, ...seen };
+      // The page's own OPEN_MS, from the kit module it loads (a string, so
+      // jest never transforms the import).
+      const openMs = (await p.evaluate(
+        'import("/kit/busy.js").then((m) => m.OPEN_MS)',
+      )) as number;
+      return { p, openMs, ...seen };
     }
 
     it("#143: they open where they stay: shown once their details are in, never growing or moving after", async () => {
       if (skip()) return;
-      const { p, rects, placed, atReady, last } = await openLate(150, true);
+      const { p, rects, placed, atReady, last, heldOpen, openMs } =
+        await openLate(150, true);
+      // The wait held was the details' own: started once they were in.
+      expect(openMs).toBeGreaterThan(0);
+      expect(heldOpen).toBe(openMs);
       // Whole when shown: its Report button in, and the same box after.
       expect(atReady?.report).toBe(true);
       expect(last).toEqual({ h: atReady?.h, y: atReady?.y });
