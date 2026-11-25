@@ -11,6 +11,8 @@
  *     stops the group it left, and the slot log says what, never how
  *   - a process outside the run's group, the same command line, is never
  *     touched
+ *   - issue 1575: with a slow `ps` (a loaded box), the command still can't
+ *     exit before its group is recorded, so its workers are still stopped
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { execFileSync, spawn, type ChildProcess } from "child_process";
@@ -55,12 +57,30 @@ async function within(ms: number, ok: () => boolean): Promise<number> {
   return ok() ? Date.now() - t0 : -1;
 }
 
+/**
+ * Issue 1575: PATH with a `ps` first that takes a second, then runs the
+ * real one: the record of a run's group comes late, as on a loaded box.
+ */
+function slowPsPath(): string {
+  const real = execFileSync("sh", ["-c", "command -v ps"], {
+    encoding: "utf-8",
+  }).trim();
+  const d = tmp("ps");
+  fs.writeFileSync(
+    path.join(d, "ps"),
+    `#!/bin/sh\nsleep 1\nexec '${real}' "$@"\n`,
+    { mode: 0o755 },
+  );
+  return `${d}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
 /** A real gate run around the workers; resolves once they are up. */
 async function start(o: {
   mode: "exit" | "stay";
   stubborn?: boolean;
   cwd?: string;
   grace?: number;
+  slowPs?: boolean;
 }) {
   const dir = tmp("q");
   const store = new GateStore({ platform: "linux", dir });
@@ -84,6 +104,7 @@ async function start(o: {
         DEN_GATE_LOAD5: "0",
         REAP_MODE: o.mode,
         REAP_STUBBORN: o.stubborn ? "1" : "0",
+        ...(o.slowPs ? { PATH: slowPsPath() } : {}),
       },
       stdio: ["ignore", "ignore", "pipe"],
     },
@@ -129,6 +150,20 @@ describe("a run's worker tree", () => {
     // What, never how: no arguments or environment in the row.
     expect(JSON.stringify(rows[0])).not.toMatch(/spawn|setInterval|REAP_/);
   });
+
+  // Issue 1575: the command waits until its group is recorded, however
+  // long `ps` takes, so an early exit can't leave its workers unrecorded.
+  it("with a slow ps, the command exits and leaves its workers: they are still stopped", async () => {
+    const r = await start({ mode: "exit", slowPs: true });
+    expect(await within(15_000, () => r.k.exitCode !== null)).not.toBe(-1);
+    expect(await within(8_000, () => !r.workers.some(alive))).not.toBe(-1);
+    expect(r.store.list()).toEqual([]);
+    expect(leftoverRows(r.store)).toHaveLength(1);
+    expect(leftoverRows(r.store)[0]).toMatchObject({
+      count: 3,
+      reason: "ended",
+    });
+  }, 40_000);
 
   it("workers that ignore TERM are killed after the grace period", async () => {
     const r = await start({ mode: "exit", stubborn: true, grace: 1 });

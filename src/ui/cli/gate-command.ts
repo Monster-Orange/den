@@ -50,6 +50,7 @@
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
+import type { Writable } from "stream";
 import { spawn } from "child_process";
 import * as os from "os";
 import * as path from "path";
@@ -234,6 +235,12 @@ export interface GateRun {
    * its own), stopped when the slot ends. Absent: none was made.
    */
   group?: number;
+  /**
+   * Issue 1575: lets the command start. Until then it waits, held, so it
+   * can't exit (or leave workers) before its group is recorded. Absent:
+   * it started at once.
+   */
+  start?: () => void;
 }
 
 export interface GateDeps {
@@ -409,6 +416,21 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
   "SIGQUIT",
 ];
 
+/**
+ * Issue 1575: the shim a command starts through. It waits for a line on fd
+ * 3, which gate run writes once the group is recorded, then becomes the
+ * command (exec keeps its pid, group and start time, which the record
+ * holds). If gate run is gone first, the pipe closes, and nothing runs.
+ * POSIX sh only: macOS, Linux boxes and WSL all have /bin/sh.
+ */
+export const GATE_HOLD_SHIM =
+  "IFS= read -r go <&3 || exit 125; exec 3<&-; " +
+  // a missing command is 127 on every shell, as spawn's error was
+  'command -v "$1" >/dev/null 2>&1 || { echo "gate run: $1: not found" >&2; exit 127; }; ' +
+  'exec "$@"';
+/** What the shim exits with when gate run never let it start. */
+export const GATE_HOLD_NEVER_STARTED = 125;
+
 const realExec = (
   cmd: string,
   args: string[],
@@ -417,11 +439,20 @@ const realExec = (
   // Issue 1132: in its own process group (it leads it), so what it
   // starts can be stopped with it, and nothing else is. Signals reach it
   // through gate run, which passes them on to the whole group.
-  const k = spawn(cmd, args, {
-    stdio: "inherit",
+  const held = process.platform !== "win32";
+  const opts = {
     detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
-  });
+  };
+  const k = held
+    ? spawn("/bin/sh", ["-c", GATE_HOLD_SHIM, "den-gate-hold", cmd, ...args], {
+        ...opts,
+        stdio: ["inherit", "inherit", "inherit", "pipe"],
+      })
+    : spawn(cmd, args, { ...opts, stdio: "inherit" });
+  const go = held ? (k.stdio[3] as Writable | null) : null;
+  // a write after the shim died is no error of gate run's
+  go?.on("error", () => {});
   const running = () => k.exitCode === null && k.signalCode === null;
   const group = process.platform === "win32" ? undefined : k.pid;
   return {
@@ -436,6 +467,14 @@ const realExec = (
         k.kill(s);
       }
     },
+    ...(go
+      ? {
+          start: () => {
+            if (go.writableEnded) return;
+            go.end("go\n");
+          },
+        }
+      : {}),
     ...(process.platform === "linux"
       ? {
           dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
@@ -1306,6 +1345,8 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         : d.exec(pos[0]!, pos.slice(1), slotEnv);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
+    // Issue 1575: only now, with its group recorded, may the command run.
+    child.start?.();
     // Issue 1132: the group as the store recorded it (with its leader's
     // record and the boot), for a reap after a dump gave the slot back.
     const recorded = s.get(id);
