@@ -169,7 +169,7 @@ describe("den-ui popover", () => {
     await p.evaluate(() =>
       (window as unknown as { openOn: (i: string) => string }).openOn("open"),
     );
-    await p.getByText("Card 1", { exact: true }).click();
+    await p.getByRole("dialog").click({ position: { x: 4, y: 4 } });
     await expect(p.getByRole("dialog").count()).resolves.toBe(1);
     await p.mouse.click(900, 600);
     await expect(p.getByRole("dialog").count()).resolves.toBe(0);
