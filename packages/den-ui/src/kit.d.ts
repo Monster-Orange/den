@@ -81,6 +81,7 @@ import type {
 } from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
+import type { ShowToastOptions, ToastHandle } from "./toast.js";
 import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
 import type { BulkBar, BulkBarOptions } from "./bulk-bar.js";
 
@@ -200,6 +201,8 @@ export declare function saveState(
   el: HTMLElement,
   opts: SaveStateOptions,
 ): SaveState;
+/** Issue 559: a toast, in the kit's language. */
+export declare function toast(opts: ShowToastOptions): ToastHandle;
 /** A list's filter bar, in the kit's language. */
 export declare function filterBar(
   el: HTMLElement,
@@ -282,6 +285,7 @@ export interface DenUIKit {
   report: typeof report;
   busy: typeof busy;
   saveState: typeof saveState;
+  toast: typeof toast;
   filterBar: typeof filterBar;
   bulkBar: typeof bulkBar;
   buttonHtml: typeof buttonHtml;

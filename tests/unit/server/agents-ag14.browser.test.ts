@@ -891,9 +891,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     await p
       .locator('.den-pop[role="menu"] .den-mi', { hasText: "Remove" })
       .click();
-    const toast = p.locator(".den-toast.den-toast-act");
+    const toast = p.locator(".den-toast:has(.den-toast-undo)");
     await toast.waitFor();
-    expect((await toast.locator("span.den-tmsg").textContent())?.trim()).toBe(
+    expect((await toast.locator(".den-toast-msg").textContent())?.trim()).toBe(
       "Removed keeper",
     );
     await row(p, "keeper").waitFor({ state: "detached" });
@@ -963,10 +963,10 @@ describe("Clear stopped (AG-14.1b)", () => {
     if (skip()) return;
     const p = await open("north");
     await p.locator("#ag-clear").click();
-    const toast = p.locator(".den-toast.den-toast-act");
+    const toast = p.locator(".den-toast:has(.den-toast-undo)");
     await toast.waitFor();
     expect(
-      (await toast.locator("span.den-tmsg").textContent())?.trim(),
+      (await toast.locator(".den-toast-msg").textContent())?.trim(),
     ).toMatch(/^Removed \d+ stopped agents?$/);
     await p.waitForFunction(
       () => !document.querySelector("#agl .agst"),

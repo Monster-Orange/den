@@ -135,14 +135,20 @@ describe("a failed action", () => {
         }
       ).denShell.api("POST", "/api/scope", { scope: 42 });
     });
-    const toast = page.locator(".den-toast-err");
+    const toast = page.locator('.den-toast[data-kind="error"]');
     await toast.waitFor();
-    expect(await toast.getAttribute("role")).toBe("alert");
-    expect(await toast.locator(".den-te-id").textContent()).toMatch(
+    // Issue 559: the kit's toast; the alert role is on its live region.
+    expect(
+      await page.locator('[data-den-toast="alert"]').getAttribute("role"),
+    ).toBe("alert");
+    expect(await toast.locator(".den-toast-detail").textContent()).toMatch(
       /^Request [0-9a-f]{8}$/,
     );
-    expect(await toast.locator('[data-te="retry"]').count()).toBe(1);
-    expect(await toast.locator('[data-te="copy"]').count()).toBe(1);
+    expect(await toast.getByRole("button", { name: "Retry" }).count()).toBe(1);
+    expect(
+      await toast.getByRole("button", { name: "Copy details" }).count(),
+    ).toBe(1);
+    expect(await toast.getByRole("button", { name: "Close" }).count()).toBe(1);
     await page.context().close();
   });
 });

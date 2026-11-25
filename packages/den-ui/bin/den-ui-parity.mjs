@@ -229,6 +229,15 @@ export const COMPONENTS = {
     ],
     files: [],
   },
+  // Issue 559: the toast. A product's own toast (its class drawn, a rule
+  // for it, or a builder named as the kit's) is a copy.
+  toast: {
+    label: "toast (message, Undo, Close; its live region and timing)",
+    markup: [cls("den-toast"), cls("den-toast-region")],
+    css: ["den-toast", "den-toast-region", "den-toast-err", "den-toast-act"],
+    code: ["showToast", "toastHtml", "hydrateToast", "toastClock"],
+    files: ["toast.js", "toast.css"],
+  },
   account: {
     label: "account entry in the rail's foot",
     markup: [/\bdata-den-account\b/, cls("den-acct-d"), cls("den-mform")],

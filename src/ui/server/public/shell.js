@@ -5693,7 +5693,6 @@
     });
     return out;
   }
-  var toastTimer = null;
   /**
    * 0.4.45: a toast never covers a line a page marks data-toast-clear
    * (the terminal's "To" line: who the keyboard types to). It moves up
@@ -5731,71 +5730,48 @@
       if (!moved) return;
     }
   }
+  /**
+   * Issue 559: Den's toasts are the kit's (den-ui toast.js): its words
+   * (Undo, Undone., Close), its live region, its timing (3 s plain, 8 s
+   * with Undo, held on hover, focus and a hidden page) and its look. A
+   * toast still clears a line marked data-toast-clear (clearOfMarked, on
+   * the toast's region).
+   */
+  function kitToast(o) {
+    if (!document.body || !DUI || !DUI.showToast) return null;
+    var h = DUI.showToast(Object.assign({ lang: lang }, o));
+    var el = document.querySelector && document.querySelector(".den-toast");
+    var reg = el && el.parentElement;
+    if (reg) {
+      reg.style.bottom = "";
+      clearOfMarked(reg);
+    }
+    return el ? { el: el, close: h.close } : null;
+  }
   function toast(msg) {
-    if (!document.body || !document.createElement) return;
-    var old = document.querySelector && document.querySelector(".den-toast");
-    if (old && old.remove) old.remove();
-    var el = document.createElement("div");
-    el.className = "den-toast";
-    if (el.setAttribute) el.setAttribute("role", "status");
-    el.textContent = msg;
-    if (document.body.appendChild) document.body.appendChild(el);
-    clearOfMarked(el);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      if (el.remove) el.remove();
-    }, 2200);
+    kitToast({ message: msg });
   }
   /**
-   * A toast with one action (AG-14.1b: Remove's Undo): the message and a
-   * small button, for `ms` (default 10 s). The action runs once, and the
-   * toast goes.
+   * A toast with Undo (AG-14.1b: Remove's Undo): the message and the kit's
+   * Undo, which runs once. `link` ({href, label}, bell v6) after it. The
+   * label argument is kept for callers; the word is the kit's "Undo".
    */
-  // Bell v6: `link` ({href, label}) adds a link after the button.
   function toastAction(msg, label, onAction, ms, link) {
-    if (!document.body || !document.createElement) return null;
-    var old = document.querySelector && document.querySelector(".den-toast");
-    if (old && old.remove) old.remove();
-    var el = document.createElement("div");
-    el.className = "den-toast den-toast-act";
-    el.setAttribute("role", "status");
-    var text = document.createElement("span");
-    text.className = "den-tmsg";
-    text.textContent = msg;
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "den-tbtn";
-    b.textContent = label;
-    var done = false;
-    b.addEventListener("click", function () {
-      if (done) return;
-      done = true;
-      clearTimeout(toastTimer);
-      el.remove();
-      onAction();
+    var k = kitToast({
+      message: msg,
+      onUndo: onAction,
+      ms: ms,
+      link: link && link.href ? link : undefined,
     });
-    // The actions in one row: beside the words when wide, under them at
-    // 480 px and below.
-    var acts = document.createElement("span");
-    acts.className = "den-tacts";
-    acts.appendChild(b);
-    if (link && link.href) {
-      var a = document.createElement("a");
-      a.className = "den-tlink";
-      a.href = link.href;
-      a.textContent = link.label;
-      acts.appendChild(a);
-    }
-    el.appendChild(text);
-    el.appendChild(acts);
-    document.body.appendChild(el);
-    clearOfMarked(el);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      done = true;
-      if (el.remove) el.remove();
-    }, ms || 10000);
-    return el;
+    return k ? k.el : null;
+  }
+  /**
+   * A toast with the host's own buttons, not Undo (issue 479's Settings,
+   * say): { message, actions: [{ label, onClick }], ms?, link? }.
+   */
+  function toastWith(o) {
+    var k = kitToast(o || {});
+    return k ? k.el : null;
   }
 
   // ── the top layer (0.4.17): one placement for every menu ─────────────
@@ -8314,80 +8290,42 @@
       return navigator.clipboard.writeText(text).catch(function () {});
     return Promise.resolve();
   }
-  var errToastTimer = null;
-  /** An error toast: message, request id, Retry, Copy details, ×. */
+  /**
+   * An error toast: the message, its request id, Retry, Copy details and
+   * the kit's Close (issue 559: the kit's error toast, role="alert", no
+   * timer).
+   */
   function errorToast(err) {
-    if (!document.body || !document.createElement) return;
-    var old = document.querySelector && document.querySelector(".den-toast");
-    if (old && old.remove) old.remove();
-    clearTimeout(toastTimer);
-    clearTimeout(errToastTimer);
-    var el = document.createElement("div");
-    el.className = "den-toast den-toast-err";
-    el.setAttribute("role", "alert");
-    el.innerHTML =
-      '<span class="den-te-ic" aria-hidden="true">⚠</span>' +
-      '<span class="den-te-msg"><span class="den-te-t"></span>' +
-      (err.requestId
-        ? '<span class="den-te-id">' +
-          esc(t("api.request", { id: err.requestId })) +
-          "</span>"
-        : "") +
-      "</span>" +
-      (err.retry
-        ? '<button type="button" class="den-tbtn" data-te="retry">' +
-          esc(t("api.retry")) +
-          "</button>"
-        : "") +
-      '<button type="button" class="den-tbtn" data-te="copy">' +
-      esc(t("api.copy")) +
-      "</button>" +
-      '<button type="button" class="den-tx" data-te="close" aria-label="' +
-      esc(t("api.close")) +
-      '">×</button>';
-    el.querySelector(".den-te-t").textContent = err.message;
-    var hold = false;
-    var arm = function () {
-      clearTimeout(errToastTimer);
-      errToastTimer = setTimeout(function () {
-        if (!hold && el.remove) el.remove();
-      }, 12000);
-    };
-    el.addEventListener("mouseenter", function () {
-      hold = true;
+    var actions = [];
+    if (err.retry)
+      actions.push({
+        label: t("api.retry"),
+        onClick: function () {
+          if (k) k.close();
+          try {
+            var p = err.retry();
+            if (p && typeof p.catch === "function")
+              p.catch(function (again) {
+                if (again && again.denApi) errorToast(again);
+              });
+          } catch (again) {
+            if (again && again.denApi) errorToast(again);
+          }
+        },
+      });
+    actions.push({
+      label: t("api.copy"),
+      onClick: function () {
+        copyText(errorDetails(err));
+        return t("api.copied");
+      },
     });
-    el.addEventListener("mouseleave", function () {
-      hold = false;
-      arm();
+    var k = kitToast({
+      kind: "error",
+      message: err.message,
+      detail: err.requestId ? t("api.request", { id: err.requestId }) : "",
+      actions: actions,
     });
-    el.addEventListener("focusin", function () {
-      hold = true;
-    });
-    el.addEventListener("click", function (e) {
-      var b = e.target.closest && e.target.closest("[data-te]");
-      if (!b) return;
-      var act = b.getAttribute("data-te");
-      if (act === "close") el.remove();
-      else if (act === "copy")
-        copyText(errorDetails(err)).then(function () {
-          b.textContent = t("api.copied");
-        });
-      else if (act === "retry") {
-        el.remove();
-        try {
-          var p = err.retry();
-          if (p && typeof p.catch === "function")
-            p.catch(function (again) {
-              if (again && again.denApi) errorToast(again);
-            });
-        } catch (again) {
-          if (again && again.denApi) errorToast(again);
-        }
-      }
-    });
-    document.body.appendChild(el);
-    clearOfMarked(el);
-    arm();
   }
   if (typeof window.addEventListener === "function")
     window.addEventListener("unhandledrejection", function (e) {
@@ -10124,6 +10062,7 @@
     },
     toast: toast,
     toastAction: toastAction,
+    toastWith: toastWith,
     /** R26c: a call that resolves with its data or throws a DenApiError. */
     api: api,
     /** R26c: the error toast for a DenApiError (what an uncaught one gets). */
@@ -10368,7 +10307,6 @@
     ".den-bell-sc { display: flex; align-items: center; padding: 8px 12px 2px; color: var(--muted);",
     "  font: 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; }",
     ".den-bell-sc span { flex: 1; }",
-    ".den-tlink { color: var(--accent-text); }",
     // Bell v6: a long question's two lines, ×N repeats, Older, the ⊘ ask.
     ".den-bell-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }",
     // Issue 167: the pick item's line under its title.
@@ -10537,31 +10475,13 @@
     ".den-pop.den-svp.den-sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;",
     "  background: var(--border-strong); margin: 8px auto 0; }",
     ".den-pop.den-svp.den-sheet .den-svp-acts .den-btn { flex: 1 1 auto; padding: 9px 12px; }",
-    // Toast (.toast)
-    ".den-toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);",
-    "  background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px;",
-    "  padding: 8px 14px; box-shadow: var(--shadow); z-index: 60; font: 14px/1.45 var(--sans);",
-    "  color: var(--text); }",
-    // The error toast (R26c): .toast with the message, its request id and
-    // the prototype's small buttons (.btn.sm).
-    ".den-toast-err { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px));",
-    "  border-color: color-mix(in srgb, var(--bad) 45%, var(--border-strong)); }",
-    ".den-toast-act { display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px)); }",
-    ".den-tacts { display: flex; align-items: center; gap: 10px; flex: none; }",
-    ".den-tlink { white-space: nowrap; }",
-    "@media (max-width: 480px) { .den-toast-act { flex-direction: column; align-items: stretch;",
-    "  width: calc(100vw - 32px); box-sizing: border-box; gap: 8px; }",
-    "  .den-tacts { justify-content: space-between; } }",
-    ".den-toast-err .den-te-ic { color: var(--bad); }",
-    ".den-toast-err .den-te-msg { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }",
-    ".den-toast-err .den-te-id { font: 11px var(--mono); color: var(--faint); }",
+    // Toasts are the kit's (issue 559: den-ui toast.css).
+    // The banners' small buttons (.den-tbtn), once shared with Den's toasts.
     ".den-tbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text);",
     "  border-radius: var(--radius-button); padding: 2px 9px; font: 500 12.5px/1.45 var(--sans);",
     "  cursor: pointer; white-space: nowrap; }",
     ".den-tbtn:hover { border-color: var(--border-strong); }",
-    ".den-tx { border: 0; background: none; color: var(--faint); cursor: pointer; font: 16px/1 var(--sans); padding: 0 2px; }",
-    ".den-tx:hover { color: var(--text); }",
-    ".den-toast :focus-visible, .den-banners :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
+    ".den-banners :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
     // Banners (.note-banner): the unreachable server (R26d) and others, at
     // the top of the content.
     ".den-banners { flex: none; margin: 16px 24px 0; display: grid; gap: 8px; font: 14px/1.45 var(--sans); }",
