@@ -838,6 +838,10 @@
     "tests/unit/server/agents-order-error-width.browser.test.ts": [
       "src/ui/server/public/agents.html",
       "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agents-tab-strip.browser.test.ts": [
+      "src/ui/server/public/agents.html",
+      "src/ui/server/public/agents-page.js"
     ]
   },
   "subjectless": [],
@@ -882,6 +886,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1368,6 +1373,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1471,6 +1477,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1579,6 +1586,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1670,6 +1678,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1969,6 +1978,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -3056,6 +3066,14 @@
         "src/ui/server/session-routes.ts"
       ],
       "run": ["tests/unit/server/agents-subagents.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/agents.html"
+      ],
+      "run": ["tests/unit/server/agents-tab-strip.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
