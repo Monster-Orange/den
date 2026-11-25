@@ -28,12 +28,12 @@ describe("shared files import nothing from src/ui", () => {
     expect(uiImports(file)).toEqual([]);
   });
 
-  it("src/shared/ui-language.ts holds the UI's language list", () => {
+  it("src/shared/ui-language.ts holds the UI's language list, and the old path only re-exports it", () => {
     expect(fs.existsSync(path.join(ROOT, "src/shared/ui-language.ts"))).toBe(
       true,
     );
-    expect(fs.existsSync(path.join(ROOT, "src/ui/server/ui-language.ts"))).toBe(
-      false,
-    );
+    expect(
+      fs.readFileSync(path.join(ROOT, "src/ui/server/ui-language.ts"), "utf-8"),
+    ).toBe('export * from "../../shared/ui-language.js";\n');
   });
 });
