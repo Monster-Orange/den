@@ -50,7 +50,7 @@ import {
   sessionIdPrefix,
   WebSessionStore,
 } from "../../shared/web-session.js";
-import { appendAuditRow } from "../../shared/audit-file.js";
+import { appendAuditRowWhenNoServer } from "../../shared/audit-file.js";
 import { denProcessPids, pidAlive } from "../../shared/den-procs.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
@@ -1948,9 +1948,7 @@ interface CliIo {
   addressDeps?: Partial<CheckDeps>;
   /** Sign-in: where this runs (tests give its parents and the terminal). */
   person?: PersonCheck;
-  /** Issue 1300: how long a call waits for the server (default 10 s). */
   callTimeoutMs?: number;
-  /** Issue 1300: tests' web.sessions_lock_wait_ms (default: the setting). */
   lockWaitMs?: number;
 }
 
@@ -2495,22 +2493,14 @@ interface SessionRow {
   host: string;
 }
 
-/**
- * Issue 1300: what a call to the running server came to: its answer;
- * "none" when nothing listens on the port (checked: the connection was
- * refused); "no-answer" when something took the call but didn't answer
- * in time, or the call failed some other way. Only "none" lets a command
- * change the state files itself.
- */
+/** Only "none" (the connection was refused) lets a command change the state files itself. */
 export type ServerReply =
   | { kind: "answer"; status: number; json: unknown }
   | { kind: "none" }
   | { kind: "no-answer" };
 
-/** Nothing listens there (the same set as person-server.ts). */
 const NOT_LISTENING = new Set(["ECONNREFUSED", "EADDRNOTAVAIL"]);
 
-/** How long a call waits for the server's answer, by default. */
 const SERVER_CALL_MS = 10_000;
 
 function serverReply(
@@ -2580,10 +2570,6 @@ function serverReply(
   });
 }
 
-/**
- * A call to the running server with the person token, or null when no
- * server answered (the caller then reads or edits the state files).
- */
 async function serverCall(
   stateDir: string,
   port: number,
@@ -2595,11 +2581,6 @@ async function serverCall(
   return r.kind === "answer" ? { status: r.status, json: r.json } : null;
 }
 
-/**
- * Issue 1300: throws, saying why, unless Den's process records show no
- * running server (den-procs, written at its start). Records that can't be
- * read count as "can't tell".
- */
 function serverNotRunning(stateDir: string, port: number): void {
   const pids = denProcessPids(stateDir, pidAlive, "server");
   if (pids === null)
@@ -2616,15 +2597,11 @@ function offlineStore(stateDir: string, lockWaitMs?: number): WebSessionStore {
   return new WebSessionStore({
     stateDir: () => stateDir,
     secret: () => readWebSecret(stateDir),
-    // Issue 1300: how long it waits for a server write holding the lock
-    // (web.sessions_lock_wait_ms; the store falls back to its default
-    // when the config can't be read).
     lockWaitMs: () =>
       lockWaitMs ??
       readWebAuthConfig(getDistRoot(), product().configFile).sessionsLockWaitMs,
-    // Issue 1300: ends made here reach the activity trail too, with why.
     onEnd: (ended, why) => {
-      for (const s of ended) appendAuditRow(stateDir, sessionEndRow(s, why));
+      for (const s of ended) appendAuditRowWhenNoServer(stateDir, sessionEndRow(s, why));
     },
   });
 }
@@ -2775,7 +2752,6 @@ export async function cmdWebLogout(
   let ended: number;
   let agentTokens = 0;
   if (r.kind === "no-answer") {
-    // Issue 1300: a server is there: never write its file behind it.
     io.err(
       `${product().cli}: Den didn't answer on port ${port}; nothing was changed. Try again.\n`,
     );
@@ -2790,24 +2766,20 @@ export async function cmdWebLogout(
     ended = (j.ended ?? []).length;
     if (typeof j.agentTokens === "number") agentTokens = j.agentTokens;
   } else {
-    // Nothing listens: the state files themselves (the same OS user's),
-    // under the sessions lock, ending only what it means to (issue 1300).
     const store = offlineStore(stateDir, io.lockWaitMs);
-    // Refused on the address this shell dials doesn't prove no server: one
-    // started with DEN_BIND_HOST listens elsewhere. Its own record decides.
-    const noServer = () => serverNotRunning(stateDir, port);
+    const serverRecordSaysNoneRuns = () => serverNotRunning(stateDir, port);
     try {
       ended = (
         id
           ? store.endLocked(
               (now) => [sessionByPrefix(now, id).key],
               "revoked",
-              noServer,
+              serverRecordSaysNoneRuns,
             )
           : store.endLocked(
               (now) => now.map((x) => x.key),
               "signed-out-everywhere",
-              noServer,
+              serverRecordSaysNoneRuns,
             )
       ).length;
     } catch (e) {

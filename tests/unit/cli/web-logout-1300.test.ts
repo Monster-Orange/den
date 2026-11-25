@@ -1,18 +1,3 @@
-/**
- * Issue 1300: `web logout` never writes a stale copy of the sessions file.
- *
- *   1. With a server running, it never writes the file itself. A server
- *      that doesn't answer in time gets "Den didn't answer; nothing was
- *      changed", never a direct write. A session made while it waited
- *      survives.
- *   2. It writes the file only when nothing listens on the port (checked,
- *      not assumed from a timeout), under the sessions lock, re-reading
- *      under it and ending only the sessions it means to. If another
- *      process holds the lock, it says so and changes nothing.
- *   3. Every end it makes is in the activity trail with why (issue 1295).
- *
- * No session key, cookie or token is printed by a test.
- */
 import {
   afterEach,
   beforeEach,
@@ -39,11 +24,13 @@ import {
   webSessionsPath,
 } from "../../../src/shared/web-session.js";
 import { ensureWebSecret } from "../../../src/shared/web-secret.js";
-import { AUDIT_FILE, appendAuditRow } from "../../../src/shared/audit-file.js";
+import { AUDIT_FILE, appendAuditRowWhenNoServer } from "../../../src/shared/audit-file.js";
 import {
   DEN_PROCS_DIR,
   registerDenProcess,
 } from "../../../src/shared/den-procs.js";
+
+const ALWAYS_RUNNING_PID = 1;
 
 let tmp = "";
 const servers: http.Server[] = [];
@@ -116,7 +103,6 @@ describe("a server that is running but slow", () => {
     expect(a.o.err).toMatch(/nothing was changed/i);
     expect(a.o.out).not.toMatch(/Signed out/);
     expect(during).not.toBe("");
-    // Both sessions stand: no direct write happened.
     expect(keys()).toEqual([before, during].sort());
     const after = bytes();
     expect(after).toContain(during);
@@ -149,8 +135,7 @@ describe("no server: the state files, under the lock", () => {
 
   it("another process holding the sessions lock: says so and changes nothing", async () => {
     const one = store().create({ userAgent: "one" }).session.key;
-    // pid 1 always runs (and isn't ours).
-    fs.writeFileSync(path.join(tmp, WEB_SESSIONS_LOCK), "1\n");
+    fs.writeFileSync(path.join(tmp, WEB_SESSIONS_LOCK), `${ALWAYS_RUNNING_PID}\n`);
     const a = io();
     expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
       1,
@@ -158,7 +143,6 @@ describe("no server: the state files, under the lock", () => {
     expect(a.o.err).toMatch(/sign-ins file is in use/);
     expect(a.o.err).toMatch(/nothing was changed/i);
     expect(keys()).toEqual([one]);
-    // Its lock is left alone.
     expect(fs.existsSync(path.join(tmp, WEB_SESSIONS_LOCK))).toBe(true);
   });
 
@@ -171,7 +155,6 @@ describe("no server: the state files, under the lock", () => {
     );
     expect(a.o.out.trim()).toBe("Signed out 1 browser.");
     expect(keys()).toEqual([]);
-    // Released when done.
     expect(fs.existsSync(path.join(tmp, WEB_SESSIONS_LOCK))).toBe(false);
   });
 
@@ -209,9 +192,7 @@ describe("no server: the state files, under the lock", () => {
 describe("refused on the port, but is a Den server running? (its own record)", () => {
   it("a live server bound to another address: logout changes nothing and says why", async () => {
     const one = store().create({ userAgent: "one" }).session.key;
-    // The server's record (den-procs), as it writes at start: pid 1 always
-    // runs. It listens elsewhere (DEN_BIND_HOST), so loopback refuses.
-    registerDenProcess(tmp, "server", 1);
+    registerDenProcess(tmp, "server", ALWAYS_RUNNING_PID);
     const a = io();
     expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
       1,
@@ -321,10 +302,10 @@ describe("a server write holding the lock (web.sessions_lock_wait_ms)", () => {
   });
 });
 
-describe("a row written outside the server (issue 1391's redaction)", () => {
+describe("appendAuditRowWhenNoServer runs only when no Den server is running, so it skips the server's audit lock; its row is redacted (issue 1391)", () => {
   it("is redacted as the server's rows are", () => {
     const token = "abcDEF123456.xyz-_~+/=";
-    appendAuditRow(tmp, {
+    appendAuditRowWhenNoServer(tmp, {
       verb: "session.end",
       detail: `why: Authorization: Bearer ${token}`,
       principal: `Bearer ${token}`,

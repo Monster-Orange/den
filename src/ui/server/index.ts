@@ -2110,7 +2110,6 @@ const webSessions = new WebSessionStore({
         detail: `${msg}; every browser signs in again`,
       });
   },
-  // Issue 1295: every session that ends says why in the activity trail.
   onEnd: (ended, why) => {
     for (const s of ended) {
       const row = sessionEndRow(s, why);
@@ -3909,15 +3908,6 @@ function sealNewTestInstall(): void {
   );
 }
 
-/**
- * Issue 810: whether a fixture session still stands: a test install, the
- * sealed key it signed in with still the current one, and within its
- * lifetime.
- */
-/**
- * Issue 810: why a fixture session no longer stands, or null while it does
- * (issue 1295: the reason goes in the activity trail).
- */
 function fixtureSessionWhyEnds(s: {
   createdAt: number;
   fixtureKey?: string;

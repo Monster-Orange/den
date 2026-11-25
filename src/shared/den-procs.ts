@@ -56,7 +56,6 @@ export function pidAlive(pid: number): boolean {
 export function denProcessPids(
   stateDir: string,
   alive: (pid: number) => boolean = pidAlive,
-  /** Issue 1300: only this role's records (default: every role). */
   role?: DenProcRole,
 ): number[] | null {
   let names: string[];

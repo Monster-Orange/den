@@ -9,13 +9,7 @@ import { redactSecrets } from "./redact.js";
 
 export const AUDIT_FILE = "audit.jsonl";
 
-/**
- * Issue 1300: one activity-trail row written by a process other than the
- * server (`web logout` with no server running), appended to the file the
- * server reads at start. The same shape as the server's row, redacted as
- * its rows are (issue 1391); 0600.
- */
-export function appendAuditRow(
+export function appendAuditRowWhenNoServer(
   stateDir: string,
   row: { verb: string; detail: string; principal?: string },
   now: () => Date = () => new Date(),

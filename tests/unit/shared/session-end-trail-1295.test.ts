@@ -1,18 +1,3 @@
-/**
- * Issue 1295: every way a browser session ends records why in the activity
- * trail. On a test install two of the gate runner's own test-person
- * sessions reached their 60 minutes and ended, silently, when the runner
- * next showed their cookies; nothing in any log said so.
- *
- *  1. The store says what it ended and why, on every end path (its own
- *     end, end-where, end-by-prefix and end-all); nothing when nothing
- *     ended; a failing listener never stops the end.
- *  2. The trail row names the session by the id `web sessions` shows (8
- *     hex) and says why in words; never the key, cookie or CSRF value.
- *  3. Why a test-person session no longer stands: its time ran out, the
- *     test person was set up again, or test sign-in isn't allowed.
- *  4. The server hands every end to the activity trail.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { randomBytes } from "crypto";
 import * as fs from "fs";

@@ -39,10 +39,6 @@ const LOGIN_CONTEXT = "den-login-v1:";
 const SESSION_CONTEXT = "den-session-v1:";
 export const WEB_SESSIONS_FILE = "web-sessions.json";
 
-/**
- * Issue 1300: the one session whose key starts with `prefix` (4 hex at
- * least). Throws when the prefix isn't one, or none or several match.
- */
 export function sessionByPrefix(
   all: SessionView[],
   prefix: string,
@@ -899,27 +895,14 @@ export interface SessionView extends SessionRecord {
   key: string;
 }
 
-/**
- * Issue 1295: why a browser session ended. Every end names one, and the
- * activity trail records it (sessionEndRow), so a session never ends
- * without a line saying why.
- */
 export type SessionEndWhy =
-  /** Its own sign-out. */
   | "signed-out"
-  /** Revoked from linked devices (Settings, or `web logout <id>`). */
   | "revoked"
-  /** Sign out everywhere (or `web logout` with no id). */
   | "signed-out-everywhere"
-  /** Den's own https address now works: sign-in lives there. */
   | "address-proven"
-  /** A test-person session reached its minutes (web.fixture_session_minutes). */
   | "fixture-expired"
-  /** The test person was set up again: a new key. */
   | "fixture-key-changed"
-  /** Test sign-in isn't allowed here any more (not a test install, no key). */
   | "fixture-not-allowed"
-  /** An agent's view ended (its time, views off, or its token gone). */
   | "agent-view-ended";
 
 const END_WORDS: Record<SessionEndWhy, string> = {
@@ -934,11 +917,7 @@ const END_WORDS: Record<SessionEndWhy, string> = {
   "agent-view-ended": "the agent's view ended",
 };
 
-/**
- * Issue 1295: the activity-trail row for a session that ended: the id
- * `web sessions` shows (8 hex), whose it was, and why. Never the key,
- * the cookie or the CSRF value.
- */
+/** Never the key, the cookie or the CSRF value: only the 8-hex id `web sessions` shows. */
 export function sessionEndRow(
   s: SessionView,
   why: SessionEndWhy,
@@ -964,7 +943,6 @@ export function sessionEndRow(
   };
 }
 
-/** Issue 810: whether a fixture session made at `createdAt` is past its minutes. */
 export function fixtureSessionPastTime(
   createdAt: number,
   now: number,
@@ -973,10 +951,6 @@ export function fixtureSessionPastTime(
   return now - createdAt >= minutes * 60_000;
 }
 
-/**
- * Issue 1295: why a test-person session no longer stands, or null while
- * it does. `fingerprint` is the current key's (null: no key).
- */
 export function fixtureSessionEndWhy(
   s: { createdAt: number; fixtureKey?: string },
   now: {
@@ -1124,22 +1098,16 @@ export class WebSessionStore {
 
   /** Issue 1299: why the last read failed; set, every write is refused. */
   private unreadable: string | null = null;
-  /** Issue 1299: told when a read fails or a bad file is moved aside. */
   private readonly onProblem?: (msg: string, kind: SessionStoreProblem) => void;
-  /** Issue 1299: how long a write waits for another process's lock (ms). */
   private readonly lockWaitMs: () => number;
-  /** Issue 1295: told what ended and why, after each end. */
   private readonly onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
 
   constructor(opts: {
     stateDir?: () => string;
     secret: () => Buffer | null;
     now?: () => number;
-    /** Issue 1295: told what ended and why (the activity trail). */
     onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
-    /** Issue 1299: told when a read fails (the server log); never contents. */
     onProblem?: (msg: string, kind: SessionStoreProblem) => void;
-    /** Issue 1299: web.sessions_lock_wait_ms (default 2000). */
     lockWaitMs?: () => number;
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
@@ -1158,7 +1126,6 @@ export class WebSessionStore {
     }
   }
 
-  /** Issue 1295: tells onEnd; a listener's failure never undoes the end. */
   private told(ended: SessionView[], why: SessionEndWhy): void {
     if (!ended.length || !this.onEnd) return;
     try {
@@ -1559,7 +1526,7 @@ export class WebSessionStore {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  /** End the session with this key, saying why (issue 1295). */
+  /** End the session with this key. */
   end(key: string, why: SessionEndWhy): boolean {
     const gone = this.write((d) => {
       const r = d.sessions[key];
@@ -1585,10 +1552,6 @@ export class WebSessionStore {
     return ended.map((v) => v.key);
   }
 
-  /**
-   * End the one session whose key starts with `prefix` (4 hex at least).
-   * Throws when none or several match.
-   */
   endByPrefix(prefix: string, why: SessionEndWhy): SessionView {
     const hit = sessionByPrefix(this.list(), prefix);
     this.end(hit.key, why);
@@ -1609,30 +1572,15 @@ export class WebSessionStore {
     return ended.length;
   }
 
-  /**
-   * Issue 1300: for a process other than the server. Under the sessions
-   * lock, re-reads the file and ends only the sessions `choose` names
-   * from what is there now; every other session, one made a moment ago
-   * included, is written back as it is. Throws WebSessionsBusy, changing
-   * nothing, when another running process keeps the lock past
-   * web.sessions_lock_wait_ms (SessionStoreUnreadable when the file can't
-   * be read).
-   */
+  /** For a process other than the server: ends only what `choose` picks from the file as it is under the lock. */
   endLocked(
     choose: (all: SessionView[]) => string[],
     why: SessionEndWhy,
-    /**
-     * Run under the lock before anything is read or changed; it throws to
-     * change nothing (issue 1300: a Den server turned out to be running).
-     */
-    first?: () => void,
+    throwToChangeNothing?: () => void,
   ): SessionView[] {
-    // Waits up to web.sessions_lock_wait_ms for a running holder (the
-    // server's write), then WebSessionsBusy: nothing changed.
     const release = this.lock(this.waitMs());
     try {
-      first?.();
-      // Never the copy read before the lock.
+      throwToChangeNothing?.();
       this.cache = null;
       const data = structuredClone(this.load());
       if (this.unreadable !== null)
