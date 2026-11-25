@@ -8,8 +8,15 @@
 # goes to a private repo (the FILED_TEXT_FINDINGS_REPO variable), never
 # this one, filed with a GitHub App's token minted for that repo alone
 # (DEN_FINDINGS_APP_ID and DEN_FINDINGS_APP_KEY; no personal token). With no
-# destination or no App secrets the run fails, its log saying only a count
-# and the items' numbers. This repo's token only reads.
+# destination or no App secrets the run fails, its log saying only a
+# count. This repo's token only reads.
+#
+# Actions logs are public, so a log says counts only, and a findings repo
+# that GitHub doesn't call private gets nothing. The job runs on main only,
+# in the words-scan environment (deploys from main only), which holds the
+# App's secrets, so a dispatched branch copy of this file never gets them.
+# DEN_ORG_NAMES stays a repo secret: CI and the release workflows read it.
+# With no App secrets the run fails, saying only a count, hits or not.
 name: filed-text-scan
 on:
   schedule:
@@ -29,6 +36,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   scan:
+    if: github.ref == 'refs/heads/main'
+    environment: words-scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

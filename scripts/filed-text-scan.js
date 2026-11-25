@@ -14,9 +14,9 @@
  * one would point readers at the leak): it goes to a private repo,
  * FILED_TEXT_FINDINGS_REPO, filed with a token for that repo alone
  * (FILED_TEXT_FINDINGS_TOKEN: the workflow mints it from a GitHub App).
- * With no destination or no token the run fails, saying only how many
- * items and their numbers. The log never holds item text:
- * a workflow's log is public too.
+ * The repo must be one GitHub calls private. With no destination, no
+ * token or a repo that isn't private, the run fails, saying only how many.
+ * A workflow's log is public too, so it never names an item or its text.
  *
  *   node scripts/filed-text-scan.mjs --repo owner/name [--since <ISO time>] [--dry-run]
  *
@@ -100,16 +100,6 @@ export function findingText(f) {
   };
 }
 
-/** An item's number as a log may say it: "issue 12", "comment 345". */
-export function itemRef(url) {
-  const c = /#(?:issuecomment|discussion_r)-?(\d+)$/.exec(url);
-  if (c) return `comment ${c[1]}`;
-  const n = /\/(issues|pull)\/(\d+)/.exec(url);
-  return n
-    ? `${n[1] === "pull" ? "pull request" : "issue"} ${n[2]}`
-    : "an item";
-}
-
 /** The real gh, with an optional token of its own (the findings repo's). */
 function realGh(args, { input, token } = {}) {
   return execFileSync("gh", args, {
@@ -148,18 +138,44 @@ export function runScan({
     since,
     repo,
   );
-  const refs = findings.map((f) => itemRef(f.url));
+  // Actions logs are public: a log line says counts only, never an item
+  // (that would point readers at it). The items are in the private findings.
   log(
-    `filed-text scan: ${issues.length + comments.length} item(s) since ${since}, ${findings.length} with a listed name${refs.length ? `: ${refs.join(", ")}` : ""}`,
+    `filed-text scan: ${issues.length + comments.length} item(s) since ${since}, ${findings.length} with a listed name`,
   );
-  if (!findings.length) return 0;
-  if (!findingsRepo || findingsRepo === repo || !findingsToken) {
+  // A run that can't file fails loudly, hits or not: it is set up wrong.
+  if (!findingsToken) {
     log(
-      "filed-text scan: no private findings repo (FILED_TEXT_FINDINGS_REPO and FILED_TEXT_FINDINGS_TOKEN); nothing was filed",
+      `filed-text scan: findings App not set; ${findings.length} hit(s) not filed`,
     );
     return 1;
   }
+  if (!findingsRepo || findingsRepo === repo) {
+    log(
+      `filed-text scan: no private findings repo (FILED_TEXT_FINDINGS_REPO); ${findings.length} hit(s) not filed`,
+    );
+    return 1;
+  }
+  if (!findings.length) return 0;
   if (dryRun) return 0;
+  // Findings link the items, so they go only to a repo that is private, as
+  // GitHub says with the findings token. Public or unknown: nothing filed.
+  let visibility = "";
+  try {
+    visibility = String(
+      gh(["api", `repos/${findingsRepo}`, "--jq", ".visibility"], {
+        token: findingsToken,
+      }),
+    ).trim();
+  } catch {
+    visibility = "";
+  }
+  if (visibility !== "private") {
+    log(
+      `filed-text scan: the findings repo isn't private (${visibility || "its visibility can't be read"}); ${findings.length} finding(s) not filed`,
+    );
+    return 1;
+  }
   // One open finding per item: the next run doesn't file it again.
   const open = list(
     `repos/${findingsRepo}/issues?state=open&labels=${FINDING_LABEL}&per_page=100`,

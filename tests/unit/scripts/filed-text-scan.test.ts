@@ -165,6 +165,8 @@ describe("issue 1127: the scheduled scan", () => {
       jobs: Record<
         string,
         {
+          if?: string;
+          environment?: string | { name?: string };
           env?: Record<string, string>;
           steps: {
             id?: string;
@@ -179,6 +181,17 @@ describe("issue 1127: the scheduled scan", () => {
     };
     expect(wf.on.schedule).toBeDefined();
     expect(wf.on).toHaveProperty("workflow_dispatch");
+    // Review of issue 1127: a dispatched branch's copy never gets the
+    // secrets. The job runs on main only, in an environment (main-only in
+    // the repo's settings) that holds them.
+    for (const job of Object.values(wf.jobs)) {
+      expect(job.if).toContain("github.ref == 'refs/heads/main'");
+      const env =
+        typeof job.environment === "string"
+          ? job.environment
+          : job.environment?.name;
+      expect(env).toBe("words-scan");
+    }
     // This repo's token only reads: findings go elsewhere.
     expect(wf.permissions.issues).toBe("read");
     // Pull requests and review comments read with their own grant.
@@ -278,6 +291,12 @@ describe("issue 1127: the scheduled scan", () => {
         o: { input?: string; token?: string } = {},
       ) => {
         calls.push({ args, ...o });
+        // The findings repo's visibility, asked with its own token.
+        if (args[0] === "api" && args[2] === "--jq") {
+          if (args[1] === "repos/o/private-findings") return "private\n";
+          if (args[1] === "repos/o/public-findings") return "public\n";
+          throw new Error("HTTP 404: Not Found");
+        }
         const p = args[args.length - 1] ?? "";
         if (args[0] === "api" && p.startsWith("repos/o/r/issues?"))
           return JSON.stringify([issues]);
@@ -293,7 +312,11 @@ describe("issue 1127: the scheduled scan", () => {
         text.toLowerCase().includes(w),
       );
 
-    it("with no findings repo set it fails, logging only a count and the items' numbers", async () => {
+    // Issue 1127 review: Actions logs are public, so a log names no item.
+    const names = (text: string) =>
+      text.match(/\b(issue|pull request|comment) \d+/g) ?? [];
+
+    it("with no findings repo set it fails, logging only a count", async () => {
       const { runScan } = await load();
       const f = fakeGh();
       const lines: string[] = [];
@@ -306,11 +329,40 @@ describe("issue 1127: the scheduled scan", () => {
       });
       expect(code).toBe(1);
       const out = lines.join("\n");
-      expect(out).toContain("issue 12");
-      expect(out).toContain("comment 345");
+      expect(out).toContain("2 with a listed name");
+      expect(names(out)).toEqual([]);
       expect(leaks(out)).toEqual([]);
       expect(f.calls.filter((c) => c.args[0] !== "api")).toEqual([]);
     });
+
+    it.each([
+      ["with hits", true],
+      ["with no hits", false],
+    ])(
+      "with no findings App (no token) it fails loudly %s, saying only a count",
+      async (_n, hits) => {
+        const { runScan } = await load();
+        const f = fakeGh();
+        const lines: string[] = [];
+        const code = runScan({
+          repo: "o/r",
+          findingsRepo: "o/private-findings",
+          findingsToken: "",
+          since: SINCE,
+          patterns: hits ? patterns : [/nothing-matches-this/i],
+          gh: f.gh,
+          log: (l) => lines.push(l),
+        });
+        expect(code).toBe(1);
+        const out = lines.join("\n");
+        expect(out).toContain(
+          `findings App not set; ${hits ? 2 : 0} hit(s) not filed`,
+        );
+        expect(names(out)).toEqual([]);
+        expect(leaks(out)).toEqual([]);
+        expect(f.calls.filter((c) => c.args[1] === "create")).toEqual([]);
+      },
+    );
 
     it("the scanned repo is never a findings repo", async () => {
       const { runScan } = await load();
@@ -353,6 +405,35 @@ describe("issue 1127: the scheduled scan", () => {
         expect(leaks(`${c.args.join(" ")}\n${c.input ?? ""}`)).toEqual([]);
       }
       expect(leaks(lines.join("\n"))).toEqual([]);
+      expect(names(lines.join("\n"))).toEqual([]);
     });
+
+    it.each([
+      ["public", "o/public-findings"],
+      ["of unknown visibility", "o/gone-findings"],
+    ])(
+      "a findings repo that is %s: nothing is filed, and the log says only a count",
+      async (_v, findingsRepo) => {
+        const { runScan } = await load();
+        const f = fakeGh();
+        const lines: string[] = [];
+        const code = runScan({
+          repo: "o/r",
+          findingsRepo,
+          findingsToken: "findings-token",
+          since: SINCE,
+          patterns,
+          gh: f.gh,
+          log: (l) => lines.push(l),
+        });
+        expect(code).toBe(1);
+        expect(f.calls.filter((c) => c.args[1] === "create")).toEqual([]);
+        const out = lines.join("\n");
+        expect(out).toMatch(/isn't private/);
+        expect(out).not.toContain(findingsRepo);
+        expect(names(out)).toEqual([]);
+        expect(leaks(out)).toEqual([]);
+      },
+    );
   });
 });
