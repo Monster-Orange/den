@@ -14,18 +14,23 @@ import {
 import { ghGet } from "../../../../src/shared/github-watch/gh-http.js";
 import type { WorkspacesFile } from "../../../../src/shared/types/index.js";
 
+// The quadratic regex took about 7 s on 400 KB; 1 s is far below that and
+// leaves a busy machine room (a 50 ms bound flaked under load).
+const FAST_MS = 1000;
+
 describe("issue 1270: stripGit takes linear time", () => {
   it("a 400 KB run of .git that doesn't end the name is left as it is, fast", () => {
     const hostile = "a/" + ".git".repeat(100_000) + "x";
     const t0 = Date.now();
     expect(stripGit(hostile)).toBe(hostile);
-    expect(Date.now() - t0).toBeLessThan(50);
+    expect(Date.now() - t0).toBeLessThan(FAST_MS);
   });
 
   it("every trailing .git comes off (any case), fast", () => {
+    const long = "a/b" + ".GiT".repeat(100_000);
     const t0 = Date.now();
-    expect(stripGit("a/b" + ".GiT".repeat(100_000))).toBe("a/b");
-    expect(Date.now() - t0).toBeLessThan(50);
+    expect(stripGit(long)).toBe("a/b");
+    expect(Date.now() - t0).toBeLessThan(FAST_MS);
     expect(stripGit("a/b.git.x")).toBe("a/b.git.x");
     expect(stripGit("a/b")).toBe("a/b");
   });
@@ -76,7 +81,7 @@ describe("issue 1270: parseWatchRepos", () => {
         "acme/tools",
       ]),
     ).toEqual(["acme/tools"]);
-    expect(Date.now() - t0).toBeLessThan(50);
+    expect(Date.now() - t0).toBeLessThan(FAST_MS);
   });
 
   it("anything but a list is none", () => {
