@@ -19,6 +19,11 @@ import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import * as strings from "../../../packages/den-ui/src/strings.js";
+
+const { kitT } = strings as unknown as {
+  kitT: (l: string, k: string, v?: object) => string;
+};
 
 const ROOT = path.join(__dirname, "../../..");
 const SRC = path.join(ROOT, "packages/den-ui/src");
@@ -124,7 +129,7 @@ for (const name of ["chromium", "webkit"]) {
       try {
         await report(p);
         expect(await p.textContent("[data-shot-wait]")).toBe(
-          "Taking the screenshot…",
+          kitT("en", "kit.report.shotWait"),
         );
         expect(await p.locator("canvas[data-shot]").count()).toBe(0);
       } finally {
@@ -180,7 +185,7 @@ for (const name of ["chromium", "webkit"]) {
         await p.click('[data-act="next"]');
         await p.click('[data-act="review"]');
         expect(await p.textContent("[data-shot-late]")).toBe(
-          "No screenshot: it wasn't ready when you went on. Go back to the first step to add it.",
+          kitT("en", "kit.report.shotLate"),
         );
         expect(await p.locator("[data-shot-review]").count()).toBe(0);
         await p.click('[data-act="send"]');

@@ -471,7 +471,7 @@ async function show(p: Page, area: Area): Promise<void> {
     });
     // Issue 1499: the form opens before the screenshot is taken; it is
     // measured as it was, with the shot in.
-    await p.waitForSelector("dialog.fb-dlg [data-shot-wait]", {
+    await p.waitForSelector("[data-shot-wait]", {
       state: "detached",
       timeout: 30_000,
     });
