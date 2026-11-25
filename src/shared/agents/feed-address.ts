@@ -119,6 +119,41 @@ export async function feedAddressLocal(
   }
 }
 
+/**
+ * Issue 1491: the one address a public-only feed's request may go to, or
+ * null when it may go to none: its name is this machine's, it doesn't
+ * resolve, or any answer is not public. The request is then pinned to
+ * this address (feed-pinned-request.ts), so a second lookup that answers
+ * differently (DNS rebinding) is never made.
+ */
+export async function checkedAddress(
+  url: string,
+  lookup: FeedLookup = defaultLookup,
+): Promise<{ address: string; family: 4 | 6 } | null> {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const h = hostOf(u);
+  if (!h || isLocalName(h)) return null;
+  const v = isIP(h);
+  if (v) return isPublicAddress(h) ? { address: h, family: v as 4 | 6 } : null;
+  let all: { address: string; family: number }[];
+  try {
+    all = await lookup(h);
+  } catch {
+    return null;
+  }
+  if (!all.length || all.some((x) => !isPublicAddress(x.address))) return null;
+  const [first] = all;
+  return {
+    address: first!.address,
+    family: isIP(first!.address) === 6 ? 6 : 4,
+  };
+}
+
 /** Why `url` names Den or its Hub itself, or null. `key`: url, list_url. */
 export function feedSelfProblem(
   url: string,
