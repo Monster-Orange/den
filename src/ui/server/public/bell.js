@@ -549,9 +549,9 @@ async function post(path, body) {
  */
 function scopeRead(b, scope) {
   let marked = 0;
-  const f = (n, g) => {
-    // As the server: the item's own scope, else its group's.
-    if ((n.scope ?? g.scope) !== scope || n.read) return n;
+  const f = (n) => {
+    // The server's rule (notifications.ts, matches): the item's own scope.
+    if (n.scope !== scope || n.read) return n;
     marked++;
     return { ...n, read: true };
   };
