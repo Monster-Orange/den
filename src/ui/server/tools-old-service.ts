@@ -19,8 +19,6 @@ export const STALE_TTL_MS = 30_000;
 
 interface Slot {
   t: ToolsRestarts;
-  /** Restarts one: the latest caller's (its deps). */
-  restart: (a: StaleOne) => Promise<unknown>;
   queue: { add(job: RestartJob): Promise<unknown> };
   stale: StaleOne[];
   at: number;
@@ -36,7 +34,6 @@ function slotOf(stateDir: string): Slot {
   if (!s) {
     const slot: Slot = {
       t: null as unknown as ToolsRestarts,
-      restart: async () => undefined,
       queue: NO_QUEUE,
       stale: [],
       at: 0,
@@ -44,7 +41,8 @@ function slotOf(stateDir: string): Slot {
     };
     slot.t = new ToolsRestarts({
       queue: { add: (j) => slot.queue.add(j) },
-      restart: (a) => slot.restart(a),
+      // Each call passes its own restart (start's second argument).
+      restart: async () => undefined,
     });
     slots.set(stateDir, slot);
     s = slot;
@@ -66,8 +64,8 @@ export function restartToolsOld(
 ): StaleOne[] {
   const s = slotOf(stateDir);
   s.queue = o.queue ?? NO_QUEUE;
-  s.restart = o.restart;
-  return s.t.start(list);
+  // Issue 1223 (PR review): each queued agent keeps this call's restart.
+  return s.t.start(list, o.restart);
 }
 
 /** Issue 1407: the agents restart-stale held back, for the bell row. */

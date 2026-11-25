@@ -8,6 +8,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
 import { ToolsRestarts } from "../../../src/shared/agents/tools-restarts.js";
+import type { RestartJob } from "../../../src/shared/agents/restart-queue.js";
+import {
+  resetToolsOld,
+  restartToolsOld,
+} from "../../../src/ui/server/tools-old-service.js";
 
 const three = [
   { id: "ana", workspace: "north" },
@@ -99,6 +104,24 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
     expect(t.row([three[1]!])?.agents[0]?.reason).toBe("bo exited at once");
   });
 
+  it("a failure's reason reaches the row redacted, one line, short", async () => {
+    const SECRET = "den_pt_" + "Q".repeat(40);
+    const t = new ToolsRestarts({
+      queue: { add: (j) => j.run() },
+      restart: async () => {
+        throw new Error(
+          `spawn failed: DEN_TOKEN=${SECRET} ${"x".repeat(400)}\nstderr: ${SECRET}`,
+        );
+      },
+    });
+    t.start([three[0]!]);
+    await flush();
+    const reason = t.row([three[0]!])!.agents[0]!.reason!;
+    expect(reason).not.toContain(SECRET);
+    expect(reason).not.toContain("\n");
+    expect(reason.length).toBeLessThanOrEqual(200);
+  });
+
   it("an agent already in a running batch isn't queued twice", async () => {
     const adds: string[] = [];
     const t = new ToolsRestarts({
@@ -113,6 +136,54 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
     t.start(three);
     expect(t.start(three)).toEqual([]);
     expect(adds).toEqual(["ana", "bo", "cy"]);
+  });
+
+  it("one id in two projects is two agents: both queued, both listed, one's finish leaves the other", async () => {
+    const two = [
+      { id: "builder", workspace: "north" },
+      { id: "builder", workspace: "south" },
+    ];
+    const finish = new Map<string, () => void>();
+    const t = new ToolsRestarts({
+      queue: { add: (j) => j.run() },
+      restart: (a) => new Promise<void>((r) => finish.set(a.workspace, r)),
+    });
+    expect(t.start(two).map((a) => a.workspace)).toEqual(["north", "south"]);
+    finish.get("north")!();
+    await flush();
+    expect(t.row(two)).toMatchObject({
+      n: 1,
+      agents: [{ agent: "builder", workspace: "south" }],
+      restarting: { done: 1, total: 2 },
+    });
+  });
+
+  it("a queued agent restarts through its own caller's restart, not a later caller's", async () => {
+    resetToolsOld();
+    const held: RestartJob[] = [];
+    const ran: string[] = [];
+    const dir = "/state/t1223-own-restart";
+    restartToolsOld(dir, [{ id: "ana", workspace: "north" }], {
+      queue: {
+        add: (j) => {
+          held.push(j);
+          return new Promise(() => undefined);
+        },
+      },
+      restart: async (a) => {
+        ran.push(`first:${a.id}`);
+      },
+    });
+    restartToolsOld(dir, [{ id: "bo", workspace: "north" }], {
+      queue: { add: (j) => j.run() },
+      restart: async (a) => {
+        if (a.id !== "bo") throw new Error("not mine");
+        ran.push(`second:${a.id}`);
+      },
+    });
+    await held[0]!.run();
+    expect(ran.sort()).toEqual(["first:ana", "second:bo"]);
+    resetToolsOld();
   });
 });
 

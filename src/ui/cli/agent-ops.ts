@@ -7296,6 +7296,12 @@ export async function restartMany(
         jobStops: true,
       }).then(
         (s) => {
+          // Its new session ended at once: failed, in the trail and the bell.
+          if (s.early) {
+            const error = `${p.id} exited at once`;
+            o.onDone?.({ ...base, outcome: "failed", error });
+            throw new AgentError(error, { code: "exited_at_once" });
+          }
           o.onDone?.({ ...base, outcome: "restarted" });
           return s;
         },

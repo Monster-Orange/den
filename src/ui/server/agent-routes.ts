@@ -3249,12 +3249,9 @@ async function staleRoute(
         .map((a) => ({ id: a.id, workspace: a.workspace })),
       {
         ...(deps.restartQueue ? { queue: deps.restartQueue() } : {}),
-        restart: async (a) => {
-          const s = (await cleared.get(key(a))!()) as { early?: unknown };
-          // Restarted, but its new session ended at once: the bell says so.
-          if (s?.early) throw new Error(`${a.id} exited at once`);
-          return s;
-        },
+        // Each its own (go rejects when it didn't restart, an early exit
+        // too); one the check didn't clear is never in this list.
+        restart: (a) => cleared.get(key(a))!(),
       },
     );
     if (body.only !== "hub")

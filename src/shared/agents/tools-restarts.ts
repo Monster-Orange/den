@@ -13,6 +13,7 @@
  * built from it on each read, so it leaves the bell once none is left.
  */
 import type { RestartJob } from "./restart-queue.js";
+import { redactSecrets } from "../redact.js";
 
 export interface StaleOne {
   id: string;
@@ -49,6 +50,19 @@ export interface ToolsRestartsDeps {
   restart(a: StaleOne): Promise<unknown>;
 }
 
+/**
+ * A failure's reason as the bell shows it (to anyone who reads it):
+ * secrets redacted, its first line, at most 200 characters.
+ */
+function reasonOf(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  const line = redactSecrets(raw).split(/\r?\n/)[0]!.trim();
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+}
+
+/** One agent: ids are per project, so the project is part of the key. */
+const keyOf = (a: StaleOne) => `${a.workspace}\0${a.id}`;
+
 export class ToolsRestarts {
   private batch = new Map<string, StaleOne>();
   private done = new Set<string>();
@@ -59,13 +73,19 @@ export class ToolsRestarts {
 
   private running(): number {
     let n = 0;
-    for (const id of this.batch.keys())
-      if (!this.done.has(id) && !this.failed.has(id)) n++;
+    for (const k of this.batch.keys())
+      if (!this.done.has(k) && !this.failed.has(k)) n++;
     return n;
   }
 
-  /** Queues each not already under way; returns the ones queued. */
-  start(list: readonly StaleOne[]): StaleOne[] {
+  /**
+   * Queues each not already under way; returns the ones queued. Each
+   * restarts through `restart` (this call's), else the deps' own.
+   */
+  start(
+    list: readonly StaleOne[],
+    restart: (a: StaleOne) => Promise<unknown> = (a) => this.d.restart(a),
+  ): StaleOne[] {
     // A finished batch: a new Restart starts counting again.
     if (this.batch.size && !this.running()) {
       this.batch.clear();
@@ -73,20 +93,21 @@ export class ToolsRestarts {
     }
     const out: StaleOne[] = [];
     for (const a of list) {
-      this.held.delete(a.id);
-      if (this.batch.has(a.id) && !this.failed.has(a.id)) continue;
-      this.failed.delete(a.id);
-      this.done.delete(a.id);
-      this.batch.set(a.id, a);
+      const k = keyOf(a);
+      this.held.delete(k);
+      if (this.batch.has(k) && !this.failed.has(k)) continue;
+      this.failed.delete(k);
+      this.done.delete(k);
+      this.batch.set(k, a);
       out.push(a);
       void this.d.queue
-        .add({ id: a.id, why: "tools", run: () => this.d.restart(a) })
+        .add({ id: a.id, why: "tools", run: () => restart(a) })
         .then(
-          () => this.done.add(a.id),
+          () => this.done.add(k),
           (e: unknown) =>
-            this.failed.set(a.id, {
+            this.failed.set(k, {
               a,
-              reason: e instanceof Error ? e.message : String(e),
+              reason: reasonOf(e),
             }),
         );
     }
@@ -98,7 +119,7 @@ export class ToolsRestarts {
    * read): listed with why, never queued. A new start clears them.
    */
   hold(list: readonly Held[]): void {
-    for (const h of list) this.held.set(h.id, h);
+    for (const h of list) this.held.set(keyOf(h), h);
   }
 
   /** The row for `stale` (the agents on older tools now), or null. */
@@ -107,17 +128,18 @@ export class ToolsRestarts {
     const seen = new Set<string>();
     for (const a of stale) {
       // Back already: the stale list hasn't been asked again yet.
-      if (this.done.has(a.id) || this.failed.has(a.id)) continue;
-      seen.add(a.id);
-      const h = this.held.get(a.id);
+      const k = keyOf(a);
+      if (this.done.has(k) || this.failed.has(k)) continue;
+      seen.add(k);
+      const h = this.held.get(k);
       agents.push({
         agent: a.id,
         workspace: a.workspace,
         ...(h ? { waits: h.waits, ...(h.job ? { job: h.job } : {}) } : {}),
       });
     }
-    for (const { a, reason } of this.failed.values())
-      if (!seen.has(a.id))
+    for (const [k, { a, reason }] of this.failed)
+      if (!seen.has(k))
         agents.push({ agent: a.id, workspace: a.workspace, reason });
     const left = this.running();
     if (!agents.length && !left) return null;
