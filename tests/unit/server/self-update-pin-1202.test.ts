@@ -170,6 +170,46 @@ describe("issue 1202: a checkout behind its remote catches up to the pushed pin"
     });
   });
 
+  it("behind, a pin file staged as something other than the pin: the staged copy is kept, and doctor says to pull (Reviewer E)", async () => {
+    someoneElsePushes();
+    const before = git(root, "rev-parse", "HEAD");
+    fs.writeFileSync(path.join(root, "package.json"), pkgJson("1.0.5"));
+    git(root, "add", "package.json");
+    newPin();
+
+    const step = await commitPin("1.1.0", deps());
+
+    expect(step).toMatchObject({ did: "pushed" });
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    expect(git(root, "show", ":package.json")).toBe(pkgJson("1.0.5").trim());
+    expect(fs.readFileSync(path.join(root, "package.json"), "utf8")).toBe(
+      pkgJson("1.1.0"),
+    );
+    expect(pinDoctorText(readPinRecord(stateDir))).toMatch(
+      /the checkout is behind and has local changes, so pull to get the pin$/,
+    );
+  });
+
+  it("a branch switched to after the push, from the same base: it never moves to the pin (Reviewer E)", async () => {
+    someoneElsePushes();
+    const before = git(root, "rev-parse", "HEAD");
+    newPin();
+    const real = pinGit(root, { env });
+    const switched: typeof real = async (args, e) => {
+      const r = await real(args, e);
+      if (args[0] === "push" && r.code === 0)
+        git(root, "checkout", "-q", "-b", "side");
+      return r;
+    };
+
+    const step = await commitPin("1.1.0", deps({ git: switched }));
+
+    expect(step).toMatchObject({ did: "pushed" });
+    expect(git(root, "symbolic-ref", "--short", "HEAD")).toBe("side");
+    expect(git(root, "rev-parse", "side")).toBe(before);
+    expect(git(root, "rev-parse", "main")).toBe(before);
+  });
+
   it("on the tip, as before: the branch takes the pin, and doctor has nothing to add", async () => {
     newPin();
 
