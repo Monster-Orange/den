@@ -6238,7 +6238,7 @@ asked: after a new push, the agent watches again.
 A project can also let its agents watch repos it doesn't own, read-only:
 a shared pipeline repo whose CI they changed, or a sister repo whose merge
 they wait on. List them as owner/name under the project's
-`agents.watch_repos` in the workspaces file:
+`agents.watch_repos` in `config/local/workspaces.yml`:
 
 ```yaml
 workspaces:
