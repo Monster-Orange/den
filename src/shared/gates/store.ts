@@ -409,6 +409,9 @@ export function gateSettingValue(
   const v = (s as unknown as Record<string, unknown>)[camel];
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;
+  // Issue 1264: a list (route_commands) as its settings text, so a change
+  // to it is seen, logged and judged.
+  if (Array.isArray(v)) return v.join(", ");
   return null;
 }
 
