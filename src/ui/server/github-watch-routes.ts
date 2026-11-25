@@ -17,9 +17,10 @@
 import type * as http from "http";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import type { GithubWatcher } from "../../shared/github-watch/watcher.js";
-import { readBody, sendJson } from "./http-helpers.js";
+import { readBodyCapped, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, type AgentPrincipal } from "./request-guard.js";
 import {
+  REPO_MAX,
   stripGit,
   WATCH_REPOS_SETTING,
 } from "../../shared/github-watch/watch-repos.js";
@@ -66,8 +67,9 @@ async function jsonBody(
   req: http.IncomingMessage,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const raw = await readBody(req);
-    if (raw.length > 4096) return null;
+    // At most 4 KB is kept (issue 621's capped read): a bigger body is null.
+    const raw = await readBodyCapped(req, 4096);
+    if (raw === null) return null;
     const v: unknown = JSON.parse(raw || "{}");
     return v && typeof v === "object" && !Array.isArray(v)
       ? (v as Record<string, unknown>)
@@ -153,8 +155,18 @@ export async function handleGithubWatchRoutes(
       );
       return true;
     }
+    const rawRepo = typeof b.repo === "string" ? b.repo.trim() : "";
+    if (rawRepo.length > REPO_MAX) {
+      refuse(
+        res,
+        400,
+        "bad_request",
+        `repo is owner/name, at most ${REPO_MAX} characters`,
+      );
+      return true;
+    }
     // owner/name.git is the same repo: compared, and watched, without it.
-    const repo = typeof b.repo === "string" ? stripGit(b.repo.trim()) : "";
+    const repo = stripGit(rawRepo);
     const scope = scopeRepos(p, d);
     if (scope.otherDen.some((o) => same(o, repo))) {
       refuse(

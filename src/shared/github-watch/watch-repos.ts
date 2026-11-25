@@ -25,15 +25,29 @@ const REPO_RE = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 /** The setting's name, as refusals and docs say it. */
 export const WATCH_REPOS_SETTING = "agents.watch_repos";
 
-/** owner/name without its trailing .git, every one (any case): the same repo. */
-export const stripGit = (r: string): string => r.replace(/(?:\.git)+$/i, "");
+/**
+ * The longest repo arg or entry read, before .git comes off: GitHub's owner
+ * is at most 39 characters and its name 100.
+ */
+export const REPO_MAX = 200;
+
+/**
+ * owner/name without its trailing .git, every one (any case): the same
+ * repo. A loop, linear in the length (a /(\.git)+$/ regex is quadratic on
+ * a long run of .git that doesn't end the name).
+ */
+export function stripGit(r: string): string {
+  let end = r.length;
+  while (end >= 4 && r.slice(end - 4, end).toLowerCase() === ".git") end -= 4;
+  return end === r.length ? r : r.slice(0, end);
+}
 
 /** The owner/name entries of a raw `agents.watch_repos`, each once. */
 export function parseWatchRepos(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
   for (const v of raw) {
-    if (typeof v !== "string") continue;
+    if (typeof v !== "string" || v.length > REPO_MAX) continue;
     const r = stripGit(v.trim());
     if (!REPO_RE.test(r)) continue;
     if (out.some((o) => o.toLowerCase() === r.toLowerCase())) continue;

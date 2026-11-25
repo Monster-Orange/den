@@ -293,4 +293,29 @@ describe("issue 1270: a project's agents.watch_repos", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ watch: { repo: "shared/pipeline" } });
   });
+  it("a repo arg over 200 characters is a 400, fast, asking GitHub nothing", async () => {
+    const { call, gh } = setup(agent);
+    const t0 = Date.now();
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "a/" + ".git".repeat(500) + "x",
+      pr: 1,
+    });
+    expect(r.status).toBe(400);
+    expect(r.body).toMatchObject({ ok: false, code: "bad_request" });
+    expect(String((r.body as { error: string }).error)).toMatch(/200/);
+    expect(Date.now() - t0).toBeLessThan(200);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("a body of megabytes is refused (400) without keeping it", async () => {
+    const { call, gh } = setup(agent);
+    const t0 = Date.now();
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "a/" + ".git".repeat(1_000_000) + "x",
+      pr: 1,
+    });
+    expect(r.status).toBe(400);
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(gh.calls).toEqual([]);
+  });
 });

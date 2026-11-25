@@ -8,9 +8,28 @@ import { describe, expect, it } from "@jest/globals";
 import {
   parseWatchRepos,
   projectWatchRepos,
+  REPO_MAX,
+  stripGit,
 } from "../../../../src/shared/github-watch/watch-repos.js";
 import { ghGet } from "../../../../src/shared/github-watch/gh-http.js";
 import type { WorkspacesFile } from "../../../../src/shared/types/index.js";
+
+describe("issue 1270: stripGit takes linear time", () => {
+  it("a 400 KB run of .git that doesn't end the name is left as it is, fast", () => {
+    const hostile = "a/" + ".git".repeat(100_000) + "x";
+    const t0 = Date.now();
+    expect(stripGit(hostile)).toBe(hostile);
+    expect(Date.now() - t0).toBeLessThan(50);
+  });
+
+  it("every trailing .git comes off (any case), fast", () => {
+    const t0 = Date.now();
+    expect(stripGit("a/b" + ".GiT".repeat(100_000))).toBe("a/b");
+    expect(Date.now() - t0).toBeLessThan(50);
+    expect(stripGit("a/b.git.x")).toBe("a/b.git.x");
+    expect(stripGit("a/b")).toBe("a/b");
+  });
+});
 
 describe("issue 1270: parseWatchRepos", () => {
   it("keeps owner/name strings, each once, case kept from the first", () => {
@@ -45,6 +64,19 @@ describe("issue 1270: parseWatchRepos", () => {
         "",
       ]),
     ).toEqual([]);
+  });
+
+  it(`an entry over ${200} characters is dropped before it is stripped, fast`, () => {
+    expect(REPO_MAX).toBe(200);
+    const t0 = Date.now();
+    expect(
+      parseWatchRepos([
+        "a/" + ".git".repeat(100_000) + "x",
+        "a/" + "b".repeat(199),
+        "acme/tools",
+      ]),
+    ).toEqual(["acme/tools"]);
+    expect(Date.now() - t0).toBeLessThan(50);
   });
 
   it("anything but a list is none", () => {
