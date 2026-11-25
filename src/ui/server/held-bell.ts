@@ -111,6 +111,8 @@ export interface HeldWaiting {
   details?: readonly string[];
   /** One per details line: its message key and words (null: as is). */
   detailKeys?: Approval["detailKeys"];
+  /** Issue 110: the Coach finding it came from, for the bell's card. */
+  coach?: Approval["coach"];
 }
 
 /**
@@ -134,6 +136,7 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       ...(a.details?.length && a.detailKeys?.length
         ? { detailKeys: a.detailKeys }
         : {}),
+      ...(a.coach ? { coach: a.coach } : {}),
     }));
 }
 
