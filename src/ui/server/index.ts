@@ -1753,10 +1753,7 @@ function testSourceRepos(
   });
 }
 
-/**
- * Those repos with their branch and short SHA; issue 237: at most
- * git_reads.at_once git processes at a time.
- */
+/** Those repos with their branch and short SHA, git_reads.at_once at a time. */
 async function collectTestSources(pillar: SourcePillar): Promise<TestSource[]> {
   const workspace = getActiveWorkspace()?.name ?? null;
   const repos = testSourceRepos(pillar).map((r) => ({
@@ -9064,8 +9061,7 @@ async function handleRequest(
     // stack's, else opctl's `opctl_<base>_<hash>`) and stream
     // `docker logs -f`. This gives REAL runtime logs for services with no (or
     // broken) manifest `logs.local` — no den daemon file needed. Returns
-    // false when no such container is running. Issue 237: the lookup's
-    // `docker ps` runs without blocking the server.
+    // false when no such container is running.
     const startDockerFallback = async (): Promise<boolean> => {
       const container = await findServiceContainerAsync(
         repoName,
@@ -10561,7 +10557,6 @@ async function handleRequest(
         agents_default_mode: user.agents?.default_mode ?? null,
         // Issue 1022: how often the page polls health, visible and hidden.
         health_poll: healthPollSeconds(() => user),
-        // Issue 237: git processes the server runs at once for a page.
         git_reads: { at_once: gitReadsAtOnce(() => user) },
         // Issue 750: groups from Hub (user.yml hub.groups, auto by default).
         hub_groups: (() => {
@@ -12114,8 +12109,6 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
-    // Issue 237: orphaned log-history snapshots go once it listens; a
-    // slow docker never holds the start.
     void pruneDeadSnapshots()
       .then((n) => {
         if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);

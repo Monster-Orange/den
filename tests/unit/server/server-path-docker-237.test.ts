@@ -1,12 +1,7 @@
 /**
- * Issue 237, part 1: the log routes' container lookup ran a synchronous
- * `docker ps`, so a slow docker held every request until it answered. The
- * server's lookup (findServiceContainerAsync) runs it without blocking.
- * Its follow-up (Reviewer B): pruning dead log-history snapshots at start
- * ran a sync `docker ps -a` (10 s limit) before the server listened.
- *
- * The slow docker is child_process's: its sync forms hold the thread for
- * SLOW_MS (as a slow `docker ps` does), its async forms answer after it.
+ * A slow docker never blocks the server: its log routes' container lookup
+ * and the log-history prune. The slow docker is child_process's: its sync
+ * forms hold the thread for SLOW_MS, its async forms answer after it.
  */
 import { describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
@@ -100,8 +95,6 @@ describe("issue 237 follow-up: pruning snapshots at start never blocks", () => {
     const dir = path.join(getStateDir(), "history");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "gone-1.log"), "old lines\n");
-    // A dead container's snapshot was last written before the prune began
-    // (one written since is a restarted container's, and stays).
     const hourAgo = new Date(Date.now() - 3_600_000);
     fs.utimesSync(path.join(dir, "gone-1.log"), hourAgo, hourAgo);
     const start = Date.now();

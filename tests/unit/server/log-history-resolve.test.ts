@@ -56,8 +56,6 @@ import {
   pruneDeadSnapshots,
 } from "../../../src/ui/server/log-history.js";
 
-// Issue 237: the server's lookup reads docker without blocking
-// (runningDockerNamesAsync), then picks among the names.
 const mockFind = pickConventionalContainer as jest.MockedFunction<
   typeof pickConventionalContainer
 >;
@@ -313,13 +311,11 @@ describe("pruneDeadSnapshots", () => {
   >;
   const mockRm = fs.rmSync as jest.MockedFunction<typeof fs.rmSync>;
   const mockStat = fs.statSync as jest.MockedFunction<typeof fs.statSync>;
-  /** Each snapshot's last write, ms since the epoch (default: long ago). */
   const writtenAt = (at: Record<string, number> = {}) =>
     mockStat.mockImplementation(((p: string) => ({
       mtimeMs: at[path.basename(String(p))] ?? 0,
     })) as never);
 
-  /** `docker ps -a` answers `out` (null: docker unavailable). */
   const dockerAll = (out: string | null) =>
     mockExecFile.mockImplementation((...args: unknown[]) => {
       const cb = args.find((a) => typeof a === "function") as (
@@ -358,8 +354,6 @@ describe("pruneDeadSnapshots", () => {
   });
 
   it("keeps a snapshot written since the prune began: a container that restarted while docker answered", async () => {
-    // Issue 237: the prune runs after listen, so a capture can reopen a
-    // listed container's file before docker's answer comes back.
     mockReaddir.mockReturnValue(["dead.log", "restarted.log"] as never);
     dockerAll("");
     writtenAt({ "restarted.log": Date.now() + 60_000 });

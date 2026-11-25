@@ -1,8 +1,3 @@
-/**
- * Issue 237: the Tests page's repo heads (branch and short commit), read
- * with git at most `atOnce` processes at a time (git_reads.at_once), not
- * two per repo all at once.
- */
 import { execFile } from "child_process";
 import { GIT_REMOTE_TIMEOUT_MS } from "../../shared/constants.js";
 import { mapLimited } from "../../shared/map-limited.js";
@@ -12,7 +7,6 @@ export type GitRead = (
   cwd: string,
 ) => Promise<string | null>;
 
-/** One git answer, async: slow git never holds up the server (issue 132). */
 export const readGitField: GitRead = (gitArgs, cwd) =>
   new Promise((resolve) => {
     execFile(

@@ -64,10 +64,6 @@ export function findServiceContainer(
   );
 }
 
-/**
- * Issue 237: findServiceContainer for the web server: one `docker ps`, run
- * without blocking (shared with concurrent callers), for both lookups.
- */
 export async function findServiceContainerAsync(
   repoName: string,
   repoPath?: string,

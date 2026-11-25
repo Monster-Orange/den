@@ -40,8 +40,6 @@ import {
   searchSystemHistory,
 } from "../../../src/ui/server/log-history.js";
 
-// Issue 237: the server's lookup reads docker without blocking
-// (runningDockerNamesAsync), then picks among the names.
 const mockFind = pickConventionalContainer as jest.MockedFunction<
   typeof pickConventionalContainer
 >;

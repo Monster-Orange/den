@@ -186,7 +186,6 @@ const MAX_LISTED = 50;
 /** Transcripts read at once: many agents, each with many, would run out of file handles. */
 const MINE_AT_ONCE = 8;
 
-/** Moved to shared/map-limited.ts (issue 237); kept here for its importers. */
 export { mapLimited };
 
 /** The breakdown for `records` over the window ending now. */

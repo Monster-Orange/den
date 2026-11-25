@@ -400,10 +400,6 @@ export interface UserConfig {
    * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
    */
   health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
-  /**
-   * Issue 237: git_reads.at_once (default 16, 1 to 64): how many git
-   * processes the server runs at once for a page's repo reads. git-reads.ts.
-   */
   git_reads?: { at_once?: unknown };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back

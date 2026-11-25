@@ -5191,8 +5191,6 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
-    // Issue 237: how many git processes the server runs at once for a
-    // page's repo reads (user.yml git_reads.at_once).
     id: "server.git_reads",
     category: "server",
     label: "Git reads at once",

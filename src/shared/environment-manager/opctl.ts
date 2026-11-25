@@ -197,7 +197,6 @@ export function findConventionalContainer(
   return pickConventionalContainer(running, repoName, repoPath, subsystem);
 }
 
-/** Issue 237: findConventionalContainer, without blocking (the web server). */
 export async function findConventionalContainerAsync(
   repoName: string,
   repoPath?: string,
