@@ -213,7 +213,7 @@ describe("release-dry-run.yml: the release on every dev tag, publishing nothing"
       "changelog-date": "${{ needs.plan.outputs.date }}",
       // Issue 1492: checks and pack go to the box with plan; '' keeps them hosted.
       "box-labels":
-        "${{ (vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && (vars.DEN_RELEASE_RUNNER_LABELS || '[\"self-hosted\",\"den-wsl\"]') || '' }}",
+        "${{ (vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') && vars.DEN_RELEASE_RUNNER_LABELS) && vars.DEN_RELEASE_RUNNER_LABELS || '' }}",
     });
   });
 });
