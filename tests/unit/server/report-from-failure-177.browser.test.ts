@@ -138,9 +138,14 @@ describe("issue 177: Report from a failure pop-up", () => {
         expect(failure.length).toBeGreaterThan(0);
         await bz.locator('[data-bz="report"]').click();
 
-        const fb = p.locator("dialog[open]").last();
+        const field = p.locator('dialog [data-f="title"]');
+        await field.waitFor({ timeout: 10_000 });
+        // The Report form's own dialog, kept past its first step.
+        await field.evaluate((el) =>
+          el.closest("dialog")!.setAttribute("data-t177", "report"),
+        );
+        const fb = p.locator('dialog[data-t177="report"]');
         const title = fb.locator('[data-f="title"]');
-        await title.waitFor({ timeout: 10_000 });
         const what = failure.replace(/[.。]+$/u, "");
         await expect(title.inputValue()).resolves.toBe(`${what}: error 500`);
         const desc = await fb.locator('[data-f="description"]').inputValue();
