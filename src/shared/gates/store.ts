@@ -41,6 +41,7 @@ import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
+  pidRunning,
   processGroupStateSync,
   recordProcessGroup,
   type GroupState,
@@ -82,6 +83,12 @@ import {
   type GateBox,
 } from "./boxes.js";
 import {
+  checkRunnerEntry,
+  entryKey,
+  runnerEntriesOf,
+  type RunnerEntry,
+} from "./runner-entries.js";
+import {
   classOf,
   parseClassMap,
   parseClassOrder,
@@ -110,6 +117,10 @@ import {
   type MachineReading,
 } from "./rules.js";
 
+/**
+ * The gate is one queue per machine, shared by every install and
+ * distribution here, so its folder is always "den", never the product name.
+ */
 export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
   const set = env.DEN_GATE_DIR?.trim();
   if (set) return path.resolve(set);
@@ -184,7 +195,32 @@ export type GateSettingsPatch = {
   browser_box_default?: string | null;
   /** Issue 1033: projects and label patterns kept on this machine. */
   browser_host_only?: string | null;
+  /** Issue 1264: 1 routes agents' heavy runs through the gate; 0 off. */
+  route_agents?: number | null;
+  /** Issue 1264: the programs routed, comma-separated. */
+  route_commands?: string | null;
 };
+
+/**
+ * Issue 1264: route_commands, checked: each entry a program (`jest`) or
+ * an npm form (`npm test`, `npm run test*`), plain words only; or what is
+ * wrong. Empty is the default list.
+ */
+export function parseRouteCommands(s: string): string[] | string {
+  const out: string[] = [];
+  for (const raw of s.split(",")) {
+    const it = raw.trim().replace(/\s+/g, " ");
+    if (!it) continue;
+    if (
+      it.length > 60 ||
+      !/^[A-Za-z0-9._@/:-]+(?: [A-Za-z0-9._@/:-]+\*?)*$/.test(it)
+    )
+      return `"${it.slice(0, 40)}" is not a program name (plain words only)`;
+    out.push(it);
+  }
+  if (out.length > 32) return "at most 32 programs";
+  return out;
+}
 
 /** Issue 803: the settings that are a line of text, and their checks. */
 /**
@@ -200,7 +236,8 @@ export const GATE_TEXT: Record<
   | "class_map"
   | "class_windows"
   | "browser_box_default"
-  | "browser_host_only",
+  | "browser_host_only"
+  | "route_commands",
   (v: string) => unknown
 > = {
   class_order: parseClassOrder,
@@ -208,6 +245,7 @@ export const GATE_TEXT: Record<
   class_windows: parseClassWindows,
   browser_box_default: checkBoxDefault,
   browser_host_only: parseHostOnly,
+  route_commands: parseRouteCommands,
 };
 type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
@@ -268,6 +306,8 @@ export const GATE_LIMITS: Record<
   // A browser ask declares a container browser; 1 yes, 0 no. Unset: yes
   // on a macOS host, no elsewhere (browser-container.ts).
   browser_requires_container: { min: 0, max: 2, int: true },
+  // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
+  route_agents: { min: 0, max: 1, int: true },
 };
 
 /**
@@ -339,6 +379,9 @@ export type GateEvent =
   | "stopped-leftovers"
   | "start-held"
   | "started-busy"
+  // Issue 1264: an agent's heavy run Den's hook left alone (recorded by
+  // the hook; never arguments).
+  | "outside"
   // Issue 1263: a run's throwaway containers removed after its slot ended.
   | "containers-removed";
 
@@ -366,6 +409,9 @@ export function gateSettingValue(
   const v = (s as unknown as Record<string, unknown>)[camel];
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;
+  // Issue 1264: a list (route_commands) as its settings text, so a change
+  // to it is seen, logged and judged.
+  if (Array.isArray(v)) return v.join(", ");
   return null;
 }
 
@@ -549,14 +595,7 @@ const byOf = (e: GateEntry): string =>
 const reasonOf = (r: string | undefined) =>
   r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as { code?: string }).code === "EPERM";
-  }
-};
+const isAlive = (pid: number): boolean => pidRunning(pid);
 
 export interface GateStoreOpts {
   dir?: string;
@@ -1226,6 +1265,16 @@ export class GateStore {
         browserBoxDefault:
           text("browser_box_default").trim() === "local" ? "local" : "any",
         browserHostOnly: text("browser_host_only"),
+        // Issue 1264: false is slice 1's form of off, as the hook reads it.
+        routeAgents:
+          v.route_agents !== false &&
+          num("route_agents", GATE_DEFAULTS.routeAgents ? 1 : 0) === 1,
+        routeCommands: (() => {
+          const l = parseRouteCommands(text("route_commands"));
+          return typeof l === "string" || !l.length
+            ? [...GATE_DEFAULTS.routeCommands]
+            : l;
+        })(),
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -1329,6 +1378,29 @@ export class GateStore {
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
     return at;
+  }
+
+  /**
+   * Issue 1264: the runs that ran outside the gate today (since local
+   * midnight), per agent, most first.
+   */
+  outsideToday(): { who: string; count: number }[] {
+    const t = new Date(this.now());
+    const since = new Date(
+      t.getFullYear(),
+      t.getMonth(),
+      t.getDate(),
+    ).getTime();
+    const counts = new Map<string, number>();
+    for (const r of this.events()) {
+      if (r.event !== "outside") continue;
+      const at = Date.parse(r.at);
+      if (!(at >= since)) continue;
+      counts.set(r.who, (counts.get(r.who) ?? 0) + 1);
+    }
+    return [...counts]
+      .map(([who, count]) => ({ who, count }))
+      .sort((a, b) => b.count - a.count || a.who.localeCompare(b.who));
   }
 
   /**
@@ -2668,6 +2740,57 @@ export class GateStore {
       if (off) out[b.name] = off;
     }
     return out;
+  }
+
+  // ---- Issue 642: CI runner entries (shared/gates/runner-entries.ts) ----
+
+  /** The runner entries (settings.json `runner_entries`); none by default. */
+  runnerEntries(): RunnerEntry[] {
+    return runnerEntriesOf(this.settingsFile().runner_entries);
+  }
+
+  private writeRunnerEntries(list: RunnerEntry[]): void {
+    const cur = this.settingsFile();
+    if (list.length) cur.runner_entries = list;
+    else delete cur.runner_entries;
+    writeFileAtomic(
+      path.join(this.dir, "settings.json"),
+      JSON.stringify(cur, null, 2) + "\n",
+    );
+  }
+
+  /**
+   * Adds a runner entry, or replaces the one for that repo and box. Its
+   * box must be set. Callers: a person (Settings, `gate runner add`), or
+   * an agent's held write after the person's Allow.
+   */
+  setRunnerEntry(v: unknown): RunnerEntry {
+    const c = checkRunnerEntry(v);
+    if (!c.ok) throw new Error(c.error);
+    const e = c.entry;
+    return this.locked(() => {
+      if (!this.boxes().some((b) => b.name === e.box))
+        throw new Error(`no test box ${e.box}: set the box first`);
+      const k = entryKey(e);
+      const list = this.runnerEntries();
+      const at = list.findIndex((x) => entryKey(x) === k);
+      if (at >= 0) list[at] = e;
+      else list.push(e);
+      this.writeRunnerEntries(list);
+      return e;
+    });
+  }
+
+  /** Removes the runner entry for a repo on a box. */
+  removeRunnerEntry(repo: string, box: string): boolean {
+    return this.locked(() => {
+      const k = entryKey({ repo, box });
+      const list = this.runnerEntries();
+      const left = list.filter((x) => entryKey(x) !== k);
+      if (left.length === list.length) return false;
+      this.writeRunnerEntries(left);
+      return true;
+    });
   }
 
   /** What the last check of each box found. */

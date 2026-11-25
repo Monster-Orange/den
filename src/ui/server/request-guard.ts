@@ -983,8 +983,11 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/verify/remove",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
-  // Issue 52: Dismiss a Coach finding, with the reason: a person's.
+  // Issue 52: Dismiss a Coach finding, and Undo it: a person's.
   "/api/coach/dismiss",
+  "/api/coach/undismiss",
+  // Issue 110: Apply a Coach finding's change (a held write): a person's.
+  "/api/coach/apply",
   "/api/settings",
   // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
   "/api/settings/undo",
@@ -1038,6 +1041,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agent-modes",
   // Issue 352: change or remove a project's MCP server (project_mcp_* asks).
   "/api/workspaces/:ws/mcp-servers/:name",
+  // Issue 1480: add or remove a project's app event feed (writes only: an
+  // agent still reads the list; project_event_feed_* asks).
+  "/api/workspaces/:ws/event-feeds",
+  "/api/workspaces/:ws/event-feeds/:name",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
   // Issue 96: the order a person sees their agents in is the person's.
@@ -1080,6 +1087,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
   "/api/gate-slots/boxes/enable",
+  // Issue 642: CI runner entries; an agent asks with gate_runner_entry_set.
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1394,7 +1404,7 @@ export function notAPersonOf(req: http.IncomingMessage): boolean {
 }
 
 /**
- * Issue 1407 part 2: whether this request proved a person: the CLI's
+ * Whether this request proved a person: the CLI's
  * bearer, or a signed-in browser that is neither an agent's view nor the
  * fixture person, with no agent's token or claim on it. A loopback caller
  * that proved nothing is not one.
@@ -1404,6 +1414,16 @@ export function provenPersonOf(req: http.IncomingMessage): boolean {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person") return true;
   return p?.kind === "person-browser" && !p.view && !p.fixture;
+}
+
+/**
+ * Whether this request is a test bed's CLI on the test-person path (issue
+ * 636): a person token marked testPerson. A person-only write that widens
+ * what runs refuses it (issue 642 review).
+ */
+export function testPersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person" && p.testPerson === true;
 }
 
 /**

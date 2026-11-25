@@ -1,5 +1,5 @@
 /**
- * Issue 1407, part 2: after "Restart N agents at their next idle", the
+ * After "Restart N agents at their next idle", the
  * status is live per agent (restarted, waiting and why, failed and why) and
  * clears when done; never a fixed line. A wait that runs out says so in
  * the bell, not only in the audit; a job found when the turn ends does too.

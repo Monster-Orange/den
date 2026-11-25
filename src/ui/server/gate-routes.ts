@@ -45,6 +45,14 @@
  *   POST /api/gate-slots/boxes/enable   {name, enabled}: on or off
  * A runner's ask may say `where`: "any", or a box's name (a runner on
  * that box). The box is checked just before its slot is given.
+ *
+ * Issue 642: CI runner entries, one repo's jobs on one test box
+ * (gates/runner-entries.ts). Settings only; nothing starts a runner yet:
+ *   GET  /api/gate-slots/runner-entries          the entries, and the boxes
+ *   POST /api/gate-slots/runner-entries          {entry}: adds or replaces
+ *   POST /api/gate-slots/runner-entries/remove   {repo, box}
+ * A person's only. An agent asks with the held write gate_runner_entry_set
+ * (gateRunnerEntryOp), which always waits for the person's Allow.
  */
 import { line, reviewLines } from "../../shared/review-lines.js";
 import type * as http from "http";
@@ -74,6 +82,10 @@ import {
   gateLocked,
   type GateStore,
 } from "../../shared/gates/store.js";
+import {
+  checkRunnerEntry,
+  type RunnerEntry,
+} from "../../shared/gates/runner-entries.js";
 import { gateView } from "../../shared/gates/view.js";
 import { recordAction } from "./audit.js";
 import type { AskedBy } from "./approvals.js";
@@ -85,6 +97,7 @@ import {
   auditActorOf,
   principalOf,
   runnerPrincipalOf,
+  testPersonOf,
 } from "./request-guard.js";
 
 export const GATE_PATHS = [
@@ -98,6 +111,8 @@ export const GATE_PATHS = [
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
   "/api/gate-slots/boxes/enable",
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ] as const;
 
 export const isGatePath = (p: string) =>
@@ -618,6 +633,192 @@ async function handleBoxes(
 }
 
 /**
+ * Issue 642: a person lists, sets and removes the CI runner entries. An
+ * agent, an agent's claim or a runner token is refused (an agent asks
+ * with gate_runner_entry_set); signed out is told to sign in. Each change
+ * goes in this install's audit.
+ */
+async function handleRunnerEntries(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: GateRouteDeps,
+): Promise<void> {
+  if (agentPrincipalOf(req) || auditActorOf(req) || runnerPrincipalOf(req))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error:
+          "only a person lists or changes the runner entries here; an agent asks with gate_runner_entry_set",
+      },
+      403,
+    );
+  if (!principalOf(req)?.startsWith("person:"))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "signin_required",
+        error: "sign in to see the runner entries",
+      },
+      401,
+    );
+  const store = d.store();
+  const view = () => ({
+    ok: true,
+    entries: store.runnerEntries(),
+    boxes: store.boxes().map((b) => b.name),
+  });
+  if (pathname === "/api/gate-slots/runner-entries" && req.method === "GET")
+    return sendJson(res, view());
+  if (req.method !== "POST")
+    return sendJson(res, { ok: false, error: "POST only" }, 405);
+  // A test bed's CLI (the test person) reads them, never changes them: an
+  // entry widens what runs on a box (issue 642 review).
+  if (testPersonOf(req))
+    return sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "the test person can't change the runner entries",
+      },
+      403,
+    );
+  const body = await bodyOf(req);
+  if (!body) return sendJson(res, TOO_BIG, 400);
+  const audit = (detail: string) =>
+    (d.audit ?? recordAction)(
+      null,
+      { verb: "gate-runner-entry", detail },
+      principalOf(req),
+    );
+  if (pathname === "/api/gate-slots/runner-entries") {
+    let e: RunnerEntry;
+    try {
+      e = store.setRunnerEntry(body.entry);
+    } catch (err) {
+      return sendJson(res, { ok: false, error: (err as Error).message }, 400);
+    }
+    audit(`runner entry ${e.repo} on ${e.box} set (${entryWords(e)})`);
+    return sendJson(res, view());
+  }
+  const repo = typeof body.repo === "string" ? body.repo : "";
+  const box = typeof body.box === "string" ? body.box : "";
+  if (!store.removeRunnerEntry(repo, box))
+    return sendJson(res, { ok: false, error: "no such runner entry" }, 404);
+  audit(`runner entry ${repo} on ${box} removed`);
+  return sendJson(res, view());
+}
+
+/** An entry's reach, in words, for the audit and the Allow card. */
+function entryWords(e: RunnerEntry): string {
+  return `${e.heavy ? "heavy" : "light"}, ${e.slots} at a time, labels ${e.labels.join(",")}, routing variable ${e.routing_variable}, owner ${e.owner}`;
+}
+
+/**
+ * Issue 642: the held write gate_runner_entry_set. An agent asks to let a
+ * repo's CI jobs run on a test box (or to change that entry); it widens
+ * what runs on the box, so it always waits for the person's own Allow.
+ * Deny sets nothing. Nothing starts a runner here (slice 1).
+ */
+export function gateRunnerEntryOp(d: {
+  store: () => GateStore;
+  audit?: typeof recordAction;
+}): HeldOp {
+  return {
+    check(a) {
+      const c = checkRunnerEntry(a);
+      if (!c.ok) return { ok: false, error: c.error };
+      const e = c.entry;
+      if (
+        !d
+          .store()
+          .boxes()
+          .some((b) => b.name === e.box)
+      )
+        return {
+          ok: false,
+          error: `no test box ${e.box}: a person sets the box first (Settings, Test boxes)`,
+        };
+      const had = d
+        .store()
+        .runnerEntries()
+        .some(
+          (x) =>
+            x.repo.toLowerCase() === e.repo.toLowerCase() && x.box === e.box,
+        );
+      const repo = e.repo;
+      const box = e.box;
+      const n = String(e.slots);
+      const labels = e.labels.join(", ");
+      const variable = e.routing_variable;
+      const owner = e.owner;
+      return {
+        ok: true,
+        personOnly: true,
+        args: { ...e },
+        summary: `let ${e.repo}'s CI jobs run on the test box ${e.box}`,
+        params: { repo: e.repo, box: e.box },
+        ...reviewLines([
+          had
+            ? line(
+                `Changes the entry that lets ${repo}'s CI jobs with the labels ${labels} run on the test box ${box}, at most ${n} at a time.`,
+                "ap.det.gate_runner_entry_set.change",
+                { repo, labels, box, n },
+              )
+            : line(
+                `Lets ${repo}'s CI jobs with the labels ${labels} run on the test box ${box}, at most ${n} at a time.`,
+                "ap.det.gate_runner_entry_set.reach",
+                { repo, labels, box, n },
+              ),
+          e.heavy
+            ? line(
+                `Each job takes one of ${box}'s gate slots, so it never runs beside another heavy job there.`,
+                "ap.det.gate_runner_entry_set.heavy",
+                { box },
+              )
+            : line(
+                `Its jobs are light: they take no gate slot on ${box}.`,
+                "ap.det.gate_runner_entry_set.light",
+                { box },
+              ),
+          line(
+            `The repo variable ${variable} sends its jobs to the box, or back to hosted runners. ${owner} answers for it.`,
+            "ap.det.gate_runner_entry_set.route",
+            { variable, owner },
+          ),
+          line(
+            `Box runners start only for a private repo: if ${repo} is public, none starts unless a person allows public repos for this project.`,
+            "ap.det.gate_runner_entry_set.private",
+            { repo },
+          ),
+          line(
+            "You can remove it any time in Settings, under CI runner entries.",
+            "ap.det.gate_runner_entry_set.remove",
+          ),
+        ]),
+      };
+    },
+    run(a, asked) {
+      let e: RunnerEntry;
+      try {
+        e = d.store().setRunnerEntry(a);
+      } catch (err) {
+        return Promise.resolve({ ok: false, error: (err as Error).message });
+      }
+      (d.audit ?? recordAction)(null, {
+        verb: "gate-runner-entry",
+        detail: `runner entry ${e.repo} on ${e.box} set (${entryWords(e)}); asked by ${asked?.agent ? `agent:${asked.agent}` : "a person"}, allowed by ${asked?.decidedBy ?? "the person"}`,
+      });
+      return Promise.resolve({ ok: true, entry: e });
+    },
+  };
+}
+
+/**
  * Issue 621: the held write gate_runner_token_create. An agent (or a
  * person) asks; only the person's own Allow makes the token (critical:
  * it touches a secret). The token goes back once, to the asker only
@@ -740,6 +941,11 @@ async function gateRoute(
     pathname === "/api/gate-slots/boxes/enable"
   )
     return handleBoxes(req, res, pathname, d);
+  if (
+    pathname === "/api/gate-slots/runner-entries" ||
+    pathname === "/api/gate-slots/runner-entries/remove"
+  )
+    return handleRunnerEntries(req, res, pathname, d);
   if (pathname === "/api/gate-slots") {
     if (req.method !== "GET")
       return sendJson(res, { ok: false, error: "GET only" }, 405);

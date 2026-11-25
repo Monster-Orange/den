@@ -491,6 +491,13 @@ function wireGithub(root, t, s, attest = "") {
   };
   const begin = (body) => {
     clearTimeout(timer);
+    // Issue 1054: the button shows the kit's dots until the answer (a page
+    // without the shell holds it the plain way).
+    const release =
+      window.denShell?.holdDots?.(start) ??
+      (async () => {
+        if (start) start.disabled = false;
+      });
     if (start) start.disabled = true;
     fetch("/api/github/signin", {
       method: "POST",
@@ -499,6 +506,7 @@ function wireGithub(root, t, s, attest = "") {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
+      .finally(release)
       .then((r) =>
         r
           .json()
@@ -587,6 +595,7 @@ export function wirePair(root, t, s) {
     mine = null;
     if (!id) return Promise.resolve();
     try {
+      // busy-ok: withdrawn in the background as the page goes or starts again
       return fetch(`/api/signin/code/${encodeURIComponent(id)}`, {
         method: "DELETE",
         keepalive: true,
@@ -688,7 +697,8 @@ export function wirePair(root, t, s) {
     given = null;
     (first
       ? Promise.resolve({ ok: true, ...first })
-      : fetch("/api/signin/code", {
+      : // busy-ok: the page asks for its own code as it opens; no button
+        fetch("/api/signin/code", {
           method: "POST",
           cache: "no-store",
           credentials: "same-origin",
@@ -1005,6 +1015,8 @@ function mountSignedOut(root, sh, d) {
     input?.focus();
     form?.addEventListener("submit", (e) => {
       e.preventDefault();
+      // Issue 1054: Confirm shows the kit's dots until the answer.
+      const release = window.denShell?.holdDots?.(go) ?? (async () => {});
       go.disabled = true;
       err.textContent = "";
       fetch(location.pathname + location.search, {
@@ -1014,6 +1026,7 @@ function mountSignedOut(root, sh, d) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: input.value }),
       })
+        .finally(release)
         .then((r) => r.json().catch(() => ({})))
         .then((b) => {
           go.disabled = false;
