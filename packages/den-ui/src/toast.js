@@ -125,7 +125,7 @@ function bodyHtml(o) {
     (error ? "error" : "status") +
     '">' +
     (error ? '<span class="den-toast-ic" aria-hidden="true">⚠</span>' : "") +
-    '<span class="den-toast-words"><span class="den-toast-msg">' +
+    '<span class="den-toast-words"><span class="den-toast-msg" data-toast-msg>' +
     esc(o.message) +
     "</span>" +
     (o.detail

@@ -112,7 +112,7 @@ const show = (p: Page, o: object) =>
     w.kit.showToast(opts);
   }, o);
 
-const toasts = (p: Page) => p.locator(".den-toast").count();
+const toasts = (p: Page) => p.locator("[data-den-toast] > [data-kind]").count();
 
 describe("issue 559: the toast in a browser", () => {
   it("one live region, empty before the words, reused; an error in the alert region", async () => {
@@ -172,7 +172,7 @@ describe("issue 559: the toast in a browser", () => {
     await p.keyboard.press("Tab");
     await p.keyboard.press("Enter");
     expect(await p.evaluate(() => (window as unknown as W).undos)).toBe(1);
-    expect(await p.locator(".den-toast-msg").textContent()).toBe(
+    expect(await p.locator("[data-toast-msg]").textContent()).toBe(
       "元に戻しました。",
     );
     expect(await p.locator("[data-toast-undo]").count()).toBe(0);
@@ -204,7 +204,7 @@ describe("issue 559: the toast in a browser", () => {
     const p = await open();
     await show(p, { message: "Removed", undo: true });
     await p.clock.runFor(7000);
-    await p.hover(".den-toast");
+    await p.hover("[data-den-toast] > [data-kind]");
     await p.clock.runFor(60_000);
     expect(await toasts(p)).toBe(1);
     await p.mouse.move(5, 5);
@@ -262,8 +262,10 @@ describe("issue 559: the toast in a browser", () => {
       await p.focus("#other");
       await p.keyboard.press("Tab");
       const s = await p.evaluate(() => {
-        const t = document.querySelector(".den-toast") as HTMLElement;
-        const u = document.querySelector(".den-toast-undo") as HTMLElement;
+        const t = document.querySelector(
+          "[data-den-toast] > [data-kind]",
+        ) as HTMLElement;
+        const u = document.querySelector("[data-toast-undo]") as HTMLElement;
         const root = getComputedStyle(document.documentElement);
         const probe = (v: string) => {
           const d = document.createElement("div");
@@ -312,7 +314,7 @@ describe("issue 559: the toast in a browser", () => {
       return {
         words: box(".den-toast-words"),
         acts: box(".den-toast-acts"),
-        undo: box(".den-toast-undo"),
+        undo: box("[data-toast-undo]"),
         link: box(".den-toast-link"),
       };
     });
@@ -330,7 +332,9 @@ describe("issue 559: the toast in a browser", () => {
       await show(p, { message: "Saved" });
       const anim = await p.evaluate(
         () =>
-          getComputedStyle(document.querySelector(".den-toast")!).animationName,
+          getComputedStyle(
+            document.querySelector("[data-den-toast] > [data-kind]")!,
+          ).animationName,
       );
       expect([reduce, anim]).toEqual([
         reduce,
