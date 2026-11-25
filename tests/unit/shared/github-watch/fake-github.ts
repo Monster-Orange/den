@@ -58,9 +58,11 @@ export class FakeGithub {
   pr(repo: string, n: number, head: string, state = "open"): void {
     this.prs.set(`${repo}#${n}`, { head, state });
   }
+  /** Adds a run, or updates one in place: runs list by when they began. */
   run(repo: string, r: FakeRun): void {
     const l = this.runs.get(repo) ?? [];
-    this.runs.set(repo, [...l.filter((x) => x.id !== r.id), r]);
+    const i = l.findIndex((x) => x.id === r.id);
+    this.runs.set(repo, i < 0 ? [...l, r] : l.map((x, j) => (j === i ? r : x)));
   }
   check(repo: string, sha: string, c: FakeCheck): void {
     const k = `${repo}@${sha}`;
@@ -153,10 +155,21 @@ export class FakeGithub {
     }
     m = /^repos\/([^/]+\/[^/]+)\/actions\/runs\?/.exec(path);
     if (m) {
-      const l = this.runs.get(m[1]) ?? [];
+      const q0 = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+      const sha = q0.get("head_sha");
+      const l = (this.runs.get(m[1]) ?? []).filter(
+        (r) => !sha || r.head_sha === sha,
+      );
+      // Issue 1560: as GitHub lists them, newest first, one page of
+      // per_page (default 30): a busy repo's older runs aren't on it.
+      const q = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+      const per = Number(q.get("per_page") ?? 30);
       return ok({
         total_count: l.length,
-        workflow_runs: l.map((r) => this.runView(m![1], r)),
+        workflow_runs: [...l]
+          .reverse()
+          .slice(0, per)
+          .map((r) => this.runView(m![1], r)),
       });
     }
     m = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs\?(.*)$/.exec(
