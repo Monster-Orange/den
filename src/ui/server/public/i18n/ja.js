@@ -2592,24 +2592,32 @@
     "feed.url": "ストリームのアドレス",
     "feed.bearer": "bearer(secrets.refs の名前)",
     "feed.bearerNone": "なし",
-    "feed.noAgents": "このプロジェクトにはまだエージェントがいません。エージェントを起動してから、そのフィードを追加してください。",
+    "feed.noAgents":
+      "このプロジェクトにはまだエージェントがいません。エージェントを起動してから、そのフィードを追加してください。",
     "feed.addW": "フィードを追加しています…",
     "feed.addS": "追加しました。",
     "feed.addF": "フィードを追加できませんでした。",
     "feed.remove": "削除",
     "feed.removeL": "フィード {name} を削除",
     "feed.rmT": "フィードを削除しますか?",
-    "feed.rmAsk": "プロジェクト {project} からフィード {name} を削除しますか? Den はそのストリームを閉じ、{agent} にはもう 1 行も届きません。",
+    "feed.rmAsk":
+      "プロジェクト {project} からフィード {name} を削除しますか? Den はそのストリームを閉じ、{agent} にはもう 1 行も届きません。",
     "feed.rmW": "フィードを削除しています…",
     "feed.rmS": "削除しました。",
     "feed.rmF": "フィードを削除できませんでした。",
-    "ap.do.project_event_feed_add": "プロジェクト {project} の {agent} 向けにイベントフィード {name}({url})を追加",
-    "ap.do.project_event_feed_remove": "プロジェクト {project} からイベントフィード {name} を削除",
-    "ap.feed.warn": "Den は {url} を開き、未読のイベントがあると {agent} に短い 1 行を入力します。",
+    "ap.do.project_event_feed_add":
+      "プロジェクト {project} の {agent} 向けにイベントフィード {name}({url})を追加",
+    "ap.do.project_event_feed_remove":
+      "プロジェクト {project} からイベントフィード {name} を削除",
+    "ap.feed.warn":
+      "Den は {url} を開き、未読のイベントがあると {agent} に短い 1 行を入力します。",
     "ap.feed.feed": "フィード: {name}({agent} 向け)",
-    "ap.feed.bearer": "bearer: 接続のたびに secrets.refs.{ref} から読みます。表示されることも、エージェントのファイルに書かれることもありません。",
-    "ap.feed.noBearer": "bearer なし: ストリームは Authorization ヘッダーなしで開かれます。",
-    "ap.feed.removeWarn": "Den はフィード {name} を閉じます。そのエージェントにはもう 1 行も届きません。",
+    "ap.feed.bearer":
+      "bearer: 接続のたびに secrets.refs.{ref} から読みます。表示されることも、エージェントのファイルに書かれることもありません。",
+    "ap.feed.noBearer":
+      "bearer なし: ストリームは Authorization ヘッダーなしで開かれます。",
+    "ap.feed.removeWarn":
+      "Den はフィード {name} を閉じます。そのエージェントにはもう 1 行も届きません。",
     "feed.problems": "読めない agents.event_feeds の項目: {n}。",
     "feed.failed":
       "このプロジェクトのアプリのイベントフィードを読めませんでした。",

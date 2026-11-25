@@ -10236,7 +10236,10 @@ async function handleRequest(
     if (notAPersonOf(req) || fixturePersonOf(req))
       return sendJson(
         res,
-        { ok: false, error: "only a person can undo a change made without asking" },
+        {
+          ok: false,
+          error: "only a person can undo a change made without asking",
+        },
         403,
       );
     let id = "";

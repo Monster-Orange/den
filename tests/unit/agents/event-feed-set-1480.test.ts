@@ -75,9 +75,10 @@ describe("issue 1480: project_event_feed_add and _remove", () => {
       ok: false,
       error: expect.stringContaining("url must be https"),
     });
-    expect(
-      ask({}, { agent: "scout", project: "south" }),
-    ).toMatchObject({ ok: false, error: expect.stringContaining("south") });
+    expect(ask({}, { agent: "scout", project: "south" })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("south"),
+    });
     const c = ask({ bearer: "chat_feed_token" });
     expect(c.ok).toBe(true);
     if (!c.ok) return;
@@ -161,7 +162,13 @@ describe("issue 1480: the approval policy, as issue 1391's", () => {
     ])
       notePolicyRun(
         store as never,
-        { id: `ap-${action}`, agent: "planner", summary: "s", action, result: { ok: true } },
+        {
+          id: `ap-${action}`,
+          agent: "planner",
+          summary: "s",
+          action,
+          result: { ok: true },
+        },
         "north",
       );
     expect(rows.map((n) => n.undo)).toEqual([
@@ -202,14 +209,20 @@ describe("issue 1480: the approval policy, as issue 1391's", () => {
     const removed = await runEventFeedRemove(d, { ...rm.args });
     expect(saved.north).toEqual([]);
     expect(
-      undoEventFeed(d, ap("project_event_feed_remove", removed, "auto:personal")),
+      undoEventFeed(
+        d,
+        ap("project_event_feed_remove", removed, "auto:personal"),
+      ),
     ).toMatchObject({ ok: true });
     expect(saved.north).toEqual([
       { name: "chat", agent: "planner", url: URL_A },
     ]);
     // A feed of that name came back since: nothing to put back.
     expect(
-      undoEventFeed(d, ap("project_event_feed_remove", removed, "auto:personal")),
+      undoEventFeed(
+        d,
+        ap("project_event_feed_remove", removed, "auto:personal"),
+      ),
     ).toMatchObject({ ok: false });
   });
 });

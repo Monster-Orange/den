@@ -36,12 +36,10 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer();
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
 }, 120_000);
 
 afterAll(async () => {
@@ -152,12 +150,19 @@ describe.each(["chromium", "webkit"] as const)(
     it("shows a feed's last delivery; Add sends the feed, busy in the button, and the row shows it", async () => {
       if (!b()) return;
       const { p, sent, slow } = await page(b()!);
+      // Its last delivery: the state, and the time of its last event
+      // (the i18n text for "none yet" only on a feed with none).
+      const none = await p.evaluate(() =>
+        (
+          window as unknown as { denShell: { t: (k: string) => string } }
+        ).denShell.t("feed.noEvents"),
+      );
+      const last = (name: string) =>
+        p.textContent(`${ROW} [data-feed="${name}"] [data-feed-last]`);
       expect(
-        await p.textContent(`${ROW} [data-feed="chat"] [data-feed-st]`),
-      ).toBe("Connected");
-      expect(
-        await p.textContent(`${ROW} [data-feed="chat"] [data-feed-last]`),
-      ).toMatch(/^Last event /);
+        await p.getAttribute(`${ROW} [data-feed="chat"]`, "data-feed-state"),
+      ).toBe("connected");
+      expect(await last("chat")).not.toContain(none);
       expect(
         await p.$$eval(`${ROW} [data-feed-agent-pick] option`, (els) =>
           els.map((e) => (e as HTMLOptionElement).value),
@@ -190,6 +195,7 @@ describe.each(["chromium", "webkit"] as const)(
         },
       ]);
       expect(await names(p)).toEqual(["chat", "tasks"]);
+      expect(await last("tasks")).toContain(none);
       // The bearer is a ref's name; no value is ever on the page.
       expect(await p.textContent(ROW)).not.toContain("tasks_feed_token");
       expect(

@@ -6031,13 +6031,7 @@ export function checkEventFeedAdd(
     error,
   });
   try {
-    const t = projectMcpTarget(
-      d,
-      raw,
-      who,
-      "project_event_feed_add",
-      "add to",
-    );
+    const t = projectMcpTarget(d, raw, who, "project_event_feed_add", "add to");
     if (!t.ok) return t;
     const ws = t.ws;
     // The queue's check on Allow gets the args the first check gave.
@@ -6085,7 +6079,12 @@ export function checkEventFeedAdd(
     return {
       ok: true,
       summary: `add event feed ${feed.name} (${feed.url}) for ${feed.agent} in project ${ws}`,
-      params: { project: ws, name: feed.name, agent: feed.agent, url: feed.url },
+      params: {
+        project: ws,
+        name: feed.name,
+        agent: feed.agent,
+        url: feed.url,
+      },
       details: lines.map((l) => l[0]),
       detailKeys: lines.map((l) => l[1]),
       args: { project: ws, feed },

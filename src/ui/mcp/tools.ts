@@ -2848,7 +2848,9 @@ const APPROVAL_TOOLS: DenTool[] = [
         .string()
         .optional()
         .describe("The project (default: the one you work in)"),
-      name: z.string().describe("Its name, as the project's feed list shows it"),
+      name: z
+        .string()
+        .describe("Its name, as the project's feed list shows it"),
       note: noteArg,
       ask: askArg,
     },

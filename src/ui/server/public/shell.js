@@ -3565,24 +3565,32 @@
     "feed.url": "Stream address",
     "feed.bearer": "Bearer (a secrets.refs name)",
     "feed.bearerNone": "none",
-    "feed.noAgents": "This project has no agents yet. Start one, then add its feed.",
+    "feed.noAgents":
+      "This project has no agents yet. Start one, then add its feed.",
     "feed.addW": "Adding the feed…",
     "feed.addS": "Added.",
     "feed.addF": "Couldn't add the feed.",
     "feed.remove": "Remove",
     "feed.removeL": "Remove feed {name}",
     "feed.rmT": "Remove the feed?",
-    "feed.rmAsk": "Remove feed {name} from project {project}? Den closes its stream, and {agent} gets no more lines from it.",
+    "feed.rmAsk":
+      "Remove feed {name} from project {project}? Den closes its stream, and {agent} gets no more lines from it.",
     "feed.rmW": "Removing the feed…",
     "feed.rmS": "Removed.",
     "feed.rmF": "Couldn't remove the feed.",
-    "ap.do.project_event_feed_add": "Add event feed {name} ({url}) for {agent} in project {project}",
-    "ap.do.project_event_feed_remove": "Remove event feed {name} from project {project}",
-    "ap.feed.warn": "Den opens {url} and types {agent} a short line when its events are unread.",
+    "ap.do.project_event_feed_add":
+      "Add event feed {name} ({url}) for {agent} in project {project}",
+    "ap.do.project_event_feed_remove":
+      "Remove event feed {name} from project {project}",
+    "ap.feed.warn":
+      "Den opens {url} and types {agent} a short line when its events are unread.",
     "ap.feed.feed": "Feed: {name}, for {agent}",
-    "ap.feed.bearer": "Bearer: read from secrets.refs.{ref} at each connect; never shown or written to the agent's files.",
-    "ap.feed.noBearer": "No bearer: the stream is opened with no Authorization header.",
-    "ap.feed.removeWarn": "Den closes feed {name}; its agent gets no more lines from it.",
+    "ap.feed.bearer":
+      "Bearer: read from secrets.refs.{ref} at each connect; never shown or written to the agent's files.",
+    "ap.feed.noBearer":
+      "No bearer: the stream is opened with no Authorization header.",
+    "ap.feed.removeWarn":
+      "Den closes feed {name}; its agent gets no more lines from it.",
     "feed.problems": "Entries in agents.event_feeds that can't be read: {n}.",
     "feed.failed": "Couldn't read this project's app event feeds.",
     "feed.st.connecting": "Connecting",
