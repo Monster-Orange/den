@@ -225,6 +225,8 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "web.bridge_listen",
   "agents.issue_writes",
   "agents.issue_writes_per_hour",
+  // Issue 1127: a longer wait keeps a repo made public treated as private.
+  "agents.issue_writes_visibility_minutes",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",

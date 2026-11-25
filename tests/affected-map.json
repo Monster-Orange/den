@@ -2352,6 +2352,24 @@
     },
     {
       "when": [
+        "scripts/filed-text-scan.js"
+      ],
+      "run": [
+        "tests/unit/scripts/filed-text-scan.test.ts"
+      ],
+      "why": "tests that run scripts/filed-text-scan.js"
+    },
+    {
+      "when": [
+        "scripts/filed-text-scan.mjs"
+      ],
+      "run": [
+        "tests/unit/scripts/filed-text-scan.test.ts"
+      ],
+      "why": "tests that run scripts/filed-text-scan.mjs"
+    },
+    {
+      "when": [
         "scripts/fixed-date-gate.mjs"
       ],
       "run": [
@@ -2422,8 +2440,13 @@
       ],
       "run": [
         "tests/unit/scripts/doc-shots-guard.browser.test.ts",
+        "tests/unit/scripts/filed-text-scan.test.ts",
         "tests/unit/scripts/org-name-commits.test.ts",
+        "tests/unit/scripts/org-names-not-packed.test.ts",
         "tests/unit/scripts/org-names.test.ts",
+        "tests/unit/server/issue-write.test.ts",
+        "tests/unit/server/report-words-1127.test.ts",
+        "tests/unit/shared/filed-text-check.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
       "why": "tests that run scripts/org-names.js"
