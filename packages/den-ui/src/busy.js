@@ -391,6 +391,15 @@ export function holdDots(button, on = true) {
 }
 
 /**
+ * How many buttons the kit holds with dots now: a number only, never the
+ * buttons, so nothing outside the kit can hold or let go of one. A page
+ * that lets each go on its answer leaves 0.
+ */
+export function heldCount() {
+  return held.size;
+}
+
+/**
  * Issue 1054: a row that waits for its save (a drag, a move from a menu):
  * holdRow(row) adds the kit's dots at its end and aria-busy="true", with
  * its words still shown and nothing disabled; holdRow(row, false) takes
