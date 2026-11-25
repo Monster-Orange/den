@@ -1,9 +1,11 @@
 /**
- * Every route in the server's table (route-classes.ts) has a test that
- * calls it: some file under tests/ or gate/ names its path. A new route
- * with no test fails here by name. UNTESTED lists the routes that had none
- * when this check began; it may only shrink, and a listed route that now
- * has a test fails until it is taken off.
+ * Every route in the server's table (route-classes.ts) is named by a test:
+ * some file under tests/ or gate/ names its path, as a string or a URL
+ * built from a base. Named, not proven exercised: a comment or another
+ * method counts too. A new route that no test names fails here by name.
+ * UNTESTED lists the routes no test named when this check began; it may
+ * only shrink, and a listed route that a test now names fails until it is
+ * taken off.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
@@ -76,7 +78,7 @@ function pathPattern(route: string): RegExp {
 
 const key = (r: (typeof ROUTES)[number]) => `${r.methods.join("/")} ${r.path}`;
 
-describe("every route has a test that calls it", () => {
+describe("every route is named by a test", () => {
   const texts = ["tests", "gate"]
     .filter((d) => fs.existsSync(path.join(ROOT, d)))
     .flatMap((d) => testFiles(d))
@@ -86,14 +88,14 @@ describe("every route has a test that calls it", () => {
     return texts.some((t) => re.test(t));
   };
 
-  it("a route with no test is on the UNTESTED list", () => {
+  it("a route no test names is on the UNTESTED list", () => {
     const missing = ROUTES.filter((r) => !named(r.path))
       .map(key)
       .filter((k) => !UNTESTED.includes(k));
     expect(missing).toEqual([]);
   });
 
-  it("the UNTESTED list stays true: each entry is a route, and still has no test", () => {
+  it("the UNTESTED list stays true: each entry is a route, and still named by no test", () => {
     const keys = new Set(ROUTES.map(key));
     const stale = UNTESTED.filter(
       (k) => !keys.has(k) || named(k.slice(k.indexOf(" ") + 1)),
