@@ -4831,6 +4831,7 @@
     "rel.deploy": "Deploy →",
     "rel.run.success": "success",
     "rel.run.failed": "failed",
+    "rel.run.unreadable": "can't read",
     "rel.run.skipped": "skipped",
     "rel.run.dispatching": "dispatching…",
     "rel.run.queued": "queued",

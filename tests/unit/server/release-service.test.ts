@@ -82,7 +82,12 @@ function installGhMock(): void {
     );
     if (!r) return cb(null, { stdout: "", stderr: "" });
     if (r.err) return cb(new Error(r.err));
-    const out = typeof r.out === "function" ? r.out(args) : (r.out ?? "");
+    let out: string;
+    try {
+      out = typeof r.out === "function" ? r.out(args) : (r.out ?? "");
+    } catch (e) {
+      return cb(e as Error);
+    }
     return cb(null, { stdout: out, stderr: "" });
   });
 }
@@ -754,6 +759,111 @@ describe("deploy — waves, gates, aborts", () => {
 });
 
 // ── Per-environment targets ───────────────────────────────────────────────────
+
+describe("deploy — gh can't read a run (issue 129)", () => {
+  let events: ReleaseEvent[];
+  const emit = (ev: ReleaseEvent) => events.push(ev);
+  const texts = () =>
+    events
+      .filter((e) => e.type === "log")
+      .map((e) => (e as { text: string }).text);
+  const doneEv = () =>
+    events.find((e) => e.type === "done") as
+      | { ok: boolean; summary: string }
+      | undefined;
+  const views = (id: string) =>
+    ghCalls().filter((c) => c.includes(`run view ${id} `)).length;
+
+  beforeEach(() => {
+    events = [];
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /**
+   * `run view <id>` fails with `err`; after 100 failures it reads as a
+   * finished success, so a monitor with no bound ends (green) too.
+   */
+  const unreadable = (id: string, err = "gh exploded") => {
+    let n = 0;
+    routes.push({
+      match: `run view ${id} --repo TestOrg/files-api`,
+      out: () => {
+        if (++n > 100) return `completed\tsuccess\thttps://u/${id}`;
+        throw new Error(err);
+      },
+    });
+  };
+
+  const runDeploy = async (plan: DeployPlanEntry[]): Promise<boolean> => {
+    const p = svc.deploy("dev", plan, emit, () => false);
+    await jest.runAllTimersAsync();
+    return p;
+  };
+
+  it("stops a run gh can't read after release.unreadablePolls polls, and says why", async () => {
+    mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 3 }));
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    unreadable("111", "HTTP 401: Bad credentials");
+    const ok = await runDeploy([entry("files-api", 0)]);
+    expect(ok).toBe(false);
+    expect(views("111")).toBe(3);
+    expect(texts().join("\n")).toMatch(
+      /files-api: gh couldn't read run 111 in 3 polls in a row \(HTTP 401: Bad credentials\)/,
+    );
+    expect(doneEv()).toEqual({
+      type: "done",
+      ok: false,
+      summary: "1 deployment(s) did not succeed: files-api.",
+    });
+  });
+
+  it("an unreadable run in an early wave cancels the later waves", async () => {
+    mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 2 }));
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    unreadable("111", "run not found");
+    deployRoutes("shop", "222");
+    const ok = await runDeploy([entry("files-api", 0), entry("shop", 1)]);
+    expect(ok).toBe(false);
+    expect(ghCalls().some((c) => c.includes("TestOrg/shop"))).toBe(false);
+    expect(doneEv()?.summary).toBe(
+      "Wave 0 failed (files-api); later waves cancelled.",
+    );
+  });
+
+  it("a good read resets the count: only polls in a row count", async () => {
+    mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 2 }));
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    let n = 0;
+    routes.push({
+      match: "run view 111 --repo TestOrg/files-api",
+      out: () => {
+        n++;
+        if (n === 1 || n === 3) throw new Error("gh exploded");
+        return n < 5
+          ? "in_progress\t\thttps://u/111"
+          : "completed\tsuccess\thttps://u/111";
+      },
+    });
+    const ok = await runDeploy([entry("files-api", 0)]);
+    expect(ok).toBe(true);
+    expect(views("111")).toBe(5);
+  });
+
+  it("unset, the limit is 40 polls (10 minutes at the default 15 s poll)", async () => {
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    unreadable("111");
+    const ok = await runDeploy([entry("files-api", 0)]);
+    expect(ok).toBe(false);
+    expect(views("111")).toBe(40);
+  });
+});
 
 describe("per-environment release targets", () => {
   const north = cfg({

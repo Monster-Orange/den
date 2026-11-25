@@ -4681,6 +4681,7 @@
     "rel.deploy": "デプロイ →",
     "rel.run.success": "成功",
     "rel.run.failed": "失敗",
+    "rel.run.unreadable": "読み取れません",
     "rel.run.skipped": "スキップ",
     "rel.run.dispatching": "起動中…",
     "rel.run.queued": "待機中",

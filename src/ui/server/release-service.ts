@@ -19,6 +19,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { GH_API_TIMEOUT_MS } from "../../shared/constants.js";
 import {
+  DEFAULT_UNREADABLE_POLLS,
   readDenConfig,
   readExplicitReleaseOrg,
   readReleaseConfig,
@@ -202,6 +203,17 @@ async function gh(
     maxBuffer: GH_MAX_BUFFER,
   });
   return stdout.trim();
+}
+
+/** gh's own last line of why a call failed, short (issue 129). */
+function ghReason(e: unknown): string {
+  const err = e as { stderr?: unknown; message?: unknown };
+  const text =
+    (typeof err?.stderr === "string" && err.stderr.trim()) ||
+    (typeof err?.message === "string" ? err.message : "") ||
+    "gh failed";
+  const last = text.trim().split("\n").filter(Boolean).pop() ?? "gh failed";
+  return last.length > 200 ? `${last.slice(0, 200)}…` : last;
 }
 
 /** Like gh() but returns "" instead of throwing — for best-effort reads. */
@@ -879,25 +891,44 @@ export class ReleaseService {
     return runId;
   }
 
-  /** gh run view → {status, conclusion, url}. */
+  /**
+   * gh run view → {status, conclusion, url}; `unreadable` carries gh's
+   * reason when it couldn't answer (issue 129).
+   */
   private async runStatus(
     repo: string,
     runId: string,
     cfg: ReleaseConfig,
-  ): Promise<{ status: string; conclusion: string | null; url: string }> {
+  ): Promise<{
+    status: string;
+    conclusion: string | null;
+    url: string;
+    unreadable?: string;
+  }> {
     const ghSlug = this.slug(repo, cfg);
-    const row = await ghSafe([
-      "run",
-      "view",
-      runId,
-      "--repo",
-      ghSlug,
-      "--json",
-      "status,conclusion,url",
-      "--jq",
-      '[.status, (.conclusion // ""), .url] | @tsv',
-    ]);
+    let row: string;
+    try {
+      row = await gh([
+        "run",
+        "view",
+        runId,
+        "--repo",
+        ghSlug,
+        "--json",
+        "status,conclusion,url",
+        "--jq",
+        '[.status, (.conclusion // ""), .url] | @tsv',
+      ]);
+    } catch (e) {
+      return {
+        status: "unknown",
+        conclusion: null,
+        url: "",
+        unreadable: ghReason(e),
+      };
+    }
     const [status = "unknown", conclusion = "", url = ""] = row.split("\t");
+    if (!row) return { status, conclusion: null, url, unreadable: "no answer" };
     return { status, conclusion: conclusion || null, url };
   }
 
@@ -915,6 +946,9 @@ export class ReleaseService {
     aborted: () => boolean,
   ): Promise<string[]> {
     const failed: string[] = [];
+    const limit = cfg.unreadablePolls ?? DEFAULT_UNREADABLE_POLLS;
+    const misses = new Map<string, number>();
+    const gaveUp = new Set<string>();
     // eslint-disable-next-line no-constant-condition
     while (true) {
       if (aborted()) return failed;
@@ -922,6 +956,10 @@ export class ReleaseService {
       failed.length = 0;
 
       for (const [repo, runId] of runIds) {
+        if (gaveUp.has(repo)) {
+          failed.push(repo);
+          continue;
+        }
         if (!runId) {
           emit({
             type: "run",
@@ -934,11 +972,33 @@ export class ReleaseService {
           failed.push(repo);
           continue;
         }
-        const { status, conclusion, url } = await this.runStatus(
+        const { status, conclusion, url, unreadable } = await this.runStatus(
           repo,
           runId,
           cfg,
         );
+        if (unreadable !== undefined) {
+          const n = (misses.get(repo) ?? 0) + 1;
+          misses.set(repo, n);
+          if (n >= limit) {
+            gaveUp.add(repo);
+            failed.push(repo);
+            emit({
+              type: "log",
+              level: "error",
+              text: `${repo}: gh couldn't read run ${runId} in ${n} polls in a row (${unreadable}). It counts as failed; check gh auth status and the run on GitHub. release.unreadablePolls sets how many.`,
+            });
+            emit({
+              type: "run",
+              repo,
+              runId,
+              url: null,
+              status: "completed",
+              conclusion: "unreadable",
+            });
+            continue;
+          }
+        } else misses.delete(repo);
         emit({
           type: "run",
           repo,
