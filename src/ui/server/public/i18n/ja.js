@@ -2483,6 +2483,7 @@
     "ap.do.gate_settings_set.loosens":
       "エージェントにできることが広がります: テスト枠の設定 {keys}",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
+    "ap.do.agent_restart_self": "エージェント {agent} を手が空いたときに再起動",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
     "ap.pm.warn":
@@ -3016,6 +3017,7 @@
     "bell.rg.partly": "{n} 件を許可しました。{failed} 件は許可できませんでした",
     "ag.ri.all": "手が空いているエージェントをすべて再起動 ({n})",
     "ag.ri.ws": "このプロジェクトの手が空いているエージェントを再起動 ({n})",
+    "ag.ri.wsShort": "空きを再起動 ({n})",
     "ag.ri.said": "{n} 件を今すぐ再起動します。待機中: {wait}。",
     "ag.ri.saidAll": "{n} 件を今すぐ再起動します。",
     "ag.ri.none": "実行中のエージェントはありません。",

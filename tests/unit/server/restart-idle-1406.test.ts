@@ -19,11 +19,15 @@ const t = (k: string, v?: Record<string, unknown>) =>
   `[${k}${v ? `:${Object.values(v).join("|")}` : ""}]`;
 
 describe("issue 1406: Restart all idle agents", () => {
-  it("offered with the count when two or more are running; not for one", () => {
-    expect(restartIdleBarHtml(1, t)).toBe("");
-    const h = restartIdleBarHtml(3, t);
+  it("offered with the count when two or more run across two or more projects", () => {
+    expect(restartIdleBarHtml(1, 1, t)).toBe("");
+    const h = restartIdleBarHtml(3, 2, t);
     expect(h).toContain('data-act="restart-idle"');
     expect(h).toContain("[ag.ri.all:3]");
+  });
+
+  it("not in one project: that project's own button does the same", () => {
+    expect(restartIdleBarHtml(3, 1, t)).toBe("");
   });
 
   it("a project's own button, with its name, for two or more there", () => {
@@ -31,7 +35,9 @@ describe("issue 1406: Restart all idle agents", () => {
     const h = restartIdleWsHtml('n"orth', 2, t);
     expect(h).toContain('data-act="restart-idle-ws"');
     expect(h).toContain('data-ws="n&quot;orth"');
-    expect(h).toContain("[ag.ri.ws:2]");
+    expect(h).toContain('aria-label="[ag.ri.ws:2]"');
+    expect(h).toContain('title="[ag.ri.ws:2]"');
+    expect(h).toContain(">[ag.ri.wsShort:2]</button>");
   });
 
   it("after it: how many restart now, and which agents wait", () => {
@@ -51,6 +57,7 @@ describe("issue 1406: Restart all idle agents", () => {
     const keys = [
       "ag.ri.all",
       "ag.ri.ws",
+      "ag.ri.wsShort",
       "ag.ri.said",
       "ag.ri.saidAll",
       "ag.ri.none",

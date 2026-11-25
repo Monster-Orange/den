@@ -3477,6 +3477,7 @@
     "ap.do.gate_settings_set.loosens":
       "This widens what agents can do: gate settings {keys}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
+    "ap.do.agent_restart_self": "Restart agent {agent} when it's idle",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",
@@ -4012,6 +4013,7 @@
     "bell.rg.partly": "Allowed {n}; {failed} could not be allowed",
     "ag.ri.all": "Restart all idle agents ({n})",
     "ag.ri.ws": "Restart this project's idle agents ({n})",
+    "ag.ri.wsShort": "Restart idle ({n})",
     "ag.ri.said": "{n} restarting now. Waiting: {wait}.",
     "ag.ri.saidAll": "{n} restarting now.",
     "ag.ri.none": "No agents are running.",

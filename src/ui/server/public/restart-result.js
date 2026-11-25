@@ -228,19 +228,24 @@ export function followRestarts(o) {
 }
 
 /**
- * "Restart all idle agents (n)" above the list, when two or
- * more agents are running; else "".
+ * "Restart all idle agents (n)" above the list, when two or more agents
+ * run across two or more projects (in one, that project's own button does
+ * the same); else "".
  */
-export function restartIdleBarHtml(n, t) {
-  return n >= 2
+export function restartIdleBarHtml(n, projects, t) {
+  return n >= 2 && projects >= 2
     ? `<div class="agnote" data-note="restart-idle"><button type="button" class="den-btn sm" data-act="restart-idle">${esc(t("ag.ri.all", { n }))}</button></div>`
     : "";
 }
 
-/** A project's "Restart this project's idle agents", for two or more. */
+/**
+ * A project's "Restart idle (n)" in its header, for two or more running
+ * there; its full words are its name and tip.
+ */
 export function restartIdleWsHtml(ws, n, t) {
+  const full = esc(t("ag.ri.ws", { n }));
   return n >= 2
-    ? `<button type="button" class="den-btn sm" data-act="restart-idle-ws" data-ws="${esc(ws)}">${esc(t("ag.ri.ws", { n }))}</button>`
+    ? `<button type="button" class="den-btn sm agri-t" data-act="restart-idle-ws" data-ws="${esc(ws)}" aria-label="${full}" title="${full}">${esc(t("ag.ri.wsShort", { n }))}</button>`
     : "";
 }
 

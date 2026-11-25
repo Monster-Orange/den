@@ -176,6 +176,10 @@ Held (each waits for the person's Allow):
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `agent_restart_self`: ask to be restarted at your next idle, for yourself
+  only, with a reason: `tools` (Den's tools changed), `update`, or `other`
+  with one line why. It runs on the person's Allow; two or more asks share
+  one card in the bell.
 - `agent_sandbox_set`: turn one agent's sandbox off or back on, with a
   reason. Off runs only on the person's own Allow, and the Review says so
   when an agent asks for itself; back on follows the policy. Den restarts

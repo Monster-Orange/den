@@ -2556,6 +2556,7 @@
     "ap.do.gate_settings_set.loosens":
       "Esto amplía lo que pueden hacer los agentes: ajustes de la cola de pruebas {keys}",
     "ap.do.agent_mode": "{agent}: {from} → seguir el proyecto ({to})",
+    "ap.do.agent_restart_self": "Reiniciar el agente {agent} cuando esté libre",
     "ap.do.agent_mode.loosens":
       "Esto permite que {agent} actúe sin preguntarte: {from} → seguir el proyecto ({to})",
     "ap.pm.warn":
@@ -3096,6 +3097,7 @@
     "bell.rg.partly": "Permitidos {n}; {failed} no se pudieron permitir",
     "ag.ri.all": "Reiniciar todos los agentes libres ({n})",
     "ag.ri.ws": "Reiniciar los agentes libres de este proyecto ({n})",
+    "ag.ri.wsShort": "Reiniciar libres ({n})",
     "ag.ri.said": "{n} se reinician ahora. Esperan: {wait}.",
     "ag.ri.saidAll": "{n} se reinician ahora.",
     "ag.ri.none": "No hay agentes en marcha.",

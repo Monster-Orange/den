@@ -1262,7 +1262,12 @@ function paintList() {
     const bar = toolsBarHtml(inView);
     if (bar) notes.push(bar);
     // Restart all idle agents, for two or more running.
-    const idle = restartIdleBarHtml(runningIn(inView).length, t);
+    const running = runningIn(inView);
+    const idle = restartIdleBarHtml(
+      running.length,
+      new Set(running.map((r) => r.workspace)).size,
+      t,
+    );
     if (idle) notes.push(idle);
   }
   const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
@@ -1282,7 +1287,7 @@ function paintList() {
           ? groups
               .map(
                 (g) =>
-                  `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${PAGE === "terminal" ? "" : restartIdleWsHtml(g.ws, runningIn(g.rows).length, t)}${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
+                  `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span class="wsn">${wsLinkHtml(g.ws)}</span><span class="wsa">${PAGE === "terminal" ? "" : restartIdleWsHtml(g.ws, runningIn(g.rows).length, t)}${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
                   g.rows.map((r) => reorderRowHtml(g, r)).join("") +
                   `</div>`,
               )
