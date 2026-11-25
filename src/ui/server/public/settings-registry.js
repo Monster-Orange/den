@@ -5303,6 +5303,22 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agents_layout ?? "focus",
     write: (v, ctx) => ctx.post({ agents_layout: v }),
   },
+  {
+    id: "agents.coach_counts",
+    category: "agents",
+    label: "Coach tab: show counts as",
+    description:
+      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+    keywords: ["coach", "counts", "total", "per day", "usage", "tokens"],
+    scope: "user",
+    control: seg([
+      { value: "total", label: "Total" },
+      { value: "per_day", label: "Per day" },
+    ]),
+    keys: ["coach_counts"],
+    read: (ctx) => ctx.data.coach_counts ?? "total",
+    write: (v, ctx) => ctx.post({ coach_counts: v }),
+  },
   ...bellRows(),
   {
     id: "agents.helpers_shown",
