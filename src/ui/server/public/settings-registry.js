@@ -4219,7 +4219,9 @@ export const DEN_SETTINGS = [
     keywords: ["rail", "sidebar", "hide", "order", "reorder", "pages", "menu"],
     scope: "user",
     control: { type: "navlist" },
-    keys: ["shell.hidden", "shell.order"],
+    // Issue 1444: the rail's folded sections are the rail's layout too;
+    // they are set from the rail's own section headers.
+    keys: ["shell.hidden", "shell.order", "shell.folded"],
     read: (ctx) => {
       const s = ctx.shell.getState();
       return { hidden: s.hidden || [], order: s.order || [] };
