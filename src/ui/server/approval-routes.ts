@@ -36,7 +36,9 @@ import {
   isCriticalWrite,
   type CriticalArea,
   type PolicyKind,
+  type SettingCategory,
 } from "../../shared/approval-policy.js";
+import type { InstallMode } from "../../shared/den-config.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { recordAction } from "./audit.js";
 import { readBody, sendJson } from "./http-helpers.js";
@@ -72,6 +74,8 @@ export type HeldCheck =
        * money): critical, whatever the write's placement says.
        */
       areas?: CriticalArea[];
+      /** Issue 1371 Part 2: a setting_change's category, for the policy. */
+      category?: SettingCategory;
       /** Issue 199: the agents that keep a mode of their own. */
       ownMode?: { agent: string; mode: string }[];
       /**
@@ -340,8 +344,17 @@ export async function handleApprovalRoutes(
       project: string | undefined,
       widens: boolean,
       /** Issue 160: the checked args (what it is on) and what it touches. */
-      ask?: { args: Record<string, unknown>; areas?: CriticalArea[] },
+      ask?: {
+        args: Record<string, unknown>;
+        areas?: CriticalArea[];
+        category?: SettingCategory;
+      },
     ) => { kind: PolicyKind; from: string };
+    /**
+     * Issue 1391: the install's mode (user.yml install_mode), read per ask.
+     * Not given, or a bad value: strict, today's asks.
+     */
+    installMode?: () => InstallMode;
     /** Issue 160: a write the policy ran under notify, for the person's updates. */
     notify?: (a: Approval, project: string | undefined, from: string) => void;
     /**
@@ -500,16 +513,23 @@ export async function handleApprovalRoutes(
     let ran: { kind: PolicyKind; from: string } | null = null;
     // Issue 160: why the policy holds it (critical, watched, …), for the asker.
     let heldBy: string | undefined;
+    let mode: InstallMode = "strict";
+    try {
+      mode = deps.installMode?.() ?? "strict";
+    } catch {
+      mode = "strict"; // a bad setting: today's asks
+    }
     if (
       a.agent &&
       !askAnyway &&
       deps.policy &&
-      !isCriticalWrite(action, checked.personOnly === true, checked.areas)
+      !isCriticalWrite(action, checked.personOnly === true, checked.areas, mode)
     ) {
       try {
         const p = deps.policy(action, project, checked.personOnly === true, {
           args: stored,
           ...(checked.areas?.length ? { areas: checked.areas } : {}),
+          ...(checked.category ? { category: checked.category } : {}),
         });
         if (p.kind !== "ask") ran = p;
         else heldBy = p.from;
@@ -578,6 +598,7 @@ export async function handleApprovalRoutes(
                   action,
                   checked.personOnly === true,
                   checked.areas,
+                  mode,
                 ) ??
                 undefined,
             }
@@ -808,17 +829,31 @@ export async function handleApprovalRoutes(
   return true;
 }
 
+/** Issue 1371 Part 2, issue 1480: held writes whose bell row has Undo. */
+export const UNDOABLE_ACTIONS: ReadonlySet<string> = new Set([
+  "setting_change",
+  "project_event_feed_add",
+  "project_event_feed_remove",
+]);
+
 /**
  * Issue 160: the person's updates say what an agent did under the approval
  * policy's notify, one item per write (never folded into another).
  */
 export function notePolicyRun(
   store: Pick<NotificationStore, "add">,
-  a: Pick<Approval, "id" | "agent" | "summary">,
+  a: Pick<Approval, "id" | "agent" | "summary"> &
+    Partial<Pick<Approval, "action" | "result">>,
   project: string | undefined,
 ): void {
   const name = a.agent ?? "An agent";
+  // Issue 1371 Part 2: a setting changed without asking can be undone.
+  // Issue 1480: and so can an event feed added or removed.
+  const undoable =
+    UNDOABLE_ACTIONS.has(a.action ?? "") &&
+    (a.result as { ok?: unknown } | undefined)?.ok === true;
   store.add({
+    ...(undoable ? { undo: { approval: a.id } } : {}),
     kind: "service",
     subject: `record:approval-${a.id}`,
     scope: `workspace/${project ?? "den-server"}`,

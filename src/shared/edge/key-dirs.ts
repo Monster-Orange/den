@@ -32,7 +32,9 @@ export function edgeKeyDirsOf(cfg: EdgeConfig): string[] {
  * the org's CA (tls.ts caDir), the edge's TLS key (tls.ts ensureCerts),
  * the dynamic/ file carrying the proof (runtime.ts edgeUp), stacks'
  * generated secrets (stacks/runtime.ts stackDir), the proof (proof.ts), and
- * the access log, raw and swept (access-sweep.ts: request details).
+ * the access log, raw and swept (access-sweep.ts: request details), and the
+ * once-only rotation's marker (runtime.ts rotateEdgeProofOnce: no secret,
+ * but an agent that wrote it could keep the rotation from running).
  */
 export const EDGE_SECRET_PARTS = [
   "ca",
@@ -42,6 +44,7 @@ export const EDGE_SECRET_PARTS = [
   "den-edge-proof",
   "access",
   "edge-access.log",
+  "proof-rotated.json",
 ] as const;
 
 /**

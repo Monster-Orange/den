@@ -47,6 +47,8 @@ export interface HubLinkDeps {
   write?: (ws: string, link: HubProjectLink | null, by?: string) => void;
   /** Every project here, for --suggested (the server agent's scope isn't one). */
   projects?: () => string[] | Promise<string[]>;
+  /** Issue 1334: an empty project (no repos, services or agents); never offered. */
+  empty?: (ws: string) => boolean;
   /** This install's page for `path`, or null when its address isn't set. */
   link?: (path: string) => string | null;
   /** Issue 989: the running server (default: this install's). */
@@ -56,8 +58,12 @@ export interface HubLinkDeps {
 async function defaultProjects(): Promise<string[]> {
   const w = await import("../../shared/environment-manager/workspaces.js");
   const sa = await import("../../shared/agents/server-agent.js");
+  // Issue 1334: an empty project has nothing to link.
+  const empty = await (
+    await import("../../shared/empty-project.js")
+  ).emptyProjectsNow();
   return Object.keys(w.readWorkspacesFile().workspaces ?? {})
-    .filter((k) => !sa.isServerScope(k))
+    .filter((k) => !sa.isServerScope(k) && !empty(k))
     .sort();
 }
 
@@ -269,8 +275,9 @@ async function suggestedAll(
   const read = deps.read ?? ((w: string) => hubProjectOf(w));
   const choicesOf = deps.choices ?? defaultChoices;
   // Issue 649: never the catch-all project; a person links it by hand.
+  // Issue 1334: nor an empty one.
   const projects = (await (deps.projects ?? defaultProjects)()).filter(
-    (p) => !isCatchAllProject(p),
+    (p) => !isCatchAllProject(p) && !deps.empty?.(p),
   );
   const rows: {
     project: string;

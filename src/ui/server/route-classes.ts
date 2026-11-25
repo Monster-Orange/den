@@ -506,6 +506,11 @@ export const ROUTES: readonly RouteEntry[] = [
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
+  M(
+    ["POST"],
+    "/api/audit/cli",
+    "issue 1369: a CLI's audit entry, recorded as its credential says",
+  ),
   M(["POST"], "/api/web/restart", "restarts this server"),
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
@@ -559,6 +564,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // Issue 1371 Part 2: the person's Undo of a setting an agent changed.
+  M(["POST"], "/api/settings/undo", "puts a setting back (user.yml)"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
   // Issue 666: Make <alias> this Den's address (the owner's only).
@@ -671,6 +678,16 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/workspaces/:ws/event-feeds",
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
   ),
   M(
     ["POST", "DELETE"],
@@ -925,6 +942,10 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/hub/link-suggestions",
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
+  ),
+  R(
+    "/api/hub/groups",
+    "Issue 750: this install's groups as Hub serves them (read from Hub, kept in memory only), for the agents page's By group view",
   ),
   R(
     "/api/hub/connect-review",
@@ -1235,6 +1256,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [

@@ -986,6 +986,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 52: Dismiss a Coach finding, with the reason: a person's.
   "/api/coach/dismiss",
   "/api/settings",
+  // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
+  "/api/settings/undo",
   "/api/scope",
   "/api/web-url",
   // Issue 666: an alias made this install's address: the owner's.
@@ -1036,6 +1038,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agent-modes",
   // Issue 352: change or remove a project's MCP server (project_mcp_* asks).
   "/api/workspaces/:ws/mcp-servers/:name",
+  // Issue 1480: add or remove a project's app event feed (writes only: an
+  // agent still reads the list; project_event_feed_* asks).
+  "/api/workspaces/:ws/event-feeds",
+  "/api/workspaces/:ws/event-feeds/:name",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
   // Issue 96: the order a person sees their agents in is the person's.

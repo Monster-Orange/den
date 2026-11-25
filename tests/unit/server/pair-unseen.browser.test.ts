@@ -134,6 +134,11 @@ async function signedOut(
   });
   const r = await page.goto(`${edge()}/settings`);
   expect(r?.status()).toBe(401);
+  // Issue 1333: the page asks for a code only on its button.
+
+  await page.waitForSelector("#den-pair-start, #den-pair-code");
+
+  if (await page.$("#den-pair-start")) await page.click("#den-pair-start");
   await page.waitForSelector("#den-pair-code", { timeout: 15_000 });
   const code = ((await page.textContent("#den-pair-code")) ?? "").trim();
   expect(code).toMatch(/^[0-9A-Z]{3}-[0-9A-Z]{3}$/);
@@ -204,7 +209,7 @@ describe.each(ENGINES)("issue 320 in %s", (name) => {
     expect(await claimed(pollId())).toEqual([404, false]);
   }, 60_000);
 
-  it("a page whose polls stall past the bound (a background tab) shows a fresh code by itself", async () => {
+  it("a page whose polls stall past the bound (a background tab) offers the button again, and its click gives a fresh code (issue 1333: never by itself)", async () => {
     if (skip()) return;
     const { page, code } = await signedOut(name);
     let release: () => void = () => {};
@@ -216,6 +221,8 @@ describe.each(ENGINES)("issue 320 in %s", (name) => {
     });
     await sleep(UNSEEN_MS + 1000);
     release();
+    await page.waitForSelector("#den-pair-start", { timeout: 15_000 });
+    await page.click("#den-pair-start");
     await page.waitForFunction(
       (old) => {
         const el = document.getElementById("den-pair-code");
