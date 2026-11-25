@@ -627,25 +627,30 @@ export async function handleNotificationRoutes(
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
   // Issue 791: a peek's read is a look at the agent (`seen: true`).
-  if (
+  const peek =
     pathname === "/api/notifications/read" &&
     b.seen === true &&
     "subject" in which &&
     /^agent:/.test(which.subject)
-  )
-    deps.seen?.markSeen({ subject: which.subject, person: personKey(req) });
+      ? which.subject
+      : null;
+  if (peek) deps.seen?.markSeen({ subject: peek, person: personKey(req) });
   // Issue 1339: one view build, one write for the whole set.
   const prefs = (deps.prefs ?? bellPrefs)(null);
-  const n =
-    pathname === "/api/notifications/read" && "all" in which
-      ? (() => {
-          const v = bellView(deps.store.list(), prefs);
-          return deps.store.markReadMany(
-            [...v.recent, ...v.updates, ...v.older]
-              .filter((x) => !x.read)
-              .map((x) => x.id),
-          );
-        })()
+  // Mark read for what the bell shows, kept by `keep`, in one write.
+  const markShown = (keep: (x: { subject: string }) => boolean) => {
+    const v = bellView(deps.store.list(), prefs);
+    return deps.store.markReadMany(
+      [...v.recent, ...v.updates, ...v.older]
+        .filter((x) => !x.read && keep(x))
+        .map((x) => x.id),
+    );
+  };
+  const n = peek
+    ? // Issue 791: a peek marks only what the bell showed for the agent.
+      markShown((x) => x.subject === peek)
+    : pathname === "/api/notifications/read" && "all" in which
+      ? markShown(() => true)
       : pathname === "/api/notifications/read"
         ? deps.store.markRead(which)
         : deps.store.clearRead(which);

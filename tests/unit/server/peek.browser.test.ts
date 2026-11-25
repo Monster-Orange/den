@@ -282,6 +282,43 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await p.context().close();
   }, 90_000);
 
+  it("the page behind keeps its scroll: open and close a peek, and it hasn't moved", async () => {
+    if (skip()) return;
+    const p = await open(width);
+    // The Services page's own scroll pane, made tall and scrolled down.
+    const pane = ".services-pane";
+    await p.waitForSelector(pane);
+    await p.evaluate((sel) => {
+      const sc = document.querySelector<HTMLElement>(sel)!;
+      // A block after the cards, in CSS: the page's re-render of its
+      // cards (a bell read can cause one) keeps it.
+      const st = document.createElement("style");
+      st.textContent = `${sel}::after { content: ""; display: block; flex: none; height: 4000px; }`;
+      document.head.appendChild(st);
+      sc.scrollTop = 600;
+    }, pane);
+    const scrollOf = () => p.$eval(pane, (el) => (el as HTMLElement).scrollTop);
+    // Settled: the cards loaded, the pane's height and scroll still for 1 s.
+    await p.waitForFunction(
+      (sel) => {
+        const el = document.querySelector<HTMLElement>(sel)!;
+        const w = window as unknown as { __st?: [string, number] };
+        const k = `${el.scrollHeight}:${el.scrollTop}`;
+        if (w.__st?.[0] !== k) w.__st = [k, Date.now()];
+        return Date.now() - w.__st[1] >= 1000;
+      },
+      pane,
+      { polling: 200, timeout: 20_000 },
+    );
+    const before = await scrollOf();
+    expect(before).toBeGreaterThan(0);
+    await peek(p);
+    await p.keyboard.press("Escape");
+    await p.locator("dialog#den-peek").waitFor({ state: "detached" });
+    expect(await scrollOf()).toBe(before);
+    await p.context().close();
+  }, 90_000);
+
   it("another agent needs you: a strip offers Switch, and switching keeps one panel", async () => {
     if (skip()) return;
     const p = await open(width);

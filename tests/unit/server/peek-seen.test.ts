@@ -47,7 +47,8 @@ function res() {
   return { r: r as unknown as http.ServerResponse, out };
 }
 
-function rig() {
+/** Bell v6's kinds turned off (none: every kind shown). */
+function rig(off: string[] = []) {
   const store = new NotificationStore(dir);
   store.add({
     kind: "waiting",
@@ -65,6 +66,7 @@ function rig() {
   const deps = {
     store,
     attention: {} as never,
+    prefs: () => ({ off, foldDays: 7 }) as never,
     // Issue 773's store: only markSeen is asked for here.
     seen: {
       markSeen: (k: { subject: string; person: string }) => {
@@ -77,7 +79,7 @@ function rig() {
 }
 
 describe("issue 791: a peek is a look (the seen mark)", () => {
-  it("read with seen: every item of the agent's is read, and its seen mark is recorded", async () => {
+  it("read with seen: every item of the agent's the bell shows is read, and its seen mark is recorded", async () => {
     const { store, seen, deps } = rig();
     const { r, out } = res();
     await handleNotificationRoutes(
@@ -88,6 +90,24 @@ describe("issue 791: a peek is a look (the seen mark)", () => {
     );
     expect(out.status).toBe(200);
     expect(store.list().every((n) => n.read)).toBe(true);
+    expect(seen).toEqual(["agent:planner"]);
+  });
+
+  it("a kind the person turned off stays unread: a peek marks only what it showed", async () => {
+    const { store, seen, deps } = rig(["finished"]);
+    const { r, out } = res();
+    await handleNotificationRoutes(
+      req({ subject: "agent:planner", seen: true }),
+      r,
+      "/api/notifications/read",
+      deps,
+    );
+    expect(out.status).toBe(200);
+    expect(JSON.parse(out.body).changed).toBe(1);
+    const byKind = Object.fromEntries(
+      store.list().map((n) => [n.kind, n.read]),
+    );
+    expect(byKind).toEqual({ waiting: true, finished: false });
     expect(seen).toEqual(["agent:planner"]);
   });
 
