@@ -150,8 +150,14 @@ for (const engine of ["chromium", "webkit"]) {
       const { p } = await open(b);
       await p.focus("#send");
       await p.keyboard.press("Enter");
-      await p.waitForSelector('#send[aria-busy="true"]');
-      await p.waitForTimeout(50);
+      await p.waitForSelector('#send[aria-busy="true"][aria-disabled="true"]');
+      // Two frames on: an old-style hold disabled the submitter a turn late.
+      await p.evaluate(
+        () =>
+          new Promise((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(r)),
+          ),
+      );
       expect(await active(p)).toBe("send");
       expect(await state(p, "#send")).toEqual({ busy: "true", off: "true" });
       await p.context().close();
