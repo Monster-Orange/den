@@ -271,7 +271,6 @@ const plain = (v: string) =>
 /** The file as it is on disk (empty when missing or unreadable). */
 function readStore(file: string): StoreFile {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(path.dirname(file), file);
     if (!r.ok) return { items: [], mutes: [] };
     const v = (r.value ?? {}) as {

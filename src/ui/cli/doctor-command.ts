@@ -1905,11 +1905,6 @@ function safeShownPath(rel: string): string {
     .join("/");
 }
 
-/**
- * Issue 786 clause 3: the state files Den couldn't read and kept in
- * <state>/backup in the last KEPT_DAYS days (a warn row naming them), or
- * nothing when none: never a silent reset.
- */
 export const KEPT_DAYS = 30;
 export function stateKeptLines(
   title: string,

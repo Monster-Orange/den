@@ -1,10 +1,3 @@
-/**
- * Issue 786 clause 3: the bell's item for each state file Den couldn't read
- * and kept in <state>/backup (src/shared/state-backup.ts). One item per file
- * (its subject names the file), updated when the same file breaks again.
- * Files kept while no server ran (a CLI, the sessions host) are told at the
- * server's start; each note is told once.
- */
 import {
   type KeptFile,
   markKeptTold,
@@ -26,10 +19,6 @@ export function noteStateKept(store: Bell, k: KeptFile): void {
   });
 }
 
-/**
- * Tell the bell of the notes not yet told, then of each file kept from now
- * on. Returns the way to stop listening.
- */
 export function startStateKeptBell(
   stateDir: string,
   store: () => Bell,
@@ -44,7 +33,6 @@ export function startStateKeptBell(
         notes.map((k) => k.saved),
       );
     } catch {
-      /* the bell is best effort: the copy and doctor's row stay */
     }
   };
   tell(readKept(stateDir).filter((k) => !k.told));
