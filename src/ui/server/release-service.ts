@@ -231,6 +231,9 @@ function ghReason(text: string): string {
   return last.length > 200 ? `${last.slice(0, 200)}…` : last;
 }
 
+/** Issue 129: GitHub's rate-limit window is an hour at most. */
+const RATE_LIMIT_MAX_MS = 3_600_000;
+
 /**
  * Issue 129: GitHub's rate limit (403 or 429), which every agent on one
  * account shares and which can last an hour. `resetAt` (ms) when gh's text
@@ -1011,7 +1014,10 @@ export class ReleaseService {
           limitedNow = true;
           allTerminal = false;
           if (rateLimited.resetAt)
-            waitUntil = Math.max(waitUntil, rateLimited.resetAt);
+            waitUntil = Math.max(
+              waitUntil,
+              Math.min(rateLimited.resetAt, Date.now() + RATE_LIMIT_MAX_MS),
+            );
           if (!limitedWarned) {
             limitedWarned = true;
             const until = rateLimited.resetAt

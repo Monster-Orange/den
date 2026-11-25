@@ -833,6 +833,31 @@ describe("deploy — gh can't read a run (issue 129)", () => {
     expect(texts().join("\n")).toContain("HTTP 401: Bad credentials");
   });
 
+  it("a reset time far off waits an hour at most", async () => {
+    mockReadReleaseConfig.mockReturnValue(
+      cfg({ unreadablePolls: 2, pollSeconds: 15 }),
+    );
+    on("workflow run cd.yml --repo TestOrg/files-api", "");
+    on("run list --repo TestOrg/files-api", "111");
+    let n = 0;
+    const at: number[] = [];
+    routes.push({
+      match: "run view 111 --repo TestOrg/files-api",
+      out: () => {
+        at.push(Date.now());
+        if (++n === 1)
+          throw new Error(
+            "HTTP 403: API rate limit exceeded (x-ratelimit-reset: 99999999999)",
+          );
+        return "completed\tsuccess\thttps://u/111";
+      },
+    });
+    const ok = await runDeploy([entry("files-api", 0)]);
+    expect(ok).toBe(true);
+    expect(at[1] - at[0]).toBeLessThanOrEqual(3_600_000 + 1_000);
+    expect(at[1] - at[0]).toBeGreaterThanOrEqual(3_600_000 - 1_000);
+  });
+
   it("a token split by color codes is redacted too", async () => {
     mockReadReleaseConfig.mockReturnValue(cfg({ unreadablePolls: 1 }));
     const half = "A1b2C3d4".repeat(3);
