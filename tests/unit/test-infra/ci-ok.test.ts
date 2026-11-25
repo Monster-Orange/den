@@ -27,7 +27,9 @@ const needs = (j: Job | undefined): string[] =>
 
 type R = "success" | "failure" | "skipped" | "cancelled";
 function run(
-  r: Partial<Record<"fast" | "pr" | "den-ui-nav" | "pr-shards", R>>,
+  r: Partial<
+    Record<"fast" | "pr" | "den-ui-nav" | "pr-shards" | "pr-node22", R>
+  >,
   out: { nav?: string; shards?: string } = { nav: "true", shards: "[1,2]" },
 ) {
   const all = {
@@ -35,6 +37,7 @@ function run(
     pr: "success",
     "den-ui-nav": "success",
     "pr-shards": "success",
+    "pr-node22": "success",
     ...r,
   };
   const NEEDS = JSON.stringify(
@@ -64,6 +67,8 @@ describe("issue 843: ci-ok, the merge queue's one required check", () => {
     ["a job was cancelled", { "pr-shards": "cancelled" }],
     ["fast was skipped", { fast: "skipped" }],
     ["pr was skipped", { pr: "skipped" }],
+    ["Node 22 failed", { "pr-node22": "failure" }],
+    ["Node 22 was skipped", { "pr-node22": "skipped" }],
   ] as [string, Record<string, R>][])("fails when %s", (_k, r) => {
     const p = run(r);
     expect(p.status).toBe(1);

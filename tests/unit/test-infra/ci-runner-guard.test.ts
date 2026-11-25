@@ -111,6 +111,8 @@ function lookup(ctx: Record<string, unknown>, ref: string): Value {
     if (cur === null || typeof cur !== "object") return null;
     cur = (cur as Record<string, unknown>)[key];
   }
+  // GitHub: a repository variable that isn't set reads as ''.
+  if (cur == null && ref.startsWith("vars.")) return "";
   return (cur ?? null) as Value;
 }
 
@@ -224,10 +226,12 @@ const PUSH = { event_name: "push", repository: REPO, event: {} };
 const DRY_COND =
   "vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && " +
   "startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')";
-const DRY_LABELS =
-  'vars.DEN_RELEASE_RUNNER_LABELS || \'["self-hosted","den-wsl"]\'';
-const DRY_RUNS_ON = `\${{ (${DRY_COND}) && fromJSON(${DRY_LABELS}) || 'ubuntu-latest' }}`;
-const DRY_BOX_LABELS = `\${{ (${DRY_COND}) && (${DRY_LABELS}) || '' }}`;
+// Issue 1583: no default labels. The box only with the switch on and the
+// labels set; the switch on without them fails the plan, and nothing queues.
+const DRY_BOX = `${DRY_COND} && vars.DEN_RELEASE_RUNNER_LABELS`;
+const DRY_NO_LABELS = `${DRY_COND} && vars.DEN_RELEASE_RUNNER_LABELS == ''`;
+const DRY_RUNS_ON = `\${{ (${DRY_BOX}) && fromJSON(vars.DEN_RELEASE_RUNNER_LABELS) || 'ubuntu-latest' }}`;
+const DRY_BOX_LABELS = `\${{ (${DRY_BOX}) && vars.DEN_RELEASE_RUNNER_LABELS || '' }}`;
 const GATES_RUNS_ON =
   "${{ (inputs.box-labels != '' && github.event_name == 'push' && " +
   "startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && " +
@@ -428,7 +432,7 @@ describe("CI's self-hosted runner guard", () => {
       DRY_BOX_LABELS,
     );
     const watch = w.jobs["box-watch"] as Record<string, unknown>;
-    expect(watch.if).toBe(DRY_COND);
+    expect(watch.if).toBe(DRY_BOX);
     expect(watch["runs-on"]).toBe("ubuntu-latest");
     expect(watch.permissions).toEqual({ actions: "write", contents: "read" });
     // the fallback is a run by hand on the same tag, in the same group
@@ -463,13 +467,51 @@ describe("CI's self-hosted runner guard", () => {
       github: tag("refs/tags/v0.4.90-dev.1").github,
     };
     expect(evaluate(DRY_RUNS_ON, off)).toBe("ubuntu-latest");
-    // unset labels: the same default as ci.yml's
-    expect(
-      evaluate(DRY_RUNS_ON, {
-        vars: { DEN_RELEASE_SELF_HOSTED: "on" },
-        github: tag("refs/tags/v0.4.90-dev.1").github,
-      }),
-    ).toEqual(SELF_HOSTED);
+  });
+
+  // Issue 1583: the switch alone sends nothing to a box. Without labels the
+  // plan fails at once, with the reason, before anything else runs.
+  it("release-dry-run.yml: the switch on without DEN_RELEASE_RUNNER_LABELS fails the plan, and nothing waits for a box", () => {
+    const w = workflow("release-dry-run.yml");
+    expect(text("release-dry-run.yml")).not.toContain("den-wsl");
+    const dev = { ...PUSH, ref: "refs/tags/v0.4.90-dev.1" };
+    const ctx = (vars: Record<string, string>, github = dev) => ({
+      vars,
+      github,
+    });
+    const onNoLabels = ctx({ DEN_RELEASE_SELF_HOSTED: "on" });
+    const onEmpty = ctx({
+      DEN_RELEASE_SELF_HOSTED: "on",
+      DEN_RELEASE_RUNNER_LABELS: "",
+    });
+    for (const c of [onNoLabels, onEmpty]) {
+      expect(evaluate(DRY_RUNS_ON, c)).toBe("ubuntu-latest");
+      expect(evaluate(DRY_BOX_LABELS, c)).toBe("");
+      expect(evaluate(`\${{ ${DRY_BOX} }}`, c)).toBeFalsy();
+    }
+
+    const steps = (w.jobs.plan as { steps: { if?: string; run?: string }[] })
+      .steps;
+    const stop = steps[0];
+    expect(stop.if).toBe(DRY_NO_LABELS);
+    expect(stop.run).toMatch(
+      /DEN_RELEASE_SELF_HOSTED is on but DEN_RELEASE_RUNNER_LABELS is not set/,
+    );
+    expect(stop.run).toMatch(/exit 1\s*$/);
+    const fails = (c: Record<string, unknown>) =>
+      evaluate(`\${{ ${stop.if} }}`, c);
+    expect(fails(onNoLabels)).toBe(true);
+    expect(fails(onEmpty)).toBe(true);
+    // labels set, the switch off or unset, a run by hand, a branch: it passes
+    for (const c of [
+      ctx(RELEASE_ON),
+      ctx({}),
+      ctx({ DEN_RELEASE_RUNNER_LABELS: RELEASE_ON.DEN_RELEASE_RUNNER_LABELS }),
+      ctx({ DEN_RELEASE_SELF_HOSTED: "on" }, { ...BY_HAND, ref: dev.ref }),
+      ctx({ DEN_RELEASE_SELF_HOSTED: "on" }, { ...PUSH, ref: "refs/heads/x" }),
+    ]) {
+      expect(fails(c)).toBe(false);
+    }
   });
 
   it("release-gates.yml: checks and pack take the caller's box labels only on a dev tag's push; the tests stay hosted", () => {
