@@ -92,6 +92,36 @@ describe("issue 785: the resume report's limits", () => {
     expect(user.agents).toMatchObject({ resume_first_line_max_bytes: 65536 });
   });
 
+  it("written with issue 1311's draft hold in one POST, both blocks keep every key", () => {
+    const user: Record<string, unknown> = { agents: { restore_on_boot: true } };
+    expect(
+      cliRows.patchCliRows(user, {
+        agents_resume_report: { first_line_max_bytes: 65536, min_seconds: 2 },
+        agents_draft: { hold_max_minutes: 45 },
+      }),
+    ).toEqual({ ok: true });
+    expect(user.agents).toEqual({
+      restore_on_boot: true,
+      resume_first_line_max_bytes: 65536,
+      resume_report_min_seconds: 2,
+      draft_hold_max_minutes: 45,
+    });
+    expect(
+      cliRows.patchCliRows(user, { agents_draft: { hold_max_minutes: 50 } }),
+    ).toEqual({ ok: true });
+    expect(
+      cliRows.patchCliRows(user, {
+        agents_resume_report: { min_seconds: 3 },
+      }),
+    ).toEqual({ ok: true });
+    expect(user.agents).toEqual({
+      restore_on_boot: true,
+      resume_first_line_max_bytes: 65536,
+      resume_report_min_seconds: 3,
+      draft_hold_max_minutes: 50,
+    });
+  });
+
   it("a person's setting, never an agent's; never read as an agent id; config takes both", () => {
     expect(cliRows.PERSON_ONLY_SETTINGS).toContain("agents_resume_report");
     expect(AGENTS_RESERVED_KEYS).toEqual(
