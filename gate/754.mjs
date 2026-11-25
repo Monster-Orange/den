@@ -114,7 +114,7 @@ export async function run(ctx, state) {
     out.rows = await page.evaluate(() =>
       [...document.querySelectorAll("[data-hubcurrent]")].map((e) => ({
         source: e.getAttribute("data-hubcurrent"),
-        kind: !!e.querySelector(".hw-kind"),
+        kind: !!e.querySelector("[data-hw-kind]"),
         link: !!e.querySelector("a[href^='http']"),
       })),
     );

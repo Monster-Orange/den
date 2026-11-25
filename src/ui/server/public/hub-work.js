@@ -153,7 +153,7 @@ export function hubCurrentHtml(cur, t = tDefault) {
   const link = out(item.url, esc(item.title || item.id));
   const key = cur.source === "working" ? "hw.workingOn" : "hw.lastOn";
   const kind = item.kind
-    ? ` <span class="tagx hw-kind">${esc(item.kind)}</span>`
+    ? ` <span class="tagx hw-kind" data-hw-kind>${esc(item.kind)}</span>`
     : "";
   const vision = cur.vision
     ? ` · ${out(cur.vision.url, esc(cur.vision.title || cur.vision.id), "hw-vlink")}`

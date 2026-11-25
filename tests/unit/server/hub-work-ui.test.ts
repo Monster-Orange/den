@@ -146,7 +146,7 @@ describe("hubCurrentHtml", () => {
     expect(html).toMatch(
       /<a [^>]*href="https:\/\/hub.example\/i\/1"[^>]*>Card &lt;b&gt;<\/a>/,
     );
-    expect(html).toMatch(/class="[^"]*hw-kind[^"]*"[^>]*>story</);
+    expect(html).toMatch(/class="[^"]*hw-kind[^"]*" data-hw-kind>story</);
     expect(html).toMatch(/href="https:\/\/hub.example\/v"[^>]*>Vision</);
   });
   it("recent: Last on {item}", async () => {
