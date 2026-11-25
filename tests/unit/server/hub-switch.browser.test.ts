@@ -122,12 +122,13 @@ beforeAll(async () => {
   await startHub(oldHub, "old-co");
   await startHub(newHub, "new-co");
   s = await startAgentsPageServer();
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const log = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  for (const entry of log) {
+    latest = entry.version;
+    break;
+  }
 }, 90_000);
 
 afterAll(async () => {

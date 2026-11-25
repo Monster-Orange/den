@@ -1081,6 +1081,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1273,6 +1274,7 @@
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1502,6 +1504,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1706,6 +1709,7 @@
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1844,6 +1848,7 @@
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -2017,6 +2022,7 @@
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -3475,6 +3481,11 @@
     {
       "when": ["src/shared/hub-loop.ts"],
       "run": ["tests/unit/server/hub-loop-settings.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/hub-switch.ts"],
+      "run": ["tests/unit/server/hub-switch.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
