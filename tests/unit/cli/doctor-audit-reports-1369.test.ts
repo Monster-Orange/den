@@ -31,8 +31,12 @@ describe("issue 1369: doctor's audit reports row", () => {
   });
 
   it("reports in the last day, taken in or still queued: counted, ok, never their words", () => {
+    // auditConfig stamps the real time, so this test reads by the real
+    // clock too: its entries are dated from now, never a fixed day.
+    const ago = (h: number) =>
+      new Date(Date.now() - h * 3_600_000).toISOString();
     line({
-      ts: "2026-11-23T10:00:00.000Z",
+      ts: ago(2),
       actor: "user",
       queued: true,
       unverified: true,
@@ -40,7 +44,7 @@ describe("issue 1369: doctor's audit reports row", () => {
       detail: "SECRET_WORDS",
     });
     line({
-      ts: "2026-11-20T10:00:00.000Z",
+      ts: ago(72),
       actor: "user",
       queued: true,
       unverified: true,
@@ -48,7 +52,7 @@ describe("issue 1369: doctor's audit reports row", () => {
       detail: "old",
     });
     line({
-      ts: "2026-11-23T10:00:00.000Z",
+      ts: ago(2),
       actor: "user",
       principal: "person:p",
       verb: "agents",
