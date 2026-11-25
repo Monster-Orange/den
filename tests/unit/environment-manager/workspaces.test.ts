@@ -320,6 +320,8 @@ describe("readWorkspacesFile / writeWorkspacesFile", () => {
     let writtenContent = "";
     mockFs.mkdirSync.mockReturnValue(undefined);
     mockFs.writeFileSync.mockImplementation((...args: unknown[]) => {
+      // Issue 1369: the audit entry is a write too; this is workspaces.yml's.
+      if (!String(args[0]).endsWith("workspaces.yml")) return;
       writtenContent = args[1] as string;
     });
     mockFs.renameSync.mockReturnValue(undefined);
@@ -578,6 +580,8 @@ function stubFile(content: {
   });
   mockFs.mkdirSync.mockReturnValue(undefined);
   mockFs.writeFileSync.mockImplementation((...args: unknown[]) => {
+    // Issue 1369: the audit entry is a write too; this is workspaces.yml's.
+    if (!String(args[0]).endsWith("workspaces.yml")) return;
     raw = args[1] as string;
   });
   mockFs.renameSync.mockReturnValue(undefined);
@@ -592,7 +596,8 @@ function captureFile(): { get: () => WorkspacesFile } {
   const prevWrite = mockFs.writeFileSync.getMockImplementation();
   mockFs.mkdirSync.mockReturnValue(undefined);
   mockFs.writeFileSync.mockImplementation((...args: unknown[]) => {
-    written = yaml.parse(args[1] as string) as WorkspacesFile;
+    if (String(args[0]).endsWith("workspaces.yml"))
+      written = yaml.parse(args[1] as string) as WorkspacesFile;
     if (prevWrite) prevWrite(...args);
   });
   mockFs.renameSync.mockReturnValue(undefined);

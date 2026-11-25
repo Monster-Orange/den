@@ -52,7 +52,9 @@ const MIGRATED = [
   { item: "shop", project: "alpha" },
   { item: "shop/db", project: "alpha" },
   { item: "billing/api", project: "beta" },
-  { item: "common/web", project: null },
+  // Issue 1217: its repo is in two projects, so it is pinned in each.
+  { item: "common/web", project: "beta" },
+  { item: "common/web", project: "gamma" },
   { item: "tools", project: "gamma" },
   { item: "gone", project: null },
 ];
@@ -103,7 +105,7 @@ afterAll(async () => {
 });
 
 describe("issue 402, clause 6: old id-only pins migrate on a real server", () => {
-  it("on read: GET /api/settings answers each pin with its item's one project, else none", async () => {
+  it("on read: GET /api/settings answers each pin in the projects its repo is in, else none", async () => {
     const r = await call("GET");
     expect(r.status).toBe(200);
     expect(r.json.shell.pins).toEqual(MIGRATED);
