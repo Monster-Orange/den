@@ -2421,6 +2421,15 @@
     },
     {
       "when": [
+        "scripts/release-box-watch.mjs"
+      ],
+      "run": [
+        "tests/unit/scripts/release-box-watch.test.ts"
+      ],
+      "why": "tests that run scripts/release-box-watch.mjs"
+    },
+    {
+      "when": [
         "scripts/release-dry-run.mjs"
       ],
       "run": [
