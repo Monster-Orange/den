@@ -85,7 +85,7 @@
 }
 .cl-divider {
   border: none;
-  border-top: 1px var(--edge-style, solid) var(--border);
+  border-top: 1px solid var(--border); /* issue 1137: a row divider stays solid */
   margin: 14px 0;
 }
 .cl-copy-group {

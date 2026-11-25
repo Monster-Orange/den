@@ -19,7 +19,7 @@
   width: min(420px, calc(100vw - 32px));
   max-width: 100%;
   padding: 0;
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);

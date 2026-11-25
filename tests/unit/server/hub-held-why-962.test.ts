@@ -8,10 +8,15 @@
 import { describe, expect, it } from "@jest/globals";
 import { heldWhyOf } from "../../../src/ui/server/hub-delivery-service.js";
 
-const ops = (o: { dialog?: "trust" | "permission" | null; screen?: boolean }) =>
+const ops = (o: {
+  dialog?: "trust" | "permission" | null;
+  screen?: boolean;
+  draft?: boolean;
+}) =>
   ({
     agentDialogKind: async () => o.dialog ?? null,
     agentScreenShowsDialog: async () => o.screen ?? false,
+    heldForDraft: () => o.draft ?? false,
   }) as never;
 const d = {} as never;
 
@@ -33,6 +38,12 @@ describe("issue 962: why Hub delivery holds an agent's items", () => {
     expect(
       await heldWhyOf(ops({ screen: true }), d, "ag-1", () => "approval"),
     ).toBe("approval");
+  });
+
+  it("issue 1311: its person's unsent draft on the line: draft", async () => {
+    expect(await heldWhyOf(ops({ draft: true }), d, "ag-1", () => null)).toBe(
+      "draft",
+    );
   });
 
   it("nothing on screen and no hold: null (mid-turn)", async () => {

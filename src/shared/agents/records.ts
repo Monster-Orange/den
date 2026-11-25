@@ -72,6 +72,11 @@ export interface AgentRecord {
   stoppedAt?: string;
   /** Set when a resume started its current session. */
   resumedAt?: string;
+  /**
+   * Issue 1223: the Den version its current session started on: its Den
+   * tools (MCP) keep that code until it restarts.
+   */
+  denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
   /**
@@ -122,6 +127,11 @@ export interface AgentRecord {
   endedAt?: string;
   /** That session's exit code, when the host said it. */
   exitCode?: number;
+  /**
+   * Issue 1325: its sandboxed session's own temp folder (TMPDIR), removed
+   * when that session ends.
+   */
+  sessionTmp?: string;
   /**
    * Set when its session was gone after Den or the machine restarted
    * (AG-14.3: "Interrupted"); cleared by a resume or a start.

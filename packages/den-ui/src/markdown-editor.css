@@ -63,8 +63,8 @@
   color: var(--text);
 }
 .md-tool:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 1px);
 }
 .md-tool[disabled] {
   opacity: 0.5;
