@@ -24,14 +24,33 @@
  * A finished watch is told to its agent once (the relayed-message path,
  * hub-delivery-service relayMessage: typed at its prompt, held while it
  * works), with the counts of passed, failed and skipped checks and each
- * failure's name and URL. A pull request is watched at the head it had when
- * asked: a new push needs a new watch.
+ * failure's name and URL. A pull request is watched at the head it has when
+ * its watch starts: when asked, or for a queued watch when a slot frees (a
+ * push in between is the head it takes). A new push after that needs a new
+ * watch.
+ *
+ * Issue 1166: no watch holds a slot forever. A pull request is asked about
+ * again every PR_RECHECK_MS (never two rounds running in a repo): merged,
+ * closed or a newer head ends its watch, told once. A watch with no
+ * progress for github.watch_stale_minutes ends, saying why. A check or run
+ * still queued or in progress counts as progress (a slow shard, a browser
+ * run isn't a stall), up to a backstop: nothing changed for 4 x the stale
+ * bound. Time while every check waits for a runner counts toward neither. The stale bound is at least twice the interval
+ * in force, so a watch never goes stale only because Den didn't look. The cap is
+ * github.watches_max at least, raised by the calls left before GitHub's
+ * reset; past it a watch is queued and starts when a slot frees.
+ *
+ * Issue 1214: a run's watch reads the run (actions/runs/<id>) and its jobs
+ * (…/jobs?filter=latest, the newest attempt), never the check runs on its
+ * head commit. A finished run's watch, while still kept, is looked at for a
+ * re-run when its repo has nothing else that round: a new attempt reopens
+ * it. Check runs and jobs are read past their first page of 100.
  */
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { embedDelivery, type Delivery } from "../hub-delivery.js";
-import type { GithubWatchSettings } from "./settings.js";
+import { GITHUB_WATCH_LIMITS, type GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
@@ -73,8 +92,11 @@ export interface WatchView {
   pr?: number;
   run?: number;
   head: string | null;
-  /** waiting (no checks yet), running, paused (Den's budget) or done. */
-  state: "waiting" | "running" | "paused" | "done";
+  /**
+   * waiting (no checks yet), running, paused (Den's budget), done, or
+   * queued (issue 1166: past the cap, it starts when a slot frees).
+   */
+  state: "waiting" | "running" | "paused" | "done" | "queued";
   note: string;
   checks?: CheckCounts;
   failed?: { name: string; url: string }[];
@@ -98,6 +120,12 @@ export interface WatchStatus {
   limit: number | null;
   resetAt: string | null;
   active: number;
+  /** Issue 1166: watches waiting for a slot. */
+  queued?: number;
+  /** Issue 1166: the cap now (github.watches_max, raised by the budget). */
+  cap?: number;
+  /** Issue 1166: when the oldest open watch started, or null. */
+  oldestAt?: string | null;
   intervalSeconds: number;
   pausedUntil: string | null;
   pausedWhy: PauseWhy | null;
@@ -127,11 +155,38 @@ interface Watch {
   doneAt?: number;
   text?: string;
   delivered?: boolean;
+  /** Issue 1166: past the cap, waiting for a slot. */
+  queued?: boolean;
+  /** Issue 1166: when it took a slot (createdAt when it never queued). */
+  startedAt?: number;
+  /**
+   * Issue 1166: when it last made progress: its phase, head or checks
+   * changed, or a check of it was still queued or in progress.
+   */
+  progressAt?: number;
+  /** Issue 1166: when its phase, head or checks last changed (the backstop). */
+  changedAt?: number;
+  /** Issue 1166: when its pull request was last asked about. */
+  resolvedAt?: number;
+  /**
+   * Issue 1166: a check (or workflow run) of it is still queued or in
+   * progress: CI is working, so it counts as progress.
+   */
+  underway?: boolean;
+  /**
+   * Issue 1166: every check (or workflow run) of it is still queued, waiting
+   * for a runner: that wait counts toward neither bound.
+   */
+  allQueued?: boolean;
+  /** Issue 1214: a run's attempt (1 unless re-run). */
+  attempt?: number;
+  /** Issue 1214: how the run ended (GitHub's conclusion), once it has. */
+  conclusion?: string;
 }
 
 interface Call {
   path: string;
-  kind: "resolve" | "list" | "checks";
+  kind: "resolve" | "list" | "checks" | "jobs";
   watch?: Watch;
   head?: string;
 }
@@ -144,10 +199,25 @@ const NO_CHECKS_MS = 30 * 60_000;
 const SECONDARY_WAIT_MS = 60_000;
 /** A told watch stays listed this long. */
 const DONE_KEEP_MS = 60 * 60_000;
+/** Issue 1166: a watched pull request is asked about again this often. */
+const PR_RECHECK_MS = 10 * 60_000;
+/** Issue 1166: the most the budget may raise the cap to. */
+const CAP_CEILING = GITHUB_WATCH_LIMITS.watches_max.max;
+/** Issue 1166: the most watches waiting for a slot. */
+const QUEUE_MAX = CAP_CEILING;
+/**
+ * Issue 1214: the most pages of 100 read for one head's checks or a run's
+ * jobs. A round can spend up to this many calls on one repo where the
+ * cap's arithmetic counts one: at 10 that stays well inside the budget
+ * floor, and only a head or run with over 100 checks pages at all.
+ */
+const MAX_PAGES = 10;
 /** The run list reaches back this far before the oldest watch. */
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
 
 const PASS = new Set(["success"]);
+/** Issue 1166: a check or run not yet on a runner. */
+const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 const SKIP = new Set(["skipped", "neutral"]);
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -168,6 +238,10 @@ export class GithubWatcher {
   private pause: { until: number; why: PauseWhy } | null = null;
   /** Per repo: the last call was a head's check runs (several heads). */
   private lastChecks = new Set<string>();
+  /** Per repo: the last call asked about a pull request again (1166). */
+  private lastResolve = new Set<string>();
+  /** Per repo: the last call was a run's (1214), so pull requests go next. */
+  private lastRun = new Set<string>();
   private readonly now: () => number;
 
   constructor(private readonly d: GithubWatchDeps) {
@@ -228,13 +302,6 @@ export class GithubWatcher {
         watch: this.view(same),
         intervalSeconds: this.interval,
       };
-    const active = this.watches.filter((w) => w.phase !== "done").length;
-    if (active >= s.watchesMax)
-      return {
-        ok: false,
-        code: "too_many",
-        error: `Den watches at most ${s.watchesMax} at once (github.watches_max), and ${active} are open. Cancel one you no longer need with github_watch_cancel, or wait for one to finish.`,
-      };
     const low = this.budgetLow(now, s);
     if (low)
       return {
@@ -242,6 +309,35 @@ export class GithubWatcher {
         code: "budget_low",
         error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.`,
       };
+    // Issue 1166: past the cap, queued; it starts when a slot frees.
+    const open = this.open();
+    const cap = this.cap(now, s);
+    if (open.length >= cap) {
+      const queued = this.watches.filter((w) => w.queued).length;
+      if (queued >= QUEUE_MAX)
+        return {
+          ok: false,
+          code: "too_many",
+          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.`,
+        };
+      const q: Watch = {
+        id: `gw-${crypto.randomBytes(4).toString("hex")}`,
+        agent: a.agent,
+        project: a.project,
+        repo: allowed,
+        kind,
+        number,
+        createdAt: now,
+        phase: "waiting",
+        note: "",
+        print: "",
+        queued: true,
+      };
+      this.watches.push(q);
+      this.save();
+      this.writeStatus(now);
+      return { ok: true, watch: this.view(q), intervalSeconds: this.interval };
+    }
     const w: Watch = {
       id: `gw-${crypto.randomBytes(4).toString("hex")}`,
       agent: a.agent,
@@ -253,6 +349,8 @@ export class GithubWatcher {
       phase: "waiting",
       note: "Den looks at it on its next round.",
       print: "",
+      startedAt: now,
+      progressAt: now,
     };
     // The first look, now: the head (and a run's state), so the answer
     // says where it stands. Not while GitHub asked Den to wait.
@@ -266,8 +364,10 @@ export class GithubWatcher {
             code: "not_found",
             error: `GitHub has no ${kind === "pr" ? `pull request ${number}` : `workflow run ${number}`} in ${allowed}, or Den's GitHub sign-in can't see it.`,
           };
-        if (r.status === 200) this.applyResolve(w, r.body);
-        else
+        if (r.status === 200) {
+          this.applyResolve(w, r.body);
+          w.resolvedAt = now;
+        } else
           w.note = `GitHub didn't answer (${this.why(r)}); Den tries again on its next round.`;
       }
     }
@@ -298,6 +398,7 @@ export class GithubWatcher {
         error: `no watch ${id} of yours; github_watch_list lists them.`,
       };
     this.watches.splice(i, 1);
+    this.promote(this.now());
     this.save();
     this.writeStatus(this.now());
     return { ok: true, id };
@@ -311,7 +412,10 @@ export class GithubWatcher {
       remaining: this.remaining,
       limit: this.limit,
       resetAt: this.resetAt === null ? null : iso(this.resetAt),
-      active: this.watches.filter((w) => w.phase !== "done").length,
+      active: this.open().length,
+      queued: this.watches.filter((w) => w.queued).length,
+      cap: this.cap(now, this.d.settings()),
+      oldestAt: this.oldest(),
       intervalSeconds: this.interval,
       pausedUntil: p ? iso(p.until) : null,
       pausedWhy: p ? p.why : null,
@@ -324,29 +428,67 @@ export class GithubWatcher {
   async tick(): Promise<void> {
     const now = this.now();
     this.prune(now);
+    this.promote(now);
     // Nothing to watch: no GitHub call and no file write (an idle install
     // never touches its state files).
-    if (!this.watches.some((w) => w.phase !== "done")) return;
+    if (
+      !this.watches.some((w) => w.phase !== "done") &&
+      !this.rerunWatches(now).length
+    )
+      return;
     if (this.paused(now)) return this.writeStatus(now);
+    // A pause that just ended was Den's wait, not the watches' own.
+    if (this.pause)
+      for (const w of this.open()) w.progressAt = w.changedAt = now;
     this.pause = null;
     if (now < this.next) return;
     const s = this.d.settings();
+    let changed = false;
+    let limited = false;
+    // Issue 1194: open longer than github.watch_max_open_hours, whatever
+    // its checks say (a status that never posts stays pending): it ends.
+    for (const w of this.open())
+      if (now - this.since(w) >= s.maxOpenHours * 3600_000) {
+        this.finish(w, now, {
+          note: `Open ${s.maxOpenHours} hours (github.watch_max_open_hours); Den stopped watching it.`,
+          text: `Den: GitHub watch ${w.id} ended: ${this.what(w)} was open ${s.maxOpenHours} hours, the most Den watches one (last: ${w.note}). Watch it again if you still need it.`,
+        });
+        changed = true;
+      }
+    // Issue 1166: no progress for the stale bound, or nothing changed for
+    // the backstop: it ends, saying which bound fired.
+    const stale = this.stale(s);
+    for (const w of this.open()) {
+      const ended =
+        now - this.progressed(w) >= stale.ms
+          ? `no progress for ${stale.minutes} minutes (${stale.why})`
+          : now - this.changed(w) >= 4 * stale.ms
+            ? `checks still running, but nothing changed for ${4 * stale.minutes} minutes (4 x ${stale.why})`
+            : null;
+      if (!ended) continue;
+      this.finish(w, now, {
+        note: `${ended[0].toUpperCase()}${ended.slice(1)}; Den stopped watching it.`,
+        text: `Den: GitHub watch ${w.id} ended: ${this.what(w)}: ${ended} (last: ${w.note}). Watch it again if you still need it.`,
+      });
+      changed = true;
+    }
     const groups = new Map<string, Watch[]>();
-    for (const w of this.watches) {
-      if (w.phase === "done") continue;
+    for (const w of this.open()) {
       const k = w.repo.toLowerCase();
       groups.set(k, [...(groups.get(k) ?? []), w]);
     }
-    let changed = false;
-    let limited = false;
+    // Issue 1214: a finished run's watch, looked at for a re-run only when
+    // its repo has nothing else this round.
+    for (const w of this.rerunWatches(now)) {
+      const k = w.repo.toLowerCase();
+      if (!groups.has(k)) groups.set(k, [w]);
+    }
     for (const [key, ws] of groups) {
       const call = this.plan(key, ws, now);
-      let r: GhResponse;
-      try {
-        r = await this.d.get(call.path);
-      } catch (e) {
-        r = { status: 0, headers: {}, body: null, error: String(e) };
-      }
+      let r = await this.ask(call.path);
+      // Issue 1214: a head's checks or a run's jobs, past the first page.
+      if (r.status === 200 && (call.kind === "checks" || call.kind === "jobs"))
+        r = await this.rest(call, r, now);
       if (this.noteRate(r, now)) {
         limited = true;
         break;
@@ -356,9 +498,17 @@ export class GithubWatcher {
           w.note = `GitHub didn't answer (${this.why(r)}); Den tries again on its next round.`;
         continue;
       }
+      const before = new Map(ws.map((w) => [w, mark(w)]));
       if (this.apply(call, ws, r, now)) changed = true;
+      for (const w of ws) {
+        if (mark(w) !== before.get(w) || w.allQueued)
+          w.progressAt = w.changedAt = now;
+        else if (w.underway) w.progressAt = now;
+      }
       if (this.paused(now)) break; // under the floor: nothing more this hour
     }
+    // A finished watch frees a slot for the first queued one.
+    if (this.promote(now)) changed = true;
     const lo = s.intervalSeconds;
     const hi = Math.max(lo, s.maxIntervalSeconds);
     this.interval = changed
@@ -381,7 +531,8 @@ export class GithubWatcher {
       try {
         ok = await this.d.relay(
           embedDelivery({
-            id: `github-watch-${w.id}`,
+            // Issue 1214: a re-run's result is a message of its own.
+            id: `github-watch-${w.id}${(w.attempt ?? 1) > 1 ? `-a${w.attempt}` : ""}`,
             agent: w.agent,
             project: w.project,
             origin: "Den GitHub watch",
@@ -412,15 +563,100 @@ export class GithubWatcher {
     return `repos/${repo}/commits/${head}/check-runs?per_page=100&filter=latest`;
   }
 
+  /** Issue 1214: a run's jobs, the newest attempt's. */
+  private jobsPath(w: Watch): string {
+    return `repos/${w.repo}/actions/runs/${w.number}/jobs?per_page=100&filter=latest`;
+  }
+
+  private async ask(p: string): Promise<GhResponse> {
+    try {
+      return await this.d.get(p);
+    } catch (e) {
+      return { status: 0, headers: {}, body: null, error: String(e) };
+    }
+  }
+
+  /**
+   * Issue 1214: the pages after the first (100 each, up to MAX_PAGES), into
+   * one answer. A page that is a limit or isn't answered is that answer.
+   */
+  private async rest(call: Call, first: GhResponse, now: number) {
+    const key = call.kind === "jobs" ? "jobs" : "check_runs";
+    const body = isObj(first.body) ? first.body : {};
+    const items = Array.isArray(body[key]) ? [...(body[key] as unknown[])] : [];
+    const total = asNum(body.total_count) ?? items.length;
+    let r = first;
+    for (let page = 2; items.length < total && page <= MAX_PAGES; page++) {
+      if (this.noteRate(r, now)) return r;
+      r = await this.ask(`${call.path}&page=${page}`);
+      if (r.status !== 200) return r;
+      const more =
+        isObj(r.body) && Array.isArray(r.body[key]) ? r.body[key] : [];
+      if (!more.length) break;
+      items.push(...more);
+    }
+    return { ...r, body: { ...body, total_count: total, [key]: items } };
+  }
+
+  /**
+   * Issue 1214: finished run watches still kept, one a repo (the least
+   * lately looked at), each at most every github.rerun_look_minutes: a
+   * re-run reopens them. A reopened watch takes no slot from the cap or
+   * the queue: it is the same watch, open again for a while.
+   */
+  private rerunWatches(now: number): Watch[] {
+    const gap = this.d.settings().rerunLookMinutes * 60_000;
+    const by = new Map<string, Watch>();
+    for (const w of this.watches) {
+      if (w.kind !== "run" || w.phase !== "done" || !w.head) continue;
+      if ((w.doneAt ?? 0) + DONE_KEEP_MS < now) continue;
+      if ((w.checkedAt ?? w.doneAt ?? 0) + gap > now) continue;
+      const k = w.repo.toLowerCase();
+      const o = by.get(k);
+      if (!o || (w.checkedAt ?? 0) < (o.checkedAt ?? 0)) by.set(k, w);
+    }
+    return [...by.values()];
+  }
+
   /** The one call for a repo this round. */
-  private plan(key: string, ws: Watch[], now: number): Call {
-    const unresolved = ws.find((w) => !w.head);
+  private plan(key: string, all: Watch[], now: number): Call {
+    // Issue 1214: only finished run watches: look for a re-run.
+    if (all.every((w) => w.phase === "done")) {
+      all[0].checkedAt = now;
+      return { path: this.resolvePath(all[0]), kind: "resolve", watch: all[0] };
+    }
+    const unresolved = all.find((w) => !w.head);
     if (unresolved)
       return {
         path: this.resolvePath(unresolved),
         kind: "resolve",
         watch: unresolved,
       };
+    // Issue 1214: a run's own state, then its jobs once it completed; taking
+    // turns with the repo's pull requests.
+    const runs = all.filter((w) => w.kind === "run");
+    const ws = all.filter((w) => w.kind === "pr");
+    if (runs.length && (!ws.length || !this.lastRun.has(key))) {
+      this.lastRun.add(key);
+      const w = runs.sort((a, b) => (a.checkedAt ?? 0) - (b.checkedAt ?? 0))[0];
+      w.checkedAt = now;
+      return w.phase === "ready"
+        ? { path: this.jobsPath(w), kind: "jobs", watch: w }
+        : { path: this.resolvePath(w), kind: "resolve", watch: w };
+    }
+    this.lastRun.delete(key);
+    // Issue 1166: a pull request asked about again (merged, closed or a
+    // newer head ends its watch), never two rounds running in a repo.
+    const due = ws.find(
+      (w) =>
+        w.kind === "pr" &&
+        now - (w.resolvedAt ?? this.since(w)) >= PR_RECHECK_MS,
+    );
+    if (due && !this.lastResolve.has(key)) {
+      this.lastResolve.add(key);
+      return { path: this.resolvePath(due), kind: "resolve", watch: due };
+    }
+    this.lastResolve.delete(key);
     const repo = ws[0].repo;
     const heads = [...new Set(ws.map((w) => w.head!))];
     if (heads.length === 1) {
@@ -433,7 +669,7 @@ export class GithubWatcher {
     }
     // A head waiting with no run this long: its check runs settle it.
     for (const w of ws)
-      if (w.phase === "waiting" && now - w.createdAt >= NO_CHECKS_MS)
+      if (w.phase === "waiting" && now - this.since(w) >= NO_CHECKS_MS)
         w.phase = "ready";
     const ready = ws
       .filter((w) => w.phase === "ready")
@@ -467,9 +703,13 @@ export class GithubWatcher {
         return true;
       }
       const before = w.head;
-      this.applyResolve(w, r.body);
-      return w.head !== before;
+      const phase = w.phase;
+      w.resolvedAt = now;
+      if (w.kind === "pr" && before) return this.prState(w, r.body, now);
+      this.applyResolve(w, r.body, now);
+      return w.head !== before || w.phase !== phase;
     }
+    if (call.kind === "jobs") return this.applyJobs(call.watch!, r.body, now);
     if (call.kind === "list") return this.applyRuns(ws, r.body);
     return this.applyChecks(
       ws.filter((w) => w.head === call.head),
@@ -478,7 +718,7 @@ export class GithubWatcher {
     );
   }
 
-  private applyResolve(w: Watch, body: unknown): void {
+  private applyResolve(w: Watch, body: unknown, now = this.now()): void {
     if (!isObj(body)) return;
     if (w.kind === "pr") {
       const sha = isObj(body.head) ? asStr(body.head.sha) : "";
@@ -492,8 +732,115 @@ export class GithubWatcher {
     if (/^[0-9a-f]{7,64}$/i.test(sha)) w.head = sha;
     w.suite = asNum(body.check_suite_id) ?? w.suite;
     const st = asStr(body.status);
+    const attempt = asNum(body.run_attempt) ?? 1;
+    if (w.phase === "done") {
+      // A watch saved before attempts were kept: the attempt it was told
+      // is the run's now, never a re-run.
+      if (w.attempt === undefined) {
+        w.attempt = attempt;
+        return;
+      }
+      // Issue 1214: a re-run (a newer attempt) reopens a finished watch.
+      if (attempt <= w.attempt) return;
+      w.delivered = false;
+      w.text = undefined;
+      w.doneAt = undefined;
+      w.checks = undefined;
+      w.failed = undefined;
+      w.print = "";
+      w.startedAt = now;
+      w.progressAt = now;
+    }
+    w.attempt = attempt;
+    w.conclusion = asStr(body.conclusion) || undefined;
     w.phase = st === "completed" ? "ready" : "running";
-    w.note = `The run is ${st || "known"}.`;
+    w.allQueued = QUEUED.has(st);
+    w.note = `The run is ${st || "known"}${attempt > 1 ? ` (attempt ${attempt})` : ""}.`;
+  }
+
+  /**
+   * Issue 1214: a run's jobs (its newest attempt): the counts and failures;
+   * done when none is still going and the run completed.
+   */
+  private applyJobs(w: Watch, body: unknown, now: number): boolean {
+    const jobs = (
+      isObj(body) && Array.isArray(body.jobs) ? body.jobs : []
+    ).filter(isObj);
+    const print = JSON.stringify(
+      jobs
+        .map((j) => [asNum(j.id), asStr(j.status), asStr(j.conclusion)])
+        .sort(),
+    );
+    const changed = print !== w.print;
+    w.print = print;
+    const at = (w.attempt ?? 1) > 1 ? `, attempt ${w.attempt}` : "";
+    if (!jobs.length) {
+      // How it ended: a startup_failure or a cancelled run is no pass.
+      const how = w.conclusion ? ` (${w.conclusion})` : "";
+      this.finish(w, now, {
+        note: `The run completed${how} with no jobs.`,
+        text: `Den: GitHub watch ${w.id} finished: ${this.what(w)}${at} completed${how} with no jobs.`,
+      });
+      return true;
+    }
+    const { counts, failed } = tally(jobs);
+    w.checks = counts;
+    w.failed = failed;
+    w.allQueued = jobs.every((j) => QUEUED.has(asStr(j.status)));
+    if (counts.pending) {
+      w.phase = "running";
+      w.note = `${counts.pending} of ${jobs.length} jobs still going${at}.`;
+      return changed;
+    }
+    const sum = `${counts.pass} passed, ${counts.fail} failed, ${counts.skip} skipped`;
+    this.finish(w, now, {
+      note: `Finished${at}: ${sum}.`,
+      text:
+        `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}${at}): ${sum}.` +
+        (failed.length
+          ? ` Failed: ${failed.map((f) => `${f.name} (${f.url})`).join("; ")}.`
+          : " All passed."),
+    });
+    return true;
+  }
+
+  /**
+   * Issue 1166: a watched pull request asked about again: merged, closed or
+   * a newer head ends its watch. True when it ended.
+   */
+  private prState(w: Watch, body: unknown, now: number): boolean {
+    if (!isObj(body)) return false;
+    const head = w.head!.slice(0, 7);
+    const sha = isObj(body.head) ? asStr(body.head.sha) : "";
+    const so = w.checks
+      ? ` Its checks so far: ${w.checks.pass} passed, ${w.checks.fail} failed, ${w.checks.skip} skipped, ${w.checks.pending} still going.`
+      : "";
+    if (body.merged === true || asStr(body.merged_at)) {
+      this.finish(w, now, {
+        note: "The pull request merged.",
+        text: `Den: GitHub watch ${w.id} ended: ${this.what(w)} merged (head ${head}).${so}`,
+      });
+      return true;
+    }
+    if (asStr(body.state) === "closed") {
+      this.finish(w, now, {
+        note: "The pull request was closed without merging.",
+        text: `Den: GitHub watch ${w.id} ended: ${this.what(w)} was closed without merging (head ${head}).${so}`,
+      });
+      return true;
+    }
+    if (
+      /^[0-9a-f]{7,64}$/i.test(sha) &&
+      sha.toLowerCase() !== w.head!.toLowerCase()
+    ) {
+      const next = sha.slice(0, 7);
+      this.finish(w, now, {
+        note: `Its head was replaced by ${next} (a newer push).`,
+        text: `Den: GitHub watch ${w.id} ended: ${this.what(w)}'s head ${head} was replaced by ${next} (a newer push). Watch it again for the new head's checks.${so}`,
+      });
+      return true;
+    }
+    return false;
   }
 
   private applyRuns(ws: Watch[], body: unknown): boolean {
@@ -516,6 +863,8 @@ export class GithubWatcher {
       if (print !== w.print) changed = true;
       w.print = print;
       const open = mine.filter((r) => r.status !== "completed").length;
+      w.underway = open > 0;
+      w.allQueued = mine.every((r) => QUEUED.has(asStr(r.status)));
       w.phase = open ? "running" : "ready";
       w.note = open
         ? `${open} of ${mine.length} workflow runs still going.`
@@ -543,8 +892,11 @@ export class GithubWatcher {
       );
       if (print !== w.print) changed = true;
       w.print = print;
+      w.underway = cs.some((c) => asStr(c.status) !== "completed");
+      w.allQueued =
+        cs.length > 0 && cs.every((c) => QUEUED.has(asStr(c.status)));
       if (!cs.length) {
-        if (now - w.createdAt >= NO_CHECKS_MS) {
+        if (now - this.since(w) >= NO_CHECKS_MS) {
           this.finish(w, now, {
             note: "No checks ran.",
             text: `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}) has no checks: none started within ${NO_CHECKS_MS / 60_000} minutes.`,
@@ -556,21 +908,7 @@ export class GithubWatcher {
         }
         continue;
       }
-      const counts: CheckCounts = { pass: 0, fail: 0, skip: 0, pending: 0 };
-      const failed: { name: string; url: string }[] = [];
-      for (const c of cs) {
-        const concl = asStr(c.conclusion);
-        if (c.status !== "completed") counts.pending++;
-        else if (PASS.has(concl)) counts.pass++;
-        else if (SKIP.has(concl) || !concl) counts.skip++;
-        else {
-          counts.fail++;
-          failed.push({
-            name: asStr(c.name) || `check ${asNum(c.id) ?? "?"}`,
-            url: asStr(c.html_url) || asStr(c.details_url),
-          });
-        }
-      }
+      const { counts, failed } = tally(cs);
       w.checks = counts;
       w.failed = failed;
       if (counts.pending) {
@@ -649,6 +987,105 @@ export class GithubWatcher {
     return this.remaining < s.budgetFloor ? this.resetAt : null;
   }
 
+  /**
+   * Issue 1166: the cap now: github.watches_max at least, raised to what
+   * the calls left over Den's floor pay for until GitHub's reset (one look
+   * per watch per interval, the most a watch costs), at most CAP_CEILING.
+   */
+  private cap(now: number, s: GithubWatchSettings): number {
+    if (this.remaining === null || this.resetAt === null || this.resetAt <= now)
+      return s.watchesMax;
+    const looks = Math.max(
+      1,
+      Math.ceil((this.resetAt - now) / 1000 / s.intervalSeconds),
+    );
+    const paid = Math.floor((this.remaining - s.budgetFloor) / looks);
+    return Math.min(CAP_CEILING, Math.max(s.watchesMax, paid));
+  }
+
+  // ── Slots ───────────────────────────────────────────────────────────────
+
+  /** The watches holding a slot: not done, not queued. */
+  private open(): Watch[] {
+    return this.watches.filter((w) => w.phase !== "done" && !w.queued);
+  }
+
+  /** When it took its slot. */
+  private since(w: Watch): number {
+    return w.startedAt ?? w.createdAt;
+  }
+
+  private progressed(w: Watch): number {
+    return w.progressAt ?? this.since(w);
+  }
+
+  private changed(w: Watch): number {
+    return w.changedAt ?? this.progressed(w);
+  }
+
+  /**
+   * Issue 1166: the stale bound, github.watch_stale_minutes or twice the
+   * interval in force, whichever is longer, and which of them it is.
+   */
+  private stale(s: GithubWatchSettings): {
+    ms: number;
+    minutes: number;
+    why: string;
+  } {
+    const set = s.staleMinutes * 60_000;
+    const look = 2 * this.interval * 1000;
+    if (set >= look)
+      return {
+        ms: set,
+        minutes: s.staleMinutes,
+        why: "github.watch_stale_minutes",
+      };
+    return {
+      ms: look,
+      minutes: Math.ceil(look / 60_000),
+      why: `twice Den's ${this.interval}-second interval; github.watch_stale_minutes is ${s.staleMinutes}`,
+    };
+  }
+
+  private oldest(): string | null {
+    const o = this.open();
+    return o.length ? iso(Math.min(...o.map((w) => this.since(w)))) : null;
+  }
+
+  /** "2 waiting for checks, 3 running": what the open watches are doing. */
+  private openCounts(open: Watch[]): string {
+    const n = { waiting: 0, running: 0 };
+    for (const w of open) n[w.phase === "waiting" ? "waiting" : "running"]++;
+    const stale = open.filter(
+      (w) =>
+        this.now() - this.progressed(w) >= this.stale(this.d.settings()).ms / 2,
+    ).length;
+    return `${n.waiting} waiting for checks, ${n.running} running, ${stale} with no progress for half the stale bound`;
+  }
+
+  /** Starts queued watches while there are slots; how many started. */
+  private promote(now: number): number {
+    const s = this.d.settings();
+    let room = this.cap(now, s) - this.open().length;
+    let n = 0;
+    for (const w of this.watches) {
+      if (room <= 0) break;
+      if (!w.queued) continue;
+      w.queued = false;
+      w.startedAt = now;
+      w.progressAt = w.changedAt = now;
+      w.note = "Den looks at it on its next round.";
+      room--;
+      n++;
+    }
+    if (n) {
+      this.interval = s.intervalSeconds;
+      this.next = Math.min(this.next, now);
+      this.save();
+    }
+    return n;
+  }
+
   private pauseUntil(until: number, why: PauseWhy): void {
     if (!this.pause || this.pause.until < until) this.pause = { until, why };
   }
@@ -681,6 +1118,21 @@ export class GithubWatcher {
   }
 
   private view(w: Watch): WatchView {
+    if (w.queued) {
+      const ahead = this.watches
+        .filter((x) => x.queued)
+        .findIndex((x) => x === w);
+      return {
+        id: w.id,
+        repo: w.repo,
+        ...(w.kind === "pr" ? { pr: w.number } : { run: w.number }),
+        head: null,
+        state: "queued",
+        note: `Queued, ${ahead} ahead: Den watches at most ${this.cap(this.now(), this.d.settings())} at once now, and starts it when a slot frees.`,
+        delivered: false,
+        createdAt: iso(w.createdAt),
+      };
+    }
     const p = w.phase === "done" ? null : this.paused(this.now());
     return {
       id: w.id,
@@ -737,6 +1189,32 @@ export class GithubWatcher {
     writeJson(this.d.statusFile, this.status());
   }
 }
+
+/** Check runs or jobs: passed, failed, skipped and still going; each failure. */
+function tally(cs: Record<string, unknown>[]): {
+  counts: CheckCounts;
+  failed: { name: string; url: string }[];
+} {
+  const counts: CheckCounts = { pass: 0, fail: 0, skip: 0, pending: 0 };
+  const failed: { name: string; url: string }[] = [];
+  for (const c of cs) {
+    const concl = asStr(c.conclusion);
+    if (c.status !== "completed") counts.pending++;
+    else if (PASS.has(concl)) counts.pass++;
+    else if (SKIP.has(concl) || !concl) counts.skip++;
+    else {
+      counts.fail++;
+      failed.push({
+        name: asStr(c.name) || `check ${asNum(c.id) ?? "?"}`,
+        url: asStr(c.html_url) || asStr(c.details_url),
+      });
+    }
+  }
+  return { counts, failed };
+}
+
+/** What counts as progress: its phase, head or checks changed. */
+const mark = (w: Watch) => `${w.phase}|${w.head ?? ""}|${w.print}`;
 
 function writeJson(file: string, v: unknown): void {
   try {

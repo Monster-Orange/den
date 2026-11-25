@@ -204,4 +204,39 @@ describe("a project's Mark read (issue 1339)", () => {
     // What a failed POST goes back to.
     expect(ids(before.updates.groups, false)).toEqual(["d", "g", "e"]);
   });
+
+  it("bellAfter: only an item's own scope decides, as the server's rule (no fallback to its group's)", async () => {
+    const { bellAfter } = await import("../../../src/ui/server/public/bell.js");
+    const { scope: _drop, ...bare } = item("h", "waiting");
+    const b = bellAfter(
+      {
+        unread: 3,
+        groups: [
+          {
+            // A group named for another scope: its item's own scope is the
+            // one asked, so it is marked; the one without a scope is not.
+            scope: "workspace/north",
+            subjects: [
+              {
+                subject: "agent:a",
+                items: [inScope("workspace/south", item("a", "waiting"))],
+              },
+              { subject: "agent:b", items: [item("b", "waiting")] },
+            ],
+          },
+          {
+            // Named for the scope asked, but its item has no scope: the
+            // server leaves it unread, so the page does too.
+            scope: "workspace/south",
+            subjects: [{ subject: "agent:h", items: [bare] }],
+          },
+        ],
+      },
+      "scope",
+      "workspace/south",
+    );
+    expect(ids(b.groups, false)).toEqual(["b", "h"]);
+    expect(ids(b.groups, true)).toEqual(["a"]);
+    expect(b.unread).toBe(2);
+  });
 });
