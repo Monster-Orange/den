@@ -829,6 +829,13 @@ export async function handleApprovalRoutes(
   return true;
 }
 
+/** Issue 1371 Part 2, issue 1480: held writes whose bell row has Undo. */
+export const UNDOABLE_ACTIONS: ReadonlySet<string> = new Set([
+  "setting_change",
+  "project_event_feed_add",
+  "project_event_feed_remove",
+]);
+
 /**
  * Issue 160: the person's updates say what an agent did under the approval
  * policy's notify, one item per write (never folded into another).
@@ -841,8 +848,9 @@ export function notePolicyRun(
 ): void {
   const name = a.agent ?? "An agent";
   // Issue 1371 Part 2: a setting changed without asking can be undone.
+  // Issue 1480: and so can an event feed added or removed.
   const undoable =
-    a.action === "setting_change" &&
+    UNDOABLE_ACTIONS.has(a.action ?? "") &&
     (a.result as { ok?: unknown } | undefined)?.ok === true;
   store.add({
     ...(undoable ? { undo: { approval: a.id } } : {}),

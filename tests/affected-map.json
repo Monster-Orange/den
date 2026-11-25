@@ -540,6 +540,10 @@
     "tests/unit/server/project-mcp-row.browser.test.ts": [
       "src/shared/agents/project-mcp.ts"
     ],
+    "tests/unit/server/app-feeds-edit-1480.browser.test.ts": [
+      "src/shared/agents/app-feeds.ts",
+      "src/ui/server/public/settings-registry.js"
+    ],
     "tests/unit/server/project-mode.browser.test.ts": [
       "src/shared/agents/effective-mode.ts",
       "src/shared/agents/running-mode.ts"
@@ -1220,6 +1224,7 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-rotation-callout.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
         "tests/unit/server/bell-decide-746.browser.test.ts",
         "tests/unit/server/bell-row.browser.test.ts",
@@ -1624,6 +1629,7 @@
         "tests/unit/server/agents-terminal.browser.test.ts",
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
         "tests/unit/server/bell-decide-746.browser.test.ts",
         "tests/unit/server/bell-mark-all-1339.browser.test.ts",
@@ -1913,6 +1919,7 @@
         "tests/unit/server/agents-terminal.browser.test.ts",
         "tests/unit/server/agents-where.browser.test.ts",
         "tests/unit/server/alerts.browser.test.ts",
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts",
         "tests/unit/server/approval-dialog.browser.test.ts",
         "tests/unit/server/bell-allow-review.browser.test.ts",
         "tests/unit/server/bell-decide-746.browser.test.ts",
@@ -3318,6 +3325,14 @@
       "run": [
         "tests/unit/server/alerts.integration.test.ts"
       ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/app-feeds.ts",
+        "src/ui/server/public/settings-registry.js"
+      ],
+      "run": ["tests/unit/server/app-feeds-edit-1480.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
