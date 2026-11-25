@@ -398,6 +398,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
+    contexts.push(ctx);
     await signIn(ctx, s!.stateDir, s!.base);
     const p = await ctx.newPage();
     // A slow terminal module (a loaded machine): the panes after the first
