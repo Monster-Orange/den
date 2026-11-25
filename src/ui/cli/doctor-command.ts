@@ -3162,13 +3162,9 @@ async function tokenRefusalRow(): Promise<{
   lines: string[];
   check: OnboardCheck;
 }> {
-  const { tokenRefusalLines, readRefusalEntries } =
+  const { tokenRefusalLines, readRefusalTrail } =
     await import("./doctor-token-refusals.js");
-  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
-  return tokenRefusalLines(
-    readBrand().name,
-    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
-  );
+  return tokenRefusalLines(readBrand().name, readRefusalTrail(getStateDir()));
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */
