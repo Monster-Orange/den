@@ -274,7 +274,7 @@ describe("after setup", () => {
   it("Agents ranks it by its state like any agent, tagged Server (issue 773)", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");
-    const row = p.locator("#agl [data-band] button[data-kind]", {
+    const row = p.locator("#agl div[data-band] button[data-kind]", {
       hasText: "Acme agent",
     });
     await row.waitFor({ timeout: 20_000 });

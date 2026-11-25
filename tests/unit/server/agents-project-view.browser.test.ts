@@ -165,7 +165,7 @@ async function open(next: string): Promise<Page> {
  */
 const listed = (p: Page) =>
   p.$$eval(
-    "#agl [data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
+    "#agl div[data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
     (xs) => [...new Set(xs.map((x) => (x as HTMLElement).dataset.ws))],
   );
 const tabs = (p: Page) =>
@@ -288,7 +288,7 @@ describe("#80: a project's view holds only its own", () => {
     await p.waitForFunction(() => {
       const xs = Array.from(
         document.querySelectorAll(
-          "#agl [data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
+          "#agl div[data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
         ),
       );
       return (
