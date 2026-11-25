@@ -772,10 +772,14 @@ export async function handleAgentRoutes(
     // Issue 869: Hub refused this Den's address when it was last told.
     const tell = await import("../../shared/hub-den-url.js");
     const denUrl = tell.denUrlTellProblem(tell.readDenUrlTell(getStateDir()));
+    // Issue 1632: a switch to another Hub waiting for the sign-in.
+    const { readHubSwitch } = await import("./hub-switch.js");
+    const sw = readHubSwitch(getStateDir());
     const out = {
       ...st,
       ...(editions ? { editions } : {}),
       ...(denUrl ? { denUrl } : {}),
+      ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
     };
     sendJson(res, last ? { ...out, connect: last } : out);
     return true;

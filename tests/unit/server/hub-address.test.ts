@@ -1,7 +1,8 @@
 /**
  * #267: the Den agent's hub_connect: the same check as Settings › Hub,
  * Den's own agent only, disconnect first when connected, then save and
- * restart. A token never stays beside a different address.
+ * restart. A token never stays beside a different address. Issue 1632: a
+ * connected install moving to another Hub waits for the sign-in instead.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -29,6 +30,8 @@ const deps = (user: Record<string, unknown>) => {
         calls.push(`restart ${reason}`);
         return { ok: true };
       },
+      // Issue 1632: a switch to another Hub (hub-switch-1632.test.ts).
+      switching: (s: { to: string }) => void calls.push(`switching ${s.to}`),
     },
   };
 };
@@ -63,18 +66,27 @@ describe("hub_connect (#267)", () => {
     });
   });
 
-  it("connected: disconnects first, drops the token, saves and restarts", async () => {
+  it("connected, clearing: disconnects first, drops the token, saves and restarts", async () => {
+    const x = deps({
+      hub: { url: "https://hub.example.com", token: { kind: "file" } },
+    });
+    const r = await runHubAddress(x.d, { url: "none" });
+    expect(r).toMatchObject({ ok: true, url: null });
+    expect(x.calls).toEqual([
+      "disconnect",
+      "write",
+      "restart Hub's address cleared",
+    ]);
+    expect(x.saved().hub).toBeUndefined();
+  });
+
+  it("connected, to another Hub: issue 1632's switch, nothing written yet", async () => {
     const x = deps({
       hub: { url: "https://hub.example.com", token: { kind: "file" } },
     });
     const r = await runHubAddress(x.d, { url: "https://other.example.com" });
-    expect(r).toMatchObject({ ok: true, url: "https://other.example.com" });
-    expect(x.calls).toEqual([
-      "disconnect",
-      "write",
-      "restart Hub's address set to https://other.example.com",
-    ]);
-    expect(x.saved().hub).toEqual({ url: "https://other.example.com" });
+    expect(r).toMatchObject({ ok: true, connect: true });
+    expect(x.calls).toEqual(["switching https://other.example.com"]);
   });
 
   it("none clears it", async () => {
@@ -92,9 +104,9 @@ describe("hub_connect (#267)", () => {
 
 describe("issue 726: hub_connect archives the old Hub's state", () => {
   it("after the write and before the restart", async () => {
-    const { d, calls } = deps({
-      hub: { url: "https://hub.example.com", token: "file:/t" },
-    });
+    // Not connected yet: the address is written at once (issue 1632 waits
+    // for a sign-in only when there's a Hub in use to keep).
+    const { d, calls } = deps({ hub: { url: "https://hub.example.com" } });
     const r = await runHubAddress(
       {
         ...d,
@@ -105,7 +117,6 @@ describe("issue 726: hub_connect archives the old Hub's state", () => {
     );
     expect(r.ok).toBe(true);
     expect(calls).toEqual([
-      "disconnect",
       "write",
       "changed https://other.example.com",
       "restart Hub's address set to https://other.example.com",
