@@ -53,10 +53,15 @@ afterAll(() => {
   if (repo) fs.rmSync(repo, { recursive: true, force: true });
 });
 
-function gateAfterMove(text: string) {
+function gateAfterMove(text: string, shim = false) {
   git("checkout", "-q", "--detach", "HEAD");
   const base = git("rev-parse", "HEAD").stdout.trim();
-  git("rm", "-q", OLD);
+  if (shim)
+    fs.writeFileSync(
+      path.join(repo, OLD),
+      'export * from "./place/old-place.js";\n',
+    );
+  else git("rm", "-q", OLD);
   fs.mkdirSync(path.dirname(path.join(repo, NEW)), { recursive: true });
   fs.writeFileSync(path.join(repo, NEW), text);
   git("add", "-A");
@@ -64,7 +69,7 @@ function gateAfterMove(text: string) {
   const similarity = git(
     "diff",
     "--name-status",
-    "-M1%",
+    "-C1%",
     base,
     "HEAD",
   ).stdout.trim();
@@ -87,6 +92,13 @@ describe("words gate: a moved file", () => {
     const pct = Number(/^R0*(\d+)/.exec(r.similarity)?.[1] ?? 0);
     expect(pct).toBeGreaterThanOrEqual(30);
     expect(pct).toBeLessThan(50);
+    expect(r.out).not.toContain("waiting for user confirmation");
+    expect(r.code).toBe(0);
+  });
+
+  it("is judged the same when a one-line shim stays at the old path", () => {
+    const r = gateAfterMove(MOVED_TEXT, true);
+    expect(r.similarity).toMatch(/^C0*(3\d|4\d)\b/m);
     expect(r.out).not.toContain("waiting for user confirmation");
     expect(r.code).toBe(0);
   });
