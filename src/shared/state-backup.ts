@@ -162,8 +162,14 @@ function prune(dir: string, base: string): void {
     const [tb, nb] = key(b);
     return ta < tb ? -1 : ta > tb ? 1 : na - nb;
   });
+  // A copy may be a folder (one stood where a state file should); a copy
+  // that won't go stays: pruning never throws to the reader.
   for (const n of byTime.slice(0, Math.max(0, byTime.length - KEEP_PER_FILE)))
-    fs.rmSync(path.join(dir, n), { force: true });
+    try {
+      fs.rmSync(path.join(dir, n), { force: true, recursive: true });
+    } catch {
+      /* kept one more */
+    }
 }
 
 /** The notes of files kept, oldest first ([] when none or unreadable). */

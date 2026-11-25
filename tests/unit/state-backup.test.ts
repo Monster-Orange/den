@@ -116,6 +116,18 @@ describe("a state file that can't be read", () => {
     },
   );
 
+  it("a folder where a state file should be is kept too, and pruning one never throws to the reader", () => {
+    const d = stateDir();
+    const f = path.join(d, "notifications.json");
+    for (let i = 0; i < KEEP_PER_FILE + 1; i++) {
+      fs.mkdirSync(f);
+      fs.writeFileSync(path.join(f, "x"), `${i}`);
+      expect(readStateJson(d, f)).toMatchObject({ ok: false, missing: false });
+    }
+    expect(fs.existsSync(f)).toBe(false);
+    expect(backup(d)).toHaveLength(KEEP_PER_FILE);
+  });
+
   it("copies kept in the same millisecond: the newest stay", () => {
     const d = stateDir();
     const f = path.join(d, "notifications.json");
