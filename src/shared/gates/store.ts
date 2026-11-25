@@ -1540,6 +1540,30 @@ export class GateStore {
   }
 
   /**
+   * A lock moved aside whose rename back failed (another lock was there by
+   * then) stays as lock.old-*; removed once older than 60 s, well past any
+   * take-back in flight. Read only while the lock is busy.
+   */
+  private sweepAside(lock: string): void {
+    const base = `${path.basename(lock)}.old-`;
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(this.dir).filter((n) => n.startsWith(base));
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      const f = path.join(this.dir, n);
+      try {
+        if (Date.now() - fs.statSync(f).mtimeMs > 60_000)
+          fs.rmSync(f, { recursive: true, force: true });
+      } catch {
+        /* gone meanwhile */
+      }
+    }
+  }
+
+  /**
    * Takes back a lock left behind: older than 30 s, its holder gone (issue
    * 275), or with no pid file past lock_no_pid_seconds (issue 1440). True:
    * it is free now (go round and take it). The lock is judged from one stat,
@@ -1548,6 +1572,7 @@ export class GateStore {
    * it back and holds a fresh lock meanwhile keeps it: that one is put back.
    */
   private takeBackLock(lock: string): boolean {
+    this.sweepAside(lock);
     let seen: fs.Stats;
     try {
       seen = fs.statSync(lock);

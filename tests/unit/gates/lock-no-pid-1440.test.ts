@@ -132,4 +132,23 @@ describe("a gate lock with no pid file", () => {
       );
     },
   );
+
+  it("a moved-aside lock left behind (its rename back failed) is removed once older than 60 s; a fresh one is kept", () => {
+    const { dir, lock } = pidless(15);
+    const old = path.join(dir, "lock.old-4242-aaaa");
+    const fresh = path.join(dir, "lock.old-4243-bbbb");
+    fs.mkdirSync(old);
+    fs.mkdirSync(fresh);
+    const t = (Date.now() - 90_000) / 1000;
+    fs.utimesSync(old, t, t);
+    const s = new GateStore({ platform: "linux", dir, lockWaitMs: 0 });
+    expect(s.list()).toEqual([]);
+    expect(fs.existsSync(lock)).toBe(false);
+    expect(
+      fs
+        .readdirSync(dir)
+        .filter((n) => n.startsWith("lock."))
+        .sort(),
+    ).toEqual(["lock.old-4243-bbbb"]);
+  });
 });
