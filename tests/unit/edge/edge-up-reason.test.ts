@@ -144,12 +144,12 @@ describe("#385: why the edge is recreated", () => {
   });
 
   it("a command flag", () => {
-    const cfg = { ...edge, args: ["--log.level=ERROR"] };
+    const cfg = { ...edge, args: ["--log.level=DEBUG"] };
     const r = running(edge, {
       cmd: [...edgeCommand(edge), "--log.level=INFO"],
     });
     expect(changes(r, cfg)).toEqual([
-      { field: "--log.level", old: "INFO", new: "ERROR" },
+      { field: "--log.level", old: "INFO", new: "DEBUG" },
     ]);
   });
 
