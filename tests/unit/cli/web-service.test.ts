@@ -46,10 +46,15 @@ async function closedPort(): Promise<number> {
     c.once("error", (e: NodeJS.ErrnoException) =>
       resolve(e.code === "ECONNREFUSED"),
     );
+    // A firewall that drops instead of refusing: say so, don't hang.
+    c.setTimeout(2000, () => {
+      c.destroy();
+      resolve(false);
+    });
   });
   if (!refused) {
     throw new Error(
-      `port ${CLOSED_PORT} answers here: this test needs it closed`,
+      `port ${CLOSED_PORT} answers here, or doesn't refuse: this test needs it closed`,
     );
   }
   return CLOSED_PORT;
