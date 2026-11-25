@@ -6,6 +6,8 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.89] - unreleased
 
+Installs that don't set `install_mode` are now personal installs: agents run without the sandbox, and Den no longer nags about hardening. A strict mode is there as an option (`install_mode: strict`). (issue 1391)
+
 ### Added
 
 - `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. (issue 728)
@@ -39,7 +41,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- Installs with no install_mode become personal: the sandbox turns off unless you set it. To keep it, set install_mode: strict in den.yml. An explicit `agents.sandbox` (on or required) and each `agents.<id>.sandbox` stay as set. Doctor shows "Install mode: personal (default)" once, as information, with how to switch. (issue 1391)
+- Installs with no install_mode become personal: agents run outside the sandbox unless `agents.sandbox` or an agent's `agents.<id>.sandbox` is set, and those stay as set. Doctor shows "Install mode: personal (default)" once, as information. Strict is an option (`install_mode: strict`). (issue 1391)
 
 ## [0.4.88] - 2026-11-23
 
