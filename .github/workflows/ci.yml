@@ -315,6 +315,12 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # The shared guardrail lint (scripts/guardrail-lint, a copy of MO's
+      # rules): its rules on the lines this change adds since the merge
+      # base, first because it takes a second. Lines already on the base
+      # never block. The PR's title and body stay with pr-text.yml.
+      - name: Guardrail lint
+        run: node scripts/guardrail-lint/mo-gates.mjs --base "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
       - run: npm run typecheck
       - run: npm run lint
       # Issue 839: a browser test or live check this change touches never

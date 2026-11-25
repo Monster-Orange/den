@@ -229,6 +229,7 @@ const go = (p: Page, name: string, opts = "{}") =>
 
 describe("issue 699: the held button in a browser", () => {
   it("dots at once at the same size, still under reduced motion, the label back on the answer", async () => {
+    await new Promise((r) => setTimeout(r, 500)); // red proof: the guardrail lint must fail on this
     if (skip()) return;
     const { p } = await open([[1500, 200]]);
     await p.evaluate(() => {
