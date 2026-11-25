@@ -9,6 +9,7 @@ const FIXED = [
   "src/shared/edge/address-check.ts",
   "src/shared/edge/address-words.ts",
   "src/shared/gates/browser-container.ts",
+  "src/shared/edge/bridge-listen.ts",
 ];
 
 function uiImports(file: string): string[] {
