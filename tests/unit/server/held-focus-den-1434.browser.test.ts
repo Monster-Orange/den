@@ -45,7 +45,10 @@ afterAll(async () => {
 }, 60_000);
 
 /** A signed-in Den page with a probe button; answer() ends its request. */
-async function open(b: Browser): Promise<{ p: Page; answer: () => void }> {
+async function open(
+  b: Browser,
+  o: { noKit?: boolean } = {},
+): Promise<{ p: Page; answer: () => void }> {
   const ctx = await b.newContext({ reducedMotion: "reduce" });
   // What's new off: it would take the keyboard these tests check.
   await ctx.addInitScript(() => {
@@ -56,6 +59,8 @@ async function open(b: Browser): Promise<{ p: Page; answer: () => void }> {
     });
   });
   const p = await ctx.newPage();
+  // The kit's busy code never loads (a dropped request).
+  if (o.noKit) await p.route("**/busy-den.js*", (r) => r.abort("failed"));
   let answer = () => {};
   const waiting = new Promise<void>((res) => (answer = res));
   await p.route(`**${PROBE}`, async (r) => {
@@ -134,5 +139,17 @@ for (const engine of ["chromium", "webkit"]) {
         expect(await active(p)).toBe("probe");
         await p.context().close();
       }, 60_000);
+
+    it("the kit doesn't load: denShell.busyAction lets the button go, focus stays", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const { p } = await open(b, { noKit: true });
+      await probe(p, "busyAction");
+      await p.keyboard.press("Enter");
+      await p.waitForSelector("#probe:not([aria-busy])");
+      expect(await p.getAttribute("#probe", "aria-disabled")).toBeNull();
+      expect(await active(p)).toBe("probe");
+      await p.context().close();
+    }, 60_000);
   });
 }

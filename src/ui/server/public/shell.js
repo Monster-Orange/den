@@ -10011,10 +10011,20 @@
       // Held at once, before the kit has loaded (issue 1434: aria-disabled,
       // not disabled, so it keeps focus; the click guard stops its clicks).
       var b = opts && opts.button;
-      if (b) preHold(b);
-      return loadBusy().then(function (m) {
-        return m.busyAction(name, run, opts);
-      });
+      var own = b ? preHold(b) : false;
+      return loadBusy().then(
+        function (m) {
+          return m.busyAction(name, run, opts);
+        },
+        function (err) {
+          // The kit didn't load: let the button go, then fail as before.
+          if (b) {
+            b.removeAttribute("aria-busy");
+            if (own) b.removeAttribute("aria-disabled");
+          }
+          throw err;
+        },
+      );
     },
     /**
      * Issue 698: the kit's pulsing dots alone, no pop-up, for a wait that
