@@ -165,6 +165,29 @@ describe("issue 1223: the bell draws it", () => {
     );
     expect(html).toContain("[bell.to.failed:bo|bo exited at once]");
   });
+
+  it("issue 1407: one held back (a job) says why and has Restart now, not Restart N", async () => {
+    const html = await needs({
+      kind: "tools_old",
+      id: "tools-old",
+      n: 0,
+      agents: [
+        {
+          agent: "bo",
+          workspace: "north",
+          waits: "job",
+          job: { command: "npm run dev", minutes: 12 },
+        },
+      ],
+    });
+    expect(html).toContain("[bell.to.row1:1]");
+    expect(html).toContain("[rs.job:bo|npm run dev|12]");
+    expect(html).toContain(
+      'data-bell="tools-now" data-rs-now="bo" data-rs-ws="north"',
+    );
+    expect(html).toContain("[rs.nowJob]");
+    expect(html).not.toContain('data-bell="tools-restart"');
+  });
 });
 
 describe("issue 1223: GET /api/notifications lists the row", () => {

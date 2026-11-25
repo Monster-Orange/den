@@ -79,6 +79,16 @@ export const DEN_ACTIONS = {
       failure: "busy.toolsF",
     },
   },
+  // Issue 1371 Part 2: Undo in the bell, of a setting an agent changed.
+  "setting-undo": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.setUndoW",
+      success: "busy.setUndoS",
+      failure: "busy.setUndoF",
+    },
+  },
   // Issue 144: a person ends a gate slot early (the run goes on).
   "gate-end": {
     who: "__DEN_TITLE__",
@@ -87,6 +97,26 @@ export const DEN_ACTIONS = {
       working: "busy.gateEndW",
       success: "busy.gateEndS",
       failure: "busy.gateEndF",
+    },
+  },
+  // Issue 746: Allow and Deny in the bell's Needs you rows. The bell
+  // says what was allowed or denied itself, so no success toast here.
+  "decide-allow": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.allowW",
+      success: "busy.allowS",
+      failure: "busy.allowF",
+    },
+  },
+  "decide-deny": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.denyW",
+      success: "busy.denyS",
+      failure: "busy.denyF",
     },
   },
   "remove-service": {

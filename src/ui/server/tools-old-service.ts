@@ -8,6 +8,7 @@
 import type { AgentsResolved } from "../cli/agent-ops.js";
 import {
   ToolsRestarts,
+  type Held,
   type StaleOne,
   type ToolsOldWaiting,
 } from "../../shared/agents/tools-restarts.js";
@@ -67,6 +68,11 @@ export function restartToolsOld(
   s.queue = o.queue ?? NO_QUEUE;
   s.restart = o.restart;
   return s.t.start(list);
+}
+
+/** Issue 1407: the agents restart-stale held back, for the bell row. */
+export function holdToolsOld(stateDir: string, list: readonly Held[]): void {
+  slotOf(stateDir).t.hold(list);
 }
 
 /** The bell row now (the cached stale list), or null. */

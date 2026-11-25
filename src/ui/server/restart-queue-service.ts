@@ -52,6 +52,17 @@ import {
   restartsWaitingFile,
 } from "../../shared/agents/restarts-waiting.js";
 
+/**
+ * Issue 1225: the agents among the jobs waiting. A project's services share
+ * the queue ("services") but aren't agents: the bell and doctor count
+ * agents.
+ */
+export function agentsWaitingOf(
+  jobs: readonly { id: string; why: string }[],
+): string[] {
+  return jobs.filter((j) => j.why !== "services").map((j) => j.id);
+}
+
 /** agents.resume as the queue reads it; the defaults when user.yml is wrong. */
 export function queueConfig(
   read?: () => UserConfig,
@@ -109,8 +120,9 @@ export function restartQueue(
         t.unref?.();
       }),
     log: (line) => logTo?.(line),
-    changed: (n) => {
-      const ids = q.waiting().map((x) => x.id);
+    changed: () => {
+      const ids = agentsWaitingOf(q.waiting());
+      const n = ids.length;
       try {
         const f = restartsWaitingFile(getStateDir());
         fs.mkdirSync(path.dirname(f), { recursive: true });

@@ -24,7 +24,17 @@
  * each batch, so a changed Setting applies to the next one.
  */
 
-export type RestartWhy = "resume" | "hub-tools" | "settings" | "tools";
+/**
+ * Why a job waits. Issue 1225: "services" is a project's services brought
+ * back after a restart; it shares the stagger, and isn't an agent. Issue
+ * 1223: "tools", an agent on an older Den's tools.
+ */
+export type RestartWhy =
+  | "resume"
+  | "hub-tools"
+  | "settings"
+  | "services"
+  | "tools";
 
 export interface RestartJob {
   id: string;

@@ -15,6 +15,7 @@ import {
 } from "../../../src/shared/hub-den-url.js";
 import { HubCallError, hubPutDenUrl } from "../../../src/shared/hub.js";
 import { setConfigAuditSink } from "../../../src/shared/config-audit.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 let dir = "";
 beforeEach(() => {
@@ -24,14 +25,8 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 const ADDR = "https://den.example.test";
-const audit = () =>
-  fs.existsSync(path.join(dir, "audit.jsonl"))
-    ? fs
-        .readFileSync(path.join(dir, "audit.jsonl"), "utf-8")
-        .trim()
-        .split("\n")
-        .map((l) => JSON.parse(l) as Record<string, unknown>)
-    : [];
+// Issue 1369: the file and the CLI's queue.
+const audit = () => readAuditRows(dir);
 
 /** A Hub answering `status` with `body`, through the real hubPutDenUrl. */
 function hubAnswering(status: number, body: unknown) {

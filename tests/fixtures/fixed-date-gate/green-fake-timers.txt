@@ -1,0 +1,5 @@
+jest.useFakeTimers().setSystemTime(new Date("2026-11-23T12:00:00.000Z"));
+it("counts reports in the last day", () => {
+  line({ ts: "2026-11-23T10:00:00.000Z" });
+  expect(report({ now: new Date() }).count).toBe(1);
+});

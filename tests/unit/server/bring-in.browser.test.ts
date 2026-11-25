@@ -41,6 +41,7 @@ import {
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { browserWaitMs, launchBrowser } from "../helpers/browser.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -224,7 +225,7 @@ describe("Bring in (AG-17.1)", () => {
     await p.waitForSelector(`.pane[data-id="${agent.sessionId}"] .xterm-rows`);
     expect(s!.made.length).toBe(made + 1);
     const pty = s!.made[s!.made.length - 1];
-    expect(pty.args.slice(0, 2)).toEqual(["--resume", OLD]);
+    expect(runtimeArgs(pty).slice(0, 2)).toEqual(["--resume", OLD]);
     expect(pty.opts.cwd).toBe(docs);
     expect(readRecord(s!.stateDir, agent.id)).toMatchObject({
       resumeToken: OLD,
@@ -405,7 +406,7 @@ describe("Bring in (AG-17.1)", () => {
     await p.waitForSelector("#ag-dlg:not([open])", { state: "attached" });
     expect(s!.made.length).toBe(before + 1);
     const next = s!.made[s!.made.length - 1];
-    expect(next.args.slice(0, 2)).toEqual(["--resume", CONV]);
+    expect(runtimeArgs(next).slice(0, 2)).toEqual(["--resume", CONV]);
     expect(readRecord(s!.stateDir, agent.id)).toMatchObject({
       id: agent.id,
       persona: "planner",
@@ -575,7 +576,7 @@ describe("Bring in (AG-17.1)", () => {
       (await res.json()) as { agent: { id: string; sessionId: string } }
     ).agent;
     const pty = s!.made[s!.made.length - 1];
-    expect(pty.args.slice(0, 2)).toEqual(["--resume", AWAY]);
+    expect(runtimeArgs(pty).slice(0, 2)).toEqual(["--resume", AWAY]);
     expect(pty.opts.cwd).toBe(home);
     expect(readRecord(s!.stateDir, agent.id)).toMatchObject({
       cwd: home,

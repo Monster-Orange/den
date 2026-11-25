@@ -135,3 +135,6 @@ node_modules
 
 # Agent worktrees and local tool state
 .claude/
+
+# Issue 922: written by a promoted release, shipped in its package
+/release.json

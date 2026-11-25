@@ -594,6 +594,10 @@ describe("D44: the routes", () => {
     expect((go.json.pending as { id: string }[]).map((a) => a.id)).toEqual([
       "planner",
     ]);
+    // Issue 1407: each agent's own answer, before anything waits.
+    expect(go.json.agents).toEqual([
+      { id: "planner", workspace: "north", state: "now" },
+    ]);
     for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
   });

@@ -115,10 +115,23 @@ export interface AgentRecord {
    * a token. Unset: none was picked (desktop sign-in, or no token).
    */
   signIn?: { id: string; label: string };
+  /**
+   * Issue 936: whether its session started in the OS sandbox (Den's state
+   * read-only to it): the tool, or why not.
+   */
+  sandbox?:
+    | { applied: true; tool?: string }
+    /** legacy: from before the sandbox, outside it until it is turned on. */
+    | { applied: false; legacy?: true; reason?: string };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */
   exitCode?: number;
+  /**
+   * Issue 1325: its sandboxed session's own temp folder (TMPDIR), removed
+   * when that session ends.
+   */
+  sessionTmp?: string;
   /**
    * Set when its session was gone after Den or the machine restarted
    * (AG-14.3: "Interrupted"); cleared by a resume or a start.
