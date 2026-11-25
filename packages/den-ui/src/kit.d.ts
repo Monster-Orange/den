@@ -201,7 +201,6 @@ export declare function saveState(
   el: HTMLElement,
   opts: SaveStateOptions,
 ): SaveState;
-/** A toast, in the kit's language. */
 export declare function toast(opts: ShowToastOptions): ToastHandle;
 /** A list's filter bar, in the kit's language. */
 export declare function filterBar(

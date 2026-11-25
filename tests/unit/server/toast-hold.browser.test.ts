@@ -57,8 +57,6 @@ async function page(): Promise<Page> {
       8000,
     ),
   );
-  // The kit puts a toast into its region a moment later (ANNOUNCE_MS),
-  // so a screen reader hears it.
   await p.clock.runFor(100);
   await p.locator("[data-toast-msg]").waitFor();
   return p;

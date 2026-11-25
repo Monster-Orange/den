@@ -1,41 +1,28 @@
-/** den-ui: the toast. See toast.js. */
 export declare const PLAIN_MS: number;
 export declare const UNDO_MS: number;
-/** The wait before a toast goes into a region just made or emptied. */
 export declare const ANNOUNCE_MS: number;
-/** Both live regions, empty, on the page now (call once at start). */
 export declare function ensureToastRegions(doc?: Document): void;
 
 export type ToastKind = "status" | "error";
 
-/** One of the host's own buttons: its label, and what it does. */
 export interface ToastAction {
   label: string;
-  /** May return the button's new words ("Copied", say); the toast stays. */
   onClick?: () => string | void;
 }
 
 export interface ToastLink {
-  /** http(s), relative or mailto; any other address leaves the link out. */
   href: string;
   label: string;
 }
 
 export interface ShowToastOptions {
-  /** The host's words, in the page's language. */
   message: string;
-  /** A second, smaller line (a request id, say). */
   detail?: string;
-  /** "status" (default), or "error": role="alert", Close, no timer. */
   kind?: ToastKind;
-  /** Undo shows; it runs once, then "Undone." shows for a plain time. */
   onUndo?: () => void;
   actions?: ToastAction[];
   link?: ToastLink;
-  /** How long it shows (default: 3 s, or 10 s with Undo). */
   ms?: number;
-  /** A deadline (epoch ms): it closes then, held or not (an Undo never
-   * outlives the server's window). Past already: not shown. */
   until?: number;
   lang?: string;
 }
@@ -45,10 +32,8 @@ export interface ToastHandle {
 }
 
 export interface ToastUndoForm {
-  /** http(s) or relative; any other throws. */
   action: string;
   fields?: Readonly<Record<string, string>>;
-  /** "post" only (the default); anything else throws. */
   method?: string;
 }
 
@@ -56,13 +41,10 @@ export interface ToastHtmlOptions {
   message: string;
   detail?: string;
   kind?: ToastKind;
-  /** A POST form that works with no script, or true: a button the client wires. */
   undo?: { form: ToastUndoForm } | true;
   actions?: { label: string }[];
   link?: ToastLink;
   ms?: number;
-  /** A deadline (epoch ms): it closes then, held or not (an Undo never
-   * outlives the server's window). Past already: not shown. */
   until?: number;
   lang?: string;
 }

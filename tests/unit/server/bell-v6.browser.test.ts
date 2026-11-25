@@ -387,7 +387,6 @@ describe("bell v6: a quieter bell", () => {
             msg: r(t.querySelector("[data-toast-msg]")),
             btn: r(t.querySelector("button")),
             link: r(a),
-            // The link's words in line boxes: one line is one rect.
             linkLines: (() => {
               const g = document.createRange();
               g.selectNodeContents(a);
@@ -403,7 +402,6 @@ describe("bell v6: a quieter bell", () => {
         // The actions side by side, apart; the link on one line.
         expect(box.link.l).toBeGreaterThanOrEqual(box.btn.r);
         expect(box.linkLines).toBe(1);
-        // Each a full phone tap (the kit's 44 px).
         expect(box.link.h).toBeGreaterThanOrEqual(44);
         expect(box.btn.h).toBeGreaterThanOrEqual(44);
         // Inside the screen, with its gutter.

@@ -184,7 +184,6 @@ describe("the Coach tab", () => {
     await expect(btn.getAttribute("aria-busy")).resolves.toBe("true");
     expect(await btn.isDisabled()).toBe(true);
     release();
-    // The kit's toast (den-ui).
     const toast = p.locator("[data-toast-words]");
     await p.clock.runFor(100);
     await toast.waitFor();
@@ -192,7 +191,6 @@ describe("the Coach tab", () => {
     await expect(
       toast.locator("[data-toast-msg]").textContent(),
     ).resolves.toContain("tester");
-    // The Coach's own 8 s, held while the pointer is on it.
     await toast.hover();
     await p.clock.runFor(12_000);
     expect(await toast.isVisible()).toBe(true);

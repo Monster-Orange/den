@@ -137,7 +137,6 @@ describe("a failed action", () => {
     });
     const toast = page.locator('[data-den-toast] [data-kind="error"]');
     await toast.waitFor();
-    // The kit's toast: the alert role is on its live region.
     expect(
       await page.locator('[data-den-toast="alert"]').getAttribute("role"),
     ).toBe("alert");

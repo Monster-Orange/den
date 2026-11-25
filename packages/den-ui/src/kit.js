@@ -244,7 +244,6 @@ export function saveState(el, opts = {}) {
   return createSaveState(el, { lang, ...opts });
 }
 
-/** A toast, in the kit's language (toast.js). */
 export function toast(opts = {}) {
   return showToast({ lang: lang(), ...opts });
 }

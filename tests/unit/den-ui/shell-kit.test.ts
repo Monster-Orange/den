@@ -442,7 +442,6 @@ describe("den-ui-parity (bin)", () => {
       expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
   });
 
-  // A product's own toast is a copy of the kit's.
   it("fails on a product's own toast: its markup, its look or its builder", () => {
     const root = tmp();
     fs.mkdirSync(path.join(root, "src"));

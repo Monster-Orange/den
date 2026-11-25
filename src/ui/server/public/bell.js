@@ -927,7 +927,7 @@ export function initBell(doc = document) {
           await post("/api/settings", { bell_kinds: { [sw]: true } });
           await refresh();
         },
-        undefined, // the kit's Undo time
+        undefined,
         { href: SETTINGS, label: tr("bell.settings") },
       );
       btn.focus();

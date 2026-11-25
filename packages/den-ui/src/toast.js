@@ -1,68 +1,11 @@
-/**
- * The toast: one short message at the bottom of the page, with
- * an optional Undo, a link and the host's own actions. Data only: the host
- * passes its message (words it owns, in the page's language) and the kit
- * owns the rest: "Undo", "Undone." and "Close", the roles, the timing and
- * the look.
- *
- *   showToast({
- *     message,              the host's words
- *     detail?,              a second, smaller line (a request id, say)
- *     kind?,                "status" (default) or "error"
- *     onUndo?,              Undo shows; runs once, then "Undone." shows
- *     actions?,             [{ label, onClick }]: the host's buttons
- *                           (onClick may return a string: the button's
- *                           new words, "Copied", say; the toast stays)
- *     link?,                { href, label }
- *     ms?,                  how long it shows (default: the kit's times)
- *     lang?,                default: <html lang>
- *   }) → { close() }
- *
- *   toastHtml({ message, detail?, kind?, undo?, link?, lang })  the same
- *     toast as a string, inside its live region, for a server's page:
- *     undo is { form: { action, fields?, method? } } (a POST form that
- *     works with no script; only method "post") or true (a button the
- *     client wires). hydrateToast(doc) times it and announces it.
- *
- * Timing (toastClock, no DOM): PLAIN_MS (3 s) for a plain toast, UNDO_MS
- * (10 s, today's Undo time) with Undo. Hover, focus inside and a hidden page hold it; when the
- * last of them ends it starts again from a full PLAIN_MS. An error has no
- * timer: its Close button, Esc or the next toast closes it.
- *
- * One toast at a time: a new one replaces the old, and the old one's Undo
- * is gone; it never runs.
- *
- * Announced through a live region that is on the page, empty, before its
- * words arrive (a new role="status" node with its text already inside is
- * often not read): one polite region (role="status"), one assertive
- * (role="alert") for errors. A page's own region (#art-toast, or any
- * [data-den-toast="status"]) is used when it has one. ensureToastRegions
- * makes both at start; when a toast has to make its region, the toast
- * goes in ANNOUNCE_MS (50 ms) after it.
- *
- * Deadline: `until` (epoch ms; data-until on a server's toast) closes it
- * at that time, held or not, and gives focus back as Esc does: an Undo
- * never shows past the server's window for it. Past already: not shown.
- *
- * Addresses: a link is http(s), relative or mailto, and an Undo form's
- * action http(s) or relative; any other link is left out, and any other
- * action throws.
- *
- * Focus: never moved into the toast. Undo, the link, the actions and Close
- * are reached with Tab. Esc, with focus inside, closes it; when a toast
- * that has focus closes (Esc, Close, Undo), focus goes back to where it
- * was before it came in, never to the body.
- */
 import { esc, kitT } from "./strings.js";
 
 export const PLAIN_MS = 3000;
 export const UNDO_MS = 10_000;
-/** How long a toast waits before it goes into a region that was just made
- * or emptied, so a screen reader sees the change. */
+/** A region just made or emptied waits this long for its toast, so a screen reader reads it. */
 export const ANNOUNCE_MS = 50;
 
-/** An address a toast may use: http(s) or relative, and mailto for a
- * link (`mail`); else null. A host's javascript: or data: never runs. */
+/** http(s) or relative, and mailto for a link; else null, so a host's javascript: or data: never runs. */
 function safeHref(v, mail) {
   if (typeof v !== "string" || !v.trim()) return null;
   try {
@@ -94,14 +37,12 @@ function pageLang(lang) {
   }
 }
 
-/** A deadline as epoch ms, or null (none, or not a number). */
 function untilOf(v) {
   if (v == null || v === "") return null;
   const n = Math.floor(Number(v));
   return Number.isFinite(n) ? n : null;
 }
 
-/** The visible toast's markup (no region). `undo`: a form, or a button. */
 function bodyHtml(o) {
   const lang = pageLang(o.lang);
   const error = o.kind === "error";
@@ -186,17 +127,11 @@ function bodyHtml(o) {
   );
 }
 
-/** The region's attributes, by kind. */
 const REGION = {
   status: ' role="status" aria-live="polite"',
   alert: ' role="alert" aria-live="assertive"',
 };
 
-/**
- * A toast as a string, inside its live region (a server's page). The
- * region is announced once hydrateToast runs (it empties the region,
- * then puts the toast back).
- */
 export function toastHtml(o = {}) {
   const k = o.kind === "error" ? "alert" : "status";
   return (
@@ -211,15 +146,6 @@ export function toastHtml(o = {}) {
   );
 }
 
-/**
- * The toast's timing, with no DOM. onExpire runs when its time is up.
- *   start()           its first time: ms, else UNDO_MS with Undo, else
- *                     PLAIN_MS; an error: none
- *   hold(why)         "hover", "focus" or "hidden": no timer while any
- *   release(why)      the last one gone: a full PLAIN_MS from now
- *   undone()          Undo ran: PLAIN_MS from now (unless held)
- *   stop()            no more timers
- */
 export function toastClock({
   kind = "status",
   ms,
@@ -266,8 +192,6 @@ export function toastClock({
   };
 }
 
-/** The page's region of kind `k`, made (empty) once when it has none.
- * { r, fresh }: fresh when it was made just now. */
 function region(doc, k) {
   const sel =
     k === "status"
@@ -288,25 +212,18 @@ function region(doc, k) {
   return { r, fresh: false };
 }
 
-/**
- * Both live regions, empty, on the page now: call it once at start, so
- * the page's first toast goes into a region a screen reader already
- * watches. Made once; a page's own #art-toast counts as the status one.
- */
 export function ensureToastRegions(doc = document) {
   if (!doc || !doc.body) return;
   region(doc, "status");
   region(doc, "alert");
 }
 
-/** Puts `el` into `reg` after ANNOUNCE_MS, unless it was closed first. */
 function addLater(doc, reg, el, h) {
   (doc.defaultView || window).setTimeout(() => {
     if (!h.closed()) reg.appendChild(el);
   }, ANNOUNCE_MS);
 }
 
-/** Where focus goes when a toast that has it closes: never the body. */
 function giveBack(doc, before) {
   if (before && before.isConnected && typeof before.focus === "function") {
     before.focus();
@@ -321,10 +238,6 @@ function giveBack(doc, before) {
 
 let current = null;
 
-/**
- * Wires a toast element `el` (inside region `reg`) for its life: timing,
- * hover, focus, a hidden page, Esc, Undo, Close and the host's actions.
- */
 function wire(doc, reg, el, o) {
   const win = doc.defaultView || window;
   const lang = pageLang(o.lang);
@@ -340,8 +253,7 @@ function wire(doc, reg, el, o) {
     clear: (t) => win.clearTimeout(t),
   });
   const inside = () => el.contains(doc.activeElement);
-  // The host's deadline (until, epoch ms): it closes then, held or not, so
-  // an Undo never outlives the server's window for it.
+  // until closes it held or not, so an Undo never outlives the server's window.
   const until = untilOf(o.until);
   const deadline =
     until == null
@@ -389,7 +301,6 @@ function wire(doc, reg, el, o) {
       if (typeof w === "string") t.textContent = w;
       return;
     }
-    // Undo as a button: the host's callback, once. A form submits itself.
     if (t.hasAttribute("data-toast-undo") && t.type !== "submit") {
       const run = o.onUndo;
       if (!run) return;
@@ -415,9 +326,7 @@ function wire(doc, reg, el, o) {
   return { el, close, clock, reg, closed: () => closed };
 }
 
-/** Shows a toast (see the top of this file). Returns { close }. */
 export function showToast(o = {}, doc = document) {
-  // Past its deadline already: nothing to show (the current toast stays).
   const until = untilOf(o.until);
   if (until != null && until <= Date.now()) return { close() {} };
   if (current) current.close();
@@ -427,18 +336,12 @@ export function showToast(o = {}, doc = document) {
   const tmp = doc.createElement("div");
   tmp.innerHTML = bodyHtml(opts);
   const el = tmp.firstElementChild;
-  // A region made just now: the toast follows it, a beat later.
   if (!fresh) reg.appendChild(el);
   current = wire(doc, reg, el, opts);
   if (fresh) addLater(doc, reg, el, current);
   return { close: current.close };
 }
 
-/**
- * A server-rendered toast (toastHtml, or a page's own #art-toast region
- * holding one): times it as showToast does and announces it (the region
- * is emptied, then its toast put back, so a screen reader reads it).
- */
 export function hydrateToast(doc = document, o = {}) {
   const reg = doc.querySelector(
     '[data-den-toast="status"], [data-den-toast="alert"], #art-toast',

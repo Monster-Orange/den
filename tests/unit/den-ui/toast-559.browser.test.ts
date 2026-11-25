@@ -1,20 +1,3 @@
-/**
- * The den-ui toast in a browser (toast.js, toast.css). The
- * page's clock is faked and paused.
- *
- *   - one live region on the page, empty before the words arrive, reused;
- *     an error goes to the alert region;
- *   - focus is never moved into it; Tab reaches Undo; Esc (focus inside)
- *     closes it and focus goes back where it was, never the body;
- *   - Undo runs once, then "Undone." shows for 3 s;
- *   - a new toast replaces the old, and the old Undo never runs;
- *   - hover holds it; leaving starts a full 3 s;
- *   - a server's toast (toastHtml, or Hub's #art-toast) is hydrated: timed
- *     and announced;
- *   - the look: inverted surface, at most 560 px, the focus ring in the
- *     page's background colour, a phone's actions under the words with a
- *     44 px tap, no animation under reduced motion.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -63,7 +46,6 @@ async function open(
     reduce?: boolean;
     width?: number;
     body?: string;
-    /** A host that makes the regions at start (as Den's shell does). */
     regions?: boolean;
   } = {},
 ): Promise<Page> {
@@ -116,7 +98,6 @@ const show = (p: Page, o: object) =>
     w.kit.showToast(opts);
   }, o);
 
-// The toast in a region: the kit's, or Hub's #art-toast.
 const TOAST = ":is([data-den-toast], #art-toast) > [data-kind]";
 const toasts = (p: Page) => p.locator(TOAST).count();
 
@@ -127,7 +108,6 @@ describe("issue 559: the toast in a browser", () => {
     const r = await p.evaluate(() => {
       const w = window as unknown as W;
       w.kit.showToast({ message: "First" });
-      // Same task as the call: the region is there, and still empty.
       const reg = document.querySelector('[data-den-toast="status"]');
       return { there: !!reg?.isConnected, kids: reg?.children.length ?? -1 };
     });
@@ -150,7 +130,6 @@ describe("issue 559: the toast in a browser", () => {
       );
     });
     expect(r).toEqual(["status:0", "alert:0"]);
-    // With the regions made at load, a toast goes straight in.
     await show(p, { message: "Now" });
     expect(await toasts(p)).toBe(1);
     await p.context().close();
@@ -300,7 +279,6 @@ describe("issue 559: the toast in a browser", () => {
     expect(await toasts(p)).toBe(0);
     expect(await p.evaluate(() => document.activeElement!.id)).toBe("other");
     expect(await p.evaluate(() => (window as unknown as W).undos)).toBe(0);
-    // No until: the hold wins, as before.
     await show(p, { message: "Removed", undo: true });
     await p.hover("[data-den-toast] > [data-kind]");
     await p.clock.runFor(60_000);
@@ -358,7 +336,6 @@ describe("issue 559: the toast in a browser", () => {
         '<div class="den-toast" data-kind="status"><span class="den-toast-words"><span class="den-toast-msg">Removed</span></span></div></div>',
     });
     await p.evaluate(() => (window as unknown as W).kit.hydrateToast());
-    // Out, then back in 50 ms later: a screen reader hears it.
     expect(await toasts(p)).toBe(0);
     await p.clock.runFor(49);
     expect(await toasts(p)).toBe(0);

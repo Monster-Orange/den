@@ -5999,13 +5999,7 @@
       if (!moved) return;
     }
   }
-  /**
-   * Den's toasts are the kit's (den-ui toast.js): its words
-   * (Undo, Undone., Close), its live region, its timing (3 s plain, 10 s
-   * with Undo, held on hover, focus and a hidden page) and its look. A
-   * toast still clears a line marked data-toast-clear (clearOfMarked, on
-   * the toast's region).
-   */
+  /** The kit's toast; its region still clears a data-toast-clear line. */
   function kitToast(o) {
     if (!document.body || !DUI || !DUI.showToast) return null;
     var h = DUI.showToast(Object.assign({ lang: lang }, o));
@@ -6020,11 +6014,7 @@
   function toast(msg) {
     kitToast({ message: msg });
   }
-  /**
-   * A toast with Undo (AG-14.1b: Remove's Undo): the message and the kit's
-   * Undo, which runs once. `link` ({href, label}, bell v6) after it. The
-   * label argument is kept for callers; the word is the kit's "Undo".
-   */
+  /** `label` is kept for callers; the button says the kit's "Undo". */
   function toastAction(msg, label, onAction, ms, link) {
     var k = kitToast({
       message: msg,
@@ -6034,10 +6024,6 @@
     });
     return k ? k.el : null;
   }
-  /**
-   * A toast with the host's own buttons, not Undo (the quarantine toast's
-   * Settings, say): { message, actions: [{ label, onClick }], ms?, link? }.
-   */
   function toastWith(o) {
     var k = kitToast(o || {});
     return k ? k.el : null;
@@ -7600,8 +7586,7 @@
     document.addEventListener("DOMContentLoaded", ensurePageHeader);
   else ensurePageHeader();
 
-  // The toast's two live regions, empty, from the start, so the
-  // page's first toast goes into a region a screen reader already watches.
+  // Empty live regions first, so a screen reader hears the first toast.
   function ensureToasts() {
     if (DUI && DUI.ensureToastRegions) DUI.ensureToastRegions(document);
   }
@@ -8568,10 +8553,6 @@
       return navigator.clipboard.writeText(text).catch(function () {});
     return Promise.resolve();
   }
-  /**
-   * An error toast: the message, its request id, Retry, Copy details and
-   * the kit's Close (the kit's error toast: role="alert", no timer).
-   */
   function errorToast(err) {
     var actions = [];
     if (err.retry)
@@ -10799,8 +10780,7 @@
     ".den-pop.den-svp.den-sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px;",
     "  background: var(--border-strong); margin: 8px auto 0; }",
     ".den-pop.den-svp.den-sheet .den-svp-acts .den-btn { flex: 1 1 auto; padding: 9px 12px; }",
-    // Toasts are the kit's (den-ui toast.css), 70 px up, clear of the
-    // bar along the bottom (the Runs bar).
+    // Clear of the Runs bar along the bottom.
     ":root { --den-toast-bottom: 70px; }",
     // The banners' small buttons (.den-tbtn), once shared with Den's toasts.
     ".den-tbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text);",

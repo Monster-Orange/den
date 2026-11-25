@@ -1,20 +1,3 @@
-/**
- * The den-ui toast, the checks that need no browser.
- *
- *   - timing (toastClock, fake timers): 3 s plain, 10 s with Undo, a host's
- *     ms; hover, focus and a hidden page hold it, and when the last ends it
- *     starts again from a full 3 s; after Undo, 3 s; an error never ends
- *     by its timer;
- *   - the markup (toastHtml): the region's role (status, or alert for an
- *     error), the host's words escaped, Undo as a POST form (fields
- *     escaped, any other method refused) or a button, the link, Close on
- *     an error;
- *   - the kit's words in en, es and ja (Hub's today).
- *
- * The DOM half (one live region reused, focus never taken and given back,
- * Esc, Undo once, a new toast dropping the old Undo, the look, reduced
- * motion) is toast-559.browser.test.ts.
- */
 import {
   afterEach,
   beforeEach,
@@ -84,7 +67,6 @@ describe("issue 559: the toast's timing", () => {
     jest.advanceTimersByTime(60_000);
     expect(h.ended()).toBe(0);
     h.c.release("hidden");
-    // Not the 1 s left: a full plain time.
     jest.advanceTimersByTime(PLAIN_MS - 1);
     expect(h.ended()).toBe(0);
     jest.advanceTimersByTime(1);
@@ -282,7 +264,6 @@ describe("issue 559: the toast's width", () => {
 
 describe("issue 559: Den's Undo time is today's", () => {
   it("the Agents page's Remove keeps its 10 s Undo", () => {
-    // A browser module (no jest transform): read its source.
     const src = fs.readFileSync(
       path.join(process.cwd(), "src/ui/server/public/agents-page.js"),
       "utf-8",
