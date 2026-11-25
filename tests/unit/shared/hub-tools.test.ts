@@ -478,6 +478,55 @@ describe("issue 193 reopened: a runtime that reads its tools once is restarted, 
     }
   });
 
+  it.each([
+    ["a pump", false],
+    ["a restart of Den", true],
+  ])(
+    "issue 238: hub.tools_restart turned back on after the note restarts it once at idle, same conversation (after %s)",
+    async (_w, reopen) => {
+      let list: unknown[] = A;
+      let on = false;
+      const r = rig({ list: () => list, restartOn: () => on });
+      try {
+        r.agents.set("ada", { conv: "den-claude c-1", launchedAt: "t1" });
+        r.states.set("ada", "idle");
+        let w = r.make();
+        await w.pump();
+        list = AS;
+        await w.check();
+        await w.pump();
+        expect(r.typed).toEqual([
+          { id: "ada", text: `${NEW_TOOL} ${RESTART}` },
+        ]);
+        if (reopen) {
+          w = r.make();
+          await w.check();
+        }
+        on = true;
+        r.states.set("ada", "busy");
+        await w.pump();
+        expect(r.restarts).toEqual([]);
+        r.states.set("ada", "idle");
+        await w.pump();
+        await w.settled();
+        expect(r.restarts).toEqual(["ada"]);
+        expect(r.agents.get("ada")!.conv).toBe("den-claude c-1");
+        for (let i = 0; i < 3; i++) {
+          await w.pump();
+          await w.settled();
+        }
+        expect(r.restarts).toEqual(["ada"]);
+        expect(r.typed).toHaveLength(1);
+        const saved = JSON.parse(fs.readFileSync(r.file, "utf8")) as {
+          launches: Record<string, { hash?: string }>;
+        };
+        expect(saved.launches.ada.hash).toBe(toolsHash(toolShape(AS)));
+      } finally {
+        r.done();
+      }
+    },
+  );
+
   it("a runtime that reloads its tools in place keeps the note, no restart", async () => {
     let list: unknown[] = A;
     const r = rig({ list: () => list, reloads: () => true });
