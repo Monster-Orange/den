@@ -48,6 +48,14 @@ const good = {
 };
 
 describe("gate/1381 expect", () => {
+  it("the harness's shape (1381 has no matrix): the result itself gets clause verdicts, not a throw", () => {
+    const rows = call(
+      `g.expect(${JSON.stringify({ boxes: [good] })})`,
+    ) as Row[];
+    expect(rows.map((r) => r.ok)).toEqual([true, true, true]);
+    expect(rows[0]!.detail).toContain("6123 MB");
+  });
+
   it("a number, a slot and no folder left: all three pass", () => {
     const rows = judge({ boxes: [good] });
     expect(rows.map((r) => r.ok)).toEqual([true, true, true]);
