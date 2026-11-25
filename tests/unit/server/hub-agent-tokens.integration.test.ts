@@ -21,6 +21,7 @@ import {
   verifyActorToken,
 } from "../../../src/shared/actor-token.js";
 import {
+  agentsDir,
   readRecord,
   removeRecord,
 } from "../../../src/shared/agents/records.js";
@@ -247,6 +248,55 @@ describe("issue 1222: an agent removed while its Hub token is asked for", () => 
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code?: string }).code).toBe(
       "agent_removed",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+  });
+
+  it("removed before its call (its Den token not yet revoked): 403 agent_removed, no token asked for, nothing to Hub", async () => {
+    const hub = await fakeHub();
+    const { r, agentId, call } = await den(hub.url);
+    const mints = hub.seen.filter((x) => x.url === "/connect/agent").length;
+    expect(removeRecord(r.stateDir, agentId)).toBe(true);
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_removed",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+    expect(hub.seen.filter((x) => x.url === "/connect/agent")).toHaveLength(
+      mints,
+    );
+  });
+
+  const spoil = (r: Rig, id: string) =>
+    fs.writeFileSync(path.join(agentsDir(r.stateDir), `${id}.json`), "{not");
+
+  it("a record unreadable at the start: 503 agent_unreadable (try again), nothing to Hub", async () => {
+    const hub = await fakeHub();
+    const { r, agentId, call } = await den(hub.url);
+    spoil(r, agentId);
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_unreadable",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+  });
+
+  it("a record unreadable after the token wait: 503 agent_unreadable, nothing to Hub", async () => {
+    const hub = await fakeHub();
+    let done = false;
+    const { call } = await den(hub.url, {
+      duringToken: (r, id) => {
+        if (done) return;
+        done = true;
+        spoil(r, id);
+      },
+    });
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_unreadable",
     );
     expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
   });

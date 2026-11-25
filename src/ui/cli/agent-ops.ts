@@ -894,7 +894,7 @@ export async function hubUpstream(
       mcpUrl: string;
       headers: Record<string, string>;
     }
-  | { refused: "agent_removed" }
+  | { refused: "agent_removed" | "agent_unreadable" }
   | null
 > {
   const h = await d.hub().catch(() => null);
@@ -908,14 +908,28 @@ export async function hubUpstream(
   }
   let name = who.agentId;
   let linked: string | undefined;
-  let hadRecord = false;
+  // Issue 1222: an agent other than the server agent calls Hub only while
+  // its record is there and readable, before its token and after it. A
+  // missing record is a removed agent (its Den token may outlive it for a
+  // moment); an unreadable one is refused too (fails closed, try again).
+  const guarded = who.agentId !== SERVER_AGENT_ID;
+  const check = (): "agent_removed" | "agent_unreadable" | null => {
+    try {
+      return readRecord(d.stateDir(), who.agentId) ? null : "agent_removed";
+    } catch {
+      return "agent_unreadable";
+    }
+  };
   try {
     const rec = readRecord(d.stateDir(), who.agentId);
-    hadRecord = !!rec;
     name = rec?.displayName || name;
     linked = rec?.project;
   } catch {
     /* the id names it */
+  }
+  if (guarded) {
+    const no = check();
+    if (no) return { refused: no };
   }
   // Which project's Hub link files its work: the agent's own project link
   // (D65 v2) first, then its session's project. The server scope is never
@@ -933,14 +947,9 @@ export async function hubUpstream(
     .catch(() => null);
   // Issue 1222: removed while its token was asked for (its new token was
   // revoked, issue 249): this call is refused, never sent on the install's.
-  if (hadRecord) {
-    let still = true;
-    try {
-      still = !!readRecord(d.stateDir(), who.agentId);
-    } catch {
-      /* unreadable is not removed */
-    }
-    if (!still) return { refused: "agent_removed" };
+  if (guarded) {
+    const no = check();
+    if (no) return { refused: no };
   }
   return {
     base: h.url,

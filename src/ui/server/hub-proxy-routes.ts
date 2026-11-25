@@ -94,7 +94,9 @@ export interface HubProxyDeps {
     agentId: string;
     workspace: string;
     session: string;
-  }) => Promise<HubUpstream | { refused: "agent_removed" } | null>;
+  }) => Promise<
+    HubUpstream | { refused: "agent_removed" | "agent_unreadable" } | null
+  >;
   /**
    * An agent's MCP initialize (a POST to /mcp with no Mcp-Session-Id) and
    * what it got: whoami reports a failed one (hub-mcp-connect.ts).
@@ -237,17 +239,25 @@ export async function handleHubProxy(
       session: p.session.id ?? p.session.name,
     })
     .catch(() => null);
-  // Issue 1222: the agent was removed while this call waited for its token.
+  // Issue 1222: the agent was removed (before this call or while it waited
+  // for its token), or Den couldn't read its record: nothing goes to Hub.
   if (up && "refused" in up) {
-    answered(null, "agent removed");
+    const gone = up.refused === "agent_removed";
+    answered(null, gone ? "agent removed" : "agent record unreadable");
     sendJson(
       res,
-      {
-        error:
-          "This agent was removed, so Den doesn't call Hub for it. Nothing was sent.",
-        code: "agent_removed",
-      },
-      403,
+      gone
+        ? {
+            error:
+              "This agent was removed, so Den doesn't call Hub for it. Nothing was sent.",
+            code: "agent_removed",
+          }
+        : {
+            error:
+              "Den couldn't read this agent's record, so it didn't call Hub. Nothing was sent. Try again.",
+            code: "agent_unreadable",
+          },
+      gone ? 403 : 503,
     );
     return true;
   }
