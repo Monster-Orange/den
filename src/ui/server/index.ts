@@ -4821,6 +4821,9 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  withdrawn: NonNullable<
+    Parameters<typeof handleApprovalRoutes>[4]["withdrawn"]
+  >;
   webUrl: () => string | null;
 };
 let approvals: ApprovalDeps | null = null;
