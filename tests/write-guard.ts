@@ -161,9 +161,47 @@ function hasConfigLocal(p: string): boolean {
   return false;
 }
 
-/** Whether a write to `p` is refused. */
-export function refusedWrite(p: string, roots: WriteGuardRoots): boolean {
-  const real = realish(p);
+/**
+ * The ops that act on a link itself, never on what it points to: removing,
+ * moving or making a link, and lchown/lutimes. Their path is judged as the
+ * link's own (its folder resolved, its last name kept); every other op
+ * follows the link to where the write lands.
+ */
+const LINK_OPS = new Set([
+  "rmSync",
+  "rmdirSync",
+  "unlinkSync",
+  "renameSync",
+  "symlinkSync",
+  "linkSync",
+  "lchownSync",
+  "lutimesSync",
+  "rm",
+  "rmdir",
+  "unlink",
+  "rename",
+  "symlink",
+  "link",
+  "lchown",
+  "lutimes",
+]);
+
+/** A link's own real path: its folder's real form, its last name kept. */
+function realLink(p: string): string {
+  const abs = path.resolve(p);
+  return path.join(realish(path.dirname(abs)), path.basename(abs));
+}
+
+/**
+ * Whether a write to `p` is refused. `op` is the fs function's name: one
+ * of LINK_OPS judges the link's own path, any other (or none) follows it.
+ */
+export function refusedWrite(
+  p: string,
+  roots: WriteGuardRoots,
+  op?: string,
+): boolean {
+  const real = op && LINK_OPS.has(op) ? realLink(p) : realish(p);
   if (roots.temp.some((t) => inside(real, t))) return false;
   if (inside(real, "/dev")) return false;
   // Before any named root: no root a suite names covers a config/local.
@@ -261,6 +299,8 @@ const SYNC: Record<string, number[]> = {
   truncateSync: [0],
   chmodSync: [0],
   utimesSync: [0],
+  lchownSync: [0],
+  lutimesSync: [0],
   createWriteStream: [0],
 };
 const CALLBACK: Record<string, number[]> = {
@@ -279,6 +319,8 @@ const CALLBACK: Record<string, number[]> = {
   truncate: [0],
   chmod: [0],
   utimes: [0],
+  lchown: [0],
+  lutimes: [0],
 };
 const PROMISES: Record<string, number[]> = { ...CALLBACK };
 
@@ -317,7 +359,7 @@ export function installWriteGuard(
   const check = (op: string, args: unknown[], idx: number[]) => {
     for (const i of idx) {
       const p = pathOf(args[i]);
-      if (p !== null && refusedWrite(p, roots)) {
+      if (p !== null && refusedWrite(p, roots, op)) {
         const abs = path.resolve(p);
         onRefused(abs);
         return new Error(message(abs, op));

@@ -33,6 +33,7 @@ import {
   readDenConfig,
   readSessionsConfig,
   readInstallMode,
+  limitInForce,
   readMcpConfig,
   USER_ONLY_WIDENING,
   type DenConfig,
@@ -126,6 +127,14 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
+  // Issue 1417: every agent limit has an agent ask path.
+  "agents.token_peer_wait_ms",
+  "agents.turn_read_max_mb",
+  "agents.restart_wait_minutes",
+  "agents.rotation_wait_minutes",
+  "agents.unasked_exit_window_minutes",
+  "agents.lock_wait_minutes",
+  "agents.exited_shell_minutes",
   "agents.shell_path_timeout_seconds",
   "agents.draft_hold_max_minutes",
   "agents.resume.batch",
@@ -346,14 +355,27 @@ export function matchesSetting(pattern: string, key: string): boolean {
  * strict install. gate.browser_requires_container 0 runs browsers on the
  * host, not in a container. On personal installs the gate stays routine.
  */
+/** A level as a number (true/false as 1/0); null when it isn't one. */
+const level = (v: unknown): number | null =>
+  typeof v === "boolean" ? (v ? 1 : 0) : typeof v === "number" ? v : null;
+
 const WIDENS_AT: readonly [
   key: string,
-  widens: (v: unknown) => boolean,
+  /** `before`: the value in effect now, when the caller knows it. */
+  widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
+  // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
+  // lowering of the container requirement widens on strict; with no old
+  // value known, off (0) does.
   [
     "gate.browser_requires_container",
-    (v) => v === 0 || v === false,
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
     ["strict"],
   ],
   // Issue 1391: to strict is routine; anything else (personal, or back to
@@ -366,10 +388,11 @@ export function settingKind(
   /** Issue 1391: the install's mode; strict when not given. */
   mode: InstallMode = "strict",
   /**
-   * Issue 1395: the value in effect after the change, defaults resolved.
-   * Given, WIDENS_AT may make it widen on strict.
+   * Issue 1395: the value in effect after the change, defaults resolved,
+   * and (when known) the value in effect now. Given, WIDENS_AT may make
+   * it widen on strict.
    */
-  ...value: [] | [unknown]
+  ...value: [] | [unknown] | [unknown, unknown]
 ): SettingKind {
   const is = (list: readonly string[]) =>
     list.some((p) => matchesSetting(p, key));
@@ -387,7 +410,7 @@ export function settingKind(
     ? WIDENS_AT.find(([k, , modes]) => k === key && modes.includes(mode))
     : undefined;
   const widens = rule
-    ? rule[1](value[0])
+    ? rule[1](value[0], value[1])
     : category === "agent_powers" || !routine;
   const restart = is(AT_START) ? ("server" as const) : undefined;
   return {
@@ -1094,7 +1117,43 @@ export const CAP_KEYS = [
   "agents.max_concurrent",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
+  // Issue 1417 (Builder 2): every agent limit setting_change takes. Past
+  // twice its baseline asks on any install. Each one widens when raised: a
+  // bigger read, a longer wait, a shell kept longer. Lowering one is
+  // routine, except a guard's (LOWER_WIDENS).
+  "agents.token_peer_wait_ms",
+  "agents.turn_read_max_mb",
+  "agents.restart_wait_minutes",
+  "agents.rotation_wait_minutes",
+  "agents.unasked_exit_window_minutes",
+  "agents.lock_wait_minutes",
+  "agents.exited_shell_minutes",
 ] as const;
+
+/**
+ * Issue 1417: the limits where lowering is what widens.
+ * - unasked_exit_window_minutes: a second unasked exit within the window
+ *   leaves the agent down (issue 926). A small window lets a crash loop
+ *   come back every time. 0 is "never brought back", the safest value
+ *   (SAFE_AT_ZERO), so a change to 0 is routine and any window above a 0
+ *   asks.
+ * - lock_wait_minutes: a lock that can't be read (its holder between
+ *   making it and writing its pid) is taken over once older than the wait.
+ *   A shorter wait can break a live holder's lock: two writers on one
+ *   agent record.
+ */
+const LOWER_WIDENS: readonly string[] = [
+  "agents.unasked_exit_window_minutes",
+  "agents.lock_wait_minutes",
+];
+const SAFE_AT_ZERO: readonly string[] = ["agents.unasked_exit_window_minutes"];
+
+const ZERO_IS_UNLIMITED: readonly string[] = [
+  "agents.max_concurrent",
+  "sessions.max_concurrent",
+  "agents.resume.load_ceiling",
+  "agents.exited_shell_minutes",
+];
 
 const isCap = (key: string): key is (typeof CAP_KEYS)[number] =>
   (CAP_KEYS as readonly string[]).includes(key);
@@ -1110,7 +1169,11 @@ function capInForce(
       return readAgentsConfig(den, user).maxConcurrent;
     if (key === "sessions.max_concurrent")
       return readSessionsConfig(den, user).maxConcurrent;
-    return agentsResume(() => user).loadCeiling;
+    if (key === "agents.resume.load_ceiling")
+      return agentsResume(() => user).loadCeiling;
+    // Issue 1417: the other agent limits, from the one lookup.
+    const v = limitInForce(key, user, den)?.value;
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
   } catch {
     return undefined;
   }
@@ -1125,17 +1188,26 @@ function storedBaseline(user: UserConfig, key: string): number | undefined {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
 }
 
-/** Whether this new value raises the cap past twice its baseline. */
+/** Whether this new value raises the cap past twice its baseline, or lowers a guard. */
 function capRaisePast(
   key: (typeof CAP_KEYS)[number],
   value: unknown,
   den: DenConfig,
   user: UserConfig,
 ): boolean {
-  if (typeof value !== "number") return value !== null;
   const base = storedBaseline(user, key) ?? capInForce(key, den, user);
+  // A guard put back to its default (null) may lower it: the person's.
+  if (value === null) return LOWER_WIDENS.includes(key);
+  if (typeof value !== "number") return true;
   if (base === undefined) return true;
-  const inf = (n: number) => (n === 0 ? Infinity : n);
+  const inf = (n: number) =>
+    n === 0 && ZERO_IS_UNLIMITED.includes(key) ? Infinity : n;
+  if (
+    LOWER_WIDENS.includes(key) &&
+    inf(value) < inf(base) &&
+    !(value === 0 && SAFE_AT_ZERO.includes(key))
+  )
+    return true;
   return inf(value) > 2 * inf(base);
 }
 
@@ -1307,6 +1379,16 @@ export function checkSettingChange(
         `${key} isn't changed by agents: ${CATEGORY_LABEL[kind.category]} is set to Never in Settings › Approvals › Agents changing settings (approvals.settings.${kind.category}). A person changes it there.`,
       );
     const now = shown(getPath(before, parts));
+    // Issue 1417: an unset limit's Now is the value in force, never
+    // "not set", so the person sees what the change replaces.
+    const inForce =
+      getPath(before, parts) === undefined
+        ? limitInForce(key, before as UserConfig, den)
+        : undefined;
+    const nowShown =
+      inForce && inForce.from !== "user.yml"
+        ? { value: shown(inForce.value), from: inForce.from }
+        : null;
     const next = value === null ? "Den's default" : shown(stored ?? value);
     const lines: ReviewLine[] = [
       ...(kind.widens
@@ -1318,7 +1400,19 @@ export function checkSettingChange(
           ]
         : []),
       line(`Setting: ${key}`, "ap.det.setting_change.key", { key }),
-      line(`Now: ${now}`, "ap.det.setting_change.now", { value: now }),
+      nowShown?.from === "default"
+        ? line(
+            `Now: ${nowShown.value} (Den's default)`,
+            "ap.det.setting_change.nowDefault",
+            { value: nowShown.value },
+          )
+        : nowShown?.from === "den.yml"
+          ? line(
+              `Now: ${nowShown.value} (from den.yml)`,
+              "ap.det.setting_change.nowDen",
+              { value: nowShown.value },
+            )
+          : line(`Now: ${now}`, "ap.det.setting_change.now", { value: now }),
       line(`New: ${next}`, "ap.det.setting_change.new", { value: next }),
       line(`Why: ${reason}`, "ap.det.setting_change.why", { why: reason }),
       ...(who.agent

@@ -8,6 +8,8 @@ import {
   SESSIONS_SETTINGS_KEYS,
   AGENTS_SETTINGS_KEYS,
   agentsLimitInForce,
+  limitInForce,
+  type LimitSource,
   writeUserConfig,
   readInstallMode,
   type DenConfig,
@@ -180,6 +182,13 @@ function sessionsValue(name: string): number | undefined {
   const camel = limit.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
   return readSessionsConfig()[camel as keyof ResolvedSessionsConfig] as number;
 }
+
+/** Issue 1417: where a limit's value in force comes from, in words. */
+const SOURCE_WORDS: Readonly<Record<LimitSource, string>> = {
+  "user.yml": "from user.yml",
+  "den.yml": "from den.yml",
+  default: "Den's default",
+};
 
 /** Issue 1373: an agent limit's value in force (user.yml over den.yml). */
 function agentsLimitValue(name: string): unknown {
@@ -413,6 +422,18 @@ export async function cmdConfig(args: string[]): Promise<void> {
 
   const assignment = args[0];
   const eq = assignment.indexOf("=");
+  // Issue 1417: an agent or terminal limit prints its value in force as
+  // stdout's last line (scripts read it), and where it came from on
+  // stderr; every agent limit, not only the ones `config` sets.
+  const inForce =
+    eq < 0
+      ? limitInForce(assignment, readUserConfig(), readDenConfigOrEmpty())
+      : undefined;
+  if (inForce) {
+    console.error(chalk.dim(`  (${SOURCE_WORDS[inForce.from]})`));
+    console.log(String(inForce.value));
+    return;
+  }
   // Issue 532: `config sessions.<key>` prints the value in force.
   const effective =
     eq < 0

@@ -49,7 +49,7 @@ async function holding() {
         ...process.env,
         DEN_GATE_DIR: dir,
         TSX_DISABLE_CACHE: "1",
-        DEN_PW_WS: "ws://127.0.0.1:9",
+        DEN_PW_WS: "ws://192.0.2.1:9",
       },
       stdio: ["ignore", "ignore", "pipe"],
     },
