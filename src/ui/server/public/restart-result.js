@@ -112,6 +112,18 @@ export async function restartNow(btn, o) {
  * restarted, or not; `onDone(id, ws, ok)` hears each.
  */
 export function wireRestartNow(root, o) {
+  // Issue 1434: a button that goes once it's done hands the keyboard's
+  // focus to the status line it leaves behind.
+  const removeTo = (b, line) => {
+    const had = b.contains(document.activeElement);
+    b.remove();
+    if (!had || !line) return;
+    if (!line.hasAttribute("tabindex")) line.setAttribute("tabindex", "-1");
+    line.focus();
+  };
+  const status = () =>
+    root.closest?.("[data-rs-result]") ??
+    root.querySelector("[data-rs-result]");
   const one = async (b) => {
     const row = b.closest("[data-rs-agent]");
     const ok = await restartNow(b, o);
@@ -119,22 +131,25 @@ export function wireRestartNow(root, o) {
     const line = row?.querySelector("[data-rs-line]");
     if (line) line.textContent = restartLine(a, o.t);
     if (row) row.dataset.rsState = a.state;
-    if (ok) b.remove();
+    if (ok) removeTo(b, line);
     o.onDone?.(b.dataset.rsNow, b.dataset.rsWs, ok);
     return ok;
   };
   root.querySelectorAll("[data-rs-now]").forEach((b) =>
     b.addEventListener("click", async () => {
       await one(b);
-      if (root.querySelectorAll("[data-rs-now]").length < 2)
-        root.querySelector("[data-rs-all]")?.remove();
+      const all = root.querySelector("[data-rs-all]");
+      if (all && root.querySelectorAll("[data-rs-now]").length < 2)
+        removeTo(all, status());
     }),
   );
   const all = root.querySelector("[data-rs-all]");
   all?.addEventListener("click", async () => {
-    all.disabled = true;
+    if (all.getAttribute("aria-busy") === "true") return;
+    // Issue 1434: held as the kit holds a button, so it keeps focus.
+    all.setAttribute("aria-disabled", "true");
     all.setAttribute("aria-busy", "true");
     for (const b of [...root.querySelectorAll("[data-rs-now]")]) await one(b);
-    all.remove();
+    removeTo(all, status());
   });
 }

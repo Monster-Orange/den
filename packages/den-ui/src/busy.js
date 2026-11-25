@@ -38,7 +38,7 @@
  *
  *   busyAction(name, run, opts) → Promise<data | null>
  *     run(headers)        the request; it must send `headers` (the id).
- *     opts.button         held (disabled, aria-busy) and focused again.
+ *     opts.button         held (aria-disabled, aria-busy); it keeps focus.
  *     opts.vars           words' {placeholders}.
  *     opts.success(data)  the success line, worked out from the answer.
  *     opts.onDone(data), opts.onFail(err)
@@ -66,8 +66,8 @@
  *
  * Issue 699, the held button: every button the kit holds (opts.button,
  * pending()'s button, a plain POST form's submitter) shows three pulsing
- * dots in place of its label at once, at the same size, disabled with
- * aria-busy="true". The label stays (in .bz-lbl, hidden) and stays the
+ * dots in place of its label at once, at the same size, aria-disabled
+ * with aria-busy="true" (issue 1434: so it keeps the keyboard's focus). The label stays (in .bz-lbl, hidden) and stays the
  * accessible name. The working pop-up then opens only after dotsMs
  * (configureBusy({ dotsMs }), default DOTS_MS, 3 s), the dots behind it;
  * an answer before that gives the label back. The button never shows an
@@ -320,20 +320,47 @@ export function instantProblems(html) {
 const held = new Map();
 
 /**
- * Holds a button (disabled, aria-busy) or lets it go. dots: the label goes
- * into .bz-lbl (hidden, so the size stays) and three dots go over it; the
- * accessible name stays the label. later: disabled on the next turn (a
- * form's submitter, once the browser took its name and value).
+ * Issue 1434: a held button is aria-disabled, not disabled, so the
+ * keyboard's focus stays on it (a disabled button that has focus drops it
+ * to <body>). Its clicks stop here instead, before the page's own
+ * listeners: a mouse click, Enter or Space, or a form's implicit submit.
  */
-function holdButton(b, on, dots, later = false) {
+const guarded = new Set();
+/** The held buttons the kit set aria-disabled on (to take it off again). */
+const offByKit = new Set();
+let guarding = false;
+function guardClicks() {
+  if (guarding || !globalThis.window?.addEventListener) return;
+  guarding = true;
+  window.addEventListener(
+    "click",
+    (e) => {
+      for (let n = e.target; n; n = n.parentNode)
+        if (guarded.has(n)) {
+          e.preventDefault?.();
+          e.stopImmediatePropagation?.();
+          return;
+        }
+    },
+    true,
+  );
+}
+
+/**
+ * Holds a button (aria-disabled, aria-busy) or lets it go. dots: the label
+ * goes into .bz-lbl (hidden, so the size stays) and three dots go over it;
+ * the accessible name stays the label.
+ */
+function holdButton(b, on, dots) {
   if (!b) return;
   if (!on) {
     b.disabled = false;
     b.removeAttribute("aria-busy");
+    guarded.delete(b);
+    if (offByKit.delete(b)) b.removeAttribute("aria-disabled");
     const h = held.get(b);
     if (!h) return;
     held.delete(b);
-    clearTimeout(h.timer);
     if (h.dots.parentNode === b) h.dots.remove();
     // The page may have drawn the button again while it waited: its own
     // label then stays as it drew it.
@@ -346,9 +373,12 @@ function holdButton(b, on, dots, later = false) {
     return;
   }
   b.setAttribute("aria-busy", "true");
-  let timer = 0;
-  if (later) timer = setTimeout(() => held.has(b) && (b.disabled = true), 0);
-  else b.disabled = true;
+  if (b.getAttribute("aria-disabled") !== "true") {
+    b.setAttribute("aria-disabled", "true");
+    offByKit.add(b);
+  }
+  guarded.add(b);
+  guardClicks();
   if (!dots || held.has(b)) return;
   ensureCss();
   const name = b.getAttribute("aria-label");
@@ -364,7 +394,7 @@ function holdButton(b, on, dots, later = false) {
   for (let i = 0; i < 3; i++) d.append(document.createElement("i"));
   b.append(lbl, d);
   if (name == null && text) b.setAttribute("aria-label", text);
-  held.set(b, { lbl, dots: d, name, timer });
+  held.set(b, { lbl, dots: d, name });
 }
 
 /**
@@ -885,7 +915,7 @@ export function watchForms(root = document) {
       return;
     }
     if (instantReason(b)) return;
-    holdButton(b, true, true, true);
+    holdButton(b, true, true);
     mine.add(b);
   };
   // Back from the next page (the back-forward cache): the label is back.

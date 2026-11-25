@@ -408,7 +408,9 @@ Every button the kit holds shows three pulsing dots in place of its
 label at once, until the server answers: busyAction's `opts.button`,
 `pending()`'s button, and a plain POST form's submitter. The button keeps
 its size (the label stays, hidden, and stays its accessible name), is
-disabled with `aria-busy="true"`, and keeps its own colours. The working
+`aria-disabled="true"` with `aria-busy="true"`, and keeps its own colours.
+It is never `disabled` (issue 1434): it keeps the keyboard's focus, and a
+click, Enter or Space on it while held does nothing. The working
 pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
 
     import { pending, watchForms, configureBusy } from "@monster-orange/den-ui/busy";
