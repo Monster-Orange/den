@@ -666,10 +666,14 @@
         overflow-x: auto;
         min-width: 0;
       }
+      /* A tab gives up width (its name shortens) before the strip scrolls:
+         the open tabs fit whole while each can keep 7rem; past that the
+         strip scrolls sideways. */
       .agtab-w {
         position: relative;
         display: inline-flex;
-        flex: none;
+        flex: 0 1 auto;
+        min-width: 7rem;
         max-width: 280px;
       }
       .agtab {
@@ -677,6 +681,8 @@
         align-items: center;
         gap: 6px;
         min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
         border: 1px solid transparent;
         border-bottom: 0;
         background: none;
@@ -704,7 +710,8 @@
       .agtab .tn {
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        min-width: 0;
         max-width: 100%;
       }
       .agtab .tm {
@@ -712,7 +719,8 @@
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 0 1 auto;
+        /* Gives way long before the name does (0.4.44). */
+        flex: 0 1000 auto;
         min-width: 0;
       }
       .agtab-x {
