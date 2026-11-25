@@ -87,7 +87,11 @@ function compact(r: Rig, id: string, n: number): void {
     noteCompaction(files(r, id), { session_id: token, trigger: "auto" }, after);
 }
 
-/** Its transcript's last record: mid-turn (a tool call) or idle. */
+const mtimes: Record<string, Date> = {};
+/**
+ * Its transcript's last record: mid-turn (a tool call) or idle. A rewrite
+ * keeps the file's mtime (issue 1593).
+ */
 function turn(r: Rig, id: string, busy: boolean): void {
   const dir = path.join(r.dir, "cc", "projects", "p");
   fs.mkdirSync(dir, { recursive: true });
@@ -98,10 +102,12 @@ function turn(r: Rig, id: string, busy: boolean): void {
       content: [{ type: "text", text: "ok" }],
     },
   });
-  fs.writeFileSync(
-    path.join(dir, `${rec(r, id).resumeToken}.jsonl`),
-    `${line}\n`,
-  );
+  const file = path.join(dir, `${rec(r, id).resumeToken}.jsonl`);
+  fs.writeFileSync(file, `${line}\n`);
+  // Issue 1593: busy and idle are the same length; a rewrite inside one
+  // mtime tick (a few ms on Linux) kept the mtime too. Every run does so.
+  const t = (mtimes[file] ??= new Date(Date.now()));
+  fs.utimesSync(file, t, t);
 }
 
 /** A send that records what it typed (the real one types into the PTY). */

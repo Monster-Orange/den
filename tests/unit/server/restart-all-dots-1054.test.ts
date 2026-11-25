@@ -21,6 +21,12 @@ function fakeButton(data: Record<string, string>) {
     setAttribute(k: string, v: string) {
       this.attrs[k] = v;
     },
+    getAttribute(k: string): string | null {
+      return this.attrs[k] ?? null;
+    },
+    removeAttribute(k: string) {
+      delete this.attrs[k];
+    },
     closest: () => null,
     remove() {
       this.removed = true;

@@ -54,33 +54,51 @@ ${STYLES.map((s) => `<link rel="stylesheet" href="/kit/${s}.css">`).join("\n")}
 /** Three sections; Tools has two counted entries (one waiting on you). */
 const APP = `
 import DenUI from "/kit/kit.js";
-DenUI.configure({ lang: "en", product: { name: "Acme" } });
+const q = new URLSearchParams(location.search);
+const lang = q.get("lang") || "en";
+document.documentElement.lang = lang;
+DenUI.configure({ lang, product: { name: "Acme" } });
 const groups = [
   { id: "work", label: "Work" },
   { id: "tools", label: "Tools" },
   { id: "more", label: "More" },
 ];
 const nav = [
-  { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: true },
+  { id: "home", label: "Home", href: "#home", group: "work", icon: "home", current: !q.get("current") },
   { id: "runs", label: "Runs", href: "#runs", group: "work", icon: "home" },
-  { id: "logs", label: "Logs", href: "#logs", group: "tools", icon: "home", badge: { n: 2 } },
-  { id: "jobs", label: "Jobs", href: "#jobs", group: "tools", icon: "home", badge: { n: 3, bad: true } },
+  { id: "logs", label: "Logs", href: "#logs", group: "tools", icon: "home", badge: { n: q.has("many") ? 120 : 2 } },
+  { id: "jobs", label: "Jobs", href: "#jobs", group: "tools", icon: "home", badge: { n: 3, bad: true }, current: q.get("current") === "jobs" },
   { id: "docs", label: "Docs", href: "#docs", group: "more", icon: "home" },
 ];
-window.shell = DenUI.mount(document.getElementById("den-shell"), {
+const model = {
   product: { name: "Acme", version: "1.0.0", mark: { text: "A", label: "Acme" } },
   groups, nav,
   settings: { href: "#settings" },
   account: { name: "Ada Lovelace", login: "ada", href: "#account" },
-});
+};
+const root = document.getElementById("den-shell");
+if (q.has("nohydrate")) {
+  // The kit's markup with Tools folded, and no script to hydrate it (a
+  // script that failed to load, or threw).
+  root.innerHTML = DenUI.shellHtml({ ...model, folded: ["tools"] });
+} else window.shell = DenUI.mount(root, model);
 window.ready = true;
 `;
 
 async function open(
   b: Browser,
-  { width = 1280, height = 760, store = null as string[] | null } = {},
+  {
+    width = 1280,
+    height = 760,
+    store = null as string[] | null,
+    query = "",
+    dark = false,
+  } = {},
 ): Promise<Page> {
-  const ctx = await b.newContext({ viewport: { width, height } });
+  const ctx = await b.newContext({
+    viewport: { width, height },
+    colorScheme: dark ? "dark" : "light",
+  });
   const p = await ctx.newPage();
   await p.route(`${ORIGIN}/**`, async (r: Route) => {
     const u = new URL(r.request().url());
@@ -112,7 +130,7 @@ async function open(
         /* no storage */
       }
     }, store);
-  await p.goto(`${ORIGIN}/`);
+  await p.goto(`${ORIGIN}/${query}`);
   await p.waitForFunction(
     () => (window as { ready?: boolean }).ready === true,
     undefined,
@@ -257,6 +275,31 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
     await p.close();
   });
 
+  it("past 99, the badge and the name say 99+", async () => {
+    const p = await open(b(), { query: "?many" });
+    await p.click('[data-den-fold="tools"]');
+    expect(await head(p, "tools")).toMatchObject({
+      count: "99+",
+      name: "Show Tools, 99+ inside",
+    });
+    await p.close();
+  });
+
+  it("with no hydrate, a folded section hides nothing", async () => {
+    const p = await open(b(), { query: "?nohydrate" });
+    const g = await p.evaluate(() => {
+      const group = document.querySelector('[aria-labelledby="den-gh-tools"]')!;
+      return {
+        folded: group.hasAttribute("data-folded"),
+        shown: [...group.querySelectorAll("[data-nav]")]
+          .filter((e) => e.getClientRects().length > 0)
+          .map((e) => (e as HTMLElement).dataset.nav),
+      };
+    });
+    expect(g).toEqual({ folded: true, shown: ["logs", "jobs"] });
+    await p.close();
+  });
+
   it("a repaint keeps the button and the fold", async () => {
     const p = await open(b(), { store: ["tools"] });
     await p.evaluate(() => {
@@ -282,24 +325,76 @@ describe.each(["chromium", "webkit"])("rail sections fold (%s)", (name) => {
   });
 
   if (SHOTS)
-    it("saves the open and folded rail at 1280 and 375", async () => {
+    it("saves the frames review asks for", async () => {
       fs.mkdirSync(SHOTS, { recursive: true });
-      for (const width of [1280, 375]) {
-        const p = await open(b(), { width, height: 640 });
-        if (width < 720) await p.click("#den-menu-btn");
-        await p.screenshot({
-          path: path.join(SHOTS, `${name}-${width}-open.png`),
-        });
+      // Every transition (the drawer's slide, the chevrons' turn) ends
+      // before a picture.
+      const settle = (p: Page) =>
+        p.waitForFunction(() =>
+          document.getAnimations().every((a) => a.playState !== "running"),
+        );
+      const shot = async (p: Page, file: string) => {
+        await settle(p);
+        await p.screenshot({ path: path.join(SHOTS, `${name}-${file}.png`) });
+      };
+      const drawer = async (p: Page) => {
+        await p.click("#den-menu-btn");
+        await p.waitForFunction(
+          () =>
+            getComputedStyle(document.getElementById("den-rail")!).transform ===
+            "none",
+        );
+      };
+      const fold = async (p: Page) => {
         await p.click('[data-den-fold="tools"]');
         await p.click('[data-den-fold="more"]');
         await p.mouse.move(0, 0);
-        // The chevrons' turn ends before the picture.
-        await p.waitForFunction(() =>
-          document.getAnimations().every((a) => a.playState !== "running"),
-        );
-        await p.screenshot({
-          path: path.join(SHOTS, `${name}-${width}-folded.png`),
+      };
+      for (const width of [1280, 375]) {
+        const p = await open(b(), { width, height: 640 });
+        if (width < 720) await drawer(p);
+        await shot(p, `${width}-open`);
+        await fold(p);
+        await shot(p, `${width}-folded`);
+        if (width < 720) {
+          // The drawer closed again: the page is not left dim.
+          await p.keyboard.press("Escape");
+          await shot(p, `${width}-drawer-closed`);
+        }
+        await p.close();
+      }
+      {
+        const p = await open(b(), { width: 1280, height: 640, dark: true });
+        await fold(p);
+        await shot(p, "1280-dark-folded");
+        await p.close();
+      }
+      {
+        const p = await open(b(), { width: 1280, height: 640 });
+        await p.focus('[data-nav="runs"]');
+        await p.keyboard.press("ArrowDown");
+        await shot(p, "1280-focus-tools");
+        await p.close();
+      }
+      {
+        const p = await open(b(), {
+          width: 375,
+          height: 640,
+          query: "?lang=ja",
         });
+        await drawer(p);
+        await fold(p);
+        await shot(p, "375-ja-folded");
+        await p.close();
+      }
+      {
+        const p = await open(b(), {
+          width: 1280,
+          height: 640,
+          store: ["tools"],
+          query: "?current=jobs",
+        });
+        await shot(p, "1280-current-in-folded");
         await p.close();
       }
     });
