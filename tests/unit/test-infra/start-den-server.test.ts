@@ -105,6 +105,20 @@ ${FAKE}`;
     );
   });
 
+  it("a server that never answers is named as timed out, never as exited (the stop is ours)", async () => {
+    const root = tmpRoot();
+    await expect(
+      startDenServer(
+        process.execPath,
+        ["-e", 'console.log("booting"); setInterval(() => {}, 1000)'],
+        { cwd: root, env: { ...process.env, DEN_ROOT: root } },
+        { timeoutMs: 1_500 },
+      ),
+    ).rejects.toThrow(
+      /try 1 on port \d+: it never answered within 1\.5 s\nbooting/,
+    );
+  });
+
   it("a server gets its own gate folder, never the worker's shared one", async () => {
     // A slot another test left in the worker's folder must never show in
     // this server's bell (an overrun row moved a bell test's buttons).

@@ -35,9 +35,23 @@ const base = (ws, agent) => `${agentUrl(ws, agent)}/helpers`;
 /** D34: what the page does once a person cleared (set by wireHelperRows). */
 let onClearedHook = null;
 
-/** D34 Clear done (the Helpers list): hide `agent`'s finished helpers. */
-export async function clearHelpers(ws, agent) {
-  await window.denShell.api("POST", `${agentUrl(ws, agent)}/clear-helpers`, {});
+/**
+ * D34 Clear done (the Helpers list): hide `agent`'s finished helpers. The
+ * pressed `button` (when given) holds the kit's dots until the answer.
+ */
+export async function clearHelpers(ws, agent, button) {
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
+  try {
+    await window.denShell.api(
+      "POST",
+      `${agentUrl(ws, agent)}/clear-helpers`,
+      {},
+    );
+  } finally {
+    void release();
+  }
   await onClearedHook?.(agent, ws);
 }
 
@@ -283,19 +297,16 @@ function dialog() {
   dlg.querySelector("[data-hp-clear]").addEventListener("click", async (e) => {
     const b = e.currentTarget;
     const at = dlg.dataset;
-    b.disabled = true;
     try {
-      await clearHelpers(at.ws, at.agent);
+      await clearHelpers(at.ws, at.agent, b);
     } catch (err) {
       const body = dlg.querySelector("#hp-body");
       body.insertAdjacentHTML(
         "afterbegin",
         `<p class="hp-none" role="alert">${esc(t("hp.clearFailed", { err: err?.message || String(err) }))}</p>`,
       );
-      b.disabled = false;
       return;
     }
-    b.disabled = false;
     await loadHelpers(at.ws, at.agent);
     dlg.querySelector("#hp-h").focus();
   });
