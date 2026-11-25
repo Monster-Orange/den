@@ -3,10 +3,11 @@
 // gate-252-mode and removed in teardown. The person (the signed-in page) chooses a mode from the agent's ⋯
 // menu; Den restarts it at its next idle in that mode, writes an audit row saying it did it and why, and
 // the row says "from its own setting". Follow project (the same menu) returns it, restarted again.
-// Agents › ⋯ › Mode is English on the bed (its language); the mode itself is read from data attributes.
+// Every control is found by its role and its words from the page's own catalog (denShell.t), never by
+// English text, a styling class or its place; modes are read from data attributes.
 export const issue = 252;
 export const clauses = [
-  "a Mode item in the agent's ⋯ menu, with the choices and Follow project; the busy pop-up shows while it applies and the result is said",
+  "a Mode item in the agent's ⋯ menu, with the choices and Follow project; the button shows busy while it applies and the result is said",
   "an audit row for each restart that follows a mode change, by Den itself",
   'the CLI says the agent restarts at its next idle, not "from its next start"',
   'choosing a mode restarts it at idle in that mode, and the row shows "from its own setting"; Follow project returns it to the project\'s mode',
@@ -68,57 +69,98 @@ const auditDetails = (ctx) =>
       }
     });
 
-/** Opens the agent's ⋯ › Mode; the radios' [label, checked]. */
-async function openMode(ctx, ws) {
+/** The page's own words for `key` (its catalog, the page's language). */
+const words = (p, key, vars) =>
+  p.evaluate(([k, v]) => window.denShell.t(k, v), [key, vars ?? {}]);
+
+/** Opens the agent's ⋯ › Mode (`mode`: the one it shows); the radios' [mode or "follow", checked]. */
+async function openMode(ctx, ws, mode) {
   const p = ctx.page;
   await ctx.goto(
     p,
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
-  const row = `.agst[data-agent="${ID}"] .agr`;
-  await p.waitForSelector(row, { timeout: 20000 });
-  const more = '.pane [data-act="more"]';
-  if (!(await p.locator(more).count())) await p.click(row);
-  await p.waitForSelector(more, { timeout: 15000 });
-  await p.click(more);
-  await p
-    .locator('.den-pop[role="menu"] .den-mi', { hasText: /^Mode/ })
-    .first()
-    .click();
-  await p.waitForSelector('.den-pop[role="menu"] [role="menuitemradio"]', {
-    timeout: 10000,
+  const row = p.locator(`[data-agent="${ID}"] > button[data-kind="agent"]`);
+  await row.waitFor({ timeout: 20000 });
+  const more = p.getByRole("button", {
+    name: await words(p, "ag.more", { id: ID }),
+    exact: true,
   });
-  return p
-    .locator('.den-pop[role="menu"] [role="menuitemradio"]')
-    .evaluateAll((els) =>
-      els.map((e) => [
-        (
-          e.querySelector(".den-mi-l")?.textContent ??
-          e.textContent ??
-          ""
-        ).trim(),
-        e.getAttribute("aria-checked"),
-      ]),
-    );
+  if (!(await more.count())) await row.click();
+  await more.waitFor({ timeout: 15000 });
+  await more.click();
+  const item = await words(p, "ag.mode.item", {
+    m: await words(p, `pm.name.${mode}`),
+  });
+  await p.getByRole("menuitem", { name: item, exact: true }).click();
+  const radios = p.getByRole("menuitemradio");
+  await p
+    .getByRole("menuitemradio", { name: await words(p, "ag.mode.follow") })
+    .waitFor({ timeout: 10000 });
+  const out = [];
+  for (const m of ORDER) {
+    const r = p.getByRole("menuitemradio", {
+      name: await words(p, `pm.${m}`),
+      exact: true,
+    });
+    out.push([
+      m,
+      (await r.count()) === 1 ? await r.getAttribute("aria-checked") : null,
+    ]);
+  }
+  const follow = p.getByRole("menuitemradio", {
+    name: await words(p, "ag.mode.follow"),
+  });
+  out.push([
+    "follow",
+    (await follow.count()) === 1
+      ? await follow.getAttribute("aria-checked")
+      : null,
+  ]);
+  return { radios: await radios.count(), items: out };
 }
 
-/** Clicks radio `i`; whether the busy pop-up showed, and the result said. */
-async function choose(ctx, i) {
+/**
+ * Picks `pick` (a mode, or "follow"); whether a button showed busy while it
+ * applied, and whether the result was said in the page's words: the mode's
+ * name, or for Follow project the project's (`then`).
+ */
+async function choose(ctx, pick, then) {
   const p = ctx.page;
-  const busy = p
-    .waitForSelector("den-busy", { timeout: 5000 })
-    .then(() => true)
-    .catch(() => false);
+  await p.evaluate(() => {
+    window.__busy252 = false;
+    const o = new MutationObserver(() => {
+      if (document.querySelector('[aria-busy="true"]')) window.__busy252 = true;
+    });
+    o.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-busy"],
+    });
+    window.__busy252o = o;
+  });
+  const name =
+    pick === "follow"
+      ? await words(p, "ag.mode.follow")
+      : await words(p, `pm.${pick}`);
   await p
-    .locator('.den-pop[role="menu"] [role="menuitemradio"]')
-    .nth(i)
+    .getByRole("menuitemradio", { name, exact: pick !== "follow" })
     .click();
+  const want = await words(
+    p,
+    pick === "follow" ? "ag.mode.followS" : "ag.mode.setS",
+    { id: ID, m: await words(p, `pm.name.${pick === "follow" ? then : pick}`) },
+  );
   const said = await p
-    .getByText(/Den restarts it at its next idle to take it\./)
-    .first()
-    .textContent({ timeout: 15000 })
+    .getByText(want, { exact: true })
+    .waitFor({ timeout: 15000 })
+    .then(() => want)
     .catch(() => null);
-  return { busy: await busy, said: said?.replace(/\s+/g, " ").trim() ?? null };
+  const busy = await p.evaluate(() => {
+    window.__busy252o?.disconnect();
+    return window.__busy252 === true;
+  });
+  return { busy, said, want };
 }
 
 /** Waits until it runs in `mode` from `source` in a new session; how long, or null. */
@@ -147,7 +189,7 @@ async function rowTag(ctx, ws) {
     ctx.page,
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
-  const sel = `.agst[data-agent="${ID}"] [data-mode]`;
+  const sel = `[data-agent="${ID}"] [data-mode]`;
   await ctx.page.waitForSelector(sel, { timeout: 20000 }).catch(() => {});
   return ctx.page
     .evaluate((s) => {
@@ -176,17 +218,17 @@ export async function run(ctx, s) {
   const want = start.mode === "edits" ? "ask" : "edits";
   r.want = want;
 
-  r.menu = await openMode(ctx, w.ws);
+  r.menu = await openMode(ctx, w.ws, start.mode);
   await ctx.shot("mode-menu");
-  r.set = await choose(ctx, ORDER.indexOf(want));
+  r.set = await choose(ctx, want);
   await ctx.shot("mode-chosen");
   r.toOwn = await restartedIn(ctx, w.ws, w.session, want, "own");
   r.tagOwn = await rowTag(ctx, w.ws);
   await ctx.shot("mode-own-row");
 
   const w2 = await whereIs(ctx);
-  r.menu2 = await openMode(ctx, w.ws);
-  r.follow = await choose(ctx, ORDER.length);
+  r.menu2 = await openMode(ctx, w.ws, want);
+  r.follow = await choose(ctx, "follow", start.mode);
   r.back = await restartedIn(
     ctx,
     w.ws,
@@ -201,7 +243,8 @@ export async function run(ctx, s) {
 }
 
 export function expect(cells) {
-  const r = cells[0]?.result ?? {};
+  // One cell (chromium at 1280): the one with a result.
+  const r = cells.find((c) => c?.result)?.result ?? {};
   const help =
     /restarts at its next idle/.test(r.help || "") &&
     !/from its next start/.test(r.help || "");
@@ -225,13 +268,14 @@ export function expect(cells) {
       })),
       cli,
     ].sort((a, b) => clauses.indexOf(a.clause) - clauses.indexOf(b.clause));
+  // The five radios, each found by its words, exactly one checked: `checked`.
   const menuOk = (m, checked) =>
-    Array.isArray(m) &&
-    m.length === 5 &&
-    /^Follow project/.test(m[4][0] || "") &&
-    m.every(([l]) => !!l) &&
-    m.filter(([, c]) => c === "true").length === 1 &&
-    m[checked]?.[1] === "true";
+    m?.radios === 5 &&
+    Array.isArray(m.items) &&
+    m.items.length === 5 &&
+    m.items.every(([, c]) => c === "true" || c === "false") &&
+    m.items.filter(([, c]) => c === "true").length === 1 &&
+    m.items.find(([k]) => k === checked)?.[1] === "true";
   const ownWords = `restarted ${ID} in ${r.ws} at idle to take mode ${r.want}, from ${SOURCE_WORDS.own}, by Den itself`;
   const backWords = `restarted ${ID} in ${r.ws} at idle to take mode ${r.start?.mode}, from ${SOURCE_WORDS[r.start?.source]}, by Den itself`;
   const audit = r.audit || [];
@@ -245,13 +289,12 @@ export function expect(cells) {
     {
       clause: clauses[0],
       ok:
-        menuOk(r.menu, 4) &&
-        new RegExp(
-          `^${ID}: \\w+, its own setting\\. Den restarts it at its next idle`,
-        ).test(r.set?.said || "") &&
-        menuOk(r.menu2, ORDER.indexOf(r.want)) &&
+        menuOk(r.menu, r.start?.source === "own" ? r.start.mode : "follow") &&
+        !!r.set?.said &&
+        r.set?.busy === true &&
+        menuOk(r.menu2, r.want) &&
         !!r.follow?.said,
-      detail: `menu ${JSON.stringify(r.menu)}; working pop-up opened ${r.set?.busy} (a fast answer is said in a toast instead, the kit's rule); said "${r.set?.said}"; after: ${JSON.stringify(r.menu2)}; Follow project busy ${r.follow?.busy}, said "${r.follow?.said}"`,
+      detail: `menu ${JSON.stringify(r.menu)}; busy in the button ${r.set?.busy}; said "${r.set?.said}" (wanted "${r.set?.want}"); after: ${JSON.stringify(r.menu2)}; Follow project busy ${r.follow?.busy}, said "${r.follow?.said}"`,
       evidence: shots.slice(0, 2),
     },
     {
@@ -266,7 +309,6 @@ export function expect(cells) {
         r.toOwn?.ms !== null &&
         r.tagOwn?.mode === r.want &&
         r.tagOwn?.source === "own" &&
-        /from its own setting/.test(r.tagOwn?.text || "") &&
         r.back?.ms !== null &&
         r.tagBack?.mode === r.start?.mode &&
         r.tagBack?.source === r.start?.source,
