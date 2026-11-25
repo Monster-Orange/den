@@ -255,10 +255,28 @@ interface TurnRead {
   at?: number;
 }
 
-/** The last verdicts, by file, while its size and mtime stay the same. */
+/**
+ * Issue 1593: an mtime ticks coarsely (a few ms on Linux, 2 s on some
+ * shares). A file written this close to when its verdict was read may
+ * change again with the same size and mtime, so that verdict isn't trusted
+ * (as git treats a racily clean file).
+ */
+export const TURN_CACHE_RACY_MS = 2_000;
+
+/**
+ * The last verdicts, by file, while its size and mtime stay the same, and
+ * its mtime was TURN_CACHE_RACY_MS before the read (`readAt`, ms).
+ */
 const turnCache = new Map<
   string,
-  { size: number; mtimeMs: number; bytes: number; max: number; r: TurnRead }
+  {
+    size: number;
+    mtimeMs: number;
+    bytes: number;
+    max: number;
+    readAt: number;
+    r: TurnRead;
+  }
 >();
 const TURN_CACHE_MAX = 256;
 
@@ -280,7 +298,9 @@ export function resetTurnCache(): void {
  * D39: it reads back from the end, `bytes` at first and four times more
  * each try, until a turn's record shows; never the file's start (that is
  * the conversation's first turn). None in the last `maxBytes`: null, can't
- * tell. A verdict is kept while the file's size and mtime stay the same.
+ * tell. A verdict is kept while the file's size and mtime stay the same,
+ * and only when it was read TURN_CACHE_RACY_MS after the file's mtime
+ * (issue 1593: a rewrite inside one mtime tick looks unchanged).
  *
  * Issue 607: `since` is when the agent's live session started (ms). A turn
  * whose last record was written before it is no running turn: the session
@@ -308,7 +328,8 @@ export function transcriptBusy(
     hit.size === st.size &&
     hit.mtimeMs === st.mtimeMs &&
     hit.bytes === bytes &&
-    hit.max === maxBytes
+    hit.max === maxBytes &&
+    hit.mtimeMs <= hit.readAt - TURN_CACHE_RACY_MS
       ? hit.r
       : turnVerdict(file, bytes, maxBytes);
   const { v, at } = r;
@@ -324,6 +345,7 @@ export function transcriptBusy(
       mtimeMs: st.mtimeMs,
       bytes,
       max: maxBytes,
+      readAt: Date.now(),
       r,
     });
     if (turnCache.size > TURN_CACHE_MAX)
