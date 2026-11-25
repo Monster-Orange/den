@@ -276,6 +276,8 @@ describe("the settings inventory (R21)", () => {
         "shell.collapsed",
         "shell.dock",
         "shell.dockHeight",
+        // Issue 1444: the rail sections the person folded.
+        "shell.folded",
         "shell.hidden",
         "shell.order",
         "shell.pins",

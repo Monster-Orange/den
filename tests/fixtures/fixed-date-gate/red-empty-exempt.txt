@@ -1,0 +1,5 @@
+it("parses fast", () => {
+  // mo-lint-ok:
+  const t = Date.now();
+  expect(parse("2026-11-23")).toBe(1);
+});

@@ -42,6 +42,7 @@ import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
+  pidRunning,
   processGroupStateSync,
   recordProcessGroup,
   type GroupState,
@@ -554,14 +555,7 @@ const byOf = (e: GateEntry): string =>
 const reasonOf = (r: string | undefined) =>
   r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as { code?: string }).code === "EPERM";
-  }
-};
+const isAlive = (pid: number): boolean => pidRunning(pid);
 
 export interface GateStoreOpts {
   dir?: string;
