@@ -69,6 +69,16 @@ export const DEN_ACTIONS = {
       failure: "busy.delProjF",
     },
   },
+  // Issue 1371 Part 2: Undo in the bell, of a setting an agent changed.
+  "setting-undo": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: {
+      working: "busy.setUndoW",
+      success: "busy.setUndoS",
+      failure: "busy.setUndoF",
+    },
+  },
   // Issue 144: a person ends a gate slot early (the run goes on).
   "gate-end": {
     who: "__DEN_TITLE__",
@@ -494,4 +504,6 @@ export function busyAction(name, run, opts = {}) {
  * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
  * own words: holdDots(button), then holdDots(button, false).
  */
-export { holdDots } from "/kit/busy.js";
+// Issue 1054: holdRow too (a dragged row's dots). Every name the shell
+// calls on this module is exported here (busy-den-exports-1054.test.ts).
+export { holdDots, holdRow } from "/kit/busy.js";

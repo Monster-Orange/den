@@ -104,21 +104,99 @@ const deps = (
   company: () => "acme",
   self: async () => ({ install: "Bench", login: "pat" }),
   cacheSeconds: () => 30,
-  enabled: () => true,
+  mode: () => "on",
   cache: new Map(),
   ...o,
 });
 
 describe("issue 750: GET /api/hub/groups", () => {
-  it("hub.groups off (the default): state off, and Hub is never asked", async () => {
+  it("hub.groups off: state off, and Hub is never asked", async () => {
     const hub = await stubHub(() => [200, GROUPS]);
-    const r = await call(deps({ url: hub.url, enabled: () => false }));
+    let whoami = 0;
+    const r = await call(
+      deps({
+        url: hub.url,
+        mode: () => "off",
+        self: async () => (whoami++, { install: "Bench" }),
+      }),
+    );
     expect(r.json).toEqual({ ok: true, state: "off" });
     expect(hub.calls()).toBe(0);
+    expect(whoami).toBe(0);
     // No Hub connected and off: still off (no "Groups come with Den Hub").
-    expect(
-      (await call(deps({ url: null, enabled: () => false }))).json,
-    ).toEqual({ ok: true, state: "off" });
+    expect((await call(deps({ url: null, mode: () => "off" }))).json).toEqual({
+      ok: true,
+      state: "off",
+    });
+  });
+
+  // Auto (the default): on when the connected Hub's whoami lists
+  // groups.read, else off.
+  const auto = (url: string | null, features: string[] | null) => {
+    let whoami = 0;
+    const d = deps({
+      url,
+      mode: () => "auto",
+      self: async () => {
+        whoami++;
+        if (features === null) throw new Error("no answer");
+        return { install: "Bench", login: "pat", features };
+      },
+    });
+    return { d, whoami: () => whoami };
+  };
+  it("auto, the Hub lists groups.read: Hub's groups, as with on", async () => {
+    const hub = await stubHub(() => [200, GROUPS]);
+    const a = auto(hub.url, ["deliveries.ack_held", "groups.read"]);
+    const r = await call(a.d);
+    expect(r.json.state).toBe("ok");
+    expect(r.json.groups[0].lead.here).toBe(true);
+    expect(hub.calls()).toBe(1);
+    // Kept in memory with the groups: neither asked again.
+    await call(a.d);
+    expect(hub.calls()).toBe(1);
+    expect(a.whoami()).toBe(1);
+  });
+  it("auto, a Hub without groups.read: off, and its groups are never asked for", async () => {
+    const hub = await stubHub(() => [200, GROUPS]);
+    const a = auto(hub.url, ["deliveries.ack_held"]);
+    // Off, saying why: Hub doesn't list groups.read (a check can tell a
+    // Hub without groups from a Den that never asks).
+    const why = { ok: true, state: "off", why: "hub-lacks-groups-read" };
+    expect((await call(a.d)).json).toEqual(why);
+    expect((await call(a.d)).json).toEqual(why);
+    expect(hub.calls()).toBe(0);
+    // That answer is kept like any other.
+    expect(a.whoami()).toBe(1);
+  });
+  it("a mode change isn't served the other mode's kept read", async () => {
+    const hub = await stubHub(() => [200, GROUPS]);
+    let mode: "auto" | "on" = "auto";
+    const d = deps({
+      url: hub.url,
+      mode: () => mode,
+      self: async () => ({ install: "Bench", login: "pat", features: [] }),
+    });
+    // Auto without groups.read: off, kept.
+    expect((await call(d)).json).toMatchObject({ state: "off" });
+    mode = "on";
+    // On, inside the cache's seconds: Hub is read, not auto's answer.
+    expect((await call(d)).json).toMatchObject({ state: "ok" });
+    expect(hub.calls()).toBe(1);
+  });
+  it("auto, whoami doesn't answer: off, and asked again next time", async () => {
+    const hub = await stubHub(() => [200, GROUPS]);
+    const a = auto(hub.url, null);
+    expect((await call(a.d)).json).toEqual({ ok: true, state: "off" });
+    await call(a.d);
+    expect(hub.calls()).toBe(0);
+    expect(a.whoami()).toBe(2);
+  });
+  it("auto with no Hub connected: off (on shows the Connect line)", async () => {
+    expect((await call(auto(null, ["groups.read"]).d)).json).toEqual({
+      ok: true,
+      state: "off",
+    });
   });
 
   it("a Hub with no groups route (404, or 405): state off, nothing alarming, kept in memory", async () => {

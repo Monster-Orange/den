@@ -112,7 +112,10 @@ const MARK_CODES: ReadonlySet<string> = new Set([
  * which the screen check reads as a dialog: the agent isn't at its prompt.
  */
 export async function heldWhyOf(
-  ops: Pick<typeof AgentOps, "agentDialogKind" | "agentScreenShowsDialog">,
+  ops: Pick<
+    typeof AgentOps,
+    "agentDialogKind" | "agentScreenShowsDialog" | "heldForDraft"
+  >,
   d: AgentsResolved,
   id: string,
   waitingWhy?: (id: string) => string | null,
@@ -121,6 +124,8 @@ export async function heldWhyOf(
   if (dialog) return dialog;
   const why = waitingWhy?.(id) ?? null;
   if (why && MARK_CODES.has(why)) return why as HeldCode;
+  // Issue 1311: its person's unsent draft on the line.
+  if (ops.heldForDraft(id)) return "draft";
   return (await ops.agentScreenShowsDialog(d, id)) ? "not_at_prompt" : null;
 }
 
@@ -130,6 +135,23 @@ function heldBellAfter(why: HeldCode | undefined): number {
   return (lastOpts?.heldBellMinutes ?? 5) * 60;
 }
 let lastOpts: StartOpts | null = null;
+
+/** Issue 1311: agents.draft_hold_max_minutes, in s (its default if unreadable). */
+function draftBellAfter(d: AgentsResolved): number {
+  try {
+    return (d.agentsConfig().draftHoldMaxMs ?? 30 * 60_000) / 1000;
+  } catch {
+    return 30 * 60;
+  }
+}
+
+/**
+ * Issue 1311: how many Hub items wait for agent `agent` on its person's
+ * unsent draft (the terminal's "N messages waiting").
+ */
+export function hubWaitingOnDraft(agent: string): number {
+  return loop?.waitingOnDraft(agent) ?? 0;
+}
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
 let inboxTimer: NodeJS.Timeout | null = null;
@@ -416,7 +438,9 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     agents: {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
-      type: (id, text) => ops.typeIntoAgent(d, id, text),
+      // Issue 1311: a draft on the line: false at once; this queue keeps
+      // the items, in order, and types them once the draft is gone.
+      type: (id, text) => ops.typeIntoAgent(d, id, text, { onDraft: "refuse" }),
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
       why: (id) => heldWhyOf(ops, d, id, (x) => o.waitingWhy?.(x) ?? null),
       // Issue 750: its Hub tools failed to load (issue 749's record).
@@ -458,8 +482,15 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     // keeps saying it (refreshed each minute) until it's typed.
     // Issue 701: and for every other reason, after
     // hub.delivery_held_bell_minutes.
+    // Issue 1311: held on a draft, after agents.draft_hold_max_minutes.
     heldNote: (agent, n, waitedMs, why) =>
-      heldBell(agent, n, waitedMs, heldBellAfter(why), { why }),
+      heldBell(
+        agent,
+        n,
+        waitedMs,
+        why === "draft" ? draftBellAfter(d) : heldBellAfter(why),
+        { why },
+      ),
     stateTimeoutMs: (o.stateTimeoutSeconds ?? 60) * 1000,
     typeTimeoutMs: (o.typeTimeoutSeconds ?? 120) * 1000,
     answerTimeoutMs: (o.answerMinutes ?? 30) * 60_000,

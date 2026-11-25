@@ -986,6 +986,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 52: Dismiss a Coach finding, with the reason: a person's.
   "/api/coach/dismiss",
   "/api/settings",
+  // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
+  "/api/settings/undo",
   "/api/scope",
   "/api/web-url",
   // Issue 666: an alias made this install's address: the owner's.

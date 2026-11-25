@@ -138,6 +138,11 @@ syncPinToggles }`.
   script puts in `body` falls back to the browser's serif.
   `focusWhenFree(el)` (`dialog.js`) focuses a page's own field now, or
   when the open kit pop-up over it closes.
+- Issue 864: one pop-up at a time, both ways. What's new waits behind a
+  pop-up already open, and a kit question (`askConfirm`, `askText`,
+  `tell`) asked while What's new is open makes it step aside: it isn't
+  counted as seen, and it opens again once the question is answered.
+  `onAsk(fn)` in `dialog.js` is how a pop-up hears of each question.
 
 ### The client entry: `src/kit.js` (`window.DenUI`)
 
@@ -235,7 +240,8 @@ build ships another Chromium; on an arm64 machine add
 
     mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6
 
-in the theme `NAV_THEME`, Den's default theme "den" 2.0.1 (the kit's
+(only for this check: Den's other browser tests run on the host's own
+build, `npm run pw:server` in Den's repo) in the theme `NAV_THEME`, Den's default theme "den" 2.0.1 (the kit's
 default tokens). A host must run the inventory on that image, in that
 theme, with the shipped references, so both products are measured in one
 browser build and one look. Start the image's run-server and connect both
@@ -402,8 +408,15 @@ Every button the kit holds shows three pulsing dots in place of its
 label at once, until the server answers: busyAction's `opts.button`,
 `pending()`'s button, and a plain POST form's submitter. The button keeps
 its size (the label stays, hidden, and stays its accessible name), is
-disabled with `aria-busy="true"`, and keeps its own colours. The working
-pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
+disabled with `aria-busy="true"`, and keeps its own colours.
+
+Issue 1054: for one request, that is all. No Working pop-up opens, and
+the dots stay until the answer. The Working pop-up is only for an
+action that names its steps: `steps: true` in `registerActions`,
+`opts.steps` on the call, or a run that calls `progress(text)`. Reconnect
+mode keeps it too. It opens after `dotsMs` (default 3000), with the dots
+behind it. With no answer by `NO_ANSWER_MS` (60 s), the no-answer pop-up
+opens (Check again). A failure opens the failure pop-up.
 
     import { pending, watchForms, configureBusy } from "@monster-orange/den-ui/busy";
 
@@ -419,7 +432,7 @@ pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
     // next page comes.
     watchForms();
 
-    // The wait before the pop-up (a setting; default 3000 ms).
+    // The wait before an action with steps shows its pop-up (default 3000 ms).
     configureBusy({ dotsMs: 3000 });
 
 - The button never shows an error itself. A failure before the pop-up
@@ -1036,6 +1049,11 @@ selected }`, a line under them, the languages `{ id, name, current }`,
   returns has `.scope`, `.search`, `.bell` and `.appearance`. For a host's own wiring,
   use `hydrateScope`, `hydrateSearch`, `hydrateBell`, `hydrateAccount`,
   `hydrateAppearance` and `setWaiting` in `shell-client.js`.
+- A bell row opens on a click anywhere on it (its time, its dot, the
+  space around), as its link does; its own buttons and fields stay
+  theirs, and a row with no link does nothing (issue 420). The same
+  behaviour for a host's own list: `wireRowOpens(root, rowSelector)` in
+  `shell-client.js` (it returns a function that unwires it).
 - The words: `kit.scope`, `kit.search.ph`, `kit.bell`, `kit.bell.n`,
   `kit.bell.empty`, `kit.settings`, `kit.appearance`,
   `kit.appearance.title`, `kit.mode.system`, `kit.mode.dark`,
