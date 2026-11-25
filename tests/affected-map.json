@@ -2475,7 +2475,8 @@
         "scripts/release-box-watch.mjs"
       ],
       "run": [
-        "tests/unit/scripts/release-box-watch.test.ts"
+        "tests/unit/scripts/release-box-watch.test.ts",
+        "tests/unit/test-infra/release-dry-run-workflow.test.ts"
       ],
       "why": "tests that run scripts/release-box-watch.mjs"
     },
@@ -3381,7 +3382,9 @@
         "src/shared/agents/app-feeds.ts",
         "src/ui/server/public/settings-registry.js"
       ],
-      "run": ["tests/unit/server/app-feeds-edit-1480.browser.test.ts"],
+      "run": [
+        "tests/unit/server/app-feeds-edit-1480.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
