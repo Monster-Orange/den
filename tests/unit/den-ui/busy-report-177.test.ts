@@ -86,6 +86,37 @@ describe("issue 177: the report a failure pop-up starts", () => {
     expect(r.route).toBe("POST /api/hub/connect");
   });
 
+  it("the route is a template: an id in the path never goes in", () => {
+    const CODE = "AbC123xyzQRSTuvw456";
+    const r = failureReport({
+      lang: "en",
+      failure: "Couldn't sign in.",
+      err: {
+        status: 500,
+        method: "POST",
+        url: `/api/signin/code/${CODE}/withdraw`,
+      },
+      id: "req-4",
+      at: AT,
+    });
+    expect(r.route).toBe("POST /api/signin/code/:id/withdraw");
+    expect(JSON.stringify(r)).not.toContain(CODE);
+    const t = (url: string) =>
+      failureReport({
+        lang: "en",
+        failure: "x",
+        err: { status: 500, url },
+        id: "i",
+        at: AT,
+      }).route;
+    expect(t("/api/agents/coder-2/stop")).toBe("/api/agents/:id/stop");
+    expect(t("/api/invites/abcdefghijklmnopqrstu")).toBe("/api/invites/:id");
+    expect(t("/api/hub/Share")).toBe("/api/hub/:id");
+    expect(t("/api/report/github-send")).toBe("/api/report/github-send");
+    expect(t("/api/agents/report-resume")).toBe("/api/agents/report-resume");
+    expect(t("/requests/x%2Fy")).toBe("/requests/:id");
+  });
+
   it("a request id or route that isn't one is left out", () => {
     const r = failureReport({
       lang: "en",

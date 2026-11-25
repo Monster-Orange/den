@@ -6,9 +6,9 @@
  *
  * The title names the action and the answer ("Couldn't save: error 500",
  * or "…: no answer"); the description carries the status, the request id,
- * the route (method and path) and the time. Never the request's body, a
- * query string, the server's own words or anything the error carries
- * beyond those: the person can add what they saw.
+ * the route (method and path, each id in it ":id") and the time. Never
+ * the request's body, a query string, the server's own words or anything
+ * the error carries beyond those: the person can add what they saw.
  */
 import { BUSY_WORDS } from "./busy-words.js";
 
@@ -40,9 +40,21 @@ function pathOf(url) {
   return PATH.test(p) && url.trim() === url && !/\s/.test(url) ? p : "";
 }
 
-/** "POST /api/x", "/api/x", or "" when the error doesn't say. */
+/**
+ * A plain word stays; anything else (a digit, a capital, a long run, an
+ * escape) may be an id or a bearer, and becomes ":id".
+ */
+const WORD = /^[a-z]{1,12}(-[a-z]{1,12}){0,3}$/;
+const template = (path) =>
+  path
+    .split("/")
+    .map((seg) => (seg === "" || WORD.test(seg) ? seg : ":id"))
+    .join("/");
+
+/** "POST /api/x/:id", "/api/x", or "" when the error doesn't say. */
 function routeOf(err) {
-  const path = pathOf(err?.url);
+  const raw = pathOf(err?.url);
+  const path = raw ? template(raw) : "";
   if (!path) return "";
   const m = typeof err?.method === "string" ? err.method.toUpperCase() : "";
   return METHOD.test(m) ? `${m} ${path}` : path;

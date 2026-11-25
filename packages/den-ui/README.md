@@ -402,7 +402,8 @@ browser test, on the image (Den's real server on the demo distribution,
   failure pop-up starts with (issue 177). `configureBusy({ report })` gets
   `{ title, details, requestId, route }`: the title names the action and
   the answer ("Couldn't save: error 500"), the details carry the status,
-  route, request id and time. Never a body, a query or the server's words.
+  route (each id in it ":id"), request id and time. Never a body, a query
+  or the server's words.
 
 - Types: every `src/*.js` has a `.d.ts` beside it; the package's `types`
   is `src/kit.d.ts`. A test compiles a consumer against them with
