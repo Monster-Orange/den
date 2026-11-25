@@ -35,6 +35,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { holdIoScript } from "./helpers/hold-io.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -627,46 +628,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
      * releaseIo: a slow socket. Reload the page after.
      */
     async function holdIo(p: Page): Promise<void> {
-      await p.context().addInitScript(() => {
-        const W = window.WebSocket;
-        const held: { k: string; f: () => void }[] = [];
-        const go = new Set<string>();
-        // Open first, then (on a second call) the frames: a socket whose
-        // first frame comes late.
-        (
-          window as unknown as { __releaseIo: (k: string[]) => void }
-        ).__releaseIo = (ks) => {
-          for (const k of ks) go.add(k);
-          for (const h of held.splice(0))
-            if (go.has(h.k)) h.f();
-            else held.push(h);
-        };
-        class Held extends W {
-          constructor(url: string | URL, prot?: string | string[]) {
-            super(url, prot);
-            if (!String(url).endsWith("/io")) return;
-            const fns: Record<string, ((e: Event) => void) | null> = {
-              open: null,
-              message: null,
-            };
-            for (const k of ["open", "message"] as const) {
-              Object.defineProperty(this, `on${k}`, {
-                get: () => fns[k],
-                set: (f) => (fns[k] = f),
-              });
-              super.addEventListener(k, (e) => {
-                const f = () => fns[k]?.call(this, e);
-                if (go.has(k)) f();
-                else held.push({ k, f });
-              });
-            }
-            Object.defineProperty(this, "readyState", {
-              get: () => (go.has("open") ? super.readyState : W.CONNECTING),
-            });
-          }
-        }
-        window.WebSocket = Held as typeof WebSocket;
-      });
+      await p.context().addInitScript(holdIoScript);
     }
     const releaseIo = async (p: Page, gapMs = 0) => {
       const rel = (ks: string[]) =>
