@@ -138,6 +138,9 @@ syncPinToggles, folds }`.
   the default, `railFoldStore()`, keeps the ids in localStorage
   (`den.rail.folded`) and reads any failure as all open. Clicks are taken
   on the rail, so a repaint keeps them; call `apply()` after one.
+  A folded section hides only once `hydrateRailFolds` has marked its root
+  `data-folds`: a script that failed to load or threw leaves every entry
+  showing. Past 99 the name is "Show {section}, 99+ inside".
 - `src/shell.css`, `src/whatsnew.css`, `src/report.css`: the look. Link
   them after `tokens.css`.
 - `src/version.js` (the chip's label and its unread dot), `src/whatsnew.js`
