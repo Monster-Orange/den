@@ -17,6 +17,12 @@ import {
 
 const EDGE = "den.acme.example";
 
+const PEERS: ReadonlySet<string> = new Set([
+  "172.17.0.5",
+  "172.20.1.9",
+  "192.168.65.3",
+]);
+
 const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
   port: 41237,
   loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
@@ -24,7 +30,8 @@ const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
   verifyBearer: () => null,
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
-  peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
+  // Each peer below is where the edge container is: only the proof is missing.
+  peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress, PEERS),
   localNet: () => ({ own: ["127.0.0.1", "::1"], bridges: [] }),
   ...over,
 });
@@ -43,7 +50,7 @@ const req = (
 
 describe("a bridge peer that claims this machine without the edge's proof", () => {
   it("is never local: sign-in on every route, whatever web.edge_unattested says", () => {
-    for (const peer of ["172.17.0.5", "172.20.1.9", "192.168.65.3"])
+    for (const peer of PEERS)
       for (const unattested of ["signin", "local"] as const)
         for (const url of ["/", "/api/settings", "/agents"]) {
           const out = checkRequest(

@@ -978,6 +978,21 @@
     "set.ui.boxIsOff": "turned off",
     "set.ui.boxTurnOn": "Turn on",
     "set.ui.boxTurnOff": "Turn off",
+    "set.ui.reRepo": "Repo (owner/name)",
+    "set.ui.reBox": "Test box",
+    "set.ui.reLabels": "Runner labels (comma-separated)",
+    "set.ui.reVar": "Routing variable",
+    "set.ui.reSlots": "At a time",
+    "set.ui.reHeavy": "Takes the box's heavy slot",
+    "set.ui.reOwner": "Who answers for it",
+    "set.ui.reSave": "Save entry",
+    "set.ui.reNone": "No runner entries. CI jobs use hosted runners.",
+    "set.ui.reNoBox": "Set a test box first, under Test boxes.",
+    "set.ui.reHeavyIs": "heavy",
+    "set.ui.reLightIs": "light",
+    "set.ui.reSlotsN": "{n} at a time",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "owner {who}",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -2531,6 +2546,9 @@
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck":
       "A skipped test box is checked again after, in seconds",
+    "set.server.gate_runner_entries": "CI runner entries",
+    "set.server.gate_runner_entries.d":
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.gate_box_default": "Browser runs go to",
@@ -2541,6 +2559,19 @@
     "set.server.gate_host_only": "Browser runs kept here",
     "set.server.gate_host_only.d":
       "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    "set.server.gate_route_agents": "Agents' heavy runs go through the gate",
+    "set.server.gate_route_agents.d":
+      "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_route_commands": "Programs sent through the gate",
+    "set.server.gate_route_commands.d":
+      'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    "set.server.gate_outside": "Runs outside the gate today",
+    "set.server.gate_outside.d":
+      "Agents' test, typecheck and browser runs that didn't take a gate slot today: a command with more than one part, or routing off. The program and the agent are recorded, never the arguments.",
+    "set.ui.outsideNone": "None today.",
+    "set.ui.outsideRuns": "{n} runs",
+    "set.ui.outsideRuns.one": "{n} run",
+    "set.ui.outsideFailed": "Couldn't read the gate's log.",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -3252,6 +3283,22 @@
       "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
     "set.ui.hub.denUrlRefused":
       "Hub didn't take this Den's address ({url}): {why}",
+    "ap.do.gate_runner_entry_set":
+      "Let {repo}'s CI jobs run on the test box {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.change":
+      "Changes the entry that lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Each job takes one of {box}'s gate slots, so it never runs beside another heavy job there.",
+    "ap.det.gate_runner_entry_set.light":
+      "Its jobs are light: they take no gate slot on {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "The repo variable {variable} sends its jobs to the box, or back to hosted runners. {owner} answers for it.",
+    "ap.det.gate_runner_entry_set.private":
+      "Box runners start only for a private repo: if {repo} is public, none starts unless a person allows public repos for this project.",
+    "ap.det.gate_runner_entry_set.remove":
+      "You can remove it any time in Settings, under CI runner entries.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -10565,8 +10612,11 @@
     ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
     // The page's one main landmark (#den-content) holds all its content
     // and lays it out as the body did (a column), so pages keep their look.
+    // Issue 283: positioned, so what a page places absolutely inside it
+    // (a visually hidden label, .den-sr) stays in it rather than
+    // stretching the document past the window.
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
-    "  min-height: 0; min-width: 0; }",
+    "  min-height: 0; min-width: 0; position: relative; }",
     "body.den-has-shell > #den-content:focus { outline: none; }",
     // The page header (.ph, R20, 0.3.0-dev.32), the prototype's sizes: it
     // sits in .main's 20px/24px inset (pages keep their own content

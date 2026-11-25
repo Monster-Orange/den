@@ -6,11 +6,23 @@
 #   fails here: the candidate bumps the kit, never the release commit.
 # - gates: release.yml's own checks, tests and pack (release-gates.yml), each on a copy with those versions applied.
 # Nothing is tagged, committed, pushed or published, and no token is here: it reads the repository only.
+#
+# Where it runs (issue 1492): the serial jobs (plan, then gates' checks and pack) may use the install's self-hosted
+# runners, so a candidate's dry run doesn't wait behind pull-request CI in the hosted queue. Only when the
+# DEN_RELEASE_SELF_HOSTED repo variable is 'on', and only on a dev tag's push here: the code is ours. The labels come
+# from DEN_RELEASE_RUNNER_LABELS (a JSON array; unset, ci.yml's default). The sixteen test shards stay GitHub-hosted:
+# side by side there they take about 20 min, where three box runners would take over an hour. release.yml never uses
+# the box. tests/unit/test-infra/ci-runner-guard.test.ts holds all of this.
+# - box-watch: a hosted job beside them (scripts/release-box-watch.mjs). When a box job has waited
+#   DEN_RELEASE_BOX_WAIT_MINUTES (default 10) and no box job is running, it starts this workflow again by hand on the
+#   same tag. A run by hand is always GitHub-hosted, and the concurrency group below cancels the stuck run.
 name: release dry run
 
 on:
   push:
     tags: ["v*-dev.*"]
+  # the box watch's fallback: the same tag, GitHub-hosted
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,7 +34,7 @@ concurrency:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && fromJSON(vars.DEN_RELEASE_RUNNER_LABELS || '["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       den: ${{ steps.plan.outputs.den }}
@@ -47,5 +59,29 @@ jobs:
       den-version: ${{ needs.plan.outputs.den }}
       kit-version: ${{ needs.plan.outputs.kit }}
       changelog-date: ${{ needs.plan.outputs.date }}
+      # checks and pack go to the box with plan; '' keeps them hosted
+      box-labels: ${{ (vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && (vars.DEN_RELEASE_RUNNER_LABELS || '["self-hosted","den-wsl"]') || '' }}
     secrets:
       DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+
+  box-watch:
+    if: vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      actions: write # read this run's jobs; start the hosted run
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/release-box-watch.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.14.0
+      - name: Wait for the box, or start again hosted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WAIT_MINUTES: ${{ vars.DEN_RELEASE_BOX_WAIT_MINUTES }}
+        run: node scripts/release-box-watch.mjs watch

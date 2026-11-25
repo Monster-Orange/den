@@ -16,6 +16,15 @@
 import { execFile } from "child_process";
 import { promises as dns } from "dns";
 import * as net from "net";
+import * as fs from "fs";
+import {
+  commandServesApi,
+  EDGE_ORG_LABEL,
+  EDGE_ROOT_LABEL,
+  edgeNames,
+} from "./render.js";
+import { parseEdgeInspect } from "./spec.js";
+import type { EdgeConfig } from "./types.js";
 
 /** A loopback IP (127/8, ::1, or either IPv4-mapped); request-guard.ts has the same. */
 function isLoopbackAddress(addr: string): boolean {
@@ -165,4 +174,149 @@ function inspectNetworkIpam(name: string): Promise<unknown> {
       },
     );
   });
+}
+
+/**
+ * Every IPv4 and IPv6 address in `docker inspect`'s
+ * `{{json .NetworkSettings.Networks}}` for one container: its address on
+ * each network it is on. [] for anything else.
+ */
+export function networkAddresses(json: string): string[] {
+  let v: unknown;
+  try {
+    v = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const n of Object.values(v as Record<string, unknown>)) {
+    const o = (n ?? {}) as { IPAddress?: unknown; GlobalIPv6Address?: unknown };
+    for (const a of [o.IPAddress, o.GlobalIPv6Address])
+      if (typeof a === "string" && net.isIP(a)) out.push(a);
+  }
+  return [...new Set(out)];
+}
+
+/** Runs the docker CLI with `args`, resolving to its stdout. */
+export type DockerRun = (args: string[]) => Promise<string>;
+
+const dockerRun: DockerRun = (args) =>
+  new Promise((resolve, reject) =>
+    execFile("docker", args, { timeout: 5000 }, (err, stdout) =>
+      err ? reject(err) : resolve(String(stdout)),
+    ),
+  );
+
+/**
+ * The edge container's own addresses, on every network it is on: the one
+ * running container that carries all three of this edge's marks, its
+ * `den.edge.root` label (edgeUp labels it with its state dir's realpath),
+ * its `den.edge.org` label, and the name the org gives it
+ * (`<org>-edge`, unique on a daemon: the name is what tells it apart).
+ * Another container with the same labels (a compose file can set any) is
+ * not it. None when no container matches, or when Docker doesn't answer.
+ * Read-only.
+ */
+export async function edgeContainerAddresses(
+  edge: { root: string; org: string },
+  run: DockerRun = dockerRun,
+): Promise<string[]> {
+  const name = `/${edgeNames(edge.org).container}`;
+  try {
+    const ids = (
+      await run([
+        "ps",
+        "--filter",
+        `label=${EDGE_ROOT_LABEL}=${edge.root}`,
+        "--format",
+        "{{.ID}}",
+      ])
+    )
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => /^[0-9a-f]+$/i.test(l));
+    for (const id of ids) {
+      const line = (
+        await run([
+          "inspect",
+          "--type",
+          "container",
+          "--format",
+          `{{.Name}}|{{index .Config.Labels "${EDGE_ORG_LABEL}"}}|{{index .Config.Labels "${EDGE_ROOT_LABEL}"}}|{{json .NetworkSettings.Networks}}`,
+          id,
+        ])
+      ).trim();
+      const [n, org, root, ...nets] = line.split("|");
+      if (n === name && org === edge.org && root === edge.root)
+        return networkAddresses(nets.join("|"));
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function realOrSelf(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
+ * Whether this state dir's edge is running with Traefik's API on
+ * (commandServesApi): one started before Den refused such edge.args. The
+ * server checks at its start, and recreates it (`edge up`) when so. No:
+ * not running, another state dir's, or Docker not answering. Read-only.
+ */
+export async function runningEdgeServesApi(
+  cfg: Pick<EdgeConfig, "org" | "stateDir">,
+  run: DockerRun = dockerRun,
+): Promise<boolean> {
+  try {
+    const out = await run([
+      "inspect",
+      "--type",
+      "container",
+      edgeNames(cfg.org).container,
+    ]);
+    const e = parseEdgeInspect(out);
+    if (!e?.running) return false;
+    const v = JSON.parse(out) as unknown;
+    const c = (Array.isArray(v) ? v[0] : v) as {
+      Config?: { Labels?: Record<string, string> };
+    };
+    const root = c?.Config?.Labels?.[EDGE_ROOT_LABEL];
+    if (!root || realOrSelf(root) !== realOrSelf(cfg.stateDir)) return false;
+    return commandServesApi(e.spec.command);
+  } catch (err) {
+    // No edge container, or no docker CLI at all: no API edge. Any other
+    // error (a daemon that doesn't answer, a timeout) is no answer: the
+    // edge may still be running with its API on, so the caller can't
+    // take it for a no.
+    const m = String((err as Error)?.message ?? err);
+    if (
+      (err as NodeJS.ErrnoException)?.code === "ENOENT" ||
+      /No such (container|object)/i.test(m)
+    )
+      return false;
+    throw err;
+  }
+}
+
+const dockerStop: DockerRun = (args) =>
+  new Promise((resolve, reject) =>
+    execFile("docker", args, { timeout: 30_000 }, (err, stdout) =>
+      err ? reject(err) : resolve(String(stdout)),
+    ),
+  );
+
+/** Stop this org's edge container (throws when Docker can't). */
+export async function stopEdgeContainer(
+  cfg: Pick<EdgeConfig, "org">,
+  run: DockerRun = dockerStop,
+): Promise<void> {
+  await run(["stop", "--time", "5", edgeNames(cfg.org).container]);
 }

@@ -7,6 +7,7 @@ import {
   accessLogArgs,
   certNames,
   edgeCommand,
+  edgeProofMiddleware,
   renderEdgeCompose,
   renderEdgeDynamic,
   routeUrl,
@@ -93,10 +94,10 @@ describe("H1: the edge's proof on Den's own route", () => {
       renderEdgeDynamic(cfg, { proof: PROOF, ports: new Set([7000]) }),
     );
     expect(doc.http.routers["route-den"].middlewares).toEqual([
-      "den-edge-proof",
+      edgeProofMiddleware(PROOF),
     ]);
     expect(doc.http.routers["route-app"].middlewares).toBeUndefined();
-    expect(doc.http.middlewares["den-edge-proof"]).toEqual({
+    expect(doc.http.middlewares[edgeProofMiddleware(PROOF)]).toEqual({
       headers: { customRequestHeaders: { "X-Den-Edge-Proof": PROOF } },
     });
   });
@@ -122,7 +123,7 @@ describe("H1: the edge's proof on Den's own route", () => {
       renderEdgeDynamic(cfg, { proof: PROOF, ports: new Set([7000]) }),
     );
     expect(Object.keys(doc.http.middlewares).sort()).toEqual([
-      "den-edge-proof",
+      edgeProofMiddleware(PROOF),
       "to-https",
     ]);
   });
@@ -144,7 +145,8 @@ describe("renderEdgeDynamic", () => {
     expect(
       doc.http.services["route-webapp-main"].loadBalancer.servers[0].url,
     ).toBe("http://host.docker.internal:3000");
-    expect(doc.http.routers.dashboard.rule).toContain("edge.acme.internal");
+    // No dashboard router (edge-no-api.test.ts).
+    expect(doc.http.routers.dashboard).toBeUndefined();
   });
   it("#67: every route's service uses one transport that drops idle upstream connections first", () => {
     const doc = yaml.parse(
@@ -205,7 +207,7 @@ describe("renderEdgeDynamic", () => {
       renderEdgeDynamic({ ...edge, tls: { strategy: "files", ca: null } }),
     );
     expect(doc.tls).toBeUndefined();
-    expect(doc.http.routers.dashboard.tls).toEqual({});
+    expect(doc.http.routers["to-https"]).toBeDefined();
   });
 });
 

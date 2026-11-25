@@ -1519,6 +1519,39 @@ function drawAppKeys(host, ctx) {
  * An agent asks for one with a held write the person allows; the person
  * revokes one here, and it answers 401 at once.
  */
+/**
+ * Issue 1264: today's runs outside the gate, per agent (GET
+ * /api/gate-slots outsideToday), most first.
+ */
+function drawGateOutside(host, ctx) {
+  host.innerHTML = `<div id="set-outside-list" style="flex-basis:100%" aria-live="polite"></div>`;
+  const list = host.querySelector("#set-outside-list");
+  ctx.shell
+    .api("GET", "/api/gate-slots")
+    .then((b) => {
+      const rows = (b && b.outsideToday) || [];
+      if (!rows.length) {
+        list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.outsideNone", "None today."))}</output>`;
+        return;
+      }
+      list.innerHTML =
+        `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+        rows
+          .map(
+            (r) =>
+              `<li data-outside-agent="${escHtml(r.who)}" style="display:flex;gap:6px;padding:4px 0">` +
+              `<span>${escHtml(r.who)}</span>` +
+              `<span class="set-note">${escHtml(L("set.ui.outsideRuns", "{n} runs", { n: r.count }))}</span>` +
+              `</li>`,
+          )
+          .join("") +
+        `</ul>`;
+    })
+    .catch(() => {
+      list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.outsideFailed", "Couldn't read the gate's log."))}</output>`;
+    });
+}
+
 function drawRunnerTokens(host, ctx) {
   const shell = ctx.shell;
   host.innerHTML =
@@ -1816,6 +1849,153 @@ function drawGateBoxes(host, ctx) {
       enabled: host.querySelector("#set-box-on").checked,
     };
     post("/api/gate-slots/boxes", { box }, save).catch(warn);
+  });
+  draw();
+}
+
+/**
+ * Issue 642: the CI runner entries, one repo's jobs on one test box. A
+ * person adds one (repo, box, labels, routing variable, at a time, heavy
+ * or light, who answers for it) and removes one. Saving the same repo on
+ * the same box replaces it. Settings only: nothing starts a runner yet.
+ */
+function drawRunnerEntries(host, ctx) {
+  const shell = ctx.shell;
+  const field = (id, key, en, type, extra) =>
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L(key, en))}</span>` +
+    `<input id="${id}" type="${type}" ${extra || ""}></label>`;
+  host.innerHTML =
+    `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;flex-basis:100%">` +
+    field(
+      "set-re-repo",
+      "set.ui.reRepo",
+      "Repo (owner/name)",
+      "text",
+      'maxlength="141"',
+    ) +
+    `<label style="display:flex;flex-direction:column;gap:2px;min-width:140px;flex:1 1 140px">` +
+    `<span class="set-note">${escHtml(L("set.ui.reBox", "Test box"))}</span>` +
+    `<select id="set-re-box"></select></label>` +
+    field(
+      "set-re-labels",
+      "set.ui.reLabels",
+      "Runner labels (comma-separated)",
+      "text",
+      'maxlength="1300"',
+    ) +
+    field(
+      "set-re-var",
+      "set.ui.reVar",
+      "Routing variable",
+      "text",
+      'maxlength="100"',
+    ) +
+    field(
+      "set-re-slots",
+      "set.ui.reSlots",
+      "At a time",
+      "number",
+      'min="1" max="64" step="1" value="1"',
+    ) +
+    field(
+      "set-re-owner",
+      "set.ui.reOwner",
+      "Who answers for it",
+      "text",
+      'maxlength="64"',
+    ) +
+    `<label style="display:flex;gap:4px;align-items:center;flex:1 1 140px">` +
+    `<input id="set-re-heavy" type="checkbox" checked>` +
+    `<span class="set-note">${escHtml(L("set.ui.reHeavy", "Takes the box's heavy slot"))}</span></label>` +
+    `<button type="button" class="den-btn sm" id="set-re-save">${escHtml(L("set.ui.reSave", "Save entry"))}</button>` +
+    `</div>` +
+    `<div id="set-re-out" style="flex-basis:100%" aria-live="polite"></div>` +
+    `<div id="set-re-list" style="flex-basis:100%"></div>`;
+  const out = host.querySelector("#set-re-out");
+  const list = host.querySelector("#set-re-list");
+  const save = host.querySelector("#set-re-save");
+  const boxSel = host.querySelector("#set-re-box");
+  const val = (id) => host.querySelector(id).value.trim();
+  const warn = (e) => {
+    out.innerHTML = `<span class="set-note set-warn" role="alert">${escHtml(e.message)}</span>`;
+  };
+  const post = (path, body, button) =>
+    shell
+      .busyAction(
+        "save",
+        (headers) => shell.api("POST", path, body, { headers }),
+        { button },
+      )
+      .then(() => {
+        out.innerHTML = "";
+        draw();
+      });
+  const draw = () =>
+    shell
+      .api("GET", "/api/gate-slots/runner-entries")
+      .then((b) => {
+        const boxes = (b && b.boxes) || [];
+        const entries = (b && b.entries) || [];
+        const picked = boxSel.value;
+        boxSel.innerHTML = boxes
+          .map((n) => `<option value="${escHtml(n)}">${escHtml(n)}</option>`)
+          .join("");
+        if (boxes.includes(picked)) boxSel.value = picked;
+        save.disabled = !boxes.length;
+        if (!boxes.length)
+          out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.reNoBox", "Set a test box first, under Test boxes."))}</span>`;
+        if (!entries.length) {
+          list.innerHTML = `<output class="set-ro">${escHtml(L("set.ui.reNone", "No runner entries. CI jobs use hosted runners."))}</output>`;
+          return;
+        }
+        list.innerHTML =
+          `<ul class="set-list" style="list-style:none;padding:0;margin:6px 0 0">` +
+          entries
+            .map(
+              (x) =>
+                `<li style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0">` +
+                `<span class="mono">${escHtml(x.repo)}</span>` +
+                `<span>→ ${escHtml(x.box)}</span>` +
+                `<span class="set-note">${escHtml(
+                  x.heavy
+                    ? L("set.ui.reHeavyIs", "heavy")
+                    : L("set.ui.reLightIs", "light"),
+                )}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reSlotsN", "{n} at a time", { n: x.slots }))}</span>` +
+                `<span class="set-note mono">${escHtml(x.labels.join(", "))}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reVarIs", "variable {v}", { v: x.routing_variable }))}</span>` +
+                `<span class="set-note">${escHtml(L("set.ui.reOwnerIs", "owner {who}", { who: x.owner }))}</span>` +
+                `<button type="button" class="den-btn sm" data-re-repo="${escHtml(x.repo)}" data-re-box="${escHtml(x.box)}">${escHtml(L("set.ui.boxRemove", "Remove"))}</button>` +
+                `</li>`,
+            )
+            .join("") +
+          `</ul>`;
+        for (const btn of list.querySelectorAll("[data-re-repo]"))
+          btn.addEventListener("click", () => {
+            post(
+              "/api/gate-slots/runner-entries/remove",
+              {
+                repo: btn.getAttribute("data-re-repo"),
+                box: btn.getAttribute("data-re-box"),
+              },
+              btn,
+            ).catch(warn);
+          });
+      })
+      .catch(() => {});
+  save.addEventListener("click", () => {
+    const slots = val("#set-re-slots");
+    const entry = {
+      repo: val("#set-re-repo"),
+      box: boxSel.value,
+      labels: val("#set-re-labels"),
+      routing_variable: val("#set-re-var"),
+      slots: slots === "" ? undefined : Number(slots),
+      heavy: host.querySelector("#set-re-heavy").checked,
+      owner: val("#set-re-owner"),
+    };
+    post("/api/gate-slots/runner-entries", { entry }, save).catch(warn);
   });
   draw();
 }
@@ -3828,6 +4008,18 @@ export const DEN_SETTINGS = [
     read: () => null,
   },
   {
+    // Issue 642: a repo's CI jobs on a test box (settings only, slice 1).
+    id: "server.gate_runner_entries",
+    category: "server",
+    label: "CI runner entries",
+    description:
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
+    keywords: ["gate", "runner", "ci", "box", "repo", "labels", "routing"],
+    scope: "user",
+    control: { type: "custom", render: drawRunnerEntries },
+    read: () => null,
+  },
+  {
     id: "server.gate_box_check",
     category: "server",
     label: "Test box check waits, in seconds",
@@ -3896,6 +4088,50 @@ export const DEN_SETTINGS = [
       ctx.post({
         gate_slots: { browser_host_only: String(v ?? "").trim() || null },
       }),
+  },
+  {
+    // Issue 1264: Den's agent hook sends an agent's heavy runs through
+    // the gate; off, they run as written and are counted.
+    id: "server.gate_route_agents",
+    category: "server",
+    label: "Agents' heavy runs go through the gate",
+    description:
+      "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    keywords: ["gate", "slot", "agent", "jest", "vitest", "playwright", "load"],
+    scope: "user",
+    keys: ["gate_slots.route_agents"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.routeAgents !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { route_agents: v ? 1 : 0 } }),
+  },
+  {
+    // Issue 1264: the programs the hook routes.
+    id: "server.gate_route_commands",
+    category: "server",
+    label: "Programs sent through the gate",
+    description:
+      'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    keywords: ["gate", "slot", "agent", "program", "command", "jest", "load"],
+    scope: "user",
+    keys: ["gate_slots.route_commands"],
+    control: { type: "text" },
+    read: (ctx) => (ctx.data.gate_slots?.routeCommands ?? []).join(", "),
+    write: (v, ctx) =>
+      ctx.post({
+        gate_slots: { route_commands: String(v ?? "").trim() || null },
+      }),
+  },
+  {
+    // Issue 1264: today's runs outside the gate, per agent.
+    id: "server.gate_outside",
+    category: "server",
+    label: "Runs outside the gate today",
+    description:
+      "Agents' test, typecheck and browser runs that didn't take a gate slot today: a command with more than one part, or routing off. The program and the agent are recorded, never the arguments.",
+    keywords: ["gate", "slot", "agent", "outside", "load", "count"],
+    scope: "user",
+    control: { type: "custom", render: drawGateOutside },
+    read: () => null,
   },
   {
     // SRV-P6 (0.4.48): how this install takes a new version

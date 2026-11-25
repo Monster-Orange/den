@@ -126,7 +126,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
             "  CA not trusted yet — run `edge trust` (asks for your password once)",
           ),
         );
-      for (const name of ["edge", ...Object.keys(cfg.routes)])
+      for (const name of Object.keys(cfg.routes))
         console.log(`  ${routeUrl(name, cfg)}`);
       return;
     }
