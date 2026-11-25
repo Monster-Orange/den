@@ -40,6 +40,10 @@ on:
         description: "run the unit suite (the release itself doesn't: its tree was tested on its pull request)"
         type: boolean
         default: true
+      box-labels:
+        description: "Issue 1492: self-hosted labels (a JSON array) for checks and pack, honoured on a dev tag's push only; empty: GitHub-hosted"
+        type: string
+        default: ""
     secrets:
       DEN_ORG_NAMES:
         required: false
@@ -59,8 +63,10 @@ jobs:
   # parts that run side by side (jest --shard), every test once per Node.
   # (Six parts reached the 30-minute limit at 0.4.88-dev.3: two were cut
   # off while still passing. Eight leave room again.)
+  # Issue 1492: checks and pack may use the box the dry run names (box-labels), on a dev tag's push only; the
+  # release passes none. The test shards always run GitHub-hosted.
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (inputs.box-labels != '' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && fromJSON(inputs.box-labels) || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -150,7 +156,7 @@ jobs:
     needs: [checks, tests]
     # the tests skipped (tests: false) is fine; failed or cancelled is not
     if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.tests.result == 'success' || needs.tests.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ (inputs.box-labels != '' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && fromJSON(inputs.box-labels) || 'ubuntu-latest' }}
     timeout-minutes: 10
     outputs:
       tarball: ${{ steps.pack.outputs.tarball }}

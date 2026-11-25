@@ -121,6 +121,11 @@ import {
 } from "../../shared/agents/feed-address.js";
 import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
 import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import { projectRepoDirs } from "../../shared/project-repo-dirs.js";
+import {
   listOtherInstalls,
   registerInstall,
   registryDir,
@@ -1025,6 +1030,8 @@ export function agentSandboxInput(o: {
   sessionTmp?: string;
   /** Issue 1391: a personal install's trail is read back. */
   trailReadable?: boolean;
+  /** Repos' stack secrets files (hidden by path where no name rule exists). */
+  repoSecretFiles?: string[];
 }): AgentSandboxInput {
   return {
     ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
@@ -1041,12 +1048,18 @@ export function agentSandboxInput(o: {
           keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
         }
       : {}),
-    deniedDirs: localProofDirs(
-      o.env,
-      o.platform ?? process.platform,
-      o.home ?? os.homedir(),
-      envKey("LOCAL_PROOF_DIR"),
-    ),
+    ...(o.repoSecretFiles?.length
+      ? { repoSecretFiles: o.repoSecretFiles }
+      : {}),
+    deniedDirs: [
+      ...localProofDirs(
+        o.env,
+        o.platform ?? process.platform,
+        o.home ?? os.homedir(),
+        envKey("LOCAL_PROOF_DIR"),
+      ),
+      path.join(o.distRoot, PLAYWRIGHT_AUTH_DIR),
+    ],
   };
 }
 
@@ -1094,6 +1107,9 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
               (d.agentsConfig ?? (() => readAgentsConfig()))(),
               base.stateDir(),
             ),
+            repoSecretFiles: projectRepoDirs()
+              .map((r) => path.join(r, REPO_SECRETS_FILE))
+              .filter((f) => fs.existsSync(f)),
           }),
           {
             on: sandboxSetting(
@@ -2989,6 +3005,7 @@ function personaInputOf(p: Persona): Record<string, unknown> {
     version: p.version ?? "latest",
     permission: intentOf(p.permissionMode) ?? "ask",
     allowedCommands: [...p.allowedCommands],
+    ...(p.subagentModel ? { subagentModel: p.subagentModel } : {}),
   };
 }
 
@@ -3948,6 +3965,21 @@ function launchInput(
         ...others.map((o) => o.stateDir),
       ]),
     ],
+    repoDirs: [
+      ...new Set(
+        [ws, ...grants].flatMap((w) => {
+          try {
+            return d
+              .workspaceServices(w)
+              .map((s) => s.path)
+              .filter((p) => !!p && path.isAbsolute(p));
+          } catch {
+            return [];
+          }
+        }),
+      ),
+    ],
+    playwrightAuthDir: path.join(d.distRoot(), PLAYWRIGHT_AUTH_DIR),
     // ...and where they announce, for those announced after this launch.
     testAnnounceDir: announceDir(),
     installRegistryDir: reg,
