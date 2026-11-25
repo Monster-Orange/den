@@ -30,9 +30,16 @@
  * again only on purpose: it is the look the nav must keep).
  * DEN_SKIP_BROWSER_TESTS=1 skips when no browser can start.
  *
- * @visual-reference (issue 1527): compares against a stored reference, so
- * the gate runs it only on a box serving its references' Chromium build.
+ * @visual-reference packages/den-ui/inventory/reference/visual-env.json
+ * (issue 1527): it compares against stored references, so the gate runs it
+ * only on a box whose browser matches that record of where they were taken.
+ * Its capture writes the record.
  */
+import { visualOff } from "../helpers/visual-guard.js";
+import {
+  visualEnvOf,
+  writeVisualEnv,
+} from "../../../src/shared/gates/visual.js";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -86,6 +93,12 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
+  // Issue 1527: compared only in the browser the references were taken on.
+  if (!CAPTURE && browsers.chromium)
+    envOff = await visualOff(
+      browsers.chromium,
+      "packages/den-ui/inventory/reference/visual-env.json",
+    );
   s = await startAgentsPageServer();
 }, 120_000);
 
@@ -96,7 +109,9 @@ afterAll(async () => {
   });
 }, 90_000);
 
-const skip = (b: BrowserName) => !browsers[b] || !s;
+/** Why this browser cannot compare the references, or "". */
+let envOff = "";
+const skip = (b: BrowserName) => !browsers[b] || !s || !!envOff;
 
 /** Den's /settings page, as the reference was taken: fixed version, fonts. */
 async function open(
@@ -341,6 +356,12 @@ for (const b of BROWSERS)
               referenceFile(b, w),
               JSON.stringify(snap, null, 1) + "\n",
             );
+            // Issue 1527: the record of the Chromium they were taken on.
+            if (b === "chromium" && browsers.chromium)
+              writeVisualEnv(
+                path.dirname(referenceFile(b, w)),
+                await visualEnvOf(browsers.chromium),
+              );
             return;
           }
           const ref = readRef(b, w);

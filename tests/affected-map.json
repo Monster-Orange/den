@@ -2520,6 +2520,11 @@
       "why": "tests that run scripts/typecheck-tests.mjs"
     },
     {
+      "when": ["scripts/visual-tests.mjs"],
+      "run": ["tests/unit/test-infra/visual-tag-1527.test.ts"],
+      "why": "tests that run scripts/visual-tests.mjs"
+    },
+    {
       "when": [
         "scripts/words-gate.mjs"
       ],

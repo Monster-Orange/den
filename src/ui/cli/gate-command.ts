@@ -137,11 +137,11 @@ import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
 import { emptyTestList } from "./gate-test-list.js";
 import {
-  pinnedChromium,
   readBoxBrowsers,
   realBrowserRead,
   visualFit,
   visualFilesInRun,
+  visualRecords,
   type BrowserRead,
 } from "../../shared/gates/visual.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
@@ -779,7 +779,7 @@ export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
         ? `, playwright ${b.playwrightVersions.join(", ")}`
         : "") +
       (read?.chromium
-        ? `, chromium ${read.chromium}`
+        ? `, chromium ${read.chromium} ${read.platform ?? ""}`.trimEnd()
         : read?.error
           ? ", chromium unread"
           : "");
@@ -1038,7 +1038,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       repoTop(d.cwd),
     );
     if (visual.length) {
-      const want = pinnedChromium(d.cwd);
       const named = where !== "any";
       const fit = await visualFit({
         boxes: d.store
@@ -1046,7 +1045,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           .filter((b) =>
             named ? b.name === where : !onlyBoxes || onlyBoxes.includes(b.name),
           ),
-        want,
+        records: visualRecords(visual, d.cwd, repoTop(d.cwd)),
         pwVersion: pwFlag ?? playwrightVersion(d.cwd),
         read: d.browserRead ?? realBrowserRead,
         timeoutMs: d.store.settings().boxCheckTimeoutSeconds * 1000,
@@ -1059,12 +1058,13 @@ async function run(args: string[], d: GateDeps): Promise<number> {
           : `${visual.length} visual-reference tests (${visual[0]}, …)`;
       if (named && !fit.fit.length)
         throw new GateUsage(
-          `${fit.unfit[0]?.why ?? `box ${where} can't be read`}. ${what} runs only on a box with that build: --box any, or CI`,
+          `${fit.unfit[0]?.why ?? `box ${where} can't be read`}. ${what} runs only on a box with the browser its references were taken on: --box any, or CI`,
         );
       if (!named) {
         for (const u of fit.unfit) d.err(`gate: skips ${u.why}`);
         if (!fit.fit.length) {
-          const none = `no test box serves the visual references' Chromium build ${want ?? "(unknown)"}`;
+          const none =
+            "no test box serves the browser the visual references were taken on";
           if (f["--box"] === "any")
             throw new GateUsage(
               `${none}. ${what} runs on such a box, or in CI`,

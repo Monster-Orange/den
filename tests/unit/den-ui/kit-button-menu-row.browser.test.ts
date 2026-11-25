@@ -24,9 +24,16 @@
  *
  * DEN_SKIP_BROWSER_TESTS=1 skips it.
  *
- * @visual-reference (issue 1527): compares against a stored reference, so
- * the gate runs it only on a box serving its references' Chromium build.
+ * @visual-reference tests/unit/den-ui/fixtures/visual-env.json
+ * (issue 1527): it compares against stored references, so the gate runs it
+ * only on a box whose browser matches that record of where they were taken.
+ * Its capture writes the record.
  */
+import { visualOff } from "../helpers/visual-guard.js";
+import {
+  visualEnvOf,
+  writeVisualEnv,
+} from "../../../src/shared/gates/visual.js";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -55,6 +62,7 @@ afterAll(async () => {
 });
 
 const skip = () => !browser;
+const VISUAL_RECORD = "tests/unit/den-ui/fixtures/visual-env.json";
 
 /**
  * Den's own button rules, as its frame script drew them before the kit had
@@ -789,6 +797,9 @@ function oneFontName(v: unknown): unknown {
 describe("the kit's own menus look as they did (◐ ▾)", () => {
   it("every row's style and height, light and dark, at 1280 and 390", async () => {
     if (skip()) return;
+    // Issue 1527: the stored rows compare only in the browser they were
+    // taken on (the rest of this file compares live renders, anywhere).
+    if (!CAPTURE && (await visualOff(browser!, VISUAL_RECORD))) return;
     const got: Record<string, unknown> = {};
     for (const mode of ["light", "dark"])
       for (const width of [1280, 390]) {
@@ -803,6 +814,9 @@ describe("the kit's own menus look as they did (◐ ▾)", () => {
       }
     if (CAPTURE) {
       fs.writeFileSync(POPOVERS, JSON.stringify(got, null, 1) + "\n");
+      // Issue 1527: the record of the browser they were taken on.
+      if (browser)
+        writeVisualEnv(path.dirname(POPOVERS), await visualEnvOf(browser));
       return;
     }
     const want = JSON.parse(fs.readFileSync(POPOVERS, "utf-8"));

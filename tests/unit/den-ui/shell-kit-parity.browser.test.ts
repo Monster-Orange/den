@@ -41,9 +41,16 @@
  * (run once, before the move). DEN_PW_WS: Den's own Playwright server.
  * DEN_SKIP_BROWSER_TESTS=1 skips.
  *
- * @visual-reference (issue 1527): compares against a stored reference, so
- * the gate runs it only on a box serving its references' Chromium build.
+ * @visual-reference tests/unit/den-ui/fixtures/visual-env.json
+ * (issue 1527): it compares against stored references, so the gate runs it
+ * only on a box whose browser matches that record of where they were taken.
+ * Its capture writes the record.
  */
+import { visualOff } from "../helpers/visual-guard.js";
+import {
+  visualEnvOf,
+  writeVisualEnv,
+} from "../../../src/shared/gates/visual.js";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -211,10 +218,8 @@ const ALLOWED_STYLES: Record<string, Array<[string, string]>> = {
  * [dx, dy, dw, dh] added to the baseline's rect.
  */
 const ALLOWED_MOVES: Record<string, [number, number, number, number]> = {
-  // Issue 1444, Hub Design's spec for the fold toggle: on a phone a
-  // section's heading is a tap high (min-height var(--tap), 44px; it was
-  // 22px), so the entries below it sit 22px lower.
-  "shell-390 .den-rail .den-ni": [0, 22, 0, 0],
+  // (Issue 1444's 22px lower rail entries on a phone are in the baseline
+  // itself since its capture on CI's browser, issue 1527.)
 };
 
 /** `want` with the allowed moves applied. */
@@ -283,6 +288,9 @@ interface Shot {
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
+/** Why this browser cannot compare the references, or "". */
+let envOff = "";
+const VISUAL_RECORD = "tests/unit/den-ui/fixtures/visual-env.json";
 
 beforeAll(async () => {
   try {
@@ -292,6 +300,8 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
+  // Issue 1527: compared only in the browser the references were taken on.
+  if (!CAPTURE && browser) envOff = await visualOff(browser, VISUAL_RECORD);
   s = await startAgentsPageServer();
 }, 90_000);
 
@@ -299,7 +309,7 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: [browser], servers: [s] });
 }, 90_000);
 
-const skip = () => !browser || !s;
+const skip = () => !browser || !s || !!envOff;
 
 /** The fixed release notes What's new shows (the CHANGELOG changes). */
 const NOTES = [
@@ -676,6 +686,9 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
             fixture[key] = shot;
             fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
             fs.writeFileSync(FIXTURE, JSON.stringify(fixture, null, 1) + "\n");
+            // Issue 1527: the record of the browser they were taken on.
+            if (browser)
+              writeVisualEnv(path.dirname(FIXTURE), await visualEnvOf(browser));
             return;
           }
           const want = fixture[key];
