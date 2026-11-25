@@ -115,11 +115,6 @@ async function started() {
   return { r, token, job };
 }
 
-const until = async (ok: () => boolean, ms = 5_000) => {
-  const end = Date.now() + ms;
-  while (!ok() && Date.now() < end) await new Promise((x) => setTimeout(x, 20));
-};
-
 const one = [{ id: "planner", workspace: "north" }];
 
 /** Its tools started on an older Den: restart-stale lists it. */
