@@ -10168,7 +10168,7 @@ async function handleRequest(
   //                             language? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
-  //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
+  //   shell: { pins, collapsed, hidden, order, folded, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
