@@ -84,6 +84,8 @@ export interface CheckCounts {
   fail: number;
   skip: number;
   pending: number;
+  /** Issues 1279/1065: cancelled, apart from failed (absent when none). */
+  cancel?: number;
 }
 
 export interface WatchView {
@@ -152,6 +154,11 @@ interface Watch {
   failed?: { name: string; url: string }[];
   /** When its head's check runs were last asked for (several heads). */
   checkedAt?: number;
+  /**
+   * Issue 1560: its head's runs weren't on the repo's list (a full page,
+   * the newest only): its own runs are listed by head instead.
+   */
+  offPage?: boolean;
   doneAt?: number;
   text?: string;
   delivered?: boolean;
@@ -168,6 +175,22 @@ interface Watch {
   changedAt?: number;
   /** Issue 1166: when its pull request was last asked about. */
   resolvedAt?: number;
+  /**
+   * Issue 1065: its checks finished with some cancelled. "due": the pull
+   * request is looked at before the result is told (a push cancels the
+   * old head's runs); "done": it was, and the head is still the same.
+   */
+  headCheck?: "due" | "done";
+  /**
+   * Issue 1279: check suite id → its workflow (workflow_id), from the runs
+   * Den has listed. Two runs of one workflow are the same checks, re-run;
+   * two workflows' jobs of one name are not.
+   */
+  suites?: Record<string, number>;
+  /** Suites whose workflow Den asks for next (listing the head's runs). */
+  suitesDue?: number[];
+  /** Suites it asked for: never asked again (another app's has none). */
+  suitesAsked?: number[];
   /**
    * Issue 1166: a check (or workflow run) of it is still queued or in
    * progress: CI is working, so it counts as progress.
@@ -186,7 +209,7 @@ interface Watch {
 
 interface Call {
   path: string;
-  kind: "resolve" | "list" | "checks" | "jobs";
+  kind: "resolve" | "list" | "checks" | "jobs" | "headRuns";
   watch?: Watch;
   head?: string;
 }
@@ -214,11 +237,15 @@ const QUEUE_MAX = CAP_CEILING;
 const MAX_PAGES = 10;
 /** The run list reaches back this far before the oldest watch. */
 const RUNS_LOOKBACK_MS = 24 * 3600_000;
+/** The list's one page of workflow runs (GitHub's most). */
+const RUNS_PAGE = 100;
 
 const PASS = new Set(["success"]);
 /** Issue 1166: a check or run not yet on a runner. */
 const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 const SKIP = new Set(["skipped", "neutral"]);
+/** Issue 1065: not a failure; counted and listed on its own. */
+const CANCEL = new Set(["cancelled"]);
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -296,18 +323,51 @@ export class GithubWatcher {
         w.number === number &&
         w.phase !== "done",
     );
-    if (same)
+    // Issue 1560: an open watch on the same pull request is handed back
+    // only while its head is still the pull request's. After a push, the
+    // ask gets a new watch on the new head, and the old one ends.
+    let moved: GhResponse | null = null;
+    let movedTo = "";
+    if (same?.kind === "pr" && same.head && !this.paused(now)) {
+      const r = await this.d.get(this.resolvePath(same));
+      if (!this.noteRate(r, now) && r.status === 200) {
+        const sha =
+          isObj(r.body) && isObj(r.body.head) ? asStr(r.body.head.sha) : "";
+        if (/^[0-9a-f]{7,64}$/i.test(sha) && sha !== same.head) {
+          moved = r;
+          movedTo = sha;
+        }
+      }
+    }
+    if (same && !moved)
       return {
         ok: true,
         watch: this.view(same),
         intervalSeconds: this.interval,
       };
+    // Issue 1560: the replaced watch ends now, so it takes no slot. Its
+    // agent hears it in this answer, not as a message too; the note names
+    // the new watch once it exists (replaced, below).
+    // Should the ask be refused below, the note stands, and the refusal
+    // says it ended.
+    const movedNote = `The pull request's head moved to ${movedTo.slice(0, 7)}.`;
+    const ended = moved
+      ? ` Your watch ${same!.id} on head ${same!.head!.slice(0, 7)} ended: ${movedNote}`
+      : "";
+    if (moved) {
+      this.finish(same!, now, { note: movedNote, text: "" });
+      same!.delivered = true;
+    }
+    const replaced = (w: Watch) => {
+      if (moved)
+        same!.note = `Replaced by watch ${w.id} on head ${movedTo.slice(0, 7)}.`;
+    };
     const low = this.budgetLow(now, s);
     if (low)
       return {
         ok: false,
         code: "budget_low",
-        error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.`,
+        error: `GitHub's API budget is low: ${this.remaining} calls left this hour, under Den's floor of ${s.budgetFloor} (github.api_budget_floor). Den watches nothing new until GitHub's reset at ${iso(low)}. Ask again after it; don't poll GitHub yourself meanwhile.${ended}`,
       };
     // Issue 1166: past the cap, queued; it starts when a slot frees.
     const open = this.open();
@@ -318,7 +378,7 @@ export class GithubWatcher {
         return {
           ok: false,
           code: "too_many",
-          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.`,
+          error: `Den watches at most ${cap} at once now (github.watches_max, raised by GitHub's budget), and ${open.length} are open (${this.openCounts(open)}), with ${queued} more queued. Cancel one you no longer need with github_watch_cancel, or ask again later.${ended}`,
         };
       const q: Watch = {
         id: `gw-${crypto.randomBytes(4).toString("hex")}`,
@@ -333,6 +393,7 @@ export class GithubWatcher {
         print: "",
         queued: true,
       };
+      replaced(q);
       this.watches.push(q);
       this.save();
       this.writeStatus(now);
@@ -352,9 +413,13 @@ export class GithubWatcher {
       startedAt: now,
       progressAt: now,
     };
-    // The first look, now: the head (and a run's state), so the answer
-    // says where it stands. Not while GitHub asked Den to wait.
-    if (!this.paused(now)) {
+    if (moved) {
+      // The look just made: the new head.
+      this.applyResolve(w, moved.body);
+      replaced(w);
+    } else if (!this.paused(now)) {
+      // The first look, now: the head (and a run's state), so the answer
+      // says where it stands. Not while GitHub asked Den to wait.
       const r = await this.d.get(this.resolvePath(w));
       const limited = this.noteRate(r, now);
       if (!limited) {
@@ -650,7 +715,8 @@ export class GithubWatcher {
     const due = ws.find(
       (w) =>
         w.kind === "pr" &&
-        now - (w.resolvedAt ?? this.since(w)) >= PR_RECHECK_MS,
+        (w.headCheck === "due" ||
+          now - (w.resolvedAt ?? this.since(w)) >= PR_RECHECK_MS),
     );
     if (due && !this.lastResolve.has(key)) {
       this.lastResolve.add(key);
@@ -658,6 +724,14 @@ export class GithubWatcher {
     }
     this.lastResolve.delete(key);
     const repo = ws[0].repo;
+    // Issue 1279: which workflow some checks belong to, from the head's runs.
+    const place = ws.find((w) => w.suitesDue?.length);
+    if (place)
+      return {
+        path: `repos/${repo}/actions/runs?head_sha=${place.head}&per_page=${RUNS_PAGE}`,
+        kind: "headRuns",
+        head: place.head,
+      };
     const heads = [...new Set(ws.map((w) => w.head!))];
     if (heads.length === 1) {
       this.lastChecks.delete(key);
@@ -671,20 +745,30 @@ export class GithubWatcher {
     for (const w of ws)
       if (w.phase === "waiting" && now - this.since(w) >= NO_CHECKS_MS)
         w.phase = "ready";
-    const ready = ws
-      .filter((w) => w.phase === "ready")
+    // Its own call, in turn: a ready head's check runs, or (issue 1560)
+    // the runs of a head off the list's page. One a round, alternating
+    // with the list, so the repo still costs one call a round.
+    const own = ws
+      .filter((w) => w.phase === "ready" || w.offPage)
       .sort((a, b) => (a.checkedAt ?? 0) - (b.checkedAt ?? 0));
-    const allReady = ready.length === ws.length;
-    if (ready.length && (allReady || !this.lastChecks.has(key))) {
+    const allOwn = own.length === ws.length;
+    if (own.length && (allOwn || !this.lastChecks.has(key))) {
       this.lastChecks.add(key);
-      const head = ready[0].head!;
+      const first = own[0];
+      const head = first.head!;
       for (const w of ws) if (w.head === head) w.checkedAt = now;
-      return { path: this.checksPath(repo, head), kind: "checks", head };
+      if (first.phase === "ready")
+        return { path: this.checksPath(repo, head), kind: "checks", head };
+      return {
+        path: `repos/${repo}/actions/runs?head_sha=${head}&per_page=${RUNS_PAGE}`,
+        kind: "headRuns",
+        head,
+      };
     }
     this.lastChecks.delete(key);
     const since = Math.min(...ws.map((w) => w.createdAt)) - RUNS_LOOKBACK_MS;
     return {
-      path: `repos/${repo}/actions/runs?per_page=100&created=${encodeURIComponent(`>=${iso(since).slice(0, 19)}Z`)}`,
+      path: `repos/${repo}/actions/runs?per_page=${RUNS_PAGE}&created=${encodeURIComponent(`>=${iso(since).slice(0, 19)}Z`)}`,
       kind: "list",
     };
   }
@@ -705,12 +789,24 @@ export class GithubWatcher {
       const before = w.head;
       const phase = w.phase;
       w.resolvedAt = now;
-      if (w.kind === "pr" && before) return this.prState(w, r.body, now);
+      if (w.kind === "pr" && before) {
+        if (this.prState(w, r.body, now)) return true;
+        // Issue 1065: the head is the same: its result is told next look.
+        if (w.headCheck !== "due") return false;
+        w.headCheck = "done";
+        return true;
+      }
       this.applyResolve(w, r.body, now);
       return w.head !== before || w.phase !== phase;
     }
     if (call.kind === "jobs") return this.applyJobs(call.watch!, r.body, now);
     if (call.kind === "list") return this.applyRuns(ws, r.body);
+    if (call.kind === "headRuns")
+      return this.applyRuns(
+        ws.filter((w) => w.head === call.head),
+        r.body,
+        true,
+      );
     return this.applyChecks(
       ws.filter((w) => w.head === call.head),
       r.body,
@@ -783,7 +879,7 @@ export class GithubWatcher {
       });
       return true;
     }
-    const { counts, failed } = tally(jobs);
+    const { counts, failed, cancelled } = tally(jobs);
     w.checks = counts;
     w.failed = failed;
     w.allQueued = jobs.every((j) => QUEUED.has(asStr(j.status)));
@@ -792,14 +888,10 @@ export class GithubWatcher {
       w.note = `${counts.pending} of ${jobs.length} jobs still going${at}.`;
       return changed;
     }
-    const sum = `${counts.pass} passed, ${counts.fail} failed, ${counts.skip} skipped`;
+    const { sum, lists } = summary(counts, failed, cancelled);
     this.finish(w, now, {
       note: `Finished${at}: ${sum}.`,
-      text:
-        `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}${at}): ${sum}.` +
-        (failed.length
-          ? ` Failed: ${failed.map((f) => `${f.name} (${f.url})`).join("; ")}.`
-          : " All passed."),
+      text: `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}${at}): ${sum}.${lists}`,
     });
     return true;
   }
@@ -813,7 +905,7 @@ export class GithubWatcher {
     const head = w.head!.slice(0, 7);
     const sha = isObj(body.head) ? asStr(body.head.sha) : "";
     const so = w.checks
-      ? ` Its checks so far: ${w.checks.pass} passed, ${w.checks.fail} failed, ${w.checks.skip} skipped, ${w.checks.pending} still going.`
+      ? ` Its checks so far: ${w.checks.pass} passed, ${w.checks.fail} failed, ${w.checks.skip} skipped, ${w.checks.pending} still going${w.checks.cancel ? `, ${w.checks.cancel} cancelled` : ""}.`
       : "";
     if (body.merged === true || asStr(body.merged_at)) {
       this.finish(w, now, {
@@ -843,7 +935,7 @@ export class GithubWatcher {
     return false;
   }
 
-  private applyRuns(ws: Watch[], body: unknown): boolean {
+  private applyRuns(ws: Watch[], body: unknown, byHead = false): boolean {
     const runs = (
       isObj(body) && Array.isArray(body.workflow_runs) ? body.workflow_runs : []
     ).filter(isObj);
@@ -853,8 +945,45 @@ export class GithubWatcher {
         w.kind === "run"
           ? runs.filter((r) => r.id === w.number)
           : runs.filter((r) => r.head_sha === w.head);
-      if (!mine.length) continue;
+      if (!mine.length && byHead && w.suitesDue?.length) {
+        // Issue 1279: no runs for them: another app's checks.
+        w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
+        w.suitesDue = undefined;
+        changed = true;
+      }
+      if (!mine.length) {
+        // Issue 1560: a full page is the newest runs only, and a busy
+        // repo's older ones aren't on it. A head whose runs are off it has
+        // them listed by head, in turn, so it can't sit on its last note,
+        // and its checks are read only once every run on it is done.
+        if (
+          w.kind === "pr" && // a run watch reads its own run (issue 1214)
+          !byHead &&
+          runs.length >= RUNS_PAGE &&
+          !w.offPage
+        ) {
+          w.offPage = true;
+          // Not stale while it waits its turn (issue 1166's bound): its own
+          // runs, read then, say whether it is still underway.
+          w.underway = true;
+          w.note = `Its workflow runs are past the repo's newest ${RUNS_PAGE}; Den lists them by head next.`;
+          changed = true;
+        }
+        continue;
+      }
       if (w.kind === "run") w.suite = asNum(mine[0].check_suite_id) ?? w.suite;
+      if (w.kind === "pr") {
+        for (const r of mine) {
+          const sid = asNum(r.check_suite_id);
+          const wf = asNum(r.workflow_id);
+          if (sid !== undefined && wf !== undefined)
+            (w.suites ??= {})[String(sid)] = wf;
+        }
+        if (byHead && w.suitesDue?.length) {
+          w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
+          w.suitesDue = undefined;
+        }
+      }
       const print = JSON.stringify(
         mine
           .map((r) => [asNum(r.id), asStr(r.status), asStr(r.conclusion)])
@@ -884,7 +1013,22 @@ export class GithubWatcher {
           ? all.filter(
               (c) => isObj(c.check_suite) && c.check_suite.id === w.suite,
             )
-          : all;
+          : latest(all, w.suites ?? {});
+      if (w.kind === "pr") {
+        const due = unmapped(all, w.suites ?? {}).filter(
+          (id) => !(w.suitesAsked ?? []).includes(id),
+        );
+        if (due.length) {
+          // Issue 1279: checks of one name in suites Den can't place yet:
+          // the head's runs say which workflow each is, then they count.
+          if (!w.suitesDue?.length) changed = true;
+          w.suitesDue = due;
+          w.phase = "running";
+          w.note =
+            "Some checks share a name across runs; Den reads which workflow each belongs to next.";
+          continue;
+        }
+      }
       const print = JSON.stringify(
         cs
           .map((c) => [asNum(c.id), asStr(c.status), asStr(c.conclusion)])
@@ -908,7 +1052,7 @@ export class GithubWatcher {
         }
         continue;
       }
-      const { counts, failed } = tally(cs);
+      const { counts, failed, cancelled } = tally(cs);
       w.checks = counts;
       w.failed = failed;
       if (counts.pending) {
@@ -916,14 +1060,19 @@ export class GithubWatcher {
         w.note = `${counts.pending} of ${cs.length} checks still going.`;
         continue;
       }
-      const sum = `${counts.pass} passed, ${counts.fail} failed, ${counts.skip} skipped`;
+      // Issue 1065: some were cancelled, maybe by a push. The pull request
+      // is looked at first (prState ends a replaced head), then told.
+      if (counts.cancel && w.kind === "pr" && w.headCheck !== "done") {
+        if (w.headCheck !== "due") changed = true;
+        w.headCheck = "due";
+        w.phase = "running";
+        w.note = `${counts.cancel} of ${cs.length} checks were cancelled; Den looks at the pull request's head before it reports.`;
+        continue;
+      }
+      const { sum, lists } = summary(counts, failed, cancelled);
       this.finish(w, now, {
         note: `Finished: ${sum}.`,
-        text:
-          `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}): ${sum}.` +
-          (failed.length
-            ? ` Failed: ${failed.map((f) => `${f.name} (${f.url})`).join("; ")}.`
-            : " All passed."),
+        text: `Den: GitHub watch ${w.id} finished: ${this.what(w)} (head ${w.head!.slice(0, 7)}): ${sum}.${lists}`,
       });
       changed = true;
     }
@@ -1194,23 +1343,109 @@ export class GithubWatcher {
 function tally(cs: Record<string, unknown>[]): {
   counts: CheckCounts;
   failed: { name: string; url: string }[];
+  cancelled: { name: string; url: string }[];
 } {
   const counts: CheckCounts = { pass: 0, fail: 0, skip: 0, pending: 0 };
   const failed: { name: string; url: string }[] = [];
+  const cancelled: { name: string; url: string }[] = [];
+  const named = (c: Record<string, unknown>) => ({
+    name: asStr(c.name) || `check ${asNum(c.id) ?? "?"}`,
+    url: asStr(c.html_url) || asStr(c.details_url),
+  });
   for (const c of cs) {
     const concl = asStr(c.conclusion);
     if (c.status !== "completed") counts.pending++;
     else if (PASS.has(concl)) counts.pass++;
     else if (SKIP.has(concl) || !concl) counts.skip++;
-    else {
+    else if (CANCEL.has(concl)) {
+      counts.cancel = (counts.cancel ?? 0) + 1;
+      cancelled.push(named(c));
+    } else {
       counts.fail++;
-      failed.push({
-        name: asStr(c.name) || `check ${asNum(c.id) ?? "?"}`,
-        url: asStr(c.html_url) || asStr(c.details_url),
-      });
+      failed.push(named(c));
     }
   }
-  return { counts, failed };
+  return { counts, failed, cancelled };
+}
+
+/**
+ * Issue 1279: the newest check run of each workflow and name on a head.
+ * filter=latest keeps the newest per check suite, but every workflow run
+ * is a suite of its own: a re-run, a label added or a PR's text edited
+ * leaves the older run beside it, superseded. Two workflows' jobs of one
+ * name are different checks, and a suite whose workflow isn't known is
+ * never merged (checkKey). Newest: the later started_at, else the higher id.
+ */
+function latest(
+  cs: Record<string, unknown>[],
+  suites: Record<string, number>,
+): Record<string, unknown>[] {
+  const at = (c: Record<string, unknown>) => Date.parse(asStr(c.started_at));
+  const newer = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+    const ta = at(a);
+    const tb = at(b);
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta > tb;
+    return (asNum(a.id) ?? 0) > (asNum(b.id) ?? 0);
+  };
+  const by = new Map<string, Record<string, unknown>>();
+  for (const c of cs) {
+    const key = checkKey(c, suites);
+    const had = by.get(key);
+    if (!had || newer(c, had)) by.set(key, c);
+  }
+  return [...by.values()];
+}
+
+const suiteOf = (c: Record<string, unknown>) =>
+  isObj(c.check_suite) ? asNum(c.check_suite.id) : undefined;
+
+/** Its workflow and name; unplaced, its app, suite and name (its own). */
+function checkKey(
+  c: Record<string, unknown>,
+  suites: Record<string, number>,
+): string {
+  const sid = suiteOf(c);
+  const wf = sid === undefined ? undefined : suites[String(sid)];
+  if (wf !== undefined) return `wf:${wf}|${asStr(c.name)}`;
+  const app = isObj(c.app) ? (asNum(c.app.id) ?? asStr(c.app.slug)) : "";
+  return `app:${app}|${sid ?? `id:${asNum(c.id)}`}|${asStr(c.name)}`;
+}
+
+/** Suites (unplaced) holding a check whose name another suite has too. */
+function unmapped(
+  cs: Record<string, unknown>[],
+  suites: Record<string, number>,
+): number[] {
+  const by = new Map<string, Set<number>>();
+  for (const c of cs) {
+    const sid = suiteOf(c);
+    if (sid === undefined) continue;
+    const n = asStr(c.name);
+    by.set(n, (by.get(n) ?? new Set()).add(sid));
+  }
+  const out = new Set<number>();
+  for (const ids of by.values())
+    if (ids.size > 1)
+      for (const id of ids) if (suites[String(id)] === undefined) out.add(id);
+  return [...out].sort((a, b) => a - b);
+}
+
+/** "3 passed, 1 failed, 0 skipped[, 2 cancelled]" and its lists. */
+function summary(
+  counts: CheckCounts,
+  failed: { name: string; url: string }[],
+  cancelled: { name: string; url: string }[],
+): { sum: string; lists: string } {
+  const sum =
+    `${counts.pass} passed, ${counts.fail} failed, ${counts.skip} skipped` +
+    (counts.cancel ? `, ${counts.cancel} cancelled` : "");
+  const list = (l: { name: string; url: string }[]) =>
+    l.map((f) => `${f.name} (${f.url})`).join("; ");
+  const lists =
+    (failed.length ? ` Failed: ${list(failed)}.` : "") +
+      (cancelled.length ? ` Cancelled, not passed: ${list(cancelled)}.` : "") ||
+    " All passed.";
+  return { sum, lists };
 }
 
 /** What counts as progress: its phase, head or checks changed. */

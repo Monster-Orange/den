@@ -190,6 +190,8 @@ Held (each waits for the person's Allow):
   `setting_change` can't reach. Den checks every value first; on a
   personal install it's written at once and the person is told; on a
   strict one it follows their choice for Limits and performance.
+  Turning `gate.route_agents` off, or dropping a program from
+  `gate.route_commands`, waits for the person's own Allow on both.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.

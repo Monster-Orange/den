@@ -2559,6 +2559,19 @@
     "set.server.gate_host_only": "Browser runs kept here",
     "set.server.gate_host_only.d":
       "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    "set.server.gate_route_agents": "Agents' heavy runs go through the gate",
+    "set.server.gate_route_agents.d":
+      "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_route_commands": "Programs sent through the gate",
+    "set.server.gate_route_commands.d":
+      'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    "set.server.gate_outside": "Runs outside the gate today",
+    "set.server.gate_outside.d":
+      "Agents' test, typecheck and browser runs that didn't take a gate slot today: a command with more than one part, or routing off. The program and the agent are recorded, never the arguments.",
+    "set.ui.outsideNone": "None today.",
+    "set.ui.outsideRuns": "{n} runs",
+    "set.ui.outsideRuns.one": "{n} run",
+    "set.ui.outsideFailed": "Couldn't read the gate's log.",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -10184,6 +10197,33 @@
    * download; a failed load is tried again on the next action.
    */
   var busyMod = null;
+  /**
+   * Issue 1434: hold a button at once, as the kit does (aria-busy and
+   * aria-disabled, never disabled, which drops focus to <body>). True when
+   * the aria-disabled is the hold's own.
+   */
+  function preHold(b) {
+    var own = b.getAttribute("aria-disabled") !== "true";
+    b.setAttribute("aria-busy", "true");
+    b.setAttribute("aria-disabled", "true");
+    return own;
+  }
+  /** Issue 1434: a click on a held button stops here, before the page's. */
+  window.addEventListener(
+    "click",
+    function (e) {
+      for (var n = e.target; n && n.getAttribute; n = n.parentNode)
+        if (
+          n.getAttribute("aria-busy") === "true" &&
+          n.getAttribute("aria-disabled") === "true"
+        ) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+    },
+    true,
+  );
   function loadBusy() {
     if (!busyMod)
       busyMod = import("/busy-den.js").catch(function (err) {
@@ -10286,15 +10326,23 @@
      * names Den's actions): busyAction(name, run(headers), opts).
      */
     busyAction: function (name, run, opts) {
-      // The button disables at once, before the kit has loaded.
+      // Held at once, before the kit has loaded (issue 1434: aria-disabled,
+      // not disabled, so it keeps focus; the click guard stops its clicks).
       var b = opts && opts.button;
-      if (b) {
-        b.disabled = true;
-        b.setAttribute("aria-busy", "true");
-      }
-      return loadBusy().then(function (m) {
-        return m.busyAction(name, run, opts);
-      });
+      var own = b ? preHold(b) : false;
+      return loadBusy().then(
+        function (m) {
+          return m.busyAction(name, run, opts);
+        },
+        function (err) {
+          // The kit didn't load: let the button go, then fail as before.
+          if (b) {
+            b.removeAttribute("aria-busy");
+            if (own) b.removeAttribute("aria-disabled");
+          }
+          throw err;
+        },
+      );
     },
     /**
      * Issue 698: the kit's pulsing dots alone, no pop-up, for a wait that
@@ -10304,8 +10352,7 @@
      */
     holdDots: function (button) {
       if (!button) return function () {};
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
+      var own = preHold(button);
       var held = loadBusy()
         .then(function (m) {
           m.holdDots(button, true);
@@ -10321,8 +10368,8 @@
         return held.then(function (m) {
           if (m) m.holdDots(button, false);
           else {
-            button.disabled = false;
             button.removeAttribute("aria-busy");
+            if (own) button.removeAttribute("aria-disabled");
           }
         });
       };
@@ -10599,8 +10646,11 @@
     ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
     // The page's one main landmark (#den-content) holds all its content
     // and lays it out as the body did (a column), so pages keep their look.
+    // Issue 283: positioned, so what a page places absolutely inside it
+    // (a visually hidden label, .den-sr) stays in it rather than
+    // stretching the document past the window.
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
-    "  min-height: 0; min-width: 0; }",
+    "  min-height: 0; min-width: 0; position: relative; }",
     "body.den-has-shell > #den-content:focus { outline: none; }",
     // The page header (.ph, R20, 0.3.0-dev.32), the prototype's sizes: it
     // sits in .main's 20px/24px inset (pages keep their own content

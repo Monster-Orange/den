@@ -143,11 +143,16 @@ async function press(
   asked: () => boolean,
 ): Promise<string> {
   await p.locator(`#den-bell-pop [data-bell="${what}"]`).click();
-  return p
-    .locator(`#den-bell-pop [data-bell="${what}"][aria-busy="true"]`)
-    .waitFor({ timeout: 5_000 })
-    .then(() => "busy")
-    .catch(() => (asked() ? "POST asked, button not busy" : "no POST"));
+  return (
+    p
+      // Issue 1434: held is aria-busy and aria-disabled, never disabled.
+      .locator(
+        `#den-bell-pop [data-bell="${what}"][aria-busy="true"][aria-disabled="true"]:not([disabled])`,
+      )
+      .waitFor({ timeout: 5_000 })
+      .then(() => "busy")
+      .catch(() => (asked() ? "POST asked, button not busy" : "no POST"))
+  );
 }
 
 /** The page with its bell open, and `path`'s POST held until `release`. */
@@ -205,7 +210,6 @@ describe("Mark all read (issue 1339)", () => {
     expect(await count(p, UNREAD)).toBe(3);
     const btn = p.locator('#den-bell-pop [data-bell="all"]');
     expect(await press(p, "all", asked)).toBe("busy");
-    expect(await btn.isDisabled()).toBe(true);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
@@ -239,6 +243,8 @@ describe("Mark all read (issue 1339)", () => {
     await until(p, UNREAD, 3);
     expect(await btn.isDisabled()).toBe(false);
     expect(await btn.getAttribute("aria-busy")).toBeNull();
+    // Issue 1434: nor left aria-disabled after the error.
+    expect(await btn.getAttribute("aria-disabled")).toBeNull();
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.markAll"),
     );
@@ -269,10 +275,19 @@ describe("a repaint while the POST waits (issue 1524)", () => {
       const btn = p.locator(`#den-bell-pop [data-bell="${what}"]`);
       expect({
         busy: await btn.getAttribute("aria-busy"),
-        disabled: await btn.isDisabled(),
+        off: await btn.getAttribute("aria-disabled"),
+        // The element's own disabled: Playwright's isDisabled() also
+        // counts aria-disabled, which is the hold itself (issue 1434).
+        disabled: await btn.evaluate((b) => (b as HTMLButtonElement).disabled),
         dots: await btn.locator('[aria-hidden="true"]').count(),
         held: await held(p),
-      }).toEqual({ busy: "true", disabled: true, dots: 1, held: 1 });
+      }).toEqual({
+        busy: "true",
+        off: "true",
+        disabled: false,
+        dots: 1,
+        held: 1,
+      });
       await release(true);
       await noneHeld(p);
       await p.context().close();
@@ -288,7 +303,6 @@ describe("Clear read (issue 1339)", () => {
     const { p, release, asked } = await open("clear", 5);
     const btn = p.locator('#den-bell-pop [data-bell="clear"]');
     expect(await press(p, "clear", asked)).toBe("busy");
-    expect(await btn.isDisabled()).toBe(true);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.

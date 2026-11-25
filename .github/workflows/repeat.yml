@@ -5,7 +5,11 @@
 #
 # Where it runs: the self-hosted runners only when the
 # DEN_SELF_HOSTED_NIGHT repo variable is 'on' (the night switch, apart from
-# ci.yml's day switch); otherwise GitHub-hosted.
+# ci.yml's day switch), DEN_SELF_HOSTED_NIGHT_LABELS names their labels (a
+# JSON array; issue 1581: there's no default, and the switch on without them
+# stops the run at its first step), and the run was started by hand here;
+# otherwise GitHub-hosted. Issue 1492: the event check stays in the expression, so a
+# trigger added later can't bring someone else's code to the box.
 name: repeat
 
 on:
@@ -38,7 +42,7 @@ permissions:
 
 jobs:
   repeat:
-    runs-on: ${{ vars.DEN_SELF_HOSTED_NIGHT == 'on' && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && vars.DEN_SELF_HOSTED_NIGHT == 'on' && vars.DEN_SELF_HOSTED_NIGHT_LABELS) && fromJSON(vars.DEN_SELF_HOSTED_NIGHT_LABELS) || 'ubuntu-latest' }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -52,6 +56,12 @@ jobs:
       COUNT: ${{ inputs.count }}
       BROWSERS: ${{ inputs.browsers }}
     steps:
+      # Issue 1581: the switch alone sends nothing to a box.
+      - name: The box's labels are set when its switch is on
+        if: github.event_name == 'workflow_dispatch' && vars.DEN_SELF_HOSTED_NIGHT == 'on' && vars.DEN_SELF_HOSTED_NIGHT_LABELS == ''
+        run: |
+          echo "::error::DEN_SELF_HOSTED_NIGHT is on but DEN_SELF_HOSTED_NIGHT_LABELS is not set. Set it to the runners' labels as a JSON array, such as [\"self-hosted\",\"linux\"], or turn DEN_SELF_HOSTED_NIGHT off. Nothing was sent to a self-hosted runner."
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
