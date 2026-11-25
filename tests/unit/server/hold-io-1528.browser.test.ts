@@ -28,7 +28,14 @@ beforeAll(async () => {
   });
   await new Promise<void>((r) => server!.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  browser = await openBrowser();
+  // DEN_TERMINAL_BROWSER=webkit or firefox runs it there, as
+  // agents-terminal does: Playwright's routed socket is the same script.
+  const engine = ["firefox", "webkit"].includes(
+    process.env.DEN_TERMINAL_BROWSER ?? "",
+  )
+    ? (process.env.DEN_TERMINAL_BROWSER as "firefox" | "webkit")
+    : "chromium";
+  browser = await openBrowser(engine);
 }, 60_000);
 
 afterAll(async () => {
