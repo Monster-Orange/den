@@ -138,8 +138,8 @@
   font-weight: 500;
 }
 
-/* issue 699: the held button. busy.js's hold() sets disabled and
-   aria-busy, wraps the label in .bz-lbl and adds three dots. The label is
+/* issue 699: the held button. busy.js's hold() sets aria-disabled
+   (issue 1434: not disabled, so it keeps focus) and aria-busy, wraps the label in .bz-lbl and adds three dots. The label is
    hidden, not removed, so the button keeps its size; the dots take the
    label's colour (currentColor). Tokens only: no colour of its own. */
 [aria-busy="true"]:is(button, .btn, a) {
@@ -200,6 +200,8 @@
 /* Held is not "off": it keeps its own colours (over the kit button's own
    disabled look, whichever stylesheet comes first). */
 [aria-busy="true"]:disabled,
-.den-btn[aria-busy="true"]:disabled {
+.den-btn[aria-busy="true"]:disabled,
+[aria-busy="true"][aria-disabled="true"],
+.den-btn[aria-busy="true"][aria-disabled="true"] {
   opacity: 1;
 }
