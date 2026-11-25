@@ -257,7 +257,8 @@ describe("Resume keeps the conversation, the folder and the scope", () => {
     expect(row).toMatchObject({
       state: "stopped",
       resumable: false,
-      noResume: "codex can't resume coder: it reported no conversation to resume",
+      noResume:
+        "codex can't resume coder: it reported no conversation to resume",
     });
     expect(await agents(r, "resume", "coder")).toBe(1);
     expect(r.err.join("\n")).toMatch(

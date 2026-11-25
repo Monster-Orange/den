@@ -9132,8 +9132,7 @@ export async function resumeInterrupted(
   for (const rec of recs) {
     const rot = rotationOf(d, rec);
     const why =
-      resumeRefusal(rec, all) ??
-      (rot?.ready ? rotatedRefusal(rec, rot) : null);
+      resumeRefusal(rec, all) ?? (rot?.ready ? rotatedRefusal(rec, rot) : null);
     if (why) {
       failed.push({ agent: rec.id, why });
       continue;
