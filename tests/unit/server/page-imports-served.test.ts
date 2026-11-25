@@ -16,12 +16,17 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const ownRoute = (u: string) =>
   ROUTES.some((r) => r.path === u && r.methods.includes("GET"));
 
-function importsOf(file: string): string[] {
-  const src = fs.readFileSync(path.join(PUBLIC, file), "utf-8");
+function importsIn(src: string): string[] {
   return [
-    ...src.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"(\/[^"]+)"/gm),
-    ...src.matchAll(/^\s*import\s+"(\/[^"]+)"/gm),
-  ].map((m) => m[1]!);
+    ...src.matchAll(
+      /^\s*(?:import|export)\b[^;]*?\bfrom\s+"((?:\/|\.\/)[^"]+)"/gm,
+    ),
+    ...src.matchAll(/^\s*import\s+"((?:\/|\.\/)[^"]+)"/gm),
+  ].map((m) => (m[1]!.startsWith("./") ? m[1]!.slice(1) : m[1]!));
+}
+
+function importsOf(file: string): string[] {
+  return importsIn(fs.readFileSync(path.join(PUBLIC, file), "utf-8"));
 }
 
 describe("every page module's URL imports are served", () => {
@@ -31,6 +36,14 @@ describe("every page module's URL imports are served", () => {
     expect(importsOf("agents-page.js")).toEqual(
       expect.arrayContaining(["/agent-groups.js", "/kit/busy.js"]),
     );
+  });
+
+  it("reads a relative ./x.js import as the served /x.js", () => {
+    expect(
+      importsIn(
+        'import { a } from "./settings-common.js";\nimport "./settings-ui-hub.js";\nexport { b } from "/kit/busy.js";\n',
+      ),
+    ).toEqual(["/settings-common.js", "/kit/busy.js", "/settings-ui-hub.js"]);
   });
 
   it("each /x.js is in UI_MODULES; each /kit/x in KIT_FILES", () => {
