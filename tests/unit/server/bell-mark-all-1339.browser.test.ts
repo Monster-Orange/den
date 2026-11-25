@@ -154,7 +154,8 @@ describe("Mark all read (issue 1339)", () => {
     await btn.click();
     expect(await btn.getAttribute("aria-busy")).toBe("true");
     expect(await btn.isDisabled()).toBe(true);
-    await btn.locator(".bz-dots").waitFor();
+    // The kit's dots: the held button's one aria-hidden part.
+    await btn.locator('[aria-hidden="true"]').waitFor();
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.markAll"),
     );
@@ -199,7 +200,8 @@ describe("Clear read (issue 1339)", () => {
     await btn.click();
     expect(await btn.getAttribute("aria-busy")).toBe("true");
     expect(await btn.isDisabled()).toBe(true);
-    await btn.locator(".bz-dots").waitFor();
+    // The kit's dots: the held button's one aria-hidden part.
+    await btn.locator('[aria-hidden="true"]').waitFor();
     expect((await btn.textContent())?.trim()).toBe(
       await words(p, "bell.clearRead"),
     );
