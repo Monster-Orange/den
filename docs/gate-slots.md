@@ -842,6 +842,33 @@ A project's own lock helper can read the same variables: when
 `DEN_GATE_SLOT_KIND` is the kind it would lock, it is already inside a
 held slot and should not lock again.
 
+## CI runner entries (issue 642)
+
+A runner entry says one repo's CI jobs may run on one test box. Each has
+the repo (`owner/name`), the runner labels its jobs ask for (`runs-on`),
+the repo variable that routes them to the box or back to hosted runners,
+the box, how many of its jobs may run there at once (`slots`, 1 by
+default), whether each job takes one of the box's gate slots (`heavy`, the
+default), and who answers for it (`owner`). None by default.
+
+```sh
+den gate runner add acme/app --box box1 --labels self-hosted,linux \
+  --routing-variable CI_RUNNER --owner "the owner"   # --light, --slots N
+den gate runner list
+den gate runner remove acme/app --box box1
+```
+
+An entry widens what runs on a box. A person changes them here or in
+Settings › Server › CI runner entries; an agent asks with the held write
+`gate_runner_entry_set`, which always waits for the person's Allow.
+
+For now these are settings only: Den doesn't start runners yet. A pure
+plan (`planRunners`, `src/shared/gates/runner-entries.ts`) says which
+queued job may start on which box. A job takes the first entry for its
+repo that carries all its labels, whose box is open, whose own count isn't
+reached and, for a heavy entry, whose box has a free gate slot. So two
+repos on a box with one heavy slot never run at once.
+
 ## Throwaway containers go with their run
 
 A test that starts a container of its own (a database, a cache) labels it

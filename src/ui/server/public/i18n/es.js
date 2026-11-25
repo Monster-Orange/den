@@ -1342,6 +1342,9 @@
       "Cuánto espera Den la respuesta de una máquina de pruebas cuando está a punto de darle un turno. Sin respuesta, la máquina se omite. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck":
       "Una máquina omitida se comprueba de nuevo tras, en segundos",
+    "set.server.gate_runner_entries": "Entradas de runners de CI",
+    "set.server.gate_runner_entries.d":
+      "Qué trabajos de CI de qué repositorios pueden ejecutarse en qué máquina de pruebas: las etiquetas del runner que piden, la variable del repositorio que los enruta, cuántos a la vez, si cada uno toma el turno pesado de la máquina y quién responde por ella. Por ahora son solo ajustes: Den aún no arranca runners. Un agente pide añadir una y tú lo permites. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "Una máquina en pausa o que no respondió se omite durante este tiempo y luego se comprueba de nuevo la próxima vez que se quiera un turno en ella. Nunca con un temporizador. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.gate_box_default": "Las pruebas de navegador van a",
@@ -2339,6 +2342,22 @@
       "Se guarda como confirmada, igual que la guarda Ajustes; vale sin reiniciar, y Den se lo dice al Hub conectado.",
     "set.ui.hub.denUrlRefused":
       "Hub no aceptó la dirección de este Den ({url}): {why}",
+    "ap.do.gate_runner_entry_set":
+      "Dejar que los trabajos de CI de {repo} se ejecuten en la máquina de pruebas {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Deja que los trabajos de CI de {repo} con las etiquetas {labels} se ejecuten en la máquina de pruebas {box}, como mucho {n} a la vez.",
+    "ap.det.gate_runner_entry_set.change":
+      "Cambia la entrada que deja que los trabajos de CI de {repo} con las etiquetas {labels} se ejecuten en la máquina de pruebas {box}, como mucho {n} a la vez.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Cada trabajo toma uno de los turnos de {box}, así que nunca se ejecuta junto a otro trabajo pesado allí.",
+    "ap.det.gate_runner_entry_set.light":
+      "Sus trabajos son ligeros: no toman ningún turno en {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "La variable del repositorio {variable} envía sus trabajos a la máquina, o de vuelta a los runners alojados. {owner} responde por ella.",
+    "ap.det.gate_runner_entry_set.private":
+      "Los runners de la máquina solo arrancan en un repositorio privado: si {repo} es público, no arranca ninguno salvo que una persona permita los repositorios públicos en este proyecto.",
+    "ap.det.gate_runner_entry_set.remove":
+      "Puedes quitarla cuando quieras en Ajustes, en Entradas de runners de CI.",
     "ap.do.host_restart":
       "Reiniciar el host de terminales cuando los agentes estén libres",
     "ap.det.host_restart.wait":
@@ -4125,6 +4144,23 @@
     "set.ui.boxIsOff": "apagada",
     "set.ui.boxTurnOn": "Encender",
     "set.ui.boxTurnOff": "Apagar",
+    "set.ui.reRepo": "Repositorio (dueño/nombre)",
+    "set.ui.reBox": "Máquina de pruebas",
+    "set.ui.reLabels": "Etiquetas del runner (separadas por comas)",
+    "set.ui.reVar": "Variable de enrutamiento",
+    "set.ui.reSlots": "A la vez",
+    "set.ui.reHeavy": "Toma el turno pesado de la máquina",
+    "set.ui.reOwner": "Quién responde por ella",
+    "set.ui.reSave": "Guardar entrada",
+    "set.ui.reNone":
+      "No hay entradas de runners. Los trabajos de CI usan runners alojados.",
+    "set.ui.reNoBox":
+      "Primero añade una máquina de pruebas, en Máquinas de pruebas.",
+    "set.ui.reHeavyIs": "pesado",
+    "set.ui.reLightIs": "ligero",
+    "set.ui.reSlotsN": "{n} a la vez",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "responde {who}",
     "set.ui.appKeyOnce":
       "Copia ahora esta clave en el backend de la aplicación web. No se vuelve a mostrar.",
     "set.ui.appKeyNew": "Nueva clave de aplicación",

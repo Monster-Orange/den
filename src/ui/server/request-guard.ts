@@ -1087,6 +1087,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
   "/api/gate-slots/boxes/enable",
+  // Issue 642: CI runner entries; an agent asks with gate_runner_entry_set.
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1398,6 +1401,16 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
  */
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+/**
+ * Whether this request is a test bed's CLI on the test-person path (issue
+ * 636): a person token marked testPerson. A person-only write that widens
+ * what runs refuses it (issue 642 review).
+ */
+export function testPersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person" && p.testPerson === true;
 }
 
 /**
