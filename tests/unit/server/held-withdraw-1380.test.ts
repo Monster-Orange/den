@@ -204,6 +204,22 @@ describe("issue 1380: an agent withdraws its own pending held write", () => {
     ).toBe(true);
   });
 
+  it("an agent can't withdraw the person's own request", async () => {
+    const made = await post("/api/approvals", {
+      action: "gate_box_set",
+      args: { name: "personbox" },
+    });
+    expect(made.status).toBe(202);
+    const id = String(made.json.id);
+    const r = await post(
+      `/api/approvals/${id}/withdraw`,
+      { reason: "not mine" },
+      "planner",
+    );
+    expect([r.status, r.json.code]).toEqual([403, "not_asker"]);
+    expect(queue.pending().map((a) => a.id)).toContain(id);
+  });
+
   it("one already decided is refused as already decided", async () => {
     const id = await ask("planner", "donebox");
     await queue.decide(id, "deny", "person-browser");
@@ -226,12 +242,21 @@ describe("issue 1380: an agent withdraws its own pending held write", () => {
     expect([r.status, r.json.code]).toEqual([409, "already_decided"]);
     release?.();
     expect((await allowing).ok).toBe(true);
-    expect(ran).toContain("slowbox");
+    expect(ran.filter((x) => x === "slowbox")).toHaveLength(1);
   });
 
   it("a reason that isn't one short line is refused at the boundary", async () => {
     const id = await ask("planner", "reasonbox");
-    for (const reason of ["two\nlines", "x".repeat(201), 42]) {
+    for (const reason of [
+      "two\nlines",
+      "x".repeat(201),
+      42,
+      "\u202Egnorts",
+      "a\u2028b",
+      "a\u2029b",
+      "a\u2066b",
+      "a\u0007b",
+    ]) {
       const r = await post(
         `/api/approvals/${id}/withdraw`,
         { reason },
@@ -304,6 +329,8 @@ describe("issue 1380: ask_withdraw takes a held-write request", () => {
       { reason: "r" },
       { request: "../decide", reason: "r" },
       { request: "short", reason: "r" },
+      { request: REQ, reason: "\u202Eevil" },
+      { id: "q1", reason: "a\u2067b" },
     ]) {
       const r = await callTool("ask_withdraw", a, ctx(api));
       expect(r.isError).toBe(true);

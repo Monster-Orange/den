@@ -505,7 +505,12 @@ const READ_TOOLS: DenTool[] = [
     async (a, { api }) => {
       const id = (str(a.id) ?? "").trim();
       const request = (str(a.request) ?? "").trim();
-      const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
+      const raw = str(a.reason) ?? "";
+      if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(raw.replace(/[\t\n\r]/g, " ")))
+        throw new Refusal(
+          "ask_withdraw: a reason is plain text: no control or direction characters.",
+        );
+      const reason = raw.replace(/\s+/g, " ").trim();
       if (id && request)
         throw new Refusal(
           "ask_withdraw: give `id` (a question) or `request` (a write request), not both.",

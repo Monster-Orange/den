@@ -806,7 +806,7 @@ export async function handleApprovalRoutes(
       body === null ||
       (given !== undefined &&
         (typeof given !== "string" ||
-          /[\r\n]/.test(given) ||
+          /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(given) ||
           given.trim().length > WITHDRAW_REASON_MAX))
     )
       return refused(
