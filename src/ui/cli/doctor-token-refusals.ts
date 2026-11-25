@@ -14,6 +14,7 @@ import {
   AUDIT_SET_ASIDE_MARK,
 } from "../../shared/audit-file.js";
 import { readTailLines } from "../../shared/dev-metrics/polling.js";
+import { redactSecrets } from "../../shared/redact.js";
 import type { OnboardCheck } from "./doctor-onboard.js";
 
 export interface RefusalEntry {
@@ -103,7 +104,8 @@ export function readRefusalEntries(
  * the trail aside (issue 1391's marker says when), the set-aside trail
  * too, so a refusal written just before an update isn't lost from the
  * row. From that folder, which may hold values never redacted, only
- * refused agent tokens are kept, only from plain files (never a link).
+ * refused agent tokens are kept, only from plain files (never a link),
+ * and each is redacted (redactSecrets) before doctor shows it.
  */
 export function readRefusalTrail(
   stateDir: string,
@@ -120,7 +122,10 @@ export function readRefusalTrail(
   } catch {
     return out;
   }
-  if (!Number.isFinite(at) || now.getTime() - at > HOUR_MS) return out;
+  // Only within the hour after the move: a marker ahead of now (a clock
+  // set back) never opens the folder for good.
+  const since = now.getTime() - at;
+  if (!Number.isFinite(since) || since < 0 || since > HOUR_MS) return out;
   let names: string[] = [];
   try {
     names = fs.readdirSync(aside).sort();
@@ -132,7 +137,22 @@ export function readRefusalTrail(
     const file = path.join(aside, name);
     if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) continue;
     for (const e of readRefusalEntries(file))
-      if (e.verb === "agent-token" && e.outcome === "refused") out.push(e);
+      if (e.verb === "agent-token" && e.outcome === "refused")
+        out.push(redactedRow(e));
   }
   return out;
+}
+
+/** A set-aside row with its text redacted (issue 1391: never trusted). */
+function redactedRow(e: RefusalEntry): RefusalEntry {
+  const r = (v: unknown) =>
+    typeof v === "string" ? redactSecrets(v) : undefined;
+  return {
+    ts: e.ts,
+    verb: e.verb,
+    outcome: "refused",
+    detail: r(e.detail) ?? "",
+    ...(r(e.principal) !== undefined ? { principal: r(e.principal) } : {}),
+    ...(r(e.reason) !== undefined ? { reason: r(e.reason) } : {}),
+  };
 }

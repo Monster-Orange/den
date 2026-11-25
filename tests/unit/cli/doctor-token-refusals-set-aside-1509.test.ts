@@ -86,6 +86,26 @@ describe("issue 1509: a refusal set aside at the update still counts", () => {
     expect(who).toEqual(["agent:lane-9"]);
   });
 
+  it("a set-aside row is redacted: a secret in its detail, principal or reason", () => {
+    const GH = "ghp_abcdefghijklmnopqrstuvwxyz0123";
+    const dir = state(5, [
+      row("lane-22", 6, {
+        detail: `token from x ${GH}: POST /api/agents/self/attention`,
+        reason: `token_elsewhere ${GH}`,
+        principal: `agent:lane-22 ${GH}`,
+      }),
+    ]);
+    const got = readRefusalTrail(dir, NOW);
+    expect(got).toHaveLength(1);
+    expect(JSON.stringify(got)).not.toContain(GH);
+    expect(got[0]!.detail).toContain("POST /api/agents/self/attention");
+  });
+
+  it("a marker ahead of now (a clock set back) leaves the folder unread", () => {
+    const dir = state(-60, [row("lane-22", 6)]);
+    expect(readRefusalTrail(dir, NOW)).toEqual([]);
+  });
+
   it("no set-aside, or no marker: only the live trail", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "t1509-"));
     dirs.push(dir);
