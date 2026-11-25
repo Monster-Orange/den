@@ -49,6 +49,8 @@ interface FakeEvent {
   defaultPrevented?: boolean;
   persisted?: boolean;
   preventDefault?: () => void;
+  stopImmediatePropagation?: () => void;
+  stopped?: boolean;
 }
 
 class El {
@@ -174,7 +176,11 @@ class El {
   }
   click() {
     if (this.disabled) return;
-    this.dispatch({ type: "click", target: this });
+    // The window's capture listeners first (busy.js's guard, issue 1434).
+    const e: FakeEvent = { type: "click", target: this };
+    e.stopImmediatePropagation = () => (e.stopped = true);
+    win.dispatch(e);
+    if (!e.stopped) this.dispatch(e);
   }
   focus() {
     doc.activeElement = this;
@@ -338,8 +344,10 @@ function button(label = "Save changes") {
   return b;
 }
 const dialog = () => doc.body.querySelectorAll("dialog")[0] ?? null;
+// Issue 1434: held is aria-disabled, never disabled (that drops focus).
 const held = (b: El) =>
-  b.disabled &&
+  !b.disabled &&
+  b.getAttribute("aria-disabled") === "true" &&
   b.getAttribute("aria-busy") === "true" &&
   b.querySelectorAll(".bz-dots").length === 1;
 
@@ -408,13 +416,9 @@ describe("issue 699, 1: dots at once, for every button the kit holds", () => {
       submitter: b,
       preventDefault: () => (prevented = true),
     });
-    // The dots at once; the submitter is disabled only after the browser
-    // took its name and value into the form's data.
-    expect(b.querySelectorAll(".bz-dots")).toHaveLength(1);
-    expect(b.getAttribute("aria-busy")).toBe("true");
-    expect(prevented).toBe(false);
-    await tick(0);
+    // Held at once (aria-disabled leaves its name and value in the form).
     expect(held(b)).toBe(true);
+    expect(prevented).toBe(false);
     // A second submit while held is stopped.
     doc.dispatch({
       type: "submit",
@@ -812,7 +816,7 @@ describe('issue 699: data-instant="<reason>"', () => {
     const b = button();
     b.setAttribute("data-instant", "only reads a local list");
     void kit.busyAction("save", () => answer(10_000), { button: b });
-    expect(b.disabled).toBe(true);
+    expect(b.getAttribute("aria-disabled")).toBe("true");
     expect(b.querySelectorAll(".bz-dots")).toHaveLength(0);
     await tick(kit.OPEN_MS);
     expect(dialog()?.open).toBe(true);
@@ -885,5 +889,39 @@ describe("issue 698: holdDots, the dots alone (a wait with its own words)", () =
   });
   it("no button: nothing happens", () => {
     expect(() => kit.holdDots(null)).not.toThrow();
+  });
+});
+
+describe("issue 1434: held keeps focus", () => {
+  it("held is aria-disabled, never disabled; focus stays; let go, both are off", async () => {
+    const b = button();
+    b.focus();
+    void kit.pending(b, () => answer(500));
+    expect(held(b)).toBe(true);
+    expect(b.disabled).toBe(false);
+    expect(doc.activeElement).toBe(b);
+    await tick(500);
+    expect(b.getAttribute("aria-disabled")).toBeNull();
+    expect(b.getAttribute("aria-busy")).toBeNull();
+    expect(doc.activeElement).toBe(b);
+  });
+  it("a click on a held button never reaches the page's own listener", async () => {
+    const b = button();
+    let clicks = 0;
+    b.addEventListener("click", () => clicks++);
+    kit.holdDots(b);
+    b.click();
+    b.click();
+    expect(clicks).toBe(0);
+    kit.holdDots(b, false);
+    b.click();
+    expect(clicks).toBe(1);
+  });
+  it("a button the page made aria-disabled stays so after the hold", () => {
+    const b = button();
+    b.setAttribute("aria-disabled", "true");
+    kit.holdDots(b);
+    kit.holdDots(b, false);
+    expect(b.getAttribute("aria-disabled")).toBe("true");
   });
 });

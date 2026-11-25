@@ -20,9 +20,34 @@ function packedFiles(): string[] {
     { cwd: ROOT, encoding: "utf-8", maxBuffer: 1 << 28 },
   );
   expect(r.status).toBe(0);
-  const [pack] = JSON.parse(r.stdout) as { files: { path: string }[] }[];
+  const [pack] = packJson(r.stdout);
   return pack.files.map((f) => f.path);
 }
+
+/**
+ * npm 10 (Node 22's) runs the prepare script on `pack --dry-run` even with
+ * --ignore-scripts, and husky prints into stdout before the JSON. So the
+ * JSON starts at the first line that opens an array.
+ */
+function packJson(out: string): { files: { path: string }[] }[] {
+  const at = out.search(/^\[/m);
+  if (at < 0) throw new Error(`npm pack printed no JSON: ${out.slice(0, 300)}`);
+  return JSON.parse(out.slice(at)) as { files: { path: string }[] }[];
+}
+
+describe("npm pack's JSON, read past what a lifecycle script printed", () => {
+  it("husky's prepare lines before the JSON are skipped", () => {
+    const out =
+      "\n> den@1.0.0 prepare\n> husky install\n\nhusky - Git hooks installed\n" +
+      '[\n  {\n    "files": [{ "path": "src/a.js" }]\n  }\n]\n';
+    expect(packJson(out)[0].files.map((f) => f.path)).toEqual(["src/a.js"]);
+  });
+  it("no JSON at all says what npm printed", () => {
+    expect(() => packJson("husky - Git hooks installed\n")).toThrow(
+      /npm pack printed no JSON: husky/,
+    );
+  });
+});
 
 describe("issue 1127: the package holds the matcher, never the list", () => {
   const files = packedFiles();
