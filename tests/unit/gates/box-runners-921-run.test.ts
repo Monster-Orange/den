@@ -202,7 +202,7 @@ describe("startBoxRunner: one runner per job, the token on stdin only", () => {
     for (const t of files(d)) expect(t).not.toContain(TOKEN);
   });
 
-  it("when the job's runner exits: done, and its own mark is removed (in case the hook never ran)", async () => {
+  it("when the job's runner exits: done, and its own mark is removed again (in case the box's line was cut off)", async () => {
     const f = scripted([{ hold: true }, {}]);
     const d = tmp();
     const r = startBoxRunner(BOX, spec(), token(), deps(f.start, d));
