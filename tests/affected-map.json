@@ -2406,6 +2406,11 @@
       "why": "tests that run scripts/pw-server.mjs"
     },
     {
+      "when": ["scripts/queue-commits.mjs"],
+      "run": ["tests/unit/scripts/queue-commits-1613.test.ts"],
+      "why": "tests that run scripts/queue-commits.mjs"
+    },
+    {
       "when": ["scripts/release-ancestry.sh"],
       "run": [
         "tests/unit/scripts/release-ancestry.test.ts",
@@ -3063,9 +3068,7 @@
         "src/shared/agents/app-feeds.ts",
         "src/ui/server/public/settings-registry.js"
       ],
-      "run": [
-        "tests/unit/server/app-feeds-edit-1480.browser.test.ts"
-      ],
+      "run": ["tests/unit/server/app-feeds-edit-1480.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
