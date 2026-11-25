@@ -1689,6 +1689,8 @@
       "Conectado a {company} ({host}). ¿No es la empresa que querías?",
     "hub.switching":
       "Cambiando a {to}: inicia sesión allí para terminar. __DEN_TITLE__ sigue en {from} hasta entonces.",
+    "hub.switchEnded":
+      "El cambio a {to} esperó demasiado un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}.",
     "hub.switchSignin": "Iniciar sesión en el nuevo Hub",
     "hub.reconnect": "Volver a conectar",
     "hub.cw.done": "Conectado a Hub ({company}).",
@@ -2989,6 +2991,8 @@
       "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
     "bell.m.hubSwitchWaits":
       "Inicia sesión en {to} para terminar el cambio de Hub; __DEN_TITLE__ sigue en {from} hasta entonces",
+    "bell.m.hubSwitchExpired":
+      "El cambio a {to} esperó {days} días un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}; vuelve a pedirlo para cambiar",
     "bell.m.hubSwitchFailed":
       "__DEN_TITLE__ no pudo cambiar a {to}: {why}. Sigue en {from}; vuelve a iniciar sesión en Ajustes › Hub",
     "ap.hubSwitchSignin": "Abriendo el inicio de sesión de {url}…",

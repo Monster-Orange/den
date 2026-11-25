@@ -6777,7 +6777,9 @@ export function hubHtml(b, flash, t = (k) => k) {
     b.switching && typeof b.switching.to === "string"
       ? `<p class="set-note set-warn" role="status" data-hub-switching>${escR(t("hub.switching", { to: b.switching.to, from: b.url || "" }))} ` +
         `<button type="button" class="den-btn sm primary" data-hub-action="connect" data-hub-switch-signin>${escR(t("hub.switchSignin"))}</button></p>`
-      : "";
+      : b.switchEnded && typeof b.switchEnded.to === "string"
+        ? `<p class="set-note" role="status" data-hub-switch-ended>${escR(t("hub.switchEnded", { to: b.switchEnded.to, from: b.url || "" }))}</p>`
+        : "";
   return (
     (just || flashHtml) +
     sw +
@@ -8674,7 +8676,11 @@ function wireHub(host, ctx) {
           ctx.shell.api(
             "POST",
             "/api/hub/connect",
-            typed ? { url: typed.value } : {},
+            button?.dataset.hubSwitchSignin !== undefined
+              ? { switch: true }
+              : typed
+                ? { url: typed.value }
+                : {},
             { headers },
           ),
         {

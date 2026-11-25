@@ -80,7 +80,12 @@ import {
 } from "../../shared/secrets/index.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { isRepoName } from "../../shared/repo-name.js";
-import { hubSwitchDeps, endHubSwitch, readHubSwitch } from "./hub-switch.js";
+import {
+  endHubSwitch,
+  hubSwitchDeps,
+  liveHubSwitch,
+  switchDays,
+} from "./hub-switch.js";
 
 /** How long a started connect waits for Hub to send the person back. */
 export const CONNECT_TTL_MS = 10 * 60_000;
@@ -449,7 +454,11 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     linkOf: (ws) =>
       parseHubProjectLink(readWorkspacesFile().workspaces[ws]?.hub_project),
     boundOrigin: () => readHubBinding(getStateDir())?.origin ?? null,
-    hubSwitch: () => readHubSwitch(getStateDir()),
+    hubSwitch: () =>
+      liveHubSwitch({
+        stateDir: getStateDir(),
+        days: switchDays((readUserConfig() as Record<string, unknown>).hub),
+      }),
     switched: (r) =>
       void hubSwitchDeps()
         .then((d) => endHubSwitch(d, r))
@@ -541,11 +550,12 @@ export class HubConnect {
   start(
     origin: string,
     url?: unknown,
+    opts: { switch?: boolean } = {},
   ): { ok: true; location: string } | { ok: false; error: string } {
     const typed = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
     let sw: { to: string } | null = null;
     try {
-      sw = this.deps.hubSwitch?.() ?? null;
+      sw = opts.switch ? (this.deps.hubSwitch?.() ?? null) : null;
     } catch {
       sw = null;
     }
@@ -718,8 +728,9 @@ export class HubConnect {
           : `Hub didn't give a token: ${(e as Error).message}`;
       return { ok: false, reason: "failed", message: m };
     }
-    const hubUrl =
-      grant.hubUrl && !hubUrlProblem(grant.hubUrl) ? grant.hubUrl : p.hubUrl;
+    const ownName = (u: string | undefined) =>
+      !!u && !hubUrlProblem(u) && (!p.switching || sameHub(u, p.hubUrl));
+    const hubUrl = ownName(grant.hubUrl) ? grant.hubUrl! : p.hubUrl;
     // Issue 726: connected before (to another Hub, or for another company
     // on this one): the old token is read now (the new one may take its
     // file or item) and revoked on its Hub after, so a token for a company
@@ -749,8 +760,7 @@ export class HubConnect {
     };
     hub.url = hubUrl;
     hub.token = stored.kind === "ref" ? stored.ref : stored.source;
-    if (grant.mcpUrl && !hubUrlProblem(grant.mcpUrl))
-      hub.mcp_url = grant.mcpUrl;
+    if (ownName(grant.mcpUrl)) hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
     this.deps.writeUser({ ...user, hub });
     // 0.4.47: the token Den keeps in memory is the old one: read anew.

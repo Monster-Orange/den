@@ -15,6 +15,8 @@ import {
 import {
   clearHubSwitch,
   hubSwitchFile,
+  liveHubSwitch,
+  switchDays,
   readHubSwitch,
   saveHubSwitch,
   switchBell,
@@ -196,17 +198,39 @@ async function signIn(
   h: ReturnType<typeof harness>,
   q: Record<string, string>,
 ) {
-  const r = h.hc.start(ORIGIN, "");
+  const r = h.hc.start(ORIGIN, "", { switch: true });
   if (!r.ok) throw new Error(r.error);
   const state = new URL(r.location).searchParams.get("state") ?? "";
   return h.hc.finish(new URLSearchParams({ state, ...q }));
 }
 
 describe("issue 1632: the sign-in finishes the switch, or leaves the old Hub", () => {
-  it("Connect with no typed address goes to the pending switch's Hub", () => {
+  it("Connect goes to the pending switch's Hub only when asked to; a plain Connect keeps the Hub in use", () => {
     const h = harness({}, PENDING);
-    const r = h.hc.start(ORIGIN, "");
-    expect(r.ok && new URL(r.location).origin).toBe(NEW);
+    const sw = h.hc.start(ORIGIN, "", { switch: true });
+    expect(sw.ok && new URL(sw.location).origin).toBe(NEW);
+    const plain = h.hc.start(ORIGIN, "");
+    expect(plain.ok && new URL(plain.location).origin).toBe(OLD);
+  });
+
+  it("the new Hub can't name a third address for itself", async () => {
+    const h = harness(
+      {
+        exchange: async () => ({
+          token: NEW_TOKEN,
+          install: "den on box",
+          role: "member",
+          hubUrl: "https://third-hub.example.test",
+          mcpUrl: "https://third-hub.example.test/mcp",
+        }),
+      },
+      PENDING,
+    );
+    const r = await signIn(h, { code: "c3" });
+    expect(r.ok).toBe(true);
+    const hub = h.user().hub as Record<string, unknown>;
+    expect(hub.url).toBe(NEW);
+    expect(hub.mcp_url).toBeUndefined();
   });
 
   it("a new Hub that refuses the code: still on the old Hub, its token unrevoked, and why", async () => {
@@ -295,5 +319,43 @@ describe("issue 1632: Settings › Hub shows a switch waiting for the sign-in", 
     expect(row).toContain(OLD);
     expect(row).toMatch(/data-hub-action="connect"/);
     expect(hubHtml(b, null, t)).not.toContain("data-hub-switching");
+  });
+});
+
+describe("issue 1632: a pending switch expires", () => {
+  const bell = () => {
+    const added: { msg?: { key: string } }[] = [];
+    return {
+      added,
+      b: {
+        add: (n: { msg?: { key: string } }) => void added.push(n),
+        remove: () => 0,
+      },
+    };
+  };
+
+  it("hub.switch_days: a whole number of days from 1 to 365, else 7", () => {
+    expect(switchDays(undefined)).toBe(7);
+    expect(switchDays({ switch_days: 30 })).toBe(30);
+    for (const bad of [0, -1, 1.5, 400, "7", null])
+      expect(switchDays({ switch_days: bad })).toBe(7);
+  });
+
+  it("within its days it stands; past them it ends, once, and the bell says so", () => {
+    const dir = fs.mkdtempSync(path.join(tmp, "e-"));
+    saveHubSwitch(dir, { to: NEW, from: OLD, at: "2026-11-01T00:00:00.000Z" });
+    const x = bell();
+    const day = (d: string) => new Date(`2026-11-${d}T00:00:00.000Z`);
+    expect(
+      liveHubSwitch({ stateDir: dir, bell: x.b as never, days: 7 }, day("08")),
+    ).toMatchObject({ to: NEW });
+    expect(x.added).toEqual([]);
+    expect(
+      liveHubSwitch({ stateDir: dir, bell: x.b as never, days: 7 }, day("09")),
+    ).toBeNull();
+    expect(readHubSwitch(dir)).toBeNull();
+    expect(x.added.map((n) => n.msg?.key)).toEqual(["bell.m.hubSwitchExpired"]);
+    liveHubSwitch({ stateDir: dir, bell: x.b as never, days: 7 }, day("10"));
+    expect(x.added).toHaveLength(1);
   });
 });

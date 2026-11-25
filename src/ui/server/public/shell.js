@@ -2172,6 +2172,8 @@
       "Connected to {company} ({host}). Not the company you meant?",
     "hub.switching":
       "Switching to {to}: sign in there to finish. __DEN_TITLE__ stays on {from} until then.",
+    "hub.switchEnded":
+      "The switch to {to} waited too long for a sign-in and has ended. __DEN_TITLE__ stays on {from}.",
     "hub.switchSignin": "Sign in to the new Hub",
     "hub.reconnect": "Reconnect",
     "hub.cw.done": "Connected to Hub ({company}).",
@@ -3911,6 +3913,8 @@
       "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
     "bell.m.hubSwitchWaits":
       "Sign in to {to} to finish switching Hubs; __DEN_TITLE__ stays on {from} until then",
+    "bell.m.hubSwitchExpired":
+      "The switch to {to} waited {days} days for a sign-in and has ended. __DEN_TITLE__ stays on {from}; ask again to switch",
     "bell.m.hubSwitchFailed":
       "__DEN_TITLE__ couldn't switch to {to}: {why}. It stays on {from}; sign in again in Settings › Hub",
     "ap.hubSwitchSignin": "Opening {url}'s sign-in…",
@@ -9702,21 +9706,31 @@
             res.connect === true &&
             a.action === "hub_connect"
           ) {
-            apClose();
             toast(t("ap.hubSwitchSignin", { url: res.url || "" }));
-            fetch("/api/hub/connect", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: "{}",
-            })
-              .then(function (r) {
-                return r.json();
-              })
-              .then(function (b) {
-                if (b && b.ok && b.location) location.assign(b.location);
-                else toast(t("ap.failed", { error: (b && b.error) || "?" }));
-              })
+            window.denShell
+              .busyAction(
+                "connect",
+                function (headers) {
+                  return api(
+                    "POST",
+                    "/api/hub/connect",
+                    { switch: true },
+                    { headers },
+                  );
+                },
+                {
+                  button: pressed,
+                  onDone: function (r) {
+                    location.assign(r.location);
+                  },
+                  onFail: function (e) {
+                    apClose();
+                    toast(t("ap.failed", { error: (e && e.message) || "?" }));
+                  },
+                },
+              )
               .catch(function (e) {
+                apClose();
                 toast(t("ap.failed", { error: (e && e.message) || "?" }));
               });
             return;

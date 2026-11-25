@@ -27,6 +27,39 @@ export function readHubSwitch(stateDir: string): HubSwitch | null {
   }
 }
 
+export function switchDays(hub: unknown): number {
+  const v = (hub as Record<string, unknown> | undefined)?.switch_days;
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365
+    ? v
+    : 7;
+}
+
+const DAY_MS = 86_400_000;
+
+export const switchExpired = (s: HubSwitch, days: number, now: Date) =>
+  !(now.getTime() - Date.parse(s.at) <= days * DAY_MS);
+
+export function liveHubSwitch(
+  d: { stateDir: string; bell?: Bell; days: number },
+  now: Date = new Date(),
+): HubSwitch | null {
+  const s = readHubSwitch(d.stateDir);
+  if (!s || !switchExpired(s, d.days, now)) return s;
+  clearHubSwitch(d.stateDir);
+  d.bell?.add({
+    kind: "waiting",
+    subject: HUB_SWITCH_SUBJECT,
+    scope: "workspace/den-server",
+    text: `The switch to ${s.to} waited ${d.days} days for a sign-in and has ended. Den stays on ${s.from}; ask again to switch.`,
+    msg: {
+      key: "bell.m.hubSwitchExpired",
+      vars: { to: s.to, from: s.from, days: String(d.days) },
+    },
+    link: SETTINGS_HUB,
+  });
+  return null;
+}
+
 export function saveHubSwitch(stateDir: string, s: HubSwitch): void {
   const f = hubSwitchFile(stateDir);
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
@@ -44,10 +77,10 @@ export function clearHubSwitch(stateDir: string): void {
 export const HUB_SWITCH_SUBJECT = "record:hub-switch";
 const SETTINGS_HUB = "/settings#agents.hub";
 
-export function switchBell(s: HubSwitch, why?: string) {
+export function switchBell(s: HubSwitch, why?: string): BellItem {
   return why
     ? {
-        kind: "waiting" as const,
+        kind: "waiting",
         subject: HUB_SWITCH_SUBJECT,
         scope: "workspace/den-server",
         text: `Den couldn't switch to ${s.to}: ${why}. It stays on ${s.from}; sign in again in Settings › Hub.`,
@@ -58,7 +91,7 @@ export function switchBell(s: HubSwitch, why?: string) {
         link: SETTINGS_HUB,
       }
     : {
-        kind: "waiting" as const,
+        kind: "waiting",
         subject: HUB_SWITCH_SUBJECT,
         scope: "workspace/den-server",
         text: `Sign in to ${s.to} to finish switching Hubs; Den stays on ${s.from} until then.`,
@@ -67,8 +100,16 @@ export function switchBell(s: HubSwitch, why?: string) {
       };
 }
 
+type BellItem = {
+  kind: "waiting";
+  subject: string;
+  scope: string;
+  text: string;
+  msg: { key: string; vars: Record<string, string> };
+  link: string;
+};
 type Bell = {
-  add: (n: ReturnType<typeof switchBell>) => unknown;
+  add: (n: BellItem) => unknown;
   remove: (m: (n: { subject: string }) => boolean) => number;
 };
 
