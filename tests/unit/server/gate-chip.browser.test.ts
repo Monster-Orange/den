@@ -247,7 +247,6 @@ describe("issue 144: the gate chip on Agents", () => {
     );
     expect(await row.locator("b").count()).toBe(0);
 
-    // None removed: no heading, no list.
     removed = [];
     await p.keyboard.press("Escape");
     await p.reload();

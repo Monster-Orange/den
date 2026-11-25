@@ -11,8 +11,7 @@
  * Issue 803: with classes set, each run's class, and a wait for its window.
  * Issue 1132: a run whose command waits for the load to drop under the
  * start ceiling says so; what was stopped of ended runs (last hour) shows
- * under the queue. Issue 1263: so do the throwaway containers removed
- * after their run ended (last day).
+ * under the queue.
  *
  *   const chip = startGateChip({ button, t, api, busyAction, confirm, onChange });
  *   chip.refresh();          ask again now
@@ -35,10 +34,6 @@ const esc = (s) =>
 export const gateTime = (iso) => formatTime(iso, { style: "time" });
 const hm = gateTime;
 
-/**
- * Issue 1263 review: a removal's time; with its date when it isn't today
- * (removals reach back a day), in the person's zone (issue 206's check).
- */
 export function removedAt(iso, now = Date.now()) {
   const day = formatTime(iso, { style: "date" });
   return day && day === formatTime(now, { style: "date" })
@@ -56,10 +51,6 @@ export function startHoldWords(s, t) {
     : "";
 }
 
-/**
- * Issue 1263: throwaway containers removed after their run ended, in
- * words: how many, the run (its label, else its slot id), their images.
- */
 export function removedWords(r, t) {
   const label = r.label || r.id;
   const images = (r.images ?? []).join(", ");

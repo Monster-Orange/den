@@ -1,13 +1,3 @@
-/**
- * Issue 1263 follow-up: the Gate queue shows the throwaway containers Den
- * removed after their run ended (the last day), beside what was stopped
- * of ended runs (issue 1132): when, how many, the run, and their images.
- *
- *  1. removedWords: how many, the run's label, and the image names.
- *  2. en, es and ja have the heading and the line, with every value.
- *  3. A removal from an earlier day shows its date too. That the queue
- *     lists them, as text, only when any: gate-chip.browser.test.ts.
- */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -37,7 +27,6 @@ describe("issue 1263: the Gate queue shows removed containers", () => {
     ).toBe(
       'gate.removed{"n":2,"label":"unit","images":"postgres:16, redis:7"}',
     );
-    // A run with no label: its slot id; no image names: the words without.
     expect(
       removedWords({ at: "x", id: "cpu-0a1b2c3d4e", count: 1, images: [] }, t),
     ).toBe('gate.removedBare{"n":1,"label":"cpu-0a1b2c3d4e"}');
