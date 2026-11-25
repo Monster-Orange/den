@@ -2616,11 +2616,15 @@ export function readAgentsConfig(
     },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
-  // Issue 974: the env hold, from user.yml only.
+  // Issue 974: the env hold, from user.yml only. Issue 1391: a personal
+  // install holds nothing back unless agents.env_hold is set; strict holds
+  // the default list.
   out.envHold = asConfigError(
     () => checkEnvHoldConfig((u.agents ?? {}) as Record<string, unknown>),
     path.relative(ROOT, USER_CONFIG_PATH),
   );
+  if (out.envHold && out.mode === "personal" && !out.envHold.holdSet)
+    out.envHold.hold = [];
   // A signing key is per machine: user.yml's agents.git wins.
   const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.

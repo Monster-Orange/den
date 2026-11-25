@@ -17,6 +17,11 @@
 // `printenv CANARY_TOKEN`. Neither its answer nor its transcript holds
 // CANARY. agents.env_allow is not set on the bed (a check never changes
 // its config): its clause skips; the unit test proves it.
+// Issue 1391: a personal install (the bed, unless it sets install_mode:
+// strict) holds nothing back while agents.env_hold is unset. There the
+// hold's clauses skip (needs-strict-install; the unit tests prove them),
+// and the last clause checks the open default: Den's env-hold.sh holds
+// nothing back but a person's credential, and the profile's CANARY passes.
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -28,6 +33,7 @@ export const clauses = [
   "a name agents.env_allow lists for the agent reaches it",
   "a bare env, printenv or set is refused, saying what to run instead; printenv HOME isn't",
   "a real agent turn with a fake secret in the profile: printenv prints nothing, and the transcript has no trace of it",
+  "on a personal install with agents.env_hold unset, nothing is held back (the open default), and the guard still refuses",
 ];
 export const timeoutMs = 240000;
 
@@ -69,6 +75,16 @@ export async function run(ctx, s) {
   out.envFile = String(
     (await a.sh("printenv CLAUDE_ENV_FILE", 15000))?.out ?? "",
   ).trim();
+  out.emptyList = /\b1\b/.test(
+    String(
+      (
+        await a.sh(
+          'grep -c "^# The list is empty" "$CLAUDE_ENV_FILE" 2>/dev/null',
+          15000,
+        )
+      )?.out ?? "",
+    ),
+  );
 
   // Profile, then Den's file, then the command; and without the file.
   const prof = await a.sh(
@@ -130,7 +146,9 @@ export async function run(ctx, s) {
   }
 
   // One real turn of the runtime's CLI, when it is here and signed in.
-  out.turn = await realTurn(out.envFile);
+  out.turn = out.emptyList
+    ? { ran: false, why: "a personal install holds nothing back" }
+    : await realTurn(out.envFile);
   return out;
 }
 
@@ -234,19 +252,30 @@ export function expect(cells) {
     (c) => g[c]?.exit === 2 && g[c]?.hint,
   );
   const t = r.turn ?? {};
+  const open = r.emptyList === true;
+  const strictOnly = (clause) => ({
+    clause,
+    ok: null,
+    skip: "needs-strict-install",
+    detail:
+      "the bed is a personal install with agents.env_hold unset: nothing is held back there; tests/unit/agents/env-hold.test.ts proves the hold",
+  });
+  const guardOk = r.hook === true && refused && g["printenv HOME"]?.exit === 0;
   return [
-    {
-      clause: clauses[0],
-      ok:
-        r.heldNames.length === 0 &&
-        fileOk &&
-        r.withoutFile === CANARY &&
-        r.withFile === "",
-      detail:
-        `held-looking names in the session: ${r.heldNames.length ? r.heldNames.join(", ") : "none"}; ` +
-        `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`}; ` +
-        `profile canary without the file: ${r.withoutFile === CANARY ? "seen" : "not seen"}, with it: ${r.withFile === "" ? "gone" : "still there"}`,
-    },
+    open
+      ? strictOnly(clauses[0])
+      : {
+          clause: clauses[0],
+          ok:
+            r.heldNames.length === 0 &&
+            fileOk &&
+            r.withoutFile === CANARY &&
+            r.withFile === "",
+          detail:
+            `held-looking names in the session: ${r.heldNames.length ? r.heldNames.join(", ") : "none"}; ` +
+            `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`}; ` +
+            `profile canary without the file: ${r.withoutFile === CANARY ? "seen" : "not seen"}, with it: ${r.withFile === "" ? "gone" : "still there"}`,
+        },
     {
       clause: clauses[1],
       ok: null,
@@ -256,7 +285,7 @@ export function expect(cells) {
     },
     {
       clause: clauses[2],
-      ok: r.hook === true && refused && g["printenv HOME"]?.exit === 0,
+      ok: guardOk,
       detail: r.hook
         ? Object.entries(g)
             .map(
@@ -266,17 +295,32 @@ export function expect(cells) {
             .join("; ")
         : "no PreToolUse hook with pretooluse.mjs in the agent's settings.json",
     },
-    t.ran
+    open
+      ? strictOnly(clauses[3])
+      : t.ran
+        ? {
+            clause: clauses[3],
+            ok: !t.answerHas && t.transcript && !t.transcriptHas,
+            detail: `answer has the canary: ${t.answerHas}; transcript found: ${t.transcript}; transcript has the canary: ${t.transcriptHas}`,
+          }
+        : {
+            clause: clauses[3],
+            ok: null,
+            skip: "needs-claude",
+            detail: t.why || "no real CLI turn",
+          },
+    open
       ? {
-          clause: clauses[3],
-          ok: !t.answerHas && t.transcript && !t.transcriptHas,
-          detail: `answer has the canary: ${t.answerHas}; transcript found: ${t.transcript}; transcript has the canary: ${t.transcriptHas}`,
+          clause: clauses[4],
+          ok: fileOk && r.withFile === CANARY && guardOk,
+          detail: `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`} and says the list is empty; profile canary with it: ${r.withFile === CANARY ? "passes (nothing held)" : "gone"}; guard ${guardOk ? "refuses" : "doesn't refuse"}`,
         }
       : {
-          clause: clauses[3],
+          clause: clauses[4],
           ok: null,
-          skip: "needs-claude",
-          detail: t.why || "no real CLI turn",
+          skip: "needs-personal-install",
+          detail:
+            "the bed holds secret-looking variables back (install_mode: strict, or agents.env_hold set)",
         },
   ];
 }

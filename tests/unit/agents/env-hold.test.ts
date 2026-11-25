@@ -112,7 +112,41 @@ describe("the settings, in config/local/user.yml", () => {
     expect(s.allowAll).toEqual([]);
     expect(s.allow).toEqual({});
     expect(s.holdExisting).toBe(false);
-    expect(user({}).envHold?.hold).toEqual([...DEFAULT_ENV_HOLD]);
+  });
+
+  // Issue 1391: a personal install is open unless the person sets it;
+  // strict (a team's or enterprise's install) holds the default list.
+  it("a personal install (the default) holds nothing back unless agents.env_hold is set; the guard stays on", () => {
+    const s = user({}).envHold!;
+    expect(s.hold).toEqual([]);
+    expect(s.holdSet).toBe(false);
+    expect(s.guard).toBe(true);
+    expect(applyEnvHold({ GH_TOKEN: CANARY }, s.hold)).toHaveProperty(
+      "GH_TOKEN",
+    );
+    expect(wouldHold([{ id: "a" }], s, ["GH_TOKEN"])).toEqual([
+      { id: "a", names: [] },
+    ]);
+    expect(user({ env_hold: ["*_TOKEN"] }).envHold!.hold).toEqual(["*_TOKEN"]);
+  });
+
+  it("a strict install holds the default list, set in user.yml or the distribution's den.yml", () => {
+    expect(
+      readAgentsConfig(
+        { agents: {} } as never,
+        {
+          install_mode: "strict",
+        } as never,
+      ).envHold!.hold,
+    ).toEqual([...DEFAULT_ENV_HOLD]);
+    expect(
+      readAgentsConfig(
+        { agents: {}, install_mode: "strict" } as never,
+        {
+          install_mode: "personal",
+        } as never,
+      ).envHold!.hold,
+    ).toEqual([...DEFAULT_ENV_HOLD]);
   });
 
   it("an empty list holds nothing back, and stays empty (no quiet default)", () => {
@@ -547,6 +581,16 @@ describe("doctor: names only", () => {
     const s = checkEnvHoldConfig({ env_hold: [] });
     const lines = envHoldLines("Den", s, names).lines.join("\n");
     expect(lines).toContain("secret list is empty: nothing is held back");
+  });
+
+  it("a personal install's open default is said as such, with how to turn the hold on", () => {
+    const s = { ...checkEnvHoldConfig({}), hold: [] };
+    const lines = envHoldLines("Den", s, names).lines.join("\n");
+    expect(lines).toMatch(
+      /ℹ\s+off on a personal install: nothing is held back/,
+    );
+    expect(lines).toMatch(/agents\.env_hold.*install_mode: strict/);
+    expect(lines).not.toContain("secret list is empty");
   });
 
   it("the guard: on says it is not a boundary; off is said", () => {

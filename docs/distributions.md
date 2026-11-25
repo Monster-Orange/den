@@ -6352,6 +6352,13 @@ Den holds secret-looking environment variables out of agent sessions
   matching variable, exported or not. Other runtimes get the first layer
   only; `den doctor` says which runtimes get both.
 
+**Which installs hold them back.** A personal install (the default,
+issue 1391: one person's own machine) holds nothing back until
+`agents.env_hold` is set in `user.yml`; `den doctor` says it is off there.
+A strict install (`install_mode: strict`, in the distribution's `den.yml`
+or the person's `user.yml`) holds the default list back. The guard below
+is on in both.
+
 The match ignores case, and a name may end in `_` and a digit
 (`*_KEY` matches `AWS_KEY_2`). The default list is `*_TOKEN`, `*_SECRET`,
 `*_KEY`, `*_PASSWORD` and `OP_SESSION_*`. Den keeps only the exact names it
@@ -6366,20 +6373,20 @@ The settings live in `config/local`, which agents can't edit:
 # config/local/user.yml
 agents:
   env_hold: ["*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD", "OP_SESSION_*"]
-  env_allow: [OP_SERVICE_ACCOUNT_TOKEN]   # every agent keeps these
-  env_allow_agents:                       # one agent keeps these
+  env_allow: [OP_SERVICE_ACCOUNT_TOKEN] # every agent keeps these
+  env_allow_agents: # one agent keeps these
     release-bot: [NPM_TOKEN]
-  env_guard: true          # refuse commands that print the whole environment
+  env_guard: true # refuse commands that print the whole environment
   env_hold_existing: false # true: agents from before the hold get it too
 
 # config/local/workspaces.yml
 north:
   agents:
-    env_allow: [NORTH_DEPLOY_KEY]         # this project's agents keep these
+    env_allow: [NORTH_DEPLOY_KEY] # this project's agents keep these
 ```
 
-The three allow levels add up. `env_hold: []` holds nothing back, and
-`den doctor` says so. These keys in a distribution's `den.yml` are refused,
+The three allow levels add up. `env_hold: []` holds nothing back on any
+install, and `den doctor` says so. These keys in a distribution's `den.yml` are refused,
 with a message naming `user.yml`.
 
 **The guard.** A PreToolUse hook refuses `env`, `printenv`, `set`,

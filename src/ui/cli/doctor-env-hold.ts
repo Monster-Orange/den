@@ -48,7 +48,11 @@ export function envHoldLines(
   legacy: readonly { id: string; names: string[] }[] = [],
 ): { lines: string[]; problem: boolean } {
   const lines = ["", `${title} doctor: secrets held out of agents`, ""];
-  if (!s.hold.length)
+  if (!s.hold.length && !s.holdSet)
+    lines.push(
+      "  env hold  ℹ  off on a personal install: nothing is held back (set agents.env_hold, or install_mode: strict, to hold secret-looking variables back)",
+    );
+  else if (!s.hold.length)
     lines.push(
       "  env hold  ⚠  secret list is empty: nothing is held back (agents.env_hold: [])",
     );
