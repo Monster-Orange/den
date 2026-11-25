@@ -10,15 +10,17 @@
  *     Every 30 s, read this run's jobs. When a box job has waited in the
  *     queue for its minutes and no box job is running, start the dry run
  *     again by hand on the same tag (a run by hand is always GitHub-hosted),
- *     and stop: the dry run's concurrency group cancels this run. When every
- *     other job has finished, stop.
+ *     and stop: the dry run's concurrency group cancels this run. When the
+ *     last job (gates / pack) has finished, stop; or when everything listed
+ *     has stayed finished for two polls (plan failed, so nothing more comes).
  *     Env: GH_TOKEN (actions: write), GITHUB_REPOSITORY, GITHUB_RUN_ID,
  *     GITHUB_REF_NAME, GITHUB_JOB, WAIT_MINUTES (default 10).
  *     Exit 0: the box ran its jobs, or the hosted run was started. 1: the
  *     API or the new run failed (said in one line).
  *
- *   node scripts/release-box-watch.mjs decide <jobs.json> <now> <minutes>
+ *   node scripts/release-box-watch.mjs decide <jobs.json> <now> <minutes> [yes]
  *     The rule alone, for the tests: prints wait, done, or fallback and why.
+ *     "yes": everything listed was finished on the poll before too.
  *     Exit 2: the jobs file can't be read.
  *
  * Only actions: write is needed (read the run's jobs; start a run). It reads
@@ -39,18 +41,33 @@ export function minutesOf(text) {
     : 10;
 }
 
+// The dry run's last job: the watch is done only once it has finished.
+const LAST = "gates / pack";
+
 /**
  * wait | done | { fallback: why }, from the run's jobs (as the API lists
- * them: name, status, labels, created_at).
+ * them: name, status, labels, created_at, completed_at).
+ *
+ * - A box job's wait starts at the later of its own creation and the end of
+ *   the newest box job: one runner takes a matrix's legs one after another,
+ *   and a leg that waited behind a long one is healthy, not stuck.
+ * - The API lists only the jobs that exist so far (the gates' jobs appear a
+ *   moment after plan ends), so done means the last job has finished, or
+ *   everything listed was finished on the poll before too (plan failed, and
+ *   nothing more will come). `idleBefore` says the poll before was so.
  */
-export function decide(jobs, nowMs, minutes, self = SELF) {
+export function decide(jobs, nowMs, minutes, idleBefore = false, self = SELF) {
   const others = jobs.filter((j) => j.name !== self);
   const box = others.filter((j) => (j.labels ?? []).includes("self-hosted"));
   const running = box.some((j) => j.status === "in_progress");
+  const lastEnd = Math.max(
+    0,
+    ...box.map((j) => Date.parse(j.completed_at ?? "") || 0),
+  );
   const stale = box.find(
     (j) =>
       QUEUED.has(j.status) &&
-      nowMs - Date.parse(j.created_at) >= minutes * 60_000,
+      nowMs - Math.max(Date.parse(j.created_at), lastEnd) >= minutes * 60_000,
   );
   if (stale && !running) {
     return {
@@ -60,8 +77,19 @@ export function decide(jobs, nowMs, minutes, self = SELF) {
         `so the dry run starts again GitHub-hosted.`,
     };
   }
-  if (others.every((j) => j.status === "completed")) return "done";
+  const allDone = others.every((j) => j.status === "completed");
+  if (
+    allDone &&
+    (others.some((j) => j.name === LAST) || (idleBefore && others.length > 0))
+  )
+    return "done";
   return "wait";
+}
+
+/** Everything listed (but the watch) has finished: the next poll may say done. */
+export function idle(jobs, self = SELF) {
+  const others = jobs.filter((j) => j.name !== self);
+  return others.length > 0 && others.every((j) => j.status === "completed");
 }
 
 function gh(args) {
@@ -77,7 +105,7 @@ function jobsOf(repo, run) {
     "api",
     `repos/${repo}/actions/runs/${run}/jobs?per_page=100`,
     "--jq",
-    "[.jobs[] | {name, status, labels, created_at}]",
+    "[.jobs[] | {name, status, labels, created_at, completed_at}]",
   ]);
   return JSON.parse(out);
 }
@@ -95,6 +123,7 @@ async function watch() {
   const minutes = minutesOf(process.env.WAIT_MINUTES ?? "");
   console.log(`box watch: a box job may wait ${minutes} min in the queue`);
   let misses = 0;
+  let idleBefore = false;
   for (;;) {
     let jobs;
     try {
@@ -111,7 +140,8 @@ async function watch() {
       await new Promise((r) => setTimeout(r, 30_000));
       continue;
     }
-    const v = decide(jobs, Date.now(), minutes);
+    const v = decide(jobs, Date.now(), minutes, idleBefore);
+    idleBefore = idle(jobs);
     if (v === "done") {
       console.log("box watch: every job has finished");
       return 0;
@@ -136,7 +166,7 @@ async function watch() {
   }
 }
 
-function decideCli([file, now, minutes]) {
+function decideCli([file, now, minutes, idleBefore]) {
   let jobs;
   try {
     jobs = JSON.parse(fs.readFileSync(file, "utf-8")).jobs;
@@ -145,7 +175,12 @@ function decideCli([file, now, minutes]) {
     console.error("box watch: the jobs file can't be read");
     return 2;
   }
-  const v = decide(jobs, Date.parse(now), minutesOf(minutes ?? ""));
+  const v = decide(
+    jobs,
+    Date.parse(now),
+    minutesOf(minutes ?? ""),
+    idleBefore === "yes",
+  );
   console.log(typeof v === "object" ? `fallback\n${v.fallback}` : v);
   return 0;
 }
@@ -155,7 +190,7 @@ if (cmd === "watch") process.exit(await watch());
 else if (cmd === "decide") process.exit(decideCli(rest));
 else {
   console.error(
-    "usage: release-box-watch.mjs watch | decide <jobs.json> <now> <minutes>",
+    "usage: release-box-watch.mjs watch | decide <jobs.json> <now> <minutes> [yes]",
   );
   process.exit(2);
 }

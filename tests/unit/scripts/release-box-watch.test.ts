@@ -26,6 +26,7 @@ interface Job {
   status: string;
   labels: string[];
   created_at: string;
+  completed_at?: string | null;
 }
 const job = (
   name: string,
@@ -34,14 +35,24 @@ const job = (
   minutesAgo = 1,
 ): Job => ({ name, status, labels, created_at: ago(minutesAgo) });
 
-function decide(jobs: Job[], wait = "10") {
+const done = (j: Job, minutesAgo: number): Job => ({
+  ...j,
+  status: "completed",
+  completed_at: ago(minutesAgo),
+});
+
+function decide(jobs: Job[], wait = "10", idleBefore = "no") {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "box-watch-"));
   const file = path.join(dir, "jobs.json");
   fs.writeFileSync(file, JSON.stringify({ jobs }));
-  const r = spawnSync(process.execPath, [SCRIPT, "decide", file, NOW, wait], {
-    encoding: "utf-8",
-    timeout: 10_000,
-  });
+  const r = spawnSync(
+    process.execPath,
+    [SCRIPT, "decide", file, NOW, wait, idleBefore],
+    {
+      encoding: "utf-8",
+      timeout: 10_000,
+    },
+  );
   fs.rmSync(dir, { recursive: true, force: true });
   return { code: r.status, out: r.stdout.trim(), err: r.stderr };
 }
@@ -81,7 +92,7 @@ describe("the release dry run's box watch", () => {
     expect(r.out).toBe("wait");
   });
 
-  it("every other job completed: done", () => {
+  it("the last job (gates / pack) completed, and every other job: done", () => {
     const r = decide([
       WATCH,
       job("plan", "completed", BOX, 40),
@@ -91,8 +102,39 @@ describe("the release dry run's box watch", () => {
     expect(r.out).toBe("done");
   });
 
-  it("the watch's own job never counts", () => {
-    expect(decide([WATCH]).out).toBe("done");
+  // Reviewer B: the jobs API lists only the jobs that exist so far. Between
+  // plan's end and GitHub creating the gates' jobs, everything listed is
+  // completed, and that isn't the end.
+  it("plan completed and no gates jobs yet: wait, not done", () => {
+    expect(decide([WATCH, job("plan", "completed", BOX, 1)]).out).toBe("wait");
+    // the watch's own job never counts
+    expect(decide([WATCH]).out).toBe("wait");
+  });
+
+  it("all listed jobs completed on two polls in a row, with no pack (plan failed, so the gates never ran): done", () => {
+    expect(
+      decide([WATCH, job("plan", "completed", BOX, 3)], "10", "yes").out,
+    ).toBe("done");
+  });
+
+  // Reviewer B: one box runner takes the matrix's legs one after another. A
+  // leg that waited behind a long one is healthy, not stuck.
+  it("a box job queued 12 min while another box job finished 5 s ago: wait (the box is working)", () => {
+    const r = decide([
+      WATCH,
+      done(job("gates / checks (22.13.0)", "completed", BOX, 12), 5 / 60),
+      job("gates / checks (24.13.0)", "queued", BOX, 12),
+    ]);
+    expect(r.out).toBe("wait");
+  });
+
+  it("a box job queued 12 min and the box's last job finished 11 min ago: fall back", () => {
+    const r = decide([
+      WATCH,
+      done(job("plan", "completed", BOX, 30), 11),
+      job("gates / checks (24.13.0)", "queued", BOX, 12),
+    ]);
+    expect(r.out.split("\n")[0]).toBe("fallback");
   });
 
   it("the minutes come from the argument; a bad value falls back to 10", () => {
