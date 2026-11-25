@@ -1382,7 +1382,8 @@
     "set.agents.pane_reconnect_wait": "Espera máxima entre intentos",
     "set.agents.pane_reconnect_wait.d":
       "El primer intento espera 1 s y cada espera se duplica, hasta este valor. __DEN_CLI__ config panes.reconnect_max_seconds=30",
-    "set.agents.resume_first_line": "Límite de lectura al comprobar una reanudación",
+    "set.agents.resume_first_line":
+      "Límite de lectura al comprobar una reanudación",
     "set.agents.resume_first_line.d":
       "Cuánto lee __DEN_TITLE__ del archivo de conversación de un runtime para comprobar la conversación que informa un agente (la primera línea de Codex, que lleva sus instrucciones). Una línea más larga no puede reanudarse, y el agente empieza de nuevo. __DEN_CLI__ config agents.resume_first_line_max_bytes=1048576",
     "set.agents.resume_report_gap": "Intervalo entre informes de reanudación",
