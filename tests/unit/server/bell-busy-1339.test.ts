@@ -204,4 +204,27 @@ describe("a project's Mark read (issue 1339)", () => {
     // What a failed POST goes back to.
     expect(ids(before.updates.groups, false)).toEqual(["d", "g", "e"]);
   });
+
+  it("bellAfter: an item's own scope decides, as on the server; one without a scope takes its group's", async () => {
+    const { bellAfter } = await import("../../../src/ui/server/public/bell.js");
+    const { scope: _drop, ...bare } = item("h", "waiting");
+    const b = bellAfter(
+      {
+        unread: 2,
+        groups: [
+          {
+            scope: "workspace/south",
+            subjects: [
+              { subject: "agent:b", items: [item("b", "waiting")] },
+              { subject: "agent:h", items: [bare] },
+            ],
+          },
+        ],
+      },
+      "scope",
+      "workspace/south",
+    );
+    expect(ids(b.groups, false)).toEqual(["b"]);
+    expect(b.unread).toBe(1);
+  });
 });

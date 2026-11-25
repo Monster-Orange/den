@@ -550,7 +550,8 @@ async function post(path, body) {
 function scopeRead(b, scope) {
   let marked = 0;
   const f = (n, g) => {
-    if (g.scope !== scope || n.read) return n;
+    // As the server: the item's own scope, else its group's.
+    if ((n.scope ?? g.scope) !== scope || n.read) return n;
     marked++;
     return { ...n, read: true };
   };
