@@ -20,6 +20,7 @@ import * as os from "os";
 import * as path from "path";
 import { mintActorToken } from "../../../src/shared/actor-token.js";
 import {
+  approvalView,
   createApprovalQueue,
   handleApprovalRoutes,
   type HeldActions,
@@ -267,6 +268,21 @@ describe("issue 1293: an unverified agent claim on a person's ask", () => {
         },
       ])[0].claimedAs,
     ).toBeUndefined();
+  });
+
+  it("a request's view shows a claim only on a person's own ask", () => {
+    // The view the routes answer with (the Needs you list, an agent's
+    // `mine`), as the bell: a claim on any other asker reads as no claim.
+    const base = { ...queue.pending()[0], agent: undefined };
+    for (const actor of ["loopback", "fixture:person", "test:operator"]) {
+      expect(
+        approvalView({ ...base, actor, claimedAs: "agent:planner" }),
+      ).not.toHaveProperty("claimedAs");
+    }
+    expect(
+      approvalView({ ...base, actor: "person:pat", claimedAs: "agent:planner" })
+        .claimedAs,
+    ).toBe("agent:planner");
   });
 
   it("a malformed claim is dropped, never kept", async () => {
