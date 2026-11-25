@@ -21,15 +21,15 @@ import {
   writeDeliveryHealth,
   type Delivery,
   type DeliveryOwner,
-} from "../../shared/hub-delivery.js";
-import { appendJournal } from "../../shared/hub-delivery-journal.js";
+} from "../../shared/hub/hub-delivery.js";
+import { appendJournal } from "../../shared/hub/hub-delivery-journal.js";
 import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
   HELD_WORDS,
   type AgentHubWork,
   type HeldCode,
-} from "../../shared/hub-delivery-loop.js";
+} from "../../shared/hub/hub-delivery-loop.js";
 import {
   listRecords,
   readRecord,
@@ -41,7 +41,7 @@ import {
   feedKinds,
   InboxWatcher,
   type InboxSettings,
-} from "../../shared/hub-inbox-watch.js";
+} from "../../shared/hub/hub-inbox-watch.js";
 import { getStateDir } from "../../shared/paths.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { embedSettings } from "./embed-settings.js";
@@ -298,7 +298,8 @@ function startHubNotes(log: (line: string) => void): void {
       const at = await hubAndToken().catch(() => null);
       if (!at) return;
       const hub = await import("../../shared/hub.js");
-      const { syncHubNotes } = await import("../../shared/hub-notes-sync.js");
+      const { syncHubNotes } =
+        await import("../../shared/hub/hub-notes-sync.js");
       const { notificationDeps } = await import("./notification-service.js");
       await syncHubNotes({
         store: notificationDeps().store,

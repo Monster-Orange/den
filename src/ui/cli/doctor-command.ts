@@ -27,8 +27,8 @@ import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { rankFindings, readWebUrl } from "../../shared/web-url.js";
-import { loopbackRefusal } from "../../shared/web-url-check.js";
+import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
+import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -120,7 +120,7 @@ import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 import {
   lostFiles,
   lostMarkLines,
@@ -213,7 +213,7 @@ import {
   type WhereRow,
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DoctorRow {
   kind: string;
@@ -875,12 +875,12 @@ function agoText(ms: number): string {
  * None when the server hasn't written it.
  */
 export function hubDeliveryLines(
-  h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
+  h: import("../../shared/hub/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
   /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
   journal:
-    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | import("../../shared/hub/hub-delivery-journal.js").JournalSummary
     | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
@@ -967,7 +967,7 @@ async function hubDeliveryDoctor(): Promise<
     /* the Hub row says what's wrong with the hub block */
   }
   const { journalSummary } =
-    await import("../../shared/hub-delivery-journal.js");
+    await import("../../shared/hub/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
@@ -1134,7 +1134,7 @@ async function projectMcpDoctor(): Promise<{
  */
 export function hubGithubLines(
   cov:
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null,
 ): { lines: string[]; checks: OnboardCheck[] } {
@@ -1216,8 +1216,8 @@ async function projectsWithHubProject(): Promise<
   const { emptyProjectTest } = await import("../../shared/empty-project.js");
   const { listRecords } = await import("../../shared/agents/records.js");
   const { hubProjectOf, hubLinkElsewhere } =
-    await import("../../shared/hub-project-link.js");
-  const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
+    await import("../../shared/hub/hub-project-link.js");
+  const { lostHubLinks } = await import("../../shared/hub/hub-links-seen.js");
   try {
     const file = readWorkspacesFile();
     const all = file.workspaces;
@@ -1272,7 +1272,7 @@ export interface DoctorAddress {
  * one isn't checked yet. It is never offered to confirm.
  */
 export function addressLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
@@ -1470,7 +1470,7 @@ function fixtureLineNow(): string | null {
  * one; this row says so (ℹ, ok) instead of a second ⚠ to ask about.
  */
 export function sessionHostLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   works: boolean,
   title: string,
   cli: string,
@@ -1586,7 +1586,7 @@ async function pushSubscriptionCount(): Promise<number | undefined> {
  * on. None: nothing is lost yet, so ℹ and ok. Unknown (left out): warn.
  */
 export function pushContactLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   subscriptions?: number,
@@ -2796,7 +2796,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         ).checks,
       );
       if (st.configured && st.connected) {
-        const { githubCoverage } = await import("../../shared/hub-github.js");
+        const { githubCoverage } =
+          await import("../../shared/hub/hub-github.js");
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
@@ -2963,7 +2964,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ).lines)
       console.log(l);
     if (st.configured && st.connected) {
-      const { githubCoverage } = await import("../../shared/hub-github.js");
+      const { githubCoverage } = await import("../../shared/hub/hub-github.js");
       for (const l of hubGithubLines(await githubCoverage()).lines)
         console.log(l);
     }

@@ -30,7 +30,7 @@ import {
 import {
   ensureWebSecret,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import {
   creationRecordPath,
   verifiedCreationRecord,

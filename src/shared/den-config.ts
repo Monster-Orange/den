@@ -728,7 +728,7 @@ export interface UserConfig {
     order?: unknown;
   };
   /**
-   * The web server's per-machine keys (src/shared/web-session.ts
+   * The web server's per-machine keys (src/shared/web/web-session.ts
    * readWebAuthConfig): allow_plain_http_remote, edge_unattested,
    * github_client_id, and (SEC-2a) machine_name, the name the signed-out
    * page gives this machine.

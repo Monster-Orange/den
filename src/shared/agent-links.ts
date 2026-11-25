@@ -6,8 +6,8 @@
  * told where the person sets it.
  */
 import { isServerScope } from "./agents/server-agent.js";
-import { isLoopbackUrl } from "./web-url-check.js";
-import { readWebUrl } from "./web-url.js";
+import { isLoopbackUrl } from "./web/web-url-check.js";
+import { readWebUrl } from "./web/web-url.js";
 import type { UserConfig } from "./den-config.js";
 
 /** The Settings page where the address (web.url) is set. */

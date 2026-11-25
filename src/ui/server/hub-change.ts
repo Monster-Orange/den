@@ -26,7 +26,7 @@ import {
   unrevokedToken,
   type ArchivedHub,
   type HubNow,
-} from "../../shared/hub-binding.js";
+} from "../../shared/hub/hub-binding.js";
 import { forgetHubToken, type HubConfig } from "../../shared/hub.js";
 import type {
   Notification,

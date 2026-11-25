@@ -95,7 +95,7 @@ import {
   SESSIONS_LOCK_WAIT_RANGE,
   PAIR_LIMITS,
   WEB_WAIT_RANGE,
-} from "./web-session.js";
+} from "./web/web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
   AGENTS_RESUME_LIMITS,

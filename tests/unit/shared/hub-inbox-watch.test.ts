@@ -14,16 +14,16 @@ import type { AddressInfo } from "node:net";
 import {
   SeenDeliveries,
   type DeliveryOwner,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type AgentState,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 import {
   InboxWatcher,
   inboxText,
   parseInbox,
-} from "../../../src/shared/hub-inbox-watch";
+} from "../../../src/shared/hub/hub-inbox-watch";
 import { hubInbox } from "../../../src/shared/hub";
 
 const T0 = Date.parse("2026-11-15T10:00:00Z");

@@ -8,7 +8,7 @@ import {
   ProjectSync,
   projectList,
   syncAgents,
-} from "../../shared/hub-project-sync.js";
+} from "../../shared/hub/hub-project-sync.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { projectRepos } from "../../shared/project-repos.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -76,14 +76,14 @@ export async function refreshHubNamesNow(): Promise<string[]> {
   const at = await hubAndToken();
   if (!at) return [];
   const { refreshHubNames, recordHubNamesCheck } =
-    await import("../../shared/hub-project-names.js");
-  const link = await import("../../shared/hub-project-link.js");
+    await import("../../shared/hub/hub-project-names.js");
+  const link = await import("../../shared/hub/hub-project-link.js");
   const hub = await import("../../shared/hub.js");
   return refreshHubNames({
     linked: () => {
       const out: [
         string,
-        import("../../shared/hub-project-link.js").HubProjectLink,
+        import("../../shared/hub/hub-project-link.js").HubProjectLink,
       ][] = [];
       for (const ws of Object.keys(readWorkspacesFile().workspaces)) {
         const l = link.hubProjectOf(ws);
@@ -214,4 +214,4 @@ async function bellToolsListFailed(
 }
 
 /** How much of each org Den Hub can read, live (shared/hub-github.ts). */
-export { githubCoverage } from "../../shared/hub-github.js";
+export { githubCoverage } from "../../shared/hub/hub-github.js";

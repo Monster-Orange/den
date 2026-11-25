@@ -29,7 +29,7 @@
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { product } from "./product.js";
+import { product } from "../product.js";
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 

@@ -23,7 +23,10 @@ import {
   mintActorToken,
 } from "../../../src/shared/actor-token.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");

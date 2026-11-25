@@ -21,12 +21,12 @@ import {
   safeNext,
   WebSessionStore,
   webSessionsPath,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import {
   ensureWebSecret,
   readWebSecret,
   rotateWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 
 const T0 = Date.UTC(2026, 10, 6, 9, 0, 0);
 const MIN = 60_000;

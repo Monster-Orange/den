@@ -155,7 +155,10 @@ import {
 } from "../../shared/constants.js";
 
 import { product } from "../../shared/product.js";
-import { patchProjectHubLoop, projectHubLoop } from "../../shared/hub-loop.js";
+import {
+  patchProjectHubLoop,
+  projectHubLoop,
+} from "../../shared/hub/hub-loop.js";
 import { isRepoName } from "../../shared/repo-name.js";
 
 /** Issue 158: a project's Hub delivery loop setting, as the API says it. */
@@ -826,7 +829,7 @@ export async function handleWorkspaceRoutes(
     // Issue 646: links to another Hub or company count as not linked: the
     // page shows the project's own name and "Another Hub" on its chip.
     const { hubElsewhereMap } =
-      await import("../../shared/hub-project-link.js");
+      await import("../../shared/hub/hub-project-link.js");
     const hubElsewhere = hubElsewhereMap(
       Object.keys(wsFile.workspaces),
       () => wsFile,

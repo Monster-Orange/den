@@ -22,9 +22,9 @@
  */
 import { isServerScope } from "./agents/server-agent.js";
 import * as crypto from "crypto";
-import { hubUrlProblem } from "./hub-url.js";
+import { hubUrlProblem } from "./hub/hub-url.js";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
-import { readHubProjectChoices } from "./hub-project-link.js";
+import { readHubProjectChoices } from "./hub/hub-project-link.js";
 import {
   getSecretsProvider,
   namedSecretRef,

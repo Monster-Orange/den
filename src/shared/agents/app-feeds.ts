@@ -24,7 +24,7 @@
  * app's text. The agent reads the events through the app_feed_read tool,
  * which serves only its own project's feeds that name it.
  */
-import { FEED_PREFIX, type Delivery } from "../hub-delivery.js";
+import { FEED_PREFIX, type Delivery } from "../hub/hub-delivery.js";
 import { projectMcpUrlProblem, SECRET_REF_NAME_RE } from "./project-mcp.js";
 
 export interface AppFeedConfig {

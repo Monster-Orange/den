@@ -24,7 +24,7 @@ import {
   readWebAuthConfig,
   WEB_READY_PROBE_SECONDS,
   WEB_START_WAIT_SECONDS,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 
 /** The distribution a command acts for. */
 export interface OwnServer {

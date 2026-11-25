@@ -36,8 +36,8 @@ const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 type ConfigKey = keyof UserConfig;
 
 const KEY_ALIASES: Record<string, ConfigKey> = {

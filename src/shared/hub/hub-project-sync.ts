@@ -13,12 +13,12 @@
  * Every URL Hub gives for the person to open is kept only when it's https
  * on github.com: anything else is dropped and never shown as a link.
  */
-import { SERVER_SCOPE } from "./agents/server-agent.js";
-import { isCatchAllProject } from "./catch-all-project.js";
+import { SERVER_SCOPE } from "../agents/server-agent.js";
+import { isCatchAllProject } from "../catch-all-project.js";
 import { hubProjectOf } from "./hub-project-link.js";
-import type { WorkspacesFile } from "./types/index.js";
-import { workspaceDisplayName } from "./workspace-name.js";
-import { isRepoName } from "./repo-name.js";
+import type { WorkspacesFile } from "../types/index.js";
+import { workspaceDisplayName } from "../workspace-name.js";
+import { isRepoName } from "../repo-name.js";
 
 /** Hub's limits: more is a 400 with no change. */
 export const SYNC_MAX_PROJECTS = 500;

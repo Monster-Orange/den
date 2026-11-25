@@ -8,7 +8,7 @@
  * Hub and the store are injected; nothing here throws: a Hub that doesn't
  * answer leaves the bell as it was, and says why once.
  */
-import { parseHubNote, type NotificationStore } from "./notifications.js";
+import { parseHubNote, type NotificationStore } from "../notifications.js";
 
 export interface HubNotesDeps {
   store: NotificationStore;

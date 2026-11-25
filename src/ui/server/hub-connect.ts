@@ -27,7 +27,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { readWebUrl } from "../../shared/web-url.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 import {
   hubExchange,
   HubCallError,
@@ -51,7 +51,7 @@ import {
   hubOrigin,
   readHubBinding,
   recordUnrevoked,
-} from "../../shared/hub-binding.js";
+} from "../../shared/hub/hub-binding.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { emptyProjectTest } from "../../shared/empty-project.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -61,7 +61,7 @@ import {
   parseHubProjectLink,
   setHubProject,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import {
   parseGrantReview,
   reviewParam,
@@ -69,7 +69,7 @@ import {
   type GrantReview,
   type GrantSkip,
   type ReviewProject,
-} from "../../shared/hub-connect-review-grant.js";
+} from "../../shared/hub/hub-connect-review-grant.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { envKey, product } from "../../shared/product.js";
 import {

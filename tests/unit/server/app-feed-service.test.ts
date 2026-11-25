@@ -19,7 +19,7 @@ import {
   type AppFeedLimits,
   type AppFeedServiceDeps,
 } from "../../../src/ui/server/app-feed-service";
-import type { Delivery } from "../../../src/shared/hub-delivery";
+import type { Delivery } from "../../../src/shared/hub/hub-delivery";
 
 const BEARER = "s3cr3t-feed-bearer-value-123";
 

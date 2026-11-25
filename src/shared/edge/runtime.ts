@@ -12,7 +12,7 @@ import { probeIdentity } from "../den-identity.js";
 import { getStateDir } from "../paths.js";
 import { portInUse as portInUseAnywhere } from "../port-pick.js";
 import { product } from "../product.js";
-import { localhostOrigin } from "../web-session.js";
+import { localhostOrigin } from "../web/web-session.js";
 import {
   addressCheckSettings,
   cliLanguage,

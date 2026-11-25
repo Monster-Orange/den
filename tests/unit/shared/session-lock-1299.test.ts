@@ -19,7 +19,7 @@ import {
   WEB_SESSIONS_LOCK,
   WebSessionStore,
   webSessionsPath,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import {
   patchCliRows,
   PERSON_ONLY_SETTINGS,
