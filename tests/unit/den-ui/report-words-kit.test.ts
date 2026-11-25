@@ -1,8 +1,8 @@
 /**
  * den-ui, issue 1127: a report refused for a listed name (the server's
- * code "words", with its hits: field, line, pattern number) is said in the
- * person's language, never in the server's English line, and never with the
- * term. reportRefusalText(data, lang) gives that text; the form shows it on
+ * code "words", with its hits: field, line and the person's own phrase) is
+ * said in the person's language, never in the server's English line: the
+ * phrase quoted, with neutral words to use instead. reportRefusalText(data, lang) gives that text; the form shows it on
  * its "Not sent" step.
  */
 import { describe, expect, it } from "@jest/globals";
@@ -34,13 +34,13 @@ function run(cases: [Record<string, unknown>, string][]): {
 const refused = {
   ok: false,
   code: "words",
-  hits: [{ field: "description", line: 2, index: 1 }],
+  hits: [{ field: "description", line: 2, index: 1, phrase: "Zorblax" }],
   // The server's plain line: never shown on the page.
   error: "description line 2 matches listed pattern #1; nothing was sent",
 };
 
 describe("issue 1127: the words refusal on the Report page", () => {
-  it("is said in en, es and ja, with the field, line and pattern number", () => {
+  it("is said in en, es and ja, with the field, line and the person's phrase", () => {
     const r = run([
       [refused, "en"],
       [refused, "es"],
@@ -50,10 +50,12 @@ describe("issue 1127: the words refusal on the Report page", () => {
     const [en, es, ja] = r.out as string[];
     for (const t of [en, es, ja]) {
       expect(t).toContain("2");
-      expect(t).toContain("#1");
+      expect(t).toContain("Zorblax");
+      expect(t).not.toContain("#1");
       expect(t).not.toContain("matches listed pattern");
     }
     expect(new Set([en, es, ja]).size).toBe(3);
+    expect(en).toMatch(/"the person"/);
   });
 
   it("a list that can't be read (no hits) has its own words", () => {

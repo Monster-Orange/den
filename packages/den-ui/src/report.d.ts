@@ -66,13 +66,14 @@ export declare function configureReport(o?: ReportOptions): void;
 export type ReportVisibility = "public" | "private" | "internal" | "unknown";
 /**
  * Issue 1127: a refusal for a listed name (the host's code "words", with
- * its hits) in the person's language: each hit's field, line and pattern
- * number, never the term. Null for any other answer.
+ * its hits) in the person's language: each hit's field, line and the
+ * person's own phrase, with neutral words to use; never the list. Null for
+ * any other answer.
  */
 export declare function reportRefusalText(
   data: {
     code?: string;
-    hits?: { field: string; line: number; index: number }[];
+    hits?: { field: string; line: number; index: number; phrase?: string }[];
   } | null,
   lang?: string,
 ): string | null;

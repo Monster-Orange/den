@@ -110,9 +110,9 @@ describe("issue 1127: a report is checked for listed names before it is filed", 
     expect(r.body).toMatchObject({
       ok: false,
       code: "words",
-      hits: [{ field: "description", line: 2, index: 1 }],
+      hits: [{ field: "description", line: 2, index: 1, phrase: "Zorblax" }],
     });
-    expect(JSON.stringify(r.body).toLowerCase()).not.toContain(LISTED);
+    expect(String((r.body as { error?: string }).error)).toContain('"Zorblax"');
     expect(created(f.calls)).toEqual([]);
   });
 

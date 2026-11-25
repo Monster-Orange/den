@@ -1,9 +1,9 @@
 /**
  * Issue 1127: text Den's tooling files on GitHub (an issue's title and body,
  * a comment) passes the same org-name check as commits and files, before it
- * is sent. A hit refuses the write and names the field, the line and the
- * pattern's number: never the matched text, never the list. Invented names
- * only.
+ * is sent. A hit refuses the write and quotes the writer's own phrase,
+ * with its field and line, and neutral words to use: never the list.
+ * Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
 import * as path from "path";
@@ -11,6 +11,7 @@ import {
   filedTextCheck,
   filedTextHits,
   filedTextRefusal,
+  filedTextWhere,
   needsFiledCheck,
 } from "../../../src/shared/filed-text-check.js";
 import * as shared from "../../../src/shared/org-names.js";
@@ -35,7 +36,7 @@ describe("issue 1127: the filing check", () => {
         [{ field: "title", text: "Crash at Acme Widgets" }],
         patterns,
       ),
-    ).toEqual([{ field: "title", line: 1, index: 1 }]);
+    ).toEqual([{ field: "title", line: 1, index: 1, phrase: "Acme Widgets" }]);
     expect(
       filedTextHits(
         [
@@ -46,13 +47,13 @@ describe("issue 1127: the filing check", () => {
         ],
         patterns,
       ),
-    ).toEqual([{ field: "body", line: 3, index: 1 }]);
+    ).toEqual([{ field: "body", line: 3, index: 1, phrase: "acme-widgets" }]);
     expect(
       filedTextHits(
         [{ field: "comment", text: "seen on ZORBLAX too" }],
         patterns,
       ),
-    ).toEqual([{ field: "comment", line: 1, index: 2 }]);
+    ).toEqual([{ field: "comment", line: 1, index: 2, phrase: "ZORBLAX" }]);
   });
 
   it("lets clean text through", () => {
@@ -75,21 +76,46 @@ describe("issue 1127: the filing check", () => {
     ).toEqual([]);
   });
 
-  it("the refusal names the field, line and pattern number, never the term or the list", () => {
+  it("the refusal quotes the writer's own phrase and neutral words, never the list", () => {
+    const listed = shared.orgPatterns({
+      DEN_ORG_NAMES: "acmewidgets\nzorbl[a-z]+",
+    });
     const hits = filedTextHits(
       [
         { field: "title", text: "Acme Widgets crash" },
-        { field: "body", text: "ok\nzorblax here" },
+        { field: "body", text: "ok\nZorblaxia here" },
       ],
-      patterns,
+      listed,
     );
     const msg = filedTextRefusal(hits);
-    expect(msg).toContain("title line 1");
-    expect(msg).toContain("body line 2");
-    expect(msg).toContain("pattern #1");
-    expect(msg).toContain("pattern #2");
+    expect(msg).toContain('title line 1: "Acme Widgets"');
+    expect(msg).toContain('body line 2: "Zorblaxia"');
     expect(msg).toContain("nothing was sent");
-    expect(msg.toLowerCase()).not.toMatch(/acme|widgets|zorblax/);
+    expect(msg).toMatch(/"the person", "the project"/);
+    expect(msg).toMatch(/an internal host/);
+    expect(msg).not.toContain("acmewidgets");
+    expect(msg).not.toContain("zorbl[a-z]+");
+    expect(msg).not.toContain("pattern #");
+  });
+
+  it("the phrase is the listed one, not the target repo's own name beside it", () => {
+    const hits = filedTextHits(
+      [{ field: "body", text: "See Acme-Widgets/den and Acme Widgets HQ" }],
+      patterns,
+      "Acme-Widgets/den",
+    );
+    expect(hits.map((h) => h.phrase)).toEqual(["Acme Widgets"]);
+  });
+
+  it("the audit's words name only field, line and pattern number", () => {
+    const hits = filedTextHits(
+      [{ field: "title", text: "Zorblax down" }],
+      patterns,
+    );
+    const where = filedTextWhere(hits);
+    expect(where).toContain("title line 1");
+    expect(where).toContain("pattern #2");
+    expect(where.toLowerCase()).not.toContain("zorblax");
   });
 
   it("checks public repos and unknown visibility, and skips private and internal ones", () => {

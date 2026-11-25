@@ -2,9 +2,10 @@
  * Issue 1127: text Den's tooling files on GitHub for an agent (an issue's
  * title and body, a comment, a report) passes the same org-name check as
  * commits and files (shared/org-names.js) before it is sent. A hit refuses
- * the write. The refusal names the field, the line and the pattern's number
- * (as the org-name gate does), never the matched text and never the list:
- * an agent's tool answer can end up in a public place too.
+ * the write. The refusal quotes the writer's own phrase, with its field and
+ * line, and offers neutral words, so one retry fixes it. It never shows the
+ * list. What is kept (the audit) names only the field, the line and the
+ * pattern's number, as the org-name gate does.
  *
  * The list comes from where it is configured today (DEN_ORG_NAMES, the file
  * DEN_ORG_NAMES_FILE names, or the per-user file); with none, nothing is
@@ -26,11 +27,58 @@ export interface FiledText {
   text: string;
 }
 
-/** One hit: the field, its 1-based line, and the pattern's 1-based number. */
+/**
+ * One hit: the field, its 1-based line, the pattern's 1-based number, and
+ * the writer's own phrase that matched (their text, never the pattern).
+ */
 export interface FiledHit {
   field: FiledField;
   line: number;
   index: number;
+  phrase: string;
+}
+
+const NEUTRAL = `"the person", "the project", "the company" or "an internal host"`;
+
+/**
+ * The part of `line` that `pattern` matched: as written, else through the
+ * wider match (spaces, hyphens and underscores between letters dropped),
+ * mapped back to the line. A match inside `allowed` (the target repo's own
+ * owner/name, run together) is skipped. Else the line itself, cut short.
+ */
+function phraseIn(line: string, pattern: RegExp, allowed: string[]): string {
+  const direct = new RegExp(pattern.source, "i").exec(line);
+  if (direct) return direct[0].slice(0, 120);
+  let joined = "";
+  const at: number[] = [];
+  for (let i = 0; i < line.length; i++) {
+    const gap =
+      /[\s_-]/.test(line[i]) &&
+      /\p{L}/u.test(line[i - 1] ?? "") &&
+      /^[\s_-]*\p{L}/u.test(line.slice(i));
+    if (gap) continue;
+    joined += line[i];
+    at.push(i);
+  }
+  const lower = joined.toLowerCase();
+  const skip = allowed.flatMap((a) => {
+    const spans: [number, number][] = [];
+    for (let k = lower.indexOf(a); k >= 0; k = lower.indexOf(a, k + 1))
+      spans.push([k, k + a.length]);
+    return spans;
+  });
+  const g = new RegExp(pattern.source, "gi");
+  for (let m = g.exec(joined); m; m = g.exec(joined)) {
+    if (!m[0]) {
+      g.lastIndex++;
+      continue;
+    }
+    const s0 = m.index;
+    const e0 = m.index + m[0].length;
+    if (skip.some(([a, b]) => s0 >= a && e0 <= b)) continue;
+    return line.slice(at[s0], at[e0 - 1] + 1).slice(0, 120);
+  }
+  return line.trim().slice(0, 120);
 }
 
 /**
@@ -42,15 +90,31 @@ export function filedTextHits(
   patterns: RegExp[],
   repo?: string,
 ): FiledHit[] {
-  return orgHitsByLine(texts, patterns, repo) as FiledHit[];
+  const allowed = repo ? [repo.replace(/[\s_-]+/g, "").toLowerCase()] : [];
+  // Text by text, so two texts of one field (two labels) keep their lines.
+  return texts.flatMap((t) =>
+    (orgHitsByLine([t], patterns, repo) as Omit<FiledHit, "phrase">[]).map(
+      (h) => {
+        const line = String(t.text ?? "").split("\n")[h.line - 1] ?? "";
+        return { ...h, phrase: phraseIn(line, patterns[h.index - 1], allowed) };
+      },
+    ),
+  );
 }
 
-/** The refusal: where each hit is, never what it matched. */
+/** The refusal: the writer's own phrases and neutral words, never the list. */
 export function filedTextRefusal(hits: readonly FiledHit[]): string {
   const where = hits
+    .map((h) => `${h.field} line ${h.line}: "${h.phrase}"`)
+    .join("; ");
+  return `${where}. The repo is public (or its visibility isn't known), and this text names something that stays out of public text; nothing was sent. Write it with neutral words instead, such as ${NEUTRAL}, then send it again.`;
+}
+
+/** What is kept of a refusal (the audit): field, line and pattern number only. */
+export function filedTextWhere(hits: readonly FiledHit[]): string {
+  return hits
     .map((h) => `${h.field} line ${h.line} matches listed pattern #${h.index}`)
     .join("; ");
-  return `${where}. The repo is public (or its visibility isn't known), and this text holds a name, host or person on the list; nothing was sent. Rewrite it without that name.`;
 }
 
 /** Whether a repo of this visibility is checked (null: not known). */

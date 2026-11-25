@@ -74,8 +74,8 @@ const VIS = ["public", "private", "internal"];
 
 /**
  * Issue 1127: a refusal for a listed name (code "words") in the person's
- * language: each hit's field, line and pattern number, never the term (the
- * server never sends it). No hits: the install's list can't be read. Any
+ * language: each hit's field, line and the person's own phrase that
+ * matched, with neutral words to use; never the list. No hits: the install's list can't be read. Any
  * other answer: null (not this one's).
  */
 export function reportRefusalText(data, lng) {
@@ -91,7 +91,7 @@ export function reportRefusalText(data, lng) {
             ? tr(`kit.report.field.${h.field}`)
             : String(h.field),
         line: Number(h.line) || 0,
-        n: Number(h.index) || 0,
+        phrase: String(h.phrase ?? ""),
       }),
     )
     .join("; ");

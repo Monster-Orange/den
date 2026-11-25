@@ -642,7 +642,7 @@ describe("issue_write: its Settings rows", () => {
 describe("issue 1127: issue_write checks the text it files for listed names", () => {
   const LISTED = "zorblax";
 
-  it("refuses a create whose title holds a listed name: nothing sent, the term never in the answer or the audit", async () => {
+  it("refuses a create whose title holds a listed name: nothing sent, the answer quotes the agent's phrase, the audit never holds it", async () => {
     const f = fakes({ names: LISTED });
     const r = await runIssueWrite(f.deps, agent, {
       action: "create",
@@ -652,12 +652,12 @@ describe("issue 1127: issue_write checks the text it files for listed names", ()
     });
     expect(r.status).toBe(400);
     expect(r.body.code).toBe("issue_write_words");
-    expect(String(r.body.error)).toContain("title line 1");
+    expect(String(r.body.error)).toContain('title line 1: "Zorblax"');
+    expect(String(r.body.error)).toMatch(/"the person"/);
     expect(f.calls).toEqual([]);
     expect(f.audits[0]).toMatchObject({ refused: true });
-    expect(JSON.stringify([r.body, f.audits]).toLowerCase()).not.toContain(
-      LISTED,
-    );
+    expect(JSON.stringify(f.audits)).toContain("title line 1");
+    expect(JSON.stringify(f.audits).toLowerCase()).not.toContain(LISTED);
   });
 
   it("refuses a body and a comment that hold one, and lets clean text through", async () => {
