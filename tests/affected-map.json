@@ -15,7 +15,7 @@
     "src/ui/server/request-guard.ts",
     "src/ui/server/route-classes.ts",
     "src/ui/server/ui-assets.ts",
-    "src/ui/server/ui-language.ts",
+    "src/shared/ui-language.ts",
     "package.json",
     "package-lock.json",
     "jest.config.js",
