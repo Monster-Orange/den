@@ -242,7 +242,9 @@ export function approvalView(
     id: a.id,
     action: a.action,
     ...(a.agent ? { agent: a.agent } : {}),
-    ...(a.claimedAs ? { claimedAs: a.claimedAs } : {}),
+    ...(a.claimedAs && claimantIsPerson(a.actor)
+      ? { claimedAs: a.claimedAs }
+      : {}),
     summary: a.summary,
     ...(a.params ? { params: a.params } : {}),
     ...(a.details ? { details: a.details } : {}),
