@@ -228,6 +228,21 @@
 .fb-shot img {
   cursor: default;
 }
+/* Issue 1499: the shot's box while it's being taken, the size of the
+   shot to come, so nothing moves when it lands (Hub Design). */
+.fb-shot[data-wait] {
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: var(--radius, 6px);
+  line-height: normal;
+}
+.fb-shot-wait {
+  aspect-ratio: var(--shot-ar);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
 .fb-kbd input[type="number"] {
   width: 5em;
   font: 13px var(--sans);
@@ -373,6 +388,10 @@
     width: auto;
     max-width: 100%;
     display: inline-block;
+  }
+  .fb-shot-wait {
+    width: min(100%, calc(45vh * var(--shot-k)));
+    margin-inline: auto;
   }
 }
 @media (min-width: 601px) {

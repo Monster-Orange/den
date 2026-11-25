@@ -278,10 +278,16 @@ export async function openReport(opts = {}) {
     // The screenshot: a canvas, or null when the page couldn't be taken.
     shot: null,
     // Issue 1499: the form opens at once; the shot fills in when taken.
-    // shotWait: still being taken. shotSeen: shown on the first step,
+    // shotWait: still being taken. shotFailed: taking it failed.
+    // shotSeen: on screen (the first step or Review) before a send: only
+    // then can it go.
     // where the person blacks out anything private: only then can it go.
     shotWait: false,
+    shotFailed: false,
     shotSeen: false,
+    // The window's shape when Report was picked: the shot's, so its box
+    // is the right size before it's there.
+    shotRatio: [window.innerWidth || 4, window.innerHeight || 3],
     masks: [],
     noShot: false,
     drag: null,
@@ -345,15 +351,26 @@ export async function openReport(opts = {}) {
       .catch(() => null)
       .then((canvas) => {
         if (current !== self) return;
-        st.shot = canvas || null;
         st.shotWait = false;
-        // Only the shot's part of the first step: the words being typed
-        // and the focus stay as they are.
+        st.shotFailed = !canvas;
+        // Only the shot's own box: the words being typed, the focus and
+        // everything else stay where they are (Hub Design: no jump).
         const area = dlg.querySelector("[data-shot-area]");
-        if (st.step === "write" && area) {
-          area.outerHTML = shotAreaHtml();
-          paintShot();
+        if (st.step === "review" && area) {
+          // Shown, never included by itself: masking is on the first step,
+          // so it goes only once the person chooses it there.
+          st.shot = canvas || null;
+          area.outerHTML = reviewShotHtml();
+          return;
         }
+        st.shot = canvas || null;
+        if (st.step !== "write" || !area) return;
+        const box = area.querySelector("[data-shot-box]");
+        if (canvas && box) {
+          box.outerHTML = shotBoxHtml();
+          st.shotSeen = true;
+          paintShot();
+        } else area.outerHTML = shotAreaHtml();
       });
   }
   document.body.append(dlg);
@@ -423,18 +440,29 @@ export async function openReport(opts = {}) {
   }
   const pct = (v) => Math.round(v * 100);
   /**
-   * The first step's screenshot part (issue 1499: "being taken" until the
-   * capture ends, then the shot, or the no-screenshot words). Marks the
-   * shot seen: only a shot shown here can go with the report.
+   * The shot's box (issue 1499): while it's being taken, the size of the
+   * shot to come, saying so; then the shot itself, in the same place. On
+   * the first step a canvas to black areas out on; on Review a picture.
+   */
+  function shotBoxHtml(where = "write") {
+    const [w, h] = st.shotRatio;
+    if (st.shotWait)
+      return `<div class="fb-shot" data-shot-box data-wait${where === "write" && st.noShot ? " hidden" : ""} style="--shot-ar: ${w} / ${h}; --shot-k: ${(w / h).toFixed(4)}"><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
+    if (where === "review")
+      return `<div class="fb-shot" data-shot-box><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
+    return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
+  }
+  /**
+   * The first step's screenshot part, drawn whole at once: its note, its
+   * box (being taken, then the shot) and its tools. Only a failed shot
+   * swaps it for the no-screenshot words.
    */
   function shotAreaHtml() {
+    if (!st.shotWait && !st.shot)
+      return `<div data-shot-area><p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p></div>`;
     if (st.shot) st.shotSeen = true;
-    return `<div data-shot-area>${
-      st.shotWait
-        ? `<p class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</p>`
-        : st.shot
-          ? `<p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
-<div class="fb-shot"${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>
+    return `<div data-shot-area><p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
+${shotBoxHtml()}
 <div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
 ${
   st.noShot
@@ -459,9 +487,28 @@ ${
             `<li>${esc(t("kit.report.area", { x: pct(m.x), y: pct(m.y), w: pct(m.w), h: pct(m.h) }))} <button type="button" data-act="rmmask" data-i="${i}">${esc(t("kit.report.rmMask"))}</button></li>`,
         )
         .join("")}</ul></details>`
-}`
-          : `<p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p>`
-    }</div>`;
+}</div>`;
+  }
+  /**
+   * Review's screenshot part. A shot seen on the first step (where the
+   * person blacks out anything private) goes, as before. One still being
+   * taken shows its box; one that landed since shows in it, but goes only
+   * if the person picks "Include it", which opens the first step to mask
+   * it and comes back here. Otherwise the report goes without it, and
+   * this says so. A failed one says why there's none.
+   */
+  function reviewShotHtml() {
+    let h = "";
+    if (st.noShot) h = "";
+    else if (shotOn())
+      h = `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div>${shotBoxHtml("review")}${shareHtml()}`;
+    else if (st.shotWait)
+      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div>${shotBoxHtml("review")}<p class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateWait"))}</p>`;
+    else if (st.shot)
+      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div>${shotBoxHtml("review")}<div class="fb-tools"><span class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateIn"))}</span>${btn("shotinclude", t("kit.report.shotInclude"))}</div>`;
+    else if (st.shotFailed)
+      h = `<p class="fb-fine" role="status" data-shot-failed>${esc(t("kit.report.shotFailed"))}</p>`;
+    return `<div data-shot-area>${h}</div>`;
   }
   /** Draws the screenshot with its masks (and one being dragged). */
   function paintShot() {
@@ -542,7 +589,7 @@ ${
 <label class="fb-f">${esc(t("kit.report.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
 <div class="fb-h">${esc(t("kit.report.shot"))}</div>
 ${shotAreaHtml()}${err}
-<div class="fb-btns">${btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
+<div class="fb-btns">${st.backToReview ? btn("review", t("kit.report.backReview"), true) : btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
     } else if (st.step === "include") {
       label = t("kit.report.incH");
       const secs = allSections();
@@ -581,13 +628,7 @@ ${
       }${visPill(repos)}</div>`
     : ""
 }
-<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
-        shotOn()
-          ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>${shareHtml()}`
-          : !st.noShot && (st.shotWait || (st.shot && !st.shotSeen))
-            ? `<p class="fb-fine" role="status" data-shot-late>${esc(t("kit.report.shotLate"))}</p>`
-            : ""
-      }
+<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${reviewShotHtml()}
 ${sends() ? visNote(repos) : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
 <div class="fb-btns">${sends() ? btn("send", t("kit.report.send"), true) : btn("copy", t("kit.report.copy"), true)}${laterBtn(t("kit.report.later"))}${btn("back-include", t("kit.report.back"))}</div>`;
     } else if (st.step === "signin") {
@@ -986,7 +1027,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         st.sections[k] = act === "all";
       return render();
     }
+    if (act === "shotinclude") {
+      // Issue 1499: to the first step, to see the shot and mask it; its
+      // main button then comes straight back to Review.
+      st.backToReview = true;
+      return go("write");
+    }
     if (act === "review") {
+      st.backToReview = false;
       savePrefs(
         st.remember ? { sections: st.sections, redact: st.redact } : null,
       );

@@ -238,6 +238,9 @@ const ALLOWED_ATTRS = new Set([
   "data-nav-shape",
   "data-nav-legacy",
   "data-nav-kit",
+  // Issue 1499: Report's mark for the shot's box, where the shot swaps in
+  // for "Taking the screenshot…". It changes no look.
+  "data-shot-box",
 ]);
 
 interface Node {

@@ -3,12 +3,16 @@
  * when it's ready. The capture (html-to-image) is held back 10 s here, as
  * a slow machine or Safari can.
  *
- *   - the form is open within 1 s, its shot area saying it's being taken;
- *   - the shot fills in later, of the page without the form, and doesn't
- *     take the focus or the words the person is typing;
+ *   - the form is open within 1 s, the shot's box saying it's being taken;
+ *   - the shot fills in that box later, of the page without the form; the
+ *     Title field doesn't move (within 1 px), and keeps the focus and the
+ *     words typed (Hub Design: no jump), at 1280 and 390;
  *   - Send works before the shot is there: the report goes without it,
- *     and Review says so. A shot the person never saw on the first step
- *     (where they black out anything private) never goes.
+ *     and Review says so;
+ *   - a shot that lands on Review shows there, but goes only if the person
+ *     picks "Include it", which opens the first step (where they black out
+ *     anything private) and comes back to Review;
+ *   - a capture that fails says so on Review.
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server. DEN_SKIP_BROWSER_TESTS=1 skips.
@@ -84,9 +88,12 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
-async function open(b: Browser): Promise<Page> {
+async function open(
+  b: Browser,
+  o: { width?: number; height?: number; fail?: boolean } = {},
+): Promise<Page> {
   const ctx = await b.newContext({
-    viewport: { width: 1000, height: 700 },
+    viewport: { width: o.width ?? 1280, height: o.height ?? 800 },
     deviceScaleFactor: 1,
     reducedMotion: "reduce",
   });
@@ -96,6 +103,7 @@ async function open(b: Browser): Promise<Page> {
     if (u.pathname === "/")
       return r.fulfill({ contentType: "text/html", body: PAGE });
     if (u.pathname === "/vendor/html-to-image.js") {
+      if (o.fail) return r.fulfill({ status: 404, body: "" });
       await new Promise((res) => setTimeout(res, DELAY));
       return r
         .fulfill({ contentType: "text/javascript", body: fs.readFileSync(LIB) })
@@ -122,20 +130,52 @@ async function report(p: Page) {
   await p.waitForSelector("dialog[open]", { timeout: 1_000 });
 }
 
+/** The Title field's top, in the window. */
+const titleTop = (p: Page) =>
+  p.evaluate(
+    () =>
+      document.querySelector('[data-f="title"]')!.getBoundingClientRect().top,
+  );
+
+/** What the page's send got. */
+const sent = (p: Page) =>
+  p.evaluate(
+    () =>
+      (window as unknown as { sent: Array<{ title: string; shot: number }> })
+        .sent,
+  );
+
+/** From the first step to Review. */
+async function toReview(p: Page) {
+  await p.fill('[data-f="title"]', "Slow page");
+  await p.click('[data-act="next"]');
+  await p.click('[data-act="review"]');
+  await p.waitForSelector('[data-act="send"]');
+}
+
+async function send(p: Page) {
+  await p.click('[data-act="send"]');
+  await p.waitForFunction(
+    () => (window as unknown as { sent: unknown[] }).sent.length === 1,
+    undefined,
+    { timeout: 5_000 },
+  );
+}
+
 /** With DEN_1499_SHOTS set to a folder (under the temp dir), the frames
- * design review asks for: the form while the shot is taken, and once in. */
+ * design review asks for. */
 const SHOTS = process.env.DEN_1499_SHOTS;
 
 for (const name of ["chromium", "webkit"]) {
   describe(`issue 1499: Report opens at once (${name})`, () => {
     const b = () => browsers[name]!;
 
-    it("is open within 1 s, saying the screenshot is being taken", async () => {
+    it("is open within 1 s, the shot's box saying it's being taken", async () => {
       if (!b()) return;
       const p = await open(b());
       try {
         await report(p);
-        expect(await p.textContent("[data-shot-wait]")).toBe(
+        expect(await p.textContent("[data-shot-box] [data-shot-wait]")).toBe(
           kitT("en", "kit.report.shotWait"),
         );
         expect(await p.locator("canvas[data-shot]").count()).toBe(0);
@@ -144,69 +184,47 @@ for (const name of ["chromium", "webkit"]) {
       }
     }, 30_000);
 
-    it(
-      "fills the shot in later: the page without the form, focus and words kept",
-      async () => {
-        if (!b()) return;
-        const p = await open(b());
-        try {
-          await report(p);
-          await p.fill('[data-f="title"]', "Slow page");
-          await p.waitForSelector("canvas[data-shot]", {
-            timeout: DELAY + 30_000,
-          });
-          expect(await p.locator("[data-shot-wait]").count()).toBe(0);
-          const got = await p.evaluate(() => {
-            const c = document.querySelector(
-              "canvas[data-shot]",
-            ) as HTMLCanvasElement;
-            const px = c
-              .getContext("2d")!
-              .getImageData(c.width / 2, c.height / 2, 1, 1).data;
-            const f = document.activeElement as HTMLInputElement | null;
-            return {
-              middle: [px[0], px[1], px[2]],
-              focus: f?.getAttribute("data-f"),
-              title: f?.value,
-            };
-          });
-          expect(got).toEqual({
-            middle: [0, 128, 0],
-            focus: "title",
-            title: "Slow page",
-          });
-        } finally {
-          await p.context().close();
-        }
-      },
-      DELAY + 60_000,
-    );
-
-    if (SHOTS)
+    for (const width of [1280, 390])
       it(
-        "saves the frames review asks for",
+        `fills the shot in at ${width} with no jump: the page without the form, focus and words kept`,
         async () => {
-          fs.mkdirSync(SHOTS, { recursive: true });
-          for (const width of [1280, 390]) {
-            const p = await open(b());
-            try {
-              await p.setViewportSize({ width, height: 800 });
-              await report(p);
-              await p.screenshot({
-                path: path.join(SHOTS, `${name}-${width}-taking.png`),
-              });
-              await p.waitForSelector("canvas[data-shot]", {
-                timeout: DELAY + 30_000,
-              });
-              await p.screenshot({
-                path: path.join(SHOTS, `${name}-${width}-shot-in.png`),
-              });
-            } finally {
-              await p.context().close();
-            }
+          if (!b()) return;
+          const p = await open(b(), { width });
+          try {
+            await report(p);
+            await p.fill('[data-f="title"]', "Slow page");
+            const before = await titleTop(p);
+            await p.waitForSelector("canvas[data-shot]", {
+              timeout: DELAY + 30_000,
+            });
+            expect(await p.locator("[data-shot-wait]").count()).toBe(0);
+            expect(Math.abs((await titleTop(p)) - before)).toBeLessThanOrEqual(
+              1,
+            );
+            const got = await p.evaluate(() => {
+              const c = document.querySelector(
+                "canvas[data-shot]",
+              ) as HTMLCanvasElement;
+              const px = c
+                .getContext("2d")!
+                .getImageData(c.width / 2, c.height / 2, 1, 1).data;
+              const f = document.activeElement as HTMLInputElement | null;
+              return {
+                middle: [px[0], px[1], px[2]],
+                focus: f?.getAttribute("data-f"),
+                title: f?.value,
+              };
+            });
+            expect(got).toEqual({
+              middle: [0, 128, 0],
+              focus: "title",
+              title: "Slow page",
+            });
+          } finally {
+            await p.context().close();
           }
         },
-        2 * DELAY + 90_000,
+        DELAY + 60_000,
       );
 
     it("sends before the shot is there, without it, and Review says so", async () => {
@@ -215,28 +233,120 @@ for (const name of ["chromium", "webkit"]) {
       try {
         const t0 = Date.now();
         await report(p);
-        await p.fill('[data-f="title"]', "Slow page");
-        await p.click('[data-act="next"]');
-        await p.click('[data-act="review"]');
-        expect(await p.textContent("[data-shot-late]")).toBe(
-          kitT("en", "kit.report.shotLate"),
-        );
-        expect(await p.locator("[data-shot-review]").count()).toBe(0);
-        await p.click('[data-act="send"]');
-        await p.waitForFunction(
-          () => (window as unknown as { sent: unknown[] }).sent.length === 1,
-          undefined,
-          { timeout: 5_000 },
-        );
-        expect(Date.now() - t0).toBeLessThan(DELAY);
+        await toReview(p);
         expect(
-          await p.evaluate(
-            () => (window as unknown as { sent: unknown[] }).sent,
-          ),
-        ).toEqual([{ title: "Slow page", shot: 0 }]);
+          await p.locator("[data-shot-box] [data-shot-wait]").count(),
+        ).toBe(1);
+        expect(await p.textContent("[data-shot-late]")).toBe(
+          kitT("en", "kit.report.shotLateWait"),
+        );
+        await send(p);
+        expect(Date.now() - t0).toBeLessThan(DELAY);
+        expect(await sent(p)).toEqual([{ title: "Slow page", shot: 0 }]);
       } finally {
         await p.context().close();
       }
     }, 30_000);
+
+    it(
+      "shows a shot that lands on Review, and doesn't send it unless chosen",
+      async () => {
+        if (!b()) return;
+        const p = await open(b());
+        try {
+          await report(p);
+          await toReview(p);
+          await p.waitForSelector("[data-shot-box] img[data-shot-review]", {
+            timeout: DELAY + 30_000,
+          });
+          expect(await p.textContent("[data-shot-late]")).toBe(
+            kitT("en", "kit.report.shotLateIn"),
+          );
+          await send(p);
+          expect(await sent(p)).toEqual([{ title: "Slow page", shot: 0 }]);
+        } finally {
+          await p.context().close();
+        }
+      },
+      DELAY + 60_000,
+    );
+
+    it(
+      "Include it opens the first step to mask it, back to Review, and then it goes",
+      async () => {
+        if (!b()) return;
+        const p = await open(b());
+        try {
+          await report(p);
+          await toReview(p);
+          await p.waitForSelector('[data-act="shotinclude"]', {
+            timeout: DELAY + 30_000,
+          });
+          await p.click('[data-act="shotinclude"]');
+          await p.waitForSelector("canvas[data-shot]");
+          await p.click('[data-act="review"]');
+          await p.waitForSelector("[data-shot-box] img[data-shot-review]");
+          expect(await p.locator("[data-shot-late]").count()).toBe(0);
+          await send(p);
+          const [r] = await sent(p);
+          expect(r!.shot).toBeGreaterThan(0);
+        } finally {
+          await p.context().close();
+        }
+      },
+      DELAY + 60_000,
+    );
+
+    it("says on Review when the shot couldn't be taken", async () => {
+      if (!b()) return;
+      const p = await open(b(), { fail: true });
+      try {
+        await report(p);
+        await toReview(p);
+        expect(await p.textContent("[data-shot-failed]")).toBe(
+          kitT("en", "kit.report.shotFailed"),
+        );
+        await send(p);
+        expect(await sent(p)).toEqual([{ title: "Slow page", shot: 0 }]);
+      } finally {
+        await p.context().close();
+      }
+    }, 30_000);
+
+    if (SHOTS)
+      it(
+        "saves the frames review asks for",
+        async () => {
+          fs.mkdirSync(SHOTS, { recursive: true });
+          const shot = (p: Page, f: string) =>
+            p.screenshot({ path: path.join(SHOTS, `${name}-${f}.png`) });
+          for (const width of [1280, 390]) {
+            const p = await open(b(), { width });
+            try {
+              await report(p);
+              await shot(p, `${width}-taking`);
+              await p.waitForSelector("canvas[data-shot]", {
+                timeout: DELAY + 30_000,
+              });
+              await shot(p, `${width}-shot-in`);
+            } finally {
+              await p.context().close();
+            }
+          }
+          const p = await open(b());
+          try {
+            await report(p);
+            await toReview(p);
+            await shot(p, "1280-review-taking");
+            await p.waitForSelector('[data-act="shotinclude"]', {
+              timeout: DELAY + 30_000,
+            });
+            await shot(p, "1280-review-landed");
+          } finally {
+            await p.context().close();
+          }
+        },
+        3 * DELAY + 120_000,
+      );
   });
 }
