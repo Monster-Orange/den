@@ -115,16 +115,103 @@ export function checkKit(deps = realDeps()) {
   return { version: v, publish: false };
 }
 
+/** next/queue, as a full clone (fetch-depth: 0) has it. KIT_QUEUE_REF sets another. */
+export const QUEUE_REF = "origin/next/queue";
+
+/** git's answer, or null when git refuses (a ref or path that isn't there). */
+function gitOr(args) {
+  const r = spawnSync("git", args, { encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+/**
+ * Issue 1508: a release that publishes the kit at `version` from `ref`
+ * must carry next/queue's kit files when next/queue has that same version:
+ * otherwise npm's copy of the version lacks next/queue's change, and every
+ * pull request after fails the kit's rule. Throws KitError naming the files
+ * that differ. next/queue missing from the clone: in CI (GITHUB_ACTIONS) it
+ * fails rather than guess; elsewhere it is a note.
+ */
+export function checkKitQueue({
+  version,
+  ref = "HEAD",
+  queue = process.env.KIT_QUEUE_REF || QUEUE_REF,
+  ci = process.env.GITHUB_ACTIONS === "true",
+  note = (s) => process.stderr.write(s + "\n"),
+}) {
+  if (gitOr(["rev-parse", "-q", "--verify", `${queue}^{commit}`]) === null) {
+    if (ci)
+      throw new KitError(
+        `::error::${queue} isn't in this clone, so the kit can't be checked against next/queue's ` +
+          `before it is published. Check out the whole history (actions/checkout with fetch-depth: 0).`,
+      );
+    note(`${queue} isn't here: the kit isn't checked against next/queue's`);
+    return;
+  }
+  const raw = gitOr(["show", `${queue}:${KIT_PKG}`]);
+  let theirs = null;
+  try {
+    theirs = raw === null ? null : JSON.parse(raw).version;
+  } catch {
+    theirs = null;
+  }
+  if (theirs !== version) {
+    note(
+      `next/queue's kit is at ${theirs ?? "none"}, not ${version}: nothing to compare`,
+    );
+    return;
+  }
+  const changed = gitOr(["diff", "--name-only", ref, queue, "--", KIT_DIR]);
+  if (changed === null)
+    throw new KitError(
+      `::error::git couldn't compare ${KIT_DIR} at ${ref} and ${queue}`,
+    );
+  if (changed)
+    throw new KitError(
+      `::error::next/queue has ${KIT_DIR} at ${version} too, with other files, so npm's ${version} ` +
+        `would lack them and every pull request after would fail the kit's rule. ` +
+        `So bump next/queue's den-ui before promoting (CONTRIBUTING › Releasing). Different: ${changed.split("\n").join(", ")}`,
+    );
+  note(
+    `next/queue's kit at ${version} is the same: it is published as next/queue has it`,
+  );
+}
+
 /** The GITHUB_OUTPUT lines for a checkKit result. */
 export const githubOutput = ({ version, publish }) =>
   `version=${version}\ngo=${publish ? "yes" : "no"}\n`;
+
+/**
+ * `node scripts/kit-version.mjs queue <commit>` (release-promote.sh): the
+ * kit at <commit> against next/queue's, when the release publishes it (npm
+ * doesn't have that version yet). No kit at <commit>: nothing to check.
+ */
+function kitQueueCli(ref) {
+  if (!ref)
+    throw new KitError("::error::usage: kit-version.mjs queue <commit>");
+  const raw = gitOr(["show", `${ref}:${KIT_PKG}`]);
+  if (raw === null) {
+    process.stderr.write(`no ${KIT_PKG} at ${ref}: no kit to check\n`);
+    return;
+  }
+  const { name, version } = JSON.parse(raw);
+  if (realDeps().npmView(`${name}@${version}`, "version") === version) {
+    process.stderr.write(
+      `${name}@${version} is on npm: the release doesn't publish it\n`,
+    );
+    return;
+  }
+  checkKitQueue({ version, ref });
+}
 
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    process.stdout.write(githubOutput(checkKit()));
+    const [cmd, ref] = process.argv.slice(2);
+    if (cmd === "queue") kitQueueCli(ref);
+    else process.stdout.write(githubOutput(checkKit()));
   } catch (e) {
     if (!(e instanceof KitError)) throw e;
     process.stderr.write(e.message + "\n");

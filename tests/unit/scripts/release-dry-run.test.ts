@@ -246,6 +246,63 @@ describe("release-dry-run.mjs plan", () => {
   });
 });
 
+describe("release-dry-run.mjs plan: the kit against next/queue (issue 1508)", () => {
+  /** next/queue: a branch from the candidate with these kit files. */
+  const queue = (name: string, kitJs: string, kit = "0.5.0") => {
+    const back = git("rev-parse", "HEAD");
+    git("checkout", "-q", "-b", name);
+    write("packages/den-ui/package.json", pkgJson(KIT, kit));
+    write("packages/den-ui/src/kit.js", kitJs);
+    git("add", ".");
+    git("commit", "-q", "--allow-empty", "-m", `queue ${name}`);
+    git("checkout", "-q", back);
+  };
+  const plan = (queueRef: string, extra: NodeJS.ProcessEnv = {}) =>
+    spawnSync(process.execPath, [SCRIPT, "plan", "v1.2.3-dev.1"], {
+      cwd: repo,
+      env: { ...env(), KIT_QUEUE_REF: queueRef, ...extra },
+      encoding: "utf8",
+    });
+
+  it("next/queue shares the kit's version with other kit files: fails, and says to bump next/queue's den-ui", () => {
+    candidate("1.2.3-dev.1", "0.5.0");
+    npmHas(`${KIT}@0.4.0 -`);
+    queue("q-diff", "export const kit = 2;\n");
+    const r = plan("q-diff");
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toMatch(/::error::/);
+    expect(r.stdout + r.stderr).toContain(
+      "bump next/queue's den-ui before promoting",
+    );
+    expect(r.stdout + r.stderr).toContain("packages/den-ui/src/kit.js");
+    expect(outputs(r.stdout).kit).toBeUndefined();
+  });
+
+  it("identical kit files, or a bumped version on next/queue: passes", () => {
+    candidate("1.2.3-dev.1", "0.5.0");
+    npmHas(`${KIT}@0.4.0 -`);
+    queue("q-same", "export const kit = 1;\n");
+    expect(plan("q-same").status).toBe(0);
+    queue("q-bumped", "export const kit = 2;\n", "0.6.0");
+    expect(plan("q-bumped").status).toBe(0);
+  });
+
+  it("the release doesn't publish the kit (npm has it, unchanged): next/queue isn't asked", () => {
+    const at = candidate("1.2.3-dev.1", "0.5.0");
+    npmHas(`${KIT}@0.5.0 ${at}`);
+    queue("q-diff", "export const kit = 2;\n");
+    expect(plan("q-diff").status).toBe(0);
+  });
+
+  it("in CI, a next/queue missing from the clone fails rather than guess", () => {
+    candidate("1.2.3-dev.1", "0.5.0");
+    npmHas(`${KIT}@0.4.0 -`);
+    const r = plan("no-such-queue", { GITHUB_ACTIONS: "true" });
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toContain("no-such-queue");
+  });
+});
+
 describe("release-dry-run.mjs apply", () => {
   it("makes the release commit's edits: Den's and the kit's versions, and the changelog's date", () => {
     candidate("1.2.3-dev.4", "0.5.0");
