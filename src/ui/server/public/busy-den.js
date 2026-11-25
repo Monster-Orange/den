@@ -514,4 +514,6 @@ export function busyAction(name, run, opts = {}) {
  * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
  * own words: holdDots(button), then holdDots(button, false).
  */
-export { holdDots } from "/kit/busy.js";
+// Issue 1054: holdRow too (a dragged row's dots). Every name the shell
+// calls on this module is exported here (busy-den-exports-1054.test.ts).
+export { holdDots, holdRow } from "/kit/busy.js";

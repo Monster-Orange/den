@@ -44,6 +44,8 @@ function setUp() {
       },
     },
     report: () => sh()?.reportButton?.(true) ?? "",
+    // Issue 1054: a dialog's own button that sends shows the kit's dots.
+    hold: (b) => sh()?.holdDots?.(b),
   });
 }
 
