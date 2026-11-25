@@ -225,7 +225,7 @@ describe("issue 144: the gate chip on Agents", () => {
     const chip = p.locator("#ag-gate");
     await chip.waitFor({ state: "visible", timeout: 20_000 });
     await p
-      .locator(`#agl .agr[data-id="${sid}"] [data-gate-tag]`)
+      .locator(`#agl [data-id="${sid}"] [data-gate-tag]`)
       .waitFor({ timeout: 10_000 });
     await p.evaluate(() =>
       (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
@@ -235,8 +235,8 @@ describe("issue 144: the gate chip on Agents", () => {
     await pop.waitFor();
     await expect(
       pop
-        .locator(".gate-h", {
-          hasText: "Throwaway containers removed after their run",
+        .getByRole("heading", {
+          name: "Throwaway containers removed after their run",
         })
         .count(),
     ).resolves.toBe(1);
@@ -253,18 +253,18 @@ describe("issue 144: the gate chip on Agents", () => {
     await p.reload();
     await chip.waitFor({ state: "visible", timeout: 20_000 });
     await p
-      .locator(`#agl .agr[data-id="${sid}"] [data-gate-tag]`)
+      .locator(`#agl [data-id="${sid}"] [data-gate-tag]`)
       .waitFor({ timeout: 10_000 });
     await p.evaluate(() =>
       (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
     );
     await chip.click();
     await pop.waitFor();
-    expect(await pop.locator(".gate-li").count()).toBe(1);
+    expect(await pop.locator("[data-gate-id]").count()).toBe(1);
     expect(
       await pop
-        .locator(".gate-h", {
-          hasText: "Throwaway containers removed after their run",
+        .getByRole("heading", {
+          name: "Throwaway containers removed after their run",
         })
         .count(),
     ).toBe(0);
