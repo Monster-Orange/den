@@ -455,6 +455,10 @@ body.den-has-shell > #den-content {
   background: var(--surface);
   border-right: 1px var(--edge-style, solid) var(--border);
   overflow-y: auto;
+  /* Issue 1341: an entry scrolled into view (keyboard focus) stops above
+     the sticky foot, never under it (WCAG 2.4.11). shell-client sets the
+     foot's height. */
+  scroll-padding-bottom: var(--den-rail-foot-h, 0px);
   z-index: 15;
   color: var(--text);
 }
@@ -585,6 +589,25 @@ body.den-has-shell > #den-content {
 }
 .den-rail-grow {
   flex: 1;
+}
+/* Issue 1341: the foot stays in view when the groups are taller than the
+   rail. The rail scrolls; the foot is sticky at its bottom, over the
+   groups that scroll under it. The foot's background reaches over the
+   rail's 10 px bottom padding (a negative margin), so nothing shows
+   below it, and its entries sit where they did when the groups fit.
+   bottom is -10px because a sticky box's inset is measured from inside
+   its scroller's padding: 0 would lift the foot 10 px. The rail keeps
+   its padding, so its height is unchanged. */
+.den-rail-foot {
+  position: sticky;
+  bottom: -10px;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: -10px;
+  padding-bottom: 10px;
+  background: var(--surface);
 }
 .den-sr {
   position: absolute;
@@ -1024,6 +1047,12 @@ body.den-has-shell .den-upd {
   gap: 8px;
   align-items: flex-start;
   padding: 6px 12px;
+}
+.den-bell-row:has(a[href]),
+.den-bell-row:has(a[href]) a[href] {
+  /* Issue 420: a row that opens on a click looks it, its link too (WebKit
+     gives a link cursor: auto of its own, so it doesn't inherit this). */
+  cursor: pointer;
 }
 .den-bell-row:hover {
   background: color-mix(in srgb, var(--text) 5%, transparent);

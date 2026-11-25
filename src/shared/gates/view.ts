@@ -13,6 +13,7 @@ import {
   queueMinOf,
   yieldedTo,
   type EstimateSource,
+  type MachineReading,
 } from "./rules.js";
 import { boxEndpoints, boxSkipReason, type GateBox } from "./boxes.js";
 import { classOf, windowHeld } from "./classes.js";
@@ -78,9 +79,9 @@ export interface GateSlotView {
     cores?: number;
   };
   /** Issue 1274: a run here waiting on low memory: free and the setting, %. */
-  memoryHold?: { free: number; limit: number };
+  memoryHold?: { free: number | null; limit: number; unavailable?: true };
   /** Issue 1274: a run here waiting on swap: in use and the setting, GB. */
-  swapHold?: { usedGb: number; limitGb: number };
+  swapHold?: { usedGb: number | null; limitGb: number; unavailable?: true };
   /**
    * Issue 1132: granted, but its command waits for the machine's load to
    * drop under gates.max_start_load: the load seen, the ceiling, since.
@@ -256,16 +257,24 @@ export function gateView(
     !e.grantedAt &&
     (!e.where || e.where === "local" || e.where === "any")
       ? {
-          memoryHold: {
-            free: Math.round(memHold.free),
-            limit: memHold.limit,
-          },
+          // Issue 1349: an unknown reading holds, and says so.
+          memoryHold: memHold.unavailable
+            ? { free: null, limit: memHold.limit, unavailable: true as const }
+            : { free: Math.round(memHold.free), limit: memHold.limit },
         }
       : {}),
     ...(swHold &&
     !e.grantedAt &&
     (!e.where || e.where === "local" || e.where === "any")
-      ? { swapHold: { usedGb: swHold.usedGb, limitGb: swHold.limitGb } }
+      ? {
+          swapHold: swHold.unavailable
+            ? {
+                usedGb: null,
+                limitGb: swHold.limitGb,
+                unavailable: true as const,
+              }
+            : { usedGb: swHold.usedGb, limitGb: swHold.limitGb },
+        }
       : {}),
     ...(e.grantedAt
       ? {
@@ -310,6 +319,13 @@ export function gateView(
  * vm_memory_share × its RAM. Only names, memory and cpus.
  */
 export interface GateMachineView {
+  /**
+   * Issue 1349: this platform has no memory reading: memory holds don't
+   * apply (MEMORY_NOT_MEASURED_WORDS).
+   */
+  notMeasured?: true;
+  /** Issue 1349: a reading should be here and couldn't be taken: it holds. */
+  unavailable?: true;
   freeMemory?: number;
   /** Swap in use, GB (left out at 0 or unread). */
   swapUsedGb?: number;
@@ -323,13 +339,22 @@ export interface GateMachineView {
 
 function machineView(
   store: GateStore,
-  freeMem: number,
-  swapGb: number,
+  freeMem: MachineReading,
+  swapGb: MachineReading,
   now: boolean,
 ): GateMachineView {
+  const known = (v: MachineReading): v is number =>
+    v !== null && Number.isFinite(v);
   const out: GateMachineView = {
-    ...(Number.isFinite(freeMem) ? { freeMemory: Math.round(freeMem) } : {}),
-    ...(Number.isFinite(swapGb) && swapGb > 0 ? { swapUsedGb: swapGb } : {}),
+    ...(freeMem === null && swapGb === null
+      ? { notMeasured: true as const }
+      : {}),
+    ...((freeMem !== null && !known(freeMem)) ||
+    (swapGb !== null && !known(swapGb))
+      ? { unavailable: true as const }
+      : {}),
+    ...(known(freeMem) ? { freeMemory: Math.round(freeMem) } : {}),
+    ...(known(swapGb) && swapGb > 0 ? { swapUsedGb: swapGb } : {}),
   };
   const r = now ? store.vmsNow() : store.vms();
   if (!r) return out;

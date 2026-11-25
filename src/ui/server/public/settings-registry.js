@@ -40,6 +40,9 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
+import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+
+export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
 import { projectColour, projectLabel } from "./workspace-picker.js";
@@ -2098,6 +2101,21 @@ const ACCESS_ROWS = [
     write: (v, ctx) => ctx.post({ web_agent_view: { minutes: v } }),
   },
   {
+    // Issue 1299: how long a sign-in waits while another process writes
+    // the sign-ins file, before it says "try again".
+    id: "access.sessions_lock_wait",
+    category: "access",
+    label: "Sign-in waits for the sign-ins file, in ms",
+    description:
+      "How long a sign-in waits while another command changes the sign-ins file, then it asks to try again. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+    keywords: ["sign-in", "lock", "wait", "busy", "web.sessions_lock_wait_ms"],
+    scope: "user",
+    keys: ["web_sessions.lock_wait_ms"],
+    control: { type: "number", min: 0, max: 30000, step: 100, unit: "ms" },
+    read: (ctx) => ctx.data.web_sessions?.lockWaitMs ?? 2000,
+    write: (v, ctx) => ctx.post({ web_sessions: { lock_wait_ms: v } }),
+  },
+  {
     id: "access.machine_name",
     category: "access",
     label: "Machine name",
@@ -3304,6 +3322,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { swap_hold_gb: v } }),
   },
   {
+    // Issue 1349: a failed memory reading's last good value stands this long.
+    id: "server.gate_memory_reading_keep_seconds",
+    category: "server",
+    label: "If a memory reading fails, keep the last one for (seconds)",
+    description:
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
+    keywords: ["gate", "slot", "tests", "queue", "memory", "swap"],
+    scope: "user",
+    keys: ["gate_slots.memory_reading_keep_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.memoryReadingKeepSeconds ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { memory_reading_keep_seconds: v } }),
+  },
+  {
     // Issue 1274: doctor warns over this share of RAM promised to VMs.
     id: "server.gate_vm_memory_share",
     category: "server",
@@ -3578,8 +3611,17 @@ export const DEN_SETTINGS = [
     keys: ["gate_slots.browser_requires_container"],
     control: { type: "toggle" },
     read: (ctx) => ctx.data.gate_slots?.browserRequiresContainer === true,
+    // On keeps the strict level (2, set with gate settings) if it was set.
     write: (v, ctx) =>
-      ctx.post({ gate_slots: { browser_requires_container: v ? 1 : 0 } }),
+      ctx.post({
+        gate_slots: {
+          browser_requires_container: v
+            ? ctx.data.gate_slots?.browserContainerStrict === true
+              ? 2
+              : 1
+            : 0,
+        },
+      }),
   },
   {
     // Issue 714: an agent's gate slot held over MCP.
@@ -4557,6 +4599,130 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ approvals_policy: v }),
   },
   {
+    // Issue 1371 Part 2: an agent's setting_change for limits settings.
+    id: "agents.settings_limits",
+    category: "agents",
+    label: "Agents changing settings: Limits and performance",
+    description:
+      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.limits?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { limits: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for look settings.
+    id: "agents.settings_look",
+    category: "agents",
+    label: "Agents changing settings: Look and layout",
+    description:
+      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.look?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { look: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for integrations settings.
+    id: "agents.settings_integrations",
+    category: "agents",
+    label: "Agents changing settings: Integrations",
+    description:
+      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.integrations?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { integrations: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for network settings.
+    id: "agents.settings_network",
+    category: "agents",
+    label: "Agents changing settings: Network and access",
+    description:
+      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "auto", label: "Change without asking (tell me)" },
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.network?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { network: v } }),
+  },
+  {
+    // Issue 1371 Part 2: an agent's setting_change for agent_powers settings.
+    id: "agents.settings_agent_powers",
+    category: "agents",
+    label: "Agents changing settings: Agent powers",
+    description:
+      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+    keywords: [
+      "setting",
+      "settings",
+      "setting_change",
+      "approval",
+      "ask",
+      "agents",
+    ],
+    scope: "user",
+    keys: ["approvals_settings"],
+    control: seg([
+      { value: "ask", label: "Ask me" },
+      { value: "never", label: "Never" },
+    ]),
+    read: (ctx) => ctx.data.approvals_settings?.agent_powers?.choice ?? "ask",
+    write: (v, ctx) => ctx.post({ approvals_settings: { agent_powers: v } }),
+  },
+  {
     id: "agents.approvals_watch",
     category: "agents",
     label: "Watched",
@@ -4606,6 +4772,24 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 10, max: 10080, step: 1, unit: "min" },
     read: (ctx) => ctx.data.held_writes?.wait_minutes ?? 1440,
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
+  },
+  {
+    // Issue 1391: personal (one person's own machine, the default) or
+    // strict (team and enterprise installs). A person's only.
+    id: "server.install_mode",
+    category: "server",
+    label: "This install is",
+    description:
+      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
+    keywords: ["personal", "strict", "mode", "sandbox", "install"],
+    scope: "user",
+    keys: ["install_mode"],
+    control: seg([
+      { value: "personal", label: "Personal" },
+      { value: "strict", label: "Strict" },
+    ]),
+    read: (ctx) => ctx.data.install_mode ?? "personal",
+    write: (v, ctx) => ctx.post({ install_mode: v }),
   },
   {
     // Issue 1225: 0.4.46's services.restore_on_boot, now in Settings.
@@ -4832,6 +5016,28 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ panes_reconnect: { max_seconds: v } }),
   },
   {
+    // Issue 1373: how many agents run at once (user.yml agents.max_concurrent,
+    // over the distribution's den.yml).
+    id: "agents.max_concurrent",
+    category: "agents",
+    label: "Agents at once",
+    description:
+      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    keywords: [
+      "agents",
+      "limit",
+      "max_concurrent",
+      "concurrent",
+      "at once",
+      "cap",
+    ],
+    scope: "user",
+    keys: ["agents_limits.max_concurrent"],
+    control: { type: "number", min: 1, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_concurrent ?? 4,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
+  },
+  {
     // den#156: the Agents list's waits (user.yml agents_list.*).
     id: "agents.list_host_wait",
     category: "agents",
@@ -4858,6 +5064,28 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 120, step: 1, unit: "s" },
     read: (ctx) => ctx.data.agents_shell?.path_timeout_seconds ?? 10,
     write: (v, ctx) => ctx.post({ agents_shell: { path_timeout_seconds: v } }),
+  },
+  {
+    // Issue 1311: messages held on a person's unsent draft; the bell after this.
+    id: "agents.draft_hold_max",
+    category: "agents",
+    label: "Draft hold before the bell",
+    description:
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    keywords: [
+      "draft",
+      "typing",
+      "hold",
+      "wait",
+      "message",
+      "bell",
+      "terminal",
+    ],
+    scope: "user",
+    keys: ["agents_draft.hold_max_minutes"],
+    control: { type: "number", min: 1, max: 1440, step: 1, unit: "min" },
+    read: (ctx) => ctx.data.agents_draft?.hold_max_minutes ?? 30,
+    write: (v, ctx) => ctx.post({ agents_draft: { hold_max_minutes: v } }),
   },
   {
     id: "agents.list_refresh_wait",
@@ -5101,6 +5329,39 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.hub_delivery_loop !== false,
     write: (v, ctx) =>
       ctx.post({ hub_delivery_loop: v === true ? null : false }),
+  },
+  {
+    // Issue 750: groups from Hub on the agents page (user.yml hub.groups).
+    id: "agents.hub_groups",
+    category: "hub",
+    label: "Groups from Hub",
+    description:
+      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+    keywords: ["hub", "groups", "group", "lead", "agents", "by group"],
+    scope: "user",
+    keys: ["hub_groups.mode"],
+    control: seg([
+      { value: "auto", label: "Auto" },
+      { value: "on", label: "On" },
+      { value: "off", label: "Off" },
+    ]),
+    read: (ctx) => ctx.data.hub_groups?.mode ?? "auto",
+    write: (v, ctx) =>
+      ctx.post({ hub_groups: { mode: v === "auto" ? null : v } }),
+  },
+  {
+    // Issue 750: how long Den keeps Hub's groups in memory.
+    id: "agents.hub_groups_cache",
+    category: "hub",
+    label: "Groups kept for",
+    description:
+      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
+    keywords: ["hub", "groups", "cache", "seconds", "memory", "refresh"],
+    scope: "user",
+    keys: ["hub_groups.cache_seconds"],
+    control: { type: "number", min: 5, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.hub_groups?.cache_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ hub_groups: { cache_seconds: v } }),
   },
 
   {
@@ -6303,6 +6564,15 @@ export function restartOfferHtml(all) {
   );
 }
 
+/** Issue 1407: wire the per-agent result's Restart now and Restart all now. */
+function wireRestartResult(box, ctx) {
+  wireRestartNow(box, {
+    api: (...a) => ctx.shell.api(...a),
+    busyAction: ctx.shell.busyAction?.bind(ctx.shell),
+    t: (k, v) => ctx.shell.t(k, v),
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6317,12 +6587,11 @@ function offerRestart(host, ctx, fresh) {
         ctx.shell
           .api("POST", "/api/agents/restart-stale", { only: "hub" })
           .then((x) => {
-            const k = Array.isArray(x?.pending) ? x.pending.length : 0;
-            box.innerHTML = `<p class="set-note" role="status" data-hub-restarting="${k}">${escR(
-              k === 1
-                ? "1 agent restarts at its next idle, in the same conversation."
-                : `${k} agents restart at their next idle, each in the same conversation.`,
-            )}</p>`;
+            // Issue 1407: each agent's own answer, never a fixed line.
+            box.innerHTML = restartResultHtml(x?.agents, (k, v) =>
+              ctx.shell.t(k, v),
+            );
+            wireRestartResult(box, ctx);
           })
           .catch((e) => {
             btn.disabled = false;

@@ -87,6 +87,7 @@ describe("issue 728: the edge's key folders", () => {
       "/home/someone/.acme/den-edge-proof",
       "/home/someone/.acme/access",
       "/home/someone/.acme/edge-access.log",
+      "/home/someone/.acme/proof-rotated.json",
       "/srv/ca",
     ]);
     expect(narrowEdgeDirs(["/home/someone"], own)[0]).toBe("/home/someone/ca");

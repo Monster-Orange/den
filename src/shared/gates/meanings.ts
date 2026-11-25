@@ -86,7 +86,7 @@ export const GATE_MEANINGS: Record<
     box_recheck_seconds:
       "Seconds a held or silent test box is passed over before it is checked again",
     browser_requires_container:
-      "Whether browser runs must run in a container (1: yes; 0: no)",
+      "Whether browser runs must run in a container (2: yes, and a run may not just say it starts its own; 1: yes; 0: no)",
     class_order: "Priority classes, highest first (empty: first come for all)",
     class_map: "Which projects and labels go in which class",
     class_windows:
@@ -144,7 +144,7 @@ export const GATE_MEANINGS: Record<
     box_recheck_seconds:
       "Segundos que se omite una máquina de pruebas ocupada o muda antes de volver a comprobarla",
     browser_requires_container:
-      "Si las pruebas de navegador deben ir en un contenedor (1: sí; 0: no)",
+      "Si las pruebas de navegador deben ir en un contenedor (2: sí, y una ejecución no puede solo decir que inicia el suyo; 1: sí; 0: no)",
     class_order:
       "Clases de prioridad, la más alta primero (vacío: por orden de llegada)",
     class_map: "Qué proyectos y etiquetas van en cada clase",
@@ -198,7 +198,7 @@ export const GATE_MEANINGS: Record<
     box_recheck_seconds:
       "使用中か返事のないテスト用マシンを次に確かめるまで飛ばす時間（秒）",
     browser_requires_container:
-      "ブラウザテストをコンテナで動かす必要があるか（1: はい、0: いいえ）",
+      "ブラウザテストをコンテナで動かす必要があるか（2: はい、実行が自分で起動すると言うだけでは不可、1: はい、0: いいえ）",
     class_order: "優先クラス、高い順（空: すべて先着順）",
     class_map: "どのプロジェクトとラベルがどのクラスに入るか",
     class_windows: "各クラスの長い実行が上のクラスより先に始められる時間帯",

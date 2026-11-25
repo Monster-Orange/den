@@ -17,7 +17,11 @@
 import type { NotificationStore } from "../../shared/notifications.js";
 import { ThrowawaySweeper, type Docker } from "../../shared/gates/ephemeral.js";
 import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
-import type { GateStore, GateEventRow } from "../../shared/gates/store.js";
+import {
+  gateLocked,
+  type GateStore,
+  type GateEventRow,
+} from "../../shared/gates/store.js";
 import { gateOverrunWaiting } from "./gate-overrun-bell.js";
 
 export interface GateNoticeDeps {
@@ -83,7 +87,8 @@ export class GateNotices {
 
   async tick(): Promise<void> {
     const store = this.d.store();
-    store.list(); // settles: passes on the unclaimed, takes back the lapsed
+    // Issue 1339: a timer's wait, never the server's thread.
+    await gateLocked(() => store.list()); // settles: passes on the unclaimed, takes back the lapsed
     const { rows, next } = store.eventsFrom(this.from);
     this.from = next;
     // Issue 1263: a slot ended: its run's throwaway containers may be left.
@@ -104,7 +109,7 @@ export class GateNotices {
         this.lapsedBell(r, agent, project);
         continue;
       }
-      const text = this.textOf(store, r);
+      const text = await gateLocked(() => this.textOf(store, r));
       if (text)
         out.push(
           embedDelivery({
@@ -137,7 +142,8 @@ export class GateNotices {
   private overrunLines(store: GateStore): Delivery[] {
     // The store's own clock unless told (its tests set it).
     const now = this.d.now ? this.d.now() : store.clock();
-    const entries = store.list();
+    // Settled just now in tick(): read without the lock.
+    const entries = store.peekAll();
     const live = new Set(entries.map((e) => e.id));
     for (const id of this.toldOverrun)
       if (!live.has(id)) this.toldOverrun.delete(id);

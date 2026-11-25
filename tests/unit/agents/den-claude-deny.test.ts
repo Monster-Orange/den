@@ -161,6 +161,28 @@ describe("issue 728: every credential file in the state dir is denied as web.sec
   it.each(files)("a Read rule covers %s", (f) =>
     expect([f, readDenied(rules, `${STATE}/${f}`)]).toEqual([f, true]),
   );
+  // Issue 1299: a damaged sessions file moved aside, and a write's
+  // temporary copy, hold the same records.
+  it.each(["web-sessions.json.bad-1795413600000", "actor-tokens.json.tmp-123"])(
+    "a Read rule covers the copy %s",
+    (f) => expect([f, readDenied(rules, `${STATE}/${f}`)]).toEqual([f, true]),
+  );
+  // Issue 1299 review: an agent that wrote a live pid in the sessions
+  // lock would hold every sign-in for its wait, then refuse it.
+  it("web-sessions.lock: no Read, Edit (writes too) or shell", () => {
+    const lock = `${STATE}/web-sessions.lock`;
+    expect(readDenied(rules, lock)).toBe(true);
+    expect(rules).toContain(`Edit(/${lock})`);
+    // Edit(path) covers writes; a Write(path) rule never matches (issue 660).
+    expect(rules).not.toContain(`Write(/${lock})`);
+    for (const cmd of [
+      `echo 1 > ${lock}`,
+      `cat ${lock}`,
+      `rm ${lock}`,
+      `touch ~/.acme/web-sessions.lock`,
+    ])
+      expect([cmd, denied(rules, cmd)]).toEqual([cmd, true]);
+  });
 });
 
 describe("issue 728: what an agent needs to run stays allowed", () => {

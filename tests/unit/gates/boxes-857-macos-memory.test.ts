@@ -81,8 +81,12 @@ function scripted(answers: Record<string, Answer>) {
     k.stdin = {
       end: (s?: string) => {
         call.stdin = s ?? "";
+        // Issue 1381: sftp gets /proc/meminfo into a file, as a real sftp.
+        const dest = /^-get \/proc\/meminfo "([^"]+)"$/m.exec(call.stdin)?.[1];
+        if (cmd === "sftp" && a.out && dest) fs.writeFileSync(dest, a.out);
         setImmediate(() => {
-          if (a.out) stdout.emit("data", Buffer.from(a.out));
+          if (a.out && !(cmd === "sftp" && dest))
+            stdout.emit("data", Buffer.from(a.out));
           if (a.err) stderr.emit("data", Buffer.from(a.err));
           k.emit("close", a.code ?? 0);
         });
