@@ -26,6 +26,7 @@ import * as path from "path";
 import { EMBED_PREFIX } from "./hub-delivery.js";
 import type { WorkspacesFile } from "./types/index.js";
 import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** The hub/* files that belong to one Hub (archived on a change). */
 export const HUB_STATE_FILES = [
@@ -87,9 +88,7 @@ export function hubOrigin(url: string): string {
 
 function writeJson(file: string, v: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(v, null, 1) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(v, null, 1) + "\n", { mode: 0o600 });
 }
 
 function readJson(file: string): unknown {
@@ -294,6 +293,36 @@ export function listPreviousHubs(stateDir: string): ArchivedHub[] {
   return out;
 }
 
+/**
+ * Issue 646: the link project `ws` had on the last earlier Hub that it had
+ * one on (Connect's review says "was linked to … on …"), or null.
+ */
+export function previousLinkOf(
+  stateDir: string,
+  ws: string,
+): { name: string; origin: string; company?: string } | null {
+  for (const a of listPreviousHubs(stateDir).reverse()) {
+    if (!a.projects.includes(ws) || !a.from) continue;
+    const v = readJson(path.join(a.dir, "from.json")) as {
+      links?: Record<string, { name?: unknown; slug?: unknown }>;
+    } | null;
+    const l = v?.links?.[ws];
+    const name =
+      typeof l?.name === "string" && l.name
+        ? l.name
+        : typeof l?.slug === "string"
+          ? l.slug
+          : "";
+    if (!name) continue;
+    return {
+      name: name.slice(0, 200),
+      origin: a.from.origin,
+      ...(a.from.company ? { company: a.from.company } : {}),
+    };
+  }
+  return null;
+}
+
 export interface UnrevokedToken {
   id: string;
   url: string;
@@ -319,8 +348,7 @@ export function recordUnrevoked(
   fs.chmodSync(dir, 0o700);
   if (u.token) {
     const f = path.join(dir, `${id}.token`);
-    fs.writeFileSync(f, `${u.token}\n`, { mode: 0o600 });
-    fs.chmodSync(f, 0o600);
+    writeFileAtomic(f, `${u.token}\n`, { mode: 0o600 });
   }
   writeJson(path.join(dir, `${id}.json`), rec);
   return rec;

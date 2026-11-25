@@ -29,7 +29,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** The bed's poster when DEN_BED_POSTER isn't set: its workflow's GITHUB_TOKEN. */
 export const DEFAULT_POSTER = "github-actions[bot]";
@@ -228,7 +228,12 @@ export function appliedTree(tag, version) {
     execFileSync(
       process.execPath,
       [
-        path.resolve("scripts/release-dry-run.mjs"),
+        // Beside this script, never the checkout's: a release runs main's
+        // copy against the promoted tree (issue 922).
+        path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "release-dry-run.mjs",
+        ),
         "apply",
         version,
         kit,

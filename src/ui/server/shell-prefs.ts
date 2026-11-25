@@ -10,24 +10,25 @@
 import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import {
+  checkPins,
+  isObject,
+  MAX_PINS,
+  type Pin,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
 
-/**
- * Issue 402 (the model set on 11-18): a pin is (company, project or none,
- * person, item). This store is one person's (user.yml), in one install of
- * one company, so a stored pin carries the rest: the item (`repo` or
- * `repo/service`) and the project picked when it was made, or null (none:
- * pinned under All projects). One item pinned in two projects is two pins.
- */
-export interface Pin {
-  item: string;
-  project: string | null;
-}
-
-/**
- * The projects whose repos include an item's repo (index.ts builds it from
- * workspaces.yml): an old id-only pin takes the one project, else none.
- */
-export type PinProjects = (item: string) => readonly string[];
+// Pins are read by the server and by doctor (issue 1217): the code is in
+// src/shared/shell-pins.ts, exported here too for the server's callers.
+export {
+  MAX_PINS,
+  pinNotes,
+  pinnedItems,
+  pinProjectsOf,
+  type Pin,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
 
 export interface ShellPrefs {
   /** Pinned repos or services, with the project each was pinned in, in pin order. */
@@ -171,73 +172,6 @@ function checkProjectColours(
   return { ok: true, value: out };
 }
 
-/** How many pins the rail keeps (an item in two projects is two). */
-export const MAX_PINS = 96;
-const PIN =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$/;
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-/**
- * Issue 402, clause 6: a pin saved before the tuple (a bare id) takes the
- * item's own project when exactly one project has its repo, else none.
- */
-function migratePin(item: string, projectsOf?: PinProjects): Pin {
-  const owners = projectsOf ? [...new Set(projectsOf(item))] : [];
-  return { item, project: owners.length === 1 ? owners[0] : null };
-}
-
-function checkPins(
-  v: unknown,
-  projectsOf?: PinProjects,
-): { ok: true; value: Pin[] } | { ok: false; error: string } {
-  if (!Array.isArray(v))
-    return { ok: false, error: "shell.pins must be a list" };
-  const out: Pin[] = [];
-  for (const p of v) {
-    let pin: Pin;
-    if (typeof p === "string") {
-      if (!PIN.test(p))
-        return {
-          ok: false,
-          error: `shell.pins: "${p}" is not a repo or repo/service name`,
-        };
-      pin = migratePin(p, projectsOf);
-    } else if (isObject(p)) {
-      if (typeof p.item !== "string" || !PIN.test(p.item))
-        return {
-          ok: false,
-          error: `shell.pins: "${String(p.item)}" is not a repo or repo/service name`,
-        };
-      const project = p.project ?? null;
-      if (
-        project !== null &&
-        (typeof project !== "string" || !WORKSPACE_NAME_RE.test(project))
-      )
-        return {
-          ok: false,
-          error: `shell.pins: "${String(project)}" is not a project`,
-        };
-      pin = { item: p.item, project };
-    } else
-      return {
-        ok: false,
-        error: `shell.pins: "${String(p)}" is not a pin`,
-      };
-    if (!out.some((q) => q.item === pin.item && q.project === pin.project))
-      out.push(pin);
-  }
-  if (out.length > MAX_PINS)
-    return { ok: false, error: `shell.pins: at most ${MAX_PINS}` };
-  return { ok: true, value: out };
-}
-
-/** Issue 402: the items pinned, each once, whatever their project. */
-export function pinnedItems(pins: readonly Pin[]): string[] {
-  return [...new Set(pins.map((p) => p.item))];
-}
-
 function checkNavIds(
   key: "hidden" | "order",
   v: unknown,
@@ -292,7 +226,7 @@ export function shellPrefs(
     const h = checkDockHeight(stored.dockHeight);
     if (h.ok) out.dockHeight = h.value;
   }
-  const pins = checkPins(stored.pins, projectsOf);
+  const pins = checkPins(stored.pins, projectsOf, true);
   if (pins.ok) out.pins = pins.value;
   if (typeof stored.collapsed === "boolean") out.collapsed = stored.collapsed;
   for (const key of ["hidden", "order"] as const) {
@@ -330,7 +264,16 @@ export function mergeShellPrefs(
       continue;
     }
     if (key === "pins") {
-      const p = checkPins(patch.pins, projectsOf);
+      // Issue 1217: old pins moved to each of their projects can load past
+      // MAX_PINS, and the page posts the whole list, so a save is held to
+      // the larger of the cap and what was stored: unpinning always saves,
+      // and no save grows a list past the cap.
+      const p = checkPins(
+        patch.pins,
+        projectsOf,
+        false,
+        Math.max(MAX_PINS, current.pins.length),
+      );
       if (!p.ok) return p;
       out.pins = p.value;
     } else if (key === "collapsed") {
@@ -464,7 +407,7 @@ export function writeFixturePins(
     return;
   }
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, JSON.stringify(keep), { mode: 0o600 });
+  writeFileAtomic(file, JSON.stringify(keep), { mode: 0o600 });
 }
 
 /**

@@ -18,7 +18,6 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
-import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import { DEFAULT_TRAEFIK_IMAGE } from "../../../src/shared/edge/config.js";
@@ -27,7 +26,7 @@ import {
   renderEdgeDynamic,
 } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
-import { dockerOk, freePort } from "./helpers/docker-edge.js";
+import { dockerOk, dockerShareTmp, freePort } from "./helpers/docker-edge.js";
 
 const IDLE_CLOSE_MS = 1500;
 const NAME = `den-test-edge-idle-${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
@@ -113,8 +112,7 @@ beforeAll(async () => {
   if (!ok) return;
   const up = await startUpstream();
   edgePort = await freePort();
-  // Under the home dir: Docker Desktop and OrbStack share it with the VM.
-  dir = fs.mkdtempSync(path.join(os.homedir(), ".den-test-edge-idle-"));
+  dir = dockerShareTmp("edge-idle-");
   const cfg: EdgeConfig = {
     org: "idle",
     domain: "idle.localhost",

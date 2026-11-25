@@ -5,6 +5,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** What one update-check pass did. */
 export type UpdateTick =
@@ -46,9 +47,7 @@ export const updateCheckFile = (stateDir: string): string =>
 export function writeCheckState(stateDir: string, s: CheckState): void {
   const p = updateCheckFile(stateDir);
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-  const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(s) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(p, JSON.stringify(s) + "\n", { mode: 0o600 });
 }
 
 export function readCheckState(stateDir: string): CheckState | null {
@@ -65,6 +64,57 @@ export function readCheckState(stateDir: string): CheckState | null {
   } catch {
     return null;
   }
+}
+
+export function firstCheckDelay(
+  prev: CheckState | null,
+  everyMs: number,
+  now: number,
+): number | null {
+  if (!everyMs) return null;
+  const next = prev?.next ? Date.parse(prev.next) : NaN;
+  const last = prev?.last ? Date.parse(prev.last.at) : NaN;
+  const due = Number.isFinite(next)
+    ? next
+    : Number.isFinite(last)
+      ? last + everyMs
+      : NaN;
+  if (!Number.isFinite(due)) return everyMs;
+  return Math.min(Math.max(due - now, 0), everyMs);
+}
+
+export function tickBegun(
+  prev: CheckState | null,
+  everyMinutes: number,
+  everyMs: number,
+  now: number,
+): CheckState {
+  return {
+    everyMinutes,
+    next: new Date(now + everyMs).toISOString(),
+    ...(prev?.last ? { last: prev.last } : {}),
+  };
+}
+
+export interface CheckTimers {
+  once: (fn: () => void, ms: number) => void;
+  every: (fn: () => void, ms: number) => void;
+}
+
+export function scheduleUpdateChecks(o: {
+  every: number;
+  prev: CheckState | null;
+  now: number;
+  tick: () => void;
+  timers: CheckTimers;
+}): { next: string | null } {
+  const first = firstCheckDelay(o.prev, o.every, o.now);
+  if (first === null) return { next: null };
+  o.timers.once(() => {
+    o.tick();
+    o.timers.every(o.tick, o.every);
+  }, first);
+  return { next: new Date(o.now + first).toISOString() };
 }
 
 /** A local date and time, minutes only: 2026-11-14 18:34. */

@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import type { BrowserType } from "playwright";
+import type { Browser, BrowserType } from "playwright";
 import {
   browserWaitMs,
   directBrowserOpens,
@@ -89,6 +89,18 @@ describe("launchBrowser", () => {
     process.env = { ...env };
   });
 
+  /** A connected browser: its contexts say whether a guard routed them. */
+  function remoteBrowser() {
+    const routes: string[] = [];
+    return {
+      name: "remote",
+      routes,
+      newContext: async () => ({
+        route: async (p: string) => void routes.push(p),
+      }),
+    };
+  }
+
   function fakeType(connectFails = false) {
     const calls: string[] = [];
     const type = {
@@ -100,7 +112,7 @@ describe("launchBrowser", () => {
       connect: async (ws: string, o: unknown) => {
         calls.push(`connect ${ws} ${JSON.stringify(o)}`);
         if (connectFails) throw new Error("connect ECONNREFUSED");
-        return "remote" as never;
+        return remoteBrowser() as never;
       },
     };
     return { type: type as unknown as BrowserType, calls };
@@ -109,7 +121,13 @@ describe("launchBrowser", () => {
   it("connects to DEN_PW_WS with the loopback shared, and never launches", async () => {
     process.env.DEN_PW_WS = "ws://pw.test:3921/";
     const { type, calls } = fakeType();
-    expect(await launchBrowser(type, { args: ["--x"] })).toBe("remote");
+    const b = (await launchBrowser(type, {
+      args: ["--x"],
+    })) as unknown as ReturnType<typeof remoteBrowser>;
+    expect(b.name).toBe("remote");
+    // Issue 1205: it comes back guarded (the loopback is shared).
+    await (b as unknown as Browser).newContext();
+    expect(b.routes).toEqual(["**/*"]);
     expect(calls).toEqual([
       'connect ws://pw.test:3921/ {"exposeNetwork":"<loopback>"}',
     ]);
@@ -141,7 +159,10 @@ describe("launchBrowser", () => {
     const { type } = fakeType(true);
     expect(await openBrowser(type)).toBeNull();
     // It opens normally when it can.
-    expect(await openBrowser(fakeType().type)).toBe("remote");
+    expect(
+      ((await openBrowser(fakeType().type)) as unknown as { name: string })
+        .name,
+    ).toBe("remote");
   });
 });
 

@@ -41,6 +41,7 @@ import {
 } from "../../../src/ui/cli/agent-ops.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
+import { recentActions } from "../../../src/ui/server/audit.js";
 import { ACTOR_TOKEN_ENV } from "../../../src/shared/actor-token.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
@@ -404,6 +405,22 @@ describe("the routes", () => {
     });
     expect(bad.status).toBe(400);
     expect(String(bad.json.error)).toMatch(/auto, ask or off/);
+    // Issue 1391: agents may read the trail. The row is written only
+    // after every field is checked, so a refused value never reaches it,
+    // and a kept row holds only checked values.
+    const typed = await call("PUT", "/api/agents/rotation", {
+      scope: "install",
+      key: "on_due",
+      value: "s3cr3t-typed-in",
+    });
+    expect(typed.status).toBe(400);
+    const rows = recentActions().filter((e) =>
+      e.detail.startsWith("rotation "),
+    );
+    expect(rows.map((e) => e.detail).join("\n")).not.toContain("s3cr3t");
+    expect(rows.map((e) => e.detail)).toContain(
+      "rotation persona be-dev after_compactions = 5",
+    );
     const clear = await call("PUT", "/api/agents/rotation", {
       scope: "persona",
       target: "be-dev",
