@@ -2258,6 +2258,11 @@
       "why": "tests that run scripts/fast-checks.mjs"
     },
     {
+      "when": ["scripts/fixed-date-gate.mjs"],
+      "run": ["tests/unit/scripts/fixed-date-gate.test.ts"],
+      "why": "tests that run scripts/fixed-date-gate.mjs"
+    },
+    {
       "when": ["scripts/flake-evidence.mjs"],
       "run": ["tests/unit/test-infra/quarantine.test.ts"],
       "why": "tests that run scripts/flake-evidence.mjs"
