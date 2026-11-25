@@ -14,7 +14,7 @@
  *     last job (gates / pack) has finished, stop; or when everything listed
  *     has stayed finished for two polls (plan failed, so nothing more comes).
  *     Env: GH_TOKEN (actions: write), GITHUB_REPOSITORY, GITHUB_RUN_ID,
- *     GITHUB_REF_NAME, GITHUB_JOB, WAIT_MINUTES (default 10).
+ *     GITHUB_REF_NAME, WAIT_MINUTES (default 10).
  *     Exit 0: the box ran its jobs, or the hosted run was started. 1: the
  *     API or the new run failed (said in one line).
  *
@@ -29,7 +29,10 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 
-const SELF = process.env.GITHUB_JOB || "box-watch";
+// The watch's own job, by its key in release-dry-run.yml (it has no name:,
+// so the jobs API lists it by the key). Never GITHUB_JOB: the tests run in
+// CI inside a job of their own, and the rule must not take that name.
+const SELF = "box-watch";
 const WORKFLOW = "release-dry-run.yml";
 const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 

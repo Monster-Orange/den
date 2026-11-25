@@ -51,6 +51,9 @@ function decide(jobs: Job[], wait = "10", idleBefore = "no") {
     {
       encoding: "utf-8",
       timeout: 10_000,
+      // CI runs this test inside a job of its own (GITHUB_JOB=pr-shards):
+      // the rule must not take that job's name for the watch's.
+      env: { ...process.env, GITHUB_JOB: "pr-shards" },
     },
   );
   fs.rmSync(dir, { recursive: true, force: true });
