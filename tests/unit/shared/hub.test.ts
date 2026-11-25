@@ -20,6 +20,7 @@ import {
   newPkce,
   ownerRepo,
   patchHubAllowTools,
+  patchHubGroups,
   readHubConfig,
   newHubTokenCache,
   readHubToken,
@@ -73,8 +74,11 @@ describe("readHubConfig", () => {
       inboxWatch: true,
       inboxPollSeconds: 30,
       inboxBackoffMaxSeconds: 600,
+      inboxReadsPerSecond: 2,
       toolsCheckSeconds: 300,
       toolsRestart: true,
+      groupsCacheSeconds: 30,
+      groups: "auto",
     });
   });
 
@@ -250,6 +254,27 @@ describe("issue 166: the inbox watcher's settings", () => {
       readHubConfig({ hub: { url, inbox_poll_seconds: 1 } }, {}, noSecrets),
     ).toThrow(/hub\.inbox_poll_seconds must be a number, at least 5/);
   });
+
+  it("2026-11-22: reads at most 2 a second for the install unless set; 0 or text throws", () => {
+    expect(
+      readHubConfig({ hub: { url } }, {}, noSecrets)!.inboxReadsPerSecond,
+    ).toBe(2);
+    expect(
+      readHubConfig(
+        { hub: { url } },
+        { hub: { inbox_reads_per_second: 0.5 } },
+        noSecrets,
+      )!.inboxReadsPerSecond,
+    ).toBe(0.5);
+    for (const bad of [0, -1, "fast"])
+      expect(() =>
+        readHubConfig(
+          { hub: { url, inbox_reads_per_second: bad } },
+          {},
+          noSecrets,
+        ),
+      ).toThrow(/hub\.inbox_reads_per_second must be a number above 0/);
+  });
 });
 
 describe("hub.allow_tools", () => {
@@ -268,6 +293,77 @@ describe("hub.allow_tools", () => {
     expect(() =>
       readHubConfig({ hub: { url, allow_tools: "no" } }, {}, noSecrets),
     ).toThrow(/hub\.allow_tools must be true or false/);
+  });
+
+  it("issue 750: hub.groups is auto by default; auto, on, off; true and false read as on and off; junk is refused", () => {
+    const g = (groups: unknown) =>
+      readHubConfig({ hub: { url, groups } }, {}, noSecrets)?.groups;
+    expect(readHubConfig({ hub: { url } }, {}, noSecrets)?.groups).toBe("auto");
+    expect(g(null)).toBe("auto");
+    expect(g("auto")).toBe("auto");
+    expect(g("on")).toBe("on");
+    expect(g("off")).toBe("off");
+    expect(g(true)).toBe("on");
+    expect(g(false)).toBe("off");
+    for (const junk of ["yes", "ON", 1, {}])
+      expect(() => g(junk)).toThrow(/hub\.groups must be auto, on or off/);
+  });
+
+  it("issue 750: Settings and config set hub.groups and hub.groups_cache_seconds in user.yml; null clears; junk is refused", () => {
+    const user: Record<string, unknown> = {
+      hub: { url, token: "file:/x", allow_tools: false },
+    };
+    expect(patchHubGroups(user, { mode: "on" })).toEqual({ ok: true });
+    expect(patchHubGroups(user, { cache_seconds: 60 })).toEqual({ ok: true });
+    expect(user.hub).toEqual({
+      url,
+      token: "file:/x",
+      allow_tools: false,
+      groups: true,
+      groups_cache_seconds: 60,
+    });
+    expect(patchHubGroups(user, { mode: null, cache_seconds: null })).toEqual({
+      ok: true,
+    });
+    expect(user.hub).toEqual({ url, token: "file:/x", allow_tools: false });
+    for (const bad of [
+      { mode: "yes" },
+      { mode: 1 },
+      { cache_seconds: 4 },
+      { cache_seconds: 3601 },
+      { cache_seconds: 10.5 },
+      { cache_seconds: "30" },
+      { other: 1 },
+      "on",
+    ]) {
+      const before = JSON.stringify(user);
+      const r = patchHubGroups(user, bad);
+      expect(r.ok).toBe(false);
+      expect(JSON.stringify(user)).toBe(before);
+    }
+    // On and off are written as true and false, and auto as no key: an
+    // older Den reads only true or false, and refuses the whole hub block
+    // on anything else.
+    const b: Record<string, unknown> = { hub: { url } };
+    for (const [mode, want] of [
+      ["on", true],
+      ["off", false],
+      [true, true],
+      [false, false],
+    ] as const) {
+      expect(patchHubGroups(b, { mode })).toEqual({ ok: true });
+      expect(b).toEqual({ hub: { url, groups: want } });
+      // What it wrote reads back as the mode set.
+      expect(readHubConfig({}, b, noSecrets)?.groups).toBe(want ? "on" : "off");
+    }
+    expect(patchHubGroups(b, { mode: "auto" })).toEqual({ ok: true });
+    expect(b).toEqual({ hub: { url } });
+    // An empty hub block goes away.
+    const bare: Record<string, unknown> = {};
+    patchHubGroups(bare, { mode: "off" });
+    expect(bare).toEqual({ hub: { groups: false } });
+    patchHubGroups(bare, { mode: null });
+    expect(bare).toEqual({});
   });
 
   it("Settings' POST sets it in user.yml, null clears it, junk is refused", () => {

@@ -135,6 +135,16 @@ export interface InboxHookArgs {
   call?: HookCall;
 }
 
+/**
+ * Issue 1264: what the PreToolUse hook needs to send an agent's heavy runs
+ * through the gate: this install's own CLI (absolute path) and the gate's
+ * settings.json, read on each call (route_agents, route_commands).
+ */
+export interface GateRouteArgs {
+  cli: string;
+  settings: string;
+}
+
 /** `--hub-inbox <base>` and, given, issue 609's call flags. */
 const inboxFlags = (inbox: InboxHookArgs): string[] => [
   "--hub-inbox",
@@ -159,6 +169,8 @@ export function hookCommands(
   apiOnly?: ApiOnlyArgs,
   /** D41: Den's proxy to Hub, for the inbox check. */
   inbox?: InboxHookArgs,
+  /** Issue 1264: route heavy runs through the gate. */
+  gate?: GateRouteArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -181,6 +193,7 @@ export function hookCommands(
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
           : []),
+        ...(gate ? ["--gate", gate.cli, "--gate-settings", gate.settings] : []),
       ],
     }),
     stop: commandLine(

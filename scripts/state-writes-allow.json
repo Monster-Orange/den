@@ -36,8 +36,8 @@
     "reason": "developer script: config/local in the checkout, run by hand"
   },
   "src/shared/agents/git-signing.ts": {
-    "count": 1,
-    "reason": "temp file: allowed_signers in a mkdtemp folder removed after the check"
+    "count": 2,
+    "reason": "temp files: allowed_signers in a mkdtemp folder removed after the check; and in the new key's mkdtemp folder, which a rename moves into place whole (issue 1316)"
   },
   "src/shared/agents/sandbox.ts": {
     "count": 1,
@@ -84,8 +84,8 @@
     "reason": "temp .command scripts in the OS temp folder, removed after Terminal opens them"
   },
   "src/ui/server/sudo-store.ts": {
-    "count": 3,
-    "reason": "the sudo shim's files in a per-process temp folder, never state"
+    "count": 4,
+    "reason": "the sudo shim's files and its pid file in a per-process temp folder, never state"
   },
   "src/ui/server/update-watch.mjs": {
     "count": 1,

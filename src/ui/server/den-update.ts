@@ -64,6 +64,29 @@ export interface UpdateDeps {
   pid: number;
   waitMs: number;
   now?: () => number;
+  /**
+   * Issue 1403: a routine update on a personal install. The version npm
+   * resolves to must be a stable release at or above the running one, or
+   * nothing happens and the person decides (needsPerson).
+   */
+  stableNotOlder?: boolean;
+}
+
+/**
+ * Issue 1403 (Den Builder): whether `to` is a stable release (no
+ * prerelease or dev tag) at or above `from`, the running version. A
+ * version that can't be read is neither.
+ */
+export function stableNotOlder(to: string, from: string | null): boolean {
+  const core = (v: string) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(v);
+    return m ? { n: [+m[1], +m[2], +m[3]], pre: m[4] !== undefined } : null;
+  };
+  const t = core(to);
+  const f = from ? core(from) : null;
+  if (!t || !f || t.pre) return false;
+  for (let i = 0; i < 3; i++) if (t.n[i] !== f.n[i]) return t.n[i] > f.n[i];
+  return true; // the same release, or the release of a running prerelease
 }
 
 export type UpdateResult =
@@ -79,6 +102,8 @@ export type UpdateResult =
       error: string;
       from?: string;
       to?: string;
+      /** Issue 1403: a routine update stopped; the person decides. */
+      needsPerson?: true;
       /**
        * Issue 125: the rollback failed too. What the person must do by hand
        * (put the pin back on `from` in `root`, then npm install there), kept
@@ -262,6 +287,16 @@ export async function updateDen(
   const to = await d.npmView(`${d.pkg.name}@${want}`);
   if (!to)
     return { ok: false, error: `npm has no ${d.pkg.name}@${want}`, from };
+  // Issue 1403: checked again against what "latest" (or the version named)
+  // is now, and the version running now. Nothing is touched yet.
+  if (d.stableNotOlder && !stableNotOlder(to, from))
+    return {
+      ok: false,
+      needsPerson: true,
+      error: `${to} is not a stable release at or above ${from}, the version running: the person decides`,
+      from,
+      to,
+    };
   if (to === from)
     return { ok: false, error: `Den is on ${to} already`, from, to };
 

@@ -26,7 +26,7 @@
  */
 import { esc, kitT } from "./strings.js";
 import { reportButtonHtml } from "./shell-html.js";
-import { dialogHtml, mountDialog, openerOf } from "./dialog.js";
+import { dialogHtml, mountDialog, onAsk, openerOf } from "./dialog.js";
 
 const cfg = {
   lang: "en",
@@ -40,6 +40,8 @@ let showAll = false;
 let frame = null;
 /** Waiting for another pop-up to close before opening. */
 let waiting = false;
+/** Closed to make way for a question (issue 864): not read, not seen. */
+let aside = false;
 
 const lang = () => (typeof cfg.lang === "function" ? cfg.lang() : cfg.lang);
 const t = (key, vars) => kitT(lang(), key, vars);
@@ -153,6 +155,10 @@ function makeFrame() {
 function closed() {
   frame?.dialog.classList.remove("open");
   frame = null;
+  if (aside) {
+    aside = false;
+    return;
+  }
   if (cfg.onClose) cfg.onClose(entries[0]?.version ?? null);
   const pip = document.getElementById("v-pip");
   if (pip) pip.style.display = "none";
@@ -435,6 +441,29 @@ export function openWhatsNew() {
   // The heading first, so a screen reader starts at the latest notes.
   document.getElementById("cl-title")?.focus();
 }
+
+/**
+ * Issue 864: a kit question (askConfirm, askText, tell) asked while this
+ * is open: it steps aside, so the question is the only pop-up, and opens
+ * again once the question is answered. It isn't counted as seen.
+ */
+function stepAside(ask) {
+  if (!frame?.dialog.open) return;
+  aside = true;
+  waiting = true;
+  frame.close("cancel");
+  ask.addEventListener(
+    "close",
+    () => {
+      // Closed by the page meanwhile (closeWhatsNew): it stays closed.
+      if (!waiting) return;
+      waiting = false;
+      setTimeout(openWhatsNew, 0);
+    },
+    { once: true },
+  );
+}
+if (typeof document !== "undefined") onAsk(stepAside);
 
 export function closeWhatsNew() {
   // Issue 143: a field of the page's own that wanted the keyboard while
