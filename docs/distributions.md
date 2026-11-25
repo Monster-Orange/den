@@ -1297,38 +1297,11 @@ later plugins.
   sends it on every request to Den's web route. Den believes what the edge
   says about a client only with it: without it, a request on the edge
   hostname signs in, this machine's included. An edge set up before 0.4.48
-  gets it at Den's next start (only Den's dynamic file is rewritten;
+  gets it at Den's next start (only `dynamic/edge.yml` is rewritten;
   Traefik reloads it, nothing restarts). `edge up --rotate-proof` makes a
   new one, and the old one stops working at once. Doctor's "Edge proof"
   line (`doctor --json`: check `edge_proof`) says whether the edge carries
-  it; the secret itself is never printed or logged. A proof from an older
-  version proves nothing, even when Den can't replace it (a read-only
-  state dir): doctor says so. The middleware that adds it has a name made
-  from the proof, so only Den's own route can use it: a Docker-label
-  router can't, and `edge.include` files and `edge.mounts` into the
-  dynamic folder that would are refused.
-- **Den's dynamic file is read first.** Traefik reads the dynamic folder
-  in name order and keeps the first definition of a name, so Den writes
-  its routes to `dynamic/000-den.yml` (an older `dynamic/edge.yml` is
-  moved there at the next start or edge up). Edge up refuses an
-  `edge.include` file that would sort before it, or that defines a
-  router, service, middleware or servers transport named like one Den
-  renders (`route-<name>`, `to-https`, `den-upstream`, anything starting
-  `den-`), naming the file and the key.
-- **An edge with Traefik's API on is recreated at Den's start.** If the
-  running edge's command turns the API on (one started before Den
-  refused it in `edge.args`), Den stops it before it writes any proof,
-  then recreates it without the API and with a new proof. If the stop or
-  the recreate fails, Den believes nothing through the edge (everyone
-  signs in) until `edge up` succeeds, and doctor's "Edge proof" line says
-  why.
-- **Den knows its edge by its container.** It believes the edge
-  hostname only from loopback or the edge container's own addresses: the
-  running container named `<org>-edge` that also has this state dir's
-  `den.edge.root` label and the `den.edge.org` label. It reads them again
-  every `edge.address_recheck_seconds` (default 60, 1 to 300), on a
-  request from any other address, and after edge up; with nothing read
-  for twice that, loopback only.
+  it; the secret itself is never printed or logged.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
@@ -2645,21 +2618,8 @@ user, and the CLI does that for you:
   loopback and the Docker ranges (`127.0.0.1/32`, `::1/128`,
   `172.16.0.0/12`, `192.168.65.0/24`), never `forwardedHeaders.insecure`,
   so a client can't hand the edge an `X-Forwarded-For` of its own. An
-  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` (one
-  dash or two) is dropped, and `edge up` says so.
-- **`edge.args` is an allow-list.** It may set the access log (not its
-  `filePath` or `fields.headers`), `log.level` (INFO or above),
-  `log.format`, `log.noColor`, `core.defaultRuleSyntax`, `global.*`
-  telemetry, the web and websecure entrypoints' transport timeouts,
-  `serversTransport` timeouts and `providers.providersThrottleDuration`.
-  Anything else (the API, a static config file, providers, entrypoints,
-  tracing, metrics, a bare value) is refused, with a line naming the
-  key, in any spelling: one dash or two, `=` or a space. Den sets the rest
-  of the edge's static config itself. The entrypoints' `readTimeout` and
-  `idleTimeout` must be above 0, and `providersThrottleDuration` at most
-  5s. A refused entry fails the config read, so the edge page, doctor,
-  stacks and the server's edge checks all stop on it until it is removed;
-  the line says which entry.
+  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` is
+  dropped, and `edge up` says so.
 - **A TCP passthrough in front of the edge** (a gateway that publishes
   `:443` and passes TLS through) hides the client: the edge sees the
   gateway's address. Have the gateway send the PROXY protocol, and list it
@@ -6276,6 +6236,21 @@ notices): how many checks passed, failed and skipped, and each failure's
 name and URL. `github_watch_list` and `github_watch_cancel` show and stop
 the agent's own watches. A pull request is watched at the head it has when
 asked: after a new push, the agent watches again.
+
+What counts:
+
+- Only the newest run of each check on the head, as the pull request's own
+  check list shows. A re-run, a label added or an edited description starts
+  a new run of a workflow; the older run's checks, cancelled or failed, are
+  superseded and not counted. Two workflows' jobs of one name are different
+  checks, and both count: Den reads which workflow each belongs to from the
+  head's runs first. Checks of another app are never merged.
+- A cancelled check or job isn't a failure, nor a pass: it is counted as
+  cancelled ("2 passed, 0 failed, 0 skipped, 1 cancelled") and listed as
+  "Cancelled, not passed". When a pull request's checks end with some
+  cancelled, Den first looks at the pull request: a push that moved its head
+  ends the watch as replaced, with no failures listed; on the same head, the
+  result is told.
 
 How the watcher paces itself:
 

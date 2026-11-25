@@ -163,9 +163,10 @@ async function confirmOk(p: Page): Promise<void> {
 }
 
 /**
- * Issue 1054: the pressed button shows the wait on itself (aria-busy,
- * disabled) while the answer is held, with no Working pop-up; it is given
- * back once the answer comes.
+ * Issue 1054: the pressed button shows the wait on itself (aria-busy;
+ * issue 1434: aria-disabled, never disabled, so it keeps focus) while the
+ * answer is held, with no Working pop-up; it is given back once the
+ * answer comes.
  */
 async function expectHeldButton(p: Page, held: Held): Promise<void> {
   try {
@@ -173,7 +174,11 @@ async function expectHeldButton(p: Page, held: Held): Promise<void> {
     await p.waitForFunction(
       () => {
         const b = document.getElementById("cb-btn") as HTMLButtonElement | null;
-        return b?.getAttribute("aria-busy") === "true" && !!b.disabled;
+        return (
+          b?.getAttribute("aria-busy") === "true" &&
+          b.getAttribute("aria-disabled") === "true" &&
+          !b.disabled
+        );
       },
       undefined,
       { timeout: 20_000 },
