@@ -22,7 +22,7 @@ export type ListAccess =
  * answer. An agent, a fixture session or a test person: 403.
  */
 export function testInstallsListAccess(
-  p: Principal | undefined,
+  p: Principal | null | undefined,
   notAPerson: boolean,
 ): ListAccess {
   const person =
@@ -47,7 +47,7 @@ export type GrantAccess =
  * (`beyond`: through the edge or the network).
  */
 export function fixtureGrantAccess(
-  p: Principal | undefined,
+  p: Principal | null | undefined,
   notAPerson: boolean,
   beyond: boolean,
 ): GrantAccess {
