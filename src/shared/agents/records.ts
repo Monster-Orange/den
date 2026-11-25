@@ -129,6 +129,11 @@ export interface AgentRecord {
   /** That session's exit code, when the host said it. */
   exitCode?: number;
   /**
+   * Issue 1325: its sandboxed session's own temp folder (TMPDIR), removed
+   * when that session ends.
+   */
+  sessionTmp?: string;
+  /**
    * Set when its session was gone after Den or the machine restarted
    * (AG-14.3: "Interrupted"); cleared by a resume or a start.
    */

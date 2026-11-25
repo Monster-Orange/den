@@ -270,6 +270,10 @@ describe("den-claude launch", () => {
     expect(prompt).toMatch(/docs\/specs/);
     // NT-1: how it asks its person for a decision.
     expect(prompt).toMatch(/call ask_human .* then end your turn/);
+    // Issue 1371: a setting is asked for, never handed over as a YAML edit.
+    expect(prompt).toMatch(
+      /When one of Den's settings needs changing, ask for it with setting_change.*Never hand your person a YAML edit/,
+    );
     expect(out.env).toEqual({});
     expect(Object.keys(out.files ?? {})).toEqual([mcpFile, settingsFile]);
     // SEC-1 §6c.1: Den's state dir is denied to the agent (binds a
@@ -502,6 +506,83 @@ describe("den-claude launch", () => {
     expect(deny).toContain(`Edit(/${reg}/**)`);
     expect(denied(deny, `ls ${reg}`)).toBe(true);
     expect(denied(deny, `cat ${entry}`)).toBe(true);
+  });
+
+  it("issue 1391: a personal install: an agent may read its activity trail (audit.jsonl), and never edit it", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+            trailReadable: true,
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    const trail = path.join(state, "audit.jsonl");
+    // To debug "who changed this": read it, by Read or a command.
+    expect(readDenied(deny, trail)).toBe(false);
+    expect(denied(deny, `tail ${trail}`)).toBe(false);
+    expect(denied(deny, `grep restart ${trail}`)).toBe(false);
+    // Only the server writes it (issue 1369).
+    expect(deny).toContain(`Edit(/${trail})`);
+  });
+
+  it("issue 1391: a strict install (trailReadable unset): the trail is denied to Read, Edit and Bash", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    const trail = path.join(state, "audit.jsonl");
+    // To debug "who changed this": read it, by Read or a command.
+    expect(readDenied(deny, trail)).toBe(true);
+    expect(denied(deny, `tail ${trail}`)).toBe(true);
+    expect(denied(deny, `grep restart ${trail}`)).toBe(true);
+    // Only the server writes it (issue 1369).
+    expect(deny).toContain(`Edit(/${trail})`);
+  });
+
+  it("issue 728: the install registry is denied by its real path too (a symlink in it)", () => {
+    const state = path.join(tmp(), ".acme");
+    const filesDir = path.join(state, "agent-files", "planner");
+    const realReg = path.join(path.dirname(state), "real", "installs");
+    fs.mkdirSync(realReg, { recursive: true });
+    const reg = path.join(path.dirname(state), "linked-installs");
+    fs.symlinkSync(realReg, reg);
+    const deny = (
+      JSON.parse(
+        getRuntime("den-claude")!.launch(
+          input({
+            env: { ...shim().env, HOME: path.dirname(state) },
+            stateDir: state,
+            filesDir,
+            installRegistryDir: reg,
+          }),
+        ).files![path.join(filesDir, "settings.json")],
+      ) as { permissions: { deny: string[] } }
+    ).permissions.deny;
+    const realEntry = path.join(
+      fs.realpathSync(realReg),
+      "0123456789abcdef.json",
+    );
+    expect(readDenied(deny, path.join(reg, "0123456789abcdef.json"))).toBe(
+      true,
+    );
+    expect(readDenied(deny, realEntry)).toBe(true);
+    expect(denied(deny, `cat ${realEntry}`)).toBe(true);
   });
 
   it("issue 728: the edge's key folders are denied, from the launch input", () => {

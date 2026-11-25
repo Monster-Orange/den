@@ -32,6 +32,8 @@ type Suggestion = HubProjectChoice & { why?: "repo" | "name" };
 export interface HubLinkAllDeps {
   /** Every project here (the server agent's scope is never one). */
   projects: () => string[];
+  /** Issue 1334: an empty project (no repos, services or agents); never offered. */
+  empty?: (ws: string) => boolean;
   /** Hub's projects and suggestions for `ws`; null: Hub isn't connected. */
   choices: (ws: string) => Promise<{
     suggestions: Suggestion[];
@@ -57,7 +59,7 @@ const MAX_LINKS = 200;
  * catch-all project: a person links it by hand in Project setup.
  */
 const linkable = (d: HubLinkAllDeps) =>
-  d.projects().filter((p) => !isCatchAllProject(p));
+  d.projects().filter((p) => !isCatchAllProject(p) && !d.empty?.(p));
 
 /**
  * 0.4.45: which Hub project fits a project, from Hub's suggestions. Clear:
@@ -246,7 +248,9 @@ export async function defaultLinkAllDeps(
     import("../../shared/environment-manager/workspaces.js"),
     import("../../shared/agents/server-agent.js"),
   ]);
+  const { emptyProjectsNow } = await import("../../shared/empty-project.js");
   return {
+    empty: await emptyProjectsNow(),
     projects: () => {
       try {
         return Object.keys(w.readWorkspacesFile().workspaces ?? {})

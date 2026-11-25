@@ -17,9 +17,10 @@ import { AsyncLocalStorage } from "async_hooks";
 import * as fs from "fs";
 import * as path from "path";
 import { agentsDir } from "./records.js";
+import { LOCK_WAIT_MINUTES_DEFAULT } from "./limit-defaults.js";
 
 /** agents.lock_wait_minutes when unset: a stop and resume never take this long. */
-export const LOCK_WAIT_MINUTES_DEFAULT = 30;
+export { LOCK_WAIT_MINUTES_DEFAULT };
 /** How often a process waiting for another's lock checks it again. */
 export const LOCK_POLL_MS = 100;
 

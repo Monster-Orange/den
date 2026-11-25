@@ -160,7 +160,10 @@ describe("issue 786 part 2b: a state file Den can't read is kept, not reset", ()
   });
 });
 
-/** The modules PR 1081 listed as resetting silently, now each kept. */
+/**
+ * The modules PR 1081 listed as resetting silently, now each kept (the pin
+ * record's reader moved to src/shared/pin-record.ts on next/queue).
+ */
 const MOVED = [
   "src/shared/actor-token.ts",
   "src/shared/agents/api-only.ts",
@@ -177,6 +180,7 @@ const MOVED = [
   "src/shared/hub-links-seen.ts",
   "src/shared/hub-project-names.ts",
   "src/shared/hub-tools.ts",
+  "src/shared/pin-record.ts",
   "src/shared/sessions/host-refresh-state.ts",
   "src/shared/update-check-state.ts",
   "src/shared/verify/changes.ts",

@@ -11,6 +11,7 @@ import * as path from "path";
 import { z } from "zod";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 import { shotFileDataUrl } from "../../shared/report-shots.js";
+import { AGENT_VIEW_LINK_NOTE } from "../../shared/agent-view-note.js";
 import {
   GatePriorityRefused,
   GateStore,
@@ -19,7 +20,7 @@ import {
 import { gateView } from "../../shared/gates/view.js";
 import { gateWorkers } from "../../shared/gates/rules.js";
 import {
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { gateBoxTools } from "./gate-box-tools.js";
@@ -527,7 +528,8 @@ const READ_TOOLS: DenTool[] = [
   read(
     "page_view",
     "View this Den's pages, read-only",
-    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so.",
+    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so. Issue 1243: " +
+      AGENT_VIEW_LINK_NOTE,
     {
       next: z
         .string()
@@ -673,11 +675,9 @@ const READ_TOOLS: DenTool[] = [
       const kind = a.kind === "browser" ? "browser" : "cpu";
       // On macOS a browser slot declares a container browser (a Setting).
       const endpoint = str(a.browser_endpoint)?.trim();
-      const verdict = browserSlotCheck({
+      const verdict = await browserSlotCheckOn(store, {
         kind,
         ...(endpoint !== undefined ? { endpoint } : {}),
-        platform: store.platform,
-        requiresContainer: store.settings().browserRequiresContainer,
       });
       if (!verdict.ok)
         throw new Refusal(
@@ -2838,6 +2838,110 @@ const APPROVAL_TOOLS: DenTool[] = [
       const agent = needArg("agent_mode", a, "agent", "the agent's id");
       const project = ctx.scope ? ctx.scope.workspace : str(a.project);
       return askPerson("agent_mode", "agent_mode", { agent, project }, a, ctx);
+    },
+  },
+  {
+    name: "agent_sandbox_set",
+    title: "Turn an agent's sandbox off or on",
+    description:
+      "Turn one agent's sandbox off (`on: false`) or back on (`on: true`), so the person never edits config/local/user.yml by hand. `agent` is its id; `reason` says what it needs that the sandbox blocks (required to turn it off, one line). Off widens what the agent may do: it always waits for the person's own Allow, and the Review says so when an agent asks for itself. Back on runs as the approval policy says. Den writes only agents.<id>.sandbox, and restarts a running agent after its turn, on the same conversation. A project's agent asks for its own project's agents; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      on: z.boolean().describe("true: back in the sandbox; false: out of it"),
+      reason: z
+        .string()
+        .max(300)
+        .optional()
+        .describe("What it needs that the sandbox blocks (required for off)"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_sandbox_set", a, "agent", "the agent's id");
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_sandbox_set",
+        "agent_sandbox_set",
+        {
+          agent,
+          on: a.on,
+          ...(str(a.reason) ? { reason: str(a.reason) } : {}),
+          ...(project ? { project } : {}),
+        },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "setting_change",
+    title: "Change one of Den's settings",
+    description:
+      "Propose one of Den's settings, `key` = `value`, for the person to Allow, so they never edit config/local/user.yml by hand. `key` is the setting's dotted name as `config` and Settings know it (e.g. sessions.max_concurrent, agents.max_concurrent, web.agent_view, held_writes.wait_minutes); `value` is its new value (a number, true/false, text or a list), or null for Den's default; `reason` says why, in one line. Den checks the key and value with its own parser before anything is held: an unknown key or a refused value comes back at once, with why. The person sees the key, its value now, the new one and the reason. A setting that widens what agents can do (an agent's grants or sandbox, mcp.actions, web.edge_unattested, the approval policy and the like) waits for the person's own Allow. On Allow Den writes only that key, keeps a copy of the file and notes the change in the audit. A setting Den reads when it starts says so: then ask for den_restart_server." +
+      HELD,
+    action: true,
+    shape: {
+      key: z.string().max(200).describe("The setting's dotted name"),
+      value: z
+        .union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.null(),
+          z.array(z.union([z.string(), z.number()])),
+        ])
+        .describe("Its new value; null puts Den's default back"),
+      reason: z.string().max(300).describe("Why it should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const key = needArg(
+        "setting_change",
+        a,
+        "key",
+        "the setting's dotted name",
+      );
+      return askPerson(
+        "setting_change",
+        "setting_change",
+        { key, value: a.value ?? null, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "gate_settings_set",
+    title: "Change this machine's gate slot settings",
+    description:
+      "Issue 1395: propose a change to this machine's gate slot settings (Settings › Gate: the gates folder's settings.json, which setting_change can't reach), so the person never edits the file by hand. `settings` maps each key to its new value, with Settings › Gate's names and ranges (e.g. gate.cpu_slots, gate.local_browser_slots, gate.reap_grace_seconds, gate.priority_agents as 0 or 1; the gate. prefix may be left off; null puts a key's default back); `reason` says why, in one line. Den checks every key and value before anything is held: an unknown key, a value out of range or no change comes back at once, with why, and nothing is written. The person sees each key's value now and the new one. On a personal install it's written at once and the person is told; on a strict one it follows the person's choice for Limits and performance, and gate.browser_requires_container going to 0 waits for their own Allow. Den writes them under the gate's lock, all or none, and the slot log names who asked." +
+      HELD,
+    action: true,
+    shape: {
+      settings: z
+        .record(z.string(), z.union([z.number(), z.string(), z.null()]))
+        .describe(
+          "Each key (gate.<name>, as Settings › Gate) and its new value",
+        ),
+      reason: z.string().max(300).describe("Why they should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      return askPerson(
+        "gate_settings_set",
+        "gate_settings_set",
+        { settings: a.settings ?? {}, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
     },
   },
   {
