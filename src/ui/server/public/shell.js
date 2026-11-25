@@ -7331,6 +7331,15 @@
     document.addEventListener("DOMContentLoaded", ensurePageHeader);
   else ensurePageHeader();
 
+  // Issue 559: the toast's two live regions, empty, from the start, so the
+  // page's first toast goes into a region a screen reader already watches.
+  function ensureToasts() {
+    if (DUI && DUI.ensureToastRegions) DUI.ensureToastRegions(document);
+  }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", ensureToasts);
+  else ensureToasts();
+
   // Skip to content: the page's <main id="den-content">, its one main
   // landmark (each page wraps its content in it).
   var skip = host.querySelector(".den-skip");

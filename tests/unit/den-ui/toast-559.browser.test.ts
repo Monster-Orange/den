@@ -42,15 +42,16 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-const PAGE = (lang: string, body: string) => `<!doctype html>
+const PAGE = (lang: string, body: string, regions: boolean) => `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
 <link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/base.css">
 <link rel="stylesheet" href="/toast.css"></head>
 <body><main><button id="before">Before</button><button id="other">Other</button></main>
 ${body}
 <script type="module">
-import { showToast, hydrateToast, toastHtml } from "/toast.js";
-window.kit = { showToast, hydrateToast, toastHtml };
+import * as kit from "/toast.js";
+window.kit = kit;
+${regions ? "kit.ensureToastRegions();" : ""}
 window.undos = 0;
 window.ready = true;
 </script></body></html>`;
@@ -62,6 +63,8 @@ async function open(
     reduce?: boolean;
     width?: number;
     body?: string;
+    /** A host that makes the regions at start (as Den's shell does). */
+    regions?: boolean;
   } = {},
 ): Promise<Page> {
   const ctx = await browser!.newContext({
@@ -78,7 +81,7 @@ async function open(
     if (u.pathname === "/")
       return r.fulfill({
         contentType: "text/html",
-        body: PAGE(o.lang ?? "en", o.body ?? ""),
+        body: PAGE(o.lang ?? "en", o.body ?? "", o.regions ?? true),
       });
     const f = u.pathname.slice(1);
     if (/^[a-z-]+\.(js|css)$/.test(f) && fs.existsSync(path.join(SRC, f)))
@@ -97,6 +100,7 @@ type W = Window & {
   kit: {
     showToast: (o: object) => { close(): void };
     hydrateToast: (d?: Document) => { close(): void } | null;
+    ensureToastRegions: (d?: Document) => void;
   };
   undos: number;
 };
@@ -117,6 +121,59 @@ const TOAST = ":is([data-den-toast], #art-toast) > [data-kind]";
 const toasts = (p: Page) => p.locator(TOAST).count();
 
 describe("issue 559: the toast in a browser", () => {
+  it("the page's first toast: its region is on the page, empty, before the toast comes in", async () => {
+    if (skip()) return;
+    const p = await open({ regions: false });
+    const r = await p.evaluate(() => {
+      const w = window as unknown as W;
+      w.kit.showToast({ message: "First" });
+      // Same task as the call: the region is there, and still empty.
+      const reg = document.querySelector('[data-den-toast="status"]');
+      return { there: !!reg?.isConnected, kids: reg?.children.length ?? -1 };
+    });
+    expect(r).toEqual({ there: true, kids: 0 });
+    await p.clock.runFor(100);
+    expect(await toasts(p)).toBe(1);
+    expect(await p.locator("[data-toast-msg]").textContent()).toBe("First");
+    await p.context().close();
+  });
+
+  it("ensureToastRegions: both regions, empty, made once", async () => {
+    if (skip()) return;
+    const p = await open({ regions: false });
+    const r = await p.evaluate(() => {
+      const w = window as unknown as W;
+      w.kit.ensureToastRegions();
+      w.kit.ensureToastRegions();
+      return [...document.querySelectorAll("[data-den-toast]")].map(
+        (x) => `${x.getAttribute("data-den-toast")}:${x.children.length}`,
+      );
+    });
+    expect(r).toEqual(["status:0", "alert:0"]);
+    // With the regions made at load, a toast goes straight in.
+    await show(p, { message: "Now" });
+    expect(await toasts(p)).toBe(1);
+    await p.context().close();
+  });
+
+  it("a toast shown just after a server's toast is hydrated: only the new one stays", async () => {
+    if (skip()) return;
+    const p = await open({
+      body:
+        '<div id="art-toast" role="status" aria-live="polite" data-ttl="8000">' +
+        '<div class="den-toast" data-kind="status"><span class="den-toast-words"><span class="den-toast-msg" data-toast-msg>Old</span></span></div></div>',
+    });
+    await p.evaluate(() => {
+      const w = window as unknown as W;
+      w.kit.hydrateToast();
+      w.kit.showToast({ message: "New" });
+    });
+    await p.clock.runFor(200);
+    expect(await toasts(p)).toBe(1);
+    expect(await p.locator("[data-toast-msg]").textContent()).toBe("New");
+    await p.context().close();
+  });
+
   it("one live region, empty before the words, reused; an error in the alert region", async () => {
     if (skip()) return;
     const p = await open();
@@ -133,6 +190,7 @@ describe("issue 559: the toast in a browser", () => {
     });
     expect(r).toEqual([
       { k: "status", role: "status", live: "polite", text: "Two" },
+      { k: "alert", role: "alert", live: "assertive", text: "" },
     ]);
     await show(p, { kind: "error", message: "Down" });
     const roles = await p.evaluate(() =>
@@ -241,11 +299,13 @@ describe("issue 559: the toast in a browser", () => {
         '<div class="den-toast" data-kind="status"><span class="den-toast-words"><span class="den-toast-msg">Removed</span></span></div></div>',
     });
     await p.evaluate(() => (window as unknown as W).kit.hydrateToast());
-    // Out, then back in: a screen reader hears it.
+    // Out, then back in 50 ms later: a screen reader hears it.
+    expect(await toasts(p)).toBe(0);
+    await p.clock.runFor(49);
     expect(await toasts(p)).toBe(0);
     await p.clock.runFor(1);
     expect(await toasts(p)).toBe(1);
-    await p.clock.runFor(7998);
+    await p.clock.runFor(7949);
     expect(await toasts(p)).toBe(1);
     await p.clock.runFor(2);
     expect(await toasts(p)).toBe(0);

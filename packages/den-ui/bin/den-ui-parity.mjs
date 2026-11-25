@@ -235,7 +235,13 @@ export const COMPONENTS = {
     label: "toast (message, Undo, Close; its live region and timing)",
     markup: [cls("den-toast"), cls("den-toast-region")],
     css: ["den-toast", "den-toast-region", "den-toast-err", "den-toast-act"],
-    code: ["showToast", "toastHtml", "hydrateToast", "toastClock"],
+    code: [
+      "showToast",
+      "toastHtml",
+      "hydrateToast",
+      "toastClock",
+      "ensureToastRegions",
+    ],
     files: ["toast.js", "toast.css"],
   },
   account: {

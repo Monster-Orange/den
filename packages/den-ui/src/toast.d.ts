@@ -1,6 +1,10 @@
 /** den-ui: the toast (issue 559). See toast.js. */
 export declare const PLAIN_MS: number;
 export declare const UNDO_MS: number;
+/** The wait before a toast goes into a region just made or emptied. */
+export declare const ANNOUNCE_MS: number;
+/** Both live regions, empty, on the page now (call once at start). */
+export declare function ensureToastRegions(doc?: Document): void;
 
 export type ToastKind = "status" | "error";
 
@@ -12,6 +16,7 @@ export interface ToastAction {
 }
 
 export interface ToastLink {
+  /** http(s), relative or mailto; any other address leaves the link out. */
   href: string;
   label: string;
 }
@@ -37,6 +42,7 @@ export interface ToastHandle {
 }
 
 export interface ToastUndoForm {
+  /** http(s) or relative; any other throws. */
   action: string;
   fields?: Readonly<Record<string, string>>;
   /** "post" only (the default); anything else throws. */

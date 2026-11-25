@@ -266,7 +266,10 @@ const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
   { file: "dialog.js", names: ["openerOf", "focusBack"] },
   // Issue 559: the toast. Its own scope: its helpers (region, wire) stay
   // its own. It calls esc and kitT (strings.js, below) only when it runs.
-  { file: "toast.js", names: ["showToast", "hydrateToast"] },
+  {
+    file: "toast.js",
+    names: ["showToast", "hydrateToast", "ensureToastRegions"],
+  },
 ];
 const KIT_SHELL_NAMES = [
   "shellHtml",
@@ -312,6 +315,7 @@ const KIT_SHELL_NAMES = [
   // Issue 559: the toast.
   "showToast",
   "hydrateToast",
+  "ensureToastRegions",
 ];
 
 /**

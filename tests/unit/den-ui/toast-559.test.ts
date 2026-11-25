@@ -201,6 +201,41 @@ describe("issue 559: the toast's markup", () => {
   });
 });
 
+describe("issue 559: the toast's addresses", () => {
+  it("a link is http(s), mailto or relative; any other is left out", () => {
+    const link = (href: string) =>
+      toastHtml({ message: "x", link: { href, label: "Open" } });
+    for (const ok of [
+      "/pins",
+      "pins?a=1",
+      "#x",
+      "https://e.test/a",
+      "mailto:a@e.test",
+    ])
+      expect(link(ok)).toContain("den-toast-link");
+    for (const bad of [
+      "javascript:alert(1)",
+      " JavaScript:alert(1)",
+      "data:text/html,x",
+      "vbscript:x",
+    ])
+      expect(link(bad)).not.toContain("den-toast-link");
+  });
+
+  it("an Undo form's action is http(s) or relative; any other throws", () => {
+    const form = (action: string) => () =>
+      toastHtml({ message: "x", undo: { form: { action } } });
+    expect(form("/g/undo")).not.toThrow();
+    expect(form("https://e.test/undo")).not.toThrow();
+    for (const bad of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "mailto:a@e.test",
+    ])
+      expect(form(bad)).toThrow(/action/);
+  });
+});
+
 describe("issue 559: the toast's words", () => {
   it("are Hub's today, in en, es and ja", () => {
     const w = (t: Record<string, string>) => [

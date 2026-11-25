@@ -36,7 +36,13 @@
  * words arrive (a new role="status" node with its text already inside is
  * often not read): one polite region (role="status"), one assertive
  * (role="alert") for errors. A page's own region (#art-toast, or any
- * [data-den-toast="status"]) is used when it has one.
+ * [data-den-toast="status"]) is used when it has one. ensureToastRegions
+ * makes both at start; when a toast has to make its region, the toast
+ * goes in ANNOUNCE_MS (50 ms) after it.
+ *
+ * Addresses: a link is http(s), relative or mailto, and an Undo form's
+ * action http(s) or relative; any other link is left out, and any other
+ * action throws.
  *
  * Focus: never moved into the toast. Undo, the link, the actions and Close
  * are reached with Tab. Esc, with focus inside, closes it; when a toast
@@ -47,6 +53,23 @@ import { esc, kitT } from "./strings.js";
 
 export const PLAIN_MS = 3000;
 export const UNDO_MS = 8000;
+/** How long a toast waits before it goes into a region that was just made
+ * or emptied, so a screen reader sees the change (issue 559). */
+export const ANNOUNCE_MS = 50;
+
+/** An address a toast may use: http(s) or relative, and mailto for a
+ * link (`mail`); else null. A host's javascript: or data: never runs. */
+function safeHref(v, mail) {
+  if (typeof v !== "string" || !v.trim()) return null;
+  try {
+    const p = new URL(v, "http://relative.invalid/").protocol;
+    return p === "http:" || p === "https:" || (mail && p === "mailto:")
+      ? v
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 /** "post" only: a toast's Undo form never changes state with a GET. */
 function formMethod(m) {
@@ -75,11 +98,16 @@ function bodyHtml(o) {
   if (o.undo && typeof o.undo === "object" && o.undo.form) {
     const f = o.undo.form;
     const method = formMethod(f.method);
+    const action = safeHref(f.action, false);
+    if (!action)
+      throw new TypeError(
+        `den-ui toast: an Undo form's action is http(s) or relative (got ${JSON.stringify(f.action)})`,
+      );
     acts +=
       '<form class="den-toast-form" method="' +
       method +
       '" action="' +
-      esc(f.action) +
+      esc(action) +
       '">' +
       Object.entries(f.fields || {})
         .map(
@@ -108,10 +136,11 @@ function bodyHtml(o) {
       esc(a.label) +
       "</button>";
   });
-  if (o.link && o.link.href)
+  const href = o.link && safeHref(o.link.href, true);
+  if (href)
     acts +=
       '<a class="den-toast-link" href="' +
-      esc(o.link.href) +
+      esc(href) +
       '">' +
       esc(o.link.label) +
       "</a>";
@@ -218,7 +247,8 @@ export function toastClock({
   };
 }
 
-/** The page's region of kind `k`, made (empty) once when it has none. */
+/** The page's region of kind `k`, made (empty) once when it has none.
+ * { r, fresh }: fresh when it was made just now. */
 function region(doc, k) {
   const sel =
     k === "status"
@@ -232,9 +262,29 @@ function region(doc, k) {
     r.setAttribute("role", k === "status" ? "status" : "alert");
     r.setAttribute("aria-live", k === "status" ? "polite" : "assertive");
     doc.body.appendChild(r);
-  } else if (!r.classList.contains("den-toast-region"))
+    return { r, fresh: true };
+  }
+  if (!r.classList.contains("den-toast-region"))
     r.classList.add("den-toast-region");
-  return r;
+  return { r, fresh: false };
+}
+
+/**
+ * Both live regions, empty, on the page now: call it once at start, so
+ * the page's first toast goes into a region a screen reader already
+ * watches. Made once; a page's own #art-toast counts as the status one.
+ */
+export function ensureToastRegions(doc = document) {
+  if (!doc || !doc.body) return;
+  region(doc, "status");
+  region(doc, "alert");
+}
+
+/** Puts `el` into `reg` after ANNOUNCE_MS, unless it was closed first. */
+function addLater(doc, reg, el, h) {
+  (doc.defaultView || window).setTimeout(() => {
+    if (!h.closed()) reg.appendChild(el);
+  }, ANNOUNCE_MS);
 }
 
 /** Where focus goes when a toast that has it closes: never the body. */
@@ -335,20 +385,22 @@ function wire(doc, reg, el, o) {
   doc.addEventListener("visibilitychange", onVis);
   if (doc.visibilityState === "hidden") clock.hold("hidden");
   clock.start();
-  return { el, close, clock, reg };
+  return { el, close, clock, reg, closed: () => closed };
 }
 
 /** Shows a toast (see the top of this file). Returns { close }. */
 export function showToast(o = {}, doc = document) {
   if (current) current.close();
   const error = o.kind === "error";
-  const reg = region(doc, error ? "alert" : "status");
+  const { r: reg, fresh } = region(doc, error ? "alert" : "status");
   const opts = { ...o, undo: o.onUndo ? true : undefined };
   const tmp = doc.createElement("div");
   tmp.innerHTML = bodyHtml(opts);
   const el = tmp.firstElementChild;
-  reg.appendChild(el);
+  // A region made just now: the toast follows it, a beat later.
+  if (!fresh) reg.appendChild(el);
   current = wire(doc, reg, el, opts);
+  if (fresh) addLater(doc, reg, el, current);
   return { close: current.close };
 }
 
@@ -368,7 +420,7 @@ export function hydrateToast(doc = document, o = {}) {
   const kind = el.getAttribute("data-kind") === "error" ? "error" : "status";
   el.remove();
   const opts = { ...o, kind, ms: o.ms ?? ttl };
-  (doc.defaultView || window).setTimeout(() => reg.appendChild(el), 0);
   current = wire(doc, reg, el, opts);
+  addLater(doc, reg, el, current);
   return { close: current.close };
 }
