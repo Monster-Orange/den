@@ -6271,8 +6271,11 @@ How the watcher paces itself:
   runner counts toward neither. The bound is never shorter than twice the
   interval in force, so a watch doesn't go stale only because Den didn't
   look. The note says which bound fired.
+- Any watch open longer than `github.watch_max_open_hours` (24) ends,
+  whatever its checks say, and its agent is told why. This catches a check
+  that never reports.
 
-These five are Settings › Server rows, a person's only
+These six are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
 `<cli> github status` show one line: the calls left, the reset time, the
 open and queued watches, the oldest open watch's age, the cap now and the

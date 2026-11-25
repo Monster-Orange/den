@@ -54,6 +54,7 @@ function setup(principal: unknown) {
       budgetFloor: 500,
       watchesMax: 50,
       staleMinutes: 60,
+      maxOpenHours: 24,
     }),
     relay: async () => true,
   });

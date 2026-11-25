@@ -2388,6 +2388,9 @@
     "set.server.github_watch_stale": "GitHub watch: minutes with no progress",
     "set.server.github_watch_stale.d":
       "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open": "GitHub watch: most hours open",
+    "set.server.github_watch_max_open.d":
+      "Any watch open this many hours ends, whatever its checks say, and its agent is told why. This catches a check that never reports. __DEN_CLI__ config github.watch_max_open_hours=24",
     "set.server.ready_probe": "Readiness check, in seconds",
     "set.server.ready_probe.d":
       "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",

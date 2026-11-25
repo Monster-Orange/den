@@ -197,6 +197,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     watches_max: true,
     // Issue 1166: a watch with no progress this long ends.
     watch_stale_minutes: true,
+    // Issue 1194: any watch open this long ends.
+    watch_max_open_hours: true,
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
@@ -310,6 +312,7 @@ describe("the settings inventory (R21)", () => {
         "github.api_budget_floor",
         "github.watches_max",
         "github.watch_stale_minutes",
+        "github.watch_max_open_hours",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",

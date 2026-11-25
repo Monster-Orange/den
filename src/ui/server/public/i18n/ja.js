@@ -1162,6 +1162,9 @@
     "set.server.github_watch_stale": "GitHub の監視: 進展のない時間 (分)",
     "set.server.github_watch_stale.d":
       "この分数のあいだ進展のない監視は終わり、その理由をエージェントに伝えます。待機中または実行中のチェックは進展と数えますが、何も変わらないままこの4倍の時間が過ぎると終わります。この上限は監視間隔の2倍より短くなりません。プルリクエストがマージまたはクローズされたとき、または新しいプッシュで head が置き換わったときも、監視は終わります。__DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open": "GitHub の監視: 最長の時間 (時間)",
+    "set.server.github_watch_max_open.d":
+      "この時間を超えて開いている監視は、チェックの状態にかかわらず終わり、その理由をエージェントに伝えます。結果を報告しないチェックを捕まえるためです。__DEN_CLI__ config github.watch_max_open_hours=24",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",

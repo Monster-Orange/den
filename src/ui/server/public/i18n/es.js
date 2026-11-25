@@ -1193,6 +1193,10 @@
       "Vigilancia de GitHub: minutos sin avances",
     "set.server.github_watch_stale.d":
       "Una vigilancia sin avance durante estos minutos termina, y se le dice a su agente por qué. Una comprobación todavía en cola o en curso se considera avance, hasta 4 veces este tiempo sin ningún cambio. El límite nunca es menor que el doble del intervalo de vigilancia. Una vigilancia también termina cuando su solicitud de cambios se fusiona o se cierra, o cuando un envío más nuevo reemplaza su commit. __DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open":
+      "Vigilancia de GitHub: horas como máximo",
+    "set.server.github_watch_max_open.d":
+      "Cualquier vigilancia abierta durante estas horas termina, digan lo que digan sus comprobaciones, y se le dice a su agente por qué. Así se atrapa una comprobación que nunca informa. __DEN_CLI__ config github.watch_max_open_hours=24",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",

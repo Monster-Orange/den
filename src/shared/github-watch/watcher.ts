@@ -422,6 +422,16 @@ export class GithubWatcher {
     const s = this.d.settings();
     let changed = false;
     let limited = false;
+    // Issue 1194: open longer than github.watch_max_open_hours, whatever
+    // its checks say (a status that never posts stays pending): it ends.
+    for (const w of this.open())
+      if (now - this.since(w) >= s.maxOpenHours * 3600_000) {
+        this.finish(w, now, {
+          note: `Open ${s.maxOpenHours} hours (github.watch_max_open_hours); Den stopped watching it.`,
+          text: `Den: GitHub watch ${w.id} ended: ${this.what(w)} was open ${s.maxOpenHours} hours, the most Den watches one (last: ${w.note}). Watch it again if you still need it.`,
+        });
+        changed = true;
+      }
     // Issue 1166: no progress for the stale bound, or nothing changed for
     // the backstop: it ends, saying which bound fired.
     const stale = this.stale(s);

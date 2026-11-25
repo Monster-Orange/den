@@ -3195,6 +3195,21 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ github: { watch_stale_minutes: v } }),
   },
   {
+    // Issue 1194: any watch open this long ends (user.yml
+    // github.watch_max_open_hours). A person's only.
+    id: "server.github_watch_max_open",
+    category: "server",
+    label: "GitHub watch: most hours open",
+    description:
+      "Any watch open this many hours ends, whatever its checks say, and its agent is told why. This catches a check that never reports. __DEN_CLI__ config github.watch_max_open_hours=24",
+    keywords: ["github", "watch", "ceiling", "github.watch_max_open_hours"],
+    scope: "user",
+    keys: ["github.watch_max_open_hours"],
+    control: { type: "number", min: 1, max: 720, step: 1 },
+    read: (ctx) => ctx.data.github?.watch_max_open_hours ?? 24,
+    write: (v, ctx) => ctx.post({ github: { watch_max_open_hours: v } }),
+  },
+  {
     // den#143: how long `web up` waits for the server (user.yml
     // web.ready_probe_seconds, web.start_wait_seconds). A person's only.
     id: "server.ready_probe",
