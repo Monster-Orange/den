@@ -201,7 +201,7 @@ export function edgeAccessWarnings(
   now: number = Date.now(),
 ): string[] {
   const out: string[] = [];
-  if (cfg.args.some((a) => /^-{1,2}accesslog(\.|=|$)/i.test(a)))
+  if (cfg.args.some((a) => /^--accesslog(\.|=|$)/i.test(a)))
     out.push(
       "edge.args sets --accesslog: Traefik then logs every path and query as is, one-time tokens included, where Den can't mask them. Remove it and set edge.access_log: true; Den keeps a masked edge-access.log.",
     );
