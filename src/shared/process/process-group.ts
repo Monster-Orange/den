@@ -70,17 +70,24 @@ export function parseProcStatTicks(stat: string): string | null {
  * zombie (ended, not yet reaped), so on Linux its /proc state is read too
  * (the field after the name's last ")"). Where nobody reaps (a container
  * whose first process never waits) a zombie stays for good. An EPERM pid
- * is running (another user's). A stat gone since (ENOENT): ended; one
- * unreadable otherwise leaves kill's answer.
+ * is running (another user's), even with no /proc entry (hidepid). After a
+ * kill(0) that succeeded, a stat gone (ENOENT) means it ended; any other
+ * unreadable stat leaves kill's answer.
  */
 export function pidRunning(
   pid: number,
-  o: { platform?: NodeJS.Platform; readStat?: (pid: number) => string } = {},
+  o: {
+    platform?: NodeJS.Platform;
+    readStat?: (pid: number) => string;
+    kill?: (pid: number, signal: 0) => void;
+  } = {},
 ): boolean {
+  let eperm = false;
   try {
-    process.kill(pid, 0);
+    (o.kill ?? ((p, sig) => process.kill(p, sig)))(pid, 0);
   } catch (e) {
     if ((e as { code?: string }).code !== "EPERM") return false;
+    eperm = true;
   }
   if ((o.platform ?? process.platform) !== "linux") return true;
   let line: string;
@@ -89,7 +96,8 @@ export function pidRunning(
       pid,
     );
   } catch (e) {
-    return (e as { code?: string }).code !== "ENOENT";
+    // Under hidepid, another user's live process has no /proc entry.
+    return eperm || (e as { code?: string }).code !== "ENOENT";
   }
   const close = line.lastIndexOf(")");
   return close < 0 || line.slice(close + 1).trim()[0] !== "Z";

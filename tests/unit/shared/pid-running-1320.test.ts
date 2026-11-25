@@ -44,6 +44,18 @@ describe("pidRunning", () => {
     );
   });
 
+  it("another user's live process under hidepid (EPERM, then no /proc entry): running", () => {
+    const eperm = () => {
+      throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+    };
+    const gone = () => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    };
+    expect(
+      pidRunning(4242, { platform: "linux", kill: eperm, readStat: gone }),
+    ).toBe(true);
+  });
+
   it("on Linux, stat unreadable after kill(0) succeeded: running", () => {
     const fail = () => {
       throw new Error("EACCES");
