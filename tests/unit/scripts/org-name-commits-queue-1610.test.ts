@@ -1,5 +1,5 @@
 /**
- * Issue 1610: the org-name range check skips commits already on
+ * The org-name range check skips commits already on
  * origin/next/queue as well as origin/main. A hosted merge button's commit
  * on the merge queue's branch is as public as one on main and can't be
  * reworded; a merge of the queue into a work branch brings it into the

@@ -63,7 +63,7 @@ if (/^0+$/.test(base)) {
 // Commits already on origin/main or origin/next/queue (the merge queue's
 // branch) are public and can't be reworded: a merge of either into a work
 // branch brings its own merge commits (a hosted merge button names the
-// org's branch) into the range. Only new ones count (issue 1610). Any other
+// org's branch) into the range. Only new ones count. Any other
 // branch's commits are still checked, pushed or not, so a bad commit pushed
 // once to a feature branch never passes for good.
 const PUBLIC = ["refs/remotes/origin/main", "refs/remotes/origin/next/queue"];
