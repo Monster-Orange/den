@@ -449,10 +449,12 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     );
     await p.fill("#hubp-new", "North Star");
     await p.click('[data-hubp-action="link"]');
-    // The working pop-up while Hub is asked.
-    await p.waitForSelector('dialog.bz-dlg[open][data-state="working"]', {
+    // Issue 1054: while Hub is asked, Create holds (its dots, aria-busy);
+    // no pop-up.
+    await p.waitForSelector('[data-hubp-action="link"][aria-busy="true"]', {
       timeout: 5000,
     });
+    expect(await p.locator("dialog.bz-dlg[open]").count()).toBe(0);
     await p.waitForSelector('[data-hubp-state="creating"]', {
       timeout: 15_000,
     });
