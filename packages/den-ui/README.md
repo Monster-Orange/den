@@ -91,6 +91,9 @@ data and HTML slots; it keeps no copy of the kit's markup, CSS or code.
   "North · Project"; a label that is its kind word reads once ("Hub").
   A badge says what it counts with `what` (`"open"`, `"waiting"`,
   `"down"`, `"running"`) and the kit words it: "North · Den, 3 waiting".
+  A `"waiting"` badge also takes the kit's title on hover, "3 waiting on
+  you" (es, ja), so a bare count isn't read as a total; its aria words
+  are unchanged.
   Hosts pass data, never display text: a `tip`, `title` or `aria-label`
   on an entry with a kind is not used. Any other kind is dropped: the tag
   never names a machine. A project pin may set `icon: { initial: "North" }`
