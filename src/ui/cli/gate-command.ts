@@ -23,6 +23,9 @@
  *       (gates/browser-container.ts; a Setting)
  *   status [--json]          who holds, who waits, overruns, test boxes
  *   box <list|add|remove|enable|disable>  the test boxes (a person's)
+ *   runner <list|add|remove> issue 642: CI runner entries, one repo's jobs
+ *                            on one test box (a person changes them; an
+ *                            agent asks with gate_runner_entry_set)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
@@ -134,13 +137,25 @@ import {
   type GateMachineView,
   removedView,
 } from "../../shared/gates/view.js";
+import {
+  checkRunnerEntry,
+  type RunnerEntry,
+} from "../../shared/gates/runner-entries.js";
 import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
 import { emptyTestList } from "./gate-test-list.js";
+import {
+  readBoxBrowsers,
+  realBrowserRead,
+  visualFit,
+  visualFilesInRun,
+  visualRecords,
+  type BrowserRead,
+} from "../../shared/gates/visual.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
-  usage: "gate <run|status|end|yield|box|settings> ...",
+  usage: "gate <run|status|end|yield|box|runner|settings> ...",
   lines: [
     "Heavy test runs on this machine, taken in turn: one browser suite at a",
     "time; unit suites share (2 at a time by default, 2 of them beside a browser",
@@ -175,6 +190,9 @@ export const GATE_HELP = {
     "    checks of a box that says no. Off or outside its window: no slot, no contact",
     "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443);",
     "    127.0.0.1, localhost and <name>.localhost are one host there",
+    "{cli} gate runner <list|add|remove> <owner/repo> --box <name>",
+    "    [--labels a,b] [--routing-variable NAME] [--slots N] [--light]",
+    "    [--owner <who>]   CI runner entries: a repo's jobs on a test box",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
@@ -253,6 +271,11 @@ export interface GateDeps {
    * when its slot ends (absent: nothing is removed; tests pass a fake).
    */
   docker?: Docker;
+  /**
+   * Issue 1527: reads a box's Chromium build through its Playwright
+   * server (default: one connect; tests pass a stub).
+   */
+  browserRead?: BrowserRead;
 }
 
 /**
@@ -755,15 +778,24 @@ export function slotLine(
 
 /** Issue 625: one line per test box: its slots, or why it is skipped. */
 export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
+  // Issue 1527: each box's Chromium build, as last read.
+  const browsers = readBoxBrowsers(store.dir);
   return gateBoxesView(
     store,
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
     // Issue 1017: the Playwright versions it serves.
-    const pw = b.playwrightVersions?.length
-      ? `, playwright ${b.playwrightVersions.join(", ")}`
-      : "";
+    const read = browsers[b.name];
+    const pw =
+      (b.playwrightVersions?.length
+        ? `, playwright ${b.playwrightVersions.join(", ")}`
+        : "") +
+      (read?.chromium
+        ? `, chromium ${read.chromium} ${read.platform ?? ""}`.trimEnd()
+        : read?.error
+          ? ", chromium unread"
+          : "");
     // A run already on it finishes; it shows beside why the box is skipped.
     const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
     const off = boxOffWords(b);
@@ -1006,6 +1038,57 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (where === "any" && !urls.length) urls.push(DEFAULT_BASE);
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
+  }
+  // Issue 1527: a run with a visual-reference test goes only to a box whose
+  // Chromium is the build its references were taken on (the one the
+  // run's pinned Playwright installs). Another build is skipped, saying
+  // why, or refused when named; never assumed to match.
+  if (kind === "browser" && where && where !== "local") {
+    const visual = visualFilesInRun(
+      d.cwd,
+      pos,
+      !!f["--all-tests"],
+      repoTop(d.cwd),
+    );
+    if (visual.length) {
+      const named = where !== "any";
+      const fit = await visualFit({
+        boxes: d.store
+          .boxes()
+          .filter((b) =>
+            named ? b.name === where : !onlyBoxes || onlyBoxes.includes(b.name),
+          ),
+        records: visualRecords(visual, d.cwd, repoTop(d.cwd)),
+        pwVersion: pwFlag ?? playwrightVersion(d.cwd),
+        read: d.browserRead ?? realBrowserRead,
+        timeoutMs: d.store.settings().boxCheckTimeoutSeconds * 1000,
+        dir: d.store.dir,
+        now: d.now,
+      });
+      const what =
+        visual.length === 1
+          ? visual[0]!
+          : `${visual.length} visual-reference tests (${visual[0]}, …)`;
+      if (named && !fit.fit.length)
+        throw new GateUsage(
+          `${fit.unfit[0]?.why ?? `box ${where} can't be read`}. ${what} runs only on a box with the browser its references were taken on: --box any, or CI`,
+        );
+      if (!named) {
+        for (const u of fit.unfit) d.err(`gate: skips ${u.why}`);
+        if (!fit.fit.length) {
+          const none =
+            "no test box serves the browser the visual references were taken on";
+          if (f["--box"] === "any")
+            throw new GateUsage(
+              `${none}. ${what} runs on such a box, or in CI`,
+            );
+          // The default pick: it stays here, saying why (never a failure).
+          d.err(`gate: stays on this machine: ${none}`);
+          where = undefined;
+          onlyBoxes = undefined;
+        } else onlyBoxes = fit.fit;
+      }
+    }
   }
   const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
@@ -1590,6 +1673,77 @@ function yieldPlace(args: string[], d: GateDeps): number {
   return 0;
 }
 
+/** Issue 642: one runner entry, in words. */
+export function runnerEntryLine(e: RunnerEntry): string {
+  return (
+    `${e.repo} on ${e.box}  ${e.heavy ? "heavy" : "light"}, ${e.slots} at a time` +
+    `  labels ${e.labels.join(",")}  routing variable ${e.routing_variable}` +
+    `  owner ${e.owner}`
+  );
+}
+
+/**
+ * Issue 642: CI runner entries. `runner list`; `runner add <owner/repo>
+ * --box <name> --labels a,b --routing-variable NAME --owner <who>
+ * [--slots N] [--light]` (adds, or replaces that repo's entry on that
+ * box); `runner remove <owner/repo> --box <name>`. Settings only: no
+ * runner starts here. An entry widens what runs on a box: a person
+ * changes them; an agent asks with the held write gate_runner_entry_set.
+ */
+function runnerCmd(args: string[], d: GateDeps): number {
+  const [verb, ...rest] = args;
+  if (verb === "list" || verb === undefined) {
+    const list = d.store.runnerEntries();
+    if (!list.length) d.out("No runner entries set (gate runner add).");
+    for (const e of list) d.out(runnerEntryLine(e));
+    return 0;
+  }
+  if (verb !== "add" && verb !== "remove")
+    throw new GateUsage("gate runner <list|add|remove> ...");
+  if (isAgentEnv(d.env))
+    throw new GateUsage(
+      `gate runner ${verb}: only a person changes the runner entries (this is an agent; ask with the held write gate_runner_entry_set)`,
+    );
+  const { f, pos } = flags(rest, {
+    "--box": true,
+    "--labels": true,
+    "--routing-variable": true,
+    "--slots": true,
+    "--light": false,
+    "--owner": true,
+  });
+  const [repo, extra] = pos;
+  if (!repo || extra)
+    throw new GateUsage(`gate runner ${verb} needs one <owner/repo>`);
+  const box = typeof f["--box"] === "string" ? f["--box"] : "";
+  if (!box) throw new GateUsage(`gate runner ${verb} needs --box <name>`);
+  if (verb === "remove") {
+    if (!d.store.removeRunnerEntry(repo, box)) {
+      d.err(`gate runner remove: no entry for ${repo} on ${box}`);
+      return 1;
+    }
+    d.out(`Removed the runner entry for ${repo} on ${box}.`);
+    return 0;
+  }
+  const c = checkRunnerEntry({
+    repo,
+    box,
+    labels: f["--labels"],
+    routing_variable: f["--routing-variable"],
+    slots: typeof f["--slots"] === "string" ? Number(f["--slots"]) : undefined,
+    heavy: f["--light"] === true ? false : undefined,
+    owner: f["--owner"],
+  });
+  if (!c.ok) throw new GateUsage(c.error);
+  try {
+    d.store.setRunnerEntry(c.entry);
+  } catch (e) {
+    throw new GateUsage((e as Error).message);
+  }
+  d.out(`Runner entry set: ${runnerEntryLine(c.entry)}.`);
+  return 0;
+}
+
 async function settings(args: string[], d: GateDeps): Promise<number> {
   const { f } = flags(args, {
     "--cpu-slots": true,
@@ -1816,6 +1970,8 @@ export async function cmdGate(
         return await boxCmd(args.slice(1), d);
       case "yield":
         return yieldPlace(args.slice(1), d);
+      case "runner":
+        return runnerCmd(args.slice(1), d);
       case "settings":
         return await settings(args.slice(1), d);
       default:

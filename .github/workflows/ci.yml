@@ -201,17 +201,21 @@ jobs:
         env:
           DEN_TEST_DOCKER: only
 
-  # Issue 95: the global nav inventory (packages/den-ui/inventory) on the
-  # one browser build its reference was taken on: Playwright's image, by
+  # Issue 95, issue 1527: the visual job. Every visual-reference test
+  # (tagged @visual-reference; scripts/visual-tests.mjs lists them), on the
+  # one browser their references were taken on: Playwright's image, by
   # version and its linux/amd64 digest (NAV_BROWSER_IMAGE in nav-inventory.js; a test keeps
-  # the two the same). Its run-server serves Chromium and WebKit; the test
-  # connects with exposeNetwork "<loopback>", so the browsers reach Den's
+  # the two the same). Its run-server serves Chromium and WebKit; the tests
+  # connect with exposeNetwork "<loopback>", so the browsers reach Den's
   # server on this runner through the connection. Elsewhere (the shards,
-  # no DEN_PW_WS) the suite skips: a local browser lays text out a few px
-  # apart. --verbose: the red cases show by name in the log.
+  # a test box of another build) each compares only where its browser
+  # matches the record beside its references, and skips saying why; here
+  # (DEN_VISUAL_JOB=1) a browser that doesn't match fails. The job keeps
+  # its name, den-ui-nav: ci-ok and the required checks name it.
+  # --verbose: the red cases show by name in the log.
   #
-  # On a pull request it runs when the change's tests include it (it is in
-  # the subset when den-ui or the shell changed: the pr job's "nav" output).
+  # On a pull request it runs when the change's tests include a tagged one
+  # (the pr job's "nav" output).
   den-ui-nav:
     needs: [fast, pr]
     if: ${{ !cancelled() && needs.fast.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.nav == 'true') }}
@@ -237,10 +241,16 @@ jobs:
           done
           docker logs pw-nav
           exit 1
-      - name: Nav inventory (Chromium and WebKit, 1280 and 390)
+      - name: Visual-reference tests (nav inventory, shell parity, kit menus)
         env:
           DEN_PW_WS: ws://localhost:3921/
-        run: npx jest --forceExit --verbose --maxWorkers=1 tests/unit/den-ui/nav-inventory.browser.test.ts
+          DEN_VISUAL_JOB: "1"
+        run: |
+          mapfile -t files < <(node scripts/visual-tests.mjs)
+          # Never an empty list: jest with no paths runs every test.
+          [ "${#files[@]}" -gt 0 ] || { echo "no visual-reference tests found"; exit 1; }
+          printf '%s\n' "${files[@]}"
+          npx jest --forceExit --verbose --maxWorkers=1 "${files[@]}"
       - if: failure()
         run: docker logs pw-nav | tail -50
 
@@ -359,7 +369,8 @@ jobs:
           else
             echo 'shards=[]' >> "$GITHUB_OUTPUT"
           fi
-          if grep -qxE 'ALL|tests/unit/den-ui/nav-inventory\.browser\.test\.ts' affected.txt; then
+          # Issue 1527: any visual-reference test runs in the visual job.
+          if [ -n "$(node scripts/visual-tests.mjs --in affected.txt)" ]; then
             echo 'nav=true' >> "$GITHUB_OUTPUT"
           fi
       # Issue 996: what this run tests, for the release (scripts/release-tree-check.mjs):

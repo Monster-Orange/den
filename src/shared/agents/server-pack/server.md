@@ -234,6 +234,10 @@ Held (each waits for the person's Allow):
   box (another machine whose browsers take gate slots;
   docs/gate-slots.md). Den checks the box first; it waits for the
   person's Allow, and nothing changes until then.
+- `gate_runner_entry_set`: let a repo's CI jobs run on a test box the
+  person set (its labels, routing variable, slots, heavy or light, who
+  answers for it). It waits for the person's Allow. Nothing starts a
+  runner yet: it is a setting.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the
