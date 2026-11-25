@@ -1188,7 +1188,19 @@
     "set.server.github_watches_max":
       "Vigilancia de GitHub: vigilancias a la vez",
     "set.server.github_watches_max.d":
-      "Cuántas solicitudes de cambios y ejecuciones vigila a la vez el vigilante de GitHub, para todos los agentes de aquí juntos. Una más se rechaza, diciendo por qué. __DEN_CLI__ config github.watches_max=50",
+      "Cuántas solicitudes de cambios y ejecuciones vigila a la vez, como mínimo, el vigilante de GitHub, para todos los agentes de aquí juntos. Cuando el presupuesto de la API de GitHub da para más, vigila más. Por encima de eso, una vigilancia nueva espera en una cola y empieza cuando termina otra. __DEN_CLI__ config github.watches_max=50",
+    "set.server.github_watch_stale":
+      "Vigilancia de GitHub: minutos sin avances",
+    "set.server.github_watch_stale.d":
+      "Una vigilancia sin avance durante estos minutos termina, y se le dice a su agente por qué. Una comprobación todavía en cola o en curso se considera avance, hasta 4 veces este tiempo sin ningún cambio. El límite nunca es menor que el doble del intervalo de vigilancia. Una vigilancia también termina cuando su solicitud de cambios se fusiona o se cierra, o cuando un envío más nuevo reemplaza su commit. __DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open":
+      "Vigilancia de GitHub: horas como máximo",
+    "set.server.github_watch_max_open.d":
+      "Cualquier vigilancia abierta durante estas horas termina, digan lo que digan sus comprobaciones, y se le dice a su agente por qué. Así se atrapa una comprobación que nunca informa. __DEN_CLI__ config github.watch_max_open_hours=24",
+    "set.server.github_rerun_look":
+      "Vigilancia de GitHub: minutos entre revisiones de reejecución",
+    "set.server.github_rerun_look.d":
+      "Durante una hora después de avisar el resultado de una ejecución, el vigilante de GitHub mira con esta frecuencia si se volvió a ejecutar, y una reejecución abre la vigilancia de nuevo. Menos revisiones gastan menos del presupuesto por hora de GitHub. __DEN_CLI__ config github.rerun_look_minutes=5",
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
@@ -3122,6 +3134,10 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPushedBehind":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada se envió ({sha}), pero la copia local está atrasada y tiene cambios locales, así que haz pull para obtener la versión fijada",
+    "bell.m.pinPrAhead":
+      "__DEN_TITLE__ se actualizó a {v}: la copia local tiene commits sin enviar, así que su versión fijada fue a una solicitud de cambios; se abrió la #{n} ({branch})",
     "bell.m.pinPrFallback":
       "__DEN_TITLE__ se actualizó a {v}: la rama necesita una solicitud de cambios; se abrió la #{n} para su versión fijada ({branch})",
     "bell.m.pinBranchPushed":

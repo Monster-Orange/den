@@ -1158,7 +1158,16 @@
       "この 1 時間に残る GitHub API の呼び出しがこの数を下回ると、GitHub の監視は GitHub のリセットまで何も問い合わせず、新しい監視を断り、リセットの時刻を伝えます。__DEN_CLI__ config github.api_budget_floor=500",
     "set.server.github_watches_max": "GitHub の監視: 同時に監視する数",
     "set.server.github_watches_max.d":
-      "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の数です。それを超える分は理由を添えて断ります。__DEN_CLI__ config github.watches_max=50",
+      "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の最小の数です。GitHub API の残りに余裕があれば、もっと監視します。それを超える新しい監視は順番待ちになり、ほかの監視が終わると始まります。__DEN_CLI__ config github.watches_max=50",
+    "set.server.github_watch_stale": "GitHub の監視: 進展のない時間 (分)",
+    "set.server.github_watch_stale.d":
+      "この分数のあいだ進展のない監視は終わり、その理由をエージェントに伝えます。待機中または実行中のチェックは進展と数えますが、何も変わらないままこの4倍の時間が過ぎると終わります。この上限は監視間隔の2倍より短くなりません。プルリクエストがマージまたはクローズされたとき、または新しいプッシュで head が置き換わったときも、監視は終わります。__DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open": "GitHub の監視: 最長の時間 (時間)",
+    "set.server.github_watch_max_open.d":
+      "この時間を超えて開いている監視は、チェックの状態にかかわらず終わり、その理由をエージェントに伝えます。結果を報告しないチェックを捕まえるためです。__DEN_CLI__ config github.watch_max_open_hours=24",
+    "set.server.github_rerun_look": "GitHub の監視: 再実行を確かめる間隔 (分)",
+    "set.server.github_rerun_look.d":
+      "実行の結果を伝えてから 1 時間、GitHub の監視はこの間隔で再実行がないかを確かめ、再実行があれば監視をもう一度開きます。確かめる回数が少ないほど、GitHub の 1 時間あたりの残りを使いません。__DEN_CLI__ config github.rerun_look_minutes=5",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
@@ -3021,6 +3030,10 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPushedBehind":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプッシュしました ({sha}) が、ローカルのコピーは遅れていて未保存の変更があるため、pull して固定バージョンを取り込んでください",
+    "bell.m.pinPrAhead":
+      "__DEN_TITLE__ は {v} に更新されました: ローカルにプッシュしていないコミットがあるため、固定バージョンはプルリクエストにしました。#{n} を作成しました ({branch})",
     "bell.m.pinPrFallback":
       "__DEN_TITLE__ は {v} に更新されました: このブランチにはプルリクエストが必要なため、固定バージョンの #{n} を作成しました ({branch})",
     "bell.m.pinBranchPushed":

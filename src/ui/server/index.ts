@@ -423,6 +423,10 @@ import {
   viewAgent,
 } from "./request-guard.js";
 import {
+  fixtureGrantAccess,
+  testInstallsListAccess,
+} from "./test-installs-access.js";
+import {
   clientRequestId,
   createRequestLedger,
   ledgerGate,
@@ -4478,25 +4482,22 @@ async function handleTestInstallsListRoute(
     return sendJson(res, { ok: false, error: "use GET" }, 405);
   }
   const g = checkRequest(req, GUARD, product().cli, product().title);
-  const p = g.ok ? g.principal : undefined;
-  const person =
-    !!p &&
-    (p.kind === "person" || p.kind === "person-browser") &&
-    !("testPerson" in p && p.testPerson) &&
-    !("fixture" in p && p.fixture) &&
-    !notAPersonOf(req);
   // Nobody signed in: 401, as other reads that need a sign-in answer. An
-  // agent, a fixture or a test person: 403.
-  if (!person)
+  // agent, a fixture or a test person: 403 (test-installs-access.ts).
+  const access = testInstallsListAccess(
+    g.ok ? g.principal : undefined,
+    notAPersonOf(req),
+  );
+  if (!access.ok)
     return sendJson(
       res,
       {
         ok: false,
-        code: p ? "person_only" : "signin_required",
+        code: access.code,
         error:
           "Only the signed-in person sees the test installs on this computer.",
       },
-      p ? 403 : 401,
+      access.status,
     );
   // Issue 816 review: probed and still waiting, so a forged announcement of
   // a real install never offers Set up.
@@ -4536,17 +4537,17 @@ async function handleFixtureGrantRoute(
     );
     return sendJson(res, { ok: false, code, error }, status);
   };
-  const person =
-    g.ok &&
-    g.principal?.kind === "person" &&
-    !g.principal.testPerson &&
-    !notAPersonOf(req);
-  if (person && g.beyond)
+  const access = fixtureGrantAccess(
+    g.ok ? g.principal : undefined,
+    notAPersonOf(req),
+    g.ok && !!g.beyond,
+  );
+  if (!access.ok && access.code === "not_this_machine")
     return refuse(
       "not_this_machine",
       `The ${FIXTURE_LABEL} is made from a grant only on this computer; never through the edge or the network.`,
     );
-  if (!person)
+  if (!access.ok)
     return refuse(
       "person_only",
       `Only your own ${product().title}, at your Allow, makes the ${FIXTURE_LABEL} from a grant: an agent or the ${FIXTURE_LABEL} itself can't.`,
@@ -6386,6 +6387,9 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         watch_max_interval_seconds: g.maxIntervalSeconds,
         api_budget_floor: g.budgetFloor,
         watches_max: g.watchesMax,
+        watch_stale_minutes: g.staleMinutes,
+        watch_max_open_hours: g.maxOpenHours,
+        rerun_look_minutes: g.rerunLookMinutes,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -11973,6 +11977,12 @@ void CRASH_GATE.then(() =>
       api: GITHUB.api,
       fake: GITHUB.fake,
       timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+      // Issue 1555: a start that keeps no name says why.
+      onSkip: (why) =>
+        serverLog(
+          `  Owner's GitHub display name not kept: ${why}`,
+          "lifecycle",
+        ),
     }).then((n) => {
       if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
     });
