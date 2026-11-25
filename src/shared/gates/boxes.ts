@@ -353,12 +353,36 @@ export function checkBox(
       error: `box ${name}: say how Den reaches it (ssh, or a playwright address)`,
     };
   for (const k of ["ssh_identity", "hold_file"] as const) {
-    const p = str(k);
+    let p = str(k);
     if (p === undefined) continue;
     if (!PLAIN_PATH.test(p))
       return {
         ok: false,
         error: `box ${name}: ${k} is a plain path (no quotes, wildcards or leading dash)`,
+      };
+    // Issue 1597: sftp never expands "~", so a "~/…" hold file was looked
+    // for under "<home>/~/…" and never found: a paused box read as open.
+    // sftp starts in the box user's home, so "~/" is read as that home.
+    if (k === "hold_file" && p.startsWith("~")) {
+      if (!p.startsWith("~/") || p.length === 2)
+        return {
+          ok: false,
+          error: `box ${name}: hold_file can start with ~ only as ~/ (the home folder of the box's ssh login); give a path in that folder, or an absolute one`,
+        };
+      p = p.slice(2);
+      // The rule again on what is saved: "~/-l" must not become "-l".
+      if (!PLAIN_PATH.test(p))
+        return {
+          ok: false,
+          error: `box ${name}: ${k} is a plain path (no quotes, wildcards or leading dash)`,
+        };
+    }
+    // Issue 1597: the check lists the hold file's folder; a file right
+    // under "/" has none it can list by name.
+    if (k === "hold_file" && /^\/+[^/]*$/.test(p))
+      return {
+        ok: false,
+        error: `box ${name}: hold_file goes in a folder, not right under /`,
       };
     box[k] = p;
   }
@@ -819,8 +843,74 @@ export function macFreeMb(text: string): number | undefined {
  * leaves a mark (its runner id), next to the hold file. The box is held
  * while any mark is there.
  */
+/**
+ * Issue 1597: a box path as sftp and ssh are given it. Neither expands
+ * "~" in a quoted path, and both start in the box user's home, so "~/x"
+ * is "x". checkBox saves it that way; this covers a box that skipped it.
+ */
+export function homeRelative<T extends string | undefined>(p: T): T {
+  return (p && p.startsWith("~/") ? p.slice(2) : p) as T;
+}
+
+/**
+ * Issue 1597: the folder the hold file is in, checked with it; "" for a
+ * hold file in the box user's home (where sftp starts).
+ */
+export function holdDirOf(box: GateBox): string {
+  const f = homeRelative(box.hold_file);
+  if (!f) return "";
+  const i = f.lastIndexOf("/");
+  return i < 0 ? "" : f.slice(0, i) || "/";
+}
+
 export function marksDirOf(box: GateBox): string {
-  return `${box.hold_file ?? "den-hold"}.jobs`;
+  return `${homeRelative(box.hold_file) ?? "den-hold"}.jobs`;
+}
+
+/**
+ * Issue 1597: what the sftp batch says about the hold file, read on
+ * positive evidence only. The words are the sftp client's own (the gate's
+ * sftp prints them; the box's server only returns a status):
+ * - a folder: `-ls -1 "d"` prints `d/<name>` lines ("." prints `./<name>`);
+ * - a file: it prints the file's own bare name;
+ * - missing: `Can't ls: "<abs>/d" not found` on stderr;
+ * - unreadable: `remote readdir("<abs>/d/"): Permission denied`.
+ */
+export function holdReading(
+  holdFile: string,
+  holdDir: string,
+  marksDir: string,
+  r: { out: string; err: string },
+): { gone: true; why?: undefined } | { gone: false; why?: string } {
+  const folder = holdDir || ".";
+  const base = holdFile.slice(holdFile.lastIndexOf("/") + 1);
+  const cantSee = (what: string) => ({
+    gone: false as const,
+    why: `its hold file can't be checked (${what}), so it counts as held`,
+  });
+  // runOnce keeps at most 64 KB of stdout and 4 KB of stderr.
+  if (r.out.length >= 65536 || r.err.length >= 4096)
+    return cantSee("sftp said more than the gate reads");
+  const other = r.err
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l &&
+        !/^open local /.test(l) &&
+        !l.includes("/proc/meminfo") &&
+        !(
+          /^Can't ls: ".*" not found$/.test(l) &&
+          (l.endsWith(`/${marksDir}" not found`) ||
+            l.endsWith(`"${marksDir}" not found`))
+        ),
+    );
+  if (other.length) return cantSee(`${folder}: ${oneLine(other[0])}`);
+  const out = r.out.split("\n").map((l) => l.trim());
+  if (holdDir && out.includes(holdDir))
+    return cantSee(`${holdDir} is a file, not a folder`);
+  if (out.includes(`${folder}/${base}`)) return { gone: false };
+  return { gone: true };
 }
 
 /** A runner's mark as sftp's `ls -1` lists it: "<folder>/<id>" or "<id>". */
@@ -927,6 +1017,8 @@ export function sftpProbe(
       };
     }
     const meminfo = path.join(dir, "meminfo");
+    const holdDir = holdDirOf(box);
+    const holdFile = homeRelative(box.hold_file);
     // The path goes into the batch in quotes: one with a quote, a backslash
     // or a line break (TMPDIR is the environment's) could end it or add a
     // command (a local `!` shell, a remote rm).
@@ -946,7 +1038,10 @@ export function sftpProbe(
         start,
         "sftp",
         ["-q", "-b", "-", ...conn("-P")],
-        (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
+        // Issue 1597: the hold file's folder is listed, never the hold
+        // file itself: sftp says "not found" for a file it can't read, so
+        // only a listing that worked can show the hold is gone.
+        (holdFile ? `-ls -1 "${holdDir || "."}"\n` : "") +
           // Issue 921: the job marks folder, one name a line, on stdout.
           `-ls -1 "${marksDirOf(box)}"\n` +
           `-get /proc/meminfo "${meminfo}"\n`,
@@ -981,21 +1076,19 @@ export function sftpProbe(
           oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
           `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-    // Issue 1381: each line read by what it is. A "Can't ls" is the hold
-    // file's or the marks folder's (issue 921), told apart by the name
-    // below; a failed local copy ("open local …") is neither the hold file
-    // gone nor no /proc/meminfo.
+    // Issue 1381: each line read by what it is. A failed local copy
+    // ("open local …") is neither the hold gone nor no /proc/meminfo.
     const lines = r.err.split("\n");
-    // Issue 921: only a line naming the hold file itself, never its marks
-    // folder ("<hold>.jobs"), says the hold file is gone.
-    const holdGone =
-      !!box.hold_file &&
-      lines.some(
-        (l) =>
-          /^Can't ls: .*not found/.test(l) &&
-          (l.includes(`/${box.hold_file}"`) ||
-            l.includes(`"${box.hold_file}"`)),
-      );
+    const marksDir = marksDirOf(box);
+    // Issue 1597: the hold is gone only on positive evidence: the folder's
+    // own listing worked (no error line sftp can print but the ones known
+    // to be about the marks folder or the memory), the folder is a folder
+    // (a file lists as its own bare name), nothing was cut short, and the
+    // hold file isn't in the listing. Anything else is held.
+    const holdCheck = holdFile
+      ? holdReading(holdFile, holdDir, marksDir, r)
+      : { gone: true as const };
+    const holdGone = holdCheck.gone;
     const noMeminfo = lines.some(
       (l) =>
         !/^open local /.test(l) &&
@@ -1009,10 +1102,10 @@ export function sftpProbe(
       .filter((l) => MARK_LINE.test(l));
     let freeMemMb = linuxFreeMb(memText);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
-    if (box.hold_file && !holdGone)
+    if (holdFile && !holdGone)
       return {
         state: "held",
-        reason: `its hold file (${box.hold_file}) is there`,
+        reason: holdCheck.why ?? `its hold file (${holdFile}) is there`,
         ...mem(),
       };
     if (marks.length)

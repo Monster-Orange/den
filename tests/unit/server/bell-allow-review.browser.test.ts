@@ -234,3 +234,65 @@ describe("the bell's Allow row: Review", () => {
       await p.context().close();
     }, 60_000);
 });
+
+/**
+ * Issue 1332: a refresh that comes back without the focused row (a slow or
+ * partial answer) drops the keyboard to the page. When the row is drawn
+ * again, focus goes back to the same button; a person who moved on
+ * elsewhere keeps where they went.
+ */
+describe("the bell keeps the keyboard across a refresh that drops the row (issue 1332)", () => {
+  /** The page's next /api/notifications answer leaves out the Allow row. */
+  async function dropOnce(p: Page): Promise<void> {
+    let once = true;
+    await p.route("**/api/notifications", async (r) => {
+      if (!once || r.request().method() !== "GET") return r.continue();
+      once = false;
+      const res = await r.fetch();
+      const b = (await res.json()) as { waiting?: unknown[] };
+      await r.fulfill({ response: res, json: { ...b, waiting: [] } });
+    });
+  }
+  /** A refresh now (the bell refreshes on the window's focus). */
+  const refresh = (p: Page) =>
+    p.evaluate(() => window.dispatchEvent(new Event("focus")));
+  const focused = (p: Page) =>
+    p.evaluate(() => {
+      const a = document.activeElement as HTMLElement | null;
+      return a?.dataset?.bell ?? a?.tagName ?? "";
+    });
+
+  it("Review keeps the keyboard when its row comes back", async () => {
+    if (skip()) return;
+    const p = await bellAt(1440);
+    await row(p).locator('[data-bell="review"]').focus();
+    await dropOnce(p);
+    await refresh(p);
+    await row(p).waitFor({ state: "detached" });
+    await refresh(p);
+    await row(p).waitFor();
+    await p.waitForFunction(
+      () => (document.activeElement as HTMLElement)?.dataset?.bell === "review",
+      null,
+      { timeout: 5_000 },
+    );
+    expect(await focused(p)).toBe("review");
+    await p.context().close();
+  }, 60_000);
+
+  it("a person who moved focus elsewhere meanwhile keeps it", async () => {
+    if (skip()) return;
+    const p = await bellAt(1440);
+    await row(p).locator('[data-bell="review"]').focus();
+    await dropOnce(p);
+    await refresh(p);
+    await row(p).waitFor({ state: "detached" });
+    // The person tabs on to the bell's own button.
+    await p.focus("#den-bell");
+    await refresh(p);
+    await row(p).waitFor();
+    expect(await focused(p)).toBe("BUTTON");
+    expect(await p.evaluate(() => document.activeElement?.id)).toBe("den-bell");
+    await p.context().close();
+  }, 60_000);
+});
