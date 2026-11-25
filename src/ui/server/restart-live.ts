@@ -181,11 +181,10 @@ export class RestartLive {
 let SHARED: RestartLive | null = null;
 export async function restartLive(): Promise<RestartLive> {
   if (SHARED) return SHARED;
-  let store: Pick<NotificationStore, "add" | "remove"> | null = null;
-  try {
-    store = (await import("./notification-service.js")).notificationDeps()
-      .store;
-  } catch {}
+  const store: Pick<NotificationStore, "add" | "remove"> | null =
+    await import("./notification-service.js")
+      .then((m) => m.notificationDeps().store)
+      .catch(() => null);
   SHARED ??= new RestartLive({ store });
   return SHARED;
 }
