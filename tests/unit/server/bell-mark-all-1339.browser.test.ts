@@ -16,7 +16,7 @@
  * Playwright server instead of a local browser. Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import type { Browser, Page, Route } from "playwright";
+import type { Browser, Locator, Page, Route } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
@@ -171,6 +171,24 @@ async function open(
   };
 }
 
+/**
+ * Issue 1524: the button is held (aria-busy and aria-disabled; issue 1434:
+ * never disabled, so it keeps focus) once the click's handler has run,
+ * which may be after click() returns: wait for it, never read it once.
+ */
+async function heldNow(p: Page, btn: Locator): Promise<void> {
+  const h = await btn.elementHandle();
+  await p.waitForFunction(
+    (b) =>
+      !!b &&
+      b.getAttribute("aria-busy") === "true" &&
+      b.getAttribute("aria-disabled") === "true" &&
+      !(b as HTMLButtonElement).disabled,
+    h,
+    { timeout: 10_000 },
+  );
+}
+
 describe("Mark all read (issue 1339)", () => {
   it("busy in the button and the rows read before the POST answers; back after", async () => {
     if (skip()) return;
@@ -179,8 +197,7 @@ describe("Mark all read (issue 1339)", () => {
     expect(await count(p, UNREAD)).toBe(3);
     const btn = p.locator('#den-bell-pop [data-bell="all"]');
     await btn.click();
-    expect(await btn.getAttribute("aria-busy")).toBe("true");
-    expect(await btn.isDisabled()).toBe(true);
+    await heldNow(p, btn);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
@@ -229,8 +246,7 @@ describe("Clear read (issue 1339)", () => {
     const { p, release } = await open("clear", 5);
     const btn = p.locator('#den-bell-pop [data-bell="clear"]');
     await btn.click();
-    expect(await btn.getAttribute("aria-busy")).toBe("true");
-    expect(await btn.isDisabled()).toBe(true);
+    await heldNow(p, btn);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
