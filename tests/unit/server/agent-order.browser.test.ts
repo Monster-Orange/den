@@ -375,6 +375,65 @@ describe.each(ENGINES)(
       await p.context().close();
     }, 60_000);
 
+    it("issue 1054: a move's save holds its row (dots, aria-busy), no pop-up; a refusal puts it back and says why inline", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine);
+      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
+      // The save is held here, then refused: no wait judged by the clock.
+      let release: () => void = () => {};
+      const go = new Promise<void>((r) => (release = r));
+      await p.route(
+        (u) =>
+          /\/api\/workspaces\/[^/]+\/agents\/[^/]+\/order$/.test(u.pathname),
+        async (r) => {
+          if (r.request().method() !== "POST") return r.fallback();
+          await go;
+          await r.fulfill({
+            status: 409,
+            contentType: "application/json",
+            // A made-up refusal, so the line is known to be the server's.
+            body: JSON.stringify({ error: "order-refused-1054" }),
+          });
+        },
+      );
+      await p.locator(row(sid.cy)).focus();
+      await p.keyboard.press("Alt+ArrowUp");
+      try {
+        await p.locator(`${row(sid.cy)}[aria-busy="true"]`).waitFor();
+        // The kit's dots at the row's end: three dots, hidden from a
+        // screen reader (aria-busy says it). aria-busy is set at once; the
+        // dots come when the kit's module has loaded.
+        await p.waitForFunction(
+          (sel) =>
+            document
+              .querySelector(sel)
+              ?.lastElementChild?.getAttribute("aria-hidden") === "true",
+          row(sid.cy),
+        );
+        expect(
+          await p.locator(row(sid.cy)).evaluate((el) => {
+            const d = el.lastElementChild;
+            return [
+              d?.getAttribute("aria-hidden"),
+              d?.querySelectorAll("i").length,
+            ];
+          }),
+        ).toEqual(["true", 3]);
+        expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+      } finally {
+        release();
+      }
+      const err = p.locator("#ag-order-err");
+      await err.waitFor({ state: "visible" });
+      expect(await err.getAttribute("role")).toBe("alert");
+      expect(await err.textContent()).toContain("order-refused-1054");
+      await until(p, ["ada", "bo", "cy"]);
+      expect(await p.locator(`${row(sid.cy)}[aria-busy]`).count()).toBe(0);
+      expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+      await p.context().close();
+    }, 60_000);
+
     it("issue 96, at 375: a touch drag moves a row; Alt+↓ is announced; Idle's Reorder gives 44 px Up and Down; no sideways scroll", async () => {
       if (skip()) return;
       resetOrder();

@@ -138,10 +138,101 @@ function quarantineProblems(doc, today = new Date(), env = process.env) {
       out.push(
         `${at}: evidence needs passed_run, or a note saying why there is none`,
       );
-    if (e.file && !fs.existsSync(path.join(ROOT, relPath(e.file))))
-      out.push(`${at}: no such file`);
+    const abs = e.file ? path.join(ROOT, relPath(e.file)) : "";
+    if (e.file && !fs.existsSync(abs)) out.push(`${at}: no such file`);
+    else if (e.file && e.test && !namesATest(e, testNames(abs)))
+      out.push(
+        `${at}: names no test in its file (renamed or split?): point it at the test, or remove it`,
+      );
   }
   return out;
+}
+
+const TEST_CALLS = new Set(["it", "test", "describe"]);
+
+/**
+ * The names of a file's tests, read from its source: each as a regex over
+ * jest's full name (describe titles and its own, joined by spaces) and over
+ * its own title, with a sample full name. A template title's ${...} parts match anything; a title
+ * that is not text at all (a variable) leaves the file unknown (null).
+ */
+function testNames(file) {
+  const ts = require("typescript");
+  const src = ts.createSourceFile(
+    file,
+    fs.readFileSync(file, "utf-8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // [pattern, sample]: the sample stands "x" in for each ${...} part.
+  const title = (n) => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n))
+      return [esc(n.text), n.text];
+    if (ts.isTemplateExpression(n))
+      return [
+        esc(n.head.text) +
+          n.templateSpans.map((sp) => `.+${esc(sp.literal.text)}`).join(""),
+        n.head.text +
+          n.templateSpans.map((sp) => `x${sp.literal.text}`).join(""),
+      ];
+    return null;
+  };
+  const out = [];
+  let unknown = false;
+  const callee = (e) => {
+    while (ts.isPropertyAccessExpression(e)) e = e.expression;
+    return ts.isIdentifier(e) ? e.text : "";
+  };
+  // it.each(table)("in %s at %i px"): each %-part matches anything.
+  const eachOf = (n) =>
+    ts.isCallExpression(n) &&
+    ts.isCallExpression(n.expression) &&
+    ts.isPropertyAccessExpression(n.expression.expression) &&
+    n.expression.expression.name.text === "each" &&
+    TEST_CALLS.has(callee(n.expression.expression))
+      ? callee(n.expression.expression)
+      : "";
+  const printf = (t) =>
+    t && [
+      t[0].replace(/%[sdifjop#]/g, ".+"),
+      t[1].replace(/%[sdifjop#]/g, "x"),
+    ];
+  const visit = (n, groups) => {
+    const each = eachOf(n);
+    if (
+      each ||
+      (ts.isCallExpression(n) && TEST_CALLS.has(callee(n.expression)))
+    ) {
+      const arg = n.arguments[0];
+      const t = arg ? (each ? printf(title(arg)) : title(arg)) : null;
+      if (t === null) {
+        unknown = true;
+        return;
+      }
+      if ((each || callee(n.expression)) === "describe") {
+        for (const a of n.arguments.slice(1)) visit(a, [...groups, t]);
+        return;
+      }
+      const all = [...groups, t];
+      out.push({
+        re: new RegExp(`^(${all.map((g) => g[0]).join(" ")}|${t[0]})$`, "s"),
+        sample: all.map((g) => g[1]).join(" "),
+      });
+      return;
+    }
+    ts.forEachChild(n, (c) => visit(c, groups));
+  };
+  visit(src, []);
+  return unknown ? null : out;
+}
+
+/** Does an entry name at least one of the file's tests (unknown: yes)? */
+function namesATest(entry, names) {
+  if (names === null) return true;
+  const re = asRegex(entry.test);
+  if (re) return names.some((n) => re.test(n.sample));
+  return names.some((n) => n.re.test(entry.test));
 }
 
 /** The full name jest gives a jest-circus test: describe titles, then its own. */

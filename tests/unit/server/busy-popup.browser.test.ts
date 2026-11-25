@@ -142,7 +142,8 @@ const start = (p: Page) =>
 const dlg = (p: Page) => p.locator("dialog.bz-dlg");
 
 describe("BUSY-1: the working pop-up", () => {
-  it("a slow answer: opens at the kit's wait, no buttons, Esc does nothing, then Success closes at once with a toast", async () => {
+  // Issue 1054: one request shows its wait on its button, never a pop-up.
+  it("a slow answer: the button holds (disabled, aria-busy) with no pop-up, then Success gives it back with a toast", async () => {
     if (skip()) return;
     // The page's clock is the test's (den#179): a loaded runner fires the
     // page's timers late, so any wall-clock bound is a flake.
@@ -160,22 +161,16 @@ describe("BUSY-1: the working pop-up", () => {
     await expect(p.locator("#bz-btn").getAttribute("aria-busy")).resolves.toBe(
       "true",
     );
-    await p.clock.runFor(299);
-    expect(await p.locator("dialog.bz-dlg[open]").count()).toBe(0);
-    await p.clock.runFor(1);
-    await dlg(p).waitFor({ state: "visible", timeout: 2000 });
-    // From here time flows: the answer (2 s) comes, Success closes it.
-    await p.clock.resume();
-    await expect(dlg(p).locator("h2").textContent()).resolves.toContain(
-      "Linking projects…",
+    // Past the kit's old 300 ms wait, and past 1.5 s: still no pop-up,
+    // the button still holds.
+    await p.clock.runFor(1500);
+    expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+    await expect(p.locator("#bz-btn").getAttribute("aria-busy")).resolves.toBe(
+      "true",
     );
-    await expect(dlg(p).textContent()).resolves.toContain("Waiting for Hub…");
-    expect(await dlg(p).locator("button").count()).toBe(0);
-    await expect(dlg(p).getAttribute("aria-busy")).resolves.toBe("true");
-    await p.keyboard.press("Escape");
-    expect(await dlg(p).isVisible()).toBe(true);
-    // Success (Ward, UK-2): the pop-up closes at once and the toast says
-    // it, as for a fast answer; the success line never waits in it.
+    // From here time flows: the answer (2 s) comes.
+    await p.clock.resume();
+    // Success (Ward, UK-2): the toast says it; no pop-up ever opened.
     await p
       .locator(".den-toast", { hasText: "Done: linked." })
       .waitFor({ timeout: 5000 });
@@ -279,13 +274,15 @@ describe("BUSY-1: the working pop-up", () => {
       });
     });
     await start(p);
-    await p.clock.runFor(500);
-    await dlg(p).waitFor({ state: "visible" });
+    // Issue 1054: quiet until the kit's no-answer time (60 s), the button
+    // holding meanwhile; then the no-answer pop-up opens.
     await p.clock.runFor(12_000);
-    await expect(dlg(p).textContent()).resolves.toMatch(
-      /Still working \(1[0-9] s\)/,
+    expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+    await expect(p.locator("#bz-btn").getAttribute("aria-busy")).resolves.toBe(
+      "true",
     );
     await p.clock.runFor(50_000);
+    await dlg(p).waitFor({ state: "visible" });
     await dlg(p).locator('[data-bz="check"]').waitFor();
     await expect(dlg(p).textContent()).resolves.toContain(
       "No answer from Hub yet.",

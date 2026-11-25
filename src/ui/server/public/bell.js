@@ -411,12 +411,12 @@ function groupsHtml(groups, ui, needs = false) {
     .map(
       (g) =>
         `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
-        // Issue 1339: while a Mark read runs, its button stays, busy in
-        // itself, and the others wait.
+        // Issue 1339: while a Mark read runs, its button stays, held with
+        // the kit's dots (data-bell-held, issue 1054), and the others wait.
         (!needs &&
         (ui?.busy === `scope:${g.scope}` ||
           g.subjects.some((s) => s.items.some((n) => !n.read)))
-          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy ? ' disabled aria-busy="true"' : ""}>${esc(tr(ui?.busy === `scope:${g.scope}` ? "bell.marking" : "bell.read"))}</button>`
+          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy === `scope:${g.scope}` ? " data-bell-held" : ui?.busy ? " disabled" : ""}>${esc(tr("bell.read"))}</button>`
           : "") +
         `</div>` +
         g.subjects.map((s) => subjectHtml(g.scope, s, ui)).join("") +
@@ -460,20 +460,19 @@ export function bellPanel(b, ui = {}) {
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
   const done = Array.isArray(b?.done) ? b.done : [];
   const seenDone = Array.isArray(b?.seenDone) ? b.seenDone : [];
-  // Issue 1339: while its POST runs, the button stays, busy in itself
-  // (disabled, "Marking…"), and the other one waits too.
-  const busyAttr = u.busy ? ' disabled aria-busy="true"' : "";
+  // Issue 1339: while its POST runs, the button stays, held with the
+  // kit's dots (data-bell-held: paint holds it, issue 1054), and the other
+  // one waits too.
+  const attr = (what) =>
+    u.busy === what ? " data-bell-held" : u.busy ? " disabled" : "";
   const actions =
-    (u.busy === "all"
-      ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.marking"))}</button>`
-      : b?.unread || updates.unread
-        ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.markAll"))}</button>`
-        : "") +
-    (u.busy === "clear"
-      ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearing"))}</button>`
-      : all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
-        ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearRead"))}</button>`
-        : "");
+    (u.busy === "all" || b?.unread || updates.unread
+      ? `<button type="button" data-bell="all"${attr("all")}>${esc(tr("bell.markAll"))}</button>`
+      : "") +
+    (u.busy === "clear" ||
+    all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
+      ? `<button type="button" data-bell="clear"${attr("clear")}>${esc(tr("bell.clearRead"))}</button>`
+      : "");
   const panel = {
     title: tr("bell.title"),
     titleId: "den-bell-h",
@@ -573,6 +572,8 @@ async function undoSetting(el) {
 
 async function post(path, body) {
   try {
+    // busy-ok: Mark read and Clear hold their button in paint()
+    // (data-bell-held); Stop's ask closes on Yes; Undo is a toast's.
     await window.denShell?.api?.("POST", path, body);
     return true;
   } catch (err) {
@@ -780,6 +781,10 @@ export function initBell(doc = document) {
             : "")
         : "";
     bell.paint();
+    // Issue 1054: the pressed button holds the kit's dots, drawn again
+    // with each paint while its POST runs.
+    if (ui.busy)
+      window.denShell?.holdDots?.(pop.querySelector("[data-bell-held]"));
     if (keep) pop.querySelector(keep)?.focus?.();
   };
   const refresh = async () => {
@@ -810,6 +815,7 @@ export function initBell(doc = document) {
       // Marked read first (issue 773: a Done row, seen); the link then
       // opens the agent. Sent so it outlives the page the link leaves.
       const id = el.closest("[data-id]")?.dataset.id;
+      // busy-ok: marked in the background as the link opens
       const agent = el.closest("[data-agent]")?.dataset.agent;
       const [path, body] =
         what === "open-done"
