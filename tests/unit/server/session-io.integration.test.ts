@@ -257,7 +257,7 @@ describe("the io WebSocket", () => {
     expect(sizes(a)).toEqual([[80, 24]]);
     const b = await attach("logs");
     await b.until(() => sizes(b).length === 1);
-    // Issue 791: the last active viewer sets the size. b's plain refit,
+    // The last active viewer sets the size. b's plain refit,
     // while a leads, resizes nothing: b hears the size in use, lead false.
     b.sendText(JSON.stringify({ type: "resize", cols: 120, rows: 30 }));
     await b.until(() =>

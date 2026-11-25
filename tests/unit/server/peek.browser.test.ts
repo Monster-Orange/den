@@ -1,5 +1,5 @@
 /**
- * Issue 791: Peek in a real browser, the approved mock's rules table (in
+ * Peek in a real browser, the approved mock's rules table (in
  * Hub, Den project: "Peek: answer one agent without leaving your view
  * (mock)", version 2), at 1280 and 390 px:
  *

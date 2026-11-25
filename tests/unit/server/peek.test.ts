@@ -1,5 +1,5 @@
 /**
- * Issue 791: Peek, one agent's live terminal in a panel over the page you
+ * Peek, one agent's live terminal in a panel over the page you
  * are on, from a bell row. The approved mock's rules table (in Hub, Den
  * project: "Peek: answer one agent without leaving your view (mock)",
  * version 2), one describe per rule, on the parts that need no browser

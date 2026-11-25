@@ -29,7 +29,7 @@
  *     `{"type":"exit","exitCode":n}` when the session ends;
  *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
  *     each time any viewer (another browser, a CLI attach) resizes it.
- *     Issue 791: among browsers the last active viewer sets it (term-size-
+ *     Among browsers the last active viewer sets it (term-size-
  *     lead.ts): the one typed in, or that claimed it; another's resize is
  *     kept for later and answered with the size in use, `"lead":false`;
  *   - in: binary frames are input; a text frame is JSON control:
@@ -358,7 +358,7 @@ const VIEWERS = new Map<
 >();
 
 /**
- * Issue 791: who sets each session's PTY size among its browsers: the
+ * Who sets each session's PTY size among its browsers: the
  * last active viewer (term-size-lead.ts). By session id, beside VIEWERS.
  */
 const LEADS = new Map<string, SizeLead<object>>();
@@ -1618,7 +1618,7 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
-        // Issue 791: the person typing here makes this view the active
+        // The person typing here makes this view the active
         // one (its size came with its own resize, if it said one).
         if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
@@ -1648,7 +1648,7 @@ export async function handleSessionUpgrade(
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
       if (!exited && ok(msg.cols) && ok(msg.rows)) {
-        // Issue 791: the last active viewer sets the size. Another view's
+        // The last active viewer sets the size. Another view's
         // refit is kept for when it leads; it hears the size in use
         // (`lead: false`) and draws at it.
         const z = lead.resize(
@@ -1695,7 +1695,7 @@ export async function handleSessionUpgrade(
     clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
-    // Issue 791: the view that led went: the newest one left leads.
+    // The view that led went: the newest one left leads.
     lead.detach(ws);
     if (viewing?.size) tellViewers(s.ref.id);
     else {

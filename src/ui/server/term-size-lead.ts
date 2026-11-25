@@ -1,5 +1,5 @@
 /**
- * Issue 791: who sets a terminal's size when more than one browser views
+ * Who sets a terminal's size when more than one browser views
  * it (the Agents page's pane and a peek over another page, two browsers).
  * A session has one PTY size. The last active viewer sets it:
  *

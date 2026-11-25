@@ -623,7 +623,7 @@ export async function handleNotificationRoutes(
     return true;
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
-  // Issue 791: a peek's read is a look at the agent (`seen: true`).
+  // A peek's read is a look at the agent (`seen: true`).
   const peek =
     pathname === "/api/notifications/read" &&
     b.seen === true &&
@@ -644,7 +644,7 @@ export async function handleNotificationRoutes(
     );
   };
   const n = peek
-    ? // Issue 791: a peek marks only what the bell showed for the agent.
+    ? // A peek marks only what the bell showed for the agent.
       markShown((x) => x.subject === peek)
     : pathname === "/api/notifications/read" && "all" in which
       ? markShown(() => true)

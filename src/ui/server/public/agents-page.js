@@ -2940,7 +2940,7 @@ function sendSize(p, claim = false) {
   if (term.cols < MIN_COLS || term.rows < MIN_ROWS) return false;
   // D54: a following pane never sizes the PTY (no ping-pong between views).
   if (p.following) return false;
-  // Issue 791: a claim (typed in, Take over, just opened) makes this view
+  // A claim (typed in, Take over, just opened) makes this view
   // the active one; a plain refit is the server's to apply or keep.
   send(p, {
     type: "resize",
@@ -2958,7 +2958,7 @@ function sendSize(p, claim = false) {
     p.awaiting = at(p.pty)
       ? null
       : { cols: term.cols, rows: term.rows, until: Date.now() + 3000 };
-  // Issue 791: a claim is always applied: a refusal heard soon after it
+  // A claim is always applied: a refusal heard soon after it
   // answers an earlier refit, never this.
   if (claim) p.claimedAt = Date.now();
   // What the PTY will be: the server's frame follows (or another
@@ -3071,7 +3071,7 @@ function paneText(p, msg) {
     if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
       p.heardSize = true;
       const said = (z) => !!z && z.cols === msg.cols && z.rows === msg.rows;
-      // Issue 791: another view leads; this one's size was kept, not used.
+      // Another view leads; this one's size was kept, not used.
       // Just after this pane's claim, it is an earlier refit's answer.
       if (msg.lead === false) {
         if (p.claimedAt && Date.now() - p.claimedAt < 3000) return;

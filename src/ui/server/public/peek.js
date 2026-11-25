@@ -1,5 +1,5 @@
 /**
- * Issue 791: Peek. A click on an agent's row in the bell opens that
+ * Peek. A click on an agent's row in the bell opens that
  * agent's real terminal in a panel over the page the person is on; they
  * read it and type an answer without leaving their view. Built to Den
  * Design's mock (in Hub, Den project: "Peek: answer one agent without
@@ -12,7 +12,7 @@
  *     Typing works and goes only to that agent. The page behind keeps its
  *     place, its tiles and its scroll.
  *   - Seen: opening it counts as looking (the bell marks the agent's
- *     items read; issue 773 brings the seen mark).
+ *     items read and records the seen mark).
  *   - Closes: Esc, the × or a click on the dim area. Focus goes back to
  *     the bell row it came from. Nothing is left open (the socket closes,
  *     the terminal goes).
@@ -23,7 +23,7 @@
  *     offers Restart. The panel stays until the person closes it.
  *   - Phone: a full-screen sheet with a back arrow to the bell (peek.css).
  *
- * The size (issue 791, clause 3): the panel is a second view of the
+ * The size (clause 3): the panel is a second view of the
  * terminal. It never takes the size on open while another view has it:
  * it draws at the PTY's size. Typing in it makes it the active view (the
  * server's last-active-viewer rule, term-size-lead.ts); when it closes,
@@ -269,7 +269,7 @@ let xtermFails = 0;
 /** xterm.js and its fit addon (/vendor/*), as the Agents page loads them. */
 function loadXterm() {
   if (xterm) return xterm;
-  // Issue 128: a module that failed is asked for at a new address.
+  // A module that failed is asked for at a new address.
   const again = (u) => (xtermFails ? `${u}?try=${xtermFails}` : u);
   const loading = (xterm = Promise.all([
     import(again("/vendor/xterm.mjs")),

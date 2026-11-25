@@ -77,7 +77,7 @@ export interface DialogSpec {
   open?: boolean;
   /**
    * panel: on a phone (640 px or less), a full-screen sheet: no radius,
-   * nothing dimmed behind it (issue 791, Peek).
+   * nothing dimmed behind it (Peek).
    */
   sheet?: boolean;
   /** Extra classes on the <dialog> (the product's hooks). */

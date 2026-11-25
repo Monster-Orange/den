@@ -210,8 +210,8 @@ describe("bell v6: a quieter bell", () => {
         ),
       );
     expect(lines).toBeLessThanOrEqual(2);
-    // den#93: the row is the link (its two lines inside it). Issue 791
-    // (the approved Peek mock): an agent's row peeks, and its one small
+    // The row is the link (its two lines inside it). In
+    // the approved Peek mock, an agent's row peeks, and its one small
     // Open in Agents link goes to the page; no bare Open.
     await expect(
       asked.locator('a[data-bell="open"]').getAttribute("href"),

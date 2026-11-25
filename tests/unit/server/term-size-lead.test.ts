@@ -1,5 +1,5 @@
 /**
- * Issue 791, clause 3: a second view of the same terminal (a peek over
+ * Clause 3: a second view of the same terminal (a peek over
  * the page, another browser) never fights the main pane over its size.
  * The last active viewer sets the size: the one the person typed in, or
  * the one that claimed it (Take over, the pane the person just opened);
