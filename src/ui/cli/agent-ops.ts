@@ -430,6 +430,17 @@ import {
   type PickDeps,
 } from "../../shared/agents/signin-accounts.js";
 
+function installTimeZone(): string | undefined {
+  try {
+    const z = readUserConfig().time_zone;
+    if (typeof z !== "string" || !z || z.length > 64) return undefined;
+    new Intl.DateTimeFormat("en", { timeZone: z });
+    return z;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface AgentsDeps extends SessionsDeps {
   /**
    * Issue 989: this install's server, called with the person token. A
@@ -6850,7 +6861,13 @@ export async function resumeAgent(
         const fresh = {
           ...(newId ? withoutId : at),
           ...(handoff
-            ? { firstPrompt: resumeHandoffPrompt(handoff.text) }
+            ? {
+                firstPrompt: resumeHandoffPrompt(
+                  handoff.text,
+                  new Date(),
+                  installTimeZone(),
+                ),
+              }
             : {}),
         };
         // A fresh launch says its conversation id (resumeToken); a resume
@@ -8594,6 +8611,8 @@ export async function relaunchAgent(
           reason,
           compactions,
           manual ? [] : (before?.leftRunning ?? []),
+          new Date(),
+          installTimeZone(),
         ),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {
