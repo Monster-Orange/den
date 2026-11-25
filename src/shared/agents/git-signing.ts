@@ -114,6 +114,20 @@ export function existingAgentSigningKey(
   return complete(dir) ? keyIn(dir) : undefined;
 }
 
+/**
+ * The key agents' commits and Den's own pin commits are signed with now
+ * (issue 730): agents.git.signing_key, else the install's own key once it
+ * is made (issue 1316). None when signing is off. It never makes a key.
+ */
+export function agentKeyInForce(
+  git: AgentGitBlock | undefined,
+  stateDir: string,
+): AgentSigning | undefined {
+  if (git?.off) return undefined;
+  if (git?.signingKey) return { signingKey: git.signingKey, source: "setting" };
+  return existingAgentSigningKey(stateDir);
+}
+
 export interface EnsureKeyDeps {
   /** Runs after the key is made, before it is moved into place (tests). */
   beforePlace?: () => void;

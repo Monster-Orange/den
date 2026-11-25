@@ -587,6 +587,7 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
 import { accountNameOf } from "../../shared/agents/catalog.js";
+import { agentKeyInForce } from "../../shared/agents/git-signing.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -5771,9 +5772,14 @@ async function runPinCommit(
   const mode = readServerAgentConfig().pinCommit;
   if (mode === "off")
     return { did: "skipped", version, why: "server_agent.pin_commit: off" };
+  // Issue 730: the key in force (agents.git.signing_key, else the
+  // install's own once made), the same one doctor checks.
   let signingKey: string | undefined;
   try {
-    signingKey = readAgentsConfig().git?.signingKey;
+    signingKey = agentKeyInForce(
+      readAgentsConfig().git,
+      getStateDir(),
+    )?.signingKey;
   } catch {
     signingKey = undefined;
   }

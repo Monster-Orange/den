@@ -52,8 +52,7 @@ import {
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import {
   checkAgentSigning,
-  existingAgentSigningKey,
-  resolveAgentSigning,
+  agentKeyInForce,
   signingKeyAddLine,
   signingReadFiles,
   type AgentGitSettings,
@@ -2270,23 +2269,18 @@ export function instructionSizeLines(
 }
 
 /**
- * agents.git: whether agents' commits sign and verify with their key
- * (a commit in a temp repo, checkAgentSigning), and the line that adds its
- * .pub to GitHub as a signing key. The key is agents.git.signing_key, or
- * (issue 1316) the install's own once an agent start made it. Nothing when
- * signing is off, or the person's git doesn't sign and none is set.
+ * agents.git: whether agents' commits sign and verify with the key in
+ * force (agentKeyInForce: agents.git.signing_key, else the install's own
+ * once made), a commit in a temp repo (checkAgentSigning), and the line
+ * that adds its .pub to GitHub as a signing key. No key in force (issue
+ * 730): "not signed", said as information, with the fix.
  */
 export function signingLines(
   title: string,
-  readGit: () => AgentGitSettings | undefined = () => {
+  readGit: () => AgentGitSettings | { off: true } | undefined = () => {
     try {
-      return resolveAgentSigning({
-        git: readAgentsConfig().git,
-        stateDir: getStateDir(),
-        cwd: process.cwd(),
-        env: process.env,
-        ensure: existingAgentSigningKey,
-      });
+      const git = readAgentsConfig().git;
+      return git?.off ? { off: true } : agentKeyInForce(git, getStateDir());
     } catch {
       // A bad agents: block is configLines' row.
       return undefined;
@@ -2294,30 +2288,31 @@ export function signingLines(
   },
   check: (g: AgentGitSettings) => SigningCheck = signingInSandbox,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
-  const git = readGit();
-  // Issue 730: no key set: commits are unsigned, said plainly, with the fix.
-  if (!git?.signingKey) {
-    const fix =
-      "ask Den's own agent for agent_signing_key_create (a held write you Allow), or set agents.git.signing_key in config/local/user.yml to an SSH key with no passphrase";
+  const got = readGit();
+  if (!got || !("signingKey" in got)) {
+    const off = !!got && "off" in got;
+    const detail = off
+      ? "not signed: agents.git.signing is off"
+      : "not signed: no agents' signing key";
+    const fix = off
+      ? undefined
+      : "set agents.git.signing_key in config/local/user.yml to an SSH key with no passphrase, or turn on commit signing in your git (commit.gpgsign): the next agent start makes the agents' own key";
     return {
       lines: [
         "",
         `${title} doctor: agents' commit signing`,
         "",
-        "  signing  ℹ  not signed: no agents.git.signing_key (agents' commits and Den's pin commits are unsigned)",
-        `           fix: ${fix}`,
+        `  signing  ℹ  ${detail} (agents' commits and ${title}'s pin commits are unsigned)`,
+        ...(fix ? [`           fix: ${fix}`] : []),
       ],
       problem: false,
+      // Information, as the text says it: not a warning.
       checks: [
-        {
-          id: "agents:signing",
-          status: "warn",
-          detail: "not signed: no agents.git.signing_key",
-          fix,
-        },
+        { id: "agents:signing", status: "ok", detail, ...(fix ? { fix } : {}) },
       ],
     };
   }
+  const git = got;
   const r = check(git);
   const add = signingKeyAddLine(git);
   const lines = [
