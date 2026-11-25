@@ -42,6 +42,7 @@ let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
 /** The running agents' session ids, opened in the pane. */
 const sids: string[] = [];
+const southSids: string[] = [];
 const browsers: Partial<Record<BrowserEngine, Browser>> = {};
 
 /** A long name with nowhere to break, as an agent id can be. */
@@ -50,6 +51,8 @@ const IDS = Array.from({ length: 14 }, (_, i) =>
   i % 2 ? LONG(i) : `agent-${i}`,
 );
 const RUNNING = [LONG(91), LONG(92), "runner-3"];
+/** South's running agents: two, so its third row is a stopped one. */
+const SOUTH = ["south-a", "south-b"];
 
 /** Many groups, some with long names, each holding a few of the agents. */
 const GROUPS = Array.from({ length: 9 }, (_, g) => {
@@ -129,12 +132,35 @@ beforeAll(async () => {
     });
     s.made[s.made.length - 1].emit(`${id} ready\r\n$ `);
   }
+  // Two running agents in south, above its stopped ones (a shut Stopped).
+  for (const [i, id] of SOUTH.entries()) {
+    const info = await host.start({
+      name: `acme-south:${id}`,
+      cwd: s.wsDir("south"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    southSids.push(info.ref.id);
+    s.seed({
+      id,
+      persona: "planner",
+      workspace: "south",
+      session: { backend: "den-pty", id: info.ref.id },
+      sessionName: `acme-south:${id}`,
+      startedAt: `2026-11-13T11:0${i}:00.000Z`,
+    });
+    s.made[s.made.length - 1].emit(`${id} ready\r\n$ `);
+  }
   IDS.forEach((id, i) =>
     s!.seed({
       id,
       persona: i % 3 ? "planner" : "a-persona-with-a-very-long-name-too",
       workspace: i % 2 ? "north" : "south",
       startedAt: `2026-11-13T09:${String(i).padStart(2, "0")}:00.000Z`,
+      // Stopped by a person: Stopped (n), not Interrupted.
+      stoppedAt: `2026-11-13T09:${String(i).padStart(2, "0")}:30.000Z`,
     }),
   );
 }, 90_000);
@@ -152,6 +178,7 @@ async function open(
   by: "project" | "group",
   layout: Layout = "none",
   height = 800,
+  path?: string,
 ): Promise<Page> {
   const ctx = await browsers[engine]!.newContext({
     viewport: { width, height },
@@ -170,20 +197,26 @@ async function open(
       }),
     }),
   );
-  await p.addInitScript((by) => {
-    try {
-      localStorage.setItem("den-agents-by", by);
-    } catch {
-      /* none */
-    }
-  }, by);
+  await p.addInitScript(
+    ({ by, shut }) => {
+      try {
+        localStorage.setItem("den-agents-by", by);
+        // Stopped (n) shut, as a person left it.
+        if (shut) localStorage.setItem("den-agents-stopped-open", "0");
+      } catch {
+        /* none */
+      }
+    },
+    { by, shut: !!path },
+  );
   await signInPage(
     p,
     s!.stateDir,
     s!.base,
-    layout === "none"
-      ? "/agents"
-      : `/agents?open=${sids.join(",")}&layout=${layout}`,
+    path ??
+      (layout === "none"
+        ? "/agents"
+        : `/agents?open=${sids.join(",")}&layout=${layout}`),
   );
   await p.waitForSelector("[data-by-switch]");
   // What's new, over the page on a first visit: seen.
@@ -193,14 +226,15 @@ async function open(
     .catch(() => {});
   await p.waitForFunction(
     (n) => document.body.textContent!.includes(n),
-    IDS[1],
+    path ? SOUTH[1] : IDS[1],
   );
   if (layout !== "none") {
     await p.waitForFunction(
       (n) =>
-        Array.from(document.querySelectorAll(".agl .agr[aria-pressed]")).some(
-          (b) => b.getAttribute("aria-pressed") === "true",
-        ) || document.body.textContent!.includes(n),
+        Array.from(
+          document.querySelectorAll("#agl button[data-kind][aria-pressed]"),
+        ).some((b) => b.getAttribute("aria-pressed") === "true") ||
+        document.body.textContent!.includes(n),
       "runner-3 ready",
     );
   }
@@ -253,12 +287,12 @@ describe("the agents page's list", () => {
             const list = document.getElementById("agl")!;
             list.scrollTop = 0;
             const box = list.getBoundingClientRect();
-            const rows = Array.from(list.querySelectorAll(".agr")).filter(
-              (r) => {
-                const b = r.getBoundingClientRect();
-                return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
-              },
-            );
+            const rows = Array.from(
+              list.querySelectorAll("button[data-kind]"),
+            ).filter((r) => {
+              const b = r.getBoundingClientRect();
+              return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
+            });
             return {
               rows: rows.length,
               listHeight: Math.round(box.height),
@@ -286,10 +320,12 @@ describe("the agents page's list", () => {
           const list = document.getElementById("agl")!;
           list.scrollTop = 0;
           const box = list.getBoundingClientRect();
-          return Array.from(list.querySelectorAll(".agr")).filter((r) => {
-            const b = r.getBoundingClientRect();
-            return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
-          }).length;
+          return Array.from(list.querySelectorAll("button[data-kind]")).filter(
+            (r) => {
+              const b = r.getBoundingClientRect();
+              return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
+            },
+          ).length;
         });
         expect(rows).toBeGreaterThanOrEqual(2);
       } finally {
@@ -312,7 +348,7 @@ describe("the agents page's list", () => {
         // Open it (a saved choice: a case before may have left it open).
         if (!(await isOpen())) {
           const wrote = saved();
-          await p.click('.den-dock [data-act="dock"]');
+          await p.click('[data-act="dock"]');
           await p.waitForSelector("#den-dock-out");
           await wrote;
         }
@@ -324,16 +360,19 @@ describe("the agents page's list", () => {
             c.scrollTop = c.scrollHeight;
             window.scrollTo(0, document.documentElement.scrollHeight);
             const box = list.getBoundingClientRect();
-            const rows = Array.from(list.querySelectorAll(".agr")).filter(
-              (r) => {
-                const b = r.getBoundingClientRect();
-                return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
-              },
-            ).length;
-            const pane = document.querySelector("#agr .pane:not([hidden])")!;
+            const rows = Array.from(
+              list.querySelectorAll("button[data-kind]"),
+            ).filter((r) => {
+              const b = r.getBoundingClientRect();
+              return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
+            }).length;
+            // The open pane's To line (the one shown).
+            const to = Array.from(
+              document.querySelectorAll("#agr [data-to]"),
+            ).find((e) => e.getBoundingClientRect().height > 0)!;
             return {
               rows,
-              to: pane.querySelector(".agto")!.getBoundingClientRect().bottom,
+              to: to.getBoundingClientRect().bottom,
               dock: document.getElementById("den-dock")!.getBoundingClientRect()
                 .top,
             };
@@ -357,10 +396,88 @@ describe("the agents page's list", () => {
               r.url().endsWith("/api/settings") &&
               r.request().method() === "POST",
           );
-          await p.click('.den-dock [data-act="dock"]');
+          await p.click('[data-act="dock"]');
           await wrote;
         }
         await p.context().close();
       }
     }, 60_000);
+
+  // A project with two running agents, then its stopped ones in a shut
+  // Stopped section: the floor counts only rows that are drawn.
+  for (const engine of ENGINES) {
+    it(`${engine}, 390x844, two running agents and a shut Stopped, one open: both running rows whole`, async () => {
+      if (skip()) return;
+      const p = await open(
+        engine,
+        390,
+        "project",
+        "focus",
+        844,
+        `/agents?project=south&open=${southSids[0]}&layout=focus`,
+      );
+      try {
+        const m = await p.evaluate(() => {
+          const list = document.getElementById("agl")!;
+          list.scrollTop = 0;
+          const box = list.getBoundingClientRect();
+          const whole = Array.from(
+            list.querySelectorAll('button[data-kind][data-state="running"]'),
+          ).filter((r) => {
+            const b = r.getBoundingClientRect();
+            return b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
+          }).length;
+          return {
+            whole,
+            floor: document
+              .getElementById("agx")!
+              .style.getPropertyValue("--agl-floor"),
+          };
+        });
+        expect(m).toEqual({
+          whole: 2,
+          floor: expect.stringMatching(/^\d+px$/),
+        });
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it(`${engine}, 390x844, two running agents and a shut Stopped, none open: the floor ends at the last drawn row, never negative`, async () => {
+      if (skip()) return;
+      const p = await open(
+        engine,
+        390,
+        "project",
+        "none",
+        844,
+        "/agents?project=south",
+      );
+      try {
+        // The floor ends at the last row drawn (the second running one),
+        // never at a row in the shut Stopped (n), and is never negative.
+        const m = await p.evaluate(() => {
+          const el = document.getElementById("agl")!;
+          const top = el.getBoundingClientRect().top - el.scrollTop;
+          const border = el.offsetHeight - el.clientHeight;
+          const running = Array.from(
+            el.querySelectorAll('button[data-kind][data-state="running"]'),
+          );
+          const last = running[running.length - 1].getBoundingClientRect();
+          return {
+            floor: parseFloat(
+              document
+                .getElementById("agx")!
+                .style.getPropertyValue("--agl-floor"),
+            ),
+            want: Math.max(96, Math.ceil(last.bottom - top + border)),
+          };
+        });
+        expect(m.floor).toBeGreaterThanOrEqual(0);
+        expect(Math.abs(m.floor - m.want)).toBeLessThanOrEqual(1);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+  }
 });

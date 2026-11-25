@@ -1317,7 +1317,16 @@ function fitListFloor() {
   const agx = st.root?.querySelector("#agx");
   const el = st.root?.querySelector("#agl");
   if (!agx || !el) return;
-  const rows = el.querySelectorAll(".agr");
+  // The floor is used at 860px and below only: wider, read no layout.
+  if (!matchMedia("(max-width: 860px)").matches) {
+    agx.style.removeProperty("--agl-floor");
+    return;
+  }
+  // Only rows that are drawn: not those in a shut Stopped (n), which some
+  // engines still give a box (content-visibility), nor any hidden one.
+  const rows = Array.from(el.querySelectorAll(".agr")).filter(
+    (r) => !r.closest("details:not([open])") && r.getClientRects().length > 0,
+  );
   if (!rows.length) {
     agx.style.removeProperty("--agl-floor");
     return;
@@ -1347,7 +1356,10 @@ function fitListFloor() {
       (parseFloat(getComputedStyle(pane).minHeight) || 0);
     px = Math.max(LIST_FLOOR_MIN_PX, Math.min(px, Math.floor(room)));
   }
-  agx.style.setProperty("--agl-floor", `${px}px`);
+  agx.style.setProperty(
+    "--agl-floor",
+    `${Math.max(LIST_FLOOR_MIN_PX, Math.ceil(px))}px`,
+  );
 }
 
 /**
