@@ -55,6 +55,9 @@ afterAll(async () => {
 // (drawn over it) got into the picture.
 const PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="/kit/tokens.css">
+<link rel="stylesheet" href="/kit/base.css">
+<link rel="stylesheet" href="/kit/dialog.css">
 <style>html, body { margin: 0; height: 100%; background: rgb(0, 128, 0); }</style>
 </head><body><p>A page</p>
 <script type="module">
