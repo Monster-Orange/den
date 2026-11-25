@@ -151,6 +151,7 @@ import {
   restartWaitOf,
   restartStateOf,
   staleAgents,
+  runningAgents,
   agentHelpers,
   agentHelperTranscript,
   listPersonas,
@@ -637,6 +638,8 @@ export async function handleAgentRoutes(
   if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
   const tp = TOOLS_PATH.exec(pathname);
   if (tp) return toolsRoute(req, res, tp, webDeps(deps.agents));
+  if (pathname === "/api/agents/restart-idle")
+    return idleRoute(req, res, webDeps(deps.agents), deps);
   if (pathname === "/api/agents/restart-status")
     return restartStatusRoute(req, res);
   if (
@@ -3180,6 +3183,75 @@ async function restartStatusRoute(
     return true;
   }
   sendJson(res, { agents: (await restartLive()).list() });
+  return true;
+}
+
+/**
+ * Issue 1406: POST /api/agents/restart-idle {project?}: "Restart all idle
+ * agents" (or one project's). Each running agent is checked and answered
+ * for, as restart-stale does: the idle ones restart now, mid-turn ones
+ * after their turn, the rest wait on the person (Restart now). Followed
+ * live. A person's only, audited.
+ */
+async function idleRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  d: AgentsResolved,
+  deps: AgentRouteDeps,
+): Promise<true> {
+  if ((req.method ?? "GET") !== "POST") return methodNotAllowed(res, "POST");
+  const actor = auditActorOf(req);
+  let what = "restart the running agents at their next idle";
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (notAPersonOf(req))
+      throw new AgentError("only a person can restart agents", {
+        status: 403,
+      });
+    guard(actor);
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      if (k !== "project")
+        throw new AgentError(
+          `${k}: unknown field (restart-idle takes only: project)`,
+          { usage: true },
+        );
+    let ws: string | undefined;
+    if (body.project !== undefined) {
+      ws = typeof body.project === "string" ? body.project : "";
+      if (!ws || isServerScope(ws) || !d.workspaceExists(ws))
+        throw new AgentError(`no project "${ws}"`, {
+          status: 404,
+          code: "not_found",
+        });
+      what = `${what} in ${ws}`;
+    }
+    const list = await runningAgents(d, ws);
+    what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
+    audit(what);
+    const one = (id: string, w: string) =>
+      `restart ${id} in ${w} (at its next idle), same conversation`;
+    const plan = await restartFollowed(d, list, {
+      ...(deps.personaWait ?? {}),
+      onDone: (o) =>
+        o.outcome === "restarted"
+          ? audit(one(o.id, o.workspace))
+          : audit(one(o.id, o.workspace), `not restarted (${o.outcome})`),
+    });
+    sendJson(res, { ok: true, agents: plan }, 202);
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e);
+  }
   return true;
 }
 

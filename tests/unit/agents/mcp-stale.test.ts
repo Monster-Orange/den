@@ -669,6 +669,48 @@ describe("D44: the routes", () => {
       ).toBe(200);
   });
 
+  it("issue 1406: restart-idle restarts every running agent at its next idle, each answered; a project's only with project", async () => {
+    const { r } = await startedBeforeHub();
+    expect(
+      await agents(r, "start", "-w", "south", "--persona", "reviewer"),
+    ).toBe(0);
+    const call = await api(r);
+    const all = await call("POST", "/api/agents/restart-idle", {});
+    expect(all.status).toBe(202);
+    expect(
+      (all.json.agents as { id: string; state: string }[])
+        .map((a) => `${a.id}:${a.state}`)
+        .sort(),
+    ).toEqual(["planner:now", "reviewer:unknown"]);
+    for (let i = 0; i < 100 && r.made.length < 3; i++) await settle(20);
+    expect(r.made.length).toBe(3);
+    const south = await call("POST", "/api/agents/restart-idle", {
+      project: "south",
+    });
+    expect(south.status).toBe(202);
+    expect((south.json.agents as { id: string }[]).map((a) => a.id)).toEqual([
+      "reviewer",
+    ]);
+  });
+
+  it("issue 1406: restart-idle is a person's; a bad body or project is refused", async () => {
+    const { r } = await startedBeforeHub();
+    const call = await api(r);
+    const env = r.made[0].opts.env as Record<string, string>;
+    const auth = { authorization: `Bearer ${actorTokenOf(env) ?? ""}` };
+    const x = await call("POST", "/api/agents/restart-idle", {}, auth);
+    expect(x.status).toBe(403);
+    expect(
+      (await call("POST", "/api/agents/restart-idle", { only: "x" })).status,
+    ).toBe(400);
+    expect(
+      (await call("POST", "/api/agents/restart-idle", { project: "west" }))
+        .status,
+    ).toBe(404);
+    expect((await call("GET", "/api/agents/restart-idle")).status).toBe(405);
+    expect(r.made).toHaveLength(1);
+  });
+
   it("tools: what the agent's MCP whoami reads", async () => {
     const { r } = await startedBeforeHub();
     const call = await api(r);

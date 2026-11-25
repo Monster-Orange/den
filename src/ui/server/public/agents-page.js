@@ -90,6 +90,9 @@
 import {
   followRestarts,
   restartAllHtml,
+  restartIdleBarHtml,
+  restartIdleSaid,
+  restartIdleWsHtml,
   restartNow,
   restartRowHtml,
   waitsOnPerson,
@@ -1258,6 +1261,9 @@ function paintList() {
   if (PAGE !== "terminal") {
     const bar = toolsBarHtml(inView);
     if (bar) notes.push(bar);
+    // Issue 1406: Restart all idle agents, for two or more running.
+    const idle = restartIdleBarHtml(runningIn(inView).length, t);
+    if (idle) notes.push(idle);
   }
   const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
   if (gLine) notes.push(gLine);
@@ -1276,7 +1282,7 @@ function paintList() {
           ? groups
               .map(
                 (g) =>
-                  `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
+                  `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${PAGE === "terminal" ? "" : restartIdleWsHtml(g.ws, runningIn(g.rows).length, t)}${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
                   g.rows.map((r) => reorderRowHtml(g, r)).join("") +
                   `</div>`,
               )
@@ -2497,6 +2503,37 @@ function followAgentRestarts() {
       restartFollow = null;
     },
   });
+}
+
+/** Issue 1406: the rows that are running agents (not shells, not stopped). */
+function runningIn(rows) {
+  return rows.filter((r) => r.agent && !inStopped(r));
+}
+
+/**
+ * Issue 1406: Restart all idle agents (or project `ws`'s), busy in its
+ * button; then how many restart now and which wait. Followed live.
+ */
+async function restartIdle(button, ws) {
+  let plan = [];
+  await window.denShell.busyAction(
+    "restart-agent",
+    (headers) =>
+      api("POST", "/api/agents/restart-idle", ws ? { project: ws } : {}, {
+        headers,
+      }).then((x) => {
+        plan = Array.isArray(x?.agents) ? x.agents : [];
+        return x;
+      }),
+    {
+      button,
+      vars: { name: t("rs.allName") },
+      success: () => restartIdleSaid(plan, t),
+    },
+  );
+  for (const a of plan) st.restarts.set(restartKey(a.workspace, a.id), a);
+  await refresh();
+  followAgentRestarts();
 }
 
 /** Issue 1407: Restart all the stale agents at their next idle (restart-stale). */
@@ -5991,6 +6028,9 @@ export async function mountAgentsPage(root) {
     if (act) {
       const which = act.dataset.act;
       if (which === "tools-restart-all") return void restartAllForTools(act);
+      if (which === "restart-idle") return void restartIdle(act);
+      if (which === "restart-idle-ws")
+        return void restartIdle(act, act.dataset.ws);
       // Issue 750: Hub didn't answer for its groups: ask again now.
       if (which === "groups-retry") return void loadGroups(true);
       if (which === "resume-all") return void resumeAll(act);

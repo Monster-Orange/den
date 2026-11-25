@@ -205,3 +205,36 @@ export function followRestarts(o) {
     },
   };
 }
+
+/**
+ * Issue 1406: "Restart all idle agents (n)" above the list, when two or
+ * more agents are running; else "".
+ */
+export function restartIdleBarHtml(n, t) {
+  return n >= 2
+    ? `<div class="agnote" data-note="restart-idle"><button type="button" class="den-btn sm" data-act="restart-idle">${esc(t("ag.ri.all", { n }))}</button></div>`
+    : "";
+}
+
+/** Issue 1406: a project's "Restart this project's idle agents", for two or more. */
+export function restartIdleWsHtml(ws, n, t) {
+  return n >= 2
+    ? `<button type="button" class="den-btn sm" data-act="restart-idle-ws" data-ws="${esc(ws)}">${esc(t("ag.ri.ws", { n }))}</button>`
+    : "";
+}
+
+/**
+ * Issue 1406: what Restart all idle agents did: how many restart now, and
+ * the agents that wait (their turn, a job, or the person).
+ */
+export function restartIdleSaid(plan, t) {
+  const list = Array.isArray(plan) ? plan : [];
+  if (!list.length) return t("ag.ri.none");
+  const now = list.filter((a) => a?.state === "now").length;
+  const wait = list
+    .filter((a) => a?.state !== "now")
+    .map((a) => String(a?.id ?? ""));
+  return wait.length
+    ? t("ag.ri.said", { n: now, wait: wait.join(", ") })
+    : t("ag.ri.saidAll", { n: now });
+}
