@@ -301,10 +301,9 @@ describe("issue 171 values in en", () => {
 });
 
 /**
- * Issue 188: a check that couldn't reach its target sent "fetch failed",
- * shown as is in every language. It has its own plain line now: the cell
- * says it didn't answer and what to try; its title names what didn't
- * answer. In en, es and ja; never the raw words.
+ * A check that couldn't reach its target ("fetch failed") has its own
+ * plain line: the cell says it didn't answer and what to try; its title
+ * names what didn't answer. In en, es and ja; never the raw words.
  */
 describe("issue 188: Environments, a check that got no answer", () => {
   const url = "https://web.acme.localhost/health";
