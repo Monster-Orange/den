@@ -1,8 +1,3 @@
-/**
- * Issue 786 clause 3: a state file Den can't read is kept, not lost. It
- * moves to <state>/backup/ (the newest 3 per file), doctor shows a row and
- * the bell an item, never a silent reset. A temp state folder only.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -111,7 +106,6 @@ describe("a state file that can't be read", () => {
       const copy = path.join(d, "backup", k!.saved);
       fs.chmodSync(copy, 0o600);
       expect(fs.readFileSync(copy, "utf8")).toBe('{"items":[]}');
-      // The store's file was moved, never renamed over.
       expect(fs.existsSync(f)).toBe(false);
     },
   );
@@ -200,7 +194,6 @@ describe("it is never silent", () => {
       "record:state-kept:b.json",
     ]);
 
-    // A second start tells nothing again.
     stops.splice(0).forEach((s) => s());
     added.length = 0;
     stops.push(startStateKeptBell(d, () => store));
@@ -259,7 +252,6 @@ describe("issue 786: a broken file's text never reaches backup's notes (security
       expect(keepUnreadable(s, file, `odd "${SECRET}"`)!.why).toBe(
         "can't be read",
       );
-      // Only an errno code at the start, never an upper-case word inside.
       fs.writeFileSync(file, "x");
       expect(
         keepUnreadable(s, file, "token EVILSECRETTOKEN refused")!.why,

@@ -73,7 +73,6 @@ const KNOWN_PRIVATE = [
   path.join("hub", "previous", "20261122", "bound.json"),
   path.join("embed", "server-keys.json"),
   "web-sessions.json",
-  // Issue 786: a kept copy of a state file Den couldn't read.
   path.join("backup", "actor-tokens.json.2026-11-23T08-00-00-000Z.bad"),
 ];
 

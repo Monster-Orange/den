@@ -1,46 +1,22 @@
-/**
- * Issue 786 clause 3: a state file Den can't read is kept, never lost.
- *
- * Until 786 a reader that hit a broken file (a crash mid-write before
- * atomic-write, a disk error, a hand edit) caught the error and started
- * empty, and the next save wrote over what was left. Now the reader moves
- * the file to `<state>/backup/` first, under its path in the state folder
- * plus the time, and keeps the newest KEEP_PER_FILE copies of each file.
- * Each copy is noted in `<state>/backup/kept.json`, which doctor reads (a
- * warn row naming the files) and the server turns into one bell item per
- * file. Nothing is reset silently.
- *
- * Only the state folder's own files are moved: a file outside it is left
- * where it is (it is the person's, not Den's to move).
- */
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
 
 export const BACKUP_DIR = "backup";
 export const KEPT_FILE = "kept.json";
-/** Copies kept per state file; older ones are removed. */
 export const KEEP_PER_FILE = 3;
-/** Notes kept in kept.json (the newest). */
 const KEEP_NOTES = 50;
 
 export interface KeptFile {
-  /** The file's path in the state folder ("agents/a1.json"). */
   file: string;
-  /** The copy's name in <state>/backup/. */
   saved: string;
-  /** ISO 8601: when it was kept. */
   at: string;
-  /** Why it couldn't be read (the parse error's message), bounded. */
   why: string;
-  /** Whether the bell has been told (the server sets it). */
   told?: boolean;
 }
 
-/** Listeners told of each file kept (the server's bell). */
 const listeners = new Set<(k: KeptFile) => void>();
 
-/** Hear of each file kept from now on; returns the way to stop. */
 export function onKept(fn: (k: KeptFile) => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -50,22 +26,14 @@ export function backupDir(stateDir: string): string {
   return path.join(stateDir, BACKUP_DIR);
 }
 
-/** "agents/a1.json" → "agents__a1.json": one flat folder, one name per file. */
 function flatName(rel: string): string {
   return rel.split(/[\\/]+/).join("__");
 }
 
-/** The ISO time made safe for a file name on every OS. */
 function stamp(d: Date): string {
   return d.toISOString().replace(/[:.]/g, "-");
 }
 
-/**
- * Why a file couldn't be read, with none of its text. Node's JSON.parse
- * messages quote the file (a short one whole), and a state file may hold
- * a token or a key: only a fixed reason is kept, with the position at
- * most, or the error code of a read that failed.
- */
 export function safeWhy(message: string): string {
   if (
     /JSON|Unexpected|Unterminated|Expected|Bad control|Bad escaped/.test(
@@ -79,11 +47,6 @@ export function safeWhy(message: string): string {
   return code ? `can't be read (${code[1]})` : "can't be read";
 }
 
-/**
- * Move the unreadable `file` to <state>/backup/ and note it. Null when the
- * file is gone, is outside `stateDir`, or can't be moved (then it stays
- * where it is: never worse than before).
- */
 export function keepUnreadable(
   stateDir: string,
   file: string,
@@ -102,8 +65,6 @@ export function keepUnreadable(
   let saved = `${at}.bad`;
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // More in the same millisecond: above the highest number there, so
-    // the newest never takes a pruned copy's name and sorts as oldest.
     let top = -1;
     for (const n of fs.readdirSync(dir)) {
       if (n === `${at}.bad`) top = Math.max(top, 0);
@@ -127,19 +88,16 @@ export function keepUnreadable(
   try {
     writeNotes(root, [...readKept(root), k].slice(-KEEP_NOTES));
   } catch {
-    /* the copy is kept; only the note is lost */
   }
   for (const fn of listeners) {
     try {
       fn(k);
     } catch {
-      /* a listener's trouble never stops a read */
     }
   }
   return k;
 }
 
-/** All but the newest KEEP_PER_FILE copies of `base` go. */
 function prune(dir: string, base: string): void {
   let names: string[];
   try {
@@ -150,9 +108,6 @@ function prune(dir: string, base: string): void {
   } catch {
     return;
   }
-  // The name ends in the time it was kept (a rename keeps the old mtime),
-  // then -1, -2… for more in the same millisecond: "…Z-1.bad" sorts before
-  // "…Z.bad" by name, so sort by the time, then that number.
   const key = (n: string): [string, number] => {
     const m = /^(.*Z)(?:-(\d+))?\.bad$/.exec(n.slice(base.length + 1));
     return m ? [m[1]!, Number(m[2] ?? 0)] : [n, 0];
@@ -162,17 +117,13 @@ function prune(dir: string, base: string): void {
     const [tb, nb] = key(b);
     return ta < tb ? -1 : ta > tb ? 1 : na - nb;
   });
-  // A copy may be a folder (one stood where a state file should); a copy
-  // that won't go stays: pruning never throws to the reader.
   for (const n of byTime.slice(0, Math.max(0, byTime.length - KEEP_PER_FILE)))
     try {
       fs.rmSync(path.join(dir, n), { force: true, recursive: true });
     } catch {
-      /* kept one more */
     }
 }
 
-/** The notes of files kept, oldest first ([] when none or unreadable). */
 export function readKept(stateDir: string): KeptFile[] {
   try {
     const v: unknown = JSON.parse(
@@ -192,10 +143,6 @@ export function readKept(stateDir: string): KeptFile[] {
   }
 }
 
-/**
- * Read-modify-write with no lock: two processes keeping at once can lose
- * one note (the copy itself stays in backup/).
- */
 function writeNotes(stateDir: string, notes: KeptFile[]): void {
   writeFileAtomic(
     path.join(backupDir(stateDir), KEPT_FILE),
@@ -204,7 +151,6 @@ function writeNotes(stateDir: string, notes: KeptFile[]): void {
   );
 }
 
-/** Mark these notes told (by `saved`), so the bell says each once. */
 export function markKeptTold(stateDir: string, saved: readonly string[]): void {
   if (!saved.length) return;
   const set = new Set(saved);
@@ -221,11 +167,6 @@ export type StateRead =
   | { ok: false; missing: true }
   | { ok: false; missing: false; kept: KeptFile | null };
 
-/**
- * Read a JSON state file. Missing: says so. Unreadable (bad JSON, or a
- * read error other than missing): the file is kept in backup and the
- * caller starts from its default, as before, but nothing is lost.
- */
 export function readStateJson(stateDir: string, file: string): StateRead {
   let text: string;
   try {
@@ -233,8 +174,6 @@ export function readStateJson(stateDir: string, file: string): StateRead {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT")
       return { ok: false, missing: true };
-    // Can't be read (EACCES, EIO, EISDIR): kept too, or the caller's next
-    // atomic save would rename over it.
     return {
       ok: false,
       missing: false,

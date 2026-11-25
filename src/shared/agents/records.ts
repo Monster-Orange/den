@@ -413,18 +413,11 @@ export function readRecord(stateDir: string, id: string): AgentRecord | null {
   try {
     return JSON.parse(text) as AgentRecord;
   } catch (e) {
-    // Issue 786: kept in <state>/backup with a bell item, never lost.
     keepUnreadable(stateDir, file, (e as Error).message);
     return null;
   }
 }
 
-/**
- * Whether an agent id is in use: a record reads, its file is there, or a
- * broken one was kept in backup (issue 786). A kept one still owns its
- * agent files, actor token and maybe a running session, so a new agent
- * never takes its id.
- */
 export function agentIdTaken(stateDir: string, id: string): boolean {
   if (!AGENT_ID_RE.test(id)) return false;
   if (readRecord(stateDir, id)) return true;
