@@ -5,7 +5,9 @@
 #
 # Where it runs: the self-hosted runners only when the
 # DEN_SELF_HOSTED_NIGHT repo variable is 'on' (the night switch, apart from
-# ci.yml's day switch); otherwise GitHub-hosted.
+# ci.yml's day switch) and the run was started by hand here; otherwise
+# GitHub-hosted. Issue 1492: the event check stays in the expression, so a
+# trigger added later can't bring someone else's code to the box.
 name: repeat
 
 on:
@@ -38,7 +40,7 @@ permissions:
 
 jobs:
   repeat:
-    runs-on: ${{ vars.DEN_SELF_HOSTED_NIGHT == 'on' && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && vars.DEN_SELF_HOSTED_NIGHT == 'on') && fromJSON('["self-hosted","den-wsl"]') || 'ubuntu-latest' }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
