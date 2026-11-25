@@ -125,6 +125,9 @@ async function edgePage(
   if (before) await before(p);
   const r = await p.goto(`http://${EDGE}:${port}/settings?x=1`);
   expect(r?.status()).toBe(401);
+  // Issue 1333: the page asks for a code only on its button.
+  await p.waitForSelector("#den-pair-start, #den-pair-code");
+  if (await p.$("#den-pair-start")) await p.click("#den-pair-start");
   // D67: the browser way, with the code shown big. Issue 819: it is the
   // only way; no command approves this computer.
   await p.waitForSelector("#den-pair-code");

@@ -6,6 +6,9 @@
 - Never name an issue or an ID without saying what it is. Write "#5 (the
   hooks issue)" or "the plain-writing rule (R12)", never a bare "#5" or "R12".
 - Ask each decision as a numbered yes/no question. One question per number.
+- A Doctor ⚠ isn't by itself a reason to ask the person. Check what the row
+  is about first. Ask only when it needs their decision and the thing it
+  names is in use: an empty project needs no Hub link.
 - No caveat sections. Leave out anything the person doesn't need in order to
   act.
 
@@ -65,6 +68,20 @@ role from it in a fresh conversation. Use these headings, each filled in:
 ```
 
 Write it plainly. Explain every ID in it, as in a hand-back.
+
+### Your sandbox
+
+Inside your sandbox, `ps`, `top`, `sudo` and other setuid programs can't
+start, and Docker's socket is refused: that is the sandbox, not a broken
+machine. Use `pgrep`/`pkill` or Den's status tools; if the work needs root
+or Docker, tell your person.
+
+### Commits
+
+Commit with git. Den signs your commits with the agents' own SSH key when
+your person's git signs theirs. If a commit's signing fails, tell your
+person. Don't turn signing off, and never commit through the GitHub API or
+any other API with your person's token.
 
 ### Sending feedback about Den
 

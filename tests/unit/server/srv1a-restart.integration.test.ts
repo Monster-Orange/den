@@ -114,7 +114,10 @@ async function until<T>(
 }
 
 describe("SRV-1a: the server agent restarts its own Den", () => {
-  it("started by the person; with ask (the default) its restart waits for the Allow", async () => {
+  it("started by the person; with self_update: ask set, its restart waits for the Allow", async () => {
+    // Issue 1391: an explicit ask is the person's say, on a personal
+    // install too (unset, personal restarts routinely).
+    setSelfUpdate("ask");
     const st = await call("POST", "/api/server-agent/start", {});
     expect(st.status).toBe(200);
     agentToken = actorTokenOf(s.made.at(-1)!.opts.env) ?? "";

@@ -57,7 +57,12 @@ import {
 import type { DetailKey, HeldOpCheck } from "../cli/agent-ops.js";
 import type { AskedBy } from "./approvals.js";
 import { recordAction } from "./audit.js";
-import { readBody, sendJson } from "./http-helpers.js";
+import { readBody, readBodyCapped, sendJson } from "./http-helpers.js";
+import {
+  importVerifyRun,
+  removeImportedVerifyRun,
+} from "../../shared/verify/import-run.js";
+import { product } from "../../shared/product.js";
 import {
   agentPrincipalOf,
   auditActorOf,
@@ -474,6 +479,110 @@ export async function bodyOf(
   }
 }
 
+/**
+ * Issue 1182: a person's import or remove of an outside runner's run.
+ *
+ *   POST /api/verify/import  { project, env, text }: the verdict file's text,
+ *                            checked as `verify import` checks it, kept as a
+ *                            run on the imported environment
+ *   POST /api/verify/remove  { project, run }: an imported run, gone
+ *
+ * An agent is refused (request-guard's AGENT_PERSON_WRITES too). Audited.
+ */
+async function verifyPersonWrite(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  d: VerifyServerDeps,
+): Promise<true> {
+  const verb = pathname.endsWith("/import") ? "verify-import" : "verify-remove";
+  if ((req.method ?? "GET").toUpperCase() !== "POST") {
+    sendJson(res, { ok: false, error: "POST only" }, 405);
+    return true;
+  }
+  const refuse = (status: number, error: string, detail = "") => {
+    recordAction(
+      auditActorOf(req),
+      { verb, detail, outcome: "refused", reason: error },
+      principalOf(req),
+    );
+    sendJson(res, { ok: false, error }, status);
+    return true as const;
+  };
+  // An agent's token, or a person's session carrying an agent's claim, as
+  // every person-only handler checks (not request-guard alone).
+  if (agentPrincipalOf(req) || auditActorOf(req))
+    return refuse(
+      403,
+      "Only a person can change Verify's results (this is an agent)",
+    );
+  let settings;
+  try {
+    settings = readImportSettings(d.verifyConfig?.());
+  } catch (e) {
+    return refuse(400, (e as Error).message);
+  }
+  // The text travels JSON-escaped: room for that, and the other fields.
+  const cap =
+    verb === "verify-import" ? settings.maxBytes * 2 + 64 * 1024 : 32 * 1024;
+  const raw = await readBodyCapped(req, cap);
+  if (raw === null)
+    return refuse(
+      413,
+      `the file is over ${settings.maxBytes} bytes (verify.import.max_bytes)`,
+    );
+  let body: Record<string, unknown> | null = null;
+  try {
+    const v: unknown = JSON.parse(raw || "{}");
+    if (v && typeof v === "object" && !Array.isArray(v))
+      body = v as Record<string, unknown>;
+  } catch {
+    body = null;
+  }
+  const str = (k: string) =>
+    body && typeof body[k] === "string" ? (body[k] as string) : "";
+  const project = str("project");
+  if (!body || !project)
+    return refuse(
+      400,
+      verb === "verify-import"
+        ? "The body is JSON: { project, env, text }."
+        : "The body is JSON: { project, run }.",
+    );
+  if (!d.projectExists(project))
+    return refuse(400, `there is no project "${project}"`);
+  const stateDir = d.stateDir();
+  let r;
+  if (verb === "verify-import") {
+    const env = str("env");
+    const text = str("text");
+    if (!env || !text)
+      return refuse(400, "The body is JSON: { project, env, text }.", project);
+    r = importVerifyRun({
+      stateDir,
+      project,
+      env,
+      text,
+      settings,
+      orgEnvs: d.environments?.() ?? [],
+      cli: product().cli,
+    });
+  } else {
+    const run = str("run");
+    if (!run)
+      return refuse(400, "The body is JSON: { project, run }.", project);
+    r = removeImportedVerifyRun({ stateDir, project, runId: run });
+  }
+  if (!r.ok) return refuse(400, r.error, project);
+  recordAction(
+    auditActorOf(req),
+    { verb, detail: `${project}: ${r.summary}`, targetWorkspace: project },
+    principalOf(req),
+  );
+  sendJson(res, { ok: true, summary: r.summary, run_id: r.runId });
+  return true;
+}
+
 /** The routes above; false when `pathname` is none of them. */
 export async function handleVerifyRoutes(
   req: http.IncomingMessage,
@@ -482,6 +591,8 @@ export async function handleVerifyRoutes(
   deps: () => VerifyServerDeps,
 ): Promise<boolean> {
   if (handleVerifyReads(req, res, pathname, deps)) return true;
+  if (pathname === "/api/verify/import" || pathname === "/api/verify/remove")
+    return verifyPersonWrite(req, res, pathname, deps());
   const plan = pathname === "/api/verify/plan";
   if (!plan && pathname !== "/api/verify/run") return false;
   if ((req.method ?? "GET").toUpperCase() !== "POST") {

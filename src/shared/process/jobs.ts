@@ -9,6 +9,7 @@
  */
 import { execFileSync } from "child_process";
 import { PS_MAX_BUFFER } from "./ps-buffer.js";
+import { redactSecrets } from "../redact.js";
 
 export interface ProcessRow {
   pid: number;
@@ -75,4 +76,34 @@ export function jobsUnder(
     }
   }
   return out;
+}
+
+/** Issue 1407: the longest command a person is shown of a job. */
+export const JOB_COMMAND_MAX = 80;
+
+/**
+ * Issue 1407: what a background job runs, for a person: the command a
+ * runtime's shell evals (`eval '<command>'`), else the command line. Its
+ * secrets redacted, on one line, with no control characters, at most JOB_COMMAND_MAX long.
+ */
+export function jobCommandOf(command: string): string {
+  const m = /\beval '((?:[^']|'\\'')*)'/.exec(command);
+  // No eval: a shell that sources its snapshot first (`sh -c . <snap>;
+  // cmd`, `zsh -c -l source <snap> && cmd`) shows what it runs after it.
+  const raw = m
+    ? m[1].replace(/'\\''/g, "'")
+    : command.replace(
+        /^\S*sh\s+-c\s+(?:-l\s+)?(?:\.|source)\s+\S*shell-snapshots\/\S+\s*(?:;|&&)\s*/,
+        "",
+      );
+  // A command line can carry a token (curl -H "Authorization: Bearer …"):
+  // redacted before a page or an error shows it.
+  const one = redactSecrets(raw)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return one.length > JOB_COMMAND_MAX
+    ? `${one.slice(0, JOB_COMMAND_MAX - 1)}…`
+    : one;
 }

@@ -375,8 +375,11 @@ export async function signedIn(
   const name = pair.slice(0, i);
   const value = pair.slice(i + 1);
   // Its CSRF token, when the server answers /api/session (a server whose
-  // config doesn't load answers no route but sign-in: "" then).
-  const me = await call(server, "GET", "/api/session", {
+  // config doesn't load answers no route but sign-in: "" then). With
+  // ?welcome=1, as the shell asks: this browser counts as greeted, so its
+  // pages show no after-sign-in toast (a test that wants one signs in
+  // through the real flow).
+  const me = await call(server, "GET", "/api/session?welcome=1", {
     cookie: pair,
     "sec-fetch-site": "same-origin",
     ...via,
