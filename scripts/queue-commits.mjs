@@ -1,26 +1,4 @@
 #!/usr/bin/env node
-/**
- * The merge queue's commit check. A commit can reach the queue's branch
- * without a pre-push (a hosted merge button), and the pre-push name check
- * skips what is already there, so CI checks it here instead: every commit
- * in the range must be signed by a key in the allowed-signers file, and
- * its message must not match the names list (scripts/org-names.js).
- *
- *   node scripts/queue-commits.mjs <base>..<head> --trusted <ref>      CI
- *   node scripts/queue-commits.mjs <base>..<head> [--signers <file>] [--allow <file>]
- *
- * With --trusted, the allowed-signers file (.github/release-signers) and
- * the allow-list (scripts/queue-commits-allow.json) are read at that ref,
- * the base the change is judged against, never from the change: a change
- * can't allow-list its own commit or add its own key, and an entry counts
- * only once it is on the base. Without it, both come from files
- * (default: this checkout's), for a run by hand. The allow-list holds
- * known commits, each by its full SHA with a reason; they pass. None on
- * the ref, or no default file: nothing passes by SHA.
- * Output names only a SHA and the rule it broke, never a message: CI logs
- * are public. Exit 1 on a hit; 2 on bad input, a bad allow-list, or no
- * names list (a missing secret never passes silently).
- */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -56,10 +34,6 @@ const trustedAt = args.indexOf("--trusted");
 const trusted = trustedAt === -1 ? undefined : args[trustedAt + 1];
 if (trustedAt !== -1 && !trusted) fail("--trusted needs a ref");
 
-/**
- * A file's text at the trusted ref, or null when the ref hasn't got it.
- * The change being judged never supplies its own allow-list or keys.
- */
 function atTrusted(rel) {
   const r = spawnSync("git", ["show", `${trusted}:${rel}`], {
     encoding: "utf-8",
@@ -75,7 +49,6 @@ if (trusted) {
   signersName = `${trusted}:${SIGNERS_PATH}`;
   allowName = `${trusted}:${ALLOW_PATH}`;
   signersText = atTrusted(SIGNERS_PATH);
-  // No allow-list on the trusted ref yet: nothing passes by SHA.
   allowText = atTrusted(ALLOW_PATH) ?? "[]";
 } else {
   signersName = flag("--signers", path.join(ROOT, SIGNERS_PATH));
@@ -121,7 +94,6 @@ try {
 } catch (e) {
   fail(`the allow-list ${allowName} can't be used: ${e.message}`);
 }
-// verify-commit reads the signers from a file: a private copy of the text.
 const signersDir = mkdtempSync(path.join(os.tmpdir(), "queue-commits-"));
 const signers = path.join(signersDir, "allowed_signers");
 writeFileSync(signers, signersText);

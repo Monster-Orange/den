@@ -1,11 +1,3 @@
-/**
- * The queue's commit check: every commit on the merge queue's branch that
- * main hasn't got must be signed by a key in the allowed-signers file, and
- * its message must not match the names list. A commit on the allow-list
- * (by full SHA, with a reason) passes. The output names only SHAs and the
- * rule broken, never a message. A throwaway key, invented names in a temp
- * names file.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -46,7 +38,6 @@ function check(range: string, env: Record<string, string> = {}) {
   );
 }
 
-/** A commit signed with `signWith`, or unsigned when it's undefined. */
 function commit(msg: string, signWith?: string): string {
   fs.writeFileSync(path.join(repo, "f.txt"), msg);
   git("add", "f.txt");
@@ -154,8 +145,6 @@ describe("issue 1613: the queue's commits", () => {
     try {
       const ok = check(`${from}..HEAD`);
       expect(ok.status).toBe(0);
-      // A log reader sees how many passed by the allow-list, not only
-      // how many were checked.
       expect(ok.stdout).toMatch(
         /0 commit\(s\) signed and clean; 1 passed by the allow-list/,
       );
@@ -187,11 +176,6 @@ describe("issue 1613: the queue's commits", () => {
   });
 });
 
-/**
- * With --trusted <ref>, the allow-list and the signers come from that ref
- * (the base the change is judged against), never from the change itself:
- * a change can't allow-list its own commit or add its own key.
- */
 describe("issue 1613: the trusted base's allow-list and signers", () => {
   const SIGNERS = path.join(".github", "release-signers");
   const ALLOW = path.join("scripts", "queue-commits-allow.json");
@@ -235,7 +219,6 @@ describe("issue 1613: the trusted base's allow-list and signers", () => {
 
   const pub = (k: string) => fs.readFileSync(`${k}.pub`, "utf-8").trim();
 
-  /** The same check with the change's own files: the attack works there. */
   function checkOwnFiles(range: string) {
     return spawnSync(
       "node",
