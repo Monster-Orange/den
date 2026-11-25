@@ -44,6 +44,8 @@ const onDisk = () =>
     JSON.parse(fs.readFileSync(webSessionsPath(tmp), "utf-8")).sessions,
   ).length;
 
+/** Issue 1582: a whole-second time both files are pinned to (utimes drops sub-ms). */
+const T = 1_700_000_000;
 describe("issue 1299: the sessions lock", () => {
   it("two writers, one after the other, never lose each other's sessions", () => {
     const server = store();
@@ -209,14 +211,46 @@ describe("issue 1299 review: a stale lock is unlinked only if it's still the one
   it("a lock replaced since it was looked at stays", () => {
     fs.writeFileSync(lockFile(), "2147483646\n", { mode: 0o600 });
     const seen = fs.statSync(lockFile());
-    // Another writer took it over meanwhile: a new file.
+    const seenText = fs.readFileSync(lockFile(), "utf-8");
+    // Another writer took it over meanwhile: a new file (on a fast disk it
+    // can keep the inode and mtime; its text tells it apart, issue 1582).
     fs.unlinkSync(lockFile());
     fs.writeFileSync(lockFile(), `${process.pid}\n`, { mode: 0o600 });
-    expect(lockUnlinkIfUnchanged(lockFile(), seen)).toBe(false);
+    expect(lockUnlinkIfUnchanged(lockFile(), seen, seenText)).toBe(false);
     expect(fs.existsSync(lockFile())).toBe(true);
     expect(lockUnlinkIfUnchanged(lockFile(), fs.statSync(lockFile()))).toBe(
       true,
     );
     expect(fs.existsSync(lockFile())).toBe(false);
+  });
+
+  it("issue 1582: a lock replaced with the same inode and mtime stays (its text differs)", () => {
+    fs.writeFileSync(lockFile(), "2147483646 aaaaaaaaaaaaaaaa\n", {
+      mode: 0o600,
+    });
+    fs.utimesSync(lockFile(), T, T);
+    const seen = fs.statSync(lockFile());
+    const seenText = fs.readFileSync(lockFile(), "utf-8");
+    // Taken over in place, its times put back: the stat matches.
+    fs.writeFileSync(lockFile(), `${process.pid} bbbbbbbbbbbbbbbb\n`);
+    fs.utimesSync(lockFile(), T, T);
+    const now = fs.statSync(lockFile());
+    expect([now.ino, now.mtimeMs]).toEqual([seen.ino, seen.mtimeMs]);
+    expect(lockUnlinkIfUnchanged(lockFile(), seen, seenText)).toBe(false);
+    expect(fs.existsSync(lockFile())).toBe(true);
+  });
+
+  it("issue 1582: a lock taken records a nonce after the pid, and its release reads both", () => {
+    const release = store().lock();
+    const text = fs.readFileSync(lockFile(), "utf-8");
+    expect(text).toMatch(new RegExp(`^${process.pid} [0-9a-f]{16}\\n$`));
+    // Another take by this same pid (a nonce of its own) isn't released.
+    fs.writeFileSync(lockFile(), `${process.pid} ffffffffffffffff\n`);
+    release();
+    expect(fs.existsSync(lockFile())).toBe(true);
+    // Nor an older Den's lock, a bare pid (only the stale take-over may).
+    fs.writeFileSync(lockFile(), `${process.pid}\n`);
+    release();
+    expect(fs.existsSync(lockFile())).toBe(true);
   });
 });
