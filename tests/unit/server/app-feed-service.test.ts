@@ -62,13 +62,15 @@ function setup(
     projectOf?: Record<string, string>;
     relay?: (dv: Delivery) => Promise<boolean>;
     holds?: (id: string) => boolean;
-    addressLocal?: (url: string) => Promise<boolean>;
+    lookup?: AppFeedServiceDeps["lookup"];
   } = {},
 ) {
   const calls: {
     url: string;
     headers: Record<string, string>;
     signal?: AbortSignal | null;
+    /** Issue 1491: the checked address a pinned request went to. */
+    address?: string;
   }[] = [];
   const logs: string[] = [];
   const bells: Parameters<AppFeedServiceDeps["bell"]>[0][] = [];
@@ -118,7 +120,14 @@ function setup(
     bell: (n) => bells.push(n),
     stateDir: dir,
     fetch: fakeFetch,
-    ...(o.addressLocal ? { addressLocal: o.addressLocal } : {}),
+    // Issue 1491: a public_only feed's pinned request, recorded with the
+    // address it was pinned to and answered as the fake app does.
+    pinned: async (url, init) => {
+      const r = await fakeFetch(url, init as RequestInit);
+      calls[calls.length - 1]!.address = init.address;
+      return r;
+    },
+    ...(o.lookup ? { lookup: o.lookup } : {}),
     log: (l) => logs.push(l),
     retryMs: { first: 5, max: 10 },
   });
@@ -429,7 +438,7 @@ describe("app feed service: limits", () => {
   });
 });
 
-describe("app feed service: a public_only feed's address (issue 1480)", () => {
+describe("app feed service: a public_only feed's address (issues 1480, 1491)", () => {
   const feed = (extra: Record<string, unknown>) => ({
     north: [
       {
@@ -440,33 +449,64 @@ describe("app feed service: a public_only feed's address (issue 1480)", () => {
       },
     ],
   });
+  /** A lookup that answers each call in turn, then the last again. */
+  const answers = (...list: string[][]) => {
+    const asked: string[] = [];
+    const lookup = async (host: string) => {
+      asked.push(host);
+      const a = list[Math.min(asked.length - 1, list.length - 1)]!;
+      return a.map((address) => ({
+        address,
+        family: address.includes(":") ? 6 : 4,
+      }));
+    };
+    return { asked, lookup };
+  };
 
   it("is resolved again at each connect: one that now names a private address is never opened", async () => {
-    const asked: string[] = [];
-    const s = setup({
-      feeds: feed({ public_only: true }),
-      addressLocal: async (u) => {
-        asked.push(u);
-        return true;
-      },
-    });
+    const l = answers(["127.0.0.1"]);
+    const s = setup({ feeds: feed({ public_only: true }), lookup: l.lookup });
     s.svc.sync();
     await until(() => (s.svc.view("north").feeds[0]?.problem ?? "") !== "");
     const view = s.svc.view("north");
     s.svc.stop();
     expect(s.calls).toEqual([]);
-    expect(asked[0]).toBe("https://app.example.test/events");
+    expect(l.asked[0]).toBe("app.example.test");
     expect(view.feeds[0].problem).toContain("private");
   });
 
+  it("issue 1491: a name that answers public at the check and 127.0.0.1 after connects to the checked address only", async () => {
+    // A rebind: the first answer is public, every later one is loopback.
+    const l = answers(["93.184.216.34"], ["127.0.0.1"]);
+    const s = setup({ feeds: feed({ public_only: true }), lookup: l.lookup });
+    s.svc.sync();
+    await until(() => s.calls.length >= 1);
+    s.svc.stop();
+    // One lookup for the connect, and the request went to its answer:
+    // nothing looked the name up again to reach 127.0.0.1.
+    expect(l.asked).toEqual(["app.example.test"]);
+    expect(s.calls.map((c) => [c.url, c.address])).toEqual([
+      ["https://app.example.test/events", "93.184.216.34"],
+    ]);
+  });
+
+  it("issue 1491: a name with any private answer is refused, and nothing is opened", async () => {
+    const l = answers(["93.184.216.34", "10.0.0.7"]);
+    const s = setup({ feeds: feed({ public_only: true }), lookup: l.lookup });
+    s.svc.sync();
+    await until(() => (s.svc.view("north").feeds[0]?.problem ?? "") !== "");
+    s.svc.stop();
+    expect(s.calls).toEqual([]);
+  });
+
   it("a feed the person wrote or allowed (no public_only) connects as before", async () => {
-    const s = setup({
-      feeds: feed({}),
-      addressLocal: async () => true,
-    });
+    const l = answers(["127.0.0.1"]);
+    const s = setup({ feeds: feed({}), lookup: l.lookup });
     s.svc.sync();
     await until(() => s.calls.length >= 1);
     s.svc.stop();
     expect(s.calls[0].url).toBe("https://app.example.test/events");
+    expect(s.calls[0].address).toBeUndefined();
+    expect(l.asked).toEqual([]);
   });
 });

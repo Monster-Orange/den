@@ -27,6 +27,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { notATurn } from "./conversations.js";
+import { statSettled } from "../stat-settled.js";
 import {
   HELPER_DEFAULTS,
   sortHelpers,
@@ -392,7 +393,12 @@ interface WorkflowAgent {
 }
 const workflowCache = new Map<
   string,
-  { mtime: number; agents: Map<string, WorkflowAgent> }
+  {
+    mtime: number;
+    size: number;
+    readAt: number;
+    agents: Map<string, WorkflowAgent>;
+  }
 >();
 
 /** agentId → where it ran in a workflow, from every wf_*.json in `dir`. */
@@ -406,14 +412,22 @@ function workflowAgents(dir: string): Map<string, WorkflowAgent> {
   }
   for (const n of names) {
     const file = path.join(dir, n);
-    let mtime = 0;
+    let st: fs.Stats;
     try {
-      mtime = fs.statSync(file).mtimeMs;
+      st = fs.statSync(file);
     } catch {
       continue;
     }
     let c = workflowCache.get(file);
-    if (!c || c.mtime !== mtime) {
+    // Issue 1592: kept only while its size and mtime stay the same, and
+    // only once it was written more than a clock tick before it was read.
+    if (
+      !c ||
+      c.mtime !== st.mtimeMs ||
+      c.size !== st.size ||
+      !statSettled({ mtimeMs: c.mtime }, c.readAt)
+    ) {
+      const readAt = Date.now();
       const agents = new Map<string, WorkflowAgent>();
       const d = readJson(file);
       const runId = str(d?.runId, 128) ?? n.replace(/\.json$/, "");
@@ -437,7 +451,7 @@ function workflowAgents(dir: string): Map<string, WorkflowAgent> {
           lastTool: str(o.lastToolName, 80),
         });
       }
-      c = { mtime, agents };
+      c = { mtime: st.mtimeMs, size: st.size, readAt, agents };
       workflowCache.set(file, c);
     }
     for (const [k, v] of c.agents) out.set(k, v);
