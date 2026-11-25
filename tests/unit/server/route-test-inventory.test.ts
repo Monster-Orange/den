@@ -22,7 +22,6 @@ const UNTESTED: readonly string[] = [
   "GET/HEAD /api/runs/last",
   "GET/HEAD /api/security/latest",
   "GET/HEAD /api/workspaces/:ws/agents/:id/details",
-  "GET/HEAD /api/workspaces/:ws/event-feeds",
   "GET/HEAD /edge.html",
   "GET/HEAD /environments.html",
   "GET/HEAD /graph.html",
