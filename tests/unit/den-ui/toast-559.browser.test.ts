@@ -112,7 +112,9 @@ const show = (p: Page, o: object) =>
     w.kit.showToast(opts);
   }, o);
 
-const toasts = (p: Page) => p.locator("[data-den-toast] > [data-kind]").count();
+// The toast in a region: the kit's, or Hub's #art-toast.
+const TOAST = ":is([data-den-toast], #art-toast) > [data-kind]";
+const toasts = (p: Page) => p.locator(TOAST).count();
 
 describe("issue 559: the toast in a browser", () => {
   it("one live region, empty before the words, reused; an error in the alert region", async () => {
