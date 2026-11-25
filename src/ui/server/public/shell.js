@@ -2728,6 +2728,10 @@
     "set.agents.issue_writes_per_hour": "GitHub issue writes an hour",
     "set.agents.issue_writes_per_hour.d":
       "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    "set.agents.issue_writes_visibility_minutes":
+      "Recheck a repo's visibility after",
+    "set.agents.issue_writes_visibility_minutes.d":
+      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     "ap.do.agent_import":
       'Bring in conversation {session} as a {persona} agent of project "{project}"',
     "ap.do.approval_policy":

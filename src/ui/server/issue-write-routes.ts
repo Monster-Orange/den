@@ -24,6 +24,13 @@ import {
   type IssueWriteLimit,
   type IssueWriteSettings,
 } from "../../shared/issue-write.js";
+import {
+  filedTextHits,
+  filedTextRefusal,
+  filedTextWhere,
+  needsFiledCheck,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf } from "./request-guard.js";
@@ -58,6 +65,16 @@ export interface IssueWriteDeps {
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
   /** This install's label (the footer's). */
   installLabel: () => string;
+  /**
+   * Issue 1127: the listed names (shared/org-names.js orgPatterns; none:
+   * nothing refused) and a repo's visibility no older than `maxAgeMs`
+   * (null: not known, so checked).
+   */
+  namePatterns: () => RegExp[];
+  visibility: (
+    repo: string,
+    maxAgeMs: number,
+  ) => Promise<"public" | "private" | "internal" | null>;
   audit: (e: IssueWriteAudit) => void;
 }
 
@@ -83,6 +100,7 @@ export async function runIssueWrite(
     code: string,
     error: string,
     issue?: number,
+    kept: string = error,
   ): IssueWriteAnswer => {
     d.audit({
       agent: who.agent,
@@ -92,7 +110,7 @@ export async function runIssueWrite(
       action,
       summary: `refused ${action}${repo ? ` on ${repo}` : ""}`,
       refused: true,
-      reason: error.slice(0, 300),
+      reason: kept.slice(0, 300),
     });
     return { status, body: { ok: false, code, error } };
   };
@@ -149,6 +167,55 @@ export async function runIssueWrite(
       `${role ? `role ${role}` : "a persona with no role"} doesn't write issues here (agents.issue_writes: ${settings.roles.join(", ") || "none"}). A person changes that in Settings › Agents.`,
       issueNo,
     );
+
+  // Issue 1127: the text a write files (a title, body or comment, and the
+  // names of labels and milestones), checked for listed names before it is
+  // sent (and before it counts against the limit).
+  const texts: FiledText[] =
+    op.action === "create"
+      ? [
+          { field: "title", text: op.title },
+          { field: "body", text: op.body },
+        ]
+      : op.action === "comment"
+        ? [{ field: "comment", text: op.body }]
+        : op.action === "label"
+          ? op.add.map((text) => ({ field: "label" as const, text }))
+          : [{ field: "milestone", text: op.milestone }];
+  if (texts.length) {
+    let patterns: RegExp[];
+    try {
+      patterns = d.namePatterns();
+    } catch {
+      // A list file named but missing, or a line that isn't a valid
+      // pattern: fail closed, with a fixed message (the error can quote the
+      // line, and this answer can end up on GitHub).
+      return refuse(
+        500,
+        "bad_config",
+        "the names list can't be read; nothing was sent",
+        issueNo,
+      );
+    }
+    if (patterns.length) {
+      const vis = await d.visibility(
+        op.repo,
+        settings.visibilityMinutes * 60_000,
+      );
+      if (needsFiledCheck(vis)) {
+        const hits = filedTextHits(texts, patterns, op.repo);
+        if (hits.length)
+          return refuse(
+            400,
+            "issue_write_words",
+            filedTextRefusal(hits),
+            issueNo,
+            // Issue 1127: the audit is kept, so never the agent's phrase.
+            `refused for listed names: ${filedTextWhere(hits)}`,
+          );
+      }
+    }
+  }
 
   const took = d.limit.take(settings.perHour);
   if (!took.ok) {
