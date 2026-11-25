@@ -116,7 +116,7 @@ async function report(p: Page) {
   await p.evaluate(() =>
     (window as unknown as { report: () => void }).report(),
   );
-  await p.waitForSelector("dialog.fb-dlg[open]", { timeout: 1_000 });
+  await p.waitForSelector("dialog[open]", { timeout: 1_000 });
 }
 
 for (const name of ["chromium", "webkit"]) {
