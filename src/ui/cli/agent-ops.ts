@@ -51,6 +51,10 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import {
+  AUDIT_SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 import { readActivity } from "../../shared/agents/activity.js";
 import {
   denToolsOld,
@@ -107,7 +111,14 @@ import {
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
-import { readWebPort } from "../../shared/edge/config.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import { edgeDomains } from "../../shared/edge/render.js";
+import {
+  feedAddressLocal,
+  feedSelfProblem,
+  type FeedLookup,
+  type FeedOwnAddresses,
+} from "../../shared/agents/feed-address.js";
 import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
 import {
   listOtherInstalls,
@@ -160,6 +171,7 @@ import {
 } from "../../shared/den-config.js";
 import {
   newAgentSandboxOff,
+  personalNoSandbox,
   SANDBOX_OFF_SINCE_ASK,
   writeSandboxNote,
 } from "../../shared/agents/sandbox-set.js";
@@ -181,7 +193,13 @@ import {
   workspaceMcpServersRaw,
   workspaceEntryRaw,
   setWorkspaceMcpServers,
+  setWorkspaceEventFeeds,
+  workspaceEventFeedsRaw,
 } from "../../shared/environment-manager/workspaces.js";
+import {
+  checkAppFeed,
+  type AppFeedConfig,
+} from "../../shared/agents/app-feeds.js";
 import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
@@ -381,6 +399,7 @@ import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
 import {
+  jobCommandOf,
   jobsUnder,
   readProcesses,
   type ProcessRow,
@@ -579,6 +598,17 @@ export interface AgentsDeps extends SessionsDeps {
   workspaceHubLoop?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
+  /** Issue 1480: project `ws`'s `agents.event_feeds` as written. */
+  workspaceEventFeeds?: (ws: string) => unknown;
+  /** Issue 1480: save project `ws`'s `agents.event_feeds` (as written). */
+  saveWorkspaceEventFeeds?: (
+    ws: string,
+    feeds: Record<string, unknown>[],
+  ) => void;
+  /** Issue 1480: resolves a feed's host name (default: the system's). */
+  feedLookup?: FeedLookup;
+  /** Issue 1480: Den's own addresses and its Hub's, which a feed may not name. */
+  feedOwnAddresses?: () => Promise<FeedOwnAddresses>;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
   secretRefSet?: (name: string) => boolean;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
@@ -644,6 +674,13 @@ export interface AgentsResolved extends Resolved {
   workspaceHubLoop: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
+  workspaceEventFeeds: (ws: string) => unknown;
+  saveWorkspaceEventFeeds: (
+    ws: string,
+    feeds: Record<string, unknown>[],
+  ) => void;
+  feedLookup?: FeedLookup;
+  feedOwnAddresses?: () => Promise<FeedOwnAddresses>;
   secretRefSet: (name: string) => boolean;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
@@ -692,8 +729,11 @@ export class AgentError extends Error {
   readonly hints: string[];
   /** AG-10.10: the running agent a start collided with, so a page can open it. */
   readonly running?: { id: string; sessionId: string };
-  /** 0.4.48: job_running: how long the job it left running has run. */
-  readonly job?: { minutes: number };
+  /**
+   * 0.4.48: job_running: how long the job it left running has run; issue
+   * 1407: what it runs, when known.
+   */
+  readonly job?: { minutes: number; command?: string };
   /**
    * Issue 479: runtime_quarantined: the copy it would run, and the
    * choices, so a page can offer them.
@@ -707,7 +747,7 @@ export class AgentError extends Error {
       code?: string;
       hints?: string[];
       running?: { id: string; sessionId: string };
-      job?: { minutes: number };
+      job?: { minutes: number; command?: string };
       quarantined?: QuarantinedRuntime;
     } = {},
   ) {
@@ -953,6 +993,24 @@ function signingKeyRefusedDirs(
   return [...new Set(out)];
 }
 
+/**
+ * Issue 1391: whether this install's agents may read its activity trail:
+ * a personal install's, once the trail written before redaction is set
+ * aside (setAsideOldTrail's marker). Should that step fail, they don't.
+ */
+export function agentsMayReadTrail(
+  cfg: { mode?: "personal" | "strict" },
+  stateDir: string,
+): boolean {
+  return (
+    cfg.mode === "personal" &&
+    !!fs.lstatSync(
+      path.join(stateDir, AUDIT_SET_ASIDE_DIR, AUDIT_SET_ASIDE_MARK),
+      { throwIfNoEntry: false },
+    )
+  );
+}
+
 export function agentSandboxInput(o: {
   stateDir: string;
   distRoot: string;
@@ -965,9 +1023,12 @@ export function agentSandboxInput(o: {
   readableFiles?: string[];
   /** Issue 1325: the session's own temp folder. */
   sessionTmp?: string;
+  /** Issue 1391: a personal install's trail is read back. */
+  trailReadable?: boolean;
 }): AgentSandboxInput {
   return {
     ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
+    ...(o.trailReadable === true ? { trailReadable: true } : {}),
     stateDir: o.stateDir,
     distRoot: o.distRoot,
     gateDir: gateDir(o.env),
@@ -1027,6 +1088,11 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
               .sandboxSockets,
             readableFiles: signingReadFiles(
               (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+            ),
+            // Issue 1391: read at this start, as the deny rules are.
+            trailReadable: agentsMayReadTrail(
+              (d.agentsConfig ?? (() => readAgentsConfig()))(),
+              base.stateDir(),
             ),
           }),
           {
@@ -1102,6 +1168,13 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     saveWorkspaceMcpServers:
       d.saveWorkspaceMcpServers ??
       ((ws, servers) => setWorkspaceMcpServers(ws, servers)),
+    workspaceEventFeeds:
+      d.workspaceEventFeeds ?? ((ws) => workspaceEventFeedsRaw(ws)),
+    saveWorkspaceEventFeeds:
+      d.saveWorkspaceEventFeeds ??
+      ((ws, feeds) => setWorkspaceEventFeeds(ws, feeds)),
+    ...(d.feedLookup ? { feedLookup: d.feedLookup } : {}),
+    ...(d.feedOwnAddresses ? { feedOwnAddresses: d.feedOwnAddresses } : {}),
     secretRefSet: d.secretRefSet ?? ((name) => namedSecretRef(name) !== null),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
@@ -2682,8 +2755,30 @@ export type PersonaHeldCheck =
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
       args: Record<string, unknown>;
+      /** Issue 1403: the person's own Allow (see personaPersonOnly). */
+      personOnly?: true;
     }
   | { ok: false; error: string };
+
+/**
+ * Issue 1403 (Den Builder): a persona's mode and commands are new tool
+ * access, the person's, unless the install is personal with the sandbox
+ * off and no agent in it (as agent_create, issue 1391). A config that
+ * can't be read keeps it the person's.
+ */
+function personaPersonOnly(
+  d: AgentsResolved,
+  c: PersonaHeldCheck,
+): PersonaHeldCheck {
+  if (!c.ok) return c;
+  let routine = false;
+  try {
+    routine = personalNoSandbox(d.agentsConfig());
+  } catch {
+    routine = false;
+  }
+  return routine ? c : { ...c, personOnly: true };
+}
 
 /** Who asked (HeldAsker): an agent's id and the project its token is for. */
 export interface PersonaAsker {
@@ -2816,6 +2911,14 @@ export function checkPersonaCreate(
   raw: unknown,
   who: PersonaAsker = {},
 ): PersonaHeldCheck {
+  return personaPersonOnly(d, personaCreateCheck(d, raw, who));
+}
+
+function personaCreateCheck(
+  d: AgentsResolved,
+  raw: unknown,
+  who: PersonaAsker,
+): PersonaHeldCheck {
   try {
     const r = (raw ?? {}) as Record<string, unknown>;
     const home = personaHome(d, r, who, "add");
@@ -2900,6 +3003,14 @@ export function checkPersonaUpdate(
   d: AgentsResolved,
   raw: Record<string, unknown>,
   who: PersonaAsker = {},
+): PersonaHeldCheck {
+  return personaPersonOnly(d, personaUpdateCheck(d, raw, who));
+}
+
+function personaUpdateCheck(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: PersonaAsker,
 ): PersonaHeldCheck {
   try {
     const id = typeof raw.id === "string" ? raw.id.trim() : "";
@@ -3825,6 +3936,8 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
+    // Issue 1391: read at this start; a change of mode waits for the next.
+    ...(agentsMayReadTrail(cfg, d.stateDir()) ? { trailReadable: true } : {}),
     // Issue 816: test installs announced on this computer; issue 728: the
     // other installs registered for this OS user, any distribution's.
     otherStateDirs: [
@@ -5877,6 +5990,381 @@ export async function runProjectMcpAdd(
   return { ok: true, ...projectMcpView(d, ws) };
 }
 
+/** Issue 1480: project `ws`'s `agents.event_feeds` as written (a list). */
+function feedEntries(d: AgentsResolved, ws: string): Record<string, unknown>[] {
+  const raw = d.workspaceEventFeeds(ws);
+  return Array.isArray(raw)
+    ? raw.filter(
+        (e): e is Record<string, unknown> =>
+          !!e && typeof e === "object" && !Array.isArray(e),
+      )
+    : [];
+}
+
+const feedNameOf = (e: Record<string, unknown>) =>
+  typeof e.name === "string" ? e.name.trim() : "";
+
+/** Issue 1480: a checked feed as workspaces.yml spells it. */
+function feedEntry(f: AppFeedConfig): Record<string, unknown> {
+  return {
+    name: f.name,
+    agent: f.agent,
+    url: f.url,
+    ...(f.listUrl ? { list_url: f.listUrl } : {}),
+    ...(f.bearer ? { bearer: f.bearer } : {}),
+    ...(f.publicOnly ? { public_only: true } : {}),
+  };
+}
+
+/** Issue 1480: the ids of project `ws`'s agents. */
+export function projectAgentIds(d: AgentsResolved, ws: string): string[] {
+  return listRecords(d.stateDir())
+    .filter((r) => r.workspace === ws)
+    .map((r) => r.id)
+    .sort();
+}
+
+/**
+ * Issue 1480 (Reviewer C): Den's own addresses and its Hub's: web.url,
+ * the address Den's own tools dial, the edge's domains, and Hub's
+ * addresses. Each part best effort: one that can't be read is left out.
+ */
+async function ownFeedAddresses(d: AgentsResolved): Promise<FeedOwnAddresses> {
+  const hosts: string[] = [];
+  const ports: number[] = [];
+  const add = (u: string | null | undefined, port = false) => {
+    if (!u) return;
+    try {
+      const x = new URL(u);
+      hosts.push(x.hostname.replace(/^\[|\]$/g, ""));
+      if (port)
+        ports.push(Number(x.port || (x.protocol === "https:" ? 443 : 80)));
+    } catch {
+      /* not an address */
+    }
+  };
+  try {
+    add(d.webUrl());
+  } catch {
+    /* unset */
+  }
+  try {
+    // Den's own dial: its port on this machine.
+    const base = new URL(d.denBase());
+    ports.push(Number(base.port || 80));
+  } catch {
+    /* unset */
+  }
+  try {
+    const hub = await d.hub();
+    add(hub?.url);
+    add(hub?.mcpUrl);
+  } catch {
+    /* no Hub */
+  }
+  let domains: string[] = [];
+  try {
+    domains = edgeDomains(readEdgeConfig()).filter(Boolean);
+  } catch {
+    domains = [];
+  }
+  // The dial's host is this machine: only its port is refused there.
+  return {
+    hosts: hosts.filter((h) => !/^(localhost|127\.|::1$)/.test(h)),
+    domains,
+    ports,
+  };
+}
+
+export interface EventFeedAddArgs {
+  project: string;
+  feed: AppFeedConfig;
+}
+
+/**
+ * Issue 1480: checks a project_event_feed_add ask: one more app event
+ * feed for one of the project's agents (agents.event_feeds), its bearer
+ * the name of a secrets.refs entry, never a value (a refusal never echoes
+ * it). The approval policy places it (issue 1391): routine on a personal
+ * install, the person's Allow on a strict one. A project's agent asks for
+ * its own project; Den's agent for any.
+ */
+export async function checkEventFeedAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): Promise<HeldOpCheck<EventFeedAddArgs>> {
+  const no = (error: string): HeldOpCheck<EventFeedAddArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const t = projectMcpTarget(d, raw, who, "project_event_feed_add", "add to");
+    if (!t.ok) return t;
+    const ws = t.ws;
+    // The queue's check on Allow gets the args the first check gave.
+    const fv = raw.feed;
+    const src =
+      fv && typeof fv === "object" && !Array.isArray(fv)
+        ? (fv as Record<string, unknown>)
+        : raw;
+    const c = checkAppFeed({
+      name: src.name,
+      agent: src.agent,
+      url: src.url,
+      bearer: src.bearer,
+      list_url: src.list_url ?? src.listUrl,
+    });
+    if (!c.ok) return no(c.error);
+    const feed = c.feed;
+    if (!projectAgentIds(d, ws).includes(feed.agent))
+      return no(`agent: "${feed.agent}" is not one of project ${ws}'s agents`);
+    if (feedEntries(d, ws).some((e) => feedNameOf(e) === feed.name))
+      return no(`project ${ws} already has an event feed "${feed.name}"`);
+    // Reviewer C: never Den itself or its Hub.
+    const own = await (d.feedOwnAddresses ?? (() => ownFeedAddresses(d)))();
+    const self =
+      feedSelfProblem(feed.url, "url", own) ??
+      (feed.listUrl ? feedSelfProblem(feed.listUrl, "list_url", own) : null);
+    if (self) return no(self);
+    // Lane 1: this machine or a private network is the person's own Allow
+    // (app_feed_read would read local services); one checked public is
+    // written public_only, and resolved again at each connect.
+    const urls = [feed.url, ...(feed.listUrl ? [feed.listUrl] : [])];
+    const local = (
+      await Promise.all(urls.map((u) => feedAddressLocal(u, d.feedLookup)))
+    ).some(Boolean);
+    if (local) delete feed.publicOnly;
+    else feed.publicOnly = true;
+    const lines: [string, DetailKey][] = [
+      [
+        `Den opens ${feed.url} and types ${feed.agent} a short line when its events are unread.`,
+        {
+          key: "ap.feed.warn",
+          vars: { url: feed.url, agent: feed.agent },
+        },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [
+        `Feed: ${feed.name}, for ${feed.agent}`,
+        { key: "ap.feed.feed", vars: { name: feed.name, agent: feed.agent } },
+      ],
+      feed.bearer
+        ? [
+            `Bearer: read from secrets.refs.${feed.bearer} at each connect; never shown or written to the agent's files.`,
+            { key: "ap.feed.bearer", vars: { ref: feed.bearer } },
+          ]
+        : [
+            "No bearer: the stream is opened with no Authorization header.",
+            { key: "ap.feed.noBearer" },
+          ],
+    ];
+    return {
+      ok: true,
+      // Lane 1: Den sends that stored secret to the feed's url, so an add
+      // with a bearer widens: the person's own Allow on every install.
+      ...(feed.bearer || local ? { personOnly: true } : {}),
+      summary: `add event feed ${feed.name} (${feed.url}) for ${feed.agent} in project ${ws}`,
+      params: {
+        project: ws,
+        name: feed.name,
+        agent: feed.agent,
+        url: feed.url,
+      },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, feed },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 1480: on Allow (or at once), adds it, checked again. */
+export async function runEventFeedAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  asked?: { decidedBy?: string },
+): Promise<
+  | {
+      ok: true;
+      project: string;
+      name: string;
+      /** What was written: Undo takes out only this. */
+      added: Record<string, unknown>;
+    }
+  | { ok: false; error: string }
+> {
+  const c = await checkEventFeedAdd(d, raw);
+  if (!c.ok) return c;
+  // As gate_settings_set: one that needs the person's own Allow never
+  // runs by the policy.
+  if (c.personOnly && asked?.decidedBy?.startsWith("auto:") === true)
+    return {
+      ok: false,
+      error:
+        "a feed with a bearer needs the person's own Allow: nothing was written; ask again",
+    };
+  const ws = c.args.project;
+  const added = feedEntry(c.args.feed);
+  d.saveWorkspaceEventFeeds(ws, [...feedEntries(d, ws), added]);
+  return { ok: true, project: ws, name: c.args.feed.name, added };
+}
+
+export interface EventFeedRemoveArgs {
+  project: string;
+  name: string;
+}
+
+/**
+ * Issue 1480: checks a project_event_feed_remove ask: take one of a
+ * project's app event feeds out (its agent gets no more lines from it).
+ * Placed as the add is.
+ */
+export function checkEventFeedRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<EventFeedRemoveArgs> {
+  try {
+    const t = projectMcpTarget(
+      d,
+      raw,
+      who,
+      "project_event_feed_remove",
+      "remove from",
+    );
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) return { ok: false, error: "name: give the feed's name" };
+    const e = feedEntries(d, ws).find((x) => feedNameOf(x) === name);
+    if (!e)
+      return { ok: false, error: `project ${ws} has no event feed "${name}"` };
+    const lines: [string, DetailKey][] = [
+      [
+        `Den closes feed ${name}; its agent gets no more lines from it.`,
+        { key: "ap.feed.removeWarn", vars: { name } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+    ];
+    return {
+      ok: true,
+      summary: `remove event feed ${name} from project ${ws}`,
+      params: { project: ws, name },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, name },
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Issue 1480: on Allow (or at once), removes it, checked again. */
+export async function runEventFeedRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      project: string;
+      name: string;
+      /** What was taken out, when Den could read it: Undo puts it back. */
+      removed: Record<string, unknown> | null;
+    }
+  | { ok: false; error: string }
+> {
+  const c = checkEventFeedRemove(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  const all = feedEntries(d, ws);
+  const gone = all.find((e) => feedNameOf(e) === c.args.name);
+  d.saveWorkspaceEventFeeds(
+    ws,
+    all.filter((e) => feedNameOf(e) !== c.args.name),
+  );
+  // Only a feed Den can read comes back by Undo: an entry it couldn't
+  // read may hold anything, so none of it is kept in the result.
+  const ok = gone ? checkAppFeed(gone) : null;
+  return {
+    ok: true,
+    project: ws,
+    name: c.args.name,
+    removed: ok?.ok ? feedEntry(ok.feed) : null,
+  };
+}
+
+/**
+ * Issue 1480: the bell's Undo of a feed added or removed without asking
+ * (a personal install, issue 1391). Only what ran by the policy; only
+ * while the feed is as it left it: an added one still the same, a
+ * removed one's name still free.
+ */
+export function undoEventFeed(
+  d: AgentsResolved,
+  approval: {
+    action: string;
+    result?: unknown;
+    decidedBy?: string;
+  },
+): { ok: true; note: string } | { ok: false; error: string } {
+  if (
+    approval.action !== "project_event_feed_add" &&
+    approval.action !== "project_event_feed_remove"
+  )
+    return { ok: false, error: "only an event feed change can be undone here" };
+  if (!approval.decidedBy?.startsWith("auto:"))
+    return {
+      ok: false,
+      error:
+        "only a change that ran without asking can be undone here: change it in Settings",
+    };
+  const r = approval.result as
+    | {
+        ok?: unknown;
+        project?: unknown;
+        name?: unknown;
+        added?: unknown;
+        removed?: unknown;
+      }
+    | undefined;
+  const ws = typeof r?.project === "string" ? r.project : "";
+  const name = typeof r?.name === "string" ? r.name : "";
+  if (r?.ok !== true || !ws || !name || !d.workspaceExists(ws))
+    return {
+      ok: false,
+      error: "that change didn't run, so there is nothing to undo",
+    };
+  const all = feedEntries(d, ws);
+  if (approval.action === "project_event_feed_add") {
+    const now = all.find((e) => feedNameOf(e) === name);
+    if (!now || JSON.stringify(now) !== JSON.stringify(r.added))
+      return {
+        ok: false,
+        error: `feed ${name} changed since: nothing was undone; change it in Settings`,
+      };
+    d.saveWorkspaceEventFeeds(
+      ws,
+      all.filter((e) => e !== now),
+    );
+    return { ok: true, note: `feed ${name} was taken out of project ${ws}` };
+  }
+  const back = checkAppFeed(r.removed);
+  if (!back.ok)
+    return {
+      ok: false,
+      error: `feed ${name} can't be put back here: add it in Settings`,
+    };
+  if (all.some((e) => feedNameOf(e) === name))
+    return {
+      ok: false,
+      error: `project ${ws} has a feed "${name}" again: nothing was undone`,
+    };
+  d.saveWorkspaceEventFeeds(ws, [...all, feedEntry(back.feed)]);
+  return { ok: true, note: `feed ${name} is back in project ${ws}` };
+}
+
 export interface ProjectMcpRemoveArgs {
   project: string;
   name: string;
@@ -7107,6 +7595,134 @@ export async function agentJob(
 }
 
 /**
+ * Issue 1407: the job agent `rec` left running (the longest running one),
+ * with what it runs, for a person; null: none, or its runtime can't tell.
+ */
+export async function agentJobDetail(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  pid?: number | null,
+): Promise<{ minutes: number; command: string } | null> {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.jobPattern) return null;
+  const root =
+    pid ??
+    (await withClient(d, async (c) => {
+      const s = sessionOf(await c.list(), rec);
+      return s && !s.exited ? s.pid : null;
+    }));
+  if (root === null || root === undefined) return null;
+  const jobs = jobsUnder(root, rt.jobPattern, d.processes());
+  if (!jobs.length) return null;
+  const top = jobs.reduce((a, b) => ((b.secs ?? 0) > (a.secs ?? 0) ? b : a));
+  return {
+    minutes: Math.round((top.secs ?? 0) / 60),
+    command: jobCommandOf(top.command),
+  };
+}
+
+/** Issue 1407: where one agent of a bulk restart stands, before it waits. */
+export type RestartState = "now" | "turn" | "job" | "unknown";
+export interface RestartPlan {
+  id: string;
+  workspace: string;
+  state: RestartState;
+  job?: { command: string; minutes: number };
+}
+/** Issue 1407: how one agent's restart ended (onDone). */
+export interface RestartOutcome {
+  id: string;
+  workspace: string;
+  outcome: "restarted" | "job" | "failed";
+  job?: { command: string; minutes: number };
+  error?: string;
+}
+
+/**
+ * Issue 1407: where agent `id` stands for a restart: idle (now), mid-turn
+ * (turn), its turn ended with a job it started still running (job, with
+ * what and how long), or Den can't tell when its turn ends (unknown). A
+ * stopped agent just resumes: now.
+ */
+export async function restartStateOf(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<RestartPlan> {
+  const rec = agentRecord(d, id, ws);
+  const base = { id: rec.id, workspace: rec.workspace };
+  const live = await withClient(d, async (c) => {
+    const s = sessionOf(await c.list(), rec);
+    return s && !s.exited ? s : null;
+  });
+  if (!live) return { ...base, state: "now" };
+  const turn = await agentTurnBusy(d, rec, live).catch(() => null);
+  if (turn === null) return { ...base, state: "unknown" };
+  if (turn) return { ...base, state: "turn" };
+  const job = await agentJobDetail(d, rec, live.pid).catch(() => null);
+  if (job) return { ...base, state: "job", job };
+  return { ...base, state: "now" };
+}
+
+/**
+ * Issue 1407: a bulk restart (restart-stale). Each agent is checked first
+ * and the answer is per agent (restartStateOf). Those idle or mid-turn
+ * restart at their next idle, on the same conversation; a job found when
+ * the turn ends is reported (onDone, outcome "job"), never waited out
+ * silently. One with a job, or whose turn Den can't read, is not
+ * restarted: the person decides (Restart now). Resolves with the plan
+ * before anything waits; onDone says how each restart ended.
+ */
+export async function restartMany(
+  d: AgentsResolved,
+  agents: readonly { id: string; workspace: string }[],
+  o: {
+    pollMs?: number;
+    maxMs?: number;
+    onDone?: (r: RestartOutcome) => void;
+  } = {},
+): Promise<RestartPlan[]> {
+  const plan: RestartPlan[] = [];
+  for (const a of agents) {
+    let p: RestartPlan;
+    try {
+      p = await restartStateOf(d, a.id, a.workspace);
+    } catch {
+      p = { id: a.id, workspace: a.workspace, state: "unknown" };
+    }
+    plan.push(p);
+    if (p.state !== "now" && p.state !== "turn") continue;
+    const base = { id: p.id, workspace: p.workspace };
+    void restartAgent(d, p.id, p.workspace, "after-turn", {
+      ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
+      ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
+      jobStops: true,
+    }).then(
+      () => o.onDone?.({ ...base, outcome: "restarted" }),
+      (e: unknown) => {
+        const err = e as AgentError;
+        if (err?.code === "job_running" && err.job)
+          o.onDone?.({
+            ...base,
+            outcome: "job",
+            job: {
+              command: err.job.command ?? "",
+              minutes: err.job.minutes,
+            },
+          });
+        else
+          o.onDone?.({
+            ...base,
+            outcome: "failed",
+            error: e instanceof Error ? e.message : String(e),
+          });
+      },
+    );
+  }
+  return plan;
+}
+
+/**
  * 0.4.48: a person's Restart at the agent's next idle, while a job it left
  * running still runs: asked first (job_running, with its minutes), never
  * waited out silently. Restart now ends the job.
@@ -7121,6 +7737,23 @@ export async function askAboutJob(
   if (job)
     throw new AgentError(
       `agent ${rec.id}: a background job it started is still running (${job.minutes} min). Restart anyway? That ends the job (--now).`,
+      { status: 409, code: "job_running", job },
+    );
+}
+
+/**
+ * Issue 1407: its turn has ended and a job it started still runs: the
+ * wait stops (job_running, with what it runs and how long).
+ */
+async function jobStopsWait(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<void> {
+  if ((await agentTurnBusy(d, rec).catch(() => null)) !== false) return;
+  const job = await agentJobDetail(d, rec).catch(() => null);
+  if (job)
+    throw new AgentError(
+      `agent ${rec.id}: its turn ended, but a background job it started is still running (${job.command}, ${job.minutes} min). Restart now ends the job.`,
       { status: 409, code: "job_running", job },
     );
 }
@@ -7329,6 +7962,11 @@ export async function restartAgent(
      * first (job_running) rather than waited for; Restart now ends it.
      */
     askIfJob?: boolean;
+    /**
+     * Issue 1407: a job found once its turn has ended stops the wait
+     * (job_running, with what it runs), never waited out silently.
+     */
+    jobStops?: boolean;
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
@@ -7365,6 +8003,7 @@ export async function restartAgent(
           opts.maxMs ?? restartWaitOf(d),
           "not restarted",
         );
+      if (opts.jobStops) await jobStopsWait(d, agentRecord(d, id, ws));
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
     }

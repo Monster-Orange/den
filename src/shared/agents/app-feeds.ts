@@ -11,6 +11,7 @@
  *             url: https://app.example/events     # server-sent events
  *             bearer: chat_feed_token             # optional: a secrets.refs name
  *             list_url: https://app.example/list  # optional: ?after=<cursor>
+ *             public_only: true                   # Den's: checked public (issue 1480)
  *
  * Den keeps the stream open (app-feed-reader.ts) and hands each event to
  * the same delivery loop as Hub's comments, typed only when the agent is
@@ -34,6 +35,12 @@ export interface AppFeedConfig {
   listUrl?: string;
   /** The name of a secrets.refs entry; never a value. */
   bearer?: string;
+  /**
+   * Issue 1480: checked public when it was added without the person's
+   * own Allow; its address is resolved again at each connect, and one
+   * that names a private network is refused (`public_only: true`).
+   */
+  publicOnly?: boolean;
 }
 
 /** A feed's name: lower case, as Settings shows it. */
@@ -75,6 +82,7 @@ export function checkAppFeed(
     if (badList) return { ok: false, error: `list_url ${badList}` };
     feed.listUrl = list;
   }
+  if (r.public_only === true) feed.publicOnly = true;
   const b = r.bearer;
   if (b === undefined || b === null || b === "") return { ok: true, feed };
   if (typeof b !== "string" || !SECRET_REF_NAME_RE.test(b.trim()))

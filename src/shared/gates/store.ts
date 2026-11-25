@@ -41,13 +41,22 @@ import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 import {
+  pidRunning,
   processGroupStateSync,
   recordProcessGroup,
   type GroupState,
   type RecordedProcessGroup,
 } from "../process/process-group.js";
 import { peekVms, readVms, type VmReading } from "./vms.js";
-import { browserRequiresContainerDefault } from "./browser-container.js";
+import type { InstallMode } from "../den-config.js";
+import {
+  browserRequiresContainerDefault,
+  dockerPublished,
+  installModeNow,
+  ownAddresses,
+  resolveName,
+  type Binding,
+} from "./browser-container.js";
 import {
   BOX_DEFAULTS,
   BOX_NAME_RE,
@@ -259,7 +268,7 @@ export const GATE_LIMITS: Record<
   box_recheck_seconds: { min: 1, max: 24 * 3600, int: true },
   // A browser ask declares a container browser; 1 yes, 0 no. Unset: yes
   // on a macOS host, no elsewhere (browser-container.ts).
-  browser_requires_container: { min: 0, max: 1, int: true },
+  browser_requires_container: { min: 0, max: 2, int: true },
 };
 
 /**
@@ -350,7 +359,10 @@ export interface GateSettingsRow {
 }
 
 /** A settings key's value in effect, as stored (true/false as 1/0). */
-function settingValue(s: GateSettings, key: string): number | string | null {
+export function gateSettingValue(
+  s: GateSettings,
+  key: string,
+): number | string | null {
   const camel = key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
   const v = (s as unknown as Record<string, unknown>)[camel];
   if (typeof v === "boolean") return v ? 1 : 0;
@@ -538,14 +550,7 @@ const byOf = (e: GateEntry): string =>
 const reasonOf = (r: string | undefined) =>
   r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as { code?: string }).code === "EPERM";
-  }
-};
+const isAlive = (pid: number): boolean => pidRunning(pid);
 
 export interface GateStoreOpts {
   dir?: string;
@@ -557,6 +562,14 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
+  /** What running containers publish here (default: docker ps). */
+  containerBindings?: () => Promise<readonly Binding[]>;
+  /** A name's addresses (default: dns.lookup, all of them). */
+  resolveHost?: (name: string) => Promise<readonly string[]>;
+  /** The install's mode (default: user.yml and den.yml; unreadable strict). */
+  installMode?: () => InstallMode;
+  /** The host's own addresses (default: its interfaces). */
+  hostAddresses?: () => readonly string[];
   /**
    * Issue 1009: the machine's 5-minute load average (default
    * os.loadavg()[1]); tests pass a stub.
@@ -963,11 +976,23 @@ export class GateStore {
     | ((share: number) => Promise<VmReading>)
     | undefined;
   readonly platform: NodeJS.Platform;
+  /** What running containers publish here (browser-container.ts). */
+  readonly containerBindings: () => Promise<readonly Binding[]>;
+  /** A name's addresses (browser-container.ts). */
+  readonly resolveHost: (name: string) => Promise<readonly string[]>;
+  /** The install's mode (browser-container.ts). */
+  readonly installMode: () => InstallMode;
+  /** The host's own addresses (browser-container.ts). */
+  readonly hostAddresses: () => readonly string[];
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
+    this.containerBindings = o.containerBindings ?? (() => dockerPublished());
+    this.resolveHost = o.resolveHost ?? ((n) => resolveName(n));
+    this.installMode = o.installMode ?? installModeNow;
+    this.hostAddresses = o.hostAddresses ?? ownAddresses;
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
@@ -1061,11 +1086,27 @@ export class GateStore {
     return this.now();
   }
 
-  settings(): GateSettings & BoxSettings {
+  settings(
+    /** Issue 1395: the settings as they'd be with this patch (a preview). */
+    patch?: GateSettingsPatch,
+  ): GateSettings & BoxSettings {
     try {
-      const v = JSON.parse(
-        fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
-      ) as Record<string, unknown>;
+      let v: Record<string, unknown>;
+      try {
+        v = JSON.parse(
+          fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
+        ) as Record<string, unknown>;
+      } catch (e) {
+        if (!patch) throw e;
+        v = {};
+      }
+      if (patch) {
+        v = { ...v };
+        for (const [k, x] of Object.entries(patch)) {
+          if (x === null) delete v[k];
+          else if (x !== undefined) v[k] = x;
+        }
+      }
       const text = (k: keyof typeof GATE_TEXT) =>
         typeof v[k] === "string" ? (v[k] as string) : "";
       const num = (k: GateNumberKey, d: number) => {
@@ -1168,11 +1209,13 @@ export class GateStore {
           "box_recheck_seconds",
           BOX_DEFAULTS.boxRecheckSeconds,
         ),
+        // 1: on; 2: on and strict (a run may not declare "self").
         browserRequiresContainer:
           num(
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
-          ) === 1,
+          ) >= 1,
+        browserContainerStrict: num("browser_requires_container", 0) === 2,
         // Issue 1033: a browser run with no --box: here or a test box.
         browserBoxDefault:
           text("browser_box_default").trim() === "local" ? "local" : "any",
@@ -1201,15 +1244,22 @@ export class GateStore {
    * Issue 963: each change is in the slot log, with `by` (who changed it,
    * named as an ask is), when, and each key's value before and after (the
    * value in effect: a cleared key's is its default). No change, no row.
+   * Issue 1395: the one writer of settings.json, under the gate-slot lock
+   * the grant decision holds (GateLockBusy past the store's wait); the
+   * file is replaced whole, so a reader never sees half of it.
    */
   writeSettings(patch: GateSettingsPatch, by = "unknown"): void {
+    this.locked(() => this.writeSettingsLocked(patch, by));
+  }
+
+  private writeSettingsLocked(patch: GateSettingsPatch, by: string): void {
     const before = this.settings();
     this.writeSettingsFile(patch);
     const after = this.settings();
     const changes: Record<string, GateSettingChange> = {};
     for (const k of Object.keys(patch)) {
-      const from = settingValue(before, k);
-      const to = settingValue(after, k);
+      const from = gateSettingValue(before, k);
+      const to = gateSettingValue(after, k);
       if (from !== to) changes[k] = { from, to };
     }
     if (!Object.keys(changes).length) return;
@@ -1866,6 +1916,8 @@ export class GateStore {
     hostWhy?: string;
     /** Issue 1033: a default pick's boxes (the others can't serve it). */
     onlyBoxes?: string[];
+    /** Issue 1198: a default pick that may take a box only. */
+    boxesOnly?: boolean;
     /** Issue 1289: the run's checkout tag (12 hex characters). */
     checkout?: string;
   }): GateEntry {
@@ -1913,6 +1965,9 @@ export class GateStore {
                 .filter((n) => BOX_NAME_RE.test(n))
                 .slice(0, 64),
             }
+          : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.boxesOnly
+          ? { boxesOnly: true as const }
           : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
@@ -2004,6 +2059,8 @@ export class GateStore {
     where?: string;
     /** A browser run's declared container browser, as recorded. */
     browserEndpoint?: string;
+    /** Issue 1198: "any" with no browser of its own: a box only. */
+    boxesOnly?: boolean;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -2033,6 +2090,9 @@ export class GateStore {
         estimateMin: o.estimateMin,
         ...whereOf(o.kind, o.where),
         ...browserEndpointOf(o.kind, o.browserEndpoint),
+        ...(o.kind === "browser" && o.where === "any" && o.boxesOnly
+          ? { boxesOnly: true as const }
+          : {}),
         remote: {
           runner: o.runner.slice(0, 64),
           tokenId: o.tokenId,

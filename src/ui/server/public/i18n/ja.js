@@ -2411,8 +2411,14 @@
       "エージェントにできることが広がります。あなた自身の「許可」でのみ実行されます。",
     "ap.det.setting_change.key": "設定: {key}",
     "ap.det.setting_change.now": "現在: {value}",
+    "ap.det.setting_change.nowDefault": "現在: {value}（Den の既定値）",
+    "ap.det.setting_change.nowDen": "現在: {value}（den.yml の値）",
     "ap.det.setting_change.new": "新しい値: {value}",
     "ap.det.setting_change.why": "理由: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "理由: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den はこれらをゲートのフォルダの settings.json に、ゲートのロックを取って書き込みます。そこにある他のものは変えません。",
     "ap.det.setting_change.by": "依頼元: {agent}",
     "ap.det.setting_change.writes":
       "Den は config/local/user.yml の {key} だけを書き換え、先にファイルのコピーを残し、変更を監査に記録します。",
@@ -2422,6 +2428,9 @@
     "ap.do.setting_change": "{key} を変更: {now} → {value}",
     "ap.do.setting_change.loosens":
       "エージェントにできることが広がります: {key}: {now} → {value}",
+    "ap.do.gate_settings_set": "テスト枠の設定を変更: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "エージェントにできることが広がります: テスト枠の設定 {keys}",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
@@ -2544,7 +2553,7 @@
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "set.workspace.event_feeds": "アプリのイベントフィード: このプロジェクト",
     "set.workspace.event_feeds.d":
-      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。agents.event_feeds に追加します。bearer は secrets.refs の名前です。",
+      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。ここで追加や削除ができます。エージェントは project_event_feed_add か project_event_feed_remove で求めます。bearer は secrets.refs の名前で、値ではありません。",
     "set.embed.feed_max_streams": "同時に読むアプリフィード",
     "set.embed.feed_max_streams.d":
       "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
@@ -2577,6 +2586,38 @@
     "feed.unread": "未読: {n}。",
     "bell.m.appFeed.dropped":
       "{agent} のアプリフィード {name}: 保存数の上限のため未読のイベントが消えました。",
+    "feed.add": "フィードを追加",
+    "feed.name": "名前",
+    "feed.agent": "エージェント",
+    "feed.url": "ストリームのアドレス",
+    "feed.bearer": "bearer(secrets.refs の名前)",
+    "feed.bearerNone": "なし",
+    "feed.noAgents":
+      "このプロジェクトにはまだエージェントがいません。エージェントを起動してから、そのフィードを追加してください。",
+    "feed.addW": "フィードを追加しています…",
+    "feed.addS": "追加しました。",
+    "feed.addF": "フィードを追加できませんでした。",
+    "feed.remove": "削除",
+    "feed.removeL": "フィード {name} を削除",
+    "feed.rmT": "フィードを削除しますか?",
+    "feed.rmAsk":
+      "プロジェクト {project} からフィード {name} を削除しますか? Den はそのストリームを閉じ、{agent} にはもう 1 行も届きません。",
+    "feed.rmW": "フィードを削除しています…",
+    "feed.rmS": "削除しました。",
+    "feed.rmF": "フィードを削除できませんでした。",
+    "ap.do.project_event_feed_add":
+      "プロジェクト {project} の {agent} 向けにイベントフィード {name}({url})を追加",
+    "ap.do.project_event_feed_remove":
+      "プロジェクト {project} からイベントフィード {name} を削除",
+    "ap.feed.warn":
+      "Den は {url} を開き、未読のイベントがあると {agent} に短い 1 行を入力します。",
+    "ap.feed.feed": "フィード: {name}({agent} 向け)",
+    "ap.feed.bearer":
+      "bearer: 接続のたびに secrets.refs.{ref} から読みます。表示されることも、エージェントのファイルに書かれることもありません。",
+    "ap.feed.noBearer":
+      "bearer なし: ストリームは Authorization ヘッダーなしで開かれます。",
+    "ap.feed.removeWarn":
+      "Den はフィード {name} を閉じます。そのエージェントにはもう 1 行も届きません。",
     "feed.problems": "読めない agents.event_feeds の項目: {n}。",
     "feed.failed":
       "このプロジェクトのアプリのイベントフィードを読めませんでした。",
@@ -2812,8 +2853,6 @@
     "bell.undo": "元に戻す",
     "bell.undoMsg": "「{kind}」を表示しなくなりました。",
     "bell.clearRead": "既読を消去",
-    "bell.marking": "既読にしています…",
-    "bell.clearing": "消去しています…",
     "bell.read": "既読にする",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
@@ -2890,6 +2929,21 @@
     "bell.ap.allow": "許可",
     "bell.ap.deny": "拒否",
     "bell.ap.done": "許可しました: {what}",
+    "rs.now": "{id}: 同じ会話のまま今すぐ再起動しています。",
+    "rs.turn": "{id}: ターンが終わったら同じ会話のまま再起動します。",
+    "rs.job": "{id}: 待機中: バックグラウンドのジョブ ({cmd}、{min} 分)。",
+    "rs.unknown":
+      "{id}: ターンがいつ終わるか Den にはわからないため、まだ再起動していません。",
+    "rs.nowJob": "今すぐ再起動 (ジョブは終了します)",
+    "rs.nowBtn": "今すぐ再起動",
+    "rs.all": "{n} 件すべてを今すぐ再起動",
+    "rs.none": "再起動が必要なエージェントはありません。",
+    "rs.bar": "{n} 件のエージェントがツールを読み込むために再起動が必要です。",
+    "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
+    "rs.allName": "エージェント",
+    "rs.done": "{id}: 同じ会話のまま再起動しました。",
+    "rs.failed":
+      "{id}: 再起動できませんでした。エージェントのページから再起動してください。",
     "bell.ap.denied": "拒否しました: {what}",
     "bell.ap.failed": "うまくいきませんでした: {error}",
     "bell.m.ranAway":

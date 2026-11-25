@@ -185,6 +185,11 @@ Held (each waits for the person's Allow):
   checks the key and value first; a setting that widens what agents can
   do runs only on the person's own Allow. One Den reads when it starts
   says so: then ask for `den_restart_server`.
+- `gate_settings_set`: change this machine's gate slot settings
+  (`settings`, Settings › Gate's keys and values, and a `reason`), which
+  `setting_change` can't reach. Den checks every value first; on a
+  personal install it's written at once and the person is told; on a
+  strict one it follows their choice for Limits and performance.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.
@@ -192,6 +197,13 @@ Held (each waits for the person's Allow):
   away, or change its url or bearer (again a secrets.refs name; null for
   none). Only the person's own Allow runs either; agents get
   the change at their next start or resume.
+- `project_event_feed_add`, `project_event_feed_remove`: add or remove an
+  app's event feed for one of a project's agents (`agents.event_feeds`).
+  Its bearer is the name of a secrets.refs entry, never a value. An add
+  with a bearer, or to this machine or a private network, always waits
+  for the person's own Allow; otherwise, on a personal install it applies
+  at once and the person can Undo it, and on a strict one it waits for
+  their Allow. Den's own address and its Hub's are refused.
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den
   restarts; the person then clicks Connect in Settings › Hub.

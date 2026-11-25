@@ -166,14 +166,16 @@ describe("gate run", () => {
       if (++sleeps === 2) t.d.store.release(other.id);
       return Promise.resolve();
     };
-    expect(await cmdGate(["run", "--kind", "cpu", "--", "jest"], t.d)).toBe(0);
+    expect(
+      await cmdGate(["run", "--kind", "cpu", "--", "jest", "a.test.ts"], t.d),
+    ).toBe(0);
     const said = t.err.join("\n");
     expect(said).toContain(
       "waiting: " +
         other.id +
         '  holds browser  Den · other-repo · a person  "browser suite"  until about ',
     );
-    expect(t.ran).toEqual([["jest"]]);
+    expect(t.ran).toEqual([["jest", "a.test.ts"]]);
     expect(t.d.store.list()).toEqual([]);
     // The other run was never stopped: it gave its slot back itself.
     expect(t.d.store.events().filter((e) => e.event === "released")).toEqual([
@@ -230,8 +232,9 @@ describe("gate run", () => {
           ...process.env,
           DEN_GATE_DIR: dir,
           TSX_DISABLE_CACHE: "1",
-          // A browser run declares a container browser (macOS hosts).
-          DEN_PW_WS: "ws://127.0.0.1:9",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
         },
         stdio: ["ignore", "ignore", "pipe"],
       },
@@ -277,8 +280,9 @@ describe("gate run", () => {
           ...process.env,
           DEN_GATE_DIR: dir,
           TSX_DISABLE_CACHE: "1",
-          // A browser run declares a container browser (macOS hosts).
-          DEN_PW_WS: "ws://127.0.0.1:9",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
         },
         stdio: ["ignore", "ignore", "pipe"],
       },
@@ -344,6 +348,51 @@ describe("gate run", () => {
       "gate: e2e is past its estimate (5 min); it is not stopped, and the slot stays its own until it ends",
     ]);
     expect(t.beats).toEqual([]);
+  });
+
+  it("refuses a test run that names no tests; --all-tests allows it", async () => {
+    const t = deps();
+    expect(
+      await cmdGate(
+        ["run", "--kind", "cpu", "--", "npx", "jest", "--maxWorkers=1"],
+        t.d,
+      ),
+    ).toBe(2);
+    expect(t.ran).toEqual([]);
+    expect(t.err).toEqual([
+      "gate: this jest run names no test files and no filter, so it would run every test. " +
+        "Name the files (build the list first and check it isn't empty), or pass --all-tests when a full run is meant",
+    ]);
+    expect(
+      await cmdGate(
+        [
+          "run",
+          "--kind",
+          "cpu",
+          "--all-tests",
+          "--",
+          "npx",
+          "jest",
+          "--maxWorkers=1",
+        ],
+        t.d,
+      ),
+    ).toBe(0);
+    expect(t.ran).toEqual([["npx", "jest", "--maxWorkers=1"]]);
+  });
+
+  it("reads npm test's script from the repo's package.json", async () => {
+    const repo = tmp();
+    fs.writeFileSync(
+      path.join(repo, "package.json"),
+      JSON.stringify({ scripts: { test: "jest --ci" } }),
+    );
+    const t = deps({ cwd: repo });
+    expect(await cmdGate(["run", "--", "npm", "test"], t.d)).toBe(2);
+    expect(
+      await cmdGate(["run", "--", "npm", "test", "--", "a.test.ts"], t.d),
+    ).toBe(0);
+    expect(t.ran).toEqual([["npm", "test", "--", "a.test.ts"]]);
   });
 
   it("says what is wrong with the asking", async () => {
