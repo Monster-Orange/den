@@ -358,6 +358,15 @@ describe("#80: scope wins", () => {
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
     // … and a reload.
     await p.reload();
+    // Issue 1467: start-up opens ?open='s tabs one by one (cy, then bo),
+    // each in front as it opens, so cy is briefly in front with its own To
+    // line. Look once every tab has its pane, when start-up is done.
+    await p.waitForSelector(`.pane[data-id="${sid.cy}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(`.pane[data-id="${sid.bo}"]`, {
+      state: "attached",
+    });
     await p.waitForSelector(".pane:not([hidden]) .agto:not(:empty)");
     // The reload keeps bo in front, and the To line names it and south.
     expect(await frontId(p)).toBe(sid.bo);
