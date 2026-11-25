@@ -792,6 +792,18 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
 }
 
 /** The flags every run shares: Den's MCP only, the model, the role prompt. */
+export function skillPacksPrompt(packs: LaunchInput["skillPacks"]): string {
+  if (!packs?.length) return "";
+  const lines = packs.map(
+    (p) =>
+      `The ${p.name} skills are loaded as the plugin ${p.name}. Before you use one, read ${p.dir}/docs/harness/claude-code.md once.`,
+  );
+  lines.push(
+    "Den's rules win over a skill's: watch checks with github_watch, never merge or force-push, and hand a green PR to whoever merges.",
+  );
+  return `\n\n${lines.join("\n")}`;
+}
+
 function common(input: LaunchInput): {
   argv: string[];
   files: Record<string, string>;
@@ -894,6 +906,7 @@ function common(input: LaunchInput): {
       file,
       ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
+      ...(input.skillPacks ?? []).flatMap((p) => ["--plugin-dir", p.dir]),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -905,6 +918,7 @@ function common(input: LaunchInput): {
         input.mcp.name,
         input.webUrl ?? null,
       ) +
+        skillPacksPrompt(input.skillPacks) +
         (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
         // Issue 158: the Hub delivery loop, after the Hub line.
         (input.mcp.hub?.loop ? `\n\n${input.mcp.hub.loop}` : ""),
@@ -920,6 +934,9 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    ...(input.skillPacks ?? []).map(
+                      (p) => `Edit(/${path.resolve(p.dir)}/**)`,
+                    ),
                     // Issue 1264: the gate's settings (route_agents and
                     // route_commands among them) are a person's; its slot
                     // log beside them stays the hook's to append to.

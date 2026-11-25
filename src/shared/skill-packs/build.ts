@@ -14,17 +14,6 @@ const setKey = (skills: readonly string[]) =>
 
 function readOnly(dir: string): void {
   for (const f of listFiles(dir)) fs.chmodSync(path.join(dir, f), 0o444);
-  const dirs = new Set<string>();
-  for (const f of listFiles(dir)) {
-    let d = path.dirname(f);
-    while (d !== ".") {
-      dirs.add(d);
-      d = path.dirname(d);
-    }
-  }
-  for (const d of [...dirs].sort((a, b) => b.length - a.length))
-    fs.chmodSync(path.join(dir, d), 0o555);
-  fs.chmodSync(dir, 0o555);
 }
 
 export function buildPluginDir(

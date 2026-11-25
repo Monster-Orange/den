@@ -202,6 +202,7 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  skill_packs?: unknown;
   /**
    * Issue 1391: the distribution's default install mode (its den.yml):
    * strict here can't be loosened by a person (see resolveInstallMode).
@@ -348,6 +349,7 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
+  skill_packs?: unknown;
   /**
    * Review M4 (0.4.46): `server_agent.self_update: ask | auto`, the
    * person's: whether the server agent's own restarts and updates run
@@ -2246,6 +2248,7 @@ export interface AgentGrantsConfig {
   sandbox?: boolean;
   /** Issue 936: required: it doesn't start where no sandbox applies. */
   sandboxRequired?: boolean;
+  skillPacks?: unknown;
 }
 
 const SANDBOX_IN_USER_YML = (key: string) =>
@@ -2321,6 +2324,7 @@ export function readInstallMode(
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  skillPacks?: { den: unknown; user: unknown };
   /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
   /** Issue 1391: which file set it. */
@@ -2580,6 +2584,7 @@ export function readAgentsConfig(
     ...out.coach,
     judge: { ...out.coach.judge, enabled: judgeOn === true },
   };
+  out.skillPacks = { den: c.skill_packs, user: u.skill_packs };
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => {
@@ -2831,7 +2836,12 @@ export function applyUserSandbox(
     // An agent's block holds grants and sandbox only; other mappings here
     // (runtimes, layout, …) are settings, never an agent.
     const keys = Object.keys(block);
-    if (!keys.length || !keys.every((k) => k === "grants" || k === "sandbox")) {
+    if (
+      !keys.length ||
+      !keys.every(
+        (k) => k === "grants" || k === "sandbox" || k === "skill_packs",
+      )
+    ) {
       // One that looks like an agent's (a misspelt or extra key) is named.
       if (keys.some((k) => /^(grant|sandbox)/i.test(k)))
         (out.notAgentBlocks ??= []).push({ id, keys });
@@ -2856,6 +2866,11 @@ export function applyUserSandbox(
         grants: [...new Set(grants as string[])],
       };
     }
+    if (block.skill_packs !== undefined && block.skill_packs !== null)
+      out.agents[id] = {
+        ...(out.agents[id] ?? { grants: [] }),
+        skillPacks: block.skill_packs,
+      };
     const one = sandboxValue(block.sandbox, `${where}.sandbox`);
     if (one === undefined) continue;
     out.agents[id] = {

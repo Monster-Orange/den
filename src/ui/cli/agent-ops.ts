@@ -238,6 +238,10 @@ import {
   sandboxSetByPerson,
 } from "../../shared/agents/sandbox-rollout.js";
 import * as os from "os";
+import {
+  agentSkillPacks,
+  readSkillPacksConfig,
+} from "../../shared/skill-packs/launch.js";
 import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -3899,6 +3903,7 @@ function launchInput(
   only?: readonly string[],
   /** AG-13: the intent and the allowed commands (preset and extras). */
   perms: { permission?: PermissionIntent; allow?: string[] } = {},
+  runtimeId?: string,
 ): LaunchInput {
   const grants = only ? [...only] : (cfg.agents[id]?.grants ?? []);
   for (const g of grants)
@@ -4010,6 +4015,7 @@ function launchInput(
       }
     })(),
     rotateAfter: after,
+    ...skillPacksFor(d, cfg, persona, id, runtimeId),
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),
     // ON-6: the server agent runs Den's own tools without the runtime's
@@ -4024,6 +4030,31 @@ function launchInput(
       call: hookCallSettings(readUserConfig),
     },
   };
+}
+
+function skillPacksFor(
+  d: AgentsResolved,
+  cfg: ResolvedAgentsConfig,
+  persona: Persona,
+  id: string,
+  runtimeId: string | undefined,
+): Pick<LaunchInput, "skillPacks"> {
+  if (!runtimeId) return {};
+  const env = { ...process.env, ...d.env };
+  try {
+    const got = agentSkillPacks({
+      stateDir: d.stateDir(),
+      runtimeId,
+      install: readSkillPacksConfig(cfg.skillPacks?.den, cfg.skillPacks?.user),
+      persona: persona.skillPacks,
+      agent: cfg.agents[id]?.skillPacks,
+      claudeConfigDir:
+        env.CLAUDE_CONFIG_DIR ?? path.join(env.HOME ?? os.homedir(), ".claude"),
+    });
+    return got.packs.length ? { skillPacks: got.packs } : {};
+  } catch (e) {
+    throw refused(`agent ${id}: ${(e as Error).message}`, [], 422);
+  }
 }
 
 /** The model a runtime is given: a pinned version, else the model. */
@@ -4467,6 +4498,7 @@ export async function startAgent(
         ...(ch.permission ? { permission: ch.permission } : {}),
         ...(rt.permissions ? { allow } : {}),
       },
+      rt.id,
     );
     // HUB-1.5: Den Hub's MCP server, when hub.url is set.
     const hub = await agentHub(d, ws);
@@ -7246,6 +7278,7 @@ export async function resumeAgent(
               }
             : {}),
         },
+        rt.id,
       );
       // Resume in the cwd the agent had, wherever the workspace points now.
       // D24 (and D25: a rename since) the name peers see it by.
