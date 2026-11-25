@@ -1,10 +1,3 @@
-/**
- * Issue 1631: the default skill pack is vendored at a pinned commit, with
- * every file's hash in skill-packs/packs.json. A changed byte, a file the
- * pin doesn't list, a listed file that's missing, or a missing or non-MIT
- * licence fails. The files Den leaves out (they merge, force-push, poll
- * GitHub, write outside the agent's folders, or download tools) are absent.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import fs from "node:fs";
 import os from "node:os";

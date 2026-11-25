@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-/**
- * Issue 1631: vendor a skill pack at a commit, for a pull request that bumps its pin.
- *
- *   node scripts/skill-pack-update.mjs <pack> <commit> [--from <dir>]
- *
- * It reads the pack's entry in skill-packs/packs.json (source, path, exclude),
- * downloads that commit's tarball from GitHub (or, with --from, copies a folder
- * that already holds the pack's `path`), copies the pack without its `exclude`
- * paths, applies skill-packs/patches/<pack>/*.patch, writes the Claude Code
- * plugin manifest, and records the commit and every file's hash in packs.json.
- * It prints the skills added and removed. Den never runs this at run time.
- */
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -71,7 +59,6 @@ const skillsOf = (files) =>
     ),
   ].sort();
 
-/** The folder holding the pack's `path` at `commit`, downloaded into a new empty folder. */
 function download(pin, commit) {
   const m = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)$/.exec(pin.source);
   if (!m) fail(`${pin.source} is not a GitHub repository address`);
@@ -92,7 +79,6 @@ function download(pin, commit) {
   };
 }
 
-/** DEN-NOTICE.md: where the copy comes from, and everything Den left out or changed. */
 function notice(name, pin, commit) {
   const lines = [
     `# ${name} in Den`,

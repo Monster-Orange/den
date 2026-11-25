@@ -1,9 +1,3 @@
-/**
- * Issue 1631: a skill pack Den vendors at a pinned commit. skill-packs/packs.json
- * names each pack's source, commit, licence and the hash of every file Den
- * ships. verifyPack checks a copy against its pin: the unit test runs it on
- * the repo, and doctor on the installed package. Nothing here fetches.
- */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,13 +8,9 @@ export interface PackPin {
   commit: string;
   license: "MIT";
   copyright: string;
-  /** Paths under `path` Den leaves out of the copy (a folder or a file), each with why. */
   exclude: { path: string; why: string }[];
-  /** Den's patches (skill-packs/patches/<pack>/), file name to what each changes. */
   patches: Record<string, string>;
-  /** Skills shipped but off unless the person turns them on, each with why. */
   default_off: { skill: string; why: string }[];
-  /** Every shipped file, relative to the pack's folder: "sha256-<hex>". */
   files: Record<string, string>;
 }
 
@@ -32,7 +22,6 @@ export function hashFile(file: string): string {
   return `sha256-${crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")}`;
 }
 
-/** Every file under `dir`, relative, with "/" separators, sorted. */
 export function listFiles(dir: string): string[] {
   const out: string[] = [];
   const walk = (rel: string) => {
@@ -54,7 +43,6 @@ export function readPacks(packsDir: string): Packs {
   ) as Packs;
 }
 
-/** What is wrong with the copy at `dir`, one line per problem; [] when it matches. */
 export function verifyPack(dir: string, pin: PackPin): string[] {
   const problems: string[] = [];
   const have = fs.existsSync(dir) ? listFiles(dir) : [];
