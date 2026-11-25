@@ -17,7 +17,8 @@ export interface FakeRun {
   head_sha: string;
   check_suite_id: number;
   /** Issue 1214: which attempt (1 unless re-run). */
-  run_attempt?: number;
+  run_attempt?: number; /** Issue 1279: its workflow (ci.yml, release-gates.yml…). */
+  workflow_id?: number;
 }
 
 export interface FakeJob {
@@ -35,6 +36,8 @@ export interface FakeCheck {
   status: string;
   conclusion: string | null;
   suite: number;
+  /** When it started (ISO); GitHub always sends it. */
+  started_at?: string;
 }
 
 export class FakeGithub {
@@ -186,6 +189,7 @@ export class FakeGithub {
           conclusion: c.conclusion,
           html_url: `https://github.example/${m![1]}/runs/${c.id}`,
           check_suite: { id: c.suite },
+          ...(c.started_at ? { started_at: c.started_at } : {}),
         })),
       });
     }

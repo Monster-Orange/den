@@ -826,6 +826,10 @@
     ],
     "tests/unit/server/toast-hold.browser.test.ts": [
       "src/ui/server/public/shell.js"
+    ],
+    "tests/unit/server/held-focus-den-1434.browser.test.ts": [
+      "src/ui/server/public/shell.js",
+      "packages/den-ui/src/busy.js"
     ]
   },
   "subjectless": [],
@@ -1022,6 +1026,7 @@
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
+        "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
         "tests/unit/den-ui/kit-063.browser.test.ts",
         "tests/unit/den-ui/kit-065.browser.test.ts",
@@ -1252,6 +1257,7 @@
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
+        "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1402,6 +1408,7 @@
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
+        "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
         "tests/unit/den-ui/kit-063.browser.test.ts",
         "tests/unit/den-ui/kit-065.browser.test.ts",
@@ -1671,6 +1678,7 @@
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
+        "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1762,6 +1770,7 @@
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
+        "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
         "tests/unit/den-ui/kit-063.browser.test.ts",
         "tests/unit/den-ui/kit-065.browser.test.ts",
@@ -1890,6 +1899,7 @@
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
+        "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
         "tests/unit/den-ui/kit-063.browser.test.ts",
         "tests/unit/den-ui/kit-065.browser.test.ts",
@@ -1976,6 +1986,7 @@
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
+        "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -3343,6 +3354,11 @@
         "src/ui/server/workspace-routes.ts"
       ],
       "run": ["tests/unit/server/health-repos-nonblocking.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["packages/den-ui/src/busy.js", "src/ui/server/public/shell.js"],
+      "run": ["tests/unit/server/held-focus-den-1434.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
