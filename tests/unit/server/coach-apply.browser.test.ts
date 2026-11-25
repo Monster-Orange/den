@@ -105,6 +105,14 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: [browser], servers: [s] });
 });
 
+/** Apply again's English text, from the shell's strings. */
+const AGAIN = /"co\.ap\.again":\s*"([^"]+)"/.exec(
+  fs.readFileSync(
+    path.join(__dirname, "../../../src/ui/server/public/shell.js"),
+    "utf-8",
+  ),
+)![1];
+
 /** The Coach tab at `width`; Apply's request waits for `release`. */
 async function open(width: number, persona: string) {
   seed(s!.stateDir, persona);
@@ -250,7 +258,7 @@ describe("Coach Apply", () => {
       .waitFor({ timeout: 15_000 });
     await expect(
       p.locator(`${scope} [data-act="coach-apply"]`).textContent(),
-    ).resolves.toBe("Apply again");
+    ).resolves.toBe(AGAIN);
     expect(await p.locator(`${scope} [data-act="coach-dismiss"]`).count()).toBe(
       1,
     );
@@ -301,7 +309,7 @@ describe("Coach Apply", () => {
       .waitFor({ timeout: 2_500 });
     await expect(
       p.locator(`${scope} [data-act="coach-apply"]`).textContent(),
-    ).resolves.toBe("Apply again");
+    ).resolves.toBe(AGAIN);
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
