@@ -462,6 +462,8 @@ opens (Check again). A failure opens the failure pop-up.
   `busyAction` (a stream's output, a form with its own error line) holds
   its button with the dots alone: `holdDots(button)`, then
   `holdDots(button, false)` to give the label back. No pop-up opens.
+  `heldCount()` says how many buttons are held now (a number only): a
+  page that lets each go on its answer leaves 0.
 - `opts.dots: false` on busyAction holds a button the old way (no dots,
   the pop-up at `OPEN_MS`).
 - The look is in `src/busy.css`, under "issue 699: the held button"

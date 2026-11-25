@@ -3386,6 +3386,7 @@
     {
       "when": [
         "src/shared/notifications.ts",
+        "src/ui/server/asset-stamp.ts",
         "src/ui/server/notification-routes.ts"
       ],
       "run": [
