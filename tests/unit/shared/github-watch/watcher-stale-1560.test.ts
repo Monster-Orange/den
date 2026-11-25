@@ -67,6 +67,7 @@ beforeEach(() => {
     maxIntervalSeconds: 300,
     budgetFloor: 500,
     watchesMax: 50,
+    staleMinutes: 60,
   };
   gh.pr(A, 1, SHA1);
   gh.pr(A, 2, SHA2);
@@ -227,6 +228,52 @@ describe("issue 1560: a head off the page isn't done while a run on it is still 
   });
 });
 
+describe("issue 1560: a head off the page waiting its turn", () => {
+  it("isn't ended as stale before its own runs are read", async () => {
+    settings = { ...settings, staleMinutes: 5 };
+    const w = watcher();
+    const shas = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `${n}d`.repeat(20));
+    const ids: string[] = [];
+    for (const [i, sha] of shas.entries()) {
+      gh.pr(A, 20 + i, sha);
+      gh.run(A, {
+        id: 400 + i,
+        name: "ci",
+        status: "in_progress",
+        conclusion: null,
+        head_sha: sha,
+        check_suite_id: 40 + i,
+      });
+      const r = await w.create(ask(20 + i));
+      if (!r.ok) throw new Error("not created");
+      ids.push(r.watch.id);
+    }
+    for (let i = 0; i < 120; i++)
+      gh.run(A, {
+        id: 5000 + i,
+        name: "ci",
+        status: "completed",
+        conclusion: "success",
+        head_sha: SHA9,
+        check_suite_id: 1900 + i,
+      });
+    // Rounds until every head's own runs have been read once.
+    for (let i = 0; i < 40; i++) {
+      await rounds(w, 1);
+      if (
+        shas.every((sha) => gh.calls.some((c) => c.includes(`head_sha=${sha}`)))
+      )
+        break;
+    }
+    for (const sha of shas)
+      expect(gh.calls.some((c) => c.includes(`head_sha=${sha}`))).toBe(true);
+    const views = w.list("planner").filter((x) => ids.includes(x.id));
+    expect(views.filter((x) => x.state === "done").map((x) => x.note)).toEqual(
+      [],
+    );
+  });
+});
+
 describe("issue 1560: a new ask after the head moved", () => {
   it("makes a new watch on the new head, and the old one ends, replaced", async () => {
     const w = watcher();
@@ -246,6 +293,44 @@ describe("issue 1560: a new ask after the head moved", () => {
     // Same head again: the same watch, as before.
     const same = await w.create(ask(1));
     expect(same.ok && same.watch.id).toBe(again.watch.id);
+
+    // Issue 1166's recheck later: the replaced watch isn't ended or told again.
+    for (let i = 0; i < 4; i++) {
+      t += 11 * 60_000;
+      await rounds(w, 1);
+    }
+    expect(sent.some((d) => (d.text ?? "").includes(first.watch.id))).toBe(
+      false,
+    );
+    expect(w.list("planner").find((x) => x.id === first.watch.id)?.note).toBe(
+      `Replaced by watch ${again.watch.id} on head ${SHA2.slice(0, 7)}.`,
+    );
+  });
+
+  it("the loop ended it first (issue 1166): a new ask makes a new watch, the old one untouched", async () => {
+    const w = watcher();
+    const first = await w.create(ask(1));
+    if (!first.ok) throw new Error("not created");
+    gh.pr(A, 1, SHA2); // a push
+    for (let i = 0; i < 4; i++) {
+      t += 11 * 60_000;
+      await rounds(w, 1);
+    }
+    const told = sent.filter((d) => (d.text ?? "").includes(first.watch.id));
+    expect(told).toHaveLength(1);
+    expect(told[0]!.text).toContain("was replaced by");
+    const old = w.list("planner").find((x) => x.id === first.watch.id);
+    const note = old?.note;
+    const again = await w.create(ask(1));
+    if (!again.ok) throw new Error("not created");
+    expect(again.watch.id).not.toBe(first.watch.id);
+    expect(again.watch.head).toBe(SHA2);
+    expect(w.list("planner").find((x) => x.id === first.watch.id)?.note).toBe(
+      note,
+    );
+    expect(
+      sent.filter((d) => (d.text ?? "").includes(first.watch.id)),
+    ).toHaveLength(1);
   });
 });
 

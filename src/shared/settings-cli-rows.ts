@@ -73,7 +73,7 @@
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
- *     api_budget_floor?, watches_max? }
+ *     api_budget_floor?, watches_max?, watch_stale_minutes? }
  *                                     user.yml github.* (the shared GitHub
  *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null

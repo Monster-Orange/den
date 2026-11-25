@@ -89,7 +89,10 @@ export class FakeGithub {
       return p
         ? ok({
             number: Number(m[2]),
-            state: p.state,
+            // "merged" is a closed pull request with merged set, as GitHub says it.
+            state: p.state === "merged" ? "closed" : p.state,
+            merged: p.state === "merged",
+            merged_at: p.state === "merged" ? "2030-01-01T12:30:00Z" : null,
             head: { sha: p.head },
             html_url: `https://github.example/${m[1]}/pull/${m[2]}`,
           })

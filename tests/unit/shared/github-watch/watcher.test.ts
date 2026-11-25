@@ -63,6 +63,7 @@ beforeEach(() => {
     maxIntervalSeconds: 300,
     budgetFloor: 500,
     watchesMax: 50,
+    staleMinutes: 60,
   };
   gh.pr(A, 1, SHA1);
   gh.pr(A, 2, SHA2);
@@ -452,15 +453,24 @@ describe("scope, list and cancel", () => {
     ]);
   });
 
-  it("refuses a watch past github.watches_max", async () => {
+  it("queues a watch past the cap (issue 1166), and refuses one only when the queue is full too", async () => {
     settings = { ...settings, watchesMax: 2 };
+    gh.remaining = 520; // little over the floor: the budget can't raise the cap
     const w = watcher();
     await w.create(ask({ pr: 1 }));
     await w.create(ask({ pr: 2 }));
     const r = await w.create(ask({ pr: 3 }));
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe("too_many");
-    expect(r.error).toContain("2");
+    expect(r.ok).toBe(true);
+    expect(r.watch?.state).toBe("queued");
+    // 1000 queued (the most): one more is refused, saying what is open.
+    for (let n = 100; n < 1099; n++)
+      expect((await w.create(ask({ pr: n }))).watch?.state).toBe("queued");
+    const full = await w.create(ask({ pr: 5000 }));
+    expect(full.ok).toBe(false);
+    if (full.ok) return;
+    expect(full.code).toBe("too_many");
+    expect(full.error).toContain("2 are open");
+    expect(full.error).toContain("1000 more queued");
   });
 });
 

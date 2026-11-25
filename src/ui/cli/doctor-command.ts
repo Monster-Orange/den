@@ -93,6 +93,7 @@ import {
   signinRequestCounts,
 } from "../../shared/signin-request-count.js";
 import {
+  SESSION_SIGNING_DIR,
   sandboxFor,
   sandboxHidesFile,
   sandboxSetting,
@@ -1723,6 +1724,10 @@ export function sharedUserLines(
      * from install_mode; a config that can't be read counts as strict.
      */
     trailReadable?: boolean;
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
@@ -1772,17 +1777,50 @@ export function sharedUserLines(
     : walked.deep
       ? `checked ${maxDepth} folders deep only`
       : "";
-  const looseWarn = loose.length > 0 || !!partial;
+  const outside = (o.unsandboxed ?? (() => unsandboxedAgents(stateDir)))();
+  const looseWarn = (loose.length > 0 || !!partial) && outside.length > 0;
   const SHOWN = 10;
-  const listed = loose.length
-    ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
-        .slice(0, SHOWN)
-        .join(
-          ", ",
-        )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
-    : partial
-      ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
-      : "agents' deny rules cover every 0600 file in the state folder";
+  const listed =
+    loose.length && !outside.length
+      ? `${loose.length} 0600 file${loose.length === 1 ? "" : "s"} in the state folder ha${loose.length === 1 ? "s" : "ve"} no Claude Read rule; the OS sandbox keeps every agent out of the state folder`
+      : loose.length
+        ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
+            .slice(0, SHOWN)
+            .join(
+              ", ",
+            )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
+        : partial
+          ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
+          : "agents' deny rules cover every 0600 file in the state folder";
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const readable = stateCredentialsPresent(stateDir);
+  const more = walked.files.filter(
+    (f) => f.split(path.sep)[0] !== SESSION_SIGNING_DIR,
+  ).length;
+  const agentRows = outside.map((a) => {
+    const repoFiles = [
+      ...new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      ),
+    ].filter((d) => {
+      try {
+        return fs.lstatSync(path.join(d, REPO_SECRETS_FILE)).isFile();
+      } catch {
+        return false;
+      }
+    }).length;
+    const what = [
+      ...readable,
+      ...(repoFiles
+        ? [
+            `${repoFiles} project stack secrets file${repoFiles === 1 ? "" : "s"}`,
+          ]
+        : []),
+      ...(more ? [`and ${more} more 0600 file${more === 1 ? "" : "s"}`] : []),
+    ];
+    const detail = `${safeShownPath(a.id)} runs outside the OS sandbox (by its last start's record), so its shell can read ${what.length ? what.join(", ") : "the state folder"}. A person turns its sandbox on with agents.sandbox in user.yml`;
+    return { id: `agent_unsandboxed:${a.id}`, detail };
+  });
   const looseDetail = partial ? `${listed} (${partial})` : listed;
   const mark = (ok: boolean) => (ok ? "✓" : "⚠");
   return {
@@ -1793,6 +1831,7 @@ export function sharedUserLines(
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
       { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
@@ -1806,8 +1845,40 @@ export function sharedUserLines(
         status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
       },
+      ...agentRows.map((r) => ({
+        id: r.id,
+        status: "warn" as const,
+        detail: r.detail,
+      })),
     ],
   };
+}
+
+/** Agents whose last start was outside the OS sandbox, from their records. */
+function unsandboxedAgents(
+  stateDir: string,
+): { id: string; projects: string[] }[] {
+  try {
+    return listRecords(stateDir)
+      .filter((r) => r.sandbox?.applied !== true)
+      .map((r) => ({ id: r.id, projects: [r.workspace, ...(r.grants ?? [])] }));
+  } catch {
+    return [];
+  }
+}
+
+/** The state folder's credentials that exist, by what they are. */
+function stateCredentialsPresent(stateDir: string): string[] {
+  const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
+  return [
+    ...(has("web.secret") ? ["web.secret"] : []),
+    ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
+    ...(has("actor-token") ? ["the agents' tokens"] : []),
+    ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
+    ...(has("push-vapid.json") ? ["the push key"] : []),
+    ...(has("fixture-person.key") ? ["the test person's key"] : []),
+    ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),
+  ];
 }
 
 /** Repos' stack secrets files and the cached sign-ins, by name only, and whether agents' rules deny them. */
