@@ -121,10 +121,6 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
-  /**
-   * Issue 1223: the agents still on older tools, one row with Restart N
-   * agents; it follows the gate rows in `waiting`, kind tools_old.
-   */
   toolsOld?: () =>
     | import("../../shared/agents/tools-restarts.js").ToolsOldWaiting
     | null;

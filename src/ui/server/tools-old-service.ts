@@ -1,10 +1,3 @@
-/**
- * Issue 1223: the server's side of "N agents are on older tools". One
- * ToolsRestarts per state dir (the restart batch and its failures), and
- * the stale list it reads, cached: staleAgents asks the sessions host and
- * Hub, too slow for each bell read, so a read past STALE_TTL_MS asks again
- * in the background and the next read has it.
- */
 import type { AgentsResolved } from "../cli/agent-ops.js";
 import {
   ToolsRestarts,
@@ -14,7 +7,6 @@ import {
 } from "../../shared/agents/tools-restarts.js";
 import type { RestartJob } from "../../shared/agents/restart-queue.js";
 
-/** How long a stale list is used before it's asked again. */
 export const STALE_TTL_MS = 30_000;
 
 interface Slot {
@@ -26,7 +18,6 @@ interface Slot {
 }
 const slots = new Map<string, Slot>();
 
-/** A queue that runs each job at once (no queue given: tests, the CLI). */
 export const NO_QUEUE = { add: (j: RestartJob) => j.run() };
 
 function slotOf(stateDir: string): Slot {
@@ -41,7 +32,6 @@ function slotOf(stateDir: string): Slot {
     };
     slot.t = new ToolsRestarts({
       queue: { add: (j) => slot.queue.add(j) },
-      // Each call passes its own restart (start's second argument).
       restart: async () => undefined,
     });
     slots.set(stateDir, slot);
@@ -50,10 +40,6 @@ function slotOf(stateDir: string): Slot {
   return s;
 }
 
-/**
- * Restart N agents: sends `list` through `queue`, each by `restart`.
- * Returns the ones queued (an agent already under way isn't twice).
- */
 export function restartToolsOld(
   stateDir: string,
   list: readonly StaleOne[],
@@ -64,16 +50,13 @@ export function restartToolsOld(
 ): StaleOne[] {
   const s = slotOf(stateDir);
   s.queue = o.queue ?? NO_QUEUE;
-  // Issue 1223 (PR review): each queued agent keeps this call's restart.
   return s.t.start(list, o.restart);
 }
 
-/** Issue 1407: the agents restart-stale held back, for the bell row. */
 export function holdToolsOld(stateDir: string, list: readonly Held[]): void {
   slotOf(stateDir).t.hold(list);
 }
 
-/** The bell row now (the cached stale list), or null. */
 export function toolsOldRow(
   d: Pick<AgentsResolved, "stateDir">,
   ask: () => Promise<StaleOne[]>,
@@ -96,7 +79,6 @@ export function toolsOldRow(
   return s.t.row(s.stale);
 }
 
-/** A fresh stale list (restart-stale just asked): the bell uses it now. */
 export function noteToolsOld(
   stateDir: string,
   list: readonly StaleOne[],
@@ -106,7 +88,6 @@ export function noteToolsOld(
   s.at = Date.now();
 }
 
-/** Tests: forget every slot. */
 export function resetToolsOld(): void {
   slots.clear();
 }

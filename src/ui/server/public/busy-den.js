@@ -69,7 +69,6 @@ export const DEN_ACTIONS = {
       failure: "busy.delProjF",
     },
   },
-  // Issue 1223: Restart N agents on older tools, from the bell.
   "tools-restart": {
     who: "__DEN_TITLE__",
     autoClose: true,

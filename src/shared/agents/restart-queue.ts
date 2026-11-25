@@ -26,8 +26,7 @@
 
 /**
  * Why a job waits. Issue 1225: "services" is a project's services brought
- * back after a restart; it shares the stagger, and isn't an agent. Issue
- * 1223: "tools", an agent on an older Den's tools.
+ * back after a restart; it shares the stagger, and isn't an agent.
  */
 export type RestartWhy =
   | "resume"
@@ -38,10 +37,6 @@ export type RestartWhy =
 
 export interface RestartJob {
   id: string;
-  /**
-   * Issue 1223: what makes it one job, when its id alone doesn't (an agent
-   * id is per project). None: the id.
-   */
   key?: string;
   why: RestartWhy;
   /** It was working (mid-turn) when the install stopped: it goes first. */

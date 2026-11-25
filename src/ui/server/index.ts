@@ -6767,7 +6767,6 @@ async function handleRequest(
       // Issue 1339: read without the gate-slot lock, so a gate run that
       // holds it never stalls the bell (or the server with it).
       gateOverruns: () => bellGateOverruns(gates()),
-      // Issue 1223: the agents still on older tools, with Restart N agents.
       toolsOld: () =>
         toolsOldRow(agentWebDeps(), () => staleAgents(agentWebDeps())),
     });
@@ -9903,7 +9902,6 @@ async function handleRequest(
   // ── Agents on the Workspaces page (AG-4a, agent-routes.ts) ───────────────
   if (
     await handleAgentRoutes(req, res, pathname, {
-      // Issue 1223: restart-stale goes through the one restart queue.
       restartQueue: () =>
         restartQueue({
           log: (line) => serverLog(line, "lifecycle"),

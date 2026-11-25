@@ -1,10 +1,3 @@
-/**
- * Issue 1223: after Den updates, agents still on older tools are one bell
- * row, "N agents are on older tools", with one Restart N agents for the
- * person. It sends them through the restart queue (issue 1129: a batch at
- * a time, under the load ceiling), shows how far it got, and keeps an
- * agent that failed listed with its reason while the others finish.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
 import { ToolsRestarts } from "../../../src/shared/agents/tools-restarts.js";
@@ -21,7 +14,6 @@ const three = [
 ];
 const flush = () => new Promise<void>((r) => setImmediate(r));
 
-/** A queue whose gap ends only when the test says. */
 function gatedQueue(batch: number) {
   let open: (() => void) | null = null;
   const q = new RestartQueue({
@@ -65,7 +57,6 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
     });
     expect(t.start(three).map((a) => a.id)).toEqual(["ana", "bo", "cy"]);
     await flush();
-    // The first batch only: two, then the gap.
     expect(started).toEqual(["ana", "bo"]);
     expect(t.row(three)?.restarting).toEqual({ done: 0, total: 3 });
     finish.get("ana")!();
@@ -77,7 +68,6 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
     finish.get("bo")!();
     finish.get("cy")!();
     await flush();
-    // All back: the row clears, even before the stale list is asked again.
     expect(t.row(three)).toBeNull();
   });
 
@@ -98,7 +88,6 @@ describe("issue 1223: one bell row for the agents on older tools", () => {
         { agent: "bo", workspace: "north", reason: "bo exited at once" },
       ],
     });
-    // A new Restart tries it again.
     t.start([three[1]!]);
     await flush();
     expect(t.row([three[1]!])?.agents[0]?.reason).toBe("bo exited at once");
@@ -343,7 +332,6 @@ describe("issue 1223: the server keeps the stale list for the bell", () => {
     expect(toolsOldRow(d, ask, Date.now())).toBeNull();
     await flush();
     expect(toolsOldRow(d, ask, Date.now())?.n).toBe(3);
-    // Within the TTL: not asked again.
     expect(asks).toBe(1);
     toolsOldRow(d, ask, Date.now() + STALE_TTL_MS);
     await flush();

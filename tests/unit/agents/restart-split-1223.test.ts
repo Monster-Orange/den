@@ -1,14 +1,3 @@
-/**
- * Issue 1223 part B with issue 1407: the bell's Restart N agents (restart-
- * stale) checks each agent first (1407: restartMany) and sends only the
- * agents it clears (idle, or mid-turn) through the restart queue (1129: a
- * batch at a time), with how far it got in the bell row. One with a
- * background job, or whose turn Den can't read, is never queued: the row
- * lists it with why it waits and Restart now (ends the job).
- *
- * A real host on a temp socket with a scripted PTY: nothing runs. The
- * processes under the agent are a fake list. Invented names only.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
@@ -46,7 +35,6 @@ afterEach(async () => {
 const SHELL = (cmd: string) =>
   `/bin/zsh -c source /home/x/.claude/shell-snapshots/snapshot-zsh-1-ab.sh && eval '${cmd}' \\< /dev/null && pwd -P >| /tmp/claude-1-cwd`;
 
-/** Stop waits for the session to end, and each scripted one ends on TERM. */
 function endOnTerm(r: Rig): void {
   r.deps.stopWaitMs = 3_000;
   const push = r.made.push.bind(r.made);
@@ -62,7 +50,6 @@ function endOnTerm(r: Rig): void {
   };
 }
 
-/** Its transcript: the turn ended (`ended`), or a turn is running. */
 function transcript(r: Rig, token: string, ended: boolean): void {
   const claude = path.join(r.dir, "claude-config");
   const dir = path.join(claude, "projects", "-work");
@@ -88,7 +75,6 @@ function transcript(r: Rig, token: string, ended: boolean): void {
   r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
 }
 
-/** One running agent, "planner" in north; its session's pid. */
 async function started() {
   const r = await rig();
   endOnTerm(r);
@@ -117,13 +103,11 @@ async function started() {
 
 const one = [{ id: "planner", workspace: "north" }];
 
-/** Its tools started on an older Den: restart-stale lists it. */
 function onOlderTools(r: Rig): void {
   const rec = readRecord(r.stateDir, "planner")!;
   writeRecord(r.stateDir, { ...rec, denVersion: "0.0.1-old" });
 }
 
-/** restart-stale through handleAgentRoutes, with a queue that records. */
 async function api(r: Rig) {
   const jobs: RestartJob[] = [];
   const server = http.createServer((req, res) => {

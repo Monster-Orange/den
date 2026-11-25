@@ -7267,11 +7267,6 @@ export async function restartMany(
     pollMs?: number;
     maxMs?: number;
     onDone?: (r: RestartOutcome) => void;
-    /**
-     * Issue 1223: each agent it clears is handed here with `go` (its
-     * restart; rejects when it didn't restart), for a queue to run in
-     * turn. None: each starts at once.
-     */
     start?: (
       a: { id: string; workspace: string },
       go: () => Promise<unknown>,
@@ -7296,7 +7291,6 @@ export async function restartMany(
         jobStops: true,
       }).then(
         (s) => {
-          // Its new session ended at once: failed, in the trail and the bell.
           if (s.early) {
             const error = `${p.id} exited at once`;
             o.onDone?.({ ...base, outcome: "failed", error });

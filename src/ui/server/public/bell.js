@@ -320,10 +320,6 @@ function overrunRowHtml(w) {
   );
 }
 
-/**
- * Issue 1223: the agents still on older tools (a `waiting` entry of kind
- * "tools_old"): one row, whatever their number.
- */
 export function toolsOldOf(b) {
   return (
     (b?.waiting ?? []).find(
@@ -340,11 +336,6 @@ export function toolsOldOf(b) {
   );
 }
 
-/**
- * Issue 1223: "N agents are on older tools", who, and one Restart N
- * agents (the person's: restart-stale, through the restart queue). While
- * it runs the button says how far it got; one that failed says why.
- */
 export function toolsOldHtml(w) {
   if (!w) return "";
   const n = Number(w.n) || 0;
@@ -352,8 +343,6 @@ export function toolsOldHtml(w) {
   const names = agents
     .filter((a) => !a.reason && !a.waits)
     .map((a) => String(a.agent ?? ""));
-  // Issue 1407: held back for the person (a job, or a turn Den can't
-  // read): why, and Restart now; after it, how it went.
   const held = agents
     .filter((a) => a.waits)
     .map((a) => {
@@ -418,11 +407,6 @@ export function toolsOldHtml(w) {
   );
 }
 
-/**
- * Issue 1223: Restart N agents from the bell: the person-only POST
- * /api/agents/restart-stale (an agent is refused there), through the
- * restart queue; the row then shows how far it got.
- */
 async function restartToolsOld(el) {
   const shell = window.denShell;
   const n = Number(el.dataset.n) || 0;
@@ -440,10 +424,8 @@ async function restartToolsOld(el) {
   }
 }
 
-/** Issue 1407: the bell's Restart now outcomes, by workspace and agent. */
 const nowDone = new Map();
 
-/** Issue 1407: Restart now (ends a job) for one held-back agent. */
 async function restartNowToolsOld(el) {
   const shell = window.denShell;
   const ok = await restartNow(el, {

@@ -284,10 +284,6 @@ export interface AgentRouteDeps {
   hubConnect?: import("./hub-connect.js").HubConnect;
   /** H5: Settings › Project setup › Hub project (tests swap Hub and the store). */
   hubProject?: Partial<import("./hub-project-routes.js").HubProjectRouteDeps>;
-  /**
-   * Issue 1223: the restart queue restart-stale sends the agents it clears
-   * through (issue 1129; the server's). None: each restarts at once (tests).
-   */
   restartQueue?: () => {
     add(
       job: import("../../shared/agents/restart-queue.js").RestartJob,
@@ -3206,9 +3202,6 @@ async function staleRoute(
     // now, after its turn, a background job (what, how long) or can't
     // tell. Only the first two restart; the person decides the others
     // (Restart now). How each restart ended reaches the trail.
-    // Issue 1223: those it clears go through the restart queue (a batch at
-    // a time, under the load ceiling); the bell row shows how far it got,
-    // who failed, and who waits for the person.
     const { restartToolsOld, noteToolsOld, holdToolsOld } =
       await import("./tools-old-service.js");
     if (body.only !== "hub") noteToolsOld(d.stateDir(), list);
@@ -3249,8 +3242,6 @@ async function staleRoute(
         .map((a) => ({ id: a.id, workspace: a.workspace })),
       {
         ...(deps.restartQueue ? { queue: deps.restartQueue() } : {}),
-        // Each its own (go rejects when it didn't restart, an early exit
-        // too); one the check didn't clear is never in this list.
         restart: (a) => cleared.get(key(a))!(),
       },
     );
@@ -3277,7 +3268,6 @@ async function staleRoute(
         ok: true,
         pending: list,
         agents: plan,
-        // Issue 1223: those sent through the restart queue now.
         queued: list.filter((a) => ids.has(key(a))),
       },
       202,
