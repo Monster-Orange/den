@@ -3558,7 +3558,8 @@
     },
     {
       "when": [
-        "src/shared/crash-loop.ts"
+        "src/shared/crash-loop.ts",
+        "src/ui/cli/web-command.ts"
       ],
       "run": [
         "tests/unit/server/crash-loop.integration.test.ts"
