@@ -365,11 +365,16 @@ export async function openReport(opts = {}) {
         st.shot = canvas || null;
         if (st.step !== "write" || !area) return;
         const box = area.querySelector("[data-shot-box]");
-        if (canvas && box) {
+        if (canvas && box && !opts.draft) {
           box.outerHTML = shotBoxHtml();
           st.shotSeen = true;
           paintShot();
-        } else area.outerHTML = shotAreaHtml();
+        } else {
+          // A draft's shot brings its masks and Don't include, which sit
+          // outside the box: the whole area, below the words being typed.
+          area.outerHTML = shotAreaHtml();
+          if (canvas) paintShot();
+        }
       });
   }
   document.body.append(dlg);
@@ -443,13 +448,23 @@ export async function openReport(opts = {}) {
    * shot to come, saying so; then the shot itself, in the same place. On
    * the first step a canvas to black areas out on; on Review a picture.
    */
-  function shotBoxHtml(where = "write") {
+  /**
+   * The waiting box's size, through CSSOM: a style attribute in the HTML
+   * is an inline style, which a page's `style-src 'self'` refuses.
+   */
+  function sizeShotBoxes() {
     const [w, h] = st.shotRatio;
+    for (const el of dlg.querySelectorAll("[data-shot-box][data-wait]")) {
+      el.style.setProperty("--shot-ar", `${w} / ${h}`);
+      el.style.setProperty("--shot-k", (w / h).toFixed(4));
+    }
+  }
+  function shotBoxHtml(where = "write") {
     // Review: a shot not included (still being taken, or landed since and
     // not yet checked) is a faded thumbnail, so it doesn't read as posted.
     const late = where === "review" && !shotOn() ? " data-late" : "";
     if (st.shotWait)
-      return `<div class="fb-shot" data-shot-box data-wait${late}${where === "write" && st.noShot ? " hidden" : ""} style="--shot-ar: ${w} / ${h}; --shot-k: ${(w / h).toFixed(4)}"><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
+      return `<div class="fb-shot" data-shot-box data-wait${late}${where === "write" && st.noShot ? " hidden" : ""}><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
     if (where === "review")
       return `<div class="fb-shot" data-shot-box${late}><img data-shot-review alt="${esc(late ? t("kit.report.shotNotIn") : t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
     return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
@@ -694,6 +709,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     dlg.setAttribute("aria-label", label);
     dlg.dataset.step = st.step;
     dlg.innerHTML = `<div class="fb-b">${h}</div>`;
+    sizeShotBoxes();
     paintShot();
     const focus =
       (focusSel && dlg.querySelector(focusSel)) ||
