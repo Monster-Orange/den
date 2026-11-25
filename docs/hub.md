@@ -142,6 +142,12 @@ keep-alive, or a list answer), the bell says "Hub comments aren't arriving", wit
 token wasn't accepted, Hub refused, Den can't reach Hub, or the stream keeps closing or goes silent.
 It goes away on the next good read. A quiet Hub with no comments never raises it.
 
+The stream can stay open while comments stop coming. When no comment has come for
+`hub.delivery_stale_hours`, Den reads Hub's list. If comments wait there, the bell and doctor say
+the stream is open but Hub lists comments it hasn't sent. It goes away when a comment comes. The
+server's log has a line each time the stream opens or closes and each time the list's answer
+changes, with counts and ids only, never a comment's text.
+
 ### When Hub is down
 
 An agent never fails to start because of Hub: it starts without Hub's tools. When Hub answers again,
@@ -260,6 +266,7 @@ user file wins.
 | `hub.inbox_reads_per_second`           | `2` (above 0)      | The most inbox reads Den makes a second, for all its agents together. Each agent is read at most once per poll.                                                  |
 | `hub.delivery_poll_seconds`            | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                                                  |
 | `hub.delivery_alert_minutes`           | `15` (`0`: off)    | Minutes with no good read of Hub's comments before doctor warns and the bell says they aren't arriving.                                                          |
+| `hub.delivery_stale_hours`             | `6` (`0`: off)     | Hours with the stream open and no comment before Den reads Hub's list; comments waiting there and doctor and the bell warn.                                      |
 | `hub.delivery_stream_silence_seconds`  | `75` (`0`: off)    | No bytes on the comment stream this long (three of Hub's 25 s keep-alives), and Den reopens it.                                                                  |
 | `hub.delivery_held_note_seconds`       | `60` (at least 5)  | How long text waits for an agent that isn't at its prompt before the bell says so.                                                                               |
 | `hub.delivery_held_bell_minutes`       | `5` (at least 1)   | How long a Hub comment waits for a busy agent (or one with a dialog, a held Allow, a pause) before the bell says so, and why.                                    |
@@ -298,8 +305,9 @@ A bad value names its key. Settings › Hub shows the problem, for example
 - `⚠` when not, with the reason and whether to Connect or Reconnect.
 
 A "Hub comments" row shows the Hub the server reads comments from, whether its stream is open, the
-last good read and the last comment. It warns, with the reason, after `hub.delivery_alert_minutes`
-with no good read.
+last good read and the last comment, when the cursor last moved, and the last list read. It warns,
+with the reason, after `hub.delivery_alert_minutes` with no good read, or when comments wait in Hub
+after `hub.delivery_stale_hours` with the stream open.
 
 When connected, it also has a row per project (linked to which Hub project, or not linked) and a row
 on Den Hub's GitHub access. A Hub that is down never fails doctor: agents still run.

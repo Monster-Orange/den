@@ -62,11 +62,20 @@ describe("GitHubService", () => {
     });
 
     it("rejects a . or .. segment (another API path), and asks gh nothing", () => {
-      for (const s of ["../..", "./repo", "org/..", "../repo", "org/."])
+      // And an owner GitHub would refuse (a dot, a leading "-").
+      for (const s of [
+        "../..",
+        "./repo",
+        "org/..",
+        "../repo",
+        "org/.",
+        "my.org/repo",
+        "-org/repo",
+      ])
         expect(svc.listBranches(s)).toEqual([]);
       expect(mockExecFileSync).not.toHaveBeenCalled();
       mockExecFileSync.mockReturnValue('["main"]\n');
-      expect(svc.listBranches("my.org/re..po")).toEqual(["main"]);
+      expect(svc.listBranches("my-org/re..po")).toEqual(["main"]);
     });
 
     it("caches results and returns from cache on second call", () => {

@@ -14,7 +14,7 @@
  * save-report-draft, discard-draft, follow-project, keep-running, edge-up,
  * check-edge-address, edge-take-over,
  * send-message, allow-web-app, ask-allow, agent-order, delete-project,
- * add-service, remove-service, remove-mcp, gate-end. Waits for
+ * add-service, remove-service, remove-mcp, add-feed, remove-feed, gate-end. Waits for
  * Done: sign-out-all, send-report.
  * restart-den waits for Den to come back (reconnect mode).
  */
@@ -127,6 +127,17 @@ export const DEN_ACTIONS = {
       success: "busy.addSvcS",
       failure: "busy.addSvcF",
     },
+  },
+  // Issue 1480: Settings › Project › App event feeds › Add and Remove.
+  "add-feed": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: { working: "feed.addW", success: "feed.addS", failure: "feed.addF" },
+  },
+  "remove-feed": {
+    who: "__DEN_TITLE__",
+    autoClose: true,
+    keys: { working: "feed.rmW", success: "feed.rmS", failure: "feed.rmF" },
   },
   // Issue 352: Settings › Project › Agents' extra MCP servers › Remove.
   "remove-mcp": {
@@ -259,6 +270,56 @@ export const DEN_ACTIONS = {
       working: "sa.fresh.w",
       success: "sa.fresh.done",
       failure: "sa.fresh.fail",
+    },
+  },
+  // Issue 52: the Coach tab's Run now (a minute or two).
+  "coach-run": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.run.w",
+      success: "co.run.done",
+      failure: "co.run.fail",
+    },
+  },
+  // Issue 52, mock v6: a Coach finding's Dismiss and Undo, and the
+  // tab's Total / Per day (dots in the button; a pop-up only when slow).
+  "coach-dismiss": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.dis.w",
+      success: "co.dis.done",
+      failure: "co.dis.fail",
+    },
+  },
+  "coach-undismiss": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.undo.w",
+      success: "co.undo.done",
+      failure: "co.undo.fail",
+    },
+  },
+  "coach-counts": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.counts.w",
+      success: "co.counts.done",
+      failure: "co.counts.fail",
+    },
+  },
+  // Issue 110: a finding's Apply asks for the person's Allow (dots in
+  // the button; the bell then holds the change).
+  "coach-apply": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "co.ap.busy.w",
+      success: "co.ap.busy.done",
+      failure: "co.ap.busy.fail",
     },
   },
   // Issue 172: Settings › Notifications › Devices that get push.
@@ -504,4 +565,6 @@ export function busyAction(name, run, opts = {}) {
  * Issue 698: the kit's dots alone (no pop-up), for a wait that says its
  * own words: holdDots(button), then holdDots(button, false).
  */
-export { holdDots } from "/kit/busy.js";
+// Issue 1054: holdRow too (a dragged row's dots). Every name the shell
+// calls on this module is exported here (busy-den-exports-1054.test.ts).
+export { holdDots, holdRow } from "/kit/busy.js";

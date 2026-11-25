@@ -31,10 +31,10 @@ describe("issue 1369: doctor's audit reports row", () => {
   });
 
   it("reports in the last day, taken in or still queued: counted, ok, never their words", () => {
-    // auditConfig stamps the real time, so this test reads by the real
-    // clock too: its entries are dated from now, never a fixed day.
-    const ago = (h: number) =>
-      new Date(Date.now() - h * 3_600_000).toISOString();
+    // auditConfig stamps its entry with the real clock, so this case
+    // reads against the real clock too, and places the others from it.
+    const real = Date.now();
+    const ago = (h: number) => new Date(real - h * 3_600_000).toISOString();
     line({
       ts: ago(2),
       actor: "user",
@@ -59,7 +59,7 @@ describe("issue 1369: doctor's audit reports row", () => {
       detail: "sent",
     });
     auditConfig({ verb: "agents", detail: "SECRET_WORDS" }, state);
-    const r = auditReportLines("Den", { stateDir: state, now: new Date() });
+    const r = auditReportLines("Den", { stateDir: state, now: new Date(real) });
     expect(r.check.status).toBe("ok");
     expect(r.check.detail).toMatch(
       /^2 audit entries in the last day came in as reports/,

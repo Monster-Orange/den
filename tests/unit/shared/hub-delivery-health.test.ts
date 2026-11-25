@@ -400,7 +400,10 @@ describe("issue 703: keep-alives, silence, and Hub's own end", () => {
     expect(opened).toBe(2);
     expect(slept).toEqual([]);
     expect(s.loop.health().trouble).toBeNull();
-    expect(s.logs).toEqual([]);
+    // No trouble said: only the open and close lines.
+    expect(
+      s.logs.filter((l) => !/comment stream (opened|closed after)/.test(l)),
+    ).toEqual([]);
   });
 
   it("a stream that ends as soon as it opens backs off, is said once, and the list is read", async () => {

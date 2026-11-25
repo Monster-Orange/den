@@ -211,6 +211,7 @@ describe("pre-push hook", () => {
 
   describe("as an agent runs it: no DEN_HOOK_ROOT, DEN_ROOT set elsewhere (issue 1252)", () => {
     let scripts: string;
+    let shared: string;
     const agentPush = (lines: string) =>
       spawnSync("sh", [hook, "origin", "git@example.com:x/y.git"], {
         cwd: repo,
@@ -235,8 +236,19 @@ describe("pre-push hook", () => {
       for (const f of ["org-names.js", "org-name-commits.mjs"]) {
         fs.copyFileSync(path.join(ROOT, "scripts", f), path.join(scripts, f));
       }
+      // scripts/org-names.js re-exports the matcher from src/shared (issue
+      // 1127), which a real clone carries too.
+      shared = path.join(repo, "src", "shared");
+      fs.mkdirSync(shared, { recursive: true });
+      fs.copyFileSync(
+        path.join(ROOT, "src", "shared", "org-names.js"),
+        path.join(shared, "org-names.js"),
+      );
     });
-    afterAll(() => fs.rmSync(scripts, { recursive: true, force: true }));
+    afterAll(() => {
+      fs.rmSync(scripts, { recursive: true, force: true });
+      fs.rmSync(path.join(repo, "src"), { recursive: true, force: true });
+    });
 
     it("refuses a commit that names an org", () => {
       const r = agentPush(`refs/heads/x ${bad} refs/heads/x ${base}\n`);

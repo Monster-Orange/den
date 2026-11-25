@@ -84,6 +84,7 @@ import {
   type SecretRef,
 } from "../../shared/secrets/index.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { isRepoName } from "../../shared/repo-name.js";
 
 /** How long a started connect waits for Hub to send the person back. */
 export const CONNECT_TTL_MS = 10 * 60_000;
@@ -187,7 +188,6 @@ export interface HubConnectDeps {
 
 /** Issue 646: at most this many repos go to Hub's Connect page. */
 export const CONNECT_REPOS_MAX = 50;
-const REPO_RE = /^[a-z0-9_.-]{1,100}\/[a-z0-9_.-]{1,100}$/;
 
 /**
  * Issue 646: every project's repos, lower case, once each, in project
@@ -203,7 +203,7 @@ export function connectRepos(
     if (isServer(ws)) continue;
     for (const r of reposOf(ws)) {
       const x = r.toLowerCase();
-      if (REPO_RE.test(x)) out.add(x);
+      if (isRepoName(x)) out.add(x);
     }
   }
   return [...out];

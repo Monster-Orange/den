@@ -70,6 +70,7 @@ describe("readHubConfig", () => {
       deliveryHeldBellMinutes: 5,
       deliveryAnswerMinutes: 30,
       deliveryAlertMinutes: 15,
+      deliveryStaleHours: 6,
       deliveryStreamSilenceSeconds: 75,
       inboxWatch: true,
       inboxPollSeconds: 30,
