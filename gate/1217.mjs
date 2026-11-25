@@ -48,11 +48,11 @@ const storedPins = async (ctx) => {
 
 /** The projects whose services or repos include the item's repo (issue 1217's rule). */
 function ownersOf(data, item) {
-  const repo = String(item).split("/")[0];
+  const [repo] = String(item).split("/");
   const out = [];
   for (const [slug, ws] of Object.entries(data?.workspaces ?? {})) {
     const repos = new Set(
-      Object.keys(ws?.services ?? {}).map((k) => k.split("/")[0]),
+      Object.keys(ws?.services ?? {}).map((k) => k.split("/").shift()),
     );
     for (const r of Object.keys(ws?.repos ?? {})) repos.add(r);
     if (repos.has(repo)) out.push(slug);
@@ -97,7 +97,7 @@ const pageState = (ctx) =>
 const railPins = async (ctx) =>
   (
     await ctx.page.evaluate(() =>
-      [...document.querySelectorAll(".den-rail .den-ni[data-pin]")].map(
+      [...document.querySelectorAll("[data-pin][data-svpanel]")].map(
         (r) => r.dataset.pin,
       ),
     )
@@ -146,7 +146,7 @@ export async function run(ctx, s) {
     free.find((i) => n(i) === 1) ??
     null;
   r.two = free.find((i) => n(i) >= 2) ?? null;
-  const bareOf = (i) => String(i).split("/")[0];
+  const bareOf = (i) => String(i).split("/").shift();
   r.bare =
     free.find((i) => !i.includes("/") && n(i) === 1 && i !== r.one) ??
     (r.one && r.one.includes("/") && !base.items.has(bareOf(r.one))
@@ -165,7 +165,7 @@ export async function run(ctx, s) {
   // The rail: each clause's item in its own project's rail; under All, every
   // item. Each clause judges its own item only, so one clause's miss never
   // fails another.
-  r.A = ownersOf(data, r.one)[0];
+  [r.A] = ownersOf(data, r.one);
   r.openA = await open(ctx, r.A);
   r.railA = await railWhen(ctx, [r.one]);
   await ctx.shot(`old-a-${tag}`);

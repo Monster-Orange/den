@@ -40,7 +40,7 @@ export function fakeBed({ policy = "good" } = {}) {
       const src = String(fn);
       if (src.includes("getState"))
         return { loaded: true, project: page.project };
-      if (src.includes("den-rail"))
+      if (src.includes("data-svpanel"))
         return [
           ...new Set(
             pins
