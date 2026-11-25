@@ -948,6 +948,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/link",
   // D72: an agent never moves itself (or another) out of its scope.
   "/api/workspaces/:ws/agents/:id/move",
+  // Issue 1182: an agent's folder: it asks with the held write agent_folder.
+  "/api/workspaces/:ws/agents/:id/folder",
 ];
 
 /**
@@ -976,11 +978,16 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/verify/schedules/run",
   // Issue 964: taking an Allow back: a person's too.
   "/api/verify/schedules/revoke",
+  // Issue 1182: importing or removing an outside runner's run: a person's.
+  "/api/verify/import",
+  "/api/verify/remove",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
   // Issue 52: Dismiss a Coach finding, with the reason: a person's.
   "/api/coach/dismiss",
   "/api/settings",
+  // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
+  "/api/settings/undo",
   "/api/scope",
   "/api/web-url",
   // Issue 666: an alias made this install's address: the owner's.
@@ -993,6 +1000,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/agents/accounts",
   "/api/agents/accounts/token",
   "/api/agents/accounts/order",
+  // Issue 1182: removing one, and its token.
+  "/api/agents/accounts/remove",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",
@@ -1007,6 +1016,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces",
   "/api/workspaces/rename",
   "/api/workspaces/create",
+  // Issue 1182: a reset to the blueprint replaces a project's entries.
+  "/api/workspaces/seed",
   "/api/workspaces/settings",
   "/api/workspaces/services",
   "/api/workspaces/services/mode",

@@ -30,6 +30,7 @@ import type {
   DeviceFlows,
   FlowView,
 } from "./device-flows.js";
+import { browserTagFor } from "./device-flows.js";
 
 /**
  * D17: who may claim a Den that has no owner yet.
@@ -87,6 +88,8 @@ export interface GithubRouteDeps {
   clientId: () => string;
   /** Issue 362: the address a request came from, when the guard knows it. */
   client?: (req: http.IncomingMessage) => string | undefined;
+  /** Whether the request came over https (the edge's proven header). */
+  https?: (req: http.IncomingMessage) => boolean;
   /** The app issued an expiring token (its token expiry is on): a misconfiguration. */
   tokensExpire?: () => boolean;
   cli: string;
@@ -242,7 +245,7 @@ async function startFlow(
   deps: GithubRouteDeps,
   res: http.ServerResponse,
   purpose: "signin" | "link",
-  meta: { local?: boolean; client?: string } = {},
+  meta: { local?: boolean; client?: string; browser?: string } = {},
 ): Promise<void> {
   let r;
   try {
@@ -279,6 +282,11 @@ async function startFlow(
 }
 
 /** Whether `pathname` is one of these routes' (index.ts dispatches them here). */
+/** The sign-in poll: a GET that signs in (session-writes.ts, issue 1299). */
+export function isGithubSigninPoll(pathname: string): boolean {
+  return SIGNIN_PATH.test(pathname);
+}
+
 export function isGithubRoute(pathname: string): boolean {
   return /^\/api\/(github\/|web\/owner(\/|$)|web\/pair$)/.test(pathname);
 }
@@ -341,9 +349,16 @@ export async function handleGithubRoutes(
       return true;
     }
     const client = deps.client?.(req);
+    // A start replaces only this browser's own pending sign-in.
+    const tag = browserTagFor(
+      req.headers.cookie,
+      deps.flows,
+      deps.https?.(req) === true,
+    );
+    if (tag.setCookie) res.setHeader("Set-Cookie", tag.setCookie);
     await startFlow(deps, res, "signin", {
       local,
-      ...(client ? { client } : {}),
+      ...(client ? { client, browser: tag.tag } : {}),
     });
     return true;
   }
@@ -364,12 +379,16 @@ export async function handleGithubRoutes(
       return true;
     }
     if (v.state === "ok") {
-      const who = deps.flows.claim(v.id, "signin");
+      // Issue 1299: sign in before the flow is spent. A refused sign-in
+      // (the sessions file busy or unreadable) throws with the flow kept,
+      // so the next poll signs in. Nothing awaits in between.
+      const who = deps.flows.identity(v.id, "signin");
       if (!who) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
       const s = deps.signIn(req, "github", v.login, who.name);
+      deps.flows.claim(v.id, "signin");
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
       // The approval key goes to this answer only (web-session.ts).

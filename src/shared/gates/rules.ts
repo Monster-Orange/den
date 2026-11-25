@@ -43,6 +43,7 @@
  * Pure: the store (store.ts) reads the entries, takes back holders whose
  * processes are gone, then asks `grants` which waiters may start.
  */
+import type { RecordedProcessGroup } from "../process/process-group.js";
 import * as os from "os";
 import {
   classRank,
@@ -70,12 +71,35 @@ export interface GateEntry {
   who: string;
   /** Issue 803: the project it ran for (its class comes from settings). */
   project?: string;
+  /** Issue 1289: its checkout's tag (a hash of the checkout's top folder). */
+  checkout?: string;
   /** What runs, a short label (never the command's arguments). */
   label: string;
   /** The process that holds or waits (gate run, or the agent's MCP server). */
   pid: number;
   /** The command gate run started: the slot stays while it still runs. */
   runPid?: number;
+  /**
+   * Issue 1132: the process group gate run started its command in (the
+   * command leads it). When the slot ends, whatever is left in it is
+   * stopped; nothing outside it ever is.
+   */
+  group?: number;
+  /**
+   * Issue 1132: the group's leader as recorded when it started (its start
+   * time; on Linux its ticks and boot id), and the boot it was recorded in
+   * (minutes since the epoch). Its group is signalled only while both
+   * still match.
+   */
+  groupRec?: RecordedProcessGroup;
+  boot?: number;
+  /** Issue 1132: the command's name (never its arguments), for the log. */
+  cmd?: string;
+  /**
+   * Issue 1132: granted, but its command waits for the machine's load to
+   * drop under gates.max_start_load: the load seen, the ceiling, since.
+   */
+  startHold?: { load: number; limit: number; since: string };
   /** When it asked (ISO); the queue's order. */
   askedAt: string;
   /**
@@ -156,6 +180,11 @@ export interface GateEntry {
    * that doesn't serve the run's).
    */
   onlyBoxes?: string[];
+  /**
+   * Issue 1198: a default pick on a host whose browser runs need a
+   * container, with no browser of its own: it may take a box only.
+   */
+  boxesOnly?: true;
   box?: string;
   boxTimeScale?: number;
   /**
@@ -205,6 +234,49 @@ export interface GateSettings {
    * waits. 0 turns it off.
    */
   loadHoldPerCore: number;
+  /**
+   * Issue 1132: a granted run doesn't start its command while this
+   * machine's 5-minute load average (the total, not per core) is at or
+   * over this; it waits, saying why. Every kind, release runs too. 0 turns
+   * it off. Default cores × 1.5 (27 on 18 cores), under where the machine
+   * stalls: an 18-core machine reset twice at a 5-minute load of about 34.
+   * It is not cpu_hold_load (issue 1009), which holds only cpu asks and
+   * only while a release browser run holds a slot.
+   */
+  maxStartLoad: number;
+  /**
+   * Issue 1132 (issue 460's wait limit): a run held by maxStartLoad this
+   * many minutes starts anyway, and its record says it started busy. 0:
+   * it waits for the load however long.
+   */
+  maxStartWaitMinutes: number;
+  /**
+   * Issue 1132: seconds between TERM and KILL for what a run left in its
+   * process group when its slot ended.
+   */
+  reapGraceSeconds: number;
+  /**
+   * Issue 1274: while this machine's free memory is under this percent, new
+   * runs here wait, but only while another run here is going (so the line
+   * never stops for good). Test boxes still take theirs. 0 turns it off.
+   */
+  memoryFreeMinPercent: number;
+  /**
+   * Issue 1274: while swap in use is over this many GB, new runs here wait,
+   * on the same terms as the free-memory floor (macOS keeps its free level
+   * high while swap fills). 0 turns it off.
+   */
+  swapHoldGb: number;
+  /**
+   * Issue 1349: after a failed memory reading the last good one stands this
+   * long; past it the reading is unknown, and an unknown reading holds.
+   */
+  memoryReadingKeepSeconds: number;
+  /**
+   * Issue 1274: doctor warns when what running VMs promise is over this
+   * share of the machine's RAM (1: more than it has).
+   */
+  vmMemoryShare: number;
   /** Past its estimate by this much, a run is flagged (never stopped). */
   overrunMarginMinutes: number;
   /**
@@ -252,6 +324,8 @@ export interface GateSettings {
    * (browser-container.ts). Default: on for a macOS host, off elsewhere.
    */
   browserRequiresContainer: boolean;
+  /** Its strict level (2): a run may not declare "self" either. */
+  browserContainerStrict: boolean;
   /**
    * Issue 1033: where a browser `gate run` with no --box goes: "any",
    * the first free browser slot here or on a test box (the default), or
@@ -266,6 +340,15 @@ export interface GateSettings {
   browserHostOnly: string;
 }
 
+/**
+ * Issue 1132: the default start ceiling, cores × 1.5 (27 on 18 cores), so
+ * it holds below where the machine stalls (about 34 on 18 cores).
+ */
+export function maxStartLoadDefault(): number {
+  const cores = os.availableParallelism?.() ?? os.cpus().length;
+  return Math.round(Math.max(1, cores) * 1.5);
+}
+
 /** Issue 1009: the default hold load, cores × 4 / 3 (24 on 18 cores). */
 export function cpuHoldLoadDefault(): number {
   const cores = os.availableParallelism?.() ?? os.cpus().length;
@@ -278,9 +361,18 @@ export const GATE_DEFAULTS: GateSettings = {
   cpuSlotsBesideReleaseBrowser: 0,
   localBrowserSlots: 1,
   cpuHoldLoad: cpuHoldLoadDefault(),
-  // Issue 1048 (Vision 11-22): 3 × cores. At 1.5 (27 on 18 cores) the
-  // build machine's normal load of about 40 would hold every new run.
+  // Issue 1048 (Vision 11-22): 3 × cores. (Issue 1132: a load of about
+  // 40 on 18 cores is not normal; the machine reset at about 34. The
+  // start ceiling, maxStartLoad, now holds every run below that.)
   loadHoldPerCore: 3,
+  maxStartLoad: maxStartLoadDefault(),
+  maxStartWaitMinutes: 10,
+  reapGraceSeconds: 10,
+  // Issue 1274: three watchdog resets on 11-22 came with the compressor full.
+  memoryFreeMinPercent: 10,
+  swapHoldGb: 8,
+  memoryReadingKeepSeconds: 30,
+  vmMemoryShare: 1,
   overrunMarginMinutes: 15,
   overrunBellMultiple: 2,
   remoteRenewSeconds: 30,
@@ -297,6 +389,7 @@ export const GATE_DEFAULTS: GateSettings = {
   mcpGraceMinutes: 15,
   waiterReturnMinutes: 10,
   browserRequiresContainer: process.platform === "darwin",
+  browserContainerStrict: false,
   browserBoxDefault: "any",
   browserHostOnly: "",
 };
@@ -575,6 +668,99 @@ export function loadHold(
   return load > coreLimit && cpuGoing
     ? { why: "cores", load, limit: coreLimit, perCore, cores }
     : undefined;
+}
+
+/**
+ * Issue 1132: why a granted run's command may not start now: the 5-minute
+ * load is at or over maxStartLoad (0: off). Absent: it may (or no load
+ * was read).
+ */
+export function startHold(
+  s: Partial<Pick<GateSettings, "maxStartLoad">>,
+  load: number | undefined,
+): { load: number; limit: number } | undefined {
+  if (load === undefined || !Number.isFinite(load)) return undefined;
+  const limit = s.maxStartLoad ?? GATE_DEFAULTS.maxStartLoad;
+  return limit > 0 && load >= limit ? { load, limit } : undefined;
+}
+
+/** Issue 1274: why new runs here wait on memory. */
+export interface MemoryHold {
+  why: "memory";
+  /** Free memory now, percent (NaN when unavailable). */
+  free: number;
+  /** memoryFreeMinPercent. */
+  limit: number;
+  /** Issue 1349: the reading couldn't be taken; an unknown reading holds. */
+  unavailable?: true;
+}
+
+/**
+ * Issue 1349: a machine reading (free memory, swap). A number; NaN when it
+ * should be read and couldn't be (unknown: it holds); null when this
+ * platform has none (not measured: memory holds don't apply, and says so).
+ */
+export type MachineReading = number | null;
+
+/** Issue 1349: what the view, the CLI, the chip and doctor say for null. */
+export const MEMORY_NOT_MEASURED_WORDS =
+  "memory isn't measured on this platform: memory holds don't apply";
+
+/**
+ * Issue 1274: free memory (`free`, percent) is under memoryFreeMinPercent
+ * (0: off) while a run here is going. With none going the next one
+ * starts: the hold slows the line, never stops it. Absent: no hold, or
+ * not measured here (null). Issue 1349: an unknown reading (NaN) holds.
+ */
+export function memoryHold(
+  entries: GateEntry[],
+  s: Partial<Pick<GateSettings, "memoryFreeMinPercent">>,
+  free: MachineReading | undefined,
+): MemoryHold | undefined {
+  if (free === undefined || free === null) return undefined;
+  const limit = s.memoryFreeMinPercent ?? GATE_DEFAULTS.memoryFreeMinPercent;
+  if (!(limit > 0)) return undefined;
+  const localGoing = entries.some((e) => e.grantedAt && !e.box && !e.remote);
+  // Issue 1349: unknown holds, never grants.
+  if (!Number.isFinite(free))
+    return localGoing
+      ? { why: "memory", free: NaN, limit, unavailable: true }
+      : undefined;
+  if (free >= limit) return undefined;
+  return localGoing ? { why: "memory", free, limit } : undefined;
+}
+
+/** Issue 1274: why new runs here wait on swap. */
+export interface SwapHold {
+  why: "swap";
+  /** Swap in use now, GB (NaN when unavailable). */
+  usedGb: number;
+  limitGb: number;
+  /** Issue 1349: the reading couldn't be taken; an unknown reading holds. */
+  unavailable?: true;
+}
+
+/**
+ * Issue 1274: swap in use (`usedGb`) is over swapHoldGb (0: off) while a
+ * run here is going. Absent: no hold, or not measured here (null). Issue
+ * 1349: an unknown reading (NaN) holds.
+ */
+export function swapHold(
+  entries: GateEntry[],
+  s: Partial<Pick<GateSettings, "swapHoldGb">>,
+  usedGb: MachineReading | undefined,
+): SwapHold | undefined {
+  if (usedGb === undefined || usedGb === null) return undefined;
+  const limitGb = s.swapHoldGb ?? GATE_DEFAULTS.swapHoldGb;
+  if (!(limitGb > 0)) return undefined;
+  const localGoing = entries.some((e) => e.grantedAt && !e.box && !e.remote);
+  // Issue 1349: unknown holds, never grants.
+  if (!Number.isFinite(usedGb))
+    return localGoing
+      ? { why: "swap", usedGb: NaN, limitGb, unavailable: true }
+      : undefined;
+  if (usedGb <= limitGb) return undefined;
+  return localGoing ? { why: "swap", usedGb, limitGb } : undefined;
 }
 
 /** Issue 1048: a cpu slot's worker cap: its share of the cores, at least 2. */

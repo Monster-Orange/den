@@ -257,7 +257,8 @@ describe("Resume keeps the conversation, the folder and the scope", () => {
     expect(row).toMatchObject({
       state: "stopped",
       resumable: false,
-      noResume: "codex can't resume coder: it reported no conversation to resume",
+      noResume:
+        "codex can't resume coder: it reported no conversation to resume",
     });
     expect(await agents(r, "resume", "coder")).toBe(1);
     expect(r.err.join("\n")).toMatch(
@@ -550,8 +551,12 @@ describe("Remove (AG-14.1b)", () => {
     await agents(r, "stop", "planner");
     r.made[0].exit(0);
     await settle();
+    const forgot: string[] = [];
+    r.deps.forgetSandbox = (id) => void forgot.push(id);
     const gone = await removeAgent(ops(r), "planner");
     expect(gone).toEqual([{ agent: "planner", workspace: "north" }]);
+    // Issue 1328: its agents.<id>.sandbox setting and note go with it.
+    expect(forgot).toEqual(["planner"]);
     expect(fs.existsSync(path.join(r.stateDir, "agents", "planner.json"))).toBe(
       false,
     );

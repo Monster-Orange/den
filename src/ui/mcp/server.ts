@@ -86,7 +86,7 @@ export function mcpInstructions(
     `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
     (opts.cfg.actions.length
       ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
-      : "The org has enabled no actions (mcp.actions).") +
+      : "No actions are on (mcp.actions, in config/local/user.yml).") +
     ` The ${approvalsState(opts.cfg)}.` +
     (opts.scope && !toolScope
       ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +

@@ -40,6 +40,8 @@ const plain = (p: Plain): Plain => ({ id: p.id, slug: p.slug, name: p.name });
 export interface HubReviewDeps {
   /** The projects Connect links (never the server agent's scope). */
   projects: () => string[];
+  /** Issue 1334: an empty project (no repos, services or agents); never offered. */
+  empty?: (ws: string) => boolean;
   /** The name project `ws` shows (Create's default). */
   name: (ws: string) => string;
   /** Hub's projects and suggestions for `ws`; null: Hub didn't answer. */
@@ -117,7 +119,7 @@ async function inTurn<T, R>(
 }
 
 const projectsOf = (d: HubReviewDeps) =>
-  d.projects().filter((p) => !isCatchAllProject(p));
+  d.projects().filter((p) => !isCatchAllProject(p) && !d.empty?.(p));
 
 /** The review: a row per project, and the company's projects. */
 export async function reviewRows(d: HubReviewDeps): Promise<{
@@ -411,6 +413,7 @@ export async function defaultHubReviewDeps(
   const all = await la.defaultLinkAllDeps("Connect's review", audit);
   return {
     projects: all.projects,
+    ...(all.empty ? { empty: all.empty } : {}),
     name: (ws) => {
       try {
         return name.workspaceDisplayName(

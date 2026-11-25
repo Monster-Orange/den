@@ -27,6 +27,8 @@
  *   web_agent_view: { on?: boolean, minutes? }
  *                                     user.yml web.agent_view,
  *                                     web.agent_view_minutes (issue 796)
+ *   web_sessions: { lock_wait_ms? }   user.yml web.sessions_lock_wait_ms
+ *                                     (issue 1299)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
  *   agents_resume: { batch?, gap_seconds?, load_ceiling?, max_wait_seconds? }
@@ -38,6 +40,9 @@
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
+ *   agents_draft: { hold_max_minutes? }
+ *                                     user.yml agents.draft_hold_max_minutes
+ *                                     (issue 1311)
  *   agent_issue_writes: { roles?: [role, …] | null, per_hour? }
  *                                     user.yml agents.issue_writes and
  *                                     agents.issue_writes_per_hour (issue_write)
@@ -62,6 +67,10 @@
  *               pty_warn_above?, pty_machine_warn_percent? }
  *                                     user.yml sessions.* (issue 532),
  *                                     checked as den-config checks them
+ *   agents_limits: { max_concurrent? } (AGENTS_SETTINGS_KEYS)
+ *                                     user.yml agents.* (issue 1373), each
+ *                                     winning over den.yml's, checked as
+ *                                     den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
@@ -70,6 +79,9 @@
  *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
  *                                     user.yml agents.keep_running_after_logout
+ *   restore_services_on_boot: boolean | null
+ *                                     user.yml services.restore_on_boot
+ *                                     (issue 1225; 0.4.46's switch)
  *                                     (issue 163: `service install`'s mode)
  */
 import { CONTEXT_WATCH_KEYS } from "./agents/context-watch.js";
@@ -80,6 +92,7 @@ import {
 } from "./report-shots.js";
 import {
   AGENT_VIEW_RANGE,
+  SESSIONS_LOCK_WAIT_RANGE,
   PAIR_LIMITS,
   WEB_WAIT_RANGE,
 } from "./web-session.js";
@@ -89,8 +102,11 @@ import {
   HELD_WAIT_MINUTES,
   RESUME_REPORT_LIMITS,
   SESSIONS_SETTINGS_KEYS,
+  DRAFT_HOLD_MAX_MINUTES,
   SHELL_PATH_TIMEOUT,
   sessionsValueError,
+  AGENTS_SETTINGS_KEYS,
+  agentsLimitValueError,
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
 import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
@@ -118,10 +134,15 @@ export const PERSON_ONLY_SETTINGS = [
   "web_pairing",
   // Issue 796: whether agents may view this Den's pages, read-only.
   "web_agent_view",
+  // Issue 1299: how long a sessions write waits for another's lock.
+  "web_sessions",
   // Issue 144: the machine's gate slots (every install and repo here).
   "gate_slots",
   // den#156: how long the Agents list waits for the terminal host.
   "agents_list",
+  // Issue 1373: the agents' limits (agents at once and the waits). An
+  // agent proposes one through setting_change, held for the person.
+  "agents_limits",
   // Issue 403: how long a filed report's screenshot is kept here.
   "reports",
   // Issue 707: how large the server's log file on disk may grow.
@@ -130,6 +151,8 @@ export const PERSON_ONLY_SETTINGS = [
   "agents_shell",
   // Issue 785: how a resume report's session-file check is limited.
   "agents_resume_report",
+  // Issue 1311: how long messages wait on a draft before the bell says so.
+  "agents_draft",
   // Issue 1129: how many agents restart at a time, and how far apart.
   "agents_resume",
   // issue_write: which roles write GitHub issues, and how many an hour.
@@ -141,6 +164,8 @@ export const PERSON_ONLY_SETTINGS = [
   "hub_allow_tools",
   // Issue 158: the Hub delivery loop in every agent's instructions.
   "hub_delivery_loop",
+  // Issue 750: whether, and how long, Den reads Hub's groups.
+  "hub_groups",
   // Issue 267: Hub's address (an agent asks with hub_connect).
   "hub_url",
   // The programs Den runs when a person opens a file or a terminal.
@@ -155,6 +180,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_agent_self_update",
   // Issue 163: whether Den runs as LaunchDaemons that outlive a logout.
   "keep_running_after_logout",
+  // Issue 1225: whether services that were up come back after a restart.
+  "restore_services_on_boot",
   // Issue 103: deep links and the embedded agent pane (Settings › Embedding).
   "embed",
   // Issue 172: whether, and when, the person is alerted outside the bell.
@@ -169,12 +196,18 @@ export const PERSON_ONLY_SETTINGS = [
   "agent_hooks",
   // Issue 532: the terminal limits.
   "sessions",
+  // Issue 1373: the agents' limits (user.yml agents.*).
+  "agents_limits",
   // The shared GitHub watcher's pace and API budget: every agent's polls.
   "github",
   // Issue 160: the approval policy itself: an agent asks (approval_policy).
   "approvals_policy",
   "approvals_watch",
   "approvals_critical",
+  // Issue 1371 Part 2: agents changing settings, per category.
+  "approvals_settings",
+  // Issue 1391: personal or strict.
+  "install_mode",
   // Issue 742: how long a held write waits for the person's Allow.
   "held_writes",
   // Issue 1022: how often the page polls health, visible and hidden.
@@ -348,6 +381,15 @@ const WEB_AGENT_VIEW: Record<string, Limit> = {
   minutes: { key: "agent_view_minutes", ...AGENT_VIEW_RANGE, int: true },
 };
 
+/** Issue 1299: how long a sessions write waits for another's lock. */
+const WEB_SESSIONS: Record<string, Limit> = {
+  lock_wait_ms: {
+    key: "sessions_lock_wait_ms",
+    ...SESSIONS_LOCK_WAIT_RANGE,
+    int: true,
+  },
+};
+
 const AGENTS_LIST: Record<string, Limit> = {
   host_timeout_seconds: {
     key: "host_timeout_seconds",
@@ -380,6 +422,15 @@ const AGENTS_RESUME_REPORT: Record<string, Limit> = Object.fromEntries(
     { key: l.key, min: l.min, max: l.max, int: l.int },
   ]),
 );
+/** Issue 1311: user.yml agents.draft_hold_max_minutes (den-config.ts). */
+const AGENTS_DRAFT: Record<string, Limit> = {
+  hold_max_minutes: {
+    key: "draft_hold_max_minutes",
+    min: DRAFT_HOLD_MAX_MINUTES.min,
+    max: DRAFT_HOLD_MAX_MINUTES.max,
+    int: true,
+  },
+};
 
 /** Issue 1129: user.yml agents.resume.* (den-config.ts agentsResume). */
 const AGENTS_RESUME: Record<string, Limit> = Object.fromEntries(
@@ -536,6 +587,36 @@ function patchBlock(
 }
 
 /**
+ * Issue 1373: user.yml agents.<limit> (AGENTS_SETTINGS_KEYS), checked
+ * with den-config's own ranges and words. The rest of the person's agents
+ * block (sandbox, git, layout, …) stays as it is.
+ */
+function patchAgentsLimits(
+  user: Record<string, unknown>,
+  value: unknown,
+  apply: (() => void)[],
+): string | null {
+  if (value === undefined) return null;
+  const keys: readonly string[] = AGENTS_SETTINGS_KEYS;
+  if (!isObj(value)) return `the agents' limits are ${keys.join(", ")}`;
+  for (const [k, v] of Object.entries(value)) {
+    if (v === null && keys.includes(k)) continue;
+    const e = agentsLimitValueError(k, v);
+    if (e) return e;
+  }
+  apply.push(() => {
+    const b = isObj(user.agents) ? { ...user.agents } : {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === null) delete b[k];
+      else b[k] = v;
+    }
+    if (Object.keys(b).length) user.agents = b;
+    else delete user.agents;
+  });
+  return null;
+}
+
+/**
  * Issue 532: user.yml sessions.*, the terminal limits, checked with
  * den-config's own ranges and words (sessionsValueError).
  */
@@ -614,6 +695,22 @@ export function patchCliRows(
       else a.keep_running_after_logout = keep;
       if (Object.keys(a).length) user.agents = a;
       else delete user.agents;
+    });
+  }
+  // Issue 1225: services.restore_on_boot; the other services keys stay.
+  const restore = body.restore_services_on_boot;
+  if (restore !== undefined) {
+    if (restore !== null && typeof restore !== "boolean")
+      return {
+        ok: false,
+        error: "restore_services_on_boot is true, false or null",
+      };
+    apply.push(() => {
+      const sv = isObj(user.services) ? { ...user.services } : {};
+      if (restore === null) delete sv.restore_on_boot;
+      else sv.restore_on_boot = restore;
+      if (Object.keys(sv).length) user.services = sv;
+      else delete user.services;
     });
   }
   const lines = body.log_window_lines;
@@ -781,6 +878,14 @@ export function patchCliRows(
     ) ??
     patchBlock(
       user,
+      "web_sessions",
+      "web",
+      WEB_SESSIONS,
+      body.web_sessions,
+      apply,
+    ) ??
+    patchBlock(
+      user,
       "panes_reconnect",
       "panes",
       panes,
@@ -823,6 +928,14 @@ export function patchCliRows(
     ) ??
     patchBlock(
       user,
+      "agents_draft",
+      "agents",
+      AGENTS_DRAFT,
+      body.agents_draft,
+      apply,
+    ) ??
+    patchBlock(
+      user,
       "agents_resume",
       "agents.resume",
       AGENTS_RESUME,
@@ -855,6 +968,7 @@ export function patchCliRows(
       apply,
     ) ??
     patchSessions(user, body.sessions, apply) ??
+    patchAgentsLimits(user, body.agents_limits, apply) ??
     patchBlock(
       user,
       "held_writes",
