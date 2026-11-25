@@ -327,12 +327,18 @@ describe("issue 1480: the Settings row's Add and Remove", () => {
     expect(saved.north).toEqual([
       { name: "chat", agent: "planner", url: URL_A, public_only: true },
     ]);
-    const gone = await fetch(`${feeds}/chat`, { method: "DELETE" });
+    const gone = await fetch(`${base}/api/workspaces/north/event-feeds/chat`, {
+      method: "DELETE",
+    });
     expect(gone.status).toBe(200);
     expect(saved.north).toEqual([]);
-    expect((await fetch(`${feeds}/chat`, { method: "DELETE" })).status).toBe(
-      404,
-    );
+    expect(
+      (
+        await fetch(`${base}/api/workspaces/north/event-feeds/chat`, {
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(404);
   });
 
   it("GET names the project's agents for the Add form", async () => {
