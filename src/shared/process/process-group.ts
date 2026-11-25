@@ -70,7 +70,8 @@ export function parseProcStatTicks(stat: string): string | null {
  * zombie (ended, not yet reaped), so on Linux its /proc state is read too
  * (the field after the name's last ")"). Where nobody reaps (a container
  * whose first process never waits) a zombie stays for good. An EPERM pid
- * is running (another user's); an unreadable stat leaves kill's answer.
+ * is running (another user's). A stat gone since (ENOENT): ended; one
+ * unreadable otherwise leaves kill's answer.
  */
 export function pidRunning(
   pid: number,
@@ -87,8 +88,8 @@ export function pidRunning(
     line = (o.readStat ?? ((p) => fs.readFileSync(`/proc/${p}/stat`, "utf-8")))(
       pid,
     );
-  } catch {
-    return true;
+  } catch (e) {
+    return (e as { code?: string }).code !== "ENOENT";
   }
   const close = line.lastIndexOf(")");
   return close < 0 || line.slice(close + 1).trim()[0] !== "Z";

@@ -35,6 +35,15 @@ describe("pidRunning", () => {
     expect(pidRunning(self, { platform: "linux", readStat: odd })).toBe(true);
   });
 
+  it("on Linux, its stat gone since kill(0): ended", () => {
+    const gone = () => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    };
+    expect(pidRunning(process.pid, { platform: "linux", readStat: gone })).toBe(
+      false,
+    );
+  });
+
   it("on Linux, stat unreadable after kill(0) succeeded: running", () => {
     const fail = () => {
       throw new Error("EACCES");
