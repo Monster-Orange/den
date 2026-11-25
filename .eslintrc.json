@@ -54,6 +54,7 @@
     "playwright-report/",
     "test-results/",
     "*.config.js",
-    "*.config.ts"
+    "*.config.ts",
+    "/skill-packs/"
   ]
 }

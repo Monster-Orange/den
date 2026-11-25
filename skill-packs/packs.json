@@ -1,0 +1,221 @@
+{
+  "pstack": {
+    "source": "https://github.com/cursor/plugins",
+    "path": "pstack",
+    "commit": "41e400932eca14f289e7db717a70455256b6d388",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Lauren Tan",
+    "exclude": [
+      {
+        "path": ".cursor-plugin",
+        "why": "Cursor's plugin manifest; Den writes a Claude Code one in .claude-plugin/."
+      },
+      {
+        "path": ".gitignore",
+        "why": "npm leaves it out of a published package, so the installed copy would fail its hash check."
+      },
+      {
+        "path": "assets",
+        "why": "a logo no agent reads."
+      },
+      {
+        "path": "automations",
+        "why": "it sets up Cursor cloud automations."
+      },
+      {
+        "path": "docs/guide/01-setup.md",
+        "why": "a line matches Den's check for private names (a false match in upstream's text), and Den's repo is public."
+      },
+      {
+        "path": "docs/guide/images",
+        "why": "pictures no agent reads."
+      },
+      {
+        "path": "skills/automate-me",
+        "why": "it sets up Cursor cloud automations."
+      },
+      {
+        "path": "skills/make-bot-ui",
+        "why": "a line matches Den's check for private names (a false match in upstream's text), and Den's repo is public."
+      },
+      {
+        "path": "skills/poteto-mode/playbooks/autopilot-full.md",
+        "why": "it has subagents merge pull requests and push after rebases; Den hands a green pull request to whoever merges."
+      },
+      {
+        "path": "skills/poteto-mode/playbooks/babysit.md",
+        "why": "it polls GitHub with watch-pr; Den watches checks with github_watch."
+      },
+      {
+        "path": "skills/poteto-mode/playbooks/shipping.md",
+        "why": "it merges with gh pr merge and pushes with --force-with-lease; Den never does either."
+      },
+      {
+        "path": "skills/poteto-mode/scripts/watch-pr",
+        "why": "it polls GitHub every 60 seconds; Den watches checks with github_watch."
+      },
+      {
+        "path": "skills/setup-pstack",
+        "why": "it writes ~/.claude/rules/, outside the agent's folders."
+      },
+      {
+        "path": "skills/statechart/references/render.md",
+        "why": "it installs an npm renderer."
+      },
+      {
+        "path": "skills/statechart/scripts/test",
+        "why": "377 test files with a dev dependency."
+      }
+    ],
+    "default_off": [
+      {
+        "skill": "statechart",
+        "why": "its TLC run is CPU-heavy and runs outside Den's gate."
+      }
+    ],
+    "files": {
+      ".claude-plugin/plugin.json": "sha256-cecc299135bfaee75bfa4278e608e57eb3ea3ca5d14f0e96bfda022d0cda585f",
+      "DEN-NOTICE.md": "sha256-8882c89433cce7535fc91c6de44086508e3787b89624ab9f7bba3e26b8b00023",
+      "LICENSE": "sha256-bc957ca6bee02792566a1a028d105e02e247c6e77cf057061674273da77b200e",
+      "README.md": "sha256-3b21e8b4c6f894b4f3c44fbfd85ab49ad4aed6c329b27933b3134ee039083dd2",
+      "agents/comment-sicko.md": "sha256-0fb37221ab2a9159714d38f1528898e82b9758b5750f244bbe2e575bb593a1de",
+      "agents/poteto-agent.md": "sha256-369065b46c217a5898cb1a400652c3399449252f4d5dbf8937eb8d4922d3cf6b",
+      "docs/guide/02-poteto-mode.md": "sha256-264e3127a8fdfa6e3e2ac64645ae81e4f5fb8a3e6f00d5f98f7ffc528c8da8ff",
+      "docs/guide/03-understand.md": "sha256-4486cf55f20b1a351b25a06b2a19f6a7081d6af4748a4178946907c2b7861392",
+      "docs/guide/04-design.md": "sha256-e41952810df24c07a21ad10ebc2674a3350a03d4961a273fb6f681de87150a13",
+      "docs/guide/05-build-and-clean.md": "sha256-4a0538dc0e52632a8871be9957e8177adaca6f5fa254f0bbb31d30b921d0cd1c",
+      "docs/guide/06-verify-and-ship.md": "sha256-31ab46936950c78989a51cffaebf2e321858580d286a83d92a504528fce24d2d",
+      "docs/guide/07-overnight.md": "sha256-5bd1a4336b09947832d3b58afb22bcdfbe698ff76c1bdaab23af545f04cf8e60",
+      "docs/guide/08-principles.md": "sha256-0b26b85292f0c09768abe727c9e92987dbf81f5b439a4871034c2fd1c4cb1723",
+      "docs/guide/09-make-it-yours.md": "sha256-4df83ef7dc44364921a9663c7d426a1b4d0acab6a0490ef1769257b51b74e65a",
+      "docs/guide/10-recipes-and-pitfalls.md": "sha256-287815da2cbebe9b867d4da7d0a3632f069a32b6481815be9d6cad43b12b5fbf",
+      "docs/guide/README.md": "sha256-5c888d034d38f380789fad57c2c6fa7307ace803a0622cdde9e57fa2afe182de",
+      "docs/harness/claude-code.md": "sha256-289a9127a3597d7b3fbbe10c40aea4aea3f15cd5361a75be43806a07b96f634f",
+      "plugin.json": "sha256-889ac708a47d28a16edd2ce39367968a359c990f9a79abe2e747be3028d333f2",
+      "skills/architect/SKILL.md": "sha256-aea83d7aa109eb73402182701b14c289844663ad9c8f959fedbef2df66787ce0",
+      "skills/arena/SKILL.md": "sha256-24366948a9546dcb7dfc15a5cf7a4571edd917a8c1efef060b458a0fad608053",
+      "skills/benchmark-checklist/SKILL.md": "sha256-5efd79495e3eebf3b53814861330fe812458212958f8f009492e866c329161f6",
+      "skills/blast-radius/SKILL.md": "sha256-4248d03e22365207d2e5f90c9542720f80a88a6b42fd542ef88dde3cf9f9223f",
+      "skills/bro/SKILL.md": "sha256-aa329d0ceeeecb6822a7174ad76bb07a7826a3c52ceb6a588dec4138815084bb",
+      "skills/correct/SKILL.md": "sha256-e347045d00c967a0b831ef883cc6ac79d21329aa10b5968637df95de7febf0ba",
+      "skills/create-formal-verification-skill/SKILL.md": "sha256-30ef0ac27612ecd16fdc081112113221d673053cef3f8603db11932193861211",
+      "skills/create-verification-skill/SKILL.md": "sha256-d353973547bf8ad8977eca645f4cd4feaed0d32f4b43d1448f906b0a76c4d694",
+      "skills/create-verification-skill/references/feature-map-example/README.md": "sha256-cb7bd782cf89968a4ba3d58a5151db837430db92d19a6f52a906973b77b516ba",
+      "skills/create-verification-skill/references/feature-map-example/create-note.md": "sha256-644a44c74f35d38c2feb7cd05a0121fdebbb623e8dc376c185b565a581d1ccf7",
+      "skills/create-verification-skill/references/feature-map-example/search.md": "sha256-6e87b9e7f2791a7776ba1bb83f371cd285c306c67f19d245cc4dd6ca3015c823",
+      "skills/figure-it-out/SKILL.md": "sha256-30693f2510b111128a6bae0d0ac35f97d972a30c0b84364dc87290b9fdc3b699",
+      "skills/how/SKILL.md": "sha256-23d5cc79a449b9838242e7af5563aa8a4f0417bab136bbcc054b4bebc7284680",
+      "skills/in-your-own-words/SKILL.md": "sha256-fa8ba74e27d7be371dc270ec78bbf816411477d0dfab185356c861ac8dd413ad",
+      "skills/interrogate/SKILL.md": "sha256-3f3c2e9b8cf6b180dba9f32a4aff85e5691b09805232468e37a0ba45437a9984",
+      "skills/ketchup-video/SKILL.md": "sha256-027aed9a01adf208aeac3a134f47d12f7c1e42d6fea03095aedc2bae58cdcfd1",
+      "skills/ketchup/SKILL.md": "sha256-f2923ffd14f6fc778f75a47aaed1f317fb5fd00b5701ca769d6446c74106dead",
+      "skills/maintain-formal-verification-skill/SKILL.md": "sha256-0c96f54293542d3818b68754562b338073958781a9684454611dca37592e2d2c",
+      "skills/maintain-verification-skill/SKILL.md": "sha256-515c0eaa054b3f6be1b1fb06f2c2f173c80fddb58bbcac57576f89c479bc68e8",
+      "skills/no-comments/SKILL.md": "sha256-054a46f2662c725add02d9e0440d8dcb4351f3bd0afcf797acc22a501b527b54",
+      "skills/poteto-help/SKILL.md": "sha256-ea4b36ba83fa7027b9637ad7d926d9a62b4b630a4525304245ae66e1d44c8713",
+      "skills/poteto-help/references/prompting.md": "sha256-463f450c44a60afd001a2f69fdf8a5dea174351f339369b12ec3c41515e564d3",
+      "skills/poteto-help/references/recipes.md": "sha256-5323aca73a39a3b607c2bb22cd33551fe893563dfd4b104df838da010e9fc702",
+      "skills/poteto-mode/SKILL.md": "sha256-7aa026dc1fad7db0ea1ff39171e6b768ee99d03a7f46d0b9cd38973511251d81",
+      "skills/poteto-mode/playbooks/authoring-a-skill.md": "sha256-f6a13a445c360b48d6cd72780ac01955f45b82826476efe0e67c7559329407aa",
+      "skills/poteto-mode/playbooks/autonomous-run.md": "sha256-613c7b3079779ecfa27e1fb41a082711b5a1207e720b87f75c3aaa9b25aac480",
+      "skills/poteto-mode/playbooks/autopilot-stack.md": "sha256-3dc6961df12a74a917571c21de482b42939b728cb4879d1852c51fd9fbabd152",
+      "skills/poteto-mode/playbooks/bug-fix.md": "sha256-eef68686ea0128d36979c39ce88f5cd5c248eb4e58f1ca3229692b9902961170",
+      "skills/poteto-mode/playbooks/eval.md": "sha256-369bfda8bf305fb57bf4cabada7862c41dc21f1dc0ad7993cfcd29d0a4d99a68",
+      "skills/poteto-mode/playbooks/feature.md": "sha256-beb7b527049eab12052deac8a32e6ee7f6cf26e7ebffb3c3f5d6cead1ec7df7e",
+      "skills/poteto-mode/playbooks/hillclimb.md": "sha256-a1d71e026d648991646533539939641f33508d5a02340f5041482ddd58116216",
+      "skills/poteto-mode/playbooks/investigation.md": "sha256-1009fdb6596a9c06cb93e224ec86bfb60226f2c603474c968a4f2c2983e96a69",
+      "skills/poteto-mode/playbooks/multi-phase-plan.md": "sha256-98e0ed1acc5410fd23ed52cc399346c7c3f83f9f6f7068f8cc52d95ff84ab653",
+      "skills/poteto-mode/playbooks/opening-a-pr.md": "sha256-a14cf04833cd6a3eb899fb8814759c937294d0faa3da1ef09d568f45002026b4",
+      "skills/poteto-mode/playbooks/pause-safely.md": "sha256-77968cfe5f4a71a8cd33e0ae8ffcdbd88dd693a212c240457773e6c40c96c21d",
+      "skills/poteto-mode/playbooks/perf-issue.md": "sha256-0eb3130e34798cdc0971eb1b3582856cb81023ccab0abeb64301458660be15a1",
+      "skills/poteto-mode/playbooks/prototype.md": "sha256-7aa1f52c691c3d46d5afc527b23f90977fce869ce33573c73c81a4c7f0cde962",
+      "skills/poteto-mode/playbooks/refactoring.md": "sha256-f11ff3c3ff0ea09d3ce2db0a3c11be3a3c11c279c04b83324723d0e0f984755b",
+      "skills/poteto-mode/playbooks/runtime-forensics.md": "sha256-79634d9bbc1a6fef3fa5c852c1c723d525f7fab45568e9637121e4afc058405f",
+      "skills/poteto-mode/playbooks/session-pickup.md": "sha256-15a6b61eeb89e2dd66ab8254f7c6807694a06eb103342983a7620f10c942ecf9",
+      "skills/poteto-mode/playbooks/trace-forensics.md": "sha256-a2d5e20b544835755407b9bdd945e2b595d2e5f826b44c438cbadf92e7efd797",
+      "skills/poteto-mode/playbooks/visual-parity.md": "sha256-950ca51999a6454c98eee6bcbc3d1bbe501a4e3a5d5439b6f6ddc378991b256c",
+      "skills/poteto-mode/playbooks/worktree-cleanup.md": "sha256-2d4d3dcc9e4ddff4770c5f2a254c7915e6bbed968861cfa0c3c45bd04f99b3a5",
+      "skills/poteto-mode/references/bugbot-triage.md": "sha256-b2d146c770d8d3593e1ef3d77b668039b8e1f78093ea1a86f1d45d7f99614309",
+      "skills/poteto-mode/scripts/bootstrap.ts": "sha256-ccd2ed08fd9da9d0d942e5f2491cfc74bb92d8a08fa51755e0da1ac8de287361",
+      "skills/poteto-mode/scripts/bun.lock": "sha256-667d9cf7222e9aae3fa42a4be383e657784216e9df115da02227fbc5ac7bbe46",
+      "skills/poteto-mode/scripts/package.json": "sha256-0b7aa62edc524bf9d3f735b17f10ab7fea22797b80b7edc4a91620a570332d13",
+      "skills/poteto-mode/scripts/worktree-audit.sh": "sha256-06be04b38346ded24ce761d373726f98cd9b9737f20ec98214e88b5f08f521b8",
+      "skills/poteto-mode/worker.md": "sha256-d051060527ab1649fb1e69d1e7d416950264f9955c3de3635c0d63569f1b90d8",
+      "skills/principle-attack-the-premise/SKILL.md": "sha256-831e916c540f4b6b720b7472aeea6e6ef93996655e36cc2517221f6f2081b480",
+      "skills/principle-boundary-discipline/SKILL.md": "sha256-c02c26cca3906bfd57829535f8fa7ee9e00df037b4dbb24e5f85ec9e12710b48",
+      "skills/principle-build-the-lever/SKILL.md": "sha256-753d81cf9ca2a4e9d1f057429f0c63c9c622e6022dd877ec97ec15f442076aac",
+      "skills/principle-encode-lessons-in-structure/SKILL.md": "sha256-228963799189f481827d6f28065f278bc2008ffa37030b1234cbd5814d36b9e9",
+      "skills/principle-exhaust-the-design-space/SKILL.md": "sha256-2de83d99f93f60ec6313455b0bc9aa9f0bfb93dd59f414f403691322db00d4db",
+      "skills/principle-experience-first/SKILL.md": "sha256-58903529d733b1c1a7c9ccf127d45ef3c7d0d9f0b81164a4dc6b80efe6f2912b",
+      "skills/principle-explain-the-number/SKILL.md": "sha256-e6a3f00991f4949cf18a0b5c77dd3126ca4402b8553f88c9c7905e577512676e",
+      "skills/principle-fix-root-causes/SKILL.md": "sha256-79afd7e67d8951203231f6f1ccfc7b4a1f30d8d6cdb68e92755c80012414dbeb",
+      "skills/principle-foundational-thinking/SKILL.md": "sha256-5c63eecf4b83ea5a99eda7a95a96cac0929d2dce7393d7089c83917bc12cf820",
+      "skills/principle-guard-the-context-window/SKILL.md": "sha256-af0b9dd70b43628ce4a59a4d332e9d9ad055084e460f430e7a757495c627e81a",
+      "skills/principle-laziness-protocol/SKILL.md": "sha256-1be6e7a435f26a75a76eb848b9c3d611b9977d0f5822361753244da25ca3ca45",
+      "skills/principle-make-operations-idempotent/SKILL.md": "sha256-76ad0a99b6ff2a05a159accfeee48412d62f62774eb8d05bbff26a1f3aa3eab5",
+      "skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md": "sha256-580ad9bb1a0994ecb924321ba49efc38a2f85c64e22c76fb133f57a78272a2e6",
+      "skills/principle-minimize-reader-load/SKILL.md": "sha256-22d27deffb0a3726858d0d4b02d71acd4a3eb4d44e218bc89b66e49dc9823937",
+      "skills/principle-model-the-domain/SKILL.md": "sha256-97c6214dc6a18b93177dda6429185a8640878b36ddee6ec9400c23a0eb9be2d8",
+      "skills/principle-never-block-on-the-human/SKILL.md": "sha256-05030a7a083c337676f793881b4e93cd218e8f1dd676529f56e6ac1d3efb8d1f",
+      "skills/principle-outcome-oriented-execution/SKILL.md": "sha256-10eb91633aa570355ba4bb37088fcade2b22e498df7a58edc749e65bc5a78e2d",
+      "skills/principle-prove-it-works/SKILL.md": "sha256-3d6c482e341974cfcb8d19ebf66fb1d4274d8673af35e36d3c231a6aa9e03f25",
+      "skills/principle-redesign-from-first-principles/SKILL.md": "sha256-170e0a658783e43fee8ec5a8c2422a4abb8f69cef621dd1819a95910b8207034",
+      "skills/principle-separate-before-serializing-shared-state/SKILL.md": "sha256-2e5625d686b657e0b607c329fd8043bf50261b808239308fe4c6776e2817e95a",
+      "skills/principle-sequence-verifiable-units/SKILL.md": "sha256-ab0cc331cf317c07bb0ed6dd13ee9f618338b36e4e851521977bc5c4a8d429e1",
+      "skills/principle-subtract-before-you-add/SKILL.md": "sha256-8c93bb9d1a7f38e2ef37655d93f0e790fa59903105af3d500cc8a663ebe45f3f",
+      "skills/principle-test-behavior-not-implementation/SKILL.md": "sha256-42afc1a2c7176363b6410cfde06a9fd3e96f5022ba86bdb8de4838ad65c2442d",
+      "skills/principle-type-system-discipline/SKILL.md": "sha256-9cd1ce345bc9d666c73c64c89c89164217b659aa4c4dde5600cbbe6f6e775461",
+      "skills/recall/SKILL.md": "sha256-1f4eda450650a7bd3948f44489a94f6c692f6a14ab9ce56ab9ed6f60c50e2258",
+      "skills/reflect/SKILL.md": "sha256-6f6952f91514dc86257830da93a446c732a1af906f6acd5e5783dc587a29031e",
+      "skills/reframe/SKILL.md": "sha256-1e2e8a11da838c9169dae6fb71257041cf4e91d58862d1629354648b9bd458f3",
+      "skills/sharpen/SKILL.md": "sha256-aac4f8e6a1ffd70e3763314db37d3c2eb0cfea08bc63e98907aca6dae0343031",
+      "skills/show-me-your-work/SKILL.md": "sha256-ec29326ac20515f2941198205bec615320a55b21659692e19650530dbf217bde",
+      "skills/show-me-your-work/references/decision-log-template.tsv": "sha256-6779378006a2f5225e8c06deb84f1d913fb532041ebbb6e50d94600bfe3f4b76",
+      "skills/show-me-your-work/scripts/log.sh": "sha256-a65a4bc5fb7cdeadbdb7b7ff1ca4682f4d9c42420942b2977cd17b46c4ac338e",
+      "skills/statechart/SKILL.md": "sha256-1c817943520e128d63a48388295d7d31816832984aac24fd78d232d634468c86",
+      "skills/statechart/scripts/backends/cfg.ts": "sha256-aea4d8766d214e7fa08f4881f1037319655e75eb56652e1b6d5d4f13a162e3e1",
+      "skills/statechart/scripts/backends/mermaid.ts": "sha256-ce293d34ce3928d93329bd6d1a889d5722620008dae4339add79ef226c3f9b88",
+      "skills/statechart/scripts/backends/plain-text.ts": "sha256-e2bedb855eb3806ec3fe7a7bfa49baa309fb4cf0da425b5fe1e0686268ce255a",
+      "skills/statechart/scripts/backends/report.ts": "sha256-730b4048578ab0468e1581f16fec60b246e321161effb68e481efb373f0f2501",
+      "skills/statechart/scripts/frontends/config.ts": "sha256-5eeab1e755f20a2c83b408c6503fdc9c6b10c971d8dedad3f912bd15f9763daf",
+      "skills/statechart/scripts/frontends/dot.ts": "sha256-cd2e681ff58c759ddeaa17c2f3d4af1f0c3e71273566be555187b5d0e7767dac",
+      "skills/statechart/scripts/frontends/marks.ts": "sha256-eb0120e61a4004a435c7b7c46916da9dc8b2fa8696ed0d3eb64dc953fed3ab11",
+      "skills/statechart/scripts/frontends/messages.ts": "sha256-36bfc6fb3ffa86897661efb2aa67bd95b55a4da9a3e952831f6e0668826b4b92",
+      "skills/statechart/scripts/frontends/spec.ts": "sha256-450cdfc8d0577a96818ca3697efebbbf70b530a4ba7e3eee03cf1ba8d3f1a0fd",
+      "skills/statechart/scripts/frontends/trace.ts": "sha256-7d083cf89b81c41556fc3fd5f07019886e0f6783c632475e7181ac4b81887367",
+      "skills/statechart/scripts/frontends/value.ts": "sha256-7c54be394b7a10f60591858a0f08fb1e8dc0941df1f38ede07fbe7719ff56da0",
+      "skills/statechart/scripts/frontends/verdict.ts": "sha256-0d0a9d6b6d6da5a7c48851b86d9d041f22982404dda6288795a1715138d7008b",
+      "skills/statechart/scripts/frontends/view.ts": "sha256-2c0af8939321c5aaed4b6ecac8ce6a98d0e6774d8bd15d4b02fe4f406b8c9620",
+      "skills/statechart/scripts/ir.ts": "sha256-5602beca4e4ac08421cfa07e4da989f0e75439f1d136cc923226909e771dc7ff",
+      "skills/statechart/scripts/janitor.ts": "sha256-defac41e4cbfca3044c5078c544a0667f857a610c500c5ec96cb3bfaeec7120b",
+      "skills/statechart/scripts/kill.ts": "sha256-058df69d1184029e55d7e81b4fd37a6dc8557c9208979fb7032482d5ab0db448",
+      "skills/statechart/scripts/package.json": "sha256-2c36842f391275b0f343a38947560adee155fab4a744eacef1e595e9f07c4e3d",
+      "skills/statechart/scripts/passes/annotate.ts": "sha256-dc8eeee09c3a9a0c060f32fb1d554e01bd80e5265751cdeb041ef3e19561b92a",
+      "skills/statechart/scripts/passes/label.ts": "sha256-b5ef402369c5e7846be1fd39165e95cbfe715fc36eb9331a0401b26523c539c9",
+      "skills/statechart/scripts/passes/lift.ts": "sha256-8977dddc6c93bb2e3914d5b50760eb66876107ba51e2b8cf9e18611b4c40c89c",
+      "skills/statechart/scripts/passes/loop-check.ts": "sha256-07d459385849aa35834040bf34e279c39baba68244ec9da17c57703a6ee8e2d4",
+      "skills/statechart/scripts/passes/paths.ts": "sha256-9af1066b007ef86cb05c5e278eef09f090f1e46eb91d356e5146edbd4fee4ec7",
+      "skills/statechart/scripts/passes/reach.ts": "sha256-b52b38f926814937b733221b40bd31075a69a2fb91ecbce2164752a8684bc5d6",
+      "skills/statechart/scripts/passes/region-check.ts": "sha256-8a6e0618740a14bb7048f6563b4324958177f4685d4d6d90364cc6245b1498b4",
+      "skills/statechart/scripts/passes/regions.ts": "sha256-d740ebfdbb5ec7b4984412a635a596b43af7a77b8bcb49a1463c8afa75299f72",
+      "skills/statechart/scripts/pipeline.ts": "sha256-8aa8d9295ab6762f7f2ffae91a0aee98b1a1314747c875edba4598fdab8ed543",
+      "skills/statechart/scripts/run.ts": "sha256-6c20b6c3caa319a4f809205fde446f648883de5f799e95c33309056ff51d3322",
+      "skills/statechart/scripts/statechart": "sha256-aeffb7077850fd4c225e3d18049ca6ed7b988cf48e88cd8463526a7feaa74d13",
+      "skills/statechart/scripts/statechart.ts": "sha256-5d5feff7d78204c828a8e30d531d23419234a81a7149dc3e48efb08dd770d6c1",
+      "skills/statechart/scripts/tsconfig.json": "sha256-6bb2af53f7b251328e6117cd4fb761468dc4d4b96085d31a19304ccb73c32cc1",
+      "skills/statechart/scripts/worker.ts": "sha256-1f18ed5ef806982e05e8a40fc217e88257700b28b63cb4acbd647872f85f782b",
+      "skills/swarm/SKILL.md": "sha256-8558089df5320e4ddf61126ca3d638404341584c8307dd6d20f8984e5ae3bbd1",
+      "skills/tdd/SKILL.md": "sha256-eeb868e2dfebee528d730a67d7b17498fac4bb85dec2e38bc5c5176aca4d5d2f",
+      "skills/teach/SKILL.md": "sha256-2c17f3c0a79536ca2fa3c20983def027ffd8abb4063d9bb3c97778b77557600d",
+      "skills/technical-writing/SKILL.md": "sha256-0a620885599cdde5a0a31fa39878144c10f61c894b56bf4a9ff779496e718b14",
+      "skills/typescript-best-practices/SKILL.md": "sha256-ec1dac086d3708e5940d45d250c30a37dd953b4e3cb2ca0692f5851d7a039e27",
+      "skills/typescript-best-practices/references/patterns.md": "sha256-12e70c9419a8b3f5d6a1ab80e272c1f00a43ac0b3bbf72d68199033570e5de77",
+      "skills/unslop/SKILL.md": "sha256-2b823fd069e031c1420180be8e0d4f5e2fd25bf2c428049e5c835c59a489b5e0",
+      "skills/why/SKILL.md": "sha256-6b65b3180f1f1bd3b696d7933daf900747410c82931d220a3f57a98addb1c0fd"
+    },
+    "patches": {
+      "statechart-run-no-download.patch": "skills/statechart/scripts/run.ts: TLC runs only from a local jar named by TLA2TOOLS; the mise download of TLC and Java is gone.",
+      "statechart-skill-no-download.patch": "skills/statechart/SKILL.md: says nothing is downloaded or installed, and no longer points at the left-out renderer."
+    }
+  }
+}

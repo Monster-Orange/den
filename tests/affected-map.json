@@ -2251,6 +2251,7 @@
         "tests/unit/shared/hub-groups.test.ts",
         "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
+        "tests/unit/skill-packs/skill-pack-pin-1631.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
