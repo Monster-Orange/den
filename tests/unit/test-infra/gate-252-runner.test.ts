@@ -65,6 +65,12 @@ describe("gate/252.mjs as the bed runs it", () => {
     expect(r.rows?.[3].ok).toBe(true);
   });
 
+  it("the button never shows busy while the mode applies: the menu clause fails", () => {
+    const r = runGate("noBusy");
+    expect(r.rows?.[0].ok).toBe(false);
+    expect(r.rows?.[3].ok).toBe(true);
+  });
+
   it('the CLI still says "from its next start": the CLI clause fails', () => {
     expect(runGate("oldCli").rows?.[2].ok).toBe(false);
   });

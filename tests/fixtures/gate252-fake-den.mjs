@@ -6,18 +6,34 @@
 //   "noRestart":  the mode is saved but the agent never restarts;
 //   "noAudit":    it restarts, but no audit row is written;
 //   "noRuntime":  the project's mode view doesn't list the agent;
-//   "oldCli":     the CLI help still says "from its next start".
+//   "oldCli":     the CLI help still says "from its next start";
+//   "noBusy":     the button never shows busy while the mode applies.
 // Invented names only.
 const ID = "gate-252-mode";
 const WS = "north";
 const ORDER = ["ask", "edits", "auto", "all"];
-const LABELS = [
-  "Ask for everything",
-  "Auto-approve edits in the worktree",
-  "Auto mode",
-  "Auto-approve all",
-  "Follow project",
-];
+// The page's catalog, as denShell.t gives it (the words the check looks for).
+const CATALOG = {
+  "ag.more": "More for {id}",
+  "ag.mode.item": "Mode: {m}",
+  "ag.mode.follow": "Follow project",
+  "ag.mode.setS":
+    "{id}: {m}, its own setting. Den restarts it at its next idle to take it.",
+  "ag.mode.followS":
+    "{id} follows the project now: {m}. Den restarts it at its next idle to take it.",
+  "pm.ask": "Ask for everything",
+  "pm.edits": "Auto-approve edits in the worktree",
+  "pm.auto": "Auto mode",
+  "pm.all": "Auto-approve all",
+  "pm.name.ask": "Ask",
+  "pm.name.edits": "Edits",
+  "pm.name.auto": "Auto",
+  "pm.name.all": "All",
+};
+const t = (k, v = {}) =>
+  String(CATALOG[k] ?? k).replace(/\{(\w+)\}/g, (m, x) =>
+    v[x] != null ? String(v[x]) : m,
+  );
 const SOURCE = { own: "its own setting", install: "the Den-wide default" };
 
 export function fakeBed({ den = "good" } = {}) {
@@ -31,17 +47,20 @@ export function fakeBed({ den = "good" } = {}) {
   };
   const want = () => st.own ?? "auto";
   const source = () => (st.own ? "own" : "install");
-  let menuOpen = false;
+  // closed, "top" (the ⋯ menu) or "mode" (its Mode radios).
+  let menuOpen = "closed";
   let said = null;
   let tagShown = null;
+  let busySeen = false;
 
   function setMode(m) {
     st.own = m;
     st.audit.push(`set ${ID}'s mode to ${m ?? "its project's"} in ${WS}`);
     said = m
-      ? `${ID}: ${m[0].toUpperCase()}${m.slice(1)}, its own setting. Den restarts it at its next idle to take it.`
-      : `${ID} follows the project now: Auto. Den restarts it at its next idle to take it.`;
+      ? t("ag.mode.setS", { id: ID, m: t(`pm.name.${m}`) })
+      : t("ag.mode.followS", { id: ID, m: t("pm.name.auto") });
     st.pendingIdle = 2;
+    if (den !== "noBusy") busySeen = true;
   }
 
   function idle() {
@@ -55,52 +74,81 @@ export function fakeBed({ den = "good" } = {}) {
       );
   }
 
-  const loc = (sel, opts) => ({
-    async count() {
-      return sel.includes('[data-act="more"]') && menuOpen !== "closed" ? 1 : 0;
-    },
-    async click() {
-      if (opts?.hasText) menuOpen = "mode";
-    },
-    first() {
-      return loc(sel, opts);
-    },
-    nth(i) {
-      return {
-        async click() {
-          setMode(i < ORDER.length ? ORDER[i] : null);
-          menuOpen = false;
-        },
-      };
-    },
-    async evaluateAll() {
-      return LABELS.map((l, i) => [
-        l,
-        String(i < ORDER.length ? st.own === ORDER[i] : st.own === null),
-      ]);
-    },
-  });
+  const fail = (what) => {
+    throw new Error(`${what}: not on the page`);
+  };
+  /** The mode radio a name finds (a mode, "follow", or null). */
+  const radioOf = (name, exact) => {
+    for (const m of ORDER) if (name === t(`pm.${m}`)) return m;
+    const f = t("ag.mode.follow");
+    if (exact ? name === f : f.includes(name)) return "follow";
+    return null;
+  };
+  const checkedOf = (m) =>
+    String(m === "follow" ? st.own === null : st.own === m);
 
   const page = {
-    async waitForSelector(sel) {
-      if (sel === "den-busy") throw new Error("no pop-up: a fast answer");
-    },
-    locator: loc,
-    async click() {},
-    getByText() {
+    async waitForSelector() {}, // the row's mode tag (read by evaluate)
+    locator() {
+      // The agent's row.
       return {
-        first() {
-          return {
-            async textContent() {
-              if (!said) throw new Error("not said");
-              return said;
-            },
-          };
+        async waitFor() {},
+        async click() {},
+      };
+    },
+    getByRole(role, o = {}) {
+      if (role === "button")
+        return {
+          async count() {
+            return o.name === t("ag.more", { id: ID }) ? 1 : 0;
+          },
+          async waitFor() {
+            if (o.name !== t("ag.more", { id: ID })) fail(o.name);
+          },
+          async click() {
+            menuOpen = "top";
+          },
+        };
+      if (role === "menuitem")
+        return {
+          async click() {
+            if (menuOpen !== "top" || !/^Mode: /.test(o.name)) fail(o.name);
+            menuOpen = "mode";
+          },
+        };
+      // menuitemradio: all of them, or the one its name finds.
+      const m = o.name == null ? null : radioOf(o.name, o.exact);
+      return {
+        async count() {
+          if (menuOpen !== "mode") return 0;
+          return o.name == null ? 5 : m ? 1 : 0;
+        },
+        async waitFor() {
+          if (menuOpen !== "mode" || (o.name != null && !m)) fail(o.name);
+        },
+        async getAttribute(a) {
+          return a === "aria-checked" ? checkedOf(m) : null;
+        },
+        async click() {
+          if (menuOpen !== "mode" || !m) fail(o.name);
+          setMode(m === "follow" ? null : m);
+          menuOpen = "closed";
         },
       };
     },
-    async evaluate() {
-      return tagShown;
+    getByText(text) {
+      return {
+        async waitFor() {
+          if (said !== text) throw new Error("not said");
+        },
+      };
+    },
+    async evaluate(fn, arg) {
+      if (Array.isArray(arg)) return t(arg[0], arg[1]); // denShell.t
+      if (typeof arg === "string") return tagShown; // the row's tag
+      if (String(fn).includes("disconnect")) return busySeen; // busy read
+      busySeen = false; // the busy watch armed
+      return undefined;
     },
   };
 
@@ -109,6 +157,7 @@ export function fakeBed({ den = "good" } = {}) {
     newPage: () => page,
     async goto() {
       said = null;
+      menuOpen = "closed";
       const m = st.running;
       tagShown = {
         mode: m,
