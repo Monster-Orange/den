@@ -60,11 +60,6 @@ describe("BellScanner", () => {
   });
 });
 
-/**
- * Issue 771: the open status protocol, OSC 7501
- * (`ESC ] 7501 ; state=<idle|working|done|blocked|error>[;id=...] ST`):
- * read from the same scan, kept until taken. Never a bell.
- */
 describe("BellScanner: OSC 7501 status (issue 771)", () => {
   const ST = `${ESC}\\`;
   it.each(["idle", "working", "done", "blocked", "error"])(

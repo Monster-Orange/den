@@ -1,11 +1,3 @@
-/**
- * Issue 771 with issue 770: one status model. An agent's status comes from
- * its hook (Claude with Den's hooks on), then an explicit OSC 7501 its own
- * terminal said, then the screen rules' reading, else nothing (the caller
- * keeps the bell and output stopped). A 7501 gives way once the screen
- * shows a different matched state after it; a screen that says nothing
- * (no rule, a transcript viewer, unknown) never drops it.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   agentStatus,

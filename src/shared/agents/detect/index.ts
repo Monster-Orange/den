@@ -50,16 +50,12 @@ export function ruleSet(name: string | undefined): RuleSet | undefined {
 /** What Den shows for an agent: working, needs you, or idle. */
 export type AgentStatus = "working" | "blocked" | "idle";
 
-/** Issue 771: a status the agent's own terminal said (OSC 7501), and when. */
 export interface TermStatus {
   state: StatusState;
-  /** When the sessions host read it (ISO 8601). */
   at: string;
 }
 
 /**
- * Issue 771: OSC 7501's five states onto Den's three. Error needs a person;
- * done is idle, and `finished` says its turn ended (issue 773's Done).
  */
 export function fromTerm(state: StatusState): {
   status: AgentStatus;
@@ -78,28 +74,15 @@ export function fromTerm(state: StatusState): {
   }
 }
 
-/** A reading that says something: a matched, known state. */
 function said(screen: Detection | undefined): AgentStatus | undefined {
   if (!screen || screen.fallback || screen.skip) return undefined;
   return screen.state === "unknown" ? undefined : screen.state;
 }
 
-/**
- * An agent's status, in one order (issues 770 and 771): its hook (Claude
- * with Den's hooks on), then a status its own terminal said with OSC 7501,
- * then the screen's reading. A 7501 only ever raises: a matched screen
- * blocked wins over it whatever the times (anything printed in the
- * terminal can say a 7501). Otherwise it gives way once the screen, read
- * after it, shows a different matched state; a screen that says nothing (no
- * rule matched, a transcript viewer, unknown) never drops it. Undefined
- * when nothing says: the caller keeps what it has (the bell, output
- * stopped).
- */
 export function agentStatus(input: {
   hook?: AgentStatus;
   term?: TermStatus;
   screen?: Detection;
-  /** When the screen's reading was taken (ISO 8601). */
   screenAt?: string;
 }): AgentStatus | undefined {
   if (input.hook) return input.hook;
@@ -109,8 +92,7 @@ export function agentStatus(input: {
     const later =
       input.screenAt !== undefined &&
       Date.parse(input.screenAt) > Date.parse(input.term.at);
-    // A 7501 only ever raises: a matched screen blocked wins over it
-    // whatever the times, and only a later screen lowers a 7501 blocked.
+    // A 7501 only raises: a screen's blocked wins, a later screen lowers it.
     if (seen === "blocked") return seen;
     if (!seen || seen === t || !later) return t;
   }

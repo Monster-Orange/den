@@ -1,11 +1,3 @@
-/**
- * Issue 771: an agent's terminal said its status with OSC 7501 (the
- * sessions host read it: SessionInfo.status). Den shows it: blocked or
- * error → waiting for its person (held until the program says otherwise,
- * not cleared by its output moving); working or idle → no longer waiting;
- * done → its turn ended. Only the agent whose session printed it.
- * A temp store; fake output marks and clock.
- */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

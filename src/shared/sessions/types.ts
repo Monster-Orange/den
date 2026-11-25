@@ -41,10 +41,6 @@ export interface SessionInfo {
    * bare BEL, OSC 9, OSC 777;notify), ISO 8601. Since this host started.
    */
   bellAt?: string;
-  /**
-   * Issue 771: the status its output last said with OSC 7501 (bell.ts),
-   * and when it was read (ISO 8601). Since this host started.
-   */
   status?: { state: StatusState; id?: string; at: string };
   /**
    * Issue 448: when a person's input last reached it (a key, a paste),

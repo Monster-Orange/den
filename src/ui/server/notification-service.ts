@@ -188,9 +188,6 @@ export function bellsOf(
 }
 
 /**
- * Issue 771: the statuses running agents' own sessions said with OSC 7501
- * (SessionInfo.status), each to the agent whose session printed it.
- * Claude Code's agents are left out, as for bells: their hooks say it.
  */
 export function statusesOf(
   sessions: readonly SessionInfo[],
@@ -219,11 +216,6 @@ export function statusesOf(
     });
 }
 
-/**
- * NT-1 (3): the agents whose session rang the terminal's bell, and
- * (issue 771) the statuses their sessions said. Claude Code's agents are
- * left out: their hooks say it, more exactly.
- */
 async function sessionSignals(): Promise<{
   bells: { agent: string; workspace: string; bellAt: string }[];
   statuses: StatusReport[];

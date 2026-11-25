@@ -41,10 +41,6 @@ import { leadAskText } from "./lead-routing.js";
 import { STATUS_STATES, type StatusState } from "../../shared/sessions/bell.js";
 import type { TermStatus } from "../../shared/agents/detect/index.js";
 
-/**
- * Issue 771: a status an agent's own session said with OSC 7501, and when
- * the sessions host read it (notification-service.ts statusesOf).
- */
 export interface StatusReport {
   agent: string;
   workspace: string;
@@ -242,13 +238,7 @@ interface Waiting {
   workspace: string;
   /** Cleared by the runtime's hooks, not by its output. */
   byHook: boolean;
-  /** Issue 771: said by OSC 7501; cleared by its next status, not its output. */
   byStatus?: boolean;
-  /**
-   * Issue 771: raised by OSC 7501 alone. Only such a waiting may a later
-   * 7501 lower: anything printed in the terminal can say one, so a 7501
-   * never clears a bell's, a screen's or a hook's waiting.
-   */
   fromStatus?: boolean;
   /** Issue 609: the hash of the asked tool's input (attention-hook.ts). */
   input?: string;
@@ -276,11 +266,8 @@ export class Attention {
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
-  /** Issue 771: each agent's last OSC 7501 status seen ("state@at"). */
   private readonly statusSeen = new Map<string, string>();
-  /** Issue 771: each agent's status, as its terminal last said it. */
   private readonly status = new Map<string, StatusState>();
-  /** Issue 771: when each agent's terminal said it (the host's read time). */
   private readonly statusAt = new Map<string, string>();
   /** Issue 369: rows from before this server still to decide. */
   private orphansLeft = true;
@@ -306,15 +293,10 @@ export class Attention {
     return new Map([...this.waiting].map(([a, w]) => [a, w.why]));
   }
 
-  /** Issue 771: the agents whose terminal said a status, and the last one. */
   statusNow(): Map<string, StatusState> {
     return new Map(this.status);
   }
 
-  /**
-   * Issue 771: what `agent`'s own terminal last said, for agentStatus's
-   * `term` (shared/agents/detect): hook, then this, then the screen.
-   */
   termOf(agent: string): TermStatus | undefined {
     const state = this.status.get(agent);
     const at = this.statusAt.get(agent);
@@ -361,7 +343,6 @@ export class Attention {
           turn?: boolean;
           /** Issue 828: a question on the agent's screen. */
           dialog?: boolean;
-          /** Issue 771: said by OSC 7501 (held until its next status). */
           status?: boolean;
         }
       | { event: "finished"; text?: string; question?: string }
@@ -613,8 +594,6 @@ export class Attention {
     // #142: without hooks, a bell is all there is: an update, not a need.
     // Issue 142: kept even while a page shows the agent (only the alert
     // waits for it to be off screen). A need counts until it is answered;
-    // an update goes on that page's next "looking". Issue 771: a program
-    // that said it is blocked (OSC 7501) needs its person.
     this.d.store.add({
       kind: ev.why === "input" && ev.status !== true ? "finished" : "waiting",
       subject,
@@ -874,19 +853,6 @@ export class Attention {
     }
   }
 
-  /**
-   * Issue 771: the statuses agents' own terminals said (OSC 7501). Each
-   * new one becomes the agent's status. Blocked or error marks it waiting
-   * for its person (kept until its next status, its person typing, or it
-   * ending; its output moving doesn't clear it). It only ever raises
-   * attention toward the person: working or idle ends a wait, and done
-   * ends its turn, only when a 7501 alone raised that wait. A bell's,
-   * a screen's or a hook's waiting stays, since anything printed in the
-   * terminal can say a 7501. One first seen more than 10 s old (Den
-   * restarted) still raises blocked or error, as its row shows them; an
-   * old done or a lowering one is the status only. An unknown state is
-   * ignored.
-   */
   async statuses(list: readonly StatusReport[]): Promise<void> {
     for (const r of list) {
       if (!(STATUS_STATES as readonly string[]).includes(r.state)) continue;
@@ -913,6 +879,7 @@ export class Attention {
             status: true,
           });
       } else if (w && !w.fromStatus) {
+        // Anything printed can say a 7501: it never clears another's wait.
         continue;
       } else if (r.state === "done") {
         await this.event(r.agent, r.workspace, { event: "finished" });
