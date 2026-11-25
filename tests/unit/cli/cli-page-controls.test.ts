@@ -149,6 +149,11 @@ const LISTING: Record<string, Entry> = {
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
   // Issue 625: the test boxes, set on the Settings page.
   "gate box": page("settings-registry.js", 'id: "server.gate_boxes"'),
+  // Issue 642: the CI runner entries, set on the Settings page.
+  "gate runner": page(
+    "settings-registry.js",
+    'id: "server.gate_runner_entries"',
+  ),
 
   "repo detect": R,
 

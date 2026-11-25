@@ -161,6 +161,15 @@ describe("a run's worker tree", () => {
 
   it("gate run and its command killed hard: the next pass of the queue stops the workers they left", async () => {
     const r = await start({ mode: "stay" });
+    // Issue 1320: gate run records the run's group (with ps) just after it
+    // starts the command, and the workers can print first. Killed before
+    // that, the slot has no group to stop (a window the product still has,
+    // issue 1575); this case is the incident's, where it had.
+    expect(
+      await within(10_000, () =>
+        r.store.list().some((e) => e.group === r.command),
+      ),
+    ).not.toBe(-1);
     // As in the incident: the run's processes gone, its workers not. (A
     // wrapper killed while its command lives keeps the slot: that rule
     // is unchanged.)

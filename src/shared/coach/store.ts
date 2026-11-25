@@ -40,6 +40,51 @@ export function writeCoachReport(
     fs.rmSync(path.join(coachRunsDir(stateDir), n), { force: true });
 }
 
+const SPEND_FILE = "judge-spend.json";
+const SPEND_KEEP_MS = 2 * 86_400_000;
+
+function readSpend(stateDir: string): { at: number; tokens: number }[] {
+  try {
+    const v: unknown = JSON.parse(
+      fs.readFileSync(path.join(coachDir(stateDir), SPEND_FILE), "utf-8"),
+    );
+    return Array.isArray(v)
+      ? v.filter(
+          (x): x is { at: number; tokens: number } =>
+            !!x &&
+            Number.isFinite((x as { at?: unknown }).at) &&
+            Number.isFinite((x as { tokens?: unknown }).tokens),
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Slice T-d: record a run's judging spend, kept apart from the runs (which
+ * keep_runs prunes) and trimmed to the last two days.
+ */
+export function recordJudgeSpend(
+  stateDir: string,
+  at: number,
+  tokens: number,
+): void {
+  const list = readSpend(stateDir).filter((x) => x.at >= at - SPEND_KEEP_MS);
+  list.push({ at, tokens: Math.max(0, tokens) });
+  writePrivate(
+    path.join(coachDir(stateDir), SPEND_FILE),
+    JSON.stringify(list) + "\n",
+  );
+}
+
+/** Tokens judging spent at or after `since` (ms since the epoch). */
+export function judgeSpentSince(stateDir: string, since: number): number {
+  return readSpend(stateDir)
+    .filter((x) => x.at >= since)
+    .reduce((n, x) => n + x.tokens, 0);
+}
+
 /** The latest run, or null when there is none (or it can't be read). */
 export function readCoachReport(stateDir: string): CoachReport | null {
   try {

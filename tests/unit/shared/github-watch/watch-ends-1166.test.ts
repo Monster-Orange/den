@@ -85,6 +85,8 @@ beforeEach(() => {
     budgetFloor: 500,
     watchesMax: 50,
     staleMinutes: 60,
+    maxOpenHours: 24,
+    rerunLookMinutes: 5,
   };
   gh.pr(A, 1, SHA1);
   gh.pr(A, 2, SHA2);
@@ -284,6 +286,54 @@ describe("a watch with no progress", () => {
     expect(
       githubWatchSettings({ github: { watch_stale_minutes: 1 } }).staleMinutes,
     ).toBe(60);
+  });
+});
+
+describe("a ceiling on any watch (issue 1194)", () => {
+  it("a check pending forever: the watch ends at github.watch_max_open_hours, says why, and frees its slot", async () => {
+    settings = { ...settings, maxOpenHours: 2, watchesMax: 1 };
+    gh.remaining = 4900;
+    gh.reset = Math.floor(t / 1000) + 30 * 3600; // no reset in this test
+    const w = watcher();
+    gh.check(A, SHA1, {
+      id: 11,
+      name: "status",
+      status: "pending",
+      conclusion: null,
+      suite: 5,
+    });
+    await w.create(ask(1));
+    await minutes(w, 118);
+    expect(w.list("planner")[0].state).not.toBe("done");
+    await minutes(w, 4);
+    const v = w.list("planner")[0];
+    expect(v.state).toBe("done");
+    expect(v.note).toMatch(/open 2 hours/i);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toMatch(/open 2 hours/);
+    expect(w.status().active).toBe(0);
+  });
+
+  it("a watch that finishes before the ceiling is untouched", async () => {
+    settings = { ...settings, maxOpenHours: 2 };
+    const w = watcher();
+    running(SHA1);
+    await w.create(ask(1));
+    await minutes(w, 30);
+    passed(SHA1);
+    await minutes(w, 2);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toMatch(/1 passed/);
+  });
+
+  it("is a Setting: github.watch_max_open_hours, 24 by default, kept in range", () => {
+    expect(githubWatchSettings({}).maxOpenHours).toBe(24);
+    expect(
+      githubWatchSettings({ github: { watch_max_open_hours: 6 } }).maxOpenHours,
+    ).toBe(6);
+    expect(
+      githubWatchSettings({ github: { watch_max_open_hours: 0 } }).maxOpenHours,
+    ).toBe(24);
   });
 });
 

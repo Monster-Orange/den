@@ -73,7 +73,8 @@
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
- *     api_budget_floor?, watches_max?, watch_stale_minutes? }
+ *     api_budget_floor?, watches_max?, watch_stale_minutes?,
+ *     watch_max_open_hours?, rerun_look_minutes? }
  *                                     user.yml github.* (the shared GitHub
  *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
@@ -239,6 +240,7 @@ export const SETTINGS_ANYONE: Readonly<Record<string, string>> = {
   time_zone: "the time zone pages show date-times in",
   agents_layout: "how the Agents page lays out its cards",
   agents_helpers_shown: "whether helper agents show on the Agents page",
+  coach_counts: "whether the Coach tab shows counts as totals or per day",
   bell_kinds: "which kinds of notice the bell shows",
   bell_fold_days: "how many days before the bell folds old notices",
 };

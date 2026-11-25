@@ -68,6 +68,8 @@ beforeEach(() => {
     budgetFloor: 500,
     watchesMax: 50,
     staleMinutes: 60,
+    maxOpenHours: 24,
+    rerunLookMinutes: 5,
   };
   gh.pr(A, 1, SHA1);
   gh.pr(A, 2, SHA2);
@@ -270,6 +272,57 @@ describe("issue 1560: the head moved, and the new ask is refused", () => {
     );
     const old = w.list("planner").find((x) => x.id === first.watch.id);
     expect(old).toMatchObject({ state: "done", note: movedNote });
+  });
+});
+
+describe("issue 1560: a run watch in a busy repo (issue 1214 reads its run itself)", () => {
+  it("is never marked off the page", async () => {
+    const w = watcher();
+    gh.run(A, {
+      id: 777,
+      name: "ci",
+      status: "in_progress",
+      conclusion: null,
+      head_sha: SHA1,
+      check_suite_id: 7,
+    });
+    gh.run(A, {
+      id: 201,
+      name: "ci",
+      status: "in_progress",
+      conclusion: null,
+      head_sha: SHA2,
+      check_suite_id: 3,
+    });
+    gh.run(A, {
+      id: 202,
+      name: "ci",
+      status: "in_progress",
+      conclusion: null,
+      head_sha: SHA1,
+      check_suite_id: 4,
+    });
+    const run = await w.create({ ...ask(1), pr: undefined, run: 777 });
+    if (!run.ok) throw new Error("not created");
+    expect((await w.create(ask(1))).ok).toBe(true);
+    expect((await w.create(ask(2))).ok).toBe(true);
+    for (let i = 0; i < 120; i++)
+      gh.run(A, {
+        id: 6000 + i,
+        name: "ci",
+        status: "completed",
+        conclusion: "success",
+        head_sha: SHA9,
+        check_suite_id: 2900 + i,
+      });
+    const notes: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      await rounds(w, 1);
+      notes.push(
+        w.list("planner").find((x) => x.id === run.watch.id)?.note ?? "",
+      );
+    }
+    expect(notes.filter((n) => /lists them by head/.test(n))).toEqual([]);
   });
 });
 

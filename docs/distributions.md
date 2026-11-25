@@ -5439,6 +5439,8 @@ category, description, runtime, model and its version, mode, allowed
 commands and the instructions. Every other key in the file (`subagent_model`,
 `persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
 (issue 978).
+`persona_update` also takes `subagentModel`, written as `subagent_model`
+(issue 110: the Coach's Apply proposes it).
 
 **A persona's version** (issue 137) is the sha256 of its file, so any edit
 makes a new one; `persona_version` gives it a readable name. An agent
@@ -6271,8 +6273,17 @@ How the watcher paces itself:
   runner counts toward neither. The bound is never shorter than twice the
   interval in force, so a watch doesn't go stale only because Den didn't
   look. The note says which bound fired.
+- A run's watch reads the run and its own jobs (the latest attempt, every
+  page), never the check runs on its head commit. A re-run within the hour
+  after it was told reopens the watch, and Den tells the new attempt's
+  result. Den looks for one at most every `github.rerun_look_minutes` (5).
+  A reopened watch takes no new slot from the cap. A pull request's watch
+  reads its head's check runs past the first page of 100.
+- Any watch open longer than `github.watch_max_open_hours` (24) ends,
+  whatever its checks say, and its agent is told why. This catches a check
+  that never reports.
 
-These five are Settings › Server rows, a person's only
+These seven are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
 `<cli> github status` show one line: the calls left, the reset time, the
 open and queued watches, the oldest open watch's age, the cap now and the

@@ -197,6 +197,10 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     watches_max: true,
     // Issue 1166: a watch with no progress this long ends.
     watch_stale_minutes: true,
+    // Issue 1194: any watch open this long ends.
+    watch_max_open_hours: true,
+    // Issue 1214: how often a finished run is looked at for a re-run.
+    rerun_look_minutes: true,
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
@@ -289,6 +293,7 @@ describe("the settings inventory (R21)", () => {
         "terminal",
         // MODE-5: what only `config` could change.
         "cli_tabs",
+        "coach_counts",
         "local_dev",
         "log_window_lines",
         "panes_reconnect.max_failures",
@@ -310,6 +315,8 @@ describe("the settings inventory (R21)", () => {
         "github.api_budget_floor",
         "github.watches_max",
         "github.watch_stale_minutes",
+        "github.watch_max_open_hours",
+        "github.rerun_look_minutes",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",

@@ -19,6 +19,8 @@ describe("github.* Settings", () => {
       budgetFloor: 500,
       watchesMax: 50,
       staleMinutes: 60,
+      maxOpenHours: 24,
+      rerunLookMinutes: 5,
     });
   });
 
@@ -39,6 +41,8 @@ describe("github.* Settings", () => {
       budgetFloor: 200,
       watchesMax: 10,
       staleMinutes: 30,
+      maxOpenHours: 24,
+      rerunLookMinutes: 5,
     });
   });
 
