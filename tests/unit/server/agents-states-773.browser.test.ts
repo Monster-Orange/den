@@ -123,7 +123,8 @@ afterAll(async () => {
 
 const skip = () => !browser || !s;
 
-async function open(path: string, width = 1280): Promise<Page> {
+/** `by`: the list view saved before the first load (den-agents-by). */
+async function open(path: string, width = 1280, by?: string): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
@@ -142,10 +143,20 @@ async function open(path: string, width = 1280): Promise<Page> {
       /* none */
     }
   }, latest);
+  if (by)
+    await ctx.addInitScript((v) => {
+      // Once: a reload keeps what the page saved.
+      if (sessionStorage.getItem("t-by-set")) return;
+      sessionStorage.setItem("t-by-set", "1");
+      localStorage.setItem("den-agents-by", v);
+    }, by);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await signInPage(p, s!.stateDir, s!.base, path);
-  await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
+  await p.waitForSelector(
+    by === "project" ? "#agl .wsg[data-ws]" : "#agl [data-band]",
+    { timeout: 20_000 },
+  );
   return p;
 }
 
@@ -339,6 +350,35 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     ).toBe("true");
     await p.click(`${sw} [data-by="need"]`);
     await p.waitForSelector("#agl [data-band]", { timeout: 20_000 });
+    await p.context().close();
+  }, 60_000);
+
+  it("a saved By project opens grouped by project", async () => {
+    if (skip()) return;
+    const p = await open("/agents", 1280, "project");
+    expect(
+      await p.getAttribute(
+        '#agl [data-by-switch] [data-by="project"]',
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(await p.locator("#agl .wsg[data-ws]").count()).toBeGreaterThan(0);
+    expect(await p.locator("#agl [data-band]").count()).toBe(0);
+    await p.context().close();
+  }, 60_000);
+
+  it("a saved By group with no Hub groups: no By group button, By need, the choice kept", async () => {
+    if (skip()) return;
+    const p = await open("/agents", 1280, "group");
+    const sw = "#agl [data-by-switch]";
+    expect(await p.locator(`${sw} [data-by="group"]`).count()).toBe(0);
+    expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
+      "true",
+    );
+    expect(await p.locator("#agl [data-band]").count()).toBeGreaterThan(0);
+    expect(await p.evaluate(() => localStorage.getItem("den-agents-by"))).toBe(
+      "group",
+    );
     await p.context().close();
   }, 60_000);
 
