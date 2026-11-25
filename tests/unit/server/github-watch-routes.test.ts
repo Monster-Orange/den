@@ -42,7 +42,7 @@ function res() {
   return { r, out };
 }
 
-function setup(principal: unknown) {
+function setup(principal: unknown, { noAllRepos = false } = {}) {
   const gh = new FakeGithub(Date.now);
   gh.pr("acme/north", 5, SHA);
   gh.pr("other/elsewhere", 5, SHA);
@@ -80,6 +80,7 @@ function setup(principal: unknown) {
           ? ["acme/westshared"]
           : [],
   };
+  if (noAllRepos) delete (deps as { allRepos?: unknown }).allRepos;
   const call = async (method: string, path: string, body?: unknown) => {
     const { r, out } = res();
     const handled = await handleGithubWatchRoutes(
@@ -244,5 +245,19 @@ describe("issue 1270: a project's agents.watch_repos", () => {
       pr: 3,
     });
     expect(r.status).toBe(200);
+  });
+  it("without Den's repo list wired, watch_repos is ignored (fails closed)", async () => {
+    const { call, gh } = setup(agent, { noAllRepos: true });
+    const r = await call("POST", "/api/agents/self/github-watches", {
+      repo: "shared/pipeline",
+      pr: 7,
+    });
+    expect(r.status).toBe(403);
+    expect(gh.calls).toEqual([]);
+    const own = await call("POST", "/api/agents/self/github-watches", {
+      repo: "acme/north",
+      pr: 5,
+    });
+    expect(own.status).toBe(200);
   });
 });

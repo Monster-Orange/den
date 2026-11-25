@@ -96,8 +96,11 @@ function scopeRepos(
   };
   for (const ws of [p.workspace, ...(p.grants ?? [])])
     for (const r of d.reposOf(ws)) add(r);
-  const den = d.allRepos?.() ?? [];
   const otherDen: string[] = [];
+  // Without Den's own repo list, another project's repo can't be told apart:
+  // the list is ignored (fails closed).
+  if (!d.allRepos) return { allowed: out, otherDen };
+  const den = d.allRepos();
   for (const r of d.watchReposOf?.(p.workspace) ?? []) {
     if (out.some((o) => same(o, r))) continue;
     if (den.some((o) => same(o, r))) otherDen.push(r);
