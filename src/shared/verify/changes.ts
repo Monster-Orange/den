@@ -41,7 +41,6 @@ function latestFile(stateDir: string, project: string): string {
 /** The project's latest results ({} when there are none yet). */
 export function readLatest(stateDir: string, project: string): LatestByEnv {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, latestFile(stateDir, project));
     const v: unknown = r.ok ? r.value : null;
     return v && typeof v === "object" && !Array.isArray(v)

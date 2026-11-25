@@ -93,7 +93,6 @@ function writeJson(file: string, v: unknown): void {
 }
 
 function readJson(stateDir: string, file: string): unknown {
-  // Issue 786: a file that can't be parsed is kept in backup, not reset.
   const r = readStateJson(stateDir, file);
   return r.ok ? r.value : null;
 }

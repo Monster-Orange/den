@@ -241,7 +241,6 @@ export function writeApiOnlyRules(
  */
 export function apiOnlyNames(stateDir: string): string[] {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const read = readStateJson(stateDir, apiOnlyFiles(stateDir).rules);
     if (!read.ok) return [];
     const r = (read.value ?? {}) as { services?: { name?: unknown }[] };

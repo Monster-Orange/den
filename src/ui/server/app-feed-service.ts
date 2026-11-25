@@ -133,7 +133,6 @@ export class FileFeedStore implements FeedStore {
   constructor(
     private readonly dir: string,
     private readonly cap: () => number,
-    /** The state folder `dir` is in, for issue 786's backup. */
     private readonly stateDir: string = getStateDir(),
   ) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -148,7 +147,6 @@ export class FileFeedStore implements FeedStore {
     }
     this.seqs.sort((a, b) => a - b);
     try {
-      // Issue 786: a file that can't be parsed is kept in backup, not reset.
       const r = readStateJson(this.stateDir, path.join(dir, "meta.json"));
       if (!r.ok) throw new Error("unreadable");
       const v = (r.value ?? {}) as { read?: unknown; pointed?: unknown };
@@ -512,7 +510,6 @@ export class AppFeeds {
       },
       load: () => {
         try {
-          // Issue 786: a file that can't be parsed is kept in backup, not reset.
           const r = readStateJson(this.d.stateDir, file);
           if (!r.ok) return null;
           const v = r.value as FeedCursor;

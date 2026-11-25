@@ -90,7 +90,6 @@ export function isActorTokenShape(v: string | undefined): v is string {
 
 function load(stateDir: string): StoreFile {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, actorTokensPath(stateDir));
     if (!r.ok) return { v: 1, tokens: {} };
     const raw = (r.value ?? {}) as Partial<StoreFile>;

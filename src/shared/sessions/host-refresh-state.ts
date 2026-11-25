@@ -92,7 +92,6 @@ export function readHostRefreshState(
 ): HostRefreshState | null {
   let v: Partial<HostRefreshState>;
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, hostRefreshFile(stateDir));
     if (!r.ok) return null;
     v = r.value as Partial<HostRefreshState>;

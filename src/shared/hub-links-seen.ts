@@ -24,7 +24,6 @@ const file = () => path.join(getStateDir(), "hub", "links-seen.json");
 
 export function readLinksSeen(): Record<string, LinkSeen> {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(getStateDir(), file());
     const v = r.ok ? r.value : null;
     return v && typeof v === "object" ? (v as Record<string, LinkSeen>) : {};

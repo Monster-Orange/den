@@ -84,7 +84,6 @@ const iso = (v: unknown): string | undefined =>
 
 export function readHubNamesCheck(stateDir: string): HubNamesCheck {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(
       stateDir,
       path.join(stateDir, HUB_NAMES_CHECK_FILE),

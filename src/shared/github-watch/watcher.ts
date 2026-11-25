@@ -47,7 +47,6 @@ export interface GithubWatchDeps {
   now?: () => number;
   /** Where the watches are kept across a restart. */
   file?: string;
-  /** The state folder `file` is in (default: Den's), for issue 786's backup. */
   stateDir?: string;
   /** Where doctor reads the status line from. */
   statusFile?: string;
@@ -711,7 +710,6 @@ export class GithubWatcher {
   private load(): void {
     if (!this.d.file) return;
     try {
-      // Issue 786: a file that can't be parsed is kept in backup, not reset.
       const r = readStateJson(this.d.stateDir ?? getStateDir(), this.d.file);
       if (!r.ok) return;
       const j = (r.value ?? {}) as {

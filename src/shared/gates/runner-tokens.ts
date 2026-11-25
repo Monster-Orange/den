@@ -103,7 +103,6 @@ export class RunnerTokens {
 
   private read(): Stored[] {
     try {
-      // Issue 786: a file that can't be parsed is kept in backup, not reset.
       const r = readStateJson(this.stateDir, this.file);
       if (!r.ok) return [];
       const v = (r.value ?? {}) as {

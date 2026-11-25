@@ -54,8 +54,6 @@ function writePrivate(file: string, text: string): void {
 export function vapidKeys(stateDir: string): VapidKeys {
   const file = path.join(stateDir, VAPID_FILE);
   try {
-    // Issue 786: a key file that can't be parsed is kept in backup before
-    // new keys are made, never written over.
     const r = readStateJson(stateDir, file);
     const j = (r.ok ? (r.value ?? {}) : {}) as {
       jwk?: { kty: string; crv: string; x: string; y: string; d: string };
@@ -247,7 +245,6 @@ export class PushSubscriptions {
 
   list(): PushSubscription[] {
     try {
-      // Issue 786: a file that can't be parsed is kept in backup, not reset.
       const r = readStateJson(this.stateDir, this.file);
       const v = r.ok ? r.value : null;
       return Array.isArray(v)

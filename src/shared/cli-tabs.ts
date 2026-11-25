@@ -37,7 +37,6 @@ function toRecord(json: CliTabRecordJSON): CliTabRecord {
 function readTabsFile(filePath: string): Map<string, CliTabRecord> {
   const map = new Map<string, CliTabRecord>();
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(getStateDir(), filePath);
     if (!r.ok) return map;
     const parsed = r.value as

@@ -378,7 +378,6 @@ export function fixturePinsFile(stateDir: string): string {
 /** Issue 946: the pins the fixture person added (none when unreadable). */
 export function readFixturePins(stateDir: string): Pin[] {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, fixturePinsFile(stateDir));
     const v: unknown = r.ok ? r.value : null;
     if (!Array.isArray(v)) return [];

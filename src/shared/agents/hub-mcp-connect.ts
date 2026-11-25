@@ -157,7 +157,6 @@ function readRaw(
   agentId: string,
 ): Partial<HubMcpInit> | null {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(
       stateDir,
       path.join(agentFilesDir(stateDir, agentId), FILE),

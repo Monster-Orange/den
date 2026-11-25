@@ -157,7 +157,6 @@ export function createRequestLedger(opts: {
   maxAnswerBytes?: () => number;
   /** Where finished requests are kept across restarts (0600). */
   file?: string;
-  /** The state folder `file` is in (default: Den's), for issue 786's backup. */
   stateDir?: string;
   /** One line per finished write: req=<id>, the action, the outcome. */
   log?: (line: string) => void;
@@ -218,7 +217,6 @@ export function createRequestLedger(opts: {
     if (!opts.file) return;
     let rows: unknown;
     try {
-      // Issue 786: a file that can't be parsed is kept in backup, not reset.
       const r = readStateJson(opts.stateDir ?? getStateDir(), opts.file);
       if (!r.ok) return;
       rows = ((r.value ?? {}) as { rows?: unknown }).rows;

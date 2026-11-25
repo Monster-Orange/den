@@ -155,7 +155,6 @@ export type LastUpdate = UpdateState & {
 
 function readUpdateDoctor(stateDir: string): UpdateDoctor | null {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, updateDoctorFile(stateDir));
     if (!r.ok) return null;
     const v = r.value as Partial<UpdateDoctor>;
@@ -191,7 +190,6 @@ export function lastUpdate(stateDir: string): LastUpdate | null {
 
 export function readUpdateState(stateDir: string): UpdateState | null {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, updateStateFile(stateDir));
     if (!r.ok) return null;
     const v = r.value as UpdateState;

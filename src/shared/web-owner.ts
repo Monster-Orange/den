@@ -53,7 +53,6 @@ export function readWebOwner(
 ): WebOwner | null {
   let raw: unknown;
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, webOwnerPath(stateDir));
     if (!r.ok) return null;
     raw = r.value;

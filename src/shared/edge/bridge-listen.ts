@@ -142,7 +142,6 @@ export function readBridgeState(
   stateDir: string,
 ): (BridgeOutcome & { at?: string }) | null {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, bridgeStateFile(stateDir));
     if (!r.ok) return null;
     const v = (r.value ?? {}) as Record<string, unknown>;

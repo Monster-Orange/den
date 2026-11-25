@@ -39,7 +39,6 @@ export const pinRecordFile = (stateDir: string): string =>
 
 export function readPinRecord(stateDir: string): PinRecord | null {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const read = readStateJson(stateDir, pinRecordFile(stateDir));
     if (!read.ok) return null;
     const r = read.value as PinRecord;

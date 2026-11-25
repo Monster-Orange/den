@@ -112,7 +112,6 @@ function file(stateDir: string): string {
 
 function readFile(stateDir: string): AccountsFile {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, file(stateDir));
     if (!r.ok) return { runtimes: {} };
     const j = (r.value ?? {}) as {

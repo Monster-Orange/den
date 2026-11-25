@@ -53,7 +53,6 @@ export function writeCheckState(stateDir: string, s: CheckState): void {
 
 export function readCheckState(stateDir: string): CheckState | null {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, updateCheckFile(stateDir));
     if (!r.ok) return null;
     const s = (r.value ?? {}) as Partial<CheckState>;

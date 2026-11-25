@@ -78,7 +78,6 @@ function readPointers(
   project: string,
 ): Record<string, string> {
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(stateDir, pointersFile(stateDir, project));
     const v: unknown = r.ok ? r.value : null;
     return v && typeof v === "object" && !Array.isArray(v)
@@ -125,7 +124,6 @@ export function readRunRecord(
 ): RunRecord | null {
   if (!RUN_RE.test(runId)) return null;
   try {
-    // Issue 786: a file that can't be parsed is kept in backup, not reset.
     const r = readStateJson(
       stateDir,
       path.join(runsDir(stateDir, project), runId, "run.json"),

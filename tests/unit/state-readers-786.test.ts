@@ -1,10 +1,3 @@
-/**
- * Issue 786 part 2b: the readers that still reset silently. Each one
- * read a JSON state file and, when it couldn't parse it, started from its
- * default, so the next save wrote over what was left. Now each reads
- * through readStateJson: it still starts from its default, but the file
- * is kept in <state>/backup/ first (doctor row, bell item).
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -70,7 +63,6 @@ const stateDir = () => {
   return d;
 };
 
-/** Write a file Den can't parse where the reader looks. */
 function corrupt(file: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, '{"half": ', { mode: 0o600 });
@@ -160,10 +152,6 @@ describe("issue 786 part 2b: a state file Den can't read is kept, not reset", ()
   });
 });
 
-/**
- * The modules PR 1081 listed as resetting silently, now each kept (the pin
- * record's reader moved to src/shared/pin-record.ts on next/queue).
- */
 const MOVED = [
   "src/shared/actor-token.ts",
   "src/shared/agents/api-only.ts",
@@ -197,10 +185,6 @@ const MOVED = [
   "src/ui/server/web-push.ts",
 ];
 
-/**
- * The reads left as they were, each with why. Every other JSON read of a
- * file in these modules goes through readStateJson.
- */
 const LEFT: Record<string, { count: number; why: string }> = {
   "src/shared/actor-token.ts": {
     count: 1,
