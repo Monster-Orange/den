@@ -1,0 +1,42 @@
+# The merge queue's commits, checked where no pre-push can: a commit can
+# reach next/queue through a hosted merge button, and the pre-push name
+# check skips what is already there. Every commit on the queue that main
+# hasn't got must be signed by a key in .github/release-signers, and its
+# message must not match the names list (the DEN_ORG_NAMES secret). Known
+# commits pass by full SHA in scripts/queue-commits-allow.json. The
+# checker, the signers and the allow-list are main's, never the change's:
+# a change can't allow-list its own commit or add its own key.
+name: queue-commits
+on:
+  push:
+    branches: [next/queue]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: queue-commits-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  queue-commits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.13.0"
+      - name: Queue commits are signed and name no org
+        env:
+          DEN_ORG_NAMES: ${{ secrets.DEN_ORG_NAMES }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          check=scripts/queue-commits.mjs
+          if git cat-file -e origin/main:scripts/queue-commits.mjs 2>/dev/null; then
+            git archive origin/main scripts/queue-commits.mjs scripts/org-names.js src/shared/org-names.js |
+              tar -x -C "$RUNNER_TEMP"
+            check="$RUNNER_TEMP/scripts/queue-commits.mjs"
+          fi
+          node "$check" "origin/main..$RANGE_HEAD" --trusted origin/main
