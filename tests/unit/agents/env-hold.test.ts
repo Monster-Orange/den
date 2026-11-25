@@ -39,6 +39,7 @@ import { readAgentsConfig } from "../../../src/shared/den-config.js";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { envHoldLines } from "../../../src/ui/cli/doctor-env-hold.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import { denGitEnvNames } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 const CANARY = "canary-7f3e1d-not-a-real-secret";
@@ -601,5 +602,22 @@ describe("doctor: names only", () => {
     expect(envHoldLines("Den", off, names).lines.join("\n")).toMatch(
       /agents\.env_guard is false/,
     );
+  });
+});
+
+describe("Den's own git signing names stay (issue 1316's default key too)", () => {
+  it("env-hold.sh keeps every git name Den may set unless signing is off", () => {
+    const names = denGitEnvNames(undefined);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_KEY_0",
+        "GIT_CONFIG_VALUE_0",
+      ]),
+    );
+    expect(denGitEnvNames({ signingKey: "/k" })).toEqual(names);
+    expect(denGitEnvNames({ off: true })).toEqual([]);
+    const script = envHoldScript([...DEFAULT_ENV_HOLD], [], names);
+    for (const n of names) expect(script).toContain(n);
   });
 });

@@ -302,7 +302,7 @@ import {
   resolveAgentSigning,
   signingKeyAddLine,
   signingReadFiles,
-  type AgentGitSettings,
+  type AgentGitBlock,
   type AgentSigning,
 } from "../../shared/agents/git-signing.js";
 import {
@@ -3619,7 +3619,6 @@ async function startSession(
     cfgNow.envHold,
     launch.rec.id,
     launch.rec.workspace,
-    cfgNow.git,
   );
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
@@ -3653,6 +3652,8 @@ async function startSession(
     // the sandbox: bwrap binds only the folders that exist.
     try {
       signing = d.agentSigning(launch.rec.cwd);
+      // Issue 974: the exact git names Den sets for this key stay.
+      hold.own.push(...Object.keys(agentGitEnv(signing)));
       if (signing?.made)
         signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
     } catch (e) {
@@ -3963,7 +3964,7 @@ function launchInput(
     // Issue 974: secret-looking variables held out of each shell command,
     // and the guard on commands that print the whole environment.
     envHold: {
-      ...agentEnvHold(d, cfg.envHold, id, ws, cfg.git),
+      ...agentEnvHold(d, cfg.envHold, id, ws, denGitEnvNames(cfg.git)),
       guard: cfg.envHold?.guard ?? true,
       mask: envMaskArgs(cfg.envHold ?? defaultEnvHold()),
     },
@@ -4007,7 +4008,8 @@ export function agentEnvHold(
   s: EnvHoldSettings | undefined,
   id: string,
   ws: string,
-  git?: AgentGitSettings,
+  /** The git names Den may set for this launch (denGitEnvNames). */
+  gitNames: readonly string[] = [],
 ): { on: boolean; hold: string[]; allow: string[]; own: string[] } {
   const settings = s ?? defaultEnvHold();
   const on = holdOnAtStart(readRecord(d.stateDir(), id), settings);
@@ -4029,9 +4031,19 @@ export function agentEnvHold(
       AGENT_ACTOR_ENV,
       ACTOR_TOKEN_FILE_ENV,
       ...Object.keys(installLocationEnv(d.env)),
-      ...Object.keys(agentGitEnv(git)),
+      ...gitNames,
     ],
   };
+}
+
+/**
+ * Issue 974: the git names Den may set for an agent (agentGitEnv), for its
+ * env-hold.sh, written before the key is resolved: all of them unless
+ * agents.git.signing is off.
+ */
+export function denGitEnvNames(git: AgentGitBlock | undefined): string[] {
+  if (git?.off) return [];
+  return Object.keys(agentGitEnv({ signingKey: "-", allowedSigners: "-" }));
 }
 
 /** workspaces.yml <project>.agents.env_allow, as written. */
