@@ -33,6 +33,7 @@ import * as path from "node:path";
 import { embedDelivery, type Delivery } from "../hub-delivery.js";
 import type { GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
+import { WATCH_REPOS_SETTING } from "./watch-repos.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 export interface GithubWatchDeps {
@@ -210,7 +211,8 @@ export class GithubWatcher {
       return {
         ok: false,
         code: "scope",
-        error: `${a.repo} isn't a repo of your project; you watch your project's repos only (${a.allowedRepos.join(", ") || "none"}).`,
+        // Issue 1270: name the setting, and what adding a repo to it does.
+        error: `${a.repo} isn't a repo of your project or on its ${WATCH_REPOS_SETTING} list; you watch those only (${a.allowedRepos.join(", ") || "none"}). A person can add a repo outside Den to ${WATCH_REPOS_SETTING}: it adds read-only watching of that repo, with Den's own GitHub sign-in.`,
       };
     const kind: Watch["kind"] = isNum(a.pr) ? "pr" : "run";
     const number = (kind === "pr" ? a.pr : a.run) as number;
