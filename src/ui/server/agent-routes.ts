@@ -3197,7 +3197,7 @@ async function restartStatusRoute(
 }
 
 /**
- * Issue 1406: POST /api/agents/restart-idle {project?}: "Restart all idle
+ * POST /api/agents/restart-idle {project?}: "Restart all idle
  * agents" (or one project's). Each running agent is checked and answered
  * for, as restart-stale does: the idle ones restart now, mid-turn ones
  * after their turn, the rest wait on the person (Restart now). Followed

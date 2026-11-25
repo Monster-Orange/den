@@ -196,7 +196,7 @@ export async function restartLive(): Promise<RestartLive> {
 /**
  * restartMany, followed live: each agent's plan goes into the live status,
  * and each outcome after it (one that comes before the plan is in, held
- * until it is). `o.onDone` hears each too (the audit). Issue 1406: the
+ * until it is). `o.onDone` hears each too (the audit). The
  * bell's grouped Allow restarts this way, as restart-stale does.
  */
 export async function restartFollowed(

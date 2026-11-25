@@ -1,5 +1,5 @@
 /**
- * Issue 1406, clause 1: when two or more agents ask to be restarted
+ * When two or more agents ask to be restarted
  * (agent_restart_self), the bell groups those asks into one card,
  * "Restart N agents when idle", listing them, with one Allow. Each row can
  * be taken out before Allow. One ask alone stays its own Allow row.

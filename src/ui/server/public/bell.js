@@ -386,13 +386,13 @@ async function endSlot(el) {
   }
 }
 
-/** Issue 1406: the held write an agent's restart ask is. */
+/** The held write an agent's restart ask is. */
 const RESTART_SELF = "agent_restart_self";
-/** Issue 1406: its bell item while two or more share one card. */
+/** Its bell item while two or more share one card. */
 const RESTART_GROUP_SUBJECT = "record:held-restart-group";
 
 /**
- * Issue 1406: the restart asks that share one card, oldest first (none
+ * The restart asks that share one card, oldest first (none
  * under two: one alone keeps its own Allow row).
  */
 export function restartGroupOf(allows) {
@@ -401,7 +401,7 @@ export function restartGroupOf(allows) {
 }
 
 /**
- * Issue 1406: "Restart N agents when idle": a row per agent, each with
+ * "Restart N agents when idle": a row per agent, each with
  * Take out (or Put back), and one Allow for those left in. While the
  * Allow runs, it shows busy in itself.
  */
@@ -433,7 +433,7 @@ function restartGroupHtml(asks, out, busy) {
 /** Issue 746: the Allow rows' own group, heading Needs you. */
 function allowsHtml(allows, reviews = new Set(), ui = {}) {
   if (!allows.length) return "";
-  // Issue 1406: two or more restart asks are one card, first.
+  // Two or more restart asks are one card, first.
   const group = restartGroupOf(allows);
   const inGroup = new Set(group.map((w) => w.id));
   return (
@@ -451,7 +451,7 @@ function allowsHtml(allows, reviews = new Set(), ui = {}) {
 function withoutAllowed(groups, allows) {
   if (!allows.length) return groups;
   const shown = new Set(allows.map((w) => `record:held-${w.id}`));
-  // Issue 1406: the restart card stands for its own bell item.
+  // The restart card stands for its own bell item.
   if (restartGroupOf(allows).length) shown.add(RESTART_GROUP_SUBJECT);
   return groups
     .map((g) => ({
@@ -774,7 +774,7 @@ async function decideHeld(el, decision) {
 }
 
 /**
- * Issue 1406: the restart card's one Allow: each ask left in is allowed
+ * The restart card's one Allow: each ask left in is allowed
  * through the same decide route as its own row (one after another, so
  * the trail has each). A toast says how many will restart, and any that
  * could not be allowed.
@@ -838,7 +838,7 @@ export function initBell(doc = document) {
     updates: false,
     ask: null,
     busy: null,
-    // Issue 1406: the restart card's rows taken out before its Allow.
+    // The restart card's rows taken out before its Allow.
     restartOut: new Set(),
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
@@ -978,7 +978,7 @@ export function initBell(doc = document) {
       return;
     }
     if (what === "restart-out" || what === "restart-in") {
-      // Issue 1406: taken out of the card's Allow, or put back.
+      // Taken out of the card's Allow, or put back.
       const id = el.dataset.ap;
       if (id && what === "restart-out") ui.restartOut.add(id);
       else if (id) ui.restartOut.delete(id);

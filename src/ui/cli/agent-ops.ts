@@ -2048,7 +2048,7 @@ export async function staleAgents(
 }
 
 /**
- * Issue 1406: the agents with a live session (in project `ws`, or every
+ * The agents with a live session (in project `ws`, or every
  * project), for "Restart all idle agents".
  */
 export async function runningAgents(

@@ -1,5 +1,5 @@
 /**
- * Issue 1406, clause 2: the Agents page's "Restart all idle agents" (and a
+ * The Agents page's "Restart all idle agents" (and a
  * project's "Restart this project's idle agents"), with the count, busy in
  * the button, and after it what happened: how many restart now, and the
  * agents that wait (for their turn, a job, or the person).

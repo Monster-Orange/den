@@ -1,5 +1,5 @@
 /**
- * Issue 1406: agent_restart_self, an agent's ask to be restarted, as a
+ * Agent_restart_self, an agent's ask to be restarted, as a
  * held write rather than a free-text question. Being structured, the bell
  * groups two or more of them into one "Restart N agents when idle" card
  * with one Allow (held-bell.ts).

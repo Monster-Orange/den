@@ -1,5 +1,5 @@
 /**
- * Issue 1406, clause 3: an agent's ask to be restarted is a structured
+ * An agent's ask to be restarted is a structured
  * held write, agent_restart_self, not a free-text question, so the bell
  * can group several into one card.
  *

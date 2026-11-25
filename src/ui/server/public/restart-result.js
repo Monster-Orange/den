@@ -228,7 +228,7 @@ export function followRestarts(o) {
 }
 
 /**
- * Issue 1406: "Restart all idle agents (n)" above the list, when two or
+ * "Restart all idle agents (n)" above the list, when two or
  * more agents are running; else "".
  */
 export function restartIdleBarHtml(n, t) {
@@ -237,7 +237,7 @@ export function restartIdleBarHtml(n, t) {
     : "";
 }
 
-/** Issue 1406: a project's "Restart this project's idle agents", for two or more. */
+/** A project's "Restart this project's idle agents", for two or more. */
 export function restartIdleWsHtml(ws, n, t) {
   return n >= 2
     ? `<button type="button" class="den-btn sm" data-act="restart-idle-ws" data-ws="${esc(ws)}">${esc(t("ag.ri.ws", { n }))}</button>`
@@ -245,7 +245,7 @@ export function restartIdleWsHtml(ws, n, t) {
 }
 
 /**
- * Issue 1406: what Restart all idle agents did: how many restart now, and
+ * What Restart all idle agents did: how many restart now, and
  * the agents that wait (their turn, a job, or the person).
  */
 export function restartIdleSaid(plan, t) {

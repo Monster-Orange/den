@@ -42,13 +42,13 @@ const isHeld = (n: Notification) =>
   n.kind === "decision" && n.subject.startsWith(HELD_SUBJECT_PREFIX);
 
 /**
- * Issue 1406: two or more agents asking to be restarted (agent_restart_self)
+ * Two or more agents asking to be restarted (agent_restart_self)
  * share one bell item, "Restart N agents when idle", and one Allow card.
  */
 export const RESTART_GROUP_SUBJECT = `${HELD_SUBJECT_PREFIX}restart-group`;
 export const RESTART_SELF = "agent_restart_self";
 
-/** Issue 1406: the restart asks that share one card (none under two). */
+/** The restart asks that share one card (none under two). */
 export function restartGroupOf(pending: readonly Approval[]): Approval[] {
   const asks = pending
     .filter(
