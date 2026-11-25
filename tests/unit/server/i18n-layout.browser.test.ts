@@ -220,8 +220,10 @@ describe("translated pages fit", () => {
       if (!browser) return;
       // Issue 448: Terminal reopens a running shell (no toast then), so
       // each case starts its own and ends it: the toast is its "started".
+      // Issue 1306: a fresh one (the shell bar's New terminal), since the
+      // case before's may still be listed as running when this page asks.
       const before = s!.made.length;
-      const p = await open(lang, width, "/agents?terminal=1");
+      const p = await open(lang, width, "/agents?terminal=1&fresh=1");
       await p.waitForSelector(".den-toast");
       await p.waitForSelector(".agto[data-toast-clear]");
       // The toast looks again 0.5 s after it shows (the line may come later).
@@ -237,13 +239,16 @@ describe("translated pages fit", () => {
 
   it("a toast up before the terminal's To line shows moves off it when the line comes", async () => {
     if (!browser) return;
+    const before = s!.made.length;
     const r = await fetch(`${s!.base}/api/workspaces/north/sessions`, {
       method: "POST",
       headers: { ...denAuth(s!.stateDir), "content-type": "application/json" },
       body: "{}",
     });
     const { session } = (await r.json()) as { session: { id: string } };
-    const pty = s!.made.at(-1)!;
+    // Issue 1306: the pty this POST made, never whichever came last.
+    const pty = s!.made[before];
+    if (!pty) throw new Error(`no shell was started for session ${session.id}`);
     // Issue 482: a shell's row is on the Terminals page.
     const p = await open("ja", 1280, "/terminals?ws=north");
     const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
