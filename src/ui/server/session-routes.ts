@@ -129,6 +129,10 @@ import {
   placeInOrder,
 } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
@@ -436,6 +440,9 @@ export interface ListedSession {
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  /**
+   */
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -813,6 +820,9 @@ export function listedSessions(
         const failed = mcpLoadFailures(d.stateDir(), rec);
         return failed.length ? { mcpFailed: failed } : {};
       })(),
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),

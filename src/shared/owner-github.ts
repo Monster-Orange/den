@@ -189,9 +189,9 @@ export interface PublicNameDeps {
   /** Keep the linked owner's display name. */
   setOwnerName?: (login: string, name: string) => void;
   /**
-   * Issue 1555: why no name was kept, in a few plain words (never the
-   * token, never GitHub's whole answer). Not called when the owner already
-   * has a name: that is every usual start.
+   * Why no name was kept, in a few plain words (never the token, never
+   * GitHub's whole answer). Not called when the owner already has a name,
+   * or when no owner is linked yet: those are usual starts.
    */
   onSkip?: (why: string) => void;
   env?: NodeJS.ProcessEnv;
@@ -218,8 +218,7 @@ export async function ownerNameFromGithub(
     if ((env.JEST_WORKER_ID || env.CI || env.DEN_TEST_SENTINEL) && !deps.fake)
       return skip("a test or CI run asks only a fake GitHub");
     const owner = (deps.readOwner ?? (() => readWebOwner()))();
-    if (!owner) return skip("no linked owner");
-    if (owner.name) return null;
+    if (!owner || owner.name) return null;
     const r = await (deps.fetch ?? fetch)(
       `${deps.api}/users/${encodeURIComponent(owner.login)}`,
       {

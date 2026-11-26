@@ -400,6 +400,7 @@ export interface UserConfig {
    * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
    */
   health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
+  git_reads?: { at_once?: unknown };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
@@ -506,7 +507,7 @@ export interface UserConfig {
   appearance?: { theme?: string; mode?: string };
   /**
    * The web UI's language (R19): en (the default, never stored), ja or es.
-   * See src/ui/server/ui-language.ts.
+   * See src/shared/ui-language.ts.
    */
   language?: string;
   /**

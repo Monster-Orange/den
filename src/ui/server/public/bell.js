@@ -854,11 +854,15 @@ export function initBell(doc = document) {
       lost = "";
     } else if (loose()) lost = want;
   };
+  let asked = 0;
+  let drawn = 0;
   const refresh = async () => {
+    const n = ++asked;
     const b = await load();
-    // Issue 1339: a refresh while Mark all read or Clear read runs would
-    // put back what the person just saw go.
-    if (!b || ui.busy) return;
+    // None while Mark all or Clear read runs, and none older than the
+    // answer drawn last: answers can land out of order.
+    if (!b || ui.busy || n < drawn) return;
+    drawn = n;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount(bellCountOf(b) + overrunsOf(b).length);

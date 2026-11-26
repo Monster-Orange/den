@@ -1463,6 +1463,9 @@
     "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
     "set.server.health_poll_hidden.d":
       "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "同時に実行する git の読み取り",
+    "set.server.git_reads.d":
+      "ページがリポジトリを読むとき (テストページのブランチやコミットなど) に Den が同時に実行する git プロセスの数: 1〜64。__DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -3075,6 +3078,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubAgentsReconnect":
+      "エージェントが自分の作業に署名できるよう、Hub に接続し直してください",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
@@ -3532,6 +3537,12 @@
     "ag.signIn": "{label} で実行",
     "ag.signIn.tip":
       "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
+    "ag.hub.bound": "Hub で確認済み",
+    "ag.hub.bound.tip":
+      "自分のトークンで Hub を呼び出すので、Hub はその作業と承認をこのエージェント自身のものとして数えます。",
+    "ag.hub.unbound": "Hub で未確認",
+    "ag.hub.unbound.tip":
+      "今はこのインストールのトークンで Hub を呼び出すため、Hub はその承認をインストールのものと区別できません。次に Hub を呼び出すとき、Den が Hub にこのエージェント専用のトークンを求めます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -3634,6 +3645,9 @@
       "枠を確保済み。負荷 ({load}) が {limit} 未満に下がるまで開始を待っています",
     "gate.leftoversH": "実行の終了後に止めたもの",
     "gate.leftovers": "{label} ({cmd}) の残りのプロセス {n} 個",
+    "gate.removedH": "実行の終了後に削除した使い捨てコンテナ",
+    "gate.removed": "{label} のコンテナ {n} 個 ({images})",
+    "gate.removedBare": "{label} のコンテナ {n} 個",
     "busy.setUndoW": "設定を元に戻しています…",
     "busy.setUndoS": "設定を元に戻しました。",
     "busy.setUndoF": "設定を元に戻せませんでした。",

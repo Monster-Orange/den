@@ -891,7 +891,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
       "src/ui/server/public/shell.js",
-      "src/ui/server/ui-language.ts",
+      "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
       "tests/unit/server/helpers/kit-shell.ts",

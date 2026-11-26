@@ -354,3 +354,35 @@ describe("issue 171 values in en, after 188", () => {
     ).toBe("timed out after 5 s");
   });
 });
+
+describe("issue 1466: Environments, English health reasons in words", () => {
+  it.each([
+    "connect ECONNREFUSED 127.0.0.1:3000",
+    "getaddrinfo ENOTFOUND web.acme.localhost",
+    "spawn ./check.sh ENOENT",
+    "dns",
+    "exit 1",
+    "fallback got non-2xx",
+    "no answer within 5s",
+    "killed (SIGTERM)",
+    "read ECONNRESET",
+    "connect ECONNREFUSED 127.0.0.1:3000 (twice in a row)",
+  ])("%s: words in the cell, as sent in the title", async (error) => {
+    installShell("en");
+    const { healthCellWords } =
+      (await import("../../../src/ui/server/public/value-words.js")) as unknown as {
+        healthCellWords: (r: Vars) => { what: string; title: string };
+      };
+    const w = healthCellWords({
+      ok: false,
+      error,
+      label: "web",
+      url: "http://x",
+    });
+    expect(w.what).not.toBe(error);
+    expect(w.what).not.toContain(error);
+    expect(w.what).not.toMatch(/\bE[A-Z]{4,}\b/);
+    expect(w.what.length).toBeGreaterThan(0);
+    expect(w.title).toContain(error);
+  });
+});

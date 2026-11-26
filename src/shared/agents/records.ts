@@ -17,6 +17,7 @@
  * history is never touched.
  */
 import { agentSeenSubject, seenMarks } from "../seen-mark.js";
+import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
@@ -80,6 +81,9 @@ export interface AgentRecord {
   denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
+  /**
+   */
+  recordId?: string;
   /**
    * AG-17.1: brought in from a conversation started outside Den (when);
    * Den's token, hooks and guards apply from then on.
@@ -338,10 +342,31 @@ function recordFile(stateDir: string, id: string): string {
 
 export function writeRecord(stateDir: string, rec: AgentRecord): void {
   keepConversations(stateDir, rec);
+  const file = recordFile(stateDir, rec.id);
+  const recordId = rec.recordId ?? keptRecordId(file);
   writePrivate(
-    recordFile(stateDir, rec.id),
-    JSON.stringify(rec, null, 2) + "\n",
+    file,
+    JSON.stringify(recordId ? { ...rec, recordId } : rec, null, 2) + "\n",
   );
+}
+
+/**
+ */
+function keptRecordId(file: string): string | undefined {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, "utf-8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT")
+      return randomBytes(12).toString("hex");
+    throw e;
+  }
+  try {
+    const v = (JSON.parse(raw) as { recordId?: unknown })?.recordId;
+    return typeof v === "string" && v ? v : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

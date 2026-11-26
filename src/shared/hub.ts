@@ -202,6 +202,18 @@ export interface HubConfig {
    */
   toolsRestart: boolean;
   /**
+   */
+  agentTokens: boolean;
+  /**
+   */
+  agentTokenRetrySeconds: number;
+  /**
+   */
+  agentTokenRevokeRetrySeconds: number;
+  /**
+   */
+  agentTokenMaxAgeDays: number;
+  /**
    * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
    * the agents page's copy of Hub's groups is kept in memory before Den
    * reads them again. Den stores no groups.
@@ -258,6 +270,10 @@ type RawHub =
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      agent_tokens?: unknown;
+      agent_token_retry_seconds?: unknown;
+      agent_token_revoke_retry_seconds?: unknown;
+      agent_token_max_age_days?: unknown;
       groups_cache_seconds?: unknown;
       groups?: unknown;
     }
@@ -436,6 +452,32 @@ export function readHubConfig(
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
+  const agentTok = h.agent_tokens;
+  if (
+    agentTok !== undefined &&
+    agentTok !== null &&
+    typeof agentTok !== "boolean"
+  )
+    throw new Error("hub.agent_tokens must be true or false");
+  const agentRetry = secs(
+    h.agent_token_retry_seconds,
+    "agent_token_retry_seconds",
+    600,
+  );
+  const revokeRetry = secs(
+    h.agent_token_revoke_retry_seconds,
+    "agent_token_revoke_retry_seconds",
+    600,
+  );
+  const maxAge = h.agent_token_max_age_days;
+  if (
+    maxAge !== undefined &&
+    maxAge !== null &&
+    !(typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0)
+  )
+    throw new Error(
+      "hub.agent_token_max_age_days must be a number, 0 or more (0: never)",
+    );
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -475,6 +517,10 @@ export function readHubConfig(
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    agentTokens: agentTok !== false,
+    agentTokenRetrySeconds: agentRetry,
+    agentTokenRevokeRetrySeconds: revokeRetry,
+    agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
     groupsCacheSeconds: groupsCache,
     groups: groupsMode,
   };
@@ -1020,6 +1066,8 @@ export async function hubCall(
   throw new HubCallError(
     "unreachable",
     `Hub answered ${res.status}${said ? `: ${said}` : ""}`,
+    str(body.error),
+    res.status,
   );
 }
 
@@ -1753,6 +1801,70 @@ export async function hubRevoke(
     return true;
   } catch (e) {
     if (e instanceof HubCallError && e.kind === "rejected") return false;
+    throw e;
+  }
+}
+
+/**
+ */
+export async function hubMintAgentToken(
+  url: string,
+  installToken: string,
+  agent: { id: string; name: string },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{ token: string; tokenId: string }> {
+  const b = await hubCall(
+    `${url}/connect/agent`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(installToken),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ agent_id: agent.id, agent_name: agent.name }),
+    },
+    { timeoutMs: 15_000, ...opts },
+  );
+  const token = str(b.token);
+  const tokenId = str(b.token_id);
+  if (!token || !/^\S{8,}$/.test(token) || !tokenId)
+    throw new HubCallError("refused", "Hub's answer had no agent token");
+  const for_ = (b.agent as { id?: unknown } | null | undefined)?.id;
+  if (for_ !== undefined && for_ !== agent.id)
+    throw new HubCallError(
+      "refused",
+      "Hub's answer was a token for another agent",
+    );
+  return { token, tokenId };
+}
+
+/**
+ */
+export async function hubRevokeAgentToken(
+  url: string,
+  installToken: string,
+  tokenId: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<boolean> {
+  try {
+    await hubCall(
+      `${url}/connect/revoke`,
+      {
+        method: "POST",
+        headers: {
+          ...bearer(installToken),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ token_id: tokenId }),
+      },
+      opts,
+    );
+    return true;
+  } catch (e) {
+    if (e instanceof HubCallError && e.kind === "refused" && e.status === 404)
+      return false;
     throw e;
   }
 }

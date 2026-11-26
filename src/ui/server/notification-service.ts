@@ -25,7 +25,7 @@ import { Attention } from "./attention.js";
 import { noteActivity } from "../../shared/agents/activity.js";
 import { AlertFeed } from "./alert-feed.js";
 import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
-import { uiLanguage } from "./ui-language.js";
+import { uiLanguage } from "../../shared/ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
 import { readWebUrl } from "../../shared/web-url.js";

@@ -40,7 +40,7 @@ import {
   type ProxyKind,
   type RouteTarget,
 } from "./proxy-route.js";
-import { uiLanguage, type UiLanguage } from "../../ui/server/ui-language.js";
+import { uiLanguage, type UiLanguage } from "../ui-language.js";
 
 /** The probe's limits: Settings, with permissive defaults. */
 export const ADDRESS_CHECK_LIMITS = {
