@@ -10,7 +10,12 @@ config and manifest changes a distribution must make to move to it under
 
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+- More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.
 - An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
+
+### Changed
+
+- Gate slots: a waiting release run (`gate run --priority release`) now passes earlier waiting runs of the other kind too. While it waits, a cpu run asked before a browser release run (or a browser run asked before a cpu release run) doesn't start in a slot the release run needs, unless it has waited longer than the new setting `release_pass_other_kind_minutes` (default 30). A run that holds a slot is never stopped, and the slot log's `priority` row lists the runs it passed. At 0, the order is as before. `priority_pass_limit_minutes` keeps its meaning and its default of 0. (issue 1648)
 
 ### Fixed
 

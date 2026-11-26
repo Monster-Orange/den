@@ -62,7 +62,17 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
         machine++;
         return {
           code: 0,
-          out: `started ${name} (id s${next}, pid ${1000 + next})\n  attach: den sessions attach ${name}`,
+          out: args.includes("--json")
+            ? JSON.stringify({
+                session: {
+                  name,
+                  pid: 1000 + next,
+                  ref: { id: `s${next}` },
+                  startedAt: new Date(0).toISOString(),
+                },
+                dropped: [],
+              })
+            : `started ${name} (id s${next}, pid ${1000 + next})\n  attach: den sessions attach ${name}`,
           err: "",
         };
       }
@@ -77,7 +87,7 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
       if (args[0] !== "doctor") return { code: 2, out: "", err: "" };
       const checks =
         broken === "doctor"
-          ? []
+          ? [{ id: "node", status: "ok", detail: "v24" }]
           : [
               {
                 id: "terminal_host_ptys",
