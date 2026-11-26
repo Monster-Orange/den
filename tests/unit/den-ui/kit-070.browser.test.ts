@@ -121,11 +121,9 @@ if (!q.has("bare")) {
       ...(q.has("filter") ? { filter: Number(q.get("filter")) } : {}),
       ...(q.has("nofilter") ? { filter: false } : {}) },
   ];
-  // ?narrow (issue 1080): an optional label crumb, then the last, a menu.
   if (q.has("narrow"))
     crumbs.splice(0, crumbs.length,
       { key: "org", label: "Company", value: "Fixture company name", optional: true,
-        // &menuopt: the optional crumb is a menu too (review: it stays).
         ...(q.has("menuopt") ? { menu: '<a href="#other" role="menuitem">Other company</a>' } : {}) },
       { key: "ws", label: "Project", value: q.get("narrow") === "long" ? "Quarterly planning for the north garden" : "All projects", menu: projects });
   if (!q.has("noenv") && !q.has("narrow")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
@@ -917,17 +915,10 @@ for (const engine of ["chromium", "webkit"]) {
       await p.context().close();
     });
 
-    // Issue 1080: on a narrow bar no crumb draws over the next, and the
-    // last never runs under the search. Each shown part's span is its box
-    // joined with its shown descendants' boxes, each clipped by an
-    // ancestor (up to the part) whose overflow-x isn't visible.
     it.each([
       [960, "short", ""],
       [1100, "short", ""],
-      // Review: a long last value (40 characters) at 960px.
       [960, "long", ""],
-      // Review: an optional crumb that is a menu stays, at its floor,
-      // beside a long last value; it still opens.
       [960, "long", "&menuopt"],
     ])(
       "issue 1080 at %ipx, a %s last value%s: the crumbs never draw over each other or under the search",
@@ -938,7 +929,6 @@ for (const engine of ["chromium", "webkit"]) {
         const spans = await p.evaluate(() => {
           const shown = (el: Element) => {
             const r = el.getBoundingClientRect();
-            // Hidden from sight only (1px, a screen reader's): not shown.
             return (
               r.width > 1 &&
               r.height > 1 &&
@@ -967,7 +957,6 @@ for (const engine of ["chromium", "webkit"]) {
             }
             return [l, r];
           };
-          // The scope group (the crumbs' parent), then the search.
           const scope = document.querySelector(
             '[data-nav-role="crumb"]',
           )!.parentElement!;
@@ -982,11 +971,9 @@ for (const engine of ["chromium", "webkit"]) {
         for (let i = 0; i + 1 < spans.length; i++) {
           const [a, , aRight] = spans[i] as [string, number, number];
           const [bName, bLeft] = spans[i + 1] as [string, number, number];
-          // Each part ends at or before the next one starts.
           expect([a, bName, aRight <= bLeft + 0.5]).toEqual([a, bName, true]);
         }
         if (more) {
-          // The optional menu crumb is shown and opens its menu.
           const org = p.locator('[data-scope="org"]');
           expect(await org.isVisible()).toBe(true);
           await org.click();

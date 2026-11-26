@@ -703,15 +703,12 @@ export function scopeCrumbHtml(c, lang) {
  *   scopeHtml({ crumbs, label?, lang, after? })
  * A crumb left out (null, or not in the list) draws nothing, and no
  * separator. Each separator after a crumb is "den-sep den-<key>-sep",
- * hidden with it. An optional crumb's "label: value" is the group's title
- * (issue 1080: it goes on a narrow bar). `after`: the host's HTML at the group's end (a hidden
+ * hidden with it. `after`: the host's HTML at the group's end (a hidden
  * <select> its pages read, say). No crumbs: nothing at all.
  */
 export function scopeHtml({ crumbs, label, lang, after } = {}) {
   const list = (crumbs || []).filter(Boolean);
   if (!list.length) return "";
-  // Issue 1080: an optional crumb goes on a narrow bar; its words stay in
-  // the group's title.
   const kept = list
     .filter((c) => c.optional && !c.hidden)
     .map((c) => c.label + ": " + (c.value ?? ""))
