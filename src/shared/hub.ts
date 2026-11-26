@@ -201,17 +201,9 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
-  /**
-   */
   agentTokens: boolean;
-  /**
-   */
   agentTokenRetrySeconds: number;
-  /**
-   */
   agentTokenRevokeRetrySeconds: number;
-  /**
-   */
   agentTokenMaxAgeDays: number;
   /**
    * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
@@ -285,8 +277,6 @@ function rawHub(den: unknown, user: unknown): RawHub {
   return { ...d, ...u };
 }
 
-// Issue 727: in its own module, so `create` can check it before any
-// distribution exists.
 export { hubUrlProblem };
 
 /**
@@ -1805,8 +1795,6 @@ export async function hubRevoke(
   }
 }
 
-/**
- */
 export async function hubMintAgentToken(
   url: string,
   installToken: string,
@@ -1839,8 +1827,6 @@ export async function hubMintAgentToken(
   return { token, tokenId };
 }
 
-/**
- */
 export async function hubRevokeAgentToken(
   url: string,
   installToken: string,
