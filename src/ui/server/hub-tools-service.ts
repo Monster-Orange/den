@@ -15,7 +15,7 @@
  * (hubToolsRestarting).
  */
 import path from "node:path";
-import { HubToolsWatch, fetchHubTools } from "../../shared/hub-tools.js";
+import { HubToolsWatch, fetchHubTools } from "../../shared/hub/hub-tools.js";
 import { listRecords, readRecord } from "../../shared/agents/records.js";
 import { getRuntime } from "../../shared/agents/runtime.js";
 import { workspaceHubToolsRestart } from "../../shared/environment-manager/workspaces.js";

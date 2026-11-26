@@ -13,7 +13,7 @@ import {
   type HubProjectRouteDeps,
 } from "../../../src/ui/server/hub-project-routes.js";
 import { AUDIT_HEADERS } from "../../../src/shared/agent-actor.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 
 const BACK = {
   id: "proj_backoffice",

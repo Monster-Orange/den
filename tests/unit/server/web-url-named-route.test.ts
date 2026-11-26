@@ -34,7 +34,7 @@ import {
   webRouteFindings,
   webRouteHosts,
 } from "../../../src/shared/edge/render.js";
-import { migrateWebUrl } from "../../../src/shared/web-url.js";
+import { migrateWebUrl } from "../../../src/shared/web/web-url.js";
 import {
   setConfigAuditSink,
   type ConfigAuditRow,

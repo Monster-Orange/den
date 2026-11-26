@@ -15,8 +15,8 @@ let tmp: string;
 let state: string;
 let wsPath: string;
 let ws: typeof import("../../../src/shared/environment-manager/workspaces.js");
-let hub: typeof import("../../../src/shared/hub-project-link.js");
-let seen: typeof import("../../../src/shared/hub-links-seen.js");
+let hub: typeof import("../../../src/shared/hub/hub-project-link.js");
+let seen: typeof import("../../../src/shared/hub/hub-links-seen.js");
 let audit: typeof import("../../../src/shared/config-audit.js");
 
 const A = { id: "proj_abc", slug: "abc", name: "Abc" };
@@ -53,8 +53,8 @@ beforeAll(async () => {
   process.env.DEN_HOME = state;
   wsPath = path.join(tmp, "config/local/workspaces.yml");
   ws = await import("../../../src/shared/environment-manager/workspaces.js");
-  hub = await import("../../../src/shared/hub-project-link.js");
-  seen = await import("../../../src/shared/hub-links-seen.js");
+  hub = await import("../../../src/shared/hub/hub-project-link.js");
+  seen = await import("../../../src/shared/hub/hub-links-seen.js");
   audit = await import("../../../src/shared/config-audit.js");
 });
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));

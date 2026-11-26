@@ -12,8 +12,8 @@ import {
   probeIdentity,
 } from "../../../src/shared/den-identity.js";
 import { pingHttp } from "../../../src/shared/environment-manager/health.js";
-import { denWebBase } from "../../../src/shared/web-dial.js";
-import { localhostOrigin } from "../../../src/shared/web-session.js";
+import { denWebBase } from "../../../src/shared/web/web-dial.js";
+import { localhostOrigin } from "../../../src/shared/web/web-session.js";
 
 const KEY = Buffer.alloc(32, 7);
 const servers: http.Server[] = [];

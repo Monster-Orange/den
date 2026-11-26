@@ -21,7 +21,7 @@ import * as os from "os";
 import * as path from "path";
 import { mintActorToken } from "../../../src/shared/actor-token.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 import {
   approvalView,
   createApprovalQueue,

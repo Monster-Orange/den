@@ -55,7 +55,7 @@ import {
   ServerKeys,
   type ServerKeyView,
 } from "./embed-server-keys.js";
-import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
+import { embedDelivery, type Delivery } from "../../shared/hub/hub-delivery.js";
 import { randomBytes } from "crypto";
 import {
   checkOrigin,
