@@ -11,13 +11,16 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { hubPlanCreates } from "../../../src/shared/hub.js";
-import { bindHub, previousLinkOf } from "../../../src/shared/hub-binding.js";
+import {
+  bindHub,
+  previousLinkOf,
+} from "../../../src/shared/hub/hub-binding.js";
 import {
   settleHubCreate,
   type HubCreate,
   type HubCreateDeps,
-} from "../../../src/shared/hub-project-create.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+} from "../../../src/shared/hub/hub-project-create.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import type { WorkspacesFile } from "../../../src/shared/types/index.js";
 
 const HUB = "https://hub.example.test";

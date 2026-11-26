@@ -28,7 +28,7 @@ import { actorTokenOf } from "../../shared/actor-token.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 import {
   foreignServerMessage,
   identifyServer,
@@ -44,7 +44,7 @@ import {
   oneLine,
   parseHubRef,
   type HubVia,
-} from "../../shared/hub-files.js";
+} from "../../shared/hub/hub-files.js";
 
 export const HUB_HELP = {
   usage: "hub <put|pull|push|link|groups> …",
@@ -101,7 +101,7 @@ export interface HubCommandDeps {
   identify?: (base: string) => Promise<ServerIdentity>;
   /** Issue 750: the groups read's deps (default: this install's). */
   groupsDeps?: () => Promise<
-    import("../../shared/hub-groups-view.js").HubGroupsDeps
+    import("../../shared/hub/hub-groups-view.js").HubGroupsDeps
   >;
 }
 
@@ -169,7 +169,7 @@ export async function cmdHub(
   if (args[0] === "groups") {
     const rest = args.slice(1);
     if (rest.some((a) => a !== "--fresh")) return usage();
-    const r = await import("../../shared/hub-groups-view.js");
+    const r = await import("../../shared/hub/hub-groups-view.js");
     const d = await (deps.groupsDeps ?? r.defaultHubGroupsDeps)();
     out(JSON.stringify(await r.groupsView(d, { fresh: rest.length > 0 })));
     return 0;
