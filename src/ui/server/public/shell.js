@@ -1748,6 +1748,9 @@
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
     "busy.modeW": "Setting {name}'s mode…",
+    "busy.packsW": "Setting {name}'s skill packs…",
+    "busy.packsS": "{name}'s skill packs are set.",
+    "busy.packsF": "Couldn't set {name}'s skill packs. Nothing changed.",
     "busy.modeS": "{name}'s mode is set.",
     "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
@@ -3610,6 +3613,13 @@
     "ag.mode.src.default": "Den's built-in default",
     "ag.mode.item": "Mode: {m}",
     "ag.mode.menu": "{id}'s mode",
+    "ag.packs.item": "Skill packs: {v}",
+    "ag.packs.menu": "{id}'s skill packs",
+    "ag.packs.default": "Install's default",
+    "ag.packs.off": "Off",
+    "ag.packs.on": "On",
+    "ag.packs.set":
+      "{id}'s skill packs are set. It restarts after its turn, on the same conversation.",
     "ag.mode.pick": "Change {id}'s mode",
     "ag.mode.follow": "Follow project",
     "ag.mode.setS":

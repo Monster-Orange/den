@@ -21,6 +21,7 @@ import { personSetCaps } from "./setting-change.js";
 import {
   isSkillPackKey,
   patchSkillPackKey,
+  skillPackKeyNames,
   skillPacksSummary,
   skillPackValue,
 } from "./config-skill-packs.js";
@@ -245,6 +246,7 @@ export function configKeyNames(): string[] {
     ...Object.keys(DOTTED),
     ...Object.keys(DOTTED_SWITCH),
     ...Object.keys(HUB_GROUPS),
+    ...skillPackKeyNames(),
   ];
 }
 
@@ -291,6 +293,13 @@ export function patchConfigKey(
     return { ok: false, error: testInstallByHandRefusal(product().configFile) };
   if (HUB_GROUPS[name])
     return patchHubGroups(user, { [HUB_GROUPS[name]]: value });
+  if (isSkillPackKey(name))
+    try {
+      patchSkillPackKey(user, name, value, readDenConfigOrEmpty());
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   if (DOTTED_SWITCH[name])
     return patchCliRows(user, { [DOTTED_SWITCH[name]]: value }, { cli: true });
   if (DOTTED[name]) {

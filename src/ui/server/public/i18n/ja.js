@@ -733,6 +733,10 @@
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
+    "busy.packsW": "{name} のスキルパックを設定しています…",
+    "busy.packsS": "{name} のスキルパックを設定しました。",
+    "busy.packsF":
+      "{name} のスキルパックを設定できませんでした。何も変わっていません。",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
       "{name} のモードを設定できませんでした。何も変わっていません。",
@@ -2616,6 +2620,13 @@
     "ag.mode.src.default": "Den の組み込みの既定",
     "ag.mode.item": "モード: {m}",
     "ag.mode.menu": "{id} のモード",
+    "ag.packs.item": "スキルパック: {v}",
+    "ag.packs.menu": "{id} のスキルパック",
+    "ag.packs.default": "インストールの既定",
+    "ag.packs.off": "オフ",
+    "ag.packs.on": "オン",
+    "ag.packs.set":
+      "{id} のスキルパックを設定しました。ターンの後、同じ会話のまま再起動します。",
     "ag.mode.pick": "{id} のモードを変更",
     "ag.mode.follow": "プロジェクトに従う",
     "ag.mode.setS":

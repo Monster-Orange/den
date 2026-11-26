@@ -760,6 +760,10 @@
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
     "busy.modeW": "Cambiando el modo de {name}…",
+    "busy.packsW": "Configurando los paquetes de habilidades de {name}…",
+    "busy.packsS": "Los paquetes de habilidades de {name} están configurados.",
+    "busy.packsF":
+      "No se pudieron configurar los paquetes de habilidades de {name}. Nada cambió.",
     "busy.modeS": "Modo de {name} cambiado.",
     "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
     "keep.label": "Mantener los agentes al cerrar sesión",
@@ -2693,6 +2697,13 @@
     "ag.mode.src.default": "el valor integrado de Den",
     "ag.mode.item": "Modo: {m}",
     "ag.mode.menu": "Modo de {id}",
+    "ag.packs.item": "Paquetes de habilidades: {v}",
+    "ag.packs.menu": "Paquetes de habilidades de {id}",
+    "ag.packs.default": "Lo predeterminado de la instalación",
+    "ag.packs.off": "Desactivados",
+    "ag.packs.on": "Activados",
+    "ag.packs.set":
+      "Los paquetes de habilidades de {id} están configurados. Se reinicia tras su turno, en la misma conversación.",
     "ag.mode.pick": "Cambiar el modo de {id}",
     "ag.mode.follow": "Seguir el proyecto",
     "ag.mode.setS":

@@ -1381,7 +1381,7 @@ function drawSkillPack(host, ctx, api, name) {
       (s) =>
         `<li><label><input type="checkbox" data-skill="${escHtml(s.name)}"${s.on ? " checked" : ""}> <code>${escHtml(s.name)}</code></label>` +
         (s.description
-          ? ` <span class="set-note">${escHtml(s.description)}</span>`
+          ? ` <span class="set-note" translate="no">${escHtml(s.description)}</span>`
           : "") +
         `</li>`,
     )
@@ -1389,7 +1389,7 @@ function drawSkillPack(host, ctx, api, name) {
   host.innerHTML =
     `<div style="flex-basis:100%">` +
     `<label><input type="checkbox" id="${id}-on"${p.on ? " checked" : ""}> ${escHtml(L("set.ui.skillPackOn", "On"))}</label>` +
-    `<div class="set-note">${escHtml(p.license)}, ${escHtml(p.copyright)} · <a href="${escHtml(licence)}" target="_blank" rel="noopener">${escHtml(L("set.ui.skillPackLicence", "Licence"))}</a> · ` +
+    `<div class="set-note"><span translate="no">${escHtml(p.license)}, ${escHtml(p.copyright)}</span> · <a href="${escHtml(licence)}" target="_blank" rel="noopener">${escHtml(L("set.ui.skillPackLicence", "Licence"))}</a> · ` +
     `${escHtml(L("set.ui.skillPackPin", "pinned at"))} <a href="${escHtml(tree)}" target="_blank" rel="noopener"><code>${escHtml(p.commit.slice(0, 7))}</code></a> · ` +
     `${escHtml(L("set.ui.skillPackOnCount", "{n} skills on", { n: p.skillsOn }))}</div>` +
     `<div class="set-note">${escHtml(L("set.ui.skillPackCost", "Adds about {n} tokens to each agent's start", { n: p.tokens }))}</div>` +

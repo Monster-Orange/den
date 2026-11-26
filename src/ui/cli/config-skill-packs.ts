@@ -29,6 +29,19 @@ const AGENT_KEY = /^agents\.([A-Za-z0-9][A-Za-z0-9_-]{0,63})\.skill_packs$/;
 export const isSkillPackKey = (name: string): boolean =>
   PACK_KEY.test(name) || AGENT_KEY.test(name);
 
+export function skillPackKeyNames(
+  packs: Packs = readPacks(SKILL_PACKS_DIR),
+): string[] {
+  return [
+    "skill_packs.on",
+    ...Object.keys(packs)
+      .sort()
+      .flatMap((n) =>
+        ["on", "skills", "exclude"].map((k) => `skill_packs.${n}.${k}`),
+      ),
+  ];
+}
+
 const pathOf = (name: string): string[] => name.split(".");
 
 const isMapping = (v: unknown): v is Record<string, unknown> =>

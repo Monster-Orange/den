@@ -312,6 +312,57 @@ describe("issue 252: one agent's mode, set in the page", () => {
     await p.context().close();
   }, 120_000);
 
+  it("issue 1631: ⋯ › Skill packs: Off saves the agent's own key and restarts it after its turn with no pack", async () => {
+    if (skip()) return;
+    const p = await open("/agents", `${ROW} [data-mode]`);
+    await p.click(ROW);
+    const more = `.pane [data-act="more"]`;
+    await p.waitForSelector(more);
+    await p.click(more);
+    await p
+      .locator('.den-pop[role="menu"] .den-mi', {
+        hasText: "Skill packs: Install's default",
+      })
+      .click();
+    await p.waitForSelector('.den-pop[role="menu"] [role="menuitemradio"]');
+    expect(await menuItems(p)).toEqual([
+      ["Install's default", "true"],
+      ["Off", "false"],
+      ["On", "false"],
+    ]);
+    const before = s!.made.length;
+    await p
+      .locator('.den-pop[role="menu"] [role="menuitemradio"]', {
+        hasText: /^Off$/,
+      })
+      .click();
+    await p
+      .getByText(
+        "lead's skill packs are set. It restarts after its turn, on the same conversation.",
+      )
+      .first()
+      .waitFor({ timeout: 15_000 });
+    const until = Date.now() + 30_000;
+    let hit: string[] | undefined;
+    while (!hit && Date.now() < until) {
+      hit = s!.made
+        .slice(before)
+        .find(
+          (m) => m.args.includes("--resume") && m.args.includes(TOKEN),
+        )?.args;
+      if (!hit) await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(hit).toBeDefined();
+    expect(hit).not.toContain("--plugin-dir");
+    const rows = (await (
+      await fetch(`${s!.base}/api/sessions`, { headers: denAuth(s!.stateDir) })
+    ).json()) as { sessions: { agent?: string; skillPacks?: unknown }[] };
+    expect(rows.sessions.find((x) => x.agent === "lead")?.skillPacks).toBe(
+      "off",
+    );
+    await p.context().close();
+  }, 120_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);
