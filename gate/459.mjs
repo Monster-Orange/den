@@ -134,8 +134,9 @@ async function sessionRow(ctx) {
 async function bellFor(ctx) {
   try {
     const n = await ctx.api("/api/notifications");
-    return [...(n?.groups ?? []), ...(n?.updates ?? [])]
-      .flatMap((g) => g?.items ?? [g])
+    return [n?.groups, n?.recent, n?.updates, n?.older]
+      .flatMap((x) => (Array.isArray(x) ? x : []))
+      .flatMap((g) => (Array.isArray(g?.items) ? g.items : [g]))
       .filter((i) => JSON.stringify(i ?? {}).includes(ID))
       .map((i) => JSON.stringify(i).slice(0, 300));
   } catch (e) {
@@ -196,12 +197,12 @@ function pointers(ctx, since) {
 }
 
 /** Waits for a pointer since `since`, the stub held at its prompt (idle). */
-async function pointerSince(ctx, since, ms) {
+async function pointerSince(ctx, since, ms, past = 0) {
   let seen = [];
+  await ctx.agent(ID).idlePrompt();
   const took = await ctx.until(async () => {
-    await ctx.agent(ID).idlePrompt();
     seen = pointers(ctx, since) ?? [];
-    return seen.length > 0;
+    return seen.length > past;
   }, ms);
   return { took, seen };
 }
@@ -343,12 +344,9 @@ export async function run(ctx, s) {
     const unread1 = (await feedOf(ctx, r.ws))?.unread ?? null;
     const firstN = r.first.seen.length;
     feed.send(e1, JSON.stringify({ text: BAIT }));
-    await ctx.sleep(5000);
-    await ctx.agent(ID).idlePrompt();
-    await ctx.sleep(3000);
-    const since1 = pointers(ctx, t1);
+    const since1 = (await pointerSince(ctx, t1, 8000, firstN)).seen;
     r.again = {
-      pointers: since1 ? since1.slice(firstN) : null,
+      pointers: since1.slice(firstN),
       unreadBefore: unread1,
       unreadAfter: (await feedOf(ctx, r.ws))?.unread ?? null,
     };
