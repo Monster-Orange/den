@@ -1024,7 +1024,10 @@ async function hubAddressRows(
 ): Promise<{ lines: string[]; checks: OnboardCheck[] }> {
   if (!st.configured || !st.connected) return { lines: [], checks: [] };
   const [{ readDenUrlTell, denUrlTellRow }, { readWebUrl }] = await Promise.all(
-    [import("../../shared/hub-den-url.js"), import("../../shared/web-url.js")],
+    [
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
+    ],
   );
   const row = denUrlTellRow(
     readDenUrlTell(getStateDir()),

@@ -460,7 +460,7 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       const w = readWebUrl();
       if (!w?.url) return;
       const [{ tellHubDenUrl }, { hubPutDenUrl }] = await Promise.all([
-        import("../../shared/hub-den-url.js"),
+        import("../../shared/hub/hub-den-url.js"),
         import("../../shared/hub.js"),
       ]);
       await tellHubDenUrl(w.url, {

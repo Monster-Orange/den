@@ -58,8 +58,8 @@ export function projectSync(): ProjectSync {
 export async function retryDenUrlTellNow(): Promise<void> {
   try {
     const [{ retryDenUrlTell }, { readWebUrl }, hub] = await Promise.all([
-      import("../../shared/hub-den-url.js"),
-      import("../../shared/web-url.js"),
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
       import("../../shared/hub.js"),
     ]);
     await retryDenUrlTell({
