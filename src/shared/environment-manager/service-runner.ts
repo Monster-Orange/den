@@ -6,6 +6,7 @@
  * streaming output.
  */
 
+import { rememberSecretValues } from "../secret-values.js";
 import { repoHasRuntime } from "../repo-kind.js";
 import { effectiveLocalCommands } from "../stacks/manifest-commands.js";
 import { manifestStackName } from "../stacks/config.js";
@@ -1970,6 +1971,7 @@ export async function prepareServiceSecretEnv(
   }
   if (!secretEnvKeys(spec).length) return { ok: true, secretEnv: {} };
   const r = await resolveSecretEnv(spec, provider(), resolved.address);
+  if (r.ok) rememberSecretValues(Object.values(r.env));
   return r.ok
     ? { ok: true, secretEnv: r.env }
     : { ok: false, message: r.message };

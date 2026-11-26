@@ -4,11 +4,12 @@
  * `toJSON(needs)`) and exits 0 only when every job a pull request runs
  * passed, or was skipped because `pr` planned nothing for it: den-ui-nav
  * when no nav changed (`nav` isn't "true"), pr-shards when there are no
- * shards (`shards` is "[]"). A failure, a cancel, any other skip, or a job
+ * shards (`shards` is "[]"). pr-node22 (a pull request's version-sensitive
+ * tests on Node 22) always runs, and passes with nothing to run. A failure, a cancel, any other skip, or a job
  * missing from NEEDS fails it. The merge queue requires this one check, so
  * the ruleset never names a shard.
  */
-const REQUIRED = ["fast", "pr", "den-ui-nav", "pr-shards"];
+const REQUIRED = ["fast", "pr", "den-ui-nav", "pr-shards", "pr-node22"];
 
 let needs;
 try {

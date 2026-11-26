@@ -28,7 +28,7 @@ import {
   cliAuthHeaders,
   ensureWebSecret,
   personToken,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 

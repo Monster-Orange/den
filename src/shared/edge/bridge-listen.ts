@@ -21,7 +21,7 @@
  */
 import { execFile } from "child_process";
 import * as path from "path";
-import { isDockerBridgeAddress } from "../../ui/server/request-guard.js";
+import { isDockerBridgeAddress } from "./docker-bridge.js";
 import { writeFileAtomic } from "../atomic-write.js";
 import { readStateJson } from "../state-backup.js";
 

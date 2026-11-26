@@ -21,7 +21,7 @@ import {
   parseDelivery,
   isApproval,
   type Delivery,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 
 let dir = "";
 const clock = Date.parse("2026-01-02T03:04:05.000Z");

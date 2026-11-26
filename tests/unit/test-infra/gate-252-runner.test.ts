@@ -53,6 +53,16 @@ describe("gate/252.mjs as the bed runs it", () => {
     expect(r.removed).toBe(true);
   });
 
+  it("the bed refuses the mode write (403 fixture_scope): each mode clause fails and says so", () => {
+    const r = runGate("refused");
+    expect(r.error).toBeUndefined();
+    expect([0, 1, 3].map((i) => oks(r)[i])).toEqual([false, false, false]);
+    for (const row of [0, 1, 3])
+      expect(r.rows?.[row].detail).toContain(
+        "the bed refused the mode write (403 fixture_scope)",
+      );
+  });
+
   it("no restart at idle: the live clause fails", () => {
     const r = runGate("noRestart");
     expect(r.rows?.[3].ok).toBe(false);
@@ -104,6 +114,13 @@ describe("gate/252.mjs as the bed runs it", () => {
 
   it('the CLI still says "from its next start": the CLI clause fails', () => {
     expect(runGate("oldCli").rows?.[2].ok).toBe(false);
+  });
+
+  it('no "ag.openName" in the page\'s words: an error naming the key, not a TypeError', () => {
+    const r = runGate("noOpenWords");
+    expect(r.error).toContain('the page\'s "ag.openName" has no one {id}');
+    expect(r.error).not.toContain("TypeError");
+    expect(r.removed).toBe(true);
   });
 
   it("a stub runtime without modes: not run, saying why; the CLI clause still runs", () => {

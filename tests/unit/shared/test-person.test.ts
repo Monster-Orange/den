@@ -25,7 +25,7 @@ import {
   cliAuthHeaders,
   ensureWebSecret,
   personToken,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { recordAction, setAuditFile } from "../../../src/ui/server/audit.js";
 import { auditConfig } from "../../../src/shared/config-audit.js";
 import {

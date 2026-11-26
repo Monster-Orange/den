@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
+import { bestEffort } from "./hub-agent-grant.js";
 
 export const BACKUP_DIR = "backup";
 export const KEPT_FILE = "kept.json";
@@ -85,16 +86,8 @@ export function keepUnreadable(
     at: now.toISOString(),
     why: safeWhy(why),
   };
-  try {
-    writeNotes(root, [...readKept(root), k].slice(-KEEP_NOTES));
-  } catch {
-  }
-  for (const fn of listeners) {
-    try {
-      fn(k);
-    } catch {
-    }
-  }
+  bestEffort(() => writeNotes(root, [...readKept(root), k].slice(-KEEP_NOTES)));
+  for (const fn of listeners) bestEffort(() => fn(k));
   return k;
 }
 
@@ -118,10 +111,9 @@ function prune(dir: string, base: string): void {
     return ta < tb ? -1 : ta > tb ? 1 : na - nb;
   });
   for (const n of byTime.slice(0, Math.max(0, byTime.length - KEEP_PER_FILE)))
-    try {
-      fs.rmSync(path.join(dir, n), { force: true, recursive: true });
-    } catch {
-    }
+    bestEffort(() =>
+      fs.rmSync(path.join(dir, n), { force: true, recursive: true }),
+    );
 }
 
 export function readKept(stateDir: string): KeptFile[] {
