@@ -15,8 +15,13 @@
  * and reads the slot log's new rows.
  */
 import type { NotificationStore } from "../../shared/notifications.js";
-import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
-import type { GateStore, GateEventRow } from "../../shared/gates/store.js";
+import { ThrowawaySweeper, type Docker } from "../../shared/gates/ephemeral.js";
+import { embedDelivery, type Delivery } from "../../shared/hub/hub-delivery.js";
+import {
+  gateLocked,
+  type GateStore,
+  type GateEventRow,
+} from "../../shared/gates/store.js";
 import { gateOverrunWaiting } from "./gate-overrun-bell.js";
 
 export interface GateNoticeDeps {
@@ -31,6 +36,11 @@ export interface GateNoticeDeps {
   log?: (line: string) => void;
   /** The clock (tests); default Date.now. */
   now?: () => number;
+  /**
+   * Issue 1263: the docker CLI, for the throwaway-container sweeper (absent:
+   * no sweep). The tick starts it and never waits on it.
+   */
+  docker?: Docker;
 }
 
 /** How often the server looks, ms. */
@@ -38,6 +48,15 @@ export const GATE_NOTICE_MS = 10_000;
 
 const agentOf = (actor: string | undefined) =>
   actor?.startsWith("agent:") ? actor.slice("agent:".length) : null;
+
+/** Issue 1263: the log events that end a slot. */
+const ENDS = new Set<string>([
+  "released",
+  "taken-back-gone",
+  "taken-back-lapsed",
+  "taken-back-revoked",
+  "ended-early",
+]);
 
 const mins = (n: number) => `${Math.max(1, Math.round(n))} min`;
 
@@ -52,7 +71,14 @@ export class GateNotices {
    */
   private toldOverrun = new Set<string>();
 
-  constructor(private readonly d: GateNoticeDeps) {}
+  /** Issue 1263: removes throwaway containers whose run has ended. */
+  private readonly sweeper?: ThrowawaySweeper;
+  /** The sweeper's last look, for tests. */
+  sweeping: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly d: GateNoticeDeps) {
+    if (d.docker) this.sweeper = new ThrowawaySweeper(d.store, d.docker, d.now);
+  }
 
   /** Start reading at the log's end: rows from before are not told again. */
   start(): void {
@@ -61,9 +87,17 @@ export class GateNotices {
 
   async tick(): Promise<void> {
     const store = this.d.store();
-    store.list(); // settles: passes on the unclaimed, takes back the lapsed
+    // Issue 1339: a timer's wait, never the server's thread.
+    await gateLocked(() => store.list()); // settles: passes on the unclaimed, takes back the lapsed
     const { rows, next } = store.eventsFrom(this.from);
     this.from = next;
+    // Issue 1263: a slot ended: its run's throwaway containers may be left.
+    // Never awaited here, so a slow docker never holds up the notices.
+    if (this.sweeper) {
+      const ended = rows.some((r) => ENDS.has(r.event));
+      if (this.sweeper.due(ended))
+        this.sweeping = this.sweeper.tick(ended).catch(() => []);
+    }
     const out = this.pending.splice(0);
     for (const r of rows) {
       if (!r.install || r.install !== this.d.install) continue;
@@ -75,7 +109,7 @@ export class GateNotices {
         this.lapsedBell(r, agent, project);
         continue;
       }
-      const text = this.textOf(store, r);
+      const text = await gateLocked(() => this.textOf(store, r));
       if (text)
         out.push(
           embedDelivery({
@@ -108,7 +142,8 @@ export class GateNotices {
   private overrunLines(store: GateStore): Delivery[] {
     // The store's own clock unless told (its tests set it).
     const now = this.d.now ? this.d.now() : store.clock();
-    const entries = store.list();
+    // Settled just now in tick(): read without the lock.
+    const entries = store.peekAll();
     const live = new Set(entries.map((e) => e.id));
     for (const id of this.toldOverrun)
       if (!live.has(id)) this.toldOverrun.delete(id);

@@ -1,0 +1,58 @@
+name: load
+
+on:
+  workflow_dispatch:
+    inputs:
+      agents:
+        description: "Stand-in agents, each with helpers"
+        required: false
+        default: "90"
+        type: string
+      p95_ms:
+        description: "The p95 each route must stay under, in ms"
+        required: false
+        default: "200"
+        type: string
+      seconds:
+        description: "How long the clients poll, in seconds"
+        required: false
+        default: "60"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  session-list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEN_LOAD_AGENTS: ${{ inputs.agents }}
+      DEN_LOAD_P95_MS: ${{ inputs.p95_ms }}
+      DEN_LOAD_SECONDS: ${{ inputs.seconds }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+          cache: npm
+      - name: Check the inputs
+        run: |
+          for v in "$DEN_LOAD_AGENTS" "$DEN_LOAD_P95_MS" "$DEN_LOAD_SECONDS"; do
+            case "$v" in ''|*[!0-9]*) echo "inputs are whole numbers (got '$v')"; exit 1;; esac
+          done
+          [ "$DEN_LOAD_AGENTS" -ge 1 ] && [ "$DEN_LOAD_AGENTS" -le 500 ] || { echo "agents must be 1 to 500"; exit 1; }
+          [ "$DEN_LOAD_SECONDS" -ge 5 ] && [ "$DEN_LOAD_SECONDS" -le 900 ] || { echo "seconds must be 5 to 900"; exit 1; }
+      - run: npm ci
+      - name: The session-list load test
+        run: |
+          npm run -s test:load 2>&1 | tee load.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "### Session-list load test"
+            echo
+            echo '```'
+            grep -E '^load-1668 ' load.log || echo "no result line"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

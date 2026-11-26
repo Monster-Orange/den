@@ -7,7 +7,7 @@
 import {
   TROUBLE_TEXT,
   type DeliveryTrouble,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 
 export const HUB_COMMENTS_SUBJECT = "record:hub-comments-arriving";
@@ -20,6 +20,7 @@ export const HUB_COMMENTS_KEYS: Record<DeliveryTrouble, string> = {
   unreachable: "bell.m.hubCommentsUnreachable",
   closed: "bell.m.hubCommentsClosed",
   silent: "bell.m.hubCommentsSilent",
+  stale: "bell.m.hubCommentsStale",
 };
 
 /**

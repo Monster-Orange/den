@@ -42,6 +42,7 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import { denToolsOld } from "../../shared/agents/den-tools-version.js";
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import type * as http from "http";
@@ -69,6 +70,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { revokedAgentIds } from "../../shared/actor-token.js";
 import { agentFilesDir, listRecords } from "../../shared/agents/records.js";
+import { mcpLoadFailures } from "../../shared/agents/hub-mcp-connect.js";
 import {
   readCompacting,
   readInstructionCheck,
@@ -91,7 +93,15 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import type { HelperSettings } from "../../shared/agents/helpers.js";
+import {
+  HELPER_DEFAULTS,
+  type HelperSettings,
+} from "../../shared/agents/helpers.js";
+import {
+  HelperRows,
+  SERVER_HELPER_ROWS,
+  type HelperAsk,
+} from "./helper-rows.js";
 import {
   agentsListWaits,
   readAgentsConfig,
@@ -106,6 +116,7 @@ import {
   defaultHubNow,
   isStoppedState,
   mcpStaleOf,
+  withDenTools,
   newerOf,
   noteEnded,
   rowHelpers,
@@ -117,10 +128,20 @@ import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
+  clearDraft,
+  draftPending,
+  noteInput,
+} from "../../shared/agents/draft-input.js";
+import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   operatorActOf,
   principalOf,
@@ -149,8 +170,14 @@ export interface SessionRouteDeps {
    * "permission", "input" or "asked" (its hooks, ask_human).
    */
   waitingWhy?: () => ReadonlyMap<string, string>;
+  activity?: () => ReadonlyMap<string, "working" | "idle">;
   /** The person typed into session `id` (its pane): its agent's wait ends. */
   typed?: (id: string) => void;
+  /**
+   * Issue 1311: how many messages wait for agent `agent` while its
+   * person's unsent draft is on its input line (its terminal says so).
+   */
+  draftWaiting?: (agent: string) => number;
   /** D28: each agent's effective rotation settings (one resolver per list). */
   rotationPolicy?: () => (rec: AgentRecord) => RotationPolicy | undefined;
   /** D59: whether each agent resumes on its own after a restart. */
@@ -173,6 +200,8 @@ export interface SessionRouteDeps {
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  helperRows?: HelperRows | null;
+  rowHelpers?: typeof rowHelpers;
   /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
   exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
@@ -203,11 +232,15 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
+  activity: () => ReadonlyMap<string, "working" | "idle">;
   typed: (id: string) => void;
+  draftWaiting: (agent: string) => number;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   modeOf?: SessionRouteDeps["modeOf"];
   helperSettings: () => HelperSettings | undefined;
+  helperRows: HelperRows | null;
+  rowHelpers: typeof rowHelpers;
   exitedShellMinutes: () => number;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
@@ -254,6 +287,8 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
           return undefined;
         }
       }),
+    helperRows: d.helperRows === undefined ? SERVER_HELPER_ROWS : d.helperRows,
+    rowHelpers: d.rowHelpers ?? rowHelpers,
     activeWorkspaces: d.activeWorkspaces ?? (() => getActiveWorkspaces()),
     workspaceExists:
       d.workspaceExists ??
@@ -265,12 +300,14 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
+    activity: d.activity ?? (() => new Map<string, "working" | "idle">()),
     typed:
       d.typed ??
       ((id) =>
         void import("./notification-service.js")
           .then((m) => m.personTyped(id))
           .catch(() => undefined)),
+    draftWaiting: d.draftWaiting ?? defaultDraftWaiting,
     hubNow: d.hubNow ?? (() => defaultHubNow()),
     closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
     uploadSettings:
@@ -325,6 +362,33 @@ const VIEWERS = new Map<
   Set<{ open: boolean; send(d: string): void }>
 >();
 
+/**
+ * Issue 1311: Den's typing queue's and Hub's held messages for `agent`
+ * while its person's draft holds them. Loaded on first use (the server's
+ * own modules); 0 until then.
+ */
+let draftCounts: ((agent: string) => number) | null = null;
+let draftCountsLoading = false;
+function defaultDraftWaiting(agent: string): number {
+  if (!draftCounts && !draftCountsLoading) {
+    draftCountsLoading = true;
+    void Promise.all([
+      import("../cli/agent-ops.js"),
+      import("./hub-delivery-service.js"),
+    ])
+      .then(([ops, hub]) => {
+        draftCounts = (a) => ops.draftWaiting(a) + hub.hubWaitingOnDraft(a);
+      })
+      .catch(() => {
+        draftCountsLoading = false;
+      });
+  }
+  return draftCounts ? draftCounts(agent) : 0;
+}
+
+/** Issue 1311: how often an open terminal's "N waiting" is looked at. */
+const DRAFT_WAITING_LOOK_MS = 1000;
+
 function tellViewers(id: string): void {
   const set = VIEWERS.get(id);
   if (!set) return;
@@ -373,6 +437,7 @@ export interface ListedSession {
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -427,6 +492,7 @@ export interface ListedSession {
    * 659's "trust": its folder-trust question), when known.
    */
   waitingWhy?: string;
+  activity?: "working" | "idle";
   /** Issue 659: it ended because its folder-trust question was declined. */
   trustDeclined?: true;
   /** Issue 658: Relaunch from its last handoff is offered (none ready). */
@@ -434,7 +500,7 @@ export interface ListedSession {
   /** Issue 631: it didn't come back after a restart, and why. */
   restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
-  hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
+  hubWork?: import("../../shared/hub/hub-delivery-loop.js").AgentHubWork;
   /**
    * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
    * Relaunch from handoff is its action, not Resume.
@@ -446,6 +512,8 @@ export interface ListedSession {
   helpers?: AgentRow["helpers"];
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
+  /** Issue 749: MCP servers whose tools failed to load in its session. */
+  mcpFailed?: AgentRow["mcpFailed"];
   /** Issue 193: Den is restarting it to load Hub's new tools. */
   toolsRestarting?: true;
   /**
@@ -541,7 +609,10 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<
-      Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
+      Pick<
+        Resolved,
+        "waitingAgents" | "waitingWhy" | "activity" | "workspaceExists"
+      >
     > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
@@ -550,7 +621,8 @@ export function listedSessions(
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
       hubWork?: (
         id: string,
-      ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
+      ) => import("../../shared/hub/hub-delivery-loop.js").AgentHubWork | null;
+      helpersOf?: HelpersOf;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -603,6 +675,7 @@ export function listedSessions(
   const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
+  const doing = d.activity?.() ?? new Map<string, "working" | "idle">();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -709,6 +782,13 @@ export function listedSessions(
       ...(r.trustWait && s && !s.exited
         ? { waiting: true, waitingWhy: "trust" }
         : {}),
+      ...(doing.has(rec.id) &&
+      s &&
+      !s.exited &&
+      !waiting.has(rec.id) &&
+      !r.trustWait
+        ? { activity: doing.get(rec.id) }
+        : {}),
       ...(r.trustDeclined ? { trustDeclined: true as const } : {}),
       ...(r.handoffOnFile ? { handoffOnFile: true as const } : {}),
       ...(r.restartFailed ? { restartFailed: { ...r.restartFailed } } : {}),
@@ -717,12 +797,28 @@ export function listedSessions(
         return w ? { hubWork: w } : {};
       })(),
       ...(() => {
-        if (hubUrl === undefined || r.state !== "running") return {};
-        const st = mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
-          waiting: hubUrl === null && hubTokenProblem() !== null,
-        });
+        if (r.state !== "running") return {};
+        const hub =
+          hubUrl === undefined
+            ? undefined
+            : mcpStaleOf(agentFilesDir(d.stateDir(), rec.id), hubUrl, {
+                waiting: hubUrl === null && hubTokenProblem() !== null,
+              });
+        // Issue 1223: its Den tools are an older Den's.
+        const st = withDenTools(
+          hub,
+          denToolsOld(rec, r.startedAt, d.stateDir()),
+        );
         return st ? { mcpStale: st } : {};
       })(),
+      ...(() => {
+        if (r.state !== "running") return {};
+        const failed = mcpLoadFailures(d.stateDir(), rec);
+        return failed.length ? { mcpFailed: failed } : {};
+      })(),
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),
@@ -730,15 +826,19 @@ export function listedSessions(
       ...contextFields(d.stateDir(), rec.id, isStoppedState(r.state)),
       // D32: the helpers it started in its own session.
       ...(() => {
-        const h = rowHelpers(
-          rec,
-          !isStoppedState(r.state),
-          helperSettings,
-          process.env,
-          Date.now(),
-          readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
-          r.startedAt,
-        );
+        const live = !isStoppedState(r.state);
+        const clearedAt = readClearedAt(agentFilesDir(d.stateDir(), rec.id));
+        const h = d.helpersOf
+          ? d.helpersOf(rec, live, clearedAt, r.startedAt)
+          : rowHelpers(
+              rec,
+              live,
+              helperSettings,
+              process.env,
+              Date.now(),
+              clearedAt,
+              r.startedAt,
+            );
         return h ? { helpers: h } : {};
       })(),
     });
@@ -784,6 +884,70 @@ export function listedSessions(
         : null,
     (ws) => agentOrderOf(ws),
   );
+}
+
+type HelpersOf = (
+  rec: AgentRecord,
+  live: boolean,
+  clearedAt: number | undefined,
+  liveSince: string | undefined,
+) => AgentRow["helpers"];
+
+async function listWithHelpers(
+  sessions: SessionInfo[],
+  d: Resolved,
+  also?: string,
+  hubUrl?: string | null,
+): Promise<ListedSession[]> {
+  const rows = d.helperRows;
+  if (!rows) return listedSessions(sessions, d, also, hubUrl);
+  const settings = d.helperSettings();
+  const all = { ...HELPER_DEFAULTS, ...settings };
+  const asks: HelperAsk[] = [];
+  const where = [d.stateDir(), process.env.HOME, process.env.CLAUDE_CONFIG_DIR];
+  const stampOf = (rec: AgentRecord): string | null => {
+    try {
+      return getRuntime(rec.runtime)?.helpersStamp?.(rec) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const helpersOf: HelpersOf = (rec, live, clearedAt, liveSince) => {
+    const ask: HelperAsk = {
+      id: rec.id,
+      key: JSON.stringify([
+        where,
+        stampOf(rec),
+        rec.runtime,
+        rec.resumeToken,
+        live,
+        clearedAt ?? null,
+        liveSince ?? null,
+        all,
+      ]),
+      compute: () =>
+        d.rowHelpers(
+          rec,
+          live,
+          settings,
+          process.env,
+          Date.now(),
+          clearedAt,
+          liveSince,
+        ),
+    };
+    asks.push(ask);
+    return rows.peek(ask);
+  };
+  const first = listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
+  const fresh = await rows.ensure(
+    asks,
+    all.refreshSeconds * 1000,
+    all.factsCacheMb * 1024 * 1024,
+  );
+  if (!fresh) return first;
+  asks.length = 0;
+  return listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
 }
 
 /** D32: the helpers count, under /api/sessions/ but no session's route. */
@@ -846,14 +1010,16 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const keep = agentRowFilter(req);
+  const listed = await listWithHelpers(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
-    workspaces: d.activeWorkspaces(),
+    sessions: keep ? listed.filter((r) => keep(r.workspace)) : listed,
+    workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
@@ -1473,6 +1639,8 @@ export async function handleSessionUpgrade(
     },
     onExit: (exitCode) => {
       exited = true;
+      // Issue 1311: a draft dies with its session.
+      clearDraft(s.ref.id);
       ws.send(
         JSON.stringify({
           type: "exit",
@@ -1490,7 +1658,11 @@ export async function handleSessionUpgrade(
       if (!exited && data.length) {
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
-        if (!terminalReportOnly(data)) d.typed(s.ref.id);
+        if (!terminalReportOnly(data)) {
+          d.typed(s.ref.id);
+          // Issue 1311: the person's draft on its input line, if any.
+          noteInput(s.ref.id, data);
+        }
       }
       return;
     }
@@ -1510,14 +1682,34 @@ export async function handleSessionUpgrade(
       if (!exited && msg.data) {
         const data = Buffer.from(msg.data, "utf-8");
         client.write(s.ref.id, data);
-        if (!terminalReportOnly(data)) d.typed(s.ref.id);
+        if (!terminalReportOnly(data)) {
+          d.typed(s.ref.id);
+          noteInput(s.ref.id, data);
+        }
       }
     }
   });
+  // Issue 1311: messages waiting on the person's draft: the pane says how
+  // many (sent when it changes; 0 clears it).
+  let waitingSaid = 0;
+  const waitingTimer = setInterval(() => {
+    if (!ws.open) return;
+    let n = 0;
+    try {
+      n = draftPending(s.ref.id) ? d.draftWaiting(p.name) : 0;
+    } catch {
+      n = 0;
+    }
+    if (n === waitingSaid) return;
+    waitingSaid = n;
+    ws.send(JSON.stringify({ type: "waiting", n }));
+  }, DRAFT_WAITING_LOOK_MS);
+  waitingTimer.unref?.();
   let done = false;
   const detach = () => {
     if (done) return;
     done = true;
+    clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
     if (viewing?.size) tellViewers(s.ref.id);
@@ -1564,9 +1756,21 @@ async function helpersRunning(
   } catch {
     /* no host: nothing runs, so no helper runs */
   }
-  let running = 0;
-  for (const r of listedSessions(sessions, d))
-    running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+  sendJson(res, {
+    running: helpersRunningIn(
+      await listWithHelpers(sessions, d),
+      agentRowFilter(req),
+    ),
+  });
   return true;
+}
+
+export function helpersRunningIn(
+  rows: readonly { workspace: string; helpers?: { running?: number } }[],
+  keep: ((ws: string) => boolean) | null,
+): number {
+  let running = 0;
+  for (const r of rows)
+    if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
+  return running;
 }

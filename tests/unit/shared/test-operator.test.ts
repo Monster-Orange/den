@@ -14,6 +14,7 @@ import * as path from "path";
 import {
   OPERATOR_PRINCIPAL,
   OPERATOR_STUB_SCRIPT,
+  birthClaim,
   claimAtBirth,
   forgetOperatorShell,
   isOperatorShell,
@@ -25,11 +26,12 @@ import {
   operatorAct,
   operatorRefusal,
   stateDirIsEmpty,
+  testBedOnly,
   verifiedCreationRecord,
   writeCreationRecord,
 } from "../../../src/shared/test-operator.js";
 import { FIXTURE_PRINCIPAL } from "../../../src/shared/fixture-person.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import { spawn } from "child_process";
 
 let tmp = "";
@@ -122,6 +124,12 @@ describe("the test operator's acts: a closed list", () => {
     ["POST", "/api/sessions/s1/close", "terminal-close"],
     ["POST", "/api/workspaces/notes/agents/a1/say", "agent-say"],
     ["POST", "/api/workspaces/notes/agents/a1/relaunch", "agent-relaunch"],
+    // Issue 1407: gate/1407 restarts the bed's own agents for its tools.
+    ["POST", "/api/workspaces/notes/agents/a1/restart", "agent-restart"],
+    ["POST", "/api/agents/restart-stale", "agents-restart-stale"],
+    // Allow and Undo of the bed's own agents' held writes.
+    ["POST", "/api/approvals/AbCdEfGh_-123456/decide", "approval-allow"],
+    ["POST", "/api/settings/undo", "setting-undo"],
   ])("%s %s is %s", (m, p, act) => {
     expect(operatorAct(m, p)).toBe(act);
   });
@@ -147,8 +155,10 @@ describe("the test operator's acts: a closed list", () => {
     ["GET", "/api/workspaces/notes/hub-project"],
     ["GET", "/api/hub/link-suggestions"],
     // Other agent verbs a person owns.
-    ["POST", "/api/workspaces/notes/agents/a1/restart"],
     ["POST", "/api/workspaces/notes/agents/a1/move"],
+    ["GET", "/api/workspaces/notes/agents/a1/restart"],
+    ["POST", "/api/agents/restart-stale/x"],
+    ["GET", "/api/agents/stale"],
     ["POST", "/api/workspaces/notes/agents/a1/mode"],
     // A session's other routes, and lookalikes.
     ["POST", "/api/sessions/s1/uploads"],
@@ -157,6 +167,14 @@ describe("the test operator's acts: a closed list", () => {
     ["POST", "/api/workspaces/a/b/agents/a1/say"],
     ["GET", "/api/workspaces/notes/agents/a1/say"],
     ["POST", "/api/agents/runtimes/claude/path/x"],
+    // Their lookalikes: only a held write's own id, POST only.
+    ["GET", "/api/approvals/AbCdEfGh_-123456/decide"],
+    ["POST", "/api/approvals/AbCdEfGh_-123456/decide/x"],
+    ["POST", "/api/approvals/AbCdEfGh_-1234567/decide"],
+    ["POST", "/api/approvals"],
+    ["POST", "/api/approvals/AbCdEfGh_-123456/withdraw"],
+    ["GET", "/api/settings/undo"],
+    ["POST", "/api/settings/undo/x"],
   ])("%s %s is not an act", (m, p) => {
     expect(operatorAct(m, p)).toBeNull();
   });
@@ -179,6 +197,38 @@ describe("the per-request rule", () => {
     expect(operatorRefusal({ ...ok, operatorInstall: false })).toBe(
       "not_operator_install",
     );
+  });
+
+  // Allow and Undo are loopback-only, unforwarded, on an
+  // operator install (a copied creation record never makes one: see "the
+  // creation record" above). Never through the edge, its own included.
+  describe.each([
+    ["approval-allow", "/api/approvals/AbCdEfGh_-123456/decide"],
+    ["setting-undo", "/api/settings/undo"],
+  ])("%s", (_act, pathname) => {
+    const o = { ...ok, pathname };
+    it("allowed on an operator install, on loopback", () => {
+      expect(operatorRefusal(o)).toBeNull();
+    });
+    it("refused on an install that isn't an operator install", () => {
+      expect(operatorRefusal({ ...o, operatorInstall: false })).toBe(
+        "not_operator_install",
+      );
+    });
+    it.each([
+      ["the edge", { via: "edge" as const, beyond: true }],
+      [
+        "the install's own edge, from this machine",
+        { via: "edge" as const, beyond: false, edgeLocal: true },
+      ],
+      ["a LAN name", { via: "lan" as const, beyond: true }],
+      ["a non-loopback peer", { via: "loopback" as const, beyond: true }],
+    ])("refused through %s", (_n, x) => {
+      expect(operatorRefusal({ ...o, ...x })).toBe("not_loopback");
+    });
+    it("refused when a proxy forwarded it", () => {
+      expect(operatorRefusal({ ...o, forwarded: true })).toBe("forwarded");
+    });
   });
 
   it.each([
@@ -370,16 +420,250 @@ describe("claiming a state folder at the first start", () => {
     ).toBe(false);
     expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
   });
-  it("never twice: a second start finds the record and claims nothing", () => {
+  it("never twice: once the first start made the secret, a second claims nothing", () => {
     const dir = path.join(tmp, "twice");
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+    ensureWebSecret(dir);
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(false);
+  });
+
+  // Issue 1407 (Vision's ruling): the start that creates the install's
+  // secret, with the launcher's flag, is its birth; the folder needn't be
+  // empty. `web up` writes its log there before the server starts.
+  it("a folder `web up` already wrote its log in, with no secret yet: claimed", () => {
+    const dir = path.join(tmp, "webup");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(true);
+    expect(fs.readFileSync(creationRecordPath(dir), "utf-8").trim()).toBe(
+      "pending",
+    );
+    expect(fs.statSync(creationRecordPath(dir)).mode & 0o777).toBe(0o600);
+  });
+
+  // A bed run (11-24) and a local probe of the real `web up`:
+  // it writes its log, starts the server, then writes web.json (the server's
+  // pid and port) at once, before the server's slow start reaches its first
+  // look. So the folder may hold both.
+  const webUpFolder = (dir: string) => {
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    fs.writeFileSync(
+      path.join(dir, "web.json"),
+      JSON.stringify({
+        pid: 4242,
+        port: 4317,
+        root: "/x",
+        logPath: "/x/web.log",
+      }),
+    );
+  };
+  it("the folder as `web up` leaves it (web.log, then web.json): claimed", () => {
+    const dir = path.join(tmp, "webupjson");
+    webUpFolder(dir);
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(true);
+    expect(fs.readFileSync(creationRecordPath(dir), "utf-8").trim()).toBe(
+      "pending",
+    );
+  });
+
+  it.each([
+    ["web.json as a link", "link"],
+    ["web.json as a folder", "folder"],
+  ])("%s: no claim", (_n, kind) => {
+    const dir = path.join(tmp, `wj-${kind}`);
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    if (kind === "link") {
+      fs.writeFileSync(path.join(tmp, "elsewhere.json"), "{}\n");
+      fs.symlinkSync(
+        path.join(tmp, "elsewhere.json"),
+        path.join(dir, "web.json"),
+      );
+    } else fs.mkdirSync(path.join(dir, "web.json"));
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("a real install whose secret was deleted, with `web up`'s files too: no claim, nothing changes", () => {
+    const dir = path.join(tmp, "nosecretjson");
+    webUpFolder(dir);
+    fs.writeFileSync(path.join(dir, "audit.jsonl"), "{}\n");
+    const before = snapshot(dir);
+    expect(
+      birthClaim({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  // Builder 2's review: a real install whose secret was deleted by hand
+  // (to sign everyone out) has no secret either; its other files keep it
+  // from being claimed. Only `web up`'s own log may be there.
+  it("a real install whose secret was deleted by hand: no claim, nothing changes", () => {
+    const dir = path.join(tmp, "nosecret");
+    fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "agents", "planner.json"), "{}\n");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    const before = snapshot(dir);
+    expect(
+      birthClaim({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it.each([
+    ["another file beside the log", ["logs/den/web.log", "logs/den/other.log"]],
+    ["another product's log", ["logs/acme/web.log"]],
+    ["a file at the top", ["logs/den/web.log", "notes.txt"]],
+  ])("%s: no claim", (_n, files) => {
+    const dir = path.join(tmp, `x-${_n.replace(/\W+/g, "-")}`);
+    for (const f of files) {
+      fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+      fs.writeFileSync(path.join(dir, f), "x\n");
+    }
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("web.log as a link: no claim", () => {
+    const dir = path.join(tmp, "loglink");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "elsewhere.log"), "x\n");
+    fs.symlinkSync(
+      path.join(tmp, "elsewhere.log"),
+      path.join(dir, "logs", "den", "web.log"),
+    );
+    expect(
+      claimAtBirth({
+        stateDir: dir,
+        defaultStateDir: def(),
+        launchFlag: true,
+        cli: "den",
+      }),
+    ).toBe(false);
+  });
+
+  it("a first start that died before its secret: the next start is still the birth", () => {
+    const dir = path.join(tmp, "died");
     expect(
       claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
     ).toBe(true);
     expect(
       claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+  });
+
+  it("the flag on an existing real install's folder: no claim, and nothing in it changes", () => {
+    const dir = path.join(tmp, "real");
+    ensureWebSecret(dir);
+    fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "agents", "planner.json"), "{}\n");
+    fs.mkdirSync(path.join(dir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "logs", "den", "web.log"), "start\n");
+    const before = snapshot(dir);
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
     ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it("a pending record on a start without the flag is dropped", () => {
+    const dir = path.join(tmp, "dropflag");
+    expect(
+      claimAtBirth({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(true);
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: false }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("a pending record beside an existing secret is dropped, never sealed later", () => {
+    const dir = path.join(tmp, "dropsecret");
+    ensureWebSecret(dir);
+    fs.writeFileSync(creationRecordPath(dir), "pending\n", { mode: 0o600 });
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(false);
+    expect(fs.existsSync(creationRecordPath(dir))).toBe(false);
+  });
+
+  it("a sealed record beside an existing secret is left for verification to judge", () => {
+    const dir = path.join(tmp, "keepsealed");
+    const secret = ensureWebSecret(dir);
+    writeCreationRecord(dir, secret);
+    const before = snapshot(dir);
+    expect(
+      birthClaim({ stateDir: dir, defaultStateDir: def(), launchFlag: true }),
+    ).toBe(false);
+    expect(snapshot(dir)).toEqual(before);
   });
 });
+
+/** Every file under `dir`: its path, mode and content. */
+function snapshot(dir: string): [string, number, string][] {
+  const out: [string, number, string][] = [];
+  const walk = (d: string) => {
+    for (const n of fs.readdirSync(d).sort()) {
+      const f = path.join(d, n);
+      const st = fs.lstatSync(f);
+      if (st.isDirectory()) {
+        out.push([path.relative(dir, f) + "/", st.mode, ""]);
+        walk(f);
+      } else
+        out.push([
+          path.relative(dir, f),
+          st.mode,
+          fs.readFileSync(f).toString("base64"),
+        ]);
+    }
+  };
+  walk(dir);
+  return out;
+}
 
 describe("the test operator's terminal is a fixed stub, never a shell (the Builder's decision a)", () => {
   it("runs Den's own node on one fixed script: no shell, nothing from the request", () => {
@@ -437,7 +721,7 @@ describe("the operator's own shells: by host id only, forgotten when closed", ()
   });
 });
 
-describe("say and relaunch reach project agents only", () => {
+describe("say, relaunch and restart reach project agents only", () => {
   const ok = {
     operatorInstall: true,
     via: "loopback" as const,
@@ -448,6 +732,7 @@ describe("say and relaunch reach project agents only", () => {
     ["POST", "/api/workspaces/den-server/agents/helper/say"],
     ["POST", "/api/workspaces/den-server/agents/helper/relaunch"],
     ["POST", "/api/workspaces/den%2Dserver/agents/helper/say"],
+    ["POST", "/api/workspaces/den-server/agents/helper/restart"],
   ])("%s %s: the server agent's, refused", (m, p) => {
     expect(operatorRefusal({ ...ok, method: m, pathname: p })).toBe(
       "server_agent",
@@ -461,5 +746,23 @@ describe("say and relaunch reach project agents only", () => {
         pathname: "/api/workspaces/north/agents/planner/say",
       }),
     ).toBeNull();
+  });
+});
+
+describe("issue 1407: the operator's restart-stale reaches only the bed's own agents", () => {
+  const list = [
+    { id: "bed-a", workspace: "north" },
+    { id: "real", workspace: "north" },
+    { id: "bed-b", workspace: "south" },
+    { id: "helper", workspace: "den-server" },
+  ];
+  const marked = new Set(["bed-a", "bed-b", "helper"]);
+  it("only agents Den marked testBed, never the server agent", () => {
+    expect(testBedOnly(list, (a) => marked.has(a.id)).map((a) => a.id)).toEqual(
+      ["bed-a", "bed-b"],
+    );
+  });
+  it("none marked: nothing", () => {
+    expect(testBedOnly(list, () => false)).toEqual([]);
   });
 });

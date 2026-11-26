@@ -12,7 +12,10 @@ import {
   type AgentPrincipal,
 } from "../../../src/ui/server/request-guard.js";
 import { routeClass } from "../../../src/ui/server/route-classes.js";
-import { SESSION_HELPERS_PATH } from "../../../src/ui/server/session-routes.js";
+import {
+  helpersRunningIn,
+  SESSION_HELPERS_PATH,
+} from "../../../src/ui/server/session-routes.js";
 
 const agent: AgentPrincipal = {
   kind: "agent",
@@ -42,5 +45,25 @@ describe("/api/sessions/helpers", () => {
     expect(
       agentRefusal(agent, "GET", "/api/sessions/s2/io", "shell-grade"),
     ).toBe("agent:scout can use its own session only, not s2.");
+  });
+
+  it("on a strict install an agent reads it too, counted within its own projects", () => {
+    expect(
+      agentRefusal(
+        agent,
+        "GET",
+        SESSION_HELPERS_PATH,
+        "readonly",
+        undefined,
+        () => "strict",
+      ),
+    ).toBeNull();
+    const rows = [
+      { workspace: "north", helpers: { running: 2 } },
+      { workspace: "south", helpers: { running: 5 } },
+      { workspace: "north" },
+    ];
+    expect(helpersRunningIn(rows, (ws) => ws === "north")).toBe(2);
+    expect(helpersRunningIn(rows, null)).toBe(7);
   });
 });

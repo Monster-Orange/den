@@ -17,7 +17,7 @@ import {
   SseReader,
   stripLookalikes,
   type Delivery,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 
 const raw = (over: Record<string, unknown> = {}) => ({
   id: "0193a0b0-0000-7000-8000-000000000001",

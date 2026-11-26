@@ -8,7 +8,7 @@
  *          answers the same. A refresh that fails is in failAt.
  */
 import type * as http from "http";
-import type { HubNamesCheck } from "../../shared/hub-project-names.js";
+import type { HubNamesCheck } from "../../shared/hub/hub-project-names.js";
 import { sendJson } from "./http-helpers.js";
 
 export const HUB_NAMES_PATH = "/api/hub/names-check";
@@ -38,7 +38,7 @@ export async function hubNamesRoute(
 /** The deps on this install: the state folder's record, and the check. */
 export async function defaultHubNamesDeps(): Promise<HubNamesRouteDeps> {
   const [names, paths] = await Promise.all([
-    import("../../shared/hub-project-names.js"),
+    import("../../shared/hub/hub-project-names.js"),
     import("../../shared/paths.js"),
   ]);
   return {

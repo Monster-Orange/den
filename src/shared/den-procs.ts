@@ -7,6 +7,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const DEN_PROCS_DIR = "den-procs";
 
@@ -26,9 +27,7 @@ export function registerDenProcess(
   const dir = dirOf(stateDir);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = path.join(dir, `${role}-${pid}.json`);
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ role, pid }) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify({ role, pid }) + "\n", { mode: 0o600 });
   const remove = () => {
     try {
       fs.unlinkSync(file);

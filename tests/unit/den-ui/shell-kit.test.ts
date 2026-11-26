@@ -442,6 +442,41 @@ describe("den-ui-parity (bin)", () => {
       expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
   });
 
+  // Issue 673: a product's own button (.btn) is a copy of the kit's.
+  it("fails on a product's own .btn button, its look or its markup", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "own.css"),
+      ".btn { padding: 6px 12px; }\n.btn.primary:hover { color: red; }\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "own.js"),
+      "el.innerHTML = '<button class=\"btn primary\">Go</button>';\n",
+    );
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/button: .*2 copies/);
+  });
+
+  it("the kit's .den-btn, a host's layout of it, and other -btn names are not copies", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "ok.js"),
+      [
+        "const a = '<button class=\"den-btn primary sm\">Go</button>';",
+        "const b = '<button class=\"appearance-btn-x copy-btn\">x</button>';",
+        "row.querySelector('.btn');",
+      ].join("\n") + "\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "ok.css"),
+      ".acts .den-btn { margin-left: 8px; }\n.copy-btn { color: red; }\n",
+    );
+    expect(run(root).status).toBe(0);
+  });
+
   it("a product's own words in the kit's options, or its rows in the bell, are not copies", () => {
     const root = tmp();
     fs.mkdirSync(path.join(root, "src"));
@@ -466,7 +501,7 @@ describe("den-ui-parity (bin)", () => {
     expect(fs.existsSync(path.join(process.cwd(), "DIVERGE.md"))).toBe(false);
     expect([r.status, r.stdout.trim()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 11 components in src",
+      "den-ui-parity: ok, no copies of the kit's 12 components in src",
     ]);
   });
 });

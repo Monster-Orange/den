@@ -80,9 +80,33 @@ if (typeof document !== "undefined")
     refreshHealth: (env, opts) => refreshHealth(env, opts),
   });
 
-// 5s between polls — measured from each poll's COMPLETION (schedulePoll
+// Between polls — measured from each poll's COMPLETION (schedulePoll
 // re-arms after renderHealth resolves), so slow probes can't overlap.
-const POLL_INTERVAL_MS = 5_000;
+// Issue 1022: fast only while the page is visible; both are Settings
+// (user.yml health_poll.*, read from /api/settings once a page).
+const _healthPoll = { visible: 5, hidden: 60 };
+let _healthPollRead = null;
+function _readHealthPoll() {
+  // SEC-1b: a refusal page makes no /api call; the defaults stand.
+  if (apiOff()) return Promise.resolve();
+  _healthPollRead ??= fetch("/api/settings", { headers: { accept: "json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => {
+      const hp = s?.health_poll;
+      if (Number.isFinite(hp?.visible)) _healthPoll.visible = hp.visible;
+      if (Number.isFinite(hp?.hidden)) _healthPoll.hidden = hp.hidden;
+    })
+    .catch(() => {});
+  return _healthPollRead;
+}
+/** Issue 1022: ms until the next poll, by the page's visibility. */
+export function healthPollMs(hidden = document.hidden) {
+  return (hidden ? _healthPoll.hidden : _healthPoll.visible) * 1000;
+}
+/** Issue 1022: a hidden page's poll says so; the server keeps its answer longer. */
+function _hiddenQuery() {
+  return document.hidden ? "&hidden=1" : "";
+}
 
 // Last painted health results, keyed `repo/service`, so a new poll can seed
 // from them and update dots in place instead of collapsing the strip and
@@ -507,6 +531,7 @@ async function _switchScope(value, focus, inView) {
     return;
   }
   try {
+    // busy-ok: picked from the scope menu, which has closed; the page reloads
     await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {
     if (err?.denApi) {
@@ -538,6 +563,7 @@ export async function switchView(name) {
  */
 async function _setFocus(name) {
   try {
+    // busy-ok: the same menu pick, before the view is stored
     await window.denShell.api("POST", "/api/workspaces", {
       name,
       action: "focus",
@@ -556,7 +582,7 @@ async function _setFocus(name) {
 
 /** Call once on page load. Does NOT manage env changes — caller handles that. */
 export async function initHealth() {
-  await envReady();
+  await Promise.all([envReady(), _readHealthPoll()]);
   if (configInvalid()) return;
   const env = healthEnv();
   const gen = ++pollGen;
@@ -597,7 +623,7 @@ function schedulePoll(env, gen) {
       // (that froze the chip at its last state until a page reload).
       schedulePoll(env, gen);
     }
-  }, POLL_INTERVAL_MS);
+  }, healthPollMs());
 }
 
 /**
@@ -617,9 +643,12 @@ async function renderHealth(env, gen = pollGen, force = false) {
     // Stream unavailable or broken (older server, a proxy that buffers SSE,
     // a dropped connection): the plain endpoint completes the cycle.
     fetchAll: () =>
-      fetch(`/api/health?env=${env}${force ? "&refresh=1" : ""}`, {
-        signal: AbortSignal.timeout(10_000),
-      })
+      fetch(
+        `/api/health?env=${env}${force ? "&refresh=1" : ""}${_hiddenQuery()}`,
+        {
+          signal: AbortSignal.timeout(10_000),
+        },
+      )
         .then((r) => r.json())
         .catch(() => null),
     // What the chip shows now, for a paint before this cycle completes.
@@ -679,7 +708,7 @@ function _streamHealth(env, force, onResult) {
       // force bypasses the server-side health cache — used right after a repo
       // sync, where the probes on disk may have just changed.
       es = new EventSource(
-        `/api/health/stream?env=${encodeURIComponent(env)}${force ? "&refresh=1" : ""}`,
+        `/api/health/stream?env=${encodeURIComponent(env)}${force ? "&refresh=1" : ""}${_hiddenQuery()}`,
       );
     } catch {
       clearTimeout(guard);

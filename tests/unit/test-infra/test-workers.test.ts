@@ -21,6 +21,8 @@ function merged(env: Record<string, string | undefined>): NodeJS.ProcessEnv {
 }
 
 function workersWith(env: Record<string, string | undefined>): unknown {
+  // Both names come only from the case, never from whoever runs the test.
+  env = { DEN_TEST_WORKERS: undefined, DEN_GATE_WORKERS: undefined, ...env };
   const out = execFileSync(
     process.execPath,
     [
@@ -39,9 +41,23 @@ describe("jest workers (den#143)", () => {
     expect(workersWith({ DEN_TEST_WORKERS: "50%" })).toBe("50%");
   });
 
+  // Issue 1565: the caller's environment never decides these: the gate and
+  // CI set DEN_GATE_WORKERS, so each case sets both names itself.
   it("unset or blank: jest's own default", () => {
     expect(workersWith({ DEN_TEST_WORKERS: undefined })).toBeNull();
     expect(workersWith({ DEN_TEST_WORKERS: "" })).toBeNull();
+  });
+
+  it("issue 1048: DEN_TEST_WORKERS unset or blank, the gate's DEN_GATE_WORKERS", () => {
+    expect(
+      workersWith({ DEN_TEST_WORKERS: undefined, DEN_GATE_WORKERS: "3" }),
+    ).toBe(3);
+    expect(workersWith({ DEN_TEST_WORKERS: " ", DEN_GATE_WORKERS: "3" })).toBe(
+      3,
+    );
+    expect(workersWith({ DEN_TEST_WORKERS: "8", DEN_GATE_WORKERS: "3" })).toBe(
+      8,
+    );
   });
 
   it("preflight asks for 8 unless the setting is there", () => {

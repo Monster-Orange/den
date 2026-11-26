@@ -36,7 +36,7 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
-import { ensureWebSecret } from "../../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../../src/shared/web/web-secret.js";
 import { setupFixturePerson } from "../../../../src/shared/fixture-person.js";
 import { writeCreationRecord } from "../../../../src/shared/test-operator.js";
 import { writeTestEdgeProof } from "./edge-proof.js";
@@ -98,6 +98,11 @@ export async function startAgentsPageServer(
     elevatedUp?: boolean;
     /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
     userYml?: string;
+    /**
+     * YAML appended to the distribution's config/acme.yml, for settings
+     * only the distribution sets (agents.coach.enabled, issue 52).
+     */
+    distYml?: string;
     /**
      * agents.restore_on_boot (0.4.46, on in a real install): off here
      * unless a test turns it on, so a recorded running agent shows as
@@ -296,6 +301,13 @@ export async function startAgentsPageServer(
     ? path.join(tmp, "state")
     : path.join(home, ".acme");
   fs.mkdirSync(stateDir, { recursive: true });
+  if (opts.distYml) {
+    const cfg = path.join(root, "config", "acme.yml");
+    fs.writeFileSync(
+      cfg,
+      `${fs.readFileSync(cfg, "utf-8")}\n${opts.distYml}\n`,
+    );
+  }
   if (opts.testInstall) {
     const cfg = path.join(root, "config", "acme.yml");
     fs.writeFileSync(

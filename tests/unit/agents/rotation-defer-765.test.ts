@@ -1,9 +1,3 @@
-/**
- * Issue 765 part 2: "Put off rotation until <time>". A deferred agent is
- * not rotated before its time, whatever fired (compactions or a merged
- * pull request), and is rotated after it, by the normal rule. The time
- * outlives a new conversation. Only a person sets it. Invented names.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -158,7 +152,6 @@ describe("issue 765: the time a person types", () => {
   );
 });
 
-// The CLI and the route, on a rig agent (invented names).
 import * as http from "http";
 import type { AddressInfo } from "net";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";

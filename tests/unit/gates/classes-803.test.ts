@@ -23,6 +23,7 @@ import { gateView } from "../../../src/shared/gates/view.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
 import { callTool, type ToolContext } from "../../../src/ui/mcp/tools.js";
 import type { DenApi } from "../../../src/ui/mcp/api.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -345,10 +346,7 @@ describe("clause 6: the settings", () => {
 
   it("have Settings rows in en, es and ja", () => {
     const pub = path.join(process.cwd(), "src/ui/server/public");
-    const reg = fs.readFileSync(
-      path.join(pub, "settings-registry.js"),
-      "utf-8",
-    );
+    const reg = readSettingsSources();
     for (const id of [
       "gate_class_order",
       "gate_class_map",

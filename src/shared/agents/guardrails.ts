@@ -135,6 +135,16 @@ export interface InboxHookArgs {
   call?: HookCall;
 }
 
+/**
+ * Issue 1264: what the PreToolUse hook needs to send an agent's heavy runs
+ * through the gate: this install's own CLI (absolute path) and the gate's
+ * settings.json, read on each call (route_agents, route_commands).
+ */
+export interface GateRouteArgs {
+  cli: string;
+  settings: string;
+}
+
 /** `--hub-inbox <base>` and, given, issue 609's call flags. */
 const inboxFlags = (inbox: InboxHookArgs): string[] => [
   "--hub-inbox",
@@ -142,11 +152,6 @@ const inboxFlags = (inbox: InboxHookArgs): string[] => [
   ...(inbox.call ? hookCallFlags(inbox.call) : []),
 ];
 
-/**
- * The tools the PreToolUse hook sees: the file-writing tools too, so a
- * helper never writes the agent's handoff.md (issue 765); with D47 rules,
- * the search tools as well.
- */
 export const PRETOOL_MATCHER = "Bash|Read|Write|Edit|MultiEdit|NotebookEdit";
 export const PRETOOL_MATCHER_API_ONLY =
   "Bash|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob";
@@ -163,6 +168,8 @@ export function hookCommands(
   apiOnly?: ApiOnlyArgs,
   /** D41: Den's proxy to Hub, for the inbox check. */
   inbox?: InboxHookArgs,
+  /** Issue 1264: route heavy runs through the gate. */
+  gate?: GateRouteArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -185,10 +192,10 @@ export function hookCommands(
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
           : []),
-        // Issue 765: a helper never writes the agent's own handoff.md.
         ...(rotation
           ? ["--handoff", path.join(rotation.files, "handoff.md")]
           : []),
+        ...(gate ? ["--gate", gate.cli, "--gate-settings", gate.settings] : []),
       ],
     }),
     stop: commandLine(
@@ -280,6 +287,26 @@ export function attentionHooks(
     ],
   };
   return Object.fromEntries(ATTENTION_EVENTS.map((e) => [e, [entry]]));
+}
+
+/**
+ * Issue 936: every agent's note for a write its sandbox refused, after a
+ * tool and after a failed one (guardrails/sandbox-refusal.ts). It says
+ * nothing outside the sandbox.
+ */
+export function sandboxRefusalHooks(): Record<string, unknown[]> {
+  const entry = {
+    hooks: [
+      {
+        type: "command",
+        command: commandLine(
+          scriptEntrypoint("src/shared/agents/guardrails/sandbox-refusal.ts"),
+        ),
+        timeout: 10,
+      },
+    ],
+  };
+  return { PostToolUse: [entry], PostToolUseFailure: [entry] };
 }
 
 /**

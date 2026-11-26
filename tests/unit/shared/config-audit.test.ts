@@ -9,13 +9,14 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 let tmp: string;
 let state: string;
 let wsPath: string;
 let ws: typeof import("../../../src/shared/environment-manager/workspaces.js");
-let hub: typeof import("../../../src/shared/hub-project-link.js");
-let seen: typeof import("../../../src/shared/hub-links-seen.js");
+let hub: typeof import("../../../src/shared/hub/hub-project-link.js");
+let seen: typeof import("../../../src/shared/hub/hub-links-seen.js");
 let audit: typeof import("../../../src/shared/config-audit.js");
 
 const A = { id: "proj_abc", slug: "abc", name: "Abc" };
@@ -23,14 +24,8 @@ const B = { id: "proj_def", slug: "def", name: "Def" };
 
 type Row = { verb: string; detail: string; principal?: string; actor: string };
 const rows = (): Row[] => {
-  const f = path.join(state, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Row);
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(state) as unknown as Row[];
 };
 
 function seed() {
@@ -58,8 +53,8 @@ beforeAll(async () => {
   process.env.DEN_HOME = state;
   wsPath = path.join(tmp, "config/local/workspaces.yml");
   ws = await import("../../../src/shared/environment-manager/workspaces.js");
-  hub = await import("../../../src/shared/hub-project-link.js");
-  seen = await import("../../../src/shared/hub-links-seen.js");
+  hub = await import("../../../src/shared/hub/hub-project-link.js");
+  seen = await import("../../../src/shared/hub/hub-links-seen.js");
   audit = await import("../../../src/shared/config-audit.js");
 });
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -118,7 +113,11 @@ describe("workspaces.yml rows", () => {
     expect(w[0].detail).toMatch(/^workspaces\.yml by setFocusedWorkspace \(/);
     expect(w[0].detail).toContain("focus alpha → beta");
     expect(w[0].actor).toBe("user");
-    expect(w[0].principal).toMatch(/^person:/);
+    // Issue 1369: queued with no server here, so the writer's report.
+    expect(
+      (w[0] as unknown as { reported: { principal: string } }).reported
+        .principal,
+    ).toMatch(/^person:/);
   });
 
   it("a write that changes nothing leaves no row", () => {
