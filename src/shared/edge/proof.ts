@@ -90,7 +90,7 @@ export function edgeProofChecker(
     const d = dir();
     if (!d) return null;
     let key: string;
-    // Issue 1592: when it last changed.
+    // When it last changed, to judge whether its stat has settled.
     let changed: { mtimeMs: number; ctimeMs: number };
     try {
       const st = fs.statSync(edgeProofFile(d));
@@ -99,8 +99,8 @@ export function edgeProofChecker(
     } catch {
       return null;
     }
-    // Kept only while its stat stays the same, and (issue 1592) only once
-    // it was written more than a clock tick before the read: a proof
+    // Kept only while its stat stays the same, and only once it was
+    // written more than a clock tick before the read: a proof
     // rewritten in one tick (a rename onto a reused inode) is read again.
     if (key !== cache.key || !statSettled(changed, cache.readAt)) {
       const readAt = Date.now();
