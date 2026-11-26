@@ -40,6 +40,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -126,6 +127,7 @@ async function open(
     colorScheme: "light",
     ...(touch ? { hasTouch: true } : {}),
   });
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
     // No What's new over the list.
     document.addEventListener("DOMContentLoaded", () => {
@@ -134,8 +136,6 @@ async function open(
       document.head.appendChild(st);
     });
     try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
       localStorage.removeItem("den-agents-open");
     } catch {
       /* none */
