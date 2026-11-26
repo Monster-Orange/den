@@ -165,3 +165,44 @@ describe("gate/828.mjs", () => {
     ]);
   });
 });
+
+const ctxJs = `
+  const sessions = { sessions: [
+    { id: "s-1", kind: "agent", agent: "gate-828-other", waiting: true, waitingWhy: "input" },
+    { id: "s-2", kind: "agent", agent: "gate-828-ask", waiting: true, waitingWhy: "asked" },
+    { id: "gate-828-ask", kind: "term", waiting: false },
+  ] };
+  let reads = 0;
+  const ctx = {
+    api: async () => sessions,
+    until: async (fn, ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        if (await fn()) return Date.now() - t0;
+        await new Promise((ok) => setImmediate(ok));
+      }
+      return null;
+    },
+  };
+  const q = { why: "asked", what: g.QUESTION };
+  const a = { waiting: async () => (++reads > 3 ? [q] : []) };
+`;
+
+function withCtx(expr: string): unknown {
+  return call(`await (async () => { ${ctxJs} return ${expr}; })()`);
+}
+
+describe("gate/828 reads Den as it answers", () => {
+  it("finds the agent's row by its name, not by the session id", () => {
+    expect(withCtx(`g.agentRow(ctx, "gate-828-ask")`)).toEqual({
+      waiting: true,
+      why: "asked",
+    });
+  });
+
+  it("after a restart, waits for Den to take back the kept question", () => {
+    expect(withCtx(`g.keptWaits(ctx, a)`)).toEqual([
+      { why: "asked", what: "Gate check 828: which colour, red or blue?" },
+    ]);
+  });
+});

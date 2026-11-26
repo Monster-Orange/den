@@ -22,12 +22,12 @@ import {
   checkWebUrl,
   type WebUrl,
   type WebUrlChange,
-} from "../../shared/web-url.js";
+} from "../../shared/web/web-url.js";
 import {
   isLoopbackName,
   isLoopbackUrl,
   loopbackRefusal,
-} from "../../shared/web-url-check.js";
+} from "../../shared/web/web-url-check.js";
 
 export { isLoopbackName };
 

@@ -33,7 +33,10 @@ import {
   identityKey,
   newChallenge,
 } from "../../../src/shared/den-identity.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -283,6 +286,13 @@ describe("issue 816: the test install's grant route", () => {
       workspace: "north",
       sessionName: "builder",
     });
+    // Either answer refuses the agent, and which one depends on where it
+    // stops. This token is minted but bound to no live session, so the
+    // request guard usually refuses it first: 401 unauthorized (or 403
+    // agent_token_elsewhere when another process holds it). Only a token
+    // the guard accepts reaches the route, which answers 403 person_only.
+    // test-installs-access-816.test.ts gives the route's check an agent
+    // principal directly and expects person_only.
     expect([401, 403]).toContain(await get(t.token));
     expect(await get(personToken(secretOf(plain)))).toBe(200);
   });

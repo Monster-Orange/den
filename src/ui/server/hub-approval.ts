@@ -11,7 +11,7 @@ import {
   LOCAL_PREFIX,
   type Delivery,
   type DeliveryOwner,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 
 export interface SettleDeps {
   approvedAbout: (

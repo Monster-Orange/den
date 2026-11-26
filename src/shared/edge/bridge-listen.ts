@@ -22,7 +22,7 @@
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { isDockerBridgeAddress } from "../../ui/server/request-guard.js";
+import { isDockerBridgeAddress } from "./docker-bridge.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 export type BridgeListen = "auto" | "off";
