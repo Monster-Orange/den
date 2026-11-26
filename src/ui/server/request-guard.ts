@@ -493,6 +493,20 @@ export function forwardedClient(xff: string | undefined): string | undefined {
   return forwardedEntry(all[all.length - 1]);
 }
 
+export function forwardedEntries(xff: string | undefined, max = 5): string[] {
+  const out: string[] = [];
+  for (const e of xff?.split(",") ?? []) {
+    const a = forwardedEntry(e);
+    if (a) out.push(a);
+  }
+  return out.slice(-max);
+}
+
+export function addressOf(a: string | undefined): string {
+  const n = a ? normAddress(a) : "";
+  return net.isIP(n) ? n : "unknown";
+}
+
 /** Who an edge request's client is, as far as Den can tell (edgeClient). */
 export type EdgeClient = "local" | "unattested" | "foreign";
 

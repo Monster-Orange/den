@@ -21,6 +21,8 @@
 import type * as http from "http";
 import type { Socket } from "net";
 import {
+  addressOf,
+  forwardedEntries,
   hostAllowed,
   isLoopbackAddress,
   type GuardContext,
@@ -313,6 +315,50 @@ export function refusalDetail(o: {
       : "outside the agent's own processes";
   const why = o.from === "unknown" && o.why ? `${MISS_WORDS[o.why]}; ` : "";
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
+}
+
+export interface RefusalConnection {
+  remote: string;
+  host?: string;
+  forwardedFor?: string[];
+  edgeProved: boolean;
+}
+
+const HOST_NAME_OR_ADDRESS = /^(?:[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:.]{2,45}\])(?::\d{1,5})?$/;
+
+export function refusalConnection(
+  req: http.IncomingMessage,
+  edgeProved: boolean,
+): RefusalConnection {
+  const h = req.headers ?? {};
+  const host = Array.isArray(h.host) ? h.host[0] : h.host;
+  const xff = h["x-forwarded-for"];
+  const fwd = forwardedEntries(Array.isArray(xff) ? xff.join(",") : xff);
+  return {
+    remote: addressOf(req.socket?.remoteAddress),
+    ...(typeof host === "string" && HOST_NAME_OR_ADDRESS.test(host) ? { host } : {}),
+    ...(fwd.length ? { forwardedFor: fwd } : {}),
+    edgeProved,
+  };
+}
+
+export function requestRefusalDetail(
+  req: http.IncomingMessage,
+  o: {
+    actor: string;
+    from: Exclude<TokenCaller, "ok">;
+    root: number | null;
+    why?: PeerMiss | null;
+  },
+): string {
+  const method = req.method ?? "GET";
+  const path = new URL(req.url ?? "/", "http://x").pathname;
+  const addr = req.socket?.remoteAddress;
+  if (!isLoopbackAddress(addr)) {
+    const at = addressOf(addr);
+    return `${o.actor}'s token from a connection off this machine's loopback (address ${at}, agent pid ${o.root ?? "?"}): ${method} ${path}`;
+  }
+  return refusalDetail({ ...o, caller: callerPid(req), method, path });
 }
 
 /**

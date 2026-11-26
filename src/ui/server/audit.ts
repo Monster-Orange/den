@@ -11,6 +11,7 @@
  * trail. The file is compacted to the ring once it holds twice as many.
  * Entries hold names and reasons, never an env value or a secret.
  */
+import type { RefusalConnection } from "./token-binding.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -107,6 +108,7 @@ export interface AuditEntry {
    * resumed, failed and cut-mid-turn agents.
    */
   agents?: Record<string, unknown>;
+  connection?: RefusalConnection;
 }
 
 type Sink = (line: string, actor: AgentActor | null) => void;
@@ -232,6 +234,7 @@ export function recordAction(
     targetWorkspace?: string;
     /** Issue 597: the agents it touched, in full. */
     agents?: Record<string, unknown>;
+    connection?: RefusalConnection;
     /** Issue 1369: a queued entry's report (it is no one's word). */
     queued?: NonNullable<AuditEntry["reported"]>;
   },
@@ -287,6 +290,7 @@ export function recordAction(
     ...(action.reason ? { reason: clean(action.reason, 300) } : {}),
     ...(action.addresses?.length ? { addresses: action.addresses } : {}),
     ...(action.agents ? { agents: action.agents } : {}),
+    ...(action.connection ? { connection: action.connection } : {}),
   };
   // Issue 1391: agents may read the trail, so no entry keeps a secret:
   // every string in it, however deep, whoever wrote it (a setting's

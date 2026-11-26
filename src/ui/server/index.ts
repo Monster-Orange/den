@@ -1661,12 +1661,12 @@ import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
 import {
   agentPeerWait,
   callerLine,
-  callerPid,
   forwardedRequest,
   callerMiss,
   peerSettled,
   personCallerRefusal,
-  refusalDetail,
+  refusalConnection,
+  requestRefusalDetail,
   tokenCaller,
   watchPeer,
 } from "./token-binding.js";
@@ -2590,17 +2590,15 @@ const GUARD: GuardContext = {
             null,
             {
               verb: "agent-token",
-              detail: refusalDetail({
+              detail: requestRefusalDetail(req, {
                 actor: rec.actor,
                 from,
-                caller: callerPid(req),
                 root,
-                method: req.method ?? "GET",
-                path: new URL(req.url ?? "/", "http://x").pathname,
                 why,
               }),
               ...(gone ? {} : { outcome: "refused" as const }),
               reason: gone ? "token_caller_gone" : `token_${from}`,
+              connection: refusalConnection(req, EDGE_PROVED(req)),
             },
             rec.actor,
           );
