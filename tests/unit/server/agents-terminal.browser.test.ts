@@ -37,6 +37,7 @@ import {
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { dumpTrace, traceFocus } from "./helpers/focus-trace.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -145,6 +146,7 @@ async function page(url: string, stub = true): Promise<Page> {
     reducedMotion: "reduce",
   });
   await signIn(ctx, s!.stateDir, s!.base);
+  await traceFocus(ctx);
   await ctx.addInitScript(
     ([v, stubbed]) => {
       try {
@@ -718,7 +720,9 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "t2")).includes("planner"),
       );
-      expect(await typedInto(p, "t2b")).toEqual(["planner"]);
+      const t2b = await typedInto(p, "t2b");
+      await dumpTrace(p, `D58-tab t2b=${JSON.stringify(t2b)}`);
+      expect(t2b).toEqual(["planner"]);
       // The keyboard on the tabs: Enter picks, and the keyboard stays.
       await p.focus(tab("coder"));
       await p.keyboard.press("Enter");
@@ -791,7 +795,9 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "p1")).includes("planner"),
       );
-      expect(await typedInto(p, "p2")).toEqual(["planner"]);
+      const p2 = await typedInto(p, "p2");
+      await dumpTrace(p, `pane-already-open p2=${JSON.stringify(p2)}`);
+      expect(p2).toEqual(["planner"]);
       await p.context().close();
     }, 60_000);
 

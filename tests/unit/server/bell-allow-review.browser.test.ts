@@ -16,6 +16,7 @@ import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { denAuth } from "./helpers/den-auth.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { dumpTrace, traceFocus } from "./helpers/focus-trace.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -127,6 +128,7 @@ async function bellAt(width: number): Promise<Page> {
     ...(width < 600 ? { hasTouch: true, isMobile: true } : {}),
     reducedMotion: "reduce",
   });
+  await traceFocus(ctx);
   const p = await ctx.newPage();
   await signInPage(p, stateDir, base(), "/");
   const later = p.locator("#den-ap-later");
@@ -324,7 +326,13 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
     const bringBack = await dropTheRow(p);
     await bringBack();
     await row(p).waitFor();
-    await reviewHasKeyboard(p, 5_000, "after the row comes back");
+    await reviewHasKeyboard(p, 5_000, "after the row comes back").catch(
+      async (e) => {
+        await dumpTrace(p, "bell-1332");
+        throw e;
+      },
+    );
+    await dumpTrace(p, "bell-1332 ok");
     expect(await focused(p)).toBe("review");
     await p.context().close();
   }, 60_000);
