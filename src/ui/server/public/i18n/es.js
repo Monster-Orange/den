@@ -3101,9 +3101,13 @@
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
     "bell.m.deliveryFileBad":
-      "Den no pudo leer {file}, así que lo movió a {moved}. La entrega sigue sin lo que guardaba.",
+      "Den no pudo leer {n} entregas retenidas; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBad.one":
+      "Den no pudo leer {n} entrega retenida; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBadUncounted":
+      "Den no pudo leer {file} ni contar sus entregas retenidas; guardó el archivo como {moved}.",
     "bell.m.deliveryFileBadKept":
-      "Den no pudo leer {file} ni apartarlo. La entrega sigue sin lo que guardaba.",
+      "Den no pudo leer {file} ni apartarlo; la entrega sigue sin lo que guardaba.",
     "bell.m.notAtPrompt":
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
     "bell.m.notAtPrompt.one":

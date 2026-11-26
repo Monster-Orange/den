@@ -166,6 +166,13 @@ function readAuthor(v: unknown): DeliveryAuthor | null {
 
 /** A delivery from Hub's stream or list, or null when it isn't one. */
 /** A Delivery back in Hub's shape, so parseDelivery reads it again. */
+export function heldCount(text: string): number | null {
+  const at = text.indexOf('"held":');
+  if (at < 0) return null;
+  const n = text.slice(at).match(/(?<!\\)"created_at":/g)?.length ?? 0;
+  return n > 0 ? n : null;
+}
+
 export function deliveryRaw(d: Delivery): Record<string, unknown> {
   return {
     id: d.id,
@@ -686,7 +693,10 @@ export class SeenDeliveries {
   constructor(
     private readonly file: string,
     private readonly cap = 5000,
-    o: { onBad?: (aside: string) => void; now?: () => number } = {},
+    o: {
+      onBad?: (aside: string, held: number | null) => void;
+      now?: () => number;
+    } = {},
   ) {
     let text: string;
     try {
@@ -708,7 +718,7 @@ export class SeenDeliveries {
         aside = file;
       }
       try {
-        o.onBad?.(aside);
+        o.onBad?.(aside, heldCount(text));
       } catch {
         return;
       }

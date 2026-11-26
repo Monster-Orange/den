@@ -62,13 +62,18 @@ describe("a held file Den can't read never stops delivery", () => {
       const file = path.join(dir, "seen.json");
       fs.writeFileSync(file, text);
       const bad: string[] = [];
+      const counts: (number | null)[] = [];
       const seen = new SeenDeliveries(file, 5000, {
-        onBad: (aside) => bad.push(aside),
+        onBad: (aside, n) => {
+          bad.push(aside);
+          counts.push(n);
+        },
         now: () => 1_700_000_000_000,
       });
       expect(asides()).toHaveLength(1);
       expect(bad).toEqual([path.join(dir, asides()[0]!)]);
       expect(fs.readFileSync(bad[0]!, "utf-8")).toBe(text);
+      expect(counts).toEqual([null]);
       const { loop, typed } = loopOn(seen);
       await loop.take(comment("c1"));
       expect(typed).toHaveLength(1);
@@ -107,6 +112,18 @@ describe("a held file Den can't read never stops delivery", () => {
   });
 });
 
+describe("counting what a bad held file held", () => {
+  it('each saved delivery after "held" counts once; a body\'s escaped key never does', async () => {
+    const { heldCount } = await import("../../../src/shared/hub-delivery");
+    const one = JSON.stringify({ ...comment("a"), body: '"created_at":"x"' });
+    const two = JSON.stringify(comment("b"));
+    const text = `{"ids":[],"held":{"queue":{"ag-1":[${one},${two}],"ag-2":[{"id":"c","crea`;
+    expect(heldCount(text)).toBe(2);
+    expect(heldCount('{"ids":["a"],"last":')).toBeNull();
+    expect(heldCount('{"held":{"queue":{}}')).toBeNull();
+  });
+});
+
 describe("the bell and log for a held file moved aside", () => {
   it("one bell item and one log line, naming the file and where it went", async () => {
     const { badDeliveryFile } =
@@ -114,6 +131,7 @@ describe("the bell and log for a held file moved aside", () => {
     const added: { subject: string; text: string; msg?: unknown }[] = [];
     const logs: string[] = [];
     badDeliveryFile("/s/hub/deliveries-seen.json.bad-1700", {
+      held: 3,
       store: {
         add: (n: (typeof added)[number]) => (added.push(n), null),
         withdraw: () => true,
@@ -122,15 +140,35 @@ describe("the bell and log for a held file moved aside", () => {
     });
     expect(added).toHaveLength(1);
     expect(added[0]!.text).toBe(
-      "Den couldn't read deliveries-seen.json, so it moved it to deliveries-seen.json.bad-1700. Delivery goes on without what it held.",
+      "Den couldn't read 3 held deliveries; kept the file as deliveries-seen.json.bad-1700.",
     );
     expect(added[0]!.msg).toEqual({
       key: "bell.m.deliveryFileBad",
       vars: {
         file: "deliveries-seen.json",
         moved: "deliveries-seen.json.bad-1700",
+        n: 3,
       },
     });
     expect(logs).toEqual([`hub delivery: ${added[0]!.text}`]);
+  });
+
+  it("not countable: says the file couldn't be read, and keeps it", async () => {
+    const { badDeliveryFile } =
+      await import("../../../src/ui/server/hub-delivery-service.js");
+    const added: { text: string; msg?: unknown }[] = [];
+    badDeliveryFile("/s/hub/feed-pointers-seen.json.bad-1700", {
+      held: null,
+      store: {
+        add: (n: (typeof added)[number]) => (added.push(n), null),
+        withdraw: () => true,
+      },
+    });
+    expect(added.map((a) => a.text)).toEqual([
+      "Den couldn't read feed-pointers-seen.json or count its held deliveries; kept the file as feed-pointers-seen.json.bad-1700.",
+    ]);
+    expect((added[0]!.msg as { key: string }).key).toBe(
+      "bell.m.deliveryFileBadUncounted",
+    );
   });
 });
