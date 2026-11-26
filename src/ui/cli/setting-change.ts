@@ -152,6 +152,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "reports.screenshot_max_mb",
   "reports.hub_timeout_seconds",
   "server_log.max_mb",
+  "server_log.slow_request_ms",
+  "server_log.event_loop_lag_ms",
   "agent_context.compaction_loop_count",
   "agent_context.compaction_loop_minutes",
   "agent_context.pause_after_loop",

@@ -1378,6 +1378,12 @@
     "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "Petición lenta, registrar después de",
+    "set.server.slow_request_ms.d":
+      "Cuando una petición tarda más que esto, el registro del servidor recibe una línea con su ruta, quién la pidió y cuánto tardó. Nunca su dirección, consulta, cabeceras ni cuerpo. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "Servidor bloqueado, registrar después de",
+    "set.server.event_loop_lag_ms.d":
+      "Cuando el servidor está ocupado y no ejecuta nada más durante más tiempo que esto, su registro recibe una línea que dice cuánto. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "Capturas de informes, la más grande guardada",
     "set.server.report_screenshot_max.d":
@@ -2716,24 +2722,32 @@
     "feed.url": "Dirección del flujo",
     "feed.bearer": "Bearer (un nombre de secrets.refs)",
     "feed.bearerNone": "ninguno",
-    "feed.noAgents": "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
+    "feed.noAgents":
+      "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
     "feed.addW": "Añadiendo el flujo…",
     "feed.addS": "Añadido.",
     "feed.addF": "No se pudo añadir el flujo.",
     "feed.remove": "Quitar",
     "feed.removeL": "Quitar el flujo {name}",
     "feed.rmT": "¿Quitar el flujo?",
-    "feed.rmAsk": "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
+    "feed.rmAsk":
+      "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
     "feed.rmW": "Quitando el flujo…",
     "feed.rmS": "Quitado.",
     "feed.rmF": "No se pudo quitar el flujo.",
-    "ap.do.project_event_feed_add": "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
-    "ap.do.project_event_feed_remove": "Quitar el flujo de eventos {name} del proyecto {project}",
-    "ap.feed.warn": "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
+    "ap.do.project_event_feed_add":
+      "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
+    "ap.do.project_event_feed_remove":
+      "Quitar el flujo de eventos {name} del proyecto {project}",
+    "ap.feed.warn":
+      "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
     "ap.feed.feed": "Flujo: {name}, para {agent}",
-    "ap.feed.bearer": "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
-    "ap.feed.noBearer": "Sin bearer: el flujo se abre sin cabecera Authorization.",
-    "ap.feed.removeWarn": "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
+    "ap.feed.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
+    "ap.feed.noBearer":
+      "Sin bearer: el flujo se abre sin cabecera Authorization.",
+    "ap.feed.removeWarn":
+      "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
     "feed.problems":
       "Entradas de agents.event_feeds que no se pueden leer: {n}.",
     "feed.failed":

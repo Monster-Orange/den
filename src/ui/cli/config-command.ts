@@ -128,6 +128,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "reports.hub_screenshot_max_mb": ["reports", "hub_screenshot_max_mb"],
   // Issue 707: the server's warning lines on disk, capped.
   "server_log.max_mb": ["server_log", "max_mb"],
+  "server_log.slow_request_ms": ["server_log", "slow_request_ms"],
+  "server_log.event_loop_lag_ms": ["server_log", "event_loop_lag_ms"],
   "reports.hub_timeout_seconds": ["reports", "hub_timeout_seconds"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [

@@ -570,7 +570,11 @@ export interface UserConfig {
    * Issue 707: the server's warning lines on disk while it runs as a
    * service (<state>/logs/server.log): `max_mb` (20), then it rotates once.
    */
-  server_log?: { max_mb?: unknown };
+  server_log?: {
+    max_mb?: unknown;
+    slow_request_ms?: unknown;
+    event_loop_lag_ms?: unknown;
+  };
   reports?: {
     screenshot_keep_days?: unknown;
     screenshot_max_mb?: unknown;

@@ -3045,6 +3045,32 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
   },
   {
+    id: "server.slow_request_ms",
+    category: "server",
+    label: "Slow request, log after",
+    description:
+      "When a request takes longer than this, the server's log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    keywords: ["log", "slow", "request", "server", "time"],
+    scope: "user",
+    keys: ["server_log.slow_request_ms"],
+    control: { type: "number", min: 100, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.slow_request_ms ?? 3000,
+    write: (v, ctx) => ctx.post({ server_log: { slow_request_ms: v } }),
+  },
+  {
+    id: "server.event_loop_lag_ms",
+    category: "server",
+    label: "Blocked server, log after",
+    description:
+      "When the server is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
+    keywords: ["log", "blocked", "lag", "server", "stall"],
+    scope: "user",
+    keys: ["server_log.event_loop_lag_ms"],
+    control: { type: "number", min: 50, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.event_loop_lag_ms ?? 1000,
+    write: (v, ctx) => ctx.post({ server_log: { event_loop_lag_ms: v } }),
+  },
+  {
     // Issue 403: the largest report screenshot kept here (reports.*).
     id: "server.report_screenshot_max",
     category: "server",

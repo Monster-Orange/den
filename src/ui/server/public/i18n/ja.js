@@ -1331,6 +1331,12 @@
     "set.server.server_log_max": "警告ログの最大サイズ",
     "set.server.server_log_max.d":
       "__DEN_TITLE__ がサービスとして動いている間、警告は状態フォルダーの logs/server.log にも書かれるので、再起動後も残ります。このサイズに達すると server.log.1 に移し（1 回だけ）、新しく書き始めます。__DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "遅いリクエストを記録するまでの時間",
+    "set.server.slow_request_ms.d":
+      "リクエストがこれより長くかかると、サーバーのログにそのルート、依頼元、かかった時間を 1 行で書きます。アドレス、クエリ、ヘッダー、本文は書きません。__DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "サーバーの停止を記録するまでの時間",
+    "set.server.event_loop_lag_ms.d":
+      "サーバーが忙しく、これより長く他の処理を何も実行しないと、その時間をログに 1 行で書きます。__DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "報告のスクリーンショットの最大サイズ（保存）",
     "set.server.report_screenshot_max.d":
