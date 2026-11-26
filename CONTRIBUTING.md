@@ -472,7 +472,8 @@ trusted publishing (no token anywhere):
   (`scripts/release-dry-run.mjs`): Den's version without `-dev.N` in
   `package.json`, `package-lock.json` and
   `examples/distribution/package.json`, the kit's version, and the
-  changelog entry's date. Then it runs the release's own checks, tests and
+  changelog entry, with the `changes/` fragments assembled into it and
+  removed. Then it runs the release's own checks, tests and
   pack (`release-gates.yml`, which `release.yml` calls too). It never tags,
   publishes or makes a GitHub release, and has no token. Its result is a
   check on the candidate's commit, beside the bed run: a failure there
@@ -487,8 +488,15 @@ trusted publishing (no token anywhere):
   (a kit change merged after the candidate's branch was cut), the dry run
   and the promote step fail: bump next/queue's den-ui first, then cut the
   candidate again.
-- The release commit changes only Den's version and the changelog entry's
-  date: everything else was in the candidate the dry run checked.
-- Bump the version in `package.json`, `package-lock.json` and
-  `CHANGELOG.md` together; the changelog entry lists the **Migrations** a
-  distribution must make.
+- The release commit changes only Den's version and the changelog: it
+  assembles the `changes/` fragments into `CHANGELOG.md` under the
+  version, dated, and removes them. Everything else was in the candidate
+  the dry run checked. Make its edits with
+  `node scripts/release-dry-run.mjs apply <version> <kit version> <date>`;
+  `scripts/release-version-diff.mjs` refuses a changelog that isn't what
+  that makes.
+- A pull request that changes `src/`, `packages/` or `bin/` adds one
+  changelog fragment, `changes/<issue>-<slug>.md`, and never edits
+  `CHANGELOG.md` (`scripts/changelog-line.mjs`; `changes/README.md` says
+  how to write one). The fragments' **Migrations** sections list what a
+  distribution must change.

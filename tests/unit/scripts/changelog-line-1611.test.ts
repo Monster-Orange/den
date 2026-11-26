@@ -91,7 +91,7 @@ describe("a changelog line for each change to the product (issue 1611)", () => {
       write(d, "tests/a.test.ts", "// b\n");
     });
     expect(r.code).toBe(1);
-    expect(r.out).toContain("## [0.4.90] - unreleased");
+    expect(r.out).toContain("changes/<issue>-<slug>.md");
     expect(r.out).toContain("no-changelog: <reason>");
   });
 
@@ -102,12 +102,13 @@ describe("a changelog line for each change to the product (issue 1611)", () => {
     },
   );
 
-  it("a line added under the unreleased heading passes", () => {
+  it("a line added under the unreleased heading fails: a fragment holds it now (issue 1703)", () => {
     const r = pr((d) => {
       srcChange(d);
       logLine(d, "- An earlier fix.", "- The new fix.");
     });
-    expect(r).toMatchObject({ code: 0 });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("changes/<issue>-<slug>.md");
   });
 
   it("a line added under a released heading fails", () => {

@@ -21,11 +21,17 @@
  *     The release commit's edits, in the working tree (the runner's copy
  *     only): package.json, package-lock.json (lines 3 and 9, and the kit's
  *     entry), examples/distribution/package.json's dependency on Den,
- *     packages/den-ui/package.json, and the changelog entry's date.
+ *     packages/den-ui/package.json, the changelog entry (fragments in, dated).
  *     Exit 0: applied. 1: a file lacks a line it edits (named). 2: bad
  *     arguments.
  */
 import * as fs from "node:fs";
+import {
+  FRAGMENT_DIR,
+  FragmentError,
+  assemble,
+  fragmentsOnDisk,
+} from "./changelog-fragments.mjs";
 import {
   checkKit,
   checkKitQueue,
@@ -145,15 +151,28 @@ function apply(den, kit, date) {
   const out = {};
   for (const [file, edit] of Object.entries(edits))
     out[file] = edit(fs.readFileSync(file, "utf8"));
-  const log = fs.readFileSync("CHANGELOG.md", "utf8");
-  const heading = new RegExp(`^(## \\[${esc(den)}\\] - )unreleased$`, "im");
-  if (heading.test(log))
-    out["CHANGELOG.md"] = log.replace(heading, `$1${date}`);
+  let fragments;
+  try {
+    fragments = fragmentsOnDisk();
+  } catch (e) {
+    if (e instanceof FragmentError) throw new Stop(1, `::error::${e.message}`);
+    throw e;
+  }
+  const log = assemble(
+    fs.readFileSync("CHANGELOG.md", "utf8"),
+    fragments,
+    den,
+    date,
+  );
+  if (log !== null) out["CHANGELOG.md"] = log;
   else
     note(
-      `::warning::CHANGELOG.md has no "## [${den}] - unreleased" entry: its date is left as it is`,
+      `::warning::CHANGELOG.md has no "## [${den}] - unreleased" entry and ${FRAGMENT_DIR}/ has no fragment: its date is left as it is`,
     );
   for (const [file, t] of Object.entries(out)) fs.writeFileSync(file, t);
+  for (const f of fragments) fs.rmSync(f.file);
+  if (fragments.length)
+    note(`CHANGELOG.md: ${fragments.length} fragment(s) assembled and removed`);
   // what the release commit would carry
   const lock = readJson("package-lock.json");
   const got = {
