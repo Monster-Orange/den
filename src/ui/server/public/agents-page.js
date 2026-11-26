@@ -2368,6 +2368,10 @@ async function pick(id, add) {
   if (!add) {
     st.focusOnOpen = live ? id : null;
     st.claimOnOpen = live;
+    st.deliberate =
+      live && !st.panes.has(id) && (navigator.userActivation?.isActive ?? true)
+        ? { id, at: Date.now() }
+        : null;
   } else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
     markOpened(id);
@@ -2974,7 +2978,7 @@ function paintFollow(p) {
       `<button type="button" class="den-btn sm" data-act="take-size"></button>`;
     chip.querySelector("button").addEventListener("click", (e) => {
       e.preventDefault();
-      claimSize(p);
+      claimSize(p, true);
       p.term?.focus();
     });
     box.append(chip);
@@ -3029,14 +3033,19 @@ function outOfStep(p) {
  * Say this pane's size to the session (the PTY takes it: last writer
  * wins). Never from a hidden pane, never under 2x2.
  */
-function sendSize(p) {
+function sendSize(p, claim = false) {
   const term = p.term;
   if (!term || p.sock?.readyState !== WebSocket.OPEN || !paneShown(p))
     return false;
   if (term.cols < MIN_COLS || term.rows < MIN_ROWS) return false;
   // D54: a following pane never sizes the PTY (no ping-pong between views).
-  if (p.following) return false;
-  send(p, { type: "resize", cols: term.cols, rows: term.rows });
+  if (p.following || !p.decided) return false;
+  send(p, {
+    type: "resize",
+    cols: term.cols,
+    rows: term.rows,
+    ...(claim ? { claim: true } : {}),
+  });
   // D54: until the host says this size back, an older frame (the size on
   // attach) is not another view taking it. The host says a size only when
   // it changes, so an unchanged one is never said back: that is no wait.
@@ -3047,6 +3056,7 @@ function sendSize(p) {
     p.awaiting = at(p.pty)
       ? null
       : { cols: term.cols, rows: term.rows, until: Date.now() + 3000 };
+  if (claim) p.claimedAt = Date.now();
   // What the PTY will be: the server's frame follows (or another
   // viewer's, if it resized after).
   p.pty = { cols: term.cols, rows: term.rows };
@@ -3066,11 +3076,82 @@ function personTyped(p) {
  * This pane is in use (typed in, Take over, just opened): it leads. Fit it
  * to its box and make the PTY its size; any other view follows.
  */
-function claimSize(p) {
+function claimSize(p, claim = false) {
   p.following = false;
+  if (claim) p.otherHolds = false;
+  if (claim && !p.decided) p.claimLater = true;
   paintFollow(p);
   refit(p);
-  sendSize(p);
+  sendSize(p, claim);
+}
+
+function follow(p) {
+  p.following = true;
+  if (p.pty) followPty(p);
+  else paintFollow(p);
+}
+
+const VIEWS_KEY = "den-views";
+function keepInTab(k, v) {
+  try {
+    sessionStorage.setItem(k, v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+const VIEWS_LIVE = "den-views-live";
+
+function newViewId() {
+  const a = new Uint8Array(12);
+  crypto.getRandomValues(a);
+  return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function paneView(id) {
+  st.views ??= {};
+  if (!st.views[id]) {
+    st.views[id] = newViewId();
+    keepInTab(VIEWS_KEY, JSON.stringify(st.views));
+  }
+  return st.views[id];
+}
+
+function loadViews() {
+  let live = false;
+  try {
+    st.views = JSON.parse(sessionStorage.getItem(VIEWS_KEY) ?? "{}") ?? {};
+    live = sessionStorage.getItem(VIEWS_LIVE) === "1";
+    sessionStorage.setItem(VIEWS_LIVE, "1");
+  } catch {
+    st.views = {};
+  }
+  const mark = (on) => {
+    keepInTab(VIEWS_LIVE, on ? "1" : "0");
+  };
+  addEventListener("pagehide", () => mark(false));
+  addEventListener("pageshow", () => mark(true));
+  const chan =
+    typeof BroadcastChannel === "function"
+      ? new BroadcastChannel(VIEWS_KEY)
+      : null;
+  chan?.addEventListener("message", (e) => {
+    const ask = e.data?.ask;
+    if (typeof ask === "string" && Object.values(st.views).includes(ask))
+      chan.postMessage({ mine: ask });
+  });
+  if (!live || !chan) return Promise.resolve();
+  const twins = new Set();
+  const hear = (e) => {
+    if (typeof e.data?.mine === "string") twins.add(e.data.mine);
+  };
+  chan.addEventListener("message", hear);
+  for (const v of Object.values(st.views)) chan.postMessage({ ask: v });
+  return new Promise((r) => setTimeout(r, 150)).then(() => {
+    chan.removeEventListener("message", hear);
+    for (const [k, v] of Object.entries(st.views))
+      if (twins.has(v)) delete st.views[k];
+  });
 }
 
 /**
@@ -3121,6 +3202,7 @@ function connect(p) {
   if (p.closed) return;
   p.conn ??= termPane({
     id: p.id,
+    view: () => paneView(p.id),
     term: () => p.term,
     csrf: (fresh) => csrf(fresh),
     settings: st.reconnect,
@@ -3139,6 +3221,7 @@ function connect(p) {
       // how many view it); until then, this pane waits.
       p.following = false;
       p.decided = false;
+      p.claimLater = false;
       refit(p);
     },
     onText: (msg) => paneText(p, msg),
@@ -3148,7 +3231,7 @@ function connect(p) {
       if (refused) p.term?.write(`\r\n${t("ag.lost", { why })}\r\n`);
     },
   });
-  return p.conn.connect();
+  return (st.viewsReady ?? Promise.resolve()).then(() => p.conn?.connect());
 }
 
 /** A JSON frame from pane `p`'s session. */
@@ -3157,6 +3240,10 @@ function paneText(p, msg) {
     if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
       p.heardSize = true;
       const said = (z) => !!z && z.cols === msg.cols && z.rows === msg.rows;
+      if (msg.lead === false) {
+        if (p.claimedAt && Date.now() - p.claimedAt < 3000) return;
+        p.awaiting = null;
+      }
       const w = p.awaiting && Date.now() < p.awaiting.until ? p.awaiting : null;
       p.pty = { cols: msg.cols, rows: msg.rows };
       let mine = false;
@@ -3175,7 +3262,8 @@ function paneText(p, msg) {
       // Alone, a size this pane didn't say is only an older one (a
       // hidden pane that couldn't say its own yet): never a reason to
       // follow.
-      if (!mine && (p.viewers ?? 1) > 1) p.following = true;
+      if (!mine && ((p.viewers ?? 1) > 1 || msg.lead === false))
+        p.following = true;
       if (p.following) followPty(p);
       else markSize(p);
     }
@@ -3193,12 +3281,17 @@ function paneText(p, msg) {
       // other. An older server says no count: this pane leads.
       p.viewers = Number.isInteger(msg.viewers) ? msg.viewers : 1;
       const alone = p.viewers <= 1;
-      if (alone || (st.focusOnOpen === p.id && st.claimOnOpen)) claimSize(p);
-      else {
-        p.following = true;
-        if (p.pty) followPty(p);
-        else paintFollow(p);
-      }
+      const meant =
+        (st.deliberate?.id === p.id || st.deliberate?.id === "*") &&
+        Date.now() - st.deliberate.at < 10_000;
+      if (meant) st.deliberate = null;
+      p.otherHolds = msg.held === true && msg.lead === false;
+      if (meant || p.claimLater) claimSize(p, true);
+      else if (typeof msg.lead === "boolean") {
+        if (msg.lead) claimSize(p);
+        else follow(p);
+      } else if (alone) claimSize(p);
+      else follow(p);
     }
     // D40: the pane the person picked takes the keyboard once the
     // server says its session is live (the first frame), never one
@@ -3219,8 +3312,14 @@ function paneText(p, msg) {
     // sizes it.
     if (Number.isInteger(msg.n)) {
       p.viewers = msg.n;
-      if (msg.n <= 1 && p.following) claimSize(p);
+      if (p.el) p.el.dataset.viewers = String(msg.n);
+      if (msg.n <= 1 && p.following && !p.otherHolds) claimSize(p);
     }
+  } else if (msg?.type === "lead") {
+    p.otherHolds = !msg.yours && !!msg.held;
+    if (msg.yours) {
+      if (p.following) claimSize(p);
+    } else if (!p.following && !(p.claimedAt > Date.now() - 3000)) follow(p);
   } else if (msg?.type === "exit") {
     p.exited = true;
     // Its agent may continue in a new session (followAgents).
@@ -3533,7 +3632,7 @@ async function openPane(id, { front = true } = {}) {
     // person's typing: xterm's own answers to the agent's questions (its
     // kind, the cursor's place: a TUI asks on start, and a view that
     // opens replays them) come here too, and go to the agent as they are.
-    if (personTyped(p) && (p.following || outOfStep(p))) claimSize(p);
+    if (personTyped(p) && (p.following || outOfStep(p))) claimSize(p, true);
     p.sock.send(enc.encode(d));
   };
   // D54: what a person did in this pane (a key, a paste, IME), heard
@@ -6231,6 +6330,14 @@ export async function mountAgentsPage(root) {
     termWs !== null && !q0.get("open")
       ? rememberedOpen()
       : openFromUrl(location.search);
+  st.viewsReady = loadViews();
+  if (q0.get("claim") === "1") {
+    const id = frontAsked || wanted.at(-1);
+    st.deliberate = { id: id || "*", at: Date.now() };
+    const u = new URL(location.href);
+    u.searchParams.delete("claim");
+    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+  }
   if (termWs !== null && termWs) {
     const u = new URL(location.href);
     u.searchParams.delete("ws");
