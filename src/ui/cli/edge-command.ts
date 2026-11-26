@@ -1,5 +1,4 @@
 /**
- *
  * `route --for nginx|caddy|traefik` (issue 455): the block another proxy
  * that already owns port 80 needs so Den's name reaches Den. Printed for
  * the person to paste; Den never edits another project's files.

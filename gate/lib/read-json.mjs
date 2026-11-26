@@ -1,4 +1,3 @@
-
 export function maskTokens(text) {
   return String(text ?? "")
     .replace(/\b(Bearer|Basic|Token)\s+\S+/gi, "$1 [REDACTED]")

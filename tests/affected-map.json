@@ -2339,8 +2339,10 @@
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
+        "tests/unit/test-infra/gate-cli-json-840.test.ts",
         "tests/unit/test-infra/gate-expect-shape.test.ts",
         "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
+        "tests/unit/test-infra/gate-json-fail-840.test.ts",
         "tests/unit/test-infra/gate-readonly-modules.test.ts"
       ],
       "why": "the live checks' own tests (runners, shape, clauses)"
