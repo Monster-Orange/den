@@ -10663,10 +10663,6 @@ export function keepAgentConversation(
   return rec;
 }
 
-/**
- * Issue 765: put agent `id`'s rotation off until `until` (null: off, the
- * normal rule again). A person's only; nothing rotates it before then.
- */
 export function deferAgentRotation(
   d: AgentsResolved,
   id: string,

@@ -1121,7 +1121,6 @@ export async function handleAgentRoutes(
         "only a person can keep an agent's conversation past its rotation",
         { status: 403 },
       );
-    // Issue 765: an agent could put its own rotation off for ever.
     if (verb === "defer" && (agent || actor))
       throw new AgentError("only a person can put an agent's rotation off", {
         status: 403,
@@ -1301,7 +1300,6 @@ export async function handleAgentRoutes(
       audit(what);
       sendJson(res, { ok: true, agent: rec.id, never: body.never === true });
     } else if (verb === "defer") {
-      // Issue 765: { until: ISO time to come | null (off) }.
       const body = await jsonBody(req);
       for (const k of Object.keys(body))
         if (k !== "until")

@@ -300,7 +300,6 @@ function stage(raw) {
   }
   const words = [];
   const inputs = [];
-  /** Files a redirect writes (issue 765: never a helper to handoff.md). */
   const outputs = [];
   let stdoutRedirected = false;
   for (let j = k; j < raw.length; j++) {
@@ -433,25 +432,13 @@ export function decide(input, env = process.env) {
   return null;
 }
 
-/**
- * Issue 765: a helper (a background subagent, a fork) runs in the agent's
- * process; Claude Code adds agent_id and agent_type to its hook input (Den
- * never launches with --agent, so agent_type alone marks one too).
- */
 export function fromHelper(input) {
   const set = (v) => typeof v === "string" && v.length > 0;
   return !!input && (set(input.agent_id) || set(input.agent_type));
 }
 
-/** Commands that write the file a word names. */
 const WRITERS = new Set(["tee", "cp", "mv", "install", "ln", "rsync"]);
 
-/**
- * Issue 765: the reason to refuse a helper's write to the agent's own
- * handoff.md (`handoff`, an absolute path), or null. Write, Edit and
- * MultiEdit by their file_path; Bash by its redirects and a writer's
- * file words. The agent's own session is never refused.
- */
 export function handoffDecision(input, handoff) {
   if (!handoff || !fromHelper(input)) return null;
   const ti =

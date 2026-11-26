@@ -119,7 +119,6 @@ describe("a default-pack persona's launch", () => {
       "SessionStart",
       "Stop",
     ]);
-    // Issue 765: the file tools too, so a helper never writes handoff.md.
     expect(hooks.PreToolUse[0].matcher).toBe(
       "Bash|Read|Write|Edit|MultiEdit|NotebookEdit",
     );

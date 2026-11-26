@@ -1127,7 +1127,6 @@ const ROTATE_SCOPE_FLAGS: Record<string, OverrideScope> = {
  */
 async function rotate(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents rotate";
-  // Issue 765: `agents rotate <id> [-w <ws>] --defer <when>|off`.
   const deferAt = args.indexOf("--defer");
   if (deferAt >= 0) {
     personOnly(where, d);
@@ -1173,7 +1172,6 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
     d.out(
       `  on_pr_merged       ${e.onPrMerged}  (from ${e.from?.on_pr_merged})`,
     );
-    // Issue 765: a person put it off.
     const rs = readRotation(agentFilesDir(d.stateDir(), e.agent));
     if (rs && isDeferred(rs) && rs.deferredUntil)
       d.out(`  put off until      ${localDateTime(rs.deferredUntil)}`);

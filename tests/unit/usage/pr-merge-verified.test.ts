@@ -483,7 +483,6 @@ describe("issue 765: a helper's merge is its own", () => {
     tmps.push(dir);
     const f = writeUsageFixture(dir);
     const env = { HOME: dir, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
-    // Agent 3 opened a pull request and never merged it; its helper did.
     const rec = listRecords(f.stateDir).find((r) => r.id === "agent-3")!;
     const sub = path.join(
       f.projects,
