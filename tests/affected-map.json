@@ -2732,6 +2732,15 @@
     },
     {
       "when": [
+        "scripts/shim-imports.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/shim-imports.test.ts"
+      ],
+      "why": "tests that run scripts/shim-imports.mjs"
+    },
+    {
+      "when": [
         "scripts/state-writes-gate.mjs"
       ],
       "run": [

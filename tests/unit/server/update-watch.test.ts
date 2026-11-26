@@ -12,7 +12,10 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 
-const WATCH = path.resolve(__dirname, "../../../src/ui/server/update-watch.mjs");
+const WATCH = path.resolve(
+  __dirname,
+  "../../../src/ui/server/update-watch.mjs",
+);
 const NODE = process.execPath;
 
 let tmp: string;
@@ -68,7 +71,11 @@ function plan(over: Record<string, unknown> = {}) {
     stateFile: path.join(tmp, "state.json"),
     restartMarker: {
       path: path.join(tmp, "restart.json"),
-      marker: { id: "ap_1", agent: "server", reason: "update Den 1.0.0 → 1.1.0" },
+      marker: {
+        id: "ap_1",
+        agent: "server",
+        reason: "update Den 1.0.0 → 1.1.0",
+      },
     },
     ...over,
   };
@@ -130,6 +137,27 @@ describe("update-watch.mjs (SRV-1b)", () => {
     expect(marker.reason).toMatch(/, so Den rolled back to 1\.0\.0$/);
   });
 
+  it("the plan's restartEnv reaches the restart only, never npm (issue 832)", async () => {
+    const restarted = path.join(tmp, "restarted");
+    answer = () =>
+      fs.existsSync(restarted)
+        ? { pid: 3333, version: "1.0.0" }
+        : { pid: 1111, version: "1.0.0" };
+    const saw = (file: string) => [
+      NODE,
+      "-e",
+      `require("fs").writeFileSync(${JSON.stringify(file)}, process.env.DEN_TEST_INSTALL ?? "none")`,
+    ];
+    const { file } = plan({
+      npm: saw(path.join(tmp, "npm-ran")),
+      restart: saw(restarted),
+      restartEnv: { DEN_TEST_INSTALL: "1" },
+    });
+    expect(await runWatch(file)).toBe(0);
+    expect(fs.readFileSync(path.join(tmp, "npm-ran"), "utf8")).toBe("none");
+    expect(fs.readFileSync(restarted, "utf8")).toBe("1");
+  });
+
   it("a new server that answers another version: named, with its own pid", async () => {
     const restarted = path.join(tmp, "restarted");
     answer = () =>
@@ -148,7 +176,9 @@ describe("update-watch.mjs (SRV-1b)", () => {
     const { file } = plan({ npm: touch(path.join(tmp, "npm-ran"), 3) });
     expect(await runWatch(file)).toBe(1);
     expect(state().state).toBe("rollback_failed");
-    expect(state().why).toMatch(/nothing new answered on its port\); npm install of 1\.0\.0 failed/);
+    expect(state().why).toMatch(
+      /nothing new answered on its port\); npm install of 1\.0\.0 failed/,
+    );
     expect(fs.existsSync(path.join(tmp, "restarted"))).toBe(false);
   });
 

@@ -177,12 +177,21 @@ export function startsDen(tests) {
 }
 
 let srcFiles = null;
-const sources = () =>
-  (srcFiles ??= fs
+const shimPaths = () => {
+  const f = path.join(ROOT, "scripts", "shims.json");
+  return new Set(
+    fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf-8")).shims : [],
+  );
+};
+const sources = () => {
+  if (srcFiles) return srcFiles;
+  const shims = shimPaths();
+  return (srcFiles = fs
     .readdirSync(path.join(ROOT, "src"), { recursive: true })
     .map((f) => `src/${f.split(path.sep).join("/")}`)
-    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => f.endsWith(".ts") && !shims.has(f))
     .sort());
+};
 
 /**
  * A test's subject: the src files named like it, the src files its text
