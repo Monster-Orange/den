@@ -20,7 +20,12 @@ const USAGE = `The tests a queue merge runs on the merged tree, before it is pus
       The merged commits of a batch, in merge order, and the tests that
       failed on the last one: the first commit they fail on, found by
       halving. Each step runs <command> (default: npx jest --maxWorkers=1)
-      with the test files, in a throwaway worktree of that commit.`;
+      with those of the test files that exist at that commit (none: green),
+      in a throwaway worktree of it. On a machine with a test queue, pass
+      the command through it, for example
+      --run "<cli> gate run --kind cpu -- npx jest --maxWorkers=1".
+      The worktree uses this checkout's node_modules: a batch that changes
+      dependencies is tested against today's.`;
 
 function git(args, cwd = ROOT) {
   const r = spawnSync("git", args, { cwd, encoding: "utf-8" });
@@ -84,6 +89,13 @@ function plan(opt, heads) {
     console.error(USAGE);
     return 2;
   }
+  for (const h of heads)
+    if (!isAncestor(h, opt.merged)) {
+      console.error(
+        `queue-merge-tests: ${h} is not in ${opt.merged}: pass the merged commit`,
+      );
+      return 2;
+    }
   const base = oldestForkPoint(opt.queue, heads);
   const out =
     opt.out ?? path.join(os.tmpdir(), `queue-merge-${process.pid}.txt`);
@@ -103,7 +115,67 @@ function plan(opt, heads) {
   console.error(
     `queue-merge-tests: ${changed.length} files changed since ${base.slice(0, 9)} (the oldest fork point); tests in ${out}`,
   );
+  console.error(tally(fs.readFileSync(out, "utf-8")));
   return 0;
+}
+
+export function tally(list) {
+  const lines = list.split("\n").filter(Boolean);
+  if (lines[0]?.startsWith("ALL"))
+    return "queue-merge-tests: every test (the reason is on the line above)";
+  const by = new Map();
+  for (const l of lines) {
+    const why = l.split("  # ")[1] ?? "";
+    for (const part of why.split("; ")) {
+      const m = /^mapped: \S+(?: \+\d+)? \((.*)\)/.exec(part);
+      const k = m ? `mapped (${m[1]})` : part.split(":")[0] || "listed";
+      by.set(k, (by.get(k) ?? 0) + 1);
+    }
+  }
+  const rows = [...by]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `  ${n}  ${k}`);
+  return [`queue-merge-tests: ${lines.length} tests, by reason:`, ...rows].join(
+    "\n",
+  );
+}
+
+export async function bisectRun({
+  commits,
+  tests,
+  run,
+  root = ROOT,
+  log = () => {},
+}) {
+  const [cmd, ...args] = run.split(/\s+/);
+  const isRed = (c) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "queue-bisect-"));
+    try {
+      git(["worktree", "add", "--detach", dir, c], root);
+      const here = tests.filter((t) => fs.existsSync(path.join(dir, t)));
+      if (!here.length) {
+        log(
+          `queue-merge-tests: ${c.slice(0, 9)} green (none of the tests exist yet)`,
+        );
+        return false;
+      }
+      const mods = path.join(root, "node_modules");
+      if (fs.existsSync(mods))
+        fs.symlinkSync(mods, path.join(dir, "node_modules"));
+      const r = spawnSync(cmd, [...args, ...here], {
+        cwd: dir,
+        stdio: "inherit",
+      });
+      log(
+        `queue-merge-tests: ${c.slice(0, 9)} ${r.status === 0 ? "green" : "red"}`,
+      );
+      return r.status !== 0;
+    } finally {
+      spawnSync("git", ["worktree", "remove", "--force", dir], { cwd: root });
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  return firstRed(commits, isRed);
 }
 
 async function bisect(opt, commits) {
@@ -120,28 +192,12 @@ async function bisect(opt, commits) {
     console.error("queue-merge-tests: the test list is empty");
     return 2;
   }
-  const [cmd, ...args] = (opt.run ?? "npx jest --maxWorkers=1").split(/\s+/);
-  const isRed = (c) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "queue-bisect-"));
-    try {
-      git(["worktree", "add", "--detach", dir, c]);
-      const mods = path.join(ROOT, "node_modules");
-      if (fs.existsSync(mods))
-        fs.symlinkSync(mods, path.join(dir, "node_modules"));
-      const r = spawnSync(cmd, [...args, ...tests], {
-        cwd: dir,
-        stdio: "inherit",
-      });
-      console.error(
-        `queue-merge-tests: ${c.slice(0, 9)} ${r.status === 0 ? "green" : "red"}`,
-      );
-      return r.status !== 0;
-    } finally {
-      spawnSync("git", ["worktree", "remove", "--force", dir], { cwd: ROOT });
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  };
-  const red = await firstRed(commits, isRed);
+  const red = await bisectRun({
+    commits,
+    tests,
+    run: opt.run ?? "npx jest --maxWorkers=1",
+    log: (m) => console.error(m),
+  });
   console.log(red ?? "none");
   return red ? 1 : 0;
 }

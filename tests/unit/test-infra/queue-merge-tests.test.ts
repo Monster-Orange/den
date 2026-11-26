@@ -150,3 +150,61 @@ describe("queue-merge-tests: the first red merge of a batch", () => {
     expect(JSON.parse(firstRed([true, true])).r).toBe("c0");
   });
 });
+
+describe("queue-merge-tests: what a plan ran, and why", () => {
+  it("counts the tests by reason, a test with two reasons in each", () => {
+    const out = call<string>(SCRIPT, "tally", [
+      [
+        "tests/a.test.ts  # related",
+        "tests/b.test.ts  # related; mapped: src/x.js (the Settings rows: their pin and the tests that read them)",
+        "tests/c.test.ts  # smoke",
+      ].join("\n"),
+    ]);
+    expect(out).toContain("3 tests, by reason:");
+    expect(out).toContain("  2  related");
+    expect(out).toContain(
+      "  1  mapped (the Settings rows: their pin and the tests that read them)",
+    );
+    expect(out).toContain("  1  smoke");
+  });
+
+  it("a plan of every test says so", () => {
+    expect(call<string>(SCRIPT, "tally", ["ALL\n"])).toBe(
+      "queue-merge-tests: every test (the reason is on the line above)",
+    );
+  });
+});
+
+describe("queue-merge-tests: bisect on a real repo", () => {
+  const r2 = fs.mkdtempSync(path.join(os.tmpdir(), "den-queue-bisect-"));
+  afterAll(() => fs.rmSync(r2, { recursive: true, force: true }));
+  const g = (...a: string[]) =>
+    execFileSync("git", a, {
+      cwd: r2,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@example.test",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@example.test",
+      },
+    }).trim();
+  const put = (f: string, text: string) => {
+    fs.writeFileSync(path.join(r2, f), text);
+    g("add", f);
+    g("-c", "commit.gpgsign=false", "commit", "-q", "-m", f);
+    return g("rev-parse", "HEAD");
+  };
+  g("init", "-q", "-b", "queue");
+  const first = put("a.txt", "a\n");
+  const second = put("x.mjs", "process.exit(1);\n");
+
+  it("a test the batch's later merge adds is not red at an earlier merge", () => {
+    const red = call<string | null>(SCRIPT, "bisectRun", [
+      { commits: [first, second], tests: ["x.mjs"], run: "node", root: r2 },
+    ]);
+    expect(red).toBe(second);
+    expect(g("worktree", "list").split("\n")).toHaveLength(1);
+  });
+});
