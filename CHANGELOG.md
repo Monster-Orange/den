@@ -6,6 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
+- An agent's GitHub issue or comment in a public repo, or one whose visibility can't be read, now ends with "— written by an agent", naming no agent, install or machine. Private and internal repos keep the full footer. Its text is still checked for listed names first. A new setting, **Agents write issues in public repos** (`agents.issue_writes_public`, on by default), refuses writes to public repos when off; turning it back on needs your Allow.
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 - More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.

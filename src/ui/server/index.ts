@@ -6528,6 +6528,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           roles: c.roles,
           per_hour: c.perHour,
           visibility_minutes: c.visibilityMinutes,
+          public: c.publicRepos,
         };
       } catch {
         return null;

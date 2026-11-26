@@ -237,6 +237,7 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "agents.issue_writes_per_hour",
   // Issue 1127: a longer wait keeps a repo made public treated as private.
   "agents.issue_writes_visibility_minutes",
+  "agents.issue_writes_public",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",
@@ -282,6 +283,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "held_writes.**",
       "agents.issue_writes",
       "agents.issue_writes_per_hour",
+      "agents.issue_writes_public",
       "agents.keep_running_after_logout",
       "services.restore_on_boot",
       "local_dev",
@@ -386,6 +388,7 @@ const WIDENS_AT: readonly [
   widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
+  ["agents.issue_writes_public", (v) => v !== false, ["personal", "strict"]],
   // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
   // lowering of the container requirement widens on strict; with no old
   // value known, off (0) does.

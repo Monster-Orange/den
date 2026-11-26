@@ -18,6 +18,7 @@ import {
   ISSUE_WRITE_DEFAULT_ROLES,
   IssueWriteLimit,
   checkIssueWrite,
+  issueWriteFooter,
   issueWriteSettings,
 } from "../../../src/shared/issue-write.js";
 import {
@@ -27,6 +28,7 @@ import {
 import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import { orgPatterns } from "../../../src/shared/org-names.js";
+import { settingKind } from "../../../src/ui/cli/setting-change.js";
 import {
   runIssueWrite,
   type IssueWriteAudit,
@@ -51,6 +53,7 @@ function fakes(
     /** Issue 1127: the listed names (none: nothing refused). */
     names?: string;
     visibility?: "public" | "private" | "internal" | null;
+    publicRepos?: boolean;
   } = {},
 ) {
   const calls: GhCall[] = [];
@@ -74,6 +77,7 @@ function fakes(
       roles: opts.roles ?? [...ISSUE_WRITE_DEFAULT_ROLES],
       perHour: opts.perHour ?? 60,
       visibilityMinutes: 10,
+      publicRepos: opts.publicRepos ?? true,
     }),
     limit: new IssueWriteLimit(opts.now),
     namePatterns: () => orgPatterns({ DEN_ORG_NAMES: opts.names ?? "" }),
@@ -104,7 +108,7 @@ const agent = { agent: "a1", workspace: "north" };
 
 describe("issue_write: each action calls gh with the right arguments", () => {
   it("create: title, body on stdin with the footer, labels and milestone", async () => {
-    const f = fakes();
+    const f = fakes({ visibility: "private" });
     const r = await runIssueWrite(f.deps, agent, {
       action: "create",
       repo: "acme/api",
@@ -144,7 +148,7 @@ describe("issue_write: each action calls gh with the right arguments", () => {
   });
 
   it("comment: the issue, the body on stdin with the footer", async () => {
-    const f = fakes();
+    const f = fakes({ visibility: "private" });
     const r = await runIssueWrite(f.deps, agent, {
       action: "comment",
       repo: "acme/web",
@@ -318,12 +322,18 @@ describe("issue_write: who may (agents.issue_writes)", () => {
       roles: [...ISSUE_WRITE_DEFAULT_ROLES],
       perHour: 60,
       visibilityMinutes: 10,
+      publicRepos: true,
     });
     expect(
       issueWriteSettings(() => ({
         agents: { issue_writes: ["tester"], issue_writes_per_hour: 5 },
       })),
-    ).toEqual({ roles: ["tester"], perHour: 5, visibilityMinutes: 10 });
+    ).toEqual({
+      roles: ["tester"],
+      perHour: 5,
+      visibilityMinutes: 10,
+      publicRepos: true,
+    });
     // Issue 1127: how long a repo's visibility is kept for the words check.
     expect(
       issueWriteSettings(() => ({
@@ -349,10 +359,16 @@ describe("issue_write: who may (agents.issue_writes)", () => {
       roles: ["sde"],
       perHour: 9,
       visibilityMinutes: 10,
+      publicRepos: true,
     });
     expect(
       issueWriteSettings(() => ({ agents: { issue_writes: [] } }), den),
-    ).toEqual({ roles: [], perHour: 9, visibilityMinutes: 10 });
+    ).toEqual({
+      roles: [],
+      perHour: 9,
+      visibilityMinutes: 10,
+      publicRepos: true,
+    });
   });
 });
 
@@ -424,7 +440,7 @@ describe("issue_write: identity and audit", () => {
   });
 
   it("the footer is on create and comment, not on label or milestone", async () => {
-    const f = fakes({ name: "Night Planner" });
+    const f = fakes({ name: "Night Planner", visibility: "private" });
     await runIssueWrite(f.deps, agent, {
       action: "create",
       repo: "acme/api",
@@ -446,6 +462,179 @@ describe("issue_write: identity and audit", () => {
     expect(f.calls[0].stdin).toBe(foot);
     expect(f.calls[1].stdin?.endsWith(`\n\n${foot}`)).toBe(true);
     expect(f.calls[2].stdin).toBeUndefined();
+  });
+});
+
+describe("issue_write: the footer by the repo's visibility", () => {
+  const SHORT = "— written by an agent";
+  const FULL = "— written by agent Builder in den on box";
+  async function posted(
+    visibility: "public" | "private" | "internal" | null,
+    action: "create" | "comment" = "create",
+  ) {
+    const f = fakes({ visibility });
+    const r = await runIssueWrite(
+      f.deps,
+      agent,
+      action === "create"
+        ? { action, repo: "acme/api", title: "Save fails", body: BODY }
+        : { action, repo: "acme/api", issue: 3, body: BODY },
+    );
+    expect(r.status).toBe(200);
+    return { stdin: f.calls[0].stdin ?? "", lookups: f.lookups };
+  }
+
+  it("a public repo: the short footer, naming no agent, install or host", async () => {
+    const { stdin } = await posted("public");
+    expect(stdin).toBe(`${BODY}\n\n${SHORT}`);
+    expect(stdin).not.toContain("den on box");
+    expect(stdin).not.toContain("Builder");
+  });
+
+  it("a public repo's comment: the short footer too", async () => {
+    expect((await posted("public", "comment")).stdin).toBe(
+      `${BODY}\n\n${SHORT}`,
+    );
+  });
+
+  it("a repo whose visibility isn't known: the short footer", async () => {
+    expect((await posted(null)).stdin).toBe(`${BODY}\n\n${SHORT}`);
+  });
+
+  it("a private repo keeps the full footer", async () => {
+    expect((await posted("private")).stdin).toBe(`${BODY}\n\n${FULL}`);
+  });
+
+  it("an internal repo keeps the full footer", async () => {
+    expect((await posted("internal")).stdin).toBe(`${BODY}\n\n${FULL}`);
+  });
+
+  it("the visibility is asked once a write, with no names list too", async () => {
+    expect((await posted("private")).lookups).toEqual([
+      { repo: "acme/api", maxAgeMs: 600_000 },
+    ]);
+  });
+
+  it("issueWriteFooter: public or unknown is short; private or internal names the agent and install", () => {
+    expect(issueWriteFooter("Builder", "den on box", "public")).toBe(SHORT);
+    expect(issueWriteFooter("Builder", "den on box", null)).toBe(SHORT);
+    expect(issueWriteFooter("Builder", "den on box", "private")).toBe(FULL);
+    expect(issueWriteFooter("Builder", "den on box", "internal")).toBe(FULL);
+  });
+});
+
+describe("issue_write: agents.issue_writes_public", () => {
+  const write = (f: ReturnType<typeof fakes>) =>
+    runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Save fails",
+      body: BODY,
+    });
+
+  it("on by default; a person can turn it off; any other value is refused by name", () => {
+    expect(issueWriteSettings(() => ({})).publicRepos).toBe(true);
+    expect(
+      issueWriteSettings(() => ({ agents: { issue_writes_public: false } }))
+        .publicRepos,
+    ).toBe(false);
+    expect(() =>
+      issueWriteSettings(() => ({ agents: { issue_writes_public: "no" } })),
+    ).toThrow(/agents\.issue_writes_public/);
+  });
+
+  it("off: a write to a public repo is refused in Den, with a plain reason, and nothing is sent", async () => {
+    const f = fakes({ visibility: "public", publicRepos: false });
+    const r = await write(f);
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe("issue_write_public");
+    expect(String(r.body.error)).toContain("acme/api is public");
+    expect(String(r.body.error)).toContain("agents.issue_writes_public");
+    expect(f.calls).toEqual([]);
+  });
+
+  it("off: a private or internal repo keeps working", async () => {
+    for (const visibility of ["private", "internal"] as const) {
+      const f = fakes({ visibility, publicRepos: false });
+      expect((await write(f)).status).toBe(200);
+    }
+  });
+
+  it("off: a repo whose visibility isn't known isn't refused outright", async () => {
+    const f = fakes({ visibility: null, publicRepos: false });
+    expect((await write(f)).status).toBe(200);
+    expect(f.calls[0].stdin).toBe(`${BODY}\n\n— written by an agent`);
+  });
+
+  it("a body with a listed name: refused on a public repo, sent on a private one", async () => {
+    const body = "Seen on the Zorblax build.";
+    const pub = fakes({ names: "zorblax", visibility: "public" });
+    const p = await runIssueWrite(pub.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Save fails",
+      body,
+    });
+    expect(p.body.code).toBe("issue_write_words");
+    expect(pub.calls).toEqual([]);
+    const priv = fakes({ names: "zorblax", visibility: "private" });
+    const q = await runIssueWrite(priv.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Save fails",
+      body,
+    });
+    expect(q.status).toBe(200);
+  });
+
+  it("a Settings toggle a person sets; it saves to user.yml and clears with null", () => {
+    expect(
+      (DEN_SETTINGS as { keys?: string[] }[]).find((r) =>
+        r.keys?.includes("agent_issue_writes.public"),
+      ),
+    ).toMatchObject({
+      id: "agents.issue_writes_public",
+      category: "agents",
+      scope: "user",
+      control: { type: "toggle" },
+    });
+    const user: Record<string, unknown> = {};
+    expect(
+      patchCliRows(user, { agent_issue_writes: { public: false } }),
+    ).toEqual({ ok: true });
+    expect((user.agents as Record<string, unknown>).issue_writes_public).toBe(
+      false,
+    );
+    expect(issueWriteSettings(() => user).publicRepos).toBe(false);
+    expect(
+      patchCliRows(user, { agent_issue_writes: { public: "yes" } }).ok,
+    ).toBe(false);
+    patchCliRows(user, { agent_issue_writes: { public: null } });
+    expect(issueWriteSettings(() => user).publicRepos).toBe(true);
+  });
+
+  for (const mode of ["personal", "strict"] as const)
+    it(`${mode}: turning it on widens and needs the person; turning it off doesn't`, () => {
+      expect(
+        settingKind("agents.issue_writes_public", mode, true, false).widens,
+      ).toBe(true);
+      expect(settingKind("agents.issue_writes_public", mode, true).widens).toBe(
+        true,
+      );
+      expect(
+        settingKind("agents.issue_writes_public", mode, false, true).widens,
+      ).toBe(false);
+    });
+
+  it("a repo whose visibility isn't known: its body is checked too", async () => {
+    const f = fakes({ names: "zorblax", visibility: null });
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 2,
+      body: "Zorblax again.",
+    });
+    expect(r.body.code).toBe("issue_write_words");
   });
 });
 
@@ -604,6 +793,7 @@ describe("issue_write: its Settings rows", () => {
       roles: ["sde", "reviewer"],
       perHour: 30,
       visibilityMinutes: 10,
+      publicRepos: true,
     });
     // Issue 1127: the words check's visibility age, its own row.
     expect(

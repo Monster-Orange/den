@@ -182,6 +182,15 @@ export async function runIssueWrite(
         : op.action === "label"
           ? op.add.map((text) => ({ field: "label" as const, text }))
           : [{ field: "milestone", text: op.milestone }];
+  const vis = await d.visibility(op.repo, settings.visibilityMinutes * 60_000);
+  if (vis === "public" && !settings.publicRepos)
+    return refuse(
+      403,
+      "issue_write_public",
+      `${op.repo} is public, and this Den's agents don't write to public repos (agents.issue_writes_public is off). A person turns it on in Settings › Agents.`,
+      issueNo,
+    );
+
   if (texts.length) {
     let patterns: RegExp[];
     try {
@@ -198,10 +207,6 @@ export async function runIssueWrite(
       );
     }
     if (patterns.length) {
-      const vis = await d.visibility(
-        op.repo,
-        settings.visibilityMinutes * 60_000,
-      );
       if (needsFiledCheck(vis)) {
         const hits = filedTextHits(texts, patterns, op.repo);
         if (hits.length)
@@ -228,7 +233,7 @@ export async function runIssueWrite(
     );
   }
 
-  const footer = issueWriteFooter(me.name, d.installLabel());
+  const footer = issueWriteFooter(me.name, d.installLabel(), vis);
   const call = ghIssueArgs(op, footer);
   const r = await d.gh(call.args, call.stdin);
   if (r.code !== 0) {
