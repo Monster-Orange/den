@@ -4870,8 +4870,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/workspace-routes.ts"],
-      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
+      "when": [
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/project-agent-cap-1634.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5549,6 +5553,16 @@
       ],
       "run": [
         "tests/unit/server/stop-ends-wait.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/den-config.ts",
+        "src/ui/server/public/settings-registry.js"
+      ],
+      "run": [
+        "tests/unit/server/subagent-limits-settings-1631.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
