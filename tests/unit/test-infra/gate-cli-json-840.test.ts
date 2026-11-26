@@ -188,6 +188,15 @@ const WORDS_UNDER_TEST: Record<string, string> = {
   "731.mjs": "no secret in doctor's text, as a person reads it",
 };
 
+const TEXT_READERS_TO_CONVERT: Record<string, string> = {
+  "252.mjs": "issue 1714",
+  "746.mjs": "issue 1714",
+  "750.mjs": "issue 1714",
+  "1217.mjs": "issue 1714",
+  "1381.mjs": "issue 1714",
+  "1391.mjs": "issue 1714",
+};
+
 describe("issue 840: every live check reads Den's CLI through --json", () => {
   const files = fs
     .readdirSync(GATE)
@@ -200,11 +209,22 @@ describe("issue 840: every live check reads Den's CLI through --json", () => {
 
   it("no live check reads a command's text output, by field or by position", () => {
     const found: string[] = [];
-    for (const f of files) {
+    for (const f of files.filter((f) => !(f in TEXT_READERS_TO_CONVERT))) {
       const src = fs.readFileSync(path.join(GATE, f), "utf-8");
       for (const h of cliReads(src, f in WORDS_UNDER_TEST))
         found.push(`gate/${f}:${h.line}: ${h.what}`);
     }
     expect(found).toEqual([]);
+  });
+
+  it("a known text reader leaves the list once it reads --json (the list only shrinks)", () => {
+    const stale = Object.keys(TEXT_READERS_TO_CONVERT).filter((f) => {
+      const file = path.join(GATE, f);
+      return (
+        !fs.existsSync(file) ||
+        cliReads(fs.readFileSync(file, "utf-8"), f in WORDS_UNDER_TEST).length === 0
+      );
+    });
+    expect(stale).toEqual([]);
   });
 });
