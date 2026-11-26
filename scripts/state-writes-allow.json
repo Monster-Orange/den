@@ -36,8 +36,16 @@
     "reason": "developer script: config/local in the checkout, run by hand"
   },
   "src/shared/agents/git-signing.ts": {
+    "count": 2,
+    "reason": "temp files: allowed_signers in a mkdtemp folder removed after the check; and in the new key's mkdtemp folder, which a rename moves into place whole (issue 1316)"
+  },
+  "src/shared/agents/guardrails/public-text.mjs": {
     "count": 1,
-    "reason": "temp file: allowed_signers in a mkdtemp folder removed after the check"
+    "reason": "a temp file renamed over the repo-visibility cache in ~/.cache (outside the state folder); the hook is plain Node and cannot import atomic-write.ts"
+  },
+  "src/shared/agents/sandbox.ts": {
+    "count": 1,
+    "reason": "an empty locked gate file, created once with wx so it never overwrites one (bwrap binds only what exists)"
   },
   "src/shared/environment-manager/workspace-manager.ts": {
     "count": 2,
@@ -47,7 +55,7 @@
     "count": 1,
     "reason": "a lock folder's pid note: a lost write is covered by the 30 s rule"
   },
-  "src/shared/hub-files.ts": {
+  "src/shared/hub/hub-files.ts": {
     "count": 2,
     "reason": "hub pull: files written into the folder the person names, not state"
   },
@@ -80,8 +88,8 @@
     "reason": "temp .command scripts in the OS temp folder, removed after Terminal opens them"
   },
   "src/ui/server/sudo-store.ts": {
-    "count": 3,
-    "reason": "the sudo shim's files in a per-process temp folder, never state"
+    "count": 4,
+    "reason": "the sudo shim's files and its pid file in a per-process temp folder, never state"
   },
   "src/ui/server/update-watch.mjs": {
     "count": 1,

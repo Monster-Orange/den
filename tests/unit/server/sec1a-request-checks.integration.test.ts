@@ -20,7 +20,7 @@ import * as path from "path";
 import {
   cliAuthHeaders,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { signedIn, type SignedIn } from "./helpers/signed-in.js";

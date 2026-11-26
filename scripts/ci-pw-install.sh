@@ -53,6 +53,7 @@ for b in "${browsers[@]}"; do
   esac
 done
 
+image="${ImageOS:-unknown} ${ImageVersion:-?}"
 deps_s=${CI_PW_DEPS_SECONDS:-240}
 install_s=${CI_PW_INSTALL_SECONDS:-90}
 for pair in "CI_PW_DEPS_SECONDS=$deps_s" "CI_PW_INSTALL_SECONDS=$install_s"; do
@@ -88,6 +89,11 @@ attempt() {
       echo "ci-pw-install: $what done in $(($(date +%s) - start)) s"
       return 0
     fi
+    if [ "$what" = install-deps ] && command -v apt-cache >/dev/null 2>&1 &&
+      ! apt-cache policy 2>/dev/null | grep -q 'o=Ubuntu,'; then
+      echo "::error::playwright install-deps failed (exit $code) on runner image $image, and this runner has no Ubuntu apt sources (apt's sources: $(apt-cache policy 2>/dev/null | awk '/^ *[0-9]+ [a-z]+:/ {print $2}' | sort -u | tr '\n' ' ')). A retry reads the same sources, so none is made. Not a test failure: push a fresh head; never re-run the job."
+      return 1
+    fi
     if [ "$n" -eq 1 ]; then
       if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
         echo "::warning::playwright $what took over $limit s (cut off); retrying once"
@@ -97,7 +103,7 @@ attempt() {
       [ "$what" = install-deps ] && wait_apt "$limit"
     fi
   done
-  echo "::error::playwright $what failed twice (limit $limit s each; exit $code). The mirror or the download is stuck: re-run the job, or raise $setting."
+  echo "::error::playwright $what failed twice (limit $limit s each; exit $code). The mirror or the download is stuck on runner image $image: push a fix or a fresh head (never re-run the job), or raise $setting."
   return 1
 }
 

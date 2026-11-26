@@ -326,3 +326,29 @@ export function typingCheck(
     ? "ok"
     : "not_at_prompt";
 }
+
+/**
+ * Issue 1311: whether the screen's input line (the runtime's input prompt,
+ * the last one on screen) shows empty: nothing after its ">" or "❯" but
+ * spaces and the box's edge. False when it shows text, or when the
+ * runtime declares no input prompt or none is on screen (Den can't say).
+ * Only ever clears a draft (a placeholder such as `Try "…"` reads as
+ * text, so it never holds one by itself).
+ */
+export function inputLineEmpty(
+  output: string,
+  rt: TypingScreen | undefined,
+): boolean {
+  const ip = rt?.inputPrompt;
+  if (!ip) return false;
+  const screen = screenText(output);
+  const re = new RegExp(ip.match.source, ip.match.flags.replace("g", "") + "g");
+  let m: RegExpExecArray | null = null;
+  for (let x = re.exec(screen); x; x = re.exec(screen)) {
+    m = x;
+    if (x[0] === "") re.lastIndex++;
+  }
+  if (!m) return false;
+  const text = m[0].replace(/^[\s│]*[>❯]/u, "").replace(/│\s*$/u, "");
+  return text.replace(/[\s\p{Zs}]/gu, "") === "";
+}

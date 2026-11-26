@@ -35,6 +35,7 @@ const SELF = "tests/unit/test-infra/affected-tests.test.ts";
 /** The route a spec opens → the page file the server sends for it. */
 const PAGES = {
   agents: "agents.html",
+  terminals: "agents.html",
   settings: "settings.html",
   services: "services.html",
   "local-dev": "local-dev.html",
@@ -176,12 +177,21 @@ export function startsDen(tests) {
 }
 
 let srcFiles = null;
-const sources = () =>
-  (srcFiles ??= fs
+const shimPaths = () => {
+  const f = path.join(ROOT, "scripts", "shims.json");
+  return new Set(
+    fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf-8")).shims : [],
+  );
+};
+const sources = () => {
+  if (srcFiles) return srcFiles;
+  const shims = shimPaths();
+  return (srcFiles = fs
     .readdirSync(path.join(ROOT, "src"), { recursive: true })
     .map((f) => `src/${f.split(path.sep).join("/")}`)
-    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => f.endsWith(".ts") && !shims.has(f))
     .sort());
+};
 
 /**
  * A test's subject: the src files named like it, the src files its text
@@ -335,6 +345,18 @@ export function buildRules(map = readMap()) {
       why: "the UI catalogs",
     },
     {
+      when: [
+        `${PUB}/settings-registry.js`,
+        `${PUB}/settings-common.js`,
+        `${PUB}/settings-ui-*.js`,
+        `${PUB}/settings-rows-*.js`,
+        "tests/fixtures/settings-registry-order.json",
+      ],
+      run: ["tests/unit/server/settings-registry-order.test.ts"],
+      importers: ["tests/unit/server/helpers/settings-sources.ts"],
+      why: "the Settings rows: their pin and the tests that read them",
+    },
+    {
       when: [`${PUB}/**`],
       run: others.filter(
         (t) =>
@@ -363,6 +385,11 @@ export function buildRules(map = readMap()) {
       run: others.filter((t) => /["'`]examples["'`/]/.test(read(t))),
       why: "tests that read examples/",
     },
+    {
+      when: ["gate/**"],
+      run: tests.filter((t) => t.startsWith("tests/unit/test-infra/gate-")),
+      why: "the live checks' own tests (runners, shape, clauses)",
+    },
   );
   // Scripts a test runs by path (a spawn is not an import).
   for (const f of fs
@@ -377,13 +404,38 @@ export function buildRules(map = readMap()) {
         why: `tests that run scripts/${f}`,
       });
   }
+  for (const f of fs
+    .readdirSync(path.join(ROOT, "gate"))
+    .filter((f) => f.endsWith(".mjs"))
+    .sort()) {
+    const run = tests.filter(
+      (t) => t !== SELF && read(t).includes(`gate/${f}`),
+    );
+    if (run.length)
+      rules.push({
+        when: [`gate/${f}`],
+        run,
+        why: `tests that load gate/${f}`,
+      });
+  }
   // Tests that start Den as a process: each runs when its subject changes.
-  for (const [t, subject] of starterSubjects(map, tests))
+  const starters = starterSubjects(map, tests);
+  for (const [t, subject] of starters)
     if (subject.length)
       rules.push({
         when: subject,
         run: [t],
         why: "starts Den as a process: its subject",
+      });
+  // Issue 728: a test declared in `subjects` that STARTS can't see (it
+  // runs a scaffolded distribution's own bin) runs on its globs too.
+  const seen = new Set(starters.map(([t]) => t));
+  for (const [t, globs] of Object.entries(map.subjects ?? {}))
+    if (!seen.has(t))
+      rules.push({
+        when: [globs].flat().sort(),
+        run: [t],
+        why: "runs Den as a process (declared): its subject",
       });
   return rules.filter((r) => r.run.length);
 }

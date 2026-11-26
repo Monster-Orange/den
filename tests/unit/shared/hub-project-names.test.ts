@@ -6,8 +6,8 @@
  * Hub that doesn't answer, changes nothing (doctor speaks to those).
  */
 import { describe, expect, it } from "@jest/globals";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
-import { refreshHubNames } from "../../../src/shared/hub-project-names.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
+import { refreshHubNames } from "../../../src/shared/hub/hub-project-names.js";
 import { readHubConfig } from "../../../src/shared/hub.js";
 
 const L = (id: string, slug: string, name: string): HubProjectLink => ({
@@ -106,7 +106,7 @@ describe("the last check of Hub's names", () => {
     const os = await import("os");
     const path = await import("path");
     const { recordHubNamesCheck, readHubNamesCheck } =
-      await import("../../../src/shared/hub-project-names.js");
+      await import("../../../src/shared/hub/hub-project-names.js");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-names-"));
     try {
       expect(readHubNamesCheck(dir)).toEqual({});
