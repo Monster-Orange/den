@@ -1,6 +1,6 @@
 {
   "src/shared/auth/auth0-helper.ts": 6,
-  "src/shared/hub-files.ts": 1,
+  "src/shared/hub/hub-files.ts": 1,
   "tests/unit/agents/ag14-resume-remove.test.ts": 1,
   "tests/unit/agents/attention-hook.test.ts": 3,
   "tests/unit/agents/d71-workspace-delete.test.ts": 1,

@@ -19,6 +19,9 @@ export interface FakeRun {
   /** Issue 1214: which attempt (1 unless re-run). */
   run_attempt?: number; /** Issue 1279: its workflow (ci.yml, release-gates.yml…). */
   workflow_id?: number;
+  event?: string;
+  created_at?: string;
+  pull_requests?: { number: number }[];
 }
 
 export interface FakeJob {
@@ -200,6 +203,7 @@ export class FakeGithub {
     return {
       ...r,
       run_attempt: r.run_attempt ?? 1,
+      event: r.event ?? "pull_request",
       html_url: `https://github.example/${repo}/actions/runs/${r.id}`,
     };
   }

@@ -132,6 +132,43 @@ describe("the lead install", () => {
       expect.stringMatching(/^notice 1\.3\.0: .*npm has no 1\.3\.0/),
     ]);
   });
+
+  it("issue 125: a rollback that failed too says so first, with the hand-fix steps, inside the bell's 300 characters", async () => {
+    const npmErr = (v: string) =>
+      `npm install of ${v} failed (exit 243): npm error code EACCES / npm error syscall rename / ${"npm error permissions of the file and its containing directories ".repeat(4)}`;
+    const why = `${npmErr("1.3.0")}; ${npmErr("1.2.0")}`;
+    const seen: {
+      text: string;
+      key?: string;
+      vars?: Record<string, unknown>;
+    }[] = [];
+    const { d } = fake({
+      mode: () => "auto",
+      update: async () => ({
+        ok: false,
+        error: `${why}. The rollback failed: Den 1.2.0 may not start. A person must put the pin back on 1.2.0 in /srv/den and run npm install there.`,
+        rollbackFailed: { from: "1.2.0", root: "/srv/den", why },
+      }),
+      notice: (_v, text, msg) => seen.push({ text, ...msg }),
+    });
+    expect(await updateCheck(d).tick()).toMatchObject({
+      did: "failed",
+      version: "1.3.0",
+    });
+    expect(seen).toHaveLength(1);
+    const [n] = seen;
+    expect(n.key).toBe("bell.m.updateRollbackFailed");
+    expect(n.vars).toMatchObject({
+      v: "1.3.0",
+      from: "1.2.0",
+      root: "/srv/den",
+    });
+    const kept = n.text.slice(0, 300);
+    expect(kept).toMatch(/rollback failed too/i);
+    expect(kept).toContain("Den 1.2.0 may not start");
+    expect(kept).toMatch(/put the pin back on 1\.2\.0 in \/srv\/den/i);
+    expect(kept).toContain("npm install");
+  });
 });
 
 describe("a follower install", () => {

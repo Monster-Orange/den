@@ -31,7 +31,7 @@ import {
   writeCreationRecord,
 } from "../../../src/shared/test-operator.js";
 import { FIXTURE_PRINCIPAL } from "../../../src/shared/fixture-person.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import { spawn } from "child_process";
 
 let tmp = "";

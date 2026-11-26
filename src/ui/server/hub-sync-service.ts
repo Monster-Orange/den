@@ -8,7 +8,7 @@ import {
   ProjectSync,
   projectList,
   syncAgents,
-} from "../../shared/hub-project-sync.js";
+} from "../../shared/hub/hub-project-sync.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { projectRepos } from "../../shared/project-repos.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -40,7 +40,7 @@ export function projectSync(): ProjectSync {
     spelling: projectRepos,
     moved: (m) =>
       void Promise.all([
-        import("../../shared/hub-moved.js"),
+        import("../../shared/hub/hub-moved.js"),
         import("./notification-service.js"),
       ])
         .then(([hm, ns]) => {
@@ -68,8 +68,8 @@ export function projectSync(): ProjectSync {
 export async function retryDenUrlTellNow(): Promise<void> {
   try {
     const [{ retryDenUrlTell }, { readWebUrl }, hub] = await Promise.all([
-      import("../../shared/hub-den-url.js"),
-      import("../../shared/web-url.js"),
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
       import("../../shared/hub.js"),
     ]);
     await retryDenUrlTell({
@@ -97,7 +97,7 @@ export function startProjectSync(checkSeconds: number): void {
 }
 
 /**
- * 0.4.45: bring Hub's project names here (shared/hub-project-names.ts):
+ * 0.4.45: bring Hub's project names here (shared/hub/hub-project-names.ts):
  * at start, after Connect, and every `hub.names_check_seconds` (default
  * 300). A page shows a new name on its next read of the projects.
  */
@@ -105,14 +105,14 @@ export async function refreshHubNamesNow(): Promise<string[]> {
   const at = await hubAndToken();
   if (!at) return [];
   const { refreshHubNames, recordHubNamesCheck } =
-    await import("../../shared/hub-project-names.js");
-  const link = await import("../../shared/hub-project-link.js");
+    await import("../../shared/hub/hub-project-names.js");
+  const link = await import("../../shared/hub/hub-project-link.js");
   const hub = await import("../../shared/hub.js");
   return refreshHubNames({
     linked: () => {
       const out: [
         string,
-        import("../../shared/hub-project-link.js").HubProjectLink,
+        import("../../shared/hub/hub-project-link.js").HubProjectLink,
       ][] = [];
       for (const ws of Object.keys(readWorkspacesFile().workspaces)) {
         const l = link.hubProjectOf(ws);
@@ -242,5 +242,5 @@ async function bellToolsListFailed(
   }
 }
 
-/** How much of each org Den Hub can read, live (shared/hub-github.ts). */
-export { githubCoverage } from "../../shared/hub-github.js";
+/** How much of each org Den Hub can read, live (shared/hub/hub-github.ts). */
+export { githubCoverage } from "../../shared/hub/hub-github.js";

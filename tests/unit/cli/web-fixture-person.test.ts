@@ -25,7 +25,7 @@ import {
   fixturePersonPath,
   setupFixturePerson,
 } from "../../../src/shared/fixture-person.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 
 let tmp = "";
 const AGENT_KEYS = ["DEN_AGENT", "DEN_ACTOR_TOKEN", "DEN_ACTOR_TOKEN_FILE"];
