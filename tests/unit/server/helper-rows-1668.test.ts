@@ -178,6 +178,96 @@ describe("a session list reads helpers from the shared refresher", () => {
   });
 });
 
+describe("a helper started or finished inside refresh_seconds", () => {
+  it("a new helper's files show on the very next list", async () => {
+    const rows = new HelperRows();
+    const c = counting();
+    await list(rows, c.fn);
+    await new Promise((r) => setTimeout(r, 20));
+    writeHelper(
+      path.join(dir, "home"),
+      token(3),
+      "b0000000000000003",
+      "Look again",
+    );
+    c.calls.length = 0;
+    expect(totals(await list(rows, c.fn))).toContainEqual(["agent3", 2]);
+    expect(c.calls).toEqual(["agent3"]);
+  });
+});
+
+describe("lists naming different agents", () => {
+  it("past agents.helpers.facts_cache_mb the least recently asked goes first", async () => {
+    let t = 0;
+    const rows = new HelperRows(
+      () => ++t,
+      async () => undefined,
+    );
+    let reads = 0;
+    const ask = (id: string) => ({
+      id,
+      key: id,
+      compute: () => (
+        reads++,
+        {
+          running: 0,
+          idle: 0,
+          ended: 1,
+          total: 1,
+          cleared: 0,
+          activeCount: 0,
+          active: [],
+        }
+      ),
+    });
+    const tiny = 700;
+    await rows.ensure([ask("a")], 5_000, tiny);
+    await rows.ensure([ask("b")], 5_000, tiny);
+    await rows.ensure([ask("a")], 5_000, tiny);
+    await rows.ensure([ask("c")], 5_000, tiny);
+    reads = 0;
+    await rows.ensure([ask("a"), ask("c")], 5_000, tiny);
+    expect(reads).toBe(0);
+    await rows.ensure([ask("b")], 5_000, tiny);
+    expect(reads).toBe(1);
+  });
+
+  it("never evict each other's rows (a page on ?ws= beside the rail's count)", async () => {
+    let computes = 0;
+    const rows = new HelperRows(Date.now, async () => undefined);
+    const ask = (id: string) => ({
+      id,
+      key: id,
+      compute: () => {
+        computes++;
+        return undefined;
+      },
+    });
+    const one = ["a1", "a2", "shared"].map(ask);
+    const two = ["b1", "b2", "shared"].map(ask);
+    for (let i = 0; i < 5; i++) {
+      await rows.ensure(one, 5_000);
+      await rows.ensure(two, 5_000);
+    }
+    expect(computes).toBe(5);
+  });
+
+  it("a row nobody asked for in a minute is dropped", async () => {
+    let now = 1_000_000;
+    const rows = new HelperRows(
+      () => now,
+      async () => undefined,
+    );
+    const a = { id: "gone", key: "k", compute: () => undefined };
+    await rows.ensure([a], 5_000);
+    now += 61_000;
+    await rows.ensure([], 5_000);
+    let again = 0;
+    await rows.ensure([{ ...a, compute: () => (again++, undefined) }], 5_000);
+    expect(again).toBe(1);
+  });
+});
+
 describe("agents.helpers.refresh_seconds", () => {
   it("defaults to 5; a value is read; a bad one names the key", () => {
     expect(helpersBlock(undefined).refreshSeconds).toBe(5);

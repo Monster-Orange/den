@@ -904,11 +904,19 @@ async function listWithHelpers(
   const all = { ...HELPER_DEFAULTS, ...settings };
   const asks: HelperAsk[] = [];
   const where = [d.stateDir(), process.env.HOME, process.env.CLAUDE_CONFIG_DIR];
+  const stampOf = (rec: AgentRecord): string | null => {
+    try {
+      return getRuntime(rec.runtime)?.helpersStamp?.(rec) ?? null;
+    } catch {
+      return null;
+    }
+  };
   const helpersOf: HelpersOf = (rec, live, clearedAt, liveSince) => {
     const ask: HelperAsk = {
       id: rec.id,
       key: JSON.stringify([
         where,
+        stampOf(rec),
         rec.runtime,
         rec.resumeToken,
         live,
@@ -931,7 +939,12 @@ async function listWithHelpers(
     return rows.peek(ask);
   };
   const first = listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
-  if (!(await rows.ensure(asks, all.refreshSeconds * 1000))) return first;
+  const fresh = await rows.ensure(
+    asks,
+    all.refreshSeconds * 1000,
+    all.factsCacheMb * 1024 * 1024,
+  );
+  if (!fresh) return first;
   asks.length = 0;
   return listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
 }
