@@ -577,6 +577,29 @@
       .agstg[open] > summary::before {
         content: "▾";
       }
+      /* Issue 1086: Remove all stopped (N), at the top of the group's own
+         header, in the kit's button text. It sits beside the summary,
+         never in it (a summary is itself a button), on its own line just
+         above it and to the right, so it never covers the summary's click
+         at any width. The summary stays the group's first child, so it
+         still opens and closes it. The header's rule moves to the row. */
+      .agl .agstw:has(> .den-btn) {
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid var(--border);
+        margin-top: 4px;
+      }
+      .agl .agstw > .den-btn {
+        align-self: flex-end;
+        margin: 8px 12px 0;
+        /* A long label wraps within the list; never clipped, so the
+           kit's 44px touch target (its ::after) stays whole. */
+        max-width: calc(100% - 24px);
+      }
+      .agl .agstw:has(> .den-btn) .agstg > summary {
+        border-top: 0;
+        margin-top: 0;
+      }
       .agstg > summary:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: -2px;
@@ -1532,9 +1555,6 @@
               Tile
             </button>
           </div>
-          <button type="button" class="den-btn" id="ag-clear" hidden>
-            Clear stopped
-          </button>
           <button type="button" class="den-btn" id="ag-bring">Bring in</button>
           <button type="button" class="den-btn primary" id="ag-start">
             + Start agent

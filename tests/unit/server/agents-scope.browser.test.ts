@@ -3,7 +3,7 @@
  *
  *   - ?ws=<a workspace that isn't active>: one line, "Workspace west isn't
  *     active · Switch to west"; the list is that workspace's alone, and
- *     Clear stopped sends exactly it ({"workspaces":["west"]});
+ *     Remove all stopped sends exactly it ({"workspaces":["west"]});
  *   - Switch to west makes it active and views it (the top bar's switch);
  *   - ?ws=<no such workspace>: the same line, saying no workspace has that
  *     name, and an empty list (nothing to clear).
@@ -105,7 +105,7 @@ const listed = (p: Page) =>
   );
 
 describe("?ws= for a workspace that isn't active", () => {
-  it("says so in one line, lists only that workspace, and Clear stopped sends exactly it", async () => {
+  it("says so in one line, lists only that workspace, and Remove all stopped sends exactly it", async () => {
     if (skip()) return;
     const p = await open("west");
     await note(p).waitFor();
@@ -117,8 +117,16 @@ describe("?ws= for a workspace that isn't active", () => {
     const req = p.waitForRequest(
       (r) => new URL(r.url()).pathname === "/api/agents/clear-stopped",
     );
-    await p.locator("#ag-clear").click();
-    expect((await req).postDataJSON()).toEqual({ workspaces: ["west"] });
+    await p
+      .locator('#agl [data-stopped-row] > [data-act="remove-stopped"]')
+      .click();
+    await p
+      .locator('dialog[open][data-dk-kind="confirm"] [data-dk="ok"]')
+      .click();
+    expect((await req).postDataJSON()).toEqual({
+      workspaces: ["west"],
+      agents: ["drifter"],
+    });
     await p.locator('#agl .agst[data-agent="drifter"]').waitFor({
       state: "detached",
     });
@@ -138,7 +146,7 @@ describe("?ws= for a workspace that isn't active", () => {
     );
     expect(await note(p).locator("button").count()).toBe(0);
     expect(await listed(p)).toEqual([]);
-    expect(await p.locator("#ag-clear").isHidden()).toBe(true);
+    expect(await p.locator('[data-act="remove-stopped"]').count()).toBe(0);
     // Nowhere to start an agent: no + Start agent.
     expect(await p.locator("#ag-start").isHidden()).toBe(true);
     await p.context().close();

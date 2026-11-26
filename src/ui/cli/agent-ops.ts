@@ -9241,16 +9241,18 @@ export async function removeAgent(
 
 /**
  * Remove every stopped, interrupted or exited agent of `workspaces`
- * (AG-14.1b Clear stopped); running ones stay.
+ * (Remove all stopped); running ones stay, and `only` limits it to those.
  */
 export async function removeStopped(
   d: AgentsResolved,
   workspaces: readonly string[],
+  only?: readonly string[],
 ): Promise<Removed[]> {
   const sessions = await hostSessions(d);
   const recs = listRecords(d.stateDir()).filter(
     (r) =>
       workspaces.includes(r.workspace) &&
+      (!only || only.includes(r.id)) &&
       isStoppedState(rowState(r, sessionOf(sessions, r))),
   );
   return removeRecords(d, recs);
