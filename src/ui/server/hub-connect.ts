@@ -83,6 +83,12 @@ import {
 } from "../../shared/secrets/index.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { isRepoName } from "../../shared/repo-name.js";
+import {
+  endHubSwitch,
+  hubSwitchDeps,
+  liveHubSwitch,
+  switchDays,
+} from "./hub-switch.js";
 
 /** How long a started connect waits for Hub to send the person back. */
 export const CONNECT_TTL_MS = 10 * 60_000;
@@ -101,7 +107,13 @@ interface Pending {
   review?:
     | { hash: string; keys: string[] }
     | { why: string; code: FallbackCode };
+  switching?: true;
 }
+
+const sameHub = (a: string, b: string): boolean => {
+  const x = hubOrigin(a);
+  return !!x && x === hubOrigin(b);
+};
 
 /** What hub.token becomes after a connect: a store ref, or a file source. */
 export type StoredToken =
@@ -171,6 +183,8 @@ export interface HubConnectDeps {
   linkOf?: (ws: string) => HubProjectLink | null;
   /** Issue 648: the origin hub/bound.json names now (after the rebind). */
   boundOrigin?: () => string | null;
+  hubSwitch?: () => { to: string; from: string } | null;
+  switched?: (r: { ok: boolean; why?: string }) => void;
 }
 
 /** Issue 646: at most this many repos go to Hub's Connect page. */
@@ -462,6 +476,15 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     linkOf: (ws) =>
       parseHubProjectLink(readWorkspacesFile().workspaces[ws]?.hub_project),
     boundOrigin: () => readHubBinding(getStateDir())?.origin ?? null,
+    hubSwitch: () =>
+      liveHubSwitch({
+        stateDir: getStateDir(),
+        days: switchDays((readUserConfig() as Record<string, unknown>).hub),
+      }),
+    switched: (r) =>
+      void hubSwitchDeps()
+        .then((d) => endHubSwitch(d, r))
+        .catch(() => undefined),
   };
 }
 
@@ -549,9 +572,16 @@ export class HubConnect {
   start(
     origin: string,
     url?: unknown,
+    opts: { switch?: boolean } = {},
   ): { ok: true; location: string } | { ok: false; error: string } {
     const typed = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
-    const hubUrl = typed || this.deps.config()?.url || "";
+    let sw: { to: string } | null = null;
+    try {
+      sw = opts.switch ? (this.deps.hubSwitch?.() ?? null) : null;
+    } catch {
+      sw = null;
+    }
+    const hubUrl = typed || sw?.to || this.deps.config()?.url || "";
     if (!hubUrl) return { ok: false, error: "type Hub's address first" };
     const bad = hubUrlProblem(hubUrl);
     if (bad)
@@ -587,6 +617,7 @@ export class HubConnect {
       redirectUri,
       at: this.deps.now(),
       ...(review ? { review } : {}),
+      ...(sw && sameHub(sw.to, hubUrl) ? { switching: true as const } : {}),
     });
     const q = new URLSearchParams({
       install: this.deps.installLabel(),
@@ -624,7 +655,10 @@ export class HubConnect {
    * The result names what happened in words (never the token or the code).
    */
   async finish(q: URLSearchParams): Promise<ConnectResult> {
+    const switching = !!this.pending.get(q.get("state") ?? "")?.switching;
     const r = await this.finishOnce(q);
+    if (switching)
+      this.deps.switched?.(r.ok ? { ok: true } : { ok: false, why: r.message });
     // `message` is the plain English line for logs and older pages; the
     // page words `words` itself (issue 648, en/es/ja).
     const message = r.ok
@@ -717,8 +751,9 @@ export class HubConnect {
           : `Hub didn't give a token: ${(e as Error).message}`;
       return { ok: false, reason: "failed", message: m };
     }
-    const hubUrl =
-      grant.hubUrl && !hubUrlProblem(grant.hubUrl) ? grant.hubUrl : p.hubUrl;
+    const ownName = (u: string | undefined) =>
+      !!u && !hubUrlProblem(u) && (!p.switching || sameHub(u, p.hubUrl));
+    const hubUrl = ownName(grant.hubUrl) ? grant.hubUrl! : p.hubUrl;
     // Issue 726: connected before (to another Hub, or for another company
     // on this one): the old token is read now (the new one may take its
     // file or item) and revoked on its Hub after, so a token for a company
@@ -748,8 +783,7 @@ export class HubConnect {
     };
     hub.url = hubUrl;
     hub.token = stored.kind === "ref" ? stored.ref : stored.source;
-    if (grant.mcpUrl && !hubUrlProblem(grant.mcpUrl))
-      hub.mcp_url = grant.mcpUrl;
+    if (ownName(grant.mcpUrl)) hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
     this.deps.writeUser({ ...user, hub });
     this.deps.agentGrantSettled?.();
