@@ -61,6 +61,10 @@ const fast = {
   coldHelperRows: 0,
   coldProbe: { ms: 6, status: 200, inFlight: true },
   helpersMs: 2100,
+  fill: [
+    { ms: 5, status: 200 },
+    { ms: 8, status: 200 },
+  ],
   helperRows: limits.n,
   tries: times(Math.floor(limits.limit / 4)),
   probes: probes(Math.floor(limits.probe / 4)),
@@ -138,6 +142,26 @@ describe("gate/1668 rows", () => {
     expect(r[0].detail).toContain(`cold list ${limits.limit * 6} ms`);
     expect(r[1].detail).toContain(
       `during the cold list ${limits.probe * 18} ms`,
+    );
+  });
+
+  it("server-info stalled while the background reader fills the helpers fails row 2, and its detail shows the fill probes", () => {
+    const r = rows({
+      ...fast,
+      fill: [
+        { ms: 6, status: 200 },
+        { ms: limits.probe * 8, status: 200 },
+      ],
+    });
+    expect(r.map((x) => x.ok)).toEqual([true, false]);
+    expect(r[1].detail).toContain(
+      `while the helpers filled 2 probes, max ${limits.probe * 8} ms`,
+    );
+    expect(rows(fast)[1].detail).toContain(
+      "while the helpers filled 2 probes, max 8 ms",
+    );
+    expect(rows({ ...fast, fill: [] })[1].detail).toContain(
+      "none (helpers were there at once)",
     );
   });
 

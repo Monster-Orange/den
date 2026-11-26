@@ -13,7 +13,7 @@ export const HELPERS_WAIT_MS = 60000;
 
 export const clauses = [
   `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms: the first list right after the seed (cold, its helpers not yet read), and the median of ${TRIES} tries once the list shows every seeded agent's helpers (within ${HELPERS_WAIT_MS / 1000} s)`,
-  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; the same bar holds during the cold list; its idle time is shown beside it)`,
+  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; the same bar holds during the cold list and on each poll while the helpers fill; its idle time is shown beside it)`,
 ];
 export const SEED_WAY =
   "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
@@ -116,6 +116,12 @@ function seed(fs, path, crypto, home, dir, made, mb = SEED_MB) {
       }) + "\n",
     );
   }
+}
+
+function fillSay(fill) {
+  const xs = fill ?? [];
+  if (!xs.length) return "none (helpers were there at once)";
+  return `${xs.length} probes, max ${Math.max(...xs.map((p) => p.ms))} ms ${JSON.stringify(xs.slice(0, 10).map((p) => p.ms))}${xs.length > 10 ? " …" : ""}`;
 }
 
 function clean(fs, path, s) {
@@ -247,8 +253,11 @@ export async function run(ctx, s) {
   Object.assign(r, { coldHelperRows: look(cold.body).helperRows });
   const t0 = Date.now();
   let last = look(cold.body);
+  r.fill = [];
   while (last.helperRows < SEED_AGENTS && Date.now() - t0 < HELPERS_WAIT_MS) {
     await ctx.sleep(1000);
+    const fp = await info();
+    r.fill.push({ ms: fp.ms, status: fp.status });
     last = look((await timedList(d2)).body);
   }
   r.helpersMs = last.helperRows >= SEED_AGENTS ? Date.now() - t0 : null;
@@ -344,11 +353,12 @@ export function expect(cells) {
       clauses[1],
       r.coldProbe?.status === 200 &&
         r.coldProbe.ms <= PROBE_MS &&
+        (r.fill ?? []).every((p) => p.status === 200 && p.ms <= PROBE_MS) &&
         allOk(r.probes) &&
         (bounded
           ? r.probes.every((p) => p.ms <= PROBE_MS)
           : r.maxProbeMs <= PROBE_MS),
-      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during the cold list ${r.coldProbe?.ms ?? "?"} ms${r.coldProbe?.inFlight ? "" : " (list done)"}; during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, ${bounded ? `in flight on ${r.inFlight} of ${TRIES}, but the list answered in ${r.medianMs} ms (median), within ${PROBE_MS}, so nothing could wait behind it longer; max ${Math.max(...r.probes.map((p) => p.ms))}` : `max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES}`} (limit ${PROBE_MS})`,
+      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during the cold list ${r.coldProbe?.ms ?? "?"} ms${r.coldProbe?.inFlight ? "" : " (list done)"}; while the helpers filled ${fillSay(r.fill)}; during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, ${bounded ? `in flight on ${r.inFlight} of ${TRIES}, but the list answered in ${r.medianMs} ms (median), within ${PROBE_MS}, so nothing could wait behind it longer; max ${Math.max(...r.probes.map((p) => p.ms))}` : `max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES}`} (limit ${PROBE_MS})`,
     ),
   ];
 }
