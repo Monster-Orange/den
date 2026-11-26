@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { bindHub, type BindHubDeps } from "../../../src/shared/hub-binding.js";
+import {
+  bindHub,
+  type BindHubDeps,
+} from "../../../src/shared/hub/hub-binding.js";
 import type { WorkspacesFile } from "../../../src/shared/types/index.js";
 import { relinkAfterMove } from "../../../src/ui/server/hub-relink-after-move.js";
 import { HubConnect } from "../../../src/ui/server/hub-connect.js";

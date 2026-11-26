@@ -34,7 +34,7 @@ import {
   FIXTURE_SESSION_RANGE,
   LOGIN_CODE_TTL_MS,
   safeNext,
-} from "./web-session.js";
+} from "./web/web-session.js";
 import { writeFileAtomic } from "./atomic-write.js";
 
 export { FIXTURE_SESSION_MINUTES, FIXTURE_SESSION_RANGE };

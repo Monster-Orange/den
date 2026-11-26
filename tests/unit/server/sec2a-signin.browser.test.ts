@@ -14,12 +14,12 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
+import { readWebSecret } from "../../../src/shared/web/web-secret.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { writeWebOwner } from "../../../src/shared/web/web-owner.js";
 import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
