@@ -20,6 +20,7 @@ let browser: Browser | null = null;
 let latest = "";
 const errors: string[] = [];
 const leaving = new Set<Page>();
+let step = "start";
 const refusedOwnFetch = (msg: string) =>
   msg.endsWith(" due to access control checks.") &&
   msg.includes(`/${new URL(s!.base).host}/`);
@@ -111,7 +112,7 @@ async function browserWindow(
   const p = await ctx.newPage();
   p.on("pageerror", (e) => {
     if (leaving.has(p) && refusedOwnFetch(e.message)) return;
-    errors.push(`${size.width}: ${e.message}`);
+    errors.push(`${size.width} [${step}]: ${e.message}`);
   });
   return { ctx, p };
 }
@@ -122,6 +123,11 @@ async function terms(v: View): Promise<void> {
     null,
     { timeout: 20_000 },
   );
+}
+
+async function shut(v: View): Promise<void> {
+  leaving.add(v.p);
+  await v.ctx.close();
 }
 
 async function away(v: View, go: () => Promise<unknown>): Promise<void> {
@@ -170,7 +176,7 @@ async function openByUrl(
   touch = false,
 ): Promise<View> {
   const v = await browserWindow(size, touch);
-  await v.p.goto(`${s!.base}/agents?open=${sid}`);
+  await v.p.goto(`${s!.base}/terminals?open=${sid}`);
   await terms(v);
   return v;
 }
@@ -195,11 +201,11 @@ async function eventually(
 const settle = (ms = 1500) => new Promise((r) => setTimeout(r, ms));
 const last = (pty: ScriptedPty) => pty.resizes.at(-1) ?? [0, 0];
 const following = (v: View, sid: string) =>
-  v.p.locator(`.pane[data-id="${sid}"] .agfollow`).count();
+  v.p.locator(`[data-id="${sid}"] [data-act="take-size"]`).count();
 const takeOver = (v: View, sid: string) =>
-  v.p.locator(`.pane[data-id="${sid}"] [data-act="take-size"]`).click();
+  v.p.locator(`[data-id="${sid}"] [data-act="take-size"]`).click();
 const type = async (v: View, d: string) => {
-  await v.p.focus(".pane .xterm-helper-textarea");
+  await v.p.focus("[data-id] textarea");
   await v.p.keyboard.type(d);
 };
 
@@ -261,6 +267,7 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     await eventually(async () => (await following(ipad, sid)) === 1);
     const n = pty.resizes.length;
 
+    step = "laptop blip";
     await blip(laptop, async () => {
       await ipad.p.setViewportSize({
         width: IPAD.width - 20,
@@ -273,12 +280,14 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     expect(await following(laptop, sid)).toBe(0);
     await eventually(async () => (await following(ipad, sid)) === 1);
 
+    step = "laptop reload";
     await away(laptop, () => laptop.p.reload());
     await settle();
     expect(last(pty)).toEqual(laptopSize);
     expect(await following(laptop, sid)).toBe(0);
     await eventually(async () => (await following(ipad, sid)) === 1);
 
+    step = "ipad app switch";
     await appSwitch(ipad);
     await settle();
     expect(pty.resizes.slice(n).filter((z) => z[0] !== laptopSize[0])).toEqual(
@@ -287,11 +296,13 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     expect(last(pty)).toEqual(laptopSize);
     expect(await following(ipad, sid)).toBe(1);
 
+    step = "ipad reload";
     await away(ipad, () => ipad.p.reload());
     await settle();
     expect(last(pty)).toEqual(laptopSize);
     await eventually(async () => (await following(ipad, sid)) === 1);
 
+    step = "escape query";
     const asked = pty.writes.length;
     pty.emit("\x1b[c\x1b[6n\x1b[?1004h> ready\r\n");
     await eventually(() =>
@@ -301,6 +312,7 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     expect(last(pty)).toEqual(laptopSize);
     expect(await following(laptop, sid)).toBe(0);
 
+    step = "ipad types";
     await type(ipad, "x");
     const ipadSize = await termSize(ipad);
     await eventually(() => {
@@ -318,8 +330,8 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
       const [c, r] = last(pty);
       return c === ipadSize[0] && r === ipadSize[1];
     });
-    await ipad.ctx.close();
-    await laptop.ctx.close();
+    await shut(ipad);
+    await shut(laptop);
   }, 120_000);
 
   it("a deliberate open (a click on the row) takes the size at once; loading that page's address again in another browser does not", async () => {
@@ -330,9 +342,12 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
       const [c] = await termSize(ipad);
       return c === last(pty)[0];
     });
+    step = "row click";
     const laptop = await browserWindow(LAPTOP);
     await laptop.p.goto(`${s!.base}/terminals`);
-    await laptop.p.locator(`.agr[data-id="${sid}"]`).click();
+    await laptop.p
+      .locator(`button[data-id="${sid}"][data-kind="session"]`)
+      .click();
     await terms(laptop);
     const laptopSize = await termSize(laptop);
     await eventually(() => {
@@ -342,6 +357,7 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     expect(await following(laptop, sid)).toBe(0);
     await eventually(async () => (await following(ipad, sid)) === 1);
 
+    step = "ipad loads url";
     await away(ipad, () => ipad.p.goto(laptop.p.url()));
     await settle();
     expect(last(pty)).toEqual(laptopSize);
@@ -351,8 +367,8 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     await settle();
     expect(last(pty)).toEqual(laptopSize);
     expect(await following(laptop, sid)).toBe(0);
-    await ipad.ctx.close();
-    await laptop.ctx.close();
+    await shut(ipad);
+    await shut(laptop);
   }, 120_000);
 
   it("raised no page errors", () => {

@@ -4230,6 +4230,26 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
   },
   {
+    id: "server.sessions_size_claim_grace",
+    category: "server",
+    label: "Terminal size hold",
+    description:
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    keywords: [
+      "terminal",
+      "size",
+      "resize",
+      "window",
+      "ipad",
+      "size_claim_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_claim_grace_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_claim_grace_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ sessions: { size_claim_grace_seconds: v } }),
+  },
+  {
     id: "server.sessions_pty_close",
     category: "server",
     label: "Terminal close after exit",

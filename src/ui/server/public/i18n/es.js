@@ -1433,6 +1433,10 @@
     "set.server.sessions_close_grace": "Margen al cerrar una terminal",
     "set.server.sessions_close_grace.d":
       "Cuánto tiempo tiene una terminal para terminar después de que la cierras, antes de que se detenga a la fuerza. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace":
+      "Retención del tamaño de la terminal",
+    "set.server.sessions_size_claim_grace.d":
+      "Cuánto tiempo conserva el tamaño de una terminal la ventana que lo fijó por última vez después de que se corta su conexión, para que un corte breve o una recarga no pase el tamaño a otra ventana. 0 lo pasa de inmediato. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
     "set.server.sessions_pty_close": "Cierre de terminal tras salir",
     "set.server.sessions_pty_close.d":
       "Cuánto tiempo después de que termina el programa de una terminal se cierra su terminal. 0 la cierra al instante. Su historial sigue legible en ambos casos. Se aplica la próxima vez que arranque el host de terminales. __DEN_CLI__ config sessions.pty_close_seconds=0",

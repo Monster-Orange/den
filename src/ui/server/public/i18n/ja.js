@@ -1383,6 +1383,9 @@
     "set.server.sessions_close_grace": "ターミナルを閉じるときの猶予",
     "set.server.sessions_close_grace.d":
       "ターミナルを閉じてから、強制的に止めるまでに、ターミナルが終了できる時間です。__DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace": "ターミナルのサイズの保持",
+    "set.server.sessions_size_claim_grace.d":
+      "ターミナルのサイズを最後に決めたウィンドウが、接続が切れたあともそのサイズを保つ時間です。短い切断や再読み込みで、サイズがほかのウィンドウに移りません。0 にするとすぐに移ります。__DEN_CLI__ config sessions.size_claim_grace_seconds=30",
     "set.server.sessions_pty_close": "終了後にターミナルを閉じるまで",
     "set.server.sessions_pty_close.d":
       "ターミナルのプログラムが終了してから、そのターミナルを閉じるまでの時間です。0 ならすぐに閉じます。どちらの場合もスクロールバックは読めます。ターミナルホストが次に起動したときに反映されます。__DEN_CLI__ config sessions.pty_close_seconds=0",
