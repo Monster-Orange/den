@@ -282,6 +282,7 @@ import {
   listRemovedRecords,
   purgeRemoved,
   readRecord,
+  recordKeptUnreadable,
   agentIdTaken,
   removeRecord,
   restoreRecord,
@@ -964,7 +965,10 @@ export async function hubUpstream(
   const guarded = who.agentId !== SERVER_AGENT_ID;
   const check = (): "agent_removed" | "agent_unreadable" | null => {
     try {
-      return readRecord(d.stateDir(), who.agentId) ? null : "agent_removed";
+      if (readRecord(d.stateDir(), who.agentId)) return null;
+      return recordKeptUnreadable(d.stateDir(), who.agentId)
+        ? "agent_unreadable"
+        : "agent_removed";
     } catch {
       return "agent_unreadable";
     }

@@ -24,6 +24,7 @@ import {
   mintActorToken,
 } from "../../../src/shared/actor-token.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(90_000);
 
@@ -106,13 +107,8 @@ async function open(e: (typeof ENGINES)[number]): Promise<Page> {
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";

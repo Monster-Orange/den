@@ -441,13 +441,20 @@ export function readRecord(stateDir: string, id: string): AgentRecord | null {
   }
 }
 
+export function recordKeptUnreadable(stateDir: string, id: string): boolean {
+  if (!AGENT_ID_RE.test(id)) return false;
+  const rel = path
+    .relative(stateDir, recordFile(stateDir, id))
+    .split(path.sep)
+    .join("/");
+  return readKept(stateDir).some((k) => k.file === rel);
+}
+
 export function agentIdTaken(stateDir: string, id: string): boolean {
   if (!AGENT_ID_RE.test(id)) return false;
   if (readRecord(stateDir, id)) return true;
-  const file = recordFile(stateDir, id);
-  if (fs.existsSync(file)) return true;
-  const rel = path.relative(stateDir, file).split(path.sep).join("/");
-  return readKept(stateDir).some((k) => k.file === rel);
+  if (fs.existsSync(recordFile(stateDir, id))) return true;
+  return recordKeptUnreadable(stateDir, id);
 }
 
 /** Where removed records wait for Undo (AG-14.1b). */
