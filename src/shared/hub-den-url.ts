@@ -50,6 +50,11 @@ export interface DenUrlTellDeps {
   now?: () => Date;
 }
 
+const printable = (v: unknown, max = 200): string =>
+  String(v ?? "")
+    .replace(/[^\x20-\x7e]/g, "?")
+    .slice(0, max);
+
 const originOf = (u: string | null | undefined): string | null => {
   try {
     return u ? new URL(u).origin : null;
@@ -83,7 +88,7 @@ export function denUrlTellRow(
   if (!denUrlTellDue(t, denUrl, hubUrl)) return null;
   const last =
     t && originOf(t.hub) === originOf(hubUrl) && t.url === denUrl
-      ? `; the last try: ${t.outcome}${t.status !== undefined ? ` (${t.status})` : ""}${t.error ? `: ${t.error}` : ""}`
+      ? `; the last try: ${printable(t.outcome, 40)}${typeof t.status === "number" ? ` (${t.status})` : ""}${t.error ? `: ${printable(t.error)}` : ""}`
       : "";
   return {
     detail: `Hub doesn't know this Den's address yet (${denUrl}). Den tells it again at the next project sync${last}`,
@@ -146,7 +151,7 @@ function errInfo(e: unknown): { status?: number; message: string } {
           : undefined;
   return {
     ...(status !== undefined ? { status } : {}),
-    message: typeof o.message === "string" ? o.message : String(e),
+    message: printable(typeof o.message === "string" ? o.message : String(e)),
   };
 }
 

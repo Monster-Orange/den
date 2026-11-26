@@ -171,3 +171,42 @@ describe("issue 1632: Connect doesn't wait on the tell", () => {
     expect(done).toBe(true);
   });
 });
+
+describe("issue 1632: the Hub's words are cleaned before Doctor prints them", () => {
+  const nasty =
+    "bad\x1b]52;c;ZXZpbA==\x07 \x1b[31mred\x1b[0m\n" + "x".repeat(500);
+  const clean = (s: string | undefined) =>
+    expect(s ?? "").toMatch(/^[\x20-\x7e]*$/);
+
+  it("a new tell records the error as one printable line, at most 200 characters", async () => {
+    await tellHubDenUrl(ADDR, {
+      hub: async () => ({ url: NEW, token: TOKEN }),
+      put: async () => {
+        throw new HubCallError("rejected", nasty, undefined, 401);
+      },
+      stateDir: dir,
+    });
+    const t = readDenUrlTell(dir);
+    clean(t?.error);
+    expect((t?.error ?? "").length).toBeLessThanOrEqual(200);
+  });
+
+  it("an older record with raw text is cleaned in Doctor's row", () => {
+    const r = denUrlTellRow(
+      tell({ outcome: "refused", status: 401, error: nasty }),
+      ADDR,
+      NEW,
+    );
+    clean(r?.detail);
+    expect(r?.detail).not.toContain("\x1b");
+  });
+
+  it("an outcome the file shouldn't hold is cleaned too", () => {
+    const r = denUrlTellRow(
+      tell({ outcome: "\x1b]0;title\x07" as never, hub: OLD }),
+      ADDR,
+      NEW,
+    );
+    clean(r?.detail);
+  });
+});
