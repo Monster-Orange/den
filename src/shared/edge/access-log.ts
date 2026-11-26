@@ -35,15 +35,9 @@ export interface AccessLogConfig {
   maskPaths: string[];
   /** edge-access.log is rotated (one .1 kept) past this size. */
   maxMb: number;
-  /**
-   * Issue 637: doctor says the raw file is large past this many KB of
-   * unmasked lines. High by default: a busy edge between one-second
-   * sweeps never reaches it.
-   */
   rawWarnKb: number;
 }
 
-/** Issue 637: edge.access_log.raw_warn_kb's default. */
 export const RAW_WARN_KB_DEFAULT = 1024;
 
 const QUERY_KEY = /^[A-Za-z0-9_.-]{1,64}$/;

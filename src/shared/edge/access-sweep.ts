@@ -7,11 +7,8 @@
  *
  * The raw file holds unmasked one-time tokens until a sweep, so the server
  * sweeps it before anything else at startup, and `rawAccessWarning` tells
- * doctor and `edge status` when sweeps have stopped. Issue 637: each sweep
- * touches access/swept (its heartbeat), so doctor, in another process,
- * can tell "busy" from "not swept": nothing masks the lines only when no
- * sweep ran within 10 s (or ever). Size alone (edge.access_log.raw_warn_kb)
- * says the file is large, never that nothing masks it.
+ * doctor and `edge status` when no sweep (each touches access/swept) ran
+ * within 10 s, or ever; size alone (raw_warn_kb) never says it stopped.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -35,23 +32,20 @@ export function accessPaths(stateDir: string): {
     dir,
     raw: path.join(dir, "access.json"),
     log: path.join(stateDir, "edge-access.log"),
-    // Issue 637: the sweep's heartbeat (its mtime), empty.
     swept: path.join(dir, "swept"),
   };
 }
 
-/** Issue 637: the sweep's heartbeat touched (made empty, 0600, if none). */
 function touchSwept(file: string): void {
   try {
     fs.closeSync(fs.openSync(file, "a", 0o600));
     const t = new Date();
     fs.utimesSync(file, t, t);
   } catch {
-    /* the dir went: no access log, nothing to say */
+    return;
   }
 }
 
-/** When the last sweep ran (ms), or null: never, or unreadable. */
 function lastSweep(stateDir: string): number | null {
   try {
     return fs.statSync(accessPaths(stateDir).swept).mtimeMs;
@@ -178,10 +172,8 @@ function unsweptBytes(file: string): number {
 }
 
 /**
- * A warning when the raw file is not being swept, or (issue 637) is
- * larger than `rawWarnKb` while it is. Null when it's empty or absent.
- * Not swept: unmasked lines, and no sweep within RAW_STALE_MS, or never.
- * Swept but not emptied: unmasked lines last written over RAW_STALE_MS ago.
+ * A warning when the raw file isn't swept, isn't emptied, or is over
+ * `rawWarnKb` while swept. Null when it's empty or absent.
  */
 export function rawAccessWarning(
   stateDir: string,
@@ -200,9 +192,6 @@ export function rawAccessWarning(
   const ago = (t: number) =>
     `${Math.max(0, Math.round((now - t) / 1000))} s ago`;
   if (swept !== null && now - swept <= RAW_STALE_MS) {
-    // A sweep empties a file that stopped growing. Unmasked lines last
-    // written over 10 s ago with sweeps running: it can't (a part line
-    // the edge never finished, or one that kept growing).
     const age = now - st.mtimeMs;
     if (age > RAW_STALE_MS)
       return (
@@ -243,7 +232,6 @@ export function edgeAccessHealthy(
   if (cfg.accessLog?.enabled !== true) return null;
   if (edgeAccessWarnings(cfg, now).length) return null;
   const log = `access log on: masked into ${accessPaths(cfg.stateDir).log}`;
-  // Issue 637: when the server is sweeping, say so, with the last sweep.
   const swept = lastSweep(cfg.stateDir);
   if (swept === null) return `${log}, and kept up with`;
   const ago = `${Math.max(0, Math.round((now - swept) / 1000))} s ago`;

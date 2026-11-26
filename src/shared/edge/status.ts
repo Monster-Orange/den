@@ -79,7 +79,6 @@ export interface EdgeStatus {
   accessLog: {
     enabled: boolean;
     log: string;
-    /** Issue 637: edge.access_log.raw_warn_kb. */
     rawWarnKb: number;
     warnings: string[];
   };
@@ -197,7 +196,6 @@ export function edgeStatus(
     accessLog: {
       enabled: cfg.accessLog?.enabled === true,
       log: accessPaths(cfg.stateDir).log,
-      // Issue 637: the raw log's size limit (edge.access_log.raw_warn_kb).
       rawWarnKb: cfg.accessLog?.rawWarnKb ?? RAW_WARN_KB_DEFAULT,
       warnings: edgeAccessWarnings(cfg),
     },

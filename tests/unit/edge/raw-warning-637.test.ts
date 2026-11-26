@@ -1,16 +1,3 @@
-/**
- * Issue 637: on a busy edge, more than 16 KB of raw lines arrive between
- * two one-second sweeps, and doctor said "nothing is masking it" while
- * Den's server was sweeping every second.
- *
- * The warning now means "not being swept": each sweep leaves a heartbeat
- * (access/swept), and the warning says nothing is masking only when there
- * are unmasked lines and no sweep within the stale limit (10 s), or no
- * sweep ever. Size is a Setting (edge.access_log.raw_warn_kb, 1024 by
- * default); past it, with the sweep running, the text says the file is
- * large, not that nothing masks it. Doctor's healthy line gives the last
- * sweep's time, and `edge status` shows the size limit.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -43,13 +30,11 @@ const line = (i: number) =>
     Duration: 1000,
     RouterName: "app@file",
   }) + "\n";
-/** About `kb` KB of raw lines, as the edge appends them between sweeps. */
 function arrive(kb: number): void {
   let s = "";
   for (let i = 0; s.length < kb * 1024; i++) s += line(i);
   fs.appendFileSync(accessPaths(dir).raw, s);
 }
-/** When the last sweep ran, as its heartbeat says. */
 function sweptAt(): number {
   return fs.statSync(path.join(accessPaths(dir).dir, "swept")).mtimeMs;
 }
@@ -134,7 +119,6 @@ describe("issue 637: the sweep runs but isn't emptying the file", () => {
   it("fresh heartbeat, a part line last written 11 s ago: warns", () => {
     sweepAccessLog(dir, on);
     const raw = accessPaths(dir).raw;
-    // The edge died mid-write: a line with no newline, so no sweep takes it.
     fs.appendFileSync(raw, line(1).trimEnd());
     sweepAccessLog(dir, on);
     const now = sweptAt() + 1_000;
@@ -142,7 +126,6 @@ describe("issue 637: the sweep runs but isn't emptying the file", () => {
     const w = rawAccessWarning(dir, now);
     expect(w).toMatch(/the sweep runs but isn't emptying it/);
     expect(w).toMatch(/last written 11 s ago/);
-    // Still being written (a busy edge): no warning.
     fs.utimesSync(raw, new Date(now - 500), new Date(now - 500));
     expect(rawAccessWarning(dir, now)).toBeNull();
   });

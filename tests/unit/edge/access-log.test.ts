@@ -338,10 +338,8 @@ describe("the sweep", () => {
     const small = fs.mkdtempSync(path.join(os.tmpdir(), "den-access-"));
     try {
       prepareAccessRaw(small);
-      // Issue 637: never swept is not swept, whatever its size.
       fs.appendFileSync(accessPaths(small).raw, traefikLine("/a") + "\n");
       expect(rawAccessWarning(small, now)).toMatch(/never swept/);
-      // Swept, then a small line: fine until the sweep is 10 s old.
       sweepAccessLog(small, on);
       const at = fs.statSync(accessPaths(small).swept).mtimeMs;
       fs.appendFileSync(accessPaths(small).raw, traefikLine("/b") + "\n");
@@ -361,7 +359,6 @@ describe("the sweep", () => {
     expect(fs.statSync(raw()).size).toBe(0);
     expect(kept()).not.toContain(SECRET);
     expect(rawAccessWarning(dir, now + 60_000)).toBeNull();
-    // Issue 637: a minute later, nothing waits, so the last sweep's age.
     expect(edgeAccessHealthy(cfg, now + 60_000)).toMatch(
       /, and kept up with \(last sweep \d+ s ago\)$/,
     );
