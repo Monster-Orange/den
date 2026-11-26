@@ -343,12 +343,13 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(a.hubIds[0]).not.toBe(b.hubIds[0]);
   });
 
-  it("the Hub clauses skip with their reason when the bed has no Hub", () => {
+  it("each skipped clause names its own reason: no Hub, and no tool-list change", () => {
     const r = runGate("fixed");
-    for (const i of [1, 2]) {
-      expect(row(r, i)?.ok).toBeNull();
-      expect(row(r, i)?.skip).toBe("needs-hub");
-    }
+    expect(row(r, 1)).toMatchObject({ ok: null, skip: "needs-hub" });
+    expect(row(r, 2)).toMatchObject({
+      ok: null,
+      skip: "needs-tool-list-change",
+    });
   });
 
   it("puts back the restart wait, and never writes the person's self-update setting", () => {

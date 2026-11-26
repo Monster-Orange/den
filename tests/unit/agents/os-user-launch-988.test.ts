@@ -114,6 +114,86 @@ describe("issue 988: nothing the launcher runs is the agents' login's to change"
   });
 });
 
+describe("issue 988: every group the login is in, and every link under the engine", () => {
+  type St = { uid: number; gid: number; mode: number };
+  const fake =
+    (over: Record<string, Partial<St>>) =>
+    (p: string): St => {
+      const s = fs.lstatSync(p);
+      const real =
+        p === tmp || p.startsWith(tmp + path.sep)
+          ? { uid: s.uid, gid: s.gid, mode: s.mode }
+          : { uid: 0, gid: 0, mode: (s.mode & 0o170000) | 0o755 };
+      return { ...real, ...(over[p] ?? {}) };
+    };
+  const LOGIN = { uid: 455, gid: 455, gids: [455, 20, 812] };
+  function linked(name: string) {
+    const e = path.join(tmp, name, "engine");
+    const store = path.join(tmp, name, "store", "pkg");
+    fs.mkdirSync(path.join(e, "dist"), { recursive: true });
+    fs.mkdirSync(path.join(e, "node_modules"), { recursive: true });
+    fs.mkdirSync(store, { recursive: true });
+    fs.writeFileSync(path.join(e, "dist", "cli.js"), "");
+    fs.writeFileSync(path.join(store, "index.js"), "");
+    fs.symlinkSync(store, path.join(e, "node_modules", "pkg"));
+    fs.symlinkSync(e, path.join(e, "node_modules", "loop"));
+    return { e, store, file: path.join(store, "index.js") };
+  }
+  const run = (e: string, stat: (p: string) => St) =>
+    runtimeWritableProblems(
+      {
+        bin: process.execPath,
+        script: path.join(e, "dist", "cli.js"),
+        engineRoot: e,
+      },
+      LOGIN,
+      { stat },
+    ).join("\n");
+
+  it("a file another of the login's groups can write is named", () => {
+    const { e } = linked("groups");
+    const cli = path.join(e, "dist", "cli.js");
+    expect(run(e, fake({ [cli]: { gid: 812, mode: 0o100664 } }))).toContain(
+      cli,
+    );
+    expect(run(e, fake({ [cli]: { gid: 813, mode: 0o100664 } }))).toBe("");
+  });
+
+  it("a link under the engine is followed: its target, what's in it and the folders above it", () => {
+    const { e, store, file } = linked("links");
+    expect(run(e, fake({}))).toBe("");
+    expect(run(e, fake({ [file]: { uid: 455 } }))).toContain(file);
+    const above = path.dirname(store);
+    expect(run(e, fake({ [above]: { mode: 0o40777 } }))).toContain(above);
+  });
+
+  it("a link's own mode is no problem (Linux shows every link as 0777): its target and folder are what count", () => {
+    const { e } = linked("linkmode");
+    const pkg = path.join(e, "node_modules", "pkg");
+    const loop = path.join(e, "node_modules", "loop");
+    expect(
+      run(e, fake({ [pkg]: { mode: 0o120777 }, [loop]: { mode: 0o120777 } })),
+    ).toBe("");
+  });
+
+  it("a link the agents' login owns is named, whatever its mode", () => {
+    const { e } = linked("linkowner");
+    const pkg = path.join(e, "node_modules", "pkg");
+    expect(run(e, fake({ [pkg]: { uid: 455, mode: 0o120755 } }))).toContain(
+      pkg,
+    );
+  });
+
+  it("a link under the engine to nothing is named: the login might make what it points at", () => {
+    const { e } = linked("dangling");
+    const open = path.join(tmp, "dangling", "open");
+    fs.mkdirSync(open);
+    const link = path.join(e, "node_modules", "gone");
+    fs.symlinkSync(path.join(open, "missing.js"), link);
+    expect(run(e, fake({}))).toContain(link);
+  });
+});
+
 describe("issue 988: nothing from the login's home or the caller's folder is loaded", () => {
   const home = path.join(tmp, "home");
   const caller = path.join(tmp, "caller");

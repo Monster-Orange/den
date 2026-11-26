@@ -30,7 +30,7 @@ export interface OsUserLayout {
   person: string;
   personHome: string;
   root: string;
-  runtime: { bin: string; script: string };
+  runtime: { bin: string; script: string; engineRoot?: string };
   noLogin: string;
   ids?: { uid: number; gid: number };
 }
@@ -534,6 +534,7 @@ export interface OsUserFacts {
   homeDir: StatFacts | null;
   stateDir: StatFacts | null;
   dir: boolean;
+  runtime?: string[];
 }
 
 export interface OsUserCheck {
@@ -591,6 +592,9 @@ export function osUserCheck(
     );
 
   if (o.on) problems.push(...homeProblems(l, f));
+  if (o.on || f.user.exists)
+    for (const r of f.runtime ?? [])
+      problems.push(`Den's runtime: ${r}, and the agents' login runs it`);
 
   const present = [
     f.user.exists && `the login ${n.user}`,
@@ -740,6 +744,10 @@ export interface OsUserReadDeps {
   stat: (p: string) => StatFacts | null;
   read: (p: string) => string | null;
   chain: (p: string) => (StatFacts & { path: string })[];
+  runtime?: (
+    r: { bin: string; script: string; engineRoot: string },
+    agents: { uid: number; gids: number[] },
+  ) => string[];
 }
 
 export function readOsUserFacts(
@@ -767,7 +775,7 @@ export function readOsUserFacts(
     if (pw && pw.length >= 7)
       user = {
         exists: true,
-        uid: Number(pw[2]),
+        uid: idNumber(pw[2]),
         shell: pw[6],
         home: pw[5],
         groups: groupsOf(n.user),
@@ -792,7 +800,7 @@ export function readOsUserFacts(
     if (u !== null)
       user = {
         exists: true,
-        uid: Number(field(u, "UniqueID")),
+        uid: idNumber(field(u, "UniqueID")),
         shell: field(u, "UserShell"),
         home: field(u, "NFSHomeDirectory"),
         groups: groupsOf(n.user),
@@ -843,7 +851,34 @@ export function readOsUserFacts(
     personHome: personHomeFacts(l, d, ok),
     stateDir: d.stat(stateDir),
     dir: d.stat(p.dir) !== null,
+    ...(l.runtime.engineRoot && d.runtime
+      ? {
+          runtime: runtimeFacts(
+            { ...l.runtime, engineRoot: l.runtime.engineRoot },
+            user,
+            ok("id", ["-G", n.user]),
+            d.runtime,
+          ),
+        }
+      : {}),
   };
+}
+
+const idNumber = (v: string | undefined): number =>
+  v !== undefined && /^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN;
+
+function runtimeFacts(
+  r: { bin: string; script: string; engineRoot: string },
+  user: OsUserFacts["user"],
+  idG: string | null,
+  check: NonNullable<OsUserReadDeps["runtime"]>,
+): string[] {
+  if (!user.exists) return check(r, { uid: NO_LOGIN_YET, gids: [] });
+  if (!Number.isInteger(user.uid)) return [UID_UNREAD];
+  const gids = (idG ?? "").trim().split(/\s+/).filter(Boolean).map(Number);
+  if (!gids.length || gids.some((g) => !Number.isInteger(g)))
+    return [GROUPS_UNREAD];
+  return check(r, { uid: user.uid as number, gids });
 }
 
 function personHomeFacts(
@@ -896,14 +931,42 @@ export function machineReadDeps(): OsUserReadDeps {
         return [];
       }
     },
+    runtime: runtimeProblemsOrUnread,
   };
+}
+
+export const GROUPS_UNREAD = "can't read the agents' login's groups";
+export const NO_LOGIN_YET = -1;
+export const UID_UNREAD = "can't read the agents' login's uid";
+export const OWED_REFUSAL =
+  "the agents' own login isn't ready on this Den version yet";
+export const OS_LOGIN_OWED: readonly string[] = [
+  "macOS access lists (ACLs) on Den's runtime files and folders",
+  "service logs private to the person's login",
+];
+
+export function runtimeProblemsOrUnread(
+  r: { bin: string; script: string; engineRoot: string },
+  agents: { uid: number; gids: number[] },
+): string[] {
+  if (agents.uid !== NO_LOGIN_YET && !agents.gids.length)
+    return [GROUPS_UNREAD];
+  try {
+    return runtimeWritableProblems(r, agents);
+  } catch (e) {
+    return [`it couldn't be read (${(e as Error).message})`];
+  }
 }
 
 export function runtimeWritableProblems(
   r: { bin: string; script: string; engineRoot: string },
-  agents: { uid: number; gid: number },
+  agents: { uid: number; gid?: number; gids?: number[] },
   d: { stat?: (p: string) => { uid: number; gid: number; mode: number } } = {},
 ): string[] {
+  const groups = new Set([
+    ...(agents.gids ?? []),
+    ...(agents.gid === undefined ? [] : [agents.gid]),
+  ]);
   const stat =
     d.stat ??
     ((p: string) => {
@@ -919,8 +982,8 @@ export function runtimeWritableProblems(
     const sticky = isDir && (s.mode & 0o1000) !== 0;
     if ((s.mode & 0o002) !== 0 && !(dirAbove && sticky))
       return `${p} is ${octal(s.mode)}: anyone can change it`;
-    if ((s.mode & 0o020) !== 0 && s.gid === agents.gid && !(dirAbove && sticky))
-      return `${p} is ${octal(s.mode)}: the agents' group can change it`;
+    if ((s.mode & 0o020) !== 0 && groups.has(s.gid) && !(dirAbove && sticky))
+      return `${p} is ${octal(s.mode)}: a group the agents' login is in (${s.gid}) can change it`;
     return null;
   };
   const check = (p: string, dirAbove: boolean) => {
@@ -938,15 +1001,36 @@ export function runtimeWritableProblems(
       d2 = up;
     }
   };
+  const walked = new Set<string>();
   const walk = (p: string) => {
-    check(p, false);
     let st: fs.Stats;
     try {
       st = fs.lstatSync(p);
     } catch {
+      check(p, false);
       return;
     }
-    if (!st.isDirectory()) return;
+    if (!st.isSymbolicLink()) check(p, false);
+    if (st.isSymbolicLink()) {
+      if (!seen.has(p) && stat(p).uid === agents.uid) {
+        seen.add(p);
+        problems.push(`${p} is the agents' login's`);
+      }
+      let target: string;
+      try {
+        target = fs.realpathSync(p);
+      } catch {
+        problems.push(
+          `${p} points at ${fs.readlinkSync(p)}, which isn't there: the agents' login might make it`,
+        );
+        return;
+      }
+      above(target);
+      walk(target);
+      return;
+    }
+    if (!st.isDirectory() || walked.has(p)) return;
+    walked.add(p);
     for (const e of fs.readdirSync(p)) walk(path.join(p, e));
   };
   const bin = fs.realpathSync(r.bin);

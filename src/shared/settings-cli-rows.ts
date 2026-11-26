@@ -115,7 +115,7 @@ import {
   ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
-import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { LOOKUP_LIMITS } from "./proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 import { SERVER_LOG_LIMITS } from "./server-log-file.js";
