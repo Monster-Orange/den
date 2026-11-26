@@ -1,13 +1,13 @@
 export const issue = 1631;
 export const clauses = [
   "a fresh Claude Code agent starts with Den's pinned pstack folder, and that folder holds pstack's skills",
-  "after agents.<id>.skill_packs=off and its restart, the agent starts with no pack",
+  "after den config agents.<id>.skill_packs=off, Den restarts the agent on its own and it runs with no pack",
   "den doctor checks the installed pack against its pin and says which copy is in use",
   "den config skill_packs lists the pack, its pin and the agent with packs off",
   "Settings › Agents shows the pstack row with its pin and a link to its licence",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
-export const timeoutMs = 240000;
+export const timeoutMs = 360000;
 const ID = "gate-1631-packs";
 const KEY = `agents.${ID}.skill_packs`;
 
@@ -66,14 +66,13 @@ export async function run(ctx, state) {
     ctx.readBed(`state:agent-files/${ID}/settings.json`),
     4000,
   );
-  a.restart();
-  r.restartMs = await a.running(30000);
-  await ctx.until(
+  r.autoMs = await ctx.until(
     () =>
       cut(ctx.readBed(`state:agent-files/${ID}/settings.json`), 4000) !==
       before,
-    20000,
+    120000,
   );
+  r.restartMs = await a.running(30000);
   r.after = packDirs(ctx);
   r.page = await settingsRow(ctx);
   return r;
@@ -168,10 +167,11 @@ export function expect(cells) {
       clause: clauses[1],
       ok:
         main.set?.code === 0 &&
+        main.autoMs != null &&
         !!main.restartMs &&
         Array.isArray(main.after) &&
         main.after.length === 0,
-      detail: `config set: ${main.set?.code}; restarted: ${!!main.restartMs}; pack folders after: ${JSON.stringify(main.after)}`,
+      detail: `config set: ${main.set?.code}; restarted by Den: ${main.autoMs != null ? `${main.autoMs} ms` : "no"}; running: ${!!main.restartMs}; pack folders after: ${JSON.stringify(main.after)}`,
     });
   }
   const doc = `${main.doctor?.out ?? ""}`;
