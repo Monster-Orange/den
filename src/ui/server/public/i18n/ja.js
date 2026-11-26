@@ -1320,6 +1320,9 @@
     "set.server.gate_route_agents": "エージェントの重い実行を順番待ちに通す",
     "set.server.gate_route_agents.d":
       "オンなら、エージェントの単独のテスト、型チェック、ブラウザテストはほかと同じく順番待ちの枠を使います。オフなら、そのまま実行して下で数えます。__DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep": "使い捨てのテスト用コンテナを削除する",
+    "set.server.gate_throwaway_sweep.d":
+      "オンなら、順番待ちの実行が終わった使い捨てのテスト用コンテナを Den が削除し、使われていない保持中のコンテナを止めます。オフなら、Den はそのために docker を実行しません。手で削除するまで残り、Doctor はこの片付けがオフだと表示します。__DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "順番待ちに通すプログラム",
     "set.server.gate_route_commands.d":
       'カンマ区切りのプログラム名、または npm test と npm run test*(* は任意の末尾)。空なら jest, vitest, tsc, playwright, npm test, npm run test*。__DEN_CLI__ gate settings --route-commands "jest, vitest"',

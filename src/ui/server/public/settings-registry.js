@@ -4188,6 +4188,19 @@ export const DEN_SETTINGS = [
       }),
   },
   {
+    id: "server.gate_throwaway_sweep",
+    category: "server",
+    label: "Remove throwaway test containers",
+    description:
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
+    keywords: ["gate", "docker", "container", "throwaway", "sweep", "cleanup"],
+    scope: "user",
+    keys: ["gate_slots.throwaway_sweep"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.throwawaySweep !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { throwaway_sweep: v ? 1 : 0 } }),
+  },
+  {
     // Issue 1264: today's runs outside the gate, per agent.
     id: "server.gate_outside",
     category: "server",

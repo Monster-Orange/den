@@ -75,6 +75,7 @@
     ["server.gate_host_only", "server"],
     ["server.gate_route_agents", "server"],
     ["server.gate_route_commands", "server"],
+    ["server.gate_throwaway_sweep", "server"],
     ["server.gate_outside", "server"],
     ["server.self_update", "server"],
     ["server.update_check", "server"],
