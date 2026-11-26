@@ -9,7 +9,9 @@
  * the first one (an init script's requestAnimationFrame loop), for a page
  * whose shell came with the HTML and for one the kit mounts. Every sample
  * is fully off-screen. Then ☰ opens the drawer and Esc closes it: both
- * animate (an in-between x is seen). With reduced motion, neither does.
+ * run their slide to the end (its transition events, on a page kept busy
+ * as a loaded runner's is), and the slide held halfway has the rail between
+ * shut and open (issue 1495). With reduced motion, neither slides.
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
@@ -259,7 +261,10 @@ for (const engine of ["chromium", "webkit"]) {
       await p.context().close();
     });
 
-    it("opening and closing the drawer still animate", async () => {
+    // Issue 1495: these two don't sample frames. On a busy runner the
+    // browser can skip every frame of a 0.18 s slide, so "an in-between x
+    // was seen" failed there with the slide working.
+    it("opening and closing the drawer each run the slide to its end, on a busy page too", async () => {
       const b = browsers[engine];
       if (!b) return;
       const p = await open(b, true);
@@ -268,24 +273,62 @@ for (const engine of ["chromium", "webkit"]) {
         const b = document.getElementById("den-rail")!.getBoundingClientRect();
         return { x: Math.round(b.x), w: Math.round(b.width) };
       });
-      const opening = await xsDuring(p, () =>
-        p.locator("#den-menu-btn").click(),
-      );
+      expect(rail.x + rail.w).toBeLessThanOrEqual(0);
+      await p.evaluate(() => {
+        const r = document.getElementById("den-rail")!;
+        const w = window as unknown as { tx: string[] };
+        w.tx = [];
+        for (const t of ["transitionrun", "transitionend", "transitioncancel"])
+          r.addEventListener(t, (e) => {
+            if ((e as TransitionEvent).propertyName === "transform")
+              w.tx.push(t);
+          });
+        // A loaded runner: the page is busy for 400 ms (longer than the
+        // slide) right after each slide starts.
+        const busy = () => {
+          void getComputedStyle(r).transform;
+          const t0 = performance.now();
+          while (performance.now() - t0 < 400) {
+            /* busy */
+          }
+        };
+        window.addEventListener("click", busy);
+        window.addEventListener("keydown", busy);
+      });
+      const tx = () =>
+        p.evaluate(() => (window as unknown as { tx: string[] }).tx);
+      const railX = () =>
+        p.evaluate(() =>
+          Math.round(
+            document.getElementById("den-rail")!.getBoundingClientRect().x,
+          ),
+        );
+      const settled = (n: number) =>
+        p.waitForFunction(
+          (n) =>
+            (window as unknown as { tx: string[] }).tx.length >= n &&
+            document.getElementById("den-rail")!.getAnimations().length === 0,
+          n,
+          { timeout: 10_000 },
+        );
+
+      await p.locator("#den-menu-btn").click();
+      await settled(2);
+      expect(await tx()).toEqual(["transitionrun", "transitionend"]);
       expect(await p.evaluate(() => document.body.className)).toContain(
         "den-rail-open",
       );
-      // It ends at 0, and passed through x's between shut and open.
-      expect(opening[opening.length - 1]).toBe(0);
-      expect(opening.some((x) => x > rail.x + 1 && x < -1)).toBe(true);
-      const dur = await p.evaluate(
-        () =>
-          getComputedStyle(document.getElementById("den-rail")!)
-            .transitionDuration,
-      );
-      expect(dur).not.toBe("0s");
-      const closing = await xsDuring(p, () => p.keyboard.press("Escape"));
-      expect(closing[closing.length - 1]).toBe(rail.x);
-      expect(closing.some((x) => x > rail.x + 1 && x < -1)).toBe(true);
+      expect(await railX()).toBe(0);
+
+      await p.keyboard.press("Escape");
+      await settled(4);
+      expect(await tx()).toEqual([
+        "transitionrun",
+        "transitionend",
+        "transitionrun",
+        "transitionend",
+      ]);
+      expect(await railX()).toBe(rail.x);
       // After a person's open and close, the transition is still there.
       expect(
         await p.evaluate(
@@ -294,6 +337,61 @@ for (const engine of ["chromium", "webkit"]) {
               .transitionDuration,
         ),
       ).not.toBe("0s");
+      await p.context().close();
+    });
+
+    it("mid-slide, the drawer is between shut and open both ways (the slide held at 90 ms)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const p = await open(b, true);
+      await loadSamples(p);
+      const shut = await p.evaluate(() =>
+        Math.round(
+          document.getElementById("den-rail")!.getBoundingClientRect().x,
+        ),
+      );
+      // Start the slide, hold it at 90 ms of its 180, read x, let it end:
+      // all in one task, so no frame timing comes into it.
+      const midway = (start: string) =>
+        p.evaluate((start) => {
+          if (start === "open")
+            (document.getElementById("den-menu-btn") as HTMLElement).click();
+          else
+            document.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+            );
+          const r = document.getElementById("den-rail")!;
+          void getComputedStyle(r).transform;
+          const a = r
+            .getAnimations()
+            .find(
+              (x) =>
+                (x as unknown as { transitionProperty?: string })
+                  .transitionProperty === "transform",
+            );
+          if (!a) return { found: false, x: NaN, end: NaN };
+          a.pause();
+          a.currentTime = 90;
+          const x = Math.round(r.getBoundingClientRect().x);
+          a.finish();
+          return {
+            found: true,
+            x,
+            end: Math.round(r.getBoundingClientRect().x),
+          };
+        }, start);
+
+      const opening = await midway("open");
+      expect(opening.found).toBe(true);
+      expect(opening.x).toBeGreaterThan(shut + 1);
+      expect(opening.x).toBeLessThan(-1);
+      expect(opening.end).toBe(0);
+
+      const closing = await midway("close");
+      expect(closing.found).toBe(true);
+      expect(closing.x).toBeGreaterThan(shut + 1);
+      expect(closing.x).toBeLessThan(-1);
+      expect(closing.end).toBe(shut);
       await p.context().close();
     });
 

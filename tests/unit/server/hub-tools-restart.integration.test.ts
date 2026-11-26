@@ -18,6 +18,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 const TOKEN = "hubi_TESTONLY_tools_restart_5c2e";
 
@@ -194,7 +195,7 @@ describe("issue 193 reopened: Hub adds a tool while an idle Claude Code agent ru
       if (i > 300) throw new Error("row still says restarting");
       await new Promise((r) => setTimeout(r, 100));
     }
-    const args = s.made[next].args;
+    const args = runtimeArgs(s.made[next]);
     expect(args.slice(0, 2)).toEqual(["--resume", token]);
     expect(seen().planner.conv).toBe(conv);
 

@@ -8,6 +8,9 @@
 //   "repo-filter": 0.4.66: ids only, and the rail filtered by the item's own project;
 //   "one-unpin":   ★ under All unpins one pin of the item, and no Undo;
 //   "no-migrate":  an old id-only pin always becomes none.
+// `persons` are the person's own pins (old id-only or { item, project }):
+// as on a test install (issue 946), a save by the fixture person never
+// removes them, and adds nothing already among them.
 // The bed's ctx.until answers the ms it took (0 counts) or null, as the real one does.
 // Invented names only.
 
@@ -18,7 +21,7 @@ const WORKSPACES = {
 };
 const ACTIVE = ["north", "south"];
 
-export function fakeBed({ policy = "good" } = {}) {
+export function fakeBed({ policy = "good", persons = [] } = {}) {
   let scope = "all";
   let pins = []; // { item, project }
   const den = { policy, saves: 0 };
@@ -45,9 +48,10 @@ export function fakeBed({ policy = "good" } = {}) {
         list.findIndex((q) => q.item === p.item && q.project === p.project) ===
         i,
     );
+  const own = () => dedupe(persons.map(migrate));
   const store = (list) => {
     den.saves++;
-    pins = dedupe(list.map(migrate));
+    pins = dedupe([...own(), ...list.map(migrate)]);
     if (policy === "repo-filter")
       pins = dedupe(pins.map((p) => ({ item: p.item, project: null })));
   };
@@ -176,7 +180,7 @@ export function fakeBed({ policy = "good" } = {}) {
     scope: () => scope,
     pins: () => pins.map((p) => ({ ...p })),
     seed: (list) => {
-      pins = list.map((p) => ({ ...p }));
+      pins = dedupe([...own(), ...list.map((p) => ({ ...p }))]);
     },
   };
 }

@@ -17,6 +17,7 @@ import { type BoxProbe } from "../../../src/shared/gates/boxes.js";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateView } from "../../../src/shared/gates/view.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -210,15 +211,16 @@ describe("runs that stay on this machine", () => {
     );
   });
 
-  it("no --base-url: stays, in one line, and never fails for it", async () => {
+  // Issue 1198: no --base-url no longer keeps a run here; it may reach
+  // only the ports it opens itself (http://127.0.0.1:*).
+  it("no --base-url: it may still take a box, allowed only the ports it opens", async () => {
     const store = storeWith();
+    holdHost(store);
     const t = deps(store);
     expect(await cmdGate(plain(), t.d)).toBe(0);
-    expect(t.ran[0]!.env?.DEN_GATE_SLOT_BOX).toBe("local");
-    const why = t.err.filter((l) => /stays on this machine/.test(l));
-    expect(why).toEqual([
-      "gate: stays on this machine: no --base-url, so a test box can't reach the app",
-    ]);
+    expect(t.ran[0]!.env?.DEN_GATE_BOX).toBe("b1");
+    expect(t.ran[0]!.env?.DEN_GATE_ALLOW).toBe("127.0.0.1:*");
+    expect(t.err.filter((l) => /stays on this machine/.test(l))).toEqual([]);
   });
 
   it("no box serves its Playwright version: stays, saying why", async () => {
@@ -340,10 +342,7 @@ describe("the two settings: gate settings and the Settings page", () => {
 
   it("have Settings rows in en, es and ja", () => {
     const pub = path.join(process.cwd(), "src/ui/server/public");
-    const reg = fs.readFileSync(
-      path.join(pub, "settings-registry.js"),
-      "utf-8",
-    );
+    const reg = readSettingsSources();
     for (const id of ["gate_box_default", "gate_host_only"]) {
       expect(reg).toContain(`id: "server.${id}"`);
       for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {

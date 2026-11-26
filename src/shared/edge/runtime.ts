@@ -12,7 +12,7 @@ import { probeIdentity } from "../den-identity.js";
 import { getStateDir } from "../paths.js";
 import { portInUse as portInUseAnywhere } from "../port-pick.js";
 import { product } from "../product.js";
-import { localhostOrigin } from "../web-session.js";
+import { denWebBase } from "../web/web-dial.js";
 import {
   addressCheckSettings,
   cliLanguage,
@@ -92,6 +92,113 @@ export function syncEdgeProof(
   const proof = ensureEdgeProof(cfg.stateDir);
   writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
   return "written";
+}
+
+/**
+ * Issue 728: the marker that the edge's proof was rotated once after agents
+ * lost read access to the edge's state folder. In that folder, so installs
+ * sharing one edge rotate it once. No secret in it.
+ */
+const ROTATED = "proof-rotated.json";
+
+/** When the once-only rotation ran, or null if it hasn't. */
+export function edgeProofRotation(cfg: Pick<EdgeConfig, "stateDir">): {
+  rotatedAt: string | null;
+} {
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(path.join(cfg.stateDir, ROTATED), "utf8"),
+    ) as { at?: unknown };
+    return { rotatedAt: typeof v.at === "string" ? v.at : null };
+  } catch {
+    return { rotatedAt: null };
+  }
+}
+
+/**
+ * Issue 728: rotate the edge's proof once. A new proof, and edge.yml (when
+ * the edge is set up here) rewritten with it, which Traefik reloads by
+ * itself: nothing restarts and sessions are kept (until Traefik reloads,
+ * a few seconds, edge requests aren't proved, so a page loaded then asks to
+ * sign in). No proof yet (an edge never started here): nothing is
+ * written, not even the marker; a proof made later is made after agents
+ * lost read access, and one that turns up unmarked is rotated once.
+ * The proof (0600, renamed in whole) comes first, edge.yml next, the marker
+ * last: a crash between them fails closed (edge requests stop proving, so
+ * people sign in), the next start's syncEdgeProof puts the current proof in
+ * edge.yml, and with no marker the rotation runs again. The web server's
+ * check re-reads the proof file when it changes: no restart.
+ */
+export function rotateEdgeProofOnce(
+  cfg: EdgeConfig,
+  ports: ReadonlySet<number>,
+  now: Date = new Date(),
+): "rotated" | "done" | "no-edge" {
+  if (edgeProofRotation(cfg).rotatedAt) return "done";
+  if (readEdgeProof(cfg.stateDir) === null) return "no-edge";
+  const proof = rotateEdgeProof(cfg.stateDir);
+  const file = path.join(cfg.stateDir, "dynamic", GENERATED);
+  if (fs.existsSync(file))
+    writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
+  writeFileAtomic(
+    path.join(cfg.stateDir, ROTATED),
+    JSON.stringify({ at: now.toISOString(), rotated: true }) + "\n",
+    { mode: 0o600 },
+  );
+  return "rotated";
+}
+
+/**
+ * Issue 728: the rotation as Den's start runs it. No edge config here is
+ * quiet ("no-config"); a config whose rotation throws (a write refused,
+ * say) is warned with the reason, never swallowed ("failed"), and the next
+ * start tries again (no marker was written).
+ */
+export function rotateEdgeProofAtStart(o: {
+  readConfig: () => EdgeConfig;
+  ports: ReadonlySet<number>;
+  now?: Date;
+  rotate?: typeof rotateEdgeProofOnce;
+  onRotated: () => void;
+  warn: (message: string) => void;
+}): "rotated" | "done" | "no-edge" | "no-config" | "failed" {
+  let cfg: EdgeConfig;
+  try {
+    cfg = o.readConfig();
+  } catch {
+    return "no-config";
+  }
+  try {
+    const r = (o.rotate ?? rotateEdgeProofOnce)(cfg, o.ports, o.now);
+    if (r === "rotated") o.onRotated();
+    return r;
+  } catch (e) {
+    o.warn(
+      `the edge's proof was not rotated (the next start tries again): ${(e as Error).message}`,
+    );
+    return "failed";
+  }
+}
+
+/**
+ * Issue 728: the stacks (their Compose project folders) holding generated
+ * secrets in the edge's state folder, which agents could read before. Only
+ * names: never a value. They're never regenerated here (that would lock a
+ * stack out of its data); doctor names each for its project's agent.
+ */
+export function stacksWithGeneratedSecrets(
+  cfg: Pick<EdgeConfig, "stateDir">,
+): string[] {
+  const root = path.join(cfg.stateDir, "stacks");
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => fs.existsSync(path.join(root, n, "generated.env")))
+    .sort();
 }
 
 function ensureNetwork(name: string): void {
@@ -398,7 +505,7 @@ export async function assertEdgePorts(
   const s = addressCheckSettings();
   const opts = { key, timeoutMs: s.timeoutMs, retries: s.retries };
   const lang = cliLanguage();
-  const own = await probe(localhostOrigin(webPort), opts);
+  const own = await probe(denWebBase(webPort), opts);
   if (!own.ok) {
     (c.log ?? ((l: string) => console.log(l)))(
       addressWord(lang, "doctor.unchecked", { title }),

@@ -49,6 +49,11 @@ export const UI_MODULES: readonly string[] = [
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
+  "/agent-bands.js",
+  // Issue 750: the agents page's By group view.
+  "/agent-groups.js",
+  // Issue 1407: one agent's answer to a restart for its tools.
+  "/restart-result.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
@@ -72,6 +77,8 @@ export const UI_MODULES: readonly string[] = [
   "/view-scope.js",
   // ON-6: the server agent's page.
   "/server-agent-page.js",
+  // Issue 52: the Coach tab on the server agent's page.
+  "/coach-tab.js",
   // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
@@ -153,6 +160,8 @@ export const KIT_FILES: readonly string[] = [
   "fonts.css",
   "tokens.css",
   "base.css",
+  // Issue 788: the sketch theme (greys, dashed edges, outline buttons).
+  "themes/sketch.css",
   "busy.js",
   "busy-words.js",
   // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
@@ -167,6 +176,9 @@ export const KIT_FILES: readonly string[] = [
   // switch, with their looks.
   "panel-fold.js",
   "panel-fold.css",
+  // A non-modal popover anchored to what opened it, and its look.
+  "popover.js",
+  "popover.css",
   "switch.js",
   "switch.css",
   // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
@@ -182,8 +194,15 @@ export const KIT_FILES: readonly string[] = [
   "setting-row.css",
   "setting-field.js",
   "setting-field.css",
+  // Issue 750: the group header (the agents page's By group view).
+  "group-header.js",
+  "group-header.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  "attention.js",
+  // Issue 789: a preview in a sandboxed frame, and the script inside it.
+  "preview.js",
+  "preview-frame.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
@@ -375,6 +394,8 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/busy.css",
   // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
   "/kit/dialog.css",
+  // Issue 750: the group header's look (the agents page's By group view).
+  "/kit/group-header.css",
 ];
 
 /**
@@ -397,14 +418,26 @@ export function kitPage(html: string): string {
     );
 }
 
+export function uiModuleFile(
+  pathname: string,
+  publicDir: string,
+): string | null {
+  if (pathname === "/health-rollup.js")
+    return path.join(publicDir, "../../../shared/health/rollup-rule.js");
+  return UI_MODULES.includes(pathname)
+    ? path.join(publicDir, pathname.slice(1))
+    : null;
+}
+
 /** Serves a UI module or vendored asset; false when `pathname` is neither. */
 export function serveUiAsset(
   res: http.ServerResponse,
   pathname: string,
   publicDir: string,
 ): boolean {
-  if (UI_MODULES.includes(pathname)) {
-    serveFile(res, path.join(publicDir, pathname.slice(1)));
+  const ui = uiModuleFile(pathname, publicDir);
+  if (ui) {
+    serveFile(res, ui);
     return true;
   }
   if (pathname === KIT_SHELL_SCRIPT) {

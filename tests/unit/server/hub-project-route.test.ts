@@ -13,7 +13,7 @@ import {
   type HubProjectRouteDeps,
 } from "../../../src/ui/server/hub-project-routes.js";
 import { AUDIT_HEADERS } from "../../../src/shared/agent-actor.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 
 const BACK = {
   id: "proj_backoffice",
@@ -41,6 +41,7 @@ async function serve(over: Partial<HubProjectRouteDeps> = {}) {
     name: (ws) => ws,
     whoami: async () => null,
     create: async () => null,
+    elsewhere: () => null,
     ...over,
   };
   const s = http.createServer((req, res) => {
@@ -230,5 +231,36 @@ describe("H5: /api/workspaces/:ws/hub-project", () => {
       (await put(`${base}/back-office/hub-project`, { hub: null })).status,
     ).toBe(200);
     expect(sent.n).toBe(2);
+  });
+});
+
+describe("issue 646 (mock v2, 3b): a link to another Hub", () => {
+  it("GET: not linked, and says which Hub it points at and which one is connected", async () => {
+    const { base } = await serve({
+      elsewhere: () => ({
+        name: "Back Office",
+        origin: "https://old-hub.example.test",
+        company: "old-co",
+        now: { origin: "https://hub.example.test", company: "acme" },
+      }),
+    });
+    const b = (await (
+      await fetch(`${base}/back-office/hub-project`)
+    ).json()) as Record<string, unknown>;
+    expect(b.hub).toBeNull();
+    expect(b.elsewhere).toEqual({
+      name: "Back Office",
+      origin: "https://old-hub.example.test",
+      company: "old-co",
+      now: { origin: "https://hub.example.test", company: "acme" },
+    });
+  });
+
+  it("GET: a link on the connected Hub has no elsewhere", async () => {
+    const { base } = await serve({ elsewhere: () => null });
+    const b = (await (
+      await fetch(`${base}/back-office/hub-project`)
+    ).json()) as Record<string, unknown>;
+    expect(b).not.toHaveProperty("elsewhere");
   });
 });

@@ -18,8 +18,8 @@ import { HELD_WRITE_RISK } from "../../../src/shared/approval-policy.js";
 import type {
   HubCreate,
   HubCreateDeps,
-} from "../../../src/shared/hub-project-create.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+} from "../../../src/shared/hub/hub-project-create.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 
 const TOKEN = "hubi_TESTONLYabc987";
 const servers: http.Server[] = [];
