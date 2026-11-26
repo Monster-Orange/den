@@ -13,7 +13,7 @@ import {
   fixtureScopeRefusal,
   setupFixturePerson,
 } from "../../../src/shared/fixture-person.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import { validateAtPath } from "../../../src/ui/server/manifest-validate-path.js";
 
 const GOOD =

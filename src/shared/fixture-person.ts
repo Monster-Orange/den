@@ -35,7 +35,7 @@ import {
   fixtureSessionPastTime,
   LOGIN_CODE_TTL_MS,
   safeNext,
-} from "./web-session.js";
+} from "./web/web-session.js";
 import { writeFileAtomic } from "./atomic-write.js";
 
 export { FIXTURE_SESSION_MINUTES, FIXTURE_SESSION_RANGE };
@@ -311,9 +311,8 @@ export function fixtureLoginLink(
 }
 
 /**
- * The writes a fixture session may make: what live checks drive through
- * the page. Person-only fields inside them are still refused (a fixture
- * session counts as an agent there).
+ * The writes a fixture session may make (what live checks drive through the
+ * page); person-only fields inside them are refused, as for an agent.
  */
 export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/session\/logout$/],
@@ -323,10 +322,11 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   ["POST", /^\/api\/report\/drafts$/],
   ["DELETE", /^\/api\/report\/drafts\/[^/]+$/],
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/(?:start|stop|resume)$/],
-  // Issue 1407: a restart for out-of-date tools (gate/1407's page row).
-  // agent-routes.ts lets it reach only agents Den marked testBed, never
-  // the server agent's; an unknown id answers the same 403.
+  // A restart or a mode: agent-routes.ts lets each reach only agents Den
+  // marked testBed, never the server agent's; an unknown id answers the
+  // same 403. A mode is one of FIXTURE_MODES.
   ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/restart$/],
+  ["POST", /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/mode$/],
   // Issue 1215: a live check's own project (fixture-projects.ts narrows
   // these to create, activate, deactivate and delete, on its own projects,
   // on a test install).
@@ -337,6 +337,9 @@ export const FIXTURE_WRITES: readonly [method: string, path: RegExp][] = [
   // nothing (route-classes.ts: "validates posted content (no write)").
   ["POST", /^\/api\/manifest\/validate$/],
 ];
+
+/** A security bound, not a Setting: a live check never picks auto or all. */
+export const FIXTURE_MODES: readonly string[] = ["ask", "edits"];
 
 /**
  * Issue 1391 (the bed's 542): GETs a fixture session may make though the

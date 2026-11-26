@@ -21,7 +21,7 @@ import {
   SessionStoreUnreadable,
   WebSessionStore,
   webSessionsPath,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 
 const T0 = Date.UTC(2026, 10, 23, 6, 0, 0);
 let tmp = "";

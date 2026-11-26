@@ -9,7 +9,7 @@ import {
   WebSessionStore,
   type SessionEndWhy,
   type SessionView,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 
 const T0 = Date.UTC(2026, 10, 23, 5, 7, 54);
 let tmp = "";

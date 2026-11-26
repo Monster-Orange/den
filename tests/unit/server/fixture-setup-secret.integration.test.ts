@@ -27,7 +27,10 @@ import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { TEST_PERSON_HEADER } from "../../../src/shared/test-person.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { readFixtureMadeBy } from "../../../src/shared/fixture-setup-secret.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");

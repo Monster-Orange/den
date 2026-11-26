@@ -7,7 +7,7 @@
  * one (hub-connect-review.test.ts).
  */
 import { describe, expect, it } from "@jest/globals";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import {
   hubMatchOf,
   type HubLinkAllDeps,

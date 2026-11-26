@@ -14,7 +14,7 @@ import * as path from "path";
 import * as vm from "vm";
 import { GateStore } from "../../../src/shared/gates/store.js";
 import { gateBoxOps } from "../../../src/ui/server/gate-routes.js";
-import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
+import { UI_LANGUAGES } from "../../../src/shared/ui-language.js";
 
 type Table = Record<string, string>;
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");

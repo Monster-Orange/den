@@ -10,14 +10,15 @@
  * granted workspace is served, and reported to the audit trail with both
  * workspaces named. Lists show the scoped workspace and its grants.
  *
- * It binds cooperating agents only: the scope lives in this process, and the
- * web server's HTTP API does not check it yet (WS-3a).
+ * The rule is scope-rule.ts's, and the web server holds it too (the request
+ * guard): reads on a strict install, writes on every install.
  */
 import * as path from "path";
 import { AGENT_ACTOR_RE, WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 import type { ResolvedAgentsConfig } from "../../shared/den-config.js";
 import type { DenApi } from "./api.js";
 import { Refusal } from "./guards.js";
+import { scopeReaches } from "../../shared/agents/scope-rule.js";
 
 export interface McpScope {
   /** The one workspace this server serves. */
@@ -230,7 +231,7 @@ export function pinWorkspace(
   const ws = args.workspace;
   if (ws === undefined || ws === null || ws === "")
     return { ...args, workspace: scope.workspace };
-  if (!scopeWorkspaces(scope).includes(String(ws)))
+  if (!scopeReaches(scope, String(ws)))
     throw otherWorkspace(tool, scope, String(ws));
   return { ...args, workspace: String(ws) };
 }

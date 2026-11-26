@@ -22,9 +22,12 @@ import {
   WEB_SESSIONS_LOCK,
   WebSessionStore,
   webSessionsPath,
-} from "../../../src/shared/web-session.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
-import { AUDIT_FILE, appendAuditRowWhenNoServer } from "../../../src/shared/audit-file.js";
+} from "../../../src/shared/web/web-session.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
+import {
+  AUDIT_FILE,
+  appendAuditRowWhenNoServer,
+} from "../../../src/shared/audit-file.js";
 import {
   DEN_PROCS_DIR,
   registerDenProcess,
@@ -135,7 +138,10 @@ describe("no server: the state files, under the lock", () => {
 
   it("another process holding the sessions lock: says so and changes nothing", async () => {
     const one = store().create({ userAgent: "one" }).session.key;
-    fs.writeFileSync(path.join(tmp, WEB_SESSIONS_LOCK), `${ALWAYS_RUNNING_PID}\n`);
+    fs.writeFileSync(
+      path.join(tmp, WEB_SESSIONS_LOCK),
+      `${ALWAYS_RUNNING_PID}\n`,
+    );
     const a = io();
     expect(await cmdWebLogout(["--port", String(await freePort())], a.io)).toBe(
       1,

@@ -23,7 +23,11 @@ import {
 } from "../cli/agent-ops.js";
 import { webDeps } from "./agent-routes.js";
 import { readBody, readMethodOnly, sendJson, send400 } from "./http-helpers.js";
-import type { ResolvedService } from "../../shared/types/index.js";
+import type {
+  ResolvedService,
+  WorkspaceConfig,
+} from "../../shared/types/index.js";
+import { projectCapValueError } from "../../shared/agents/project-cap.js";
 import type { EditorManager } from "./editor-manager.js";
 import type { GitHubService } from "./github-service.js";
 import { JETBRAINS_EDITORS } from "./editor-manager.js";
@@ -129,11 +133,15 @@ import {
 } from "./fixture-projects.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
+  agentFocusRefusal,
+  agentFocusedReadRefusal,
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   fixturePersonOf,
   principalOf,
 } from "./request-guard.js";
+import { narrowByWorkspace } from "../../shared/agents/scope-rule.js";
 import { approvalsView, patchApprovals } from "../../shared/approval-policy.js";
 
 /** Issue 160: a project's approval policy rows (null policy: the install's). */
@@ -155,12 +163,21 @@ import {
 } from "../../shared/constants.js";
 
 import { product } from "../../shared/product.js";
-import { patchProjectHubLoop, projectHubLoop } from "../../shared/hub-loop.js";
+import {
+  patchProjectHubLoop,
+  projectHubLoop,
+} from "../../shared/hub/hub-loop.js";
+import { isRepoName } from "../../shared/repo-name.js";
 
 /** Issue 158: a project's Hub delivery loop setting, as the API says it. */
 const hubLoopFields = (ws: unknown) => {
   const l = projectHubLoop(ws);
   return { hub_delivery_loop: l.on, hub_delivery_loop_extra: l.extra };
+};
+
+const ownAgentCap = (ws: WorkspaceConfig | undefined): number | null => {
+  const v = ws?.agents?.max_per_project;
+  return typeof v === "number" ? v : null;
 };
 // Anchored to the den root, NOT process.cwd(): ws.directory values are
 // stored relative to this and written back via path.relative below — a
@@ -390,6 +407,20 @@ type AvailableRepos = Awaited<ReturnType<typeof buildAvailableRepos>>;
 /** Shared by concurrent requests, reused briefly; cleared by any mutation. */
 const availableReposCache = singleFlight<AvailableRepos>(2_000);
 
+export const WORKSPACES_SHAPE = {
+  maps: [
+    "workspaces",
+    "resolvedDirs",
+    "codeWorkspacePaths",
+    "stackNamespaces",
+    "hubUncovered",
+    "hubElsewhere",
+    "projectColours",
+  ],
+  lists: ["active", "projectOrder"],
+  names: ["focus"],
+} as const;
+
 /**
  * Handle all /api/workspaces/* and /api/workspace/* routes.
  *
@@ -402,6 +433,7 @@ const availableReposCache = singleFlight<AvailableRepos>(2_000);
  * page's create and ON-3's held workspace_create (approval-routes.ts) both
  * ask this.
  */
+
 export function workspaceCreateRefusal(
   name: string | undefined,
 ): string | null {
@@ -549,6 +581,18 @@ export async function handleWorkspaceRoutes(
   editors: EditorManager,
   github: GitHubService,
 ): Promise<void> {
+  const focusWhy = agentFocusedReadRefusal(
+    req,
+    pathname,
+    url.searchParams,
+    getActiveWorkspace()?.name,
+  );
+  if (focusWhy)
+    return sendJson(
+      res,
+      { ok: false, code: "agent_forbidden", error: focusWhy },
+      403,
+    );
   // A mutation may change what available-repos would list.
   if (
     (req.method !== "GET" && req.method !== "HEAD") ||
@@ -825,7 +869,7 @@ export async function handleWorkspaceRoutes(
     // Issue 646: links to another Hub or company count as not linked: the
     // page shows the project's own name and "Another Hub" on its chip.
     const { hubElsewhereMap } =
-      await import("../../shared/hub-project-link.js");
+      await import("../../shared/hub/hub-project-link.js");
     const hubElsewhere = hubElsewhereMap(
       Object.keys(wsFile.workspaces),
       () => wsFile,
@@ -837,7 +881,7 @@ export async function handleWorkspaceRoutes(
     const projectOrder = prefs.projectOrder;
     // Issue 168: the colours this person chose (the rest are Automatic).
     const projectColours = prefs.projectColours;
-    return sendJson(res, {
+    const body = {
       ...wsFile,
       resolvedDirs,
       codeWorkspacePaths,
@@ -846,7 +890,12 @@ export async function handleWorkspaceRoutes(
       hubElsewhere,
       projectOrder,
       projectColours,
-    });
+    };
+    const keep = agentRowFilter(req);
+    return sendJson(
+      res,
+      keep ? narrowByWorkspace(body, keep, WORKSPACES_SHAPE) : body,
+    );
   }
 
   // ── API: rename workspace ─────────────────────────────────────────────────
@@ -1123,8 +1172,7 @@ export async function handleWorkspaceRoutes(
           return send400(res, "invalid newBranch name");
         // ghSlug is interpolated into the git clone URL — reject anything that
         // isn't a strict owner/repo slug to block shell/argument injection.
-        const SAFE_SLUG_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
-        if (ghSlug && !SAFE_SLUG_RE.test(ghSlug))
+        if (ghSlug && !isRepoName(ghSlug))
           return send400(res, "invalid ghSlug");
         // subfolder is joined into the clone target path — reject traversal and
         // absolute paths so a clone can't escape the workspace directory.
@@ -1338,6 +1386,7 @@ export async function handleWorkspaceRoutes(
         editor: ws?.editor ?? null,
         ...projectApprovals(ws?.approvals),
         ...hubLoopFields(ws),
+        agents_max_per_project: ownAgentCap(ws),
       });
     }
     if (req.method === "POST") {
@@ -1350,6 +1399,7 @@ export async function handleWorkspaceRoutes(
           approvals_critical?: unknown;
           hub_delivery_loop?: unknown;
           hub_delivery_loop_extra?: unknown;
+          agents_max_per_project?: unknown;
         };
         const wsName = body.workspace ?? getActiveWorkspace()?.name;
         if (!wsName) return send400(res, "a project is required");
@@ -1365,6 +1415,7 @@ export async function handleWorkspaceRoutes(
             "approvals_critical",
             "hub_delivery_loop",
             "hub_delivery_loop_extra",
+            "agents_max_per_project",
           ] as const
         ).filter((k) => body[k] !== undefined);
         // Issue 160: the approval policy is a person's: an agent (or a
@@ -1375,13 +1426,16 @@ export async function handleWorkspaceRoutes(
           const loop = policyKeys.some((k) =>
             k.startsWith("hub_delivery_loop"),
           );
+          const cap = policyKeys.includes("agents_max_per_project");
           return sendJson(
             res,
             {
               ok: false,
               error: loop
                 ? `only a person can change ${policyKeys.join(", ")}, in Project setup`
-                : `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
+                : cap
+                  ? `only a person can change ${policyKeys.join(", ")}: an agent asks with project_agent_cap`
+                  : `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
             },
             403,
           );
@@ -1421,12 +1475,23 @@ export async function handleWorkspaceRoutes(
           if (a.value) ws.approvals = a.value;
           else delete ws.approvals;
         }
+        if (body.agents_max_per_project !== undefined) {
+          const v = body.agents_max_per_project;
+          const bad = projectCapValueError(wsName, v);
+          if (bad) return send400(res, bad);
+          const agents = { ...(ws.agents ?? {}) };
+          if (v === null) delete agents.max_per_project;
+          else agents.max_per_project = v;
+          if (Object.keys(agents).length) ws.agents = agents;
+          else delete ws.agents;
+        }
         writeWorkspacesFile(file);
         return sendJson(res, {
           ok: true,
           editor: ws.editor ?? null,
           ...projectApprovals(ws.approvals),
           ...hubLoopFields(ws),
+          agents_max_per_project: ownAgentCap(ws),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
@@ -2419,6 +2484,17 @@ export async function handleWorkspaceRoutes(
   if (pathname === "/api/workspace/sync") {
     // The page streams it with GET; the MCP sync tool calls it with POST.
     if (!readMethodOnly(req, res, ["POST"])) return;
+    const syncWhy = agentFocusRefusal(
+      req,
+      getActiveWorkspace()?.name,
+      "this syncs",
+    );
+    if (syncWhy)
+      return sendJson(
+        res,
+        { ok: false, code: "agent_forbidden", error: syncWhy },
+        403,
+      );
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

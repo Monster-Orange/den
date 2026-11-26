@@ -40,7 +40,7 @@
  *
  *   busyAction(name, run, opts) → Promise<data | null>
  *     run(headers)        the request; it must send `headers` (the id).
- *     opts.button         held (disabled, aria-busy) and focused again.
+ *     opts.button         held (aria-disabled, aria-busy); it keeps focus.
  *     opts.steps          this call names its steps (as steps: true).
  *     opts.vars           words' {placeholders}.
  *     opts.success(data)  the success line, worked out from the answer.
@@ -69,8 +69,9 @@
  *
  * Issue 699, the held button: every button the kit holds (opts.button,
  * pending()'s button, a plain POST form's submitter) shows three pulsing
- * dots in place of its label at once, at the same size, disabled with
- * aria-busy="true". The label stays (in .bz-lbl, hidden) and stays the
+ * dots in place of its label at once, at the same size, aria-disabled
+ * with aria-busy="true" (issue 1434: so it keeps the keyboard's focus).
+ * The label stays (in .bz-lbl, hidden) and stays the
  * accessible name. Issue 1054: for one request that is all, with no
  * Working pop-up: the dots stay until the answer. The Working pop-up is
  * for an action that names its steps (registerActions' steps: true,
@@ -332,20 +333,50 @@ export function instantProblems(html) {
 const held = new Map();
 
 /**
- * Holds a button (disabled, aria-busy) or lets it go. dots: the label goes
- * into .bz-lbl (hidden, so the size stays) and three dots go over it; the
- * accessible name stays the label. later: disabled on the next turn (a
- * form's submitter, once the browser took its name and value).
+ * Issue 1434: a held button is aria-disabled with aria-busy, never
+ * disabled: a disabled button that has focus drops it to <body>. A click
+ * on a held button (a mouse click, Enter or Space, a form's implicit
+ * submit) stops here, at the window in the capture phase, before the
+ * page's own click listeners. A capture listener on window that a page
+ * added before busy.js loaded still runs first, and pointerdown,
+ * mousedown and keydown still reach the page (its handlers listen on
+ * click). A host's own early hold and dialog.js's fallback use the same
+ * way and stop the same clicks before the kit has loaded.
  */
-function holdButton(b, on, dots, later = false) {
+const isHeld = (n) =>
+  n?.getAttribute?.("aria-busy") === "true" &&
+  n.getAttribute("aria-disabled") === "true";
+/** Every button held now, and those whose aria-disabled is the hold's. */
+const holding = new Set();
+const offByKit = new Set();
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (isHeld(n)) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
+
+/**
+ * Holds a button (aria-disabled, aria-busy) or lets it go. dots: the label
+ * goes into .bz-lbl (hidden, so the size stays) and three dots go over it;
+ * the accessible name stays the label.
+ */
+function holdButton(b, on, dots) {
   if (!b) return;
   if (!on) {
     b.disabled = false;
     b.removeAttribute("aria-busy");
+    holding.delete(b);
+    if (offByKit.delete(b)) b.removeAttribute("aria-disabled");
     const h = held.get(b);
     if (!h) return;
     held.delete(b);
-    clearTimeout(h.timer);
     if (h.dots.parentNode === b) h.dots.remove();
     // The page may have drawn the button again while it waited: its own
     // label then stays as it drew it.
@@ -357,10 +388,16 @@ function holdButton(b, on, dots, later = false) {
     if (h.name == null) b.removeAttribute("aria-label");
     return;
   }
+  // Held already by the host or the dialog before the kit loaded
+  // (aria-busy too): that aria-disabled is the hold's, the kit's to clear.
+  // The page's own aria-disabled (no aria-busy) stays.
+  if (!holding.has(b)) {
+    holding.add(b);
+    if (b.getAttribute("aria-disabled") !== "true" || isHeld(b))
+      offByKit.add(b);
+  }
   b.setAttribute("aria-busy", "true");
-  let timer = 0;
-  if (later) timer = setTimeout(() => held.has(b) && (b.disabled = true), 0);
-  else b.disabled = true;
+  b.setAttribute("aria-disabled", "true");
   if (!dots || held.has(b)) return;
   ensureCss();
   const name = b.getAttribute("aria-label");
@@ -376,7 +413,7 @@ function holdButton(b, on, dots, later = false) {
   for (let i = 0; i < 3; i++) d.append(document.createElement("i"));
   b.append(lbl, d);
   if (name == null && text) b.setAttribute("aria-label", text);
-  held.set(b, { lbl, dots: d, name, timer });
+  held.set(b, { lbl, dots: d, name });
 }
 
 /**
@@ -964,7 +1001,7 @@ export function watchForms(root = document) {
       return;
     }
     if (instantReason(b)) return;
-    holdButton(b, true, true, true);
+    holdButton(b, true, true);
     mine.add(b);
   };
   // Back from the next page (the back-forward cache): the label is back.

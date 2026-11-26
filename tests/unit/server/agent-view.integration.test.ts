@@ -25,7 +25,10 @@ import {
   revokeAgentTokens,
 } from "../../../src/shared/actor-token.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
 import { FIRST_RUN_FILE } from "../../../src/ui/server/first-run.js";
 import { ROUTES } from "../../../src/ui/server/route-classes.js";
 

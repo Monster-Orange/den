@@ -253,7 +253,7 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   // The only override for an edge another state dir owns; a typo'd one
   // must not be ignored.
   // `edge route --for <proxy>` (issue 455) also takes `--for=<proxy>`.
-  edge: ["--take-over", "--rotate-proof", "--for"],
+  edge: ["--take-over", "--rotate-proof", "--for", "--json"],
 };
 
 /**

@@ -20,9 +20,9 @@ import {
   notTestBedRefusal,
   useTestPerson,
 } from "../../shared/test-person.js";
-import { denWebBase } from "../../shared/web-dial.js";
-import { cliAuthHeaders, readWebSecret } from "../../shared/web-secret.js";
-import { readWebAuthConfig } from "../../shared/web-session.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
+import { cliAuthHeaders, readWebSecret } from "../../shared/web/web-secret.js";
+import { readWebAuthConfig } from "../../shared/web/web-session.js";
 
 export interface TestPersonDeps {
   /** The CLI's own environment (its agent markers go once allowed). */

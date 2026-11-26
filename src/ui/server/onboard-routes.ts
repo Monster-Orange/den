@@ -32,7 +32,7 @@ import {
 import { defaultStatusDeps, registeredRepos } from "../cli/onboard-command.js";
 import type { ManifestValidator } from "../cli/repo-command.js";
 import { runnableCli } from "../cli/doctor-onboard.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface OnboardRouteDeps {
   rules: () => PathRules;
