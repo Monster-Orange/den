@@ -23,7 +23,7 @@ import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 
 /** The command these messages come from. */
-const CMD = "agents session"; // words-ok: the CLI command's own name
+const CMD = "`agents session`";
 
 export const LAUNCH_FILE = "launch.json";
 export const OWN_FOLDER = "own";

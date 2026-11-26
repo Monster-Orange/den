@@ -21,7 +21,7 @@ import type { SandboxWrap } from "./sandbox.js";
 import { readTokenLine } from "./session-token.js";
 
 /** The command these messages come from. */
-const CMD = "agents session"; // words-ok: the CLI command's own name
+const CMD = "`agents session`";
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const NONCE_RE = /^[0-9a-f]{32}$/;

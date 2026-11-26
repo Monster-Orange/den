@@ -23,7 +23,7 @@
 import { randomBytes } from "crypto";
 
 /** The command these messages come from. */
-const CMD = "agents session"; // words-ok: the CLI command's own name
+const CMD = "`agents session`";
 
 /** The longest token line read: a sign-in token is far shorter. */
 export const TOKEN_LINE_MAX = 4096;
