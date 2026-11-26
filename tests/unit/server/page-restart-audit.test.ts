@@ -12,7 +12,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { AUDIT_FILE, setAuditFile } from "../../../src/ui/server/audit.js";
-import { recordPageRestart } from "../../../src/ui/server/server-restart.js";
+import {
+  PAGE_RESTART_FROM,
+  recordPageRestart,
+} from "../../../src/ui/server/server-restart.js";
+import { readSettingsSources } from "./helpers/settings-sources.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -85,8 +89,37 @@ describe("a person's restart from the page (issue 227)", () => {
     expect(src("public/appearance.js")).toMatch(
       /restartDen\(\{ from: "menu" \}\)/,
     );
-    expect(src("public/settings-registry.js")).toMatch(
+    expect(readSettingsSources()).toMatch(
       /restartDen\(\{ from: "settings" \}\)/,
     );
+  });
+
+  it("every restartDen call on the page names its action (a restart that posts nothing is the only exception)", () => {
+    const dir = path.join(__dirname, "../../../src/ui/server/public");
+    const files = fs
+      .readdirSync(dir, { recursive: true })
+      .map(String)
+      .filter((f) => f.endsWith(".js") && f !== "restart-den.js");
+    const unnamed: string[] = [];
+    let calls = 0;
+    for (const f of files) {
+      const text = fs.readFileSync(path.join(dir, f), "utf-8");
+      const all = text.match(/restartDen\(/g)?.length ?? 0;
+      const read = [...text.matchAll(/restartDen\((\{[^}]*\})?\)/g)].length;
+      if (read !== all)
+        unnamed.push(
+          `${f}: ${all - read} restartDen call(s) the scan can't read`,
+        );
+      for (const m of text.matchAll(/restartDen\((\{[^}]*\})?\)/g)) {
+        calls++;
+        const args = m[1] ?? "";
+        if (/post: false/.test(args)) continue;
+        const from = /from: "([^"]+)"/.exec(args)?.[1];
+        if (!from || !Object.hasOwn(PAGE_RESTART_FROM, from))
+          unnamed.push(`${f}: ${m[0]}`);
+      }
+    }
+    expect(calls).toBeGreaterThan(3);
+    expect(unnamed).toEqual([]);
   });
 });

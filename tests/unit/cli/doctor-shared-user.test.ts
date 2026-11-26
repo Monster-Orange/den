@@ -40,6 +40,8 @@ const rows = (stateDir: string, trailReadable = true) =>
     home: root,
     serverRunning: () => false,
     trailReadable,
+    unsandboxed: () => [{ id: "a1", projects: [] }],
+    reposOf: () => [],
   });
 const check = (r: ReturnType<typeof rows>, id: string) =>
   r.checks.find((c) => c.id === id)!;
@@ -174,6 +176,8 @@ describe("issue 728: doctor's same-login rows", () => {
         registry: reg(),
         home: root,
         maxEntries: 3,
+        unsandboxed: () => [{ id: "a1", projects: [] }],
+        reposOf: () => [],
       }),
       "uncovered_files",
     );
@@ -191,6 +195,8 @@ describe("issue 728: doctor's same-login rows", () => {
         registry: reg(),
         home: root,
         maxDepth: 2,
+        unsandboxed: () => [{ id: "a1", projects: [] }],
+        reposOf: () => [],
       }),
       "uncovered_files",
     );

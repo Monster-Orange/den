@@ -34,6 +34,7 @@ const SHOW_MS = 30000;
 export const TRY_MS = SHOW_MS;
 /** Raises before giving up: an early SessionStart ends a question on screen. */
 export const TRIES = 3;
+const KEPT_MS = 20000;
 
 /** ctx.api's answer as JSON, whether it gives a Response or the body. */
 async function body(r) {
@@ -67,10 +68,18 @@ async function waits(a) {
 }
 
 /** Agent `id`'s row in the Agents list: whether it waits, and why. */
-async function agentRow(ctx, id) {
+export async function agentRow(ctx, id) {
   const d = await body(await ctx.api("/api/sessions"));
-  const s = (d?.sessions ?? []).find((x) => x.id === id);
+  const s = (d?.sessions ?? []).find(
+    (x) => x.kind === "agent" && x.agent === id,
+  );
   return s ? { waiting: s.waiting ?? null, why: s.waitingWhy ?? null } : null;
+}
+
+export async function keptWaits(ctx, a) {
+  let w = [];
+  await ctx.until(async () => asked(QUESTION)((w = await waits(a))), KEPT_MS);
+  return w;
 }
 
 /** Raise with `raise` until `seen` holds; the ms it took, or null. */
@@ -121,7 +130,7 @@ export async function run(ctx, s) {
   r.downMs = await ctx.until(async () => !(await answering(ctx)), 30000);
   r.up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
   r.upMs = await ctx.until(() => answering(ctx), 90000);
-  r.afterWaits = await waits(a);
+  r.afterWaits = await keptWaits(ctx, a);
   r.afterBell = bellItems(await body(await ctx.api("/api/notifications")), ASK);
 
   // Clause 4: the person answers in the dialog; the tool runs.

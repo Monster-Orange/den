@@ -30,13 +30,14 @@ import { getCredentials } from "./headless-login.js";
 import { mintAccessToken } from "./token-providers/index.js";
 import type { Environment } from "../types/index.js";
 import { getDistRoot } from "../paths.js";
+import { PLAYWRIGHT_AUTH_DIR } from "../credential-paths.js";
 import { envSelector } from "../environment/env-selector.js";
 
 import { product } from "../product.js";
 // Anchored to the den root, NOT process.cwd(): token caches are WRITTEN
 // here, and `den test ...` can be invoked from any directory (bin/den
 // never cds; spawned playwright children inherit the user's cwd).
-const AUTH_DIR = path.resolve(getDistRoot(), "playwright/.auth");
+const AUTH_DIR = path.resolve(getDistRoot(), PLAYWRIGHT_AUTH_DIR);
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before actual expiry
 
 // Per-environment Auth0 client secrets (gitignored).

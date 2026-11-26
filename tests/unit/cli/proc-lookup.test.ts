@@ -10,7 +10,7 @@ import {
   LookupTimeoutError,
   lookup,
   lookupTimeouts,
-} from "../../../src/ui/cli/proc-lookup.js";
+} from "../../../src/shared/proc-lookup.js";
 
 type R = {
   status: number | null;

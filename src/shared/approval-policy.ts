@@ -135,6 +135,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "a looser mode lets agents act without asking; a stricter one only narrows",
   },
+  project_agent_cap: {
+    personal: "keep",
+    risk: "widens",
+    why: "a higher cap lets more of a project's agents run at once; a lower one only narrows",
+  },
   agent_mode: {
     personal: "keep",
     risk: "widens",
@@ -169,6 +174,15 @@ export const HELD_WRITE_RISK: Readonly<
     personal: "keep",
     risk: "critical",
     why: "sends a project's agents' calls, and maybe a bearer, to another address",
+  },
+  project_event_feed_add: {
+    risk: "critical",
+    why: "has Den open an app's stream for one of a project's agents, a bearer read by its secrets.refs name; routine on a personal install, with Undo (issue 1480)",
+  },
+  project_event_feed_remove: {
+    risk: "critical",
+    notAreas: ["deletes"],
+    why: "stops an app's events reaching a project's agent; it deletes no events; routine on a personal install, with Undo (issue 1480)",
   },
   persona_create: {
     risk: "critical",
@@ -212,6 +226,14 @@ export const HELD_WRITE_RISK: Readonly<
     why: "gives the project's agents a repo they couldn't reach: wider access",
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
+  den_env_hold_on: {
+    risk: "critical",
+    why: "changes what every agent started before the hold gets at its next start: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+  },
+  den_env_allow_keep: {
+    risk: "critical",
+    why: "lets every agent keep the named variables: it widens what agents get (CRITICAL_HELD_ACTIONS)",
+  },
   den_pin_commit: {
     risk: "routine",
     why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",
@@ -252,10 +274,19 @@ export const HELD_WRITE_RISK: Readonly<
     notAreas: ["deletes"],
     why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS); on a personal install routine, since a box can be added back (issue 1403)",
   },
+  state_folder_own: {
+    personal: "keep",
+    risk: "critical",
+    why: "moves this install onto a new, empty state folder and restarts Den: a person's own Allow",
+  },
   web_url_set: {
     personal: "keep",
     risk: "critical",
     why: "changes the address every link, sign-in and Hub uses for this Den: a person's own Allow",
+  },
+  gate_runner_entry_set: {
+    risk: "critical",
+    why: "lets a repo's CI jobs run on a test box: it widens what runs there",
   },
   host_restart: {
     risk: "critical",

@@ -39,8 +39,8 @@ import {
   ownsSubcommandHelp,
 } from "../../../src/ui/cli/flag-parser.js";
 import { MCP_CONNECT_SUBCOMMANDS } from "../../../src/ui/cli/mcp-connect.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
-import { checkLoginCode } from "../../../src/shared/web-session.js";
+import { readWebSecret } from "../../../src/shared/web/web-secret.js";
+import { checkLoginCode } from "../../../src/shared/web/web-session.js";
 
 let tmp = "";
 beforeEach(() => {

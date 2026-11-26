@@ -46,6 +46,10 @@ import {
   runServiceCommand,
 } from "../../../src/shared/environment-manager/service-runner.js";
 import { EnvProvider } from "../../../src/shared/secrets/index.js";
+import {
+  forgetSecretValues,
+  maskSecretValues,
+} from "../../../src/shared/secret-values.js";
 import type { SecretsProvider } from "../../../src/shared/secrets/types.js";
 
 const FAKE = "sk-test-123";
@@ -178,6 +182,14 @@ describe("prepareServiceSecretEnv", () => {
     await expect(
       prepareServiceSecretEnv("repo/api", "up", "default", () => p),
     ).resolves.toEqual({ ok: true, secretEnv: { SOME_KEY: FAKE } });
+  });
+
+  it("remembers the values it resolved, so the server log masks them", async () => {
+    forgetSecretValues();
+    const p = new EnvProvider({}, { SOME_KEY: FAKE });
+    await prepareServiceSecretEnv("repo/api", "up", "default", () => p);
+    expect(maskSecretValues(`api says ${FAKE}`)).toBe("api says [REDACTED]");
+    forgetSecretValues();
   });
 
   it("a missing key fails with key, ref and provider, and nothing starts", async () => {

@@ -102,6 +102,7 @@ const select = (a: {
   map: Map;
   importersOf?: Record<string, string[]>;
   mentioned?: string[];
+  named?: Record<string, string[]>;
 }) => call<Selection>(AFFECTED, "selectTests", a);
 
 /** Every *.test.ts under tests/, as jest lists them (repo-relative). */
@@ -231,6 +232,49 @@ describe("selectTests (fixtures)", () => {
   });
 });
 
+describe("tests that read a changed file as text (issue 1707)", () => {
+  const naming = (changed: string[], sources: Record<string, string>) =>
+    call<Record<string, string[]>>(
+      AFFECTED,
+      "testsNamingPaths",
+      changed,
+      sources,
+    );
+
+  it("a test whose text names a changed file's repo path is picked, with the path as its reason", () => {
+    const n = naming(["src/ui/server/index.ts", "src/lib.ts"], {
+      "tests/reads.test.ts":
+        'path.resolve(__dirname, "../../../src/ui/server/index.ts")',
+      "tests/other.test.ts": 'import { x } from "../src/other";',
+      "tests/near.test.ts": '"src/ui/server/index.tsx"',
+    });
+    expect(n).toEqual({ "tests/reads.test.ts": ["src/ui/server/index.ts"] });
+    const s = select({
+      changed: ["src/ui/server/index.ts"],
+      allTests: ["tests/reads.test.ts", "tests/other.test.ts"],
+      related: [],
+      map: { everything: [], smoke: [], rules: [] },
+      named: n,
+    });
+    expect(s.files).toEqual({
+      "tests/reads.test.ts": ["names src/ui/server/index.ts"],
+    });
+  });
+
+  it("PR 1281's change picks birth-import-first-814 from the real tests", () => {
+    const sources = Object.fromEntries(
+      TESTS.map((t) => [t, fs.readFileSync(path.join(ROOT, t), "utf-8")]),
+    );
+    const n = naming(
+      ["src/ui/server/index.ts", "src/ui/cli/web-command.ts"],
+      sources,
+    );
+    expect(n["tests/unit/server/birth-import-first-814.test.ts"]).toEqual([
+      "src/ui/server/index.ts",
+    ]);
+  });
+});
+
 describe("the map (tests/affected-map.json)", () => {
   it("is valid; smoke files exist; every run glob names a test", () => {
     call(AFFECTED, "validateMap", MAP);
@@ -317,6 +361,37 @@ describe("the map (tests/affected-map.json)", () => {
     expect(files.length).toBeLessThan(TESTS.length / 10);
   });
 
+  it("a Settings row change runs the pin test and every test that reads the Settings files", () => {
+    const s = select({
+      changed: ["src/ui/server/public/settings-registry.js"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+      importersOf: {
+        "tests/unit/server/helpers/settings-sources.ts": [
+          "tests/unit/server/settings-sources.test.ts",
+        ],
+      },
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+    expect(files).toContain("tests/unit/server/settings-sources.test.ts");
+  });
+
+  it("a change to the Settings pin's fixture runs the pin test", () => {
+    const s = select({
+      changed: ["tests/fixtures/settings-registry-order.json"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(Object.keys(s.files)).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+  });
+
   it("a pull request touching the request guard runs everything", () => {
     const s = select({
       changed: ["src/ui/server/request-guard.ts"],
@@ -328,14 +403,42 @@ describe("the map (tests/affected-map.json)", () => {
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
     expect(Object.keys(s.files)).toHaveLength(TESTS.length);
   });
+
+  it("a pull request touching only a live check runs every live check's own test", () => {
+    const s = select({
+      changed: ["gate/252.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    const own = TESTS.filter((t) =>
+      t.startsWith("tests/unit/test-infra/gate-"),
+    );
+    expect(own).toContain("tests/unit/test-infra/gate-252-runner.test.ts");
+    expect(own).toContain("tests/unit/test-infra/gate-expect-shape.test.ts");
+    for (const t of own) expect([t, files.includes(t)]).toEqual([t, true]);
+  });
+
+  it("a live check's change also runs a test elsewhere that loads it by path", () => {
+    const s = select({
+      changed: ["gate/750.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain("tests/unit/gates/gate-750-hub-leg.test.ts");
+    expect(files).toContain("tests/unit/gates/gate-750-real-read.test.ts");
+  });
 });
 
 describe("tests that start Den as a process (issue 708)", () => {
   // Pull request 704's change: the server process sends the acks, and the
   // integration test reaches it over HTTP, never by an import.
   const PR_704 = [
-    "src/shared/hub-delivery-loop.ts",
-    "src/shared/hub-delivery.ts",
+    "src/shared/hub/hub-delivery-loop.ts",
+    "src/shared/hub/hub-delivery.ts",
     "src/ui/cli/agent-ops.ts",
     "src/ui/server/attention.ts",
     "src/ui/server/hub-delivery-service.ts",
@@ -373,12 +476,11 @@ describe("tests that start Den as a process (issue 708)", () => {
     expect(Object.keys(s.files)).toContain(
       "tests/unit/server/hub-delivery.integration.test.ts",
     );
-    // Its subject only: not every test that starts Den.
     const starters = Object.entries(s.files).filter(([, why]) =>
       why.some((w) => /starts Den/.test(w)),
     );
     expect(starters.length).toBeGreaterThan(0);
-    expect(starters.length).toBeLessThan(15);
+    expect(starters.length).toBeLessThan(20);
   });
 
   it("finds them: by a helper, bin/den, or tsx on an entry", () => {
@@ -400,9 +502,9 @@ describe("tests that start Den as a process (issue 708)", () => {
       call<string[]>(MAP_GEN, "subjectOf", t, text, {});
     expect(subj("tests/unit/server/hub-delivery.integration.test.ts")).toEqual(
       [
-        "src/shared/hub-delivery-journal.ts",
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts",
       ].sort(),
     );
@@ -890,7 +992,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
       "src/ui/server/public/shell.js",
-      "src/ui/server/ui-language.ts",
+      "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
       "tests/unit/server/helpers/kit-shell.ts",

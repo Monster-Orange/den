@@ -30,12 +30,34 @@ jest.mock("../../../src/shared/owner-github.js", () => ({
 }));
 type Svc = WebService;
 
-async function freePort(): Promise<number> {
-  const s = net.createServer();
-  await new Promise<void>((r) => s.listen(0, "localhost", () => r()));
-  const port = (s.address() as net.AddressInfo).port;
-  await new Promise<void>((r) => s.close(() => r()));
-  return port;
+/**
+ * A port nothing answers on for the whole test: below the ephemeral range,
+ * so no other test's server (port 0) can be given it, as one could a port
+ * just closed. Checked to refuse a connection first.
+ */
+const CLOSED_PORT = 1;
+async function closedPort(): Promise<number> {
+  const refused = await new Promise<boolean>((resolve) => {
+    const c = net.connect({ host: "127.0.0.1", port: CLOSED_PORT });
+    c.once("connect", () => {
+      c.destroy();
+      resolve(false);
+    });
+    c.once("error", (e: NodeJS.ErrnoException) =>
+      resolve(e.code === "ECONNREFUSED"),
+    );
+    // A firewall that drops instead of refusing: say so, don't hang.
+    c.setTimeout(2000, () => {
+      c.destroy();
+      resolve(false);
+    });
+  });
+  if (!refused) {
+    throw new Error(
+      `port ${CLOSED_PORT} answers here, or doesn't refuse: this test needs it closed`,
+    );
+  }
+  return CLOSED_PORT;
 }
 
 function fakeLaunchd(mode: "login" | "always" = "login") {
@@ -85,7 +107,7 @@ afterEach(() => {
 
 describe("web restart / up / down with the service installed", () => {
   it("restart kickstarts the job and names its pid and the service log; no plain server", async () => {
-    const port = await freePort();
+    const port = await closedPort();
     const f = fakeLaunchd();
     setWebServiceDepsForTest(f.deps);
     spy();
@@ -106,7 +128,7 @@ describe("web restart / up / down with the service installed", () => {
   });
 
   it("down is refused, naming service uninstall; launchd is not asked", async () => {
-    const port = await freePort();
+    const port = await closedPort();
     const f = fakeLaunchd();
     setWebServiceDepsForTest(f.deps);
     spy();
@@ -120,7 +142,7 @@ describe("web restart / up / down with the service installed", () => {
   });
 
   it("up, not answering: the job is started through launchd", async () => {
-    const port = await freePort();
+    const port = await closedPort();
     const f = fakeLaunchd();
     setWebServiceDepsForTest(f.deps);
     spy();
@@ -133,7 +155,7 @@ describe("web restart / up / down with the service installed", () => {
   });
 
   it("always mode: prints the sudo kickstart, never runs it", async () => {
-    const port = await freePort();
+    const port = await closedPort();
     const f = fakeLaunchd("always");
     setWebServiceDepsForTest(f.deps);
     spy();

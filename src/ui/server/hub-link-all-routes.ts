@@ -19,7 +19,7 @@ import type * as http from "http";
 import type {
   HubProjectChoice,
   HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { readBody, sendJson } from "./http-helpers.js";
@@ -244,7 +244,7 @@ export async function defaultLinkAllDeps(
 ): Promise<HubLinkAllDeps> {
   const [hp, link, w, sa] = await Promise.all([
     import("./hub-project-routes.js"),
-    import("../../shared/hub-project-link.js"),
+    import("../../shared/hub/hub-project-link.js"),
     import("../../shared/environment-manager/workspaces.js"),
     import("../../shared/agents/server-agent.js"),
   ]);

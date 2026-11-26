@@ -1002,7 +1002,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.waitForFunction(
       (sel) => {
         const b = document.querySelector(sel) as HTMLButtonElement | null;
-        return !!b && !b.disabled;
+        return !!b && !b.disabled && b.getAttribute("aria-disabled") !== "true";
       },
       stop,
       { timeout: 15_000 },
