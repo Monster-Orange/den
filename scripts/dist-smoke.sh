@@ -10,10 +10,28 @@
 #
 # Usage: scripts/dist-smoke.sh            (from Den's checkout; CI runs it too)
 #        DIST_SMOKE_OMIT_OPTIONAL=1 scripts/dist-smoke.sh
-#                                         (installs with --omit=optional: no
-#                                         PTY module, den-pty unavailable)
+#                                         (--omit=optional: no PTY module)
 # The throwaway install lives under $RUNNER_TEMP (CI) or $TMPDIR.
 set -euo pipefail
+
+# It runs as a person would, whoever starts it: only these variables reach it, never an agent's session.
+if [ -z "${_DIST_SMOKE_CLEAN_ENV:-}" ]; then
+  keep=()
+  while IFS= read -r name; do
+    case "$name" in
+      PATH | HOME | USER | LOGNAME | SHELL | TERM | TMPDIR | LANG | LC_* | CI | RUNNER_TEMP | \
+        npm_config_* | NODE_EXTRA_CA_CERTS | [Hh][Tt][Tt][Pp][Ss]_[Pp][Rr][Oo][Xx][Yy] | \
+        [Hh][Tt][Tt][Pp]_[Pp][Rr][Oo][Xx][Yy] | [Nn][Oo]_[Pp][Rr][Oo][Xx][Yy] | \
+        DIST_SMOKE_OMIT_OPTIONAL | DIST_SMOKE_PRINT_ENV) keep+=("$name=${!name}") ;;
+    esac
+  done < <(compgen -e)
+  exec env -i "${keep[@]}" _DIST_SMOKE_CLEAN_ENV=1 bash "$0" "$@"
+fi
+unset _DIST_SMOKE_CLEAN_ENV
+if [ -n "${DIST_SMOKE_PRINT_ENV:-}" ]; then
+  env
+  exit 0
+fi
 
 DEN="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
