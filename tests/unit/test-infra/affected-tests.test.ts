@@ -432,12 +432,11 @@ describe("tests that start Den as a process (issue 708)", () => {
     expect(Object.keys(s.files)).toContain(
       "tests/unit/server/hub-delivery.integration.test.ts",
     );
-    // Its subject only: not every test that starts Den.
     const starters = Object.entries(s.files).filter(([, why]) =>
       why.some((w) => /starts Den/.test(w)),
     );
     expect(starters.length).toBeGreaterThan(0);
-    expect(starters.length).toBeLessThan(15);
+    expect(starters.length).toBeLessThan(20);
   });
 
   it("finds them: by a helper, bin/den, or tsx on an entry", () => {

@@ -158,15 +158,16 @@ async function open(next: string): Promise<Page> {
 }
 
 /**
- * The projects the list shows (its running groups' and its stopped rows'),
- * and the tabs' ids. Issue 482: a project whose only running session was
- * a shell has no running group on Agents now; its stopped agents still
- * show, in Stopped.
+ * The projects the list shows (its bands' rows, each naming
+ * its project, and its stopped rows), and the tabs' ids. A
+ * project whose only running session was a shell has no running row on
+ * Agents now; its stopped agents still show, in Stopped.
  */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg[data-ws], #agl [data-stopped] .agst[data-ws]", (xs) => [
-    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
-  ]);
+  p.$$eval(
+    "#agl div[data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
+    (xs) => [...new Set(xs.map((x) => (x as HTMLElement).dataset.ws))],
+  );
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
@@ -283,11 +284,17 @@ describe("#80: a project's view holds only its own", () => {
     await p.waitForFunction(
       () => new URLSearchParams(location.search).get("project") === "north",
     );
-    await p.waitForFunction(() =>
-      Array.from(document.querySelectorAll("#agl .wsg")).every(
-        (x) => (x as HTMLElement).dataset.ws === "north",
-      ),
-    );
+    await p.waitForFunction(() => {
+      const xs = Array.from(
+        document.querySelectorAll(
+          "#agl div[data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
+        ),
+      );
+      return (
+        xs.length > 0 &&
+        xs.every((x) => (x as HTMLElement).dataset.ws === "north")
+      );
+    });
     expect(await listed(p)).toEqual(["north"]);
     await expect(p.locator("#ws-pill").textContent()).resolves.toContain(
       "north",

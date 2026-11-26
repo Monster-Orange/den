@@ -67,6 +67,7 @@ import {
   isGithubWatchPath,
 } from "./github-watch-routes.js";
 import {
+  agentStateDeps,
   alertFeed,
   attentionDetail,
   attentionActivity,
@@ -10261,6 +10262,7 @@ async function handleRequest(
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
+        agentStates: agentStateDeps,
       },
     )
   )

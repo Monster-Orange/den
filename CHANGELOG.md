@@ -36,6 +36,7 @@ config and manifest changes a distribution must make to move to it under
 - A pull request's `github_watch` reports only that pull request's own checks. For each workflow it counts the newest run on the head: an older run a label or an edit replaced, a run cancelled by a newer one, and `workflow_dispatch` or `push` runs that only share the head's commit are left out. Before it reports a failure it checks which run the failure came from, which can add one interval. (issue 1279)
 - After a Den restart, an agent's question still shows on its wait: Den adopted the kept bell row but lost the question text, so the agent's row showed no question while the bell still did. Each kind of kept row is read for its own text, including rows from older Dens. (issue 1699)
 - An agent's `npm ci`, `npm install`, `pnpm install`, `yarn install`, `rm -rf node_modules/` or `git clean -x` is refused where `node_modules` is a link to a folder other worktrees share, since it would empty that folder for all of them. The refusal says to remove only the link (`rm node_modules`), then install.
+- The Agents page shows every running agent in one list across projects, in four bands: Needs you, Done (finished, not yet seen), Working and Idle. Needs you and Done put the longest wait first; Working and Idle go A to Z until you drag them. Opening an agent marks its finished turn seen, per person, on every device, and the marks survive a restart (issue 773).
 
 ## [0.4.90] - 2026-11-25
 
