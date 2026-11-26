@@ -83,6 +83,12 @@ export function queueConfig(
   };
 }
 
+export function capRefusal(e: unknown): string | null {
+  return e instanceof Error && (e as { code?: unknown }).code === "cap"
+    ? e.message
+    : null;
+}
+
 let queue: RestartQueue | null = null;
 /** The log and the bell, as the latest caller gave them. */
 let logTo: ((line: string) => void) | undefined;
@@ -120,6 +126,7 @@ export function restartQueue(
         t.unref?.();
       }),
     log: (line) => logTo?.(line),
+    heldBy: capRefusal,
     changed: () => {
       const ids = agentsWaitingOf(q.waiting());
       const n = ids.length;

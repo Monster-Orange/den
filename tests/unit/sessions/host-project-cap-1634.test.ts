@@ -9,6 +9,7 @@ import {
 import { SessionHost } from "../../../src/shared/sessions/host.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { scriptedFactory, type ScriptedPty } from "./helpers/fake-pty.js";
+import { capHeldOf } from "../../../src/ui/server/cap-bell.js";
 
 const tmps: string[] = [];
 const hosts: SessionHost[] = [];
@@ -98,6 +99,28 @@ describe("issue 1634: a project's cap on its running agents", () => {
     await expect(
       c.start(spec("north:d"), { ...agents("north"), limit: 3 }),
     ).rejects.toThrow(/^3 agents are running and agents\.max_concurrent is 3$/);
+  });
+
+  it("the bell reads the host's own refusals of both caps", async () => {
+    const { c } = await setup();
+    await c.start(spec("north:a"), agents("north", 1));
+    const project = await c
+      .start(spec("north:b"), agents("north", 1))
+      .catch((e: Error) => e.message);
+    expect(capHeldOf(String(project))).toEqual({
+      n: 1,
+      limit: 1,
+      key: "agents.max_per_project",
+      project: "north",
+    });
+    const machine = await c
+      .start(spec("south:a"), { ...agents("south"), limit: 1 })
+      .catch((e: Error) => e.message);
+    expect(capHeldOf(String(machine))).toEqual({
+      n: 1,
+      limit: 1,
+      key: "agents.max_concurrent",
+    });
   });
 
   it("plain sessions never count against a project's cap", async () => {
