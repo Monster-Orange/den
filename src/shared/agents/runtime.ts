@@ -186,6 +186,11 @@ export interface LaunchInput {
    * runtime whose resume comes from that report (reportedResume).
    */
   resumeReport?: ResumeReport;
+  /**
+   * Issue 785: Den's own CLI, as the agent's MCP server runs it: what a
+   * catalog "{report}" names (Codex's notify program).
+   */
+  denCli?: string[];
   /** The CLI detect found (a setting, the login PATH, …); else searched again. */
   bin?: string;
   /**
@@ -327,11 +332,31 @@ export interface Runtime {
    */
   reportedResume?: boolean;
   /**
+   * Issue 785: whether a reported conversation is one this agent may
+   * resume, by the runtime's own session record (Codex: a main thread that
+   * started after the agent was created, in its folder). Never blocks.
+   * None: the report's checks only.
+   */
+  reportedConversationOk?(
+    conversation: string,
+    check: import("./session-files.js").CodexCheck,
+  ): Promise<boolean>;
+  /**
+   * Issue 785: its conversation id is Den's, and a fresh start takes a
+   * new one (Gemini refuses an id whose session file exists).
+   */
+  freshTakesNewId?: boolean;
+  /**
    * Whether the runtime has a conversation for `token` on this machine
    * (den-claude: its transcript file). Only ever a fast path: false may
    * just mean it isn't written yet.
    */
-  conversationExists?(token: string, env?: NodeJS.ProcessEnv): boolean;
+  conversationExists?(
+    token: string,
+    env?: NodeJS.ProcessEnv,
+    /** Issue 785: the store's accepted owners (issue 988's runAs). */
+    uids?: readonly number[],
+  ): boolean;
   /**
    * AG-17.1, bring in a conversation: the runtime's own recent
    * conversations that ran in `cwd` or a folder inside it, newest first,

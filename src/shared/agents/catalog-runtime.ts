@@ -14,11 +14,22 @@
  * vendor's npm package, or under the vendor's install directory), so a
  * path that isn't that runtime is refused.
  */
+import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { configuredRuntimeBin } from "../den-config.js";
 import { entryDirs, type CatalogEntry } from "./catalog.js";
-import { resumeCommandFor } from "./resume-command.js";
+import {
+  CONVERSATION_ID,
+  fillReport,
+  resumeArgv,
+  resumeCommandFor,
+} from "./resume-command.js";
+import {
+  codexMainThread,
+  geminiResumable,
+  type CodexCheck,
+} from "./session-files.js";
 import {
   LaunchError,
   type DetectOptions,
@@ -70,6 +81,28 @@ export function detectEntry(
   };
 }
 
+/** Issue 785: the words that start it under Den's own id, when it takes one. */
+function denIdStart(e: CatalogEntry): readonly string[] | undefined {
+  return e.resume?.conversation === "den" ? e.resume.start : undefined;
+}
+
+/**
+ * Issue 785: `argv` with "{report}" filled with Den's own notify program,
+ * or a LaunchError when Den's CLI is not known.
+ */
+function withReport(
+  e: CatalogEntry,
+  argv: string[],
+  denCli: readonly string[] | undefined,
+): string[] {
+  const out = fillReport(argv, denCli);
+  if (!out)
+    throw new LaunchError(
+      `${e.id}: Den's own command is not known, so its notify can't be set`,
+    );
+  return out;
+}
+
 /** The launch argv: the entry's template, "{bin}" the path found. */
 export function launchArgv(e: CatalogEntry, bin: string): string[] {
   return e.launch.argv.map((a) => a.split("{bin}").join(bin));
@@ -98,9 +131,23 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
           throw new LaunchError(`${e.id}: ${d.why ?? "not found"}`);
         bin = d.path;
       }
+      // Issue 785: Den's own conversation id, when the runtime takes one:
+      // the one it had (a fresh start under the same id), else a new one.
+      const den = denIdStart(e);
+      const id = den
+        ? input.resumeToken && CONVERSATION_ID.test(input.resumeToken)
+          ? input.resumeToken
+          : randomUUID()
+        : undefined;
       return {
-        argv: launchArgv(e, bin),
+        argv: [
+          ...withReport(e, launchArgv(e, bin), input.denCli),
+          ...(den && id
+            ? den.map((w) => (w === "{conversation}" ? id : w))
+            : []),
+        ],
         env: {},
+        ...(id ? { resumeToken: id } : {}),
         warnings: [
           `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,
         ],
@@ -113,8 +160,34 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
     // why before this is reached.
     ...(e.resume
       ? {
-          reportedResume: true as const,
+          ...(denIdStart(e)
+            ? { freshTakesNewId: true as const }
+            : { reportedResume: true as const }),
+          // Issue 785: the runtime's own session record, where Den reads it.
+          ...(e.id === "codex"
+            ? {
+                reportedConversationOk: (
+                  conversation: string,
+                  check: CodexCheck,
+                ) => codexMainThread(conversation, check),
+              }
+            : {}),
+          ...(e.id === "gemini" && denIdStart(e)
+            ? {
+                conversationExists: (
+                  token: string,
+                  env: NodeJS.ProcessEnv = process.env,
+                  uids?: readonly number[],
+                ) => geminiResumable(token, env, uids),
+              }
+            : {}),
           resume(input: Parameters<NonNullable<Runtime["resume"]>>[0]) {
+            // Den's own id: only the one it kept, in Den's shape.
+            if (
+              denIdStart(e) &&
+              !(input.resumeToken && CONVERSATION_ID.test(input.resumeToken))
+            )
+              return null;
             let bin = input.bin;
             if (!bin) {
               const d = detect(input.env);
@@ -122,15 +195,19 @@ export function catalogRuntime(e: CatalogEntry): Runtime {
                 throw new LaunchError(`${e.id}: ${d.why ?? "not found"}`);
               bin = d.path;
             }
-            const got = resumeCommandFor(
-              input.resumeReport,
-              input.worktree,
-              e.resume!.argv,
-              bin,
-            );
+            const got = denIdStart(e)
+              ? {
+                  argv: resumeArgv(e.resume!.argv, bin, input.resumeToken!),
+                }
+              : resumeCommandFor(
+                  input.resumeReport,
+                  input.worktree,
+                  e.resume!.argv,
+                  bin,
+                );
             if ("problem" in got) return null;
             return {
-              argv: got.argv,
+              argv: withReport(e, got.argv, input.denCli),
               env: {},
               warnings: [
                 `${e.name} runs as its own CLI in ${input.worktree}: Den's tools (MCP) and permission modes are coming for it`,

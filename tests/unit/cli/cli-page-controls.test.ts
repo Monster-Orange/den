@@ -188,6 +188,10 @@ const LISTING: Record<string, Entry> = {
   "agents rm": page("agents-page.js", 'agentPath(r, "remove"'),
   "agents handback-check": script("a linter for agents' hand-backs"),
   "agents handoff-check": script("a linter for agents' hand-offs"),
+  // Issue 785: a runtime's hook (Codex's notify) runs it inside an agent.
+  "agents report-resume": script(
+    "an agent's runtime hook reporting the conversation to resume",
+  ),
   // Issue 163 (b): `claude setup-token` prints it in a terminal; it is
   // pasted at a prompt there or piped in, never through a page.
   "agents token": script(

@@ -1338,6 +1338,12 @@
     "set.agents.pane_reconnect_wait": "試行の間の最長の待ち時間",
     "set.agents.pane_reconnect_wait.d":
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
+    "set.agents.resume_first_line": "再開確認の読み取り上限",
+    "set.agents.resume_first_line.d":
+      "エージェントが報告した会話を確かめるため、__DEN_TITLE__ がランタイムの会話ファイルから読む量です（指示を含む Codex の最初の行）。これより長い行は再開できず、エージェントは新しく始まります。__DEN_CLI__ config agents.resume_first_line_max_bytes=1048576",
+    "set.agents.resume_report_gap": "再開報告の間隔",
+    "set.agents.resume_report_gap.d":
+      "1 つのエージェントから、確認する会話の報告を受ける最短の間隔（秒）です。これより早い報告は早すぎるとして返され、エージェントの次のターンで再び報告されます。__DEN_CLI__ config agents.resume_report_min_seconds=5",
     "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
     "set.agents.shell_path_wait.d":
       "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、新しいシェルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
@@ -4238,6 +4244,8 @@
     "set.ui.rt.pathToAll": "{name} のパス (すべてのプロジェクト)",
     "set.ui.rt.save": "保存",
     "set.ui.rt.cancel": "キャンセル",
+    "set.ui.rt.setsNotify":
+      "Den が起動するエージェントでは、{name} の notify を Den が設定します。ご自身の設定の notify はそれらのエージェントでのみ置き換えられます。",
     "set.ui.rt.pathsFor": "パスの対象",
     "set.ui.rt.everyProject": "すべてのプロジェクト (user.yml)",
     "set.ui.rt.fixConfig":

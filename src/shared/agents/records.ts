@@ -69,6 +69,24 @@ export interface AgentRecord {
   sessionName: string;
   /** ISO 8601. */
   startedAt: string;
+  /**
+   * Issue 785: when the agent was created (ISO 8601), never rewritten by a
+   * resume: a Codex thread it reports must have started then or later.
+   * Older records lack it (their startedAt stands in: stricter).
+   */
+  createdAt?: string;
+  /**
+   * Issue 988: the login its runtime runs as, when not the person's own
+   * (written by Den at launch). Issue 785 reads the runtime's session
+   * store from it, only from a record file agents can't write
+   * (recordFileTrusted).
+   */
+  runAs?: {
+    login: string;
+    uid: number;
+    home: string;
+    env?: { CODEX_HOME?: string; GEMINI_CLI_HOME?: string };
+  };
   /** Set by `agents stop`; cleared by a resume. */
   stoppedAt?: string;
   /** Set when a resume started its current session. */
@@ -414,6 +432,27 @@ export function readRecord(stateDir: string, id: string): AgentRecord | null {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
+  }
+}
+
+/**
+ * Issue 785 (with 988): whether agent `id`'s record file is one no agent
+ * can have written: a plain file (no link), Den's own user's, with no
+ * group or other write bit. Only then is its runAs honoured.
+ */
+export function recordFileTrusted(stateDir: string, id: string): boolean {
+  if (!AGENT_ID_RE.test(id)) return false;
+  try {
+    const st = fs.lstatSync(recordFile(stateDir, id));
+    const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+    return (
+      st.isFile() &&
+      !st.isSymbolicLink() &&
+      (uid < 0 || st.uid === uid) &&
+      (st.mode & 0o022) === 0
+    );
+  } catch {
+    return false;
   }
 }
 

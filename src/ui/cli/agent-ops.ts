@@ -161,6 +161,7 @@ import {
   ROTATION_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
+  resumeReportLimits,
   clearUserAgentSandbox,
   setUserRuntimeBin,
   userConfigPath,
@@ -268,6 +269,7 @@ import {
   listRemovedRecords,
   purgeRemoved,
   readRecord,
+  recordFileTrusted,
   removeRecord,
   restoreRecord,
   writeRecord,
@@ -277,6 +279,7 @@ import {
   type AgentRecord,
   type Override,
 } from "../../shared/agents/records.js";
+import { sessionStoreOf } from "../../shared/agents/session-files.js";
 import {
   agentSessionEnv,
   DEFAULT_RUNTIME_ID,
@@ -514,6 +517,11 @@ export interface AgentsDeps extends SessionsDeps {
   installPermission?: () => unknown;
   /** Issue 278: user.yml agent_context.* with its defaults. */
   contextWatch?: () => ContextWatchSettings;
+  /**
+   * Issue 785: agents.resume_first_line_max_bytes and
+   * agents.resume_report_min_seconds (default: user.yml).
+   */
+  resumeReportLimits?: () => { firstLineMaxBytes: number; minSeconds: number };
   /** den#48: save a checked intent as workspace `ws`'s (null clears it). */
   saveWorkspacePermission?: (
     ws: string,
@@ -633,6 +641,7 @@ export interface AgentsResolved extends Resolved {
   workspacePermission: (ws: string) => unknown;
   installPermission: () => unknown;
   contextWatch: () => ContextWatchSettings;
+  resumeReportLimits: () => { firstLineMaxBytes: number; minSeconds: number };
   saveWorkspacePermission: (
     ws: string,
     intent: PermissionIntent | null,
@@ -1116,6 +1125,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
       d.workspacePermission ?? ((ws) => workspaceAgentPermission(ws)),
     installPermission:
       d.installPermission ?? (() => readUserConfig().agents?.default_mode),
+    resumeReportLimits: d.resumeReportLimits ?? (() => resumeReportLimits()),
     contextWatch:
       d.contextWatch ??
       (() => contextWatchSettings(readUserConfig().agent_context)),
@@ -1558,6 +1568,50 @@ export function resumeRefusal(
     return null;
   }
   if (!rec.resumeToken) return `${rec.id} has no conversation to resume`;
+  return null;
+}
+
+/**
+ * Issue 785: why `rec`'s conversation can't resume by its runtime's own
+ * session record (read only here, at a resume), or null. Codex: a
+ * reported thread that isn't a main thread in its folder. Gemini: an id
+ * whose session holds no reply yet (a fresh start under a new id).
+ */
+export async function conversationRefusal(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<string | null> {
+  const rt = getRuntime(rec.runtime);
+  if (!rt || !(rt.reportedConversationOk || rt.freshTakesNewId)) return null;
+  // Issue 988: the agent's own login's store, only from a record no agent
+  // could have written.
+  const store = sessionStoreOf(
+    rec,
+    d.env,
+    recordFileTrusted(d.stateDir(), rec.id),
+  );
+  if (!store)
+    return `${rec.runtime} can't resume ${rec.id}: the login it runs as is not on a record Den can trust`;
+  const conv = rec.resumeReport?.conversation;
+  if (
+    rt.reportedResume &&
+    rt.reportedConversationOk &&
+    typeof conv === "string" &&
+    !(await rt.reportedConversationOk(conv, {
+      store,
+      cwd: rec.cwd,
+      notBefore: rec.createdAt ?? rec.startedAt,
+      firstLineMaxBytes: d.resumeReportLimits().firstLineMaxBytes,
+    }))
+  )
+    return `${rec.runtime} can't resume ${rec.id}: its conversation is not a main thread of ${rec.runtime} that began in ${rec.cwd} after the agent was created`;
+  if (
+    rt.freshTakesNewId &&
+    rt.conversationExists &&
+    rec.resumeToken &&
+    !rt.conversationExists(rec.resumeToken, store.env, store.uids)
+  )
+    return `${rec.runtime} can't resume ${rec.id}: its conversation was never written (it stopped before its first turn)`;
   return null;
 }
 
@@ -3135,6 +3189,11 @@ export interface RuntimeChoice {
    * coming"). Absent for a runtime that isn't from the catalog.
    */
   denTools?: boolean;
+  /**
+   * Issue 785: Den sets its notify for the agents it starts (a "{report}"
+   * in its launch), in place of one in the person's own config.
+   */
+  setsNotify?: true;
   available: boolean;
   /** Why it is unavailable. */
   why?: string;
@@ -3291,6 +3350,9 @@ export async function listRuntimes(
         ...(rt.label ? { label: rt.label } : {}),
         ...(rt.vendor ? { vendor: rt.vendor } : {}),
         ...(rt.catalog ? { denTools: rt.denTools === true } : {}),
+        ...(rt.catalog?.launch.argv.some((w) => w.includes("{report}"))
+          ? { setsNotify: true as const }
+          : {}),
         available: det.available,
         ...(det.available ? {} : { why: det.why ?? "unavailable" }),
         ...(version ? { version } : {}),
@@ -3733,6 +3795,8 @@ async function startSession(
     ...launch.rec,
     session: { backend: info.ref.backend, id: info.ref.id },
     startedAt: info.startedAt,
+    // Issue 785: set once, when the agent is created; a resume keeps it.
+    createdAt: launch.rec.createdAt ?? info.startedAt,
     grants: [...launch.grants],
     ...extra,
   };
@@ -3925,6 +3989,11 @@ function launchInput(
     worktree: dir,
     ...(model ? { model } : {}),
     mcp: agentMcp(d, ws, id, grants),
+    // Issue 785: Den's own CLI, for a runtime's notify ({report}).
+    denCli: (() => {
+      const c = d.mcpServer().command;
+      return Array.isArray(c) ? [...c] : [c];
+    })(),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
     // Issue 1391: read at this start; a change of mode waits for the next.
@@ -6766,7 +6835,9 @@ export async function resumeAgent(
     syncCatalog(d);
     const rt = runtimeFor(rec.runtime);
     // AG-14.2: never a resume that would start a new conversation instead.
-    const why = resumeRefusal(rec, listRecords(d.stateDir()));
+    const why =
+      resumeRefusal(rec, listRecords(d.stateDir())) ??
+      (rt.reportedResume ? await conversationRefusal(d, rec) : null);
     if (why)
       throw refused(why, [
         `Start fresh: ${d.cli} agents start -w ${rec.workspace} --persona ${rec.persona} --id ${rec.id}`,
@@ -6862,9 +6933,17 @@ export async function resumeAgent(
       // relaunch from a handoff, or a session the host lost. Whatever is
       // chosen, the runtime's own answer ("no conversation found") is the
       // backstop below, and a conversation never written is never a 502.
+      // Issue 785 (988): the store of the login it runs as, when trusted.
+      const store = sessionStoreOf(
+        rec,
+        d.env,
+        recordFileTrusted(d.stateDir(), rec.id),
+      );
       const onDisk =
         rt.conversationExists && token
-          ? rt.conversationExists(token, d.env)
+          ? store
+            ? rt.conversationExists(token, store.env, store.uids)
+            : false
           : undefined;
       const known =
         onDisk === undefined
@@ -6911,6 +6990,8 @@ export async function resumeAgent(
           : out;
       };
       const { session: _s, startedAt: _t, resumedAt: _r, ...base } = rec;
+      // Issue 785: an older record's creation is its start, never later.
+      if (!base.createdAt) base.createdAt = rec.startedAt;
       const run = async (
         asFresh: boolean,
         prior: SessionInfo | undefined,
@@ -6962,9 +7043,13 @@ export async function resumeAgent(
           signingWarning,
         };
       };
-      let fresh = !known && Boolean(token);
+      // Issue 785: a runtime whose id is Den's, with nothing written under
+      // it: a fresh start under a new id (the old one is refused).
+      const notWritten = Boolean(rt.freshTakesNewId) && onDisk === false;
+      let fresh = notWritten || (!known && Boolean(token));
       let newConversation = false;
-      let r = await run(fresh, old);
+      let r = await run(fresh, old, notWritten);
+      if (notWritten && !r.early) newConversation = true;
       // It exited at once saying the other way was the right one: try that,
       // once. A resume with nothing to continue starts fresh under the same
       // id; a fresh start whose id is taken resumes it.
@@ -6972,7 +7057,7 @@ export async function resumeAgent(
       const other = fresh
         ? rt.launchFailures?.idInUse?.test(said)
         : rt.launchFailures?.noConversation?.test(said);
-      if (r.early && other && token) {
+      if (r.early && other && token && !notWritten) {
         const first = r;
         fresh = !fresh;
         // The first try's token goes with its session.
@@ -8868,17 +8953,20 @@ export async function markInterrupted(
   // the result says why.
   const why = new Map<string, string>();
   const all = listRecords(d.stateDir());
-  const due = marked.filter((rec) => {
+  const due: AgentRecord[] = [];
+  for (const rec of marked) {
     const p = find(rec);
     const wants = opts.restoreAll
       ? rec.resumeOnRestart !== false
       : !!p && resumesOnRestart(rec, p);
-    if (!wants) return false;
-    const refusal = resumeRefusal(rec, all);
-    if (refusal && getRuntime(rec.runtime)?.reportedResume)
+    if (!wants) continue;
+    const refusal =
+      resumeRefusal(rec, all) ?? (await conversationRefusal(d, rec));
+    const rt = getRuntime(rec.runtime);
+    if (refusal && (rt?.reportedResume || rt?.freshTakesNewId))
       why.set(rec.id, refusal);
-    return !refusal || why.has(rec.id);
-  });
+    if (!refusal || why.has(rec.id)) due.push(rec);
+  }
   if (!due.length) return found;
   const hubAnswered = opts.hubUp
     ? await waitUntil(opts.hubUp, opts.hubWaitMs ?? 120_000, opts.hubPollMs)

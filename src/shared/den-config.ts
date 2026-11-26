@@ -704,6 +704,16 @@ export interface UserConfig {
     shell_path_timeout_seconds?: unknown;
     draft_hold_max_minutes?: unknown;
     /**
+     * Issue 785: how much of a runtime's session file's first line Den
+     * reads to check a conversation (bytes, 1 MiB).
+     */
+    resume_first_line_max_bytes?: unknown;
+    /**
+     * Issue 785: the fewest seconds between two checked resume reports
+     * from one agent (5); a sooner one is answered 429.
+     */
+    resume_report_min_seconds?: unknown;
+    /**
      * issue_write: the persona roles that write GitHub issues in their
      * project's repos (a list), and the install's writes an hour
      * (shared/issue-write.ts).
@@ -1081,6 +1091,58 @@ export function agentsShellPathTimeoutSeconds(
   throw new Error(
     `agents.shell_path_timeout_seconds must be a number from ${SHELL_PATH_TIMEOUT.min} to ${SHELL_PATH_TIMEOUT.max} (user.yml; got ${JSON.stringify(v)})`,
   );
+}
+
+/** Issue 785: the resume report's limits, their defaults and ranges. */
+export const RESUME_REPORT_LIMITS = {
+  first_line_max_bytes: {
+    key: "resume_first_line_max_bytes",
+    default: 1024 * 1024,
+    min: 4096,
+    max: 64 * 1024 * 1024,
+    int: true,
+  },
+  min_seconds: {
+    key: "resume_report_min_seconds",
+    default: 5,
+    min: 0,
+    max: 3600,
+    int: false,
+  },
+} as const;
+
+/**
+ * Issue 785: agents.resume_first_line_max_bytes and
+ * agents.resume_report_min_seconds (user.yml), each its default when
+ * unset or out of range: a caller that must never fail (a resume, the
+ * report route).
+ */
+export function resumeReportLimits(read: () => UserConfig = readUserConfig): {
+  firstLineMaxBytes: number;
+  minSeconds: number;
+} {
+  let agents: Record<string, unknown> = {};
+  try {
+    agents = (read().agents ?? {}) as Record<string, unknown>;
+  } catch {
+    /* defaults */
+  }
+  const one = (
+    l: (typeof RESUME_REPORT_LIMITS)[keyof typeof RESUME_REPORT_LIMITS],
+  ) => {
+    const v = agents[l.key];
+    return typeof v === "number" &&
+      Number.isFinite(v) &&
+      v >= l.min &&
+      v <= l.max &&
+      (!l.int || Number.isInteger(v))
+      ? v
+      : l.default;
+  };
+  return {
+    firstLineMaxBytes: one(RESUME_REPORT_LIMITS.first_line_max_bytes),
+    minSeconds: one(RESUME_REPORT_LIMITS.min_seconds),
+  };
 }
 
 /**
@@ -2199,6 +2261,9 @@ export const AGENTS_RESERVED_KEYS = [
   "issue_writes_per_hour",
   // Issue 1129: the restart queue (agents.resume.*), never an agent id.
   "resume",
+  // Issue 785: the resume report's session-file check.
+  "resume_first_line_max_bytes",
+  "resume_report_min_seconds",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
   "sandbox",
   "sandbox_sockets",

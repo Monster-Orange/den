@@ -13,6 +13,9 @@
  */
 import * as path from "path";
 
+/** Where an agent reports its conversation, with its own token. */
+export const RESUME_REPORT_PATH = "/api/agents/self/resume-command";
+
 /** One report: the conversation to resume, where, and its place in line. */
 export interface ResumeReport {
   /** The runtime's own id for the conversation. */
@@ -63,6 +66,44 @@ export function resumeTemplateProblem(argv: readonly string[]): string | null {
   if (argv.slice(1).some((w) => w.includes("{bin}")))
     return 'a resume template names "{bin}" only first';
   return null;
+}
+
+/**
+ * What is wrong with the words that start a runtime under an id Den chose
+ * (catalog resume.start), or null: exactly one "{conversation}" standing
+ * alone, no word naming it otherwise, no "{bin}".
+ */
+export function resumeStartProblem(words: readonly string[]): string | null {
+  if (!words.length || words.length > 4) return "1 to 4 words";
+  const slots = words.filter((w) => w.includes("{conversation}"));
+  if (slots.length !== 1 || !words.includes("{conversation}"))
+    return 'exactly one "{conversation}", a word of its own';
+  if (words.some((w) => w.includes("{bin}"))) return 'no "{bin}"';
+  if (words.some((w) => w.includes("{report}"))) return 'no "{report}"';
+  return null;
+}
+
+/** The words Den's notify program runs, after Den's own CLI. */
+export const REPORT_WORDS = ["agents", "report-resume", "--notify-json"];
+
+/** A TOML basic string: JSON's escapes, and DEL escaped too. */
+function tomlString(s: string): string {
+  return JSON.stringify(s).replace(/\x7f/g, "\\u007f");
+}
+
+/**
+ * `argv` with "{report}" (in at most one word) filled with Den's notify
+ * program as a TOML array, `denCli` then REPORT_WORDS, each its own
+ * string. Null when a word needs it and `denCli` is unknown.
+ */
+export function fillReport(
+  argv: readonly string[],
+  denCli: readonly string[] | undefined,
+): string[] | null {
+  if (!argv.some((w) => w.includes("{report}"))) return [...argv];
+  if (!denCli?.length) return null;
+  const toml = `[${[...denCli, ...REPORT_WORDS].map(tomlString).join(",")}]`;
+  return argv.map((w) => w.split("{report}").join(toml));
 }
 
 /** The template's words: the binary first, the id in its slot. */

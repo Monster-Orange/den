@@ -99,6 +99,12 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "agents_list.host_timeout_seconds": ["agents_list", "host_timeout_seconds"],
   // Issue 456: how long Den waits for the shell's PATH.
   "agents.shell_path_timeout_seconds": ["agents_shell", "path_timeout_seconds"],
+  // Issue 785: the resume report's session-file check.
+  "agents.resume_first_line_max_bytes": [
+    "agents_resume_report",
+    "first_line_max_bytes",
+  ],
+  "agents.resume_report_min_seconds": ["agents_resume_report", "min_seconds"],
   // Issue 1311: how long messages wait on a draft before the bell says so.
   "agents.draft_hold_max_minutes": ["agents_draft", "hold_max_minutes"],
   // Issue 1129: the restart queue (agents.resume.*).

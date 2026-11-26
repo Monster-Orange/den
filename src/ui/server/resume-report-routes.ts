@@ -12,20 +12,37 @@ import type * as http from "http";
 import {
   listRecords,
   readRecord,
+  recordFileTrusted,
   writeRecord,
   type AgentRecord,
 } from "../../shared/agents/records.js";
 import {
   acceptResumeReport,
   conversationHeldElsewhere,
+  RESUME_REPORT_PATH,
   resumeReportProblem,
   type ResumeReport,
 } from "../../shared/agents/resume-command.js";
 import { getRuntime } from "../../shared/agents/runtimes.js";
+import { sessionStoreOf } from "../../shared/agents/session-files.js";
+import { resumeReportLimits } from "../../shared/den-config.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Issue 785: when each agent's last report was checked against its
+ * runtime's session record (ms), for agents.resume_report_min_seconds.
+ */
+const lastCheck = new Map<string, number>();
+
+/** Tests: forget every agent's last check. */
+export function resetResumeReportChecks(): void {
+  lastCheck.clear();
+}
 import { agentTokenPrincipalOf, type AgentPrincipal } from "./request-guard.js";
 import { readBodyCapped, sendJson } from "./http-helpers.js";
 
-export const RESUME_REPORT_PATH = "/api/agents/self/resume-command";
+export { RESUME_REPORT_PATH };
 
 export interface ResumeReportDeps {
   stateDir: () => string;
@@ -33,6 +50,10 @@ export interface ResumeReportDeps {
   /** Tests: the agent the request is from. */
   principal?: (req: http.IncomingMessage) => AgentPrincipal | null;
   now?: () => Date;
+  /** Den's own environment, where the runtime keeps its sessions (tests). */
+  env?: NodeJS.ProcessEnv;
+  /** agents.resume_* limits (default: user.yml). */
+  limits?: () => { firstLineMaxBytes: number; minSeconds: number };
 }
 
 /** The body: a JSON object, at most 4 KiB (a report fits in well under). */
@@ -123,6 +144,70 @@ export async function handleResumeReportRoutes(
     d.log(`agent ${id}: resume report refused: ${problem}`);
     return refuse(res, 400, "refused_report", problem);
   }
+  // C's nit: a sequence in milliseconds more than a day ahead would pin
+  // this report past every later one.
+  const nowMs = (d.now?.() ?? new Date()).getTime();
+  if (report.seq > 1e12 && report.seq > nowMs + DAY_MS) {
+    const why = "its sequence is more than a day ahead of now";
+    d.log(`agent ${id}: resume report refused: ${why}`);
+    return refuse(res, 400, "refused_report", why);
+  }
+  // Issue 785: a report that would be kept, with a conversation new to the
+  // record, is checked against the runtime's own session record (Codex: a
+  // main thread that began in the agent's folder after it was created).
+  // The check reads files without blocking, at most once every
+  // agents.resume_report_min_seconds per agent, and before the record is
+  // read again for the write.
+  const before = found();
+  if (!before)
+    return refuse(res, 404, "no_agent", `no agent ${id} in ${agent.workspace}`);
+  // The cheap refusal first: another agent's conversation costs no walk.
+  if (
+    conversationHeldElsewhere(
+      before,
+      report.conversation,
+      listRecords(d.stateDir()),
+    )
+  ) {
+    const why = "it is another agent's conversation";
+    d.log(`agent ${id}: resume report refused: ${why}`);
+    return refuse(res, 400, "refused_report", why);
+  }
+  const rt0 = getRuntime(before.runtime);
+  const needsCheck =
+    !!rt0?.reportedConversationOk &&
+    acceptResumeReport(before.resumeReport, report) &&
+    before.resumeReport?.conversation !== report.conversation;
+  if (needsCheck) {
+    const limits = (d.limits ?? (() => resumeReportLimits()))();
+    const last = lastCheck.get(before.id) ?? -Infinity;
+    if (nowMs - last < limits.minSeconds * 1000)
+      return refuse(
+        res,
+        429,
+        "too_soon",
+        `one checked report every ${limits.minSeconds} s: report again later`,
+      );
+    lastCheck.set(before.id, nowMs);
+    const store = sessionStoreOf(
+      before,
+      d.env ?? process.env,
+      recordFileTrusted(d.stateDir(), before.id),
+    );
+    const ok =
+      !!store &&
+      (await rt0!.reportedConversationOk!(report.conversation, {
+        store,
+        cwd: before.cwd,
+        notBefore: before.createdAt ?? before.startedAt,
+        firstLineMaxBytes: limits.firstLineMaxBytes,
+      }));
+    if (!ok) {
+      const why = `it is not a main thread of ${before.runtime} that began in the agent's folder after the agent was created`;
+      d.log(`agent ${id}: resume report refused: ${why}`);
+      return refuse(res, 400, "not_main_thread", why);
+    }
+  }
   // From here to the write, nothing awaits: the record is read again now
   // (the body's pace is the agent's, and a person may have changed the
   // record meanwhile), and only its report changes.
@@ -152,6 +237,25 @@ export async function handleResumeReportRoutes(
     sendJson(res, { ok: true, kept: false, seq: prev!.seq });
     return true;
   }
+  // What the check rested on must still hold: the same runtime, folder,
+  // creation and login, and (unchecked) the same conversation as before.
+  const same =
+    rec.runtime === before.runtime &&
+    rec.cwd === before.cwd &&
+    rec.createdAt === before.createdAt &&
+    rec.startedAt === before.startedAt &&
+    JSON.stringify(rec.runAs ?? null) ===
+      JSON.stringify(before.runAs ?? null) &&
+    (needsCheck ||
+      prev?.conversation === report.conversation ||
+      !rt0?.reportedConversationOk);
+  if (!same)
+    return refuse(
+      res,
+      409,
+      "changed",
+      "the agent's record changed while its report was checked: report again",
+    );
   writeRecord(d.stateDir(), {
     ...rec,
     resumeReport: {

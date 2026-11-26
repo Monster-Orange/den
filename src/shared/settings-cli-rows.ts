@@ -34,6 +34,9 @@
  *   agents_resume: { batch?, gap_seconds?, load_ceiling?, max_wait_seconds? }
  *                                     user.yml agents.resume.* (issue 1129:
  *                                     the restart queue)
+ *   agents_resume_report: { first_line_max_bytes?, min_seconds? }
+ *                                     user.yml agents.resume_first_line_max_bytes,
+ *                                     agents.resume_report_min_seconds (issue 785)
  *   agents_shell: { path_timeout_seconds? }
  *                                     user.yml agents.shell_path_timeout_seconds
  *                                     (issue 456)
@@ -97,6 +100,7 @@ import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
   AGENTS_RESUME_LIMITS,
   HELD_WAIT_MINUTES,
+  RESUME_REPORT_LIMITS,
   SESSIONS_SETTINGS_KEYS,
   DRAFT_HOLD_MAX_MINUTES,
   SHELL_PATH_TIMEOUT,
@@ -145,6 +149,8 @@ export const PERSON_ONLY_SETTINGS = [
   "server_log",
   // Issue 456: how long Den waits for the shell's PATH.
   "agents_shell",
+  // Issue 785: how a resume report's session-file check is limited.
+  "agents_resume_report",
   // Issue 1311: how long messages wait on a draft before the bell says so.
   "agents_draft",
   // Issue 1129: how many agents restart at a time, and how far apart.
@@ -409,6 +415,13 @@ const AGENTS_SHELL: Record<string, Limit> = {
   },
 };
 
+/** Issue 785: user.yml agents.resume_first_line_max_bytes and _report_min_seconds. */
+const AGENTS_RESUME_REPORT: Record<string, Limit> = Object.fromEntries(
+  Object.entries(RESUME_REPORT_LIMITS).map(([k, l]) => [
+    k,
+    { key: l.key, min: l.min, max: l.max, int: l.int },
+  ]),
+);
 /** Issue 1311: user.yml agents.draft_hold_max_minutes (den-config.ts). */
 const AGENTS_DRAFT: Record<string, Limit> = {
   hold_max_minutes: {
@@ -903,6 +916,14 @@ export function patchCliRows(
       "agents",
       AGENTS_SHELL,
       body.agents_shell,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "agents_resume_report",
+      "agents",
+      AGENTS_RESUME_REPORT,
+      body.agents_resume_report,
       apply,
     ) ??
     patchBlock(

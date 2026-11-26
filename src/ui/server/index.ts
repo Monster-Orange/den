@@ -283,6 +283,7 @@ import {
   shellPathTimeoutMs,
   agentsResume,
   agentsShellPathTimeoutSeconds,
+  resumeReportLimits,
   agentsDraftHoldMaxMinutes,
   heldWriteWaitMinutes,
   readSessionsConfig,
@@ -6303,6 +6304,13 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    agents_resume_report: (() => {
+      const l = resumeReportLimits(() => user);
+      return {
+        first_line_max_bytes: l.firstLineMaxBytes,
+        min_seconds: l.minSeconds,
+      };
+    })(),
     agents_shell: (() => {
       try {
         return {
@@ -10419,6 +10427,7 @@ async function handleRequest(
           gate_slots?: unknown;
           agents_list?: unknown;
           agents_shell?: unknown;
+          agents_resume_report?: unknown;
           agents_draft?: unknown;
           agents_resume?: unknown;
           restore_services_on_boot?: unknown;
@@ -10493,6 +10502,7 @@ async function handleRequest(
             web_sessions: body.web_sessions,
             agents_list: body.agents_list,
             agents_shell: body.agents_shell,
+            agents_resume_report: body.agents_resume_report,
             agents_draft: body.agents_draft,
             agents_resume: body.agents_resume,
             restore_services_on_boot: body.restore_services_on_boot,

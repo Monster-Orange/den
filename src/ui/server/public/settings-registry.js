@@ -5038,6 +5038,42 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_list: { host_timeout_seconds: v } }),
   },
   {
+    // Issue 785: how much of a runtime's session file a resume check reads.
+    id: "agents.resume_first_line",
+    category: "agents",
+    label: "Resume check read limit",
+    description:
+      "How much of a runtime's conversation file __DEN_TITLE__ reads to check a conversation an agent reports (Codex's first line, which carries its instructions). A longer line can't resume, and the agent starts fresh. __DEN_CLI__ config agents.resume_first_line_max_bytes=1048576",
+    keywords: ["resume", "codex", "session", "limit", "bytes", "conversation"],
+    scope: "user",
+    keys: ["agents_resume_report.first_line_max_bytes"],
+    control: {
+      type: "number",
+      min: 4096,
+      max: 67108864,
+      step: 1024,
+      unit: "B",
+    },
+    read: (ctx) =>
+      ctx.data.agents_resume_report?.first_line_max_bytes ?? 1048576,
+    write: (v, ctx) =>
+      ctx.post({ agents_resume_report: { first_line_max_bytes: v } }),
+  },
+  {
+    // Issue 785: the fewest seconds between one agent's checked reports.
+    id: "agents.resume_report_gap",
+    category: "agents",
+    label: "Resume report gap",
+    description:
+      "The fewest seconds between two checked conversation reports from one agent. A sooner one is answered too soon, and the agent's next turn reports again. __DEN_CLI__ config agents.resume_report_min_seconds=5",
+    keywords: ["resume", "report", "codex", "rate", "limit", "seconds"],
+    scope: "user",
+    keys: ["agents_resume_report.min_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.agents_resume_report?.min_seconds ?? 5,
+    write: (v, ctx) => ctx.post({ agents_resume_report: { min_seconds: v } }),
+  },
+  {
     // Issue 456: how long Den waits for your shell's PATH (-lc and -ilc).
     id: "agents.shell_path_wait",
     category: "agents",
@@ -5736,6 +5772,11 @@ export function runtimeRowHtml(r, scopeWs) {
       ? ` <button type="button" class="den-btn sm" data-clear-path="${id}">${escR(L("set.ui.rt.clear", "Clear"))}</button>`
       : "") +
     `</div>` +
+    // Issue 785: Den's notify takes the place of the person's own, for
+    // Den's agents only.
+    (r.setsNotify
+      ? `<div class="rt-note" data-sets-notify="true">${escR(L("set.ui.rt.setsNotify", "Den sets {name}'s notify for the agents it starts, in place of one in your own config, for those agents only.", { name: r.label || r.id }))}</div>`
+      : "") +
     `<form class="rt-f" data-path-form="${id}" hidden>` +
     `<label class="rt-fl" for="rt-in-${id}">${escR(scopeWs ? L("set.ui.rt.pathToIn", "Path to {name} for {ws}", { name: r.label || r.id, ws: scopeWs }) : L("set.ui.rt.pathToAll", "Path to {name} (every project)", { name: r.label || r.id }))}</label>` +
     `<input type="text" id="rt-in-${id}" class="den-mono" spellcheck="false" autocomplete="off" placeholder="/absolute/path/to/${escR(r.id === "den-claude" ? "claude" : r.id)}" value="${escR(mine ? r.path || "" : "")}">` +

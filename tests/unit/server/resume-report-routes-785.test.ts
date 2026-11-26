@@ -13,11 +13,13 @@ import type { AddressInfo } from "net";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import {
   handleResumeReportRoutes,
+  resetResumeReportChecks,
   RESUME_REPORT_PATH,
 } from "../../../src/ui/server/resume-report-routes.js";
 
 const tmps: string[] = [];
 afterEach(() => {
+  resetResumeReportChecks();
   for (const d of tmps.splice(0))
     fs.rmSync(d, { recursive: true, force: true });
 });
@@ -30,7 +32,11 @@ const agentOf = (id: string, workspace = "north") => ({
   session: { name: "s" },
 });
 
-async function setup(principal: unknown, runtime = "codex") {
+async function setup(
+  principal: unknown,
+  runtime = "codex",
+  o: { minSeconds?: number; now?: () => Date } = {},
+) {
   const dir = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "den-785r-")),
   );
@@ -49,6 +55,30 @@ async function setup(principal: unknown, runtime = "codex") {
     sessionName: "acme-north:coder",
     startedAt: "2026-11-22T09:00:00.000Z",
   } as never);
+  const codexHome = path.join(dir, "codex");
+  /** Codex's session file for thread `id` (a sub-agent's with `parent`). */
+  const thread = (id: string, parent?: string) => {
+    const day = path.join(codexHome, "sessions", "2026", "11", "22");
+    fs.mkdirSync(day, { recursive: true });
+    fs.writeFileSync(
+      path.join(day, `rollout-2026-11-22T10-00-00-${id}.jsonl`),
+      JSON.stringify({
+        timestamp: "2026-11-22T10:00:00.000Z",
+        type: "session_meta",
+        payload: {
+          session_id: parent ?? id,
+          id,
+          ...(parent ? { parent_thread_id: parent } : {}),
+          timestamp: "2026-11-22T10:00:00.000Z",
+          cwd,
+          originator: "codex_cli_rs",
+          cli_version: "0.171.0",
+          source: "cli",
+        },
+      }) + "\n",
+    );
+  };
+  for (const id of ["s-1", "s-9", "s-10"]) thread(id);
   const logs: string[] = [];
   const server = http.createServer((req, res) => {
     void handleResumeReportRoutes(
@@ -59,7 +89,13 @@ async function setup(principal: unknown, runtime = "codex") {
         stateDir: () => stateDir,
         principal: () => principal as never,
         log: (l) => logs.push(l),
-        now: () => new Date("2026-11-22T10:00:00.000Z"),
+        now: o.now ?? (() => new Date("2026-11-22T10:00:00.000Z")),
+        // Codex's own session records: this test's, never this machine's.
+        env: { CODEX_HOME: codexHome, HOME: dir },
+        limits: () => ({
+          firstLineMaxBytes: 1024 * 1024,
+          minSeconds: o.minSeconds ?? 0,
+        }),
       },
     ).then((handled) => {
       if (!handled) {
@@ -84,7 +120,7 @@ async function setup(principal: unknown, runtime = "codex") {
   const close = () => new Promise((r) => server.close(r));
   const kept = () => readRecord(stateDir, "coder")?.resumeReport;
   const url = `http://127.0.0.1:${port}`;
-  return { post, close, cwd, logs, kept, stateDir, url };
+  return { post, close, cwd, logs, kept, stateDir, url, thread, codexHome };
 }
 
 describe("issue 785: POST /api/agents/self/resume-command", () => {
@@ -317,5 +353,115 @@ describe("issue 785: an agent's read-only view can't report (issue 796)", () => 
     const tok = {} as http.IncomingMessage;
     setPrincipal(tok, agentOf("coder") as never);
     expect(agentTokenPrincipalOf(tok)?.actor).toBe("agent:coder");
+  });
+});
+
+describe("issue 785: a Codex sub-agent's report never replaces its main thread's", () => {
+  it("a thread Codex's own record names a sub-agent's: refused, the main thread's report kept", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      expect(
+        (await t.post({ conversation: "s-9", cwd: t.cwd, seq: 1 })).body,
+      ).toMatchObject({ kept: true });
+      t.thread("child-1", "s-9");
+      const r = await t.post({ conversation: "child-1", cwd: t.cwd, seq: 2 });
+      expect(r.status).toBe(400);
+      expect(r.body).toMatchObject({ ok: false, code: "not_main_thread" });
+      expect(t.kept()?.conversation).toBe("s-9");
+      expect(t.logs.join("\n")).not.toMatch(/child-1/);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("a thread with no record of Codex's own: refused", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      const r = await t.post({ conversation: "nowhere", cwd: t.cwd, seq: 1 });
+      expect(r.status).toBe(400);
+      expect(r.body).toMatchObject({ code: "not_main_thread" });
+      expect(t.kept()).toBeUndefined();
+    } finally {
+      await t.close();
+    }
+  });
+});
+
+describe("issue 785: a report's check never stalls Den (security review)", () => {
+  it("the same conversation again, with a higher sequence: kept without reading Codex's files", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      expect(
+        (await t.post({ conversation: "s-9", cwd: t.cwd, seq: 1 })).body,
+      ).toMatchObject({ kept: true });
+      // Codex's store is gone: a check would refuse it. None runs.
+      fs.rmSync(t.codexHome, { recursive: true, force: true });
+      expect(
+        (await t.post({ conversation: "s-9", cwd: t.cwd, seq: 2 })).body,
+      ).toMatchObject({ kept: true, seq: 2 });
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("a new conversation sooner than agents.resume_report_min_seconds after the last check: 429", async () => {
+    const t = await setup(agentOf("coder"), "codex", { minSeconds: 5 });
+    try {
+      expect(
+        (await t.post({ conversation: "s-9", cwd: t.cwd, seq: 1 })).status,
+      ).toBe(200);
+      const r = await t.post({ conversation: "s-10", cwd: t.cwd, seq: 2 });
+      expect(r.status).toBe(429);
+      expect(r.body).toMatchObject({ code: "too_soon" });
+      expect(t.kept()?.conversation).toBe("s-9");
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("other requests are answered while a report's check walks a large store", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      // Hundreds of day folders after the agent's creation, none of them
+      // the thread's.
+      for (let m = 11; m <= 12; m++)
+        for (let d = 1; d <= 28; d++)
+          for (const y of ["2026", "2027", "2028"])
+            fs.mkdirSync(
+              path.join(
+                t.codexHome,
+                "sessions",
+                y,
+                String(m).padStart(2, "0"),
+                String(d).padStart(2, "0"),
+              ),
+              { recursive: true },
+            );
+      let ticks = 0;
+      const timer = setInterval(() => ticks++, 0);
+      const r = await t.post({ conversation: "nowhere", cwd: t.cwd, seq: 1 });
+      clearInterval(timer);
+      expect(r.status).toBe(400);
+      // The event loop ran timers while the walk went on: it never blocked.
+      expect(ticks).toBeGreaterThan(2);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it("a millisecond sequence more than a day ahead: refused", async () => {
+    const t = await setup(agentOf("coder"));
+    try {
+      const ahead = Date.parse("2026-11-24T10:00:00.000Z");
+      const r = await t.post({ conversation: "s-9", cwd: t.cwd, seq: ahead });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/more than a day ahead/);
+      const soon = Date.parse("2026-11-22T10:05:00.000Z");
+      expect(
+        (await t.post({ conversation: "s-9", cwd: t.cwd, seq: soon })).status,
+      ).toBe(200);
+    } finally {
+      await t.close();
+    }
   });
 });
