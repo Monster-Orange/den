@@ -15,6 +15,8 @@ export const AGENTS_PUBLIC = path.join(
 export const AGENTS_ENTRY = "agents-page.js";
 
 const AFTER_REGEX_START = /[(,=:[!&|?{};+\-*%<>~^]/;
+const KEYWORD_BEFORE =
+  /(?:^|[^\w$])(?:return|typeof|case|in|of|void|throw|yield|await|delete|instanceof|new|else|do)\s*$/;
 
 export function withoutComments(src: string): string {
   let out = "";
@@ -67,7 +69,9 @@ export function withoutComments(src: string): string {
       template(i + 1);
     } else if (
       c === "/" &&
-      (lastSig === "" || AFTER_REGEX_START.test(lastSig))
+      (lastSig === "" ||
+        AFTER_REGEX_START.test(lastSig) ||
+        (lastSig === "a" && KEYWORD_BEFORE.test(out.slice(-16))))
     ) {
       let j = i + 1;
       let inClass = false;
@@ -99,6 +103,7 @@ function partImports(code: string): string[] {
       /^\s*(?:import|export)\b[^;]*?\bfrom\s+"\/(agents-[a-z0-9-]+\.js)"/gm,
     ),
     ...code.matchAll(/^\s*import\s+"\/(agents-[a-z0-9-]+\.js)"/gm),
+    ...code.matchAll(/\bimport\s*\(\s*"\/(agents-[a-z0-9-]+\.js)"\s*\)/g),
   ].map((m) => m[1]!);
 }
 
@@ -118,4 +123,12 @@ export function agentsSource(dir = AGENTS_PUBLIC): string {
   return agentsFiles(dir)
     .map((f) => withoutComments(fs.readFileSync(path.join(dir, f), "utf-8")))
     .join("\n");
+}
+
+export function strayParts(dir = AGENTS_PUBLIC): string[] {
+  const parts = agentsFiles(dir);
+  const named = [
+    ...agentsSource(dir).matchAll(/["'`]\/(agents-[a-z0-9-]+\.js)["'`]/g),
+  ].map((m) => m[1]!);
+  return [...new Set(named)].filter((f) => !parts.includes(f));
 }
