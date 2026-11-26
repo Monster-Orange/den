@@ -133,6 +133,7 @@ describe("the switch", () => {
     const base = { ...process.env };
     delete base.DEN_TEST_QUARANTINE;
     delete base.DEN_TEST_DOCKER;
+    delete base.DEN_TEST_BROWSER;
     return JSON.parse(
       execFileSync(
         process.execPath,
@@ -428,6 +429,7 @@ describe("a quarantined test that fails (red first)", () => {
       GITHUB_STEP_SUMMARY: summary,
     };
     delete env.DEN_TEST_DOCKER;
+    delete env.DEN_TEST_BROWSER;
     delete env.JEST_WORKER_ID;
     if (mode) {
       env.DEN_TEST_QUARANTINE = mode;
