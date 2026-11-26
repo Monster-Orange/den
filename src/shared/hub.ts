@@ -129,6 +129,7 @@ export interface HubConfig {
    * held Allow, a pause) before the bell says so, and why.
    */
   deliveryHeldBellMinutes: number;
+  deliveryGoneKeepDays: number;
   /**
    * Issue 701 hub.delivery_answer_minutes (default 30, at least 1): a typed
    * comment whose turn never shows as ended is "delivered, no answer yet"
@@ -246,6 +247,7 @@ type RawHub =
       delivery_state_timeout_seconds?: unknown;
       delivery_type_timeout_seconds?: unknown;
       delivery_held_bell_minutes?: unknown;
+      delivery_gone_keep_days?: unknown;
       delivery_answer_minutes?: unknown;
       delivery_alert_minutes?: unknown;
       delivery_stale_hours?: unknown;
@@ -379,6 +381,13 @@ export function readHubConfig(
     5,
   );
   const answer = mins(h.delivery_answer_minutes, "delivery_answer_minutes", 30);
+  const gk = h.delivery_gone_keep_days;
+  if (
+    gk !== undefined &&
+    gk !== null &&
+    !(typeof gk === "number" && Number.isFinite(gk) && gk >= 0)
+  )
+    throw new Error("hub.delivery_gone_keep_days must be a number, 0 or more");
   const am = h.delivery_alert_minutes;
   if (
     am !== undefined &&
@@ -463,6 +472,7 @@ export function readHubConfig(
     deliveryStateTimeoutSeconds: stateTimeout,
     deliveryTypeTimeoutSeconds: typeTimeout,
     deliveryHeldBellMinutes: heldBell,
+    deliveryGoneKeepDays: typeof gk === "number" ? gk : 30,
     deliveryAnswerMinutes: answer,
     deliveryAlertMinutes: typeof am === "number" ? am : 15,
     deliveryStaleHours: typeof sh === "number" ? sh : 6,

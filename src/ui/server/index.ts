@@ -12255,6 +12255,7 @@ void CRASH_GATE.then(() =>
           stateTimeoutSeconds: cfg?.deliveryStateTimeoutSeconds ?? 60,
           typeTimeoutSeconds: cfg?.deliveryTypeTimeoutSeconds ?? 120,
           heldBellMinutes: cfg?.deliveryHeldBellMinutes ?? 5,
+          goneKeepDays: cfg?.deliveryGoneKeepDays ?? 30,
           answerMinutes: cfg?.deliveryAnswerMinutes ?? 30,
           // Issue 701: an asked question never holds a delivery.
           waiting: deliveryHeldIds,

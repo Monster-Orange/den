@@ -221,6 +221,7 @@ export interface DeliveryLoopDeps {
    */
   journal?: (e: JournalEntry) => void;
   gone?: (agent: string, items: readonly Delivery[], at: number) => void;
+  goneKeepMs?: () => number;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
@@ -652,6 +653,7 @@ export class DeliveryLoop {
       this.d.log?.(
         `hub delivery: restored ${a.ids.length} typed Hub item${a.ids.length === 1 ? "" : "s"} for ${agent}; done when its turn ends`,
       );
+    this.pruneGone();
   }
 
   /** Save what's held, for restore(). */
@@ -851,6 +853,16 @@ export class DeliveryLoop {
   }
 
   private readonly gone = new Map<string, { dv: Delivery; at: number }>();
+
+  private pruneGone(): void {
+    const keep = this.d.goneKeepMs?.() ?? 30 * 86_400_000;
+    if (!(keep > 0)) return;
+    const now = this.now();
+    let dropped = false;
+    for (const [id, g] of this.gone)
+      if (now - g.at > keep) dropped = this.gone.delete(id) || dropped;
+    if (dropped) this.persist();
+  }
 
   goneItems(): { id: string; agent: string; project: string; at: number }[] {
     return [...this.gone.values()].map((g) => ({
@@ -1124,6 +1136,7 @@ export class DeliveryLoop {
     if (s === "missing") {
       this.queue.delete(agent);
       const at = this.now();
+      this.pruneGone();
       for (const dv of waiting) {
         this.heldReason.delete(dv.id);
         this.gone.set(dv.id, { dv, at });
