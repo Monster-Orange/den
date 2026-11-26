@@ -243,6 +243,8 @@ export interface HeldActionDeps {
    * its check asks the connected Hub, so it is async.
    */
   hubLink?: HeldAction;
+  hubOrigin?: () => string | null;
+  stateFolderOwn?: HeldAction;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
@@ -363,6 +365,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "test_person_setup",
   "web_url_set",
   "gate_runner_entry_set",
+  "state_folder_own",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -408,6 +411,15 @@ function draftError(r: RepoAddResult): string {
 
 const CARRY_ON =
   "Agents and terminals carry on where they were; open pages reconnect.";
+
+function originOf(url: string | null): string {
+  if (!url) return "";
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
 
 export function heldActions(d: HeldActionDeps): HeldActions {
   /**
@@ -791,6 +803,28 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         ? d.hubLink.check(a, who)
         : { ok: false, error: "this Den can't link projects to Hub here" },
     run: (a, asked) => d.hubLink!.run(a, asked),
+  };
+  const hubBound = (h: HeldAction): HeldAction => {
+    const current = d.hubOrigin;
+    if (!current) return h;
+    const without = (a: Record<string, unknown>) => {
+      const rest = { ...a };
+      delete rest.hubOrigin;
+      return rest;
+    };
+    return {
+      async check(a, who, o) {
+        const at = originOf(current());
+        if (o?.again && typeof a.hubOrigin === "string" && a.hubOrigin !== at)
+          return {
+            ok: false,
+            error: `asked while this install was on another Hub (${a.hubOrigin || "none"}); it is on ${at || "no Hub"} now, so nothing was done: ask again`,
+          };
+        const c = await h.check(without(a), who, o);
+        return c.ok ? { ...c, args: { ...c.args, hubOrigin: at } } : c;
+      },
+      run: (a, asked) => h.run(without(a), asked),
+    };
   };
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
@@ -1252,8 +1286,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_event_feed_add: eventFeedAdd,
     project_event_feed_remove: eventFeedRemove,
     hub_connect: hubConnect,
-    hub_project_create: hubCreate,
-    hub_link: hubLink,
+    hub_project_create: hubBound(hubCreate),
+    hub_link: hubBound(hubLink),
     agent_folder: agentFolder,
     agent_mode: agentMode,
     agent_sandbox_set: agentSandbox,
@@ -1288,6 +1322,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         ok: false,
         error: "this Den can't set up test installs here",
       }),
+    },
+    state_folder_own: d.stateFolderOwn ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't give itself its own state folder here",
+      }),
+      run: async () => ({ ok: false }),
     },
     web_url_set: d.webUrlSet ?? {
       check: () => ({

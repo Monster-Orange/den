@@ -266,6 +266,11 @@ export const HELD_WRITE_RISK: Readonly<
     notAreas: ["deletes"],
     why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS); on a personal install routine, since a box can be added back (issue 1403)",
   },
+  state_folder_own: {
+    personal: "keep",
+    risk: "critical",
+    why: "moves this install onto a new, empty state folder and restarts Den: a person's own Allow",
+  },
   web_url_set: {
     personal: "keep",
     risk: "critical",

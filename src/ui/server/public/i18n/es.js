@@ -2607,6 +2607,22 @@
     "ap.hl.then": "Después: {hub}",
     "ap.hl.filed":
       "El trabajo de sus agentes en Hub se archiva allí desde su próxima llamada.",
+    "ap.do.state_folder_own":
+      "Dar a esta instalación su propia carpeta de estado",
+    "ap.sf.new":
+      "Una carpeta de estado nueva y vacía para esta instalación, junto a la compartida.",
+    "ap.sf.empty":
+      "No se copia ni se mueve nada: sus agentes, inicios de sesión e historial se quedan con la otra copia, y vuelves a iniciar sesión en este Den.",
+    "ap.sf.other":
+      "La otra copia conserva la carpeta compartida tal como está.",
+    "ap.sf.restart":
+      "Den se reinicia en su propia carpeta y luego sigue con la conexión a {hub}.",
+    "ap.sf.restartNone": "Den se reinicia en su propia carpeta.",
+    "hub.sf.shared":
+      "Otra copia de Den en esta computadora comparte la carpeta de estado de esta instalación, y está en otro Hub.",
+    "hub.sf.offer": "Dar a esta instalación su propia carpeta de estado",
+    "hub.sf.allow":
+      "Permítelo en el cuadro de diálogo. Den se reinicia y luego sigue con la conexión.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":

@@ -791,8 +791,11 @@ export async function handleAgentRoutes(
       ...swDeps,
       days: hs.switchDays((readUserConfig() as Record<string, unknown>).hub),
     });
+    const sf = await import("../../shared/state-folder.js");
+    const next = rail ? null : sf.takeConnectNext(getStateDir());
     const out = {
       ...st,
+      ...(next ? { connectNext: next } : {}),
       ...(editions ? { editions } : {}),
       ...(denUrl ? { denUrl } : {}),
       ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
