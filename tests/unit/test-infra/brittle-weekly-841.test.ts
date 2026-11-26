@@ -1,10 +1,3 @@
-/**
- * Issue 841 clause 4: each week the brittle-pattern counts are reported
- * against the week before, with the files that shrank. `--report --since
- * <ref>` counts every matching file at <ref> and now; the weekly workflow
- * runs it against the last commit of a week ago and posts it in the run's
- * summary.
- */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -59,7 +52,6 @@ function run(dir: string, args: string[]) {
 const sleeps = (n: number) =>
   `test("x", async ({ page }) => {\n${"  await page.waitForTimeout(500);\n".repeat(n)}});\n`;
 
-/** Last week: a has 3 sleeps, b has 2, gone has 1. Now: a 1, b 2, new 1. */
 function week(): { dir: string; then: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brittle-week-"));
   git(dir, "init", "-q", "-b", "main");
@@ -108,7 +100,6 @@ describe("the weekly brittle report (issue 841)", () => {
     expect(r.out).toMatch(/2 files went down/);
     expect(r.out).toContain("tests/a.browser.test.ts: 3 -> 1");
     expect(r.out).toMatch(/1 file went up/);
-    // Like with like: both sides are counted with this script's patterns.
     expect(r.out).toMatch(/both counted with this script's patterns/);
   });
 
@@ -159,8 +150,6 @@ describe("the weekly brittle report (issue 841)", () => {
     expect(step?.run).toMatch(/--before[= ]"?7 days ago/);
     expect(step?.run).toMatch(/--report --since/);
     expect(step?.run).toContain("GITHUB_STEP_SUMMARY");
-    // Piped into tee: a report that crashes still fails the run (bash's
-    // -eo pipefail), never a green run with an error in the summary.
     expect(
       step?.shell === "bash" || /set -o pipefail/.test(step?.run ?? ""),
     ).toBe(true);

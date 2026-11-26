@@ -26,15 +26,11 @@
  * turn: they share no baseline to race on.
  *
  *   node scripts/brittle-ratchet.mjs --base <ref> [--root dir] [--files glob]… [--json]
- *   node scripts/brittle-ratchet.mjs --report [--since <ref>] [--root dir] [--files glob]… [--json]
  *
  *   --base      the branch the change goes into (a pull request's base sha,
  *               or origin/main). Needs the history back to the merge base:
  *               a shallow clone without it is an error (exit 2), never a pass.
  *   --report    totals per kind, and per file, of the files as they are now.
- *   --since     with --report (issue 841, the weekly numbers): also count
- *               every matching file at <ref>, print each kind then -> now,
- *               and name the files whose count went down or up.
  *               Never fails (a push to main; the weekly numbers).
  *   --files     a glob relative to --root (** any folders, * any name part);
  *               repeat for more. Default: tests/**\/*.browser.* and gate/*.mjs
@@ -501,10 +497,6 @@ export function judge(root, base, globs) {
   return { mergeBase: mb, files, failures, lower };
 }
 
-/**
- * Issue 841: counts every matching file at `rev` and as it is now, with
- * the files whose total went down or up: { totals, files, since, down, up }.
- */
 export function reportSince(root, rev, globs) {
   const git = gitIn(root);
   const commit = git("rev-parse", "--verify", "--quiet", `${rev}^{commit}`);
