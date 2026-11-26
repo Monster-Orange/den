@@ -153,8 +153,20 @@ describe("agents start", () => {
         // Issue 936: whether it started in the agent sandbox.
         "sandbox",
         "recordId",
+        "skillPackDirs",
       ].sort(),
     );
+    const packs = rec.skillPackDirs as unknown[];
+    expect(packs.length).toBeGreaterThan(0);
+    for (const dir of packs) {
+      expect(typeof dir).toBe("string");
+      expect(
+        (dir as string).startsWith(
+          path.join(r.stateDir, "skill-packs") + path.sep,
+        ),
+      ).toBe(true);
+      expect(dir).not.toMatch(/[=\s]|token|secret|key/i);
+    }
     expect(rec).toMatchObject({
       id: "planner",
       persona: "planner",
