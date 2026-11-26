@@ -2206,6 +2206,7 @@
         "tests/unit/server/held-review-keys-205.test.ts",
         "tests/unit/server/i18n.test.ts",
         "tests/unit/server/page-imports-served.test.ts",
+        "tests/unit/server/page-restart-audit.test.ts",
         "tests/unit/server/product-tokens.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/public-tokens-parse.test.ts",
@@ -2306,6 +2307,7 @@
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/gates/pw-guard-export-1010.test.ts",
         "tests/unit/scripts/changelog-line-1611.test.ts",
+        "tests/unit/scripts/changelog-line-placed-1769.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
@@ -2422,7 +2424,8 @@
         "scripts/changelog-line.mjs"
       ],
       "run": [
-        "tests/unit/scripts/changelog-line-1611.test.ts"
+        "tests/unit/scripts/changelog-line-1611.test.ts",
+        "tests/unit/scripts/changelog-line-placed-1769.test.ts"
       ],
       "why": "tests that run scripts/changelog-line.mjs"
     },
