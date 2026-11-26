@@ -28,6 +28,7 @@ import {
   type ProbeResult,
 } from "../den-identity.js";
 import { localhostOrigin } from "../web/web-session.js";
+import { denWebBase } from "../web/web-dial.js";
 import { isLoopbackName } from "../web/web-url-check.js";
 import { readWebSecret } from "../web/web-secret.js";
 import { portInUse } from "../port-pick.js";
@@ -130,7 +131,7 @@ export interface AddressState {
   wanted: string | null;
   /** How the wanted address answered. */
   wantedAnswer: WantedAnswer;
-  /** Den's own port on this machine (http://localhost:<web port>). */
+  /** localhost:<port> if it answers as this Den, else the bound address. */
   direct: string;
   /** Whether the direct address answered as this Den. */
   directOk: boolean;
@@ -235,14 +236,16 @@ export async function checkAddress(d: CheckDeps): Promise<AddressState> {
   };
   // Den's own port first: when it doesn't answer as this Den (its server
   // isn't running here), an address elsewhere isn't asked either.
-  const own = await probe(direct, opts);
+  const own = await probe(denWebBase(d.webPort), opts);
+  if (own.ok && !(await probe(direct, opts)).ok)
+    base.direct = denWebBase(d.webPort);
   const askWanted =
     !!d.wanted && (own.ok || isLoopbackName(new URL(d.wanted).hostname));
   const want = askWanted && d.wanted ? await probe(d.wanted, opts) : null;
   base.directOk = own.ok;
   if (want) base.wantedAnswer = answerOf(want);
   if (want?.ok) return { ...base, address: d.wanted };
-  base.address = own.ok ? direct : null;
+  base.address = own.ok ? base.direct : null;
   if (!d.wanted) return base;
   const u = new URL(d.wanted);
   const port = wantedPort(u);

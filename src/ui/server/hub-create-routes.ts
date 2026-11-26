@@ -2,7 +2,7 @@
  * Issue 271: POST /api/workspaces/:ws/hub-create {name}. Settings ›
  * Project › Hub project's "Create a Hub project named …": Den asks Hub for
  * a new project with its project plan path (held for an owner in Hub),
- * and keeps the ask next to the project (shared/hub-project-create.ts).
+ * and keeps the ask next to the project (shared/hub/hub-project-create.ts).
  * GET /api/workspaces/:ws/hub-project then says what became of it, and
  * links it once an owner allowed it.
  *

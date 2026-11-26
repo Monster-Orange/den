@@ -87,7 +87,7 @@ export function startProjectSync(checkSeconds: number): void {
 }
 
 /**
- * 0.4.45: bring Hub's project names here (shared/hub-project-names.ts):
+ * 0.4.45: bring Hub's project names here (shared/hub/hub-project-names.ts):
  * at start, after Connect, and every `hub.names_check_seconds` (default
  * 300). A page shows a new name on its next read of the projects.
  */

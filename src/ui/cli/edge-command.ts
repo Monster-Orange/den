@@ -1,6 +1,4 @@
 /**
- * `edge up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes | route --for <proxy>`
- *
  * `route --for nginx|caddy|traefik` (issue 455): the block another proxy
  * that already owns port 80 needs so Den's name reaches Den. Printed for
  * the person to paste; Den never edits another project's files.
@@ -160,6 +158,29 @@ export async function cmdEdge(args: string[]): Promise<void> {
           `${w.url} names this machine only, so it is not this install's address: the route is for ${host}. Set the address: ${product().cli} web url https://${host}\n`,
         );
       const owner = portOwner(listen);
+      const target = {
+        host,
+        listen,
+        upstreamHost: upstreamHostFor(owner?.kind ?? null),
+        upstreamPort: webPort,
+        name: product().cli,
+      };
+      if (args.includes("--json")) {
+        console.log(
+          JSON.stringify(
+            {
+              kind,
+              host,
+              listen,
+              upstream: `http://${target.upstreamHost}:${webPort}`,
+              config: proxyRoute(kind, target),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
       process.stderr.write(
         addressWord(lang, "routeHelp", {
           host,
@@ -167,15 +188,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
           title: readBrand().name,
         }) + "\n",
       );
-      console.log(
-        proxyRoute(kind, {
-          host,
-          listen,
-          upstreamHost: upstreamHostFor(owner?.kind ?? null),
-          upstreamPort: webPort,
-          name: product().cli,
-        }),
-      );
+      console.log(proxyRoute(kind, target));
       return;
     }
     case "routes": {

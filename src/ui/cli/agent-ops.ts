@@ -9340,6 +9340,7 @@ export async function markInterrupted(
     writeRecord(d.stateDir(), next);
     marked.push(next);
     found.interrupted.push(rec.id);
+    await new Promise<void>((r) => setImmediate(r));
   }
   if (opts.autoResume === false || !marked.length) return found;
   const find = personaLookup(d);

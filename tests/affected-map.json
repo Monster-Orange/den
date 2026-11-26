@@ -7,7 +7,7 @@
     "A rule may also name `importers` (helper files: the tests that import them, by jest import graph, run too) and `mentions` (the browser specs that name a changed catalog key or its English text run too).",
     "tests/fixtures/ci-replay-cases.json holds the real CI failures of the replay (scripts/ci-replay.mjs); tests/unit/test-infra/affected-tests.test.ts fails if this map stops catching one.",
     "Issue 708: a test that starts Den as a process (bin/den, tsx on an entry, startDenServer) runs when its subject changes: the src files named like it, the src files it names, and the globs `subjects` gives it ({test: [globs]}). `subjectless` lists the ones with none yet; it only shrinks, and the selector test fails on a new one.",
-    "subjects: web-log-1344.integration names src/shared/web-log-file.ts only (the cap on tests a change to src/ui/server/index.ts runs). A change to serverLog in index.ts relies on the full run (ci:full) to run it."
+    "subjects: web-log-1344.integration names src/shared/web/web-log-file.ts only (the cap on tests a change to src/ui/server/index.ts runs). A change to serverLog in index.ts relies on the full run (ci:full) to run it."
   ],
   "everything": [
     "src/ui/server/public/shell.js",
@@ -724,6 +724,9 @@
       "src/ui/server/agent-routes.ts",
       "src/shared/agents/runtime-search.ts"
     ],
+    "tests/unit/server/start-prefill.browser.test.ts": [
+      "src/ui/server/public/agents-page.js"
+    ],
     "tests/unit/server/stop-ends-wait.integration.test.ts": [
       "src/ui/server/login-waits.ts",
       "src/ui/server/agent-routes.ts"
@@ -928,6 +931,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1420,6 +1424,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1550,6 +1555,7 @@
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1646,6 +1652,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1775,6 +1782,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2104,6 +2112,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2344,8 +2353,10 @@
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
+        "tests/unit/test-infra/gate-cli-json-840.test.ts",
         "tests/unit/test-infra/gate-expect-shape.test.ts",
         "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
+        "tests/unit/test-infra/gate-json-fail-840.test.ts",
         "tests/unit/test-infra/gate-readonly-modules.test.ts"
       ],
       "why": "the live checks' own tests (runners, shape, clauses)"
@@ -4383,6 +4394,11 @@
         "src/ui/server/agent-routes.ts"
       ],
       "run": ["tests/unit/server/start-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/agents-page.js"],
+      "run": ["tests/unit/server/start-prefill.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
