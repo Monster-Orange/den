@@ -103,7 +103,6 @@ export async function run(ctx, state) {
     env,
     timeout: 30000,
   });
-  // Issue 840: JSON or an error; a bad exit is reported below, as before.
   const view = json?.code === 0 ? readJson(json, "gate status") : { slots: [] };
   const slots = Array.isArray(view?.slots) ? view.slots : [];
   // Never run `gate run` unless the CLI reads this check's own folder:
@@ -116,9 +115,6 @@ export async function run(ctx, state) {
   }
   r.waitOrder = slots.filter((s) => !s.granted).map((s) => s.id);
   r.firstPriority = slots.find((s) => s.id === ID.first)?.priority ?? null;
-  // The words a person reads are under test here, so this stays on the
-  // text form (issue 840), read whole: the first slot's id and its reason
-  // on one line, by a regex over all of it, never a line by position.
   const text = await ctx.cli(["gate", "status"], { env, timeout: 30000 });
   const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const said = new RegExp(

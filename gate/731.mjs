@@ -68,9 +68,6 @@ export async function run(ctx) {
         refresh: row.refresh ?? null,
       }
     : null;
-  // No secret in the words a person reads is under test here, so this
-  // stays on the text form (issue 840), read whole: the Host row by a
-  // regex over all of it, never a line by position.
   const said = /^[ \t]+Host[ \t].*$/m.exec(
     String(ctx.cli(["doctor"]).out ?? ""),
   );

@@ -18,7 +18,6 @@ export const timeoutMs = 120000;
 export const readOnly = true;
 
 export async function setup(ctx) {
-  // Issue 840: doctor --json's mcp:server:<project>:<name> checks.
   const d = ctx.cli(["doctor", "--json"]);
   const checks = doctorChecks(d);
   const lines = checks

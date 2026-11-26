@@ -139,7 +139,6 @@ async function doctorWith(ctx, shell, id) {
     timeout: CLI_TIMEOUT_MS,
   });
   const ms = Date.now() - t0;
-  // Issue 840: JSON or an error, never a silent "no row".
   const j = readJson(d, "agents doctor", { codes: [0, 1] });
   const parsed = true;
   const row = listOf(j).find((r) => r.id === id) ?? null;

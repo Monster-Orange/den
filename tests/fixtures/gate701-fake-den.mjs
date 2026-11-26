@@ -351,7 +351,6 @@ export function fakeBed({
           ([a, l]) =>
             `${a}: ${l.length} held, oldest 0 min: ${l[0].held_reason}`,
         );
-        // Doctor always has rows: the reported Den lacks only this one.
         const checks = [
           { id: "node", status: "ok", detail: "v24" },
           ...(fixed

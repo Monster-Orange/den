@@ -1,18 +1,9 @@
-/**
- * Issue 840 (review): a live check that reads --json never passes on output
- * it couldn't read. gate/335 (no MCP server row may show a secret) and
- * gate/339 (no token or email in the accounts list) prove absences, so an
- * unreadable or empty answer must stop them, not become an empty list.
- * Through gate/lib/read-json.mjs they throw, and the bed reports every
- * clause as an error, never a pass.
- */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
-/** Runs `gate/<n>.mjs`'s setup with a CLI that prints `out` and exits `code`. */
 function setupWith(n: number, out: string, code = 0) {
   const js = `
     const g = await import("./gate/${n}.mjs");

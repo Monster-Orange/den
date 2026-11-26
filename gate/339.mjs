@@ -19,13 +19,10 @@ const TOKENISH = /\b(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{40,})\b/;
 export const readOnly = true;
 
 export async function setup(ctx) {
-  // Issue 840: the list's --json form. `out` stays the whole printed
-  // text, so the token and email checks below read every byte of it.
   const l = ctx.cli(["agents", "accounts", "list", "--json"]);
   const list = readJson(l, "agents accounts list");
   return {
     code: l.code,
-    // The whole printed JSON, so every byte is read for a token or email.
     out: JSON.stringify(list),
     err: String(l.err ?? ""),
     runtime: list?.runtime ?? null,

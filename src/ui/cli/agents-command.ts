@@ -2138,9 +2138,6 @@ async function accountsCmd(
       if (rest.some((a) => a !== "--json"))
         throw new UsageError(`${where} takes only --runtime and --json`);
       if (json) {
-        // Issue 840: what the list shows, as fields. The label only (never
-        // the raw name, which accountLabel keeps from being an email), and
-        // no token, ref or vault.
         d.out(
           JSON.stringify(
             {

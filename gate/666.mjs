@@ -73,7 +73,6 @@ export async function run(ctx) {
     }
   }
   const c = await ctx.cli(["web", "url", LOOPS[0], "--json"]);
-  // A refusal exits 2 with { ok: false, error }: its words are under test.
   const cj = readJson(c, "web url", { codes: [0, 2] });
   const cli = {
     code: c.code,

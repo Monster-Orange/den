@@ -18,8 +18,6 @@ export async function setup() {
 }
 
 export async function run(ctx) {
-  // Issue 840: doctor --json's where: checks. The sign-in row is
-  // where:runtime-sign-in; the service's mode leads where:service.
   const d = ctx.cli(["doctor", "--json"]);
   const checks = doctorChecks(d);
   const byId = (id) => checks.find((c) => c?.id === id) ?? null;

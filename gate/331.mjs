@@ -11,8 +11,6 @@ export const clauses = [
 export const timeoutMs = 300000;
 const DEFAULT = /Set edge\.image to traefik:v3\.\d+\.\d+, Den's default\./;
 
-// Issue 840: doctor --json's strategy:tls check carries the edge.image
-// line: a warning in its detail, the healthy line in its notes.
 function imageView(d) {
   const c = doctorChecks(d).find((x) => x?.id === "strategy:tls");
   const said = [c?.detail ?? "", ...(c?.notes ?? [])].filter((t) =>

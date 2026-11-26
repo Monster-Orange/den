@@ -12,8 +12,6 @@ export function fakeBed({ broken = null, address = null } = {}) {
   const unreachable = `Not reachable yet: nothing answers at ${wanted}.`;
   const answer = "a".repeat(64);
   const json = (status, body) => ({ status, body: JSON.stringify(body) });
-  // doctor --json and edge route --json (issue 840), with the same words
-  // as the text forms below.
   const jsonCli = (args) => {
     if (args[0] === "doctor") {
       const details = address

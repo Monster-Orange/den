@@ -49,8 +49,6 @@ export async function setup(ctx) {
     badStatus: bad.status,
   };
   s.address = await ctx.api("/api/edge/address");
-  // Issue 840: doctor --json's checks, by field: the address rows are
-  // the ones whose detail says what was checked.
   const d = ctx.cli(["doctor", "--json"]);
   const checks = doctorChecks(d);
   s.doctor = {
@@ -65,8 +63,6 @@ export async function setup(ctx) {
   };
   s.routes = {};
   for (const kind of ["nginx", "caddy", "traefik"]) {
-    // Issue 840: the route's --json form; config is the block a person
-    // pastes into that proxy.
     const r = ctx.cli(["edge", "route", "--for", kind, "--json"]);
     const route = readJson(r, `edge route --for ${kind}`);
     s.routes[kind] = {

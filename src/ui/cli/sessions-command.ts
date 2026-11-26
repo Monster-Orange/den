@@ -520,7 +520,6 @@ async function start(args: string[], d: Resolved): Promise<number> {
             : {}),
         },
       );
-      // Issue 840: the record, as `sessions list --json` gives it.
       if (p.flags["--json"]) {
         d.out(
           JSON.stringify(

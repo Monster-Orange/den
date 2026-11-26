@@ -214,7 +214,6 @@ describe("agents accounts list --json (issue 840)", () => {
   it("a hand-edited name that is an email is never printed: the default label stands in", async () => {
     const { r, run } = await acctRig(new MemStore());
     expect(await run("add", "--name", "Work")).toBe(0);
-    // Someone edited the file by hand; Den refuses such a name, but shows none either.
     const file = path.join(r.stateDir, ACCOUNTS_FILE);
     fs.writeFileSync(
       file,

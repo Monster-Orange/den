@@ -1,5 +1,4 @@
 /**
- * `edge up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes | route --for <proxy> [--json]`
  *
  * `route --for nginx|caddy|traefik` (issue 455): the block another proxy
  * that already owns port 80 needs so Den's name reaches Den. Printed for
@@ -167,7 +166,6 @@ export async function cmdEdge(args: string[]): Promise<void> {
         upstreamPort: webPort,
         name: product().cli,
       };
-      // Issue 840: the route as fields, with the same config text.
       if (args.includes("--json")) {
         console.log(
           JSON.stringify(

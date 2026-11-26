@@ -1,9 +1,3 @@
-/**
- * Issue 840: doctor --json carries what the human doctor says is healthy
- * (a row's notes, such as "edge.image … is Traefik v3"), so a live check
- * reads it from a field, never a printed line. Additive: older readers
- * see the same id, status and detail.
- */
 import { describe, expect, it } from "@jest/globals";
 import { strategyCheck } from "../../../src/ui/cli/doctor-command.js";
 

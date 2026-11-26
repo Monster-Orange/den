@@ -25,8 +25,6 @@ export async function run(ctx) {
   const labels = (Array.isArray(rows) ? rows : [])
     .filter((a) => a && "signIn" in a)
     .map((a) => ({ agent: a.agent ?? a.id, signIn: a.signIn }));
-  // Issue 840: doctor --json's checks that point at set-token (the
-  // where: sign-in rows), read by field.
   const d = ctx.cli(["doctor", "--json"]);
   const checks = doctorChecks(d);
   const why = checks

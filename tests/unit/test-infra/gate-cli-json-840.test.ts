@@ -1,18 +1,3 @@
-/**
- * Issue 840: live checks read Den's CLI through its --json form, never by
- * splitting or matching the words it prints for a person.
- *
- * Clause 1: every live check (gate/*.mjs) that reads a CLI command's output
- * passes --json. A call read only for its exit code is fine, and so is the
- * error text of a refusal read whole (gate/441: the words an agent is told
- * are what it tests).
- * Clause 3: no live check reads CLI output by position or line: no
- * `.split(…)[n]`, `.match(…)[n]` or `.split("\n")` over what a command
- * printed.
- *
- * The checker is the pure `cliReads(src)` below; it is seen red on planted
- * reads first, then run over every gate/*.mjs.
- */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -20,16 +5,13 @@ import * as path from "path";
 const ROOT = path.resolve(__dirname, "../../..");
 const GATE = path.join(ROOT, "gate");
 
-/** One finding: the line, and what was wrong. */
 type Hit = { line: number; what: string };
 
-/** The CLI calls in a live check, their argument list, and the name its result is kept under. */
 function cliCalls(src: string) {
   const out: { at: number; args: string; name: string | null }[] = [];
   const re = /\bcli\(\s*\[/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
-    // The literal list, to its matching "]" (an argument may index: LOOPS[0]).
     let depth = 0;
     let end = m.index + m[0].length - 1;
     for (; end < src.length; end++) {
@@ -49,17 +31,11 @@ function cliCalls(src: string) {
 
 const lineAt = (src: string, at: number) => src.slice(0, at).split("\n").length;
 
-/**
- * Where a live check reads CLI text: a call's .out read without --json,
- * and any split or match over a call's output (directly, or through a
- * variable built from it).
- */
 export function cliReads(src: string, wordsUnderTest = false): Hit[] {
   const hits: Hit[] = [];
   const tainted = new Set<string>();
   for (const c of cliCalls(src)) {
     const json = /["'`]--json["'`]/.test(c.args);
-    // The call's own expression: up to the end of its statement.
     const tail = src.slice(c.at, src.indexOf(";", c.at) + 1 || undefined);
     const close = c.args.length + tail.indexOf("[") + 1;
     const direct = /^\s*\][^)]*\)\s*\)?\s*\??\.out\b/.test(tail.slice(close));
@@ -76,17 +52,12 @@ export function cliReads(src: string, wordsUnderTest = false): Hit[] {
           line: lineAt(src, at),
           what: `reads the text output of cli([${c.args.trim()}]): pass --json and read its fields`,
         });
-    // --json output goes whole to readJson or doctorChecks
-    // (gate/lib/read-json.mjs), which fail on anything that isn't JSON. A
-    // parse of .out with a fallback ([], null) would let a clause that
-    // proves an absence pass on nothing.
     if (json)
       for (const at of uses)
         hits.push({
           line: lineAt(src, at),
           what: `reads cli([${c.args.trim()}]).out itself: pass the result to readJson or doctorChecks`,
         });
-    // Names built from this call's output carry it on.
     for (const at of uses) {
       const stmtStart = src.lastIndexOf("\n", at) + 1;
       const stmt = src.slice(stmtStart, src.indexOf(";", at) + 1);
@@ -100,7 +71,6 @@ export function cliReads(src: string, wordsUnderTest = false): Hit[] {
     }
   }
   for (const name of tainted) {
-    // name.split(…), or String(name).split(…) across a line break.
     const r = new RegExp(
       `(?:\\b${name}|\\bString\\(\\s*${name}\\s*\\))\\s*\\??\\.(?:split|match)\\(`,
       "g",
@@ -112,7 +82,6 @@ export function cliReads(src: string, wordsUnderTest = false): Hit[] {
         what: `splits or matches ${name}, a command's printed output`,
       });
   }
-  // One finding per line and kind.
   const seen = new Set<string>();
   return hits
     .filter((h) => {
@@ -156,7 +125,6 @@ describe("issue 840: the checker, seen red first", () => {
   return readJson(c, "web url");
 }`;
     expect(cliReads(src)).toEqual([]);
-    // ...and its .out read itself is seen as a --json read.
     expect(
       cliReads(src.replace('readJson(c, "web url")', "JSON.parse(c.out)")).map(
         (h) => h.what.startsWith("reads cli("),
@@ -198,7 +166,6 @@ describe("issue 840: the checker, seen red first", () => {
   return { ok: !checks.some((c) => c.status === "fail"), j };
 }`;
     expect(cliReads(silent).map((h) => h.line)).toEqual([5, 9]);
-    // Words under test don't lift it.
     expect(cliReads(silent, true).map((h) => h.line)).toEqual([5, 9]);
   });
 
@@ -215,11 +182,6 @@ describe("issue 840: the checker, seen red first", () => {
   });
 });
 
-/**
- * Live checks whose subject is the words a command prints (to a person, or
- * to an agent it refuses): they read the text, but whole (a contains or a
- * regex over all of it), never a line or a word by position.
- */
 const WORDS_UNDER_TEST: Record<string, string> = {
   "441.mjs": "verify import's refusals: the words an agent is told",
   "715.mjs": "gate status shows a release priority's reason to a person",

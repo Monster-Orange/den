@@ -60,7 +60,6 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
         next++;
         host++;
         machine++;
-        // As the real CLI: --json gives the record (issue 840).
         return {
           code: 0,
           out: args.includes("--json")
@@ -86,7 +85,6 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
         return { code: 0, out: `stopped ${args[2]}`, err: "" };
       }
       if (args[0] !== "doctor") return { code: 2, out: "", err: "" };
-      // Doctor always has rows: a broken one lacks only the PTY row.
       const checks =
         broken === "doctor"
           ? [{ id: "node", status: "ok", detail: "v24" }]

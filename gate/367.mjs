@@ -21,7 +21,6 @@ const ROWS = {
 export const readOnly = true;
 
 export async function setup(ctx) {
-  // Issue 840: doctor --json's push_contact check, by field.
   const d = ctx.cli(["doctor", "--json"]);
   const checks = doctorChecks(d);
   const c = checks.find((x) => x?.id === "push_contact");

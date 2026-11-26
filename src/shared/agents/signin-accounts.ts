@@ -208,8 +208,6 @@ export function accountLabel(
   a: Pick<SignInAccount, "id" | "name">,
   vendor: string,
 ): string {
-  // A name with "@" is refused when set; one edited into the file by hand
-  // is never shown either (issue 840): the default label stands in.
   return a.name && !a.name.includes("@")
     ? a.name
     : `${vendor} account ${defaultLetter(a.id)}`;

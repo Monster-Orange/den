@@ -42,10 +42,6 @@ export interface OnboardCheck {
   detail: string;
   /** A command the agent can run to fix it. */
   fix?: string;
-  /**
-   * Issue 840: what's healthy and worth saying (the human doctor's ✓
-   * lines under a row), so a reader never parses printed lines.
-   */
   notes?: string[];
   /** A question for the person, when only they can fix it. */
   ask?: string;

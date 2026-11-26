@@ -129,10 +129,6 @@ export async function run(ctx, state) {
       ],
       { timeout: 30000 },
     );
-    // Issue 840: started is the --json record's session; a refusal's
-    // words (whether they name the cap) are read whole from stderr.
-    // Exit 0 must print the record (readJson throws otherwise); a refusal
-    // exits non-zero with its words on stderr.
     const started =
       r?.code === 0 ? (readJson(r, "sessions start").session ?? null) : null;
     if (r?.code !== 0 || !started?.name) {
