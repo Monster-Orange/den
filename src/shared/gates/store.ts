@@ -176,6 +176,7 @@ export type GateSettingsPatch = {
   remote_max_asks?: number | null;
   priority_max?: number | null;
   priority_pass_limit_minutes?: number | null;
+  release_pass_other_kind_minutes?: number | null;
   priority_agents?: number | null;
   priority_runners?: number | null;
   claim_minutes?: number | null;
@@ -288,6 +289,7 @@ export const GATE_LIMITS: Record<
   priority_max: { min: 0, max: 16, int: true },
   // Issue 751: between marked runs only; 0: a marked run is never passed.
   priority_pass_limit_minutes: { min: 0, max: 24 * 60, int: false },
+  release_pass_other_kind_minutes: { min: 0, max: 24 * 60, int: false },
   priority_agents: { min: 0, max: 1, int: true },
   // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
   priority_runners: { min: 0, max: 1, int: true },
@@ -1224,6 +1226,10 @@ export class GateStore {
         priorityPassLimitMinutes: num(
           "priority_pass_limit_minutes",
           GATE_DEFAULTS.priorityPassLimitMinutes,
+        ),
+        releasePassOtherKindMinutes: num(
+          "release_pass_other_kind_minutes",
+          GATE_DEFAULTS.releasePassOtherKindMinutes,
         ),
         priorityAgents:
           num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
