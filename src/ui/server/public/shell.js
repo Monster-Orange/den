@@ -2298,7 +2298,7 @@
       "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
     "set.agents.hub_groups": "Groups from Hub",
     "set.agents.hub_groups.d":
-      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+      "Whether the Agents page shows your Hub's groups (Group, beside Project in the list's switch). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "Auto",
     "set.agents.hub_groups.o.on": "On",
     "set.agents.hub_groups.o.off": "Off",

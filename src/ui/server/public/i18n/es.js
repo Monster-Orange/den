@@ -1853,7 +1853,7 @@
       "Activado, cada agente que Den inicia en un proyecto conectado a Hub recibe el ciclo de entrega en sus instrucciones: documentos de requisitos en Hub, issues enlazados completos, revisión y comentarios en los hilos de Hub, estado desde git. Desactivado para todos los proyectos de aquí, salvo que un proyecto lo active. Llega a un agente en su próximo inicio.",
     "set.agents.hub_groups": "Grupos de Hub",
     "set.agents.hub_groups.d":
-      "Si la página Agentes muestra los grupos de tu Hub (Por grupo, junto a Por proyecto). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
+      "Si la página Agentes muestra los grupos de tu Hub (Grupo, junto a Proyecto en el selector de la lista). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "Automático",
     "set.agents.hub_groups.o.on": "Activado",
     "set.agents.hub_groups.o.off": "Desactivado",

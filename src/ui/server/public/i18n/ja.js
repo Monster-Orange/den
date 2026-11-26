@@ -1788,7 +1788,7 @@
       "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
     "set.agents.hub_groups": "Hub のグループ",
     "set.agents.hub_groups.d":
-      "エージェントページに Hub のグループを表示するか（「プロジェクト別」の横の「グループ別」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+      "エージェントページに Hub のグループを表示するか（一覧の切り替えの「プロジェクト」の横の「グループ」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "自動",
     "set.agents.hub_groups.o.on": "オン",
     "set.agents.hub_groups.o.off": "オフ",
