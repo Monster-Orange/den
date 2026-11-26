@@ -307,6 +307,7 @@ describe("held writes on a personal install (issue 1391)", () => {
         "project_mode", // widens every agent in the project
         "report",
         "setting_change",
+        "state_folder_own",
         "test_person_setup",
         "verify_run",
         "web_url_set",
