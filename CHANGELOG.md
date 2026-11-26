@@ -16,6 +16,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- When an agent's Den tools can't confirm this install's server, the refusal now says why (no answer within the wait, the connection's error, or an empty answer) and how long it waited, and that the next call checks again. The wait is a new setting, Settings › Server › Den tools' check of this install (`web.tools_probe_seconds`, default 30 s, was a fixed 5 s) (issue 1664).
 - A message waiting for an agent that was then removed no longer retries forever. Den keeps it as not delivered, with the time, and the bell says once "Not delivered: <agent> was removed". A restart keeps it and doesn't ring again. Before, each such message was held as busy and retried at every poll. (issue 1673)
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.

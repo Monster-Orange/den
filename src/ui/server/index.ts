@@ -6438,6 +6438,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return {
           probeSeconds: c.readyProbeSeconds,
           startSeconds: c.startWaitSeconds,
+          toolsProbeSeconds: c.toolsProbeSeconds,
         };
       } catch {
         return null;
