@@ -36,6 +36,7 @@ import {
   limitInForce,
   readMcpConfig,
   USER_ONLY_WIDENING,
+  AGENTS_RESERVED_KEYS,
   type DenConfig,
   type InstallMode,
   type UserConfig,
@@ -171,6 +172,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agent_hooks.backoff_seconds",
   "sessions.max_concurrent",
   "sessions.close_grace_seconds",
+  "sessions.size_claim_grace_seconds",
+  "sessions.size_leave_grace_seconds",
   "sessions.pty_close_seconds",
   "sessions.pty_warn_above",
   "sessions.pty_machine_warn_percent",
@@ -423,7 +426,7 @@ const WIDENS_AT: readonly [
     },
     ["personal", "strict"],
   ],
-  // Issue 1264 (Reviewer A): a program in effect now and missing after
+  // A program in effect now and missing after
   // runs outside the gate: widens. Adding one, or reordering, doesn't.
   // With no old value known, judged against the default list.
   [
@@ -940,6 +943,12 @@ function patchKey(
   const field = FIELD_KEYS.find((f) => matchesSetting(f.key, key));
   if (field) return field.patch(user, value);
   if (configKeyNames().includes(key)) return patchConfigKey(user, key, value);
+  const agentKey = /^agents\.([^.]+)\./.exec(key)?.[1];
+  if (agentKey && AGENTS_RESERVED_KEYS.includes(agentKey))
+    return {
+      ok: false,
+      error: `${key}: agents.${agentKey} is one of Den's own settings, not an agent's id`,
+    };
   const entry = SETTING_KEYS.find((e) => matchesSetting(e.key, key));
   if (!entry)
     return { ok: false, unknown: true, error: `unknown setting ${key}` };
