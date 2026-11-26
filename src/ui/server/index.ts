@@ -847,16 +847,6 @@ interface HealthResult {
   inView?: boolean;
 }
 
-/**
- * Health is cached briefly so switching pages doesn't re-run every check. Short
- * enough that a service going down still shows up within one poll interval.
- */
-/**
- * Health results are cached host-agnostic; open links are rewritten per
- * request so a viewer on an edge alias (e.g. *.internal) gets links that
- * resolve from where they are.
- */
-
 let gitUserKept: { name?: string; email?: string } | null = null;
 function gitUser(): { name?: string; email?: string } {
   if (gitUserKept) return gitUserKept;
@@ -877,6 +867,15 @@ function gitUser(): { name?: string; email?: string } {
   return gitUserKept;
 }
 
+/**
+ * Health is cached briefly so switching pages doesn't re-run every check. Short
+ * enough that a service going down still shows up within one poll interval.
+ */
+/**
+ * Health results are cached host-agnostic; open links are rewritten per
+ * request so a viewer on an edge alias (e.g. *.internal) gets links that
+ * resolve from where they are.
+ */
 function viewerRewrite(
   host: string | undefined,
 ): (r: HealthResult) => HealthResult {

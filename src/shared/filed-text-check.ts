@@ -111,9 +111,15 @@ export function filedTextRefusal(hits: readonly FiledHit[]): string {
 }
 
 /** What is kept of a refusal (the audit): field, line and pattern number only. */
-export function filedTextWhere(hits: readonly FiledHit[]): string {
+export function filedTextWhere(
+  hits: readonly FiledHit[],
+  listed = Infinity,
+): string {
   return hits
-    .map((h) => `${h.field} line ${h.line} matches listed pattern #${h.index}`)
+    .map(
+      (h) =>
+        `${h.field} line ${h.line} matches ${h.index > listed ? "an install name" : `listed pattern #${h.index}`}`,
+    )
     .join("; ");
 }
 
@@ -144,18 +150,21 @@ export function installOwnNames(o: {
   host: string;
   projects: readonly string[];
   git: { name?: string; email?: string };
-}): string[] {
-  return [
-    o.label,
-    o.host.split(".")[0],
-    ...o.projects,
-    o.git.name ?? "",
-    o.git.email ?? "",
-  ].filter(Boolean);
+}): { always: string[]; named: string[] } {
+  return {
+    always: [
+      o.label,
+      o.host.split(".")[0],
+      o.git.name ?? "",
+      o.git.email ?? "",
+    ].filter(Boolean),
+    named: [...o.projects],
+  };
 }
 
 export function ownNamePatterns(
-  names: readonly string[],
+  always: readonly string[],
+  named: readonly string[],
   repo: string,
 ): RegExp[] {
   const key = (x: string) => x.trim().toLowerCase();
@@ -163,6 +172,7 @@ export function ownNamePatterns(
   const skip = new Set([key(owner), key(name), key(repo)]);
   const seen = new Set<string>();
   const out: RegExp[] = [];
+  const names = [...always, ...named.filter((n) => /[-_ .0-9]/.test(n.trim()))];
   for (const n of names) {
     const k = key(n);
     if (k.length < 3 || skip.has(k) || seen.has(k)) continue;

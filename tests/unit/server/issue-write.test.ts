@@ -58,7 +58,7 @@ function fakes(
     names?: string;
     visibility?: "public" | "private" | "internal" | null;
     publicRepos?: boolean;
-    own?: string[];
+    own?: { always: string[]; named: string[] };
   } = {},
 ) {
   const calls: GhCall[] = [];
@@ -104,7 +104,7 @@ function fakes(
       );
     },
     installLabel: () => "den on box",
-    ownNames: () => opts.own ?? [],
+    ownNames: () => opts.own ?? { always: [], named: [] },
     audit: (e) => audits.push(e),
   };
   return { deps, calls, audits, lookups };
@@ -648,7 +648,10 @@ describe("issue_write: agents.issue_writes_public", () => {
 });
 
 describe("issue_write: the install's own names stay out of public text", () => {
-  const OWN = ["den on mac-studio-7", "mac-studio-7", "north", "acme", "api"];
+  const OWN = {
+    always: ["den on mac-studio-7", "mac-studio-7", "Pat Example"],
+    named: ["north-2", "design", "acme", "api"],
+  };
   const send = (
     visibility: "public" | "private" | "internal" | null,
     body: string,
@@ -685,9 +688,41 @@ describe("issue_write: the install's own names stay out of public text", () => {
     expect((await send("public", "The api from acme is down.")).r.status).toBe(
       200,
     );
-    expect((await send("public", "Same as in north.")).r.body.code).toBe(
+    expect((await send("public", "Same as in north-2.")).r.body.code).toBe(
       "issue_write_words",
     );
+  });
+
+  it("a project or agent name that is a plain word is not checked", async () => {
+    expect((await send("public", "The design looks off.")).r.status).toBe(200);
+    expect(
+      (await send("public", "Vision saw it first.", "Vision")).r.status,
+    ).toBe(200);
+  });
+
+  it("the label, host and git user are checked even as plain words", async () => {
+    const f = fakes({
+      visibility: "public",
+      own: { always: ["studio"], named: [] },
+    });
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 4,
+      body: "Seen on studio.",
+    });
+    expect(r.body.code).toBe("issue_write_words");
+    expect((await send("public", "Thanks, Pat Example.")).r.body.code).toBe(
+      "issue_write_words",
+    );
+  });
+
+  it("the audit names an own-name hit as an install name, never the name", async () => {
+    const { f } = await send("public", "Seen on mac-studio-7 today.");
+    const note = JSON.stringify(f.audits);
+    expect(note).toContain("an install name");
+    expect(note).not.toContain("mac-studio-7");
+    expect(note).not.toMatch(/listed pattern #/);
   });
 
   it("the writing agent's own name is checked", async () => {
@@ -701,7 +736,10 @@ describe("issue_write: the install's own names stay out of public text", () => {
     expect((await send("public", "MAC-STUDIO-7 again.")).r.body.code).toBe(
       "issue_write_words",
     );
-    const box = fakes({ visibility: "public", own: ["box"] });
+    const box = fakes({
+      visibility: "public",
+      own: { always: ["box"], named: [] },
+    });
     const r = await runIssueWrite(box.deps, agent, {
       action: "comment",
       repo: "acme/api",
@@ -711,16 +749,18 @@ describe("issue_write: the install's own names stay out of public text", () => {
     expect(r.status).toBe(200);
   });
 
-  it("ownNamePatterns: names under 3 characters, and the repo's owner, name and slug, are skipped", () => {
+  it("ownNamePatterns: names under 3 characters, the repo's owner, name and slug, and plain-word named ones are skipped", () => {
     const ps = ownNamePatterns(
       ["ab", "acme", "API", "acme/api", "north", "north"],
+      ["design", "ops_east", "ops_east"],
       "acme/api",
     );
-    expect(ps).toHaveLength(1);
+    expect(ps).toHaveLength(2);
     expect(ps[0].test("in North today")).toBe(true);
+    expect(ps[1].test("from OPS_EAST")).toBe(true);
   });
 
-  it("installOwnNames: the label, the short hostname, the projects and the git user", () => {
+  it("installOwnNames: the label, the short hostname and the git user always; the projects when named", () => {
     expect(
       installOwnNames({
         label: "den on mac-studio-7",
@@ -728,14 +768,15 @@ describe("issue_write: the install's own names stay out of public text", () => {
         projects: ["north", "south"],
         git: { name: "Pat Example", email: "pat@example.test" },
       }),
-    ).toEqual([
-      "den on mac-studio-7",
-      "mac-studio-7",
-      "north",
-      "south",
-      "Pat Example",
-      "pat@example.test",
-    ]);
+    ).toEqual({
+      always: [
+        "den on mac-studio-7",
+        "mac-studio-7",
+        "Pat Example",
+        "pat@example.test",
+      ],
+      named: ["north", "south"],
+    });
   });
 });
 

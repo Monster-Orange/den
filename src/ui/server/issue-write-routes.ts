@@ -66,7 +66,7 @@ export interface IssueWriteDeps {
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
   /** This install's label (the footer's). */
   installLabel: () => string;
-  ownNames: () => string[];
+  ownNames: () => { always: string[]; named: string[] };
   /**
    * Issue 1127: the listed names (shared/org-names.js orgPatterns; none:
    * nothing refused) and a repo's visibility no older than `maxAgeMs`
@@ -208,11 +208,14 @@ export async function runIssueWrite(
         issueNo,
       );
     }
-    if (needsFiledCheck(vis))
+    const listed = patterns.length;
+    if (needsFiledCheck(vis)) {
+      const own = d.ownNames();
       patterns = [
         ...patterns,
-        ...ownNamePatterns([...d.ownNames(), me.name], op.repo),
+        ...ownNamePatterns(own.always, [...own.named, me.name], op.repo),
       ];
+    }
     if (patterns.length) {
       if (needsFiledCheck(vis)) {
         const hits = filedTextHits(texts, patterns, op.repo);
@@ -223,7 +226,7 @@ export async function runIssueWrite(
             filedTextRefusal(hits),
             issueNo,
             // Issue 1127: the audit is kept, so never the agent's phrase.
-            `refused for listed names: ${filedTextWhere(hits)}`,
+            `refused for listed names: ${filedTextWhere(hits, listed)}`,
           );
       }
     }
