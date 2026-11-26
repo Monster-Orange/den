@@ -2,7 +2,7 @@
  * Issue 367: the contact Web Push gives the push services (VAPID's
  * subject, RFC 8292), shared by the server (web-push.ts) and doctor.
  */
-import { isLoopbackName } from "./web-url-check.js";
+import { isLoopbackName } from "./web/web-url-check.js";
 
 /**
  * Issue 367: the contact for an install with no https address. Some push

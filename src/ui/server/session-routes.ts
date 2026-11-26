@@ -141,6 +141,7 @@ import {
 } from "../../shared/agents/draft-input.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   operatorActOf,
   principalOf,
@@ -499,7 +500,7 @@ export interface ListedSession {
   /** Issue 631: it didn't come back after a restart, and why. */
   restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
-  hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
+  hubWork?: import("../../shared/hub/hub-delivery-loop.js").AgentHubWork;
   /**
    * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
    * Relaunch from handoff is its action, not Resume.
@@ -620,7 +621,7 @@ export function listedSessions(
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
       hubWork?: (
         id: string,
-      ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
+      ) => import("../../shared/hub/hub-delivery-loop.js").AgentHubWork | null;
       helpersOf?: HelpersOf;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
@@ -1009,6 +1010,7 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const keep = agentRowFilter(req);
   const listed = await listWithHelpers(
     sessions,
     d,
@@ -1016,8 +1018,8 @@ export async function handleSessionList(
     sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
   );
   sendJson(res, {
-    sessions: listed,
-    workspaces: d.activeWorkspaces(),
+    sessions: keep ? listed.filter((r) => keep(r.workspace)) : listed,
+    workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
@@ -1754,9 +1756,21 @@ async function helpersRunning(
   } catch {
     /* no host: nothing runs, so no helper runs */
   }
-  let running = 0;
-  for (const r of await listWithHelpers(sessions, d))
-    running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+  sendJson(res, {
+    running: helpersRunningIn(
+      await listWithHelpers(sessions, d),
+      agentRowFilter(req),
+    ),
+  });
   return true;
+}
+
+export function helpersRunningIn(
+  rows: readonly { workspace: string; helpers?: { running?: number } }[],
+  keep: ((ws: string) => boolean) | null,
+): number {
+  let running = 0;
+  for (const r of rows)
+    if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
+  return running;
 }

@@ -17,7 +17,7 @@ import {
   checkRequest,
   type GuardContext,
 } from "../../../src/ui/server/request-guard.js";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 
 const PORT = 4103;
 const PATH = "/api/report/shots/0123456789abcdef";

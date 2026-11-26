@@ -22,7 +22,7 @@ import { GATE_DEFAULTS, overrunBell } from "../../../src/shared/gates/rules.js";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateOverrunWaiting } from "../../../src/ui/server/gate-overrun-bell.js";
 import { GateNotices } from "../../../src/ui/server/gate-notices.js";
-import type { Delivery } from "../../../src/shared/hub-delivery.js";
+import type { Delivery } from "../../../src/shared/hub/hub-delivery.js";
 
 const tmps: string[] = [];
 afterEach(() => {

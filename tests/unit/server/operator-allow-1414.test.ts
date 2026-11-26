@@ -39,7 +39,7 @@ import {
   type GuardResult,
   type Principal,
 } from "../../../src/ui/server/request-guard.js";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "den-opallow-"));
 const ran: string[] = [];

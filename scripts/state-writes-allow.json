@@ -55,7 +55,7 @@
     "count": 1,
     "reason": "a lock folder's pid note: a lost write is covered by the 30 s rule"
   },
-  "src/shared/hub-files.ts": {
+  "src/shared/hub/hub-files.ts": {
     "count": 2,
     "reason": "hub pull: files written into the folder the person names, not state"
   },
