@@ -8762,22 +8762,18 @@ function wireHub(host, ctx) {
     err("");
     // BUSY-1: the working pop-up while Den asks Hub.
     const t = (k, v) => ctx.shell.t(k, v);
+    const body = next
+      ? { url: next }
+      : button?.dataset.hubSwitchSignin !== undefined
+        ? { switch: true }
+        : typed
+          ? { url: typed.value }
+          : {};
     ctx.shell
       .busyAction(
         "connect",
         (headers) =>
-          ctx.shell.api(
-            "POST",
-            "/api/hub/connect",
-            next
-              ? { url: next }
-              : button?.dataset.hubSwitchSignin !== undefined
-                ? { switch: true }
-                : typed
-                  ? { url: typed.value }
-                  : {},
-            { headers },
-          ),
+          ctx.shell.api("POST", "/api/hub/connect", body, { headers }),
         {
           button:
             button || host.querySelector('button[data-hub-action="connect"]'),
