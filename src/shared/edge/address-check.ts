@@ -28,6 +28,7 @@ import {
   type ProbeResult,
 } from "../den-identity.js";
 import { localhostOrigin } from "../web-session.js";
+import { denWebBase } from "../web-dial.js";
 import { isLoopbackName } from "../web-url-check.js";
 import { readWebSecret } from "../web-secret.js";
 import { portInUse } from "../port-pick.js";
@@ -235,7 +236,7 @@ export async function checkAddress(d: CheckDeps): Promise<AddressState> {
   };
   // Den's own port first: when it doesn't answer as this Den (its server
   // isn't running here), an address elsewhere isn't asked either.
-  const own = await probe(direct, opts);
+  const own = await probe(denWebBase(d.webPort), opts);
   const askWanted =
     !!d.wanted && (own.ok || isLoopbackName(new URL(d.wanted).hostname));
   const want = askWanted && d.wanted ? await probe(d.wanted, opts) : null;
