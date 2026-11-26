@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A message waiting for an agent that was then removed no longer retries forever. Den keeps it as not delivered, with the time, and the bell says once "Not delivered: <agent> was removed". A restart keeps it and doesn't ring again. Before, each such message was held as busy and retried at every poll. (issue 1673)
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
