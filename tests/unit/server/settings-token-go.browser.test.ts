@@ -23,6 +23,7 @@ import {
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { builtinEntry } from "../../../src/shared/agents/catalog.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(60_000);
 
@@ -67,13 +68,8 @@ async function open(
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";
