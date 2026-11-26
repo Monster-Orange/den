@@ -3342,6 +3342,11 @@ async function staleRoute(
       list.map((a) => ({ id: a.id, workspace: a.workspace })),
       {
         ...(deps.personaWait ?? {}),
+        slot: async (id) => {
+          const { restartQueue } = await import("./restart-queue-service.js");
+          await restartQueue().add({ id, why: "tools", run: async () => true });
+          return () => undefined;
+        },
         onDone: (o) => {
           if (begun) live.done(o);
           else outcomes.push(o);

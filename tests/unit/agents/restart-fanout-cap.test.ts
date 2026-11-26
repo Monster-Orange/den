@@ -1,18 +1,16 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
+import * as fs from "fs";
 import * as http from "http";
+import * as path from "path";
 import type { AddressInfo } from "net";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
-  RestartSlots,
   restartMany,
   type RestartPlan,
 } from "../../../src/ui/cli/agent-ops.js";
+import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
 import { RestartLive } from "../../../src/ui/server/restart-live.js";
-import {
-  readAgentsConfig,
-  type DenConfig,
-} from "../../../src/shared/den-config.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
 import {
   jsonApiErrors,
@@ -93,29 +91,62 @@ async function twoStale() {
   return r;
 }
 
+function midTurn(r: Rig, token: string): void {
+  const claude = path.join(r.dir, "claude-config");
+  const dir = path.join(claude, "projects", "-work");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, `${token}.jsonl`),
+    JSON.stringify({
+      type: "user",
+      cwd: r.wsDir("north"),
+      message: { content: "Go" },
+    }) + "\n",
+  );
+  r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
+}
+
 const ids = (x: unknown) =>
   ((x as { id: string }[] | undefined) ?? []).map((a) => a.id).sort();
 
-describe("a bulk restart for tools runs a few at a time (agents.restart_concurrency)", () => {
-  it("85 agents, a cap of 4: never more than 4 restarting at once, and every one restarts", async () => {
+describe("a bulk restart for tools goes through the restart queue, a batch at a time", () => {
+  it("85 agents, a batch of 4: no window starts more than 4 stops and resumes, and every one restarts", async () => {
     const agents = Array.from({ length: 85 }, (_, i) => ({
       id: `a${i}`,
       workspace: "north",
     }));
-    let running = 0;
-    let most = 0;
+    let clock = 0;
+    const windows: number[] = [];
+    let inWindow = 0;
+    const queue = new RestartQueue({
+      config: () => ({ batch: 4, gapMs: 1_000, loadCeiling: 0 }),
+      load: () => 0,
+      now: () => clock,
+      sleep: async (ms) => {
+        windows.push(inWindow);
+        inWindow = 0;
+        clock += ms;
+        await new Promise((r) => setImmediate(r));
+      },
+    });
     const done: string[] = [];
-    const finished = new Promise<void>((resolve) => {
+    await new Promise<void>((resolve) => {
       void restartMany({} as never, agents, {
-        slots: new RestartSlots(() => 4),
+        slot: async (id) => {
+          await queue.add({ id, why: "tools", run: async () => true });
+          return () => undefined;
+        },
         stateOf: async (_d, id, ws) =>
           ({ id, workspace: ws ?? "", state: "now" }) as RestartPlan,
-        restart: (async (_d, id, _ws, _when, o) => {
+        restart: (async (
+          _d: unknown,
+          _id: string,
+          _ws: string,
+          _when: string,
+          o?: { slot?: () => Promise<() => void> },
+        ) => {
           const release = await o?.slot?.();
-          running++;
-          most = Math.max(most, running);
-          await new Promise((r) => setTimeout(r, 5));
-          running--;
+          inWindow++;
           release?.();
           return {} as never;
         }) as never,
@@ -125,21 +156,10 @@ describe("a bulk restart for tools runs a few at a time (agents.restart_concurre
         },
       });
     });
-    await finished;
-    expect(most).toBeLessThanOrEqual(4);
-    expect(most).toBeGreaterThan(1);
+    windows.push(inWindow);
     expect(done).toHaveLength(85);
-  });
-
-  it("defaults to 4; a value is read; a bad one names the key", () => {
-    const cap = (v: unknown) =>
-      readAgentsConfig({
-        agents: { restart_concurrency: v },
-      } as unknown as DenConfig).restartConcurrency;
-    expect(readAgentsConfig({} as DenConfig).restartConcurrency).toBe(4);
-    expect(cap(8)).toBe(8);
-    for (const bad of [0, -1, 2.5, "many", 65])
-      expect(() => cap(bad)).toThrow("agents.restart_concurrency");
+    expect(Math.max(...windows)).toBeLessThanOrEqual(4);
+    expect(windows.filter((n) => n > 0).length).toBeGreaterThanOrEqual(22);
   });
 });
 
@@ -170,15 +190,20 @@ describe("the live run a page shows while a bulk restart goes", () => {
 describe("pressing Restart all again while a wave runs adds nothing", () => {
   it("a second and a third press queue no agent twice", async () => {
     const r = await twoStale();
+    for (const id of ["planner", "reviewer"])
+      midTurn(r, readRecord(r.stateDir, id)!.resumeToken!);
     const call = await api(r);
     const first = await call({});
     expect(first.status).toBe(202);
     expect(ids(first.json.pending)).toEqual(["planner", "reviewer"]);
+    expect(
+      (first.json.agents as { state: string }[]).map((a) => a.state),
+    ).toEqual(["turn", "turn"]);
     const second = await call({});
     const third = await call({});
     expect(ids(second.json.pending)).toEqual([]);
     expect(ids(third.json.pending)).toEqual([]);
-    expect(second.json.run).toEqual({ total: 2, done: expect.any(Number) });
+    expect(second.json.run).toEqual({ total: 2, done: 0 });
     await settle(300);
   });
 });

@@ -166,7 +166,6 @@ import {
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
-  RESTART_CONCURRENCY_DEFAULT,
   ROTATION_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
@@ -7911,45 +7910,6 @@ export function restartOutcomeOf(
  * restarted: the person decides (Restart now). Resolves with the plan
  * before anything waits; onDone says how each restart ended.
  */
-export class RestartSlots {
-  private running = 0;
-  private readonly waiting: (() => void)[] = [];
-
-  constructor(private readonly max: () => number) {}
-
-  get busy(): number {
-    return this.running;
-  }
-
-  async take(): Promise<() => void> {
-    while (this.running >= Math.max(1, this.max()))
-      await new Promise<void>((r) => this.waiting.push(r));
-    this.running++;
-    let given = false;
-    return () => {
-      if (given) return;
-      given = true;
-      this.running--;
-      this.waiting.shift()?.();
-    };
-  }
-}
-
-let RESTART_SLOTS: RestartSlots | null = null;
-
-export function restartSlotsOf(d: AgentsResolved): RestartSlots {
-  RESTART_SLOTS ??= new RestartSlots(() => restartConcurrencyOf(d));
-  return RESTART_SLOTS;
-}
-
-export function restartConcurrencyOf(d: AgentsResolved): number {
-  try {
-    return d.agentsConfig().restartConcurrency ?? RESTART_CONCURRENCY_DEFAULT;
-  } catch {
-    return RESTART_CONCURRENCY_DEFAULT;
-  }
-}
-
 export async function restartMany(
   d: AgentsResolved,
   agents: readonly { id: string; workspace: string }[],
@@ -7957,14 +7917,13 @@ export async function restartMany(
     pollMs?: number;
     maxMs?: number;
     onDone?: (r: RestartOutcome) => void;
-    slots?: RestartSlots;
+    slot?: (id: string, workspace: string) => Promise<() => void>;
     stateOf?: typeof restartStateOf;
     restart?: typeof restartAgent;
   } = {},
 ): Promise<RestartPlan[]> {
   const plan: RestartPlan[] = [];
   const waited = o.maxMs ?? restartWaitOf(d);
-  const slots = o.slots ?? restartSlotsOf(d);
   const stateOf = o.stateOf ?? restartStateOf;
   const restart = o.restart ?? restartAgent;
   for (const a of agents) {
@@ -7981,7 +7940,7 @@ export async function restartMany(
       ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
       ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
       jobStops: true,
-      slot: () => slots.take(),
+      ...(o.slot ? { slot: () => o.slot!(p.id, p.workspace) } : {}),
     }).then(
       () => o.onDone?.({ ...base, outcome: "restarted" }),
       (e: unknown) =>
