@@ -196,7 +196,6 @@ export function heavyProgram(command, { programs, parse }) {
 const ON_WORDS = new Set(["1", "yes", "on", "true"]);
 const OFF_WORDS = new Set(["0", "no", "off", "false"]);
 
-/** A clear on (true) or off (false), as rules.ts onOff; null for anything else. */
 export function onOff(x) {
   if (typeof x === "boolean") return x;
   if (typeof x === "number") return x === 1 ? true : x === 0 ? false : null;

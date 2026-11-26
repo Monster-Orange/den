@@ -1,21 +1,15 @@
-/**
- * The gate's route_agents setting reads one way everywhere: the store, the
- * agent hook, the CLI and the approval check. Clear forms of on (1, true,
- * "1", "yes", "on", "true") and off (0, false, "0", "no", "off", "false")
- * mean what they say. A value that is neither reads as on, the default,
- * because off is the side that needs the person. A write with such a value
- * is refused, naming the key. Writes are saved as 0 or 1, as before.
- */
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { onOff } from "../../../src/shared/gates/rules.js";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
 import { settingKind } from "../../../src/ui/cli/setting-change.js";
 
 const HOOK = path.resolve("src/shared/agents/guardrails/pretooluse.mjs");
+const ROUTE = path.resolve("src/shared/agents/guardrails/gate-route.mjs");
 const root = fs.realpathSync(
   fs.mkdtempSync(path.join(os.tmpdir(), "den-1730-")),
 );
@@ -34,7 +28,6 @@ const ON: unknown[] = [1, 1.0, true, "1", "yes", "on", "true", " Yes ", "ON"];
 const OFF: unknown[] = [0, false, "0", "no", "off", "false", " No "];
 const UNREADABLE: unknown[] = [0.5, 0.2, 2, -1, "maybe", "", {}, [], null];
 
-/** What the agent hook reads from each settings file, in one node process. */
 function hookReads(files: string[]): boolean[] {
   const js = `
     const { routeSettings } = await import(${JSON.stringify(HOOK)});
@@ -46,6 +39,60 @@ function hookReads(files: string[]): boolean[] {
   if (r.status !== 0) throw new Error(r.stderr);
   return JSON.parse(r.stdout.trim().split("\n").pop()!);
 }
+
+describe("onOff: the rules.ts copy and the gate-route.mjs copy", () => {
+  const table: unknown[] = [
+    ...ON,
+    ...OFF,
+    ...UNREADABLE,
+    "TRUE",
+    "False",
+    "1.0",
+    " ",
+    "y",
+    "n",
+    NaN,
+    Infinity,
+    1.0000001,
+    -0,
+  ];
+
+  it("give the same answer for every value in one table", () => {
+    const js = `
+      const { onOff } = await import(${JSON.stringify(ROUTE)});
+      const t = JSON.parse(process.argv[1]).map((x) => (x === "__NaN" ? NaN : x === "__Inf" ? Infinity : x));
+      console.log(JSON.stringify(t.map(onOff)));`;
+    const wire = JSON.stringify(
+      table.map((x) =>
+        Number.isNaN(x) ? "__NaN" : x === Infinity ? "__Inf" : x,
+      ),
+    );
+    const r = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", js, wire],
+      { encoding: "utf-8" },
+    );
+    if (r.status !== 0) throw new Error(r.stderr);
+    const mjs = JSON.parse(r.stdout.trim().split("\n").pop()!);
+    const ts = table.map(onOff);
+    expect(mjs).toEqual(ts);
+    expect(ts).toEqual([
+      ...ON.map(() => true),
+      ...OFF.map(() => false),
+      ...UNREADABLE.map(() => null),
+      true,
+      false,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      false,
+    ]);
+  });
+});
 
 describe("route_agents as read from a hand-edited settings.json", () => {
   const cases: [unknown, boolean][] = [
