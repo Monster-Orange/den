@@ -72,7 +72,7 @@ export function movedNote(m: MovedProject) {
   } catch {
     host = m.movedTo.hub;
   }
-  const hub = m.movedTo.hubName || host;
+  const hub = m.movedTo.hubName ? `${m.movedTo.hubName} (${host})` : host;
   return {
     kind: "decision" as const,
     subject: `record:hub-moved:${m.workspace}`,

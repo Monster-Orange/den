@@ -113,8 +113,11 @@ describe("issue 1632 part 2: the bell row for a project that moved", () => {
       kind: "decision",
       subject: "record:hub-moved:web",
       scope: "workspace/web",
-      text: "Project web moved to New Hub. Switch this install to that Hub to keep it linked.",
-      msg: { key: "bell.m.hubMoved", vars: { project: "web", hub: "New Hub" } },
+      text: "Project web moved to New Hub (new-hub.example.test). Switch this install to that Hub to keep it linked.",
+      msg: {
+        key: "bell.m.hubMoved",
+        vars: { project: "web", hub: "New Hub (new-hub.example.test)" },
+      },
       link: "/settings#agents.hub",
     });
   });

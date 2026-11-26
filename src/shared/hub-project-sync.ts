@@ -14,6 +14,7 @@
  * on github.com: anything else is dropped and never shown as a link.
  */
 import { SERVER_SCOPE } from "./agents/server-agent.js";
+import { WORKSPACE_NAME_RE } from "./agent-actor.js";
 import { isCatchAllProject } from "./catch-all-project.js";
 import { hubProjectOf } from "./hub-project-link.js";
 import type { WorkspacesFile } from "./types/index.js";
@@ -191,7 +192,10 @@ export function readSyncReply(body: unknown): {
       : 0;
   const moved = (Array.isArray(b.moved) ? b.moved : []).flatMap((x) => {
     const o = (x ?? {}) as Record<string, unknown>;
-    const workspace = plain(o.workspace, 64);
+    const workspace =
+      typeof o.workspace === "string" && WORKSPACE_NAME_RE.test(o.workspace)
+        ? o.workspace
+        : "";
     const hubProject = plain(o.hub_project, 200);
     const movedTo = readMovedTo(o.movedTo);
     return workspace && hubProject && movedTo
@@ -438,7 +442,10 @@ export class ProjectSync {
       if (body) {
         this.sentKey = key;
         this.result = { at: now(), ok: true, ...readSyncReply(body) };
-        const moved = this.result.moved ?? [];
+        const sent = new Set(list.map((p) => p.workspace));
+        const moved = (this.result.moved ?? []).filter((m) =>
+          sent.has(m.workspace),
+        );
         if (moved.length && this.deps.moved)
           try {
             this.deps.moved(moved);
