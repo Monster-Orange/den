@@ -68,8 +68,16 @@ const jobShown = (j: { command: string; minutes: number }) => ({
   minutes: Number(j.minutes) || 0,
 });
 
+const WAITING: ReadonlySet<LiveState> = new Set(["now", "turn"]);
+
+export interface RestartRun {
+  total: number;
+  done: number;
+}
+
 export class RestartLive {
   private readonly rows = new Map<string, LiveRow>();
+  private run: RestartRun = { total: 0, done: 0 };
   private readonly keepDoneMs: number;
   private readonly now: () => number;
   private readonly store: Pick<NotificationStore, "add" | "remove"> | null;
@@ -88,6 +96,8 @@ export class RestartLive {
 
   /** A new run: each agent of `plan` in its state (replacing an older row). */
   begin(plan: readonly RestartPlan[]): void {
+    if (!this.restarting()) this.run = { total: 0, done: 0 };
+    this.run.total += plan.filter((p) => WAITING.has(p.state)).length;
     for (const p of plan)
       this.rows.set(key(p.workspace, p.id), {
         id: p.id,
@@ -101,7 +111,9 @@ export class RestartLive {
   /** How one agent's restart ended (restartMany's onDone, or Restart now). */
   done(o: RestartOutcome): void {
     const k = key(o.workspace, o.id);
-    if (!this.rows.has(k)) return;
+    const was = this.rows.get(k);
+    if (!was) return;
+    if (WAITING.has(was.state)) this.run.done++;
     const row: LiveRow = {
       id: o.id,
       workspace: o.workspace,
@@ -113,6 +125,20 @@ export class RestartLive {
     };
     this.rows.set(k, row);
     this.bell(row);
+  }
+
+  inProgress(ws: string, id: string): boolean {
+    const r = this.rows.get(key(ws, id));
+    return !!r && WAITING.has(r.state);
+  }
+
+  restarting(): boolean {
+    for (const r of this.rows.values()) if (WAITING.has(r.state)) return true;
+    return false;
+  }
+
+  progress(): RestartRun | null {
+    return this.restarting() ? { ...this.run } : null;
   }
 
   /** The rows now, oldest run first; restarted ones clear after a moment. */

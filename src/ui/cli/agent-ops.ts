@@ -166,6 +166,7 @@ import {
   readDenConfig,
   readServerAgentConfig,
   RESTART_WAIT_MINUTES_DEFAULT,
+  RESTART_CONCURRENCY_DEFAULT,
   ROTATION_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
@@ -7910,6 +7911,45 @@ export function restartOutcomeOf(
  * restarted: the person decides (Restart now). Resolves with the plan
  * before anything waits; onDone says how each restart ended.
  */
+export class RestartSlots {
+  private running = 0;
+  private readonly waiting: (() => void)[] = [];
+
+  constructor(private readonly max: () => number) {}
+
+  get busy(): number {
+    return this.running;
+  }
+
+  async take(): Promise<() => void> {
+    while (this.running >= Math.max(1, this.max()))
+      await new Promise<void>((r) => this.waiting.push(r));
+    this.running++;
+    let given = false;
+    return () => {
+      if (given) return;
+      given = true;
+      this.running--;
+      this.waiting.shift()?.();
+    };
+  }
+}
+
+let RESTART_SLOTS: RestartSlots | null = null;
+
+export function restartSlotsOf(d: AgentsResolved): RestartSlots {
+  RESTART_SLOTS ??= new RestartSlots(() => restartConcurrencyOf(d));
+  return RESTART_SLOTS;
+}
+
+export function restartConcurrencyOf(d: AgentsResolved): number {
+  try {
+    return d.agentsConfig().restartConcurrency ?? RESTART_CONCURRENCY_DEFAULT;
+  } catch {
+    return RESTART_CONCURRENCY_DEFAULT;
+  }
+}
+
 export async function restartMany(
   d: AgentsResolved,
   agents: readonly { id: string; workspace: string }[],
@@ -7917,24 +7957,31 @@ export async function restartMany(
     pollMs?: number;
     maxMs?: number;
     onDone?: (r: RestartOutcome) => void;
+    slots?: RestartSlots;
+    stateOf?: typeof restartStateOf;
+    restart?: typeof restartAgent;
   } = {},
 ): Promise<RestartPlan[]> {
   const plan: RestartPlan[] = [];
   const waited = o.maxMs ?? restartWaitOf(d);
+  const slots = o.slots ?? restartSlotsOf(d);
+  const stateOf = o.stateOf ?? restartStateOf;
+  const restart = o.restart ?? restartAgent;
   for (const a of agents) {
     let p: RestartPlan;
     try {
-      p = await restartStateOf(d, a.id, a.workspace);
+      p = await stateOf(d, a.id, a.workspace);
     } catch {
       p = { id: a.id, workspace: a.workspace, state: "unknown" };
     }
     plan.push(p);
     if (p.state !== "now" && p.state !== "turn") continue;
     const base = { id: p.id, workspace: p.workspace };
-    void restartAgent(d, p.id, p.workspace, "after-turn", {
+    void restart(d, p.id, p.workspace, "after-turn", {
       ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
       ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
       jobStops: true,
+      slot: () => slots.take(),
     }).then(
       () => o.onDone?.({ ...base, outcome: "restarted" }),
       (e: unknown) =>
@@ -8189,6 +8236,7 @@ export async function restartAgent(
      * (job_running, with what it runs), never waited out silently.
      */
     jobStops?: boolean;
+    slot?: () => Promise<() => void>;
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
@@ -8232,7 +8280,9 @@ export async function restartAgent(
   }
   // Review M1: stop and resume as one change (not the wait above, so a
   // person can still stop it while it waits).
-  return lockAgent(d, rec.id, async () => {
+  const release = opts.slot ? await opts.slot() : undefined;
+  try {
+    return await lockAgent(d, rec.id, async () => {
     const cur = agentRecord(d, rec.id, rec.workspace);
     const now = await withClient(d, async (c) =>
       sessionOf(await c.list(), cur),
@@ -8318,7 +8368,10 @@ export async function restartAgent(
         `exited at once${out.early.exitCode === undefined ? "" : ` (code ${out.early.exitCode})`}`,
       );
     return out;
-  });
+    });
+  } finally {
+    release?.();
+  }
 }
 
 /** Issue 193: whether host session `ref` has ended, waiting up to `maxMs`. */

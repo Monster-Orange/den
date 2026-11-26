@@ -3201,6 +3201,7 @@
     "rs.none": "Ningún agente necesita reiniciarse.",
     "rs.bar": "{n} agentes necesitan reiniciarse para cargar sus herramientas.",
     "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
+    "rs.barBusy": "Reiniciando {done} de {total}…",
     "rs.allName": "los agentes",
     "rs.done": "{id}: reiniciado, en la misma conversación.",
     "rs.timedOut":

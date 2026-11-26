@@ -2188,6 +2188,8 @@ export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
 export const DEFAULT_AGENTS_MAX_PER_PROJECT = 0;
 
 /** The keys of `agents:` that are not an agent id. */
+export const RESTART_CONCURRENCY_DEFAULT = 4;
+
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
 export const RESTART_WAIT_MINUTES_DEFAULT = 120;
 
@@ -2254,6 +2256,7 @@ export const AGENTS_RESERVED_KEYS = [
   // D39: how far back the mid-turn check reads.
   "turn_read_max_mb",
   "restart_wait_minutes",
+  "restart_concurrency",
   // Issue 914: how long a due rotation waits for background work.
   "rotation_wait_minutes",
   // Issue 926: bring back an agent whose session ended without Den asking.
@@ -2454,6 +2457,7 @@ export interface ResolvedAgentsConfig {
    * restart is skipped and tried later; nothing is ever cut off.
    */
   restartWaitMs: number;
+  restartConcurrency?: number;
   /**
    * Issue 914: agents.rotation_wait_minutes (default 240): how long a due
    * rotation waits for the helpers and jobs the agent left running. Out of
@@ -2729,6 +2733,7 @@ export const AGENTS_USER_LIMIT_KEYS = [
   "token_peer_wait_ms",
   "turn_read_max_mb",
   "restart_wait_minutes",
+  "restart_concurrency",
   "rotation_wait_minutes",
   "unasked_exit_window_minutes",
   "lock_wait_minutes",
@@ -2785,6 +2790,7 @@ const AGENT_LIMIT_DEFAULTS: Readonly<
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
   turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
   restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
+  restart_concurrency: RESTART_CONCURRENCY_DEFAULT,
   rotation_wait_minutes: ROTATION_WAIT_MINUTES_DEFAULT,
   unasked_exit_window_minutes: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   lock_wait_minutes: LOCK_WAIT_MINUTES_DEFAULT,
@@ -3000,6 +3006,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
     maxPerProject: DEFAULT_AGENTS_MAX_PER_PROJECT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
+    restartConcurrency: RESTART_CONCURRENCY_DEFAULT,
     rotationWaitMs: ROTATION_WAIT_MINUTES_DEFAULT * 60_000,
     unaskedExitWindowMs: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000,
     tokenBinding: tb !== false,
@@ -3056,6 +3063,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.restart_wait_minutes: minutes, above 0 (got ${JSON.stringify(rw)})`,
       );
     out.restartWaitMs = Math.round(rw * 60_000);
+  }
+  const rc = raw.restart_concurrency;
+  if (rc !== undefined && rc !== null) {
+    if (typeof rc !== "number" || !Number.isInteger(rc) || rc < 1 || rc > 64)
+      throw new Error(
+        `agents.restart_concurrency: a whole number of agents, 1 to 64 (got ${JSON.stringify(rc)})`,
+      );
+    out.restartConcurrency = rc;
   }
   const tw = raw.rotation_wait_minutes;
   if (tw !== undefined && tw !== null) {

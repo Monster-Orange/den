@@ -255,6 +255,7 @@ const st = {
    * until its tools are current.
    */
   restarts: new Map(),
+  restartRun: null,
   /** Issue 96: the row being dragged (the list isn't redrawn meanwhile). */
   drag: null,
   /** Issue 96: a drag just ended, so the click it makes is swallowed. */
@@ -2585,12 +2586,15 @@ function toolsBarHtml(rows) {
     return why && why !== "restarting";
   });
   if (stale.length < 2) return "";
+  const run = st.restartRun;
   const asked = stale
     .map((r) => st.restarts.get(restartKey(r.workspace, r.agent)))
     .filter(Boolean);
   return (
     `<div class="agnote" data-note="tools-stale" role="status">${esc(t("rs.bar", { n: stale.length }))} ` +
-    `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>` +
+    (run
+      ? `<button type="button" class="den-btn sm" data-act="tools-restart-all" disabled aria-busy="true">${esc(t("rs.barBusy", { done: run.done, total: run.total }))}</button>`
+      : `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>`) +
     restartAllHtml(asked, t) +
     `</div>`
   );
@@ -2653,11 +2657,14 @@ let restartFollow = null;
  * stale bar drops an agent the moment it is back.
  */
 function followAgentRestarts() {
-  if (restartFollow || !st.restarts.size) return;
+  if (restartFollow || (!st.restarts.size && !st.restartRun)) return;
   restartFollow = followRestarts({
     api,
-    onRows: (rows) => {
-      if (!st.root?.isConnected || !st.restarts.size) {
+    onRows: (rows, run) => {
+      const before = JSON.stringify(st.restartRun);
+      st.restartRun = run ?? null;
+      if (JSON.stringify(st.restartRun) !== before) void refresh();
+      if (!st.root?.isConnected || (!st.restarts.size && !st.restartRun)) {
         restartFollow?.stop();
         restartFollow = null;
         return;
@@ -2673,7 +2680,7 @@ function followAgentRestarts() {
           changed = true;
         }
       }
-      if (!st.restarts.size) {
+      if (!st.restarts.size && !st.restartRun) {
         restartFollow?.stop();
         restartFollow = null;
       }
@@ -2694,8 +2701,19 @@ async function restartAllForTools(button) {
   );
   for (const a of Array.isArray(out?.agents) ? out.agents : [])
     st.restarts.set(restartKey(a.workspace, a.id), a);
+  st.restartRun = out?.run ?? null;
   await refresh();
   followAgentRestarts();
+}
+
+async function resumeRestartRun() {
+  try {
+    const r = await api("GET", "/api/agents/restart-status");
+    st.restartRun = r?.run ?? null;
+  } catch {
+    st.restartRun = null;
+  }
+  if (st.restartRun) followAgentRestarts();
 }
 
 /** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
@@ -6573,6 +6591,7 @@ export async function mountAgentsPage(root) {
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;
+  await resumeRestartRun();
   await refresh();
   paintLayout();
   // An id the list no longer has (removed, another distribution's) is

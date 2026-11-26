@@ -4104,6 +4104,7 @@
     "rs.none": "No agents need a restart.",
     "rs.bar": "{n} agents need a restart to load their tools.",
     "rs.barBtn": "Restart all {n} at their next idle",
+    "rs.barBusy": "Restarting {done} of {total}…",
     "rs.allName": "the agents",
     "rs.done": "{id}: restarted, in the same conversation.",
     "rs.timedOut":

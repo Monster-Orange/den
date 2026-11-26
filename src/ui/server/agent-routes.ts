@@ -3237,7 +3237,8 @@ async function restartStatusRoute(
     );
     return true;
   }
-  sendJson(res, { agents: (await restartLive()).list() });
+  const live = await restartLive();
+  sendJson(res, { agents: live.list(), run: live.progress() });
   return true;
 }
 
@@ -3307,11 +3308,13 @@ async function staleRoute(
         `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
         { usage: true },
       );
+    const live = await restartLive();
     const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
-        body.only !== "hub" ||
-        a.stale.adds.length > 0 ||
-        a.stale.drops.length > 0,
+        !live.inProgress(a.workspace, a.id) &&
+        (body.only !== "hub" ||
+          a.stale.adds.length > 0 ||
+          a.stale.drops.length > 0),
     );
     // Before anything is restarted, checked or audited by name.
     const list = operator
@@ -3332,7 +3335,6 @@ async function staleRoute(
     const one = (id: string, ws: string) =>
       `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
     // Part 2: the page and the bell follow each agent live (restartLive).
-    const live = await restartLive();
     const outcomes: RestartOutcome[] = [];
     let begun = false;
     const plan = await restartMany(
@@ -3367,7 +3369,11 @@ async function staleRoute(
             ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
             : "waits for the person: Den can't tell when its turn ends",
         );
-    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
+    sendJson(
+      res,
+      { ok: true, pending: list, agents: plan, run: live.progress() },
+      202,
+    );
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
