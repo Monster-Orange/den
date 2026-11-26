@@ -494,6 +494,17 @@ describe("issue 988: doctor's check", () => {
     expect(r.status).toBe("ok");
   });
 
+  it("Den's runtime the login could change: fail, naming each place", () => {
+    const r = check(true, {
+      ...goodFacts(),
+      runtime: ["/opt/node is 0777: anyone can change it"],
+    });
+    expect(r.status).toBe("fail");
+    expect(r.problems.join("\n")).toContain(
+      "/opt/node is 0777: anyone can change it",
+    );
+  });
+
   it("not set up, and agents.os_login off: ok, says so", () => {
     const none: OsUserFacts = {
       user: { exists: false },

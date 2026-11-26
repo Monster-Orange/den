@@ -12,6 +12,10 @@
 
 // Issue 814: first, before anything writes to the state folder.
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import {
+  takeTestInstallLaunchFlag,
+  testInstallRestartEnv,
+} from "../../shared/test-install-launch.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
 import {
@@ -501,7 +505,6 @@ import {
   fixtureSessionExpired,
   notTestInstallRefusal,
   setupFixturePerson,
-  TEST_INSTALL_ENV_KEY,
   testInstallBinding,
   testInstallByHandRefusal,
   verifiedFixtureKey,
@@ -649,6 +652,7 @@ import {
   needsFiledCheck,
   type FiledHit,
   type FiledText,
+  installOwnNames,
 } from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
@@ -847,6 +851,26 @@ interface HealthResult {
    * drawer count only these, while the pages see every row.
    */
   inView?: boolean;
+}
+
+let gitUserKept: { name?: string; email?: string } | null = null;
+function gitUser(): { name?: string; email?: string } {
+  if (gitUserKept) return gitUserKept;
+  const get = (k: string) => {
+    try {
+      return (
+        execFileSync("git", ["config", "--global", "--get", k], {
+          encoding: "utf-8",
+          timeout: 2000,
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim() || undefined
+      );
+    } catch {
+      return undefined;
+    }
+  };
+  gitUserKept = { name: get("user.name"), email: get("user.email") };
+  return gitUserKept;
 }
 
 /**
@@ -2759,6 +2783,13 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    ownNames: () =>
+      installOwnNames({
+        label: defaultInstallLabel(),
+        host: os.hostname(),
+        projects: Object.keys(readWorkspacesFile().workspaces ?? {}),
+        git: gitUser(),
+      }),
     // Issue 1127: the listed names, and the repo's visibility through the
     // cache Report uses (feedback.visibility_timeout_seconds and
     // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
@@ -3765,11 +3796,7 @@ async function confirmFirstRunLink(
  * own start environment (never a file), then taken out of it so nothing
  * this server starts (agents, terminals) inherits it.
  */
-const TEST_INSTALL_LAUNCH_FLAG = (() => {
-  const on = readEnv(getProfile(), TEST_INSTALL_ENV_KEY) === "1";
-  delete process.env[envName(getProfile(), TEST_INSTALL_ENV_KEY)];
-  return on;
-})();
+const TEST_INSTALL_LAUNCH_FLAG = takeTestInstallLaunchFlag(getProfile());
 
 /**
  * Issue 1073: the launcher's name map for Den's own address checks, read
@@ -5269,6 +5296,7 @@ function approvalDeps(): ApprovalDeps {
         npmView: (spec) => u.npmViewVersion(npm, spec, root),
         npm,
         cli: [cli.cmd, ...cli.baseArgs],
+        restartEnv: testInstallRestartEnv(),
         run: (argv, cwd) => u.runCommand(argv, cwd, env),
         watch: (script, plan) =>
           u.spawnWatch(
@@ -6529,6 +6557,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           roles: c.roles,
           per_hour: c.perHour,
           visibility_minutes: c.visibilityMinutes,
+          public: c.publicRepos,
         };
       } catch {
         return null;

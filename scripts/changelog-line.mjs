@@ -5,7 +5,51 @@ const PRODUCT = /^(?:src|packages|bin)\//;
 const SHARED = /^(?:next\/queue$|release\/|rel\/)/;
 const UNRELEASED = /^## \[[^\]]+\] - unreleased\s*$/;
 
+function placed(spec) {
+  const [base, head] = (spec ?? "").split("..");
+  if (!base || !head) {
+    console.error(
+      "usage: node scripts/changelog-line.mjs --placed <base>..<head>",
+    );
+    return 2;
+  }
+  const git = (...a) => execFileSync("git", a, { encoding: "utf-8" });
+  const log = git("show", `${head}:CHANGELOG.md`).split("\n");
+  const heads = log.flatMap((l, i) => (/^## /.test(l) ? [i] : []));
+  const top = heads.length && UNRELEASED.test(log[heads[0]]) ? heads[0] : -1;
+  const end = top < 0 ? -1 : (heads[1] ?? log.length);
+  const under = (n) => {
+    const h = heads.filter((i) => i < n).pop();
+    return h === undefined ? "the top of the file" : `"${log[h].trim()}"`;
+  };
+  const stray = [];
+  let at = 0;
+  for (const l of git("diff", "-U0", base, head, "--", "CHANGELOG.md").split(
+    "\n",
+  )) {
+    const hunk = /^@@ -\S+ \+(\d+)(?:,\d+)? @@/.exec(l);
+    if (hunk) at = Number(hunk[1]) - 1;
+    else if (l.startsWith("+") && !l.startsWith("+++")) {
+      if (l.slice(1).trim() && !(top >= 0 && at > top && at < end))
+        stray.push(`  ${l.slice(1)}   (under ${under(at)})`);
+      at++;
+    }
+  }
+  if (!stray.length) {
+    console.log("changelog placed: ok");
+    return 0;
+  }
+  console.error(
+    [
+      `changelog placed: ${stray.length} line(s) added to CHANGELOG.md in ${base}..${head} are not under its top "- unreleased" heading${top < 0 ? " (its first section is not an unreleased one)" : ` (${log[top].trim()})`}:`,
+      ...stray,
+    ].join("\n"),
+  );
+  return 1;
+}
+
 function main() {
+  if (process.argv[2] === "--placed") return placed(process.argv[3]);
   const [base, head] = (process.argv[2] ?? "").split("..");
   if (!base || !head) {
     console.error(
