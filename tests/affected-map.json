@@ -853,6 +853,13 @@
       "src/ui/server/public/agents.html",
       "src/ui/server/public/agents-page.js"
     ],
+    "tests/unit/server/agent-scope-server.integration.test.ts": [
+      "src/shared/agents/scope-rule.ts",
+      "src/ui/server/request-guard.ts",
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/workspace-routes.ts",
+      "src/ui/server/agent-routes.ts"
+    ],
     "tests/unit/server/agents-states-773.browser.test.ts": [
       "src/ui/server/agent-state.ts",
       "src/shared/seen-mark.ts",
@@ -2237,6 +2244,22 @@
     },
     {
       "when": [
+        "src/ui/server/public/settings-registry.js",
+        "src/ui/server/public/settings-common.js",
+        "src/ui/server/public/settings-ui-*.js",
+        "src/ui/server/public/settings-rows-*.js",
+        "tests/fixtures/settings-registry-order.json"
+      ],
+      "run": [
+        "tests/unit/server/settings-registry-order.test.ts"
+      ],
+      "importers": [
+        "tests/unit/server/helpers/settings-sources.ts"
+      ],
+      "why": "the Settings rows: their pin and the tests that read them"
+    },
+    {
+      "when": [
         "src/ui/server/public/**"
       ],
       "run": [
@@ -2342,6 +2365,7 @@
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/test-infra/brittle-weekly-841.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2417,6 +2441,7 @@
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
         "tests/unit/test-infra/gate-cli-json-840.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/test-infra/gate-expect-shape.test.ts",
         "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
         "tests/unit/test-infra/gate-json-fail-840.test.ts",
@@ -2430,7 +2455,8 @@
       ],
       "run": [
         "tests/unit/scripts/node22-tests.test.ts",
-        "tests/unit/test-infra/fast-checks.test.ts"
+        "tests/unit/test-infra/fast-checks.test.ts",
+        "tests/unit/test-infra/queue-merge-tests.test.ts"
       ],
       "why": "tests that run scripts/affected-tests.mjs"
     },
@@ -2577,6 +2603,15 @@
     },
     {
       "when": [
+        "scripts/gate-evidence.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-evidence.test.ts"
+      ],
+      "why": "tests that run scripts/gate-evidence.mjs"
+    },
+    {
+      "when": [
         "scripts/gate-shape.mjs"
       ],
       "run": [
@@ -2659,6 +2694,15 @@
         "tests/unit/scripts/pw-server-635.test.ts"
       ],
       "why": "tests that run scripts/pw-server.mjs"
+    },
+    {
+      "when": [
+        "scripts/queue-merge-tests.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/queue-merge-tests.test.ts"
+      ],
+      "why": "tests that run scripts/queue-merge-tests.mjs"
     },
     {
       "when": [
@@ -3582,6 +3626,19 @@
       ],
       "run": [
         "tests/unit/server/agent-runtimes.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/scope-rule.ts",
+        "src/ui/server/agent-routes.ts",
+        "src/ui/server/request-guard.ts",
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/agent-scope-server.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },

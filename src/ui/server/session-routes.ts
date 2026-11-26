@@ -150,6 +150,7 @@ import {
 } from "../../shared/agents/draft-input.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   operatorActOf,
   principalOf,
@@ -1037,6 +1038,7 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const keep = agentRowFilter(req);
   const listed = await listWithHelpers(
     sessions,
     d,
@@ -1049,9 +1051,12 @@ export async function handleSessionList(
   } catch {
     states = undefined;
   }
+  const rows = states
+    ? withAgentStates(listed, personKey(req), states)
+    : listed;
   sendJson(res, {
-    sessions: states ? withAgentStates(listed, personKey(req), states) : listed,
-    workspaces: d.activeWorkspaces(),
+    sessions: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+    workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
@@ -1788,18 +1793,28 @@ async function helpersRunning(
   } catch {
     /* no host: nothing runs, so no helper runs */
   }
-  let running = 0;
+  const keep = agentRowFilter(req);
+  const rows = await listWithHelpers(sessions, d);
   let needs = 0;
-  for (const r of await listWithHelpers(sessions, d)) {
-    running += r.helpers?.running ?? 0;
+  for (const r of rows)
     if (
+      (!keep || keep(r.workspace)) &&
       r.kind === "agent" &&
       r.state === "running" &&
       r.waiting &&
       r.waitingWhy !== "input"
     )
       needs += 1;
-  }
-  sendJson(res, { running, needs });
+  sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
+}
+
+export function helpersRunningIn(
+  rows: readonly { workspace: string; helpers?: { running?: number } }[],
+  keep: ((ws: string) => boolean) | null,
+): number {
+  let running = 0;
+  for (const r of rows)
+    if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
+  return running;
 }

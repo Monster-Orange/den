@@ -73,11 +73,14 @@ import {
 import { readBody, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   principalOf,
 } from "./request-guard.js";
 import type { SeenMarks } from "../../shared/seen-mark.js";
 import { agentSubject, personKey, type DoneAgent } from "./agent-state.js";
+import { listRecords } from "../../shared/agents/records.js";
+import { getStateDir } from "../../shared/paths.js";
 
 /** Issue 1008: a withdraw's reason, one line. */
 export const WITHDRAW_REASON_MAX = 200;
@@ -103,6 +106,7 @@ export const isNotificationPath = (p: string) =>
   (NOTIFICATION_PATHS as readonly string[]).includes(p);
 
 export interface NotificationRouteDeps {
+  agentProjects?: () => ReadonlyMap<string, string>;
   store: NotificationStore;
   attention: Attention;
   /** ask_human's limit (notifications.asks_per_hour); absent, none. */
@@ -469,11 +473,14 @@ export async function handleNotificationRoutes(
     const once = (ns: Notification[]) =>
       ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
     const v = { ...all, updates: once(all.updates), older: once(all.older) };
-    sendJson(res, {
+    const keep = agentRowFilter(req);
+    const mine = (ds: DoneAgent[]) =>
+      keep ? ds.filter((d) => keep(d.workspace)) : ds;
+    const bell = {
       ok: true,
       unread: v.unread,
-      done,
-      seenDone,
+      done: mine(done),
+      seenDone: mine(seenDone),
       // Issue 746: a held write waiting for the person's Allow first,
       // then (issue 327) each agent waiting, what on, since when.
       waiting: [
@@ -500,7 +507,8 @@ export async function handleNotificationRoutes(
       off: v.off,
       foldDays: v.foldDays,
       mutes: deps.store.mutes(),
-    });
+    };
+    sendJson(res, keep ? narrowBell(bell, keep, deps) : bell);
     return true;
   }
 
@@ -634,4 +642,58 @@ export async function handleNotificationRoutes(
     unread: bellView(deps.store.list(), prefs).unread,
   });
   return true;
+}
+
+type BellGroups = ReturnType<typeof groupNotifications>;
+
+function recordProjects(): ReadonlyMap<string, string> {
+  const m = new Map<string, string>();
+  for (const r of listRecords(getStateDir())) {
+    m.set(r.id, r.workspace);
+    m.set(`agent:${r.id}`, r.workspace);
+    if (r.sessionName) m.set(r.sessionName, r.workspace);
+  }
+  return m;
+}
+
+export function narrowBell<
+  T extends {
+    unread: number;
+    waiting: { agent?: string }[];
+    groups: BellGroups;
+    updates: { count: number; unread: number; groups: BellGroups };
+    older: { count: number; groups: BellGroups };
+    mutes: readonly { target: string }[];
+  },
+>(
+  bell: T,
+  keep: (ws: string) => boolean,
+  deps: Pick<NotificationRouteDeps, "agentProjects">,
+): T {
+  const projects = (deps.agentProjects ?? recordProjects)();
+  const reach = (target: string | undefined): boolean => {
+    if (!target) return false;
+    if (target.startsWith("workspace/")) return keep(target.slice(10));
+    const ws = projects.get(target);
+    return ws !== undefined && keep(ws);
+  };
+  const groups = (g: BellGroups) => g.filter((x) => reach(x.scope));
+  const items = (g: BellGroups) =>
+    g.flatMap((x) => x.subjects.flatMap((s) => s.items));
+  const recent = groups(bell.groups);
+  const updates = groups(bell.updates.groups);
+  const older = groups(bell.older.groups);
+  return {
+    ...bell,
+    unread: items(recent).filter((n) => !n.read).length,
+    waiting: bell.waiting.filter((w) => reach(w.agent)),
+    groups: recent,
+    updates: {
+      count: items(updates).length,
+      unread: items(updates).filter((n) => !n.read).length,
+      groups: updates,
+    },
+    older: { count: items(older).length, groups: older },
+    mutes: bell.mutes.filter((m) => reach(m.target)),
+  };
 }
