@@ -78,6 +78,7 @@ export interface RestartRun {
 export class RestartLive {
   private readonly rows = new Map<string, LiveRow>();
   private run: RestartRun = { total: 0, done: 0 };
+  private readonly claimed = new Set<string>();
   private readonly keepDoneMs: number;
   private readonly now: () => number;
   private readonly store: Pick<NotificationStore, "add" | "remove"> | null;
@@ -94,7 +95,19 @@ export class RestartLive {
     this.store = o.store ?? null;
   }
 
-  /** A new run: each agent of `plan` in its state (replacing an older row). */
+  /** Before any await: the agents no other press has, now this press's. */
+  claim<T extends { id: string; workspace: string }>(
+    agents: readonly T[],
+  ): T[] {
+    const mine = agents.filter((a) => !this.inProgress(a.workspace, a.id));
+    for (const a of mine) this.claimed.add(key(a.workspace, a.id));
+    return mine;
+  }
+
+  release(agents: readonly { id: string; workspace: string }[]): void {
+    for (const a of agents) this.claimed.delete(key(a.workspace, a.id));
+  }
+
   begin(plan: readonly RestartPlan[]): void {
     if (!this.restarting()) this.run = { total: 0, done: 0 };
     this.run.total += plan.filter((p) => WAITING.has(p.state)).length;
@@ -128,6 +141,7 @@ export class RestartLive {
   }
 
   inProgress(ws: string, id: string): boolean {
+    if (this.claimed.has(key(ws, id))) return true;
     const r = this.rows.get(key(ws, id));
     return !!r && WAITING.has(r.state);
   }

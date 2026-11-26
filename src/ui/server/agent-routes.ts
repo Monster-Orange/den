@@ -3286,6 +3286,7 @@ async function staleRoute(
       },
       principalOf(req),
     );
+  let claimed: { id: string; workspace: string }[] = [];
   try {
     // Issue 1407: the test operator too, for the bed's own agents only.
     const operator = operatorActOf(req) === "agents-restart-stale";
@@ -3311,21 +3312,23 @@ async function staleRoute(
     const live = await restartLive();
     const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
-        !live.inProgress(a.workspace, a.id) &&
-        (body.only !== "hub" ||
-          a.stale.adds.length > 0 ||
-          a.stale.drops.length > 0),
+        body.only !== "hub" ||
+        a.stale.adds.length > 0 ||
+        a.stale.drops.length > 0,
     );
     // Before anything is restarted, checked or audited by name.
-    const list = operator
-      ? testBedOnly(all, (a) => {
-          try {
-            return agentRecord(d, a.id, a.workspace).testBed === true;
-          } catch {
-            return false;
-          }
-        })
-      : all;
+    const list = live.claim(
+      operator
+        ? testBedOnly(all, (a) => {
+            try {
+              return agentRecord(d, a.id, a.workspace).testBed === true;
+            } catch {
+              return false;
+            }
+          })
+        : all,
+    );
+    claimed = list;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     // Issue 1407: each agent is checked first and answered for: restarting
@@ -3382,6 +3385,8 @@ async function staleRoute(
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  } finally {
+    (await restartLive()).release(claimed);
   }
   return true;
 }

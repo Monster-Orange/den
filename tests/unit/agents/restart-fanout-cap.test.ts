@@ -211,4 +211,18 @@ describe("pressing Restart all again while a wave runs adds nothing", () => {
     expect(second.json.run).toEqual({ total: 2, done: 0 });
     await settle(300);
   });
+
+  it("two presses at the same moment queue each agent once", async () => {
+    const r = await twoAgentsOnOlderTools();
+    for (const id of ["planner", "reviewer"])
+      midTurn(r, readRecord(r.stateDir, id)!.resumeToken!);
+    const call = await api(r);
+    const both = await Promise.all([call({}), call({})]);
+    expect(both.map((b) => b.status)).toEqual([202, 202]);
+    expect(both.flatMap((b) => ids(b.json.pending)).sort()).toEqual([
+      "planner",
+      "reviewer",
+    ]);
+    await settle(300);
+  });
 });
