@@ -357,6 +357,7 @@ jobs:
             lint="$RUNNER_TEMP/scripts/guardrail-lint"
           fi
           node "$lint/mo-gates.mjs" --base "$BASE" --root .
+      - run: node scripts/shim-imports.mjs
       - run: npm run typecheck
       - run: npm run lint
       # Issue 839: a browser test or live check this change touches never

@@ -242,7 +242,7 @@ const PUSH = { event_name: "push", repository: REPO, event: {} };
 const DRY_COND =
   "vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && " +
   "startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')";
-// Issue 1583: no default labels. The box only with the switch on and the
+// No default labels. The box only with the switch on and the
 // labels set; the switch on without them fails the plan, and nothing queues.
 const DRY_BOX = `${DRY_COND} && vars.DEN_RELEASE_RUNNER_LABELS`;
 const DRY_NO_LABELS = `${DRY_COND} && vars.DEN_RELEASE_RUNNER_LABELS == ''`;
@@ -488,7 +488,7 @@ describe("CI's self-hosted runner guard", () => {
     expect(evaluate(DRY_RUNS_ON, off)).toBe("ubuntu-latest");
   });
 
-  // Issue 1583: the switch alone sends nothing to a box. Without labels the
+  // The switch alone sends nothing to a box. Without labels the
   // plan fails at once, with the reason, before anything else runs.
   it("release-dry-run.yml: the switch on without DEN_RELEASE_RUNNER_LABELS fails the plan, and nothing waits for a box", () => {
     const w = workflow("release-dry-run.yml");
