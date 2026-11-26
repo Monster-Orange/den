@@ -11,7 +11,7 @@
 # otherwise GitHub-hosted. Issue 1492: the event check stays in the expression, so a
 # trigger added later can't bring someone else's code to the box.
 name: repeat
-run-name: "Evidence for issue 1833: step timings of a server-agent start (not a re-run of the carry)"
+run-name: "Evidence for issue 1833: step and import timings through the full shard 15 list (not a re-run of the carry)"
 
 on:
   workflow_dispatch:

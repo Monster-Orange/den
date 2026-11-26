@@ -4,7 +4,16 @@
  * socket, a scripted PTY (nothing really runs) and a `claude` shim that
  * only answers --version. Invented names only (acme, north, south).
  */
-import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import "../../../src/shared/probe-1833-start.js";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import { mark } from "../../../src/shared/probe-1833.js";
 import * as fs from "fs";
 import * as os from "os";
@@ -33,6 +42,9 @@ import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
+mark("file: imports done");
+beforeAll(() => mark("file: beforeAll"));
+afterAll(() => mark("file: afterAll"));
 afterEach(cleanupRigs);
 beforeEach(() => mark(`test start: ${expect.getState().currentTestName}`));
 afterEach(() => mark(`test end: ${expect.getState().currentTestName}`));
