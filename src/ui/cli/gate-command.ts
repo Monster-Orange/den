@@ -1128,6 +1128,7 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         timeoutMs: d.store.settings().boxCheckTimeoutSeconds * 1000,
         dir: d.store.dir,
         now: d.now,
+        from: d.cwd,
       });
       const what =
         visual.length === 1

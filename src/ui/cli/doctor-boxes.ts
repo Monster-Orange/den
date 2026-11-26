@@ -8,6 +8,11 @@
  * choice, not a warning.
  */
 import type { OnboardCheck } from "./doctor-onboard.js";
+import {
+  boxEndpoints,
+  pwServes,
+  type GateBox,
+} from "../../shared/gates/boxes.js";
 import type { GateStore } from "../../shared/gates/store.js";
 import { boxOffWords, gateBoxesView } from "../../shared/gates/view.js";
 import { localDateTime } from "../../shared/local-time.js";
@@ -59,6 +64,45 @@ export function boxLines(store: GateStore): {
       id: "gate_boxes",
       status: warn ? "warn" : "ok",
       detail: rows.map((r) => r.text).join("; "),
+    },
+  };
+}
+
+export function boxPinLines(
+  boxes: readonly GateBox[],
+  pins: readonly { project: string; version: string }[],
+): { lines: string[]; check: OnboardCheck } {
+  const known = boxes
+    .map((b) => ({
+      name: b.name,
+      versions: boxEndpoints(b).flatMap((x) => (x.version ? [x.version] : [])),
+    }))
+    .filter((b) => b.versions.length);
+  if (!known.length || !pins.length)
+    return {
+      lines: [],
+      check: { id: "gate_box_playwright", status: "ok", detail: "" },
+    };
+  const off = known.flatMap((b) =>
+    pins
+      .filter((p) => !b.versions.some((v) => pwServes(v, p.version)))
+      .map(
+        (p) =>
+          `box ${b.name} serves Playwright ${b.versions.join(", ")}; project ${p.project} pins ${p.version}, so its browser runs skip this box`,
+      ),
+  );
+  const ok = "every test box serves the Playwright its projects pin";
+  return {
+    lines: [
+      "",
+      "Test boxes' Playwright",
+      "",
+      ...(off.length ? off.map((t) => `  ⚠  ${t}`) : [`  ✓  ${ok}`]),
+    ],
+    check: {
+      id: "gate_box_playwright",
+      status: off.length ? "warn" : "ok",
+      detail: off.length ? off.join("; ") : ok,
     },
   };
 }

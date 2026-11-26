@@ -2882,6 +2882,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       // Issue 625: the test boxes, and why one is skipped.
       const bx = await gateBoxRows();
       if (bx.lines.length) r.checks.push(bx.check);
+      const bp = await gateBoxPinRows();
+      if (bp.lines.length) r.checks.push(bp.check);
       // Issue 1274: memory VMs promise, against the machine's RAM.
       const vm = await gateVmRows();
       if (vm.lines.length) r.checks.push(vm.check);
@@ -3061,6 +3063,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await serverLogRow()).lines) console.log(l);
   // Issue 625: the test boxes, and why one is skipped.
   for (const l of (await gateBoxRows()).lines) console.log(l);
+  for (const l of (await gateBoxPinRows()).lines) console.log(l);
   // Issue 1274: memory VMs promise, against the machine's RAM.
   for (const l of (await gateVmRows()).lines) console.log(l);
   for (const l of (await routeAgentsRows()).lines) console.log(l);
@@ -3299,6 +3302,26 @@ async function gateBoxRows() {
     return {
       lines: [] as string[],
       check: { id: "gate_boxes", status: "ok" as const, detail: "" },
+    };
+  }
+}
+
+async function gateBoxPinRows() {
+  const { boxPinLines } = await import("./doctor-boxes.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  const { playwrightVersion } = await import("./gate-command.js");
+  const { defaultRepoRoots } = await import("./doctor-repo-roots.js");
+  try {
+    const pins = new Map<string, { project: string; version: string }>();
+    for (const { project, repoPath } of await defaultRepoRoots()) {
+      const version = playwrightVersion(repoPath);
+      if (version) pins.set(`${project}\0${version}`, { project, version });
+    }
+    return boxPinLines(new GateStore().boxes(), [...pins.values()]);
+  } catch {
+    return {
+      lines: [] as string[],
+      check: { id: "gate_box_playwright", status: "ok" as const, detail: "" },
     };
   }
 }
