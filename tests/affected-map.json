@@ -2177,6 +2177,18 @@
       "why": "the UI catalogs"
     },
     {
+      "when": [
+        "src/ui/server/public/settings-registry.js",
+        "src/ui/server/public/settings-common.js",
+        "src/ui/server/public/settings-ui-*.js",
+        "src/ui/server/public/settings-rows-*.js",
+        "tests/fixtures/settings-registry-order.json"
+      ],
+      "run": ["tests/unit/server/settings-registry-order.test.ts"],
+      "importers": ["tests/unit/server/helpers/settings-sources.ts"],
+      "why": "the Settings rows: their pin and the tests that read them"
+    },
+    {
       "when": ["src/ui/server/public/**"],
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
