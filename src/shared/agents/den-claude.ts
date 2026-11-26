@@ -46,6 +46,7 @@
  * Start dialog and `agents doctor` ask `claude --version` once as well.
  */
 import {
+  helpersDir,
   readClaudeHelperTranscript,
   readClaudeHelpers,
 } from "./claude-helpers.js";
@@ -1088,6 +1089,25 @@ export function transcriptFile(
   return null;
 }
 
+const stampFiles = new Map<string, string>();
+
+function stampedTranscript(
+  token: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const k = `${claudeProjectsDir(env)}\0${token}`;
+  const known = stampFiles.get(k);
+  if (known && fs.existsSync(known)) return known;
+  const file = transcriptFile(token, env);
+  if (file) {
+    stampFiles.delete(k);
+    stampFiles.set(k, file);
+    if (stampFiles.size > 4096)
+      stampFiles.delete(stampFiles.keys().next().value as string);
+  } else stampFiles.delete(k);
+  return file;
+}
+
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: DEN_CLAUDE_CATALOG.name,
@@ -1260,6 +1280,21 @@ export const denClaude: Runtime = {
         out.push(c.current ? h : { ...h, earlier: true });
     }
     return sortHelpers(out);
+  },
+  helpersStamp(rec, env) {
+    const out: number[] = [];
+    for (const c of conversationsOf(rec)) {
+      const file = stampedTranscript(c.token, env);
+      if (!file) continue;
+      const base = helpersDir(file);
+      for (const sub of ["subagents", "workflows"])
+        try {
+          out.push(fs.statSync(path.join(base, sub)).mtimeMs);
+        } catch {
+          out.push(0);
+        }
+    }
+    return out.join(",");
   },
   helperTranscript(rec, id, opts = {}) {
     for (const c of conversationsOf(rec)) {

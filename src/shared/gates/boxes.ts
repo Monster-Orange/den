@@ -583,6 +583,7 @@ export function assign(
         | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
+        | "releasePassOtherKindMinutes"
         | "classes"
         | "cpuHoldLoad"
         | "loadHoldPerCore"
@@ -658,6 +659,7 @@ export function boxesWanted(
         | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
+        | "releasePassOtherKindMinutes"
         | "classes"
       >
     >,
