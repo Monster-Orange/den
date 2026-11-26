@@ -21,7 +21,7 @@ import {
   recordUnrevoked,
   unrevokedToken,
   HUB_STATE_FILES,
-} from "../../../src/shared/hub-binding.js";
+} from "../../../src/shared/hub/hub-binding.js";
 import type { WorkspacesFile } from "../../../src/shared/types/index.js";
 
 const OLD = "https://hub-one.example.test";

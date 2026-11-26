@@ -25,7 +25,7 @@ import {
   mintSetupGrant,
   type Announced,
 } from "../../shared/test-install-grant.js";
-import { personToken } from "../../shared/web-secret.js";
+import { personToken } from "../../shared/web/web-secret.js";
 import type { HeldAction, HeldCheck } from "./approval-routes.js";
 
 export const TEST_PERSON_SETUP_PATH = "held write test_person_setup";

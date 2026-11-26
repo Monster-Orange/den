@@ -35,7 +35,7 @@ import { AGENT_ACTOR_RE } from "./agent-actor.js";
 import { readRecord } from "./agents/records.js";
 import { isServerScope } from "./agents/server-agent.js";
 import { writeFileAtomic } from "./atomic-write.js";
-import { WEB_SECRET_FILE } from "./web-secret.js";
+import { WEB_SECRET_FILE } from "./web/web-secret.js";
 
 /** The test operator's principal in the audit trail. */
 export const OPERATOR_PRINCIPAL = "test:operator";

@@ -46,7 +46,7 @@ import {
   type SettingCategory,
 } from "../../shared/approval-policy.js";
 import { patchHubAllowTools, patchHubUrl } from "../../shared/hub.js";
-import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { checkIntent } from "../../shared/agents/permissions.js";
 import { parseMachineName } from "../../shared/cli-command.js";
@@ -66,7 +66,7 @@ import {
 } from "../../shared/review-lines.js";
 import { configKeyNames, patchConfigKey } from "./config-command.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
-import { GATE_DEFAULTS } from "../../shared/gates/rules.js";
+import { GATE_DEFAULTS, onOff } from "../../shared/gates/rules.js";
 
 export const SETTING_CHANGE_ACTION = "setting_change";
 /** The longest reason an ask may give (one line). */
@@ -409,10 +409,8 @@ const WIDENS_AT: readonly [
   [
     "gate.route_agents",
     (v, before) => {
-      const to = level(v);
-      const from = level(before);
-      if (to === null) return true;
-      return from === null ? to === 0 : to < from;
+      const to = onOff(v);
+      return to === null || (!to && onOff(before) !== false);
     },
     ["personal", "strict"],
   ],

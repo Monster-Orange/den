@@ -7,7 +7,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export type JournalOutcome =
   | "received" // Den took it from Hub (or made it, an inbox item)
