@@ -25,8 +25,8 @@ function run(js: string): string {
 const limits = JSON.parse(
   run(`
     const g = await import("./gate/1668.mjs");
-    console.log(JSON.stringify({ n: g.SEED_AGENTS, tries: g.TRIES, limit: g.LIMIT_MS, probe: g.PROBE_MS }));`),
-) as { n: number; tries: number; limit: number; probe: number };
+    console.log(JSON.stringify({ n: g.SEED_AGENTS, tries: g.TRIES, limit: g.LIMIT_MS, probe: g.PROBE_MS, min: g.IN_FLIGHT_MIN }));`),
+) as { n: number; tries: number; limit: number; probe: number; min: number };
 
 function rows(result: unknown): Row[] {
   return JSON.parse(
@@ -38,6 +38,12 @@ function rows(result: unknown): Row[] {
 
 const times = (ms: number) =>
   Array.from({ length: limits.tries }, () => ({ ms, status: 200 }));
+const probes = (ms: number, inFlight = limits.tries) =>
+  Array.from({ length: limits.tries }, (_, i) => ({
+    ms,
+    status: 200,
+    inFlight: i < inFlight,
+  }));
 
 const fast = {
   seedMs: 900,
@@ -45,7 +51,9 @@ const fast = {
   warmMs: 4000,
   helperRows: limits.n,
   tries: times(Math.floor(limits.limit / 4)),
-  probes: times(Math.floor(limits.probe / 4)),
+  probes: probes(Math.floor(limits.probe / 4)),
+  idleMs: 5,
+  inFlight: limits.tries,
   medianMs: Math.floor(limits.limit / 4),
   maxProbeMs: Math.floor(limits.probe / 4),
 };
@@ -59,11 +67,34 @@ describe("gate/1668 rows", () => {
     const slow = {
       ...fast,
       tries: times(limits.limit * 5),
-      probes: times(limits.probe * 5),
+      probes: probes(limits.probe * 5),
       medianMs: limits.limit * 5,
       maxProbeMs: limits.probe * 5,
     };
     expect(rows(slow).map((r) => r.ok)).toEqual([false, false]);
+  });
+
+  it("server-info waiting behind the list (0.4.90: 9 s against an idle 3-9 ms) fails row 2 and shows the idle time", () => {
+    const r = rows({
+      ...fast,
+      probes: probes(9000),
+      maxProbeMs: 9000,
+    });
+    expect(r.map((x) => x.ok)).toEqual([true, false]);
+    expect(r[1].detail).toContain("server-info idle 5 ms");
+    expect(r[1].detail).toContain("max in flight 9000");
+  });
+
+  it("server-info that never overlapped a list is not measured, never a PASS", () => {
+    expect(() =>
+      rows({
+        ...fast,
+        probes: probes(3, limits.min - 1),
+        inFlight: limits.min - 1,
+      }),
+    ).toThrow(
+      /1668 not measured: server-info started while the list was still in flight on/,
+    );
   });
 
   it("a seed the list never showed is an ERROR (not measured), never a FAIL", () => {
