@@ -26,8 +26,7 @@ const CHUNK = 64 * 1024;
 const MAX_LINE = 64 * 1024;
 /** The longest name kept. */
 export const MAX_NAME = 80;
-/** The most files followed at once (the oldest is forgotten first). */
-const MAX_FOLLOWED = 256;
+const FOLLOW_CACHE_BYTES = 64 * 1024 * 1024;
 
 interface Follow<T> {
   offset: number;
@@ -36,11 +35,13 @@ interface Follow<T> {
   rest: Buffer;
   /** Inside a line too long to be a record Den reads: drop bytes to its newline. */
   skipping: boolean;
+  bytes: number;
 }
 
 /** One kind of record followed through transcripts: its files and how far each is read. */
 interface Follower<T> {
   files: Map<string, Follow<T>>;
+  bytes: number;
   /** Only lines with this in them are parsed. */
   needle: string;
   init: () => T;
@@ -50,6 +51,7 @@ interface Follower<T> {
 
 const titles: Follower<string | null> = {
   files: new Map(),
+  bytes: 0,
   needle: "custom-title",
   init: () => null,
   onLine: (line, state) => titleOf(line) ?? state,
@@ -79,6 +81,13 @@ function titleOf(line: Buffer): string | undefined {
   }
 }
 
+function unfollow<T>(f: Follower<T>, file: string): void {
+  const s = f.files.get(file);
+  if (!s) return;
+  f.bytes -= s.bytes;
+  f.files.delete(file);
+}
+
 /**
  * Reads `file` on from where `f` last stopped (at most `maxBytes` per ask;
  * a first ask starts `startBack` bytes from the end, or at the start), and
@@ -94,11 +103,12 @@ function follow<T>(
   try {
     const st = fs.statSync(file);
     if (!st.isFile()) {
-      f.files.delete(file);
+      unfollow(f, file);
       return null;
     }
     let s = f.files.get(file);
     if (!s || st.size < s.offset) {
+      unfollow(f, file);
       const offset = Math.max(0, st.size - startBack);
       // Started mid-file: the first line read is a piece of one.
       s = {
@@ -106,12 +116,11 @@ function follow<T>(
         state: f.init(),
         rest: Buffer.alloc(0),
         skipping: offset > 0,
+        bytes: 0,
       };
-      f.files.delete(file);
-      if (f.files.size >= MAX_FOLLOWED)
-        f.files.delete(f.files.keys().next().value as string);
-      f.files.set(file, s);
     }
+    f.files.delete(file);
+    f.files.set(file, s);
     if (st.size === s.offset) return s.state;
     fd = fs.openSync(file, "r");
     const end = Math.min(st.size, s.offset + maxBytes);
@@ -149,6 +158,13 @@ function follow<T>(
         s.rest = Buffer.alloc(0);
         if (line.includes(f.needle)) s.state = f.onLine(line, s.state);
       }
+    }
+    f.bytes -= s.bytes;
+    s.bytes = 256 + s.rest.length + 2 * (JSON.stringify(s.state)?.length ?? 0);
+    f.bytes += s.bytes;
+    for (const k of f.files.keys()) {
+      if (f.bytes <= FOLLOW_CACHE_BYTES || k === file) break;
+      unfollow(f, k);
     }
     return s.state;
   } catch {
@@ -203,6 +219,7 @@ function compactionOf(line: Buffer): Compaction | undefined {
 
 const compactions: Follower<Compaction[]> = {
   files: new Map(),
+  bytes: 0,
   needle: "compact_boundary",
   init: () => [],
   onLine: (line, state) => {
@@ -237,6 +254,8 @@ export function followState(file: string): { offset: number } | undefined {
 export function resetFollowers(): void {
   titles.files.clear();
   compactions.files.clear();
+  titles.bytes = 0;
+  compactions.bytes = 0;
 }
 
 /** The most of an unended OSC kept between chunks. */

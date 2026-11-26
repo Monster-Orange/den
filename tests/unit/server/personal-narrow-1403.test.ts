@@ -16,7 +16,7 @@ import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import { stableNotOlder } from "../../../src/ui/server/den-update.js";
 import { heldActions } from "../../../src/ui/server/held-actions.js";
 import { checkHubLinkHeld } from "../../../src/ui/server/hub-link-held.js";
-import type { HubProjectChoice } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectChoice } from "../../../src/shared/hub/hub-project-link.js";
 import { sandboxOnHeldOp } from "../../../src/shared/agents/sandbox-rollout.js";
 import {
   checkPersonaCreate,

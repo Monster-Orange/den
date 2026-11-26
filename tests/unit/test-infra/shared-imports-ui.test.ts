@@ -6,8 +6,6 @@ import * as path from "path";
 const ROOT = path.join(__dirname, "../../..");
 
 const KNOWN = [
-  "src/shared/health/rollup.ts -> src/ui/server/public/health-rollup.js",
-  "src/shared/peer-process.ts -> src/ui/cli/proc-lookup.js",
   "src/shared/settings-cli-rows.ts -> src/ui/cli/proc-lookup.js",
 ];
 

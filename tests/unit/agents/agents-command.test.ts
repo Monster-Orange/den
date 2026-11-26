@@ -470,6 +470,24 @@ describe("agents start", () => {
     ).toBe(false);
   });
 
+  it("issue 1634: a project at agents.max_per_project is refused; another project starts", async () => {
+    const r = await rig();
+    r.config.maxPerProject = 1;
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "reviewer"),
+    ).toBe(1);
+    expect(r.err.join("\n")).toMatch(
+      /1 agent is running in project north and its cap is 1 \(agents\.max_per_project\)/,
+    );
+    expect(r.err.join("\n")).toMatch(/raise agents\.max_per_project/);
+    expect(
+      await agents(r, "start", "-w", "south", "--persona", "reviewer"),
+    ).toBe(0);
+  });
+
   it("has no --grant: a grant only comes from config", async () => {
     const r = await rig();
     expect(

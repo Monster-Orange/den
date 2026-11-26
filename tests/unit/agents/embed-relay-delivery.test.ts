@@ -22,8 +22,8 @@ import {
 import {
   embedDelivery,
   SeenDeliveries,
-} from "../../../src/shared/hub-delivery.js";
-import { DeliveryLoop } from "../../../src/shared/hub-delivery-loop.js";
+} from "../../../src/shared/hub/hub-delivery.js";
+import { DeliveryLoop } from "../../../src/shared/hub/hub-delivery-loop.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 afterEach(cleanupRigs);
