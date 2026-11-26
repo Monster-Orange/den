@@ -6,7 +6,7 @@
  */
 
 import { sandboxErrorHint } from "../../shared/agents/sandbox.js";
-import { notSetLine, readWebUrl } from "../../shared/web-url.js";
+import { notSetLine, readWebUrl } from "../../shared/web/web-url.js";
 import { getStateDir } from "../../shared/paths.js";
 import { listRecords } from "../../shared/agents/records.js";
 import { workspaceNameRefusal } from "../../shared/workspace-name.js";
@@ -5351,7 +5351,7 @@ class DenCLI {
         fixturePersonOffInstallWarning,
         ignoredConfigWarning,
         readWebAuthConfig,
-      } = await import("../../shared/web-session.js");
+      } = await import("../../shared/web/web-session.js");
       try {
         const cfg = readWebAuthConfig(getDistRoot(), product().configFile);
         for (const w of [

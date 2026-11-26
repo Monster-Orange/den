@@ -33,7 +33,7 @@ import { depService } from "../manifest/deps.js";
 import { getDistRoot } from "../paths.js";
 import { readCatalog } from "./catalog.js";
 import { auditConfig, callerName } from "../config-audit.js";
-import { noteLinksSeen } from "../hub-links-seen.js";
+import { noteLinksSeen } from "../hub/hub-links-seen.js";
 
 import { product } from "../product.js";
 const ROOT = getDistRoot();

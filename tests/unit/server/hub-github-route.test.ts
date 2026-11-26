@@ -5,7 +5,7 @@
 import { afterAll, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
-import { ProjectSync } from "../../../src/shared/hub-project-sync.js";
+import { ProjectSync } from "../../../src/shared/hub/hub-project-sync.js";
 import {
   handleAgentRoutes,
   type AgentRouteDeps,
