@@ -1,8 +1,4 @@
-/**
- *
- *
- *
- */
+/** A real Den server and a stand-in Hub: an agent's Hub calls carry its own token, and no token reaches anything an agent can read. */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn } from "child_process";
 import * as fs from "fs";
@@ -276,8 +272,6 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
-/**
- */
 async function cliAs(ag: { pty: number }, args: string[]): Promise<string> {
   const env = {
     ...s.made[ag.pty].opts.env,

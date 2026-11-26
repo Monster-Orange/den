@@ -18,6 +18,7 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { readSettingsSources } from "./helpers/settings-sources.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 
@@ -209,7 +210,7 @@ describe("issue 698: the approval buttons hold the dots", () => {
 
   it("Settings' Approve and Deny for a computer hold the button's dots", () => {
     const f = body(
-      read("settings-registry.js"),
+      readSettingsSources(),
       /const act = \(btn, path, body\) =>/,
       /\n {8}};\n/,
     );
