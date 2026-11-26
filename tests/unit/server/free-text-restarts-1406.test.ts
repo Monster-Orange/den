@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import type { RestartSelfCheck } from "../../../src/shared/agents/restart-self.js";
 import type { Notification } from "../../../src/shared/notifications.js";
+import { ApprovalQueue } from "../../../src/ui/server/approvals.js";
 import {
   matchFreeTextRestarts,
   type FreeTextRestartDeps,
@@ -150,5 +151,28 @@ describe("issue 1406, clause 3: free-text restart asks already waiting join the 
       return request(r);
     };
     expect(await matchFreeTextRestarts(h.d)).toEqual(["bo"]);
+  });
+
+  it("on any install, a personal one too, it waits in the queue for the person's Allow: nothing runs", async () => {
+    let ran = 0;
+    const queue = new ApprovalQueue({
+      run: async () => {
+        ran++;
+        return { ok: true };
+      },
+    });
+    const { d } = harness([q("n1", "ana", "restart me for the new tools")]);
+    d.request = (r) => queue.request(r);
+    d.askedBefore = (actor) => queue.ofActor(actor).length > 0;
+    expect(await matchFreeTextRestarts(d)).toEqual(["ana"]);
+    const [a] = queue.pending();
+    expect(a).toMatchObject({
+      actor: "den:free-text:north/ana",
+      action: "agent_restart_self",
+      state: "pending",
+    });
+    expect(ran).toBe(0);
+    expect(await matchFreeTextRestarts(d)).toEqual([]);
+    expect(queue.pending()).toHaveLength(1);
   });
 });
