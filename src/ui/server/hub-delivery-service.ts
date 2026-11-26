@@ -347,6 +347,50 @@ type HeldStore = Pick<
   "add" | "withdraw"
 >;
 
+export function badDeliveryFile(
+  aside: string,
+  o: {
+    held?: number | null;
+    code?: string;
+    store?: HeldStore;
+    log?: (line: string) => void;
+  } = {},
+): void {
+  const file = path.basename(aside).replace(/\.bad-\d+$/, "");
+  const moved = path.basename(aside);
+  const n = o.held ?? null;
+  const kept = moved !== file;
+  const key = !kept
+    ? "bell.m.deliveryFileBadKept"
+    : n === null
+      ? "bell.m.deliveryFileBadUncounted"
+      : "bell.m.deliveryFileBad";
+  const text = !kept
+    ? `Den couldn't read ${file} and couldn't move it aside; delivery goes on without what it held.`
+    : n === null
+      ? `Den couldn't read ${file} or count its held deliveries; kept the file as ${moved}.`
+      : `Den couldn't read ${n} held deliver${n === 1 ? "y" : "ies"}; kept the file as ${moved}.`;
+  const go = (s: HeldStore) =>
+    s.add({
+      kind: "service",
+      subject: `record:delivery-file-bad:${moved}`,
+      scope: "den",
+      text,
+      msg: { key, vars: n === null ? { file, moved } : { file, moved, n } },
+      link: "/settings",
+    });
+  if (o.store) go(o.store);
+  else
+    void import("./notification-service.js")
+      .then(({ notificationDeps }) => go(notificationDeps().store))
+      .catch(() => undefined);
+  try {
+    o.log?.(`hub delivery: ${text}${o.code ? ` (${o.code})` : ""}`);
+  } catch {
+    return;
+  }
+}
+
 /**
  * Issue 664: the bell's item for text held because `agent` isn't at its
  * input prompt: added once it has waited `afterSeconds`, said again each
@@ -524,10 +568,20 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     ackHeld: () => deliveryAckHeld(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
+      5000,
+      {
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
+      },
     ),
     // Issue 459: app feed pointers keep their own seen ids.
     feedSeen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "feed-pointers-seen.json"),
+      5000,
+      {
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
+      },
     ),
     // Issue 459: one paste holds at most embed.paste_max_kb.
     pasteMaxChars: () => {

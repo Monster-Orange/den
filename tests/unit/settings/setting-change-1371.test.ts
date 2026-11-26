@@ -432,6 +432,13 @@ describe("USER_ONLY_WIDENING matches what den-config reads (issue 1371)", () => 
           {},
         ),
       ).toThrow(/user\.yml/),
+    "agents.os_login": () =>
+      expect(() =>
+        readAgentsConfig(
+          { agents: { os_login: "off" } } as unknown as DenConfig,
+          {},
+        ),
+      ).toThrow(/user\.yml/),
     "agents.sandbox_sockets": () => {
       const r = readAgentsConfig(
         { agents: { sandbox_sockets: ["/tmp/x"] } } as unknown as DenConfig,

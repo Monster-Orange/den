@@ -345,6 +345,18 @@ export function buildRules(map = readMap()) {
       why: "the UI catalogs",
     },
     {
+      when: [
+        `${PUB}/settings-registry.js`,
+        `${PUB}/settings-common.js`,
+        `${PUB}/settings-ui-*.js`,
+        `${PUB}/settings-rows-*.js`,
+        "tests/fixtures/settings-registry-order.json",
+      ],
+      run: ["tests/unit/server/settings-registry-order.test.ts"],
+      importers: ["tests/unit/server/helpers/settings-sources.ts"],
+      why: "the Settings rows: their pin and the tests that read them",
+    },
+    {
       when: [`${PUB}/**`],
       run: others.filter(
         (t) =>

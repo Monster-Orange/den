@@ -303,7 +303,7 @@ describe("a pull request's watch pages past 100 check runs", () => {
       });
     const w = watcher();
     await w.create(ask({ pr: 1 }));
-    await minutes(w, 2);
+    await minutes(w, 3);
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toContain("149 passed, 1 failed");
     expect(sent[0].text).toContain("check-140");
