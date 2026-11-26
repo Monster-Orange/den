@@ -202,6 +202,8 @@ export function refusedWrite(
   op?: string,
 ): boolean {
   const real = op && LINK_OPS.has(op) ? realLink(p) : realish(p);
+  const own = inside(real, roots.checkout);
+  if (own && hasConfigLocal(path.relative(roots.checkout, real))) return true;
   if (roots.temp.some((t) => inside(real, t))) return false;
   if (inside(real, "/dev")) return false;
   // Before any named root: no root a suite names covers a config/local.
@@ -251,6 +253,19 @@ export function writeGuardRoots(
     ),
     temp: [...new Set(temp)],
   };
+}
+
+/** An entry inside `checkout` when its node_modules links elsewhere (a worker's own entry is there); else null. */
+export function linkedModulesEntry(checkout: string): string | null {
+  let nm: string;
+  try {
+    nm = fs.realpathSync(path.join(checkout, "node_modules"));
+  } catch {
+    return null;
+  }
+  return inside(nm, fs.realpathSync(checkout))
+    ? null
+    : path.join(checkout, "tests", "setup.ts");
 }
 
 /** Where Playwright keeps its browsers (its registry's own rule). */

@@ -15,6 +15,7 @@ import { CODEX_RULES } from "./rules/codex.js";
 import { GEMINI_RULES } from "./rules/gemini.js";
 import { GROK_RULES } from "./rules/grok.js";
 import { ANTIGRAVITY_RULES } from "./rules/antigravity.js";
+import type { StatusState } from "../../sessions/bell.js";
 
 export {
   detect,
@@ -49,20 +50,51 @@ export function ruleSet(name: string | undefined): RuleSet | undefined {
 /** What Den shows for an agent: working, needs you, or idle. */
 export type AgentStatus = "working" | "blocked" | "idle";
 
-/**
- * An agent's status. Hook status, when the runtime reports one (Claude
- * with Den's hooks on), wins over the screen. Otherwise the screen's
- * reading, unless it says nothing new: no rule matched (`fallback`), a
- * transcript viewer is up (`skip`), or the state is unknown. Then
- * undefined: the caller keeps what it has (the bell, output stopped).
- */
-export function agentStatus(
-  hook: AgentStatus | undefined,
-  screen: Detection | undefined,
-): AgentStatus | undefined {
-  if (hook) return hook;
+export interface TermStatus {
+  state: StatusState;
+  at: string;
+}
+
+export function fromTerm(state: StatusState): {
+  status: AgentStatus;
+  finished: boolean;
+} {
+  switch (state) {
+    case "working":
+      return { status: "working", finished: false };
+    case "blocked":
+    case "error":
+      return { status: "blocked", finished: false };
+    case "done":
+      return { status: "idle", finished: true };
+    default:
+      return { status: "idle", finished: false };
+  }
+}
+
+function said(screen: Detection | undefined): AgentStatus | undefined {
   if (!screen || screen.fallback || screen.skip) return undefined;
   return screen.state === "unknown" ? undefined : screen.state;
+}
+
+export function agentStatus(input: {
+  hook?: AgentStatus;
+  term?: TermStatus;
+  screen?: Detection;
+  screenAt?: string;
+}): AgentStatus | undefined {
+  if (input.hook) return input.hook;
+  const seen = said(input.screen);
+  if (input.term) {
+    const t = fromTerm(input.term.state).status;
+    const later =
+      input.screenAt !== undefined &&
+      Date.parse(input.screenAt) > Date.parse(input.term.at);
+    // A 7501 only raises: a screen's blocked wins, a later screen lowers it.
+    if (seen === "blocked") return seen;
+    if (!seen || seen === t || !later) return t;
+  }
+  return seen;
 }
 
 /** A named rule set's reading of a screen; undefined with no such set. */

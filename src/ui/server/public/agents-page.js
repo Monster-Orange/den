@@ -688,6 +688,14 @@ function signInTag(r) {
   return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
 }
 
+function hubBoundTag(r) {
+  if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";
+  const [word, tip] = r.hubBound
+    ? [t("ag.hub.bound"), t("ag.hub.bound.tip")]
+    : [t("ag.hub.unbound"), t("ag.hub.unbound.tip")];
+  return `<span class="tagx" data-hub-bound="${r.hubBound}" title="${esc(tip)}">${esc(word)}</span>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   // D28: on_due off: nothing will happen, so nothing is shown.
@@ -1006,7 +1014,7 @@ function rowHtml(r) {
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
   const right = r.waiting
     ? `<span class="wbdg">${esc(waitingText(r))}</span>`
-    : `<span class="st">${esc(stateText(r.state))}</span>`;
+    : `<span class="st">${esc(r.activity ? t(`ag.activity.${r.activity}`) : stateText(r.state))}</span>`;
   const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').
@@ -2694,6 +2702,7 @@ function paintBar(p) {
     linkTag(r) +
     subagentTag(r) +
     signInTag(r) +
+    hubBoundTag(r) +
     draftWaitingTag(p);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +

@@ -1204,6 +1204,10 @@
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe":
+      "Comprobación de esta instalación por las herramientas de Den, en segundos",
+    "set.server.tools_probe.d":
+      "Cuánto esperan las herramientas de Den de un agente a que __DEN_TITLE__ diga que es esta instalación antes de rechazar una llamada. Un __DEN_TITLE__ ocupado responde tarde; una respuesta tardía también vale. La siguiente llamada vuelve a comprobarlo. __DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "Espera al arrancar, en segundos",
     "set.server.start_wait.d":
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
@@ -1423,6 +1427,9 @@
     "set.agents.max_concurrent": "Agentes a la vez",
     "set.agents.max_concurrent.d":
       "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agentes por proyecto",
+    "set.agents.max_per_project.d":
+      "Cuántos agentes puede tener funcionando a la vez un proyecto. 0 significa sin límite más allá de Agentes a la vez. Un proyecto puede fijar un valor propio más bajo (agents.max_per_project en su entrada de workspaces.yml). Un inicio por encima de esto se rechaza, y dice qué límite lo frena. __DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "Terminales a la vez",
     "set.server.sessions_max.d":
       "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",
@@ -1515,6 +1522,9 @@
       "Comprobaciones de salud en una pestaña oculta",
     "set.server.health_poll_hidden.d":
       "Cada cuánto una página en una pestaña oculta comprueba la salud: de 10 a 3600 segundos. Sin ninguna página a la vista, las comprobaciones se ejecutan como mucho con esa frecuencia. Al volver a la vista, la página comprueba enseguida. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Lecturas de git a la vez",
+    "set.server.git_reads.d":
+      "Cuántos procesos de git ejecuta Den a la vez cuando una página lee sus repos, como la rama y el commit de la página de Pruebas: de 1 a 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -1687,6 +1697,11 @@
     "hub.addressMore": "Dirección del Hub…",
     "hub.justConnected":
       "Conectado a {company} ({host}). ¿No es la empresa que querías?",
+    "hub.switching":
+      "Cambiando a {to}: inicia sesión allí para terminar. __DEN_TITLE__ sigue en {from} hasta entonces.",
+    "hub.switchEnded":
+      "El cambio a {to} esperó demasiado un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}.",
+    "hub.switchSignin": "Iniciar sesión en el nuevo Hub",
     "hub.reconnect": "Volver a conectar",
     "hub.cw.done": "Conectado a Hub ({company}).",
     "hub.cw.doneNoCo": "Conectado a Hub.",
@@ -1928,6 +1943,8 @@
     "ag.none": "Aún no hay agentes en este proyecto",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "en marcha",
+    "ag.activity.working": "trabajando",
+    "ag.activity.idle": "inactivo",
     "ag.state.stopping": "deteniéndose…",
     "ag.state.stopped": "detenido",
     "ag.state.ended": "terminado",
@@ -2455,6 +2472,10 @@
       "Después Den se reinicia, y los agentes obtienen las herramientas de Hub cuando se reinicien.",
     "ap.det.hub_connect.connect":
       "Después te conectas en Ajustes › Hub: Conectar te inicia sesión en Hub allí.",
+    "ap.det.hub_connect.keep":
+      "Den sigue en {was} con su clave hasta que inicies sesión en {url}.",
+    "ap.det.hub_connect.signin":
+      "Tras tu permiso se abre el inicio de sesión de {url}. Cuando ese Hub responde, Den cambia a él y {was} revoca su clave; si falla, Den sigue en {was} y dice por qué.",
     "ap.det.den_pin_commit.pr":
       "Den hace commit de package.json y package-lock.json en la rama den/pin-{version} y abre una pull request.",
     "ap.det.den_pin_commit.push":
@@ -2526,7 +2547,8 @@
       "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
     "ap.det.setting_change.key": "Ajuste: {key}",
     "ap.det.setting_change.now": "Ahora: {value}",
-    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDefault":
+      "Ahora: {value} (el valor predeterminado de Den)",
     "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
     "ap.det.setting_change.new": "Nuevo: {value}",
     "ap.det.setting_change.why": "Por qué: {why}",
@@ -2712,24 +2734,32 @@
     "feed.url": "Dirección del flujo",
     "feed.bearer": "Bearer (un nombre de secrets.refs)",
     "feed.bearerNone": "ninguno",
-    "feed.noAgents": "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
+    "feed.noAgents":
+      "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
     "feed.addW": "Añadiendo el flujo…",
     "feed.addS": "Añadido.",
     "feed.addF": "No se pudo añadir el flujo.",
     "feed.remove": "Quitar",
     "feed.removeL": "Quitar el flujo {name}",
     "feed.rmT": "¿Quitar el flujo?",
-    "feed.rmAsk": "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
+    "feed.rmAsk":
+      "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
     "feed.rmW": "Quitando el flujo…",
     "feed.rmS": "Quitado.",
     "feed.rmF": "No se pudo quitar el flujo.",
-    "ap.do.project_event_feed_add": "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
-    "ap.do.project_event_feed_remove": "Quitar el flujo de eventos {name} del proyecto {project}",
-    "ap.feed.warn": "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
+    "ap.do.project_event_feed_add":
+      "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
+    "ap.do.project_event_feed_remove":
+      "Quitar el flujo de eventos {name} del proyecto {project}",
+    "ap.feed.warn":
+      "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
     "ap.feed.feed": "Flujo: {name}, para {agent}",
-    "ap.feed.bearer": "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
-    "ap.feed.noBearer": "Sin bearer: el flujo se abre sin cabecera Authorization.",
-    "ap.feed.removeWarn": "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
+    "ap.feed.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
+    "ap.feed.noBearer":
+      "Sin bearer: el flujo se abre sin cabecera Authorization.",
+    "ap.feed.removeWarn":
+      "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
     "feed.problems":
       "Entradas de agents.event_feeds que no se pueden leer: {n}.",
     "feed.failed":
@@ -2980,6 +3010,13 @@
       "Retiraste la pregunta de {name}, resuelta: {reason} ({text})",
     "bell.m.settledLate":
       "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
+    "bell.m.hubSwitchWaits":
+      "Inicia sesión en {to} para terminar el cambio de Hub; __DEN_TITLE__ sigue en {from} hasta entonces",
+    "bell.m.hubSwitchExpired":
+      "El cambio a {to} esperó {days} días un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}; vuelve a pedirlo para cambiar",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ no pudo cambiar a {to}: {why}. Sigue en {from}; vuelve a iniciar sesión en Ajustes › Hub",
+    "ap.hubSwitchSignin": "Abriendo el inicio de sesión de {url}…",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
@@ -3143,6 +3180,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
     "bell.m.updateWaits":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubAgentsReconnect":
+      "Vuelve a conectar Hub para que tus agentes firmen su propio trabajo",
     "bell.m.updateWaitsAsked":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.updateWaitsWhat":
@@ -3616,6 +3655,12 @@
     "ag.signIn": "con {label}",
     "ag.signIn.tip":
       "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
+    "ag.hub.bound": "Verificado en Hub",
+    "ag.hub.bound.tip":
+      "Llama a Hub con su propio token, así que Hub reconoce su trabajo y sus aprobaciones como suyos.",
+    "ag.hub.unbound": "Sin verificar en Hub",
+    "ag.hub.unbound.tip":
+      "Por ahora llama a Hub con el token de esta instalación, así que Hub no distingue sus aprobaciones de las de la instalación. Den le pide a Hub su propio token la próxima vez que llame a Hub.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
@@ -3720,6 +3765,11 @@
     "gate.leftoversH": "Detenidos al terminar su ejecución",
     "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
     "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
+    "gate.removedH": "Contenedores desechables quitados tras su ejecución",
+    "gate.removed": "{n} contenedores de {label} ({images})",
+    "gate.removed.one": "{n} contenedor de {label} ({images})",
+    "gate.removedBare": "{n} contenedores de {label}",
+    "gate.removedBare.one": "{n} contenedor de {label}",
     "busy.setUndoW": "Devolviendo el ajuste…",
     "busy.setUndoS": "El ajuste vuelve a estar como antes.",
     "busy.setUndoF": "No se pudo devolver el ajuste.",

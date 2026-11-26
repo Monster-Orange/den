@@ -6,8 +6,22 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Added
+
+- You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
+- An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+- An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
+
 ### Fixed
 
+- On a test install, a live check can now set one of the test's own agents to "ask" or "edits", or back to its project's mode, from the agent's row. Before, the request was refused, so the row's mode switch couldn't be checked there. Wider modes, agents the test didn't start and the server agent are still refused.
+- After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
+
+### Fixed
+
+- When an agent's Den tools can't confirm this install's server, the refusal now says why (no answer within the wait, the connection's error, or an empty answer) and how long it waited, and that the next call checks again. The wait is a new setting, Settings › Server › Den tools' check of this install (`web.tools_probe_seconds`, default 30 s, was a fixed 5 s) (issue 1664).
+- An app feed whose event store was removed (the feed taken out and added again, or its folder lost) gets its next events to its agent again. Before, the new store numbered its events from 1, and the agent's pointers to them looked like ones it had already been sent, so nothing was typed and the person wasn't told. Each new store now has its own random id, kept in its meta file, and every pointer carries it. A store from before this keeps its old pointer ids, so nothing the agent was already sent is typed again. (issue 1672)
+- `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
 - minimatch, used by the TypeScript lint parser, is now 11.0.9, past a denial-of-service flaw in its brace patterns (GHSA-g3hv-75wg-m249; below 11.0.1). It's dev-only, not in the published package: `npm ls minimatch --omit=dev` shows only 5.1.9, outside the flaw's range. The lock also no longer lists the PTY module (@lydell/node-pty) as a required dependency; package.json has it as optional only.

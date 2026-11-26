@@ -63,6 +63,7 @@ function setup(
     relay?: (dv: Delivery) => Promise<boolean>;
     holds?: (id: string) => boolean;
     lookup?: AppFeedServiceDeps["lookup"];
+    seen?: Set<string>;
   } = {},
 ) {
   const calls: {
@@ -75,7 +76,7 @@ function setup(
   const logs: string[] = [];
   const bells: Parameters<AppFeedServiceDeps["bell"]>[0][] = [];
   const relayed: Delivery[] = [];
-  const seen = new Set<string>();
+  const seen = o.seen ?? new Set<string>();
   const projectOf: Record<string, string> = o.projectOf ?? {
     "north-helper": "north",
   };
@@ -259,6 +260,84 @@ describe("app feed service: pointer delivery", () => {
     s.svc.stop();
     expect(s.relayed).toHaveLength(2);
     expect(s.relayed[1].text).toMatch(/unread events/);
+  });
+
+  it("a feed whose store was removed gets its next event typed: pointer ids never repeat across stores", async () => {
+    const seen = new Set<string>();
+    const a = setup({ seen });
+    a.svc.sync();
+    await until(() => a.relayed.length === 1);
+    a.svc.stop();
+    fs.rmSync(path.join(dir, "app-feeds"), { recursive: true, force: true });
+    const b = setup({ seen });
+    b.svc.sync();
+    await until(() => b.relayed.length === 1);
+    b.svc.stop();
+    expect(b.relayed[0].id).not.toBe(a.relayed[0].id);
+  });
+
+  it("a restart with the store kept never types a pointer twice", async () => {
+    const seen = new Set<string>();
+    const a = setup({ seen });
+    a.svc.sync();
+    await until(() => a.relayed.length === 1);
+    a.svc.stop();
+    const b = setup({ seen });
+    b.svc.sync();
+    await until(() => b.calls.length >= 1);
+    await b.svc.tick();
+    b.svc.stop();
+    expect(b.relayed).toHaveLength(0);
+  });
+
+  it("an upgraded store keeps its old ids: nothing already typed is typed again", async () => {
+    const seen = new Set<string>();
+    const a = setup({ seen });
+    a.svc.sync();
+    await until(() => a.relayed.length === 1);
+    a.svc.stop();
+    const [store] = fs.readdirSync(path.join(dir, "app-feeds"));
+    const meta = path.join(dir, "app-feeds", store, "events", "meta.json");
+    for (const pointed of [1, 0]) {
+      fs.writeFileSync(meta, JSON.stringify({ read: 0, pointed }));
+      seen.clear();
+      seen.add("inbox:embed:feed:north/chat/1");
+      const b = setup({ seen });
+      b.svc.sync();
+      await until(() => b.calls.length >= 1);
+      await b.svc.tick();
+      b.svc.stop();
+      expect(b.relayed).toHaveLength(0);
+    }
+    let n = 0;
+    const c = setup({
+      seen,
+      respond: (url) =>
+        url.includes("after=")
+          ? new Response("[]", { status: 200 })
+          : stream([`id: e1\ndata: x\n\n`, `id: e${n++ ? 3 : 2}\ndata: y\n\n`]),
+    });
+    c.svc.sync();
+    await until(() => c.relayed.length === 1);
+    c.svc.stop();
+    expect(c.relayed[0].id).toBe("inbox:embed:feed:north/chat/2");
+  });
+
+  it("a new store gets a random epoch, kept after; an old one is legacy", () => {
+    const d = path.join(dir, "old");
+    fs.mkdirSync(d);
+    fs.writeFileSync(
+      path.join(d, "meta.json"),
+      JSON.stringify({ read: 3, pointed: 3 }),
+    );
+    expect(new FileFeedStore(d, () => 100).epoch()).toBe("");
+    expect(new FileFeedStore(d, () => 100).epoch()).toBe("");
+    const e = new FileFeedStore(path.join(dir, "new"), () => 100).epoch();
+    expect(e).toMatch(/^[0-9a-f]{16}$/);
+    expect(new FileFeedStore(path.join(dir, "new"), () => 100).epoch()).toBe(e);
+    expect(
+      new FileFeedStore(path.join(dir, "other"), () => 100).epoch(),
+    ).not.toBe(e);
   });
 
   it("the feed's agent is checked at delivery: one now in another project gets nothing", async () => {

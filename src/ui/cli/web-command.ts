@@ -12,7 +12,7 @@ import { denWebBase, webProbeTarget } from "../../shared/web/web-dial.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
-import { LookupTimeoutError, lookup } from "./proc-lookup.js";
+import { LookupTimeoutError, lookup } from "../../shared/proc-lookup.js";
 import {
   readSecretsConfig,
   secretsProcessEnv,

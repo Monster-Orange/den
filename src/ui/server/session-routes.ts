@@ -120,6 +120,10 @@ import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
 import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
@@ -157,6 +161,7 @@ export interface SessionRouteDeps {
    * "permission", "input" or "asked" (its hooks, ask_human).
    */
   waitingWhy?: () => ReadonlyMap<string, string>;
+  activity?: () => ReadonlyMap<string, "working" | "idle">;
   /** The person typed into session `id` (its pane): its agent's wait ends. */
   typed?: (id: string) => void;
   /**
@@ -216,6 +221,7 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
+  activity: () => ReadonlyMap<string, "working" | "idle">;
   typed: (id: string) => void;
   draftWaiting: (agent: string) => number;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
@@ -279,6 +285,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
+    activity: d.activity ?? (() => new Map<string, "working" | "idle">()),
     typed:
       d.typed ??
       ((id) =>
@@ -415,6 +422,7 @@ export interface ListedSession {
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -469,6 +477,7 @@ export interface ListedSession {
    * 659's "trust": its folder-trust question), when known.
    */
   waitingWhy?: string;
+  activity?: "working" | "idle";
   /** Issue 659: it ended because its folder-trust question was declined. */
   trustDeclined?: true;
   /** Issue 658: Relaunch from its last handoff is offered (none ready). */
@@ -585,7 +594,10 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<
-      Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
+      Pick<
+        Resolved,
+        "waitingAgents" | "waitingWhy" | "activity" | "workspaceExists"
+      >
     > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
@@ -647,6 +659,7 @@ export function listedSessions(
   const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
+  const doing = d.activity?.() ?? new Map<string, "working" | "idle">();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -753,6 +766,13 @@ export function listedSessions(
       ...(r.trustWait && s && !s.exited
         ? { waiting: true, waitingWhy: "trust" }
         : {}),
+      ...(doing.has(rec.id) &&
+      s &&
+      !s.exited &&
+      !waiting.has(rec.id) &&
+      !r.trustWait
+        ? { activity: doing.get(rec.id) }
+        : {}),
       ...(r.trustDeclined ? { trustDeclined: true as const } : {}),
       ...(r.handoffOnFile ? { handoffOnFile: true as const } : {}),
       ...(r.restartFailed ? { restartFailed: { ...r.restartFailed } } : {}),
@@ -780,6 +800,9 @@ export function listedSessions(
         const failed = mcpLoadFailures(d.stateDir(), rec);
         return failed.length ? { mcpFailed: failed } : {};
       })(),
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),

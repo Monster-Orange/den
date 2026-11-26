@@ -63,6 +63,7 @@ import {
 import {
   alertFeed,
   attentionDetail,
+  attentionActivity,
   attentionWaiting,
   notificationDeps,
 } from "./notification-service.js";
@@ -216,7 +217,9 @@ import {
   scopeView,
   storedView,
 } from "../../shared/environment-manager/scope.js";
-import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
+import { findServiceContainerAsync } from "../../shared/environment-manager/service-container.js";
+import { gitReadsAtOnce } from "../../shared/git-reads.js";
+import { readRepoHeads } from "./test-sources.js";
 import {
   resolveHistorySource,
   ensureSnapshot,
@@ -730,6 +733,8 @@ import {
   type HubConfig,
 } from "../../shared/hub.js";
 import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
+import { serverHubAgentTokens } from "../../shared/hub-agent-tokens.js";
+import { syncAgentGrantNote } from "../../shared/hub-agent-grant.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -918,7 +923,6 @@ import {
   LOG_SWEEP_INTERVAL_MS,
   DEFAULT_PORT,
   CLI_SPAWN_TIMEOUT_MS,
-  GIT_REMOTE_TIMEOUT_MS,
   DAEMON_QUICK_EXIT_MS,
   DAEMON_RETRY_DELAY_MS,
   DAEMON_SHUTDOWN_GRACE_MS,
@@ -1535,7 +1539,7 @@ import {
   isSchedulePath,
   type ScheduleServerDeps,
 } from "./verify-schedule-routes.js";
-import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
   serverLogMaxBytes,
@@ -1726,18 +1730,6 @@ interface TestSource {
   workspace: string | null;
 }
 
-/** One git answer, async: slow git never holds up the server (issue 132). */
-function readGitField(gitArgs: string[], cwd: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    execFile(
-      "git",
-      gitArgs,
-      { cwd, encoding: "utf-8", timeout: GIT_REMOTE_TIMEOUT_MS },
-      (err, stdout) => resolve(err ? null : stdout.trim() || null),
-    );
-  });
-}
-
 /** The pillars whose sources are a repo manifest's own sections. */
 type SourcePillar = Extract<
   Pillar,
@@ -1767,24 +1759,15 @@ function testSourceRepos(
   });
 }
 
-/** Those repos with their branch and short SHA, read in parallel. */
+/** Those repos with their branch and short SHA, git_reads.at_once at a time. */
 async function collectTestSources(pillar: SourcePillar): Promise<TestSource[]> {
   const workspace = getActiveWorkspace()?.name ?? null;
-  return Promise.all(
-    testSourceRepos(pillar).map(async (repo) => {
-      const [branch, shortSha] = await Promise.all([
-        readGitField(["rev-parse", "--abbrev-ref", "HEAD"], repo.repoPath),
-        readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
-      ]);
-      return {
-        repoName: repo.repoName,
-        repoPath: repo.repoPath,
-        branch,
-        shortSha,
-        workspace,
-      };
-    }),
-  );
+  const repos = testSourceRepos(pillar).map((r) => ({
+    repoName: r.repoName,
+    repoPath: r.repoPath,
+  }));
+  const heads = await readRepoHeads(repos, gitReadsAtOnce());
+  return heads.map((h) => ({ ...h, workspace }));
 }
 
 function formatSourceLine(src: TestSource): string {
@@ -5415,6 +5398,10 @@ function approvalDeps(): ApprovalDeps {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
             },
+            switching: async (s) => {
+              const m = await import("./hub-switch.js");
+              m.beginHubSwitch(await m.hubSwitchDeps(), s);
+            },
             // Issue 726: the old Hub's state is archived, its bell cleared.
             changed: async (url) => {
               const m = await import("./hub-change.js");
@@ -6455,6 +6442,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return {
           probeSeconds: c.readyProbeSeconds,
           startSeconds: c.startWaitSeconds,
+          toolsProbeSeconds: c.toolsProbeSeconds,
         };
       } catch {
         return null;
@@ -6496,6 +6484,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       try {
         return {
           max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+          max_per_project: readAgentsConfig(undefined, user).maxPerProject,
         };
       } catch {
         return null;
@@ -9085,12 +9074,13 @@ async function handleRequest(
     // `docker logs -f`. This gives REAL runtime logs for services with no (or
     // broken) manifest `logs.local` — no den daemon file needed. Returns
     // false when no such container is running.
-    const startDockerFallback = (): boolean => {
-      const container = findServiceContainer(
+    const startDockerFallback = async (): Promise<boolean> => {
+      const container = await findServiceContainerAsync(
         repoName,
         tailResolved?.repoPath,
         tailSubsystem,
       );
+      if (!active) return true;
       if (!container) return false;
       emit({
         type: "line",
@@ -9137,8 +9127,8 @@ async function handleRequest(
       );
     };
 
-    const startFallback = (): void => {
-      if (startDockerFallback()) return;
+    const startFallback = async (): Promise<void> => {
+      if (await startDockerFallback()) return;
       startDaemonFileFallback();
     };
 
@@ -9179,19 +9169,21 @@ async function handleRequest(
             clearTimeout(quickTimer);
             quickTimer = null;
             lineBuffer.length = 0; // discard noisy error output
-            if (startDockerFallback()) {
-              // streaming the conventional container's logs
-            } else if (fs.existsSync(daemonLogPath)) {
-              startDaemonFileFallback();
-            } else if (retryCount < MAX_RETRIES) {
-              retryCount++;
-              retryTimer = setTimeout(() => {
-                retryTimer = null;
-                if (active) tryManifestCmd();
-              }, RETRY_DELAY_MS);
-            } else {
-              startFallback();
-            }
+            void startDockerFallback().then(async (streaming) => {
+              if (streaming) {
+                // streaming the conventional container's logs
+              } else if (fs.existsSync(daemonLogPath)) {
+                startDaemonFileFallback();
+              } else if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                retryTimer = setTimeout(() => {
+                  retryTimer = null;
+                  if (active) tryManifestCmd();
+                }, RETRY_DELAY_MS);
+              } else {
+                await startFallback();
+              }
+            });
           } else if (exitCode !== 0) {
             // Ran for a while then exited with error.
             emit({
@@ -9213,7 +9205,7 @@ async function handleRequest(
     } else {
       // No manifest log source (e.g. shop-web, control-plane): conventional
       // container logs first, daemon startup log as last resort.
-      startFallback();
+      void startFallback();
     }
 
     res.on("close", () => {
@@ -10105,7 +10097,19 @@ async function handleRequest(
   // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
   if (
     await handleHubProxy(req, res, pathname, {
-      upstream: (who) => hubUpstream(agentWebDeps(), who),
+      upstream: (who) =>
+        hubUpstream(
+          agentWebDeps({
+            hubAgentToken: (h, a) =>
+              serverHubAgentTokens(() =>
+                syncAgentGrantNote(notificationDeps().store, {
+                  connected: true,
+                  notCovered: true,
+                }),
+              ).tokenFor(h, a),
+          }),
+          who,
+        ),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
       // Issue 749: a tool listing that failed leaves it without Hub's tools.
       onMcpToolsList: (agentId, o) =>
@@ -10114,7 +10118,10 @@ async function handleRequest(
       // next call read it again (at most once a minute), as Den's own
       // status check does; and the agent's note says how its calls go.
       onHubAnswer: (agentId, o) => {
-        if (o.status === 401) forgetHubToken();
+        if (o.status === 401) {
+          forgetHubToken();
+          serverHubAgentTokens().rejected(agentId);
+        }
         if (o.sub === "/mcp")
           noteHubMcpCall(getStateDir(), agentId, {
             ok: o.status !== null && o.status >= 200 && o.status < 300,
@@ -10146,6 +10153,7 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         waitingWhy: waitingReasons,
+        activity: attentionActivity,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
@@ -10577,6 +10585,7 @@ async function handleRequest(
         agents_default_mode: user.agents?.default_mode ?? null,
         // Issue 1022: how often the page polls health, visible and hidden.
         health_poll: healthPollSeconds(() => user),
+        git_reads: { at_once: gitReadsAtOnce(() => user) },
         // Issue 750: groups from Hub (user.yml hub.groups, auto by default).
         hub_groups: (() => {
           const h = (user as Record<string, unknown>).hub as
@@ -10707,6 +10716,7 @@ async function handleRequest(
           agents_limits?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
+          git_reads?: unknown;
           github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
@@ -10781,6 +10791,7 @@ async function handleRequest(
             agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
+            git_reads: body.git_reads,
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
@@ -11878,11 +11889,6 @@ void (async () => {
     );
 })();
 
-const prunedSnapshots = pruneDeadSnapshots();
-if (prunedSnapshots > 0) {
-  serverLog(`Pruned ${prunedSnapshots} orphaned log-history snapshot(s)`);
-}
-
 // #63: the edge's raw access log holds unmasked one-time tokens until Den
 // masks it into edge-access.log. Swept first at startup (lines left while
 // the server was down), then every second. Also swept when the access log
@@ -12131,6 +12137,13 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    void pruneDeadSnapshots()
+      .then((n) => {
+        if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
+      })
+      .catch((e: unknown) =>
+        serverLog(`Log-history snapshot prune failed: ${String(e)}`),
+      );
     // Issue 936: Turn on the agent sandbox for agents from before it.
     startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
@@ -12375,6 +12388,20 @@ void CRASH_GATE.then(() =>
             (await import("./hub-delivery-service.js")).relayMessage(dv),
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
+      );
+    void hubChecked
+      .then(() => import("../../shared/hub-agent-tokens.js"))
+      .then((m) =>
+        m.startAgentTokenRevokeRetry(
+          async () => {
+            const { readHubConfig, readHubToken } =
+              await import("../../shared/hub.js");
+            const cfg = readHubConfig();
+            const token = cfg ? await readHubToken(cfg) : null;
+            return cfg && token ? { url: cfg.url, token } : null;
+          },
+          (l) => serverLog(`  [hub] ${l}`, "warn"),
+        ),
       );
   }),
 );
