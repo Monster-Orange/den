@@ -2710,6 +2710,9 @@
     "set.server.health_poll_hidden": "Health checks in a hidden tab",
     "set.server.health_poll_hidden.d":
       "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Git reads at once",
+    "set.server.git_reads.d":
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -4086,6 +4089,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.hubAgentsReconnect":
+      "Reconnect to Hub so your agents sign their own work",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.updateWaitsWhat":
@@ -4542,6 +4547,12 @@
     "ag.signIn": "on {label}",
     "ag.signIn.tip":
       "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
+    "ag.hub.bound": "Verified on Hub",
+    "ag.hub.bound.tip":
+      "It calls Hub with its own token, so Hub counts its work and approvals as its own.",
+    "ag.hub.unbound": "Not verified on Hub",
+    "ag.hub.unbound.tip":
+      "It calls Hub with this install's token for now, so Hub can't tell its approvals from the install's. Den asks Hub for its own token when it next calls Hub.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
@@ -4647,6 +4658,11 @@
     "gate.leftoversH": "Stopped after their run ended",
     "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
     "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
+    "gate.removedH": "Throwaway containers removed after their run",
+    "gate.removed": "{n} containers of {label} ({images})",
+    "gate.removed.one": "{n} container of {label} ({images})",
+    "gate.removedBare": "{n} containers of {label}",
+    "gate.removedBare.one": "{n} container of {label}",
     "busy.setUndoW": "Putting the setting back…",
     "busy.setUndoS": "The setting is back as it was.",
     "busy.setUndoF": "Couldn't put the setting back.",

@@ -34,6 +34,13 @@ const esc = (s) =>
 export const gateTime = (iso) => formatTime(iso, { style: "time" });
 const hm = gateTime;
 
+export function removedAt(iso, now = Date.now()) {
+  const day = formatTime(iso, { style: "date" });
+  return day && day === formatTime(now, { style: "date" })
+    ? hm(iso)
+    : formatTime(iso, { style: "datetime" });
+}
+
 /** Issue 1132: a granted run held by the start ceiling, in words ("" if not). */
 export function startHoldWords(s, t) {
   return s.startHold
@@ -42,6 +49,14 @@ export function startHoldWords(s, t) {
         limit: String(s.startHold.limit),
       })
     : "";
+}
+
+export function removedWords(r, t) {
+  const label = r.label || r.id;
+  const images = (r.images ?? []).join(", ");
+  return images
+    ? t("gate.removed", { n: r.count, label, images })
+    : t("gate.removedBare", { n: r.count, label });
 }
 
 /** Issue 1132: what was stopped of an ended run, in words. */
@@ -56,6 +71,7 @@ export function startGateChip(o) {
   let slots = [];
   let boxes = [];
   let leftovers = [];
+  let removed = [];
   // Issue 1274: this machine's free memory and what its VMs reserve.
   let machine = null;
   let pop = null;
@@ -311,6 +327,20 @@ export function startGateChip(o) {
             .join("") +
           "</ul>"
         : "") +
+      (removed.length
+        ? '<h3 class="gate-h">' +
+          esc(t("gate.removedH")) +
+          '</h3><ul class="gate-ul" data-gate-removed>' +
+          removed
+            .map(
+              (r) =>
+                '<li class="gate-box">' +
+                esc(removedAt(r.at) + " · " + removedWords(r, t)) +
+                "</li>",
+            )
+            .join("") +
+          "</ul>"
+        : "") +
       machineHtml(machine);
   }
 
@@ -382,6 +412,7 @@ export function startGateChip(o) {
         slots = body.slots ?? [];
         boxes = body.boxes ?? [];
         leftovers = body.leftovers ?? [];
+        removed = body.removed ?? [];
         machine = body.machine ?? null;
         paintChip();
         if (JSON.stringify(slots) !== before) o.onChange?.();

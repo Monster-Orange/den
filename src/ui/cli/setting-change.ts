@@ -172,6 +172,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "sessions.pty_machine_warn_percent",
   "health_poll.visible_seconds",
   "health_poll.hidden_seconds",
+  "git_reads.at_once",
   "hub.groups_cache_seconds",
   // Vision's ruling (issue 1391): Settings' own fields, each named.
   "hub.delivery_loop",

@@ -691,6 +691,16 @@ function signInTag(r) {
   return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
 }
 
+/**
+ */
+function hubBoundTag(r) {
+  if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";
+  const [word, tip] = r.hubBound
+    ? [t("ag.hub.bound"), t("ag.hub.bound.tip")]
+    : [t("ag.hub.unbound"), t("ag.hub.unbound.tip")];
+  return `<span class="tagx" data-hub-bound="${r.hubBound}" title="${esc(tip)}">${esc(word)}</span>`;
+}
+
 /** Its rotation, when one is due: "ready" or "due" (den#4). */
 function rotationOf(r) {
   // D28: on_due off: nothing will happen, so nothing is shown.
@@ -2731,6 +2741,7 @@ function paintBar(p) {
     linkTag(r) +
     subagentTag(r) +
     signInTag(r) +
+    hubBoundTag(r) +
     draftWaitingTag(p);
   const html =
     `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
