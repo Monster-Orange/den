@@ -44,12 +44,16 @@ beforeAll(async () => {
     req.on("data", (c: Buffer) => (raw += c.toString("utf8")));
     req.on("end", () => {
       const auth = String(req.headers.authorization ?? "");
-      hub.seen.push({
-        method: req.method ?? "",
-        url: req.url ?? "",
-        auth,
-        agentId: String(req.headers["x-den-agent-id"] ?? ""),
-      });
+      const deliveryFeed = (req.url ?? "").startsWith(
+        "/api/installs/self/deliveries",
+      );
+      if (!deliveryFeed)
+        hub.seen.push({
+          method: req.method ?? "",
+          url: req.url ?? "",
+          auth,
+          agentId: String(req.headers["x-den-agent-id"] ?? ""),
+        });
       const json = (code: number, v: unknown) => {
         res.writeHead(code, { "content-type": "application/json" });
         res.end(JSON.stringify(v));

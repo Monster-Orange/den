@@ -66,6 +66,20 @@ export function rowWhy(n: Notification): "permission" | "asked" | null {
   return null;
 }
 
+const KEPT_WHAT: Record<string, string> = {
+  "bell.m.permissionWhat": "what",
+  "bell.m.asked": "text",
+};
+
+export function keptWhat(n: Notification): string {
+  if (n.msg?.key) {
+    const v = n.msg.vars[KEPT_WHAT[n.msg.key] ?? ""];
+    return typeof v === "string" ? trimWhat(v) : "";
+  }
+  const m = / needs your permission: (.+)$| asked: (.+)$/s.exec(n.text);
+  return trimWhat(m?.[1] ?? m?.[2] ?? "");
+}
+
 /**
  * The agents Den won't type into (a Hub delivery, a tools note): a held
  * Allow (`approvalActors`, "agent:<id>"), a permission prompt, or an
@@ -1002,11 +1016,10 @@ export class Attention {
           }
         }
         const at = Date.parse(n.at);
-        const what = n.msg?.vars.what;
         this.waiting.set(agent, {
           why,
           text: n.text,
-          what: typeof what === "string" ? what : "",
+          what: keptWhat(n),
           at: Number.isFinite(at) ? at : this.now(),
           mark: await this.d.outputMark(agent),
           workspace: n.scope.startsWith("workspace/")
