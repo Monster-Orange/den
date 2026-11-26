@@ -136,7 +136,7 @@ describe("gate/1724 rows", () => {
     expect(r[1].skip).toBe("needs-ipad-sized-first");
   });
 
-  it("the terminal's size never heard (v0.4.90 on the bed: attach refused) is not measured, never a FAIL", () => {
+  it("a size never heard: fixture_scope (this bed) skips needs-attested-edge; anything else is not measured, never a FAIL", () => {
     let said = "";
     try {
       rows({ ...good, sizedMs: null, firstPty: null });
@@ -147,15 +147,26 @@ describe("gate/1724 rows", () => {
       /1724 not measured: the iPad pane \(101x72\) never heard the terminal's size, so no case could run/,
     );
     expect(said).not.toContain("Den refused");
+    const parked = rows({
+      ...good,
+      sizedMs: null,
+      firstPty: null,
+      refused: "fixture_scope for fixture:person",
+    });
+    expect(parked.map((x) => [x.ok, x.skip])).toEqual(
+      Array(5).fill([null, "needs-attested-edge"]),
+    );
+    expect(parked[0].detail).toContain("issue 1849");
+    expect(parked[0].detail).toContain("fixture_scope for fixture:person");
     expect(() =>
       rows({
         ...good,
         sizedMs: null,
         firstPty: null,
-        refused: "fixture_scope for fixture:person",
+        refused: "csrf for person:p1",
       }),
     ).toThrow(
-      /Den refused its terminal attach \(fixture_scope for fixture:person\): a check's signed-in browser is the bed's fixture person/,
+      /1724 not measured: .*Den refused its terminal attach \(csrf for person:p1\)/,
     );
   });
 

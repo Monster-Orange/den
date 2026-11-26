@@ -367,9 +367,16 @@ export function expect(cells) {
   if (r.error) throw new Error(`1724 not measured: ${r.error}`);
   if (!r.pane)
     throw new Error("1724 not measured: the iPad page showed no terminal pane");
+  if (!r.firstPty && String(r.refused ?? "").startsWith("fixture_scope"))
+    return clauses.map((c) => ({
+      clause: c,
+      ok: null,
+      skip: "needs-attested-edge",
+      detail: `Den refused the iPad's terminal attach (${r.refused}, from Den's audit): a check's signed-in browser is the bed's fixture person, and this bed's edge can't attest a person; parked with 653 until a box can (issue 1849)`,
+    }));
   if (!r.firstPty)
     throw new Error(
-      `1724 not measured: the iPad pane (${sz(r.ipad)}) never heard the terminal's size, so no case could run${r.refused ? `; Den refused its terminal attach (${r.refused}): a check's signed-in browser is the bed's fixture person` : ""}`,
+      `1724 not measured: the iPad pane (${sz(r.ipad)}) never heard the terminal's size, so no case could run${r.refused ? `; Den refused its terminal attach (${r.refused})` : ""}`,
     );
   const first = row(
     clauses[0],
