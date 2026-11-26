@@ -59,6 +59,7 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     expect(await s.settings({ web_ready: { tools_probe_seconds: 0 } })).toBe(
       400,
     );
+    expect(user()).toMatchObject({ web: { tools_probe_seconds: 90 } });
     expect(await s.settings({ web_ready: { tools_probe_seconds: null } })).toBe(
       200,
     );
