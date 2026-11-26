@@ -6,12 +6,8 @@
  * gives every word; the kit escapes them. Tokens only in its stylesheet.
  */
 import { describe, expect, it } from "@jest/globals";
-import * as fs from "fs";
-import * as path from "path";
 import { groupHeaderHtml } from "../../../packages/den-ui/src/group-header.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
-
-const SRC = path.join(process.cwd(), "packages", "den-ui", "src");
 
 const base = {
   name: "Web <Delivery>",
