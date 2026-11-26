@@ -169,7 +169,12 @@ export function fakeBed({ den = "good" } = {}) {
       if (role === "menuitem")
         return {
           async click() {
-            if (menuOpen !== "top" || !/^Mode: /.test(o.name)) fail(o.name);
+            const now = t("ag.mode.item", { m: t(`pm.name.${st.running}`) });
+            if (
+              menuOpen !== "top" ||
+              !(o.name instanceof RegExp ? o.name.test(now) : o.name === now)
+            )
+              fail(o.name);
             menuOpen = "mode";
           },
         };

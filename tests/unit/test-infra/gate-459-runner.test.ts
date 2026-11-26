@@ -86,13 +86,15 @@ describe("gate/459.mjs as the bed runs it", () => {
     putBack(r);
   });
 
-  it("a held item left for its agent: cleared while Den is down, another agent's kept", () => {
+  it("a held item left for its agent is captured, and Den's held file is never edited", () => {
     const r = runGate("heldLeft");
     expect(r.error).toBeUndefined();
-    expect(oks(r)).toEqual([true, true, true, true, true]);
-    expect(r.rows?.[1].detail).toContain("held cleared at start 1");
+    expect(r.rows?.[1].detail).toContain('"held_reason":"busy"');
     expect(r.after.held).toEqual({
-      queue: { "other-agent": [{ id: "hub:keep" }] },
+      queue: {
+        "gate-459-feed": [{ id: "feed:old", held_reason: "busy" }],
+        "other-agent": [{ id: "hub:keep" }],
+      },
       active: {},
     });
     putBack(r);

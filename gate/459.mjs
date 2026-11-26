@@ -88,7 +88,13 @@ function feedServer() {
 const words = (p, key, vars) =>
   p.evaluate(([k, v]) => window.denShell.t(k, v), [key, vars ?? {}]);
 
-const answering = async (ctx) => !!(await ctx.api("/api/server-info"));
+const answering = async (ctx) => {
+  try {
+    return !!(await ctx.api("/api/server-info"));
+  } catch {
+    return false;
+  }
+};
 
 const heldFile = (ctx) =>
   path.join(
@@ -110,25 +116,6 @@ function heldOf(ctx) {
     };
   } catch (e) {
     return { error: String(e?.code ?? e?.message ?? e).slice(0, 80) };
-  }
-}
-
-function clearHeld(ctx) {
-  if (!ctx.o?.bed) return null;
-  const file = heldFile(ctx);
-  try {
-    const all = JSON.parse(fs.readFileSync(file, "utf8"));
-    const h = all?.held;
-    const n = (h?.queue?.[ID]?.length ?? 0) + (h?.active?.[ID] ? 1 : 0);
-    if (!n) return 0;
-    delete h.queue?.[ID];
-    delete h.active?.[ID];
-    const left =
-      Object.keys(h.queue ?? {}).length + Object.keys(h.active ?? {}).length;
-    writeWhole(file, JSON.stringify({ ...all, held: left ? h : null }));
-    return n;
-  } catch (e) {
-    return String(e?.code ?? e?.message ?? e).slice(0, 80);
   }
 }
 
@@ -174,10 +161,9 @@ async function snapshot(ctx, name) {
 async function restartDen(ctx) {
   const down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
   await ctx.until(async () => !(await answering(ctx)), 15000);
-  const cleared = clearHeld(ctx);
   const up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
   const ms = await ctx.until(() => answering(ctx), 60000);
-  return { down, up, ms, cleared };
+  return { down, up, ms };
 }
 
 /** The stub's project, from the sessions list. */
@@ -461,7 +447,7 @@ export function expect(cells) {
         first[0].enter === true &&
         first[0].text.includes(`"${FEED}"`) &&
         !first.some((x) => x.text.includes(BAIT)),
-      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}; held cleared at start ${JSON.stringify(r.restart?.cleared ?? null)}; before: ${JSON.stringify({ row: r.atStart?.row, held: r.atStart?.held })}; at pointer: ${JSON.stringify({ row: r.atPointer?.row, held: r.atPointer?.held, bell: r.atPointer?.bell })}; at end (held ${r.heldMs ?? "never"} ms): ${JSON.stringify({ held: r.atEnd?.held, bell: r.atEnd?.bell })}${why}`,
+      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}; before: ${JSON.stringify({ row: r.atStart?.row, held: r.atStart?.held })}; at pointer: ${JSON.stringify({ row: r.atPointer?.row, held: r.atPointer?.held, bell: r.atPointer?.bell })}; at end (held ${r.heldMs ?? "never"} ms): ${JSON.stringify({ held: r.atEnd?.held, bell: r.atEnd?.bell })}${why}`,
     },
     {
       clause: clauses[2],

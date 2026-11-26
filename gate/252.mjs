@@ -140,10 +140,15 @@ async function openMode(ctx, ws, mode) {
   if (!(await more.count())) await row.click();
   await waitOr(ctx, more, 15000, "more");
   await more.click();
-  const item = await words(p, "ag.mode.item", {
-    m: await words(p, `pm.name.${mode}`),
-  });
-  await p.getByRole("menuitem", { name: item, exact: true }).click();
+  const [ipre, ipost] = (await words(p, "ag.mode.item", { m: "\u0000" })).split(
+    "\u0000",
+  );
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await p
+    .getByRole("menuitem", {
+      name: new RegExp(`^${esc(ipre)}.+${esc(ipost ?? "")}$`),
+    })
+    .click();
   const radios = p.getByRole("menuitemradio");
   await waitOr(
     ctx,
