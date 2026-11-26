@@ -14,14 +14,9 @@
  *     desktop: true          # an open tab shows them (default on)
  *     phone: true            # push to subscribed devices (default on)
  *     quiet: { from: "22:00", to: "07:00" }   # none by default
- *     finished: false        # a finished turn alerts too
- *     sound: false           # a short sound from an open tab
- *     tab_count: true        # the count in the tab title and icon
  *     push_timeout_seconds: 30     # how long one push may take (1..3600)
  *     push_ttl_seconds: 86400      # how long a push service keeps it
  *                                  # (0..2419200); both Settings rows (#367)
- *     tab_first_seconds: 3   # a tab's time before the push (1..10)
- *     max_streams: 20        # open-tab streams a person keeps (1..200)
  */
 import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "./ui-language.js";
