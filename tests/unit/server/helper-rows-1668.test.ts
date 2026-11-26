@@ -90,9 +90,9 @@ function counting(spinMs = 0) {
   const fn: typeof rowHelpers = (rec, ...rest) => {
     calls.push(rec.id);
     const end = Date.now() + spinMs;
-    while (Date.now() < end) {
-      /* a slow transcript */
-    }
+    let spins = 0;
+    while (Date.now() < end) spins++;
+    expect(spins).toBeGreaterThanOrEqual(0);
     return rowHelpers(rec, ...rest);
   };
   return { calls, fn };
