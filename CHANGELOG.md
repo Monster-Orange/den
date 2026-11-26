@@ -6,6 +6,14 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Added
+
+- An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+
+### Fixed
+
+- After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
+
 ### Fixed
 
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.

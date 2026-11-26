@@ -573,14 +573,10 @@ export interface AgentsDeps extends SessionsDeps {
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
-  /**
-   */
   hubAgentToken?: (
     hub: { url: string; token: string },
     a: { id: string; name: string; workspace: string },
   ) => Promise<string | null>;
-  /**
-   */
   hubAgentUnbind?: (id: string) => Promise<void>;
   /**
    * Issue 163 (b): the secrets store and ref the agents' sign-in token is

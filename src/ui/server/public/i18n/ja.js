@@ -1634,6 +1634,11 @@
     "hub.addressMore": "Hub のアドレス…",
     "hub.justConnected":
       "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
+    "hub.switching":
+      "{to} に切り替え中です。終えるにはそこでサインインしてください。それまで __DEN_TITLE__ は {from} のままです。",
+    "hub.switchEnded":
+      "{to} への切り替えはサインインを待ちすぎたため終了しました。__DEN_TITLE__ は {from} のままです。",
+    "hub.switchSignin": "新しい Hub にサインイン",
     "hub.reconnect": "再接続",
     "hub.cw.done": "Hub（{company}）に接続しました。",
     "hub.cw.doneNoCo": "Hub に接続しました。",
@@ -2385,6 +2390,10 @@
       "その後 Den が再起動し、エージェントは次に再起動したときに Hub のツールを使えるようになります。",
     "ap.det.hub_connect.connect":
       "その後、設定 › Hub で接続します。そこで「接続」を押すと Hub にサインインします。",
+    "ap.det.hub_connect.keep":
+      "{url} にサインインするまで、Den は {was} とそのキーを使い続けます。",
+    "ap.det.hub_connect.signin":
+      "許可すると {url} のサインインが開きます。その Hub が応答したら Den はそちらに切り替わり、{was} はキーを無効にします。失敗した場合、Den は {was} のままで、理由を伝えます。",
     "ap.det.den_pin_commit.pr":
       "Den は package.json と package-lock.json をブランチ den/pin-{version} にコミットし、プルリクエストを開きます。",
     "ap.det.den_pin_commit.push":
@@ -2923,6 +2932,13 @@
       "{name} の質問を取り下げました。解決済み: {reason}（{text}）",
     "bell.m.settledLate":
       "{name} の質問は解決済みでした: {reason}。あなたの回答はその後に届き、エージェントに渡しました（{text}）",
+    "bell.m.hubSwitchWaits":
+      "Hub の切り替えを終えるには {to} にサインインしてください。それまで __DEN_TITLE__ は {from} のままです",
+    "bell.m.hubSwitchExpired":
+      "{to} への切り替えはサインインを {days} 日待ったため終了しました。__DEN_TITLE__ は {from} のままです。切り替えるにはもう一度依頼してください",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ は {to} に切り替えられませんでした: {why}。{from} のままです。設定 › Hub でもう一度サインインしてください",
+    "ap.hubSwitchSignin": "{url} のサインインを開いています…",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",

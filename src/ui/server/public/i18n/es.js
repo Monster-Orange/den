@@ -1690,6 +1690,11 @@
     "hub.addressMore": "Dirección del Hub…",
     "hub.justConnected":
       "Conectado a {company} ({host}). ¿No es la empresa que querías?",
+    "hub.switching":
+      "Cambiando a {to}: inicia sesión allí para terminar. __DEN_TITLE__ sigue en {from} hasta entonces.",
+    "hub.switchEnded":
+      "El cambio a {to} esperó demasiado un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}.",
+    "hub.switchSignin": "Iniciar sesión en el nuevo Hub",
     "hub.reconnect": "Volver a conectar",
     "hub.cw.done": "Conectado a Hub ({company}).",
     "hub.cw.doneNoCo": "Conectado a Hub.",
@@ -2458,6 +2463,10 @@
       "Después Den se reinicia, y los agentes obtienen las herramientas de Hub cuando se reinicien.",
     "ap.det.hub_connect.connect":
       "Después te conectas en Ajustes › Hub: Conectar te inicia sesión en Hub allí.",
+    "ap.det.hub_connect.keep":
+      "Den sigue en {was} con su clave hasta que inicies sesión en {url}.",
+    "ap.det.hub_connect.signin":
+      "Tras tu permiso se abre el inicio de sesión de {url}. Cuando ese Hub responde, Den cambia a él y {was} revoca su clave; si falla, Den sigue en {was} y dice por qué.",
     "ap.det.den_pin_commit.pr":
       "Den hace commit de package.json y package-lock.json en la rama den/pin-{version} y abre una pull request.",
     "ap.det.den_pin_commit.push":
@@ -2992,6 +3001,13 @@
       "Retiraste la pregunta de {name}, resuelta: {reason} ({text})",
     "bell.m.settledLate":
       "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
+    "bell.m.hubSwitchWaits":
+      "Inicia sesión en {to} para terminar el cambio de Hub; __DEN_TITLE__ sigue en {from} hasta entonces",
+    "bell.m.hubSwitchExpired":
+      "El cambio a {to} esperó {days} días un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}; vuelve a pedirlo para cambiar",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ no pudo cambiar a {to}: {why}. Sigue en {from}; vuelve a iniciar sesión en Ajustes › Hub",
+    "ap.hubSwitchSignin": "Abriendo el inicio de sesión de {url}…",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",

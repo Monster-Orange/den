@@ -780,10 +780,20 @@ export async function handleAgentRoutes(
     // Issue 869: Hub refused this Den's address when it was last told.
     const tell = await import("../../shared/hub-den-url.js");
     const denUrl = tell.denUrlTellProblem(tell.readDenUrlTell(getStateDir()));
+    const hs = await import("./hub-switch.js");
+    const { readUserConfig } = await import("../../shared/den-config.js");
+    const swDeps = await hs.hubSwitchDeps();
+    const was = hs.readHubSwitch(swDeps.stateDir);
+    const sw = hs.liveHubSwitch({
+      ...swDeps,
+      days: hs.switchDays((readUserConfig() as Record<string, unknown>).hub),
+    });
     const out = {
       ...st,
       ...(editions ? { editions } : {}),
       ...(denUrl ? { denUrl } : {}),
+      ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
+      ...(was && !sw ? { switchEnded: { to: was.to } } : {}),
     };
     sendJson(res, last ? { ...out, connect: last } : out);
     return true;
@@ -3102,7 +3112,7 @@ async function hubConnectRoute(
       );
       return true;
     }
-    const r = hc.start(origin, body.url);
+    const r = hc.start(origin, body.url, { switch: body.switch === true });
     sendJson(res, r, r.ok ? 200 : 400);
     return true;
   }
