@@ -193,7 +193,9 @@ export function navItemHtml(n, navRole, lang) {
   const off = navOff(n.off);
   const extra = b
     ? '<span class="den-bdg' +
-      (b.bad ? " bad" : "") +
+      (b.bad ? " bad" : b.warn ? " warn" : "") +
+      '" data-badge="' +
+      (b.bad ? "bad" : b.warn ? "warn" : "") +
       '" aria-hidden="true">' +
       esc(b.n) +
       "</span>"
@@ -819,10 +821,10 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
- * Issue 101: `sections` { needs, earlier? } in place of rows: the kit
- * heads them "Needs you" (first, always; its own line when `needs` is
- * empty) and "Earlier" (when given), in its words; the host gives only
- * each section's rows.
+ * `sections` { needs, done?, earlier? } in place of rows: the
+ * kit heads them "Needs you" (first, always; its own line when `needs` is
+ * empty), "Done, not seen" (when given) and "Earlier" (when
+ * given), in its words; the host gives only each section's rows.
  */
 export function bellPanelHtml({
   title,
@@ -882,7 +884,6 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Issue 101: Needs you, then Earlier (the host's rows in each). */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -894,6 +895,9 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
+    (s.done
+      ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
+      : "") +
     (s.earlier
       ? bellSectionHtml("earlier", kitT(lang, "kit.bell.earlier"), s.earlier)
       : "")

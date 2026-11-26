@@ -11,11 +11,11 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   takeTestInstallLaunchFlag,
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
-import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
 import {
@@ -67,6 +67,7 @@ import {
   isGithubWatchPath,
 } from "./github-watch-routes.js";
 import {
+  agentStateDeps,
   alertFeed,
   attentionDetail,
   attentionActivity,
@@ -10262,6 +10263,7 @@ async function handleRequest(
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
+        agentStates: agentStateDeps,
       },
     )
   )
