@@ -557,10 +557,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     /**
      * #143: open the details with their answer `delay` ms late; every place
      * and size they have while seen, and every time they are placed (a
-     * write of their top edge). `inTime`: the page's own wait for them
-     * (OPEN_MS) is held until they are in, so "in time" never hangs on how
-     * busy the machine is (on a loaded runner 150 ms late plus the round
-     * trip went past the 300 ms wait, and they were shown early).
+     * write of their top edge). `inTime` holds the page's own OPEN_MS wait.
      */
     async function openLate(delay: number, inTime = false) {
       const p = await open("north");
@@ -592,11 +589,6 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
             __placed: number;
           };
           if (inTime) {
-            // The details' own wait (OPEN_MS, the first timer started once
-            // they are in the page, loading) never ends by itself: only the
-            // details coming in show them. __heldOpen says it was held: a
-            // change that starts that wait before they are in the page
-            // fails here, never lets the race back in.
             const real = window.setTimeout;
             window.setTimeout = ((
               f: TimerHandler,
@@ -622,7 +614,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
             k: string,
             ...rest: [string | null, string?]
           ) {
-            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            const g = document.querySelector(
+              '[role="dialog"][data-state]',
+            ) as HTMLElement | null;
             if (k === "top" && g && g.style === this) w.__placed++;
             return set.call(this, k, ...rest);
           };
@@ -633,7 +627,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           };
           w2.__atReady = null;
           new MutationObserver(() => {
-            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            const g = document.querySelector(
+              '[role="dialog"][data-state]',
+            ) as HTMLElement | null;
             if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
             const b = g.getBoundingClientRect();
             w2.__atReady = {
@@ -648,7 +644,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           });
           const t0 = performance.now();
           const look = () => {
-            const g = document.querySelector(".den-agd") as HTMLElement | null;
+            const g = document.querySelector(
+              '[role="dialog"][data-state]',
+            ) as HTMLElement | null;
             if (g && getComputedStyle(g).visibility !== "hidden") {
               const b = g.getBoundingClientRect();
               const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
@@ -688,8 +686,6 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
             (w as unknown as { __heldOpen?: number }).__heldOpen ?? null,
         };
       });
-      // The page's own OPEN_MS, from the kit module it loads (a string, so
-      // jest never transforms the import).
       const openMs = (await p.evaluate(
         'import("/kit/busy.js").then((m) => m.OPEN_MS)',
       )) as number;
@@ -700,7 +696,6 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       if (skip()) return;
       const { p, rects, placed, atReady, last, heldOpen, openMs } =
         await openLate(150, true);
-      // The wait held was the details' own: started once they were in.
       expect(openMs).toBeGreaterThan(0);
       expect(heldOpen).toBe(openMs);
       // Whole when shown: its Report button in, and the same box after.
