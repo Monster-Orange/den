@@ -9,21 +9,29 @@ import {
 import { denAuth } from "./helpers/den-auth.js";
 
 let s: FrameServer | null = null;
+let lag: FrameServer | null = null;
 const QUERY_TOKEN = "sk-query-token-1681";
 const BODY_SECRET = "body-secret-1681";
 
-beforeAll(async () => {
-  s = await startFrameServer({ prefix: "den-slow-1681-" });
-  const user = path.join(s.tmp, "dist", "config", "local", "user.yml");
+async function slowServer(): Promise<FrameServer> {
+  const f = await startFrameServer({ prefix: "den-slow-1681-" });
+  const user = path.join(f.tmp, "dist", "config", "local", "user.yml");
   fs.mkdirSync(path.dirname(user), { recursive: true });
   fs.writeFileSync(
     user,
     "server_log:\n  slow_request_ms: 300\n  event_loop_lag_ms: 300\n",
   );
-}, 60_000);
+  return f;
+}
+
+beforeAll(async () => {
+  s = await slowServer();
+  lag = await slowServer();
+}, 120_000);
 
 afterAll(async () => {
   await s?.stop();
+  await lag?.stop();
 });
 
 const settle = () => new Promise((r) => setTimeout(r, 150));
@@ -33,7 +41,7 @@ const slowLines = () =>
     .split("\n")
     .filter((l) => l.includes("slow request:"));
 const lagLines = () =>
-  s!
+  lag!
     .log()
     .split("\n")
     .filter((l) => l.includes("event loop blocked"));
@@ -98,7 +106,12 @@ describe("issue 1681: the server names a slow request and a blocked event loop",
         done();
       }, 700);
     });
-    await settle();
+    const deadline = Date.now() + 2000;
+    while (
+      !slowLines().some((l) => /slow request: DELETE /.test(l)) &&
+      Date.now() < deadline
+    )
+      await settle();
     const left = slowLines().filter((l) => /slow request: DELETE /.test(l));
     expect(left).toHaveLength(1);
     expect(left[0]).toMatch(
@@ -115,12 +128,13 @@ describe("issue 1681: the server names a slow request and a blocked event loop",
   });
 
   it("a short block logs no lag line; a long one logs one", async () => {
-    await s!.req("GET", "/api/_den/block?ms=20");
+    const before = lagLines().length;
+    await lag!.req("GET", "/api/_den/block?ms=20");
     await new Promise((r) => setTimeout(r, 1200));
-    expect(lagLines()).toEqual([]);
-    await s!.req("GET", "/api/_den/block?ms=1500");
+    expect(lagLines().slice(before)).toEqual([]);
+    await lag!.req("GET", "/api/_den/block?ms=1500");
     await new Promise((r) => setTimeout(r, 1200));
-    const lines = lagLines();
+    const lines = lagLines().slice(before);
     expect(lines).toHaveLength(1);
     const ms = Number(/blocked for (\d+) ms/.exec(lines[0])![1]);
     expect(ms).toBeGreaterThanOrEqual(900);
