@@ -11,7 +11,7 @@ import {
   patchHubDeliveryLoop,
   patchProjectHubLoop,
   projectHubLoop,
-} from "../../../src/shared/hub-loop.js";
+} from "../../../src/shared/hub/hub-loop.js";
 import { readHubConfig } from "../../../src/shared/hub.js";
 
 describe("issue 158: which agents get the loop", () => {

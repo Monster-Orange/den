@@ -22,10 +22,10 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
-import { parseMachineName, parseSshUser } from "./cli-command.js";
-import { getStateDir } from "./paths.js";
+import { parseMachineName, parseSshUser } from "../cli-command.js";
+import { getStateDir } from "../paths.js";
 import { githubDisplayName } from "./web-owner.js";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** D16: how long a sign-in link lasts unless `web.login_link_ttl` says. */
 export const LOGIN_CODE_TTL_MS = 5 * 60_000;

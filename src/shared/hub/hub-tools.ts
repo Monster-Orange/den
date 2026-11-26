@@ -33,7 +33,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** Each Hub tool's parameters and the required ones, sorted. */
 export type ToolShape = Record<

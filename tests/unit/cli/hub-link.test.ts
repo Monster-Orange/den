@@ -9,7 +9,7 @@ import {
   cmdHubLink,
   type HubLinkDeps,
 } from "../../../src/ui/cli/hub-link-command.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import { ACTOR_TOKEN_ENV } from "../../../src/shared/actor-token.js";
 
 const BACK = {

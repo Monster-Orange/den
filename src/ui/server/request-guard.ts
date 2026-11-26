@@ -81,7 +81,7 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
-import { osUser } from "../../shared/web-secret.js";
+import { osUser } from "../../shared/web/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
   OPERATOR_PRINCIPAL,
