@@ -3129,6 +3129,32 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
   },
   {
+    id: "server.slow_request_ms",
+    category: "server",
+    label: "Slow request, log after",
+    description:
+      "When a request takes longer than this, __DEN_TITLE__'s log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    keywords: ["log", "slow", "request", "server", "time"],
+    scope: "user",
+    keys: ["server_log.slow_request_ms"],
+    control: { type: "number", min: 100, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.slow_request_ms ?? 3000,
+    write: (v, ctx) => ctx.post({ server_log: { slow_request_ms: v } }),
+  },
+  {
+    id: "server.event_loop_lag_ms",
+    category: "server",
+    label: "Stall, log after",
+    description:
+      "When __DEN_TITLE__ is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
+    keywords: ["log", "blocked", "lag", "server", "stall"],
+    scope: "user",
+    keys: ["server_log.event_loop_lag_ms"],
+    control: { type: "number", min: 50, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.event_loop_lag_ms ?? 1000,
+    write: (v, ctx) => ctx.post({ server_log: { event_loop_lag_ms: v } }),
+  },
+  {
     // Issue 403: the largest report screenshot kept here (reports.*).
     id: "server.report_screenshot_max",
     category: "server",
@@ -4246,6 +4272,19 @@ export const DEN_SETTINGS = [
       }),
   },
   {
+    id: "server.gate_throwaway_sweep",
+    category: "server",
+    label: "Remove throwaway test containers",
+    description:
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
+    keywords: ["gate", "docker", "container", "throwaway", "sweep", "cleanup"],
+    scope: "user",
+    keys: ["gate_slots.throwaway_sweep"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.throwawaySweep !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { throwaway_sweep: v ? 1 : 0 } }),
+  },
+  {
     // Issue 1264: today's runs outside the gate, per agent.
     id: "server.gate_outside",
     category: "server",
@@ -4327,6 +4366,46 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
     read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
     write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_claim_grace",
+    category: "server",
+    label: "Terminal size hold",
+    description:
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    keywords: [
+      "terminal",
+      "size",
+      "resize",
+      "window",
+      "ipad",
+      "size_claim_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_claim_grace_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_claim_grace_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ sessions: { size_claim_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_leave_grace",
+    category: "server",
+    label: "Terminal size hold after a page closes",
+    description:
+      "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    keywords: [
+      "terminal",
+      "size",
+      "reload",
+      "close",
+      "window",
+      "size_leave_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_leave_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_leave_grace_seconds ?? 3,
+    write: (v, ctx) => ctx.post({ sessions: { size_leave_grace_seconds: v } }),
   },
   {
     id: "server.sessions_pty_close",
@@ -4890,6 +4969,21 @@ export const DEN_SETTINGS = [
       }),
   },
 
+  {
+    id: "workspace.agents_max_per_project",
+    category: "workspace",
+    label: "Agents per project: this project",
+    description:
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "workspace",
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.wsSettings?.agents_max_per_project ?? 0,
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        agents_max_per_project: Number(v) > 0 ? Number(v) : null,
+      }),
+  },
   {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
@@ -8780,6 +8874,7 @@ function drawHub(host, ctx, back, flash) {
       else if (!f && back && HUB_FLASH[back])
         f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
       host.innerHTML = hubHtml(b, f, (k, v) => ctx.shell.t(k, v));
+      if (b && b.connectNext) host.dataset.hubConnectNext = b.connectNext;
       wireHub(host, ctx);
       // Issue 646: connected: Connect's review, a row per project.
       if (
@@ -8828,32 +8923,64 @@ function wireHub(host, ctx) {
   };
   const busy = (on) =>
     host.querySelectorAll("button, input").forEach((x) => (x.disabled = on));
-  const connect = (button) => {
+  const offerOwnFolder = (hub) => {
+    const t = (k, v) => ctx.shell.t(k, v);
+    err(t("hub.sf.shared"));
+    const e = host.querySelector(".rt-err");
+    if (!e) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "den-btn sm";
+    btn.dataset.hubAction = "own-folder";
+    btn.textContent = t("hub.sf.offer");
+    btn.addEventListener("click", () =>
+      ctx.shell
+        .busyAction(
+          "ask-allow",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              "/api/approvals",
+              { action: "state_folder_own", args: hub ? { hub } : {} },
+              { headers },
+            ),
+          { button: btn, onFail: (x) => err(x?.message || t("busy.connF")) },
+        )
+        .then((b) => {
+          if (!b) return;
+          err(t("hub.sf.allow"));
+          window.dispatchEvent(new CustomEvent("den:approvals-poll"));
+        }),
+    );
+    e.append(" ", btn);
+  };
+  const connect = (button, next) => {
     const typed = host.querySelector("#hub-url");
     busy(true);
     err("");
     // BUSY-1: the working pop-up while Den asks Hub.
     const t = (k, v) => ctx.shell.t(k, v);
+    const body = next
+      ? { url: next }
+      : button?.dataset.hubSwitchSignin !== undefined
+        ? { switch: true }
+        : typed
+          ? { url: typed.value }
+          : {};
     ctx.shell
       .busyAction(
         "connect",
         (headers) =>
-          ctx.shell.api(
-            "POST",
-            "/api/hub/connect",
-            button?.dataset.hubSwitchSignin !== undefined
-              ? { switch: true }
-              : typed
-                ? { url: typed.value }
-                : {},
-            { headers },
-          ),
+          ctx.shell.api("POST", "/api/hub/connect", body, { headers }),
         {
           button:
             button || host.querySelector('button[data-hub-action="connect"]'),
           // Off to Hub: sign in and approve there; Hub sends the person back.
           onDone: (r) => location.assign(r.location),
-          onFail: (e) => err(e?.message || t("busy.connF")),
+          onFail: (e) =>
+            e?.code === "state_folder_shared"
+              ? offerOwnFolder(e.data?.hub)
+              : err(e?.message || t("busy.connF")),
         },
       )
       .then((r) => {
@@ -8882,6 +9009,11 @@ function wireHub(host, ctx) {
       connect();
     });
   wireHubAddress(host, ctx, err, busy);
+  const next = host.dataset.hubConnectNext;
+  if (next) {
+    delete host.dataset.hubConnectNext;
+    connect(undefined, next);
+  }
   // Issue 646 (mock v2, 1b): Hub address… shows the address form.
   const addrBtn = host.querySelector('[data-hub-action="address"]');
   const addrWrap = host.querySelector("[data-hub-addr-wrap]");

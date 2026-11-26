@@ -133,6 +133,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R("/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
   R("/api/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
+  R("/api/_den/slow", "a test-only route (DEN_DEBUG_ROUTES): it waits"),
+  R("/api/_den/block", "a test-only route (DEN_DEBUG_ROUTES): it blocks"),
 
   // ── Read-only /api ──────────────────────────────────────────────────────
   ...[
@@ -1353,6 +1355,18 @@ export function routeClass(
   method: string,
   pathname: string,
 ): RouteClass | null {
+  return routeEntry(method, pathname)?.cls ?? null;
+}
+
+export function routePattern(method: string, pathname: string): string {
+  const e = routeEntry(method, pathname);
+  if (e) return e.path;
+  const seg = pathname.split("/").filter(Boolean);
+  if (!seg.length) return "/";
+  return seg.length > 1 ? `/${seg[0]}/…` : "/…";
+}
+
+function routeEntry(method: string, pathname: string): RouteEntry | null {
   const m = method.toUpperCase();
   const hits = ROUTES.filter(
     (e) =>
@@ -1363,7 +1377,7 @@ export function routeClass(
   const rank = (e: RouteEntry) =>
     e.path.endsWith("*") ? 2 : e.path.includes(":") ? 1 : 0;
   hits.sort((x, y) => rank(x) - rank(y));
-  return hits[0].cls;
+  return hits[0];
 }
 
 /** A GET (or HEAD) that runs or changes something: the mutating-GET check. */

@@ -63,12 +63,15 @@ export interface RestartQueueDeps {
   log?(line: string): void;
   /** How many wait now: called whenever that changes (doctor, the bell). */
   changed?(waiting: number): void;
+  heldBy?(err: unknown): string | null;
+  stillWanted?(id: string, heldAt: number): boolean;
 }
 
 interface Entry extends RestartJob {
   seq: number;
   /** When it was added (ms): the most wait counts from here. */
   addedAt: number;
+  heldAt?: number;
   promise: Promise<unknown>;
   resolve: (v: unknown) => void;
   reject: (e: unknown) => void;
@@ -85,6 +88,11 @@ export class RestartQueue {
   private lastAt: number | null = null;
   /** How many started in the window that began at lastAt. */
   private inWindow = 0;
+  private readonly holding = new Map<
+    string,
+    { e: Entry; why: string; at: number }
+  >();
+  private retrying = false;
 
   constructor(private readonly d: RestartQueueDeps) {}
 
@@ -131,10 +139,12 @@ export class RestartQueue {
    * (the person's own Resume). Null when it isn't waiting.
    */
   openNow(id: string, run?: () => Promise<unknown>): Promise<unknown> | null {
+    this.forget(id);
     const i = this.pending.findIndex((e) => e.id === id);
     if (i < 0) return null;
     const [e] = this.pending.splice(i, 1);
     if (run) e.run = run;
+    delete e.heldAt;
     this.d.changed?.(this.pending.length);
     this.start(e);
     return e.promise;
@@ -143,6 +153,16 @@ export class RestartQueue {
   /** The agents waiting now, in the order they will start. */
   waiting(): { id: string; why: RestartWhy }[] {
     return this.ordered().map((e) => ({ id: e.id, why: e.why }));
+  }
+
+  held(): { id: string; why: string }[] {
+    return [...this.holding.values()]
+      .sort((a, b) => a.e.seq - b.e.seq)
+      .map((h) => ({ id: h.e.id, why: h.why }));
+  }
+
+  forget(id: string): void {
+    this.holding.delete(id);
   }
 
   /** Settles when nothing waits (tests, and a caller that waits it out). */
@@ -159,13 +179,74 @@ export class RestartQueue {
   }
 
   private start(e: Entry): void {
+    if (
+      e.heldAt !== undefined &&
+      this.d.stillWanted &&
+      !this.d.stillWanted(e.id, e.heldAt)
+    ) {
+      e.reject(new Error(`agent ${e.id} was stopped while it waited`));
+      return;
+    }
     let p: Promise<unknown>;
     try {
       p = Promise.resolve(e.run());
     } catch (err) {
       p = Promise.reject(err);
     }
-    p.then(e.resolve, e.reject);
+    p.then(e.resolve, (err) => {
+      const why = this.d.heldBy?.(err);
+      if (why) this.hold(e, why);
+      e.reject(err);
+    });
+  }
+
+  private hold(e: Entry, why: string): void {
+    const maxWait = this.d.config().maxWaitMs ?? 0;
+    const waited = (this.d.now ?? Date.now)() - e.addedAt;
+    if (maxWait > 0 && waited >= maxWait) {
+      this.holding.delete(e.id);
+      this.d.log?.(
+        `Agent ${e.id} stops waiting for room: it waited ${Math.round(waited / 1000)} s, the most wait (agents.resume.max_wait_seconds) is ${Math.round(maxWait / 1000)} s (${why})`,
+      );
+      return;
+    }
+    e.heldAt ??= (this.d.now ?? Date.now)();
+    this.holding.set(e.id, { e, why, at: e.heldAt });
+    this.retryLater();
+  }
+
+  private retryLater(): void {
+    if (this.retrying) return;
+    this.retrying = true;
+    void (async () => {
+      try {
+        while (this.holding.size) {
+          const gap = this.d.config().gapMs;
+          await this.d.sleep(gap > 0 ? gap : 30_000);
+          const due = [...this.holding.values()];
+          this.holding.clear();
+          for (const { e, at } of due) {
+            if (this.pending.some((x) => x.id === e.id)) continue;
+            if (this.d.stillWanted && !this.d.stillWanted(e.id, at)) continue;
+            const again: Entry = { ...e, seq: ++this.seq };
+            again.promise = new Promise<unknown>((res, rej) => {
+              again.resolve = res;
+              again.reject = rej;
+            });
+            again.promise.catch(() => undefined);
+            this.pending.push(again);
+          }
+          if (due.length) {
+            this.d.changed?.(this.pending.length);
+            this.kick();
+          }
+          await this.idle();
+          await Promise.resolve();
+        }
+      } finally {
+        this.retrying = false;
+      }
+    })();
   }
 
   private async drain(): Promise<void> {

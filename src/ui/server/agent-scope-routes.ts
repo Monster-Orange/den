@@ -154,6 +154,8 @@ export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   "POST /api/agents/self/github-watches/cancel": OWN("its own"),
 
   "GET /api/_den/throw": NONE("a test of the error page"),
+  "GET /api/_den/slow": NONE("a test of the slow-request log line"),
+  "GET /api/_den/block": NONE("a test of the stall log line"),
   "GET /api/app-url": NONE("this Den's address"),
   "GET /api/modules": NONE("Den's modules"),
   "GET /api/environments": NONE("the environments' names"),

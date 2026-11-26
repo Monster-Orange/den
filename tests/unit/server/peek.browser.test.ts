@@ -93,8 +93,8 @@ async function open(width: number, path = "/services"): Promise<Page> {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
         localStorage.setItem(k, v);
-    } catch (e) {
-      void e;
+    } catch (noStorage) {
+      void noStorage;
     }
     const w = window as unknown as Record<string, unknown>;
     const Real = window.WebSocket;

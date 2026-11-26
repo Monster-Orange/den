@@ -318,7 +318,7 @@ describe("the Settings page writes only what you change (R21)", () => {
     // once (plain terminals never count against it). Issue 1371 Part 2:
     // Agents › Agents changing settings: Integrations (editors, terminals).
     expect(await sectionIds(p)).toEqual(["editor", "agents", "server", "cli"]);
-    expect(await p.textContent("#set-count")).toBe("14 settings match");
+    expect(await p.textContent("#set-count")).toBe("16 settings match");
     expect(new URL(p.url()).searchParams.get("q")).toBe("terminal");
     expect(
       await p.$$eval("#cat-editor .set-row", (r) =>

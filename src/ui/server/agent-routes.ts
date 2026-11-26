@@ -268,6 +268,7 @@ import { readBody, sendJson } from "./http-helpers.js";
 import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import { noteCapsHeld } from "./cap-bell.js";
 import {
   HOST_RESTART_ACTION,
   HOST_RESTART_TITLE,
@@ -790,8 +791,11 @@ export async function handleAgentRoutes(
       ...swDeps,
       days: hs.switchDays((readUserConfig() as Record<string, unknown>).hub),
     });
+    const sf = await import("../../shared/state-folder.js");
+    const next = rail ? null : sf.takeConnectNext(getStateDir());
     const out = {
       ...st,
+      ...(next ? { connectNext: next } : {}),
       ...(editions ? { editions } : {}),
       ...(denUrl ? { denUrl } : {}),
       ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
@@ -2855,6 +2859,7 @@ export function startAgentUpkeep(
         );
       for (const x of f.failed)
         log(`  ⚠ agent ${x.agent} did not resume: ${x.why}`);
+      if (f.failed.length) await noteCapsHeld(d.stateDir(), f.failed);
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }

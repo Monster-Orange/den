@@ -124,6 +124,10 @@ import {
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { userConfigPath } from "../../shared/den-config.js";
+import {
+  ownProjectCap,
+  setProjectCap,
+} from "../../shared/agents/project-cap.js";
 import { readWebSecret } from "../../shared/web/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
@@ -148,6 +152,18 @@ import semver from "semver";
 import { edgeProofChecker } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
+import {
+  claimStateDir,
+  giveOwnStateDir,
+  ownStateDirProblem,
+  stateDirShared,
+  writeConnectNext,
+} from "../../shared/state-folder.js";
+import {
+  checkStateFolderOwn,
+  runStateFolderOwn,
+  type StateFolderOwnDeps,
+} from "./state-folder-held.js";
 import {
   rotateEdgeProofAtStart,
   syncEdgeProof,
@@ -286,6 +302,8 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserEnvHoldExisting,
+  addUserEnvAllow,
   setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
@@ -450,6 +468,7 @@ import {
   sessionRequestAllowed,
   setPrincipal,
   signinMessage,
+  storedPrincipal,
   type GuardContext,
   type GuardResult,
   type Via,
@@ -546,7 +565,14 @@ import {
   TEST_PERSON_HEADER,
   testPersonCredentialRefusal,
 } from "../../shared/test-person.js";
-import { routeClass } from "./route-classes.js";
+import { routeClass, routePattern } from "./route-classes.js";
+import {
+  callerKind,
+  lagLine,
+  lagWatch,
+  rateLimit,
+  slowRequestLine,
+} from "./slow-log.js";
 import { envName, readEnv } from "../../shared/profile.js";
 import {
   clearSessionCookies,
@@ -633,6 +659,7 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
 import { accountNameOf } from "../../shared/agents/catalog.js";
+import { agentKeyInForce } from "../../shared/agents/git-signing.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -1080,6 +1107,55 @@ const toWebLog = webLogWriter({
   path: () => webLogPath(getStateDir(), product().cli),
 });
 
+const slowOnce = rateLimit({ windowMs: 60_000, now: Date.now });
+
+function noteSlowRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  ms: number,
+  left = false,
+): void {
+  if (ms < SERVER_LOG_LIMITS.slow_request_ms.min) return;
+  if (ms < serverLogSetting(readUserConfigSafe(), "slow_request_ms")) return;
+  if (String(res.getHeader("content-type") ?? "").includes("event-stream"))
+    return;
+  const method = (req.method ?? "GET").toUpperCase();
+  const pattern = routePattern(method, pathname);
+  const more = slowOnce(`${method} ${pattern}`);
+  if (more === null) return;
+  const caller = callerKind(storedPrincipal(req));
+  serverLog(
+    slowRequestLine({ method, pattern, ms, caller, more, left }),
+    "warn",
+  );
+}
+
+function readUserConfigSafe(): unknown {
+  try {
+    return readUserConfig();
+  } catch {
+    return null;
+  }
+}
+
+function startLagWatch(): void {
+  const lagOnce = rateLimit({ windowMs: 60_000, now: Date.now });
+  lagWatch({
+    everyMs: 250,
+    now: () => performance.now(),
+    setInterval,
+    clearInterval: (t) => clearInterval(t as NodeJS.Timeout),
+    onLag: (late) => {
+      if (late < SERVER_LOG_LIMITS.event_loop_lag_ms.min) return;
+      if (late < serverLogSetting(readUserConfigSafe(), "event_loop_lag_ms"))
+        return;
+      const more = lagOnce("lag");
+      if (more !== null) serverLog(lagLine(late, more), "warn");
+    },
+  });
+}
+
 function serverLog(line: string, kind: string = "info", actor?: string): void {
   const msg = maskSecretLine(line);
   pushLog(kind, msg, actor);
@@ -1484,7 +1560,12 @@ import {
   type HeldActions,
   type HeldCheck,
 } from "./approval-routes.js";
-import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import {
+  heldLapsed,
+  heldLost,
+  noteHeldWithdrawn,
+  syncHeldBell,
+} from "./held-bell.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
@@ -1501,6 +1582,15 @@ import {
   listRecords as listAgentRecords,
   readRecord as readAgentRecord,
 } from "../../shared/agents/records.js";
+import {
+  askEnvHold,
+  envAllowKeepOp,
+  envHoldOnOp,
+  wouldHold,
+} from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { shellEnvNames } from "../cli/doctor-env-hold.js";
+import { workspaceEntryRaw as workspaceEntryOf } from "../../shared/environment-manager/workspaces.js";
 import {
   askSandboxOn,
   legacyAgentIds,
@@ -1566,7 +1656,9 @@ import {
 import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
+  SERVER_LOG_LIMITS,
   serverLogMaxBytes,
+  serverLogSetting,
   serverLogWriter,
 } from "../../shared/server-log-file.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -3913,6 +4005,20 @@ if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
   });
 } else writeTestResolveState(getStateDir(), null);
 
+function stateFolderOwnDeps(): StateFolderOwnDeps {
+  return {
+    shared: () => stateDirShared(getStateDir(), getDistRoot()),
+    give: () => giveOwnStateDir(getDistRoot(), getStateDir()),
+    carryOn: (dir, hub) => writeConnectNext(dir, hub),
+    restart: async (reason, asked) =>
+      (await approvalDeps().actions.den_restart.run({ reason }, asked)) as {
+        ok: boolean;
+        restarting?: boolean;
+        error?: string;
+      },
+  };
+}
+
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
@@ -3932,6 +4038,17 @@ try {
     );
 } catch (e) {
   serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
+}
+try {
+  const ignored = ownStateDirProblem(getDistRoot());
+  if (ignored) serverLog(`  ⚠ ${ignored}`, "warn");
+  if (claimStateDir(getStateDir(), getDistRoot()).shared)
+    serverLog(
+      `  ⚠ another copy of ${product().title} on this computer uses this state folder: Settings › Hub's Connect offers to give this one its own`,
+      "warn",
+    );
+} catch (e) {
+  serverLog(`  ⚠ state folder: ${(e as Error).message}`, "warn");
 }
 
 /**
@@ -5049,6 +5166,9 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  withdrawn: NonNullable<
+    Parameters<typeof handleApprovalRoutes>[4]["withdrawn"]
+  >;
   webUrl: () => string | null;
   testBedAsker: (actor: string) => boolean;
 };
@@ -5385,6 +5505,13 @@ function approvalDeps(): ApprovalDeps {
             error: `gh pr close: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ")}`,
           };
     },
+    projectCap: {
+      read: (project) => ({
+        own: ownProjectCap(project),
+        install: readAgentsConfig().maxPerProject,
+      }),
+      write: (project, max) => setProjectCap(project, max),
+    },
     // Issue 160: an agent asks to change the approval policy (always asks).
     approvalPolicy: {
       read: (project) => {
@@ -5456,6 +5583,17 @@ function approvalDeps(): ApprovalDeps {
       },
       run: async (a, asked) =>
         runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
+    },
+    stateFolderOwn: {
+      check: (a) => checkStateFolderOwn(stateFolderOwnDeps(), a),
+      run: (a, asked) => runStateFolderOwn(stateFolderOwnDeps(), a, asked),
+    },
+    hubOrigin: () => {
+      try {
+        return readHubConfig()?.url ?? null;
+      } catch {
+        return null;
+      }
     },
     // Issue 647: an agent asks to link a project to an existing Hub project.
     hubLink: {
@@ -5567,6 +5705,8 @@ function approvalDeps(): ApprovalDeps {
     gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    envHoldOn: envHoldOnOp(envHoldOpDeps()),
+    envAllowKeep: envAllowKeepOp(envHoldOpDeps()),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
     sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
@@ -5640,6 +5780,13 @@ function approvalDeps(): ApprovalDeps {
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
+    withdrawn: (a, reason) =>
+      void noteHeldWithdrawn(
+        notificationDeps().store,
+        a,
+        reason,
+        heldProjectOf(a),
+      ),
     // Issue 1016: an agent's held write carries its full Allow link.
     webUrl: () => peopleWebUrl(),
     // What the test operator may Allow.
@@ -6026,7 +6173,10 @@ async function runPinCommit(
     return { did: "skipped", version, why: "server_agent.pin_commit: off" };
   let signingKey: string | undefined;
   try {
-    signingKey = readAgentsConfig().git?.signingKey;
+    signingKey = agentKeyInForce(
+      readAgentsConfig().git,
+      getStateDir(),
+    )?.signingKey;
   } catch {
     signingKey = undefined;
   }
@@ -6035,6 +6185,28 @@ async function runPinCommit(
     stateDir: getStateDir(),
     git: pc.pinGit(getDistRoot(), { signingKey }),
     mode,
+    signed: !!signingKey,
+    signaturesRequired: pc.ghSignaturesRequired(
+      (argv, cwd) =>
+        new Promise((resolve) =>
+          execFile(
+            argv[0],
+            argv.slice(1),
+            { cwd, timeout: 30_000, maxBuffer: 1024 * 1024 },
+            (err, out, errOut) =>
+              resolve({
+                code: err
+                  ? typeof (err as { code?: unknown }).code === "number"
+                    ? (err as { code: number }).code
+                    : null
+                  : 0,
+                out: `${out ?? ""}${errOut ?? ""}`,
+              }),
+          ),
+        ),
+      ["gh"],
+      getDistRoot(),
+    ),
     ...(policy
       ? {
           allow: () => {
@@ -6075,6 +6247,57 @@ async function runPinCommit(
         }
       : {}),
   });
+}
+
+function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvHoldOpDeps {
+  return {
+    rows: () => {
+      const s = readAgentsConfig().envHold;
+      if (!s) return [];
+      return wouldHold(
+        listAgentRecords(getStateDir()),
+        s,
+        shellEnvNames(),
+        (ws) => {
+          try {
+            return checkProjectEnvAllow(
+              ws,
+              (
+                workspaceEntryOf(ws) as
+                  | { agents?: { env_allow?: unknown } }
+                  | undefined
+              )?.agents?.env_allow,
+            );
+          } catch {
+            return [];
+          }
+        },
+      ).filter((r) => r.names.length > 0);
+    },
+    turnOn: () => setUserEnvHoldExisting(),
+    keep: (names) => addUserEnvAllow(names),
+  };
+}
+
+function startEnvHoldAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      const deps = envHoldOpDeps();
+      void askEnvHold(
+        ap.queue,
+        envAllowKeepOp(deps),
+        envHoldOnOp(deps),
+        deps.rows,
+      ).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      return;
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
 }
 
 /** #176: den_pin_commit, held for the person when the policy says ask. */
@@ -6141,7 +6364,9 @@ async function pinBellNotice(
   step: import("./pin-commit.js").PinStep,
 ): Promise<void> {
   try {
-    const { pinBellMessage } = await import("./pin-commit.js");
+    const { pinBellMessage, pinAgentLine } = await import("./pin-commit.js");
+    const line = pinAgentLine(step, product().title);
+    if (line) void tellHeldAsker(SERVER_AGENT_ID, line).catch(() => undefined);
     const m = pinBellMessage(step, product().title);
     if (!m) return;
     const store = notificationDeps().store;
@@ -6519,6 +6744,8 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           pty_close_seconds: c.ptyCloseSeconds,
           pty_warn_above: c.ptyWarnAbove,
           pty_machine_warn_percent: c.ptyMachineWarnPercent,
+          size_claim_grace_seconds: c.sizeClaimGraceSeconds,
+          size_leave_grace_seconds: c.sizeLeaveGraceSeconds,
         };
       } catch {
         return null;
@@ -6645,7 +6872,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       };
     })(),
     // Issue 707: the server's warning lines on disk, capped (server_log.*).
-    server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
+    server_log: {
+      max_mb: serverLogMaxBytes(user) / (1024 * 1024),
+      slow_request_ms: serverLogSetting(user, "slow_request_ms"),
+      event_loop_lag_ms: serverLogSetting(user, "event_loop_lag_ms"),
+    },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
     reports: (() => {
       const l = shotLimits(user);
@@ -6717,7 +6948,12 @@ async function handleRequest(
     if (!isStatic && !isHealthPoll) {
       const start = Date.now();
       const method = bold((req.method ?? "GET").padEnd(4));
+      res.on("close", () => {
+        if (!res.writableFinished)
+          noteSlowRequest(req, res, pathname, Date.now() - start, true);
+      });
       res.on("finish", () => {
+        noteSlowRequest(req, res, pathname, Date.now() - start);
         const ms = dim(`${Date.now() - start}ms`);
         serverLog(
           `  ${logTimestamp()}  ${method}  ${loggedPath(pathname)}  →  ${logStatus(res.statusCode)}  ${ms}` +
@@ -11453,6 +11689,18 @@ async function handleRequest(
     }
   }
 
+  if (
+    process.env.DEN_DEBUG_ROUTES === "1" &&
+    (pathname === "/api/_den/slow" || pathname === "/api/_den/block")
+  ) {
+    const ms = Math.min(Number(url.searchParams.get("ms")) || 0, 10_000);
+    if (pathname === "/api/_den/block") {
+      const end = Date.now() + ms;
+      while (Date.now() < end);
+    } else await new Promise((r) => setTimeout(r, ms));
+    return sendJson(res, { ok: true });
+  }
+
   // A route that throws, for the error frame's tests and screenshots only
   // (DEN_DEBUG_ROUTES=1): a page and an API call.
   if (
@@ -12253,6 +12501,7 @@ try {
 }
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
+    startLagWatch();
     void printBanner(ADDRESS ?? readWebUrl());
     // Issue 816: a waiting test install announces itself (opt-in).
     syncTestAnnouncement();
@@ -12262,6 +12511,7 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    startEnvHoldAsk();
     void pruneDeadSnapshots()
       .then((n) => {
         if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);

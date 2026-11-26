@@ -301,11 +301,13 @@ describe("held writes on a personal install (issue 1391)", () => {
         "hub_connect",
         "hub_project_create", // a Hub project other people see
         "pr_close", // others see it on GitHub
+        "project_agent_cap",
         "project_mcp_add",
         "project_mcp_update",
         "project_mode", // widens every agent in the project
         "report",
         "setting_change",
+        "state_folder_own",
         "test_person_setup",
         "verify_run",
         "web_url_set",

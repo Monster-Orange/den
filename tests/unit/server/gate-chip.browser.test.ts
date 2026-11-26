@@ -19,6 +19,7 @@ import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -87,14 +88,7 @@ async function page(): Promise<Page> {
     viewport: { width: 1280, height: 860 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
-  });
+  await seeWhatsNew(ctx, s!.base);
   return ctx.newPage();
 }
 
