@@ -121,6 +121,18 @@ const hubName = () =>
   `${HUB}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const server = (ctx) => ctx.agent(SERVER, { workspace: "den-server" });
 
+async function hubServed(ctx) {
+  if (!ctx.hub?.url) return true;
+  try {
+    const res = await fetch(`${ctx.hub.url}/connect/whoami`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    return res.status !== 404 || `${ctx.hub.url} answers 404`;
+  } catch (e) {
+    return `${ctx.hub.url}: ${String(e?.cause?.code ?? e?.message ?? e).slice(0, 80)}`;
+  }
+}
+
 export async function setup(ctx) {
   const s = {};
   const set = await ctx.api("/api/settings").catch(() => null);
@@ -266,6 +278,8 @@ async function sayRefused(ctx, s) {
 /** Clause 2: a Hub comment for an agent showing a dialog waits for it. */
 async function hubHeld(ctx, s) {
   if (!ctx.hub) return { skip: true };
+  const served = await hubServed(ctx);
+  if (served !== true) return { skip: true, hubGone: served };
   const h = ctx.agent(s.hub, { workspace: HUB_WS });
   const r = {
     agent: s.hub,
@@ -364,7 +378,9 @@ function hubRow(h) {
       clause: clauses[1],
       ok: null,
       skip: "needs-hub",
-      detail: "the bed has no Hub and no way to queue a comment for an agent",
+      detail: h?.hubGone
+        ? `the bed's Hub doesn't answer (${h.hubGone}); no comment posted`
+        : "the bed has no Hub and no way to queue a comment for an agent",
     };
   if (h.running && h.noDialog)
     return {

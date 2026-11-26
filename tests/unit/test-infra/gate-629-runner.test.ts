@@ -38,6 +38,7 @@ function runGate(
   // Hub's list as the bed reads it today: no answer field, state held, but
   // `acked` once Den has answered (it left the unanswered list).
   hubBlind = false,
+  hubAt: "refused" | "gone" | "live" | null = null,
 ) {
   const js = `
     const g = await import("./gate/629.mjs");
@@ -187,8 +188,21 @@ function runGate(
       },
     };
     ctx.agent = agent;
+    const hubAt = ${JSON.stringify(hubAt)};
+    let hubSrv = null;
+    let hubUrl = hubAt === "refused" ? "http://127.0.0.1:1" : null;
+    if (hubAt === "gone" || hubAt === "live") {
+      const http = await import("node:http");
+      hubSrv = http.createServer((q, res) => {
+        res.statusCode = hubAt === "gone" ? 404 : 401;
+        res.end(hubAt === "gone" ? "404 page not found" : "{}");
+      });
+      await new Promise((ok) => hubSrv.listen(0, "127.0.0.1", ok));
+      hubUrl = "http://127.0.0.1:" + hubSrv.address().port;
+    }
     if (withHub)
       ctx.hub = {
+        ...(hubUrl ? { url: hubUrl } : {}),
         async comment({ agent: a, text, workspace }) {
           if (!hubIds.includes(a)) throw new Error("no such agent " + a);
           if (workspace !== "proj-gate") throw new Error("not linked");
@@ -203,6 +217,7 @@ function runGate(
         },
       };
     const out = await runLikeBed("629.mjs", g, ctx);
+    hubSrv?.close();
     console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, settingsPosts, serverAfter: states.server, stops, hooks, hubIds, comments: hubQueue.length }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
@@ -293,6 +308,23 @@ describe("gate/629.mjs as the bed runs it", () => {
   it("with Hub, a comment for an agent showing a dialog waits, then is typed once (clause 2)", () => {
     const r = runGate("fixed", "stopped", true);
     expect(r.error).toBeUndefined();
+    expect(row(r, 1)?.ok).toBe(true);
+  });
+
+  it.each(["refused", "gone"] as const)(
+    "a bed Hub that doesn't answer (%s): clause 2 is not run (skip needs-hub), nothing posted",
+    (at) => {
+      const r = runGate("fixed", "stopped", true, false, false, at);
+      expect(r.error).toBeUndefined();
+      expect(row(r, 1)?.ok).toBeNull();
+      expect(row(r, 1)?.skip).toBe("needs-hub");
+      expect(row(r, 1)?.detail).toContain("doesn't answer");
+      expect(r.comments).toBe(0);
+    },
+  );
+
+  it("a bed Hub that answers, even 401 without a token: clause 2 runs and passes", () => {
+    const r = runGate("fixed", "stopped", true, false, false, "live");
     expect(row(r, 1)?.ok).toBe(true);
   });
 
