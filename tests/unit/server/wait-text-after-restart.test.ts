@@ -6,7 +6,7 @@ import { NotificationStore } from "../../../src/shared/notifications";
 import { Attention } from "../../../src/ui/server/attention";
 
 let dir = "";
-let clock = Date.parse("2026-01-02T03:04:05.000Z");
+const clock = Date.parse("2026-01-02T03:04:05.000Z");
 
 const start = () => {
   const store = new NotificationStore(dir, () => new Date(clock));
