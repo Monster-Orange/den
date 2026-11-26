@@ -376,8 +376,7 @@ function panelInner(spec, ids) {
  *   kind "confirm"  a Yes/No question: heading, body, actions in the footer
  *   kind "panel"    a large dialog: heading (and subtitle), the header's
  *                   own actions and Close, a body that scrolls, a footer;
- *                   with sheet: true, a full-screen sheet on a phone (no
- *                   radius, nothing dimmed behind it)
+ *                   with sheet: true, a full-screen sheet on a phone
  *
  * title and labels are text (escaped); body, extra and foot are HTML the
  * caller has escaped. Called with a kind string first (kind, opts, ids),

@@ -28,13 +28,10 @@
  *   - a text frame `{"type":"session",…}` first (what is attached), and
  *     `{"type":"exit","exitCode":n}` when the session ends;
  *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
- *     each time any viewer (another browser, a CLI attach) resizes it.
- *     Among browsers the last active viewer sets it (term-size-
- *     lead.ts): the one typed in, or that claimed it; another's resize is
- *     kept for later and answered with the size in use, `"lead":false`;
+ *     each time any viewer resizes it. The last active browser view sets it
+ *     (term-size-lead.ts); another's resize is answered with `"lead":false`;
  *   - in: binary frames are input; a text frame is JSON control:
- *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` (claim: Take
- *     over, a pane just opened) or `{"type":"input","data":s}`.
+ *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` or `{"type":"input","data":s}`.
  * Closing the socket detaches. Nothing here ever signals a session: leaving
  * the tab never kills it.
  *
@@ -357,10 +354,6 @@ const VIEWERS = new Map<
   Set<{ open: boolean; send(d: string): void }>
 >();
 
-/**
- * Who sets each session's PTY size among its browsers: the
- * last active viewer (term-size-lead.ts). By session id, beside VIEWERS.
- */
 const LEADS = new Map<string, SizeLead<object>>();
 
 /**
@@ -1573,7 +1566,6 @@ export async function handleSessionUpgrade(
   const lead = LEADS.get(s.ref.id) ?? new SizeLead<object>();
   LEADS.set(s.ref.id, lead);
   lead.attach(ws);
-  // The PTY's size as last heard, to tell a view that doesn't lead.
   let ptySize: { cols: number; rows: number } | null = null;
   const resize = (z: { cols: number; rows: number } | null) => {
     if (z && !exited) client.resize(s.ref.id, z.cols, z.rows);
@@ -1618,8 +1610,6 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
-        // The person typing here makes this view the active
-        // one (its size came with its own resize, if it said one).
         if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
@@ -1648,9 +1638,6 @@ export async function handleSessionUpgrade(
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
       if (!exited && ok(msg.cols) && ok(msg.rows)) {
-        // The last active viewer sets the size. Another view's
-        // refit is kept for when it leads; it hears the size in use
-        // (`lead: false`) and draws at it.
         const z = lead.resize(
           ws,
           { cols: msg.cols, rows: msg.rows },
@@ -1695,7 +1682,6 @@ export async function handleSessionUpgrade(
     clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
-    // The view that led went: the newest one left leads.
     lead.detach(ws);
     if (viewing?.size) tellViewers(s.ref.id);
     else {

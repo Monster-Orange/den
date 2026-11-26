@@ -27,7 +27,6 @@ import { formatTime, formatTitle } from "/kit/time.js";
 // gives what is in it and what a row does.
 import { bellPanelHtml } from "/kit/shell-html.js";
 import { hydrateBell } from "/kit/shell-client.js";
-// An agent's row opens Peek, its terminal over this page.
 import { openPeek, peekOpen, peekRefresh, peekTarget } from "/peek.js";
 
 const POLL_MS = 5000;
@@ -184,8 +183,6 @@ const safeLink = (l) =>
 /** One item's row; `fold` is its ×N toggle and ⊘, on a kind's first. */
 function rowHtml(n, fold) {
   const link = safeLink(n.link);
-  // An agent's row peeks; its small Open in Agents link goes
-  // to the page, as the row did.
   const peek = link ? peekTarget(n) : null;
   const text = noteText(n);
   const sub = noteSub(n);
@@ -868,10 +865,8 @@ export function initBell(doc = document) {
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount(bellCountOf(b) + overrunsOf(b).length);
     if (bell.isOpen()) paint();
-    // An open peek hears what needs the person now.
     if (peekOpen()) peekRefresh(b);
   };
-  /** The item a row shows, from the last answer (by its id). */
   const itemOf = (id) => {
     for (const part of [last, last?.older, last?.updates])
       for (const g of part?.groups ?? [])
@@ -883,10 +878,6 @@ export function initBell(doc = document) {
     const n = itemOf(rowEl?.dataset.id);
     return n ? peekTarget(n) : null;
   };
-  /**
-   * The peek over this page. Focus goes back to the row it
-   * came from (found again: the bell redraws its rows while open).
-   */
   const openPeekFrom = async (target, el, id) => {
     const h = await openPeek(target, {
       opener: el,
@@ -919,18 +910,12 @@ export function initBell(doc = document) {
       const rowEl = el.closest("[data-id]");
       const id = rowEl?.dataset.id;
       const agent = el.closest("[data-agent]")?.dataset.agent;
-      // A plain click on an agent's row peeks (a modified
-      // click, a new tab, still opens the page).
       const peek =
         what === "open" &&
         el.dataset.peek &&
         !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button);
       const target = peek ? peekTargetOf(rowEl) : null;
       if (target) e.preventDefault();
-      // Marked read first; the link then opens the agent. Sent so it
-      // outlives the page the link leaves. A Done row is seen (issue
-      // 773); a peek is a look: the agent's items are read and the
-      // person's seen mark is recorded.
       const [path, body] =
         what === "open-done"
           ? ["/api/notifications/looking", agent ? { agents: [agent] } : null]

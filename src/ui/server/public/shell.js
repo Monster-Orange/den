@@ -10784,7 +10784,6 @@
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
-    // An agent's row peeks; its small link still opens the page.
     ".den-bell-page { flex: none; font-size: 12px; color: var(--accent-text); white-space: nowrap; }",
     // Issue 187: a row that opens on a click anywhere shows the pointer.
     ".den-bell-row.opens { cursor: pointer; }",

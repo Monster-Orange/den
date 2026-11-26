@@ -128,7 +128,6 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
-  /** The seen marks (opening an agent, or peeking at it, marks its work seen). */
   seen?: SeenMarks;
   /** The agents Done, not seen, for `person` (the bell). */
   doneAgents?: (person: string) => DoneAgent[];
@@ -623,7 +622,6 @@ export async function handleNotificationRoutes(
     return true;
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
-  // A peek's read is a look at the agent (`seen: true`).
   const peek =
     pathname === "/api/notifications/read" &&
     b.seen === true &&
@@ -634,7 +632,6 @@ export async function handleNotificationRoutes(
   if (peek) deps.seen?.markSeen({ subject: peek, person: personKey(req) });
   // Issue 1339: one view build, one write for the whole set.
   const prefs = (deps.prefs ?? bellPrefs)(null);
-  // Mark read for what the bell shows, kept by `keep`, in one write.
   const markShown = (keep: (x: { subject: string }) => boolean) => {
     const v = bellView(deps.store.list(), prefs);
     return deps.store.markReadMany(

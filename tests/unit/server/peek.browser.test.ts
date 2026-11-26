@@ -1,25 +1,3 @@
-/**
- * Peek in a real browser, the approved mock's rules table (in
- * Hub, Den project: "Peek: answer one agent without leaving your view
- * (mock)", version 2), at 1280 and 390 px:
- *
- *   - Opens from: a click on an agent's bell row opens the panel over the
- *     page (the page stays); the row's Open in Agents link goes to the page.
- *   - What it is: the agent's live terminal (its output shows) in the
- *     kit's dialog with Report; typing reaches that agent.
- *   - Seen: opening it marks the agent's items read.
- *   - Closes: Esc, ×, a click on the dim area (1280) or the back arrow
- *     (390); focus goes back to the bell row; nothing is left open.
- *   - Keep it: Open in layout links to the agent in the Agents layout.
- *   - Another agent needs you: a strip with Switch; one panel, never two.
- *   - Phone: a full-screen sheet.
- *   - Size: over the Agents page with the agent's own pane open, the panel
- *     never resizes the agent's terminal by opening or closing.
- *
- * The demo distribution with a session host in this process and a
- * scripted PTY (helpers/agents-page-server.ts): nothing really runs.
- * DEN_HELPERS_BROWSER=webkit runs it in WebKit. Invented names only.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
@@ -88,10 +66,6 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-/**
- * Two agents need the person, filed as from Hub (Den's own sweep drops a
- * question whose agent isn't waiting). Filed again when gone.
- */
 function ask(): void {
   const st = new NotificationStore(s.stateDir);
   const have = st.list().filter((n) => n.kind === "waiting" && !n.read);
@@ -110,13 +84,11 @@ function ask(): void {
     });
   }
 }
-
 async function open(width: number, path = "/services"): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height: 860 },
     reducedMotion: "reduce",
   });
-  // What's new seen up to this version: it never opens over the bell.
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -146,8 +118,6 @@ async function open(width: number, path = "/services"): Promise<Page> {
 }
 
 async function openBell(p: Page): Promise<void> {
-  // A closed peek leaves the bell open (focus back on its row): a click
-  // on the bell then would close it.
   if (!(await p.locator("#den-bell-pop").isVisible()))
     await p.click("#den-bell");
   await p
@@ -166,7 +136,6 @@ async function peek(p: Page): Promise<void> {
   await p.locator("dialog#den-peek[open]").waitFor({ timeout: 10_000 });
 }
 
-/** Every socket the page opened is closed (or closing). */
 const allClosed = (p: Page) =>
   p.evaluate(() =>
     (
@@ -202,14 +171,9 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await expect(
       d.getByRole("heading", { level: 2 }).textContent(),
     ).resolves.toBe("planner");
-    // Report, as every pop-up has.
     expect(await d.getAttribute("data-dk-report")).not.toBeNull();
-    // Seen: the agent's items are read.
     await eventually(() => read !== null);
     expect(read).toEqual({ subject: "agent:planner", seen: true });
-    // Live: the agent's output shows.
-    // Not live in time: say what the dialog was doing, so a red run in CI
-    // tells a refused socket from a retry loop from a slow first load.
     await p
       .locator('dialog#den-peek[data-conn="live"]')
       .waitFor({ timeout: 15_000 })
@@ -219,8 +183,6 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
           .locator("[role=status]")
           .allTextContents()
           .catch(() => []);
-        // Which step stalled: no socket yet (xterm, settings or the token),
-        // or a socket that never opened, or one that closed.
         const socks = await p
           .evaluate(() =>
             (
@@ -244,7 +206,6 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
       mark,
       { timeout: 15_000 },
     );
-    // The footer says who typing goes to; typing reaches the agent.
     await expect(
       d.locator("[data-peek-foot]").textContent(),
     ).resolves.toContain("planner");
@@ -254,11 +215,9 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await eventually(() =>
       Buffer.concat(pty.writes.slice(writes)).toString().includes("y"),
     );
-    // Keep it: Open in layout is the agent's place in the Agents layout.
     expect(await d.locator('[data-peek="layout"]').getAttribute("href")).toBe(
       PLANNER,
     );
-    // Esc closes; focus back on the bell row; nothing left open.
     await p.keyboard.press("Escape");
     await d.waitFor({ state: "detached" });
     await eventually(() => allClosed(p));
@@ -267,7 +226,6 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
         () => document.activeElement?.getAttribute("data-peek") === "planner",
       ),
     );
-    // Esc never reached the agent.
     expect(Buffer.concat(pty.writes.slice(writes)).toString()).not.toContain(
       "\x1b",
     );
@@ -283,7 +241,6 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     await eventually(() => allClosed(p));
     await peek(p);
     if (width > 640) {
-      // The dim area: a press outside the panel's box.
       await p.mouse.click(5, 855);
     } else {
       await p.locator('#den-peek [data-peek="back"]').click();
@@ -296,20 +253,17 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
   it("the page behind keeps its scroll: open and close a peek, and it hasn't moved", async () => {
     if (skip()) return;
     const p = await open(width);
-    // The Services page's own scroll pane, made tall and scrolled down.
     const pane = ".services-pane";
     await p.waitForSelector(pane);
     await p.evaluate((sel) => {
       const sc = document.querySelector<HTMLElement>(sel)!;
-      // A block after the cards, in CSS: the page's re-render of its
-      // cards (a bell read can cause one) keeps it.
+      // A block after the cards, in CSS: it survives the page re-rendering its cards.
       const st = document.createElement("style");
       st.textContent = `${sel}::after { content: ""; display: block; flex: none; height: 4000px; }`;
       document.head.appendChild(st);
       sc.scrollTop = 600;
     }, pane);
     const scrollOf = () => p.$eval(pane, (el) => (el as HTMLElement).scrollTop);
-    // Settled: the cards loaded, the pane's height and scroll still for 1 s.
     await p.waitForFunction(
       (sel) => {
         const el = document.querySelector<HTMLElement>(sel)!;
@@ -381,7 +335,6 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
     await p.locator(`[data-id="${sid}"][data-cols]`).waitFor({
       timeout: 20_000,
     });
-    // The page's pane leads: the PTY is its size.
     await eventually(async () => {
       const [c] = pty.resizes.at(-1) ?? [0, 0];
       const cols = await p.evaluate(
@@ -397,15 +350,12 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
     const before = pty.resizes.length;
     const size = pty.resizes.at(-1);
     await peek(p);
-    // The server heard the panel's size and kept the PTY's (the page's
-    // pane leads): the panel follows. Only then is "no resize" proved.
     await p
       .locator('dialog#den-peek[data-conn="live"][data-following]')
       .waitFor({ timeout: 15_000 });
     expect(pty.resizes.slice(before)).toEqual([]);
     await p.keyboard.press("Escape");
     await p.locator("dialog#den-peek").waitFor({ state: "detached" });
-    // The server saw the panel go: the page's pane is the one viewer.
     await p
       .locator(`[data-id="${sid}"][data-cols][data-viewers="1"]`)
       .waitFor({ timeout: 15_000 });

@@ -1,13 +1,10 @@
 /**
  * Issue 93: a bell row opens on a click anywhere; there is no separate
- * Open link. In the approved Peek mock, an agent's row opens its
- * peek over the page, and its one small "Open in Agents" link goes to
- * the page, as the row did. On the real page, at 1280 and 390 px:
+ * Open link; an agent's row opens its peek, its Open in Agents link the page. At 1280 and 390 px:
  *
- *   1. A long question's row and a short one's both open (their peek) on
- *      a click in the middle of their text, and on a click on their time.
- *   2. No row holds an element named Open (Abrir, 開く) in en, es or ja;
- *      the only Open in a row is the agent's Open in Agents link.
+ *   1. A long question's row and a short one's both open on a click in
+ *      the middle of their text, and on a click on their time.
+ *   2. No row holds an element named Open (Abrir, 開く) but the agent's Open in Agents link.
  *   3. The row's link is reached by Tab, shows a focus ring, has
  *      one accessible name, and Enter opens it.
  *   4. The controls inside a row (×N, ⊘) do their own thing and never
@@ -146,7 +143,6 @@ const row = (p: Page, link: string) =>
     has: p.locator(`a[href="${link}"]`),
   });
 
-/** The row opened its agent's peek, over /services. */
 async function peeked(p: Page, link: string): Promise<void> {
   await p.locator("dialog#den-peek[open]").waitFor({ timeout: 10_000 });
   const agent = new URL(link, "http://x").searchParams.get("agent");
@@ -255,8 +251,6 @@ describe.each([1280, 390])(
         .first()
         .waitFor();
       const r = row(p, SHORT_LINK);
-      // The row's link has one name, the question itself; beside it the
-      // agent's Open in Agents link.
       const links = r.getByRole("link");
       expect(await links.count()).toBe(2);
       expect(await r.locator('a[data-bell="page"]').getAttribute("href")).toBe(
@@ -348,7 +342,6 @@ describe("issues 93, 187: no Open in any row, and the pointer on each, in en, es
         );
         expect(names.length).toBeGreaterThan(0);
         expect(names.filter((n) => OPEN_WORDS.test(n))).toEqual([]);
-        // The agent's Open in Agents link is the one Open.
         const texts = await p.$$eval("#den-bell-pop .den-bell-row", (els) =>
           els.map((e) => {
             const c = e.cloneNode(true) as HTMLElement;

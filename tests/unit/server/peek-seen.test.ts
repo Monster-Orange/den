@@ -1,11 +1,3 @@
-/**
- * The mock's "Seen" rule: opening a peek counts as looking. The
- * bell's one read call says so (`seen: true` with the agent's subject):
- * its items are read, and the person's seen mark (subject +
- * version + person) is recorded, so a Done agent becomes Idle for them.
- * A plain read (the row's Open in Agents link, Mark read) records no mark.
- * The route without a server: fake request and response, a temp store.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -47,7 +39,6 @@ function res() {
   return { r: r as unknown as http.ServerResponse, out };
 }
 
-/** Bell v6's kinds turned off (none: every kind shown). */
 function rig(off: string[] = []) {
   const store = new NotificationStore(dir);
   store.add({
@@ -67,7 +58,6 @@ function rig(off: string[] = []) {
     store,
     attention: {} as never,
     prefs: () => ({ off, foldDays: 7 }) as never,
-    // The seen-mark store: only markSeen is asked for here.
     seen: {
       markSeen: (k: { subject: string; person: string }) => {
         seen.push(k.subject);

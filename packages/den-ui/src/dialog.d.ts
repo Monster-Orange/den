@@ -75,10 +75,6 @@ export interface DialogSpec {
   report?: string;
   /** Shown with no script (the open attribute). */
   open?: boolean;
-  /**
-   * panel: on a phone (640 px or less), a full-screen sheet: no radius,
-   * nothing dimmed behind it (Peek).
-   */
   sheet?: boolean;
   /** Extra classes on the <dialog> (the product's hooks). */
   className?: string;
