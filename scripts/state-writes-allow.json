@@ -39,6 +39,10 @@
     "count": 2,
     "reason": "temp files: allowed_signers in a mkdtemp folder removed after the check; and in the new key's mkdtemp folder, which a rename moves into place whole (issue 1316)"
   },
+  "src/shared/agents/guardrails/public-text.mjs": {
+    "count": 1,
+    "reason": "a temp file renamed over the repo-visibility cache in ~/.cache (outside the state folder); the hook is plain Node and cannot import atomic-write.ts"
+  },
   "src/shared/agents/sandbox.ts": {
     "count": 1,
     "reason": "an empty locked gate file, created once with wx so it never overwrites one (bwrap binds only what exists)"

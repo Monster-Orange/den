@@ -63,6 +63,9 @@ beforeEach(() => {
     maxIntervalSeconds: 300,
     budgetFloor: 500,
     watchesMax: 50,
+    staleMinutes: 60,
+    maxOpenHours: 24,
+    rerunLookMinutes: 5,
   };
   gh.pr(A, 1, SHA1);
   gh.pr(A, 2, SHA2);
@@ -326,7 +329,7 @@ describe("the final message", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("a run: its own jobs only, from the run's check suite", async () => {
+  it("a run: its own jobs only (issue 1214: the run's jobs, never the head's check runs)", async () => {
     gh.run(A, {
       id: 900,
       name: "CI",
@@ -339,8 +342,23 @@ describe("the final message", () => {
     const c = await w.create(ask({ run: 900 }));
     expect(c.ok).toBe(true);
     expect(c.watch.run).toBe(900);
+    gh.run(A, {
+      id: 900,
+      name: "CI",
+      status: "completed",
+      conclusion: "failure",
+      head_sha: SHA1,
+      check_suite_id: 5,
+    });
+    for (const [id, name, conclusion] of [
+      [11, "lint", "success"],
+      [12, "unit", "failure"],
+      [13, "e2e", "timed_out"],
+      [14, "deploy", "skipped"],
+    ] as const)
+      gh.job(A, 900, { id, name, status: "completed", conclusion });
+    // Another workflow's failed check on the same head: not this run's.
     finishedChecks();
-    // Another workflow's job on the same head: not this run's.
     gh.check(A, SHA1, {
       id: 20,
       name: "docs",
@@ -348,10 +366,13 @@ describe("the final message", () => {
       conclusion: "failure",
       suite: 6,
     });
-    await w.tick();
-    await w.deliver();
+    for (let i = 0; i < 3; i++) {
+      t = w.nextAt;
+      await w.tick();
+      await w.deliver();
+    }
     expect(sent).toHaveLength(1);
-    expect(sent[0].text).toContain("2 failed");
+    expect(sent[0].text).toContain("1 passed, 2 failed, 1 skipped");
     expect(sent[0].text).not.toContain("docs");
   });
 
@@ -452,15 +473,24 @@ describe("scope, list and cancel", () => {
     ]);
   });
 
-  it("refuses a watch past github.watches_max", async () => {
+  it("queues a watch past the cap (issue 1166), and refuses one only when the queue is full too", async () => {
     settings = { ...settings, watchesMax: 2 };
+    gh.remaining = 520; // little over the floor: the budget can't raise the cap
     const w = watcher();
     await w.create(ask({ pr: 1 }));
     await w.create(ask({ pr: 2 }));
     const r = await w.create(ask({ pr: 3 }));
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe("too_many");
-    expect(r.error).toContain("2");
+    expect(r.ok).toBe(true);
+    expect(r.watch?.state).toBe("queued");
+    // 1000 queued (the most): one more is refused, saying what is open.
+    for (let n = 100; n < 1099; n++)
+      expect((await w.create(ask({ pr: n }))).watch?.state).toBe("queued");
+    const full = await w.create(ask({ pr: 5000 }));
+    expect(full.ok).toBe(false);
+    if (full.ok) return;
+    expect(full.code).toBe("too_many");
+    expect(full.error).toContain("2 are open");
+    expect(full.error).toContain("1000 more queued");
   });
 });
 

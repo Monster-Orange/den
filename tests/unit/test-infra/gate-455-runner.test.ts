@@ -54,7 +54,9 @@ describe("gate/455.mjs as the bed runs it", () => {
     const r = runGate("routes");
     for (const kind of ["nginx", "caddy", "traefik"])
       expect(
-        r.notes.some((n) => n.startsWith(`edge route --for ${kind}: exit 0`)),
+        r.notes.some((n) =>
+          n.startsWith(`edge route --for ${kind} --json: exit 0`),
+        ),
       ).toBe(true);
   });
 

@@ -1,6 +1,7 @@
 // Live check for #331: doctor warns when edge.image is a Traefik major below 3, or a tag Den can't read a
 // version from, naming what's missing and the default image to move to.
 // The bed's own edge only (ctx.edge.swap, as in 330); teardown and the harness put its image back.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 331;
 export const clauses = [
   "doctor is quiet about edge.image on Den's default Traefik v3",
@@ -10,11 +11,13 @@ export const clauses = [
 export const timeoutMs = 300000;
 const DEFAULT = /Set edge\.image to traefik:v3\.\d+\.\d+, Den's default\./;
 
-const imageLines = (out) =>
-  String(out)
-    .split("\n")
-    .filter((l) => /edge\.image/.test(l))
-    .map((l) => l.trim());
+function imageView(d) {
+  const c = doctorChecks(d).find((x) => x?.id === "strategy:tls");
+  const said = [c?.detail ?? "", ...(c?.notes ?? [])].filter((t) =>
+    /edge\.image/.test(t),
+  );
+  return { code: d.code, status: c?.status ?? null, lines: said };
+}
 
 export async function setup() {
   return {};
@@ -22,14 +25,11 @@ export async function setup() {
 
 export async function run(ctx) {
   const r = {};
-  const base = ctx.cli(["doctor"]);
-  r.base = { code: base.code, lines: imageLines(base.out + base.err) };
+  r.base = imageView(ctx.cli(["doctor", "--json"]));
   ctx.edge.swap({ image: "traefik:v2.11" });
-  const v2 = ctx.cli(["doctor"]);
-  r.v2 = { code: v2.code, lines: imageLines(v2.out + v2.err) };
+  r.v2 = imageView(ctx.cli(["doctor", "--json"]));
   ctx.edge.swap({ image: "traefik:latest" });
-  const latest = ctx.cli(["doctor"]);
-  r.latest = { code: latest.code, lines: imageLines(latest.out + latest.err) };
+  r.latest = imageView(ctx.cli(["doctor", "--json"]));
   return r;
 }
 

@@ -21,6 +21,9 @@
  *                              same entry; false when it was the same
  *                              (force: paint it anyway)
  *   shell.setCollapsed(on)     body.den-rail-collapsed
+ *   shell.folds                issue 1444: the rail's section folds
+ *                              (hydrateRailFolds; opts.folds: its store,
+ *                              or false for none)
  *   shell.openDrawer(), closeDrawer(refocus), drawerOpen()
  *   shell.unpin(id)            Delete's path: onUnpin, then focus
  *   syncPinToggles(root, isPinned, lang)   every [data-pin-toggle] in root:
@@ -168,14 +171,32 @@ export function hydrateShell(root, opts = {}) {
       attributeFilter: ["title", "aria-label"],
     });
 
+  /**
+   * Issue 1444: what the arrows walk: the shown entries and, with the
+   * rail at full width, the section headings that fold (each a button).
+   * A folded section's entries are not shown, so they're not walked.
+   */
+  function walk() {
+    if (!nav) return [];
+    const icons =
+      document.body &&
+      document.body.classList.contains("den-rail-collapsed") &&
+      window.innerWidth > 720;
+    return all(nav, ".den-ni, button.den-gh").filter(
+      (a) =>
+        a.getClientRects().length > 0 &&
+        !(icons && a.classList.contains("den-gh")),
+    );
+  }
   function rove() {
     if (!nav) return;
-    const links = all(nav, ".den-ni");
+    const items = all(nav, ".den-ni, button.den-gh");
+    const links = walk().filter((a) => a.classList.contains("den-ni"));
     let stop = null;
     for (const a of links)
       if (a.getAttribute("aria-current") === "page") stop = a;
     if (!stop) stop = links[0];
-    for (const a of links) a.tabIndex = a === stop ? 0 : -1;
+    for (const a of items) a.tabIndex = a === stop ? 0 : -1;
   }
 
   // Issue 1341: the sticky foot's height, as the rail's scroll padding,
@@ -212,6 +233,7 @@ export function hydrateShell(root, opts = {}) {
     lastHtml = html;
     nav.innerHTML = html;
     watchFoot();
+    if (folds) folds.apply();
     rove();
     if (keep) {
       const again = nav.querySelector('[data-nav="' + keep + '"]');
@@ -321,9 +343,10 @@ export function hydrateShell(root, opts = {}) {
         e.preventDefault();
         return;
       }
-      const links = all(nav, ".den-ni");
+      const links = walk();
       const i = links.indexOf(document.activeElement);
       if (i < 0) return;
+      const pages = links.filter((a) => a.classList.contains("den-ni"));
       const pinId =
         links[i].dataset && links[i].dataset.pin ? links[i].dataset.pin : null;
       if (pinId && (e.key === "Delete" || e.key === "Backspace")) {
@@ -337,9 +360,9 @@ export function hydrateShell(root, opts = {}) {
           : e.key === "ArrowUp"
             ? (i - 1 + links.length) % links.length
             : e.key === "Home"
-              ? 0
+              ? links.indexOf(pages[0])
               : e.key === "End"
-                ? links.length - 1
+                ? links.indexOf(pages[pages.length - 1])
                 : -1;
       if (next < 0) return;
       e.preventDefault();
@@ -377,11 +400,21 @@ export function hydrateShell(root, opts = {}) {
     if (drawerOpen() && window.innerWidth > 720) closeDrawer(false);
   });
 
+  const folds =
+    nav && opts.folds !== false
+      ? hydrateRailFolds(nav, {
+          lang,
+          ...(opts.folds && typeof opts.folds === "object"
+            ? { store: opts.folds }
+            : {}),
+        })
+      : null;
   rove();
   return {
     nav,
     rove,
     paint,
+    folds,
     setCollapsed,
     unpin,
     openDrawer,
@@ -1070,4 +1103,207 @@ export function setWaiting(o, root = document) {
   pill._onClick = o.onClick || null;
   pill.style.display = "";
   return pill;
+}
+
+/** Issue 1444: where the kit keeps the folded sections by default. */
+export const RAIL_FOLD_KEY = "den.rail.folded";
+
+/**
+ * The default store: the folded sections' ids in `storage` (localStorage
+ * when none is given). Anything it can't read is "all open"; it never
+ * throws.
+ */
+export function railFoldStore(storage) {
+  const box = () => {
+    if (storage !== undefined) return storage;
+    try {
+      return typeof localStorage === "undefined" ? null : localStorage;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    get() {
+      try {
+        const v = JSON.parse(box()?.getItem(RAIL_FOLD_KEY) || "[]");
+        return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+      } catch {
+        return [];
+      }
+    },
+    set(ids) {
+      try {
+        box()?.setItem(RAIL_FOLD_KEY, JSON.stringify(ids));
+      } catch {
+        /* no storage: it stays as it is on this page */
+      }
+    },
+  };
+}
+
+/** The list with `id` added, or taken out when it was there. */
+export function toggleFolded(ids, id) {
+  return ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+}
+
+/** A folded section's count: its entries' badges summed; bad if any is. */
+export function foldCount(badges) {
+  let n = 0;
+  let bad = false;
+  for (const b of badges) {
+    const v = parseInt(String(b.n), 10);
+    if (Number.isFinite(v) && v > 0) n += v;
+    if (b.bad) bad = true;
+  }
+  return { n, bad };
+}
+
+const CHEVRON =
+  '<svg class="den-gh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+
+/**
+ * Issue 1444: the rail's sections fold. `root` holds .den-rail-group
+ * sections (railHtml's). apply() makes each section's heading its toggle:
+ * the whole row a <button> with aria-expanded and aria-controls (its
+ * entries, div.den-gb), the kit's name for it ("Hide Tools" / "Show
+ * Tools, 5"), the folded count (its entries' badges summed, only above 0)
+ * and the chevron. A click, Enter or Space folds or opens it and keeps it
+ * in `store` ({ get(), set(ids) }; default railFoldStore()). A section
+ * holding the current page opens. Clicks are taken on `root`, so they
+ * outlive a repaint; call apply() after one (hydrateShell does).
+ *   → { apply(), folded(), destroy() }
+ */
+export function hydrateRailFolds(root, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  const store = opts.store || railFoldStore();
+  const load = () => {
+    try {
+      const v = store.get();
+      return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+    } catch {
+      return [];
+    }
+  };
+  let ids = load();
+  const save = () => {
+    try {
+      store.set(ids.slice());
+    } catch {
+      /* the store failed: the page keeps its state */
+    }
+  };
+
+  function sectionOf(group) {
+    const label = group.getAttribute("aria-labelledby") || "";
+    return label.startsWith("den-gh-") ? label.slice(7) : null;
+  }
+
+  function draw(group) {
+    const id = sectionOf(group);
+    let head = group.querySelector(":scope > .den-gh");
+    if (!id || !head) return;
+    let body = group.querySelector(":scope > .den-gb");
+    if (!body) {
+      body = document.createElement("div");
+      body.className = "den-gb";
+      body.id = "den-gb-" + id;
+      for (const el of [...group.children])
+        if (el !== head && !el.classList.contains("den-sr")) body.append(el);
+      group.append(body);
+    }
+    if (head.tagName !== "BUTTON") {
+      const b = document.createElement("button");
+      b.type = "button";
+      for (const a of head.attributes) b.setAttribute(a.name, a.value);
+      b.setAttribute("data-den-fold", id);
+      b.setAttribute("aria-controls", body.id);
+      while (head.firstChild) b.append(head.firstChild);
+      b.insertAdjacentHTML("beforeend", CHEVRON);
+      head.replaceWith(b);
+      head = b;
+    }
+    const folded = ids.includes(id);
+    group.toggleAttribute("data-folded", folded);
+    head.setAttribute("aria-expanded", folded ? "false" : "true");
+    const word = (
+      head.querySelector("#den-gh-" + CSS.escape(id)) || head
+    ).textContent.trim();
+    const c = foldCount(
+      [...body.querySelectorAll(".den-bdg")].map((e) => ({
+        n: e.textContent,
+        bad: e.classList.contains("bad"),
+      })),
+    );
+    // The folded count, drawn only while folded with something to count.
+    const shown = folded && c.n > 0;
+    let n = head.querySelector("[data-den-fold-n]");
+    if (shown && !n) {
+      n = document.createElement("span");
+      n.className = "den-bdg";
+      n.setAttribute("aria-hidden", "true");
+      n.setAttribute("data-den-fold-n", "");
+      head.insertBefore(n, head.querySelector(".den-gh-chev"));
+    } else if (!shown && n) {
+      n.remove();
+      n = null;
+    }
+    if (n) {
+      n.textContent = c.n > 99 ? "99+" : String(c.n);
+      n.classList.toggle("bad", c.bad);
+    }
+    head.setAttribute(
+      "aria-label",
+      shown
+        ? c.n > 99
+          ? kitT(lang(), "kit.rail.unfoldMany", { section: word })
+          : kitT(lang(), "kit.rail.unfoldN", {
+              section: word,
+              n: n.textContent,
+            })
+        : kitT(lang(), folded ? "kit.rail.unfold" : "kit.rail.fold", {
+            section: word,
+          }),
+    );
+  }
+
+  function apply() {
+    // The store is the truth: a host's copy may have arrived since.
+    ids = load();
+    let changed = false;
+    for (const g of root.querySelectorAll(".den-rail-group")) {
+      const id = sectionOf(g);
+      // The current page's section opens, and stays open.
+      if (id && ids.includes(id) && g.querySelector('[aria-current="page"]')) {
+        ids = ids.filter((x) => x !== id);
+        changed = true;
+      }
+      draw(g);
+    }
+    if (changed) save();
+  }
+
+  function onClick(e) {
+    const head =
+      e.target && e.target.closest ? e.target.closest("[data-den-fold]") : null;
+    if (!head || !root.contains(head)) return;
+    const group = head.closest(".den-rail-group");
+    const id = head.getAttribute("data-den-fold");
+    ids = toggleFolded(ids, id);
+    save();
+    if (group) draw(group);
+    if (opts.onChange) opts.onChange(ids.slice());
+  }
+  root.addEventListener("click", onClick);
+  apply();
+  // Only now may a folded section hide (shell.css): its heading can open it.
+  root.setAttribute("data-folds", "");
+  return {
+    apply,
+    folded: () => ids.slice(),
+    destroy() {
+      root.removeEventListener("click", onClick);
+      root.removeAttribute("data-folds");
+    },
+  };
 }

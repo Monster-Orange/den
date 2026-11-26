@@ -4,13 +4,46 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.89] - unreleased
+## [0.4.90] - unreleased
+
+### Added
+
+- You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
+- An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+- More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.
+- An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
+
+### Changed
+
+- Gate slots: a waiting release run (`gate run --priority release`) now passes earlier waiting runs of the other kind too. While it waits, a cpu run asked before a browser release run (or a browser run asked before a cpu release run) doesn't start in a slot the release run needs, unless it has waited longer than the new setting `release_pass_other_kind_minutes` (default 30). A run that holds a slot is never stopped, and the slot log's `priority` row lists the runs it passed. At 0, the order is as before. `priority_pass_limit_minutes` keeps its meaning and its default of 0. (issue 1648)
+
+### Fixed
+
+- On a test install, a live check can now set one of the test's own agents to "ask" or "edits", or back to its project's mode, from the agent's row. Before, the request was refused, so the row's mode switch couldn't be checked there. Wider modes, agents the test didn't start and the server agent are still refused.
+- Den's address check, the edge's port check and the health fallback for a bare service name no longer dial `localhost`. Node tries `::1` first, so another program on `::1` at Den's port could answer for Den. They now dial where the server listens (127.0.0.1 unless `DEN_BIND_HOST` says otherwise). Den gives `http://localhost:<port>` only when localhost itself answers as this Den, and otherwise gives the address it proved (issue 1667).
+- After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
+
+### Fixed
+
+- When an agent's Den tools can't confirm this install's server, the refusal now says why (no answer within the wait, the connection's error, or an empty answer) and how long it waited, and that the next call checks again. The wait is a new setting, Settings › Server › Den tools' check of this install (`web.tools_probe_seconds`, default 30 s, was a fixed 5 s) (issue 1664).
+- An app feed whose event store was removed (the feed taken out and added again, or its folder lost) gets its next events to its agent again. Before, the new store numbered its events from 1, and the agent's pointers to them looked like ones it had already been sent, so nothing was typed and the person wasn't told. Each new store now has its own random id, kept in its meta file, and every pointer carries it. A store from before this keeps its old pointer ids, so nothing the agent was already sent is typed again. (issue 1672)
+- On an install with more than 64 agents, Den's pages and agents' Den tools no longer stall for seconds every few seconds. Each look at the agents list read every agent's transcript again, because Den kept what it had read for only 64 agents. It now keeps it for all of them, up to a new setting, `agents.helpers.facts_cache_mb` (default 256 MB, the agent looked at least recently goes first), and reads only what each transcript added since (issue 1668).
+- Den's agents list no longer reads agents' transcripts while it answers. A shared background reader keeps each agent's helpers up to date, and every list and the helpers count read from it: rows older than a new setting, `agents.helpers.refresh_seconds` (default 5 s), are read again behind the list. Den also no longer stops answering for seconds at start when many agents were interrupted (issue 1668).
+- `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
+- A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
+- No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
+- minimatch, used by the TypeScript lint parser, is now 11.0.9, past a denial-of-service flaw in its brace patterns (GHSA-g3hv-75wg-m249; below 11.0.1). It's dev-only, not in the published package: `npm ls minimatch --omit=dev` shows only 5.1.9, outside the flaw's range. The lock also no longer lists the PTY module (@lydell/node-pty) as a required dependency; package.json has it as optional only.
+
+## [0.4.89] - 2026-11-24
+
+Installs that don't set `install_mode` are now personal installs: agents run without the sandbox, and Den no longer nags about hardening. A strict mode is there as an option (`install_mode: strict`). (issue 1391)
 
 ### Added
 
 - `den doctor` has a section on installs that share this login: how many other installs run as the same login on this computer (never their paths), whether this install is in the install registry, and any 0600 file in the state folder that agents' deny rules don't cover, named by its path, never read. A fresh install whose server hasn't started yet is fine there: it joins the registry at its first start. (issue 728)
 - An agent can ask to change this machine's gate slot settings, with the held write `gate_settings_set` (or `gate settings … --reason`), which `setting_change` couldn't reach. Den checks the keys and values as Settings › Gate does, and the card shows each key's value now and the new one. On a personal install it's written at once and you're told; on a strict install it follows your choice for Limits and performance, except that turning `gate.browser_requires_container` off waits for your Allow. Every gate settings write now takes the gate's lock. (issue 1395)
 - An agent can ask for any Den setting it may not change itself, with the held write `setting_change`: the card shows the key, its value now and the new one, and nothing is written until the person allows it. Settings are grouped by category (limits, look, integrations, network, agent powers). On a personal install, limits, look and integrations change at once and the person is told, with Undo on the bell row; network and agent powers ask. On a strict install every category asks unless the person chooses otherwise. Raising how many agents or sessions run at once past twice the person's own value always asks. (issue 1371)
+- Live checks on a test install can press Allow and Undo. The test operator may Allow a held write, or Undo a setting change, that one of the test bed's own agents made, and nothing else: another agent's, a Deny, or a request off loopback or through a proxy is refused. The activity trail names the test operator. (issue 1414)
 - Restarting agents for new tools answers for each agent before anything waits: restarting now, after its turn, waiting on a background job it started (with the job's command and how long it has run), or Den can't tell. An agent waiting on a job gets "Restart now (ends the job)", and with two or more waiting there's "Restart all now", on the Agents page and in Settings › Hub. A restart no longer waits silently for a background job and then gives up. (issue 1407)
 
 ### Changed
@@ -39,7 +72,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Migrations
 
-- Installs with no install_mode become personal: the sandbox turns off unless you set it. To keep it, set install_mode: strict in den.yml. An explicit `agents.sandbox` (on or required) and each `agents.<id>.sandbox` stay as set. Doctor shows "Install mode: personal (default)" once, as information, with how to switch. (issue 1391)
+- Installs with no install_mode become personal: agents run outside the sandbox unless `agents.sandbox` or an agent's `agents.<id>.sandbox` is set, and those stay as set. Doctor shows "Install mode: personal (default)" once, as information. Strict is an option (`install_mode: strict`). (issue 1391)
 
 ## [0.4.88] - 2026-11-23
 

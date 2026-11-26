@@ -241,6 +241,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
   ),
   R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
     "D32: one helper's transcript, tool calls summarized, read-only (no stop or steer)",
   ),
@@ -436,7 +440,17 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/coach/dismiss",
-    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+    "issue 52: Dismiss a Coach finding, a person's (a reason kept when given)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/undismiss",
+    "issue 52: Undo a Coach finding's dismissal, a person's",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
   ),
   M(
     ["POST"],
@@ -680,6 +694,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
   ),
   M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
+  ),
+  M(
     ["POST", "DELETE"],
     "/api/workspaces/:ws/mcp-servers/:name",
     "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
@@ -833,6 +857,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/gate-slots/boxes/enable",
     "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
+  ),
+  R(
+    "/api/gate-slots/runner-entries",
+    "Issue 642: the CI runner entries (a repo's jobs on a test box); a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries",
+    "Issue 642: a person adds or replaces a runner entry; an agent asks with gate_runner_entry_set",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries/remove",
+    "Issue 642: a person removes a runner entry",
   ),
   R(
     "/api/notifications",
@@ -1246,6 +1284,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [

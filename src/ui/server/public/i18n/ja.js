@@ -1158,10 +1158,22 @@
       "この 1 時間に残る GitHub API の呼び出しがこの数を下回ると、GitHub の監視は GitHub のリセットまで何も問い合わせず、新しい監視を断り、リセットの時刻を伝えます。__DEN_CLI__ config github.api_budget_floor=500",
     "set.server.github_watches_max": "GitHub の監視: 同時に監視する数",
     "set.server.github_watches_max.d":
-      "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の数です。それを超える分は理由を添えて断ります。__DEN_CLI__ config github.watches_max=50",
+      "ここにいるすべてのエージェントを合わせて、GitHub の監視が同時に監視するプルリクエストと実行の最小の数です。GitHub API の残りに余裕があれば、もっと監視します。それを超える新しい監視は順番待ちになり、ほかの監視が終わると始まります。__DEN_CLI__ config github.watches_max=50",
+    "set.server.github_watch_stale": "GitHub の監視: 進展のない時間 (分)",
+    "set.server.github_watch_stale.d":
+      "この分数のあいだ進展のない監視は終わり、その理由をエージェントに伝えます。待機中または実行中のチェックは進展と数えますが、何も変わらないままこの4倍の時間が過ぎると終わります。この上限は監視間隔の2倍より短くなりません。プルリクエストがマージまたはクローズされたとき、または新しいプッシュで head が置き換わったときも、監視は終わります。__DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open": "GitHub の監視: 最長の時間 (時間)",
+    "set.server.github_watch_max_open.d":
+      "この時間を超えて開いている監視は、チェックの状態にかかわらず終わり、その理由をエージェントに伝えます。結果を報告しないチェックを捕まえるためです。__DEN_CLI__ config github.watch_max_open_hours=24",
+    "set.server.github_rerun_look": "GitHub の監視: 再実行を確かめる間隔 (分)",
+    "set.server.github_rerun_look.d":
+      "実行の結果を伝えてから 1 時間、GitHub の監視はこの間隔で再実行がないかを確かめ、再実行があれば監視をもう一度開きます。確かめる回数が少ないほど、GitHub の 1 時間あたりの残りを使いません。__DEN_CLI__ config github.rerun_look_minutes=5",
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe": "Den ツールによるこのインストールの確認 (秒)",
+    "set.server.tools_probe.d":
+      "エージェントの Den ツールが、__DEN_TITLE__ がこのインストールだと答えるのを待つ時間です。これを過ぎると呼び出しは拒否されます。忙しい __DEN_TITLE__ は遅れて答えますが、遅れた答えも有効です。次の呼び出しで再び確認します。__DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "起動の待ち時間 (秒)",
     "set.server.start_wait.d":
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
@@ -1240,6 +1252,10 @@
       "この時間待った印付きのリリース実行は追い越されない（分）",
     "set.server.gate_priority_pass.d":
       "優先されたリリース実行は、同じ種類の他のすべての待機中の実行より先に進みます。リリース優先の印が付いた実行どうしでは、この時間待っているものは追い越しません。0 では他の印付きの実行を追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "待機中のリリース実行が、先に頼まれた別の種類の実行を追い越せる待ち時間の上限（分）",
+    "set.server.gate_release_pass_other.d":
+      "優先されたリリース実行が待っている間、先に頼まれた別の種類（cpu またはブラウザー）の実行は、その実行が必要とする枠では始まりません。この時間より長く待っているものは始まります。実行中のものは止めません。0 ではどれも追い越しません。__DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents":
       "エージェントもリリースの優先を依頼できる",
     "set.server.gate_priority_agents.d":
@@ -1288,6 +1304,9 @@
     "set.server.gate_box_check.d":
       "テストマシンにスロットを渡す直前に、Den がその応答を待つ時間です。応答がなければ、そのマシンは飛ばします。__DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck": "飛ばしたテストマシンを再確認するまで (秒)",
+    "set.server.gate_runner_entries": "CI ランナーのエントリ",
+    "set.server.gate_runner_entries.d":
+      "どのリポジトリの CI ジョブをどのテストマシンで実行できるかです。ジョブが求めるランナーのラベル、振り分けるリポジトリ変数、同時に実行する数、マシンの重いスロットを取るか、責任者を決めます。今は設定だけで、Den はまだランナーを起動しません。エージェントが追加を頼み、あなたが許可します。__DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "保留中か応答のなかったマシンはこの時間飛ばし、その後そのマシンのスロットが求められたときに再確認します。タイマーでは確認しません。__DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.gate_box_default": "ブラウザテストの行き先",
@@ -1298,6 +1317,18 @@
     "set.server.gate_host_only": "ここに残すブラウザテスト",
     "set.server.gate_host_only.d":
       "カンマ区切りで <プロジェクト>、label:<パターン>(* は任意の文字列)。これらのブラウザテストはテストマシンに行きません。たとえばレイアウトのテストや macOS の WebKit。空なら、なしです。__DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    "set.server.gate_route_agents": "エージェントの重い実行を順番待ちに通す",
+    "set.server.gate_route_agents.d":
+      "オンなら、エージェントの単独のテスト、型チェック、ブラウザテストはほかと同じく順番待ちの枠を使います。オフなら、そのまま実行して下で数えます。__DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_route_commands": "順番待ちに通すプログラム",
+    "set.server.gate_route_commands.d":
+      'カンマ区切りのプログラム名、または npm test と npm run test*(* は任意の末尾)。空なら jest, vitest, tsc, playwright, npm test, npm run test*。__DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    "set.server.gate_outside": "今日、順番待ちの外で実行されたもの",
+    "set.server.gate_outside.d":
+      "今日、順番待ちの枠を使わなかったエージェントのテスト、型チェック、ブラウザテスト。複数の部分からなるコマンドか、順番待ちに通す設定がオフの場合です。記録するのはプログラムとエージェントだけで、引数は記録しません。",
+    "set.ui.outsideNone": "今日はありません。",
+    "set.ui.outsideRuns": "{n} 回",
+    "set.ui.outsideFailed": "順番待ちの記録を読めませんでした。",
     "set.server.crash_loop_wait": "再起動ガードの最長の待ち時間",
     "set.server.crash_loop_wait.d":
       "次の起動が待つ最長の時間です。0 なら待ちません。__DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -1350,6 +1381,9 @@
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "プロジェクトごとのエージェント数",
+    "set.agents.max_per_project.d":
+      "1 つのプロジェクトで同時に動かせるエージェントの数です。0 は「同時に動かせるエージェント数」以外の上限なしです。プロジェクトは自分用にもっと低い値を設定できます（workspaces.yml のそのプロジェクトの agents.max_per_project）。これを超える起動は拒否され、どの上限で止まったかが表示されます。__DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
@@ -1439,6 +1473,9 @@
     "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
     "set.server.health_poll_hidden.d":
       "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "同時に実行する git の読み取り",
+    "set.server.git_reads.d":
+      "ページがリポジトリを読むとき (テストページのブランチやコミットなど) に Den が同時に実行する git プロセスの数: 1〜64。__DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -1501,6 +1538,10 @@
       "1 時間あたりの GitHub issue の書き込み数",
     "set.agents.issue_writes_per_hour.d":
       "すべてのエージェントを合わせて 1 時間に行える issue の書き込み数です。超えると、エージェントに待ち時間が伝えられます。__DEN_CLI__ config agents.issue_writes_per_hour=60",
+    "set.agents.issue_writes_visibility_minutes":
+      "リポジトリの公開範囲を再確認するまでの時間",
+    "set.agents.issue_writes_visibility_minutes.d":
+      "公開リポジトリ、または公開範囲がわからないリポジトリにエージェントが投稿するテキストは、先にリストの名前が含まれていないか確認されます。これは、リポジトリの公開範囲を GitHub に再確認するまで保持する分数です。公開に変わったリポジトリも、すぐに確認の対象になります。1 から 1440。__DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     "ap.do.agent_import":
       "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
@@ -1603,6 +1644,11 @@
     "hub.addressMore": "Hub のアドレス…",
     "hub.justConnected":
       "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
+    "hub.switching":
+      "{to} に切り替え中です。終えるにはそこでサインインしてください。それまで __DEN_TITLE__ は {from} のままです。",
+    "hub.switchEnded":
+      "{to} への切り替えはサインインを待ちすぎたため終了しました。__DEN_TITLE__ は {from} のままです。",
+    "hub.switchSignin": "新しい Hub にサインイン",
     "hub.reconnect": "再接続",
     "hub.cw.done": "Hub（{company}）に接続しました。",
     "hub.cw.doneNoCo": "Hub に接続しました。",
@@ -1836,6 +1882,8 @@
     "ag.none": "このプロジェクトにはまだエージェントがありません",
     "ag.personaOf": "ペルソナ {persona}",
     "ag.state.running": "実行中",
+    "ag.activity.working": "作業中",
+    "ag.activity.idle": "アイドル",
     "ag.state.stopping": "停止中…",
     "ag.state.stopped": "停止済み",
     "ag.state.ended": "終了",
@@ -2255,6 +2303,22 @@
       "設定と同じ方法で確認済みとして保存します。再起動なしで有効になり、Den は接続中の Hub に伝えます。",
     "set.ui.hub.denUrlRefused":
       "Hub はこの Den のアドレス ({url}) を受け付けませんでした: {why}",
+    "ap.do.gate_runner_entry_set":
+      "{repo} の CI ジョブをテストマシン {box} で実行できるようにする",
+    "ap.det.gate_runner_entry_set.reach":
+      "ラベル {labels} の付いた {repo} の CI ジョブを、テストマシン {box} で一度に最大 {n} 個まで実行できるようにします。",
+    "ap.det.gate_runner_entry_set.change":
+      "ラベル {labels} の付いた {repo} の CI ジョブをテストマシン {box} で一度に最大 {n} 個まで実行できるようにするエントリを変更します。",
+    "ap.det.gate_runner_entry_set.heavy":
+      "各ジョブは {box} のゲートスロットを 1 つ取るので、そこで他の重いジョブと同時には実行されません。",
+    "ap.det.gate_runner_entry_set.light":
+      "このジョブは軽いため、{box} のゲートスロットを取りません。",
+    "ap.det.gate_runner_entry_set.route":
+      "リポジトリ変数 {variable} がジョブをこのマシンへ、またはホスト型ランナーへ戻します。責任者は {owner} です。",
+    "ap.det.gate_runner_entry_set.private":
+      "マシンのランナーは非公開リポジトリでのみ起動します。{repo} が公開リポジトリなら、人がこのプロジェクトで公開リポジトリを許可しない限り起動しません。",
+    "ap.det.gate_runner_entry_set.remove":
+      "設定の「CI ランナーのエントリ」でいつでも削除できます。",
     "ap.do.host_restart": "エージェントの手が空いたらターミナルホストを再起動",
     "ap.det.host_restart.wait":
       "ターンの途中のエージェントがいなくなるまで待ち（最大 {min} 分）、インストール済みの Den でターミナルホストを再起動します。",
@@ -2338,6 +2402,10 @@
       "その後 Den が再起動し、エージェントは次に再起動したときに Hub のツールを使えるようになります。",
     "ap.det.hub_connect.connect":
       "その後、設定 › Hub で接続します。そこで「接続」を押すと Hub にサインインします。",
+    "ap.det.hub_connect.keep":
+      "{url} にサインインするまで、Den は {was} とそのキーを使い続けます。",
+    "ap.det.hub_connect.signin":
+      "許可すると {url} のサインインが開きます。その Hub が応答したら Den はそちらに切り替わり、{was} はキーを無効にします。失敗した場合、Den は {was} のままで、理由を伝えます。",
     "ap.det.den_pin_commit.pr":
       "Den は package.json と package-lock.json をブランチ den/pin-{version} にコミットし、プルリクエストを開きます。",
     "ap.det.den_pin_commit.push":
@@ -2567,7 +2635,7 @@
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "set.workspace.event_feeds": "アプリのイベントフィード: このプロジェクト",
     "set.workspace.event_feeds.d":
-      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。agents.event_feeds に追加します。bearer は secrets.refs の名前です。",
+      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。ここで追加や削除ができます。エージェントは project_event_feed_add か project_event_feed_remove で求めます。bearer は secrets.refs の名前で、値ではありません。",
     "set.embed.feed_max_streams": "同時に読むアプリフィード",
     "set.embed.feed_max_streams.d":
       "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
@@ -2600,6 +2668,38 @@
     "feed.unread": "未読: {n}。",
     "bell.m.appFeed.dropped":
       "{agent} のアプリフィード {name}: 保存数の上限のため未読のイベントが消えました。",
+    "feed.add": "フィードを追加",
+    "feed.name": "名前",
+    "feed.agent": "エージェント",
+    "feed.url": "ストリームのアドレス",
+    "feed.bearer": "bearer(secrets.refs の名前)",
+    "feed.bearerNone": "なし",
+    "feed.noAgents":
+      "このプロジェクトにはまだエージェントがいません。エージェントを起動してから、そのフィードを追加してください。",
+    "feed.addW": "フィードを追加しています…",
+    "feed.addS": "追加しました。",
+    "feed.addF": "フィードを追加できませんでした。",
+    "feed.remove": "削除",
+    "feed.removeL": "フィード {name} を削除",
+    "feed.rmT": "フィードを削除しますか?",
+    "feed.rmAsk":
+      "プロジェクト {project} からフィード {name} を削除しますか? Den はそのストリームを閉じ、{agent} にはもう 1 行も届きません。",
+    "feed.rmW": "フィードを削除しています…",
+    "feed.rmS": "削除しました。",
+    "feed.rmF": "フィードを削除できませんでした。",
+    "ap.do.project_event_feed_add":
+      "プロジェクト {project} の {agent} 向けにイベントフィード {name}({url})を追加",
+    "ap.do.project_event_feed_remove":
+      "プロジェクト {project} からイベントフィード {name} を削除",
+    "ap.feed.warn":
+      "Den は {url} を開き、未読のイベントがあると {agent} に短い 1 行を入力します。",
+    "ap.feed.feed": "フィード: {name}({agent} 向け)",
+    "ap.feed.bearer":
+      "bearer: 接続のたびに secrets.refs.{ref} から読みます。表示されることも、エージェントのファイルに書かれることもありません。",
+    "ap.feed.noBearer":
+      "bearer なし: ストリームは Authorization ヘッダーなしで開かれます。",
+    "ap.feed.removeWarn":
+      "Den はフィード {name} を閉じます。そのエージェントにはもう 1 行も届きません。",
     "feed.problems": "読めない agents.event_feeds の項目: {n}。",
     "feed.failed":
       "このプロジェクトのアプリのイベントフィードを読めませんでした。",
@@ -2835,8 +2935,6 @@
     "bell.undo": "元に戻す",
     "bell.undoMsg": "「{kind}」を表示しなくなりました。",
     "bell.clearRead": "既読を消去",
-    "bell.marking": "既読にしています…",
-    "bell.clearing": "消去しています…",
     "bell.read": "既読にする",
     "bell.server": "__DEN_TITLE__ エージェント",
     "bell.hub": "Hub · {project}",
@@ -2852,6 +2950,13 @@
       "{name} の質問を取り下げました。解決済み: {reason}（{text}）",
     "bell.m.settledLate":
       "{name} の質問は解決済みでした: {reason}。あなたの回答はその後に届き、エージェントに渡しました（{text}）",
+    "bell.m.hubSwitchWaits":
+      "Hub の切り替えを終えるには {to} にサインインしてください。それまで __DEN_TITLE__ は {from} のままです",
+    "bell.m.hubSwitchExpired":
+      "{to} への切り替えはサインインを {days} 日待ったため終了しました。__DEN_TITLE__ は {from} のままです。切り替えるにはもう一度依頼してください",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ は {to} に切り替えられませんでした: {why}。{from} のままです。設定 › Hub でもう一度サインインしてください",
+    "ap.hubSwitchSignin": "{url} のサインインを開いています…",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
@@ -2867,6 +2972,11 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.rsTimedOut":
+      "{id} は再起動されませんでした: {min} 分後も作業中でした",
+    "bell.m.rsJob":
+      "{id} は再起動されませんでした: バックグラウンドのジョブが実行中です ({cmd}、{min} 分)",
+    "bell.m.rsFailed": "{id} は再起動されませんでした",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":
@@ -2884,6 +2994,8 @@
     "bell.m.vschedExpire":
       "スケジュール「{name}」の許可はあと {n} 日で切れます。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.heldAllowClaimed":
+      "あなたの許可を待っています: {what}。あなたが {name} として依頼しました（未確認）。",
     "bell.m.shared": "{actor} さんが {title} を共有しました",
     "bell.m.sharedNote": "{actor} さんが {title} を共有しました: {note}",
     "bell.m.sharedAgent": "エージェント {actor} が {title} を共有しました",
@@ -2909,6 +3021,7 @@
     "bell.ap.h": "あなたの許可待ち",
     "bell.ap.row": "{name} の依頼: {what}",
     "bell.ap.rowAsk": "依頼: {what}",
+    "bell.ap.rowClaimed": "あなたが {name} として依頼（未確認）: {what}",
     "bell.ap.waits": "{ago} 待機中 · 期限 {time}",
     "bell.ap.allow": "許可",
     "bell.ap.deny": "拒否",
@@ -2926,6 +3039,8 @@
     "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
     "rs.allName": "エージェント",
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
+    "rs.timedOut":
+      "{id}: 再起動されませんでした。{min} 分後も作業中でした。今すぐ再起動するとターンが終わります。",
     "rs.failed":
       "{id}: 再起動できませんでした。エージェントのページから再起動してください。",
     "bell.ap.denied": "拒否しました: {what}",
@@ -2969,6 +3084,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubAgentsReconnect":
+      "エージェントが自分の作業に署名できるよう、Hub に接続し直してください",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
@@ -3001,6 +3118,10 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPushedBehind":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプッシュしました ({sha}) が、ローカルのコピーは遅れていて未保存の変更があるため、pull して固定バージョンを取り込んでください",
+    "bell.m.pinPrAhead":
+      "__DEN_TITLE__ は {v} に更新されました: ローカルにプッシュしていないコミットがあるため、固定バージョンはプルリクエストにしました。#{n} を作成しました ({branch})",
     "bell.m.pinPrFallback":
       "__DEN_TITLE__ は {v} に更新されました: このブランチにはプルリクエストが必要なため、固定バージョンの #{n} を作成しました ({branch})",
     "bell.m.pinBranchPushed":
@@ -3021,6 +3142,8 @@
       "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
     "bell.m.hubCommentsSilent":
       "Hub のコメントが届いていません: コメントのストリームが途絶えました",
+    "bell.m.hubCommentsStale":
+      "Hub のコメントが届いていません: コメントのストリームは開いていますが、Hub に未送信のコメントがあります",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",
@@ -3200,6 +3323,199 @@
     "sa.runsOn": "実行するランタイム",
     "sa.openAgents": "エージェントで開く",
     "sa.saved": "保存しました。次回の起動から使われます。",
+    // Issue 52: the Coach tab (mock v2).
+    "co.tabs": "エージェントの表示",
+    "co.tab.terminal": "ターミナル",
+    "co.tab.coach": "Coach",
+    "co.run": "今すぐ実行",
+    "co.runAgain": "もう一度実行",
+    "co.running": "実行中…",
+    "co.running.sub":
+      "トランスクリプトを読んでいます：{total} 件中 {done} 件のエージェント。",
+    "co.running.start": "実行を始めています。",
+    "co.running.h": "この __DEN_TITLE__ のエージェントを読んでいます",
+    "co.running.p":
+      "実行が終わるとこのタブに表示されます。このページを離れてもかまいません。",
+    "co.failed": "前回の実行は失敗しました：{when}",
+    "co.failed.before":
+      "何も保存されていません。前回の実行を表示しています：{when}。",
+    "co.failed.none": "何も保存されていません。",
+    "co.failed.table": "下の表は {when} のレポートのままです。",
+    "co.none.h": "まだ実行していません",
+    "co.none.sub":
+      "手動で実行します。この __DEN_TITLE__ のエージェントを読むだけで、何も変えません。",
+    "co.empty.h": "まだレポートはありません",
+    "co.empty.p": "「今すぐ実行」を押してください。1〜2 分かかります。",
+    "co.last": "前回の実行：{when}",
+    "co.cost":
+      "{model} で {tokens} トークンかかりました。{n} 件のエージェントを読みました。",
+    "co.costNone": "モデルは使っていません。{n} 件のエージェントを読みました。",
+    "co.off.h": "Coach はオフです",
+    "co.off.sub": "実行するには Coach をオンにしてください。",
+    "co.off.p":
+      "Coach は、この __DEN_TITLE__ のエージェントがトークンをどう使っているかを読み、レポートを書きます。この __DEN_TITLE__ 自身のエージェントだけを読み、このマシンの外には何も送らず、何も変えません。",
+    "co.off.how":
+      "オンにするには：設定 → エージェント → Coach → オン。または agents.coach.enabled: true を設定します。",
+    "co.openSettings": "設定を開く",
+    "co.tile.window": "期間",
+    "co.days": "{n} 日",
+    "co.perDayShort": "{v} / 日",
+    "co.range": "期間：{from} – {to}（{days} 日）",
+    "co.showAs": "件数の表示",
+    "co.total": "合計",
+    "co.perDay": "1 日あたり",
+    "co.col.agent": "エージェント",
+    "co.col.calls": "呼び出し",
+    "co.col.output_M": "出力トークン",
+    "co.col.cache_read_B": "キャッシュ読み取り",
+    "co.col.avg_context_k_main": "平均コンテキスト / 呼び出し",
+    "co.col.compactions": "コンパクション",
+    "co.col.rotations": "ローテーション",
+    "co.col.conversations": "会話",
+    "co.col.polls": "ポーリング",
+    "co.col.denials": "拒否",
+    "co.col.tool_error_pct": "ツールエラー",
+    "co.col.correction_pct": "訂正",
+    "co.card.calls": "呼び出し",
+    "co.card.output": "出力",
+    "co.noNumbers": "この期間の数値はありません",
+    "co.foot":
+      "この __DEN_TITLE__ が起動した、または取り込んだエージェントだけです。",
+    "co.detail.sub": "{range} · 会話 {n} 件",
+    "co.close": "閉じる",
+    "co.conv.h": "会話（新しい順）",
+    "co.noConv": "この期間の会話はありません。",
+    "co.kind.start": "開始",
+    "co.kind.fresh": "新規",
+    "co.kind.rotation": "ローテーション",
+    "co.kind.bring-in": "取り込み",
+    "co.why.start": "最初の起動",
+    "co.why.fresh": "新しい会話：新しく始める、または再起動",
+    "co.why.rotation": "引き継ぎから再起動",
+    "co.why.bring-in": "__DEN_TITLE__ の外から取り込み",
+    "co.approx": "（時刻はおおよそ）",
+    "co.mix.h": "モデルの内訳（呼び出し数）",
+    "co.mix.main": "メインの呼び出し",
+    "co.mix.sub": "サブエージェントの呼び出し",
+    "co.mix.none": "呼び出しなし",
+    "co.mix.opus": "Opus",
+    "co.mix.sonnet": "Sonnet",
+    "co.mix.haiku": "Haiku",
+    "co.mix.other": "その他",
+    "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} が Opus。Coach が下で指摘しています",
+    "co.perDayH": "1 日あたり",
+    "co.perDayLine":
+      "呼び出し {calls}/日 · 出力 {output}/日 · コンパクション {compactions}/日 · ローテーション {rotations}/日",
+    "co.run.w": "Coach を実行しています…",
+    "co.run.done": "完了：Coach のレポートができました。",
+    "co.run.fail": "Coach の実行に失敗しました。",
+    "co.dis.w": "閉じています…",
+    "co.dis.done": "閉じました。",
+    "co.dis.fail": "閉じられませんでした。",
+    "co.ap.busy.w": "許可を求めています…",
+    "co.ap.busy.done": "ベルに許可の依頼を送りました。",
+    "co.ap.busy.fail": "許可を求められませんでした。",
+    "co.undo.w": "元に戻しています…",
+    "co.undo.done": "一覧に戻しました。",
+    "co.undo.fail": "元に戻せませんでした。",
+    "co.counts.w": "保存しています…",
+    "co.counts.done": "保存しました。",
+    "co.counts.fail": "件数の表示を保存できませんでした。",
+    "co.off.status": "オフ",
+    "co.f.h": "気づいたこと",
+    "co.f.count":
+      "今回の実行で {n} 件。Coach は読んで報告するだけで、何も変えません。",
+    "co.f.col.finding": "内容",
+    "co.f.col.agent": "エージェント",
+    "co.f.col.why": "Coach がそう言う理由",
+    "co.ap.apply": "適用",
+    "co.ap.proposed": "提案する変更: {change}",
+    "co.ap.change.subagent_opus":
+      "{persona} のサブエージェントのモデルを Sonnet にします。",
+    "co.ap.rev.subagent_opus": "はい: {persona} のペルソナで元に戻せます。",
+    "co.ap.now.subagent_opus":
+      "{persona} のサブエージェントのモデルは Sonnet になりました。",
+    "co.ap.none": "この指摘には Coach が提案する変更はありません。",
+    "co.ap.waiting": "許可待ち",
+    "co.ap.waiting.line":
+      "まだ何も変わっていません。ベルで人が許可する必要があります。",
+    "co.ap.openBell": "ベルを開く",
+    "co.ap.applied": "適用済み",
+    "co.ap.applied.by":
+      "{by} が {when} に許可しました。{now} Coach が次の実行で確認します。",
+    "co.ap.applied.at":
+      "{when} に許可されました。{now} Coach が次の実行で確認します。",
+    "co.ap.denied": "拒否",
+    "co.ap.denied.by":
+      "{by} が {when} に拒否しました。何も変わっていません。指摘は残ります。",
+    "co.ap.denied.at":
+      "{when} に拒否されました。何も変わっていません。指摘は残ります。",
+    "co.ap.failed": "失敗",
+    "co.ap.failed.line":
+      "適用できませんでした: {reason}。何も変わっていません。",
+    "co.ap.failed.none": "適用できませんでした。何も変わっていません。",
+    "co.ap.again": "もう一度適用",
+    "co.ap.retry": "再試行",
+    "co.ap.fail":
+      "「{title}」の適用を依頼できませんでした。もう一度お試しください。",
+    "co.ap.live.waiting": "「{title}」: 許可待ちです。",
+    "co.ap.live.applied": "「{title}」: 適用されました。",
+    "co.ap.live.denied": "「{title}」: 拒否されました。何も変わっていません。",
+    "co.ap.live.failed": "「{title}」: 失敗しました。何も変わっていません。",
+    "bell.coach.asks":
+      "__DEN_TITLE__ エージェントが {persona} の変更を依頼しています",
+    "bell.coach.from": "Coach の指摘「{title}」から。",
+    "bell.coach.change": "変更",
+    "bell.coach.why": "理由",
+    "bell.coach.rev": "元に戻せるか",
+    "co.f.dismiss": "閉じる",
+    "co.f.undo": "元に戻す",
+    "co.f.toast": "「{title}」を閉じました。",
+    "co.f.fail": "「{title}」を閉じられませんでした。もう一度お試しください。",
+    "co.f.none":
+      "今週は目立つことはありませんでした。限度を超えたエージェントはいません。",
+    "co.f.dismissedN": "{n} 件を閉じました",
+    "co.f.show": "表示",
+    "co.f.hide": "隠す",
+    "co.f.dismissedAt": "{when} に閉じました",
+    "co.f.subagent_opus.t":
+      "{agent} はサブエージェントを Opus で動かしています",
+    "co.f.subagent_opus.why":
+      "サブエージェント呼び出し {calls} 件のうち {n}% が Opus で、限度の {line}% を超えています。ペルソナのサブエージェントモデルを Sonnet にすると、調査や確認が安いモデルで動きます。",
+    "co.f.polling.t": "{agent} はポーリングが多い",
+    "co.f.polling.why":
+      "1 日 {n} 回のポーリングで、限度の {line} を超えています。長い処理をポーリングで待つと毎回呼び出しがかかります。バックグラウンドで動かして知らせを待てばかかりません。",
+    "co.f.no_rotation.t": "{agent} はローテーションしていません",
+    "co.f.no_rotation.why":
+      "この会話でコンパクションが {n} 回あり、上限の {line} を超えています。そのたびに失った文脈をエージェントが読み直します。引き継ぎから再起動すると小さく始められます。",
+    "co.f.denials.t": "{agent} はよく拒否されています",
+    "co.f.denials.why":
+      "1 日 {n} 回拒否されていて、限度の {line} を超えています。何を繰り返し求めているか確認してください。承認できる許可ルールか、動き方の見直しかのどちらかです。",
+    "co.f.transcript_size.t": "{agent} のトランスクリプトが大きい",
+    "co.f.transcript_size.why":
+      "この期間のトランスクリプトが {n} MB あり、限度の {line} MB を超えています。ローテーションするか、スクリーンショットをファイルに保存すると小さく保てます。",
+    "co.f.ask_r12.t": "{agent} の質問がわかりにくい",
+    "co.f.ask_r12.why":
+      "あなたへの質問 {n} 件のうち、わかりやすいものは {pct}% で、限度の {line}% を下回っています。短い文、すべての ID の説明、決めることを番号付きのはい・いいえの質問にすると、わかりやすくなります。",
+    "co.f.ask_wait.t": "{agent} の質問の待ち時間が長い",
+    "co.f.ask_wait.why":
+      "質問の回答待ちは中央値で {n} 分で、限度の {line} 分を超えています。別のエージェントが答えを持っているか、質問をまとめられるかもしれません。",
+    "co.f.msg_repeat.t": "{agent} は同じメッセージを何度も送っています",
+    "co.f.msg_repeat.why":
+      "同じ内容をほかのエージェントに {n} 回送り直していて、限度の {line} に達しています。返事の見落としかループです。一度伝えて知らせを待てば十分です。",
+    "co.f.msg_no_reply.t": "{agent} のメッセージに返事がありません",
+    "co.f.msg_no_reply.why":
+      "ほかのエージェントへのメッセージ {n} 件のうち {pct}% に返事がなく、限度の {line}% を超えています。答えを持つエージェントに送っているか、相手がメッセージを読んでいるか確認してください。",
+    "co.f.repeat_ask.t": "{agent} に同じことを頼み直しています",
+    "co.f.repeat_ask.why":
+      "安いモデルの判断では、あなたの指示のうち {n} 件が前に頼んだことの頼み直しでした。頼んだことが済んでいないのかもしれません。",
+    "co.f.trivial_ask.t": "{agent} は自分で決められることを聞いています",
+    "co.f.trivial_ask.why":
+      "安いモデルの判断では、あなたへの質問のうち {n} 件は自分で決められるものでした。",
+    "co.f.relay.t": "{agent} はあなたの依頼を自分の依頼として伝えています",
+    "co.f.relay.why":
+      "安いモデルの判断では、メッセージのうち {n} 件があなたの依頼をほかのエージェントに自分の依頼として伝えていました。",
     "ag.cap":
       "ペインは最大 4 つです。{id} のペインを閉じました（実行は続きます）",
     "ag.layout": "レイアウト",
@@ -3227,6 +3543,12 @@
     "ag.signIn": "{label} で実行",
     "ag.signIn.tip":
       "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
+    "ag.hub.bound": "Hub で確認済み",
+    "ag.hub.bound.tip":
+      "自分のトークンで Hub を呼び出すので、Hub はその作業と承認をこのエージェント自身のものとして数えます。",
+    "ag.hub.unbound": "Hub で未確認",
+    "ag.hub.unbound.tip":
+      "今はこのインストールのトークンで Hub を呼び出すため、Hub はその承認をインストールのものと区別できません。次に Hub を呼び出すとき、Den が Hub にこのエージェント専用のトークンを求めます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -3329,6 +3651,9 @@
       "枠を確保済み。負荷 ({load}) が {limit} 未満に下がるまで開始を待っています",
     "gate.leftoversH": "実行の終了後に止めたもの",
     "gate.leftovers": "{label} ({cmd}) の残りのプロセス {n} 個",
+    "gate.removedH": "実行の終了後に削除した使い捨てコンテナ",
+    "gate.removed": "{label} のコンテナ {n} 個 ({images})",
+    "gate.removedBare": "{label} のコンテナ {n} 個",
     "busy.setUndoW": "設定を元に戻しています…",
     "busy.setUndoS": "設定を元に戻しました。",
     "busy.setUndoF": "設定を元に戻せませんでした。",
@@ -3776,6 +4101,22 @@
     "set.ui.boxIsOff": "オフ",
     "set.ui.boxTurnOn": "オンにする",
     "set.ui.boxTurnOff": "オフにする",
+    "set.ui.reRepo": "リポジトリ (owner/name)",
+    "set.ui.reBox": "テストマシン",
+    "set.ui.reLabels": "ランナーのラベル (カンマ区切り)",
+    "set.ui.reVar": "振り分けの変数",
+    "set.ui.reSlots": "同時に",
+    "set.ui.reHeavy": "マシンの重いスロットを取る",
+    "set.ui.reOwner": "責任者",
+    "set.ui.reSave": "エントリを保存",
+    "set.ui.reNone":
+      "ランナーのエントリはありません。CI ジョブはホスト型ランナーを使います。",
+    "set.ui.reNoBox": "先に「テストマシン」でマシンを設定してください。",
+    "set.ui.reHeavyIs": "重い",
+    "set.ui.reLightIs": "軽い",
+    "set.ui.reSlotsN": "同時に {n} 個",
+    "set.ui.reVarIs": "変数 {v}",
+    "set.ui.reOwnerIs": "責任者 {who}",
     "set.ui.appKeyOnce":
       "このキーを今すぐウェブアプリのバックエンドにコピーしてください。もう表示されません。",
     "set.ui.appKeyNew": "新しいアプリキー",
@@ -4071,6 +4412,11 @@
     "set.agents.layout.o.focus": "フォーカス",
     "set.agents.layout.o.tabs": "タブ",
     "set.agents.layout.o.tile": "タイル",
+    "set.agents.coach_counts": "Coach タブ：件数の表示",
+    "set.agents.coach_counts.d":
+      "合計は期間の件数を、1 日あたりは日数で割った件数を表示します。割合と平均は変わりません。Coach タブの切り替えでも変えられます。",
+    "set.agents.coach_counts.o.total": "合計",
+    "set.agents.coach_counts.o.per_day": "1 日あたり",
     "set.agents.helpers_shown": "エージェントの下に表示するヘルパーの最大数",
     "set.agents.helpers_shown.d":
       "残りは「すべて表示」で見られます。バッジは、動作中のヘルパーをすべて数えます。",
@@ -4446,6 +4792,9 @@
     "env.run.title": "GitHub 上のデプロイ実行",
     "env.run": "実行",
     "env.timedOut": "{s} 秒でタイムアウト",
+    "env.fetchFailed": "応答なし: 起動していますか?",
+    "env.fetchFailedWhy":
+      "{url} が応答しませんでした。起動しているか、このコンピューターからそのアドレスに届くかを確認してください。",
     "env.up": "稼働中",
     "env.down": "停止中",
     "env.service": "サービス",

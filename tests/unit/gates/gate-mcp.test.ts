@@ -156,6 +156,7 @@ describe("gate slots over MCP", () => {
       overrunBellMultiple: 2,
       priorityMax: 1,
       priorityPassLimitMinutes: 0,
+      releasePassOtherKindMinutes: 30,
       priorityAgents: true,
       priorityRunners: true,
       claimMinutes: 3,
@@ -166,6 +167,9 @@ describe("gate slots over MCP", () => {
       browserContainerStrict: false,
       browserBoxDefault: "any",
       browserHostOnly: "",
+      // Issue 1264: Den's agent hook routes heavy runs, with the default list.
+      routeAgents: true,
+      routeCommands: GATE_DEFAULTS.routeCommands,
       remoteRenewSeconds: 30,
       waiterReturnMinutes: 10,
       remoteLapseSeconds: 120,
