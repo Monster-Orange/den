@@ -2813,6 +2813,8 @@
     "pe.runtime": "既定のランタイム",
     "pe.model": "モデル",
     "pe.ver": "バージョン",
+    "pe.packs": "スキルパック",
+    "pe.packsList": "ファイルのリスト: {list}",
     "pe.rtDefault": "ランタイムの既定",
     "pe.perms": "権限モード",
     "pe.noneCmd": "なし",

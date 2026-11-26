@@ -2894,6 +2894,8 @@
     "pe.runtime": "Runtime predeterminado",
     "pe.model": "Modelo",
     "pe.ver": "Versión",
+    "pe.packs": "Paquetes de habilidades",
+    "pe.packsList": "La lista de su archivo: {list}",
     "pe.rtDefault": "el predeterminado del runtime",
     "pe.perms": "Modo de permisos",
     "pe.noneCmd": "ninguno",

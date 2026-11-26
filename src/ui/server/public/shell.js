@@ -3804,6 +3804,8 @@
     "pe.runtime": "Default runtime",
     "pe.model": "Model",
     "pe.ver": "Version",
+    "pe.packs": "Skill packs",
+    "pe.packsList": "Its file's list: {list}",
     "pe.rtDefault": "the runtime's default",
     "pe.perms": "Permission mode",
     "pe.noneCmd": "none",

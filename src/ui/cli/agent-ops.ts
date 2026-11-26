@@ -3050,6 +3050,7 @@ function personaInputOf(p: Persona): Record<string, unknown> {
     permission: intentOf(p.permissionMode) ?? "ask",
     allowedCommands: [...p.allowedCommands],
     ...(p.subagentModel ? { subagentModel: p.subagentModel } : {}),
+    ...(p.skillPacks === "off" ? { skillPacks: "off" } : {}),
   };
 }
 
