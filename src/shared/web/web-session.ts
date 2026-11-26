@@ -46,13 +46,13 @@ export function sessionByPrefix(
   const p = prefix.trim().toLowerCase();
   if (!/^[0-9a-f]{4,64}$/.test(p))
     throw new Error(
-      `"${prefix}" is not a session id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
+      `"${prefix}" is not a sign-in id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
     );
   const hits = all.filter((s) => s.key.startsWith(p));
   if (hits.length === 0) throw new Error(`No browser sign-in starts with ${p}`);
   if (hits.length > 1)
     throw new Error(
-      `${hits.length} browser sessions start with ${p}; give more of the id`,
+      `${hits.length} browser sign-ins start with ${p}; give more of the id`,
     );
   return hits[0];
 }

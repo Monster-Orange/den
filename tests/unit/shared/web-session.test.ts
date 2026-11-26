@@ -216,7 +216,7 @@ describe("the session store", () => {
     const b = s.create({ host: "b" });
     expect(s.list().map((x) => x.host)).toEqual(["b", "a"]);
     expect(() => s.endByPrefix("zz", "revoked")).toThrow(
-      /not a session id prefix/,
+      /not a sign-in id prefix/,
     );
     s.endByPrefix(a.session.key.slice(0, 8), "revoked");
     expect(s.lookup(a.id)).toBeNull();
