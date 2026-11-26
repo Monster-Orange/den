@@ -168,6 +168,16 @@ async function page(
   return p;
 }
 
+/**
+ * Issue 1244: close a test's page only once its route handlers are done.
+ * The settings route fetches the real answer; a close while that fetch ran
+ * threw "Request context disposed" into the next test.
+ */
+async function closePage(p: Page): Promise<void> {
+  await p.unrouteAll({ behavior: "wait" });
+  await p.context().close();
+}
+
 const fresh = (
   send: Fake["send"] = [
     200,
@@ -214,7 +224,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(
       await p.evaluate(() => document.activeElement?.getAttribute("data-f")),
     ).toBe("title");
-    await p.context().close();
+    await closePage(p);
   });
 
   it("⌘⇧F opens it over an open dialog, which stays open", async () => {
@@ -235,7 +245,79 @@ describe("FB: Report an issue, the dialog", () => {
     ).toBe(true);
     // The report dialog is the one on top (it takes the clicks).
     await dlg(p).locator('[data-f="title"]').fill("x");
-    await p.context().close();
+    await closePage(p);
+  });
+
+  it("⌘⇧F opens it over an open menu, which stays open (issue 81)", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.click("#appearance-btn");
+    const menu = p.getByRole("menu");
+    await menu.waitFor();
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).waitFor();
+    expect(await menu.isVisible()).toBe(true);
+    await dlg(p).locator('[data-f="title"]').fill("x");
+    await closePage(p);
+  });
+
+  it("on a phone, the open rail drawer has its own Report: its scrim covers the top bar (issue 81)", async () => {
+    if (skip()) return;
+    const p = await page(fresh(), 390);
+    // Closed: no Report on the rail (issue 94: it is in the top bar).
+    const onRail = p.locator("#den-rail [data-den-report]");
+    expect(await onRail.count()).toBe(0);
+    await p.click("#den-menu-btn");
+    const rb = p.locator(
+      "#den-rail [data-den-drawer-report] [data-den-report]",
+    );
+    await rb.waitFor({ state: "visible" });
+    // The top bar's Report is under the scrim: the drawer's is the one a
+    // tap reaches.
+    const box = (await rb.boundingBox())!;
+    expect(
+      await p.evaluate(
+        ([x, y]) =>
+          !!document
+            .elementFromPoint(x, y)
+            ?.closest("[data-den-drawer-report]"),
+        [box.x + box.width / 2, box.y + box.height / 2],
+      ),
+    ).toBe(true);
+    await rb.click();
+    await dlg(p).waitFor();
+    // The drawer makes the page inert; the form is on top of it, holds
+    // the focus, and takes typing.
+    expect(
+      await dlg(p).evaluate(
+        (d) =>
+          new Promise<boolean>((done) => {
+            const t0 = Date.now();
+            const tick = () =>
+              d.contains(document.activeElement)
+                ? done(true)
+                : Date.now() - t0 > 5000
+                  ? done(false)
+                  : requestAnimationFrame(tick);
+            tick();
+          }),
+      ),
+    ).toBe(true);
+    expect(await dlg(p).evaluate((d) => !!d.closest("[inert]"))).toBe(false);
+    const title = dlg(p).locator('[data-f="title"]');
+    await title.fill("fb-81-drawer");
+    expect(await title.inputValue()).toBe("fb-81-drawer");
+    await p.keyboard.press("Escape");
+    // Text typed: Esc asks to keep it; Discard closes.
+    await dlg(p).locator('[data-act="discard"]').click();
+    await dlg(p).waitFor({ state: "hidden" });
+    // Shut, the drawer's Report goes with it.
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(
+      () => !document.body.classList.contains("den-rail-open"),
+    );
+    expect(await onRail.count()).toBe(0);
+    await closePage(p);
   });
 
   it("Write, Include, Review: the server's exact text, the public warning just above Send; Send files it (F6)", async () => {
@@ -288,7 +370,7 @@ describe("FB: Report an issue, the dialog", () => {
       "Browser",
       "Page",
     ]);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("not signed in to GitHub: F4 shows Den's GitHub App's code, nothing is sent until it is approved", async () => {
@@ -353,7 +435,7 @@ describe("FB: Report an issue, the dialog", () => {
         .getByRole("link", { name: "Open the issue" })
         .getAttribute("href"),
     ).toBe("https://github.com/acme-eng/engine/issues/43");
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a sixth in an hour: F7, and Finish later keeps it (F8)", async () => {
@@ -385,7 +467,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(f.drafts[0]).toMatchObject({
       title: "Pane drops at acme.local.example.com",
     });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a limit without its number in the answer: the setting's, not a built-in 5", async () => {
@@ -402,7 +484,7 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p)
       .getByRole("heading", { name: "You have sent 12 reports this hour" })
       .waitFor();
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a failed send: Try again is first and sends the same text again; Finish later stays", async () => {
@@ -439,7 +521,7 @@ describe("FB: Report an issue, the dialog", () => {
     // request, which the request ledger would otherwise answer with the
     // first one's failure.
     expect(f.ids![1]).not.toBe(f.ids![0]);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a failed send with GitHub's own page to finish on: Try again first, that page next", async () => {
@@ -471,7 +553,7 @@ describe("FB: Report an issue, the dialog", () => {
       ["later", false],
       ["back-review", false],
     ]);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("the same title open: F5; Add to the existing report sends addTo", async () => {
@@ -510,7 +592,7 @@ describe("FB: Report an issue, the dialog", () => {
       .getByText("Your details were added to the open report.")
       .waitFor();
     expect(f.sent[1]).toMatchObject({ addTo: 7 });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("Esc with text typed asks to keep it; Discard closes", async () => {
@@ -529,7 +611,7 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p).waitFor();
     await p.keyboard.press("Escape");
     await dlg(p).waitFor({ state: "hidden" });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("at 390 px it is a bottom sheet with stacked buttons, the step as 1/3", async () => {
@@ -554,7 +636,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(
       (await dlg(p).locator(".fb-steps .fb-narrow").textContent())?.trim(),
     ).toMatch(/^1\/3 · Write$/);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("feedback.enabled: false hides the top bar's Report and ⌘⇧F", async () => {
@@ -568,7 +650,7 @@ describe("FB: Report an issue, the dialog", () => {
     await p.keyboard.press("ControlOrMeta+Shift+F");
     await p.waitForTimeout(300);
     expect(await dlg(p).count()).toBe(0);
-    await p.context().close();
+    await closePage(p);
   });
 
   // One test per language and width (issue 424): each opens the form
@@ -595,7 +677,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(
       await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
     ).toBe(true);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new", async () => {
@@ -622,7 +704,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(await ov.count()).toBe(1);
     await p.keyboard.press("Escape");
     await ov.waitFor({ state: "hidden" });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("no page errors", () => {
@@ -717,7 +799,7 @@ describe("FB: the screenshot and its mask", () => {
     await dlg(p)
       .getByText(/Drag on it to black out/)
       .waitFor();
-    await p.context().close();
+    await closePage(p);
   });
 
   it("drag to black out; Undo; Review shows the masked image; the send carries it masked and saves nothing here", async () => {
@@ -801,7 +883,7 @@ describe("FB: the screenshot and its mask", () => {
     expect(near(await inShot(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
       true,
     );
-    await p.context().close();
+    await closePage(p);
   });
 
   it("the keyboard way: an area by size and position, or the whole screenshot", async () => {
@@ -828,7 +910,7 @@ describe("FB: the screenshot and its mask", () => {
     expect(
       near(await pixelAt(p, "img[data-shot-review]", 5, 5), [0, 0, 0]),
     ).toBe(true);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("Don't include a screenshot: none on Review, nothing saved after sending", async () => {
@@ -847,7 +929,7 @@ describe("FB: the screenshot and its mask", () => {
     await p.waitForTimeout(300);
     expect(downloads).toBe(0);
     expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a page that can't be captured offers to send without one", async () => {
@@ -869,6 +951,6 @@ describe("FB: the screenshot and its mask", () => {
     await dlg(p).locator('[data-act="send"]').click();
     await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
     expect(f.sent).toHaveLength(1);
-    await p.context().close();
+    await closePage(p);
   });
 });

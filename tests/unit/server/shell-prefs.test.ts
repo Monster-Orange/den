@@ -17,6 +17,7 @@ describe("shellPrefs", () => {
     const none = {
       hidden: [],
       order: [],
+      folded: [],
       dock: false,
       dockHeight: 0,
       projectOrder: [],
@@ -46,6 +47,7 @@ describe("shellPrefs", () => {
       collapsed: true,
       hidden: ["tests"],
       order: ["logs", "services"],
+      folded: [],
       dock: false,
       dockHeight: 0,
       projectOrder: [],
@@ -70,6 +72,7 @@ describe("mergeShellPrefs", () => {
     collapsed: false,
     hidden: [],
     order: [],
+    folded: [],
     dock: false,
     dockHeight: 0,
     projectOrder: [] as string[],
@@ -138,6 +141,7 @@ describe("mergeShellPrefs", () => {
     const none = {
       hidden: [],
       order: [],
+      folded: [],
       dock: false,
       dockHeight: 0,
       projectOrder: [],

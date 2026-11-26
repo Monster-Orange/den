@@ -23,6 +23,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 const HUB_TOKEN = "hubi_TESTONLY_inbox_busy_242";
 /** As many calls at once as agents restarting together. */
@@ -147,8 +148,8 @@ describe("issue 242: an agent's Hub inbox right after it restarts, Den busy", ()
     const first = s.made.at(-1)!;
     first.emit("> ");
     // It had a conversation (a turn that ended): the restart resumes it.
-    expect(first.args[0]).toBe("--session-id");
-    endedTurn(first.args[1], first.opts.cwd);
+    expect(runtimeArgs(first)[0]).toBe("--session-id");
+    endedTurn(runtimeArgs(first)[1], first.opts.cwd);
     const before = s.made.length;
     const restarting = call(
       "POST",
@@ -161,7 +162,10 @@ describe("issue 242: an agent's Hub inbox right after it restarts, Den busy", ()
     expect((await restarting).status).toBe(200);
     await until(() => s.made.length > before);
     const next = s.made.at(-1)!;
-    expect(next.args.slice(0, 2)).toEqual(["--resume", first.args[1]]);
+    expect(runtimeArgs(next).slice(0, 2)).toEqual([
+      "--resume",
+      runtimeArgs(first)[1],
+    ]);
     const token = actorTokenOf(next.opts.env) ?? "";
     expect(token).toBeTruthy();
     // Settled: one call alone gets in.

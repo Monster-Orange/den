@@ -39,6 +39,7 @@ import {
 } from "../../../src/ui/cli/create.js";
 import { parseCliArgs } from "../../../src/ui/cli/flag-parser.js";
 import { isPersonCredentialEnv } from "../../../src/shared/actor-token.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 let tmp = "";
 beforeEach(() => {
@@ -124,11 +125,17 @@ describe("audit rows name the test-person path", () => {
   it("the CLI's own rows on the path say so", () => {
     useTestPerson(true);
     auditConfig({ verb: "agents", detail: "stop stub in p: stopped" }, tmp);
-    const row = JSON.parse(
-      fs.readFileSync(path.join(tmp, "audit.jsonl"), "utf-8").trim(),
-    ) as Record<string, unknown>;
-    expect(row).toMatchObject({ verb: "agents", via: "test-person" });
-    expect(String(row.principal)).toMatch(/^person:/);
+    // Issue 1369: queued for the server.
+    const [row] = readAuditRows(tmp);
+    // As the writer's report (no server took it here).
+    expect(row).toMatchObject({
+      verb: "agents",
+      unverified: true,
+      reported: { via: "test-person" },
+    });
+    expect(String((row.reported as { principal?: string }).principal)).toMatch(
+      /^person:/,
+    );
   });
 });
 

@@ -11,6 +11,7 @@ import * as path from "path";
 import { z } from "zod";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 import { shotFileDataUrl } from "../../shared/report-shots.js";
+import { AGENT_VIEW_LINK_NOTE } from "../../shared/agent-view-note.js";
 import {
   GatePriorityRefused,
   GateStore,
@@ -19,7 +20,7 @@ import {
 import { gateView } from "../../shared/gates/view.js";
 import { gateWorkers } from "../../shared/gates/rules.js";
 import {
-  browserSlotCheck,
+  browserSlotCheckOn,
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { gateBoxTools } from "./gate-box-tools.js";
@@ -527,7 +528,8 @@ const READ_TOOLS: DenTool[] = [
   read(
     "page_view",
     "View this Den's pages, read-only",
-    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so.",
+    "Issue 796: a one-time link that opens this Den's own pages in a browser on this machine, read-only, as you: to look at a page, take a screenshot or check a fix without your person's sign-in. Open `url` once, within `linkSeconds`; the view lasts `minutes`, then ends. Every write (Allow or Deny, settings, starting or stopping an agent, typing into a terminal) is refused, and each page you open and each refusal is logged with your name. It never reaches another Den or Hub. `next` is the page to open (default /agents). When the install has views off, this says so. Issue 1243: " +
+      AGENT_VIEW_LINK_NOTE,
     {
       next: z
         .string()
@@ -673,11 +675,9 @@ const READ_TOOLS: DenTool[] = [
       const kind = a.kind === "browser" ? "browser" : "cpu";
       // On macOS a browser slot declares a container browser (a Setting).
       const endpoint = str(a.browser_endpoint)?.trim();
-      const verdict = browserSlotCheck({
+      const verdict = await browserSlotCheckOn(store, {
         kind,
         ...(endpoint !== undefined ? { endpoint } : {}),
-        platform: store.platform,
-        requiresContainer: store.settings().browserRequiresContainer,
       });
       if (!verdict.ok)
         throw new Refusal(
@@ -721,7 +721,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch",
     "Watch a pull request's checks or a workflow run",
-    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: after a new push, watch again. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
+    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: when it merges or closes, or a new push replaces its head, the watch ends and Den tells you (after a new push, watch again). A run is counted by its own jobs (its latest attempt); a re-run within the hour after Den told you reopens its watch, and Den tells you the new attempt's result. A watch with no progress for a while ends, saying why. When Den watches as many as it can at once, a new watch is queued (state queued, \"queued, N ahead\") and starts when a slot frees. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
     {
       repo: z.string().describe("The GitHub repo, owner/name"),
       pr: z
@@ -759,7 +759,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch_list",
     "Your GitHub watches",
-    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
+    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done, queued), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
     {},
     async (_a, ctx) => {
       githubWatchAgent("github_watch_list", ctx);
@@ -836,7 +836,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2781,6 +2781,92 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "project_event_feed_add",
+    title: "Add an app's event feed to a project",
+    description:
+      "Add an app's event feed (`name`, `agent`, `url`) to a project: Den keeps the app's event stream (SSE) open and types `agent` (one of the project's agents) a short line when events are unread; it reads them with app_feed_read. `bearer`, when the stream needs one, is the name of a secrets.refs entry: never a token itself (a value is refused, and never echoed). An optional list address answers the events after a cursor. A feed with a bearer, or whose address is this machine or a private network, always waits for the person's own Allow. A public feed with no bearer follows the approval policy: on a personal install it applies at once and the person can Undo it; on a strict one it waits for the person's Allow. Den's own address and its Hub's are refused. A project's agent adds to its own project; Den's own agent to any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z
+        .string()
+        .describe("Its name: lower-case letters, digits, - and _"),
+      agent: z.string().describe("The id of the project's agent it goes to"),
+      url: z
+        .string()
+        .describe("The stream's address: https, or http to this machine"),
+      bearer: z
+        .string()
+        .optional()
+        .describe("The name of a secrets.refs entry, never a value"),
+      list_url: z
+        .string()
+        .optional()
+        .describe("Optional: the address that lists events after a cursor"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = projectMcpProject("project_event_feed_add", a, ctx);
+      const name = needArg("project_event_feed_add", a, "name", "its name");
+      const agent = needArg(
+        "project_event_feed_add",
+        a,
+        "agent",
+        "the agent it goes to",
+      );
+      const url = needArg("project_event_feed_add", a, "url", "its address");
+      return askPerson(
+        "project_event_feed_add",
+        "project_event_feed_add",
+        {
+          project,
+          name,
+          agent,
+          url,
+          bearer: str(a.bearer),
+          list_url: str(a.list_url),
+        },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_event_feed_remove",
+    title: "Remove an app's event feed from a project",
+    description:
+      "Remove one of a project's app event feeds (`name`): Den closes its stream and types its agent no more lines about it. The approval policy decides: on a personal install it applies at once and the person can Undo it; on a strict one it waits for the person's Allow. A project's agent removes from its own project; Den's own agent from any." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      name: z
+        .string()
+        .describe("Its name, as the project's feed list shows it"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = projectMcpProject("project_event_feed_remove", a, ctx);
+      const name = needArg("project_event_feed_remove", a, "name", "its name");
+      return askPerson(
+        "project_event_feed_remove",
+        "project_event_feed_remove",
+        { project, name },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "agent_folder",
     title: "Move an agent's folder",
     description:
@@ -2841,6 +2927,110 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "agent_sandbox_set",
+    title: "Turn an agent's sandbox off or on",
+    description:
+      "Turn one agent's sandbox off (`on: false`) or back on (`on: true`), so the person never edits config/local/user.yml by hand. `agent` is its id; `reason` says what it needs that the sandbox blocks (required to turn it off, one line). Off widens what the agent may do: it always waits for the person's own Allow, and the Review says so when an agent asks for itself. Back on runs as the approval policy says. Den writes only agents.<id>.sandbox, and restarts a running agent after its turn, on the same conversation. A project's agent asks for its own project's agents; Den's own agent for any." +
+      HELD,
+    action: true,
+    shape: {
+      agent: z.string().describe("The agent's id"),
+      on: z.boolean().describe("true: back in the sandbox; false: out of it"),
+      reason: z
+        .string()
+        .max(300)
+        .optional()
+        .describe("What it needs that the sandbox blocks (required for off)"),
+      project: z
+        .string()
+        .optional()
+        .describe("Its project (default: the one it is in)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const agent = needArg("agent_sandbox_set", a, "agent", "the agent's id");
+      const project = ctx.scope ? ctx.scope.workspace : str(a.project);
+      return askPerson(
+        "agent_sandbox_set",
+        "agent_sandbox_set",
+        {
+          agent,
+          on: a.on,
+          ...(str(a.reason) ? { reason: str(a.reason) } : {}),
+          ...(project ? { project } : {}),
+        },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "setting_change",
+    title: "Change one of Den's settings",
+    description:
+      "Propose one of Den's settings, `key` = `value`, for the person to Allow, so they never edit config/local/user.yml by hand. `key` is the setting's dotted name as `config` and Settings know it (e.g. sessions.max_concurrent, agents.max_concurrent, web.agent_view, held_writes.wait_minutes); `value` is its new value (a number, true/false, text or a list), or null for Den's default; `reason` says why, in one line. Den checks the key and value with its own parser before anything is held: an unknown key or a refused value comes back at once, with why. The person sees the key, its value now, the new one and the reason. A setting that widens what agents can do (an agent's grants or sandbox, mcp.actions, web.edge_unattested, the approval policy and the like) waits for the person's own Allow. On Allow Den writes only that key, keeps a copy of the file and notes the change in the audit. A setting Den reads when it starts says so: then ask for den_restart_server." +
+      HELD,
+    action: true,
+    shape: {
+      key: z.string().max(200).describe("The setting's dotted name"),
+      value: z
+        .union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.null(),
+          z.array(z.union([z.string(), z.number()])),
+        ])
+        .describe("Its new value; null puts Den's default back"),
+      reason: z.string().max(300).describe("Why it should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const key = needArg(
+        "setting_change",
+        a,
+        "key",
+        "the setting's dotted name",
+      );
+      return askPerson(
+        "setting_change",
+        "setting_change",
+        { key, value: a.value ?? null, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "gate_settings_set",
+    title: "Change this machine's gate slot settings",
+    description:
+      "Issue 1395: propose a change to this machine's gate slot settings (Settings › Gate: the gates folder's settings.json, which setting_change can't reach), so the person never edits the file by hand. `settings` maps each key to its new value, with Settings › Gate's names and ranges (e.g. gate.cpu_slots, gate.local_browser_slots, gate.reap_grace_seconds, gate.priority_agents as 0 or 1; the gate. prefix may be left off; null puts a key's default back); `reason` says why, in one line. Den checks every key and value before anything is held: an unknown key, a value out of range or no change comes back at once, with why, and nothing is written. The person sees each key's value now and the new one. On a personal install it's written at once and the person is told; on a strict one it follows the person's choice for Limits and performance, and gate.browser_requires_container going to 0 waits for their own Allow. Den writes them under the gate's lock, all or none, and the slot log names who asked." +
+      HELD,
+    action: true,
+    shape: {
+      settings: z
+        .record(z.string(), z.union([z.number(), z.string(), z.null()]))
+        .describe(
+          "Each key (gate.<name>, as Settings › Gate) and its new value",
+        ),
+      reason: z.string().max(300).describe("Why they should change (one line)"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      return askPerson(
+        "gate_settings_set",
+        "gate_settings_set",
+        { settings: a.settings ?? {}, reason: str(a.reason) ?? "" },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     name: "gate_runner_token_create",
     title: "Make a gate-only token for a CI runner",
     description:
@@ -2888,6 +3078,82 @@ const APPROVAL_TOOLS: DenTool[] = [
     async run(a, ctx) {
       refuseScoped("host_restart", ctx.scope);
       return askPerson("host_restart", "host_restart", {}, a, ctx);
+    },
+  },
+  {
+    name: "web_url_set",
+    title: "Propose this install's address",
+    description:
+      "Issue 869: when this install's address (web.url) is wrong or missing, propose the right one instead of asking the person to type a command. Check it first: the name answers (curl it) and an edge route sends it to this Den (edge_status). Den checks it answers as this Den, at the ask and again at the Allow; an address that doesn't is never written. On the person's Allow it is saved as confirmed, the way Settings' address saves it, takes effect without a restart, and Den tells the connected Hub. Den's own agent only; always the person's own Allow." +
+      HELD,
+    action: true,
+    shape: {
+      url: z
+        .string()
+        .describe(
+          "The address other machines open, e.g. https://den.example.com (never localhost)",
+        ),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      refuseScoped("web_url_set", ctx.scope);
+      return askPerson(
+        "web_url_set",
+        "web_url_set",
+        { url: str(a.url) },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "gate_runner_entry_set",
+    title: "Let a repo's CI jobs run on a test box",
+    description:
+      "Issue 642: a CI runner entry, set or changed: `repo`'s jobs whose runs-on labels are all in `labels` may run on the test box `box` (one a person set), at most `slots` at a time; `heavy` (default true) means each job takes one of the box's gate slots, so it never runs beside another heavy job there; `routing_variable` is the repo variable that sends its jobs to the box or back to hosted runners; `owner` says who answers for it. Settings only: nothing starts a runner yet. It widens what runs on a box: always the person's own Allow. `gate runner list` shows the entries." +
+      HELD,
+    action: true,
+    shape: {
+      repo: z.string().describe("owner/name"),
+      box: z.string().describe("A test box's name (gate box list)"),
+      labels: z
+        .array(z.string())
+        .describe("The runner labels its jobs ask for (runs-on)"),
+      routing_variable: z
+        .string()
+        .describe("The repo variable that routes its jobs (CI_RUNNER)"),
+      slots: z
+        .number()
+        .int()
+        .optional()
+        .describe("Its jobs on the box at once (default 1)"),
+      heavy: z
+        .boolean()
+        .optional()
+        .describe("Each job takes a box gate slot (default true)"),
+      owner: z.string().describe("Who answers for it, in words"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const repo = needArg("gate_runner_entry_set", a, "repo", "owner/name");
+      const box = needArg("gate_runner_entry_set", a, "box", "a test box");
+      return askPerson(
+        "gate_runner_entry_set",
+        "gate_runner_entry_set",
+        {
+          repo,
+          box,
+          labels: a.labels,
+          routing_variable: a.routing_variable,
+          owner: a.owner,
+          ...(a.slots !== undefined ? { slots: a.slots } : {}),
+          ...(a.heavy !== undefined ? { heavy: a.heavy } : {}),
+        },
+        a,
+        ctx,
+      );
     },
   },
   {

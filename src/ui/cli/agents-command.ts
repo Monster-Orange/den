@@ -59,9 +59,17 @@
  *   handoff-check <id|file|->  (den#4) the handoff check (handoff.ts), like
  *           handback-check.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import {
+  agentsCount,
+  legacyAgentIds,
+} from "../../shared/agents/sandbox-rollout.js";
+import {
+  plainText,
+  readSandboxNotes,
+} from "../../shared/agents/sandbox-set.js";
 import {
   gatherApiOnly,
   readApiOnlyAudit,
@@ -69,6 +77,7 @@ import {
 } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import * as path from "path";
+import { realPath, SESSION_TMP_RE } from "../../shared/agents/sandbox.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import {
   listUploads,
@@ -110,6 +119,7 @@ import {
   loadAgentWorkspaces,
   relaunchAgent,
   resumeOrRelaunch,
+  agentRecord,
   keepAgentConversation,
   setAgentResumeOnRestart,
   askForHandoff,
@@ -180,6 +190,7 @@ import {
   SERVER_AGENT_ID,
 } from "../../shared/agents/server-agent.js";
 import { localDateTime } from "../../shared/local-time.js";
+import { throughServer } from "./person-server.js";
 
 export const AGENTS_HELP = {
   usage:
@@ -605,6 +616,31 @@ async function persona(args: string[], d: AgentsResolved): Promise<number> {
       ? "after-turn"
       : undefined;
   mustBeAgent(d, id, workspaceFlag(where, p));
+  // Issue 989: the server changes it and audits it when it answers.
+  const answer = await askServer(
+    d,
+    agentRoute(d, id, workspaceFlag(where, p), "persona"),
+    {
+      persona: to,
+      ...(str(p, "--model") !== undefined ? { model: str(p, "--model") } : {}),
+      ...(str(p, "--version") !== undefined
+        ? { version: str(p, "--version") }
+        : {}),
+      ...(when ? { when } : {}),
+    },
+  );
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      answer.pending
+        ? `agent ${id} becomes ${to} at its next idle (the web app does it; the audit says how it went)`
+        : startedLine(
+            answer,
+            (a) => `agent ${String(a.id)} is now ${String(a.persona)}`,
+          ),
+    );
+    return 0;
+  }
   if (when === "after-turn") d.out(`waiting for agent ${id}'s turn to end…`);
   const s = await changePersona(d, id, workspaceFlag(where, p), {
     persona: to,
@@ -734,6 +770,26 @@ async function restart(args: string[], d: AgentsResolved): Promise<number> {
   if (!id) throw new UsageError(`${where} needs <id>`);
   const now = p.flags["--now"] === true;
   const ws = workspaceFlag(where, p);
+  // Issue 989: the server restarts it and audits it when it answers. An
+  // unknown agent is refused below, with the CLI's own audit row.
+  const known = readRecord(d.stateDir(), id);
+  const answer =
+    known && (!ws || known.workspace === ws)
+      ? await askServer(d, agentRoute(d, id, ws, "restart"), {
+          when: now ? "now" : "after-turn",
+        })
+      : null;
+  if (answer === "refused") return 1;
+  if (answer) {
+    if (answer.pending)
+      d.out(
+        `agent ${id} restarts at its next idle, same conversation (the web app does it; the audit says how it went)`,
+      );
+    else if (typeof answer.already === "string")
+      d.out(`agent ${id} was ${String(answer.note)}`);
+    else d.out(startedLine(answer, (a) => `restarted agent ${String(a.id)}`));
+    return 0;
+  }
   return audited(
     d,
     "restart",
@@ -788,6 +844,20 @@ async function move(args: string[], d: AgentsResolved): Promise<number> {
   if (!id || !to)
     throw new UsageError(`${where} needs <id> and -w <project to move it to>`);
   const now = p.flags["--now"] === true;
+  // Issue 989: the server moves it and audits it when it answers.
+  const answer = await askServer(d, agentRoute(d, id, undefined, "move"), {
+    to,
+    when: now ? "now" : "after-turn",
+  });
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      answer.pending
+        ? `agent ${id} moves to ${to} at its next idle, same conversation (the web app does it; the audit says how it went)`
+        : `moved agent ${id} from ${String(answer.from)} to ${to}${answer.resumed ? `; same conversation, restarted now so its tools are ${to}'s` : "; it was stopped"}`,
+    );
+    return 0;
+  }
   const m = await moveAgent(d, id, undefined, to, now ? "now" : "after-turn");
   if (!m.resumed) {
     d.out(`moved agent ${m.rec.id} from ${m.from} to ${to}; it was stopped`);
@@ -807,9 +877,16 @@ export function staleLines(
 ): string[] {
   if (!stale.length) return ["Agents' tools     all current"];
   const say = (x: McpStale) =>
-    x.adds.length
-      ? `${x.adds.join(", ")} tools arrive on restart`
-      : `${x.drops.join(", ")} tools go on restart`;
+    [
+      ...(x.adds.length
+        ? [`${x.adds.join(", ")} tools arrive on restart`]
+        : []),
+      ...(x.drops.length ? [`${x.drops.join(", ")} tools go on restart`] : []),
+      // Issue 1223: its Den tools are an older Den's.
+      ...(x.den
+        ? [`its Den tools are ${x.den.from}'s; ${x.den.to}'s arrive on restart`]
+        : []),
+    ].join("; ");
   return [
     `Agents' tools     ${stale.length} running ${stale.length === 1 ? "agent started" : "agents started"} before the change:`,
     ...stale.map((a) => `  ${a.id} (${a.workspace}): ${say(a.stale)}`),
@@ -1109,19 +1186,23 @@ async function rotate(args: string[], d: AgentsResolved): Promise<number> {
     throw new UsageError(
       `${where} [--agent|--persona|--workspace|--service <x>] <key> <value> (or --unset <key>)`,
     );
-  setRotationSetting(d, {
+  const setting = {
     scope,
     ...(target !== undefined ? { target } : {}),
     key,
     value: unset ? null : parseRotateValue(key, raw!),
-  });
+  };
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(d, "/api/agents/rotation", setting, "PUT");
+  if (said === "refused") return 1;
+  if (said === "unanswered") setRotationSetting(d, setting);
   const at = scope === "install" ? "this install" : `${scope} ${target}`;
   d.out(unset ? `${key} cleared at ${at}` : `${key} = ${raw} at ${at}`);
   return 0;
 }
 
 /** `agents keep <id> [-w <ws>] [--never]` (D28 Keep this conversation). */
-function keep(args: string[], d: AgentsResolved): number {
+async function keep(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents keep";
   personOnly(where, d);
   const never = args.includes("--never");
@@ -1129,7 +1210,13 @@ function keep(args: string[], d: AgentsResolved): number {
     where,
     args.filter((a) => a !== "--never"),
   );
-  const rec = keepAgentConversation(d, id, ws, { never });
+  // Issue 989: the server keeps it when it answers; its refusal is final.
+  const said = await viaServer(d, agentRoute(d, id, ws, "keep"), { never });
+  if (said === "refused") return 1;
+  const rec =
+    said === "unanswered"
+      ? keepAgentConversation(d, id, ws, { never })
+      : agentRecord(d, id, ws);
   d.out(
     `kept ${rec.id}'s conversation: its compaction count starts again${never ? "; it never rotates (agents rotate --agent " + rec.id + " --unset after_compactions to undo)" : ""}`,
   );
@@ -1137,7 +1224,7 @@ function keep(args: string[], d: AgentsResolved): number {
 }
 
 /** `agents set <id> [-w <ws>] resume_on_restart on|off|default` (D59). */
-function setAgent(args: string[], d: AgentsResolved): number {
+async function setAgent(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents set";
   personOnly(where, d, "whether an agent resumes after a restart");
   const at = args.indexOf("resume_on_restart");
@@ -1151,7 +1238,15 @@ function setAgent(args: string[], d: AgentsResolved): number {
     ...args.slice(at + 2),
   ]);
   const value = raw === "default" ? null : raw === "on";
-  const rec = setAgentResumeOnRestart(d, id, ws, value);
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(d, agentRoute(d, id, ws, "settings"), {
+    resumeOnRestart: value,
+  });
+  if (said === "refused") return 1;
+  const rec =
+    said === "unanswered"
+      ? setAgentResumeOnRestart(d, id, ws, value)
+      : agentRecord(d, id, ws);
   d.out(
     value === null
       ? `${rec.id} resumes after a restart as its persona says`
@@ -1290,7 +1385,7 @@ function files(args: string[], d: AgentsResolved): number {
  * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
  * workspace's agents start with when the start names none.
  */
-function permission(args: string[], d: AgentsResolved): number {
+async function permission(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
   const ws = workspaceFlag(where, p);
@@ -1339,13 +1434,76 @@ function permission(args: string[], d: AgentsResolved): number {
     } catch (e) {
       throw new UsageError((e as Error).message);
     }
-  d.saveWorkspacePermission(ws, intent);
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(
+    d,
+    `/api/workspaces/${encodeURIComponent(ws)}/agent-modes`,
+    { mode: intent },
+  );
+  if (said === "refused") return 1;
+  if (said === "unanswered") d.saveWorkspacePermission(ws, intent);
   d.out(
     intent
       ? `${ws}: agents now start in ${intent} unless the start names a mode; running agents switch after their current turn`
       : `${ws}: no default now; agents start in their persona's mode`,
   );
   return 0;
+}
+
+/**
+ * Issue 989: a person-only change sent to the running server: its answer
+ * when it made the change; "refused" (its error is said, nothing is
+ * written); null when no server listens (the caller writes it as before).
+ */
+async function askServer(
+  d: AgentsResolved,
+  path: string,
+  body: unknown,
+  method: "POST" | "PUT" | "DELETE" = "POST",
+  secret?: string,
+): Promise<Record<string, unknown> | "refused" | null> {
+  try {
+    return await throughServer(d.server, method, path, body);
+  } catch (e) {
+    // A secret sent is never said back, whatever the server answered.
+    const msg = (e as Error).message;
+    d.err(
+      `✗ ${secret ? msg.split(secret).join("***") : msg}; nothing was changed`,
+    );
+    return "refused";
+  }
+}
+
+/** askServer, when the server's answer itself isn't needed. */
+async function viaServer(
+  d: AgentsResolved,
+  path: string,
+  body: unknown,
+  method: "POST" | "PUT" = "POST",
+): Promise<"done" | "refused" | "unanswered"> {
+  const r = await askServer(d, path, body, method);
+  return r === null ? "unanswered" : r === "refused" ? r : "done";
+}
+
+/** A started agent as the server answers it (sendStarted's agent). */
+function startedLine(
+  json: Record<string, unknown>,
+  lead: (a: Record<string, unknown>) => string,
+): string {
+  const a = (json.agent ?? {}) as Record<string, unknown>;
+  const note = typeof json.note === "string" ? json.note : "same conversation";
+  return `${lead(a)}; ${note}, as ${String(a.session)} in ${String(a.cwd)}`;
+}
+
+/** Issue 989: an agent's own route on the server, in its project. */
+function agentRoute(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  verb: string,
+): string {
+  const rec = agentRecord(d, id, ws);
+  return `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(rec.id)}/${verb}`;
 }
 
 /** Whether `s` names a permission mode (ask, edits, auto, all). */
@@ -1364,11 +1522,11 @@ function isIntent(s: string): boolean {
  * the agent follows its project's mode, else its persona's. Issue 252: a
  * running agent takes either at its next idle (Den's mode check).
  */
-function agentPermission(
+async function agentPermission(
   where: string,
   p: ReturnType<typeof parseArgs>,
   d: AgentsResolved,
-): number {
+): Promise<number> {
   noExtra(where, p, 2);
   const [id, given] = p.positional;
   if (!id)
@@ -1399,7 +1557,17 @@ function agentPermission(
     } catch (e) {
       throw new UsageError((e as Error).message);
     }
-  const next = setAgentPermission(d, id, rec.workspace, intent);
+  // Issue 989: the server sets it when it answers; its refusal is final.
+  const said = await viaServer(
+    d,
+    `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(id)}/mode`,
+    { mode: intent },
+  );
+  if (said === "refused") return 1;
+  const next =
+    said === "unanswered"
+      ? setAgentPermission(d, id, rec.workspace, intent)
+      : rec;
   // Issue 252: a running agent takes it at its next idle: the web
   // server's mode check restarts it on the same conversation.
   const when = next.stoppedAt
@@ -1475,7 +1643,7 @@ function rename(args: string[], d: AgentsResolved): number {
  * a stopped agent's folder, a repo of its project or a folder in it. A
  * conversation belongs to its folder, so its next start is a new one.
  */
-function folder(args: string[], d: AgentsResolved): number {
+async function folder(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents folder";
   personOnly(where, d, "an agent's folder");
   const p = parseArgs(where, args, {
@@ -1490,10 +1658,23 @@ function folder(args: string[], d: AgentsResolved): number {
   const dir = str(p, "--folder");
   if ((repo === undefined) === (dir === undefined))
     throw new UsageError(`${where} needs --repo <repo> or --folder <path>`);
-  const rec = setAgentFolder(d, id, workspaceFlag(where, p), {
+  const to = {
     ...(repo !== undefined ? { repo: checkRepoName(repo) } : {}),
     ...(dir !== undefined ? { folder: dir } : {}),
-  });
+  };
+  const ws = workspaceFlag(where, p);
+  // Issue 1182: the running server changes it, audited as the person; with
+  // none listening the CLI changes the record as before.
+  const json = await askServer(d, agentRoute(d, id, ws, "folder"), to);
+  if (json === "refused") return 1;
+  const rec =
+    json === null
+      ? setAgentFolder(d, id, ws, to)
+      : {
+          cwd: String(json.cwd ?? ""),
+          repo: typeof json.repo === "string" ? json.repo : undefined,
+          project: typeof json.project === "string" ? json.project : undefined,
+        };
   d.out(
     `agent ${id} now works in ${rec.cwd}${rec.repo ? ` (${rec.project} › ${rec.repo})` : ""}; its next start is a new conversation there`,
   );
@@ -1723,8 +1904,33 @@ async function tokenCmd(
     );
     return 1;
   }
-  // With env the value would live only in this CLI process: refuse before
-  // reading it (Settings saves it inside Den's own process).
+  const input = await (deps.tokenInput ?? (() => readTokenInput()))();
+  const bad = tokenShapeError(input);
+  if (bad) {
+    d.err(
+      `✗ ${where}: ${bad}. Make one with ${TOKEN_MAKE_HINT}, then pipe it in: ${d.cli} agents token set < file, or paste it at the prompt`,
+    );
+    return 1;
+  }
+  // Issue 989: the running server saves it, inside Den's own process (so
+  // the env backend keeps it as well); only with no server does the CLI.
+  const answer = await askServer(
+    d,
+    "/api/agents/signin-token",
+    { token: input.trim() },
+    "POST",
+    input.trim(),
+  );
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      `✓ the agents' sign-in token is saved in ${String(answer.store ?? "the install's secrets store")}. ` +
+        `Agents started under Keep agents running after logout use it from their next start.`,
+    );
+    return 0;
+  }
+  // With env the value would live only in this CLI process (Settings, and
+  // the server above, save it inside Den's own process).
   const { secretsStatus } = await import("../../shared/secrets/index.js");
   const backend = (
     deps.tokenDeps?.status ??
@@ -1732,14 +1938,6 @@ async function tokenCmd(
   )().backend;
   if (backend === "env") {
     d.err(`✗ ${where}: ${ENV_SET_OUTSIDE_DEN}`);
-    return 1;
-  }
-  const input = await (deps.tokenInput ?? (() => readTokenInput()))();
-  const bad = tokenShapeError(input);
-  if (bad) {
-    d.err(
-      `✗ ${where}: ${bad}. Make one with ${TOKEN_MAKE_HINT}, then pipe it in: ${d.cli} agents token set < file, or paste it at the prompt`,
-    );
     return 1;
   }
   let res: { ref: "configured" | "created"; store: string };
@@ -1809,6 +2007,22 @@ async function tokenClearCmd(
       d.out("Nothing removed.");
       return 0;
     }
+  }
+  // Issue 989: the running server removes it when it answers.
+  const answer = await askServer(
+    d,
+    "/api/agents/signin-token",
+    undefined,
+    "DELETE",
+  );
+  if (answer === "refused") return 1;
+  if (answer) {
+    d.out(
+      answer.cleared === false
+        ? "no sign-in token set: nothing to remove"
+        : "✓ removed the agents' sign-in token from the install's secrets store",
+    );
+    return 0;
   }
   const { clearAgentToken } =
     await import("../../shared/agents/signin-token.js");
@@ -1973,6 +2187,18 @@ async function accountsCmd(
         else left.push(rest[i]!);
       }
       if (left.length) throw new UsageError(`${where} takes only --name`);
+      // Issue 989: the running server adds it when it answers.
+      const answer = await askServer(d, "/api/agents/accounts", {
+        runtime: runtimeId,
+        ...(name !== undefined ? { name } : {}),
+      });
+      if (answer === "refused") return 1;
+      if (answer) {
+        d.out(
+          `✓ added ${rt.account} account${name ? ` ${name}` : ""}. \`${d.cli} agents accounts list${flag}\` shows its number; set its token with \`${d.cli} agents accounts set-token <number>${flag}\``,
+        );
+        return 0;
+      }
       const a = A.addAccount(stateDir, runtimeId, name);
       d.out(
         `✓ added ${rt.account} account ${a.id}${a.name ? ` (${a.name})` : ""}. Set its token: \`${d.cli} agents accounts set-token ${a.id}${flag}\``,
@@ -1985,6 +2211,18 @@ async function accountsCmd(
           `${where} takes every ${rt.account} account, in order`,
         );
       const ids = rest.map((w) => A.findAccount(stateDir, runtimeId, w).id);
+      // Issue 989: the running server orders them when it answers.
+      const answer = await askServer(d, "/api/agents/accounts/order", {
+        runtime: runtimeId,
+        order: ids,
+      });
+      if (answer === "refused") return 1;
+      if (answer) {
+        d.out(
+          `✓ ${rt.account} accounts, in order: ${ids.map((id) => label(A.findAccount(stateDir, runtimeId, id))).join(", ")}. Agents sign in with the first from their next start.`,
+        );
+        return 0;
+      }
       const list = A.setAccountOrder(stateDir, runtimeId, ids);
       d.out(
         `✓ ${rt.account} accounts, in order: ${list.map(label).join(", ")}. Agents sign in with ${label(list[0]!)} from their next start.`,
@@ -2012,6 +2250,22 @@ async function accountsCmd(
           return 0;
         }
       }
+      // Issue 1182: the running server removes it, audited as the person;
+      // with none listening the CLI removes it as before.
+      const json = await askServer(d, "/api/agents/accounts/remove", {
+        runtime: runtimeId,
+        account: acct.id,
+      });
+      if (json === "refused") return 1;
+      if (json !== null) {
+        d.out(
+          `✓ removed ${String(json.removed ?? label(acct))}` +
+            (typeof json.store === "string"
+              ? `; its token is gone from ${json.store}`
+              : ""),
+        );
+        return 0;
+      }
       const name = A.accountRefName(runtimeId, acct.id);
       const r = await A.removeAccount({
         runtimeId,
@@ -2034,6 +2288,28 @@ async function accountsCmd(
     }
     // set-token
     const acct = A.findAccount(stateDir, runtimeId, rest[0]!);
+    const input = await (deps.tokenInput ?? (() => readTokenInput()))();
+    const value = input.trim();
+    const bad = T.tokenShapeError(input);
+    if (bad) {
+      d.err(
+        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: \`${d.cli} agents accounts set-token ${acct.id}${flag} < file\`, or paste it at the prompt`,
+      );
+      return 1;
+    }
+    // Issue 989: the running server saves it, inside Den's own process.
+    const answer = await askServer(
+      d,
+      "/api/agents/accounts/token",
+      { runtime: runtimeId, account: acct.id, token: value },
+      "POST",
+      value,
+    );
+    if (answer === "refused") return 1;
+    if (answer) {
+      d.out(`✓ the sign-in token of ${label(acct)} is saved.`);
+      return 0;
+    }
     const backend = (
       ad.status ??
       (await import("../../shared/secrets/index.js")).secretsStatus.bind(
@@ -2045,15 +2321,6 @@ async function accountsCmd(
     )().backend;
     if (backend === "env") {
       d.err(`✗ ${where}: ${T.ENV_SET_OUTSIDE_DEN}`);
-      return 1;
-    }
-    const input = await (deps.tokenInput ?? (() => readTokenInput()))();
-    const value = input.trim();
-    const bad = T.tokenShapeError(input);
-    if (bad) {
-      d.err(
-        `✗ ${where}: ${bad}. Make one with ${rt.id === "den-claude" ? T.TOKEN_MAKE_HINT : "its sign-in command"}, then pipe it in: \`${d.cli} agents accounts set-token ${acct.id}${flag} < file\`, or paste it at the prompt`,
-      );
       return 1;
     }
     const name = A.accountRefName(runtimeId, acct.id);
@@ -2366,11 +2633,19 @@ async function doctor(
   } catch {
     /* records unreadable: nothing to say */
   }
+  // Issue 936: whether agents' sessions start in the sandbox here.
+  let sandbox: SandboxReport | null = null;
+  try {
+    sandbox = sandboxReport(d);
+  } catch {
+    /* records unreadable: nothing to say */
+  }
   if (p.flags["--json"]) {
     d.out(
       JSON.stringify(
         {
           runtimes: rts,
+          ...(sandbox ? { sandbox } : {}),
           subagents: {
             ...subagentsReport(d),
             // den#3: forced needs Claude Code 2.1.257+ (null: unknown).
@@ -2451,6 +2726,17 @@ async function doctor(
     for (const l of linkLines(links, d.cli)) d.out(l);
     d.out("");
   }
+  if (sandbox) {
+    for (const l of sandboxLines(sandbox)) d.out(l);
+    d.out("");
+  }
+  // Issue 1072: widening keys in the distribution's config, not read.
+  const notRead = notReadFromOrg(d);
+  const skipped = notAgentBlocks(d);
+  if (notRead.length || skipped.length) {
+    for (const l of notReadLines(notRead, skipped)) d.out(l);
+    d.out("");
+  }
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
@@ -2481,6 +2767,238 @@ export function personaVersionLines(
       ...differ.map((p) => `  ${p.id} (${p.source})`),
     );
   return out;
+}
+
+/** Issue 936: the sandbox on this machine, and the agents outside it. */
+export interface SandboxReport {
+  /** A new agent's session here: sandboxed, and how; or why not. */
+  here: { applied: boolean; tool?: string; reason?: string };
+  /** Agents (not stopped) whose session started outside it, and why. */
+  outside: { id: string; project: string; reason: string }[];
+  /** The rollout: agents from before the sandbox, not turned on yet. */
+  fromBefore: number;
+  /** Issue 1325: running agents' own temp folders (their TMPDIR). */
+  tmp?: { id: string; dir: string }[];
+  /** Issue 1325: session temp folders no agent's record names (left over). */
+  leftoverTmp?: string[];
+  /**
+   * Issue 1328: agents whose own sandbox is off (agents.<id>.sandbox), with
+   * when, why and who asked when agent_sandbox_set turned it off.
+   */
+  turnedOff?: { id: string; at?: string; why?: string; by?: string }[];
+  /**
+   * Issue 1391: a personal install with the sandbox off for all agents (its
+   * default): said once, as information, with no warning to turn it on.
+   */
+  personalOff?: boolean;
+  /** Issue 1391: the install's mode, said once (install_mode). */
+  mode?: "personal" | "strict";
+  /** Issue 1391: which file set it. */
+  modeFrom?: "den.yml" | "user.yml" | "default";
+}
+
+/**
+ * Issue 1325: den-XXXXXX folders in `base` of this user's that no agent's
+ * record names: a session's that outlived it.
+ */
+export function leftoverSessionTmps(
+  named: string[],
+  base: string = "/tmp",
+): string[] {
+  const keep = new Set(named.map((x) => realPath(x)));
+  const root = realPath(base);
+  const uid = process.getuid?.();
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => SESSION_TMP_RE.test(n))
+    .map((n) => path.join(root, n))
+    .filter((p) => {
+      try {
+        const st = fs.lstatSync(p);
+        return st.isDirectory() && (uid === undefined || st.uid === uid);
+      } catch {
+        return false;
+      }
+    })
+    .filter((p) => !keep.has(p))
+    .sort();
+}
+
+/** Issue 1072: the widening keys Den no longer reads from the org config. */
+export function notReadFromOrg(d: AgentsResolved): string[] {
+  const out: string[] = [];
+  try {
+    out.push(...(d.agentsConfig().notReadFromOrg ?? []));
+  } catch {
+    /* a bad config is its own row */
+  }
+  try {
+    out.push(...d.mcpNotReadFromOrg());
+  } catch {
+    /* a bad config is its own row */
+  }
+  return out;
+}
+
+export function notReadLines(
+  keys: string[],
+  skipped: { id: string; keys: string[] }[] = [],
+): string[] {
+  return [
+    "Settings read from config/local only",
+    ...keys.map(
+      (k) =>
+        `  ${k} is in the distribution's config, which Den no longer reads for it: move it to config/local/user.yml`,
+    ),
+    ...skipped.map(
+      (b) =>
+        `  agents.${b.id} in config/local/user.yml is not an agent block (keys: ${b.keys.join(", ")}), so Den skips it: an agent's block takes grants and sandbox only`,
+    ),
+  ];
+}
+
+/** Issue 1072: user.yml blocks that look like an agent's but aren't. */
+export function notAgentBlocks(
+  d: AgentsResolved,
+): { id: string; keys: string[] }[] {
+  try {
+    return d.agentsConfig().notAgentBlocks ?? [];
+  } catch {
+    return []; /* a bad config is its own row */
+  }
+}
+
+export function sandboxReport(d: AgentsResolved): SandboxReport {
+  const probe = d.agentSandbox(["true"], "doctor-probe");
+  const outside = listRecords(d.stateDir())
+    .filter((r) => r.session && !r.stoppedAt && r.sandbox?.applied !== true)
+    .map((r) => ({
+      id: r.id,
+      project: r.workspace,
+      reason:
+        r.sandbox && !r.sandbox.applied
+          ? (r.sandbox.reason ?? "no sandbox here")
+          : "started before the sandbox",
+    }));
+  // The rollout: agents from before it, outside it until it is turned on.
+  const fromBefore = legacyAgentIds(
+    listRecords(d.stateDir()),
+    d.agentsConfig(),
+  );
+  const recs = listRecords(d.stateDir());
+  const tmp = recs
+    .filter((r) => r.session && !r.stoppedAt && r.sessionTmp)
+    .map((r) => ({ id: r.id, dir: r.sessionTmp! }));
+  const leftoverTmp = leftoverSessionTmps(
+    recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
+    d.sessionTmpBase,
+  );
+  // Issue 1328: every agent whose own sandbox is off, and the note.
+  let own: Record<string, { sandbox?: boolean }> = {};
+  try {
+    own = d.agentsConfig().agents ?? {};
+  } catch {
+    /* a bad config is its own row */
+  }
+  const notes = readSandboxNotes(d.stateDir());
+  let personalOff = false;
+  let mode: SandboxReport["mode"];
+  let modeFrom: SandboxReport["modeFrom"];
+  try {
+    const c = d.agentsConfig();
+    mode = c.mode;
+    modeFrom = c.modeFrom;
+    personalOff = c.mode === "personal" && c.sandbox === false;
+  } catch {
+    /* a bad config is its own row */
+  }
+  const turnedOff = Object.entries(own)
+    .filter(([, a]) => a.sandbox === false)
+    .map(([id]) => ({ id, ...(notes[id] ?? {}) }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    ...(turnedOff.length ? { turnedOff } : {}),
+    ...(personalOff ? { personalOff } : {}),
+    ...(mode ? { mode } : {}),
+    ...(modeFrom ? { modeFrom } : {}),
+    fromBefore: fromBefore.length,
+    ...(tmp.length ? { tmp } : {}),
+    ...(leftoverTmp.length ? { leftoverTmp } : {}),
+    here: {
+      applied: probe.applied,
+      ...(probe.tool ? { tool: probe.tool } : {}),
+      ...(probe.reason ? { reason: probe.reason } : {}),
+    },
+    outside,
+  };
+}
+
+export function sandboxLines(r: SandboxReport): string[] {
+  const out = ["Agent sandbox (agents can't write Den's state)"];
+  // Issue 1391: off by default on a personal install, so information, said
+  // once: nothing to turn on, and no agent outside it is a warning.
+  // Vision's ruling (issue 1391): after the upgrade, one info row.
+  if (r.mode === "personal" && r.modeFrom === "default")
+    out.push(
+      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or choose it in Settings",
+    );
+  if (r.personalOff) {
+    out.push(
+      "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
+    );
+  } else {
+    if (r.mode === "strict")
+      out.push(
+        `  ℹ a strict install (install_mode: strict${r.modeFrom === "den.yml" ? ", set in den.yml by the distribution" : r.modeFrom === "user.yml" ? ", set in config/local/user.yml" : ""}): the sandbox is on, and agents' held writes follow the approval policy`,
+      );
+    else if (r.mode === "personal")
+      out.push(
+        "  ℹ a personal install, with the sandbox set on in config/local/user.yml",
+      );
+    sandboxOnLines(r, out);
+  }
+  // Issue 1325: where each session's own sockets and temp files go.
+  for (const t of r.tmp ?? [])
+    out.push(`  ✓ ${t.id}'s temp folder (TMPDIR, its own sockets): ${t.dir}`);
+  for (const dir of r.leftoverTmp ?? [])
+    out.push(
+      `  ⚠ ${dir} is an agent's temp folder no agent uses now: Den didn't see its agent's run end; it is safe to remove`,
+    );
+  return out;
+}
+
+/** The sandbox's lines where it is on by default (strict, or set on). */
+function sandboxOnLines(r: SandboxReport, out: string[]): void {
+  // On by default: an agent outside it is a warning, never information.
+  out.push(
+    r.here.applied
+      ? `  ✓ on here (${r.here.tool ?? "the OS sandbox"})`
+      : `  ⚠ not here: ${r.here.reason ?? "no sandbox"}`,
+  );
+  if (r.fromBefore)
+    out.push(
+      `  ⚠ Sandbox is off for ${agentsCount(r.fromBefore)} (started before it): Allow Turn on in the bell, or set agents.sandbox: on in config/local/user.yml`,
+    );
+  // Issue 1328: a person's choice, said as such (not a ⚠ to ask about).
+  // The notes file can be edited by hand: no control or format characters.
+  for (const x of r.turnedOff ?? []) {
+    const id = plainText(x.id);
+    const by = plainText(x.by ?? "") || "a person";
+    const why = plainText(x.why ?? "") || "no reason noted";
+    out.push(
+      x.at
+        ? `  ℹ ${id}: sandbox off since ${new Date(x.at).toLocaleString()}, asked by ${by}: ${why}`
+        : `  ℹ ${id}: sandbox off (set in config/local/user.yml, no reason noted)`,
+    );
+  }
+  if (!r.outside.length) out.push("  ✓ every running agent is inside it");
+  for (const x of r.outside)
+    out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);
 }
 
 /** D65 v2: doctor's lines on which repo each agent works on. */
@@ -2535,9 +3053,9 @@ export async function cmdAgents(
           await loadAgentWorkspaces(deps);
           return await rotate(rest, d);
         case "keep":
-          return keep(rest, d);
+          return await keep(rest, d);
         case "set":
-          return setAgent(rest, d);
+          return await setAgent(rest, d);
         case "handoff":
           await loadAgentWorkspaces(deps);
           return await handoff(rest, d);
@@ -2563,7 +3081,7 @@ export async function cmdAgents(
           return link(rest, d, "add");
         case "folder":
           await loadAgentWorkspaces(deps);
-          return folder(rest, d);
+          return await folder(rest, d);
         case "unlink":
           await loadAgentWorkspaces(deps);
           return link(rest, d, "remove");
@@ -2574,7 +3092,7 @@ export async function cmdAgents(
           return await rm(rest, d);
         case "permission":
           await loadAgentWorkspaces(deps);
-          return permission(rest, d);
+          return await permission(rest, d);
         case "personas":
           return await listPersonas(rest, d);
         case "doctor":

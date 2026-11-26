@@ -404,3 +404,116 @@ describe("issue 166: Hub's inbox into the agent's pane", () => {
     expect(text.match(/^from:/gm)).toHaveLength(1);
   });
 });
+
+/**
+ * 2026-11-22: after a reboot, an install with 84 agents read Hub's inbox
+ * for all of them in one burst on every tick. Each pass started its 30 s
+ * wait from when it began, so once Hub slowed the passes ran back to back
+ * (8–15 reads a second, Hub's database at 148%). Now the whole install
+ * reads at most hub.inbox_reads_per_second, each agent at most once per
+ * hub.inbox_poll_seconds counted from when its read ended, and a backoff
+ * waits a little more than its base, by chance, so installs spread out.
+ */
+describe("Hub's inbox: one install's read rate is capped", () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => `ag-${String(i + 1).padStart(2, "0")}`);
+
+  function rated(o: {
+    agents: string[];
+    readsPerSecond?: number;
+    pollSeconds?: number;
+    /** ms a read takes (the fake clock moves while Hub answers) */
+    takes?: number;
+    fail?: () => boolean;
+    random?: () => number;
+  }) {
+    let clock = T0;
+    const reads: { agent: string; at: number }[] = [];
+    const watcher = new InboxWatcher({
+      fetchInbox: async (agent) => {
+        reads.push({ agent, at: clock });
+        clock += o.takes ?? 0;
+        if (o.fail?.()) throw new Error("Hub doesn't answer");
+        return { events: [] };
+      },
+      agents: () => o.agents,
+      loop: {
+        takeLocal: async () => true,
+        seenLocal: () => false,
+        passLocal: () => undefined,
+        coveredThread: () => false,
+      },
+      owner: () => ({ ownerLogin: "pat" }),
+      settings: () => ({
+        on: true,
+        pollSeconds: o.pollSeconds ?? 30,
+        backoffMaxSeconds: 600,
+        ...(o.readsPerSecond ? { readsPerSecond: o.readsPerSecond } : {}),
+      }),
+      stateFile: path.join(dir, "inbox-watch.json"),
+      now: () => clock,
+      ...(o.random ? { random: o.random } : {}),
+    });
+    /** Tick on Den's 2 s beat for `ms`. */
+    const run = async (ms: number) => {
+      const end = clock + ms;
+      while (clock < end) {
+        await watcher.tick();
+        clock += 2000;
+      }
+    };
+    return { reads, run, now: () => clock };
+  }
+
+  test("84 agents, 2 reads a second: never more than 2 a second (plus a 2 s start), and every agent is read", async () => {
+    const r = rated({ agents: many(84), readsPerSecond: 2 });
+    await r.run(60_000);
+    // Any 10 s holds at most 2 × 10 reads, plus the 4 the start allows.
+    for (const x of r.reads) {
+      const inTen = r.reads.filter((y) => y.at >= x.at && y.at < x.at + 10_000);
+      expect(inTen.length).toBeLessThanOrEqual(24);
+    }
+    // 84 agents at 2 a second: all read within 42 s of beats.
+    await r.run(0);
+    expect(new Set(r.reads.map((x) => x.agent)).size).toBe(84);
+  });
+
+  test("the default rate is 2 a second", async () => {
+    const r = rated({ agents: many(84) });
+    await r.run(10_000);
+    expect(r.reads.length).toBeLessThanOrEqual(24);
+    expect(r.reads.length).toBeGreaterThan(0);
+  });
+
+  test("a slow Hub never makes it read back to back: each agent waits poll seconds after its read ends", async () => {
+    // Each read takes 1 s; 3 agents; poll 30 s.
+    const r = rated({ agents: many(3), readsPerSecond: 10, takes: 1000 });
+    await r.run(120_000);
+    for (const a of many(3)) {
+      const at = r.reads.filter((x) => x.agent === a).map((x) => x.at);
+      expect(at.length).toBeGreaterThan(1);
+      for (let i = 1; i < at.length; i++)
+        // The read before ended 1 s after it began.
+        expect(at[i] - (at[i - 1] + 1000)).toBeGreaterThanOrEqual(30_000);
+    }
+  });
+
+  test("a backoff waits its base or a little more, by chance, so installs spread out", async () => {
+    const first = async (random: () => number) => {
+      let down = true;
+      const r = rated({ agents: many(1), fail: () => down, random });
+      await r.run(2000);
+      down = false;
+      const before = r.reads.length;
+      // Find when it reads again.
+      while (r.reads.length === before) await r.run(2000);
+      return r.reads[before].at - r.reads[0].at;
+    };
+    const low = await first(() => 0);
+    const high = await first(() => 0.999);
+    // Base: 2 × 30 s.
+    expect(low).toBeGreaterThanOrEqual(60_000);
+    expect(high).toBeGreaterThan(low);
+    expect(high).toBeLessThanOrEqual(60_000 * 1.25 + 2000);
+  });
+});

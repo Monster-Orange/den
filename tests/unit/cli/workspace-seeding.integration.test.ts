@@ -35,13 +35,28 @@ function dockerShim(): string {
   return dir;
 }
 
-function den(args: string[]): { out: string; status: number | null } {
+/** Issue 989: these run as a person; an agent's session is `asAgent`. */
+const person = (): NodeJS.ProcessEnv => {
+  const e = { ...process.env };
+  delete e.DEN_ACTOR_TOKEN_FILE;
+  delete e.DEN_ACTOR_TOKEN;
+  delete e.DEN_AGENT;
+  return e;
+};
+
+function den(
+  args: string[],
+  asAgent = false,
+): { out: string; status: number | null } {
   const r = spawnSync(path.join(ENGINE, "bin", "den"), args, {
     cwd: root,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"], // no TTY
     env: {
-      ...process.env,
+      ...person(),
+      ...(asAgent
+        ? { DEN_ACTOR_TOKEN_FILE: path.join(tmp, "agent-token") }
+        : {}),
       DEN_ROOT: root,
       DEN_HOME: path.join(tmp, "home"),
       DEN_DAEMONS_FILE: path.join(tmp, "daemons.json"),
@@ -382,6 +397,37 @@ describe("a repeat seed", () => {
     expect(out).toMatch(/Default project reset to the blueprint — 3 repos/);
     expect(out).not.toMatch(/already seeded/);
     expect(readWs().workspaces.default.services.beta).toEqual(managed);
+  }, 60_000);
+
+  it("issue 989: an agent's session can't reset, with --reset or without", () => {
+    config(SINGLE);
+    den(["workspace", "seed"]);
+    const ws = readWs();
+    ws.workspaces.default.services.beta = {
+      mode: "dev-managed",
+      path: "/mine/beta",
+    };
+    workspaces(ws);
+    const before = fs.readFileSync(wsPath(), "utf-8");
+    for (const argv of [
+      ["workspace", "seed", "--reset"],
+      ["init", "--reset"],
+      ["workspace", "seed"],
+    ]) {
+      const { out, status } = den(argv, true);
+      expect(status).toBe(1);
+      expect(out).toMatch(/only a person can reset projects/i);
+      expect(fs.readFileSync(wsPath(), "utf-8")).toBe(before);
+    }
+  }, 60_000);
+
+  it("issue 989: an agent's plain seed on a fresh setup still seeds", () => {
+    config(SINGLE);
+    const { status } = den(["workspace", "seed"], true);
+    expect(status).toBe(0);
+    expect(Object.keys(readWs().workspaces.default.services)).not.toHaveLength(
+      0,
+    );
   }, 60_000);
 
   it("--reset with no github_org fails before writing anything", () => {
