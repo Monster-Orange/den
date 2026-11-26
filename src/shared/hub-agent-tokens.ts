@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
 import { AGENT_ID_RE, readRecord } from "./agents/records.js";
-import { recordUnrevoked } from "./hub-binding.js";
+import { recordUnrevoked } from "./hub/hub-binding.js";
 import { SERVER_AGENT_ID, isServerScope } from "./agents/server-agent.js";
 import {
   HubCallError,

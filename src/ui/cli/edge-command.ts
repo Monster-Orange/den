@@ -47,8 +47,8 @@ import {
 import { portOwner } from "../../shared/edge/port-owner.js";
 import { addressWord } from "../../shared/edge/address-words.js";
 import { cliLanguage } from "../../shared/edge/address-check.js";
-import { readWebUrl, type WebUrl } from "../../shared/web-url.js";
-import { isLoopbackUrl } from "../../shared/web-url-check.js";
+import { readWebUrl, type WebUrl } from "../../shared/web/web-url.js";
+import { isLoopbackUrl } from "../../shared/web/web-url-check.js";
 
 /**
  * `edge route`'s target: Den's own route on the edge (`edgeHost`, on the

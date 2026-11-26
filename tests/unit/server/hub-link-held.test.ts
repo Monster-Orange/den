@@ -15,7 +15,7 @@ import * as os from "os";
 import * as path from "path";
 import { mintActorToken } from "../../../src/shared/actor-token.js";
 import { hubProjectChoices } from "../../../src/shared/hub.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import {
   HELD_WRITE_RISK,
   isCriticalWrite,

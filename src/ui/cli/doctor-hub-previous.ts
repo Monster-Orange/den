@@ -13,8 +13,8 @@ import type {
   ArchivedHub,
   HubBinding,
   UnrevokedToken,
-} from "../../shared/hub-binding.js";
-import { hubOrigin } from "../../shared/hub-binding.js";
+} from "../../shared/hub/hub-binding.js";
+import { hubOrigin } from "../../shared/hub/hub-binding.js";
 import type { OnboardCheck } from "./doctor-onboard.js";
 
 const hubName = (b: HubBinding | null) =>
@@ -70,7 +70,7 @@ export async function previousHubDoctor(
   stateDir: string,
   current: string | null,
 ): Promise<ReturnType<typeof previousHubLines>> {
-  const m = await import("../../shared/hub-binding.js");
+  const m = await import("../../shared/hub/hub-binding.js");
   return previousHubLines({
     current,
     bound: m.readHubBinding(stateDir),

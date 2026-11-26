@@ -393,8 +393,8 @@ describe("tests that start Den as a process (issue 708)", () => {
   // Pull request 704's change: the server process sends the acks, and the
   // integration test reaches it over HTTP, never by an import.
   const PR_704 = [
-    "src/shared/hub-delivery-loop.ts",
-    "src/shared/hub-delivery.ts",
+    "src/shared/hub/hub-delivery-loop.ts",
+    "src/shared/hub/hub-delivery.ts",
     "src/ui/cli/agent-ops.ts",
     "src/ui/server/attention.ts",
     "src/ui/server/hub-delivery-service.ts",
@@ -459,9 +459,9 @@ describe("tests that start Den as a process (issue 708)", () => {
       call<string[]>(MAP_GEN, "subjectOf", t, text, {});
     expect(subj("tests/unit/server/hub-delivery.integration.test.ts")).toEqual(
       [
-        "src/shared/hub-delivery-journal.ts",
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts",
       ].sort(),
     );

@@ -13,14 +13,14 @@
 import {
   readWorkspacesFile,
   writeWorkspacesFile,
-} from "./environment-manager/workspaces.js";
-import type { WorkspacesFile } from "./types/index.js";
-import { callerName } from "./config-audit.js";
+} from "../environment-manager/workspaces.js";
+import type { WorkspacesFile } from "../types/index.js";
+import { callerName } from "../config-audit.js";
 import { forgetLinkSeen } from "./hub-links-seen.js";
-import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
+import { WORKSPACE_NAME_MAX } from "../workspace-name.js";
 import { parseHubCreate, type HubCreate } from "./hub-project-create.js";
 import { hubOrigin, readHubBinding, type HubBinding } from "./hub-binding.js";
-import { getStateDir } from "./paths.js";
+import { getStateDir } from "../paths.js";
 
 export interface HubProjectLink {
   /** Hub's project id (proj_…). */
