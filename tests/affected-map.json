@@ -1124,7 +1124,8 @@
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "local-dev.html"
     },
@@ -1559,7 +1560,8 @@
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "agents.html, local-dev.html"
     },
@@ -1906,7 +1908,8 @@
         "tests/unit/server/whats-new-dialog.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "local-dev.html, services.html"
     },
@@ -2116,7 +2119,8 @@
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "loaded by 12 pages"
     },

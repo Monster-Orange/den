@@ -77,6 +77,34 @@ A new key on the Settings page has three touch points beyond the page:
 Two PRs that each pass alone can still fail together, when one adds a row
 and the other changes the pin, so the PR that adds the row writes the pin.
 
+The shared helpers in `tests/unit/helpers/find.ts` (issue 841) make the
+right way the short way, in Chromium and WebKit alike:
+
+```ts
+import { byLabel, byRole, settled, waitFor } from "../helpers/find.js";
+
+await byLabel(page, "Project name").fill("billing");
+await settled(
+  page,
+  "/api/projects",
+  () => byRole(page, "button", "Add project").click(),
+  { method: "POST" },
+);
+await waitFor(page, { row: "billing" });
+await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
+```
+
+`byRole` and `byLabel` match the name exactly. `waitFor` ends as soon as the
+state holds, and one that runs out says which state and how long it waited.
+`{ row }` is ARIA role=row (a table row, or an element with `role="row"`);
+many of Den's list rows are buttons, so `byRole(page, "button", name)` finds
+those. `settled` arms the wait before the action, so a fast response is
+never missed. A string is the exact path (`/api/agents` never matches
+`/api/agents/stale`; the query is ignored), and `method` keeps a background
+poll to the same path from settling it; a RegExp matches the whole URL, for
+anything looser. Timeouts default to the suite's wait
+(`DEN_BROWSER_WAIT_MS`).
+
 ### What runs first
 
 The static checks that fail most often run first, in seconds: version
