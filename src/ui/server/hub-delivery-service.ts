@@ -352,6 +352,7 @@ export function badDeliveryFile(
   aside: string,
   o: {
     held?: number | null;
+    code?: string;
     store?: HeldStore;
     log?: (line: string) => void;
   } = {},
@@ -385,7 +386,7 @@ export function badDeliveryFile(
       .then(({ notificationDeps }) => go(notificationDeps().store))
       .catch(() => undefined);
   try {
-    o.log?.(`hub delivery: ${text}`);
+    o.log?.(`hub delivery: ${text}${o.code ? ` (${o.code})` : ""}`);
   } catch {
     return;
   }
@@ -570,7 +571,8 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
       5000,
       {
-        onBad: (aside, held) => badDeliveryFile(aside, { held, log: o.log }),
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
       },
     ),
     // Issue 459: app feed pointers keep their own seen ids.
@@ -578,7 +580,8 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       path.join(getStateDir(), "hub", "feed-pointers-seen.json"),
       5000,
       {
-        onBad: (aside, held) => badDeliveryFile(aside, { held, log: o.log }),
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
       },
     ),
     // Issue 459: one paste holds at most embed.paste_max_kb.

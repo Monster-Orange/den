@@ -82,6 +82,28 @@ describe("a held file Den can't read never stops delivery", () => {
       expect(bad).toHaveLength(1);
     });
 
+  const root = process.getuid?.() === 0;
+  (root ? it.skip : it)(
+    "a file Den can't open: said, with its error code, never moved, and not written over at the start",
+    () => {
+      const file = path.join(dir, "seen.json");
+      const text = '{"ids":["a"],"last":"a","held":null}';
+      fs.writeFileSync(file, text);
+      fs.chmodSync(file, 0o000);
+      const said: [string, number | null, string | undefined][] = [];
+      try {
+        new SeenDeliveries(file, 5000, {
+          onBad: (aside, n, code) => said.push([aside, n, code]),
+        });
+      } finally {
+        fs.chmodSync(file, 0o600);
+      }
+      expect(said).toEqual([[file, null, "EACCES"]]);
+      expect(asides()).toEqual([]);
+      expect(fs.readFileSync(file, "utf-8")).toBe(text);
+    },
+  );
+
   it("no file yet: nothing moved aside, nothing said", () => {
     const bad: string[] = [];
     new SeenDeliveries(path.join(dir, "seen.json"), 5000, {
@@ -151,6 +173,28 @@ describe("the bell and log for a held file moved aside", () => {
       },
     });
     expect(logs).toEqual([`hub delivery: ${added[0]!.text}`]);
+  });
+
+  it("can't be opened: the bell says it couldn't be moved, and the log names the error code", async () => {
+    const { badDeliveryFile } =
+      await import("../../../src/ui/server/hub-delivery-service.js");
+    const added: { text: string; msg?: unknown }[] = [];
+    const logs: string[] = [];
+    badDeliveryFile("/s/hub/deliveries-seen.json", {
+      held: null,
+      code: "EACCES",
+      store: {
+        add: (n: (typeof added)[number]) => (added.push(n), null),
+        withdraw: () => true,
+      },
+      log: (l) => logs.push(l),
+    });
+    expect((added[0]!.msg as { key: string }).key).toBe(
+      "bell.m.deliveryFileBadKept",
+    );
+    expect(logs).toEqual([
+      "hub delivery: Den couldn't read deliveries-seen.json and couldn't move it aside; delivery goes on without what it held. (EACCES)",
+    ]);
   });
 
   it("not countable: says the file couldn't be read, and keeps it", async () => {

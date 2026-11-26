@@ -164,8 +164,6 @@ function readAuthor(v: unknown): DeliveryAuthor | null {
   };
 }
 
-/** A delivery from Hub's stream or list, or null when it isn't one. */
-/** A Delivery back in Hub's shape, so parseDelivery reads it again. */
 export function heldCount(text: string): number | null {
   const at = text.indexOf('"held":');
   if (at < 0) return null;
@@ -173,6 +171,7 @@ export function heldCount(text: string): number | null {
   return n > 0 ? n : null;
 }
 
+/** A Delivery back in Hub's shape, so parseDelivery reads it again. */
 export function deliveryRaw(d: Delivery): Record<string, unknown> {
   return {
     id: d.id,
@@ -694,14 +693,21 @@ export class SeenDeliveries {
     private readonly file: string,
     private readonly cap = 5000,
     o: {
-      onBad?: (aside: string, held: number | null) => void;
+      onBad?: (aside: string, held: number | null, code?: string) => void;
       now?: () => number;
     } = {},
   ) {
     let text: string;
     try {
       text = fs.readFileSync(file, "utf-8");
-    } catch {
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "unknown";
+      if (code === "ENOENT") return;
+      try {
+        o.onBad?.(file, null, code);
+      } catch {
+        return;
+      }
       return;
     }
     let parsed: unknown;
