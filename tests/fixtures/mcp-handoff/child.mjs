@@ -23,6 +23,7 @@ process.stdin.on("data", (c) => {
           serverInfo: { name: "fake", version },
         },
       });
+      if (version === "flaky") setTimeout(() => process.exit(5), 10);
     } else if (m.method === "tools/call") {
       const ms = m.params?.arguments?.ms ?? 0;
       if (m.params?.arguments?.crash) process.exit(4);

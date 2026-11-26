@@ -10,6 +10,10 @@ export interface SuperviseOptions {
   output: Writable;
   log(line: string): void;
   initTimeoutMs?: number;
+  retryAfterMs?: number;
+  restartLimit?: number;
+  restartWindowMs?: number;
+  now?: () => number;
 }
 
 type Id = string | number;
@@ -49,6 +53,11 @@ function lines(stream: Readable, each: (line: string) => void): void {
 
 export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
   const initTimeoutMs = o.initTimeoutMs ?? 20_000;
+  const retryAfterMs = o.retryAfterMs ?? 2_000;
+  const restartLimit = o.restartLimit ?? 5;
+  const restartWindowMs = o.restartWindowMs ?? 60_000;
+  const now = o.now ?? Date.now;
+  const restarts: number[] = [];
   const write = (m: Message) => o.output.write(JSON.stringify(m) + "\n");
   let initialize: Message | null = null;
   let initialized: Message | null = null;
@@ -58,7 +67,8 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
   let handoffs = 0;
   let inputEnded = false;
   const queue: Message[] = [];
-  const asked = new Map<Id, Tools>();
+  const asked = new Map<string, { t: Tools; id: Id }>();
+  let askedIds = 0;
   const all = new Set<Tools>();
   let finish: () => void = () => undefined;
   const done = new Promise<void>((r) => (finish = r));
@@ -108,7 +118,6 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
           },
         });
       t.inflight.clear();
-      if (t === current && !t.retiring && !inputEnded) replace();
       settle();
     });
     return t;
@@ -132,12 +141,41 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
       retire(t);
       return;
     }
-    if (m.id !== undefined) asked.set(m.id, t);
+    if (m.id !== undefined) {
+      const id = `den-asks-${++askedIds}`;
+      asked.set(id, { t, id: m.id });
+      write({ ...m, id });
+      return;
+    }
     write(m);
   };
 
+  const recent = () => {
+    const t = now();
+    while (restarts.length && t - restarts[0]! > restartWindowMs)
+      restarts.shift();
+    return restarts.length;
+  };
+
+  const canRestart = () => recent() < restartLimit;
+
+  const refuse = (m: Message, why: string) => {
+    if (m.id !== undefined && m.method !== undefined)
+      write({
+        jsonrpc: "2.0",
+        id: m.id,
+        error: { code: -32603, message: why },
+      });
+  };
+
+  const noTools = () =>
+    canRestart()
+      ? `Den's tools could not start (build ${current.stamp ?? "unknown"}). This call did not run. The next call tries again.`
+      : `Den's tools stopped ${restartLimit} times in ${Math.round(restartWindowMs / 1000)} s, so Den gave up starting them for now. This call did not run. Ask the person to restart you from Den (the conversation is kept).`;
+
   const route = (m: Message) => {
     const t = current;
+    if (t.exited) return refuse(m, noTools());
     if (m.id !== undefined) t.inflight.add(m.id);
     send(t, m);
   };
@@ -148,7 +186,7 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
 
   const handshake = (t: Tools): Promise<boolean> =>
     new Promise((resolve) => {
-      if (!initialize) return resolve(true);
+      if (!initialize || !initialized) return resolve(!t.exited);
       const id = `${HANDOFF}${++handoffs}`;
       const timer = setTimeout(() => end(false), initTimeoutMs);
       const exit = () => end(false);
@@ -200,13 +238,20 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
 
   const replace = () => {
     swapping = true;
+    restarts.push(now());
     const next = start();
     void handshake(next).then((ok) => {
-      if (!ok)
+      if (ok && !next.exited) adopt(next, null);
+      else {
         o.log(
-          `[mcp] supervisor: a fresh tools process did not answer its start`,
+          `[mcp] supervisor: a fresh tools process did not start (build ${next.stamp ?? "unknown"})`,
         );
-      adopt(next, null);
+        if (!next.exited) next.proc.kill();
+        current = next;
+        current.exited = true;
+        const why = noTools();
+        for (const m of queue.splice(0)) refuse(m, why);
+      }
       swapping = false;
       flush();
     });
@@ -221,9 +266,10 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
     if (m.method === "initialize" && m.id !== undefined) initialize = m;
     if (m.method === "notifications/initialized") initialized = m;
     if (m.method === undefined && m.id !== undefined) {
-      const owner = asked.get(m.id) ?? current;
-      asked.delete(m.id);
-      return send(owner, m);
+      const owner = asked.get(String(m.id));
+      asked.delete(String(m.id));
+      if (owner) send(owner.t, { ...m, id: owner.id });
+      return;
     }
     if (
       m.method === "notifications/cancelled" &&
@@ -237,6 +283,13 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
       return;
     }
     if (swapping) return void queue.push(m);
+    if (current.exited && m.id !== undefined) {
+      const last = restarts[restarts.length - 1] ?? -Infinity;
+      if (!canRestart() || now() - last < retryAfterMs)
+        return refuse(m, noTools());
+      queue.push(m);
+      return replace();
+    }
     if (m.id !== undefined && initialized && stale()) {
       queue.push(m);
       void handoff();

@@ -50,9 +50,10 @@ function harness() {
       if (m.id !== undefined && !m.method) waiting.get(m.id)?.(m);
     }
   });
+  const spawned = { n: 0 };
   const sup = superviseMcp({
     spawn: () =>
-      spawn(process.execPath, [CHILD], {
+      (spawned.n++, spawn)(process.execPath, [CHILD], {
         stdio: ["pipe", "pipe", "inherit"],
         env: { ...process.env, FAKE_VERSION_FILE: versionFile },
       }),
@@ -61,6 +62,8 @@ function harness() {
     output,
     log: (l) => logs.push(l),
     initTimeoutMs: 5_000,
+    retryAfterMs: 200,
+    restartLimit: 3,
   });
   let next = 1;
   const send = (m: object) => input.write(JSON.stringify(m) + "\n");
@@ -86,7 +89,7 @@ function harness() {
     input.end();
     await sup.done;
   };
-  return { start, call, request, send, stop, seen, logs };
+  return { start, call, request, send, stop, seen, logs, spawned };
 }
 
 describe("Den updated under a running tools process (issue 1664)", () => {
@@ -180,6 +183,72 @@ describe("Den updated under a running tools process (issue 1664)", () => {
     await h.stop();
   });
 
+  it("a fresh process that can't start either: calls get an error, never a hang, and a later call retries", async () => {
+    const h = harness();
+    await h.start();
+    fs.writeFileSync(versionFile, "broken");
+    const lost = await h.request("tools/call", {
+      name: "t",
+      arguments: { crash: true },
+    });
+    expect(lost.error?.message).toMatch(/stopped/);
+    const refused = await Promise.race([
+      h.request("tools/call", { name: "t", arguments: {} }),
+      new Promise<Msg>((r) =>
+        setTimeout(() => r({ error: { message: "hung" } }), 3_000),
+      ),
+    ]);
+    expect(refused.error?.message).toMatch(/could not start/);
+    fs.writeFileSync(versionFile, "0.4.90");
+    await new Promise((r) => setTimeout(r, 250));
+    expect(await h.call()).toMatch(/^version=0\.4\.90 /);
+    await h.stop();
+  });
+
+  it("a process that keeps dying as it starts: one try per call, the tries stop at the cap, and every call gets an answer at once", async () => {
+    const h = harness();
+    await h.start();
+    fs.writeFileSync(versionFile, "flaky");
+    await h.request("tools/call", { name: "t", arguments: { crash: true } });
+    const answers: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const t0 = Date.now();
+      const r = await Promise.race([
+        h.request("tools/call", { name: "t", arguments: {} }),
+        new Promise<Msg>((res) =>
+          setTimeout(() => res({ error: { message: "hung" } }), 2_000),
+        ),
+      ]);
+      expect(Date.now() - t0).toBeLessThan(1_500);
+      answers.push(r.error?.message ?? r.result?.content?.[0]?.text ?? "");
+    }
+    expect(answers).not.toContain("hung");
+    expect(h.spawned.n).toBeLessThanOrEqual(1 + 3);
+    expect(answers[answers.length - 1]).toMatch(/gave up/);
+    await h.stop();
+  });
+
+  it("the first process failing at start: initialize gets an error, and calls never hang", async () => {
+    fs.writeFileSync(versionFile, "broken");
+    const h = harness();
+    const init = await Promise.race([
+      h.start(),
+      new Promise<Msg>((r) =>
+        setTimeout(() => r({ error: { message: "hung" } }), 3_000),
+      ),
+    ]);
+    expect(init.error?.message).toMatch(/stopped|could not start/);
+    const r = await Promise.race([
+      h.request("tools/call", { name: "t", arguments: {} }),
+      new Promise<Msg>((res) =>
+        setTimeout(() => res({ error: { message: "hung" } }), 3_000),
+      ),
+    ]);
+    expect(r.error?.message).toMatch(/stopped|could not start/);
+    await h.stop();
+  });
+
   it("no update: every call goes to the same process", async () => {
     const h = harness();
     await h.start();
@@ -217,11 +286,13 @@ describe("the note a supervised tools process adds", () => {
     stale: true,
   };
 
-  it("never asks for a restart: the next call runs the new tools", () => {
+  it("says the next call should run the new tools, and asks for a restart only if the note shows again", () => {
     for (const agent of [true, false]) {
       const note = toolsStaleMessage(c, agent, true);
-      expect(note).not.toMatch(/restart|reconnect/i);
-      expect(note).toMatch(/next call runs 0\.4\.91/);
+      expect(note).toMatch(/next call should run 0\.4\.91's tools/);
+      const [first, again] = note.split("If this note shows again");
+      expect(first).not.toMatch(/restart|reconnect/i);
+      expect(again).toMatch(agent ? /restart you from Den/ : /reconnect/);
     }
   });
 

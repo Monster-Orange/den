@@ -101,7 +101,10 @@ export function toolsStaleMessage(
   if (supervised)
     return (
       `Note: Den was updated to ${v(c.onDisk)} while this call ran on ${v(c.loaded)}'s tools. ` +
-      `The next call runs ${v(c.onDisk)}'s tools, in this same conversation.`
+      `The next call should run ${v(c.onDisk)}'s tools, in this same conversation. ` +
+      (agent
+        ? `If this note shows again, ${v(c.onDisk)}'s tools did not start: ask the person to restart you from Den (Restart keeps this conversation).`
+        : `If this note shows again, ${v(c.onDisk)}'s tools did not start: reconnect this MCP server in your client.`)
     );
   return (
     `Note: Den was updated to ${v(c.onDisk)} after these Den tools started on ${v(c.loaded)}. ` +
