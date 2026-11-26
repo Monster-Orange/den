@@ -24,7 +24,7 @@ import {
   takeSetupGrant,
   type Announced,
 } from "../../../src/shared/test-install-grant.js";
-import { personToken } from "../../../src/shared/web-secret.js";
+import { personToken } from "../../../src/shared/web/web-secret.js";
 import {
   identityAnswer,
   identityKey,

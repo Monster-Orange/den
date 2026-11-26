@@ -42,7 +42,7 @@ import {
   hubPut,
   parseHubRef,
   type HubVia,
-} from "../../shared/hub-files.js";
+} from "../../shared/hub/hub-files.js";
 import {
   DenHttpError,
   DenWebDown,

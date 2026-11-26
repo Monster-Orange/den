@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   ProjectSync,
   readSyncReply,
-} from "../../../src/shared/hub-project-sync.js";
+} from "../../../src/shared/hub/hub-project-sync.js";
 import { hubGetProject } from "../../../src/shared/hub.js";
 
 const MOVED_TO = {

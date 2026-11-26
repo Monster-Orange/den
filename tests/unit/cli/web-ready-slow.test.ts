@@ -17,7 +17,7 @@ import * as os from "os";
 import * as path from "path";
 import { isDenWebRunning } from "../../../src/ui/cli/web-command.js";
 import { addDenUiMarker } from "../../../src/shared/ui-marker.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 
 /** How late the stub answers: past the old 1.5 s, under the default. */
 const LATE_MS = 2_000;

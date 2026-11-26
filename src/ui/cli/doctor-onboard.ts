@@ -31,8 +31,8 @@ import { needsDocker } from "./repo-detect.js";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { approvalsState } from "../mcp/tools.js";
 import type { WebProbe } from "./mcp-connect.js";
-import { denWebBase } from "../../shared/web-dial.js";
-import { readWebUrl } from "../../shared/web-url.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
