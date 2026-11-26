@@ -1,9 +1,3 @@
-/**
- * Issue 1235: closing-keywords (workflow pr-text) reports on merge-queue
- * runs too, so the queue can require it beside ci-ok. On a pull request it
- * checks the title, body and commits; on a merge-queue run, the queued
- * commits (the merge group's base to head).
- */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
