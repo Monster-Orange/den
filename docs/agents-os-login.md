@@ -106,3 +106,19 @@ between the person and their agents, not between agents.
 When Den's server reads an agent's `own/` files (a later slice), it runs as the
 person and reads files the login can write. It opens them with `O_NOFOLLOW`
 and checks them with `lstat`, never following a link.
+
+## Before Den starts agents through the login
+
+These hold before the server starts any agent as the agents' login:
+
+1. With `agents.os_login` on, a launch that fails is refused. Den never falls
+   back to running the agent as the person.
+2. All of a person's agents share one uid, and a process can read the
+   environment of another with the same uid (`/proc/<pid>/environ` on Linux,
+   `ps -E` on macOS). So a sign-in token is never in a process's environment:
+   it comes on an inherited file descriptor. Each `own/` folder can be written
+   by every agent, so either each agent (or project) gets its own login, or the
+   sandbox denies looking at other processes.
+3. The person's Den never trusts or follows a link in `own/`.
+4. Every launch checks that the agents' login can't write Den's runtime, or
+   any folder above it, before it starts.
