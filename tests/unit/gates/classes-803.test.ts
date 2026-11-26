@@ -165,7 +165,7 @@ describe("the default example (11-20): within P0, release before lane", () => {
     const b = bed(P);
     const h = b.ask("holder", { project: "other" });
     b.ask("p1 lane", { project: "product" });
-    b.ask("release p1", { project: "product" }); // a P1 release stays P1
+    b.ask("release p1", { project: "product" });
     b.ask("p0 lane", { project: "platform" });
     b.ask("release check", { project: "platform" });
     expect(b.waiting()).toEqual([
