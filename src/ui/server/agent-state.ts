@@ -31,6 +31,7 @@ interface RowLike {
   state?: string;
   waiting?: boolean;
   waitingWhy?: string;
+  activity?: string;
 }
 
 export function agentStateOf(
@@ -48,7 +49,7 @@ export function agentStateOf(
     !!latest && !d.seen.isSeen({ subject: agentSubject(id), person });
   const attn: AgentAttn = needs
     ? "needs"
-    : workingAt !== undefined
+    : workingAt !== undefined || row.activity === "working"
       ? "working"
       : done
         ? "done"

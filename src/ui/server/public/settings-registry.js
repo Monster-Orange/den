@@ -3536,6 +3536,26 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
+    id: "server.tools_probe",
+    category: "server",
+    label: "Den tools' check of this install, in seconds",
+    description:
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install before a call is refused. A busy __DEN_TITLE__ answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
+    keywords: [
+      "agent",
+      "tools",
+      "mcp",
+      "timeout",
+      "server-info",
+      "web.tools_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.tools_probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.toolsProbeSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_ready: { tools_probe_seconds: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",
@@ -6870,8 +6890,16 @@ export function hubHtml(b, flash, t = (k) => k) {
         : "") +
       `</div>${acts}</div>`
     : "";
+  const sw =
+    b.switching && typeof b.switching.to === "string"
+      ? `<p class="set-note set-warn" role="status" data-hub-switching>${escR(t("hub.switching", { to: b.switching.to, from: b.url || "" }))} ` +
+        `<button type="button" class="den-btn sm primary" data-hub-action="connect" data-hub-switch-signin>${escR(t("hub.switchSignin"))}</button></p>`
+      : b.switchEnded && typeof b.switchEnded.to === "string"
+        ? `<p class="set-note" role="status" data-hub-switch-ended>${escR(t("hub.switchEnded", { to: b.switchEnded.to, from: b.url || "" }))}</p>`
+        : "";
   return (
     (just || flashHtml) +
+    sw +
     head +
     (first
       ? `<div data-hub-addr-wrap hidden>${hubAddressHtml(b)}</div>`
@@ -8765,7 +8793,11 @@ function wireHub(host, ctx) {
           ctx.shell.api(
             "POST",
             "/api/hub/connect",
-            typed ? { url: typed.value } : {},
+            button?.dataset.hubSwitchSignin !== undefined
+              ? { switch: true }
+              : typed
+                ? { url: typed.value }
+                : {},
             { headers },
           ),
         {

@@ -81,8 +81,6 @@ export interface AgentRecord {
   denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
-  /**
-   */
   recordId?: string;
   /**
    * AG-17.1: brought in from a conversation started outside Den (when);
@@ -350,8 +348,6 @@ export function writeRecord(stateDir: string, rec: AgentRecord): void {
   );
 }
 
-/**
- */
 function keptRecordId(file: string): string | undefined {
   let raw: string;
   try {
