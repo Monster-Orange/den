@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SeenDeliveries } from "../../../src/shared/hub/hub-delivery.js";
-import { DeliveryLoop } from "../../../src/shared/hub/hub-delivery-loop.js";
+import { SeenDeliveries } from "../../../src/shared/hub/hub-delivery";
+import { DeliveryLoop } from "../../../src/shared/hub/hub-delivery-loop";
 
 let dir = "";
 beforeEach(() => {
@@ -136,8 +136,7 @@ describe("a held file Den can't read never stops delivery", () => {
 
 describe("counting what a bad held file held", () => {
   it('each saved delivery after "held" counts once; a body\'s escaped key never does', async () => {
-    const { heldCount } =
-      await import("../../../src/shared/hub/hub-delivery.js");
+    const { heldCount } = await import("../../../src/shared/hub/hub-delivery");
     const one = JSON.stringify({ ...comment("a"), body: '"created_at":"x"' });
     const two = JSON.stringify(comment("b"));
     const text = `{"ids":[],"held":{"queue":{"ag-1":[${one},${two}],"ag-2":[{"id":"c","crea`;
